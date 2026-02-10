@@ -6,6 +6,7 @@ No code exists yet. This folder holds the research done before coding. All facts
 
 ## Start here
 
+- [Decisions](decisions.md): what has been decided so far. It replaces the report's plan where they differ.
 - [Feasibility report](feasibility-report.md): verdict per language, proposed architecture, phased plan, open decisions and next steps.
 
 ## Research notes

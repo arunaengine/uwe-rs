@@ -1,0 +1,6 @@
+[package]
+name = "iunctus-nextflow-syntax"
+description = "Lexer, parser and syntax tree for Nextflow scripts and config files"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true

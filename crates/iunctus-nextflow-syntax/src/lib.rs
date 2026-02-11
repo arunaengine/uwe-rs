@@ -3,6 +3,7 @@
 //! The grammar follows the official strict syntax grammar in
 //! `modules/nf-lang/src/main/antlr` of the Nextflow repository.
 
+pub mod lexer;
 mod span;
 pub mod token;
 

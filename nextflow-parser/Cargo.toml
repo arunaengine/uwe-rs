@@ -1,5 +1,5 @@
 [package]
-name = "iunctus-nextflow-syntax"
+name = "nextflow-parser"
 description = "Lexer, parser and syntax tree for Nextflow scripts and config files"
 version.workspace = true
 edition.workspace = true

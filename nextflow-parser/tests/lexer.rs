@@ -1,5 +1,5 @@
-use iunctus_nextflow_syntax::lexer::tokenize;
-use iunctus_nextflow_syntax::token::{Dialect, TokenKind, TokenKind::*};
+use nextflow_parser::lexer::tokenize;
+use nextflow_parser::token::{Dialect, TokenKind, TokenKind::*};
 
 fn kinds_in(source: &str, dialect: Dialect) -> Vec<TokenKind> {
     let lexed = tokenize(source, dialect);

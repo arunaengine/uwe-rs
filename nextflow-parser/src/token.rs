@@ -1,3 +1,7 @@
+//! Token kinds, keywords and operators of the Nextflow grammar.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
 use crate::Span;
 
 /// Which grammar the source follows. Scripts and config files share one
@@ -8,8 +12,7 @@ pub enum Dialect {
     Config,
 }
 
-/// Token kinds, named after the tokens of the official ANTLR grammar
-/// (`ScriptLexer.g4` and `ConfigLexer.g4`).
+/// Token kinds of the official ANTLR grammars (`ScriptLexer.g4`, `ConfigLexer.g4`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TokenKind {
     // literals
@@ -25,14 +28,14 @@ pub enum TokenKind {
     },
     GStringText,
     GStringPath,
-    GStringExprStart,
+    InterpolationStart,
     GStringEnd,
 
     // Groovy keywords kept by the strict syntax
     As,
     Def,
     In,
-    BuiltInPrimitiveType,
+    PrimitiveType,
     Assert,
     Catch,
     Else,
@@ -90,49 +93,49 @@ pub enum TokenKind {
     NotIn,
 
     // separators
-    LParen,
-    RParen,
-    LBrace,
-    RBrace,
-    LBrack,
-    RBrack,
-    Semi,
+    LeftParen,
+    RightParen,
+    LeftBrace,
+    RightBrace,
+    LeftBracket,
+    RightBracket,
+    Semicolon,
     Comma,
     Dot,
 
     // operators
     Assign,
-    Gt,
-    Lt,
+    Greater,
+    Less,
     Not,
     BitNot,
     Question,
     Colon,
     Equal,
-    Le,
-    Ge,
+    LessEqual,
+    GreaterEqual,
     NotEqual,
     And,
     Or,
     Add,
-    Sub,
-    Mul,
-    Div,
+    Subtract,
+    Multiply,
+    Divide,
     BitAnd,
     BitOr,
     Xor,
-    Mod,
+    Modulo,
     AddAssign,
-    SubAssign,
-    MulAssign,
-    DivAssign,
-    AndAssign,
-    OrAssign,
+    SubtractAssign,
+    MultiplyAssign,
+    DivideAssign,
+    BitAndAssign,
+    BitOrAssign,
     XorAssign,
-    ModAssign,
-    LShiftAssign,
-    RShiftAssign,
-    URShiftAssign,
+    ModuloAssign,
+    LeftShiftAssign,
+    RightShiftAssign,
+    UnsignedShiftAssign,
     ElvisAssign,
     PowerAssign,
 
@@ -141,10 +144,10 @@ pub enum TokenKind {
     Identifier,
 
     /// A line break or a comment.
-    Nl,
+    Newline,
     /// A character that starts no token.
     Unexpected,
-    Eof,
+    EndOfFile,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -158,12 +161,12 @@ pub struct Token {
 pub(crate) const OPERATORS: &[(&str, TokenKind)] = {
     use TokenKind::*;
     &[
-        (">>>=", URShiftAssign),
+        (">>>=", UnsignedShiftAssign),
         ("..<", RangeExclusiveRight),
         ("==~", RegexMatch),
         ("<=>", Spaceship),
-        ("<<=", LShiftAssign),
-        (">>=", RShiftAssign),
+        ("<<=", LeftShiftAssign),
+        (">>=", RightShiftAssign),
         ("**=", PowerAssign),
         ("..", RangeInclusive),
         ("*.", SpreadDot),
@@ -173,44 +176,44 @@ pub(crate) const OPERATORS: &[(&str, TokenKind)] = {
         ("**", Power),
         ("->", Arrow),
         ("==", Equal),
-        ("<=", Le),
-        (">=", Ge),
+        ("<=", LessEqual),
+        (">=", GreaterEqual),
         ("!=", NotEqual),
         ("&&", And),
         ("||", Or),
         ("+=", AddAssign),
-        ("-=", SubAssign),
-        ("*=", MulAssign),
-        ("/=", DivAssign),
-        ("&=", AndAssign),
-        ("|=", OrAssign),
+        ("-=", SubtractAssign),
+        ("*=", MultiplyAssign),
+        ("/=", DivideAssign),
+        ("&=", BitAndAssign),
+        ("|=", BitOrAssign),
         ("^=", XorAssign),
-        ("%=", ModAssign),
+        ("%=", ModuloAssign),
         ("?=", ElvisAssign),
-        ("(", LParen),
-        (")", RParen),
-        ("{", LBrace),
-        ("}", RBrace),
-        ("[", LBrack),
-        ("]", RBrack),
-        (";", Semi),
+        ("(", LeftParen),
+        (")", RightParen),
+        ("{", LeftBrace),
+        ("}", RightBrace),
+        ("[", LeftBracket),
+        ("]", RightBracket),
+        (";", Semicolon),
         (",", Comma),
         (".", Dot),
         ("=", Assign),
-        (">", Gt),
-        ("<", Lt),
+        (">", Greater),
+        ("<", Less),
         ("!", Not),
         ("~", BitNot),
         ("?", Question),
         (":", Colon),
         ("+", Add),
-        ("-", Sub),
-        ("*", Mul),
-        ("/", Div),
+        ("-", Subtract),
+        ("*", Multiply),
+        ("/", Divide),
         ("&", BitAnd),
         ("|", BitOr),
         ("^", Xor),
-        ("%", Mod),
+        ("%", Modulo),
     ]
 };
 
@@ -222,7 +225,7 @@ pub fn keyword(word: &str, dialect: Dialect) -> Option<TokenKind> {
         "def" => Def,
         "in" => In,
         "boolean" | "char" | "byte" | "short" | "int" | "long" | "float" | "double" => {
-            BuiltInPrimitiveType
+            PrimitiveType
         }
         "assert" => Assert,
         "catch" => Catch,

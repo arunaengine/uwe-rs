@@ -1,3 +1,7 @@
+<!-- Research notes on Rust crates and projects that can support iunctus. -->
+<!-- Copyright (c) 2026 The iunctus Contributors -->
+<!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
+
 # Rust building blocks for iunctus (native Nextflow, Snakemake and CWL engine)
 
 How the data was collected (all on 2026-09-27):

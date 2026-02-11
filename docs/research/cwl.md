@@ -1,3 +1,7 @@
+<!-- Research notes on CWL and what a native Rust runner needs. -->
+<!-- Copyright (c) 2026 The iunctus Contributors -->
+<!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
+
 # Common Workflow Language (CWL): spec, preprocessing, expressions, conformance, implementations, TES mapping, and what a native Rust runner needs
 
 Research date: 2026-09-27. All "current" statements are as of this date unless marked otherwise.

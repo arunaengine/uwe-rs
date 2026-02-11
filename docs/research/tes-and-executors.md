@@ -1,3 +1,7 @@
+<!-- Research notes on GA4GH TES and other execution backends. -->
+<!-- Copyright (c) 2026 The iunctus Contributors -->
+<!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
+
 # GA4GH TES and execution backends for iunctus
 
 Research date: 2026-09-27. Facts were checked on that date through the GitHub API, the crates.io API, shallow source clones and project documentation pages. Release dates come from GitHub release metadata. Anything marked "Inference" is my own reasoning, not a sourced fact.

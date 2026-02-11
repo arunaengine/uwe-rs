@@ -1,3 +1,7 @@
+<!-- Decisions made so far about the scope and design of iunctus. -->
+<!-- Copyright (c) 2026 The iunctus Contributors -->
+<!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
+
 # Decisions
 
 Recorded on 2026-09-27. Where this file differs from the plan in the [feasibility report](feasibility-report.md), this file wins.

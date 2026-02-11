@@ -1,3 +1,7 @@
+<!-- Research notes on earlier cross-language workflow tools and platforms. -->
+<!-- Copyright (c) 2026 The iunctus Contributors -->
+<!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
+
 # Prior work: cross-language tools, multi-language engines and unified representations for bioinformatics workflows
 
 Research date: 2026-09-27. Scope: converters between workflow languages, platforms that run several languages, academic work on interoperability and intermediate representations (IRs), description and provenance standards, and re-implementations of Nextflow or Snakemake. "Cited Findings" are facts checked against the linked source (GitHub API, PyPI, crates.io, papers, docs). "Inferences" are my own reasoning. Items only seen in a search-result excerpt (page not opened) are marked as such.

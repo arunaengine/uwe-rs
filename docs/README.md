@@ -1,3 +1,7 @@
+<!-- Index of the iunctus documentation. -->
+<!-- Copyright (c) 2026 The iunctus Contributors -->
+<!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
+
 # iunctus docs
 
 iunctus is a planned native Rust application. It will read Nextflow, Snakemake and CWL workflows, turn them into a shared intermediate representation, and send the resulting tasks to executors, starting with GA4GH TES.

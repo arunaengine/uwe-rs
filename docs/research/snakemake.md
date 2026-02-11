@@ -1,3 +1,7 @@
+<!-- Research notes on the Snakemake language and runtime. -->
+<!-- Copyright (c) 2026 The iunctus Contributors -->
+<!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
+
 # Snakemake: language, runtime, and what a native Rust implementation needs
 
 Research date: 2026-09-27. Main evidence: a shallow clone of `snakemake/snakemake` (tag v9.27.0 plus one later commit on `main`, 91763d6, dated 2026-09-11). I also cloned the TES executor plugin, the executor plugin interface, snakemake-wrappers, snakefmt, tree-sitter-snakemake, pydantic/monty and facebook/starlark-rust. I downloaded the workflow catalog data file and scanned 33 real workflows. Line numbers refer to files at that commit. "Own measurement" marks numbers I computed myself from the clones. Everything under "Inferences" is my own reasoning, not a sourced fact.

@@ -1,3 +1,7 @@
+<!-- Research notes on how workflow systems design their intermediate representations. -->
+<!-- Copyright (c) 2026 The iunctus Contributors -->
+<!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
+
 # IR and execution model designs in workflow systems (research notes for iunctus)
 
 Research date: 2026-09-27. Method: source code read from shallow clones of each project's default branch (commit dates 2026-09-04 to 2026-09-27), plus official docs and papers. "Cited Findings" are checked facts with a source. "Inferences" are my own reasoning. "(search snippet only)" means I saw the claim only in a search result summary, not in the full page.

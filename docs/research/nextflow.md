@@ -1,3 +1,7 @@
+<!-- Research notes on the Nextflow language and runtime. -->
+<!-- Copyright (c) 2026 The iunctus Contributors -->
+<!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
+
 # Nextflow: language, runtime, and what a native Rust implementation needs
 
 Research date: 2026-09-27. Primary sources: a shallow clone of `nextflow-io/nextflow` at commit `bbf6ff0` (25 Sep 2026, version file `26.09.1-edge`), shallow clones of `nextflow-io/language-server`, `nextflow-io/tree-sitter-nextflow`, `nextflow-io/nf-ga4gh` and `nf-core/rnaseq` (all taken 2026-09-27), the GitHub API, and the nf-core website. GitHub `master`/`main` links below point to files that were checked in these clones. The rendered Nextflow docs now live at `docs.seqera.io/nextflow/...` (`nextflow.io/docs/latest/reference/syntax.html` redirects there with HTTP 302). The docs sources are the `.mdx` files in the Nextflow repo, which are cited directly.

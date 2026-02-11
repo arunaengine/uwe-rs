@@ -1,6 +1,12 @@
+# Manifest of nextflow-parser, which reads Nextflow scripts and config files.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
 [package]
 name = "nextflow-parser"
 description = "Lexer, parser and syntax tree for Nextflow scripts and config files"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
 publish.workspace = true

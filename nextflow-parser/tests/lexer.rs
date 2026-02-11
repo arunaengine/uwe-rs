@@ -1,3 +1,7 @@
+//! Tests how the lexer splits Nextflow source text into tokens.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
 use nextflow_parser::lexer::tokenize;
 use nextflow_parser::token::{Dialect, TokenKind, TokenKind::*};
 
@@ -9,7 +13,7 @@ fn kinds_in(source: &str, dialect: Dialect) -> Vec<TokenKind> {
         lexed.errors
     );
     let mut kinds: Vec<_> = lexed.tokens.iter().map(|t| t.kind).collect();
-    assert_eq!(kinds.pop(), Some(Eof));
+    assert_eq!(kinds.pop(), Some(EndOfFile));
     kinds
 }
 
@@ -28,21 +32,21 @@ fn simple_assignment() {
 }
 
 #[test]
-fn slash_is_regex_only_where_a_value_is_expected() {
+fn slash_starts_regex() {
     assert_eq!(kinds("a =~ /fo+/"), [Identifier, RegexFind, StringLiteral]);
     assert_eq!(
         kinds("a / b / c"),
-        [Identifier, Div, Identifier, Div, Identifier]
+        [Identifier, Divide, Identifier, Divide, Identifier]
     );
     assert_eq!(kinds("~/^a$/"), [BitNot, StringLiteral]);
     assert_eq!(
         kinds("(a) / 2"),
-        [LParen, Identifier, RParen, Div, IntegerLiteral]
+        [LeftParen, Identifier, RightParen, Divide, IntegerLiteral]
     );
 }
 
 #[test]
-fn plain_and_interpolated_strings() {
+fn string_kinds() {
     assert_eq!(kinds("\"hello\" 'x'"), [StringLiteral, StringLiteral]);
     assert_eq!(
         kinds("\"a $x b\""),
@@ -59,19 +63,19 @@ fn plain_and_interpolated_strings() {
 }
 
 #[test]
-fn gstring_expressions_nest_brackets() {
+fn nested_interpolation() {
     assert_eq!(
         kinds("\"${a.b { it }}\""),
         [
             GStringBegin { triple: false },
-            GStringExprStart,
+            InterpolationStart,
             Identifier,
             Dot,
             Identifier,
-            LBrace,
+            LeftBrace,
             Identifier,
-            RBrace,
-            RBrace,
+            RightBrace,
+            RightBrace,
             GStringEnd
         ]
     );
@@ -85,11 +89,11 @@ fn triple_quoted_script() {
         [
             GStringBegin { triple: true },
             GStringText,
-            GStringExprStart,
+            InterpolationStart,
             Identifier,
             Dot,
             Identifier,
-            RBrace,
+            RightBrace,
             GStringText,
             GStringEnd
         ]
@@ -97,7 +101,7 @@ fn triple_quoted_script() {
 }
 
 #[test]
-fn quote_runs_at_the_end_of_triple_strings() {
+fn triple_quote_runs() {
     assert_eq!(texts("\"\"\"a\"\"\"\" x"), ["\"\"\"a\"\"\"\"", "x", ""]);
     assert_eq!(texts("'''a''''' x"), ["'''a'''''", "x", ""]);
 }
@@ -130,17 +134,22 @@ fn numbers() {
 }
 
 #[test]
-fn comments_are_line_breaks() {
+fn comments_become_newlines() {
     assert_eq!(
         kinds("a // c\nb /* x */ c"),
-        [Identifier, Nl, Nl, Identifier, Nl, Identifier]
+        [
+            Identifier, Newline, Newline, Identifier, Newline, Identifier
+        ]
     );
-    assert_eq!(kinds("#!/usr/bin/env nextflow\nx"), [Nl, Nl, Identifier]);
+    assert_eq!(
+        kinds("#!/usr/bin/env nextflow\nx"),
+        [Newline, Newline, Identifier]
+    );
     assert_eq!(kinds("a \\\n b"), [Identifier, Identifier]);
 }
 
 #[test]
-fn negated_in_and_instanceof() {
+fn negated_operators() {
     assert_eq!(kinds("a !in b"), [Identifier, NotIn, Identifier]);
     assert_eq!(kinds("!inputs"), [Not, Identifier]);
     assert_eq!(
@@ -150,10 +159,10 @@ fn negated_in_and_instanceof() {
 }
 
 #[test]
-fn shifts_are_split_into_angle_brackets() {
-    assert_eq!(kinds("a << b"), [Identifier, Lt, Lt, Identifier]);
-    assert_eq!(kinds("a >> b"), [Identifier, Gt, Gt, Identifier]);
-    assert_eq!(kinds("a >>= b"), [Identifier, RShiftAssign, Identifier]);
+fn split_shift_operators() {
+    assert_eq!(kinds("a << b"), [Identifier, Less, Less, Identifier]);
+    assert_eq!(kinds("a >> b"), [Identifier, Greater, Greater, Identifier]);
+    assert_eq!(kinds("a >>= b"), [Identifier, RightShiftAssign, Identifier]);
     assert_eq!(
         kinds("a ?: b ?. c"),
         [Identifier, Elvis, Identifier, SafeDot, Identifier]
@@ -161,10 +170,13 @@ fn shifts_are_split_into_angle_brackets() {
 }
 
 #[test]
-fn keywords_depend_on_the_dialect() {
-    assert_eq!(kinds("process foo {"), [Process, Identifier, LBrace]);
+fn dialect_keywords() {
+    assert_eq!(kinds("process foo {"), [Process, Identifier, LeftBrace]);
     assert_eq!(kinds("inputs"), [Identifier]);
-    assert_eq!(kinds_in("process {", Dialect::Config), [Identifier, LBrace]);
+    assert_eq!(
+        kinds_in("process {", Dialect::Config),
+        [Identifier, LeftBrace]
+    );
     assert_eq!(
         kinds_in("includeConfig 'x'", Dialect::Config),
         [IncludeConfig, StringLiteral]
@@ -174,20 +186,20 @@ fn keywords_depend_on_the_dialect() {
         [
             BooleanLiteral,
             NullLiteral,
-            BuiltInPrimitiveType,
+            PrimitiveType,
             CapitalizedIdentifier
         ]
     );
 }
 
 #[test]
-fn lone_dollar_in_gstring_is_an_error() {
+fn rejects_lone_dollar() {
     let lexed = tokenize("\"a $ b\"", Dialect::Script);
     assert_eq!(lexed.errors.len(), 1);
 }
 
 #[test]
-fn unterminated_strings_are_errors() {
+fn rejects_unterminated_strings() {
     assert_eq!(tokenize("'abc\nx", Dialect::Script).errors.len(), 1);
     assert_eq!(tokenize("\"a $x\nb", Dialect::Script).errors.len(), 1);
 }

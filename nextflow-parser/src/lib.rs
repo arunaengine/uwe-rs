@@ -1,7 +1,6 @@
-//! Lexer, parser and syntax tree for Nextflow scripts and config files.
-//!
-//! The grammar follows the official strict syntax grammar in
-//! `modules/nf-lang/src/main/antlr` of the Nextflow repository.
+//! Reads Nextflow scripts and config files, following the official strict syntax grammar.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
 
 pub mod lexer;
 mod span;

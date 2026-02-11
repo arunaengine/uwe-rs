@@ -1,3 +1,7 @@
+//! Source positions, error reports and line numbers.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
 use std::fmt;
 
 /// A byte range in the source text.
@@ -61,7 +65,7 @@ impl LineIndex {
     }
 
     /// The 1-based line and column of a byte offset.
-    pub fn line_col(&self, offset: u32) -> (usize, usize) {
+    pub fn line_column(&self, offset: u32) -> (usize, usize) {
         let line = match self.line_starts.binary_search(&offset) {
             Ok(line) => line,
             Err(next) => next - 1,
@@ -89,7 +93,7 @@ impl fmt::Display for Located<'_> {
 
 impl LineIndex {
     pub fn locate<'a>(&self, diagnostic: &'a Diagnostic) -> Located<'a> {
-        let (line, column) = self.line_col(diagnostic.span.start);
+        let (line, column) = self.line_column(diagnostic.span.start);
         Located {
             diagnostic,
             line,

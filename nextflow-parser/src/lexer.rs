@@ -1,10 +1,11 @@
-//! Turns source text into tokens, following `ScriptLexer.g4` and
-//! `ConfigLexer.g4` from the Nextflow repository.
+//! Turns Nextflow source text into tokens, following the official ANTLR lexer grammars.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
 
 use crate::token::{Dialect, OPERATORS, Token, TokenKind, keyword};
 use crate::{Diagnostic, Span};
 
-/// The tokens of a source text. The last token is always `Eof`.
+/// The tokens of a source text. The last token is always `EndOfFile`.
 pub struct Lexed {
     pub tokens: Vec<Token>,
     pub errors: Vec<Diagnostic>,
@@ -12,9 +13,9 @@ pub struct Lexed {
 
 pub fn tokenize(source: &str, dialect: Dialect) -> Lexed {
     let mut lexer = Lexer {
-        src: source,
+        source,
         bytes: source.as_bytes(),
-        pos: 0,
+        position: 0,
         dialect,
         modes: vec![Mode::Default],
         last: None,
@@ -35,9 +36,9 @@ enum Mode {
 }
 
 struct Lexer<'a> {
-    src: &'a str,
+    source: &'a str,
     bytes: &'a [u8],
-    pos: usize,
+    position: usize,
     dialect: Dialect,
     /// Brackets and `${` push `Default`; a string with `$` pushes `GString`.
     modes: Vec<Mode>,
@@ -48,7 +49,7 @@ struct Lexer<'a> {
 
 impl Lexer<'_> {
     fn run(&mut self) {
-        while self.pos < self.bytes.len() {
+        while self.position < self.bytes.len() {
             match *self.modes.last().unwrap() {
                 Mode::Default => self.default_token(),
                 Mode::GString { triple } => self.gstring_token(triple),
@@ -60,11 +61,11 @@ impl Lexer<'_> {
             self.push(TokenKind::GStringEnd, end, end);
         }
         let end = self.bytes.len();
-        self.push(TokenKind::Eof, end, end);
+        self.push(TokenKind::EndOfFile, end, end);
     }
 
     fn peek(&self, n: usize) -> u8 {
-        self.byte(self.pos + n)
+        self.byte(self.position + n)
     }
 
     fn byte(&self, i: usize) -> u8 {
@@ -72,7 +73,7 @@ impl Lexer<'_> {
     }
 
     fn char_at(&self, i: usize) -> Option<char> {
-        self.src.get(i..)?.chars().next()
+        self.source.get(i..)?.chars().next()
     }
 
     fn push(&mut self, kind: TokenKind, start: usize, end: usize) {
@@ -89,32 +90,32 @@ impl Lexer<'_> {
     }
 
     fn default_token(&mut self) {
-        let start = self.pos;
+        let start = self.position;
         match self.peek(0) {
             b' ' | b'\t' => {
                 while matches!(self.peek(0), b' ' | b'\t') {
-                    self.pos += 1;
+                    self.position += 1;
                 }
             }
             b'\\' if matches!(self.peek(1), b'\n' | b'\r') => {
                 // a line escape joins two lines
-                self.pos += if self.peek(1) == b'\r' && self.peek(2) == b'\n' {
+                self.position += if self.peek(1) == b'\r' && self.peek(2) == b'\n' {
                     3
                 } else {
                     2
                 };
             }
             b'\n' => {
-                self.pos += 1;
-                self.push(TokenKind::Nl, start, self.pos);
+                self.position += 1;
+                self.push(TokenKind::Newline, start, self.position);
             }
             b'\r' => {
-                self.pos += if self.peek(1) == b'\n' { 2 } else { 1 };
-                self.push(TokenKind::Nl, start, self.pos);
+                self.position += if self.peek(1) == b'\n' { 2 } else { 1 };
+                self.push(TokenKind::Newline, start, self.position);
             }
             b'/' if self.peek(1) == b'/' => {
-                self.skip_to_line_end();
-                self.push(TokenKind::Nl, start, self.pos);
+                self.skip_to_newline();
+                self.push(TokenKind::Newline, start, self.position);
             }
             b'/' if self.peek(1) == b'*' => self.block_comment(),
             b'#' if self.peek(1) == b'!' && self.dialect == Dialect::Script => self.shebang(),
@@ -130,26 +131,26 @@ impl Lexer<'_> {
         }
     }
 
-    fn skip_to_line_end(&mut self) {
-        while !matches!(self.peek(0), b'\n' | b'\r') && self.pos < self.bytes.len() {
-            self.pos += 1;
+    fn skip_to_newline(&mut self) {
+        while !matches!(self.peek(0), b'\n' | b'\r') && self.position < self.bytes.len() {
+            self.position += 1;
         }
     }
 
     fn block_comment(&mut self) {
-        let start = self.pos;
-        match self.src[start + 2..].find("*/") {
-            Some(i) => self.pos = start + 2 + i + 2,
+        let start = self.position;
+        match self.source[start + 2..].find("*/") {
+            Some(i) => self.position = start + 2 + i + 2,
             None => {
-                self.pos = self.bytes.len();
-                self.error("Unterminated comment", start, self.pos);
+                self.position = self.bytes.len();
+                self.error("Unterminated comment", start, self.position);
             }
         }
-        self.push(TokenKind::Nl, start, self.pos);
+        self.push(TokenKind::Newline, start, self.position);
     }
 
     fn shebang(&mut self) {
-        let start = self.pos;
+        let start = self.position;
         if !self.tokens.is_empty() {
             self.error(
                 "Shebang comment should appear at the first line",
@@ -158,61 +159,61 @@ impl Lexer<'_> {
             );
         }
         loop {
-            self.skip_to_line_end();
-            let next = self.pos
+            self.skip_to_newline();
+            let next = self.position
                 + if self.peek(0) == b'\r' && self.peek(1) == b'\n' {
                     2
                 } else {
                     1
                 };
             if self.byte(next) == b'#' && self.byte(next + 1) == b'!' {
-                self.pos = next;
+                self.position = next;
             } else {
                 break;
             }
         }
-        self.push(TokenKind::Nl, start, self.pos);
+        self.push(TokenKind::Newline, start, self.position);
     }
 
     fn number(&mut self) {
-        let start = self.pos;
+        let start = self.position;
         let mut float = false;
         if self.peek(0) == b'0' && matches!(self.peek(1), b'x' | b'X') {
-            self.pos += 2;
+            self.position += 2;
             self.digits(|b| b.is_ascii_hexdigit());
             if self.peek(0) == b'.' && self.peek(1).is_ascii_hexdigit() {
-                self.pos += 1;
+                self.position += 1;
                 self.digits(|b| b.is_ascii_hexdigit());
             }
             if matches!(self.peek(0), b'p' | b'P') {
-                self.pos += 1;
+                self.position += 1;
                 self.exponent_digits();
                 float = true;
             }
         } else if self.peek(0) == b'0' && matches!(self.peek(1), b'b' | b'B') {
-            self.pos += 2;
+            self.position += 2;
             self.digits(|b| b == b'0' || b == b'1');
         } else {
             self.digits(|b| b.is_ascii_digit());
             if self.peek(0) == b'.' && self.peek(1).is_ascii_digit() {
-                self.pos += 1;
+                self.position += 1;
                 self.digits(|b| b.is_ascii_digit());
                 float = true;
             }
             let signed = matches!(self.peek(1), b'+' | b'-') && self.peek(2).is_ascii_digit();
             if matches!(self.peek(0), b'e' | b'E') && (self.peek(1).is_ascii_digit() || signed) {
-                self.pos += 1;
+                self.position += 1;
                 self.exponent_digits();
                 float = true;
             }
         }
         match self.peek(0) {
             b'f' | b'F' | b'd' | b'D' => {
-                self.pos += 1;
+                self.position += 1;
                 float = true;
             }
-            b'g' | b'G' => self.pos += 1,
-            b'l' | b'L' | b'i' | b'I' if !float => self.pos += 1,
+            b'g' | b'G' => self.position += 1,
+            b'l' | b'L' | b'i' | b'I' if !float => self.position += 1,
             _ => {}
         }
         let kind = if float {
@@ -220,26 +221,26 @@ impl Lexer<'_> {
         } else {
             TokenKind::IntegerLiteral
         };
-        self.push(kind, start, self.pos);
+        self.push(kind, start, self.position);
     }
 
     fn digits(&mut self, digit: impl Fn(u8) -> bool) {
         while digit(self.peek(0)) || self.peek(0) == b'_' {
-            self.pos += 1;
+            self.position += 1;
         }
     }
 
     fn exponent_digits(&mut self) {
         if matches!(self.peek(0), b'+' | b'-') {
-            self.pos += 1;
+            self.position += 1;
         }
         self.digits(|b| b.is_ascii_digit());
     }
 
     fn identifier(&mut self) {
-        let start = self.pos;
-        self.pos = self.identifier_end(start, true);
-        let word = &self.src[start..self.pos];
+        let start = self.position;
+        self.position = self.identifier_end(start, true);
+        let word = &self.source[start..self.position];
         let kind = keyword(word, self.dialect).unwrap_or_else(|| {
             if word.chars().next().is_some_and(char::is_uppercase) {
                 TokenKind::CapitalizedIdentifier
@@ -247,14 +248,14 @@ impl Lexer<'_> {
                 TokenKind::Identifier
             }
         });
-        self.push(kind, start, self.pos);
+        self.push(kind, start, self.position);
     }
 
     /// The end of the identifier that starts at `start`. Identifiers in
     /// strings may not contain `$`.
     fn identifier_end(&self, start: usize, allow_dollar: bool) -> usize {
         let mut end = start;
-        for c in self.src[start..].chars() {
+        for c in self.source[start..].chars() {
             let part = is_identifier_part(c) && (allow_dollar || c != '$');
             if !part || (end == start && c.is_ascii_digit()) {
                 break;
@@ -265,8 +266,8 @@ impl Lexer<'_> {
     }
 
     fn operator(&mut self) {
-        let start = self.pos;
-        let rest = &self.src[start..];
+        let start = self.position;
+        let rest = &self.source[start..];
         let not_in = rest.starts_with("!in")
             && matches!(
                 self.peek(3),
@@ -289,29 +290,31 @@ impl Lexer<'_> {
             );
             (TokenKind::Unexpected, len)
         };
-        self.pos += len;
+        self.position += len;
         match kind {
-            TokenKind::LParen | TokenKind::LBrace | TokenKind::LBrack => {
+            TokenKind::LeftParen | TokenKind::LeftBrace | TokenKind::LeftBracket => {
                 self.modes.push(Mode::Default)
             }
-            TokenKind::RParen | TokenKind::RBrace | TokenKind::RBrack if self.modes.len() > 1 => {
+            TokenKind::RightParen | TokenKind::RightBrace | TokenKind::RightBracket
+                if self.modes.len() > 1 =>
+            {
                 self.modes.pop();
             }
             _ => {}
         }
-        self.push(kind, start, self.pos);
+        self.push(kind, start, self.position);
     }
 }
 
 impl Lexer<'_> {
     fn single_quoted(&mut self) {
-        let start = self.pos;
+        let start = self.position;
         let len = self.bytes.len();
-        if self.src[start..].starts_with("'''") {
+        if self.source[start..].starts_with("'''") {
             match self.triple_end(start + 3, b'\'') {
-                Some(end) => self.pos = end,
+                Some(end) => self.position = end,
                 None => {
-                    self.pos = len;
+                    self.position = len;
                     self.error("Unterminated string", start, len);
                 }
             }
@@ -335,16 +338,16 @@ impl Lexer<'_> {
                     _ => i += 1,
                 }
             }
-            self.pos = i.min(len);
+            self.position = i.min(len);
         }
-        self.push(TokenKind::StringLiteral, start, self.pos);
+        self.push(TokenKind::StringLiteral, start, self.position);
     }
 
     /// A string without `$` is a plain literal. Otherwise it is a GString,
     /// which is lexed part by part in its own mode.
     fn double_quoted(&mut self) {
-        let start = self.pos;
-        let triple = self.src[start..].starts_with("\"\"\"");
+        let start = self.position;
+        let triple = self.source[start..].starts_with("\"\"\"");
         let open = if triple { 3 } else { 1 };
         let mut i = start + open;
         let literal_end = loop {
@@ -368,33 +371,33 @@ impl Lexer<'_> {
         };
         match literal_end {
             Some(end) => {
-                self.pos = end;
+                self.position = end;
                 self.push(TokenKind::StringLiteral, start, end);
             }
             None => {
-                self.pos = start + open;
-                self.push(TokenKind::GStringBegin { triple }, start, self.pos);
+                self.position = start + open;
+                self.push(TokenKind::GStringBegin { triple }, start, self.position);
                 self.modes.push(Mode::GString { triple });
             }
         }
     }
 
     fn gstring_token(&mut self, triple: bool) {
-        let start = self.pos;
+        let start = self.position;
         match self.peek(0) {
             b'"' if !triple => {
-                self.pos += 1;
+                self.position += 1;
                 self.end_gstring(start);
             }
             b'"' if self.quote_run(start, b'"') >= 3
                 && content_quotes(self.quote_run(start, b'"')) == 0 =>
             {
-                self.pos += 3;
+                self.position += 3;
                 self.end_gstring(start);
             }
             b'$' if self.peek(1) == b'{' => {
-                self.pos += 2;
-                self.push(TokenKind::GStringExprStart, start, self.pos);
+                self.position += 2;
+                self.push(TokenKind::InterpolationStart, start, self.position);
                 self.modes.push(Mode::Default);
             }
             b'$' if self
@@ -412,13 +415,13 @@ impl Lexer<'_> {
     }
 
     fn end_gstring(&mut self, start: usize) {
-        self.push(TokenKind::GStringEnd, start, self.pos);
+        self.push(TokenKind::GStringEnd, start, self.position);
         self.modes.pop();
     }
 
     /// `$name` or `$name.property.property`.
     fn gstring_path(&mut self) {
-        let start = self.pos;
+        let start = self.position;
         let mut end = self.identifier_end(start + 1, false);
         while self.byte(end) == b'.'
             && self
@@ -427,12 +430,12 @@ impl Lexer<'_> {
         {
             end = self.identifier_end(end + 1, false);
         }
-        self.pos = end;
+        self.position = end;
         self.push(TokenKind::GStringPath, start, end);
     }
 
     fn gstring_text(&mut self, triple: bool) {
-        let start = self.pos;
+        let start = self.position;
         let len = self.bytes.len();
         let mut i = start;
         while i < len {
@@ -457,8 +460,8 @@ impl Lexer<'_> {
                 _ => i += 1,
             }
         }
-        self.pos = i.min(len);
-        self.push(TokenKind::GStringText, start, self.pos);
+        self.position = i.min(len);
+        self.push(TokenKind::GStringText, start, self.position);
     }
 
     /// A `/` starts a slashy string only where a value is expected.
@@ -467,9 +470,9 @@ impl Lexer<'_> {
         !matches!(
             self.last,
             Some(
-                RBrace
-                    | RBrack
-                    | RParen
+                RightBrace
+                    | RightBracket
+                    | RightParen
                     | GStringEnd
                     | NullLiteral
                     | StringLiteral
@@ -484,7 +487,7 @@ impl Lexer<'_> {
 
     /// Lexes `/.../` if it is a complete slashy string, else lexes nothing.
     fn slashy(&mut self) -> bool {
-        let start = self.pos;
+        let start = self.position;
         let mut i = start + 1;
         loop {
             match self.byte(i) {
@@ -492,16 +495,16 @@ impl Lexer<'_> {
                 b'\\' if self.byte(i + 1) == b'/' => i += 2,
                 b'/' if i == start + 1 => return false,
                 b'/' => break,
-                b'$' if self.followed_by_letter_in_gstring(i + 1) => return false,
+                b'$' if self.starts_interpolation(i + 1) => return false,
                 _ => i += 1,
             }
         }
-        self.pos = i + 1;
-        self.push(TokenKind::StringLiteral, start, self.pos);
+        self.position = i + 1;
+        self.push(TokenKind::StringLiteral, start, self.position);
         true
     }
 
-    fn followed_by_letter_in_gstring(&self, i: usize) -> bool {
+    fn starts_interpolation(&self, i: usize) -> bool {
         match self.char_at(i) {
             Some('$') | None => false,
             Some(c) => c == '{' || is_identifier_start(c),

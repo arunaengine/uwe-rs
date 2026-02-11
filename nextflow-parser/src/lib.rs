@@ -4,7 +4,10 @@
 
 pub mod ast;
 pub mod lexer;
+mod parser;
 mod span;
 pub mod token;
+
+pub use parser::{Parsed, parse_config, parse_script};
 
 pub use span::{Diagnostic, LineIndex, Located, Span};

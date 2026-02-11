@@ -1,6 +1,8 @@
 //! Turns source text into tokens, following `ScriptLexer.g4` and
 //! `ConfigLexer.g4` from the Nextflow repository.
 
+mod strings;
+
 use crate::token::{Dialect, OPERATORS, Token, TokenKind, keyword};
 use crate::{Diagnostic, Span};
 
@@ -31,6 +33,7 @@ pub fn tokenize(source: &str, dialect: Dialect) -> Lexed {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Default,
+    GString { triple: bool },
 }
 
 struct Lexer<'a> {
@@ -38,7 +41,7 @@ struct Lexer<'a> {
     bytes: &'a [u8],
     pos: usize,
     dialect: Dialect,
-    /// Brackets push `Default`.
+    /// Brackets and `${` push `Default`; a string with `$` pushes `GString`.
     modes: Vec<Mode>,
     last: Option<TokenKind>,
     tokens: Vec<Token>,
@@ -50,7 +53,13 @@ impl Lexer<'_> {
         while self.pos < self.bytes.len() {
             match *self.modes.last().unwrap() {
                 Mode::Default => self.default_token(),
+                Mode::GString { triple } => self.gstring_token(triple),
             }
+        }
+        if self.modes.iter().any(|m| matches!(m, Mode::GString { .. })) {
+            let end = self.bytes.len();
+            self.error("Unterminated string", end, end);
+            self.push(TokenKind::GStringEnd, end, end);
         }
         let end = self.bytes.len();
         self.push(TokenKind::Eof, end, end);
@@ -111,6 +120,9 @@ impl Lexer<'_> {
             }
             b'/' if self.peek(1) == b'*' => self.block_comment(),
             b'#' if self.peek(1) == b'!' && self.dialect == Dialect::Script => self.shebang(),
+            b'"' => self.double_quoted(),
+            b'\'' => self.single_quoted(),
+            b'/' if self.regex_allowed() && self.slashy() => {}
             b'0'..=b'9' => self.number(),
             b'.' if self.peek(1).is_ascii_digit() => self.number(),
             _ => match self.char_at(start) {

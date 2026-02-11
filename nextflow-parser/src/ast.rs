@@ -472,3 +472,46 @@ pub enum TypeArgument {
 pub struct QualifiedName {
     pub parts: Vec<Name>,
 }
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Config {
+    pub statements: Vec<ConfigStatement>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ConfigStatement {
+    /// `includeConfig 'path'`
+    Include { path: Expression, span: Span },
+    /// `a.b.c = value`
+    Assign {
+        path: Vec<Name>,
+        value: Expression,
+        span: Span,
+    },
+    /// `name { ... }`
+    Block {
+        name: Name,
+        body: Vec<ConfigStatement>,
+        span: Span,
+    },
+    /// A block of calls, like `plugins { id 'nf-schema' }`.
+    Apply {
+        name: Name,
+        calls: Vec<ConfigApply>,
+        span: Span,
+    },
+    /// `withName: 'FOO' { ... }` or `withLabel: 'big' { ... }`
+    Selector {
+        kind: Name,
+        target: Name,
+        body: Vec<ConfigStatement>,
+        span: Span,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConfigApply {
+    pub name: Name,
+    pub arguments: Vec<Argument>,
+    pub span: Span,
+}

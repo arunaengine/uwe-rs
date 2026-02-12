@@ -26,7 +26,10 @@ pub enum Item {
     },
     Include(Include),
     /// `import a.b.C`, which strict syntax only keeps for error messages.
-    Import { name: QualifiedName, span: Span },
+    Import {
+        name: QualifiedName,
+        span: Span,
+    },
     /// `params { ... }`
     Parameters {
         parameters: Vec<ParameterDeclaration>,

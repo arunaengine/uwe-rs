@@ -18,7 +18,84 @@ impl Parser<'_> {
     /// The `compilationUnit` rule of scripts.
     pub(super) fn script(&mut self) -> Script {
         let (items, _) = self.item_list(false, |_| false, Self::item);
+        self.check_items(&items);
         Script { items }
+    }
+
+    /// Checks that concern the whole script, as in the official `compilationUnit` builder.
+    fn check_items(&mut self, items: &[Item]) {
+        let mut entry = None;
+        let mut output = None;
+        let mut parameters = None;
+        let mut legacy = false;
+        let mut declarations = false;
+        for item in items {
+            match item {
+                Item::Workflow(workflow) if workflow.name.is_none() => {
+                    if entry.is_some() {
+                        self.error_at("Entry workflow defined more than once", workflow.span);
+                    }
+                    entry = Some(workflow.span);
+                }
+                Item::Output { span, .. } => {
+                    if output.is_some() {
+                        self.error_at("Output block defined more than once", *span);
+                    }
+                    output = Some(*span);
+                }
+                Item::Parameters { span, .. } => {
+                    if parameters.is_some() {
+                        self.error_at("Params block defined more than once", *span);
+                    }
+                    if legacy {
+                        let message =
+                            "Params block cannot be mixed with legacy parameter declarations";
+                        self.error_at(message, *span);
+                    }
+                    parameters = Some(*span);
+                }
+                Item::LegacyParameter { span, .. } => {
+                    if parameters.is_some() {
+                        let message =
+                            "Legacy parameter declarations cannot be mixed with the params block";
+                        self.error_at(message, *span);
+                    }
+                    legacy = true;
+                }
+                Item::Statement(statement) => {
+                    if let Some(name) = definition_name(statement) {
+                        let message = format!(
+                            "Invalid {name} definition -- check for missing or out-of-order section labels"
+                        );
+                        self.error_at(message, statement.span);
+                        declarations = true;
+                    }
+                    continue;
+                }
+                Item::Import { .. } => continue,
+                _ => {}
+            }
+            declarations = true;
+        }
+        for item in items {
+            if let Item::Statement(statement) = item
+                && declarations
+                && definition_name(statement).is_none()
+            {
+                let message = "Statements cannot be mixed with script declarations -- move statements into a process, workflow, or function";
+                self.error_at(message, statement.span);
+            }
+        }
+        if entry.is_none() {
+            if let Some(span) = parameters {
+                let message = "Params block cannot be defined without an entry workflow";
+                self.error_at(message, span);
+            }
+            if let Some(span) = output {
+                let message = "Output block cannot be defined without an entry workflow";
+                self.error_at(message, span);
+            }
+        }
     }
 
     /// Items separated by `sep` up to the end of input, a label or, if `nested`, a closing brace,
@@ -1076,4 +1153,19 @@ fn is_expression(statement: &Statement) -> bool {
         }
         _ => false,
     }
+}
+
+/// The name of a statement like `process { ... }` that looks like a definition but did not parse
+/// as one, which the official parser reports as an invalid definition.
+fn definition_name(statement: &Statement) -> Option<&str> {
+    let StatementKind::Expression(expression) = &statement.kind else {
+        return None;
+    };
+    let ExpressionKind::MethodCall { name, .. } = &expression.kind else {
+        return None;
+    };
+    let name = name.text.as_str();
+    ["agent", "process", "workflow", "output"]
+        .contains(&name)
+        .then_some(name)
 }

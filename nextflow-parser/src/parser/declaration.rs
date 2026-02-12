@@ -5,10 +5,14 @@
 use super::{Failed, Parse, Parser, is_name};
 use crate::Span;
 use crate::ast::{
-    Expression, ExpressionKind, Function, Include, IncludeName, Item, Name, ParameterDeclaration,
-    Script, Type, TypedName,
+    Agent, BinaryOperator, Block, BodyKind, Expression, ExpressionKind, Function, Include,
+    IncludeName, Item, Name, NamedOutput, ParameterDeclaration, Process, ProcessBody, ProcessInput,
+    Script, Statement, StatementKind, Type, TypedName,
 };
 use crate::token::TokenKind;
+
+const MISSING_LABEL: &str =
+    "The `script:` or `exec:` label is required when other sections are present";
 
 impl Parser<'_> {
     /// The `compilationUnit` rule of scripts.
@@ -120,6 +124,8 @@ impl Parser<'_> {
             TokenKind::Params if self.at_path_assign() => self.legacy_parameter(),
             TokenKind::Record if is_name(self.nth(1)) => self.record(),
             TokenKind::Enum => self.enumeration(),
+            TokenKind::Agent if is_name(self.nth(1)) => self.agent(),
+            TokenKind::Process if is_name(self.nth(1)) => self.process(),
             _ if self.at_incomplete() => self.incomplete(),
             _ => {
                 let start = self.current().span;
@@ -335,6 +341,404 @@ impl Parser<'_> {
         })))
     }
 
+    /// The `processDef` rule. Sections are read in any order and checked at the end, so that a
+    /// misplaced label gives one clear error, as in the official parser.
+    fn process(&mut self) -> Parse<Item> {
+        let start = self.bump().span;
+        let name = self.name()?;
+        self.skip_newlines();
+        self.expect(TokenKind::LeftBrace, "`{`")?;
+        let mut process = Process {
+            name,
+            directives: Vec::new(),
+            inputs: Vec::new(),
+            stage: Vec::new(),
+            outputs: Vec::new(),
+            topics: Vec::new(),
+            when: None,
+            body: None,
+            stub: None,
+            span: start,
+        };
+        // The grammar puts a separator before every section, the first one included.
+        let mut valid = self.skip_separators() || self.at(TokenKind::RightBrace);
+        let mut order = LabelOrder::new();
+        let mut previous = None;
+        let mut implicit = false;
+        let mut last = None;
+        while !self.at_list_end(true) {
+            if let Some(section) = self.process_label() {
+                valid &= order.accept(section.ranks()) && !implicit;
+                // The label and its colon.
+                self.bump();
+                self.bump();
+                self.skip_newlines();
+                let section_end = self.process_section(section, &mut process);
+                valid &= section_end.is_some();
+                last = section_end.or(last);
+                previous = Some(section);
+            } else {
+                let block = self.labeled_block(Self::at_process_label);
+                last = last_span(&block.statements).or(last);
+                match previous {
+                    None => process.directives.extend(block.statements),
+                    // Only `when:` may come right before a body without a label.
+                    Some(ProcessSection::When) if !implicit => {
+                        implicit = true;
+                        let kind = BodyKind::Implicit;
+                        process.body = Some(ProcessBody { kind, block });
+                    }
+                    Some(_) => valid = false,
+                }
+            }
+            self.skip_separators();
+        }
+        self.expect(TokenKind::RightBrace, "`}`")?;
+        process.span = self.span_from(start);
+        if previous.is_none() {
+            self.implicit_body(&mut process);
+        } else {
+            self.check_directives(&process.directives, "Invalid process directive");
+        }
+        if previous.is_some() && process.body.is_none() {
+            // The official parser takes the last statement as the body and then rejects it.
+            let allowed = previous != Some(ProcessSection::When) && process.stub.is_none();
+            match last {
+                Some(span) if valid && allowed && order.valid[0] => {
+                    self.error_at(MISSING_LABEL, span);
+                }
+                _ => valid = false,
+            }
+        }
+        if !valid {
+            let message =
+                "Invalid process definition -- check for missing or out-of-order section labels";
+            self.error_at(message, process.span);
+        }
+        Ok(Item::Process(Box::new(process)))
+    }
+
+    /// Makes the statements of a process without labels its script body. The official parser
+    /// takes all but the last statement as directives, which then need a label.
+    fn implicit_body(&mut self, process: &mut Process) {
+        let statements = std::mem::take(&mut process.directives);
+        let Some(last) = statements.last() else {
+            self.error_at("Missing process script body", process.span);
+            return;
+        };
+        if statements.len() > 1 {
+            self.error_at(MISSING_LABEL, last.span);
+        }
+        let block = section_block(statements, process.span);
+        let kind = BodyKind::Implicit;
+        process.body = Some(ProcessBody { kind, block });
+    }
+
+    /// Reads one labelled section into the process. Returns the span of its last item, or `None`
+    /// when the section is empty, which the grammar does not allow.
+    fn process_section(&mut self, section: ProcessSection, process: &mut Process) -> Option<Span> {
+        let is_label = Self::at_process_label;
+        match section {
+            ProcessSection::Input => {
+                let (inputs, last) = self.item_list(true, is_label, Self::process_input);
+                let found = !inputs.is_empty();
+                process.inputs.extend(inputs);
+                found.then_some(last)
+            }
+            ProcessSection::Stage => {
+                let statements = self.section_statements(is_label);
+                self.check_directives(&statements, "Invalid stage directive");
+                let last = last_span(&statements);
+                process.stage.extend(statements);
+                last
+            }
+            ProcessSection::Output => {
+                let (outputs, last) = self.item_list(true, is_label, Self::named_output);
+                let found = !outputs.is_empty();
+                process.outputs.extend(outputs);
+                found.then_some(last)
+            }
+            ProcessSection::Topic => {
+                let statements = self.section_statements(is_label);
+                self.check_topics(&statements);
+                let last = last_span(&statements);
+                process.topics.extend(statements);
+                last
+            }
+            ProcessSection::When => {
+                let start = self.current().span;
+                let condition = self.expression();
+                if condition.is_err() || self.line_end().is_err() {
+                    self.skip_section(is_label);
+                }
+                process.when = condition.ok();
+                Some(start)
+            }
+            ProcessSection::Body(kind) => {
+                let block = self.labeled_block(is_label);
+                let last = last_span(&block.statements);
+                process.body = Some(ProcessBody { kind, block });
+                last
+            }
+            ProcessSection::Stub => {
+                let block = self.labeled_block(is_label);
+                let last = last_span(&block.statements);
+                process.stub = Some(block);
+                last
+            }
+        }
+    }
+
+    /// The process section that starts here, if any, like `input:` or `script:`.
+    fn process_label(&self) -> Option<ProcessSection> {
+        if self.nth(1) != TokenKind::Colon {
+            return None;
+        }
+        let section = match self.peek() {
+            TokenKind::Input => ProcessSection::Input,
+            TokenKind::Stage => ProcessSection::Stage,
+            TokenKind::Output => ProcessSection::Output,
+            TokenKind::Topic => ProcessSection::Topic,
+            TokenKind::When => ProcessSection::When,
+            TokenKind::Script => ProcessSection::Body(BodyKind::Script),
+            TokenKind::Shell => ProcessSection::Body(BodyKind::Shell),
+            TokenKind::Exec => ProcessSection::Body(BodyKind::Exec),
+            TokenKind::Stub => ProcessSection::Stub,
+            _ => return None,
+        };
+        Some(section)
+    }
+
+    fn at_process_label(&self) -> bool {
+        self.process_label().is_some()
+    }
+
+    /// The `processInput` rule: a typed name, `record(...)` or `tuple(...)` of typed names, or a
+    /// legacy input statement like `tuple val(meta), path(reads)`.
+    fn process_input(&mut self) -> Parse<ProcessInput> {
+        let start = self.current().span;
+        let grouped = matches!(self.peek(), TokenKind::Record | TokenKind::Tuple);
+        if grouped && self.nth(1) == TokenKind::LeftParen {
+            let tuple = self.at(TokenKind::Tuple);
+            if let Some(fields) = self.speculate(Self::field_list) {
+                if !tuple {
+                    return Ok(ProcessInput::Record(fields));
+                }
+                if fields.len() < 2 {
+                    let message = "Process tuple input must have more than one component";
+                    self.error_at(message, self.span_from(start));
+                }
+                return Ok(ProcessInput::Tuple(fields));
+            }
+        }
+        if let Some(input) = self.speculate(Self::line_name) {
+            return Ok(ProcessInput::Named(input));
+        }
+        Ok(ProcessInput::Statement(self.statement()?))
+    }
+
+    /// The typed names of `record(...)` or `tuple(...)`, which must fill the whole line.
+    fn field_list(&mut self) -> Parse<Vec<TypedName>> {
+        // The keyword and the opening parenthesis.
+        self.bump();
+        self.bump();
+        self.skip_newlines();
+        let mut fields = vec![self.typed_name()?];
+        while self.eat(TokenKind::Comma) {
+            self.skip_newlines();
+            if self.at(TokenKind::RightParen) {
+                break;
+            }
+            fields.push(self.typed_name()?);
+        }
+        self.skip_newlines();
+        self.expect(TokenKind::RightParen, "`)`")?;
+        self.line_end()?;
+        Ok(fields)
+    }
+
+    /// A typed name that fills the whole line, like `reads: Path`.
+    fn line_name(&mut self) -> Parse<TypedName> {
+        let name = self.typed_name()?;
+        self.line_end()?;
+        Ok(name)
+    }
+
+    /// The `processOutput` and `workflowEmit` rules: `name`, `name: Type` or `name = value` when
+    /// that fills the whole line, else a statement.
+    fn named_output(&mut self) -> Parse<NamedOutput> {
+        let named = self.speculate(|parser| {
+            let target = parser.typed_name()?;
+            let mut value = None;
+            if parser.eat(TokenKind::Assign) {
+                value = Some(parser.expression()?);
+            }
+            parser.line_end()?;
+            Ok(NamedOutput::Named { target, value })
+        });
+        match named {
+            Some(output) => Ok(output),
+            None => Ok(NamedOutput::Statement(self.statement()?)),
+        }
+    }
+
+    /// The `agentDef` rule: directives, then `input:`, `output:` and the required `prompt:`.
+    fn agent(&mut self) -> Parse<Item> {
+        let start = self.bump().span;
+        let name = self.name()?;
+        self.skip_newlines();
+        self.expect(TokenKind::LeftBrace, "`{`")?;
+        let mut agent = Agent {
+            name,
+            directives: Vec::new(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            prompt: section_block(Vec::new(), start),
+            span: start,
+        };
+        let mut valid = self.skip_separators() || self.at(TokenKind::RightBrace);
+        let mut order = LabelOrder::new();
+        let mut labeled = false;
+        let mut prompt = false;
+        let is_label = Self::at_agent_label;
+        while !self.at_list_end(true) {
+            let Some(section) = self.agent_label() else {
+                valid &= !labeled;
+                agent.directives.extend(self.section_statements(is_label));
+                continue;
+            };
+            valid &= order.accept([section as u8]);
+            labeled = true;
+            // The label and its colon.
+            self.bump();
+            self.bump();
+            self.skip_newlines();
+            match section {
+                AgentSection::Input => {
+                    let (inputs, _) = self.item_list(true, is_label, Self::process_input);
+                    valid &= !inputs.is_empty();
+                    agent.inputs.extend(inputs);
+                }
+                AgentSection::Output => {
+                    let (outputs, _) = self.item_list(true, is_label, Self::named_output);
+                    valid &= !outputs.is_empty();
+                    agent.outputs.extend(outputs);
+                }
+                AgentSection::Prompt => {
+                    agent.prompt = self.labeled_block(is_label);
+                    valid &= !agent.prompt.statements.is_empty();
+                    prompt = true;
+                }
+            }
+            self.skip_separators();
+        }
+        self.expect(TokenKind::RightBrace, "`}`")?;
+        agent.span = self.span_from(start);
+        if !labeled && agent.directives.is_empty() {
+            self.error_at("Missing agent body", agent.span);
+        } else if !valid || !prompt {
+            let message =
+                "Invalid agent definition -- check for missing or out-of-order section labels";
+            self.error_at(message, agent.span);
+        } else {
+            self.check_directives(&agent.directives, "Invalid agent directive");
+        }
+        Ok(Item::Agent(Box::new(agent)))
+    }
+
+    /// The agent section that starts here, if any.
+    fn agent_label(&self) -> Option<AgentSection> {
+        if self.nth(1) != TokenKind::Colon {
+            return None;
+        }
+        match self.peek() {
+            TokenKind::Input => Some(AgentSection::Input),
+            TokenKind::Output => Some(AgentSection::Output),
+            TokenKind::Prompt => Some(AgentSection::Prompt),
+            _ => None,
+        }
+    }
+
+    fn at_agent_label(&self) -> bool {
+        self.agent_label().is_some()
+    }
+
+    /// The statements of a section as a block, like the body after `script:`.
+    fn labeled_block(&mut self, is_label: fn(&Self) -> bool) -> Block {
+        let start = self.current().span;
+        section_block(self.section_statements(is_label), start)
+    }
+
+    /// The statements of one section, up to the next label or the closing brace.
+    fn section_statements(&mut self, is_label: fn(&Self) -> bool) -> Vec<Statement> {
+        let statements = self.statement_sequence(is_label).unwrap_or_default();
+        if !self.at_list_end(true) && !is_label(self) {
+            // The sequence stopped early after an error; go on at the next label.
+            self.skip_section(is_label);
+        }
+        statements
+    }
+
+    /// Skips to the next section label or the closing brace, after an error in a section.
+    fn skip_section(&mut self, is_label: fn(&Self) -> bool) {
+        loop {
+            self.recover();
+            if self.skip_separators() {
+                if is_label(self) {
+                    return;
+                }
+            } else if self.at_list_end(true) {
+                return;
+            } else {
+                // A closing bracket that matches nothing in this section.
+                self.bump();
+            }
+        }
+    }
+
+    /// Reports statements that cannot be directives. Like the official `checkDirective`, it
+    /// accepts a name, a call without a target like `cpus 4`, and a name minus a value.
+    fn check_directives(&mut self, statements: &[Statement], message: &str) {
+        for statement in statements {
+            let valid = match &statement.kind {
+                StatementKind::Expression(expression) => match &expression.kind {
+                    ExpressionKind::Variable(_) => true,
+                    ExpressionKind::MethodCall { target, .. } => target.is_none(),
+                    ExpressionKind::Binary {
+                        operator: BinaryOperator::Subtract,
+                        left,
+                        ..
+                    } => matches!(left.kind, ExpressionKind::Variable(_)),
+                    _ => false,
+                },
+                StatementKind::Empty => true,
+                _ => false,
+            };
+            if !valid {
+                self.error_at(message, statement.span);
+            }
+        }
+    }
+
+    /// Reports topic statements that are not of the form `value >> 'topic'`.
+    fn check_topics(&mut self, statements: &[Statement]) {
+        for statement in statements {
+            let valid = match &statement.kind {
+                StatementKind::Expression(expression) => matches!(
+                    expression.kind,
+                    ExpressionKind::Binary {
+                        operator: BinaryOperator::RightShift,
+                        ..
+                    }
+                ),
+                _ => false,
+            };
+            if !valid {
+                self.error_at("Invalid process topic statement", statement.span);
+            }
+        }
+    }
+
     /// The `nameTypePair` rule: `name` or `name: Type`.
     fn typed_name(&mut self) -> Parse<TypedName> {
         let name = self.name()?;
@@ -349,4 +753,82 @@ impl Parser<'_> {
         }
         self.type_annotation().map(Some)
     }
+}
+
+/// A labelled section of a process body.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ProcessSection {
+    Input,
+    Stage,
+    Output,
+    Topic,
+    When,
+    Body(BodyKind),
+    Stub,
+}
+
+impl ProcessSection {
+    /// Ranks in the two allowed orders: outputs and topics before `when:`, or after `stub:`.
+    fn ranks(self) -> [u8; 2] {
+        match self {
+            ProcessSection::Input => [0, 0],
+            ProcessSection::Stage => [1, 1],
+            ProcessSection::Output => [2, 5],
+            ProcessSection::Topic => [3, 6],
+            ProcessSection::When => [4, 2],
+            ProcessSection::Body(_) => [5, 3],
+            ProcessSection::Stub => [6, 4],
+        }
+    }
+}
+
+/// A labelled section of an agent body, in the required order.
+#[derive(Clone, Copy)]
+enum AgentSection {
+    Input,
+    Output,
+    Prompt,
+}
+
+/// Checks section labels against one or more allowed orders, given as a rank per label.
+struct LabelOrder<const N: usize> {
+    last: [Option<u8>; N],
+    valid: [bool; N],
+}
+
+impl<const N: usize> LabelOrder<N> {
+    fn new() -> Self {
+        Self {
+            last: [None; N],
+            valid: [true; N],
+        }
+    }
+
+    /// Records the next label and tells whether some order still allows all labels so far.
+    fn accept(&mut self, ranks: [u8; N]) -> bool {
+        for (index, rank) in ranks.into_iter().enumerate() {
+            if self.last[index].is_some_and(|last| last >= rank) {
+                self.valid[index] = false;
+            }
+            self.last[index] = Some(rank);
+        }
+        self.valid.contains(&true)
+    }
+}
+
+/// A block made of the statements of a section, spanning from the first to the last statement,
+/// or empty at `start` when there are none.
+fn section_block(statements: Vec<Statement>, start: Span) -> Block {
+    let span = match (statements.first(), statements.last()) {
+        (Some(first), Some(last)) => first.span.to(last.span),
+        _ => Span {
+            start: start.start,
+            end: start.start,
+        },
+    };
+    Block { statements, span }
+}
+
+fn last_span(statements: &[Statement]) -> Option<Span> {
+    statements.last().map(|statement| statement.span)
 }

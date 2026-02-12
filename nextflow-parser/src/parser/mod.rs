@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod call;
 mod config;
 mod declaration;
 mod expression;
@@ -137,6 +138,14 @@ impl<'a> Parser<'a> {
         self.nth(n)
     }
 
+    fn newline_count(&self) -> usize {
+        let mut count = 0;
+        while self.nth(count) == TokenKind::Newline {
+            count += 1;
+        }
+        count
+    }
+
     fn at_separator(&self) -> bool {
         matches!(self.peek(), TokenKind::Newline | TokenKind::Semicolon)
     }
@@ -257,4 +266,21 @@ fn is_name(kind: TokenKind) -> bool {
             | Take
             | IncludeConfig
     )
+}
+
+/// The `keywords` rule: words that may name a property or a map key.
+fn is_keyword(kind: TokenKind) -> bool {
+    use TokenKind::*;
+    is_name(kind)
+        || matches!(
+            kind,
+            As | Def
+                | Import
+                | Instanceof
+                | Return
+                | Include
+                | NullLiteral
+                | BooleanLiteral
+                | PrimitiveType
+        )
 }

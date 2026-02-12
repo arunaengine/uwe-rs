@@ -347,3 +347,7 @@ impl Parser<'_> {
         Err(self.error_here("Expected a property name"))
     }
 }
+
+#[cfg(test)]
+#[path = "expression_tests.rs"]
+pub(super) mod tests;

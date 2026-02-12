@@ -444,7 +444,7 @@ impl Parser<'_> {
         let mut order = LabelOrder::new();
         let mut previous = None;
         let mut implicit = false;
-        let mut last = None;
+        let mut last = (0, start);
         while !self.at_list_end(true) {
             if let Some(section) = self.process_label() {
                 valid &= order.accept(section.ranks()) && !implicit;
@@ -452,13 +452,12 @@ impl Parser<'_> {
                 self.bump();
                 self.bump();
                 self.skip_newlines();
-                let section_end = self.process_section(section, &mut process);
-                valid &= section_end.is_some();
-                last = section_end.or(last);
+                last = self.process_section(section, &mut process);
+                valid &= last.0 > 0;
                 previous = Some(section);
             } else {
                 let block = self.labeled_block(Self::at_process_label);
-                last = last_span(&block.statements).or(last);
+                last = section_end(&block.statements, start);
                 match previous {
                     None => process.directives.extend(block.statements),
                     // Only `when:` may come right before a body without a label.
@@ -480,13 +479,14 @@ impl Parser<'_> {
             self.check_directives(&process.directives, "Invalid process directive");
         }
         if previous.is_some() && process.body.is_none() {
-            // The official parser takes the last statement as the body and then rejects it.
+            // The official parser takes the last statement as the body and then rejects it,
+            // unless that would leave the last section empty.
             let allowed = previous != Some(ProcessSection::When) && process.stub.is_none();
-            match last {
-                Some(span) if valid && allowed && order.valid[0] => {
-                    self.error_at(MISSING_LABEL, span);
-                }
-                _ => valid = false,
+            let (count, span) = last;
+            if valid && allowed && order.valid[0] && count > 1 {
+                self.error_at(MISSING_LABEL, span);
+            } else {
+                valid = false;
             }
         }
         if !valid {
@@ -513,57 +513,57 @@ impl Parser<'_> {
         process.body = Some(ProcessBody { kind, block });
     }
 
-    /// Reads one labelled section into the process. Returns the span of its last item, or `None`
-    /// when the section is empty, which the grammar does not allow.
-    fn process_section(&mut self, section: ProcessSection, process: &mut Process) -> Option<Span> {
+    /// Reads one labelled section into the process. Returns the number of items, which the
+    /// grammar requires to be at least one, and the span of the last item.
+    fn process_section(&mut self, section: ProcessSection, process: &mut Process) -> (usize, Span) {
         let is_label = Self::at_process_label;
+        let start = self.current().span;
         match section {
             ProcessSection::Input => {
                 let (inputs, last) = self.item_list(true, is_label, Self::process_input);
-                let found = !inputs.is_empty();
+                let end = (inputs.len(), last);
                 process.inputs.extend(inputs);
-                found.then_some(last)
+                end
             }
             ProcessSection::Stage => {
                 let statements = self.section_statements(is_label);
                 self.check_directives(&statements, "Invalid stage directive");
-                let last = last_span(&statements);
+                let end = section_end(&statements, start);
                 process.stage.extend(statements);
-                last
+                end
             }
             ProcessSection::Output => {
                 let (outputs, last) = self.item_list(true, is_label, Self::named_output);
-                let found = !outputs.is_empty();
+                let end = (outputs.len(), last);
                 process.outputs.extend(outputs);
-                found.then_some(last)
+                end
             }
             ProcessSection::Topic => {
                 let statements = self.section_statements(is_label);
                 self.check_topics(&statements);
-                let last = last_span(&statements);
+                let end = section_end(&statements, start);
                 process.topics.extend(statements);
-                last
+                end
             }
             ProcessSection::When => {
-                let start = self.current().span;
                 let condition = self.expression();
                 if condition.is_err() || self.line_end().is_err() {
                     self.skip_section(is_label);
                 }
                 process.when = condition.ok();
-                Some(start)
+                (1, start)
             }
             ProcessSection::Body(kind) => {
                 let block = self.labeled_block(is_label);
-                let last = last_span(&block.statements);
+                let end = section_end(&block.statements, start);
                 process.body = Some(ProcessBody { kind, block });
-                last
+                end
             }
             ProcessSection::Stub => {
                 let block = self.labeled_block(is_label);
-                let last = last_span(&block.statements);
+                let end = section_end(&block.statements, start);
                 process.stub = Some(block);
-                last
+                end
             }
         }
     }
@@ -1141,8 +1141,10 @@ fn section_block(statements: Vec<Statement>, start: Span) -> Block {
     Block { statements, span }
 }
 
-fn last_span(statements: &[Statement]) -> Option<Span> {
-    statements.last().map(|statement| statement.span)
+/// The number of statements in a section and the span of the last one.
+fn section_end(statements: &[Statement], start: Span) -> (usize, Span) {
+    let last = statements.last().map_or(start, |statement| statement.span);
+    (statements.len(), last)
 }
 
 /// Whether a statement is an expression other than a bare name: an emit without a name.

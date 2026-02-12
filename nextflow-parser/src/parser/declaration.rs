@@ -123,9 +123,10 @@ impl Parser<'_> {
                 self.unexpected();
             }
             self.recover();
-            if !self.at_separator() && !self.at_list_end(nested) {
+            while !self.at_separator() && !self.at_list_end(nested) {
                 // A closing bracket that matches nothing in this list.
                 self.bump();
+                self.recover();
             }
         }
     }

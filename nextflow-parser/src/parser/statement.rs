@@ -349,3 +349,7 @@ fn assign_operator(kind: TokenKind) -> Option<AssignOperator> {
         _ => return None,
     })
 }
+
+#[cfg(test)]
+#[path = "statement_tests.rs"]
+mod tests;

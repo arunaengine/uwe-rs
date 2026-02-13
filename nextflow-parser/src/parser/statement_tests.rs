@@ -30,6 +30,7 @@ fn one(source: &str) -> String {
 fn variable_declarations() {
     assert_eq!(one("def x = 1"), "(def x 1)");
     assert_eq!(one("def x: Integer = 1"), "(def x: Integer 1)");
+    assert_eq!(one("def x: Integer? = null"), "(def x: Integer? null)");
     assert_eq!(one("def (a, b) = [1, 2]"), "(def (a b) [1, 2])");
     assert_eq!(one("def String s = 'x'"), "(def String s 'x')");
     assert_eq!(one("List<String> names"), "(def List<String> names)");

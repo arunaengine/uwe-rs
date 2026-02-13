@@ -254,3 +254,280 @@ Sources: [load.rs](https://github.com/fairagro/commonwl/blob/044345dcdf36f016d87
 - I measured whether loaders load, not whether their models are right. Apart from the requirement counts, I did not diff the cwl_core model against cwltool's normalized output.
 - I did not evaluate the schema_salad Rust code generator (PR #917).
 
+## 3. Feature inventory (real-world corpus only)
+
+### Takeaway
+
+Real CWL uses most of the spec, but in simple ways. The long tail is in files, directories and JavaScript glue, not in workflow control. A concrete WorkflowHub entry uses a median of 5 of the 20 advanced features listed below. 26 of 95 use none of them: they need only CommandLineTool, Workflow, basic types, parameter references and a container image.
+
+### 3.1 Scope and method
+
+- Input: the WorkflowHub copies, source repositories and collections. Submodule copies are excluded. 5,162 document files reduce to 3,216 distinct documents.
+- These come from 87 origins: 38 repositories with CWL files, 9 collections, and 40 WorkflowHub entry folders that add documents found nowhere else.
+- Two views:
+  1. All distinct documents. The tables give documents and origins.
+  2. Per WorkflowHub entry: all documents reachable from the entry's main workflow through `run:` (1,031 distinct documents, 118 entries). Of these entries, 95 are concrete and 23 contain `Operation`. This view matches decision 4 in [decisions.md](../decisions.md).
+- YAML was read with ruamel.yaml (YAML 1.2, as in cwltool). PyYAML (YAML 1.1) fails on 37 of the distinct documents, for example on `type: [ File?, string? ]`.
+- Expressions: I scanned strings only in fields where the spec allows expressions, such as `valueFrom`, `glob`, `when`, `outputEval`, `entry`, `arguments` and resource fields. The scanner handles nested brackets and quotes.
+  - A `$(...)` counts as a parameter reference when it matches the CWL grammar: `inputs`, `self` or `runtime`, followed by `.name`, `['name']` or `[n]`.
+  - Everything else counts as JavaScript. `$(` inside `doc`, `label` or `default` was not counted (74 strings in 67 documents).
+- Scripts: `scripts/inventory.py`, `scripts/wfh_reachable.py`, `scripts/wfh_per_entry.py`. Output: `results/inventory.json`, `results/inventory_wfh.json`, `results/wfh_per_entry.json`.
+
+### 3.2 Document classes and versions
+
+| Top-level class | Distinct documents |
+|---|---|
+| CommandLineTool | 2,185 (68%) |
+| Workflow | 851 (26%) |
+| ExpressionTool | 94 |
+| Operation | 44 |
+| packed `$graph` | 42 |
+
+Counting inline and packed processes too, the corpus has 2,607 CommandLineTools, 986 Workflows, 188 ExpressionTools and 324 Operations. Workflows are small: the median has 4 steps, 90% have at most 15, and the largest has 58.
+
+| cwlVersion | Distinct documents | WorkflowHub main workflows (117) |
+|---|---|---|
+| v1.0 | 1,951, plus 8 written as `cwl:v1.0` (61% together) | 43, plus 1 `cwl:v1.0` |
+| v1.1 | 83 (3%) | 6 |
+| v1.2 | 1,149, plus 25 dev versions (`v1.2.0-dev2` 18, `v1.2.0-dev4` 7) (37% together) | 63, plus 4 `v1.2.0-dev2` |
+
+The dev versions come from EBI Metagenomics and MetaGOflow. cwltool loads them through its dev-version update chain ([update.py](https://github.com/common-workflow-language/cwltool/blob/main/cwltool/update.py)).
+
+### 3.3 Requirements and hints
+
+"Documents" counts distinct documents that use the class as a requirement or a hint, at any level. "Origins" is out of 87. "WorkflowHub" counts concrete entries (out of 95) whose reachable documents use it.
+
+| Class | Documents | Origins | WorkflowHub | Notes |
+|---|---|---|---|---|
+| InlineJavascriptRequirement | 1,849 | 59 | 59 | 704 documents declare it but use no JavaScript |
+| DockerRequirement | 1,838 | 49 | 74 | hint in 1,090 documents, requirement in 754 |
+| ResourceRequirement | 925 | 24 | 21 | `ramMin` 885, `coresMin` 566, `tmpdirMin` 103, `coresMax` 115; expressions in 83 documents |
+| InitialWorkDirRequirement | 540 | 42 | 48 | see 3.7 |
+| ShellCommandRequirement | 501 | 25 | 22 | always a requirement (one hint) |
+| SubworkflowFeatureRequirement | 485 | 48 | 41 | |
+| StepInputExpressionRequirement | 459 | 46 | 45 | |
+| MultipleInputFeatureRequirement | 442 | 51 | 44 | |
+| ScatterFeatureRequirement | 431 | 45 | 39 | |
+| SoftwareRequirement | 343 | 13 | 22 | a hint in 342; 335 give `specs` (bio.tools or other URLs) |
+| SchemaDefRequirement | 120 | 7 | 3 | types mostly come from `$import`ed files |
+| NetworkAccess | 53 | 13 | 13 | `true` in 51; an expression in 4 |
+| EnvVarRequirement | 51 | 14 | 7 | |
+| `sbg:maxNumberOfParallelInstances`, `sbg:AWSInstanceType` | 49, 43 | 2 | 0 | Seven Bridges hints (Kids First) |
+| WorkReuse | 34 | 3 | 2 | |
+| LoadListingRequirement | 21 | 7 | 5 | `shallow_listing` 11, `deep_listing` 8, `no_listing` 4 |
+| `cwltool:Secrets` | 5 | 3 | 1 | |
+| `arv:RuntimeConstraints`, `arv:APIRequirement` | 3 | 1 | 0 | Arvados, used as requirements |
+| ToolTimeLimit, InplaceUpdateRequirement | 0 | 0 | 0 | |
+
+Step-level requirements and hints are rare: 4 documents have step requirements and 13 have step hints (all `sbg:AWSInstanceType`).
+
+### 3.4 JavaScript and parameter references
+
+Use:
+
+- 2,358 of 3,216 documents (73%) contain an expression or a parameter reference.
+- 1,214 documents (38%) contain JavaScript: 743 with a JavaScript `$(...)` and 685 with a `${...}` body.
+- 69 documents use JavaScript without declaring InlineJavascriptRequirement themselves. They may inherit it from a parent workflow.
+- Per WorkflowHub entry: 56 of 95 concrete entries use JavaScript, and 76 use parameter references.
+
+Counts over all distinct documents:
+
+| Kind | Count | Share |
+|---|---|---|
+| Parameter references `$(inputs.x.y)` | 6,290 | 54% |
+| JavaScript `$(...)` | 3,484 | 30% |
+| JavaScript `${...}` function bodies | 1,794 | 16% |
+
+Length of JavaScript expressions (characters of code, trimmed; 5,278 expressions):
+
+| | Median | p75 | p90 | p99 | Max |
+|---|---|---|---|---|---|
+| All JavaScript | 44 | 89 | 193 | 982 | 5,377 |
+| `$(...)` | 31 | | 76 | | |
+| `${...}` | 116 | | 372 | | |
+
+In lines, the median is 1, p90 is 6, p99 is 28 and the maximum is 141. 210 expressions have more than 10 lines. The WorkflowHub subset looks the same (median 41, p90 181, p99 726).
+
+Of the 3,484 JavaScript `$(...)` expressions:
+
+- 721 are literals only: strings, `null`, `true`, or object literals such as `{class: 'Directory', listing: []}`.
+- 448 only join references and string literals with `+`, for example `inputs.x.nameroot + ".bam"`.
+- 763 call a function defined in `expressionLib`, for example `generateGATK4BooleanValue()`.
+
+Where expressions sit (JavaScript only): `valueFrom` 2,683, `when` 696, `glob` 606, `outputEval` 311, `entry` 243, `expression` 188, `arguments` 111, `stdout` 102, `listing` 81, `secondaryFiles` 73, `ramMin` 54, `stderr` 41, `envValue` 20, and a few in other resource fields and `format`.
+
+Most common constructs, counted per JavaScript expression:
+
+- `.nameroot`, `.nameext` or `.basename`: 1,021
+- `var`: 609
+- `.length`: 452
+- `.split(`: 410
+- regular expression literals: 314
+- `?:`: 298
+- `self[0]`: 251
+- `for` loops: 220
+- `.replace(`: 211
+- `.concat(`: 183
+- `.contents`: 125
+- `.join(`: 120
+- `parseInt` or `parseFloat`: 74
+- `typeof`: 63
+- `Math.`: 46
+- `JSON.`: 12
+- `.sort(`: 10
+
+ES2015+ syntax appears in about 100 expressions, in 14 of 95 WorkflowHub entries: arrow functions 34, `.find(` 28, `let` or `const` 19, `startsWith` or `endsWith` 19, `includes` 11, template literals 6, spread 3. No expression uses `require(`. One uses `console.`.
+
+`expressionLib`:
+
+- Inline in 145 documents from 8 origins, with 87 distinct libraries. The median library has 270 characters, the largest 2,195.
+- `$include` inside `expressionLib`: 0 documents. `$import` inside it: 4.
+- Only 5 WorkflowHub entries use `expressionLib`.
+
+### 3.5 Files and directories
+
+| Feature | Documents | Origins | WorkflowHub (of 95) |
+|---|---|---|---|
+| `Directory` type | 869 | 60 | 53 |
+| secondaryFiles on inputs | 599 | 28 | 24 |
+| secondaryFiles on outputs | 287 | 21 | 22 |
+| `format` on inputs / outputs | 395 / 431 | 29 / 26 | 43 / 41 |
+| `default` with a File or Directory literal | 98 | 19 | 14 |
+| `loadContents` | 72 | 17 | 12 |
+| `loadListing` field | 34 | 4 | 6 |
+| `streamable` | 29 | 11 | 10 |
+
+secondaryFiles forms, counted in documents:
+
+- plain suffix pattern: 609
+- `^` (strip an extension): 367
+- expression: 41
+- record form `{pattern, required}`: 45
+- trailing `?`: 10
+
+`format` values are mostly EDAM CURIEs such as `edam:format_1930`. 11 `format` values are expressions.
+
+### 3.6 Workflow features
+
+| Feature | Documents | Origins | Steps or uses | WorkflowHub (of 95) |
+|---|---|---|---|---|
+| `run:` to a file | 745 | 74 | 5,527 steps | 86 |
+| `run:` inline | 152 | 22 | 407 steps | 15 |
+| `run: "#id"` in packed files | 42 | 9 | 705 steps | 2 |
+| `run:` with a namespace prefix (a URL) | 5 | 1 | 14 steps | 1 |
+| step input `valueFrom` | 330 | 44 | 2,003 inputs | 42 |
+| step input `default` | 308 | 33 | 1,775 inputs | |
+| multiple `source` | 240 | 41 | 873 inputs | 36 |
+| multiple `outputSource` | 44 | 14 | 63 outputs | |
+| `scatter` | 273 | 41 | 794 steps | 33 |
+| `when` | 148 | 28 | 857 steps | 26 |
+| ExpressionTool (any level) | 141 | 25 | 188 objects | 33 |
+| `Operation` (any level) | 138 | 7 | 324 objects | 23 entries are abstract |
+
+- `scatterMethod` (documents): none given with a single scattered input in 196, `dotproduct` 113, `flat_crossproduct` 3, `nested_crossproduct` 0.
+- `pickValue` (documents): `all_non_null` 87, `first_non_null` 79, `the_only_non_null` 2.
+- `linkMerge` (documents): `merge_flattened` 161, `merge_nested` 18.
+- `when` expressions are short. The most common are `$(inputs.x)` (a parameter reference) and `$(inputs.x !== null)`.
+
+### 3.7 InitialWorkDirRequirement
+
+Used in 540 documents (42 origins) and in 48 of 95 WorkflowHub entries. Forms, counted in documents:
+
+| Form | Documents |
+|---|---|
+| Dirent (`entryname` / `entry`) | 355 |
+| list item that is an expression or a reference such as `$(inputs.x)` | 158 |
+| `writable: true` | 100 |
+| whole `listing` as one expression | 50 |
+| `entry: {$include: script}` | 47 |
+| absolute `entryname` | 2 |
+| File or Directory literal | 2 |
+
+The `$include` form stages scripts (Python, R) into the working directory. That is why the corpus includes the referenced script files.
+
+### 3.8 Types
+
+Counted in documents:
+
+- Primitive types: `File` 3,079, `string` 2,288, `int` 1,309, `boolean` 844, `Directory` 869, `float` 296, `long` 68, `double` 42.
+- `enum` 281 (22 origins), `record` 50 (12 origins), `Any` 4.
+- `?` shorthand 1,679, `[]` shorthand 897, explicit `type: array` 333, `null` in unions 435.
+- `stdout` 331 and `stderr` 165 as output types.
+- Named types from imported files, for example `../types/sequence_data.yml#sequence_data` in analysis-workflows. A loader must resolve these across files.
+- Per WorkflowHub entry: `enum` in 18 and `record` in 8.
+
+### 3.9 Command line details
+
+- ShellCommandRequirement: 501 documents. `shellQuote: false`: 433 documents (21 origins, 23 WorkflowHub entries).
+- `stdout:` 492 documents, `stderr:` 208 and `stdin:` 2.
+- `successCodes` 21, `temporaryFailCodes` 12, `permanentFailCodes` 11.
+
+### 3.10 Containers and software
+
+- DockerRequirement keys: `dockerPull` in 1,818 documents, `dockerFile` in 24 (9 WorkflowHub entries), `dockerImageId` in 20 and `dockerOutputDirectory` in 1.
+- 659 distinct images. By registry:
+  - Docker Hub, without a registry host: 344, plus 6 written as `docker.io/...`
+  - `quay.io` (mostly BioContainers): 200
+  - `docker-registry.wur.nl`: 60
+  - Seven Bridges registries: 45
+  - `registry.gsc.wustl.edu`: 3
+  - `ghcr.io`: 1
+- About 13 concrete WorkflowHub entries have tools but no DockerRequirement anywhere in their reachable documents. They rely on tools installed on the host. One of them uses SoftwareRequirement.
+- SoftwareRequirement is almost always a hint. The top packages are samtools 28, openjdk 24, sapp 23, bedtools 18 and pigz 18.
+
+### 3.11 Schema Salad features in use
+
+| Feature | Documents | Origins | WorkflowHub (of 95) | Where |
+|---|---|---|---|---|
+| map form of `inputs` / `outputs` | 2,870 / 2,828 | | | list form only in 325 / 348 |
+| map form of `steps` / step `in` | 819 / 818 | | | list form in 74 / 59 |
+| map form of `requirements` / `hints` | 1,035 / 728 | | | list form in 1,619 / 468 |
+| `$namespaces` | 1,337 | 50 | 66 | mostly `s:` (schema.org) and `edam:` |
+| `$schemas` | 822 | 28 | 38 | schema.org RDF and EDAM OWL URLs, some from GitHub `main` |
+| `$import` | 196 | 10 | 2 | `types` 116, `s:mainEntity` 66, `requirements` 4, `outputs` 4, `expressionLib` 4 |
+| `$include` | 61 | 10 | 7 | Dirent `entry` 47, `dockerFile` 15, `dockerPull` 1 |
+| `$graph` | 42 | 9 | 2 | |
+| `$base`, `$mixin` | 0 | 0 | 0 | |
+
+### 3.12 Extensions and metadata
+
+- `s:` (schema.org) keys appear in 965 documents: authors, licences, citations. `sbg:` keys appear in 28, `cwltool:` in 5 and `arv:` in 2.
+- Namespaces: `s` is declared as both `http://schema.org/` (608) and `https://schema.org/` (461). `edam` is declared as both `http://` (448) and `https://` (161). So format IRIs from different files may not compare equal without normalization. This is an inference, not tested.
+
+### Inferences: priorities for iunctus
+
+- **Loader first.** Every entry needs:
+  - map forms and both type DSLs
+  - `$namespaces` (in 66 of 95 entries, mostly for metadata)
+  - `$import` for types
+  - `$include` for InitialWorkDir scripts
+  - the v1.0 to v1.2 upgrade
+  - `Operation` parsing
+  - a warning, not an error, for unknown `sbg:` and `cwltool:` hints
+  - no fetching of `$schemas` URLs at load time. They point at large ontologies. Format checking is optional in the spec.
+- **Treat DockerRequirement hints as the container to use.** 65 of 74 WorkflowHub entries with Docker give it only as a hint. `dockerFile` (9 entries) does not fit TES and needs an image build step or a clear error.
+- **Parameter references in pure Rust.** They cover 54% of expressions. 704 documents declare InlineJavascriptRequirement but need no engine.
+- **JavaScript.** It is needed for 56 of 95 entries. Real code is short and ES5-style, but 14 entries use ES2015+ syntax. The embedded engine must accept ES2015+. Boa and QuickJS-NG both do ([rust-ecosystem.md](rust-ecosystem.md) section 2). No expression uses Node modules. One uses `console`.
+- **Files and directories are central.** Directory appears in 53 entries, InitialWorkDir in 48 (with `writable: true` in 24) and secondaryFiles in 24. This matches the ranking in [cwl.md](cwl.md) section 8.
+- **Workflow control.** Subworkflows (41 entries), step `valueFrom` (42), scatter (33, almost only dotproduct or a single input), ExpressionTool (33), and `when` with `pickValue` (26). All are needed for broad coverage. `nested_crossproduct` can wait. The corpus never uses it.
+- **Can wait:** ToolTimeLimit and InplaceUpdateRequirement (unused), WorkReuse (2 entries), LoadListingRequirement (5), record types (8), `loadContents` (12).
+- **Features come in bundles.** Adding features one at a time unlocks few extra workflows. 26 entries need none of the 20 advanced features. Most others need 5 or more at once. A CWL milestone should target the whole common set together.
+
+### Gaps
+
+- JavaScript classification uses my own scanner and a regular expression for the parameter reference grammar. Edge cases may be misclassified, for example escaped `\$(` or `$(` inside comments.
+- I did not check which WorkflowHub entries actually run (no data, no cwltool runs). "Uses a feature" means the text contains it.
+- Per-entry counts over-weight groups with many similar entries: DT-GEO 23, BioExcel 18 and UNLOCK 16 of 121.
+- Reachability follows only `run:` file paths. It misses remote `run:` URLs (entry 455) and files that are missing from the repositories (7 entries).
+- I did not add Dockstore CWL entries or `common-workflow-library/legacy` (archived). Both would widen the corpus.
+
+## 4. Reproduction
+
+- Corpus: `~/.cache/iunctus/corpus/cwl/` with `revisions.txt` (every source, branch or version, and commit).
+- Build scripts: `~/.cache/iunctus/corpus/cwl/scripts/`
+  - `fetch_repo.py` does the sparse, blobless clones. It is driven by `clone_one.sh`, `repos_wfh.txt` and `repos_extra.txt`.
+  - `fetch_pinned.sh` fetches the submodules.
+  - `fetch_meta.sh` and `fetch_snapshots.py` handle WorkflowHub. `entries.json` holds the entry to repository mapping.
+  - `fix_refs.py` and `fix_refs_wfh.py` fetch referenced scripts.
+- Analysis: `classify.py` (index), `conformance_list.py`, `loadeval/` (the Rust harness), `final_stats.py`, `dropped_reqs.py`, `wfh_entries.py`, `inventory.py`, `wfh_reachable.py` and `wfh_per_entry.py`. The Python scripts expect ruamel.yaml. They were run from a working copy in `/tmp/iunctus-cwl/`, so the paths inside them point there.
+- Results: `~/.cache/iunctus/corpus/cwl/results/`, including per-file loader outputs (`res_all_*.jsonl`, `res_conf_*.jsonl`) and all extracted expressions (`expressions.jsonl`).

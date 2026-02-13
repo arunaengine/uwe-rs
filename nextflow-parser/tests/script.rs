@@ -708,3 +708,21 @@ workflow {
         .collect();
     assert_eq!(kinds, ["process", "workflow"]);
 }
+
+#[test]
+fn rejects_input_declarations() {
+    let source = "process P {\n  input:\n  def x = 1\n  output:\n  path 'a', emit: a\n  def y = 2\n  script:\n  \"echo\"\n}\n";
+    let messages = messages(source);
+    assert!(
+        messages
+            .iter()
+            .any(|message| message == "Invalid process input"),
+        "{messages:?}"
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|message| message == "Invalid process output"),
+        "{messages:?}"
+    );
+}

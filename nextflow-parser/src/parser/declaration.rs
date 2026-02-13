@@ -478,6 +478,16 @@ impl Parser<'_> {
             self.implicit_body(&mut process);
         } else {
             self.check_directives(&process.directives, "Invalid process directive");
+            let inputs = process.inputs.iter().filter_map(|input| match input {
+                ProcessInput::Statement(statement) => Some(statement),
+                _ => None,
+            });
+            self.check_declarations(inputs, "Invalid process input");
+            let outputs = process.outputs.iter().filter_map(|output| match output {
+                NamedOutput::Statement(statement) => Some(statement),
+                NamedOutput::Named { .. } => None,
+            });
+            self.check_declarations(outputs, "Invalid process output");
         }
         if previous.is_some() && process.body.is_none() {
             // The official parser takes the last statement as the body and then rejects it,
@@ -1012,6 +1022,27 @@ impl Parser<'_> {
             if !valid {
                 self.error_at(message, statement.span);
             }
+        }
+    }
+
+    /// Declarations and control flow cannot declare inputs or outputs, in legacy or typed
+    /// processes alike.
+    fn check_declarations<'s>(
+        &mut self,
+        statements: impl Iterator<Item = &'s Statement>,
+        message: &str,
+    ) {
+        let spans: Vec<Span> = statements
+            .filter(|statement| {
+                !matches!(
+                    statement.kind,
+                    StatementKind::Expression(_) | StatementKind::Empty
+                )
+            })
+            .map(|statement| statement.span)
+            .collect();
+        for span in spans {
+            self.error_at(message, span);
         }
     }
 

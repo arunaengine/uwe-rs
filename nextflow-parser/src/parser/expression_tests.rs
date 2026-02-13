@@ -424,6 +424,7 @@ fn lists_and_maps() {
         "[a: 1, ((paren b)): 2, ('c'): 3, in: 4]"
     );
     assert_eq!(parse("[meta, reads]"), "[meta, reads]");
+    assert_eq!(parse("[\n  \"a\": 1,\n  b: 2\n]"), "[('a'): 1, b: 2]");
 }
 
 #[test]

@@ -4,7 +4,8 @@
 
 use super::{Failed, Parse, Parser};
 use crate::ast::{
-    AssignOperator, Block, Catch, Expression, QualifiedName, Statement, StatementKind, TypedName,
+    Access, AssignOperator, Block, Catch, Expression, ExpressionKind, QualifiedName, Statement,
+    StatementKind, TypedName,
 };
 use crate::token::TokenKind;
 
@@ -273,6 +274,7 @@ impl Parser<'_> {
 
     /// Typed declarations, multiple assignments, assignments and expression statements.
     fn expression_statement(&mut self) -> Parse<StatementKind> {
+        let start = self.position;
         let typed = self.speculate(|parser| {
             let legacy = parser.legacy_type()?;
             if parser.at_name() {
@@ -324,7 +326,47 @@ impl Parser<'_> {
                 value,
             });
         }
-        Ok(StatementKind::Expression(self.command_expression(target)?))
+        let expression = self.command_expression(target)?;
+        if self.at(TokenKind::Comma)
+            && let Some(command) = self.retry_command(start)
+        {
+            return Ok(StatementKind::Expression(command));
+        }
+        Ok(StatementKind::Expression(expression))
+    }
+
+    /// ANTLR reads `path("x"), emit: y` as `path` with the arguments `("x")` and `emit: y`,
+    /// because the greedy reading cannot end the statement; this parses that reading.
+    fn retry_command(&mut self, start: usize) -> Option<Expression> {
+        let resume = self.position;
+        self.position = start;
+        let command = self.speculate(|parser| {
+            let name = parser.name()?;
+            let mut target = Expression {
+                kind: ExpressionKind::Variable(name.text),
+                span: name.span,
+            };
+            while parser.eat(TokenKind::Dot) {
+                let property = parser.property_name()?;
+                target = Expression {
+                    span: target.span.to(property.span),
+                    kind: ExpressionKind::Property {
+                        target: Box::new(target),
+                        name: property,
+                        access: Access::Normal,
+                    },
+                };
+            }
+            let arguments = parser.argument_list()?;
+            if !parser.at_statement_end() {
+                return Err(Failed);
+            }
+            Ok(parser.call(target, arguments, false))
+        });
+        if command.is_none() {
+            self.position = resume;
+        }
+        command
     }
 }
 

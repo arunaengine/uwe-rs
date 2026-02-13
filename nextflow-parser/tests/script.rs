@@ -3,9 +3,17 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use nextflow_parser::ast::{
-    ExpressionKind, Function, Item, Literal, Name, ParameterDeclaration, TypedName,
+    Agent, BodyKind, ExpressionKind, Function, Item, Literal, Name, NamedOutput, OutputTarget,
+    ParameterDeclaration, Process, ProcessInput, TypedName, Workflow, WorkflowTake,
 };
 use nextflow_parser::parse_script;
+
+const MISSING_LABEL: &str =
+    "The `script:` or `exec:` label is required when other sections are present";
+const INVALID_PROCESS: &str =
+    "Invalid process definition -- check for missing or out-of-order section labels";
+const INVALID_WORKFLOW: &str =
+    "Invalid workflow definition -- check for missing or out-of-order section labels";
 
 /// Parses a script that must have no errors.
 fn parse(source: &str) -> Vec<Item> {
@@ -33,6 +41,28 @@ fn texts(names: &[Name]) -> Vec<&str> {
 
 fn typed_names(names: &[TypedName]) -> Vec<&str> {
     names.iter().map(|typed| typed.name.text.as_str()).collect()
+}
+
+fn process(item: &Item) -> &Process {
+    match item {
+        Item::Process(process) => process,
+        other => panic!("expected a process, found {other:?}"),
+    }
+}
+
+fn workflow(item: &Item) -> &Workflow {
+    match item {
+        Item::Workflow(workflow) => workflow,
+        other => panic!("expected a workflow, found {other:?}"),
+    }
+}
+
+/// The name of a `name` or `name = value` output.
+fn output_name(output: &NamedOutput) -> &str {
+    match output {
+        NamedOutput::Named { target, .. } => &target.name.text,
+        other => panic!("expected a named output, found {other:?}"),
+    }
 }
 
 #[test]
@@ -201,6 +231,349 @@ fn enum_variants() {
 }
 
 #[test]
+fn process_sections() {
+    let items = parse(
+        r#"process FASTQC {
+    tag "${meta.id}"
+    label 'process_medium'
+
+    conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' ? 'https://depot.galaxyproject.org/singularity/fastqc:0.12.1--hdfd78af_0' : 'biocontainers/fastqc:0.12.1--hdfd78af_0' }"
+
+    input:
+    tuple val(meta), path(reads)
+
+    output:
+    tuple val(meta), path("*.html"), emit: html
+    tuple val(meta), path("*.zip") , emit: zip
+    path  "versions.yml"           , emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
+
+    script:
+    def args = task.ext.args ?: ''
+    def prefix = task.ext.prefix ?: "${meta.id}"
+    """
+    fastqc ${args} --threads ${task.cpus} ${reads}
+    """
+
+    stub:
+    def prefix = task.ext.prefix ?: "${meta.id}"
+    """
+    touch ${prefix}.html
+    """
+}
+"#,
+    );
+    let fastqc = process(&items[0]);
+    assert_eq!(fastqc.name.text, "FASTQC");
+    assert_eq!(fastqc.directives.len(), 4);
+    assert!(matches!(fastqc.inputs[..], [ProcessInput::Statement(_)]));
+    assert_eq!(fastqc.outputs.len(), 3);
+    let statements = |output| matches!(output, &NamedOutput::Statement(_));
+    assert!(fastqc.outputs.iter().all(statements));
+    assert!(fastqc.when.is_some());
+    let body = fastqc.body.as_ref().expect("a script body");
+    assert_eq!(body.kind, BodyKind::Script);
+    assert_eq!(body.block.statements.len(), 3);
+    assert_eq!(
+        fastqc.stub.as_ref().map(|stub| stub.statements.len()),
+        Some(2)
+    );
+}
+
+#[test]
+fn implicit_script_body() {
+    let items = parse("process SAY_HELLO {\n    \"\"\"\n    echo 'Hello world!'\n    \"\"\"\n}\n");
+    let hello = process(&items[0]);
+    assert!(hello.directives.is_empty());
+    let body = hello.body.as_ref().expect("an implicit body");
+    assert_eq!(body.kind, BodyKind::Implicit);
+    assert_eq!(body.block.statements.len(), 1);
+}
+
+#[test]
+fn implicit_after_when() {
+    let items = parse("process CHECK {\n    when:\n    params.run\n\n    \"echo run\"\n}\n");
+    let check = process(&items[0]);
+    assert!(check.when.is_some());
+    let kind = check.body.as_ref().map(|body| body.kind);
+    assert_eq!(kind, Some(BodyKind::Implicit));
+}
+
+#[test]
+fn requires_script_label() {
+    let inputs = "process HELLO {
+    input:
+    val greeting
+    val name
+
+    \"\"\"
+    echo '${greeting} ${name}!'
+    \"\"\"
+}
+";
+    assert_eq!(messages(inputs), [MISSING_LABEL]);
+    let directives = "process HELLO {\n    cpus 2\n\n    \"echo hello\"\n}\n";
+    assert_eq!(messages(directives), [MISSING_LABEL]);
+}
+
+#[test]
+fn missing_process_body() {
+    assert_eq!(
+        messages("process EMPTY {\n}\n"),
+        ["Missing process script body"]
+    );
+}
+
+#[test]
+fn rejects_section_order() {
+    let reordered = "process HELLO {
+    output:
+    val x
+
+    input:
+    val y
+
+    script:
+    \"echo\"
+}
+";
+    assert_eq!(messages(reordered), [INVALID_PROCESS]);
+    let repeated = "process HELLO {\n    input:\n    val x\n\n    input:\n    val y\n\n    script:\n    \"echo\"\n}\n";
+    assert_eq!(messages(repeated), [INVALID_PROCESS]);
+    let unlabeled = "process HELLO {\n    input:\n    val x\n}\n";
+    assert_eq!(messages(unlabeled), [INVALID_PROCESS]);
+}
+
+#[test]
+fn labels_need_separator() {
+    let source = "process ONE_LINE { script: \"echo\" }\n";
+    assert_eq!(messages(source), [INVALID_PROCESS]);
+}
+
+#[test]
+fn outputs_after_stub() {
+    let items = parse(
+        "process MAHESH {
+    input:
+    val x
+
+    exec:
+    y = x
+
+    stub:
+    y = 0
+
+    output:
+    val y
+}
+",
+    );
+    let mahesh = process(&items[0]);
+    let kind = mahesh.body.as_ref().map(|body| body.kind);
+    assert_eq!(kind, Some(BodyKind::Exec));
+    assert!(mahesh.stub.is_some());
+    assert_eq!(mahesh.outputs.len(), 1);
+}
+
+#[test]
+fn typed_process_inputs() {
+    let items = parse(
+        "nextflow.enable.types = true
+
+process ALIGN {
+    input:
+    meta: Map
+    reads: Path
+    tuple(id: String, fastq: Path)
+    record(
+        id: String,
+        bam: Path,
+    )
+
+    output:
+    bam: Path = file('*.bam')
+
+    topic:
+    stdout() >> 'versions'
+
+    script:
+    \"\"\"
+    align ${reads}
+    \"\"\"
+}
+",
+    );
+    let align = process(&items[1]);
+    let [
+        ProcessInput::Named(meta),
+        ProcessInput::Named(reads),
+        ProcessInput::Tuple(tuple),
+        ProcessInput::Record(record),
+    ] = &align.inputs[..]
+    else {
+        panic!("unexpected inputs: {:?}", align.inputs);
+    };
+    assert_eq!([&*meta.name.text, &*reads.name.text], ["meta", "reads"]);
+    assert!(meta.annotation.is_some());
+    assert_eq!(typed_names(tuple), ["id", "fastq"]);
+    assert_eq!(typed_names(record), ["id", "bam"]);
+    let [NamedOutput::Named { target, value }] = &align.outputs[..] else {
+        panic!("unexpected outputs: {:?}", align.outputs);
+    };
+    assert_eq!(target.name.text, "bam");
+    assert!(target.annotation.is_some() && value.is_some());
+    assert_eq!(align.topics.len(), 1);
+}
+
+#[test]
+fn rejects_single_tuple() {
+    let source = "process HELLO {\n    input:\n    tuple(id: String)\n\n    script:\n    \"\"\n}\n";
+    assert_eq!(
+        messages(source),
+        ["Process tuple input must have more than one component"]
+    );
+}
+
+#[test]
+fn rejects_invalid_directive() {
+    let source = "process HELLO {\n    container = 'ubuntu'\n\n    script:\n    \"\"\n}\n";
+    assert_eq!(messages(source), ["Invalid process directive"]);
+    let topic =
+        "process HELLO {\n    topic:\n    versions = stdout()\n\n    script:\n    \"\"\n}\n";
+    assert_eq!(messages(topic), ["Invalid process topic statement"]);
+}
+
+#[test]
+fn named_workflow_sections() {
+    let items = parse(
+        "workflow NFCORE_BAMTOFASTQ {
+
+    take:
+    samplesheet // channel: samplesheet read in from --input
+    fasta: Path
+
+    main:
+    BAMTOFASTQ(samplesheet, params.multiqc_config)
+
+    emit:
+    multiqc_report = BAMTOFASTQ.out.multiqc_report // channel: /path/to/multiqc_report.html
+    versions
+}
+",
+    );
+    let flow = workflow(&items[0]);
+    assert_eq!(
+        flow.name.as_ref().map(|name| &*name.text),
+        Some("NFCORE_BAMTOFASTQ")
+    );
+    let takes: Vec<_> = flow
+        .takes
+        .iter()
+        .map(|take| match take {
+            WorkflowTake::Named(typed) => &*typed.name.text,
+            other => panic!("expected a named take, found {other:?}"),
+        })
+        .collect();
+    assert_eq!(takes, ["samplesheet", "fasta"]);
+    assert_eq!(flow.main.statements.len(), 1);
+    let emits: Vec<_> = flow.emits.iter().map(output_name).collect();
+    assert_eq!(emits, ["multiqc_report", "versions"]);
+}
+
+#[test]
+fn entry_workflow_handlers() {
+    let items = parse(
+        "workflow {
+    main:
+    ch_samples = channel.of(1, 2, 3)
+
+    publish:
+    samples = ch_samples
+
+    onComplete:
+    log.info('done')
+
+    onError:
+    log.error('failed')
+}
+
+output {
+    samples {
+        path 'samples'
+    }
+}
+",
+    );
+    let entry = workflow(&items[0]);
+    assert_eq!(entry.name, None);
+    let publishers: Vec<_> = entry.publishers.iter().map(output_name).collect();
+    assert_eq!(publishers, ["samples"]);
+    assert!(entry.on_complete.is_some() && entry.on_error.is_some());
+    let Item::Output { targets, .. } = &items[1] else {
+        panic!("expected an output block, found {:?}", items[1]);
+    };
+    let [OutputTarget::Target { name, body, .. }] = &targets[..] else {
+        panic!("unexpected output targets: {targets:?}");
+    };
+    assert_eq!(name.text, "samples");
+    assert_eq!(body.statements.len(), 1);
+}
+
+#[test]
+fn implicit_workflow_main() {
+    let items = parse("workflow {\n    SAY_HELLO()\n    SAY_BYE()\n}\n");
+    let entry = workflow(&items[0]);
+    assert_eq!(entry.main.statements.len(), 2);
+    assert!(entry.takes.is_empty() && entry.emits.is_empty());
+    let single = parse("workflow { SAY_HELLO() }\n");
+    assert_eq!(workflow(&single[0]).main.statements.len(), 1);
+}
+
+#[test]
+fn rejects_workflow_order() {
+    let reordered = "workflow FLOW {\n    main:\n    FOO()\n\n    take:\n    x\n}\n";
+    assert_eq!(messages(reordered), [INVALID_WORKFLOW]);
+    let empty_main = "workflow FLOW {\n    take:\n    x\n\n    main:\n\n    emit:\n    y = x\n}\n";
+    assert_eq!(messages(empty_main), [INVALID_WORKFLOW]);
+    let one_line = "workflow FLOW { main: FOO() }\n";
+    assert_eq!(messages(one_line), [INVALID_WORKFLOW]);
+    let take_only = "workflow FLOW {\n    take:\n    x\n}\n";
+    assert_eq!(messages(take_only), [INVALID_WORKFLOW]);
+}
+
+#[test]
+fn rejects_misplaced_sections() {
+    let entry = "workflow {\n    take:\n    x\n\n    main:\n    FOO(x)\n}\n";
+    assert_eq!(
+        messages(entry),
+        ["Entry workflow cannot have a take section"]
+    );
+    let named =
+        "workflow FLOW {\n    main:\n    FOO()\n\n    onComplete:\n    log.info('done')\n}\n";
+    assert_eq!(
+        messages(named),
+        ["Named workflow cannot have an onComplete section"]
+    );
+}
+
+#[test]
+fn rejects_unnamed_emits() {
+    let source = "workflow HELLO {\n    emit:\n    'hello'\n    target = 'world'\n}\n";
+    assert_eq!(
+        messages(source),
+        ["Every emit must be assigned to a name when there are multiple emits"]
+    );
+    let assignment = "workflow HELLO {\n    emit:\n    target <<= 'world'\n}\n";
+    assert_eq!(
+        messages(assignment),
+        ["Invalid workflow emit -- must be a name, assignment, or expression"]
+    );
+}
+
+#[test]
 fn function_definitions() {
     let items = parse(
         "def greet(name) {
@@ -241,6 +614,41 @@ def getGenomeAttribute(attribute) {
     assert!(functions[1].return_type.is_some());
     assert!(functions[2].return_type.is_some());
     assert_eq!(functions[3].body.statements.len(), 2);
+}
+
+#[test]
+fn agent_sections() {
+    let items = parse(
+        "agent eval_agent {
+    model 'claude-sonnet'
+
+    input:
+    question: String
+
+    output:
+    answer: String
+
+    prompt:
+    \"\"\"
+    Answer this question: ${question}
+    \"\"\"
+}
+",
+    );
+    let Item::Agent(agent) = &items[0] else {
+        panic!("expected an agent, found {:?}", items[0]);
+    };
+    let agent: &Agent = agent;
+    assert_eq!(agent.name.text, "eval_agent");
+    assert_eq!(agent.directives.len(), 1);
+    assert!(matches!(agent.inputs[..], [ProcessInput::Named(_)]));
+    assert_eq!(agent.outputs.len(), 1);
+    assert_eq!(agent.prompt.statements.len(), 1);
+    let missing = "agent broken {\n    input:\n    question: String\n}\n";
+    assert_eq!(
+        messages(missing),
+        ["Invalid agent definition -- check for missing or out-of-order section labels"]
+    );
 }
 
 #[test]

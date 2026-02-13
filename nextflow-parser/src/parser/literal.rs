@@ -194,7 +194,7 @@ impl Parser<'_> {
         if (self.at_name() || is_keyword(self.peek())) && self.nth(1) == TokenKind::Colon {
             return true;
         }
-        self.speculate(|parser| {
+        self.lookahead(|parser| {
             parser.primary()?;
             if parser.at(TokenKind::Colon) {
                 Ok(())
@@ -202,7 +202,6 @@ impl Parser<'_> {
                 Err(Failed)
             }
         })
-        .is_some()
     }
 
     fn map_entries(&mut self) -> Parse<Vec<MapEntry>> {

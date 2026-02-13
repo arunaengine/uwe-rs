@@ -188,6 +188,15 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Checks whether a rule would succeed here, then rewinds either way.
+    fn lookahead<T>(&mut self, rule: impl FnOnce(&mut Self) -> Parse<T>) -> bool {
+        let (position, errors) = (self.position, self.errors.len());
+        let matched = rule(self).is_ok();
+        self.position = position;
+        self.errors.truncate(errors);
+        matched
+    }
+
     /// Skips to the next separator outside brackets, or to a closing bracket that ends the
     /// enclosing construct, so parsing can continue after an error.
     fn recover(&mut self) {

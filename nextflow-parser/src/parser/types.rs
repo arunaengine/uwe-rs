@@ -30,7 +30,11 @@ impl Parser<'_> {
         } else {
             Vec::new()
         };
-        let nullable = self.eat(TokenKind::Question);
+        // `x instanceof List ? a : b` is a conditional, so `?` before an expression is no marker.
+        let nullable = self.at(TokenKind::Question) && !starts_expression(self.nth(1));
+        if nullable {
+            self.bump();
+        }
         Ok(Type {
             name,
             arguments,
@@ -103,4 +107,27 @@ impl Parser<'_> {
 /// The `qualifiedNameElement` rule: names and a few keywords may appear in package names.
 fn is_package_part(kind: TokenKind) -> bool {
     is_name(kind) || matches!(kind, TokenKind::As | TokenKind::Def | TokenKind::In)
+}
+
+/// Tokens that begin an expression, used to tell a nullable marker from a conditional.
+fn starts_expression(kind: TokenKind) -> bool {
+    use TokenKind::*;
+    is_name(kind)
+        || matches!(
+            kind,
+            StringLiteral
+                | IntegerLiteral
+                | FloatingPointLiteral
+                | BooleanLiteral
+                | NullLiteral
+                | GStringBegin { .. }
+                | LeftParen
+                | LeftBracket
+                | Not
+                | BitNot
+                | Add
+                | Subtract
+                | New
+                | PrimitiveType
+        )
 }

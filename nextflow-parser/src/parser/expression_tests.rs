@@ -447,6 +447,14 @@ fn types_and_objects() {
         parse("x !instanceof java.util.Map"),
         "(!instanceof x java.util.Map)"
     );
+    assert_eq!(
+        parse("x instanceof List ? a : b"),
+        "(? (instanceof x List) a b)"
+    );
+    assert_eq!(
+        parse("c ? x instanceof List ? 'l' : 's' : ''"),
+        "(? c (? (instanceof x List) 'l' 's') '')"
+    );
     assert_eq!(parse("new File('x')"), "(new File 'x')");
     assert_eq!(parse("new ArrayList<String>()"), "(new ArrayList<String>)");
 }

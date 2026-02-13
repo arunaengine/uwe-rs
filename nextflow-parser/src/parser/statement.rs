@@ -159,7 +159,7 @@ impl Parser<'_> {
             let named_first =
                 self.at_name() && matches!(self.nth(1), TokenKind::RightParen | TokenKind::Colon);
             let (name, types) = if named_first {
-                let name = self.name()?;
+                let name = self.variable_name()?;
                 let types = if self.eat(TokenKind::Colon) {
                     self.catch_types()?
                 } else {
@@ -168,7 +168,7 @@ impl Parser<'_> {
                 (name, types)
             } else {
                 let types = self.catch_types()?;
-                (self.name()?, types)
+                (self.variable_name()?, types)
             };
             self.expect(TokenKind::RightParen, "')'")?;
             self.skip_newlines();
@@ -224,7 +224,7 @@ impl Parser<'_> {
                 Err(Failed)
             }
         });
-        let name = self.name()?;
+        let name = self.variable_name()?;
         let annotation = if legacy_type.is_none() && self.eat(TokenKind::Colon) {
             Some(self.type_annotation()?)
         } else {
@@ -244,7 +244,7 @@ impl Parser<'_> {
         self.skip_newlines();
         let mut names = Vec::new();
         loop {
-            let name = self.name()?;
+            let name = self.variable_name()?;
             let annotation = if self.eat(TokenKind::Colon) {
                 Some(self.type_annotation()?)
             } else {
@@ -284,7 +284,7 @@ impl Parser<'_> {
             }
         });
         if let Some(legacy_type) = typed {
-            let name = self.name()?;
+            let name = self.variable_name()?;
             return Ok(StatementKind::Declaration {
                 names: vec![TypedName {
                     name,

@@ -47,6 +47,7 @@ type Parse<T> = Result<T, Failed>;
 /// Newlines are real tokens, as in the ANTLR grammar: each rule decides where they may appear.
 struct Parser<'a> {
     source: &'a str,
+    dialect: Dialect,
     tokens: Vec<Token>,
     position: usize,
     errors: Vec<Diagnostic>,
@@ -57,6 +58,7 @@ impl<'a> Parser<'a> {
         let lexed = tokenize(source, dialect);
         Self {
             source,
+            dialect,
             tokens: lexed.tokens,
             position: 0,
             errors: lexed.errors,
@@ -230,6 +232,33 @@ impl<'a> Parser<'a> {
     }
 
     /// The `identifier` rule: plain identifiers and the keywords that may be used as names.
+    /// A name that declares or reads a variable, which may not be `_` or a Groovy keyword.
+    fn variable_name(&mut self) -> Parse<Name> {
+        let name = self.name()?;
+        self.check_name(&name.text, name.span);
+        Ok(name)
+    }
+
+    /// Reports the names the official script parser reserves, with its messages; the config
+    /// parser does not check names.
+    fn check_name(&mut self, text: &str, span: Span) {
+        if self.dialect == Dialect::Config {
+            return;
+        }
+        let message = match text {
+            "_" => {
+                "`_` is not allowed as an identifier because it is reserved for future use".into()
+            }
+            "for" | "while" => format!("`{text}` loops are no longer supported"),
+            "switch" => "`switch` statements are no longer supported".into(),
+            _ if GROOVY_KEYWORDS.contains(&text) => {
+                format!("`{text}` is not allowed as an identifier because it is a Groovy keyword")
+            }
+            _ => return,
+        };
+        self.error_at(message, span);
+    }
+
     fn name(&mut self) -> Parse<Name> {
         if !self.at_name() {
             return Err(self.error_here("Expected a name"));
@@ -241,6 +270,42 @@ impl<'a> Parser<'a> {
         })
     }
 }
+
+/// Groovy keywords that strict syntax does not use but still reserves.
+const GROOVY_KEYWORDS: &[&str] = &[
+    "abstract",
+    "assert",
+    "break",
+    "case",
+    "class",
+    "const",
+    "continue",
+    "default",
+    "do",
+    "extends",
+    "final",
+    "finally",
+    "for",
+    "goto",
+    "implements",
+    "import",
+    "interface",
+    "native",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "static",
+    "super",
+    "switch",
+    "synchronized",
+    "this",
+    "throws",
+    "transient",
+    "void",
+    "volatile",
+    "while",
+];
 
 fn is_name(kind: TokenKind) -> bool {
     use TokenKind::*;

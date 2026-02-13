@@ -247,7 +247,9 @@ impl Parser<'_> {
         let kind = match token.kind {
             kind if is_name(kind) => {
                 self.bump();
-                ExpressionKind::Variable(self.text(token).to_owned())
+                let text = self.text(token);
+                self.check_name(text, token.span);
+                ExpressionKind::Variable(text.to_owned())
             }
             TokenKind::IntegerLiteral => {
                 self.bump();

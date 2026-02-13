@@ -119,3 +119,27 @@ fn rejects_missing_separator() {
     assert!(parser.statement_sequence(|_| false).is_err());
 }
 
+#[test]
+fn rejects_reserved_names() {
+    let cases = [
+        ("def _ = 1", "`_` is not allowed as an identifier"),
+        ("for (x in xs) { x }", "`for` loops are no longer supported"),
+        ("while (x) { x }", "`while` loops are no longer supported"),
+        (
+            "def class = 1",
+            "`class` is not allowed as an identifier because it is a Groovy keyword",
+        ),
+        ("xs.each { _ -> 1 }", "`_` is not allowed as an identifier"),
+    ];
+    for (source, message) in cases {
+        let mut parser = Parser::new(source, Dialect::Script);
+        let _ = parser.statement_sequence(|_| false);
+        let found = parser
+            .errors
+            .iter()
+            .any(|error| error.message.starts_with(message));
+        assert!(found, "{source}: {:?}", parser.errors);
+    }
+    let mut parser = Parser::new("{ _ -> null }", Dialect::Config);
+    assert!(parser.expression().is_ok() && parser.errors.is_empty());
+}

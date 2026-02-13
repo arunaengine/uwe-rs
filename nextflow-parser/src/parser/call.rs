@@ -78,7 +78,7 @@ impl Parser<'_> {
                 Err(Failed)
             }
         });
-        let name = self.name()?;
+        let name = self.variable_name()?;
         let annotation = match legacy {
             Some(legacy) => Some(legacy),
             None if self.eat(TokenKind::Colon) => Some(self.type_annotation()?),

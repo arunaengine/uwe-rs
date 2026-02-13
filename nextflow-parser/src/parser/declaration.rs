@@ -571,9 +571,6 @@ impl Parser<'_> {
 
     /// The process section that starts here, if any, like `input:` or `script:`.
     fn process_label(&self) -> Option<ProcessSection> {
-        if self.nth(1) != TokenKind::Colon {
-            return None;
-        }
         let section = match self.peek() {
             TokenKind::Input => ProcessSection::Input,
             TokenKind::Stage => ProcessSection::Stage,
@@ -586,7 +583,7 @@ impl Parser<'_> {
             TokenKind::Stub => ProcessSection::Stub,
             _ => return None,
         };
-        Some(section)
+        self.at_label(self.peek()).then_some(section)
     }
 
     fn at_process_label(&self) -> bool {
@@ -728,15 +725,13 @@ impl Parser<'_> {
 
     /// The agent section that starts here, if any.
     fn agent_label(&self) -> Option<AgentSection> {
-        if self.nth(1) != TokenKind::Colon {
-            return None;
-        }
-        match self.peek() {
-            TokenKind::Input => Some(AgentSection::Input),
-            TokenKind::Output => Some(AgentSection::Output),
-            TokenKind::Prompt => Some(AgentSection::Prompt),
-            _ => None,
-        }
+        let section = match self.peek() {
+            TokenKind::Input => AgentSection::Input,
+            TokenKind::Output => AgentSection::Output,
+            TokenKind::Prompt => AgentSection::Prompt,
+            _ => return None,
+        };
+        self.at_label(self.peek()).then_some(section)
     }
 
     fn at_agent_label(&self) -> bool {
@@ -879,18 +874,16 @@ impl Parser<'_> {
 
     /// The workflow section that starts here, if any, like `take:` or `main:`.
     fn workflow_label(&self) -> Option<WorkflowSection> {
-        if self.nth(1) != TokenKind::Colon {
-            return None;
-        }
-        match self.peek() {
-            TokenKind::Take => Some(WorkflowSection::Take),
-            TokenKind::Main => Some(WorkflowSection::Main),
-            TokenKind::Emit => Some(WorkflowSection::Emit),
-            TokenKind::Publish => Some(WorkflowSection::Publish),
-            TokenKind::OnComplete => Some(WorkflowSection::OnComplete),
-            TokenKind::OnError => Some(WorkflowSection::OnError),
-            _ => None,
-        }
+        let section = match self.peek() {
+            TokenKind::Take => WorkflowSection::Take,
+            TokenKind::Main => WorkflowSection::Main,
+            TokenKind::Emit => WorkflowSection::Emit,
+            TokenKind::Publish => WorkflowSection::Publish,
+            TokenKind::OnComplete => WorkflowSection::OnComplete,
+            TokenKind::OnError => WorkflowSection::OnError,
+            _ => return None,
+        };
+        self.at_label(self.peek()).then_some(section)
     }
 
     fn at_workflow_label(&self) -> bool {

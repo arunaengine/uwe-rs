@@ -93,6 +93,11 @@ fn command_calls() {
     assert_eq!(one("maxRetries -1"), "(- maxRetries 1)");
     assert_eq!(one("stdin"), "stdin");
     assert_eq!(
+        one("path(\"x\") , emit: y"),
+        "(cmd path (paren 'x') emit=y)"
+    );
+    assert_eq!(one("val(x), emit: v"), "(cmd val (paren x) emit=v)");
+    assert_eq!(
         one("memory { 2.GB * task.attempt }"),
         "(cmd memory {(* (. 2 GB) (. task attempt))})"
     );
@@ -113,3 +118,4 @@ fn rejects_missing_separator() {
     let mut parser = Parser::new("a b c", Dialect::Script);
     assert!(parser.statement_sequence(|_| false).is_err());
 }
+

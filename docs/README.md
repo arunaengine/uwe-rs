@@ -4,9 +4,9 @@
 
 # iunctus docs
 
-iunctus is a planned native Rust application. It will read Nextflow, Snakemake and CWL workflows, turn them into a shared intermediate representation, and send the resulting tasks to executors, starting with GA4GH TES.
+iunctus is a planned native Rust application. It will read Nextflow, Snakemake, CWL and Argo workflows, turn them into a shared intermediate representation, and send the resulting tasks to executors, starting with GA4GH TES.
 
-No code exists yet. This folder holds the research done before coding. All facts were checked on 2026-09-27.
+This folder holds the research behind the code. All facts were checked on 2026-09-27.
 
 ## Start here
 
@@ -24,3 +24,6 @@ Each note answers a set of questions and cites its sources.
 - [TES and executors](research/tes-and-executors.md): the TES spec, servers, Rust clients, data staging, Aruna, and a common executor trait.
 - [Prior work](research/prior-work.md): converters, multi-language platforms, papers, standards and lessons learned.
 - [IR design models](research/ir-design-models.md): how Cromwell WOM, Flyte, Bazel, Temporal and others design their intermediate representation.
+- [Snakemake corpus](research/snakemake-corpus.md): the Snakemake corpus, an evaluation of Snakefile parsers, and a feature inventory of real workflows.
+- [CWL corpus](research/cwl-corpus.md): the CWL corpus, an evaluation of Rust CWL loaders, and a feature inventory of real workflows.
+- [Argo Workflows](research/argo-workflows.md): the Argo workflow model, its expression languages, running it without Kubernetes, a corpus and a feature inventory.

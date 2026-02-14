@@ -17,5 +17,4 @@ Recorded on 2026-09-27. Where this file differs from the plan in the [feasibilit
 ## Open questions
 
 - What "plain script workflows" should cover.
-- Argo Workflows has not been researched yet.
 - The license of iunctus.

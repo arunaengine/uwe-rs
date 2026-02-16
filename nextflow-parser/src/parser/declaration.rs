@@ -2,11 +2,12 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use super::section::{LabelOrder, section_block, section_end};
 use super::{Failed, Parse, Parser, is_name};
 use crate::Span;
 use crate::ast::{
-    Agent, BinaryOperator, Block, BodyKind, Expression, ExpressionKind, Function, Include,
-    IncludeName, Item, Name, NamedOutput, OutputTarget, ParameterDeclaration, Process, ProcessBody,
+    Agent, BinaryOperator, BodyKind, Expression, ExpressionKind, Function, Include, IncludeName,
+    Item, Name, NamedOutput, OutputTarget, ParameterDeclaration, Process, ProcessBody,
     ProcessInput, Script, Statement, StatementKind, Type, TypedName, Workflow, WorkflowTake,
 };
 use crate::token::TokenKind;
@@ -131,7 +132,7 @@ impl Parser<'_> {
         }
     }
 
-    fn at_list_end(&self, nested: bool) -> bool {
+    pub(super) fn at_list_end(&self, nested: bool) -> bool {
         self.at(TokenKind::EndOfFile) || (nested && self.at(TokenKind::RightBrace))
     }
 
@@ -968,39 +969,6 @@ impl Parser<'_> {
         Ok(OutputTarget::Statement(statement))
     }
 
-    /// The statements of a section as a block, like the body after `script:`.
-    fn labeled_block(&mut self, is_label: fn(&Self) -> bool) -> Block {
-        let start = self.current().span;
-        section_block(self.section_statements(is_label), start)
-    }
-
-    /// The statements of one section, up to the next label or the closing brace.
-    fn section_statements(&mut self, is_label: fn(&Self) -> bool) -> Vec<Statement> {
-        let statements = self.statement_sequence(is_label).unwrap_or_default();
-        if !self.at_list_end(true) && !is_label(self) {
-            // The sequence stopped early after an error; go on at the next label.
-            self.skip_section(is_label);
-        }
-        statements
-    }
-
-    /// Skips to the next section label or the closing brace, after an error in a section.
-    fn skip_section(&mut self, is_label: fn(&Self) -> bool) {
-        loop {
-            self.recover();
-            if self.skip_separators() {
-                if is_label(self) {
-                    return;
-                }
-            } else if self.at_list_end(true) {
-                return;
-            } else {
-                // A closing bracket that matches nothing in this section.
-                self.bump();
-            }
-        }
-    }
-
     /// Reports statements that cannot be directives. Like the official `checkDirective`, it
     /// accepts a name, a call without a target like `cpus 4`, and a name minus a value.
     fn check_directives(&mut self, statements: &[Statement], message: &str) {
@@ -1125,51 +1093,6 @@ enum AgentSection {
     Input,
     Output,
     Prompt,
-}
-
-/// Checks section labels against one or more allowed orders, given as a rank per label.
-struct LabelOrder<const N: usize> {
-    last: [Option<u8>; N],
-    valid: [bool; N],
-}
-
-impl<const N: usize> LabelOrder<N> {
-    fn new() -> Self {
-        Self {
-            last: [None; N],
-            valid: [true; N],
-        }
-    }
-
-    /// Records the next label and tells whether some order still allows all labels so far.
-    fn accept(&mut self, ranks: [u8; N]) -> bool {
-        for (index, rank) in ranks.into_iter().enumerate() {
-            if self.last[index].is_some_and(|last| last >= rank) {
-                self.valid[index] = false;
-            }
-            self.last[index] = Some(rank);
-        }
-        self.valid.contains(&true)
-    }
-}
-
-/// A block made of the statements of a section, spanning from the first to the last statement,
-/// or empty at `start` when there are none.
-fn section_block(statements: Vec<Statement>, start: Span) -> Block {
-    let span = match (statements.first(), statements.last()) {
-        (Some(first), Some(last)) => first.span.to(last.span),
-        _ => Span {
-            start: start.start,
-            end: start.start,
-        },
-    };
-    Block { statements, span }
-}
-
-/// The number of statements in a section and the span of the last one.
-fn section_end(statements: &[Statement], start: Span) -> (usize, Span) {
-    let last = statements.last().map_or(start, |statement| statement.span);
-    (statements.len(), last)
 }
 
 /// Whether a statement is an expression other than a bare name: an emit without a name.

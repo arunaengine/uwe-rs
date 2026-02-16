@@ -7,6 +7,7 @@ mod config;
 mod declaration;
 mod expression;
 mod literal;
+mod section;
 mod statement;
 mod types;
 

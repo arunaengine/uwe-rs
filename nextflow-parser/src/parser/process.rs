@@ -2,10 +2,12 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use super::section::{LabelOrder, section_block, section_end};
 use super::{Parse, Parser};
 use crate::Span;
 use crate::ast::{
-    BinaryOperator, ExpressionKind, NamedOutput, ProcessInput, Statement, StatementKind, TypedName,
+    BinaryOperator, BodyKind, ExpressionKind, Item, NamedOutput, Process, ProcessBody,
+    ProcessInput, Statement, StatementKind, TypedName,
 };
 use crate::token::TokenKind;
 
@@ -142,4 +144,213 @@ impl Parser<'_> {
             }
         }
     }
+
+    /// The `processDef` rule. Sections are read in any order and checked at the end, so that a
+    /// misplaced label gives one clear error, as in the official parser.
+    pub(super) fn process(&mut self) -> Parse<Item> {
+        let start = self.bump().span;
+        let name = self.name()?;
+        self.skip_newlines();
+        self.expect(TokenKind::LeftBrace, "`{`")?;
+        let mut process = Process {
+            name,
+            directives: Vec::new(),
+            inputs: Vec::new(),
+            stage: Vec::new(),
+            outputs: Vec::new(),
+            topics: Vec::new(),
+            when: None,
+            body: None,
+            stub: None,
+            span: start,
+        };
+        // The grammar puts a separator before every section, the first one included.
+        let mut valid = self.skip_separators() || self.at(TokenKind::RightBrace);
+        let mut order = LabelOrder::new();
+        let mut previous = None;
+        let mut implicit = false;
+        let mut last = (0, start);
+        while !self.at_list_end(true) {
+            if let Some(section) = self.process_label() {
+                valid &= order.accept(section.ranks()) && !implicit;
+                // The label and its colon.
+                self.bump();
+                self.bump();
+                self.skip_newlines();
+                last = self.process_section(section, &mut process);
+                valid &= last.0 > 0;
+                previous = Some(section);
+            } else {
+                let block = self.labeled_block(Self::at_process_label);
+                last = section_end(&block.statements, start);
+                match previous {
+                    None => process.directives.extend(block.statements),
+                    // Only `when:` may come right before a body without a label.
+                    Some(ProcessSection::When) if !implicit => {
+                        implicit = true;
+                        let kind = BodyKind::Implicit;
+                        process.body = Some(ProcessBody { kind, block });
+                    }
+                    Some(_) => valid = false,
+                }
+            }
+            self.skip_separators();
+        }
+        self.expect(TokenKind::RightBrace, "`}`")?;
+        process.span = self.span_from(start);
+        if previous.is_none() {
+            self.implicit_body(&mut process);
+        } else {
+            self.check_directives(&process.directives, "Invalid process directive");
+            let inputs = process.inputs.iter().filter_map(|input| match input {
+                ProcessInput::Statement(statement) => Some(statement),
+                _ => None,
+            });
+            self.check_declarations(inputs, "Invalid process input");
+            let outputs = process.outputs.iter().filter_map(|output| match output {
+                NamedOutput::Statement(statement) => Some(statement),
+                NamedOutput::Named { .. } => None,
+            });
+            self.check_declarations(outputs, "Invalid process output");
+        }
+        if previous.is_some() && process.body.is_none() {
+            // The official parser takes the last statement as the body and then rejects it,
+            // unless that would leave the last section empty.
+            let allowed = previous != Some(ProcessSection::When) && process.stub.is_none();
+            let (count, span) = last;
+            if valid && allowed && order.valid[0] && count > 1 {
+                self.error_at(MISSING_LABEL, span);
+            } else {
+                valid = false;
+            }
+        }
+        if !valid {
+            let message =
+                "Invalid process definition -- check for missing or out-of-order section labels";
+            self.error_at(message, process.span);
+        }
+        Ok(Item::Process(Box::new(process)))
+    }
+
+    /// Makes the statements of a process without labels its script body. The official parser
+    /// takes all but the last statement as directives, which then need a label.
+    fn implicit_body(&mut self, process: &mut Process) {
+        let statements = std::mem::take(&mut process.directives);
+        let Some(last) = statements.last() else {
+            self.error_at("Missing process script body", process.span);
+            return;
+        };
+        if statements.len() > 1 {
+            self.error_at(MISSING_LABEL, last.span);
+        }
+        let block = section_block(statements, process.span);
+        let kind = BodyKind::Implicit;
+        process.body = Some(ProcessBody { kind, block });
+    }
+
+    /// Reads one labelled section into the process. Returns the number of items, which the
+    /// grammar requires to be at least one, and the span of the last item.
+    fn process_section(&mut self, section: ProcessSection, process: &mut Process) -> (usize, Span) {
+        let is_label = Self::at_process_label;
+        let start = self.current().span;
+        match section {
+            ProcessSection::Input => {
+                let (inputs, last) = self.item_list(true, is_label, Self::process_input);
+                let end = (inputs.len(), last);
+                process.inputs.extend(inputs);
+                end
+            }
+            ProcessSection::Stage => {
+                let statements = self.section_statements(is_label);
+                self.check_directives(&statements, "Invalid stage directive");
+                let end = section_end(&statements, start);
+                process.stage.extend(statements);
+                end
+            }
+            ProcessSection::Output => {
+                let (outputs, last) = self.item_list(true, is_label, Self::named_output);
+                let end = (outputs.len(), last);
+                process.outputs.extend(outputs);
+                end
+            }
+            ProcessSection::Topic => {
+                let statements = self.section_statements(is_label);
+                self.check_topics(&statements);
+                let end = section_end(&statements, start);
+                process.topics.extend(statements);
+                end
+            }
+            ProcessSection::When => {
+                let condition = self.expression();
+                if condition.is_err() || self.line_end().is_err() {
+                    self.skip_section(is_label);
+                }
+                process.when = condition.ok();
+                (1, start)
+            }
+            ProcessSection::Body(kind) => {
+                let block = self.labeled_block(is_label);
+                let end = section_end(&block.statements, start);
+                process.body = Some(ProcessBody { kind, block });
+                end
+            }
+            ProcessSection::Stub => {
+                let block = self.labeled_block(is_label);
+                let end = section_end(&block.statements, start);
+                process.stub = Some(block);
+                end
+            }
+        }
+    }
+
+    /// The process section that starts here, if any, like `input:` or `script:`.
+    fn process_label(&self) -> Option<ProcessSection> {
+        let section = match self.peek() {
+            TokenKind::Input => ProcessSection::Input,
+            TokenKind::Stage => ProcessSection::Stage,
+            TokenKind::Output => ProcessSection::Output,
+            TokenKind::Topic => ProcessSection::Topic,
+            TokenKind::When => ProcessSection::When,
+            TokenKind::Script => ProcessSection::Body(BodyKind::Script),
+            TokenKind::Shell => ProcessSection::Body(BodyKind::Shell),
+            TokenKind::Exec => ProcessSection::Body(BodyKind::Exec),
+            TokenKind::Stub => ProcessSection::Stub,
+            _ => return None,
+        };
+        self.at_label(self.peek()).then_some(section)
+    }
+
+    fn at_process_label(&self) -> bool {
+        self.process_label().is_some()
+    }
 }
+
+/// A labelled section of a process body.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ProcessSection {
+    Input,
+    Stage,
+    Output,
+    Topic,
+    When,
+    Body(BodyKind),
+    Stub,
+}
+
+impl ProcessSection {
+    /// Ranks in the two allowed orders: outputs and topics before `when:`, or after `stub:`.
+    fn ranks(self) -> [u8; 2] {
+        match self {
+            ProcessSection::Input => [0, 0],
+            ProcessSection::Stage => [1, 1],
+            ProcessSection::Output => [2, 5],
+            ProcessSection::Topic => [3, 6],
+            ProcessSection::When => [4, 2],
+            ProcessSection::Body(_) => [5, 3],
+            ProcessSection::Stub => [6, 4],
+        }
+    }
+}
+
+pub(super) const MISSING_LABEL: &str =
+    "The `script:` or `exec:` label is required when other sections are present";

@@ -1,4 +1,4 @@
-//! Parses script declarations: includes, parameters, processes, workflows and functions.
+//! Parses the script level: includes, parameters, records, enums, functions and statements.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

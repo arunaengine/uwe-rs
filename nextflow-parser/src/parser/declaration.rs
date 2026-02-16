@@ -2,12 +2,11 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use super::section::{LabelOrder, section_block};
 use super::{Failed, Parse, Parser, is_name};
 use crate::Span;
 use crate::ast::{
-    Agent, Expression, ExpressionKind, Function, Include, IncludeName, Item, Name,
-    ParameterDeclaration, Script, Statement, StatementKind, Type, TypedName,
+    Expression, ExpressionKind, Function, Include, IncludeName, Item, Name, ParameterDeclaration,
+    Script, Statement, StatementKind, Type, TypedName,
 };
 use crate::token::TokenKind;
 
@@ -418,85 +417,6 @@ impl Parser<'_> {
         })))
     }
 
-    /// The `agentDef` rule: directives, then `input:`, `output:` and the required `prompt:`.
-    fn agent(&mut self) -> Parse<Item> {
-        let start = self.bump().span;
-        let name = self.name()?;
-        self.skip_newlines();
-        self.expect(TokenKind::LeftBrace, "`{`")?;
-        let mut agent = Agent {
-            name,
-            directives: Vec::new(),
-            inputs: Vec::new(),
-            outputs: Vec::new(),
-            prompt: section_block(Vec::new(), start),
-            span: start,
-        };
-        let mut valid = self.skip_separators() || self.at(TokenKind::RightBrace);
-        let mut order = LabelOrder::new();
-        let mut labeled = false;
-        let mut prompt = false;
-        let is_label = Self::at_agent_label;
-        while !self.at_list_end(true) {
-            let Some(section) = self.agent_label() else {
-                valid &= !labeled;
-                agent.directives.extend(self.section_statements(is_label));
-                continue;
-            };
-            valid &= order.accept([section as u8]);
-            labeled = true;
-            // The label and its colon.
-            self.bump();
-            self.bump();
-            self.skip_newlines();
-            match section {
-                AgentSection::Input => {
-                    let (inputs, _) = self.item_list(true, is_label, Self::process_input);
-                    valid &= !inputs.is_empty();
-                    agent.inputs.extend(inputs);
-                }
-                AgentSection::Output => {
-                    let (outputs, _) = self.item_list(true, is_label, Self::named_output);
-                    valid &= !outputs.is_empty();
-                    agent.outputs.extend(outputs);
-                }
-                AgentSection::Prompt => {
-                    agent.prompt = self.labeled_block(is_label);
-                    valid &= !agent.prompt.statements.is_empty();
-                    prompt = true;
-                }
-            }
-            self.skip_separators();
-        }
-        self.expect(TokenKind::RightBrace, "`}`")?;
-        agent.span = self.span_from(start);
-        if !labeled && agent.directives.is_empty() {
-            self.error_at("Missing agent body", agent.span);
-        } else if !valid || !prompt {
-            let message =
-                "Invalid agent definition -- check for missing or out-of-order section labels";
-            self.error_at(message, agent.span);
-        } else {
-            self.check_directives(&agent.directives, "Invalid agent directive");
-        }
-        Ok(Item::Agent(Box::new(agent)))
-    }
-
-    /// The agent section that starts here, if any.
-    fn agent_label(&self) -> Option<AgentSection> {
-        let section = match self.peek() {
-            TokenKind::Input => AgentSection::Input,
-            TokenKind::Output => AgentSection::Output,
-            TokenKind::Prompt => AgentSection::Prompt,
-            _ => return None,
-        };
-        self.at_label(self.peek()).then_some(section)
-    }
-
-    fn at_agent_label(&self) -> bool {
-        self.agent_label().is_some()
-    }
-
     /// The `nameTypePair` rule: `name` or `name: Type`.
     pub(super) fn typed_name(&mut self) -> Parse<TypedName> {
         let name = self.name()?;
@@ -511,14 +431,6 @@ impl Parser<'_> {
         }
         self.type_annotation().map(Some)
     }
-}
-
-/// A labelled section of an agent body, in the required order.
-#[derive(Clone, Copy)]
-enum AgentSection {
-    Input,
-    Output,
-    Prompt,
 }
 
 /// Whether a statement is an expression other than a bare name: an emit without a name.

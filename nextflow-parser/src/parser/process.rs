@@ -6,7 +6,7 @@ use super::section::{LabelOrder, section_block, section_end};
 use super::{Parse, Parser};
 use crate::Span;
 use crate::ast::{
-    BinaryOperator, BodyKind, ExpressionKind, Item, NamedOutput, Process, ProcessBody,
+    Agent, BinaryOperator, BodyKind, ExpressionKind, Item, NamedOutput, Process, ProcessBody,
     ProcessInput, Statement, StatementKind, TypedName,
 };
 use crate::token::TokenKind;
@@ -323,6 +323,85 @@ impl Parser<'_> {
     fn at_process_label(&self) -> bool {
         self.process_label().is_some()
     }
+
+    /// The `agentDef` rule: directives, then `input:`, `output:` and the required `prompt:`.
+    pub(super) fn agent(&mut self) -> Parse<Item> {
+        let start = self.bump().span;
+        let name = self.name()?;
+        self.skip_newlines();
+        self.expect(TokenKind::LeftBrace, "`{`")?;
+        let mut agent = Agent {
+            name,
+            directives: Vec::new(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            prompt: section_block(Vec::new(), start),
+            span: start,
+        };
+        let mut valid = self.skip_separators() || self.at(TokenKind::RightBrace);
+        let mut order = LabelOrder::new();
+        let mut labeled = false;
+        let mut prompt = false;
+        let is_label = Self::at_agent_label;
+        while !self.at_list_end(true) {
+            let Some(section) = self.agent_label() else {
+                valid &= !labeled;
+                agent.directives.extend(self.section_statements(is_label));
+                continue;
+            };
+            valid &= order.accept([section as u8]);
+            labeled = true;
+            // The label and its colon.
+            self.bump();
+            self.bump();
+            self.skip_newlines();
+            match section {
+                AgentSection::Input => {
+                    let (inputs, _) = self.item_list(true, is_label, Self::process_input);
+                    valid &= !inputs.is_empty();
+                    agent.inputs.extend(inputs);
+                }
+                AgentSection::Output => {
+                    let (outputs, _) = self.item_list(true, is_label, Self::named_output);
+                    valid &= !outputs.is_empty();
+                    agent.outputs.extend(outputs);
+                }
+                AgentSection::Prompt => {
+                    agent.prompt = self.labeled_block(is_label);
+                    valid &= !agent.prompt.statements.is_empty();
+                    prompt = true;
+                }
+            }
+            self.skip_separators();
+        }
+        self.expect(TokenKind::RightBrace, "`}`")?;
+        agent.span = self.span_from(start);
+        if !labeled && agent.directives.is_empty() {
+            self.error_at("Missing agent body", agent.span);
+        } else if !valid || !prompt {
+            let message =
+                "Invalid agent definition -- check for missing or out-of-order section labels";
+            self.error_at(message, agent.span);
+        } else {
+            self.check_directives(&agent.directives, "Invalid agent directive");
+        }
+        Ok(Item::Agent(Box::new(agent)))
+    }
+
+    /// The agent section that starts here, if any.
+    fn agent_label(&self) -> Option<AgentSection> {
+        let section = match self.peek() {
+            TokenKind::Input => AgentSection::Input,
+            TokenKind::Output => AgentSection::Output,
+            TokenKind::Prompt => AgentSection::Prompt,
+            _ => return None,
+        };
+        self.at_label(self.peek()).then_some(section)
+    }
+
+    fn at_agent_label(&self) -> bool {
+        self.agent_label().is_some()
+    }
 }
 
 /// A labelled section of a process body.
@@ -354,3 +433,11 @@ impl ProcessSection {
 
 pub(super) const MISSING_LABEL: &str =
     "The `script:` or `exec:` label is required when other sections are present";
+
+/// A labelled section of an agent body, in the required order.
+#[derive(Clone, Copy)]
+pub(super) enum AgentSection {
+    Input,
+    Output,
+    Prompt,
+}

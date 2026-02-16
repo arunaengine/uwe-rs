@@ -20,7 +20,11 @@ fn matches_nextflow_lint() {
     let mut files = Vec::new();
     collect(&root, &mut files);
     // A partial download would otherwise pass with fewer files to check.
-    assert!(files.len() > 14_000, "incomplete corpus: {} files", files.len());
+    assert!(
+        files.len() > 14_000,
+        "incomplete corpus: {} files",
+        files.len()
+    );
     let mut mismatches = Vec::new();
     for path in &files {
         let relative = path.strip_prefix(&root).unwrap_or(path);
@@ -41,7 +45,11 @@ fn matches_nextflow_lint() {
         }
     }
     let count = mismatches.len();
-    assert!(count == 0, "{count} files differ:\n{}", mismatches.join("\n"));
+    assert!(
+        count == 0,
+        "{count} files differ:\n{}",
+        mismatches.join("\n")
+    );
 }
 
 /// Scripts and Nextflow configs; `nf-test.config` files belong to nf-test and use another format.

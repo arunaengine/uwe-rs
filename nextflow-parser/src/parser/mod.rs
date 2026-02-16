@@ -10,6 +10,7 @@ mod literal;
 mod section;
 mod statement;
 mod types;
+mod workflow;
 
 use crate::ast::{Config, Name, Script};
 use crate::lexer::tokenize;

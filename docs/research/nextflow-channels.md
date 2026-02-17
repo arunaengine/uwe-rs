@@ -471,3 +471,481 @@ Rules (`extension/BufferOp.groovy:152-207`):
 - Errors: `size` or `skip` together with criteria (`IllegalArgumentException` without message), unknown option.
 - Experiment: `channel.of(1,2,3,4,5).buffer(size: 2)` gives `[1,2]`, `[3,4]`.
 
+### 5.4 `collate`
+
+- `collate(size, remainder = true)`: same as `buffer(size: size, remainder: remainder)`. Note the different default
+  for `remainder` (`extension/OperatorImpl.groovy:802-812`).
+- `collate(size, step, remainder = true)`: a new window starts at every `step`-th value. Each value is appended to every
+  open window. When the oldest window reaches `size`, it is emitted. On STOP, if `remainder`, all open windows are
+  emitted in start order (`extension/OperatorImpl.groovy:814-871`).
+- Errors: `size <= 0` or `step <= 0` at call time. At run time, `step > size` fails at the first value that falls
+  between two windows, because the code reads the head of an empty window list (`extension/OperatorImpl.groovy:862`).
+  Experiment: `of(1..7).collate(2, 3)` emitted `[1, 2]`, then failed with "Cannot access first() element from an empty List".
+- Value source: the result is emitted, but the operator never stops and the run never ends (experiment, section 1.5).
+- Output: queue. Order preserved.
+- Experiments: `collate(2)` over 1..5 gives `[1,2] [3,4] [5]`; `collate(3,1)` gives `[1,2,3] [2,3,4] [3,4,5] [4,5] [5]`.
+
+### 5.5 `collect`
+
+- Forms: `collect()`, `collect(closure)`, `collect(flat: bool, sort: true | closure | Comparator)` (`extension/CollectOp.groovy`).
+- Waits for the source to complete, then emits one value.
+- For each value `v`: `x = closure ? closure(v) : v`. If `x` is a `List` and `flat` is not false, its elements are added
+  (one level only). Otherwise `x` is added (`extension/CollectOp.groovy:64-73`).
+- `sort: true` sorts by natural order; a closure or `Comparator` sorts with it (`extension/CollectOp.groovy:75-89`).
+- The emitted value is an `ArrayBag`: a list that keeps arrival order. Its Java `equals` ignores order (same size and
+  `containsAll`) and its `hashCode` is order-independent (`util/ArrayBag.groovy:69-120`). Groovy `==` still compares it
+  as an ordered list (`util/ArrayBag.groovy:80-98`). Task hashing treats it as unordered
+  (`modules/nf-commons/src/main/nextflow/util/HashBuilder.java:161-162`).
+- Empty source: the output is bound to STOP, so it is an empty value channel, not `[]` (`extension/CollectOp.groovy:58`).
+  The same happens when every value is an empty list, because nothing is added.
+- Output: value.
+- Experiments: `of(1,2,3).collect()` gives `[1, 2, 3]`; `of([1,[2,3]],[4]).collect()` gives `[1, [2, 3], 4]`;
+  `of(1,2,3).collect { v -> [v, [v]] }` gives `[1, [1], 2, [2], 3, [3]]`;
+  `empty().collect()` emits nothing; `empty().collect().ifEmpty('DEF')` gives `DEF`.
+
+### 5.6 `collectFile`
+
+- Forms: `collectFile([opts])`, `collectFile([opts], closure)` (`extension/CollectFileOp.groovy`).
+- Each value is turned into (file name, content) (`extension/CollectFileOp.groovy:139-177`):
+  - `x = closure ? closure(v) : v`.
+  - `x` is a list or array with 2 or more elements: element 0 (as a string) is the file name, each later element is appended to that file.
+  - `x` is a `Path` or `File`: its content is appended to the file named by the `name` option, or to a file with the
+    same name as `x`.
+  - `x` is `null`: it is skipped.
+  - Otherwise, `x` is appended to the file named by `name`, or to `collect-file.data`.
+- Content items must be a `Path`, `File`, `CharSequence` or `byte[]`. Anything else is an error
+  "Not a valid file collector argument" (`file/FileCollector.groovy:143-156`).
+  Experiment: `of(1,2,3).collectFile(name: 'z.txt')` failed with this error.
+- Waits for completion. Then it writes the files to `storeDir` (or a temporary folder in the work directory) and emits
+  each file, then STOP (`extension/CollectFileOp.groovy:185-194`).
+- Options (checked) (`extension/CollectFileOp.groovy:41-54`, `docs/reference/operator.mdx` section `collectFile`):
+
+| Option | Meaning |
+| --- | --- |
+| `name` | output file name; a `Path` or a name with `/` also sets `storeDir` |
+| `storeDir` | folder for the result files |
+| `tempDir` | folder for temporary sort files |
+| `newLine` | append a newline after each entry (default false) |
+| `seed` | initial content (value or map of values per file) |
+| `skip` | skip the first N lines of each entry |
+| `keepHeader` | keep the header of the first entry; implies `skip: 1` unless set; `skip` must then be at least 1; conflicts with `seed` |
+| `sort` | `'hash'` (default), `true`/`'true'`/`'natural'`, `'index'`, `'deep'`, `false`/`'none'`, closure or `Comparator` |
+| `sliceMaxSize`, `sliceMaxItems` | limits for the sort collector |
+| `deleteTempFilesOnClose` | clean temporary files |
+| `cache` | resume caching, `true`/`false` or a hash mode name (default true) |
+
+- Content order inside a file follows `sort`. The default `'hash'` gives the same order in every run, independent of
+  arrival order (`extension/CollectFileOp.groovy:216-219`). Experiment: entries `a` then `b` were written as `b` then `a`.
+- Order of the emitted files: with any sorting mode (the default) the files are emitted in ascending file name order
+  (`file/SortFileCollector.groovy:103-107`, `:247-257`). Experiment: entries for `b.txt` then `a.txt` were emitted as
+  `a.txt`, `b.txt`. With `sort: false` or `'none'` the files come from a `ConcurrentHashMap`, so the order is unspecified
+  (`file/SimpleFileCollector.groovy:37`, `:96-105`).
+- Output: queue.
+
+### 5.7 `combine`
+
+- Forms: `combine(right)`, `combine(right, by: index | [indexes])`. `right` is a channel, a value channel, a `Collection`
+  or an array (`extension/CombineOp.groovy:57-75`). The `flat` option is accepted but not used
+  (`extension/OperatorImpl.groovy:79`).
+- Emits every pair (left value, right value) exactly once, at the moment the later of the two arrives. A new left value
+  is paired with every right value received so far, in right arrival order, and the other way round
+  (`extension/CombineOp.groovy:123-147`).
+- Result tuple: key elements, then the left value, then the right value. A `List` value contributes its elements
+  (one level); any other value, including an array, contributes itself. A one-element result is emitted bare
+  (`extension/CombineOp.groovy:113-120`, `extension/DataflowHelper.groovy:384-391`).
+  Experiment: `of([1,[2,3]]).combine([4,[5]])` gives `[1,[2,3],4]` and `[1,[2,3],5]`.
+- `by`: only pairs with equal keys are combined. The key elements move to the front of the result, in list index order;
+  the other elements of the left tuple, then of the right tuple, follow (`extension/DataflowHelper.groovy:357-380`).
+  A non-list value is its own key when `by` is `[0]`, otherwise it is an error "Not a valid `by` index".
+- STOP after both sides complete. A value channel on either side counts as one value.
+- Output: queue. The set of pairs is deterministic; their order depends on arrival interleaving.
+- Memory: keeps every value of both sides until completion.
+- Experiments: `of(['a',1],['b',2]).combine(of('x','y'))` gives the 4 pairs `[a,1,x] [a,1,y] [b,2,x] [b,2,y]`;
+  `combine(..., by: 0)` gives `[a,1,x] [a,2,x] [b,3,y]` for left `[a,1] [a,2] [b,3]` and right `[a,x] [b,y]`.
+
+### 5.8 `concat`
+
+- `concat(ch2, ch3, ...)`: emits all values of the source, then all values of `ch2`, and so on, then STOP
+  (`extension/ConcatOp.groovy:44-66`).
+- Each later operand is read only after the previous one completed. Its values wait in its read cursor.
+- Output: queue. Fully ordered. A value channel counts as one value. Experiment: `value(1).concat(of(2,3))` gives `1 2 3`.
+
+### 5.9 `count`
+
+- `count()` or `count(criteria)` (`isCase`). Emits the number of matching values when the source completes.
+- Empty queue source: 0. Value source: 1 or 0 (`extension/OperatorImpl.groovy:538-555`).
+- Quirk: an empty value channel counts as 1 without criteria, because the STOP it holds is treated as a value
+  (`extension/OperatorImpl.groovy:544-546`). Experiment: `empty().collect().count()` gives 1.
+- Output: value.
+
+### 5.10 `countFasta`, `countFastq`, `countJson`, `countLines`
+
+- Each takes the options of the matching splitter (section 5.33). It splits every source value and counts the emitted
+  chunks. Without `by` that is the number of records; with `by: n` it is the number of chunks
+  (`splitter/SplitterFactory.groovy:85-106`, the counter is the `each` closure at line 95).
+- Emits the total when the source completes. Output: value.
+
+### 5.11 `cross`
+
+- `cross(right, [keyClosure])` (`extension/CrossOp.groovy`, `extension/OperatorImpl.groovy:921-927`).
+- Key: `keyClosure(item)`, or by default the first element of a list or array, the first value of a map, the key of a
+  map entry, or the item itself (`extension/OperatorImpl.groovy:886-919`).
+- Result: `[leftItem, rightItem]`, not flattened.
+- Per key, the left side keeps only its latest item. A new left item replaces the old one
+  (`extension/PhaseOp.groovy:153-155`). Each right item is paired once with the current left item. Right items that
+  arrive before any left item for their key wait. When a left item arrives, all waiting right items are paired
+  (`extension/CrossOp.groovy:68-95`).
+- Unmatched items are dropped. STOP after both sides complete.
+- Output: queue. With duplicate left keys the result depends on timing. Docs: not commutative, keys should be unique
+  (`docs/reference/operator.mdx` section `cross`).
+- Experiment: left `[a,1] [b,2] [a,3]`, right `[a,x] [a,y] [b,z]` gave `[[a,1],[a,x]]`, `[[a,1],[a,y]]`, `[[b,2],[b,z]]`.
+
+### 5.12 `distinct`
+
+- `distinct([closure])`: drops a value when its key (`closure(v)` or `v`) equals the key of the previous value
+  (`extension/OperatorImpl.groovy:440-457`). It only removes consecutive duplicates. Keys are compared with Groovy `==`.
+- Quirk: the "previous key" starts as `null`, so leading values whose key is `null` are dropped (`extension/OperatorImpl.groovy:442`, `:447`).
+  Experiment: `of(null, null, 1).distinct()` gives `1`.
+- Output: same kind. Experiment: `1,1,2,2,1` gives `1,2,1`.
+- Value source: the value is emitted, but the operator never stops and the run never ends (experiment, section 1.5).
+
+### 5.13 `dump`
+
+- `dump([tag: String, pretty: bool], [closure])` (`extension/DumpOp.groovy`, `extension/ChannelEx.groovy:57-72`).
+- Enabled only when the run has `-dump-channels` (or the `dumpChannels` config setting) and one of its names matches the
+  tag. A name is a regex in which `*` becomes `.*`, and it must match the whole tag (`extension/DumpOp.groovy:66-74`).
+  A `dump` without tag uses the empty string as its tag.
+  The names are split on commas. `-dump-channels` without names means `*`, which matches every tag
+  (`modules/nf-cli-v1/src/main/groovy/nextflow/config/ConfigCmdAdapter.groovy:411-412`,
+  `modules/nf-cli-v1/src/main/groovy/nextflow/cli/Launcher.groovy:333-335`).
+- Disabled: returns the source channel itself. No node is added.
+- Enabled: logs `[DUMP: tag] <value>` at info level and forwards each value. Same kind as the source (`extension/DumpOp.groovy:76-97`).
+- `dump` cannot be used on the right side of `|` (`modules/nf-lang/src/main/java/nextflow/script/dsl/WorkflowDslV1.java:56`).
+
+### 5.14 `filter`
+
+- `filter(criteria)` with `isCase`, or `filter(closure)` with Groovy truth of the result (`extension/OperatorImpl.groovy:104-140`).
+- Queue source: emits matching values, order preserved.
+- Value source: the output value is bound to the value if it matches, else to STOP (empty value).
+  No operator is created (`whenBound`).
+
+### 5.15 `first`
+
+- `first()`: a value channel bound to the first source value. Empty source gives an empty value.
+  A value source gives a warning (`extension/OperatorImpl.groovy:459-471`).
+- `first(criteria)`: bound to the first value that matches (`isCase`) (`extension/OperatorImpl.groovy:473-494`).
+  If no value matches, the output is never bound, and any consumer of it waits forever.
+  Experiment: `channel.of(1,2,3).first { v -> v > 10 }.view()` never ends.
+- Later values are ignored.
+
+### 5.16 `flatMap`
+
+- `flatMap([closure])`. `r = closure ? closure(v) : v` (`extension/OperatorImpl.groovy:149-187`):
+  - `Collection` or array: each element is emitted.
+  - `Map`: each `Map.Entry` is emitted.
+  - `Map.Entry`: its key, then its value.
+  - `null` or VOID: nothing (section 0.3; experiment: `of(1, null, 2).flatMap { v -> v }` gives `1, 2`).
+  - anything else: `r` itself.
+- Output: queue, order preserved. A value source emits its elements, then STOP.
+- Experiment: `of([a:1,b:2]).flatMap { v -> v }` gives the entries `a=1`, `b=2`.
+
+### 5.17 `flatten`
+
+- A `Collection` or array is flattened recursively and each leaf is emitted. Maps are not flattened.
+  `null` and VOID emit nothing. Other values are emitted as they are (`extension/OperatorImpl.groovy:723-769`).
+- Output: queue, order preserved.
+- Experiments: `of([1,[2,[3]]], [a:1]).flatten()` gives `1, 2, 3, [a:1]`; `of(1, null, 2).flatten()` gives `1, 2`.
+
+### 5.18 `groupTuple`
+
+Options (checked): `by` (index or list, default `[0]`), `size`, `remainder`, `sort`
+(`extension/GroupTupleOp.groovy:34`, `docs/reference/operator.mdx` section `groupTuple`).
+
+Rules (`extension/GroupTupleOp.groovy:92-155`):
+
+- Every source value must be a `List`. Experiment: a non-list value fails with
+  "Unknown method invocation `collect` on GroupTupleOp type".
+- Group key: the list of elements at the `by` indexes, in `by` order. Keys are compared with Java `equals` and `hashCode`.
+  `GString` key elements are converted to `String` (`extension/GroupTupleOp.groovy:265-272`).
+- A new group copies the key elements from its first tuple and puts an empty bag at every other index. Each value at a
+  non-key index is appended to the bag at that index. The emitted tuple keeps key elements in their original positions.
+  Tuples of one group should have the same length; the size check counts the last non-key bag (`extension/GroupTupleOp.groovy:104-118`).
+- Group size: the `size` option, or else `groupKey(key, n).getGroupSize()` when the key is a single `GroupKey`
+  (`extension/GroupTupleOp.groovy:248-257`, `Nextflow.groovy:399-401`). Otherwise there is no size.
+  `size: 0` and a negative size mean no size (`extension/GroupTupleOp.groovy:63`, `:117-118`, `:142`).
+  Experiment: `groupTuple(size: -1)` behaved like no size.
+- With a size `n > 0`: a group is emitted as soon as it has `n` values, and it is removed. A later value with the same key
+  starts a new group.
+- At completion, all open groups are processed in first-seen key order. With a size and `remainder: false`, a group
+  whose size is not `n` is dropped silently. Otherwise it is emitted. Then STOP.
+- `sort`: `true`, `'true'`, `'natural'`, `'hash'`, `'deep'`, a closure (1 argument: sort key; 2 arguments: comparator;
+  other: error) or a `Comparator`. It sorts every list element of the tuple before emission. The docs discourage it.
+- `GroupKey` equality is one-sided (`extension/GroupKey.groovy:79-86`). A `GroupKey` equals its wrapped key and has the
+  same hash, but the wrapped key does not equal the `GroupKey`. So mixing `GroupKey` and plain keys for the same key
+  depends on which came first. Experiments: `[groupKey('a',2), 1]` then `['a', 2]` gave two groups (the sized one was
+  dropped, `[a, [2]]` was emitted); `['b', 1]` then `[groupKey('b',2), 2]` gave one group `[b, [1, 2]]` with no size.
+- The emitted key is the key object of the first tuple of the group (a `GroupKey` if that tuple had one).
+- Values in a bag keep arrival order. Bags hash as unordered collections (section 5.5).
+- Output: queue. Without size, it blocks until completion.
+- Experiments: `[a,1] [b,2] [a,3] [b,4] [c,5]` gives `[a,[1,3]] [b,[2,4]] [c,[5]]`; with `size: 2` the `c` group is
+  dropped; with `size: 2, remainder: true` it is kept.
+
+### 5.19 `ifEmpty`
+
+- `ifEmpty(value)` or `ifEmpty(closure)` (`extension/OperatorImpl.groovy:952-968`).
+- Forwards every source value. At completion, if no value was seen, emits the default. A closure is called at that
+  moment. A queue output then gets STOP.
+- Output: same kind. On an empty value channel, the output value is bound to the default.
+- Experiment: an optional output of a singleton process that produced nothing, followed by `ifEmpty('X')`, gives `X`.
+
+### 5.20 `join`
+
+- Forms: `join(right)`, `join(right, [by:, remainder:, failOnMismatch:, failOnDuplicate:])`. `right` must be a channel
+  or value channel; `null` or a non-channel is an error (`extension/OperatorImpl.groovy:193-215`).
+- Key: the elements at the `by` indexes (default `[0]`), in list index order. A non-list value is its own key when `by` is `[0]`, otherwise
+  it is an error (`extension/DataflowHelper.groovy:357-380`).
+- State: for each key, a FIFO list of pending values per side (`extension/JoinOp.groovy:161-222`).
+- When a value arrives and the other side has a pending value for the same key, the oldest pending value of each side
+  is taken and one result is emitted. So duplicate keys pair first-in with first-in. This is not a cross product.
+- Result: key elements, then the left non-key elements, then the right non-key elements. A
+  one-element result is emitted bare (`extension/JoinOp.groovy:119`).
+- Completion (`extension/JoinOp.groovy:129-140`, `extension/JoinOp.groovy:224-261`): after both sides complete,
+  - with `remainder: true`, every pending value is emitted, key first, with a single `null` in place of the missing
+    side (keys in first-seen order, values in FIFO order). If neither side ever sent a value with non-key elements,
+    just the key is emitted, bare;
+  - then STOP.
+- `failOnDuplicate`: the run fails when a value arrives for a key that was already matched, or when a pending value
+  is left at completion for a key that was already matched (`extension/JoinOp.groovy:177`, `:220`, `:240`, `:263-268`).
+- `failOnMismatch`: the run fails at completion when any value is still pending. The message lists up to 10 keys
+  (`extension/JoinOp.groovy:270-292`).
+- Defaults: both are false. Both become true when `nextflow.enable.strict` is set (`failOnMismatch` only when
+  `remainder` is false) (`extension/JoinOp.groovy:67-68`, `NF.groovy:57-59`). The strict syntax parser alone does not
+  set them. Experiment with the v2 parser: duplicates did not fail.
+- `remainder` together with an explicit `failOnMismatch: true` is an error (`extension/JoinOp.groovy:70-71`).
+- On an error the output gets STOP and the error aborts the run.
+- `join(right, by: 'field')` with a string runs the record join of section 10 (`extension/OperatorImpl.groovy:211-213`).
+- Output: queue. Emission order follows the arrival of the matching value.
+- Experiment: left `[a,1] [b,2] [a,3] [c,4]`, right `[a,x] [a,y] [b,z] [d,w]` gives `[a,1,x] [b,2,z] [a,3,y]`;
+  with `remainder: true` it adds `[c,4,null]` and `[d,null,w]` at the end.
+- Experiment: left key `1` (`Integer`) and right key `1` (`Long`) did not match.
+
+### 5.21 `last`
+
+- Emits the last source value when the source completes (`extension/OperatorImpl.groovy:503-509`).
+- Empty source: the output is bound to `null`, not STOP. Experiment confirms `null`.
+- Output: value.
+
+### 5.22 `map`
+
+- `map(closure)` (`extension/MapOp.groovy:48-71`).
+- `r = closure(v)`. If `r` is `null` or VOID, nothing is emitted. If `r` is STOP, STOP is emitted and the operator stops.
+  Otherwise `r` is emitted.
+- Output: same kind, order preserved.
+- Value source: the closure runs once. If it returns `null`, the output value is never bound, and any consumer of it
+  waits forever (experiment).
+- Experiment: `of(1,2,3).map { v -> v == 2 ? null : v }` gives `1, 3`.
+
+### 5.23 `max`, `min`
+
+- `max()`, `max(closure)`, `max(Comparator)`; same for `min` (`extension/OperatorImpl.groovy:563-658`).
+- A closure with 1 parameter maps each value to a comparable key. A closure with 2 parameters is a comparator.
+  Ties keep the earlier value.
+- `max` with a closure of 0 or more than 2 parameters is an error at call time (`extension/OperatorImpl.groovy:638-640`).
+  `min` has no such check: its reduce closure stays `null`, and the run fails when the second value arrives
+  (`extension/OperatorImpl.groovy:579-592`). Experiment: `of(3,1,2).min { a, b, c -> 0 }` failed with
+  "Cannot invoke method call() on null object".
+- Emits the result when the source completes. Empty source: `null`.
+- Value source: nothing is emitted and the run never ends (experiments for `max` and `min`, section 1.5).
+- Output: value.
+
+### 5.24 `mean`
+
+- Present in `OperatorImpl` but not in `docs/reference/operator.mdx` (`extension/OperatorImpl.groovy:675-681`). Like `sum`,
+  divided by the number of non-null values (`extension/OperatorImpl.groovy:712-720`).
+
+### 5.25 `merge`
+
+- `merge(ch2, ..., [closure])` (`extension/OperatorImpl.groovy:971-989`, `extension/MergeOp.groovy`).
+- A GPars operator with one input per operand. Each round takes one value from each input and emits one result.
+- Result: `closure(v1, v2, ...)`, or by default a list of all values with one-level flattening
+  (`extension/DefaultMergeClosure.groovy:59-65`).
+- The closure must declare exactly one parameter per operand. Otherwise the call fails at build time
+  (GPars `operator/DataflowOperator.java:55-57`). Experiment: a one-parameter closure for two operands failed with
+  "The operator's body accepts 1 parameters while it is given 2 input streams".
+- A closure result of VOID emits nothing, but `null` is emitted (GPars `operator/ChainWithClosure.java:62-76`).
+  Experiment: `of(1,2).merge(of(3,4)) { a, b -> a == 1 ? null : a + b }` gives `null, 6`.
+- A value channel operand is re-read every round, so its value is reused (GPars `operator/DataflowOperatorActor.java:56-69`).
+- STOP on any queue operand ends the operator. So the number of results is the length of the shortest queue operand.
+- Output: the kind of the first operand. If the first operand is a value channel, there is exactly one round
+  (`extension/DataflowHelper.groovy:105-115`).
+- Docs warn that it depends on order (`docs/reference/operator.mdx` section `merge`).
+- Experiments: `of(1,2,3).merge(of('a','b'))` gives `[1,a] [2,b]`; `of(1,2,3).merge(value('V'))` gives three results;
+  `value('V').merge(of(1,2,3))` gives one value `[V, 1]`.
+
+### 5.26 `mix`
+
+- `mix(ch2, ...)`, at least one operand; otherwise the error is "Operator 'mix' should have at least one right operand"
+  (`extension/OperatorImpl.groovy:237-242`, `extension/MixOp.groovy:62-79`).
+- Emits every value of every operand as it arrives. Values from one operand keep their order. Values from different
+  operands interleave in any order.
+- STOP after all operands complete. A value channel counts as one value.
+- Output: queue.
+
+### 5.27 `multiMap`
+
+- Form: `multiMap { v -> a: expr1; b: expr2 }`. Several labels can share one expression (`a: b: expr`)
+  (`modules/nf-lang/src/main/java/nextflow/script/control/OpCriteriaVisitor.java:283-340`, class `MultiMapTransformer`).
+  `multiMapCriteria { ... }` creates a reusable criteria.
+- For each value, every output receives its expression result (`extension/MultiMapOp.groovy:51-56`).
+- Outputs: named, same kind as the source; completion like `branch` (`extension/MultiMapOp.groovy:58-67`).
+- Order preserved per output.
+
+### 5.28 `randomSample`
+
+- `randomSample(n, [seed])`: reservoir sampling over the whole source (`extension/RandomSampleOp.groovy`).
+- At completion emits up to `n` values. If the source had at most `n` values, they are shuffled. `null` values are
+  not emitted. Then STOP.
+- A value source is an error. Output: queue.
+
+### 5.29 `reduce`
+
+- `reduce(closure)` or `reduce(seed, closure)`; the closure takes `(accumulator, value)` (`extension/OperatorImpl.groovy:256-285`,
+  `extension/DataflowHelper.groovy:313-353`).
+- The accumulator starts at `seed` (null when absent). For each value: if the accumulator is `null`, it becomes the
+  value; else the closure result `r = closure(acc, value)` is examined:
+  - `r` is VOID or `null` (section 0.3): the accumulator is unchanged;
+  - `r` is STOP: the operator stops early and emits the current accumulator;
+  - otherwise the accumulator becomes `r`.
+- At completion the accumulator is emitted. Empty source: the seed, or `null`.
+- Experiment: `of(1,2,3).reduce { a, b -> b == 2 ? null : a + b }` gives 4 (the `null` result was ignored).
+- A value source is an error. Output: value.
+
+### 5.30 `set`
+
+- `set { name }` binds `name` in the workflow scope to the source channel itself. No new channel and no graph node
+  (`extension/OperatorImpl.groovy:1090-1102`).
+- More than one name, or none, is an error.
+- The strict parser treats `set { name }` (exactly one statement) inside a workflow as a declaration of `name`
+  (`modules/nf-lang/src/main/java/nextflow/script/control/VariableScopeVisitor.java:755-765`).
+- Applied to a `ChannelOut`, it binds the `ChannelOut` object (`extension/OpCall.groovy:83-86`).
+
+### 5.31 `subscribe`
+
+- `subscribe(closure)` or `subscribe(onNext:, onComplete:, onError:)` (`extension/OperatorImpl.groovy:293-305`,
+  `extension/DataflowHelper.groovy:246-293`).
+- No output. Handlers run one at a time. See section 2.4.
+
+### 5.32 `sum`
+
+- `sum([closure])` (`extension/OperatorImpl.groovy:667-721`). `null` and VOID values are skipped.
+- The first remaining value (after the closure) becomes the accumulator, whatever its type. After that, numbers are
+  added, and lists are added element by element up to the shorter length (the first list is changed in place).
+  Any other combination is an error "Invalid `sum` item". Experiment: `of('a','b').sum()` failed with
+  "Invalid `sum` item: b [String]".
+- Empty source: `null`. Output: value.
+
+### 5.33 Splitters: `splitCsv`, `splitFasta`, `splitFastq`, `splitJson`, `splitText`
+
+Shared rules (`extension/SplitOp.groovy`, `splitter/AbstractSplitter.groovy`, `splitter/AbstractTextSplitter.groovy`):
+
+- Source values are handled one at a time, in order. All chunks of one value are emitted before the next value
+  (`extension/SplitOp.groovy:188-193`).
+- If the value is a list (tuple), the splitter picks one element: `elem` if given, else the first `Path` or `File`
+  element, else element 0. Each emitted item is a copy of the tuple with that element replaced by the chunk
+  (`splitter/AbstractSplitter.groovy:187-213`, `:387-406`).
+- Quirk: `elem: 0` is ignored, because 0 is Groovy false, so the default search applies (`splitter/AbstractSplitter.groovy:302-303`).
+  A negative `elem` means "the n-th `Path` or `File` element"; if there is none it is an error "Cannot find splittable file".
+- `elem` given as a list splits several tuple elements and merges the chunks back into one tuple, like `pe: true`
+  (`extension/SplitOp.groovy:97-100`, `:127-150`).
+- Splittable objects for the text splitters: `Path`, `File`, `CharSequence`, `Reader`, `InputStream`, `char[]`
+  (`splitter/AbstractTextSplitter.groovy:124-145`). Files ending in `.gz` are decompressed unless `decompress: false`
+  (`splitter/AbstractSplitter.groovy:451-460`).
+- STOP after the source completes. Output: queue.
+- `autoClose` is rejected. `into` must be a channel if given (`extension/SplitOp.groovy:103-109`).
+
+Common options: `by` (records per chunk), `limit` (max records per source value), `each` (closure applied to each
+emitted item), `elem`, `decompress`, `into`, and for text splitters `charset`, `file`, `compress`
+(`splitter/AbstractSplitter.groovy:312-322`, `splitter/AbstractTextSplitter.groovy:96-102`).
+
+| Operator | Extra options | Emitted chunk |
+| --- | --- | --- |
+| `splitCsv` | `sep`, `strip`, `header` (true or list of names), `quote`, `skip` | a list of fields per row, or a map when `header` is set; with `by: n`, a list of rows. `file` and `compress` are not allowed (`splitter/CsvSplitter.groovy:101-111`) |
+| `splitText` | `keepHeader` | lines including a trailing `\n`; `by: n` groups n lines into one string; `file: true` writes chunks to files (`splitter/TextSplitter.groovy`) |
+| `splitFasta` | `record` (true or map of fields), `size` (chunk size in bytes, conflicts with `by`) | FASTA text chunk or record map (`splitter/FastaSplitter.groovy:47-62`) |
+| `splitFastq` | `record`, `pe` | FASTQ text chunk or record map; `pe: true` splits two files of a tuple in parallel and merges the chunks back into one tuple (`splitter/FastqSplitter.groovy`, `extension/SplitterMergeClosure.groovy`) |
+| `splitJson` | `path` | each element of the JSON array at `path`, or for an object each entry as a map `[key: name, value: value]`; only `autoClose`, `into`, `limit`, `path` allowed (`splitter/JsonSplitter.groovy:36-37`, `:71-79`, `:113-235`) |
+
+- `splitCsv` skips empty lines. A missing field in a header row gives `null` for that column; extra fields are
+  dropped (`splitter/CsvSplitter.groovy:154-175`). With `header: true` a missing or empty header is an error (`:134-143`).
+- `file: true` mode stores chunks in cacheable files under the work directory. It conflicts with `record`, and
+  `compress` needs it (`splitter/AbstractTextSplitter.groovy:81-86`).
+
+### 5.34 `take`
+
+- `take(n)` (`extension/TakeOp.groovy:49-82`). `n < 0`: all values. `n > 0`: the first `n`
+  values, then STOP; later source values are ignored.
+- `n == 0`: STOP is written to the output at call time, before any downstream read cursor exists (`extension/TakeOp.groovy:54-57`).
+  A downstream operator never sees it. Experiment: `channel.of(1,2).take(0).toList().view()` never ended.
+- A value source is an error. Output: queue.
+
+### 5.35 `tap`
+
+- `tap { name }` creates a new channel named `name` in the workflow scope and returns another new channel. Both receive
+  every source value (`extension/TapOp.groovy:57-113`). Same kind as the source. Several names give several channels.
+  A name that already exists in the script context gives a warning.
+- `tap` cannot be used on the right side of `|` (`modules/nf-lang/src/main/java/nextflow/script/dsl/WorkflowDslV1.java:81`).
+- The strict parser treats it as a declaration of `name`, like `set`.
+- Experiment: `of(1,2,3).tap { t1 }.map { v -> v + 1 }` gives `2,3,4`, and `t1` gives `1,2,3`.
+- Value source: the value is forwarded, but the operator never stops and the run never ends (experiment, section 1.5).
+
+### 5.36 `toList`, `toSortedList`
+
+- `toList()`: at completion emits a list of all values in arrival order. Empty source: `[]`. Value source: `[v]`;
+  empty value source: `[]` (`extension/ToListOp.groovy:47-68`).
+- `toSortedList([closure])`: `toList` then sort by natural order, or with the closure (1 parameter: sort key;
+  2 parameters: comparator).
+- Docs: `toList` equals `collect(flat: false).ifEmpty([])` (`docs/reference/operator.mdx` section `toList`).
+  One difference by source: `toList` emits a plain `ArrayList`, while `collect` emits an `ArrayBag` that task hashing
+  treats as unordered (section 5.5). Experiment: the classes were `ArrayList` and `ArrayBag`.
+- Output: value.
+
+### 5.37 `toInteger`, `toLong`, `toFloat`, `toDouble`
+
+- Convert each value with Groovy `as` (`extension/OperatorImpl.groovy:999-1013`). Same kind as the source.
+  A failed conversion throws and aborts the run (section 1.4).
+
+### 5.38 `transpose`
+
+- `transpose([by: index | [indexes], remainder: bool])` (`extension/TransposeOp.groovy:65-142`).
+- A non-list value is emitted unchanged.
+- For a list value: the transposed positions are the `by` indexes (each must hold a list, else an error), or all
+  positions that hold a list. If there are none, the value is emitted unchanged.
+- For `i = 0, 1, ...`: build a tuple with element `i` of each transposed list and the other positions unchanged.
+  Without `remainder`, stop at the shortest list. With `remainder: true`, go to the longest list and use `null` for
+  missing elements.
+- Consequence: without `remainder`, a tuple with an empty transposed list emits nothing. With `remainder`, a tuple whose
+  transposed lists are all empty emits nothing (`extension/TransposeOp.groovy:109-130`).
+  Experiment: `of(['a', [], [1]], ['b', [1,2], []]).transpose()` emitted nothing.
+- Output: queue, order preserved.
+- Experiment: `['a',[1,2,3],['x','y']]` gives `[a,1,x] [a,2,y]`; with `remainder: true` also `[a,3,null]`.
+
+### 5.39 `unique`
+
+- `unique([closure])`: drops a value when its key (`closure(v)` or `v`) was already seen (`extension/OperatorImpl.groovy:315-363`).
+- Output: same kind. Experiment: `1,1,2,2,1` gives `1,2`.
+
+### 5.40 `until`
+
+- `until(closure)`: emits values until the closure is true for a value. That value is not emitted. STOP is emitted and
+  the operator stops (`extension/UntilOp.groovy:41-58`).
+- Output: same kind. Experiment: `of(1,2,3).until { v -> v == 2 }` gives `1`.
+- Value source: the value is emitted (if the condition is false), but the operator never stops and the run never ends
+  (experiment, section 1.5).
+
+### 5.41 `view`
+
+- `view([newLine: bool, tag: String], [closure])` (`extension/OperatorImpl.groovy:369-404`).
+- Prints `closure(v)` (or `v`) with `toString()`, then forwards `v`. `newLine: false` prints without a newline.
+- With `tag`, it prints only when `-dump-channels` matches the tag; it still forwards.
+- Output: same kind, order preserved. At completion it closes its output with `CH.close0`.
+

@@ -929,3 +929,475 @@ Long tail, as name (pipelines/occurrences/modules repo uses): `maxRetries [one c
 | `path(arity:)` | 32 | 3 | 56 | 25 | 22 |
 | `path(name:)` | 15 | 2 | 20 | 14 | 12 |
 
+### 8.4 Outputs
+
+| Output | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `tuple element: val` | 132 | 118 | 14295 | 10177 | 2087 |
+| `tuple` | 132 | 118 | 11803 | 7675 | 2087 |
+| `tuple element: path` | 132 | 116 | 9873 | 5429 | 2012 |
+| `path` | 128 | 111 | 4152 | 266 | 189 |
+| `tuple element: eval` | 76 | 39 | 2038 | 2064 | 1832 |
+| `stdout` | 6 | 6 | 8 | 1 | 1 |
+| `tuple element: env` | 5 | 4 | 17 | 6 | 5 |
+| `env` | 5 | 2 | 11 | 7 | 4 |
+| `env with an unquoted name` | 5 | 3 | 9 | 0 | 0 |
+| `env with a quoted name` | 4 | 2 | 19 | 13 | 9 |
+| `tuple element: stdout` | 3 | 3 | 3 | 2 | 2 |
+| `val` | 2 | 2 | 5 | 0 | 0 |
+| `tuple element: file` | 2 | 1 | 2 | 3 | 3 |
+| (other statement: ERROR) | 1 | 1 | 1 | 0 | 0 |
+| (other statement: variable_declaration) | 1 | 1 | 1 | 0 | 0 |
+| `publishDir` | 1 | 1 | 1 | 0 | 0 |
+
+Options on a whole output declaration (`docs/reference/process/inputs-outputs.mdx`, "Generic options", line 146):
+
+| Option | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `emit:` | 131 | 118 | 15524 | 7949 | 2091 |
+| `optional:` | 127 | 69 | 4117 | 2043 | 591 |
+| `topic:` | 75 | 48 | 2615 | 2361 | 2083 |
+| `includeInputs:` | 3 | 3 | 15 | 0 | 0 |
+| `enabled:` | 1 | 1 | 1 | 0 | 0 |
+| `type:` | 1 | 1 | 1 | 0 | 0 |
+
+Options on a single element inside `tuple ...`:
+
+| Option | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `path(includeInputs:)` | 6 | 3 | 23 | 15 | 5 |
+| `path(type:)` | 6 | 2 | 11 | 10 | 6 |
+| `path(arity:)` | 3 | 1 | 7 | 9 | 2 |
+| `path(hidden:)` | 0 | 0 | 0 | 7 | 4 |
+
+### 8.5 Script, when and stub
+
+| Feature | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `script: section ends with a triple double-quoted string` | 134 | 119 | 4053 | 1960 | 1960 |
+| `if/else at the top level of the script section` | 114 | 59 | 1165 | 586 | 586 |
+| `script: section ends with a statement (if_statement)` | 64 | 24 | 210 | 38 | 38 |
+| `template file (template ...)` | 44 | 20 | 304 | 78 | 77 |
+| `script: section ends with a template call (template 'file')` | 43 | 20 | 302 | 76 | 76 |
+| `exec: section ends with a statement (assignment)` | 3 | 3 | 3 | 1 | 1 |
+| `script: section ends with a statement (assignment)` | 2 | 0 | 2 | 1 | 1 |
+| `script: section ends with a statement (assert_statement)` | 1 | 0 | 1 | 14 | 14 |
+| `script: section ends with an expression (binary_expression)` | 1 | 0 | 1 | 1 | 1 |
+| `exec: section ends with a statement (if_statement)` | 1 | 1 | 1 | 0 | 0 |
+| `script: section ends with an expression (call_expression)` | 1 | 1 | 1 | 0 | 0 |
+| `script: section ends with an expression (command_expression)` | 1 | 1 | 1 | 0 | 0 |
+
+`when:` conditions:
+
+| Condition | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `task.ext.when == null \|\| task.ext.when` | 130 | 109 | 3865 | 2089 | 2089 |
+| `!params.skip_alignment && !params.skip_bigbed && (params.protocol == 'directRNA' \|\| params.protocol == 'cDNA')` | 1 | 1 | 2 | 0 | 0 |
+| `task.ext.when == null \|\| task.ext.when alignment_bam.size() > 0` | 1 | 1 | 1 | 0 | 0 |
+
+Long tail, as name (pipelines/occurrences/modules repo uses): `task.ext.when == null \|\| task.ext.when fasta.size() > 0` (1/1/0), `task.ext.when == null \|\| task.ext.when gtf.size() > 0` (1/1/0).
+
+## 9. Workflows
+
+| Section | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `main: (named workflow)` | 133 | 133 | 1947 | 124 | 124 |
+| `take: (named workflow)` | 133 | 133 | 1926 | 124 | 124 |
+| `emit: (named workflow)` | 133 | 133 | 1765 | 124 | 124 |
+| `main: (entry workflow)` | 103 | 103 | 105 | 0 | 0 |
+| `implicit main (no section labels)` | 34 | 34 | 74 | 0 | 0 |
+| `publish: (entry workflow)` | 12 | 12 | 12 | 0 | 0 |
+| `publish: (named workflow)` | 1 | 1 | 1 | 0 | 0 |
+
+| Entry form | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `take: name` | 133 | 133 | 10851 | 640 | 124 |
+| `emit: name = value` | 133 | 132 | 5428 | 697 | 122 |
+| `emit: name` | 90 | 45 | 894 | 41 | 3 |
+| `publish: name = value` | 11 | 11 | 72 | 0 | 0 |
+| `emit: other expression` | 2 | 2 | 2 | 0 | 0 |
+
+| Form | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `process call` | 134 | 134 | 5933 | 474 | 117 |
+| `workflow call` | 134 | 134 | 2320 | 38 | 22 |
+| `PROCESS.out or WORKFLOW.out access` | 133 | 133 | 16485 | 1215 | 118 |
+
+Output block (`docs/workflow.mdx`, section "Outputs", line 50; output directives at lines 298 to 330):
+
+| Setting | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `declaration` | 11 | 11 | 72 | 0 | 0 |
+| `setting: path` | 11 | 11 | 71 | 0 | 0 |
+| `setting: index` | 4 | 4 | 18 | 0 | 0 |
+| `setting: index { path }` | 4 | 4 | 18 | 0 | 0 |
+| `setting: mode` | 2 | 2 | 8 | 0 | 0 |
+| `setting: enabled` | 2 | 2 | 4 | 0 | 0 |
+| `setting: index { sep }` | 2 | 2 | 3 | 0 | 0 |
+| `setting: index { header }` | 1 | 1 | 2 | 0 | 0 |
+
+`params { }` block entries:
+
+| Entry | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `typed parameter` | 3 | 3 | 179 | 0 | 0 |
+| `untyped parameter` | 1 | 1 | 1 | 0 | 0 |
+
+Topic channels: `channel.topic(...)` is used in 76 pipelines and the output option `topic:` in 75 pipelines (sections 2 and 8.4).
+Records, enums, agents and typed processes, workflows or outputs are not used.
+The tool found no `record`, `enum` or `agent` definition and no typed `take:` or `emit:` entry.
+The one "typed input" in section 8.3 is a misparse in a file with a parse error.
+
+## 10. Statements and expressions
+
+| Statement | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `def x = ...` | 134 | 134 | 28513 | 8912 | 2050 |
+| `if` | 134 | 134 | 12709 | 1620 | 667 |
+| `return` | 133 | 132 | 3829 | 95 | 30 |
+| `else` | 133 | 131 | 2828 | 329 | 253 |
+| `else if` | 127 | 85 | 1084 | 181 | 77 |
+| `catch` | 115 | 11 | 366 | 4 | 3 |
+| `try` | 115 | 11 | 260 | 3 | 3 |
+| `multiple assignment: def (a, b) = ...` | 94 | 93 | 143 | 4 | 4 |
+| `assert` | 30 | 10 | 86 | 94 | 53 |
+| `throw` | 26 | 14 | 55 | 11 | 8 |
+| `for (x in y) (not in strict syntax)` | 22 | 15 | 50 | 0 | 0 |
+| `Groovy-style typed declaration (def Type x)` | 20 | 19 | 30 | 0 | 0 |
+| `Groovy-style typed declaration without def (Type x = ...)` | 19 | 12 | 112 | 0 | 0 |
+| `import (not in strict syntax)` | 15 | 5 | 52 | 0 | 0 |
+
+| Function feature | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `untyped parameter` | 122 | 118 | 2817 | 85 | 20 |
+| `parameter default value` | 114 | 15 | 537 | 8 | 2 |
+| `function that builds a channel` | 114 | 20 | 161 | 4 | 2 |
+| `Groovy-style typed parameter (Type x)` | 32 | 31 | 92 | 3 | 3 |
+| `Groovy-style return type (Type name(...))` | 3 | 3 | 4 | 3 | 3 |
+
+| Operator | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `=` | 134 | 134 | 35090 | 3105 | 852 |
+| `+=` | 122 | 109 | 2013 | 84 | 35 |
+| `\|=` | 8 | 0 | 8 | 0 | 0 |
+| `-=` | 1 | 1 | 1 | 0 | 0 |
+
+| Target | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `variable (x = ...)` | 134 | 134 | 26578 | 3100 | 865 |
+| `property (a.b = ...)` | 131 | 128 | 743 | 17 | 5 |
+| `index (a[i] = ...)` | 117 | 115 | 9773 | 70 | 2 |
+| `multiple assignment ((a, b) = ...)` | 3 | 2 | 16 | 2 | 2 |
+| `other` | 2 | 2 | 2 | 0 | 0 |
+
+Operators.
+`| (on channels)` and `& (on channels)` are the channel pipe and fork operators.
+`|` and `&` without that note work on numbers or booleans.
+
+| Operator | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `==` | 134 | 132 | 10965 | 3052 | 2121 |
+| `\|\|` | 134 | 134 | 6045 | 2576 | 2103 |
+| `a ? b : c (ternary)` | 133 | 133 | 21151 | 5433 | 2073 |
+| `?: (elvis)` | 133 | 118 | 11623 | 6368 | 2049 |
+| `unary !` | 133 | 132 | 8367 | 2540 | 2053 |
+| `&&` | 133 | 132 | 7778 | 2372 | 2041 |
+| `+` | 133 | 130 | 4403 | 364 | 114 |
+| `a[i] (index)` | 132 | 130 | 17253 | 825 | 214 |
+| `-` | 131 | 118 | 1086 | 135 | 90 |
+| `instanceof` | 127 | 85 | 962 | 113 | 79 |
+| `!=` | 125 | 85 | 1062 | 89 | 52 |
+| `>=` | 124 | 120 | 515 | 137 | 87 |
+| `<<` | 123 | 32 | 1601 | 82 | 16 |
+| `unary -` | 123 | 86 | 416 | 24 | 17 |
+| `as (cast)` | 122 | 39 | 1466 | 80 | 38 |
+| `in` | 117 | 59 | 1922 | 2027 | 1959 |
+| `<=` | 117 | 21 | 224 | 10 | 6 |
+| `\|` | 116 | 8 | 158 | 10 | 5 |
+| `..` | 112 | 109 | 245 | 12 | 11 |
+| `>` | 108 | 83 | 702 | 103 | 69 |
+| `<` | 78 | 24 | 171 | 26 | 22 |
+| `=~` | 76 | 28 | 299 | 98 | 46 |
+| `/` | 65 | 15 | 117 | 30 | 18 |
+| `*` | 56 | 21 | 376 | 154 | 136 |
+| `==~` | 50 | 10 | 136 | 65 | 35 |
+| `&` | 45 | 8 | 80 | 8 | 7 |
+| `~ (pattern from string)` | 31 | 12 | 70 | 32 | 17 |
+| `<=>` | 30 | 28 | 87 | 11 | 8 |
+| `!in` | 19 | 5 | 25 | 9 | 6 |
+| `%` | 12 | 5 | 18 | 7 | 7 |
+| `unary +` | 9 | 1 | 17 | 0 | 0 |
+| `\| (on channels)` | 8 | 8 | 186 | 27 | 2 |
+| `..<` | 7 | 5 | 10 | 2 | 2 |
+| `>> (publish target in an output block path closure)` | 6 | 6 | 39 | 0 | 0 |
+| `>>` | 1 | 1 | 4 | 0 | 0 |
+| `& (on channels)` | 1 | 1 | 3 | 0 | 0 |
+| `^` | 1 | 0 | 1 | 1 | 1 |
+| `unary ~` | 1 | 1 | 1 | 0 | 0 |
+
+| Closure form | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `closure without parameters` | 134 | 134 | 3673 | 102 | 46 |
+| `closure with parameters` | 132 | 131 | 11789 | 839 | 245 |
+| `closure with 2 or more parameters` | 132 | 127 | 6786 | 422 | 100 |
+| `implicit parameter 'it' used` | 93 | 87 | 2191 | 18 | 9 |
+| `closure with a typed parameter` | 25 | 3 | 106 | 4 | 1 |
+
+Labeled statements, by the operator that owns the closure (`branch` and `multiMap` criteria):
+
+| Owner | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `branch` | 100 | 99 | 1232 | 77 | 27 |
+| `multiMap` | 45 | 45 | 666 | 59 | 12 |
+| `multiMapCriteria` | 2 | 1 | 16 | 13 | 2 |
+
+| Expression | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `list literal [a, b]` | 134 | 134 | 16382 | 3008 | 2108 |
+| `map literal [k: v]` | 133 | 132 | 5180 | 154 | 67 |
+| `new Class(...)` | 117 | 115 | 1791 | 37 | 20 |
+| `number with a memory or duration unit (2.GB, 1.h)` | 16 | 1 | 22 | 6 | 5 |
+
+| Call form | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `trailing closure argument` | 134 | 134 | 15111 | 909 | 248 |
+| `command call without parentheses (x.method arg)` | 126 | 108 | 1012 | 46 | 29 |
+| `spread call (list*.method())` | 80 | 9 | 92 | 1 | 1 |
+| `safe call (x?.method())` | 45 | 18 | 214 | 95 | 14 |
+| `call on parenthesized_expression` | 2 | 2 | 6 | 0 | 0 |
+| `call on string` | 1 | 1 | 2 | 0 | 0 |
+| `call on integer_literal` | 1 | 1 | 1 | 0 | 0 |
+| `call on closure` | 0 | 0 | 0 | 1 | 1 |
+
+| Access form | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `safe property (x?.prop)` | 16 | 14 | 60 | 6 | 2 |
+| `spread property (list*.prop)` | 2 | 2 | 2 | 0 | 0 |
+
+Types used in `as` casts:
+
+| Type | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `Boolean` | 115 | 5 | 246 | 4 | 3 |
+| `Set` | 114 | 5 | 243 | 4 | 3 |
+| `String` | 108 | 9 | 342 | 4 | 3 |
+| `Map` | 106 | 2 | 339 | 5 | 2 |
+| `MemoryUnit` | 103 | 0 | 110 | 2 | 2 |
+| `int` | 22 | 8 | 50 | 27 | 14 |
+| `nextflow.util.MemoryUnit` | 11 | 0 | 12 | 0 | 0 |
+| `Integer` | 9 | 8 | 49 | 3 | 3 |
+| `List` | 6 | 6 | 14 | 0 | 0 |
+| `double` | 4 | 1 | 21 | 7 | 1 |
+| `long` | 2 | 2 | 18 | 16 | 8 |
+| `boolean` | 2 | 2 | 4 | 3 | 2 |
+| `Double` | 2 | 2 | 4 | 1 | 1 |
+| `float` | 2 | 0 | 2 | 1 | 1 |
+| `char` | 1 | 1 | 4 | 0 | 0 |
+| `Float` | 1 | 1 | 2 | 3 | 1 |
+| `BigDecimal` | 1 | 1 | 2 | 0 | 0 |
+| `PREPARE_GENOME` | 1 | 1 | 2 | 0 | 0 |
+| `ArrayList` | 1 | 1 | 1 | 0 | 0 |
+| `LinkedHashSet` | 1 | 1 | 1 | 0 | 0 |
+
+Types in `catch` clauses:
+
+| Type | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `IOException` | 114 | 1 | 115 | 1 | 1 |
+| `NullPointerException` | 114 | 0 | 114 | 1 | 1 |
+| `Exception` | 107 | 6 | 121 | 2 | 2 |
+| (untyped) | 10 | 1 | 18 | 0 | 0 |
+| `java.lang.reflect.InvocationTargetException` | 2 | 2 | 2 | 0 | 0 |
+| `MissingPropertyException` | 1 | 1 | 2 | 0 | 0 |
+| `URISyntaxException` | 1 | 1 | 2 | 0 | 0 |
+
+Memory and duration unit suffixes on numbers (`modules/nf-lang/src/main/java/nextflow/script/types/shim/Integer.java`):
+
+| Suffix | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `B` | 10 | 0 | 11 | 1 | 1 |
+| `MB` | 8 | 0 | 8 | 3 | 3 |
+| `GB` | 2 | 1 | 3 | 2 | 1 |
+
+## 11. Strings and GStrings
+
+| String form | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `single-quoted string` | 134 | 134 | 72099 | 19857 | 2213 |
+| `triple double-quoted GString (with interpolation)` | 134 | 128 | 8229 | 4051 | 2068 |
+| `double-quoted string (no interpolation)` | 133 | 133 | 44677 | 11091 | 2076 |
+| `double-quoted GString (with interpolation)` | 133 | 133 | 36621 | 17260 | 2121 |
+| `slashy string /.../` | 130 | 85 | 800 | 195 | 99 |
+| `triple double-quoted string (no interpolation)` | 76 | 33 | 261 | 166 | 122 |
+| `triple single-quoted string` | 2 | 2 | 3 | 0 | 0 |
+
+Interpolation forms in all strings (`$x` and `$x.y` are the short forms, `${...}` the long form):
+
+| Form | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `${name}` | 133 | 132 | 42539 | 22650 | 2112 |
+| `${a.b.c}` | 133 | 133 | 23339 | 7864 | 2099 |
+| `${ternary or elvis}` | 133 | 126 | 4632 | 2102 | 2015 |
+| `${index_expression}` | 130 | 49 | 846 | 281 | 113 |
+| `${method call}` | 129 | 125 | 2024 | 275 | 176 |
+| `$name` | 126 | 99 | 10780 | 3189 | 843 |
+| `$name.path` | 118 | 90 | 3585 | 1584 | 1253 |
+| `${binary_expression}` | 87 | 19 | 298 | 42 | 31 |
+| `${member_expression}` | 82 | 82 | 136 | 3 | 2 |
+| `${cast_expression}` | 4 | 2 | 18 | 2 | 2 |
+| `${string}` | 1 | 1 | 2 | 0 | 0 |
+| `${unary_expression}` | 1 | 1 | 1 | 0 | 0 |
+
+The same, only inside process `script:` sections:
+
+| Form | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| `${name}` | 133 | 114 | 21470 | 11474 | 1899 |
+| `${a.b.c}` | 133 | 114 | 8601 | 2761 | 1853 |
+| `$name` | 124 | 87 | 9060 | 2655 | 812 |
+| `${method call}` | 108 | 41 | 745 | 219 | 162 |
+| `$name.path` | 102 | 52 | 1110 | 346 | 303 |
+| `${binary_expression}` | 86 | 14 | 277 | 36 | 28 |
+| `${index_expression}` | 73 | 29 | 556 | 263 | 105 |
+| `${ternary or elvis}` | 26 | 12 | 59 | 28 | 20 |
+| `${member_expression}` | 3 | 2 | 5 | 3 | 2 |
+| `${cast_expression}` | 2 | 0 | 2 | 2 | 2 |
+| `${string}` | 1 | 1 | 2 | 0 | 0 |
+
+### Top 30 interpolation shapes in process scripts
+
+This counts every interpolation inside a string in a `script:` section.
+That includes the command template and `def` lines such as `def prefix = task.ext.prefix ?: "${meta.id}"`.
+The shape is the interpolation text with white space collapsed.
+
+| # | Shape | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---:|---|---:|---:|---:|---:|---:|
+| 1 | `${prefix}` | 127 | 89 | 7661 | 3597 | 1692 |
+| 2 | `${meta.id}` | 126 | 99 | 3530 | 1810 | 1758 |
+| 3 | `$args` | 119 | 58 | 1858 | 722 | 698 |
+| 4 | `${args}` | 111 | 54 | 1463 | 1231 | 1197 |
+| 5 | `${task.cpus}` | 110 | 56 | 1102 | 753 | 655 |
+| 6 | `${task.process}` | 107 | 82 | 2570 | 19 | 19 |
+| 7 | `$task.cpus` | 98 | 46 | 972 | 336 | 294 |
+| 8 | `${task.ext.prefix}` | 96 | 3 | 110 | 6 | 6 |
+| 9 | `${sample_names}` | 96 | 2 | 101 | 4 | 4 |
+| 10 | `${multiqc_logo}` | 96 | 2 | 99 | 2 | 2 |
+| 11 | `${replace_names}` | 96 | 1 | 99 | 2 | 2 |
+| 12 | `${fasta}` | 95 | 45 | 807 | 479 | 422 |
+| 13 | `$prefix` | 86 | 32 | 402 | 141 | 120 |
+| 14 | `$fasta` | 84 | 34 | 475 | 167 | 133 |
+| 15 | `${extension}` | 75 | 11 | 418 | 126 | 79 |
+| 16 | `${reads.extension}` | 74 | 0 | 85 | 3 | 3 |
+| 17 | `${index + 1}` | 74 | 1 | 74 | 1 | 1 |
+| 18 | `${args2}` | 73 | 9 | 223 | 110 | 101 |
+| 19 | `${entry.extension}` | 73 | 0 | 73 | 1 | 1 |
+| 20 | `${samples}` | 71 | 0 | 100 | 15 | 14 |
+| 21 | `${reference}` | 67 | 12 | 259 | 112 | 100 |
+| 22 | `${archive}` | 67 | 3 | 175 | 10 | 6 |
+| 23 | `${config}` | 67 | 4 | 94 | 21 | 21 |
+| 24 | `$args2` | 64 | 15 | 186 | 39 | 37 |
+| 25 | `${logo}` | 63 | 1 | 66 | 2 | 2 |
+| 26 | `${multiqc_config}` | 63 | 1 | 66 | 2 | 2 |
+| 27 | `${replace}` | 63 | 0 | 65 | 2 | 2 |
+| 28 | `${input}` | 62 | 13 | 281 | 160 | 125 |
+| 29 | `$reads` | 61 | 17 | 259 | 59 | 53 |
+| 30 | `${reads[1]}` | 58 | 17 | 159 | 66 | 65 |
+
+Distinct shapes in total: 6614.
+
+## 12. Strict syntax status
+
+Constructs that the strict parser rejects.
+Sources: statements next to declarations (`modules/nf-lang/src/main/java/nextflow/script/parser/ScriptAstBuilder.java`, line 263; `docs/strict-syntax.mdx`, lines 62 to 107), `import` (`ScriptAstBuilder.java`, lines 308 to 310), `for` and `finally` (the keywords are commented out in `modules/nf-lang/src/main/antlr/ScriptLexer.g4`, lines 295 and 300), unquoted `env` names (`docs/strict-syntax.mdx`, lines 400 to 424), slashy strings with interpolation or several lines (`docs/strict-syntax.mdx`, lines 328 to 382).
+The row "file that tree-sitter-nextflow cannot parse" counts files.
+Section 13 shows that almost all of these files use a form that the strict syntax removed.
+
+| Construct | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| (any construct in this table) | 45 | 38 | 585 | 0 | 0 |
+| `top-level statement next to declarations` | 31 | 29 | 419 | 0 | 0 |
+| `file that tree-sitter-nextflow cannot parse` | 26 | 18 | 44 | 0 | 0 |
+| `for loop` | 22 | 15 | 50 | 0 | 0 |
+| `import declaration` | 15 | 5 | 52 | 0 | 0 |
+| `slashy string with $ interpolation` | 8 | 0 | 8 | 0 | 0 |
+| `env input or output with an unquoted name` | 6 | 4 | 12 | 0 | 0 |
+
+Constructs that the strict parser reports as deprecated or discouraged (`docs/strict-syntax.mdx`, lines 502 to 534 and 624 to 626; `VariableScopeVisitor.java`, lines 744 and 867):
+
+| Construct | Pipelines | Own code | Occurrences | Modules repo uses | Modules repo files |
+|---|---:|---:|---:|---:|---:|
+| (any construct in this table) | 133 | 128 | 8440 | 2108 | 2093 |
+| `process when: section (discouraged)` | 130 | 109 | 3870 | 2089 | 2089 |
+| `implicit closure parameter it` | 93 | 87 | 2191 | 18 | 9 |
+| `Channel.* instead of channel.*` | 84 | 79 | 2379 | 1 | 1 |
+
+`shell:` sections do not occur in the 134 pipelines (they occur only in two DSL1 pipelines).
+No process leaves out the `script:` label, which the strict syntax requires when other sections are present (`docs/strict-syntax.mdx`, lines 426 to 459).
+No `include` uses `addParams` (`docs/strict-syntax.mdx`, lines 248 to 287).
+Groovy-style type annotations (`def Map meta`, `String x = ...`, `def f(Map meta)`) are still accepted (`ScriptParser.g4`, lines 386, 454 and 711; `docs/strict-syntax.mdx`, lines 289 to 326).
+
+## 13. Files the parser could not read
+
+44 pipeline files in 26 pipelines have a syntax error for tree-sitter-nextflow.
+tree-sitter recovers from the error, so the rest of each file is still counted.
+The table groups the files by their first error.
+The last column says what the strict parser does with the same code.
+The full list, with file and line, is in `scripts.json` under `parse_errors`.
+
+| First error | Files | Pipelines | Strict parser |
+|---|---:|---|---|
+| C-style or Java-style `for` loop (`for (int i = 0; ...)`, `for (String x: list)`) | 17 | callingcards, chipseq, evexplorer, meerpipe, metaboigniter, panoramaseq, phageannotator, readsimulator, spinningjenny | Rejected: `for` is removed (`docs/strict-syntax.mdx`, lines 139 to 159; `ScriptLexer.g4`, line 300). |
+| Several variables in one `def` (`def reads1 = [], reads2 = []`, old copies of nf-core modules) | 5 | denovotranscript, marsseq, nascent, rnasplice | Rejected (`docs/strict-syntax.mdx`, lines 289 to 326). |
+| Assignment inside an expression (`f(x = 1)`, `a = b = c`) | 4 | lncpipe, multiplesequencealign, nanoseq, phageannotator | Rejected (`docs/strict-syntax.mdx`, lines 109 to 137). |
+| `while` loop | 3 | crisprseq, phageannotator | Rejected (`docs/strict-syntax.mdx`, lines 139 to 159; `ScriptLexer.g4`, line 342). |
+| A second statement after the `when:` expression | 3 | viralintegration | Probably rejected: `when:` takes one expression (`ScriptParser.g4`, lines 274 to 276). Not tested. |
+| Soft cast `(Map) x` | 2 | denovotranscript, viralrecon | Rejected (`docs/strict-syntax.mdx`, lines 384 to 398). |
+| Closure without braces (`.map ( x -> x.trim() )`) | 2 | cutandrun, omicsgenetraitassociation | Rejected: a closure needs braces (`ScriptParser.g4`, lines 701 to 703). |
+| `switch` statement | 1 | radseq | Rejected (`docs/strict-syntax.mdx`, lines 161 to 198; `ScriptLexer.g4`, line 333). |
+| `include` inside an `if` block | 1 | viralrecon | Rejected: includes are top-level declarations only (`ScriptParser.g4`, lines 100 to 122). |
+| XML attribute access `node.@attr` | 1 | mcmicro | Rejected: the `@` token is commented out (`ScriptLexer.g4`, line 843). |
+| `emit: html optional true` (option without a colon) | 1 | cutandrun | Unverified. |
+| `path "*.bed"` without parentheses inside `tuple` | 1 | deepmodeloptim | Unverified. |
+| Backslash at the end of a line | 1 | differentialabundance | Accepted: the strict lexer skips a backslash before a newline (`ScriptLexer.g4`, lines 641 to 643 and 847). This is a gap in tree-sitter-nextflow. |
+| `path script` input (`script` used as a name) | 1 | cutandrun | Probably accepted: `script` is a valid identifier (`ScriptParser.g4`, lines 624 to 652). Likely a gap in tree-sitter-nextflow. Not tested. |
+| `tuple (` with its elements on the following lines | 1 | scdownstream | Probably accepted: `tuple` is a valid identifier (same lines). Likely a gap in tree-sitter-nextflow. Not tested. |
+
+So 36 of the 44 files use a form that the strict parser rejects, and 3 more probably do.
+One file shows a confirmed gap in tree-sitter-nextflow (backslash line continuation), two more are likely gaps, and two are unverified.
+
+## 14. Suggested implementation order
+
+This order follows the counts above.
+Each step lists what it adds; the numbers are pipelines unless stated.
+
+### Step 1: what every nf-core module and pipeline needs
+
+- Script structure: `include` with relative paths and aliases, `process`, named workflows with `take:`, `main:` and `emit:`, the entry workflow (with `main:` or without labels), function definitions.
+- Statements and expressions: `def`, `if` and `else`, `return`, `def (a, b) = ...`, closures with parameters, list and map literals, indexing, ternary and elvis, `==`, `!=`, `&&`, `||`, `!`, `in`, `instanceof`, `as`, `+`, `-`, `<<`, `..`, `=~`, `==~`, slashy strings as regular expressions.
+- Strings: single-quoted, double-quoted and triple-quoted strings, with interpolation in the short forms `$x` and `$x.y` and the long form `${expr}` with any expression inside.
+- Processes: the directives `label`, `tag`, `container` and `conda`, evaluated for each task; inputs `tuple`, `val` and `path` with `stageAs:`, `arity:` and `name:`; outputs `tuple`, `val`, `path` and `eval` with `emit:`, `optional:` and `topic:`; `when:`; a `script:` section that ends with a string or with an `if` and `else` that choose the string; `stub:`; `template` (44 pipelines).
+- Task context: `task.ext.*` (`args`, `prefix`, `when`, `suffix`, `args2` and so on), `task.cpus`, `task.memory` with `toGiga`, `toMega`, `mega` and `toUnit`, `task.process`, `moduleDir`, `workflow.containerEngine`.
+- Channel factories: `empty`, `value`, `of`, `fromPath` with `checkIfExists:`, `fromList`, `topic`.
+- The 21 operators used by 29 or more pipelines (section 3), with the options `by:`, `remainder:`, `failOnMismatch:`, `failOnDuplicate:`, `header:`, `sep:`, `name:`, `sort:`, `storeDir:` and `newLine:`.
+- Global functions: `file` with `checkIfExists:`, `error`, `exit`, `log.info`, `log.warn`, `log.error`, `log.debug`, `tuple`, `groupKey`.
+- The 60 value methods and getters used by 50 or more pipelines (section 4).
+
+### Step 2: the nf-core pipeline template (about 114 pipelines)
+
+- `params.*` reads everywhere, and `params.x = value` at the top of `main.nf` (54 pipelines).
+- `workflow.onComplete` and `workflow.onError` called inside a named workflow, the `workflow.*` run metadata, `workflow.toMap()`, `getVal()` on the value returned by `toList`.
+- The nf-schema plugin functions `paramsSummaryMap`, `paramsSummaryLog`, `validateParameters`, `samplesheetToList` and `paramsHelp`.
+- The Java and Groovy classes used by the utility subworkflows: YAML (`org.yaml.snakeyaml.Yaml`), JSON (`groovy.json.JsonOutput`, `groovy.json.JsonGenerator.Options`, `groovy.json.JsonSlurper`), templates (`groovy.text.GStringTemplateEngine`, `groovy.text.SimpleTemplateEngine`), files (`File`, `nextflow.extension.FilesEx.copyTo`), `java.util.Date`, `URL.openConnection`, `execute()` on strings and lists, `System.exit`.
+- iunctus can either run these subworkflows as code or provide their functions natively.
+  The counts do not decide this.
+  They only show that these three subworkflows are the largest single source of Groovy and Java use.
+
+### Step 3: less common features (roughly 5 to 50 pipelines)
+
+- Operators `toSortedList`, `dump`, `subscribe`, `cross`, `splitText`, `splitFasta`, `tap`, `collate`, `count`, `merge`; the channel pipe `|` (8 pipelines).
+- Closure values for directives (28 pipelines), `publishDir` in scripts (8), `each`, `env` and `stdout` inputs and outputs, `exec:` sections (4).
+- The output block with `publish:` (12 pipelines), and the `params { }` block (3).
+- `try`, `catch` and `throw` in pipeline code, `assert`, spread `*.`, safe navigation `?.`, `<=>`, `..<`, number unit suffixes such as `2.GB`.
+- The deprecated `channel.from` factory (24 pipelines).
+  It is deprecated, not rejected (`docs/tutorials/static-types.mdx`, lines 568 to 580).
+

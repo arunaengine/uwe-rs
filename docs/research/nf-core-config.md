@@ -467,3 +467,242 @@ Method calls used by at least 8 pipelines inside process closures:
 
 Less common methods include `replaceAll`, `flatten`, `startsWith`, `collect`, `first`, `size`, `findAll`, `toGiga`, `get`, `toUpperCase`, `substring`, `indexOf`, `collectEntries`, `lastIndexOf`, `minus` and `min`.
 
+### Expression features and statements
+
+| Feature inside process closures | Pipelines | Occurrences | Pipelines (loaded) | Occurrences (loaded) |
+|---|---:|---:|---:|---:|
+| Closures (including nested ones) | 144 | 15,708 | 144 | 14,082 |
+| Ternary `? :` | 142 | 4,377 | 142 | 4,243 |
+| `in` operator | 142 | 291 | 142 | 287 |
+| GString | 132 | 9,431 | 130 | 8,126 |
+| Range `a..b` | 127 | 229 | 127 | 227 |
+| Closure with declared parameters (`x -> ...`) | 123 | 2,380 | 121 | 2,294 |
+| Closure with more than one statement | 31 | 174 | 30 | 160 |
+| Elvis `?:` | 29 | 230 | 19 | 195 |
+| `if` statement | 27 | 383 | 26 | 368 |
+| `def` local variable | 23 | 263 | 22 | 251 |
+| `return` statement | 18 | 188 | 17 | 177 |
+| Slashy string `/.../` | 14 | 64 | 13 | 51 |
+| Cast with `as` | 8 | 199 | 8 | 199 |
+| Regular expression match `==~` | 5 | 13 | 5 | 12 |
+| Assignment to an existing variable | 4 | 34 | 4 | 34 |
+| Safe navigation `?.` | 3 | 12 | 3 | 8 |
+| Regular expression find `=~` | 3 | 8 | 3 | 8 |
+| Pattern operator `~/.../` | 2 | 2 | 2 | 2 |
+| Power `**` | 2 | 15 | 2 | 15 |
+| Spread `*.` | 0 | 0 | 0 | 0 |
+
+Statements inside closures are allowed by strict syntax (`docs/strict-syntax.mdx:652`).
+Typical expressions:
+
+- `errorStrategy = { task.exitStatus in ((130..145) + 104 + (175..177)) ? 'retry' : 'finish' }` (`abotyper/conf/base.config:18`).
+- `memory = { 6.GB * task.attempt }` (`abotyper/conf/base.config:15`).
+- `accelerator = { workflow.profile.contains('gpu') ? 1 : null }` (`abotyper/conf/base.config:67`).
+- `memory = { [6.GB * task.attempt, params.max_memory as nextflow.util.MemoryUnit].min() }` (`alleleexpression/conf/base.config:10`, the only pipeline with this form).
+- `cpus = { params.spades_fix_cpus as Integer != -1 ? params.spades_fix_cpus as Integer : (10 * task.attempt) }` (`mag/conf/base.config:208`). Casts with `as` appear in 8 pipelines.
+
+Number literals with units, over all scanned files: `GB` 1,611 times in 144 pipelines, `h` 1,223 in 144, `MB` 29 in 11, `m` 120 in 6, `d` 8 in 4, `min` 1 in 1.
+
+## Plugins
+
+`plugins { id 'name@version' }` is the only apply block that strict syntax accepts (`ConfigAstBuilder.java:253-262`). Nextflow reads it as a plugin list only at the top level (`ConfigDsl.groovy:218-220`, `330-340`).
+
+| Plugin (loaded files) | Pipelines |
+|---|---:|
+| `nf-schema` | 109 |
+| `nf-validation` | 17 |
+| `nf-core-utils` | 5 |
+| `nf-prov` | 4 |
+| `nf-co2footprint` | 3 |
+| `nf-fgbio` | 2 |
+| `nf-amazon` | 1 |
+| `nf-anndata` | 1 |
+| `nf-slack` | 1 |
+
+| Plugin and version (loaded files) | Pipelines |
+|---|---:|
+| `nf-schema@2.5.1` | 55 |
+| `nf-schema@2.7.2` | 26 |
+| `nf-validation@1.1.3` | 13 |
+| `nf-schema@2.6.1` | 8 |
+| `nf-schema@2.3.0` | 8 |
+| `nf-schema@2.1.1` | 4 |
+| `nf-validation` without version | 4 |
+| `nf-schema@2.2.0` | 3 |
+| `nf-core-utils@0.4.0` | 3 |
+| `nf-schema@2.4.2`, `nf-schema@2.7.3`, `nf-core-utils@0.5.0`, `nf-fgbio@1.0.0`, `nf-co2footprint@1.0.0-beta`, `nf-prov@1.2.2`, `nf-prov@1.7.0` | 2 each |
+| `nf-schema@2.8.0`, `nf-co2footprint@1.0.0`, `nf-amazon` without version, `nf-slack@0.5.1`, `nf-anndata@0.5.2` | 1 each |
+
+18 pipelines declare no plugin in loaded files. All plugin ids are plain string literals, and 5 have no version.
+Test configs also declare `nf-schema@2.1.0` (14 pipelines), which no run loads.
+The plugin scopes `validation`, `prov`, `co2footprint` and `slack` appear in the scope table.
+
+## Dynamic features
+
+This section counts expressions that are evaluated when the config is loaded, and statements that strict syntax rejects.
+
+### Expressions
+
+"Any context" counts every file and every place, including function bodies.
+
+| Feature | Pipelines | Occurrences | Pipelines (loaded) | Occurrences (loaded) |
+|---|---:|---:|---:|---:|
+| `params` reference, any context | 144 | 43,666 | 144 | 37,397 |
+| `params` reference in `params` values | 144 | 26,059 | 144 | 20,553 |
+| `params` reference in include expressions | 144 | 616 | 144 | 616 |
+| `params` reference in other scopes (outside closures) | 144 | 1,278 | 144 | 1,278 |
+| `params` reference in process values outside closures | 128 | 5,959 | 125 | 5,653 |
+| `params` reference in `if` conditions (rejected) | 31 | 342 | 30 | 329 |
+| GString, any context | 144 | 36,941 | 144 | 29,894 |
+| Ternary, any context | 143 | 5,105 | 143 | 4,951 |
+| `new java.util.Date()` | 134 | 135 | 134 | 135 |
+| `projectDir` reference | 132 | 803 | 90 | 597 |
+| `System.getenv(...)`, any context | 110 | 244 | 110 | 229 |
+| `System.getenv(...)` in include expressions | 110 | 184 | 110 | 184 |
+| `System.getenv(...)` in `params` values | 32 | 42 | 31 | 32 |
+| Elvis `?:`, any context | 44 | 287 | 31 | 235 |
+| `manifest` setting used as a variable (rejected) | 17 | 74 | 17 | 74 |
+| `validation` setting used as a variable (rejected) | 16 | 32 | 16 | 32 |
+| `baseDir` reference (deprecated alias of `projectDir`) | 9 | 44 | 9 | 44 |
+| `secrets` reference | 5 | 38 | 3 | 11 |
+| `env('NAME')` function | 3 | 30 | 0 | 0 |
+| `launchDir` reference | 3 | 4 | 1 | 1 |
+| `System.getProperty(...)` | 2 | 73 | 2 | 73 |
+
+Notes:
+
+- The config constants are `baseDir` (deprecated), `launchDir`, `params`, `projectDir` and `secrets`, and the function is `env()` (`modules/nf-lang/src/main/java/nextflow/config/dsl/ConfigDsl.java:35-70`, `docs/config.mdx:97-123`).
+- In strict syntax only `params` can be referenced as a variable. Other config settings cannot (`docs/strict-syntax.mdx:682-709`). Unknown names outside process closures are errors (`ConfigResolveVisitor.java:89-98`).
+- `System.getenv` is not in the documented config functions. Lint accepts it in the corpus (no errors reported for it). How the strict parser resolves `System` is unverified.
+- `env()` is used only in module test configs (for Sentieon licences), never in loaded files.
+
+### Statements that strict syntax rejects
+
+The strict parser only allows includes, assignments, blocks, selectors and the `plugins` block at config level (`ConfigParser.g4:105-174`, `docs/strict-syntax.mdx:632-666`).
+
+| Construct | Pipelines | Occurrences | Pipelines (loaded) | Occurrences (loaded) |
+|---|---:|---:|---:|---:|
+| `try`/`catch` block | 36 | 41 | 34 | 39 |
+| `System.err.println(...)` statement (inside `catch`) | 36 | 41 | 34 | 39 |
+| Function definition | 35 | 40 | 35 | 40 |
+| Function definition named `check_max` | 34 | 34 | 34 | 34 |
+| `def` variable declaration | 33 | 43 | 31 | 37 |
+| `def trace_timestamp = new java.util.Date().format(...)` | 28 | 28 | 28 | 28 |
+| `if` statement, including nested ones | 32 | 293 | 31 | 280 |
+| Outermost `if` statement | 32 | 200 | 31 | 187 |
+| `if` statement inside a config block | 10 | 41 | 9 | 32 |
+| Setting guarded by an `if` statement | 18 | 975 | 16 | 957 |
+| Setting without `=` outside `plugins` | 0 | 0 | 0 | 0 |
+| Compound assignment (`+=` and others) | 0 | 0 | 0 | 0 |
+
+The rejection messages are in `ConfigAstBuilder.java:348-359`. A setting without `=` would be rejected by `ConfigAstBuilder.java:253-262`. Only `nf-test.config` files use that form, and they are excluded.
+
+## Profiles
+
+Profiles per pipeline, counting profile blocks in loaded files. Remote nf-core/configs profiles are not counted.
+
+- Minimum 5 (`mnaseseq`, `slamseq`), median 16, mean 17.8, maximum 45 (`differentialabundance`).
+- Distribution: 15 or fewer in 69 pipelines, 16 to 20 in 39, 21 to 25 in 19, 26 to 30 in 9, 31 to 40 in 4, more than 40 in 4.
+- 543 distinct profile names.
+
+| Profile name | Pipelines |
+|---|---:|
+| `debug` | 144 |
+| `docker` | 144 |
+| `singularity` | 144 |
+| `test` | 144 |
+| `conda` | 142 |
+| `podman` | 140 |
+| `charliecloud` | 138 |
+| `shifter` | 138 |
+| `test_full` | 138 |
+| `mamba` | 130 |
+| `apptainer` | 127 |
+| `wave` | 113 |
+| `gpu` | 93 |
+| `arm64` | 91 |
+| `emulate_amd64` | 91 |
+| `gitpod` | 46 |
+| `arm` | 39 |
+| `test_minimal` | 7 |
+| `test_bam`, `test_full_aws` | 4 |
+| `test_fasta`, `test_single`, `test_bakta`, `local`, `test_fastq`, `test_umi` | 3 |
+
+All other names appear in 1 or 2 pipelines. Most of them are extra test profiles.
+Profile blocks contain 10,632 settings and 842 includes. Only `profile { ... }` blocks are allowed directly in `profiles` (`ConfigDsl.groovy:368-390`), and the corpus follows this rule.
+With the strict parser, profiles are applied in command line order (`docs/config.mdx:321-325`).
+
+## nf-core/modules repository
+
+The same scanner on the modules repository copy (`modules/` in the corpus, 1,207 config files without `nf-test.config`):
+
+- 2,253 settings, 2,034 of them in `process`. 1,468 `withName` selectors and no `withLabel`.
+- Mostly `ext.args` (1,289) and `ext.prefix` (465).
+- `env('NAME')` 50 times, for Sentieon licence variables.
+- No statements that strict syntax rejects.
+
+The counts are in `config.json` under `modules_repo`.
+
+## Limitations and unverified points
+
+- The scanner is not a full parser. It matches `nextflow lint` on the checked constructs, but it does not type-check expressions.
+- "Loaded" follows every static include branch and every profile. A real run loads fewer files. Remote nf-core/configs files are not in the corpus and are not scanned.
+- Lint ran with the local Nextflow 26.04.6 binary, not with a build of the checkout at bbf6ff0. Lint stops at the first parse error per file, so lint counts are lower bounds.
+- `container` and `conda` counts include generated files that runs do not load. Use the loaded columns for these.
+- The value "closure" is decided from the syntax only. Whether Nextflow treats a given setting as dynamic is not checked here.
+- Unverified: the behaviour of a failed HTTPS include without `try`, and how the strict parser resolves `System.getenv`.
+
+## Appendix A: corpus revisions
+
+From `~/.cache/iunctus/corpus/nf-core-text/revisions.txt` (pipeline, branch, commit):
+
+```text
+abotyper                     dev    d12dfe3   airrflow                     master 8bc3e56   alleleexpression             dev    88c14b1
+ampliseq                     master d56f90c   atacseq                      master e805fff   bacass                       master 3935429
+bacmodel                     dev    48ee4d8   bactmap                      master d57c2a7   bamtofastq                   master daf99df
+cageseq                      master 48ac519   callingcards                 master be11a80   cellpainting                 dev    6849844
+chipseq                      master d40c625   circdna                      master 16c64eb   circrna                      dev    5b6008a
+clipseq                      master b1c75eb   coproid                      master 2843c59   createpanelrefs              main   38bc58c
+createtaxdb                  main   5a7719f   crisprseq                    master 4cbf106   cutandrun                    master 6e1125d
+daamicrobiome                dev    de1ab09   dartseq                      dev    bad48a2   datasync                     dev    d25e58a
+deepmodeloptim               dev    ee174c2   deepmutscan                  dev    3a05575   demo                         master 555d145
+demultiplex                  master daade37   denovotranscript             main   0ba0515   detaxizer                    master 6fe2c11
+diaproteomics                master 3527d16   differentialabundance        master 5cb5f98   diseasemodulediscovery       dev    ec9bfb0
+drop                         master eecc9f0   drugresponseeval             master 06748cb   dualrnaseq                   master 6169aa5
+eager                        master 2a0aa48   epigenomesegmentation        dev    74e6f71   epitopeprediction            master 48f2eaa
+evexplorer                   dev    b06c911   fastqrepair                  master 70a3820   fastquorum                   main   ee7c610
+fetchngs                     master 955c892   funcprofiler                 main   805e23e   funcscan                     main   66722e1
+genephylomodeler             dev    f423562   genomeannotator              dev    d80105d   genomeassembler              master a72d47d
+genomeqc                     main   bce44e5   genomeskim                   dev    bb613a2   genomicrelatedness           dev    9f7d3e8
+gwas                         dev    abc15c4   hadge                        main   c9e653d   hgtseq                       master 18a3ee1
+hic                          master bd62f3c   hicar                        master 4bd3141   hlatyping                    master 36846dd
+imcyto                       master 33eeade   isoseq                       master 6c94483   kmermaid                     master e506fa7
+lncpipe                      dev    ff1b23f   longraredisease              master 8bce94c   lsmquant                     master b39ec6e
+mag                          main   56abab5   magmap                       master 20c6dda   marsseq                      master 0723fa2
+mcmicro                      master f440000   meerpipe                     dev    592af13   metaboigniter                master 55d8254
+metapep                      master 72ac0cc   metatdenovo                  master 113adb3   methylarray                  dev    d34f531
+methylong                    master 3667974   methylseq                    master cc11bd9   mhcquant                     master bc05d4b
+mitodetect                   dev    1fb96f0   mnaseseq                     master eaaeaeb   molkart                      master ed77bc9
+mspepid                      dev    e87c5ed   multiplesequencealign        master 8f68239   nanoseq                      master 95ef67c
+nanostring                   master 8f6a75a   nascent                      main   967b5a1   ncrnannotator                dev    d28b60e
+omicsgenetraitassociation    dev    c21047b   oncoanalyser                 master 7c74c87   pacsomatic                   dev    24c84cb
+pacvar                       master 57b67b2   pairgenomealign              master 8ee09a1   pangenome                    master b10542f
+panoramaseq                  dev    4908592   pathogenepidemiology         dev    548a5b0   pathogensurveillance         master d83bbd7
+phageannotator               dev    30d09bd   phaseimpute                  main   fe958c0   phyloplace                   master 68db179
+pixelator                    master 7513072   plasmodiumdrugres            dev    076642a   proteinannotator             main   7c77d3c
+proteinfamilies              main   f8c0b18   proteinfold                  master 290188b   proteogenomicsdb             master d1fdd0a
+provenancereport             dev    0b38a4b   radseq                       dev    d3d80e6   rangeland                    master 2ec849f
+raredisease                  master be0f2ed   rarevariantburden            dev    1b3f20e   readsimulator                master 0e8805d
+references                   main   d4757e9   reportho                     master 1fcd27b   ribomsqc                     master 79916e8
+riboseq                      master 11d66a3   rnadnavar                    master 4aed72d   rnafusion                    master 1c31538
+rnaseq                       master a1fcddd   rnasplice                    master 1a863e7   rnastructurome               master 9591130
+rnavar                       master 460ef36   sammyseq                     dev    d240748   sarek                        master 8ccac7a
+scdownstream                 dev    db0a622   scnanoseq                    master 90ee8ff   scrnaseq                     master 270b20b
+seqinspector                 master 6aa08aa   seqsubmit                    main   717fd19   slamseq                      master 081d363
+smrnaseq                     master 5002f79   sopa                         master 0b95996   spatialaxe                   master 748d310
+spatialvi                    dev    441ded5   spinningjenny                dev    5986174   stableexpression             master f031343
+taxmarker                    dev    37fe41d   taxprofiler                  main   3ed8f1e   tbanalyzer                   dev    7355f70
+tfactivity                   dev    e2af5dc   troughgraph                  dev    0caae67   tumourevo                    dev    30ae469
+variantbenchmarking          master d003c86   variantcatalogue             dev    0073caa   variantprioritization        main   5cf5d8b
+viralintegration             master fed5fa8   viralmetagenome              main   74064a4   viralrecon                   master fa23078
+```

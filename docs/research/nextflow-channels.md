@@ -949,3 +949,443 @@ emitted item), `elem`, `decompress`, `into`, and for text splitters `charset`, `
 - With `tag`, it prints only when `-dump-channels` matches the tag; it still forwards.
 - Output: same kind, order preserved. At completion it closes its output with `CH.close0`.
 
+### 5.42 Operators that are not available
+
+- `phase`, `into`, `spread`, `separate`, `choice`, `route`, `print`, `println`, `countBy` and the legacy `groupBy` are
+  not methods of `OperatorImpl` in this checkout. `extension/PhaseOp.groovy` and `extension/IntoOp.groovy` exist only
+  as helpers (`extension/CrossOp.groovy:75`, `extension/SplitOp.groovy:184`).
+- `groupBy` in `OperatorImpl` is the typed operator of section 10 (`extension/OperatorImpl.groovy:189-191`).
+- `chain(closure)` and `chain(params, closure)` are still public operator methods, but they are not documented
+  (`extension/OperatorImpl.groovy:409-419`). `chain(closure)` behaves like `map` without the `null` rule
+  (it uses `ChainWithClosure`).
+
+## 6. Pipe (`|`), and (`&`), `set`, `tap` and process output assignment
+
+### 6.1 Operator calls without a receiver
+
+Inside a workflow, a call like `map { ... }` or a bare name like `view` resolves to an operator call object
+(`OpCall`) when the name is an operator and no process or workflow has that name
+(`script/WorkflowBinding.groovy:102-116`, `script/WorkflowBinding.groovy:164-185`). The pipe gives it its source.
+This does not happen in typed scripts (`script/WorkflowBinding.groovy:112`, `:169-170`).
+
+With the strict parser, only the operator names declared in `WorkflowDslV1` can be used without a receiver
+(`modules/nf-lang/src/main/java/nextflow/script/dsl/WorkflowDslV1.java:44-86`,
+`modules/nf-lang/src/main/java/nextflow/script/control/VariableScopeVisitor.java:297-307`, `:767-784`).
+Names that are missing there include `dump`, `tap`, `splitJson`, `countLines`, `countFasta`, `countFastq`, `countJson`,
+`toInteger`, `toLong`, `toFloat`, `toDouble`, `mean`, `groupBy` and `chain`.
+Experiment: `channel.of('[1,2]') | splitJson | view` failed to compile with "`splitJson` is not defined".
+
+### 6.2 Pipe `|`
+
+Implemented in `extension/ChannelEx.groovy:115-196`:
+
+- `channel | op(args)`: runs `op` with `channel` as source.
+- `channel | P` (process or workflow): calls `P(channel)`.
+- `ChannelOut | P`: calls `P` with the channels spread as separate arguments.
+- `ChannelOut | op`: the first channel is the source and the other channels are the arguments (section 5.1).
+- `P | x`: calls `P()` with no arguments, then pipes its result into `x`.
+- A process or workflow operand is only allowed inside a workflow (`extension/ChannelEx.groovy:103-106`).
+  Operators allowed on the right side under the strict parser: section 6.1.
+- Deprecated in 26.04; not supported when static typing is enabled (`docs/workflow.mdx`, section "Special operators").
+
+### 6.3 And `&`
+
+- `P & Q` builds a composite. Calling it (for example `channel | (P & Q)`) calls `P` and `Q` with the same arguments.
+  The result is one `ChannelOut` with all outputs of `P` followed by all outputs of `Q`
+  (`extension/ChannelEx.groovy:198-208`, `script/CompositeDef.groovy:49-56`).
+- Example from `docs/workflow.mdx`: `channel.of('Hello') | map { ... } | (greet & to_upper) | mix | view`.
+
+### 6.4 `set` and `tap`
+
+See sections 5.30 and 5.35. `set` only binds a name to an existing channel. `tap` creates copies of the source channel.
+Neither changes values or order.
+
+### 6.5 Process and workflow results
+
+- A process call returns a `ChannelOut`: a list of the output channels in declaration order, plus a map from `emit`
+  names to channels (`script/ProcessDef.groovy:160-211`, `script/ChannelOut.groovy:59-72`). A duplicate `emit` name is
+  an error "Output channel name ... is used more than one time".
+- The compiler turns `emit: name` and `topic: name` identifiers into strings
+  (`modules/nf-lang/src/main/java/nextflow/script/control/ProcessToGroovyVisitorV1.java:124-136`).
+- `P.out` is the `ChannelOut` of the call of `P` in the current workflow scope. Access before the call, or on a process
+  without outputs, is an error (`script/ProcessDef.groovy:132-138`).
+- Access: `P.out[i]` by position, `P.out.name` by emit name.
+- A `ChannelOut` passed as an argument to a process or workflow is spread into separate arguments
+  (`script/ChannelOut.groovy:94-108`).
+- A process can be called only once per workflow scope. A second call fails with
+  "Process 'X' has been already used" (`script/BindableDef.groovy:38-47`). The check uses the fully qualified name.
+- The number of arguments must equal the number of declared inputs (`script/ProcessDef.groovy:167-168`).
+- A `null` argument is an error (section 2.5).
+- The strict parser only allows process, workflow and bare operator calls directly in a workflow body, not inside closures
+  (`modules/nf-lang/src/main/java/nextflow/script/control/VariableScopeVisitor.java:786-797`, method `checkDataflowMethod`).
+- Inside a named workflow, the process name becomes `WORKFLOW:PROCESS`; nested workflows add more prefixes
+  (`script/BindableDef.groovy:40-49`).
+
+## 7. Processes: how tasks are formed
+
+This section covers legacy processes (all nf-core processes). Section 7.9 notes the typed variant.
+
+### 7.1 Wiring at call time
+
+- Each input argument: a channel gets a new read cursor; a plain value becomes a value channel bound at once; `null` is an error
+  (`script/params/BaseInParam.groovy:71-86`, `:145-156`).
+- `each` input: a value channel is used as is; a queue channel is first collected with `toList`, so it waits for the
+  queue to complete; a plain value becomes a value channel. The value is then normalized: a collection stays, `null`
+  stays, anything else (including a map) becomes a one-element list (`script/params/EachInParam.groovy:82-103`).
+- A hidden control input is added as the last input: a queue holding one `true` and no STOP
+  (`script/params/DefaultInParam.groovy`, `processor/TaskProcessor.groovy:477`).
+- Output channels are created at call time (section 7.2 decides their kind) (`script/ProcessDef.groovy:180-200`).
+
+### 7.2 Singleton rule
+
+A process is a singleton when none of its inputs is a queue channel and it has no `each` input
+(`script/ProcessDef.groovy:181-183`, `processor/TaskProcessor.groovy:471-472`, `processor/TaskProcessor.groovy:593`,
+`script/params/InputsList.groovy:59-65`).
+A process without inputs is a singleton. A singleton runs at most one task. Its outputs are value channels.
+All other processes have queue channel outputs (`docs/process.mdx`, section "Singleton outputs").
+
+### 7.3 Firing rule
+
+- The process is one GPars operator over all inputs plus the control input (`processor/TaskProcessor.groovy:590-606`).
+- Each round requests one message from every input. When all have arrived, one task is created from them
+  (GPars `operator/DataflowOperatorActor.java:72-104`).
+- A value input is read again every round. Its value is reused by every task (GPars `operator/DataflowOperatorActor.java:56-69`).
+- Queue inputs are paired by position: task `k` gets the `k`-th value of each queue input.
+  Experiment: inputs `of(1,2,3)` and `of('a','b')` gave two tasks, `(1,a)` and `(2,b)`.
+- Control input (`processor/TaskProcessor.groovy:2017-2052`):
+  - Singleton or no inputs: every message on any input writes STOP to the control queue. The control queue already
+    holds `true`, so exactly one round can run.
+  - Otherwise: every value that arrives on the first queue input writes one more `true` to the control queue. So the
+    control input never limits the number of rounds.
+- The task index is assigned in round order (`processor/TaskProcessor.groovy:2063-2077`).
+- Docs: calling a process with more than one queue channel is discouraged because it is non-deterministic
+  (`docs/process.mdx`, section "Multiple inputs").
+
+### 7.4 `each` inputs
+
+- With `each` inputs, an extra "iterator" operator runs in front of the process (`processor/TaskProcessor.groovy:553-586`).
+  It fires by the rule of section 7.3 (once, if all other inputs are values). Each firing emits every combination of
+  the `each` lists into linking queues, with the non-`each` values repeated. The process operator then only has queue
+  inputs.
+- Combination order: Groovy `combinations()` over the `each` lists in declaration order. The first `each` input varies
+  fastest (`processor/ForwardClosure.groovy:59-95`).
+  Experiment: `each a` over `[a1,a2]` and `each b` over `[b1,b2,b3]` gave task order
+  `a1-b1, a2-b1, a1-b2, a2-b2, a1-b3, a2-b3`.
+- `each` does not support tuples (`docs/process.mdx`, section "Input repeaters").
+
+### 7.5 Termination
+
+- STOP on any input ends the process operator. No new task is created. Values that already arrived for an incomplete
+  round are dropped. Values still waiting on other inputs are ignored.
+- The STOP marks the process state as poisoned (`processor/TaskProcessor.groovy:2101-2120`).
+- The process is finished when it is poisoned and every created task has completed
+  (`processor/StateObj.groovy:71-73`, `processor/TaskProcessor.groovy:508-522`).
+- Then every queue output gets STOP, and every value output that is still unbound is bound to STOP
+  (`processor/TaskProcessor.groovy:1272-1291`, `processor/TaskProcessor.groovy:1969-1974`).
+  Outputs therefore close only after the last task finished.
+
+### 7.6 Empty and unbound inputs
+
+- Empty queue input: the first message is STOP. No task runs. All outputs close.
+  Experiment: a process called with `(of(1,2,3), channel.empty())` ran no task. Docs: "If the channel is empty, the
+  process will not launch any tasks" (`docs/process.mdx`, section "Multiple inputs").
+- Empty value input (bound to STOP, for example `channel.empty().collect()`): no task runs, value outputs become empty.
+  Experiment confirms.
+- Unbound value input: the process waits forever (section 4.3).
+
+### 7.7 From input values to a task
+
+- Tuple input: element `k` of the tuple is element `k` of the value. A map uses its values in order. A non-collection
+  value is a one-element tuple (`script/params/BaseInParam.groovy:171-199`).
+- Tuple size mismatch: an error with the v2 parser or strict mode, else a warning
+  (`processor/TaskProcessor.groovy:431-438`, `processor/TaskProcessor.groovy:1632-1644`).
+  Experiment: a 3-element value for a 2-element tuple failed with "Input tuple does not match tuple declaration".
+- Wrong number of `path` input files for the declared arity: error (`processor/TaskProcessor.groovy:1688-1689`).
+- Two input files with the same stage name: error (`processor/TaskProcessor.groovy:1704-1717`).
+- `when:` false: the task is not run. It counts as completed and binds no output (`processor/TaskProcessor.groovy:1874-1890`).
+
+### 7.8 Output emission
+
+- After a task succeeds, its outputs are collected and then bound (`processor/TaskProcessor.groovy:1952-1963`).
+- Binding is `synchronized`: all outputs of one task are bound together, in declaration order
+  (`processor/TaskProcessor.groovy:1355-1369`, `processor/TaskProcessor.groovy:1410-1460`).
+  Consequence (derived from source): for two outputs of the same process, the `k`-th value of each comes from the same
+  task, as long as no optional output was skipped.
+- Order across tasks: task completion order. With the `fair` directive, outputs are bound in task index order
+  (`processor/TaskProcessor.groovy:1371-1391`, `docs/reference/process/directives/fair.mdx`).
+- `fair` quirk: a task that binds no output (for example `when:` false) never fills its slot, so all later outputs
+  stay buffered and are lost when the process ends. Experiment: `fair true`, `when: x != 2`, inputs 1 to 4 gave only
+  `[1]`, and the run reported success. `fair true` does not occur in the nf-core corpus.
+- Each output binds one value per task. A tuple output binds a list of its elements. A copy of the list is bound
+  (`processor/TaskProcessor.groovy:1462-1474`).
+- A `path` output binds a single path when exactly one file matched and there is no `arity` or its maximum is 1, else a list
+  (`processor/TaskOutputResolverV1.groovy:127-135`; `script/params/ArityParam.groovy:61-67`).
+  An `arity` with minimum 0 accepts zero files (`processor/TaskOutputResolverV1.groovy:127`).
+- Optional outputs: `optional: true` is honoured on `path`, `env`, `eval` and `tuple` outputs, not on `val` or `stdout`
+  (`script/params/FileOutParam.groovy:37`, `EnvOutParam.groovy:28`, `CmdEvalParam.groovy:28`, `TupleOutParam.groovy:33`).
+  If the value is missing by Groovy truth (an empty file list, `null`, an empty string, 0), that output binds nothing
+  for the task. Other outputs of the task still bind (`processor/TaskProcessor.groovy:1427-1455`).
+  A missing file on a non-optional output fails the task.
+- Inside a tuple output, the tuple's own `optional` flag is copied to every `path` element and replaces the element's flag
+  (`script/params/TupleOutParam.groovy:96-102`). So `path(..., optional: true)` inside a tuple without `optional: true`
+  is not optional. Experiment: `tuple val(x), path('*.txt', optional: true)` failed the task with "Missing output file(s)".
+- Singleton process with a missing optional output: the value output stays unbound until the process finishes, then
+  it becomes an empty value. Experiment: `ifEmpty('X')` after it gave `X`.
+- Failed task: no outputs. With `errorStrategy 'ignore'` the process goes on. With `retry`, only the successful attempt
+  binds outputs (`processor/TaskProcessor.groovy:1087-1099`, `processor/TaskProcessor.groovy:1899-1932`).
+- A process without declared outputs gets a hidden output that receives a `DONE` marker per task
+  (`script/params/DefaultOutParam.groovy`, `processor/TaskOutputResolverV1.groovy:86-87`). Its `.out` is not accessible.
+- `publishDir` publishing happens right after binding (`processor/TaskProcessor.groovy:1956-1959`).
+- Topic outputs: section 8.4.
+
+### 7.9 Typed processes
+
+Only with `nextflow.enable.types = true` (`docs/process-typed.mdx`). Differences found in source:
+
+- Singleton when no input channel is a queue (`script/params/v2/ProcessInputsDef.groovy:98-102`, `isSingleton`).
+- Topic emissions are declared in a `topic:` section (`value >> 'name'`, `docs/process-typed.mdx` section "Topics").
+  They are bound to the topic when outputs are collected, before the regular outputs are bound
+  (`processor/TaskProcessor.groovy:1490-1505`). Topic sources are closed with the other outputs
+  (`script/params/v2/ProcessOutputsDef.groovy:105-112`).
+- A typed call result with one output is that channel. With several outputs it is a record of channels
+  (`script/DataflowTypeHelper.groovy:98-106`, `normalizeMultiChannelV2`).
+
+## 8. Workflows
+
+### 8.1 `take:`
+
+- The call arguments are bound to the `take` names, without wrapping. A `ChannelOut` argument is spread.
+  The count must match (`script/WorkflowDef.groovy:127-139`).
+- A plain value stays a plain value inside the workflow. It becomes a value channel only when passed to a process or
+  emitted.
+
+### 8.2 `emit:`
+
+- Forms: `emit: name`, `emit: name = expression`, and `emit: expression` (unnamed, stored as `$out`)
+  (`modules/nf-lang/src/main/java/nextflow/script/control/WorkflowToGroovyVisitor.java:113-133`).
+- After the body ran, each emit name is looked up (`script/WorkflowDef.groovy:141-174`):
+  - a channel is emitted as it is;
+  - a `ChannelOut` with one channel is unwrapped; with several channels it is an error "Cannot emit a multi-channel output";
+    with none it is an error "Cannot emit empty output";
+  - any other object becomes a value channel bound to it.
+- The result is a `ChannelOut` with names. `.out` works like for processes (section 6.5).
+- The duplicate-call check of `script/BindableDef.groovy:43-47` applies only to processes. But calling the same workflow
+  twice in one scope calls its processes twice under the same qualified name, which fails.
+  Experiment: a workflow `W` that calls process `P`, called twice from the entry workflow, failed with
+  "Process 'P' has been already used".
+
+### 8.3 Entry workflow
+
+- Runs once to build the graph (section 1.1). It may have `publish:` (section 8.5).
+- A named workflow cannot have `publish:` (`modules/nf-lang/src/main/java/nextflow/script/parser/ScriptAstBuilder.java:901-903`).
+
+### 8.4 Topic channels
+
+- A legacy process output with `topic: name` gets a new queue channel registered as a source of that topic
+  (`extension/CH.groovy:162-173`, `script/ProcessDef.groovy:192-198`). That channel is also the process output channel.
+- `channel.topic(name)` returns the one shared broadcast channel of the topic (`extension/CH.groovy:150-160`).
+- At ignition, for each topic (`extension/CH.groovy:106-123`):
+  - with sources: all sources are mixed into the topic channel (a `mix`, with an extra empty channel when there is only
+    one source); the topic channel gets STOP after all sources completed;
+  - without sources: the topic channel gets STOP at once. Experiment: `channel.topic('nothing').toList()` gave `[]`.
+- Sources are all topic outputs of all process calls in the run, from any workflow depth.
+- Emission order is task completion order across all sources, so it is not deterministic
+  (`docs/tutorials/topic-channels.mdx`, section "Guidelines").
+- A process that reads a topic (directly or indirectly) must not write to the same topic. Otherwise the run hangs,
+  because the topic waits for that process to finish (`docs/tutorials/topic-channels.mdx`, section "Guidelines").
+- Topic outputs cannot be used with process recursion (`script/ProcessDef.groovy:193-194`).
+- Experiment: a process called with `of(1,2)` and output `val y, topic: 'vers'` produced `[A1, A2]` on `channel.topic('vers')`.
+- Corpus: `topic: versions` is the dominant form (4 738 matching lines).
+
+### 8.5 `publish:` and the `output` block
+
+Rules:
+
+- `publish:` holds assignments `name = expression` (`modules/nf-lang/src/main/java/nextflow/script/control/WorkflowToGroovyVisitor.java:135-143`).
+  They run after the rest of the entry workflow body.
+  Each stores a channel in the session outputs map: a `ChannelOut` with one channel is unwrapped, several channels is an
+  error, a plain object becomes a value channel (`script/WorkflowBinding.groovy:187-199`).
+- A `publish:` section needs an `output` block and the other way round (compile errors,
+  `modules/nf-lang/src/main/java/nextflow/script/control/TypeCheckingVisitor.java:209-212`).
+- The `output` block runs after the entry workflow body and before ignition (`script/BaseScript.groovy:306-308`).
+  Every declared output must be assigned, and every assigned output must be declared (`script/OutputDsl.groovy:53-66`).
+  An output declared twice is an error (`script/OutputDsl.groovy:40-42`).
+- For each output that is not disabled, a publish operator subscribes to its channel (`script/OutputDsl.groovy:68-76`).
+
+Output directives (`script/OutputDsl.groovy:156-233`, `docs/workflow.mdx` section "Output directives"):
+
+| Directive | Meaning |
+| --- | --- |
+| `path` | a relative path string (default `'.'`, absolute is an error), or a closure called per value |
+| `index { path; header; sep }` | write an index file; `path` is required; CSV, JSON or YAML by extension |
+| `label` | repeatable; attaches labels to published files |
+| `contentType`, `enabled`, `ignoreErrors`, `mode`, `overwrite`, `storageClass`, `tags` | same as the `workflow.output` config options; `overwrite` defaults to `'standard'` |
+
+Defaults come from the `workflow.output` config scope (`script/OutputDsl.groovy:55`, `script/OutputDsl.groovy:90-106`).
+Each directive may appear once, except `label`.
+
+Per value (`extension/PublishOp.groovy:108-145`):
+
+- Target: `outputDir.resolve(path)`, or the result of the `path` closure (`extension/PublishOp.groovy:153-181`).
+  The closure may return a path string, or use `source >> target` statements. With statements, only the listed files are
+  published; a target ending in `/` is a directory; a collection source needs a directory target.
+  Any other result, including `null`, is an error "Invalid `path` directive" (`extension/PublishOp.groovy:179-180`).
+  It does not skip the value.
+- Files are found recursively in the value: paths, collection elements and map values.
+- Only files inside a task directory of the work directory (or of the bucket directory) are copied. Other files are left
+  as they are, but still appear in the index (`extension/PublishOp.groovy:270-288`, `extension/PublishOp.groovy:354-371`).
+- The value is recorded with each work path replaced by its published path. With publish statements, a work file that
+  is not listed is recorded as `null` (`extension/PublishOp.groovy:317-332`).
+- If no output directory is set, values are recorded with their work paths and nothing is copied.
+
+Errors while publishing (`extension/PublishOp.groovy:90-98`):
+
+- An exception is stored in the output's result value. Later values of that output are ignored.
+- The run is not aborted. The error only shows when the `workflow.onComplete` handler reads the outputs
+  (`script/OutputDsl.groovy:79-87`, `:152-154`).
+- Experiment: a `path` closure that returned `null` ended with `[SUCCESS]`, exit code 0, nothing published, and the log
+  message "Failed to invoke `workflow.onComplete` event handler".
+
+At completion (`extension/PublishOp.groovy:227-261`):
+
+- The output value is the list of recorded values, or for a value channel the single recorded value (`null` if empty).
+- The index file is written in record arrival order. CSV uses `header` and `sep`. An unknown extension is an error.
+- A workflow output event is sent.
+
+Corpus: 12 pipelines have an `output` block and the same 12 have a `publish:` section (grep of `.nf` files).
+
+## 9. Hang, error and silent-drop checklist
+
+Cases where Nextflow waits forever:
+
+1. `channel.value()` or `channel.value(null)` that is consumed (section 4.3, experiment).
+2. `first(criteria)` when no value matches and the output is consumed (section 5.15, experiment).
+3. Legacy `map` on a value channel whose closure returns `null`, when the output is consumed (section 5.22, experiment).
+4. A process that reads a topic it also writes (section 8.4).
+5. `watchPath` or `interval` without `take` or `until` (section 4.10, 4.11).
+6. Recursive workflows that use reduction operators such as `collect` (`docs/workflow.mdx`, section "Process and workflow recursion").
+7. Legacy `distinct`, `until`, `tap`, `buffer`, `collate`, `min` and `max` applied to a value channel (section 1.5, experiments).
+8. `take(0)` followed by another operator (section 5.34, experiment).
+
+Errors that abort the run:
+
+- Any exception in an operator closure (section 1.4).
+- `take`, `reduce` or `randomSample` on a value channel.
+- `groupTuple` on a non-list value.
+- `join` with `failOnDuplicate` or `failOnMismatch` violations; `remainder` with `failOnMismatch`.
+- `sum` of unsupported types; `max` with a closure of 0 or more than 2 parameters; `min` with such a closure once a
+  second value arrives.
+- `buffer` with `size`/`skip` and criteria; `collate` with `size <= 0` or `step <= 0`; `collate(size, step)` with
+  `step > size` (section 5.4).
+- `merge` with a closure whose parameter count differs from the number of operands.
+- `collectFile` content that is not a path, file, string or byte array.
+- Unknown options for operators and factories that check options (`checkParams`).
+- Factories called with a channel argument; `fromPath` with an empty pattern.
+- `fromPath` or `fromFilePairs` with `checkIfExists: true` and no match.
+- Process: wrong argument count, `null` argument, second call in the same scope, tuple size mismatch (v2 parser),
+  missing non-optional output file, input file name collision.
+- Workflow: emitting or publishing a multi-channel `ChannelOut`; output block and `publish:` mismatch.
+
+Errors that do not abort the run:
+
+- Errors while publishing a workflow output (section 8.5).
+
+Values that are dropped without any error:
+
+- `fromFilePairs` groups with fewer files than `size`.
+- `groupTuple` groups with a size and `remainder: false` that are not complete at the end.
+- `join` unmatched values without `remainder` (unless `failOnMismatch`). This includes keys that differ only in number
+  type, such as `Integer` 1 and `Long` 1.
+- `cross` unmatched values.
+- `branch` values that match no condition.
+- `merge` and multi-queue process inputs: values beyond the shortest queue.
+- `buffer` partial buffer without `remainder`.
+- `transpose` elements beyond the shortest list without `remainder`, and tuples with empty transposed lists (section 5.38).
+- `take` values after `n`, `until` values after the condition, `first` values after the first.
+- `map`, `flatMap` and `flatten` results or items that are `null` or VOID.
+- `distinct` leading values whose key is `null`.
+- `collectFile`, `randomSample` and `sum` skip `null` values.
+- `collect` of an empty channel gives an empty value, and every process that reads it runs no task.
+- Process outputs after a skipped task when the process uses `fair true` (section 7.8).
+
+## 10. Typed core operators
+
+These run only with `nextflow.enable.types = true` (section 0.2). The operator list comes from
+`docs/reference/stdlib-types/channel.mdx` and `modules/nf-lang/src/main/java/nextflow/script/types/Channel.java`.
+
+General rules (`dataflow/ChannelImpl.groovy`):
+
+- A typed channel must wrap a broadcast channel; reading any other kind is an error (`dataflow/ChannelImpl.groovy:63-78`).
+- Every core operator is built on the subscribe helper of section 2.4. So order is preserved for single-input
+  operators, and output is written as values arrive.
+- Outputs are queue channels, except `collect` and `reduce` (value channels).
+- `set` and `tap` are errors: "not supported in typed workflows -- use an assignment instead". Any other name of an
+  `OperatorImpl` method falls back to the legacy implementation (`dataflow/ChannelImpl.groovy:333-347`).
+
+| Operator | Semantics in the typed implementation | Source |
+| --- | --- | --- |
+| `collect()` | At completion emits a `HashBag` of all values. It is unordered (hash map order) and is not a `List`. No flattening. Empty source gives an empty bag, not an empty value. | `dataflow/ChannelImpl.groovy:80-93`, `modules/nf-commons/src/main/nextflow/util/HashBag.java` |
+| `combine(channel or value)` | All pairs, each emitted when the later of the two arrives. Only `ArrayTuple` values are flattened into the result, plain lists are not. STOP after both sides complete. No `by` option in this method. | `dataflow/ops/CombineOpV2.groovy:55-145` |
+| `combine(name: value, ...)` | Adds the named fields to each source record; the new fields win on name clashes. A dataflow value argument is read (waiting) for each record. A channel argument or a non-record source value is an error. | `dataflow/ops/CombineOpV2.groovy:64-92`, `modules/nf-commons/src/main/nextflow/util/RecordMap.java:67-72` |
+| `filter(closure)` | Groovy truth of the closure result. No `isCase` criteria. | `dataflow/ChannelImpl.groovy:131-144` |
+| `flatMap([closure])` | Emits each element of the returned iterable. A tuple result is an error. | `dataflow/ChannelImpl.groovy:146-162` |
+| `groupBy()` | Input `(key, value)` or `(key, size, value)`, else error. A sized group is emitted as `(key, bag)` as soon as it is full. Errors: a value for a key that was already emitted, a size that differs from the first size for the key, a sized group that is not full at completion. Unsized groups are emitted at completion, in hash map order. | `dataflow/ops/GroupByOp.groovy:44-100` |
+| `join(other, by: 'field', remainder:)` | Record join. `by` is required. Every left and right record with equal key is combined (relational join); the right fields win on name clashes. `remainder: true` emits unmatched left records, then unmatched right records, at completion. No `failOn*` options. `by` as an integer uses the legacy join. | `dataflow/ChannelImpl.groovy:171-179`, `dataflow/ops/JoinOpV2.groovy:51-150`, `modules/nf-commons/src/main/nextflow/util/RecordMap.java:67-72` |
+| `map(closure)` | Emits every result, including `null`. | `dataflow/ChannelImpl.groovy:181-193` |
+| `mix(channel or value)` | One operand per call. Interleaved; STOP after both complete. | `dataflow/ChannelImpl.groovy:195-219` |
+| `reduce(closure)` | Value. First value is the seed. Empty source is an error "received an empty channel with no initial value". | `dataflow/ChannelImpl.groovy:221-247` |
+| `reduce(seed, closure)` | Value. Empty source gives the seed. | `dataflow/ChannelImpl.groovy:249-263` |
+| `subscribe(...)` | As section 2.4. | `dataflow/ChannelImpl.groovy:265-275` |
+| `unique([closure])` | Drops values whose key was seen before. | `dataflow/ChannelImpl.groovy:277-296` |
+| `until(closure)` | Emits values until the condition is true, then STOP. Keeps reading and ignoring the rest of the source. | `dataflow/ChannelImpl.groovy:298-321` |
+| `view(...)` | Legacy `view`. | `dataflow/ChannelImpl.groovy:323-329` |
+
+Value methods (`dataflow/ValueImpl.groovy`): `combine(value or named args)` gives a value; `flatMap` gives a channel;
+`map` gives a value; `mix(channel)` gives a channel; `subscribe`; `view`. Other names fall back to the legacy operators.
+By source, `flatMap` and `map` on an empty value never close or bind their output, because they only act in `onNext`
+(`dataflow/ValueImpl.groovy:88-111`).
+
+Docs describe typed `collect` as having "the same semantics as `toList`" (`docs/tutorials/static-types-operators.mdx:20`).
+The source emits a bag, which is unordered. This document follows the source.
+
+## 11. Usage in the nf-core corpus
+
+Rough counts of `.<name>` in `.nf` files of `~/.cache/iunctus/corpus/nf-core-text` (pipelines and modules).
+They include non-channel uses such as `List.collect` or `Map.each`, so they are only a priority hint.
+
+| Name | Count | Name | Count | Name | Count |
+| --- | --- | --- | --- | --- | --- |
+| `map` | 8018 | `mix` | 6896 | `join` | 4137 |
+| `empty` | 3921 | `collect` | 3610 | `set` | 1536 |
+| `first` | 1340 | `combine` | 1077 | `ifEmpty` | 916 |
+| `value` | 868 | `filter` | 864 | `fromPath` | 844 |
+| `groupTuple` | 732 | `unique` | 694 | `collectFile` | 610 |
+| `branch` | 599 | `toList` | 538 | `flatten` | 520 |
+| `of` | 297 | `multiMap` | 285 | `topic` | 261 |
+| `transpose` | 202 | `flatMap` | 198 | `dump` | 189 |
+| `fromList` | 189 | `splitCsv` | 149 | `concat` | 90 |
+| `distinct` | 80 | `count` | 73 | `toSortedList` | 72 |
+| `last` | 46 | `view` | 45 | `max` | 37 |
+| `cross` | 36 | `collate` | 36 | `min` | 29 |
+| `tap` | 28 | `splitText` | 28 | `merge` | 22 |
+| `sum` | 21 | `take` | 18 | `reduce` | 14 |
+| `buffer` | 7 | `fromFilePairs` | 7 | `randomSample` | 3 |
+| `splitJson` | 3 | `until` | 0 | `watchPath` | 0 |
+
+Other facts from the same corpus: `failOnMismatch` 233 lines, `failOnDuplicate` 219, `remainder: true` 325,
+`groupKey(` 116, `optional: true` 6124, `.out.` 18158 lines, process `each` inputs 25 lines, `| map` 67 lines,
+`fair true` 0 lines, `nextflow.enable.types` 0 files.
+
+## 12. Unverified points
+
+- `fromPath` emission order. It is the `Files.walkFileTree` order, which depends on the file system.
+- Typed `flatMap` when the closure returns a `Map` or a non-iterable value.
+- `fair` together with a failed task under `errorStrategy 'ignore'`. By source it behaves like the `when:` case of
+  section 7.8 (later outputs lost); only the `when:` case was run.
+- The exact start order of tasks when the process operator runs task creation in parallel (`maxForks: session.poolSize`).
+  The task index order is exact; the order in which tasks reach the executor may differ.
+- Several experiments listed in this document come from the first version of this specification and were not re-run
+  during verification. They agree with the source reading. Re-run during verification: `reduce`, `map`, `flatMap`,
+  `flatten`, `distinct`, `count`, `buffer`, `collate`, `transpose`, `join` (number types), `collect`, `collectFile`,
+  `groupTuple` (`GroupKey`, negative size), `merge` (closure), `min`, `take(0)`, `filter` (`isCase`), tuple optional
+  outputs, process `null` argument, workflow called twice, `fromSRA` compile, strict pipe names, publish `null` path.

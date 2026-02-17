@@ -1401,3 +1401,35 @@ Each step lists what it adds; the numbers are pipelines unless stated.
 - The deprecated `channel.from` factory (24 pipelines).
   It is deprecated, not rejected (`docs/tutorials/static-types.mdx`, lines 568 to 580).
 
+### Step 4: legacy code outside the strict syntax
+
+- 45 pipelines contain code that the strict parser rejects (section 12).
+  Calls into Groovy classes from `lib/` (`WorkflowMain` in 18 pipelines, `NfcoreTemplate` in 17, and others) also fall outside a scope without full Groovy.
+  The older `nf-validation` plugin is included by 16 pipelines.
+- The project scope is the strict syntax only.
+  So these pipelines are best reported as unsupported until their code is updated, rather than handled by iunctus.
+  The counts show how many pipelines that leaves out today.
+
+## Config files
+
+See nf-core-config.md.
+
+## Unverified points
+
+- The commit of the modules repo copy is not recorded.
+- `WorkflowMain`, `NfcoreTemplate`, `NfcoreSchema`, `Utils`, `Constants` and the `Workflow<Pipeline>` names are assumed to be classes in the pipeline `lib/` directory, which the text corpus does not contain.
+- The split between channel operators and value methods depends on the channel inference (section 3, the two uncertain groups).
+- The "Documented" column in section 4 matches names only.
+  A name can be documented for one type (for example `first` on lists) and be used on another.
+- Getter rows in section 4 can include map keys.
+  For example `name (property)` also counts `meta.name`, so it is an upper bound.
+- The strict parser was not run on the corpus.
+  Rows marked "Not tested" or "Unverified" in section 13 were judged from the grammar only.
+- The docs show `workflow.onComplete` as a top-level statement or as a section of the entry workflow (`docs/strict-syntax.mdx`, lines 461 to 500; `docs/notifications.mdx`, lines 9 to 35).
+  nf-core calls it inside a named workflow.
+  Whether that runs as intended under the strict parser was not tested.
+- `getVal()` is called on the object returned by the `toList` operator (`modules/nextflow/src/main/groovy/nextflow/extension/OperatorImpl.groovy`, lines 511 to 514).
+  The method is not in `docs/reference`.
+  It is assumed to be the blocking read of a GPars dataflow variable; the class of the returned object was not checked.
+- The check for `$` in slashy strings looks at the text of the slashy string node.
+  A regular expression that uses `$` as an anchor followed by a letter would be counted by mistake.

@@ -467,3 +467,479 @@ echo "disk=null queue=null"
 
 Note that a user call to `str.stripIndent()` without an argument runs the **Java** `String.stripIndent()`, which is different. It also removes trailing spaces on each line. And a last line that is only whitespace counts when finding the indent. Observed: `"    a\n  ".stripIndent()` is `"  a\n"`, and `"  a  \n  b".stripIndent()` is `"a\nb"`.
 
+## 7. Groovy truth
+
+A value is converted to a boolean in `if`, `assert`, `!`, `&&`, `||`, `?:`, the ternary condition, and `filter`-like closures. The rule is `DefaultTypeTransformation.castToBoolean` (Groovy `org/codehaus/groovy/runtime/typehandling/DefaultTypeTransformation.java:185-198`). `null` is false, and a `Boolean` is itself. Anything else calls the most specific `asBoolean()` method.
+
+| Value | False when | Source |
+| --- | --- | --- |
+| `null` | always | Groovy `DefaultTypeTransformation.java:187` |
+| Boolean | `false` | |
+| Integer, Long, BigInteger, BigDecimal | `doubleValue() == 0` | Groovy `DefaultGroovyMethods.java:12136-12142` |
+| Double, Float | zero or `NaN` | Groovy `DefaultGroovyMethods.java:12111-12126` (observed: `NaN` is false) |
+| String (any `CharSequence`) | length 0 (`' '`, `'false'` and `'0'` are true) | Groovy `StringGroovyMethods.java:92-97` |
+| Collection (List, Set, range, tuple) | empty (`[null]` is true) | Groovy `DefaultGroovyMethods.java:11874-11880` |
+| Map, Record | empty | Groovy `DefaultGroovyMethods.java:11892-11898` |
+| Array (`String[]`) | length 0 | Groovy `DefaultGroovyMethods.java:11943` |
+| Iterator | no next element | Groovy `DefaultGroovyMethods.java:11909` |
+| Matcher | `matcher.find(0)` is false; the test resets the matcher | Groovy `StringGroovyMethods.java:107-113` |
+| MemoryUnit | zero bytes | `MemoryUnit.groovy:180-182` |
+| Duration | zero milliseconds | `Duration.groovy:348-350` |
+| Path, Closure, other objects | never (a Path to a missing file is true) | Groovy `DefaultGroovyMethods.java:11845` |
+
+The documentation table (`docs/reference/semantics.mdx`, section "Booleans") agrees. It does not list `NaN`, matchers, arrays, MemoryUnit or Duration.
+
+A consequence of the number rule: a `BigDecimal` so small that its `doubleValue()` is `0.0` is false (observed: `1e-400` is falsy).
+
+## 8. Operators
+
+### 8.1 Precedence and associativity
+
+From highest to lowest (`modules/nf-lang/src/main/antlr/ScriptParser.g4:508-579`; `docs/reference/syntax.mdx`, section "Precedence"). Each alternative of the ANTLR `expression` rule is its own level, in the order written. So `as`, `instanceof` and the relational operators are three levels (`ScriptParser.g4:540-542`). The documentation lists them separately too.
+
+| Level | Operators | Notes |
+| --- | --- | --- |
+| 0 | primary, `.x`, `?.x`, `*.x`, `(args)`, trailing closure, `[index]` | |
+| 1 | `!`, `~` (prefix) | `!a == b` is `(!a) == b` (observed: `!1 == false` is true) |
+| 2 | `**` | left-associative: `2 ** 3 ** 2` is 64 |
+| 3 | unary `+`, `-` | `-2 ** 2` is `-4` (observed) |
+| 4 | `*`, `/`, `%` | |
+| 5 | binary `+`, `-` | |
+| 6 | `<<`, `>>`, `>>>`, `..`, `..<` | `1 << 2 + 1` is 8; `1 + 1..3` is `[2, 3]` (observed) |
+| 7 | `as` | `3 < 20 as String` is `3 < ('20')` and throws "Cannot compare" (observed) |
+| 8 | `instanceof`, `!instanceof` | `1 < 2 instanceof Boolean` is `1 < (2 instanceof Boolean)` and throws (observed) |
+| 9 | `<`, `>`, `<=`, `>=`, `in`, `!in` | `1 in [1] == true` is `true` |
+| 10 | `==`, `!=`, `<=>` | |
+| 11 | `=~`, `==~` | lower than `==`: `'a' == 'a' =~ /true/` is a `Matcher` (observed) |
+| 12 | `&` | |
+| 13 | `^` | |
+| 14 | `\|` | |
+| 15 | `&&` | short-circuit |
+| 16 | `\|\|` | short-circuit |
+| 17 | `? :`, `?:` | right-associative |
+
+Assignment is a statement, not an expression (section 12).
+
+### 8.2 `==` and `!=`
+
+`a == b` runs `LangHelpers.compareEqual(a, b)` (`LangHelpers.java:47-88`). `a != b` is its negation. The steps are:
+
+1. If `a` and `b` are the same object (or both `null`): true.
+2. If both are `Integer`, or both `Long`, or both `Double`: Java `equals`. For `Double` this means `0.0d == -0.0d` is **false** and `NaN == NaN` is **true** (observed).
+3. If both are `Path`: `TaskPath.equals` (`TaskPath.groovy:88-101`). A `TaskPath` equals a plain path when the plain path's file name is the staged name and the plain path equals the target. Two plain paths use Java `equals`. A `Path` never equals a `String`: `file('/tmp/a') == '/tmp/a'` is false (observed).
+4. If either is a `MemoryUnit`: false if the other is `null`. Else `MemoryUnit.compareTo(unit, other) == 0`, where the other side may be a `MemoryUnit`, a `Number` (bytes, via `toLong()`) or a `CharSequence` (parsed) (`MemoryUnit.groovy:154-172`). `1.GB == '1 GB'` and `1.GB == 1073741824` are true (observed). **Zero values:** `MemoryUnit.compareTo` starts with `assert left` (`MemoryUnit.groovy:155`). That is Groovy truth, and a zero `MemoryUnit` is false. So when the `MemoryUnit` operand is zero bytes, the comparison throws a `PowerAssertionError`. That is an `Error`, which `catch( e )` does not catch. The `MemoryUnit` operand is the left one, or the right one when the left is not a `MemoryUnit`. Observed: `0.B == 0.B`, `0.B < 1.GB` and `0.ms == 0.ms` throw; `1.GB > 0.B` is `true`.
+5. The same applies for `Duration`, with numbers in milliseconds and the same zero-value `assert` (`Duration.groovy:357-375`).
+6. Otherwise Groovy `DefaultTypeTransformation.compareEqual` (Groovy `DefaultTypeTransformation.java:817-856`):
+   - One side `null`: false.
+   - If `a` is `Comparable`: `compareToWithEqualityCheck(a, b) == 0` (Groovy `DefaultTypeTransformation.java:749-811`):
+     - Number and Number: numeric comparison after promotion (section 5.1). So `1 == 1L`, `1 == 1.0`, `1.0 == 1.00` and `0.1 == 0.1d` are true, and `0.1f == 0.1d` is false (observed). A `BigDecimal` and a `Double` are compared as doubles.
+     - Number and a one-character String: the number is compared with the character code. `97 == 'a'` and `'a' == 97` are **true**; `1 == '1'` is false (observed).
+     - String and String (or GString): `String.compareTo`.
+     - Otherwise, `a.compareTo(b)` is tried when one class is assignable to the other, or when `b` is `Comparable`. A `ClassCastException` means "not equal". If neither holds, the result is "not equal". Observed: `'abc' == 5`, `5 == 'abc'`, `true == 'true'` and `[1] == '[1]'` are false.
+   - Two arrays: same length and element-wise `compareEqual`.
+   - An `Object[]` and a `List`, or two `List`s: same size and each pair equal by "coerced equality". Coerced equality compares numbers numerically, and otherwise uses `compareEqual` (Groovy `DefaultGroovyMethods.java:13576-13666`). So `[1, 2] == [1L, 2L]`, `[1, 2] == [1.0, 2.0]` and `['a', 'b'] == 'a,b'.split(',')` are true, and a tuple equals a list with the same elements (observed).
+   - Two `Map.Entry`s: Java-equal keys and `compareEqual` values.
+   - Otherwise `a.equals(b)`, dispatched by Groovy. So these Groovy overloads apply:
+     - Two `Set`s: same size, and every element has a coerced-equal partner (Groovy `DefaultGroovyMethods.java:13694-13725`). A set never equals a list (observed).
+     - Two `Map`s: same size, `keySet().equals(...)` (Java equality of keys), and coerced-equal values (Groovy `DefaultGroovyMethods.java:13738-13764`). Order does not matter. A record equals a map with the same entries (observed). `[1: 'a'] == [(1L): 'a']` is false (observed).
+   - `GroupKey` defines `equals` as equality with its key (`GroupKey.groovy:79-82`). So `groupKey('a', 2) == 'a'` is true, but `'a' == groupKey('a', 2)` is false, because `String` is `Comparable` and takes the branch above (observed).
+
+### 8.3 `<`, `<=`, `>`, `>=`
+
+These run `LangHelpers.compareLessThan` and friends (`LangHelpers.java:98-262`):
+
+1. Both `Integer`, both `Long` or both `Double`: primitive comparison.
+2. A `MemoryUnit` or `Duration` on either side: `compareTo` as in 8.2 step 4, including the zero-value `assert`. But a `null` on the other side gives **false** for every operator (observed: `1.GB < null` is false).
+3. Otherwise `ScriptBytecodeAdapter.compareTo(a, b)`, then the sign test. That is `DefaultTypeTransformation.compareTo`, the same algorithm as 8.2 step 6 but without the equality shortcut:
+   - `null` is smaller than everything: `null < 1` is true, and `1 < null` is false (observed).
+   - Numbers compare numerically after promotion.
+   - Strings compare by `String.compareTo` (UTF-16 code units): `'10' < '9'` and `'B' < 'a'` are true (observed).
+   - A Number and a one-character String compare by character code: `1 < '2'` is true (observed).
+   - Anything that cannot be compared throws `IllegalArgumentException` ("Cannot compare ..."). Examples: `[1] < [2]` and `1 < 'ab'` (observed).
+   - Paths compare with `Path.compareTo` (observed: `file('/tmp/a') < file('/tmp/b')`).
+
+### 8.4 `<=>`
+
+`a <=> b` is `ScriptBytecodeAdapter.compareTo(a, b)`, normalised to `-1`, `0` or `1` (Groovy `org/codehaus/groovy/runtime/ScriptBytecodeAdapter.java:773-780`). So `'a' <=> 'c'` is `-1`, while `'a'.compareTo('c')` is `-2` (observed). It is not rewritten to `LangHelpers`. So `MemoryUnit` and `Duration` use their own `compareTo(MemoryUnit)` or `compareTo(Duration)`. That has no zero-value `assert`: `0.B <=> 2.GB` is `-1`. But it does not accept strings or numbers: `1.GB <=> '1 GB'` throws "Cannot compare" (observed).
+
+### 8.5 `in` and `!in`
+
+`a in b` is `ScriptBytecodeAdapter.isCase(a, b)`, and `a !in b` is its negation (Groovy `ScriptBytecodeAdapter.java:714-723`). If `b` is `null`, the result is `a == null` (identity). Otherwise Groovy truth of `b.isCase(a)` is used. The method depends on the class of `b`:
+
+| `b` | Test | Source and observed |
+| --- | --- | --- |
+| `null` | `a` is `null` | `ScriptBytecodeAdapter.java:715-717`; `null in null` is true (observed) |
+| Collection (List, Set, tuple, `BlankSeparatedList`) | `b.contains(a)`, Java `equals` | Groovy `DefaultGroovyMethods.java:1196-1198`; `2L in [1, 2]` is **false**; `1.0 in [1.00]` is **false**; `null in [null]` is true |
+| `IntRange` | `a` is an `Integer` or `BigInteger` between the ends | Groovy `IntRange.java:428-438`; `2 in 1..3` true, `2L in 1..3` **false**, `2.5 in 1..3` false |
+| `NumberRange` (number ends, not both `Integer`) | walks the range elements and tests each with `compareEqual` | Groovy `NumberRange.java:566-577`; `2.5 in (1.5..3)` true, `2.0 in (1.5..3)` **false** (observed) |
+| `ObjectRange` (for example strings) | walks the range elements and tests each with `compareEqual` | Groovy `ObjectRange.java:387-397`; `'b' in 'a'..'c'` true |
+| Map, Record | Groovy truth of `b.get(a)` | Groovy `DefaultGroovyMethods.java:1217-1219`; `'a' in [a: 0]` and `'a' in [a: null]` are **false** |
+| String (any `CharSequence`) | `b.toString().equals(a.toString())`; `null` gives false | Groovy `StringGroovyMethods.java:1619-1624`; `'b' in 'abc'` false; `1 in '1'` **true** (observed) |
+| Pattern | the whole `a.toString()` matches; `null` gives false | Groovy `StringGroovyMethods.java:1645-1656`; `'abc' in ~/a.c/` true (observed) |
+| Class | `b.isInstance(a)`; if `a` is a Class, `b.isAssignableFrom(a)` | Groovy `DefaultGroovyMethods.java:1170-1176`; `'abc' in String` true (observed) |
+| Number, when `a` is a Number | numeric comparison is 0 | Groovy `DefaultGroovyMethods.java:1231-1233`; `1 in 1.0` true (observed) |
+| Closure | Groovy truth of `b.call(a)` | Groovy `groovy/lang/Closure.java:398-403` |
+| Array | as a collection (`contains`) | Groovy `DefaultGroovyMethods.java:1118-1123`; `'y' in 'x_y_z'.split('_')` true (observed) |
+| other | `b.equals(a)` | Groovy `DefaultGroovyMethods.java:1118-1123` |
+
+The map rule is documented in `docs/reference/stdlib-types/map.mdx` (`in`). But `docs/reference/semantics.mdx` ("Membership operators") says `in` tests for a key (section 13). Use `containsKey` to test for a key.
+
+### 8.6 Regular expressions
+
+- `a =~ b` returns a `java.util.regex.Matcher` (Groovy `org/codehaus/groovy/runtime/InvokerHelper.java:308-325`). `a` is converted with `FormatHelper.toString` unless it is a `String`. So a `Path` is matched by its path text, and `null` by the text `null` (observed: `null =~ /nu/` is truthy). If `b` is a `Pattern`, it is used. Otherwise `b` is converted to a string and compiled with Java `Pattern.compile`.
+- As a boolean, the matcher means `find(0)`: the pattern occurs somewhere.
+- `a ==~ b` returns a `Boolean`: the whole string matches (Groovy `InvokerHelper.java:333-345`). If either side is `null`, the result is `false` (observed).
+- `~'text'` and `~/text/` create a `Pattern`.
+- The dialect is Java `java.util.regex`. This includes `(?i)` flags (observed: `'ABC' ==~ /(?i)abc/` is true), `\d`, possessive quantifiers and named groups `(?<name>...)`. Slashy strings pass backslashes through unchanged, except `\/`, `\uHHHH` and backslash-newline (section 4.3). So `/\d+/` is the Java pattern `\d+`.
+- Matcher indexing, `m[i]` (Groovy `StringGroovyMethods.java:1369-1387`):
+  - It counts all matches from the start (`getCount`, `:1481-1488`).
+  - If `i` is outside `-count..count-1`, it throws `IndexOutOfBoundsException`. A negative `i` counts from the end.
+  - The element is the matched `String` when the pattern has no groups. Otherwise it is a `List` of the whole match followed by each group (`null` for a group that did not take part).
+  - Observed: `('sample_R1_001.fastq.gz' =~ /(.+)_R(\d)_/)[0]` is `[sample_R1_, sample, 1]`, and `('a1b2' =~ /\d/)[1]` is `2`.
+- `m.count` / `m.getCount()` is the number of matches, as an `Integer`. `m.size()` is the same number as a `Long` (Groovy `StringGroovyMethods.java:2701-2703`; observed).
+- `String.replaceAll(regex, replacement)` and `replaceFirst` use Java rules: `$1` refers to a group, and `\` escapes (observed: `'sample_R1.fq'.replaceAll(/_R(\d)/, '-$1')` is `sample-1.fq`). `replaceAll(regex) { m -> ... }` with a closure is a Groovy extension, and the closure gets the match (observed).
+- `String.split(regex)` is Java. The argument is a regex, and trailing empty strings are removed. `'a.b.c'.split('.')` is an empty array, and `'a,b,,'.split(',')` is `[a, b]` (observed). `split(regex, -1)` keeps them (observed: `[a, b, , ]`). The result is a `String[]`.
+- `str - ~/regex/` removes the first match (Groovy `StringGroovyMethods.java:1914-1916`).
+
+### 8.7 Logical operators, ternary, Elvis
+
+- `!a` is `!truth(a)` and returns a `Boolean`.
+- `a && b` and `a || b` convert both sides with Groovy truth, short-circuit, and always return a `Boolean` (observed: `'a' && 'b'` is `true`, not `'b'`).
+- `c ? x : y` evaluates only the chosen branch.
+- `a ?: b` returns `a` itself (not a Boolean) if `a` is truthy, else `b`. So `0 ?: 5` is 5, and `'' ?: 'x'` is `x` (observed). `task.ext.args ?: ''` is the common pattern.
+- `x ?= y` is `x = x ?: y` (`docs/reference/semantics.mdx`, section "Assignments"; observed: `def x = 0; x ?= 7` gives 7). The target is always written back, even when `x` is truthy. Observed: `def r = record(a: 1); r.a ?= 2` throws `UnsupportedOperationException`.
+
+### 8.8 Safe navigation and spread
+
+- `a?.b` and `a?.m()` give `null` when `a` is `null` (`docs/reference/syntax.mdx`, "Property expression"; observed).
+- `a.b` on `null` throws `NullPointerException` ("Cannot get property 'b' on null object"). `a.m()` on `null` throws "Cannot invoke method m() on null object" (observed).
+- `a*.b` and `a*.m()` collect the property or call over the elements of `a` into a new `ArrayList`. If `a` is `null`, the result is `null`. A `null` element gives a `null` result element, not an error, because the parser marks spread access as safe too (`ScriptAstBuilder.java:1490-1497`; observed: `['a', null]*.size()` is `[1, null]`).
+- The spread operator in list literals and argument lists (`[*a]`, `f(*a)`) and the map spread `[*:m]` are not allowed (section 12).
+
+### 8.9 `as` casts
+
+`as T` calls `asType`. Nextflow adds cases for `String`, `GString`, `Number` and `File` (`modules/nf-commons/src/main/nextflow/extension/Bolts.groovy:433-513`). Only hard casts exist. The soft cast `(T) x` is not allowed (`docs/strict-syntax.mdx`, "Type conversions").
+
+| Source | `as` target | Result (observed unless noted) |
+| --- | --- | --- |
+| String | `Integer`, `Long` | Java parse after `trim()`: `' 42 ' as Integer` is 42; `'4.5' as Integer` throws `NumberFormatException` |
+| String | `Double`, `Float`, `BigDecimal` | Java parse: `'1e3' as BigDecimal` is `1E+3` |
+| String | `Boolean` | Groovy truth: `'false' as Boolean` is **true**, `'' as Boolean` is false |
+| String | `List` | list of one-character strings: `'abc' as List` is `[a, b, c]` |
+| String | `Duration`, `MemoryUnit` | parsed (section 4.5) |
+| String | `Path` | `FileHelper.asPath` |
+| String | `URL`, `URI` | `new URL(str)`, `URI.create(str)` (`Bolts.groovy:446-451`) |
+| Number | `Duration`, `MemoryUnit` | from `longValue()` (millis or bytes): `3600000 as Duration` is `1h`, `1024 as MemoryUnit` is `1 KB`. A negative number fails the `assert`. |
+| Number | `Integer`, `Long` | truncates toward zero |
+| Number | `Boolean` | Groovy truth |
+| any | `String` | `FormatHelper.toString`: `[1, 2] as String` is `[1, 2]`, `[a: 1] as String` is `[a:1]` |
+| Collection | `Set` | the same object if it is already a `Set`; otherwise a new `LinkedHashSet` in source order (Groovy `DefaultGroovyMethods.java:12177-12187`; observed) |
+| Collection | `List` | the same object if it is already a `List` (a tuple stays a tuple); otherwise a new `ArrayList` (Groovy `DefaultGroovyMethods.java:11829-11835`; observed: `(a as List).is(a)` is true) |
+| `null` | any | `null` |
+
+`String.toInteger()`, `toLong()`, `toDouble()`, `toFloat()` and `toBigDecimal()` parse after trimming (Groovy `StringGroovyMethods.java:3153-3160` and neighbours; observed: `' 42 '.toInteger()` is 42, and `'4.0'.toInteger()` throws). `toBoolean()` is true only for `true`, `y` or `1` after trimming, ignoring case (observed: `'yes'.toBoolean()` is false).
+
+With static typing, a typed local declaration such as `def x: Integer = ...` keeps the type at run time, so Groovy's conversion to a typed variable applies (section 2 point 4, observed). Casting to a record type uses `TypeHelper.asType` (section 10.10).
+
+### 8.10 `instanceof`
+
+`a instanceof T` is the Java class test on the runtime class, with the classes of section 3. Observed: `1 instanceof Integer` is true, `1L instanceof Integer` false, `1.5 instanceof Double` false, `tuple(1) instanceof List` true, `record(a: 1) instanceof Map` true, and `(1..2) instanceof List` true. `a !instanceof T` is the negation. A test against a user record type is `TypeHelper.instanceofRecordType`. Then `a` must be a `RecordMap`, and every non-nullable field must be present and not `null` (`modules/nf-commons/src/main/nextflow/util/TypeHelper.groovy:232-247`).
+
+### 8.11 Indexing
+
+Lists (`getAt`/`putAt`, Groovy `DefaultGroovyMethods.java:8250-8258`, `:8351-8362`, `DefaultGroovyMethodsSupport.java:139-148`):
+
+- `l[i]` with `i >= 0`: the element, or `null` if `i >= size`.
+- `l[-k]`: element `size - k`. If `size - k < 0`, it throws `ArrayIndexOutOfBoundsException` (observed: `[10, 20, 30][-4]` fails).
+- `l[a..b]`: a new list of those elements (Groovy `DefaultGroovyMethods.java:7947-7960`).
+  - A reversed range gives reversed order: `[10, 20, 30][2..0]` is `[30, 20, 10]`.
+  - Negative ends count from the end.
+  - An end past the list throws `IndexOutOfBoundsException` (`l[0..5]` fails).
+  - `l[0..<0]` is empty (observed).
+  - On a tuple, the result is a plain `ArrayList` (observed).
+- `l[i, j]`: a list of `l[i]` and `l[j]`, with `null` for positions past the end (observed: `l[0, 5]` is `[10, null]`, and `[10, 20][-1, 0]` is `[20, 10]`).
+- `l[i] = v` with `i >= size` pads with `null`: `x = [1]; x[3] = 4` gives `[1, null, null, 4]`. Negative indexes count from the end. Tuples throw `UnsupportedOperationException` on assignment.
+- `l.get(i)` is the Java method: out of range throws.
+
+Strings (`'abc'[i]` and ranges, Groovy `StringGroovyMethods.java:1425-1450`):
+
+- Indexing returns a **String** of one character, not a `char` (observed).
+- Negative indexes count from the end.
+- A positive index past the end throws `StringIndexOutOfBoundsException`. A negative index before the start throws `ArrayIndexOutOfBoundsException` (observed: `'abc'[5]` and `'abc'[-4]`).
+- `s[1..3]` is a substring; a reversed range reverses it (observed: `'abcd'[3..1]` is `dcb`); `s[0, 2, 4]` concatenates characters (observed).
+- The documentation says `[]` on a string returns `char` (`docs/reference/stdlib-types/string.mdx`). At run time it is a `String`.
+
+Arrays (`String[]`): `a[i]` with a negative index counts from the end. An index past the end throws `ArrayIndexOutOfBoundsException`, not `null` (observed: `'x_y_z'.split('_')[5]` fails).
+
+Maps: `m[k]` is `m.get(k)` (`null` when missing), and `m[k] = v` is `m.put(k, v)`. Keys use Java `equals` and `hashCode`, so `[1: 'a'][1L]` and `[1.0: 'a'][1.00]` are `null` (observed).
+
+Matchers: section 8.6.
+
+### 8.12 Property access
+
+- **Maps**: `m.key` and `m.'key'` read `m.get('key')`, and missing keys give `null`. This also hides real methods: `m.class` and `m.empty` are `null` for a map without such keys. Use `m.getClass()` and `m.isEmpty()` (observed). `m.key = v` puts. Records work the same for reading and throw on writing.
+- **Other objects**: `x.name` calls `getName()` (or `isName()` for booleans), and `x.name = v` calls `setName(v)`. Examples: `file.name`, `file.baseName`, `task.cpus`, `90.min.minutes` (`getMinutes()`), `2.GB.bytes`, `nextflow.version.major` (observed).
+- **Lists**: a property that the list itself has is read from the list: `['ab', 'c'].size` is 2, `[].empty` is true, and `[1, 2].first` is 1 (the JDK 21 `List.getFirst()`) (observed). Any other property name is spread over the elements: `[[a: 1], [a: 2], [b: 3]].a` is `[1, 2, null]`. An element that is not a map and lacks the property makes it throw (observed).
+- **Strings**: only real getters work. `'abc'.size` fails, because it is a method, not a property. `''.empty` is `true`, and `'ab'.bytes` works (observed).
+- **Integers**: unknown properties fall through to the unit suffixes (section 4.5), else `MissingPropertyException`.
+
+### 8.13 `+`, `-`, `*` and `<<` on non-numbers
+
+| Expression | Result | Source / observed |
+| --- | --- | --- |
+| `str + x` | concatenation with `FormatHelper.toString(x)` | Groovy `StringGroovyMethods.java:2150` |
+| `num + str` | `toString(num) + str` | `1 + 2 + 'a'` is `3a`, `'a' + 1 + 2` is `a12` |
+| `str - x` | remove the first occurrence of `toString(x)` | `'a-b-c' - '-'` is `ab-c` (Groovy `StringGroovyMethods.java:1892-1902`) |
+| `str - pattern` | remove the first match | `'file.fastq.gz' - ~/\.gz$/` is `file.fastq` |
+| `str * n` | repeat; `n = 0` gives `''`; a negative `n` throws `IllegalArgumentException` | Groovy `StringGroovyMethods.java:1928-1935`; observed |
+| `str << x` | a `StringBuffer` with both parts | `'a' << 'b'` is the StringBuffer `ab` |
+| `list + x` | new list with `x` appended; if `x` is a collection, its elements are appended | `[10] + 40` and `[10] + [40]` both give `[10, 40]`; `[10] + [[40]]` gives `[10, [40]]` |
+| `list - x` | new list without all elements equal to `x` (or to any element of a collection `x`); numbers are compared numerically | `[1, 2, 2, 3] - [2]` is `[1, 3]`; `[1, 2] - [2L]` is `[1]`; `[1.0] - [1.00]` is `[]`; `[1, 2, 2L, 3] - 2` is `[1, 3]` |
+| `list * n` | repeated list | `[10, 20] * 2`; `[1] * 0` is `[]` |
+| `list << x` | **mutates** the list and returns it | observed: returns the same object |
+| `set + iterable`, `set - iterable` | new `LinkedHashSet` | observed |
+| `map + map` | copy of the left map, then `putAll` of the right; an existing key keeps its position and gets the new value | `[b: 2] + [a: 1] + [b: 3]` is `[b:3, a:1]` (Groovy `DefaultGroovyMethods.java:8604-8608`) |
+| `map - map` | remove entries whose key and value both match | `[a: 1, b: 2] - [a: 1]` is `[b:2]`; `- [a: 5]` removes nothing (Groovy `DefaultGroovyMethods.java:14159-14172`) |
+| `map << map` | **mutates** the left map (`putAll`) | observed |
+| `record + record` | new record, right side wins | `RecordMap.java:67-72`, observed |
+| `record + map` | throws `UnsupportedOperationException` | observed |
+| `tuple + list` | throws `UnsupportedOperationException` (the copy is a tuple) | observed |
+| `path / str` | `path.resolve(str)`; an empty or null `str` gives `path` | `FilesEx.groovy:1406-1418` |
+| `path + str` | a sibling path whose file name has `str` appended | `file('/tmp/dir/x.gz') + '.bai'` is `/tmp/dir/x.gz.bai` (`FilesEx.groovy:1389-1404`) |
+| `path << str` | appends text to the file | `docs/reference/stdlib-types/path.mdx` |
+
+### 8.14 Assignment
+
+- `x op= y` is `x = x op y` (`docs/reference/semantics.mdx`, "Assignments"). It builds a new object: `def x = [1]; def y = x; x += [2]` leaves `y` as `[1]` (observed). `x /= 2` on an `Integer` gives a `BigDecimal`. `m.n += 1` and `l[0] += 1` read, compute and write back. If the old value is `null`, `+` fails ("Cannot execute null+1", observed; Groovy `NullObject.java:161-163`).
+- `def (a, b) = expr` and `(a, b) = expr` take `expr[0]`, `expr[1]`, ... with the indexing rules of section 8.11.
+  - For a list, missing positions become `null` and extra elements are ignored (observed: `def (a, b, c) = [1, 2]` gives `c == null`; `def (a, b) = [1, 2, 3]` gives `1/2`).
+  - For a `String[]` or a `String` that is too short, the missing index throws (observed: `def (a, b, c) = 'x_y'.split('_')` throws `ArrayIndexOutOfBoundsException`, and `def (a, b, c) = 'xy'` throws `StringIndexOutOfBoundsException`).
+  - A long enough string is indexed by character (`def (a, b) = 'xy'`).
+- A declaration without a value is `null`.
+
+## 9. Closures and functions
+
+### 9.1 Parameters
+
+- `{ a, b -> ... }` declares parameters. A parameter may have a default: `{ a, b = 5 -> a + b }` (observed: `.call(1)` is 6).
+- `{ ... }` and `{ -> ... }` both have one optional parameter named `it`, with default `null` (section 2 point 7). `getMaximumNumberOfParameters()` is 1 for both (observed). So `{ -> 5 }.call(1)` returns 5, and `[1].each { -> ... }` runs (observed). This differs from plain Groovy, where `{ -> ... }` takes no arguments.
+- Using `it` in the body is allowed, with a deprecation warning (`modules/nf-lang/src/main/java/nextflow/script/control/VariableScopeVisitor.java:824-871`; `docs/strict-syntax.mdx`, "Implicit closure parameter").
+- A parameter may not reuse the name of a variable in an enclosing scope (lint error "`x` is already declared", observed).
+
+### 9.2 Calling closures and argument adaptation
+
+- Call a closure value with `c.call(args)`. A local closure variable cannot be called as `c(args)` in strict syntax: the checker reports "`c` is not defined" (observed with `nextflow lint`; `VariableScopeVisitor.java:782`). An expression followed by arguments in parentheses, such as `{ a -> a * 2 }(21)`, becomes `.call(...)` (`ScriptAstBuilder.java:1896-1911`; observed result 42).
+- Groovy first looks for a closure `doCall` that accepts the arguments as given. Only if none matches, and there is exactly one argument that is a `java.util.List`, does it spread the list into separate arguments and try again (Groovy `org/codehaus/groovy/runtime/metaclass/ClosureMetaClass.java:265-272`). This is the destructuring used by `map { a, b -> }`:
+  - A one-parameter closure always receives the whole list.
+  - A closure that can also be called with one argument, because its other parameters have defaults, also receives the whole list. Observed: `{ a, b = 5 -> "${a}/${b}" }.call([1, 2])` is `[1, 2]/5`.
+  - Otherwise the list is spread when its size is an allowed argument count. Observed: `{ a, b -> }` takes a 2-element list, and `{ a, b, c = 5 -> "${a}/${b}/${c}" }.call([1, 2])` is `1/2/5`.
+  - Any other size, or a non-list argument, throws `MissingMethodException`. Observed for 2 parameters on a 3-element list, 3 parameters on a 2-element list, and 2 parameters on an `Integer`.
+  - Tuples, ranges and other `List` classes are spread the same way. Arrays (`String[]`) and sets are not lists, so they are not spread (`ClosureMetaClass.java:266`; observed: both throw `MissingMethodException` for a 2-parameter closure).
+- The same adaptation applies to script functions: `def f(a, b)` called as `f([1, 2])` gets `a = 1` and `b = 2` (observed; Groovy `groovy/lang/MetaClassImpl.java:1362-1369`).
+- Calling a closure with more arguments than parameters (without a single list) throws `MissingMethodException`: `{ it }.call(1, 2)` fails (observed).
+- Channel operators call the closure with one argument per item (for example `mapper.call(it)`, `modules/nextflow/src/main/groovy/nextflow/extension/MapOp.groovy:56`). So the same rules decide destructuring. Observed: `channel.of([1, 2]).map { a, b -> ... }` and `channel.of(tuple('s', 1)).map { id, n -> ... }` destructure.
+
+### 9.3 Iterating maps
+
+Groovy map iteration methods look at the closure's maximum parameter count (Groovy `DefaultGroovyMethods.java:6059-6082`):
+
+- `each`, `collect`, `findAll`, `find`, `any`, `every`, `collectEntries`, `groupBy` and similar: a closure with two parameters receives `(key, value)`. Otherwise the closure receives the `Map.Entry` (with `.key` and `.value`).
+- `eachWithIndex`: three parameters receive `(key, value, index)`, and two receive `(entry, index)` (Groovy `DefaultGroovyMethods.java:6075-6082`).
+- `inject(init) { acc, k, v -> }` with three parameters receives key and value. With two it receives the entry (Groovy `DefaultGroovyMethods.java:6185-6195`; observed).
+- `findAll` on a map returns a map, `find` returns a `Map.Entry`, and `collect` returns a list (observed).
+
+### 9.4 Return values
+
+- A closure or function returns the value of its last statement, or of an explicit `return`. Groovy's `ReturnAdder` decides this (Groovy `org/codehaus/groovy/classgen/ReturnAdder.java`).
+- `return` inside a closure only leaves that closure. In `each` it acts like "continue" (observed).
+- An `if`/`else` as the last statement returns the value of the branch that ran (observed: `def fif(x) { if( x ) { 'yes' } else { 'no' } }` returns `'no'` for 0). If no branch runs, the result is `null` (observed: an `if` without `else` returned `null` for 0). A `try`/`catch` as the last statement returns the value of the block that finished (`ReturnAdder.java`).
+- A `def x = 1` declaration as the last statement returns 1 (observed). `docs/reference/semantics.mdx` ("Returns") says that such a function returns nothing. The runtime disagrees.
+- The type checker requires consistent returns (`docs/reference/semantics.mdx`, "Returns").
+
+### 9.5 Captured variables
+
+A closure refers to the variables of its enclosing scope, not to copies. A later reassignment is visible (observed: `def n = 10; def c = { v -> v + n }; n = 20; c.call(1)` is 21). The closure can also modify them (`total += v` inside `each` works, observed). Inside a workflow, the checker warns about writing to an outer variable inside an operator closure (`VariableScopeVisitor.java:703-712`).
+
+### 9.6 Functions
+
+- `def name(params) { body }`, optionally with `name: Type` parameters and a `-> Type` return type (`docs/reference/syntax.mdx`, "Function").
+- Typed parameters keep their Java type at run time, except user record types (section 2 point 4). A call whose argument has another class fails with `MissingMethodException`, with no conversion (observed: `def typed(x: Integer)` called with `5L`).
+- Default parameter values are allowed and evaluated per call (`docs/reference/semantics.mdx`, "Default parameter values").
+- Named arguments are collected into one `Map`, passed as the **first** argument, wherever they appear in the call: `fmap(1, k: 'v')` and `fmap(k: 'v', 1)` both call `fmap([k: 'v'], 1)` (observed; `docs/reference/semantics.mdx`, "Named arguments").
+- Arguments are passed by reference. Reassigning a parameter does not affect the caller (`docs/reference/semantics.mdx`, "Parameters").
+- A function name cannot be `main`, `run` or `runScript`. The same applies to process, workflow and agent names (`ScriptToGroovyVisitor.java:72`, `:236-239`).
+
+### 9.7 Delegate and owner
+
+In ordinary script code, the checker resolves names statically. A name that is not a local variable, parameter, function or built-in is an error ("`foo` is not defined", observed). So an evaluator can resolve most names at compile time. Dynamic resolution matters in two places.
+
+**Process directive closures.** Examples: `cpus { 2 * task.attempt }`, `memory { 6.GB * task.attempt }`, or `tag "${meta.id}"` (wrapped in a closure by the compiler, section 2 point 6). Such a directive is stored unevaluated. For each task, it is cloned with the task context as delegate and resolve strategy `DELEGATE_FIRST` (`TaskConfig.groovy:792-807`, `Bolts.groovy:697-706`). In a legacy process, the directives `executor`, `label`, `maxForks`, `module`, `pod`, `publishDir` and `secret` are not wrapped, and neither are directives with more than one argument (`ProcessToGroovyVisitorV1.java:79-105`). A typed process only skips directives with more than one argument (`ProcessToGroovyVisitorV2.java:101-111`).
+
+**Config closures.** A closure assigned in a config file, such as `ext.args = { "--id ${meta.id} --n ${task.cpus}" }` inside `withName`, is stored as a closure (`modules/nextflow/src/main/groovy/nextflow/config/parser/v2/ConfigDsl.groovy:145-153`). It is resolved in the same way when the task reads it. Observed: the closure above rendered `--id S1 --n 2`, with `meta` and `task.cpus` from the task. `task.ext` itself stays a lazy map, and each read of `task.ext.x` resolves the stored value again (`TaskConfig.groovy:691-850`).
+
+**Name lookup in the task context** (`TaskContext.get0`, `modules/nextflow/src/main/groovy/nextflow/processor/TaskContext.groovy:132-147`):
+
+1. The task's own variables: process inputs, `task` (the `TaskConfig`), and variables assigned in the script section without `def`.
+2. The script binding: `params`, `projectDir`, `launchDir`, `moduleDir`, `workDir`, `baseDir`, `workflow`, `nextflow`, `secrets`.
+3. Otherwise `MissingPropertyException`: "Unknown variable 'x' -- Make sure it is not misspelled or defined later in the script".
+
+Method calls from such a closure go to the script (`TaskContext.invokeMethod`, `:163-168`), except `template(...)`.
+
+Local variables that the closure captures from its enclosing code are read directly, and the delegate does not affect them. Only names that are not local variables go through the delegate-first lookup above (standard Groovy closure semantics; unverified in the Groovy source).
+
+## 10. Standard library
+
+The methods below are the ones Nextflow documents and types for strict syntax. They come from:
+
+- the typed shims in `modules/nf-lang/src/main/java/nextflow/script/types/shim/*.java`;
+- the types in `modules/nf-lang/src/main/java/nextflow/script/types/*.java`;
+- `docs/reference/stdlib-types/*.mdx`.
+
+The runtime is the JDK, Groovy's extension methods, and Nextflow's `Bolts` and `FilesEx`. So extra methods also work (section 10.12).
+
+### 10.1 String
+
+Shim: `types/shim/String.java`. Docs: `docs/reference/stdlib-types/string.mdx`.
+
+| Method or operator | Meaning (runtime notes in brackets) |
+| --- | --- |
+| `+` | concatenation (section 8.13) |
+| `*` (Integer) | repeat [a negative count throws] |
+| `[]` (Integer) | one-character `String` [not `char`, section 8.11] |
+| `~str` | compile to `Pattern` |
+| `=~`, `==~` | regex find / full match (section 8.6) |
+| `in` (`isCase`) | equality of the `toString()` texts (section 8.5) |
+| `compareTo` | lexical order [UTF-16 code units] |
+| `contains(s)` | substring test |
+| `endsWith(s)`, `startsWith(s)` | suffix / prefix test |
+| `execute()` | run as an external command, returns `java.lang.Process` [observed: `'echo hi'.execute().text` is `hi\n`] |
+| `indexOf(s)`, `indexOf(s, from)` | first index or -1 |
+| `lastIndexOf(s)`, `lastIndexOf(s, from)` | last index or -1 |
+| `isBlank()` | empty or only whitespace |
+| `isEmpty()` | length 0 |
+| `isDouble()`, `isFloat()` | parses as a double / float [observed: `'NaN'`, `'1'` and `'1e3'` count as doubles] |
+| `isInteger()`, `isLong()` | parses as a 32 / 64-bit integer [after trim: `' 42'` is an integer; `'99999999999'` is not, observed] |
+| `length()` | length in UTF-16 code units |
+| `md5()`, `sha256()` | lowercase hex digest of the UTF-8 bytes [Groovy `EncodingGroovyMethods.java:377-379`, `:397-399`, `:419-438`; observed: `'abc'.md5()` is `900150983cd24fb0d6963f7d28e17f72`] |
+| `readLines()` | lines split on `\n`, `\r\n` or `\r` [observed: `'a\nb\r\nc\n'` gives `[a, b, c]`] |
+| `replace(t, r)` | replace every literal occurrence |
+| `replaceAll(regex, r)`, `replaceFirst(regex, r)` | Java regex replacement (section 8.6) |
+| `reverse()` | reversed string |
+| `strip()`, `stripLeading()`, `stripTrailing()` | remove whitespace [Java, or `Bolts.strip` (`Bolts.groovy:178-180`); both use `Character.isWhitespace`] |
+| `stripIndent()` | remove common indentation [Java `String.stripIndent`, section 6.7] |
+| `substring(b)`, `substring(b, e)` | Java substring |
+| `toBoolean()` | `true` for `true`, `y`, `1` after trim, any case |
+| `toDouble()`, `toFloat()`, `toInteger()`, `toLong()` | parse after trim (section 8.9) |
+| `toLowerCase()`, `toUpperCase()` | Java case conversion [locale unverified] |
+| `tokenize()` | split on whitespace (`java.util.StringTokenizer`), drop empty tokens [Groovy `StringGroovyMethods.java:3168-3170`] |
+| `tokenize(chars)` | split on any character in `chars`, drop empty tokens [observed: `'a,b,,c'.tokenize(',')` is `[a, b, c]`] |
+| `trim()` | remove leading and trailing characters `<= ' '` [Java] |
+
+### 10.2 Iterable (List, Set, Bag)
+
+Shim: `types/shim/Iterable.java`. Docs: `docs/reference/stdlib-types/iterable.mdx`. All of these are Groovy `DefaultGroovyMethods` extension methods unless noted.
+
+| Method | Meaning (runtime notes in brackets) |
+| --- | --- |
+| `any(pred)` | true if some element is truthy under `pred` [empty: false] |
+| `collect(f)` | new `ArrayList` of `f(e)` |
+| `collectMany(f)` | concatenation of the collections returned by `f` |
+| `contains(v)` | Java `equals` membership [`[1, 2].contains(2L)` is false, observed] |
+| `containsAll(vs)` | Java `containsAll` |
+| `each(f)` | call `f` per element, return the receiver |
+| `every(pred)` | true if all elements pass [empty: true] |
+| `find(pred)` | first passing element or `null` |
+| `findAll(pred)` | new list of passing elements; with no closure, the truthy elements [observed: `[0, 1, '', 'a', null, []].findAll()` is `[1, a]`] |
+| `groupBy(f)` | `LinkedHashMap` from key to list, keys in first-seen order |
+| `inject(f)` | fold with the first element as the start [empty: `NoSuchElementException`, observed] |
+| `inject(init, f)` | fold from `init` |
+| `intersect(other)` | elements of the receiver that are also in `other`, found with a `TreeSet` and the number-aware comparator [order of the receiver; observed `[3, 1, 2].intersect([2, 3])` is `[3, 2]`; Groovy `DefaultGroovyMethods.java:13202-13230`] |
+| `isEmpty()` | no elements |
+| `join()`, `join(sep)` | `FormatHelper.toString` of each element, joined [the default separator is empty; observed: `[1, 2].join()` is `12`] |
+| `max()`, `min()` | largest / smallest by Groovy `>` / `<` (`ScriptBytecodeAdapter.compareGreaterThan` / `compareLessThan`), skipping `null` elements [empty: `null`; elements that cannot be compared throw; Groovy `DefaultGroovyMethods.java:7182-7191`, `:7525-7534`; observed: `[null, 3, 1].max()` is 3, and `[1, 'a'].max()` is `a`, because a one-character string compares by character code] |
+| `max(f)`, `min(f)` | one-parameter closure: compare `f(e)`; two-parameter closure: comparator |
+| `size()` | number of elements |
+| `sum()` | `e0 + e1 + ...` with Groovy `+` [empty: `null`; strings concatenate (observed: `['a', 'b'].sum()` is `ab`); lists concatenate] |
+| `sum(f)` | sum of `f(e)` |
+| `toList()` | new `ArrayList` |
+| `toSet()` | new `HashSet` [hash order, section 10.4] |
+| `toSorted()` | new sorted list, stable, number-aware comparator (below) |
+| `toSorted(f)` | one-parameter closure: sort by `f(e)`; two-parameter: comparator |
+| `toUnique()` | new collection without duplicates, first occurrence kept [duplicates are found with a `TreeSet` in Java natural order (Groovy `DefaultGroovyMethods.java:2013-2015`, `:1830-1838`), so all elements must be mutually comparable in Java. Observed: `['b', 'a', 'b'].toUnique()` is `[b, a]`; `[1, 1L].toUnique()` and `[[a: 1]].toUnique()` throw `ClassCastException`; `[null, 1].toUnique()` throws `NullPointerException`] |
+| `toUnique(f)` | as `toUnique()`, with `f` deciding equality |
+
+The default comparator of `toSorted()` and `sort()` is Groovy's `NumberAwareComparator` (Groovy `org/codehaus/groovy/runtime/NumberAwareComparator.java:48-77`). It uses the `<=>` rules of 8.3: numbers numerically, strings by code unit, `null` first. If two elements cannot be compared, it falls back to comparing their `hashCode()` values. That gives an order that depends on Java hash codes (for example, maps sorted without a key closure). Observed: `['b', 'A', 'a', 'B', '10', '9'].toSorted()` is `[10, 9, A, B, a, b]`, `[2, null, 1].toSorted()` is `[null, 1, 2]`, and `[3, 1.5, 2L, 0.5d].toSorted()` is `[0.5, 1.5, 2, 3]`.
+
+### 10.3 List
+
+Shim: `types/shim/List.java`. Docs: `docs/reference/stdlib-types/list.mdx`.
+
+| Method or operator | Meaning (runtime notes in brackets) |
+| --- | --- |
+| `+`, `*`, `[]`, `in`, `putAt`, `compareTo` | sections 8.5, 8.11, 8.13 [lists are not comparable at run time: `[1] < [2]` throws] |
+| `collate(n)`, `collate(n, keepRemainder)` | sub-lists of size `n` |
+| `collate(n, step)`, `collate(n, step, keepRemainder)` | sliding windows [observed: `[1, 2, 3, 4].collate(3, 1, false)` is `[[1, 2, 3], [2, 3, 4]]`; Groovy `DefaultGroovyMethods.java:3519-3541`] |
+| `first()`, `head()` | first element [empty: `NoSuchElementException`; Groovy `DefaultGroovyMethods.java:10341-10346`] |
+| `getIndices()` | `0..<size` as an `IntRange` |
+| `indexOf(v)` | Java `indexOf` (Java `equals`) |
+| `init()` | all but the last [empty: `NoSuchElementException`; Groovy `DefaultGroovyMethods.java:10577-10590`] |
+| `last()` | last element [empty: `NoSuchElementException`] |
+| `reverse()` | new reversed list [does not mutate] |
+| `subList(from, to)` | Java view `[from, to)` |
+| `tail()` | all but the first [empty: `NoSuchElementException`; Groovy `DefaultGroovyMethods.java:10503-10510`] |
+| `take(n)` | first `n` elements [fewer if the list is shorter] |
+| `takeWhile(pred)` | longest passing prefix |
+| `withIndex()` | list of `[element, index]` pairs |
+
+Mutating methods that real scripts call, but that are not in the shim: `add`, `addAll`, `remove`, `removeIf`, `clear`, `<<`, `sort()` and `unique()`.
+
+- Groovy `sort()` and `unique()` **sort or de-duplicate a list in place** and return it (observed). `toSorted()` and `toUnique()` return new lists. On a tuple, `sort()` also works in place (section 3).
+- `unique()` finds duplicates with Groovy coerced equality: numbers compare numerically, then `compareEqual` applies (Groovy `DefaultGroovyMethods.java:1340-1369`). So `[1, 1L, 1.0, 2].unique()` is `[1, 2]`, and `[[a: 1], [a: 1L]].unique()` is `[[a:1]]` (observed).
+
+### 10.4 Set and Bag
+
+Shims: `types/shim/Set.java`, `types/shim/Bag.java`. Docs: `docs/reference/stdlib-types/set.mdx`, `bag.mdx`.
+
+- Set: `+` and `-` with an iterable (new set), `in`, `intersect(iterable)`.
+- Bag: `+` (concatenation), `in`.
+
+Iteration order matters, because sets are rendered and joined:
+
+- `as Set` on a non-set collection, set `+` and set `-` produce a `LinkedHashSet` in insertion order (Groovy `DefaultGroovyMethods.java:12184-12187`, `DefaultGroovyMethodsSupport.java:275-291`; observed).
+- `toSet()` produces `new HashSet(size)`, filled in order (Groovy `DefaultGroovyMethods.java:15382-15386`). Its iteration order is Java `HashMap` bucket order. To reproduce it:
+  - The table capacity is the smallest power of two `>= size`, and at least 1.
+  - The table doubles whenever the count exceeds `0.75 * capacity`. It keeps the relative order within the split buckets.
+  - An element with hash code `h` goes to bucket `(h ^ (h >>> 16)) & (capacity - 1)`.
+  - Iteration is by bucket index, then by insertion order within a bucket.
+  - Hash codes: an `Integer` is its value. A `String` is `s[0]*31^(n-1) + ... + s[n-1]` in 32-bit arithmetic.
+  - This model matches the observed orders: `[3, 1, 3, 2, 10, 100, -1].toSet()` gives `[-1, 1, 2, 10, 3, 100]` (observed again in this review), and `['sample', 'b', 'a', 'zz', 'aa'].toSet()` gives `[zz, aa, a, b, sample]`.
+  - The resize and tree-bin details are Java behaviour. They were not checked against the JDK source (unverified).
+- `docs/reference/stdlib-types/iterable.mdx` warns that converting an unordered collection to a list is not deterministic.
+
+### 10.5 Map and Map.Entry
+
+Shim: `types/shim/Map.java`. Docs: `docs/reference/stdlib-types/map.mdx`.
+
+| Method or operator | Meaning (runtime notes in brackets) |
+| --- | --- |
+| `+` | section 8.13 |
+| `[]` (`getAt`) | `get(k)` |
+| `in` | Groovy truth of the value (section 8.5) |
+| `any(f)`, `every(f)`, `each(f)` | section 9.3 |
+| `containsKey(k)` | key present, even with a `null` value |
+| `containsValue(v)` | Java `equals` [`[a: 2].containsValue(2L)` is false, observed] |
+| `entrySet()` | entries in map order |
+| `isEmpty()` | no entries |
+| `keySet()` | keys in map order |
+| `size()` | number of entries |
+| `subMap(keys)` | new `LinkedHashMap` of the listed keys that exist, in the order of `keys` [missing keys are skipped; Groovy `DefaultGroovyMethods.java:8110-8118`; observed; on a record it returns a record] |
+| `values()` | values in map order (a `Bag`) |
+| `Entry.getKey()`, `Entry.getValue()` | key and value (`e.key`, `e.value`) |
+
+Groovy methods that scripts use and that behave in surprising ways:
+
+- `m.get(k, default)` **inserts** `default` when `k` is missing (Groovy `DefaultGroovyMethods.java:8167-8172`; observed). On a record it throws `UnsupportedOperationException` (observed). `getOrDefault` does not insert.
+- `m.sort()` returns a `TreeMap` sorted by key in Java natural order (Groovy `DefaultGroovyMethods.java:9568-9570`; observed).
+- `m.clone()` is a shallow copy (observed).
+- `collectEntries`, `findAll`, `groupBy` and `countBy` return `LinkedHashMap`s.
+

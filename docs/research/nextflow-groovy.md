@@ -943,3 +943,287 @@ Groovy methods that scripts use and that behave in surprising ways:
 - `m.clone()` is a shallow copy (observed).
 - `collectEntries`, `findAll`, `groupBy` and `countBy` return `LinkedHashMap`s.
 
+### 10.6 Integer, Float, Boolean
+
+Shims: `types/shim/Integer.java`, `types/shim/Float.java`. Docs: `docs/reference/stdlib-types/integer.mdx`, `float.mdx`, `boolean.mdx`.
+
+- Integer: `+ - * / % ** & | ^ ~ << >>`, unary `+ -`, `compareTo`, `intdiv(n)`, and the unit properties `d h m ms s` (Duration) and `B KB MB GB` (MemoryUnit). The shim lists only these units. The runtime accepts all units of section 4.5. The shim types `Integer / Integer` as `Float`, but at run time it is a `BigDecimal` (section 5.3).
+- Float: `+ - * / **`, unary `+ -`, `compareTo`, `intValue()`. The shim also lists `and` for Float. At run time, `&` on a `BigDecimal` or `Double` throws `UnsupportedOperationException` (Groovy `NumberMath.java:291-293`; `BigDecimalMath` and `FloatingPointMath` do not override it).
+- Boolean: `&& || !`.
+
+### 10.7 Path
+
+Shim: `types/shim/Path.java`. Docs: `docs/reference/stdlib-types/path.mdx`. Implementations: `modules/nf-commons/src/main/nextflow/extension/FilesEx.groovy` and the JDK.
+
+| Member | Meaning (runtime notes in brackets) |
+| --- | --- |
+| `/ str` | `resolve(str)` |
+| `<< str` | append text to the file |
+| `baseName` | file name without the last extension [`sample.fastq.gz` gives `sample.fastq`; `.hidden.txt` gives `.hidden`; `.bashrc` gives `''` (from the code); `FilesEx.groovy:340-351`] |
+| `extension` | text after the last `.`, or `''` [`README` gives `''`; `FilesEx.groovy:447-456`] |
+| `name` | file name [`''` for a root; for a task input, the staged name, which can contain `/`; `FilesEx.groovy:416-418`, `TaskPath.groovy:125`] |
+| `parent` | parent path or `null` [always `null` for a task input `TaskPath`; `TaskPath.groovy:140`; observed] |
+| `scheme` | file system scheme, `file` for local paths |
+| `simpleName` | file name up to the first `.` after the first character [`sample.fastq.gz` gives `sample`; `.hidden.txt` gives `.hidden`; `FilesEx.groovy:400-406`] |
+| `exists()`, `isDirectory()`, `isFile()`, `isHidden()`, `isLink()` | file tests |
+| `isEmpty()` | empty or missing (`docs/reference/stdlib-types/path.mdx`) [implemented in `NextflowDelegatingMetaClass`] |
+| `lastModified()` | milliseconds since the epoch |
+| `relativize(p)`, `resolve(s)`, `resolveSibling(s)` | Java path operations |
+| `size()` | bytes [`TaskPath` gives 0 when missing, `TaskPath.groovy:79-86`] |
+| `toUriString()` | path with scheme for remote paths, plain path for local ones (`FilesEx.groovy:1608-1618`) |
+| `eachLine(f)`, `getText()` / `text`, `readLines()`, `withReader(f)` | read |
+| `append(s)`, `setText(s)`, `write(s)` | write |
+| `copyTo(t)`, `moveTo(t)`, `renameTo(t)`, `delete()`, `deleteDir()`, `mkdir()`, `mkdirs()`, `mklink(opts, name)` | file system changes |
+| `getPermissions()`, `setPermissions(...)` | permissions |
+| `eachFile(f)`, `eachFileRecurse(f)`, `eachDir...` | traversal |
+| `listDirectory()` | entries of a directory (26.04+) |
+| `listFiles()` | deprecated; returns a `Path[]` at run time (`FilesEx.groovy:643`; observed) |
+| `list()` | names, a `String[]` (`FilesEx.groovy:632`; observed) |
+| `countFasta()`, `countFastq()`, `countJson()`, `countLines()` | record counts |
+| `splitCsv(opts)`, `splitFasta(opts)`, `splitFastq(opts)`, `splitJson(opts)`, `splitText(opts)` | split into records |
+
+Path equality and ordering: section 8.2 step 3 and section 8.3. Paths work as map keys (observed).
+
+### 10.8 Duration and MemoryUnit
+
+Shims: `types/shim/Duration.java`, `types/shim/MemoryUnit.java`. Docs: `docs/reference/stdlib-types/duration.mdx`, `memory-unit.mdx`.
+
+- **Duration**
+  - `toDays()`, `toHours()`, `toMinutes()` and `toSeconds()` round down. `toMillis()` is exact. The same values are available as the properties `days`, `hours`, `minutes`, `seconds` and `millis`. The results are `Long` (observed).
+  - Arithmetic: `+ -` with a Duration, and `* /` with a number.
+  - Comparisons: section 8.2. A zero Duration throws in `==`, `<` and similar.
+  - Creation with `as Duration`, from a number of milliseconds or from a string.
+  - `format(fmt)` uses Apache Commons `DurationFormatUtils` (`Duration.groovy:286-288`).
+- **MemoryUnit**
+  - `toBytes()`, `toKilo()`, `toMega()` and `toGiga()` shift right by 0, 10, 20 and 30 bits, so they round down. The same values are available as the properties `bytes`, `kilo`, `mega` and `giga`.
+  - `toUnit(unit)` divides by `1024^index` with integer division. The unit name is case-sensitive, and unknown units throw `IllegalArgumentException` (`MemoryUnit.groovy:190-195`).
+  - Arithmetic and comparisons work as for Duration.
+  - `toTera()` and similar do not exist in the checkout (`MemoryUnit.groovy`; plugins unverified).
+  - A common script pattern: `(task.memory.mega * 0.8).intValue()` is a `long * BigDecimal` product, truncated by `intValue()` (observed: 4915 for `6.GB`).
+
+### 10.9 VersionNumber
+
+Type: `types/VersionNumber.java`. Docs: `docs/reference/stdlib-types/version-number.mdx`.
+
+- `getMajor()`, `getMinor()` and `getPatch()` return strings (observed: `nextflow.version.major` is `26`).
+- `matches(condition)` checks constraints such as `>=23.10` or `23.10.1+`.
+- A comparison with a string or number parses the other side. It then compares part by part, numerically when both parts are integers (`VersionNumber.groovy:89-128`). Observed: `nextflow.version == '26.04.6'` and `nextflow.version >= '23.10'` are true.
+- A comparison pads the shorter version list in place with `'0'` parts (`VersionNumber.groovy:103-106`).
+
+### 10.10 Record and Tuple
+
+Types: `types/Record.java`, `types/Tuple.java`. Docs: `docs/reference/stdlib-types/record.mdx`, `tuple.mdx`, `docs/reference/semantics.mdx`.
+
+- **`record(k: v, ...)`** creates a `RecordMap` in argument order (`modules/nextflow/src/main/groovy/nextflow/Nextflow.groovy:159-161`).
+  - Fields are read like map keys, and a missing field is `null`.
+  - `+` with another record merges, and the right side wins.
+  - `subMap(keys)` returns a record.
+  - Writing throws `UnsupportedOperationException` (observed).
+- **`tuple(a, b, ...)`** creates an `ArrayTuple` (`Nextflow.groovy:169-185`).
+  - With exactly **one** argument, the single-argument overload is chosen. A collection argument becomes the tuple's elements (`tuple([1, 2])` is `[1, 2]`). A falsy argument gives an **empty** tuple (observed: `tuple(0)`, `tuple(null)` and `tuple('')` are `[]`). Any other value becomes a one-element tuple (observed: `tuple([a: 1])` is `[[a:1]]`).
+  - Tuples throw on most mutations; `tuple + list` throws (section 8.13).
+  - Indexing and destructuring work like a list.
+- **A record type** declared with `record Name { field: Type ... }` is structural.
+  - `x as Name` compiles to `TypeHelper.asType(x, Name)` (`StripTypesVisitor.java:116-129`). That returns `null` for `null`. Otherwise it calls `TypeHelper.asRecordType(x as Map, Name)` (`TypeHelper.groovy:104-112`, `:192-212`).
+  - Every non-nullable field must be present and not `null`. Otherwise it throws `AbortOperationException` ("Input record ... is missing field ...").
+  - Each declared field is converted to its declared type, and the result is a new `RecordMap` built from a `HashMap`. So **the field order after the cast is `HashMap` order, not the original order**. Observed: `record(zeta: 1, id: 'a', n: '2', alpha: 3, mid: 4) as Sample` rendered as `[zeta:1, mid:4, id:a, n:..., alpha:3]`.
+  - Field conversion in the checkout (`TypeHelper.groovy:104-139`, `:178-184`):
+    - A `String` for a numeric field is parsed with Groovy's string `asType`.
+    - A `String` for a `Boolean` field must be `true` or `false` in any case, else `AbortOperationException`.
+    - A `Path` field must exist, else `AbortOperationException` "Input file '...' does not exist".
+    - A collection field with an element type converts each element.
+  - Observed: 26.04.6 converted `'2'` to the character code 50 instead. The checkout fixes that.
+- A function parameter with a record type accepts any value. The type is erased at run time (`StripTypesVisitor.java:84-92`).
+
+### 10.11 Value and Channel
+
+These are dataflow types, not ordinary values. Their operators are listed in `types/Value.java` (`combine`, `flatMap`, `map`, `mix`, `subscribe`, `view`) and `types/Channel.java` (`collect`, `combine`, `filter`, `flatMap`, `groupBy`, `join`, `map`, `mix`, `reduce`, `subscribe`, `unique`, `until`, `view`). The legacy operators are in `docs/reference/operator.mdx`. Their closures follow section 9. `branch` and `multiMap` closures are rewritten (section 2 point 8). A separate specification should cover them.
+
+### 10.12 Methods outside the official list
+
+The runtime accepts any JDK, Groovy or Nextflow extension method, and real pipelines use many. A rough scan of the nf-core corpus (6917 unique `.nf` files) looked for `.name(` and `.name {` outside comments with a regular expression. The counts include some embedded R and Python code. The counts were not checked again in this review.
+
+- Frequent calls that are **not** in the shims or channel operators: `toString` (1056), `split` (689), `sort` (301), `get` (121), `equals` (111), `add` (109), `clone` (87), `eachWithIndex` (52), `call` (47), `round` (47), `withWriter` (44), `format` (43), `remove` (42), `drop` (35), `collectEntries` (30), `removeIf` (27), `toPath` (19), `getClass` (17), `isNumber` (17), `ceil` (15).
+- Shim methods that appear most: `contains` (3388), `size` (1251), `tokenize` (934), `endsWith` (926), `replace` (728), `trim` (631), `intersect` (435), `replaceAll` (418), `subMap` (345), `each` (328), `containsKey` (313), `getExtension` (298), `intValue` (286), `findAll` (275), `getName` (231).
+- Frequent static calls: `Math.round` (45), `String.format` (26), `Math.max` (16), `Math.ceil` (15), `System.exit` (19).
+- Java and Groovy classes often used by full name: `groovy.text.SimpleTemplateEngine` (114), `groovy.json.JsonSlurper` (26), `groovy.json.JsonOutput` (23), `groovy.text.GStringTemplateEngine` (21), `org.yaml.snakeyaml.Yaml` (18), `java.util.zip.GZIPInputStream` (13), `groovy.yaml.YamlBuilder` (9).
+- Many pipelines also call classes from their `lib/` directory (for example `Utils`, `WorkflowMain`, `NfcoreTemplate`). That code is full Groovy and outside this subset.
+
+## 11. Built-in functions and variables
+
+The names that the checker knows are declared in `modules/nf-lang/src/main/java/nextflow/script/dsl/ScriptDsl.java`, `EntryWorkflowDsl.java`, `ProcessDsl.java`, `OutputDsl.java`, and the namespace interfaces in `modules/nf-lang/src/main/java/nextflow/script/namespaces/`. The documentation is `docs/reference/stdlib-namespaces/*.mdx`. The runtime implementations are in `modules/nextflow/src/main/groovy/nextflow/Nextflow.groovy` (static functions, imported into every script) and `modules/nextflow/src/main/groovy/nextflow/script/BaseScript.groovy`.
+
+### 11.1 Functions
+
+| Function | Behaviour | Source |
+| --- | --- | --- |
+| `branchCriteria(closure)` | returns the closure, for `branch` (the compiler rewrites the closure, section 2 point 8) | `Nextflow.groovy:416` |
+| `env(name)` | value of the environment variable in the launch environment, or `null` | `Nextflow.groovy:67-69`; observed |
+| `error(message = null)` | throws `WorkflowScriptErrorException`; the run fails with the message | `Nextflow.groovy:252-254` |
+| `exit(code = 0, message = null)` | deprecated; logs the message (as an error when the code is non-zero) and calls `System.exit`; does nothing if the session is already aborted | `Nextflow.groovy:223-246` |
+| `file(pattern, opts...)` | a `Path`; a glob that does not match exactly one file returns a list and logs a warning; options `checkIfExists`, `followLinks`, `glob`, `hidden`, `maxDepth`, `type`; an empty or null pattern throws `IllegalArgumentException` | `Nextflow.groovy:115-145`; `ScriptDsl.java`; observed |
+| `files(pattern, opts...)` | always a collection of paths | `Nextflow.groovy:147-152` |
+| `groupKey(key, size)` | a `GroupKey`; equal to its key when it is the left operand (section 8.2), renders as its key | `Nextflow.groovy:399-401`; observed |
+| `multiMapCriteria(closure)` | returns the closure, for `multiMap` (rewritten, section 2 point 8) | `Nextflow.groovy:431` |
+| `print(v)`, `println()`, `println(v)` | write `FormatHelper.toString(v)` to standard output (to the log when ANSI logging is on); nothing in quiet mode | `BaseScript.groovy:334-365` |
+| `printf(fmt, args...)` | Java `String.format`, then print | `BaseScript.groovy:367-387` |
+| `record(named args)` | a `RecordMap` | `Nextflow.groovy:159-161` |
+| `sendMail(opts)` / `sendMail { ... }` | send an email | `Nextflow.groovy:364-395` |
+| `sleep(ms)` | pause the thread; Groovy `sleep`, which sleeps again for the rest of the time after an interrupt | `ScriptDsl.java:212`; Groovy `DefaultGroovyStaticMethods.java:164-199` |
+| `tuple(args...)` | an `ArrayTuple` (single-argument rule in 10.10) | `Nextflow.groovy:169-185` |
+| `template(path)` | process script only: render a template file | `ProcessDsl.java:45` |
+
+`log` is the SLF4J logger `nextflow.Nextflow.log` (`Nextflow.groovy:55`). `log.info(msg)`, `log.warn(msg)` and `log.error(msg)` log a message. `log.error` does not stop the run (`docs/reference/stdlib-namespaces/log.mdx`).
+
+### 11.2 Constants
+
+| Name | Value | Source |
+| --- | --- | --- |
+| `baseDir` | deprecated alias of `projectDir` | `BaseScript.groovy:98` |
+| `projectDir` | project directory (`session.baseDir`) | `BaseScript.groovy:99` |
+| `launchDir` | `Paths.get('./').toRealPath()`, so symbolic links are resolved | `BaseScript.groovy:103` |
+| `moduleDir` | directory of the current script file | `BaseScript.groovy:104` |
+| `workDir` | work directory | `BaseScript.groovy:100` |
+| `workflow` | workflow metadata (`docs/reference/stdlib-namespaces/workflow.mdx`) | `BaseScript.groovy:101` |
+| `nextflow` | `build` (Integer), `timestamp` (String), `version` (VersionNumber) | `BaseScript.groovy:102`; `NextflowNamespace.java:29-41` |
+| `secrets` | map-like secret lookup; a missing secret is `null` (observed) | `BaseScript.groovy:105` |
+| `params` | pipeline parameters (11.4) | `EntryWorkflowDsl.java:39` |
+| `args` | positional command line arguments, entry workflow only | `EntryWorkflowDsl.java:33` |
+| `channel` | channel factories: `empty`, `of`, `fromList`, `fromPath`, `fromFilePairs`, `fromLineage`, `interval`, `topic`, `value`, `watchPath` | `ChannelNamespace.java`; `docs/reference/stdlib-namespaces/channel.mdx` |
+| `task` | process only (11.5) | `ProcessDsl.java:36-40` |
+
+`Channel` (upper case) still works, but it is deprecated in favour of `channel` (`docs/strict-syntax.mdx`, "`channel` vs `Channel`").
+
+### 11.3 `workflow` properties
+
+The properties are (`modules/nf-lang/src/main/java/nextflow/script/namespaces/WorkflowNamespace.java`, `docs/reference/stdlib-namespaces/workflow.mdx`):
+
+- `commandLine`, `commitId`, `complete`, `configFiles`, `container`, `containerEngine`, `duration`, `errorMessage`, `errorReport`, `exitStatus`, `failOnIgnore`, `fusion.enabled`, `fusion.version`, `homeDir`, `launchDir`, `manifest.*`, `outputDir`, `preview`, `profile`, `projectDir`, `repository`, `resume`, `revision`, `runName`, `scriptFile`, `scriptId`, `scriptName`, `sessionId`, `start`, `stubRun`, `success`, `userName`, `wave.enabled`, `workDir`;
+- the handlers `onComplete(closure)` and `onError(closure)`.
+
+Some are only set inside the handlers. Observed classes: `start` is an `OffsetDateTime`, `sessionId` is a `UUID`, `profile` is the string `standard` by default, and an unset `manifest.name` is `null`.
+
+### 11.4 `params`
+
+- The runtime object is `ScriptBinding.ParamsMap`. Reading a parameter that was never defined logs a warning and returns `null` (observed: "Access to undefined parameter `nope`").
+- With the strict parser, values given on the command line are **strings** unless a `params { }` block declares a type (`docs/strict-syntax.mdx`, "Using legacy parameter declarations"). Observed: `--n 7` gave the `String` `'7'` even though the script default was the `Integer` 5. And `--cli false` gave the string `'false'`, which is truthy.
+- There is one more exception, from the code (not run). When a config file assigns `params.x` a `Boolean` or number default, a command line string for `x` is converted (`modules/nextflow/src/main/groovy/nextflow/config/parser/v2/ConfigDsl.groovy:145-176`). A Boolean default accepts `true`/`false` in any case. A number default tries, in order: `Integer`, `Long`, `BigInteger`, `Float`, `Double`, `BigDecimal`. So a decimal string becomes a 32-bit `Float`.
+- Values from config files and params files keep their types.
+- With a `params { }` block, `ParamsDsl.apply` converts values to the declared type (`modules/nextflow/src/main/groovy/nextflow/script/ParamsDsl.groovy:51-98`, `ParamsHelper.groovy:49-225`):
+  - `Boolean` accepts `true`/`false` in any case, from the command line only.
+  - `Integer` accepts any integral number text (`3`, `3.0`, `3e2`), and widens to `Long` or `BigInteger` when needed.
+  - `Float` becomes a Java `Float`, or a `Double` or `BigDecimal` if it does not fit.
+  - `Path` must exist.
+  - `Duration`, `MemoryUnit` and `VersionNumber` are parsed.
+  - A `Boolean` without a default is `false`.
+  - A declared, non-nullable parameter without a value is an error.
+  - A parameter from the command line or a params file that is declared neither in the script nor in the config is an error (`ParamsDsl.groovy:55-58`).
+  - A declared `Float` becomes a 32-bit `Float`. So `0.1` gives arithmetic results such as `0.30000000447034836` after `* 3` (unverified, follows from 5.1).
+
+### 11.5 `task`
+
+Inside a process (script, stub, exec and dynamic directives), `task` is the `TaskConfig` (`modules/nf-lang/src/main/java/nextflow/script/types/TaskConfig.java`, `modules/nextflow/src/main/groovy/nextflow/processor/TaskConfig.groovy`). Values commonly rendered into scripts:
+
+| Property | Runtime value | Source |
+| --- | --- | --- |
+| `task.cpus` | `int`, 1 when not set, capped by `resourceLimits` | `TaskConfig.groovy:391-404` |
+| `task.memory` | `MemoryUnit` or `null`, capped by `resourceLimits` | `TaskConfig.groovy:307-328` |
+| `task.time` | `Duration` or `null`, capped | `TaskConfig.groovy:352-383` |
+| `task.disk` | `MemoryUnit` or `null` | `TaskConfig.groovy:348-350` |
+| `task.attempt` | Integer, 1 for the first attempt | `TaskConfig.groovy:548-550` |
+| `task.ext` | lazy map; a missing key is `null` | `TaskConfig.groovy:691-850` |
+| `task.index`, `task.name`, `task.process`, `task.hash`, `task.workDir`, `task.exitStatus`, `task.previousException`, `task.previousTrace` | task metadata | `types/TaskConfig.java:29-87` |
+
+Every other directive is also readable (`task.container`, `task.queue`, and so on). An unset one is `null` (`TaskConfig.groovy:176-183`; observed: `task.disk` and `task.queue` rendered `null`).
+
+## 12. What strict syntax rejects
+
+The evaluator can reject these. Sources: `docs/strict-syntax.mdx`, `modules/nf-lang/src/main/antlr/ScriptParser.g4`, `ScriptAstBuilder.java`, and `nextflow lint` runs (observed, Nextflow 26.04.6).
+
+| Construct | Status | Evidence |
+| --- | --- | --- |
+| `import` | error "Groovy `import` declarations are not supported" | `ScriptAstBuilder.java:310`; lint |
+| `class`, `interface` | error; only `enum` and `record` type declarations exist | lint; `ScriptAstBuilder.java:2222-2255`; `docs/reference/syntax.mdx` |
+| statements mixed with declarations at top level | error "Statements cannot be mixed with script declarations" | lint |
+| `for` and `while` loops | error "`for` loops are no longer supported" | `ScriptAstBuilder.java:1262-1273`; lint |
+| `switch` / `case` | error | same |
+| `break`, `continue`, `do`, `synchronized`, `this`, `super`, `final`, `static`, other Groovy keywords as names | error "is not allowed as an identifier because it is a Groovy keyword" | `ScriptAstBuilder.java:1262-1273`, `:2222-2255`; lint |
+| `_` as a name | error (reserved) | `ScriptAstBuilder.java:1263-1264` |
+| `x++`, `x--` (the grammar has no increment or decrement operators) | syntax error | lint; `ScriptParser.g4:508-579`; `docs/strict-syntax.mdx` |
+| assignment inside an expression, for example `f(x = 1)` | syntax error | lint; `ScriptParser.g4:474-491` |
+| `def a = 1, b = 2` | syntax error | lint |
+| `final x = 1` | syntax error | lint |
+| `String s = 'a'`, `def String s` | accepted (legacy type syntax, planned for removal); `def s: String` is the new form | lint (no error); `docs/strict-syntax.mdx`, "Variable declarations"; `ScriptParser.g4:451-455` |
+| soft cast `(Map) x` | syntax error | lint |
+| spread in lists or arguments `[*l]`, `f(*l)`, map spread `[*:m]` | syntax error | lint |
+| Java lambdas `(a) -> a`, method pointers `this.&f`, method references `String::valueOf` | syntax error | lint |
+| `===`, `!==`, `?[`, `.@field` | syntax error | lint; `ScriptParser.g4` |
+| `if` as an expression, `try`/`finally` | syntax error (`try`/`catch` only) | lint; `ScriptParser.g4:428-449` |
+| labels outside DSL blocks | error | lint |
+| dollar-slashy strings, interpolated slashy strings | error | `docs/strict-syntax.mdx`; lint |
+| `"${-> x}"` lazy GString closures | syntax error | lint |
+| invalid escapes such as `\q`, a bare `$` in a GString | error in the checkout | section 4.3 |
+| implicit environment variables such as `"${PWD}"` | error "`PWD` is not defined" | lint |
+| undefined names or functions (`sprintf`, `foo()`) | error "`x` is not defined" | lint; observed at run time |
+| calling a closure variable as `c(x)` | error "`c` is not defined" | lint |
+| redeclaring a name in the same or an enclosing scope | error "`x` is already declared" | lint; `docs/reference/semantics.mdx` |
+| `new int[3]` | syntax error | lint |
+| implicit `it` | warning (deprecated) | lint |
+| `Channel.of` | warning (deprecated) | lint |
+| `include ... addParams(...)`, process `when:` and `shell:` | deprecated or removed | `docs/strict-syntax.mdx` |
+
+Accepted and worth supporting:
+
+- `assert cond : msg` and `throw new Exception(...)`.
+- `try { } catch( e ) { }` with optional types (`e: IOException` or `IOException e`, several types with `|`). A `try` without any `catch` also parses (`ScriptParser.g4:428-443`).
+- `new Date()`, fully qualified class names, and static members such as `Integer.MAX_VALUE` and `Math.max`.
+- `m."key"`, nested ternaries, multiple assignment and `?=`.
+
+Note: a failed `assert` throws a Java `AssertionError`. So does a failed internal `assert`, such as a negative `MemoryUnit` or a zero `MemoryUnit` in a comparison (section 8.2). Observed: `catch( e )` without a type did not catch it, and the run ended. An evaluator should treat `catch( e )` as catching exceptions, but not assertion errors.
+
+## 13. Where the documentation and the runtime differ
+
+| Documentation | Runtime | Evidence |
+| --- | --- | --- |
+| Integer division "produces a float" (`docs/reference/semantics.mdx`) | a `BigDecimal` | section 5.3 |
+| `Integer / Integer -> Float` (`types/shim/Integer.java`) | `BigDecimal` | observed |
+| `[] : (String, Integer) -> char` (`docs/reference/stdlib-types/string.mdx`) | a one-character `String` | observed |
+| list `[]` returns `null` when out of range (`list.mdx`) | only for indexes past the end; negative indexes before the start throw | observed |
+| a function whose last statement is not a return or expression returns nothing (`semantics.mdx`) | `if`/`else` and `def` as the last statement return a value | observed |
+| `{ -> }` has no parameters (Groovy) | it has an optional `it` | section 9.1 |
+| "Arithmetic between two integers produces an integer" (`semantics.mdx`) | also true for `**`, but the result may be a `BigInteger`; `+ - *` wrap on overflow | section 5 |
+| `startsWith`: "Returns `true` if the string ends with the given prefix" (`string.mdx`) | tests the prefix | observed |
+| for a map, "the `in` operator tests for the presence of a key" (`semantics.mdx`, "Membership operators") | Groovy truth of the value; `map.mdx` documents this correctly | Groovy `DefaultGroovyMethods.java:1217-1219`; observed |
+| "Unary operators (`!`, `~`, unary `-`) bind more tightly than binary arithmetic" (`semantics.mdx`, "Operator precedence") | `**` binds tighter than unary `-` | `ScriptParser.g4:514-518`; observed `-2 ** 2` is -4 |
+| a slashy string interprets no escapes except `\/` (`syntax.mdx`, "String") | `\uHHHH` and backslash-newline are also processed | Groovy `StringUtils.java:40-49`; observed |
+| slashy strings cannot span lines (`strict-syntax.mdx`) | the lexer accepts newlines in slashy strings | `ScriptLexer.g4:233-237`; observed |
+| an interpolated value is converted "using the value's `toString()` method" (`semantics.mdx`, "Strings") | `FormatHelper.write`; a collection with its own `toString()` still uses the list format (for example `BlankSeparatedList`) | section 6.1; observed |
+
+## 14. Checklist of high-risk behaviours
+
+These behaviours are the most likely to change a task command if they are wrong:
+
+1. Decimal literals are `BigDecimal` and keep their scale (`1.50`).
+2. `/` on integers is `BigDecimal` division with the 10-digit rule. Results can have a negative scale and render in exponent form (`10 / 0.5` is `2E+1`).
+3. `Integer` and `Long` overflow wraps; `**` may give `BigInteger`.
+4. Rendering: lists `[a, b]`, maps `[k:v]`, `null` as `null`, strings unquoted, `BigDecimal` and `Double` with the Java rules, and ranges as lists in GStrings but as `a..b` in `println`, in `+` and inside collections.
+5. MemoryUnit and Duration `toString` algorithms.
+6. Task script escaping of input file names, and indentation stripping (including the zero-indent case).
+7. A `BlankSeparatedList` renders as `[a, b]` outside task scripts.
+8. `in` on a map tests the truth of the value; `in` on a list uses Java `equals`; `in` on a string compares `toString()` texts.
+9. `==` coerces numbers and compares lists element by element; single-character strings equal their character code.
+10. A zero `MemoryUnit` or `Duration` in `==`, `!=`, `<` and similar throws an `AssertionError`.
+11. `'false'` is truthy; command line parameters are strings.
+12. Closure list destructuring rules, including the optional `it` of `{ -> }` and closures with default parameters.
+13. Typed function parameters are checked at run time.
+14. `map.class` and `map.empty` are key lookups.
+15. `toSet()` order is `HashMap` order; `as Set` keeps insertion order; record type casts reorder fields.
+16. `tuple(x)` with a single falsy argument is empty.
+17. `sort()`, `unique()`, `<<` and `get(k, default)` mutate.
+18. `String.stripIndent()` is Java's; the task normaliser uses Groovy's.
+19. `as`, `instanceof` and the relational operators have three different precedence levels.
+20. Nested GStrings stay GStrings and fail as map keys and in `contains`.
+
+## Appendix: how the observations were made
+
+All observations used Nextflow 26.04.6, run offline (`NXF_OFFLINE=true nextflow -q run test.nf -ansi-log false`). The test scripts print `"${label} => <${value}> :: ${value.getClass().getSimpleName()}"` for each expression. Error cases were wrapped in `try { } catch( e: Throwable ) { }`. `nextflow lint -o concise` checked the rejected constructs. The task script examples in section 6.7 came from real local process runs and their `.command.sh` files. The corpus numbers in section 10.12 came from a regular expression scan of `~/.cache/iunctus/corpus/nf-core-text` (144 pipelines and the nf-core/modules repository), with files de-duplicated by content. They are approximate.

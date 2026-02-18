@@ -24,6 +24,11 @@ Each note answers a set of questions and cites its sources.
 - [TES and executors](research/tes-and-executors.md): the TES spec, servers, Rust clients, data staging, Aruna, and a common executor trait.
 - [Prior work](research/prior-work.md): converters, multi-language platforms, papers, standards and lessons learned.
 - [IR design models](research/ir-design-models.md): how Cromwell WOM, Flyte, Bazel, Temporal and others design their intermediate representation.
+- [nf-core script inventory](research/nf-core-inventory.md): which Nextflow language and runtime features the nf-core scripts use, by number of pipelines.
+- [nf-core config inventory](research/nf-core-config.md): which config features the nf-core pipelines use.
+- [Nextflow channels](research/nextflow-channels.md): implementer spec of channels, operators and how processes consume them.
+- [Nextflow Groovy subset](research/nextflow-groovy.md): implementer spec of the Groovy runtime semantics that strict-syntax scripts rely on.
+- [Nextflow config](research/nextflow-config.md): implementer spec of config files, profiles, params and process selectors.
 - [Snakemake corpus](research/snakemake-corpus.md): the Snakemake corpus, an evaluation of Snakefile parsers, and a feature inventory of real workflows.
 - [CWL corpus](research/cwl-corpus.md): the CWL corpus, an evaluation of Rust CWL loaders, and a feature inventory of real workflows.
 - [Argo Workflows](research/argo-workflows.md): the Argo workflow model, its expression languages, running it without Kubernetes, a corpus and a feature inventory.

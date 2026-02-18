@@ -477,3 +477,302 @@ The identity names a task in logs, in the event log and in the trace. The cache 
 
 The `workflow` object exposes the properties that nf-core reads: `start`, `runName` and `sessionId` from the host, `profile`, `containerEngine`, `manifest`, `projectDir`, `launchDir`, `commandLine`, `success`, `duration`, `stats`, `errorMessage`, `exitStatus`, `toMap()` and the others. `workflow.onComplete` and `workflow.onError` handlers are collected, including those registered inside named workflows, as nf-core does. They run in order after the loop ends. The trace file is written, because nf-core enables it in every pipeline. The HTML report, the timeline and the DAG file are not written at first. A warning says so.
 
+## 7. The task layer
+
+### 7.1 From a round to a running task
+
+1. The process node renders the task and resolves each input file to a content digest (section 7.5).
+2. It sends a task request to the runner. The request holds the hashed specification, the placement, where each input can be read, and the task identity.
+3. The runner computes the cache key. On a hit it answers at once with the recorded outputs. On a miss it schedules the task.
+4. The executor stages the inputs into a scratch directory, runs the wrapper, and collects the outputs into the content store.
+5. The runner writes the cache entry and a line in the event log, then sends the task event back to the network.
+
+### 7.2 The task record
+
+```rust
+/// What is computed. The cache key is the SHA-256 of its canonical encoding.
+pub struct TaskSpec {
+    pub format: u32,                        // version of this record and of the wrapper
+    pub image: Option<Image>,               // name, and digest when known
+    pub shell: Vec<String>,                 // from the `shell` directive: ["/bin/bash", "-ue"]
+    pub script: Digest,                     // the rendered .command.sh
+    pub environment: Vec<(String, String)>, // config `env` scope, PATH for bin/ directories
+    pub host_setup: Option<String>,         // beforeScript, which runs outside the container
+    pub container_options: Vec<String>,
+    pub inputs: Vec<InputFile>,             // sorted by path in the task directory
+    pub outputs: Vec<OutputRule>,           // glob, type, optional, hidden, follow links, include inputs
+    pub namespace: Option<String>,          // a cache salt, empty by default
+}
+pub struct InputFile { pub path: String, pub kind: FileKind, pub digest: Digest, pub size: u64, pub stage: StageMode }
+
+/// Where and how big. Not hashed.
+pub struct Placement { pub cpus: u32, pub memory: Option<u64>, pub disk: Option<u64>, pub time: Option<u64>,
+                       pub accelerator: Option<Accelerator>, pub queue: Option<String>,
+                       pub backend: BackendChoice, pub parameters: Vec<(String, String)> }
+
+/// Where each input can be read. Not hashed.
+pub struct Staging { pub sources: Vec<(Digest, Location)> }
+
+/// What happened. Not hashed.
+pub struct Attempt { pub identity: Digest, pub key: Digest, pub number: u32, pub handle: Option<String>,
+                     pub state: State, pub exit_status: Option<i32>, pub started: Option<Timestamp>,
+                     pub finished: Option<Timestamp>, pub outputs: Vec<OutputFile>, pub logs: Logs }
+```
+
+| Part of a Nextflow task | In the cache key? | Why |
+|---|---|---|
+| Rendered `.command.sh`, including the output capture block | Yes | It is the command. |
+| Container image | Yes | It decides the tools. No image is also a value. |
+| Environment, `beforeScript`, `containerOptions`, `shell`, stage mode | Yes | They can change what runs. |
+| Inputs: path in the task directory, type, content digest | Yes | Content, not location, decides the result. |
+| Output rules | Yes | They decide which files form the result. |
+| The pipeline `bin/` directory and module binaries | Yes, as directory inputs | Scripts call them. A change must invalidate. Nextflow does not hash them. |
+| `cpus`, `memory`, `time`, queue, accelerator | No | They only enter the key through the script text, for example `--threads ${task.cpus}`. |
+| Process name, task index, attempt number | No | Two calls that compute the same thing may share the result. |
+| Source locations of inputs | No | A file moved to another bucket is still the same input. |
+
+The record has no Nextflow-only field. `host_setup` is also where Snakemake's `envmodules` or an HPC module load would go later.
+
+### 7.3 Rendering `.command.sh`
+
+1. Take the `stub:` block in a stub run if the process has one, else `script:`. A `template` statement renders the template file with the task context.
+2. Normalise as `TaskProcessor.normalizeScript` does: Groovy `stripIndent(true)`, trim, one final newline, and the shebang from the `shell` directive ([Groovy spec, section 6.7](../../research/nextflow-groovy.md#67-task-scripts)).
+3. If the process has `env` or `eval` outputs, append the output capture block, as Nextflow does. A one-process stub run with the oracle on 2026-09-27 confirmed two facts. Nextflow 26.04.6 appends this block to `.command.sh`, and the block writes `.command.env`. It does so in stub runs too, so `eval` commands such as `gunzip --version` run in stub mode and need the tool in the container.
+
+The text before the capture block must be byte-identical to Nextflow's. The capture block must produce the same `.command.env` format. Whether iunctus copies Nextflow's capture text word for word is an open decision (section 11).
+
+Inside the task directory iunctus uses Nextflow's file names: `.command.sh`, `.command.env`, `.command.out`, `.command.err`, `.command.log` and `.exitcode`. Some module scripts and many users read them.
+
+### 7.4 The wrapper
+
+`task-runner` generates a small Bash wrapper. It is the same for all languages. It:
+
+1. changes into the task directory and exports the environment, including `NXF_TASK_WORKDIR` for compatibility;
+2. runs the host setup outside the container;
+3. runs `.command.sh` with the task shell, inside the container when there is an image. Standard output goes to `.command.out`, standard error to `.command.err`, and both to `.command.log`;
+4. writes the exit code to `.exitcode`;
+5. runs `afterScript`;
+6. for remote executors, writes a manifest of the files in the task directory.
+
+Nextflow's `.command.run` is not copied. Most of it stages and unstages files, which iunctus does outside the wrapper for local runs.
+
+### 7.5 Staging inputs without a work directory
+
+Each attempt gets a fresh scratch directory under a scratch root. The default root is the system temporary directory, and config can change it. Inputs are placed with the task's `stageInMode`. The default is a symbolic link, as in Nextflow. `link`, `copy` and `rellink` are also supported. Names follow `stageAs` and `name` patterns with Nextflow's rules for `*`, `?` and `?/*` numbering. A name collision is an error.
+
+Inputs come from three kinds of places:
+
+- **Task outputs** already in the content store.
+- **Local files** such as `file(params.input)`, used in place. Their SHA-256 is computed once and remembered in a local index keyed by path, size, modification time and inode.
+- **Remote files** (`https://`, `s3://`), fetched once into the content store. The store remembers each URL with its validators (ETag, Last-Modified) and digest. nf-core test data comes from `https://raw.githubusercontent.com/...`, so Milestone 1 needs this.
+
+With a container, the scratch directory is mounted at the same path, and the directories that the links point to are mounted read-only.
+
+### 7.6 Collecting outputs
+
+After exit code 0, iunctus matches the output rules in Rust, on the scratch directory. It uses Nextflow's glob semantics: Java NIO globs, hidden files, `**`, file type, `maxDepth`, `followLinks`, `includeInputs` and `arity`. A missing required file fails the task with Nextflow's "Missing output file(s)". A missing optional output binds nothing. Matched files move or hard-link into the attempt area of the store, with their digests recorded in a manifest. Values of `eval` and `env` outputs come from `.command.env`, and a `stdout` output comes from `.command.out`. The scratch directory is then removed. It is kept after a failure, and on request.
+
+### 7.7 The content store
+
+```text
+<store>/
+  objects/sha256/<first two hex digits>/<rest>   files from the host or the web, by content digest
+  runs/<run id>/<task identity>/<attempt>/       one attempt: outputs at their task paths, logs, manifest
+  cache/<cache key>.json                         a cache entry: the attempt and its output digests
+  urls/<sha256 of the URL>.json                  remote files already fetched, with their validators
+```
+
+The same layout works on a local directory and on an S3-compatible store (Aruna, MinIO) through `object_store`. On Aruna, manifests also record the object version ids. The local store defaults to a directory in the launch directory. `-w` and `workDir` set its location, so existing habits keep working.
+
+Output paths in the network point into `runs/...`. So they have real names and parents and can be read, like work directory paths in Nextflow. Splitters and `file.text` work on them. A string of such a path that ends up inside a file stays readable on the same machine, as it would with a local Nextflow work directory.
+
+### 7.8 Cache and resume
+
+- **Key:** the SHA-256 of the canonical encoding of the hashed specification.
+- **Write:** every successful attempt writes a cache entry. The entry is written last, and atomically, so a partial attempt is never visible.
+- **Read:** with `-resume`, as in Nextflow. An option turns on reading in every run, for a shared cache.
+- **`cache false`** neither reads nor writes. `cache 'deep'` and `cache 'lenient'` behave like the default, because inputs are always hashed by content. The documentation says so.
+- **Equal keys in one run** run once. Each task still appears as its own task in the trace and in `workflow.stats`.
+- **Resume is a new run of the network with cache hits,** as in Nextflow. Driver state is not replayed, because keys depend on content, not on order. One limit is shared with Nextflow: an order that differs upstream can change a later key, for example `collect` after `mix` without sorting.
+- **Deterministic and non-deterministic steps.** The first recorded result of a key wins and is reused. Downstream keys depend on the output digests, so a result that differs would show up as new downstream keys. The namespace salt drops poisoned entries. A later verification mode can run a sample of cached tasks again, compare digests, and mark tasks that are not deterministic.
+- **Sharing across pipelines.** The process name is not in the key. So the same module call on the same input, with the same image and arguments, shares its result across pipelines.
+
+### 7.9 Executors and storage
+
+The executor interface is the nine operations of the feasibility report: capabilities, prepare, submit, poll, cancel, result, logs, reconcile and cleanup. The executors come in this order:
+
+1. **Local.** Processes started with `process-wrap`. Scheduling counts CPUs and memory against `executor.cpus` and `executor.memory`, as Nextflow's local executor does, and respects `queueSize`.
+2. **Docker and Podman,** through their command lines. The command copies the options of Nextflow's `docker run`, so nf-core's `docker.runOptions` (for example `-u $(id -u):$(id -g)`) and `containerOptions` work as written. The command line is used instead of an API crate, because nf-core configs pass raw command line options.
+3. **TES,** through the `tes` crate, with the portable task shape of the feasibility report. It has one executor, the wrapper staged as an `s3://` object, explicit inputs with types, the log, exit code and manifest files as outputs, tags for run, task, attempt and cache key, polling by tag, and the last task log as the result.
+
+Aruna comes first as the S3-compatible content store, then as a TES target. Singularity, Apptainer and Slurm come after the milestones.
+
+### 7.10 The event log
+
+Each run writes one JSON lines file into the store. It records: run start (command line, config digest, params), task submitted (identity, key, attempt, executor handle), cache hit, task finished (state, exit status, output digests), publish actions and run end. It has four uses:
+
+- reconciling after a crash, by adopting remote tasks by tag instead of submitting them again;
+- provenance, and later a Workflow Run RO-Crate;
+- the trace file;
+- a command that shows the history of a run.
+
+## 8. Verification
+
+### 8.1 Principles
+
+- The oracle is Nextflow 26.04.6 (`~/.cache/iunctus/oracle/nextflow-26.04.6-all.jar`, Java 21). It is a development tool. It is never needed at run time, and never needed by `cargo test`.
+- Oracle answers are recorded as fixtures, with the script that recorded them, under `tests/fixtures/oracle/` of each crate. A `just` recipe records them again. Upgrading the oracle means recording again and reviewing the difference.
+- The nf-test snapshots in nf-core repositories were produced by real Nextflow in nf-core's CI. They are an oracle that needs no JVM.
+- Every layer also has plain unit tests, taken from the observed examples in the three specifications.
+- Oracle runs use an isolated `NXF_HOME` and `NXF_OFFLINE=true`, as the parser's corpus tooling already does.
+
+### 8.2 Tests by layer
+
+| Layer | Unit tests | Oracle or corpus check |
+|---|---|---|
+| Values and formatting | Every observed example in the Groovy spec; the 20-item checklist | Expression cases run by the oracle in batches and recorded: rendered text, runtime class, error class |
+| Lowering | Name resolution; each rewrite pass | Lower every lint-clean nf-core file. The only allowed failures are named unsupported features. |
+| Standard library | One or more tests per method | Oracle cases generated from the call shapes in the corpus; the coverage report |
+| Config | Experiments 1 to 33 of the config spec as tests | `nextflow config` output for all 144 pipelines with the default, `test` and `test,docker` profiles; per-task directives from the trace of oracle stub runs |
+| Operators | The experiments of the channels spec; the `docs/snippets` examples of Nextflow with their `.out` files | Random inputs through both. Order is compared exactly for order-preserving operators, and as a multiset for the others. |
+| Processes and rendering | Firing rules, `each`, optional outputs, retries | Oracle stub runs: every `.command.sh` compared byte for byte up to the capture block; task counts and directives from the trace |
+| Task layer | Staging names, glob matching, wrapper, cache, store | Glob cases against the oracle; executor tests locally, with Docker, and on Funnel with MinIO |
+| Modules | | The nf-test snapshots of the module tests |
+| Pipelines | | The nf-test snapshots of the pipeline tests, stub first, then real |
+
+### 8.3 The expression oracle
+
+A generator writes a strict-syntax script with one `println` per case. Each line prints the label, the rendered value and `getClass().getSimpleName()`, inside `try`/`catch`. This is the method the Groovy spec already used. One oracle run handles thousands of cases, so the cost of starting the JVM does not matter. The cases come from:
+
+- the observed tables of the Groovy spec;
+- every GString interpolation shape in nf-core process scripts (6,614 shapes), filled with sample values of each kind;
+- generated combinations of value kinds with operators and methods. These focus on the risky areas: `BigDecimal` division, `Double` text, `MemoryUnit` and `Duration` text, ranges in collections, map keys, and hash set order.
+
+### 8.4 Rendered scripts from stub runs
+
+For each module test case and each pipeline test profile, the oracle runs with `-stub`. A script collects `work/*/*/.command.sh` and the trace. Tasks are matched by process name and input file names. The `.command.sh` text is compared up to the capture block. The tag, `cpus`, `memory`, `time` and `container` values are compared from the trace. Real (not stub) runs are compared for a sample.
+
+### 8.5 nf-test snapshots
+
+nf-test files are Groovy code, not strict Nextflow. A small Groovy script on the oracle JVM reads each `.nf.test` file and writes its test cases as JSON: name, process or workflow, script path, the `when` block, params, config file and options such as `-stub`. The JSON is recorded as a fixture.
+
+A harness in `nextflow-runtime/tests/` then, for each case:
+
+1. builds the test workflow: it includes the module and binds `input[0]`, `input[1]` and so on from the `when` block;
+2. runs it with iunctus and records every item on every output channel;
+3. renders the items in nf-test's snapshot format: numbered and named channels, maps as objects, files as `name:md5,<hex>`;
+4. compares the result with the committed `.snap` file.
+
+At first the harness supports `snapshot(process.out).match()` and `snapshot(workflow.out).match()`. Other `then` shapes are skipped and counted. For pipeline tests, the harness implements the helpers of the `nft-utils` plugin that nf-core pipeline tests use (`getAllFilesFromDir`, `removeNextflowVersion`) and the `.nftignore` rules.
+
+Runs without containers compare everything except the values of `eval` outputs, which report tool versions. A rotating sample runs with Docker and compares everything.
+
+### 8.6 The support matrix
+
+CI publishes the counts per corpus revision:
+
+- files that lower;
+- pipelines whose config evaluates;
+- module test cases that pass, stub and real;
+- pipeline test cases that pass.
+
+Every failure is classified as a named unsupported feature or as a bug.
+
+## 9. Milestones
+
+| Milestone | Scope | Effort |
+|---|---|---|
+| 0. Evaluator core | Lowering passes, value model, numbers, formatting, truth, equality, arithmetic, closures, functions, GStrings, ranges, indexing; the library for GUNZIP; the expression oracle with fixtures | 2 to 3 person-months |
+| 1. GUNZIP end to end | Program loading, the config the module test needs, one process type, the event loop, local and Docker executors, local store, `https` inputs, cache, resume, the nf-test harness | 2 to 3 person-months |
+| 2. The nf-core modules | The library and operators the modules repository uses, templates, `each`, `env` and `stdout` inputs and outputs, `stageAs`, `arity`, test data cache | 3 to 4 person-months |
+| 3. nf-core/demo | Full pipeline config, utility subworkflows with Java stand-ins, native nf-schema, topics, `collectFile`, `publishDir`, trace, completion handlers | 2 to 3 person-months |
+| 4. Breadth | More operators and library by corpus count, splitters, `exec:`, the output block, pipelines from Git, performance | 4 to 6 person-months |
+| 5. TES and Aruna | S3 content store, TES executor, reconcile, server profiles | 2 to 3 person-months, in parallel with Milestone 4 |
+| 6. Typed syntax | Records, typed processes and workflows, the `params { }` block, typed core operators | 2 to 3 person-months, starting by early 2027 |
+
+The total is about 17 to 25 person-months. That is in line with the feasibility report's 15 to 24 person-months for the Nextflow subset, plus the TES work and the typed syntax.
+
+**Milestone 0 is done when:**
+
+- every observed example of the Groovy spec passes as a test;
+- at least 5,000 recorded oracle cases pass, for both rendered text and runtime class;
+- every lint-clean file of the nf-core modules repository lowers, or fails only with named unsupported features. That list becomes the work list of Milestone 2.
+
+**Milestone 1 is done when:**
+
+- All six test cases of GUNZIP's `tests/main.nf.test` (four real, two stub) run. With Docker or Podman, every snapshot equals `main.nf.test.snap`. Without a container, everything except the gzip version equals the snapshot. The snapshot holds gzip 1.13 from the container.
+- For each case, `.command.sh` equals the oracle's up to the capture block. This covers the `ext.prefix` closure from the test config and the escaping of staged names.
+- A second run with `-resume` runs no task and gives the same snapshot. Changing `ext.prefix` runs only the affected task again.
+- A copy of the module with one unsupported construct stops at load time with its source position and exit code 33.
+
+GUNZIP is the right first target. It is small, and its tool exists on every machine. Yet it needs most of the core:
+
+- a `tuple val, path` input;
+- a `path` output whose name comes from a task variable;
+- an `eval` output with `topic: versions`;
+- `when:`, `script:` and `stub:`;
+- a container expression that tests `workflow.containerEngine`;
+- a config closure for `ext.prefix`;
+- test data over `https`.
+
+**Milestone 2 is done when:**
+
+- at least 95% of the module test cases whose shape the harness supports pass in stub mode, with full comparison for the container sample;
+- at least 90% of the subworkflow stub cases pass;
+- `.command.sh` agrees with the oracle for every passing case;
+- real runs pass for 100 modules with small test data;
+- every remaining failure is a named unsupported feature or a filed bug.
+
+**Milestone 3 is done when:**
+
+- nf-core/demo passes its nf-test snapshots with `-profile test,docker`, in real and stub mode. Demo runs FASTQC, SEQTK_TRIM, MULTIQC and a local module, and it uses the whole nf-core template: nf-schema, the utility subworkflows, topics, `branch`, `groupTuple`, `collectFile` and MultiQC's methods description template.
+- The config iunctus resolves agrees with `nextflow config` for all of demo's profiles, and for the `test` profile of every pipeline whose config the strict parser accepts.
+- `--help`, a validation error and the parameter summary print the same text as the oracle with nf-schema 2.5.1.
+
+**Milestone 4 is done when:**
+
+- stub snapshots pass for 30 lint-clean pipelines, then for 80% of all lint-clean pipelines;
+- the test profiles of 10 pipelines, rnaseq among them, pass with real runs;
+- the support matrix lists every remaining gap.
+
+**Milestone 5 is done when:**
+
+- the GUNZIP tests and the demo test profile pass on Funnel with MinIO and on an Aruna v3 node;
+- a local run followed by a TES run on the same store reuses every cached task;
+- stopping iunctus during a TES run and resuming adopts the running tasks instead of submitting them again.
+
+**Milestone 6 is done when** nf-core modules that have moved to typed syntax pass their tests, and the typed operators agree with recorded oracle fixtures. nf-core makes typed syntax mandatory by Q2 2027, so this milestone must start by early 2027, even if Milestone 4 is not finished.
+
+## 10. Risks
+
+| Risk | Effect | Mitigation |
+|---|---|---|
+| Silent drift in values | A task runs a different command, and nothing fails | Oracle fixtures for values; byte comparison of `.command.sh`; no silent fallbacks |
+| Java behaviour that is hard to copy: hash set order, the regex dialect, `BigDecimal` division, `Double` text, UTF-16 strings | Wrong order or text in rare cases | One module per behaviour, with dense oracle cases. Regex patterns are translated to `fancy-regex`, and constructs the translator does not know fail with an error. |
+| The long tail of library methods and Java classes | Pipelines fail one method at a time | The load-time method check; the coverage report; stand-ins limited to the methods the corpus calls |
+| A moving target: monthly edge releases, typed syntax mandatory by Q2 2027, many nf-schema versions | Pipelines change under the design | Pin the oracle; record fixtures again for each stable release; start Milestone 6 by early 2027; pin nf-schema behaviour per version |
+| Test data and containers make CI heavy | Slow or flaky CI | Cache test data and images; run stub cases without containers, except `eval` values; rotate a container sample |
+| Order that differs between Nextflow and iunctus where Nextflow allows any order | Comparisons fail for no reason | Compare as multisets where the channels spec says the order is not defined; keys depend on content, not order |
+| Memory use of unbounded buffers on large runs | Large runs run out of memory | Measure on the rnaseq full test; spill buffers to disk if needed |
+| Blocking reads inside operator closures | spatialaxe fails | A clear error for now; suspend the operator if more pipelines need it |
+| TES output shape on Aruna, which has no directory outputs | TES runs cannot collect outputs | Decide with the TES test matrix of the feasibility report: wildcard outputs with `path_prefix`, or an archive |
+| Text reused from Nextflow or nf-core (the capture block, snapshots) | License questions | Write iunctus's own capture block unless review allows reuse; snapshots are test data only and are never shipped |
+
+## 11. Open decisions
+
+| Decision | Options | Recommendation |
+|---|---|---|
+| What the evaluator runs | Syntax tree; lowered tree; bytecode | A lowered tree with a tree walker (section 3.1). |
+| How the network runs | Async tasks on Tokio; a single-threaded event loop | The event loop (section 6.1). |
+| Faithful behaviour or corrected behaviour | Copy every quirk; fix quirks | Copy everything that changes values, scripts or channel content. Turn hangs into errors, close `take(0)` at ignition, and do not copy the shared `ext` map or the shared nested params. List each difference in the user documentation. |
+| Command line params at run time | Strings, as in Nextflow; typed values | Strings, with a warning when a string replaces a boolean or number default. |
+| The nf-core utility subworkflows | Run them as code; replace them natively | Run them as code, with stand-ins for Java classes (section 5.4). |
+| Digest algorithm | SHA-256; BLAKE3 | SHA-256 for file digests and cache keys. `sha256sum` exists in nearly every container, so remote tasks can hash their own outputs, and S3 supports SHA-256 checksums. The speed gain of BLAKE3 matters less than that. |
+| When the cache is read | Only with `-resume`; always | Only with `-resume` by default, as in Nextflow. An option reads it always, for a shared cache. |
+| The output capture block | Copy Nextflow's text (Apache-2.0); write iunctus's own | Write iunctus's own block that produces the same `.command.env`, and compare `.command.sh` up to the block. Copy the text only if the license review allows it and full byte comparison turns out to matter. |
+| Collecting TES outputs | Directory output; wildcard with `path_prefix`; an archive; a helper binary inside the task | A directory output where the server supports it, and a wildcard with `path_prefix` on Aruna. Decide after the TES test matrix. Consider a helper binary only if exact glob matching inside the task becomes necessary. |
+| Reading nf-test files | Extract them on the oracle JVM; parse them in Rust; run nf-test itself against a Nextflow-compatible command | Extract them on the JVM into recorded JSON (section 8.5). |
+| Plugins | Implement all; implement used ones and warn for the rest | Implement nf-schema. Fail at load time for other included plugin functions. Warn for plugins that only observe the run. Do not support nf-validation. |
+| Container engines | API crates; command lines | Command lines, which match nf-core's raw run options. |
+| Command line of `iunctus run` | New options; Nextflow's `run` options | Accept Nextflow's `run` options (`-profile`, `-c`, `-params-file`, `-resume`, `-stub`, `-with-docker`, `-w`) and `--name value` params, so that nf-core instructions work. Options that only iunctus has also use a single dash, because double-dash names are pipeline params. |
+| Where output paths point | A virtual work directory; the content store | The content store (section 7.7). Paths then have real names and can be read, without a work directory. |

@@ -475,3 +475,222 @@ The built-in defaults are `debug: false`, `cacheable: true`, `shell: ['/bin/bash
 
 `applyDefaults` does not skip the `withLabel:` and `withName:` keys. They are copied into the process config as extra keys, which has no known effect (derived from code).
 
+### 6.5 Matching
+
+`ConfigSelectorResolver.groovy:59-116`:
+
+- The pattern text after `withLabel:` or `withName:` is trimmed (`:68, 83`). A leading `!` means negation. It is removed and the rest is trimmed again (`:99-101, 112-114`).
+- The pattern is a Java regular expression. It must match the whole name (`Matcher.matches()`). An invalid pattern fails when the process is configured (derived from code).
+- `withLabel` matches if any label of the process matches. With `!`, it matches if no label matches. A process without labels is tested with the single label `""`, so `withLabel: '!big'` matches it (experiment 6).
+- `withName` uses `matches(name) XOR negated`.
+- A `withName` selector is tested against each distinct name in turn. If it matches more than one, it is applied more than once. Each application can override values set by selectors that ran before it.
+- Within one step, selectors run in map order. That is file order, with one twist from section 2.2: a selector key that was already defined in an earlier file keeps its earlier position. In experiment 18, `withName: '.*'` redefined in a `-c` file still loses to `withName: 'FOO'` from `nextflow.config`, while a new `withName: 'F.*'` in the `-c` file wins.
+
+In the corpus (144 pipelines plus nf-core/modules) there are 12,527 selectors. 1,826 contain `*`. Of these, 1,755 contain `.*`. 254 use `|`. One uses a non-capturing group `(?:...)`. None uses negation, back-references or look-around. 71 selectors use `*` without a dot, in glob style, for example `'BCFTOOLS_NORM*'`, `'UNTAR_*'` and `'BAM_SORT_STATS_SAMTOOLS:*'`. As regular expressions these mean "the last character repeated zero or more times", not "any suffix". So `'UNTAR_*'` does not match `UNTAR_FOO`. iunctus must keep regular-expression meaning here. A Rust `regex` crate pattern anchored as `^(?:pattern)$` covers the syntax used in the corpus.
+
+### 6.6 Priority summary
+
+Lowest to highest. This matches `docs/config.mdx:256-285` and experiments 5 and 6:
+
+1. Plain `process` settings (defaults). They only apply if the process has no value for the directive, or its current value equals the built-in default.
+2. Directives in the process definition.
+3. `withLabel` selectors, in map order.
+4. `withName` selectors that match the definition name.
+5. `withName` selectors that match the alias.
+6. `withName` selectors that match the fully qualified name.
+
+The built-in default rule has visible effects:
+
+- In experiment 5, a process that declares `maxRetries 1` gets `maxRetries = 3` from a plain `process.maxRetries = 3`, because 1 is the built-in default.
+- The same happens to selectors, because defaults are applied last. In experiment 26, `withName: FOO { maxRetries = 1; debug = false }` loses to plain `process.maxRetries = 3` and `process.debug = true`. The docs do not mention this.
+
+### 6.7 Special keys
+
+- **`ext`.** Selector values overwrite entry by entry. Plain `process.ext.*` values only add missing entries. Experiments 5 and 6: `withName: BAR { ext.args = ... }` beats `withName: FOO { ext.args = ... }` for an alias `BAR` of `FOO`, and `process.ext.dflt` fills in.
+- **`publishDir`, `label`, `module`, `pod`.** A config value replaces the process's value. It is not added to it (`ProcessConfigBuilder.groovy:225-235`). Labels are read before any selector runs, so a `label` set by a selector does not change which selectors match (`ProcessConfigBuilder.groovy:69`).
+- **Values are not validated.** Config values are stored directly. Only the repeatable directives go through the directive methods. So the key check of `resourceLimits` (`ProcessBuilder.groovy:410-424`) and the value check of `errorStrategy` (`ProcessBuilder.groovy:230-235`) only apply to process definitions. A bad `errorStrategy` from config fails later, when the task reads it (`TaskConfig.groovy:288-300`). This is derived from code and was not run.
+- **`scratch` with `stageInMode = 'rellink'`.** The conflict removes `stageInMode` with a warning (`ProcessConfigBuilder.groovy:80-83`).
+
+### 6.8 Selector name warnings
+
+When the dataflow network starts, every `withName:` pattern that matches no process name gives the warning "There's no process matching config selector: ..." (`Session.groovy:616-617, 1010-1106`). The flag `nextflow.enable.configProcessNamesValidation` (default `true`) switches this off. 120 corpus pipelines set it to `false` (count from a regular-expression search over all `.config` files of each pipeline). It is a warning only.
+
+### 6.9 A quirk not to copy
+
+If a process definition has an `ext` directive, all aliases of that process share one `ext` map, because the process config is copied shallowly (`ProcessConfig.groovy:95-99`). In experiment 5 an `ext.args` closure set for `SUB:BAR` also showed up for `FOO` and `QUX`. No nf-core process uses the `ext` directive in its definition (0 matches in the corpus), so iunctus should give every clone its own copy.
+
+## 7. From config to a task
+
+### 7.1 Task config
+
+- Each task gets a `TaskConfig`, which is a copy of the resolved process settings (`TaskProcessor.groovy:798-812`; `ProcessConfig.groovy:154-156`).
+- `task.process` is set to the fully qualified process name, `task.index` to the task index and `task.executor` to the executor name.
+- The `ext` map becomes a lazy map of its own (`TaskConfig.groovy:233-235`).
+- The task context holds the task inputs by name. `task` is the `TaskConfig` itself (`TaskConfig.groovy:123-140`).
+
+### 7.2 Evaluation when a directive is read
+
+`LazyMap.resolve` (`TaskConfig.groovy:731-814`):
+
+- A closure value is cloned with the task context as its delegate and resolved delegate-first (`Bolts.groovy:697-706`), then called.
+- A name is looked up in this order:
+  1. the task inputs, other task-local variables and `task`;
+  2. the variables of the binding of the script that defines the process: `params`, `workflow`, `nextflow`, `projectDir`, `baseDir`, `launchDir`, `workDir`, `moduleDir`, `secrets` and script-level variables (`TaskContext.groovy:132-146`; `BaseScript.groovy:94-106`);
+  3. the entries of the config `env` scope;
+  4. the variables of the launch environment (`ScriptBinding.groovy:168-190`). Experiment 26 shows `{ HOME }` reading the launch environment and `{ MYVAR }` reading `env.MYVAR` from the config;
+  5. the config file's own variables, through the closure owner. This last step is derived from Groovy closure rules and was not tested separately.
+- An unknown name aborts the run with "No such variable" (experiment 14).
+- For a map-valued directive (a `publishDir` map, `resourceLimits`, ...), closures inside the map are cloned with the context but **not** called (`TaskConfig.groovy:774-782, 792-814`). `PublishDir` calls `path` later and passes the file name to `saveAs` (`PublishDir.groovy:150-215`).
+- A list from a repeatable directive is resolved item by item (`TaskConfig.groovy:738-747`). Other lists, for example a `clusterOptions` list, are returned as they are, so closures inside them are not called (derived from code).
+- The resolved value of a top-level directive is cached for the current context (`TaskConfig.groovy:189-217`). Values inside `ext` are evaluated again on every read.
+
+### 7.3 Coercion and defaults when read
+
+`TaskConfig.groovy:280-560`:
+
+| Directive | Rule |
+| --- | --- |
+| `memory` | `MemoryUnit`. A `MemoryUnit` is used as it is. Any other value is turned into a string and parsed (section 3.7), so a whole number means bytes. A bad value fails with "Not a valid 'memory' value" (`:307-322`). |
+| `time` | `Duration`. A number means milliseconds, a string is parsed. A bad value aborts with "Not a valid `time` value" (`:352-371`). |
+| `cpus` | `int`, read as `value ? value as int : 1`. So a missing value and `0` both read as 1 (experiment 26). A negative value is an error (`:391-404`). |
+| `maxRetries` | `result ? result as int : 1`. So `0` reads as 1, and `maxRetries = 0` still allows one retry (experiment 27). |
+| `maxErrors` | `result ? result as int : 0`. The built-in default is -1 (no limit). `0` blocks every retry (experiment 28). nf-core's string `'-1'` reads as -1 (experiment 32). |
+| `errorStrategy` | A string is upper-cased and converted to the enum. An unknown name fails when read. `null` means `TERMINATE` (`:288-300`). |
+| `task.attempt` | Default 1. |
+
+### 7.4 Resource limits
+
+- `getCpus`, `getMemory`, `getTime` and `getDiskResource` reduce the value to `resourceLimits.<name>` if it is larger (`TaskConfig.groovy:302-405`; `docs/reference/process/directives/resource-limits.mdx`). String limits such as `'15.GB'` or `'24.h'` are converted with Groovy `as MemoryUnit` or `as Duration`.
+- A `resourceLimits.cpus` below 1 is an error.
+- Because `task.cpus` and `task.memory` use the same getters, scripts also see the reduced values. In experiment 7, `memory = { 1.GB * task.attempt }` with a 2 GB limit shows `mem=2 GB` at attempt 3.
+
+### 7.5 Retries
+
+`TaskProcessor.groovy:1142-1263`:
+
+1. When a task fails, `task.exitStatus`, `errorCount`, `retryCount`, `previousTrace` and `previousException` are recorded in the task config.
+2. The `errorStrategy` value is read. A closure sees these values (`docs/reference/process/task-properties.mdx`).
+3. Unrecoverable errors are never retried.
+4. For `retry`, the task is retried only while `(process error count < maxErrors or maxErrors == -1)` and `task failures <= maxRetries` and `submit retries <= maxRetries` (`TaskProcessor.groovy:1241-1263`).
+5. The retry is a copy of the task. `task.attempt` is set to the number of failures + 1, the value cache is cleared and the script is rendered again (`TaskRun.groovy:363-380`). All dynamic directives are therefore evaluated again (experiment 7: cpus 2 then 4, memory 1 GB then 2 GB).
+
+Some directives cannot be dynamic: `executor`, `label`, `maxForks` and `secret` (`docs/process.mdx:1206-1211`). `fair` and `array` throw an error when they are closures (`ProcessConfig.groovy:188-222`).
+
+### 7.6 The `env` scope reaches tasks
+
+`TaskProcessor.getProcessEnvironment` exports every non-null `config.env` entry as a string. When the work directory is local, it then adds the pipeline `bin` directories to `PATH` (`TaskProcessor.groovy:1553-1591`). Values are fixed when the config is parsed. To have the task expand `$PATH`, write `\$PATH` (`docs/reference/config/env.mdx`).
+
+## 8. Other scopes used by nf-core
+
+Pipeline counts are from the scanning script over all 144 pipelines, including options inside profiles. A review spot check with regular-expression searches gave the same numbers for most options and small differences for a few. The exact numbers in this table are therefore **unverified**.
+
+| Scope | Options used (pipelines) | What an implementer needs | Source |
+| --- | --- | --- | --- |
+| `env` | `PYTHONNOUSERSITE` (143), `R_PROFILE_USER` (140), `R_ENVIRON_USER` (140), `JULIA_DEPOT_PATH` (133) | Export to every task (section 7.6). `NXF_*` names other than `NXF_DEBUG` give a warning. | `docs/reference/config/env.mdx`; `ConfigValidator.groovy:238-241` |
+| `executor` | `name` (48), `cpus` (47), `memory` (47), `queueSize` (3) | Lookup order for an option: `executor.$<executor>.<opt>`, then `executor.<opt>`, then the variable `NXF_EXECUTOR_<OPT>`, then the default. The executor is `process.executor`, else `executor.name`, else `NXF_EXECUTOR`, else `local`. `cpus` and `memory` are the local executor's capacity. | `ExecutorConfig.groovy:215-239`; `ExecutorFactory.groovy:40, 188, 249-258`; `docs/reference/config/executor.mdx:18-22, 161-184` |
+| `docker`, `podman`, `singularity`, `apptainer`, `charliecloud`, `shifter` | `enabled` (138 to 144), `registry` (125 to 128), `runOptions`, `autoMounts`, `ociAutoPull`, `userEmulation`, `fixOwnership` | At most one engine may be enabled, or the run fails with "Cannot enable more than one container engine". The check also covers `sarus`, `appleContainer` and `smolvm`. `workflow.containerEngine` is the enabled engine, or `null`. nf-core module `container` expressions depend on it. `registry` is put in front of image names that have no registry host (a first path part without `.` or `:`). | `Session.groovy:1371-1401`; `WorkflowMetadata.groovy:296-299`; `ContainerHandler.groovy:152-180` |
+| `conda` | `enabled` (131), `useMamba` (130), `channels` (112) | Only the `conda` profile uses it. | `docs/reference/config/conda.mdx` |
+| `wave` | `enabled`, `freeze`, `strategy` (113) | Used in the `wave` profile. It is a core plugin scope. | `docs/reference/config/wave.mdx` |
+| `manifest` | `name`, `homePage`, `description`, `mainScript`, `nextflowVersion`, `version` (144); `doi` (130); `author` (135); `defaultBranch` (107); `contributors` (106) | `nextflowVersion` is checked when a run starts: a mismatch gives a warning, or aborts if the value starts with `!`. `contributors` entries are validated. | `CmdRun.groovy:696-724`; `docs/reference/config/manifest.mdx:102-120`; `Manifest.groovy:170-240` |
+| `plugins` | nf-schema (109 top-level configs), nf-validation (18) | A set of plugin ids. Plugins are loaded after the config is built. | `CmdRun.groovy:378-381` |
+| `validation` | `monochromeLogs` (108), `defaultIgnoreParams` (102), `parametersSchema` (100), `help.*` (19) | Belongs to the nf-schema plugin. It is not in the checkout, so its semantics are **unverified**. | corpus |
+| `timeline`, `report`, `trace`, `dag` | `enabled`, `file` (144 each); `overwrite` (3) | If the file exists and `overwrite` is false, the run aborts. | `TraceHelper.groovy:57-67`; `docs/reference/config/trace.mdx` |
+| `aws` | `client.anonymous` (98, mostly in test profiles) | Anonymous S3 access to test data. | `docs/reference/config/aws.mdx` |
+| `google`, `azure` | rare (0 and 1 top-level configs) | Can wait. | corpus |
+| `workflow` | `output.mode` (62) | Publishing mode of the `output {}` block. The `onComplete`/`onError` handlers in config are deprecated (none in the corpus). | `docs/reference/config/workflow.mdx` |
+| `nextflow` | `enable.configProcessNamesValidation` (120), `enable.moduleBinaries` (5) | `moduleBinaries` is read from the config (`CmdRun.groovy:508-514`). `enable.strict` is ignored under the strict parser (`CmdRun.groovy:516-525`). | `docs/reference/feature-flags.mdx` |
+| unscoped | `cleanup` (127), `outputDir` (62, `outputDir = params.outdir`), `workDir` (3) | `outputDir` is the output directory of the `output {}` block. | `docs/reference/config/unscoped.mdx`; `ConfigMap.groovy` |
+
+Options used by `process` settings in the corpus, counted by pipelines: `cpus`, `memory`, `time`, `errorStrategy`, `maxRetries` (144); `shell`, `maxErrors` (143); `beforeScript` (128); `ext.args` (127); `publishDir` (126); `ext.prefix` (116); `resourceLimits` (108); `accelerator` (92); `arch` (91); `ext.use_gpu` (90); `ext.args2` (66); `cache` (32); `container` (30); `ext.suffix` (27); `ext.when` (21); `tag` (19); `containerOptions` (18); `label` (13); `conda` (11); `maxForks` (9).
+
+## 9. Corpus findings
+
+### 9.1 Strict-syntax status
+
+`nextflow lint` 26.04.6 was run on all 4,823 `.config` files of the pipeline corpus. It skipped the 110 `nf-test.config` files. The review pass ran it again with `-o json` and got the same numbers (experiment 33). Results:
+
+- 971 errors in 139 files. 58 of the 144 pipelines have at least one config file with an error.
+- 53 top-level `nextflow.config` files have errors. By cause (one pipeline can be in more than one group):
+  - 39 use legacy Groovy constructs: `def check_max`, `if`, `try`/`catch` (the old include of the custom config), or variables;
+  - 16 reference config settings as variables, for example `validation.help.beforeText` or `${manifest.version}` inside `validation.help`;
+  - 4 reference other undefined names, such as `trace_timestamp`;
+  - 3 fail only because an included file is missing from the text-only corpus: methylseq, seqsubmit, viralrecon. seqsubmit includes `.conf` files, which the corpus does not keep.
+- The most common message is "`check_max` is not defined" (641 times).
+- All 1,207 config files of nf-core/modules that lint looked at pass without errors.
+
+So 50 pipelines cannot load their main `nextflow.config` with the strict parser. They need the legacy parser or a newer pipeline release. Under the "strict syntax only" decision, they are out of scope until they are updated.
+
+### 9.2 Patterns iunctus must support
+
+- The conditional custom-config include, `includeConfig <condition> ? "<url>" : "/dev/null"`, is in 110 top-level configs. With `NXF_OFFLINE` set and the default `https` base URL, it includes `/dev/null`.
+- One-line profiles that only include a file (`test { includeConfig 'conf/test.config' }`) are in 143 top-level configs. 141 of them have such a `test` profile. These counts come from a regular-expression search in the review pass. The earlier figure of 132 could not be reproduced.
+- `resourceLimits` appears in the top-level config or the test configs of 106 pipelines. It often uses strings such as `'15.GB'` and `'1.h'`.
+- Per-task closures in pipeline configs: `ext.prefix` (2,835 lines), `ext.args` (1,294 lines), `task.attempt` (3,500 lines), `errorStrategy` closures (222 lines).
+- Java calls in pipeline config values, counted as occurrences: `System.getenv` (382), `new java.util.Date().format(...)` (135), `System.getProperty` (73), `Math.min`/`max`/`pow`. Common string methods: `equals` (1,909), `join` (771), `trim` (584), `tokenize` (477), `contains` (364), `toLowerCase` (243), `startsWith` (204), `split` (176), `endsWith` (168). The string method counts were not re-checked in the review pass (**unverified**).
+- Glob-style `*` in selector patterns (71 selectors, section 6.5) must keep its regular-expression meaning.
+
+## 10. Notes for the Rust implementation
+
+- **Value tree.** Use an ordered map. Overwriting a key keeps its position, and new keys are appended. Leaf values: null, boolean, integer (32-bit, 64-bit, big), decimal (32-bit float, 64-bit float, big decimal), string, list, set, map literal (turned into a nested map when the file ends, but not inside lists), `Duration`, `MemoryUnit`, `Path`, and closure. A closure is an unevaluated expression tree plus a reference to the variables of its file.
+- **Two merge operations.** Assignment replaces. Includes and cross-file merges deep-merge maps and replace everything else. Writing below a non-map value is an error.
+- **Per-file params.** Start each top-level file with the command-line and params-file params only. Start each include with a copy of the includer's params. Do not share nested maps between files.
+- **Profiles.** Apply them at the end of each `profiles` block, in `-profile` order, at the top level. Apply `standard` when no `-profile` is given and it exists.
+- **Plugins.** Only a top-level `plugins` block counts. Decide deliberately whether to reproduce the silent drop of nested `plugins` blocks, or to report it.
+- **Params.** Decide deliberately whether to reproduce "legacy params from the command line are strings at run time" (section 5.5). Faithful behaviour makes `--flag false` truthy. Inside the config, reproduce the conversion of decimal text to a 32-bit float, or document the difference.
+- **Selectors.** Match with an anchored regex. Apply the three name passes. Keep the "fill if missing or equal to the built-in default" rule for plain settings, including its effect on values set by selectors. Do not treat `*` as a glob.
+- **Units.** Reproduce the exact unit lists and case rules of section 3.7, including the upper-case `B` in memory strings and 1024-based sizes.
+- **Tasks.** Evaluate closures lazily per task, with the lookup order task context, then script binding, then config `env` scope, then launch environment, then config file variables. Apply resource limits when a value is read, so that `task.cpus` in scripts is limited too. Reproduce `cpus` 0 reading as 1, `maxRetries` 0 reading as 1 and `maxErrors` 0 blocking retries, or document the difference.
+- **Order of reading.** Read `manifest.mainScript` from the project config first, with includes ignored and no profiles applied (section 2.7).
+
+## 11. Unverified points
+
+- Remote (`https://`) includes and remote params files were not run.
+- The behaviour of the nf-schema plugin (`validation` scope, and whether it converts command-line strings) was not checked.
+- The missing validation of `errorStrategy` and `resourceLimits` keys from config is derived from code and was not run.
+- `plugins` being replaced, not merged, across files is derived from code (experiment 17 could not run offline).
+- The closure owner step of the name lookup (section 7.2, step 5) is derived from Groovy closure rules.
+- The sharing of nested command-line param maps between top-level files (section 2.3) is derived from code.
+- Whether `env.NXF_*` entries reach tasks despite the "will be ignored" warning (section 2.6) was not checked.
+- Smaller code-derived details were not run: a bare closure in `includeConfig`, a profile name given twice, kebab-case in dotted names, the `${outputDir}` placeholder, the case-sensitive params file extension, selector keys copied by `applyDefaults`, and closures in plain lists.
+- The counts in section 8 and the string method counts in section 9.2 come from the original scanning script and were only spot-checked.
+- The experiments used Nextflow 26.04.6, not the `26.09.1-edge` checkout. The code paths used by the experiments were compared by reading and look the same, except for renamed classes and message wording (for example `ConfigDsl$ProcessDsl` in 26.04.6 is `SelectorBlockDsl` in the checkout). A behaviour change between the two versions cannot be excluded.
+
+## Appendix A: Experiments
+
+All runs used Nextflow 26.04.6 with `NXF_OFFLINE=true`, in scratch directories under `/tmp`. Experiments 1 to 18 used an empty `NXF_HOME`. Experiments 19 to 33 used an `NXF_HOME` that held only the framework jar.
+
+| Experiment | Setup | Result |
+| --- | --- | --- |
+| 1 | `nextflow.config`: `params.outdir = 'results'`, `params.n = 5`, `process.cpus = params.n`. `custom.config`: `params.other = "${params.outdir}/x"`, `process.memory = "${params.n} GB"`. Ran `nextflow -c custom.config config`, then `-C custom.config -c extra.config`, then `-c custom.config,extra.config`, then with `$NXF_HOME/config` setting `params.outdir = 'home-out'`. | `other = 'null/x'`, `memory = 'null GB'`. `-C` ignored `extra.config`. The comma list read both files. The project config beat the home config. |
+| 2 | Config `params.n = 5`, `flag = false`, `ratio = 0.5`, `derived = "n is ${params.n}"`, plus `n_is_int = params.n instanceof Integer`. Script `params.n = 99`, `params.fromscript = 'script-default'`. Run `--n 7 --flag true --ratio 0.7 --fromscript cli --undeclared 3 --nested.x 2`, and `--flag false`. | At run time `n='7'` (String), `flag='true'` (String), `derived='n is 7'`, `n_is_int=true`, the ratio class seen by the config was Float, `fromscript='cli'`, `undeclared='3'`, `nested=[x:2]`. Without CLI params: `n=5` (the config beat the script's 99). With `--flag false`, `params.flag` was truthy and `params.n + 1` gave `71`. |
+| 3 | `profiles { a {...}; b { includeConfig 'conf/b.config' }; a { params.dup = 'second-a' } }`, then `params.r = 'top-after'` after the block, profiles also in an included file and in `-c custom.config`. | The second `a` replaced the first. `r = 'top-after'` beat `r = 'from-b'`. Profiles from the included file and the `-c` file were applied. `-profile zzz` gave "Unknown configuration profile". |
+| 4 | `profiles { a { process.cpus = 2 } b { process.cpus = 3 } }`. | Strict parser: `b,a` gives 2 and `a,b` gives 3. `' a, b'` gives an unknown profile error. The legacy parser (`NXF_SYNTAX_PARSER=v1`) with `b,a` gives 3 (definition order). |
+| 5 | Process `FOO` with `label 'big'`, `cpus 5`, `maxRetries 1`, `memory 1.GB`, `ext args: ...`, included as `FOO`, `BAR` (inside `SUB`) and `QUX`. Config with defaults, `withLabel: big`, `withName: FOO`, `BAR`, `'SUB:BAR'`, `'Q.*'`, `'QU.*'` and `resourceLimits = [cpus: 4, time: '10.h']`. | `FOO`: cpus 3 (name beats label 2 and definition 5). `QUX`: cpus 3 through the base name `FOO`, queue from `QU.*` (the later of two matches). `SUB:BAR`: cpus 6 limited to 4. Memory 2 GB from the label beat the definition's 1 GB. `maxRetries` 3 beat the definition's 1. Time 100 h limited to 10 h. The `ext` closure of `SUB:BAR` leaked to the other aliases (section 6.9). |
+| 6 | `FOO as BAR` in `SUB` in `OUTER`, and `NOLABEL`. Selectors `'!big'`, `'SUB:BAR'`, `'.*:SUB:BAR'`, `'OUTER:SUB:BAR'`, `FOO`, `BAR`. | `OUTER:SUB:BAR`: cpus 7 (fully qualified name beats `FOO`'s 3), tag from `.*:SUB:BAR`, `ext.args` from `BAR` beat `FOO`. `'SUB:BAR'` did not match. `NOLABEL` got queue `not-big`. |
+| 7 | Config `memory = { 1.GB * task.attempt }`, `cpus = { 2 * task.attempt }`, `time = { 1.h * task.attempt }`, retry on exit 1 or 2, `maxRetries = 3`, limits `[memory: 2.GB, cpus: 4, time: '90.m']`. The task fails twice. | Attempts 1, 2, 3 with cpus 2, 4, 4, memory 1, 2, 2 GB and time 1 h, 1 h 30 m, 1 h 30 m, as seen by the script. |
+| 8 | `params.before = 'B'`, `includeConfig 'sub/inc.config'`, `params.after = 'A'`. `inc.config` reads both and includes `nested.config` by a relative path. Separately, an unselected profile includes a missing file. | `seen_before = 'B'`, `seen_after = 'null'`. `nested.config` was found in `sub/`. The missing file in the unselected profile gave "Invalid include source". |
+| 9 | `process { includeConfig 'x.config' }`. | "Config includes are only allowed at the top-level or in a profile". |
+| 10 | `includeConfig "${params.f}.config"` with a missing file. | "Unable to parse config file". |
+| 11 | Several one-line configs: `def x = 1`, `if (...) {...}`, `process.memory = process.cpus`, `params.x = HOME`, `foo { bar 'x' }`, `docker { withName: X {...} }`, `workDir` and `outputDir` in strings, and `launchDir`, `projectDir`, `baseDir`, `env("HOME")`, `System.getenv("HOME")`. | The rejections listed in section 3.8. `launchDir`, `projectDir`, `baseDir`, `env()` and `System.getenv` worked. |
+| 12 | Params file `p.yaml` with `n: 3`, `from_file`, `both`, a list, `my-kebab`, a nested map. Run with `--both cli --cli-kebab x`. | `n=3` (Integer), `both='cli'`, `myKebab='k'`, `cliKebab='x'`, and the config's `seen` string used the params-file and CLI values. |
+| 13 | A map assigned twice in one file, a list, `params.m` maps merged through an include and a `-c` file, the same selector key in two files. | Same file: the second map replaced the first. Across files: the maps merged. The list was replaced. `params.m` held keys from all three sources. The selector bodies merged. |
+| 14 | Config `process.ext.args = { "only_script=${params.only_script} n=${params.n} x=${x} ..." }` with `params.only_script` defined only in `main.nf`, and one selector closure that uses an undefined name. | The closure saw the script param, the CLI value and the input `x`. The undefined name aborted the run with "No such variable". |
+| 15 | Config `env.FOO = 'config'`, `process.cpus = 1`, `process.queue = 'cfg'`. Process with `cpus 3`. Run `-e.FOO=cli -e.BAR=cli -process.cpus=5 -process.queue=cliq`. | `FOO=config`, `BAR=cli`, cpus 3, queue `cliq`. |
+| 16 | Typed `params { n: Integer = 1; flag: Boolean; name: String = 'def'; fromcfg: Integer = 1 }`, config `params.fromcfg = 42`, `params.extra = 'cfg-only'`. Run `--n 7 --flag`, and `--undeclared 1`. | `n=7` (Integer), `flag=true`, `fromcfg=42`, `extra='cfg-only'`. `--undeclared` gave "was specified on the command line or params file but is not declared". |
+| 17 | Two `plugins` blocks and a `-c` file with a `plugins` block. | Not conclusive: plugin loading failed offline. |
+| 18 | `nextflow.config`: `withName: '.*' {queue='a'; tag='a'}`, `withName: 'FOO' {queue='b'; tag='b'}`. `-c` file: `withName: '.*' {queue='c'}`, `withName: 'F.*' {tag='d'}`. | queue `b`, tag `d`. The redefined `.*` kept its first position. The new `F.*` came last. |
+| 19 | `process { withFoo: X { cpus = 1 } }`, `nextflow config`. | "Unable to parse config file: '<path>'". The log shows `MissingMethodException: No signature of method: ...withFoo() is applicable for argument types: (String, ...)`. |
+| 20 | `profiles { p { plugins { id 'nf-inprofile@1.0.0' }; params.x = 1 } }`, `nextflow config -profile p` and `nextflow config -show-profiles`. | Only `params.x = 1` appeared, in both modes. No `plugins` entry and no download attempt. A top-level `plugins` block in the same test did trigger a download attempt. |
+| 21 | `profiles { includeConfig 'x.config' }` with `x.config` present. | Compile error "Config includes are only allowed at the top-level or in a profile". |
+| 22 | `params.f = ''` then `includeConfig params.f`. | "assert includeFile" with the value `''`. No "Unable to parse config file" wrapper. |
+| 23 | `includeConfig 'missing.config'`, run with `nextflow -config-ignore-includes config`. | "Invalid include source: '.../missing.config'" and "Config parsing failed". |
+| 24 | `process { withName: EMPTY { }; withName: FULL { cpus = 2 } }`. | Only `withName:FULL` appeared in the output. |
+| 25 | `profiles { foo { params.a = 1 } }`, `nextflow config -profile standard,foo`. | "Unknown configuration profile: 'standard'". |
+| 26 | Process `FOO` with one value input `x`. Config `process { maxRetries = 3; debug = true; cpus = 0; withName: FOO { maxRetries = 1; debug = false }; ext.args = { "x=${x}" }; ext.home = { HOME }; ext.foo = { MYVAR } }` and `env.MYVAR = 'from-env-scope'`. The script echoes the task values. | `maxRetries=3`, `debug=true` (the plain settings beat the selector values that equal the built-in defaults), `cpus=1`, `args=x=1`, `home=` the launch `HOME`, `foo=from-env-scope`. |
+| 27 | A process that always exits 1. Config `errorStrategy = 'retry'`, `maxRetries = 0`. Each attempt appends `task.attempt` to a file. | Attempts 1 and 2 ran. |
+| 28 | Same process. Config `errorStrategy = 'retry'`, `maxRetries = 3`, `maxErrors = 0`. | Only attempt 1 ran. |
+| 29 | Config `params.a = [b: 1]`, `params.r = 0.5`, `params.big = 1`, plus strings and class names derived from them. Run `--a.c 2 --r 0.123456789 --big 1e40`. | The config saw `a = [c:2]`, `r` as `Float` `0.12345679`, `big` as `Float` `Infinity`. At run time `params.a` was `[c:2]` and `params.r` was the string `0.123456789`. |
+| 30 | `profiles { x = 1 }`. | "Only profile blocks are allowed in the `profiles` scope". |
+| 31 | `process.ext = 'x'` then `process.ext.args = 'y'`. | "Unable to parse config file". The log shows `MissingMethodException` for `String.put()`. |
+| 32 | Groovy scripts run with the Groovy 4.0.31 runtime and the Nextflow classes of the 26.04.6 jar: `ConfigObject.merge` of two trees; `String.isInteger`, `isFloat`, `toFloat` and `as int`; `new MemoryUnit(...)` and `new Duration(...)` on many strings. | Maps merged, other values replaced, an empty map was replaced by the new map object, key order kept with new keys appended. `' 7'.isInteger()` is true. `'0.123456789'.toFloat()` is `0.12345679`. `'1e40'.isFloat()` is true and gives `Infinity`. `'-1' as int` is -1. Memory: `'15.GB'`, `'16G'`, `'8 GB'`, `'8g'`, `'1024'` work; `'8 gb'`, `'8gb'`, `'8Gb'`, `'1.5'` fail. Duration: `'24h'`, `'1.h'`, `'90.m'`, `'1h 30m'`, `'1h30m'`, `'10min'`, `'2 days'`, `'01:30:00'`, `'1.5h'` work; `'2H'`, `'10mins'`, `'3secs'` fail. |
+| 33 | `nextflow lint -o json` on the 144 top-level configs, on all 4,823 pipeline `.config` files and on the 1,210 module `.config` files. | Top level: 53 files with errors (39 legacy constructs, 16 config settings as variables, 4 other names, 3 missing includes only). All pipeline configs: 971 errors in 139 files, 58 pipelines, "`check_max` is not defined" 641 times, "Unexpected input: '('" 35 times. Modules: 1,207 files checked, 0 errors. |

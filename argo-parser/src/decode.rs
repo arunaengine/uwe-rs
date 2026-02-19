@@ -433,3 +433,7 @@ impl<'de> MapAccess<'de> for Fields<'_> {
         reader.locate(seed.deserialize(reader))
     }
 }
+
+#[cfg(test)]
+#[path = "decode_tests.rs"]
+mod tests;

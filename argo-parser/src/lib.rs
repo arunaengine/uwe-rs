@@ -3,10 +3,12 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod decode;
 mod node;
 mod scalar;
 mod tree;
 
+pub use decode::{DecodeError, UnknownField, decode};
 pub use node::{Entry, Node, Position, Value};
 pub use scalar::resolve_plain;
 pub use tree::{SyntaxError, parse_yaml};

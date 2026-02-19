@@ -13,6 +13,7 @@ name = "argo-parser"
 version = "0.1.0"
 dependencies = [
  "saphyr-parser",
+ "serde",
 ]
 
 [[package]]

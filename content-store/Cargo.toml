@@ -1,0 +1,23 @@
+# Manifest of content-store, the cache directory on a file system or in S3.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "content-store"
+description = "Content-addressed cache directory on a local file system or in S3"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+bytes.workspace = true
+opendal.workspace = true
+sha2.workspace = true
+task-model.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

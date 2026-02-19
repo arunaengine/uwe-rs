@@ -13,6 +13,10 @@ This folder holds the research behind the code. All facts were checked on 2026-0
 - [Decisions](decisions.md): what has been decided so far. It replaces the report's plan where they differ.
 - [Feasibility report](feasibility-report.md): verdict per language, proposed architecture, phased plan, open decisions and next steps.
 
+## Design
+
+- [Nextflow runtime](design/nextflow/runtime.md): the chosen design of the Nextflow evaluator, the dataflow runtime and the shared task layer, with milestones.
+
 ## Research notes
 
 Each note answers a set of questions and cites its sources.

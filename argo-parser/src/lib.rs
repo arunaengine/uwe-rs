@@ -1,0 +1,10 @@
+//! Loads Argo Workflows documents (Workflow, WorkflowTemplate, ClusterWorkflowTemplate and
+//! CronWorkflow) from YAML and JSON into a typed model, following Argo v4.1.4.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+mod node;
+mod scalar;
+
+pub use node::{Entry, Node, Position, Value};
+pub use scalar::resolve_plain;

@@ -4,7 +4,7 @@
 
 [workspace]
 resolver = "3"
-members = ["nextflow-parser", "task-model"]
+members = ["content-store", "nextflow-parser", "task-model"]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,8 +14,23 @@ rust-version = "1.97.1"
 publish = false
 
 [workspace.dependencies]
+# Workspace crates
+task-model = { path = "task-model" }
+
+# Third-party crates
+bytes = "1.12.1"
+opendal = { version = "0.59.3", default-features = false, features = [
+    "executors-tokio",
+    "http-transport-reqwest",
+    "layers-retry",
+    "services-fs",
+    "services-memory",
+    "services-s3",
+] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_jcs = "0.2.0"
 serde_json = "1.0.151"
 sha2 = "0.11.0"
 thiserror = "2.0.21"
+tempfile = "3.27.0"
+tokio = { version = "1.53.1", features = ["fs", "io-util", "macros", "rt-multi-thread"] }

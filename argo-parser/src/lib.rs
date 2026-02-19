@@ -5,6 +5,8 @@
 
 mod node;
 mod scalar;
+mod tree;
 
 pub use node::{Entry, Node, Position, Value};
 pub use scalar::resolve_plain;
+pub use tree::{SyntaxError, parse_yaml};

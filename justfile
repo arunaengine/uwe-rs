@@ -38,3 +38,21 @@ corpus:
 # Parses the whole nf-core corpus and compares the result with `nextflow lint`.
 corpus-test:
 	NF_CORE_CORPUS="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}" cargo test --release --locked -p nextflow-parser --test corpus -- --ignored
+
+# Starts a local RustFS (S3-compatible) with the bucket `iunctus-test` for the S3 tests.
+# `docker stop iunctus-s3` ends it.
+s3-server:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	docker run -d --rm --name iunctus-s3 -p 127.0.0.1:9000:9000 \
+		-e RUSTFS_ALLOW_INSECURE_DEFAULT_CREDENTIALS=true rustfs/rustfs:latest >/dev/null
+	until curl -sf http://127.0.0.1:9000/health >/dev/null; do sleep 1; done
+	uv run -q --with boto3 python -c "import boto3; boto3.client('s3', \
+		endpoint_url='http://127.0.0.1:9000', aws_access_key_id='rustfsadmin', \
+		aws_secret_access_key='rustfsadmin', region_name='us-east-1').create_bucket(Bucket='iunctus-test')"
+
+# Runs the S3 tests of content-store against the server from `just s3-server`.
+s3-test:
+	AWS_ACCESS_KEY_ID=rustfsadmin AWS_SECRET_ACCESS_KEY=rustfsadmin AWS_REGION=us-east-1 \
+	IUNCTUS_S3_BUCKET=iunctus-test IUNCTUS_S3_ENDPOINT=http://127.0.0.1:9000 \
+	cargo test -p content-store --test store -- --ignored

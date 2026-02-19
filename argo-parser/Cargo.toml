@@ -13,3 +13,4 @@ publish.workspace = true
 
 [dependencies]
 saphyr-parser.workspace = true
+serde.workspace = true

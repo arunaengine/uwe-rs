@@ -1,0 +1,12 @@
+# Manifest of snakemake-parser, which reads Snakefiles into a syntax tree.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "snakemake-parser"
+description = "Parser and syntax tree for Snakefiles, with the Python parts parsed by ruff"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true

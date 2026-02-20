@@ -36,6 +36,18 @@ pub(crate) enum Kind {
 pub(crate) struct Token {
     pub(crate) kind: Kind,
     pub(crate) range: TextRange,
+    /// For indents and dedents: the whitespace characters before the line's first token.
+    pub(crate) column: i32,
+}
+
+impl Token {
+    /// Newlines, indentation and comments, which never belong to a keyword's value.
+    pub(crate) fn is_trivia(self) -> bool {
+        matches!(
+            self.kind,
+            Kind::Newline | Kind::Indent | Kind::Dedent | Kind::Comment | Kind::EndOfFile
+        )
+    }
 }
 
 /// Lexes the whole file; the result always ends with an end-of-file token.
@@ -65,6 +77,7 @@ pub(crate) fn tokenize(source: &str) -> Result<Vec<Token>, Error> {
                 tokens.push(Token {
                     kind: Kind::Template,
                     range,
+                    column: 0,
                 });
                 continue;
             }
@@ -88,7 +101,19 @@ pub(crate) fn tokenize(source: &str) -> Result<Vec<Token>, Error> {
             TokenKind::Equal => Kind::Equal,
             _ => Kind::Other,
         };
-        tokens.push(Token { kind, range });
+        // Indentation is ASCII, so its length in bytes is its length in characters.
+        let column = match kind {
+            Kind::Indent => line_prefix(source, range.end()).len() as i32,
+            // Python's tokenize puts the dedents at the end of a file into column 0.
+            Kind::Dedent if range.start().to_usize() == source.len() => 0,
+            Kind::Dedent => line_prefix(source, range.start()).len() as i32,
+            _ => 0,
+        };
+        tokens.push(Token {
+            kind,
+            range,
+            column,
+        });
         if kind == Kind::EndOfFile {
             return Ok(tokens);
         }

@@ -2,11 +2,36 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use ruff_python_ast::Suite;
-use ruff_python_parser::{ParseError, parse_module};
+use ruff_python_ast::{Arguments, AtomicNodeIndex, Expr, ExprCall, Suite};
+use ruff_python_parser::{ParseError, parse_expression_range, parse_module};
 use ruff_text_size::{TextRange, TextSize};
 
 use crate::Error;
+
+/// Parses a value as the arguments of a call, as parser.py passes it on to `workflow` methods.
+/// `None` stands for an empty value after `offset`.
+pub(crate) fn arguments(
+    source: &str,
+    value: Option<TextRange>,
+    offset: TextSize,
+) -> Result<Arguments, Error> {
+    let Some(range) = value else {
+        return Ok(empty(offset));
+    };
+    let mut arguments = call(source, range, "f(", ")")?.arguments;
+    arguments.range = range;
+    Ok(arguments)
+}
+
+/// An empty argument list at `offset`.
+pub(crate) fn empty(offset: TextSize) -> Arguments {
+    Arguments {
+        node_index: AtomicNodeIndex::NONE,
+        range: TextRange::empty(offset),
+        args: Default::default(),
+        keywords: Default::default(),
+    }
+}
 
 /// Parses the Python code around the Snakemake statements, which become `...` placeholders.
 pub(crate) fn module(source: &str, statements: &[TextRange]) -> Result<Suite, Error> {
@@ -25,6 +50,26 @@ pub(crate) fn module(source: &str, statements: &[TextRange]) -> Result<Suite, Er
     let whole = TextRange::up_to(TextSize::of(source));
     let parsed = parse_module(&text).map_err(|error| located(source, &error, whole))?;
     Ok(parsed.into_syntax().body)
+}
+
+/// Parses `before + value + after` as a call expression, with the value at its original offset.
+fn call(source: &str, range: TextRange, before: &str, after: &str) -> Result<ExprCall, Error> {
+    let start = range.start().to_usize();
+    let Some(padding) = start.checked_sub(before.len()) else {
+        return Err(Error::new(source, "Expected a value", range));
+    };
+    let mut text = String::with_capacity(range.end().to_usize() + after.len());
+    text.extend(std::iter::repeat_n(' ', padding));
+    text.push_str(before);
+    text.push_str(&source[range]);
+    text.push_str(after);
+    let whole = TextRange::new(TextSize::new(padding as u32), TextSize::of(text.as_str()));
+    let parsed =
+        parse_expression_range(&text, whole).map_err(|error| located(source, &error, range))?;
+    match parsed.into_expr() {
+        Expr::Call(call) => Ok(call),
+        _ => Err(Error::new(source, "Expected a value", range)),
+    }
 }
 
 /// Moves an error from the synthetic text into `range` of the Snakefile.

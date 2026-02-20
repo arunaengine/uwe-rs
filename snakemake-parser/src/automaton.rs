@@ -6,7 +6,7 @@ use ruff_python_ast::Arguments;
 use ruff_text_size::{TextRange, TextSize};
 
 use crate::Error;
-use crate::ast::{Directive, Statement, Value};
+use crate::ast::{Directive, Name, Statement, Value};
 use crate::keyword::GlobalKeyword;
 use crate::python;
 use crate::token::{Kind, Token, at_line_start, tokenize};
@@ -92,9 +92,22 @@ impl Block {
     }
 }
 
+/// What a keyword block holds, which decides how its tokens are checked and parsed.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Shape {
+    Arguments,
+    /// Statements of a handler.
+    Handler,
+    /// Rule names separated by `,` or `>`.
+    Names(Kind),
+    /// Arguments of `resource_scopes`, whose strings must be `local` or `global`.
+    Scopes,
+}
+
 /// The tokens of a block and the token that ended it.
 struct Read {
     value: Option<TextRange>,
+    names: Vec<Name>,
     stop: Token,
 }
 
@@ -157,41 +170,44 @@ impl<'a> Automaton<'a> {
             let message = "Keyword subworkflow is deprecated. Use module directive instead.";
             return Err(self.error(message, keyword));
         }
-        let unsupported = matches!(
-            text,
-            "rule"
-                | "checkpoint"
-                | "use"
-                | "module"
-                | "storage"
-                | "ruleorder"
-                | "localrules"
-                | "onstart"
-                | "onsuccess"
-                | "onerror"
-                | "resource_scopes"
-        );
-        if unsupported {
+        if matches!(text, "rule" | "checkpoint" | "use" | "module" | "storage") {
             return Err(self.error(format!("Keyword {text} is not supported yet."), keyword));
         }
         let Some(global) = GlobalKeyword::from_text(text) else {
             return Ok(None);
         };
-        let (directive, stop) = self.directive(global, keyword, base)?;
+        let shape = match global {
+            GlobalKeyword::RuleOrder => Shape::Names(Kind::Greater),
+            GlobalKeyword::LocalRules => Shape::Names(Kind::Comma),
+            GlobalKeyword::OnStart | GlobalKeyword::OnSuccess | GlobalKeyword::OnError => {
+                Shape::Handler
+            }
+            GlobalKeyword::ResourceScopes => Shape::Scopes,
+            _ => Shape::Arguments,
+        };
+        let (directive, stop) = self.directive(global, keyword, base, shape)?;
         Ok(Some((Statement::Global(directive), stop)))
     }
 
-    /// Reads `keyword: value` and parses the value as call arguments.
+    /// Reads `keyword: value` and parses the value according to `shape`.
     fn directive<K>(
         &mut self,
         keyword: K,
         token: Token,
         base: i32,
+        shape: Shape,
     ) -> Result<(Directive<K>, Token), Error> {
         let mut block = Block::new(base);
         let colon = self.colon(token, &mut block)?;
-        let read = self.read(block);
-        let value = self.arguments(&read, colon).map(Value::Arguments);
+        let read = self.read(block, shape)?;
+        let value = match shape {
+            Shape::Arguments | Shape::Scopes => self.arguments(&read, colon).map(Value::Arguments),
+            Shape::Handler => match read.value {
+                Some(range) => python::body(self.source, range).map(Value::Body),
+                None => Err(self.error("Expected an indented block", read.stop)),
+            },
+            Shape::Names(_) => Ok(Value::Names(read.names)),
+        };
         let directive = Directive {
             keyword,
             keyword_range: token.range,
@@ -202,20 +218,87 @@ impl<'a> Automaton<'a> {
         Ok((directive, read.stop))
     }
 
-    /// Reads the tokens of a block after its colon.
-    fn read(&mut self, mut block: Block) -> Read {
+    /// Reads the tokens of a block after its colon, checking them as parser.py does.
+    fn read(&mut self, mut block: Block, shape: Shape) -> Result<Read, Error> {
+        let mut names: Vec<Name> = Vec::new();
+        let mut separated = true;
+        let mut previous = Kind::Colon;
+        let mut resource = "";
         let stop = loop {
             let token = self.next_in(&mut block);
             match block.step(token) {
                 Step::End => break token,
-                Step::Skip => continue,
-                Step::Content => block.add(token),
+                Step::Skip => {
+                    if matches!(token.kind, Kind::Newline | Kind::Comment) {
+                        previous = token.kind;
+                    }
+                    continue;
+                }
+                Step::Content => {}
             }
+            match shape {
+                Shape::Names(separator) => {
+                    self.name_list(token, separator, &mut names, &mut separated)?;
+                }
+                Shape::Scopes => {
+                    if token.kind == Kind::Name {
+                        resource = self.text(token);
+                    } else if token.kind == Kind::String && previous == Kind::Equal {
+                        let scope = self.text(token);
+                        let mut inner = scope.chars();
+                        inner.next();
+                        inner.next_back();
+                        if !matches!(inner.as_str(), "local" | "global") {
+                            let message = format!(
+                                "Invalid scope: {resource}={scope}. Scope must be set to either 'local' or 'global'"
+                            );
+                            return Err(self.error(message, token));
+                        }
+                    }
+                }
+                _ => {}
+            }
+            previous = token.kind;
+            block.add(token);
         };
-        Read {
+        Ok(Read {
             value: block.value,
+            names,
             stop,
+        })
+    }
+
+    /// Checks one token of `localrules` or `ruleorder`; adjacent names concatenate like strings.
+    fn name_list(
+        &self,
+        token: Token,
+        separator: Kind,
+        names: &mut Vec<Name>,
+        separated: &mut bool,
+    ) -> Result<(), Error> {
+        if token.kind == Kind::Name {
+            match names.last_mut() {
+                Some(last) if !*separated => {
+                    last.text.push_str(self.text(token));
+                    last.range = last.range.cover(token.range);
+                }
+                _ => names.push(self.name(token)),
+            }
+            *separated = false;
+            return Ok(());
         }
+        if token.kind == separator && !*separated {
+            *separated = true;
+            return Ok(());
+        }
+        let message = if token.kind == separator {
+            "Expected a rule name before the separator."
+        } else if separator == Kind::Greater {
+            "Expected a descending order of rule names, e.g. rule1 > rule2 > rule3 ..."
+        } else {
+            "Expected a comma separated list of rules that shall not be executed by the cluster command."
+        };
+        Err(self.error(message, token))
     }
 
     fn arguments(&self, read: &Read, colon: Token) -> Result<Arguments, Error> {
@@ -273,6 +356,13 @@ impl<'a> Automaton<'a> {
 
     fn text(&self, token: Token) -> &'a str {
         &self.source[token.range]
+    }
+
+    fn name(&self, token: Token) -> Name {
+        Name {
+            text: self.text(token).to_string(),
+            range: token.range,
+        }
     }
 
     fn error(&self, message: impl Into<String>, token: Token) -> Error {

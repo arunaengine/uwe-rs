@@ -8,17 +8,42 @@ use ruff_text_size::{TextRange, TextSize};
 
 use crate::Error;
 
-/// Parses a value as the arguments of a call, as parser.py passes it on to `workflow` methods.
-/// `None` stands for an empty value after `offset`.
+/// Where parser.py puts a value in its generated Python, which decides what the value may hold.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Form {
+    /// `f(<value>)`, as for rule properties and global keywords.
+    Plain,
+    /// `f(<value>, k=0)`: the generated `shell(...)` call adds keyword arguments.
+    Shell,
+    /// `f(<value>, 0)`: `script(...)` and similar calls add positional arguments.
+    Command,
+}
+
+/// Parses a value as the arguments of a call; `None` stands for an empty value after `offset`.
 pub(crate) fn arguments(
     source: &str,
     value: Option<TextRange>,
     offset: TextSize,
+    form: Form,
 ) -> Result<Arguments, Error> {
     let Some(range) = value else {
         return Ok(empty(offset));
     };
-    let mut arguments = call(source, range, "f(", ")")?.arguments;
+    let (before, after) = match form {
+        Form::Plain => ("f(", ")"),
+        Form::Shell => ("f(", ",k=0)"),
+        Form::Command => ("f(", ",0)"),
+    };
+    let mut arguments = call(source, range, before, after)?.arguments;
+    match form {
+        Form::Plain => {}
+        Form::Shell => {
+            arguments.keywords.pop();
+        }
+        Form::Command => {
+            arguments.args.pop();
+        }
+    }
     arguments.range = range;
     Ok(arguments)
 }
@@ -31,6 +56,13 @@ pub(crate) fn empty(offset: TextSize) -> Arguments {
         args: Default::default(),
         keywords: Default::default(),
     }
+}
+
+/// Parses one string token, such as a rule docstring.
+pub(crate) fn string(source: &str, range: TextRange) -> Result<Expr, Error> {
+    let parsed =
+        parse_expression_range(source, range).map_err(|error| located(source, &error, range))?;
+    Ok(parsed.into_expr())
 }
 
 /// Parses the statements of a `run:` block or a handler, from its first to its last token.

@@ -2,13 +2,13 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use ruff_python_ast::Arguments;
+use ruff_python_ast::{Arguments, Expr};
 use ruff_text_size::{TextRange, TextSize};
 
 use crate::Error;
 use crate::ast::{Directive, Name, Statement, Value};
 use crate::keyword::GlobalKeyword;
-use crate::python;
+use crate::python::{self, Form};
 use crate::token::{Kind, Token, at_line_start, tokenize};
 
 /// Reads every Snakemake statement, at any Python nesting depth, in source order.
@@ -27,28 +27,30 @@ pub(crate) fn statements(source: &str) -> Result<(Vec<Statement>, Option<Error>)
 }
 
 /// Indentation and line counting of one keyword block, as in parser.py's `KeywordState`.
-struct Block {
+pub(crate) struct Block {
     base: i32,
     indent: i32,
     lines: i32,
     /// Whether the text that parser.py generated last was a line break.
-    after_newline: bool,
+    pub(crate) after_newline: bool,
+    content: u32,
     value: Option<TextRange>,
 }
 
-enum Step {
+pub(crate) enum Step {
     End,
     Skip,
     Content,
 }
 
 impl Block {
-    fn new(base: i32) -> Self {
+    pub(crate) fn new(base: i32) -> Self {
         Self {
             base,
             indent: 0,
             lines: 0,
             after_newline: false,
+            content: 0,
             value: None,
         }
     }
@@ -59,13 +61,14 @@ impl Block {
         }
     }
 
-    /// Decides whether `token` ends the block.
-    fn step(&mut self, token: Token) -> Step {
+    /// Decides whether `token` ends the block; `run:` blocks only end after some content.
+    pub(crate) fn step(&mut self, token: Token, needs_content: bool) -> Step {
         if self.after_newline && token.kind == Kind::Comment {
             // parser.py does not count lines that hold only a comment.
             self.lines -= 1;
         }
-        if token.kind == Kind::EndOfFile || (self.lines != 0 && self.indent <= 0) {
+        let ready = !needs_content || self.content > 0;
+        if token.kind == Kind::EndOfFile || (ready && self.lines != 0 && self.indent <= 0) {
             return Step::End;
         }
         match token.kind {
@@ -84,20 +87,28 @@ impl Block {
     }
 
     fn add(&mut self, token: Token) {
+        self.content += 1;
         self.after_newline = false;
         self.value = Some(match self.value {
             Some(value) => value.cover(token.range),
             None => token.range,
         });
     }
+
+    /// The indentation that parser.py gives to the keywords inside this block.
+    pub(crate) fn inner(&self) -> i32 {
+        self.base + self.indent
+    }
 }
 
 /// What a keyword block holds, which decides how its tokens are checked and parsed.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Shape {
-    Arguments,
+pub(crate) enum Shape {
+    Arguments(Form),
     /// Statements of a handler.
     Handler,
+    /// Statements of a `run:` block, which only ends after some content.
+    Run,
     /// Rule names separated by `,` or `>`.
     Names(Kind),
     /// Arguments of `resource_scopes`, whose strings must be `local` or `global`.
@@ -105,13 +116,13 @@ enum Shape {
 }
 
 /// The tokens of a block and the token that ended it.
-struct Read {
+pub(crate) struct Read {
     value: Option<TextRange>,
     names: Vec<Name>,
-    stop: Token,
+    pub(crate) stop: Token,
 }
 
-struct Automaton<'a> {
+pub(crate) struct Automaton<'a> {
     source: &'a str,
     tokens: Vec<Token>,
     position: usize,
@@ -166,31 +177,40 @@ impl<'a> Automaton<'a> {
         base: i32,
     ) -> Result<Option<(Statement, Token)>, Error> {
         let text = self.text(keyword);
-        if text == "subworkflow" {
-            let message = "Keyword subworkflow is deprecated. Use module directive instead.";
-            return Err(self.error(message, keyword));
-        }
-        if matches!(text, "rule" | "checkpoint" | "use" | "module" | "storage") {
-            return Err(self.error(format!("Keyword {text} is not supported yet."), keyword));
-        }
-        let Some(global) = GlobalKeyword::from_text(text) else {
-            return Ok(None);
-        };
-        let shape = match global {
-            GlobalKeyword::RuleOrder => Shape::Names(Kind::Greater),
-            GlobalKeyword::LocalRules => Shape::Names(Kind::Comma),
-            GlobalKeyword::OnStart | GlobalKeyword::OnSuccess | GlobalKeyword::OnError => {
-                Shape::Handler
+        let (statement, stop) = match text {
+            "rule" | "checkpoint" => {
+                let (rule, stop) = self.rule(keyword, base)?;
+                (Statement::Rule(rule), stop)
             }
-            GlobalKeyword::ResourceScopes => Shape::Scopes,
-            _ => Shape::Arguments,
+            "use" | "module" | "storage" => {
+                return Err(self.error(format!("Keyword {text} is not supported yet."), keyword));
+            }
+            "subworkflow" => {
+                let message = "Keyword subworkflow is deprecated. Use module directive instead.";
+                return Err(self.error(message, keyword));
+            }
+            _ => {
+                let Some(global) = GlobalKeyword::from_text(text) else {
+                    return Ok(None);
+                };
+                let shape = match global {
+                    GlobalKeyword::RuleOrder => Shape::Names(Kind::Greater),
+                    GlobalKeyword::LocalRules => Shape::Names(Kind::Comma),
+                    GlobalKeyword::OnStart | GlobalKeyword::OnSuccess | GlobalKeyword::OnError => {
+                        Shape::Handler
+                    }
+                    GlobalKeyword::ResourceScopes => Shape::Scopes,
+                    _ => Shape::Arguments(Form::Plain),
+                };
+                let (directive, stop) = self.directive(global, keyword, base, shape)?;
+                (Statement::Global(directive), stop)
+            }
         };
-        let (directive, stop) = self.directive(global, keyword, base, shape)?;
-        Ok(Some((Statement::Global(directive), stop)))
+        Ok(Some((statement, stop)))
     }
 
     /// Reads `keyword: value` and parses the value according to `shape`.
-    fn directive<K>(
+    pub(crate) fn directive<K>(
         &mut self,
         keyword: K,
         token: Token,
@@ -201,8 +221,11 @@ impl<'a> Automaton<'a> {
         let colon = self.colon(token, &mut block)?;
         let read = self.read(block, shape)?;
         let value = match shape {
-            Shape::Arguments | Shape::Scopes => self.arguments(&read, colon).map(Value::Arguments),
-            Shape::Handler => match read.value {
+            Shape::Arguments(form) => self.arguments(&read, colon, form).map(Value::Arguments),
+            Shape::Scopes => self
+                .arguments(&read, colon, Form::Plain)
+                .map(Value::Arguments),
+            Shape::Handler | Shape::Run => match read.value {
                 Some(range) => python::body(self.source, range).map(Value::Body),
                 None => Err(self.error("Expected an indented block", read.stop)),
             },
@@ -219,14 +242,14 @@ impl<'a> Automaton<'a> {
     }
 
     /// Reads the tokens of a block after its colon, checking them as parser.py does.
-    fn read(&mut self, mut block: Block, shape: Shape) -> Result<Read, Error> {
+    pub(crate) fn read(&mut self, mut block: Block, shape: Shape) -> Result<Read, Error> {
         let mut names: Vec<Name> = Vec::new();
         let mut separated = true;
         let mut previous = Kind::Colon;
         let mut resource = "";
         let stop = loop {
             let token = self.next_in(&mut block);
-            match block.step(token) {
+            match block.step(token, shape == Shape::Run) {
                 Step::End => break token,
                 Step::Skip => {
                     if matches!(token.kind, Kind::Newline | Kind::Comment) {
@@ -261,6 +284,10 @@ impl<'a> Automaton<'a> {
             previous = token.kind;
             block.add(token);
         };
+        if block.value.is_none() && matches!(shape, Shape::Arguments(Form::Shell | Form::Command)) {
+            let message = "Command must be given as string after the shell keyword.";
+            return Err(self.error(message, stop));
+        }
         Ok(Read {
             value: block.value,
             names,
@@ -301,12 +328,13 @@ impl<'a> Automaton<'a> {
         Err(self.error(message, token))
     }
 
-    fn arguments(&self, read: &Read, colon: Token) -> Result<Arguments, Error> {
-        python::arguments(self.source, read.value, colon.range.end())
+    pub(crate) fn docstring(&mut self, token: Token) -> Option<Expr> {
+        let docstring = python::string(self.source, token.range);
+        self.defer(docstring)
     }
 
     /// Keeps the first error in Python code for later, like parser.py does.
-    fn defer<T>(&mut self, result: Result<T, Error>) -> Option<T> {
+    pub(crate) fn defer<T>(&mut self, result: Result<T, Error>) -> Option<T> {
         match result {
             Ok(value) => Some(value),
             Err(error) => {
@@ -314,6 +342,15 @@ impl<'a> Automaton<'a> {
                 None
             }
         }
+    }
+
+    pub(crate) fn arguments(
+        &self,
+        read: &Read,
+        colon: Token,
+        form: Form,
+    ) -> Result<Arguments, Error> {
+        python::arguments(self.source, read.value, colon.range.end(), form)
     }
 
     fn colon(&mut self, keyword: Token, block: &mut Block) -> Result<Token, Error> {
@@ -339,14 +376,25 @@ impl<'a> Automaton<'a> {
     }
 
     /// Takes the next token into `block`, as parser.py's `consume` does before each state.
-    fn next_in(&mut self, block: &mut Block) -> Token {
+    pub(crate) fn next_in(&mut self, block: &mut Block) -> Token {
         let token = self.next();
         block.indentation(token);
         token
     }
 
+    /// Continues with the token that ended an inner block, or with the next token.
+    pub(crate) fn resume(&mut self, pending: &mut Option<Token>, block: &mut Block) -> Token {
+        match pending.take() {
+            Some(token) => {
+                block.indentation(token);
+                token
+            }
+            None => self.next_in(block),
+        }
+    }
+
     /// The end of the statement that `stop` ended: its last token before `stop`.
-    fn end_before(&self, stop: Token) -> TextSize {
+    pub(crate) fn end_before(&self, stop: Token) -> TextSize {
         if stop.is_trivia() {
             self.last_end
         } else {
@@ -354,18 +402,26 @@ impl<'a> Automaton<'a> {
         }
     }
 
-    fn text(&self, token: Token) -> &'a str {
+    pub(crate) fn text(&self, token: Token) -> &'a str {
         &self.source[token.range]
     }
 
-    fn name(&self, token: Token) -> Name {
+    pub(crate) fn name(&self, token: Token) -> Name {
         Name {
             text: self.text(token).to_string(),
             range: token.range,
         }
     }
 
-    fn error(&self, message: impl Into<String>, token: Token) -> Error {
+    pub(crate) fn error(&self, message: impl Into<String>, token: Token) -> Error {
         Error::new(self.source, message, token.range)
+    }
+
+    /// An error where a Python name may clash with a Snakemake keyword.
+    pub(crate) fn hinted(&self, message: &str, token: Token, keyword: &str) -> Error {
+        let message = format!(
+            "{message} The keyword {keyword} has a special meaning in Snakemake. If you named a variable or function like this, please rename it to avoid the conflict."
+        );
+        self.error(message, token)
     }
 }

@@ -7,6 +7,7 @@ mod automaton;
 mod error;
 pub mod keyword;
 mod python;
+mod rule;
 mod token;
 
 pub use error::Error;

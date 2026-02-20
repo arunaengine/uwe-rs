@@ -27,6 +27,8 @@ opendal = { version = "0.59.3", default-features = false, features = [
     "services-memory",
     "services-s3",
 ] }
+ruff_python_ast = "=0.0.15"
+ruff_text_size = "=0.0.15"
 saphyr-parser = "0.1.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_jcs = "0.2.0"

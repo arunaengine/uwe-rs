@@ -182,7 +182,11 @@ impl<'a> Automaton<'a> {
                 let (rule, stop) = self.rule(keyword, base)?;
                 (Statement::Rule(rule), stop)
             }
-            "use" | "module" | "storage" => {
+            "use" => {
+                let (rule, stop) = self.use_rule(keyword, base)?;
+                (Statement::UseRule(rule), stop)
+            }
+            "module" | "storage" => {
                 return Err(self.error(format!("Keyword {text} is not supported yet."), keyword));
             }
             "subworkflow" => {
@@ -411,6 +415,15 @@ impl<'a> Automaton<'a> {
             text: self.text(token).to_string(),
             range: token.range,
         }
+    }
+
+    /// Joins the parts of a name pattern such as `module_*` into one name.
+    pub(crate) fn joined(&self, parts: &[Token]) -> Option<Name> {
+        let (first, last) = (parts.first()?, parts.last()?);
+        Some(Name {
+            text: parts.iter().map(|part| self.text(*part)).collect(),
+            range: first.range.cover(last.range),
+        })
     }
 
     pub(crate) fn error(&self, message: impl Into<String>, token: Token) -> Error {

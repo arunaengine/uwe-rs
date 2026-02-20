@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use ruff_python_ast::{Arguments, AtomicNodeIndex, Expr, ExprCall, Suite};
+use ruff_python_ast::{Arguments, AtomicNodeIndex, Expr, ExprCall, Stmt, Suite};
 use ruff_python_parser::{ParseError, parse_expression_range, parse_module};
 use ruff_text_size::{TextRange, TextSize};
 
@@ -31,6 +31,36 @@ pub(crate) fn empty(offset: TextSize) -> Arguments {
         args: Default::default(),
         keywords: Default::default(),
     }
+}
+
+/// Parses the statements of a `run:` block or a handler, from its first to its last token.
+pub(crate) fn body(source: &str, range: TextRange) -> Result<Suite, Error> {
+    let start = range.start().to_usize();
+    let line_start = source[..start]
+        .rfind(['\n', '\r'])
+        .map_or(0, |index| index + 1);
+    let inline = !source[line_start..start].trim_start().is_empty();
+    let (header, from) = if inline {
+        ("if 1:", start)
+    } else {
+        ("if 1:\n", line_start)
+    };
+    // A comment line pads the text so that the body keeps its offsets.
+    let Some(fill) = from.checked_sub(header.len() + 2) else {
+        return Err(Error::new(source, "Expected a statement", range));
+    };
+    let mut text = String::with_capacity(range.end().to_usize() + 1);
+    text.push('#');
+    text.extend(std::iter::repeat_n(' ', fill));
+    text.push('\n');
+    text.push_str(header);
+    text.push_str(&source[from..range.end().to_usize()]);
+    text.push('\n');
+    let parsed = parse_module(&text).map_err(|error| located(source, &error, range))?;
+    let Some(Stmt::If(statement)) = parsed.into_syntax().body.pop() else {
+        return Err(Error::new(source, "Expected a statement", range));
+    };
+    Ok(statement.body)
 }
 
 /// Parses the Python code around the Snakemake statements, which become `...` placeholders.

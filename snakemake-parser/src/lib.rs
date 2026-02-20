@@ -16,8 +16,13 @@ use crate::ast::{Snakefile, Statement};
 
 /// Parses a Snakefile. Like Snakemake, it stops at the first error.
 pub fn parse(source: &str) -> Result<Snakefile, Error> {
-    let statements = automaton::statements(source)?;
+    let (statements, deferred) = automaton::statements(source)?;
     let ranges: Vec<_> = statements.iter().map(Statement::range).collect();
-    let python = python::module(source, &ranges)?;
-    Ok(Snakefile { python, statements })
+    // parser.py compiles its whole output at once, so the first Python error in the file wins.
+    match (python::module(source, &ranges), deferred) {
+        (Ok(python), None) => Ok(Snakefile { python, statements }),
+        (Ok(_), Some(error)) | (Err(error), None) => Err(error),
+        (Err(first), Some(second)) if second.range.start() < first.range.start() => Err(second),
+        (Err(first), Some(_)) => Err(first),
+    }
 }

@@ -17,6 +17,8 @@ pub(crate) enum Form {
     Shell,
     /// `f(<value>, 0)`: `script(...)` and similar calls add positional arguments.
     Command,
+    /// `f(k=0, <value>)`: storage values follow the tag keyword.
+    Storage,
 }
 
 /// Parses a value as the arguments of a call; `None` stands for an empty value after `offset`.
@@ -33,6 +35,7 @@ pub(crate) fn arguments(
         Form::Plain => ("f(", ")"),
         Form::Shell => ("f(", ",k=0)"),
         Form::Command => ("f(", ",0)"),
+        Form::Storage => ("f(k=0,", ")"),
     };
     let mut arguments = call(source, range, before, after)?.arguments;
     match form {
@@ -42,6 +45,9 @@ pub(crate) fn arguments(
         }
         Form::Command => {
             arguments.args.pop();
+        }
+        Form::Storage => {
+            arguments.keywords.remove(0);
         }
     }
     arguments.range = range;
@@ -56,6 +62,18 @@ pub(crate) fn empty(offset: TextSize) -> Arguments {
         args: Default::default(),
         keywords: Default::default(),
     }
+}
+
+/// Parses a module setting, which parser.py passes on as one keyword argument.
+pub(crate) fn expression(source: &str, range: TextRange) -> Result<Expr, Error> {
+    let arguments = call(source, range, "f(k=", ",j=0)")?.arguments;
+    if arguments.args.is_empty()
+        && arguments.keywords.len() == 2
+        && let Some(keyword) = arguments.keywords.into_iter().next()
+    {
+        return Ok(keyword.value);
+    }
+    Err(Error::new(source, "Expected a single value", range))
 }
 
 /// Parses one string token, such as a rule docstring.

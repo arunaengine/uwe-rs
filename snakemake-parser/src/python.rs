@@ -2,9 +2,9 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use ruff_python_ast::{Arguments, AtomicNodeIndex, Expr, ExprCall, Stmt, Suite};
+use ruff_python_ast::{Arguments, AtomicNodeIndex, ExceptHandler, Expr, ExprCall, Stmt, Suite};
 use ruff_python_parser::{ParseError, parse_expression_range, parse_module};
-use ruff_text_size::{TextRange, TextSize};
+use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::Error;
 
@@ -110,6 +110,8 @@ pub(crate) fn body(source: &str, range: TextRange) -> Result<Suite, Error> {
     let Some(Stmt::If(statement)) = parsed.into_syntax().body.pop() else {
         return Err(Error::new(source, "Expected a statement", range));
     };
+    // parser.py turns the body into a function.
+    control_flow(source, &statement.body, true, false)?;
     Ok(statement.body)
 }
 
@@ -129,7 +131,67 @@ pub(crate) fn module(source: &str, statements: &[TextRange]) -> Result<Suite, Er
     let text = String::from_utf8(bytes).expect("blanking keeps the text valid UTF-8");
     let whole = TextRange::up_to(TextSize::of(source));
     let parsed = parse_module(&text).map_err(|error| located(source, &error, whole))?;
-    Ok(parsed.into_syntax().body)
+    let suite = parsed.into_syntax().body;
+    control_flow(source, &suite, false, false)?;
+    Ok(suite)
+}
+
+/// Rejects `break`, `continue` and `return` where CPython's compiler does; ruff's parser does not.
+fn control_flow(source: &str, suite: &[Stmt], function: bool, looping: bool) -> Result<(), Error> {
+    for statement in suite {
+        let message = match statement {
+            Stmt::Break(_) if !looping => "'break' outside loop",
+            Stmt::Continue(_) if !looping => "'continue' not properly in loop",
+            Stmt::Return(_) if !function => "'return' outside function",
+            Stmt::FunctionDef(definition) => {
+                control_flow(source, &definition.body, true, false)?;
+                continue;
+            }
+            Stmt::ClassDef(class) => {
+                control_flow(source, &class.body, false, false)?;
+                continue;
+            }
+            Stmt::For(each) => {
+                control_flow(source, &each.body, function, true)?;
+                control_flow(source, &each.orelse, function, looping)?;
+                continue;
+            }
+            Stmt::While(each) => {
+                control_flow(source, &each.body, function, true)?;
+                control_flow(source, &each.orelse, function, looping)?;
+                continue;
+            }
+            Stmt::If(branch) => {
+                control_flow(source, &branch.body, function, looping)?;
+                for clause in &branch.elif_else_clauses {
+                    control_flow(source, &clause.body, function, looping)?;
+                }
+                continue;
+            }
+            Stmt::With(with) => {
+                control_flow(source, &with.body, function, looping)?;
+                continue;
+            }
+            Stmt::Try(attempt) => {
+                control_flow(source, &attempt.body, function, looping)?;
+                for ExceptHandler::ExceptHandler(handler) in &attempt.handlers {
+                    control_flow(source, &handler.body, function, looping)?;
+                }
+                control_flow(source, &attempt.orelse, function, looping)?;
+                control_flow(source, &attempt.finalbody, function, looping)?;
+                continue;
+            }
+            Stmt::Match(choice) => {
+                for case in &choice.cases {
+                    control_flow(source, &case.body, function, looping)?;
+                }
+                continue;
+            }
+            _ => continue,
+        };
+        return Err(Error::new(source, message, statement.range()));
+    }
+    Ok(())
 }
 
 /// Parses `before + value + after` as a call expression, with the value at its original offset.

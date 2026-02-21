@@ -6,6 +6,7 @@ pub mod ast;
 mod automaton;
 mod error;
 pub mod keyword;
+mod module;
 mod python;
 mod rule;
 mod token;

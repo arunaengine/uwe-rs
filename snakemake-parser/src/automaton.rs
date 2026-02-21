@@ -105,6 +105,8 @@ impl Block {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Shape {
     Arguments(Form),
+    /// One expression, as for module settings.
+    Expression,
     /// Statements of a handler.
     Handler,
     /// Statements of a `run:` block, which only ends after some content.
@@ -186,8 +188,13 @@ impl<'a> Automaton<'a> {
                 let (rule, stop) = self.use_rule(keyword, base)?;
                 (Statement::UseRule(rule), stop)
             }
-            "module" | "storage" => {
-                return Err(self.error(format!("Keyword {text} is not supported yet."), keyword));
+            "module" => {
+                let (module, stop) = self.module(keyword, base)?;
+                (Statement::Module(module), stop)
+            }
+            "storage" => {
+                let (storage, stop) = self.storage(keyword, base)?;
+                (Statement::Storage(storage), stop)
             }
             "subworkflow" => {
                 let message = "Keyword subworkflow is deprecated. Use module directive instead.";
@@ -229,6 +236,11 @@ impl<'a> Automaton<'a> {
             Shape::Scopes => self
                 .arguments(&read, colon, Form::Plain)
                 .map(Value::Arguments),
+            Shape::Expression => match read.value {
+                Some(range) => python::expression(self.source, range)
+                    .map(|expression| Value::Expression(Box::new(expression))),
+                None => Err(self.error("Expected a value", read.stop)),
+            },
             Shape::Handler | Shape::Run => match read.value {
                 Some(range) => python::body(self.source, range).map(Value::Body),
                 None => Err(self.error("Expected an indented block", read.stop)),

@@ -1,0 +1,23 @@
+# Corpus files that must fail to parse, relative to the corpus root; all other files must parse.
+# Source: parser.py of Snakemake 9.27.0 followed by compile() of CPython 3.14.7, on 2026-09-27.
+catalog/CSB-IG__GSE167150_HiC_matrices/workflow/rules/merged_hic_pro.smk
+catalog/ETH-NEXUS__gExcite_pipeline/workflow/rules/cohort_adt_analysis.smk
+catalog/JoyceS13__BEP_pipeline/workflow/Snakefile
+catalog/Xavster838__get_and_annotate_locus/workflow/get_locus.smk
+catalog/Xavster838__get_and_annotate_locus/workflow/get_rhodonite.smk
+catalog/davelunt__mmseqs/workflow/Snakefile
+catalog/jackieduckie__methylation-capture/workflow/Snakefile
+catalog/juliawiggeshoff__AugusMake/workflow/Snakefile
+catalog/merfre__MMCAW/workflow/rules/db_creation.smk
+catalog/merfre__MMCAW/workflow/rules/phylophlan.smk
+catalog/nodrogluap__tamor/workflow/rules/captiv8.smk
+catalog/nodrogluap__tamor/workflow/rules/oncogenic_viral_integration.smk
+catalog/rochevin__RNA-seq-from-SRR-single/workflow/rules/samtools.smk
+snakemake-tests/tests/linting/tab_usage/negative.smk
+snakemake-tests/tests/test_convert_to_cwl/Snakefile
+snakemake-tests/tests/test_issue1256/Snakefile
+snakemake-tests/tests/test_issue805/Snakefile
+snakemake-tests/tests/test_modules_no_name/Snakefile
+snakemake-tests/tests/test_modules_two_names/Snakefile
+snakemake-tests/tests/test_subworkflow_config/Snakefile
+snakemake-tests/tests/test_subworkflows/Snakefile

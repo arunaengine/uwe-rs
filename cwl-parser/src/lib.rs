@@ -4,8 +4,10 @@
 
 pub mod context;
 mod error;
+pub mod import;
 pub mod iri;
 pub mod node;
+pub mod resolve;
 pub mod source;
 pub mod yaml;
 

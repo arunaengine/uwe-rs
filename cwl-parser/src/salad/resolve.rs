@@ -4,9 +4,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::context::{self, Expansion, Namespaces};
 use crate::error::Error;
 use crate::node::{Entry, Location, Node, Value};
+use crate::salad::context::{self, Expansion, Namespaces};
 use crate::source::Documents;
 
 /// Resolves documents as Schema Salad's `resolve_all` does, and indexes every identifier.

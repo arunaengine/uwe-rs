@@ -2,11 +2,11 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use crate::context::{self, Expansion, Namespaces};
 use crate::error::Error;
 use crate::iri::split_fragment;
 use crate::node::{Entry, Location, Node, Value};
-use crate::resolve::{Resolver, find};
+use crate::salad::context::{self, Expansion, Namespaces};
+use crate::salad::resolve::{Resolver, find};
 
 impl Resolver {
     /// Reads and resolves a whole document, as Salad's `fetch` and `resolve_all` do.

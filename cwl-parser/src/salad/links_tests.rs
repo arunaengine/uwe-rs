@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use crate::error::Error;
-use crate::links::check;
 use crate::node::Node;
-use crate::resolve::tests::{URL, render, resolve_files};
+use crate::salad::links::check;
+use crate::salad::resolve::tests::{URL, render, resolve_files};
 
 fn checked(files: &[(&str, &str)]) -> Result<Node, Error> {
     let (resolved, resolver) = resolve_files(files);

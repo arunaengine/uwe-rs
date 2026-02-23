@@ -4,10 +4,10 @@
 
 use std::collections::HashSet;
 
-use crate::context;
 use crate::error::Error;
 use crate::iri::{Parts, split_fragment};
 use crate::node::{Entry, Location, Node, Value};
+use crate::salad::context;
 use crate::source::Documents;
 
 /// Checks every link below the node, as Salad's `validate_links` does.

@@ -2,7 +2,9 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use crate::context::{Expansion, MapForm, Namespaces, is_term, map_form, reference_scope, term_of};
+use crate::salad::context::{
+    Expansion, MapForm, Namespaces, is_term, map_form, reference_scope, term_of,
+};
 
 const BASE: &str = "file:///work/flow.cwl";
 

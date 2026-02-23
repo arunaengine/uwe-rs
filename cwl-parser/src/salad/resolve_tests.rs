@@ -4,10 +4,10 @@
 
 use std::sync::Arc;
 
-use crate::context::Namespaces;
 use crate::error::Error;
 use crate::node::{Location, Node, Value};
-use crate::resolve::Resolver;
+use crate::salad::context::Namespaces;
+use crate::salad::resolve::Resolver;
 use crate::source::{Documents, Memory};
 
 pub(crate) const URL: &str = "file:///work/flow.cwl";

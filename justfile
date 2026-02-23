@@ -39,6 +39,35 @@ corpus:
 corpus-test:
 	NF_CORE_CORPUS="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}" cargo test --release --locked -p nextflow-parser --test corpus -- --ignored
 
+# Fetches the text-only Snakemake corpus at the commits the corpus test expects.
+snakemake-corpus:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	root="${SNAKEMAKE_CORPUS:-$HOME/.cache/iunctus/corpus/snakemake}"
+	grep -v '^#' snakemake-parser/tests/fixtures/corpus_revisions.txt | while read -r repository branch commit; do
+		if [ "$repository" = snakemake/snakemake ]; then
+			target="$root/snakemake-tests"
+			patterns=('/tests/**/Snakefile' '/tests/**/snakefile' '/tests/**/*.smk' '/tests/**/*.snakefile')
+		else
+			target="$root/catalog/${repository/\//__}"
+			patterns=('Snakefile' 'snakefile' '*.smk' '*.snakefile')
+		fi
+		[ -d "$target" ] && continue
+		work="$(mktemp -d)"
+		git -C "$work" init -q
+		git -C "$work" remote add origin "https://github.com/$repository.git"
+		git -C "$work" fetch -q --depth 1 --filter=blob:none origin "$commit"
+		git -C "$work" sparse-checkout set --no-cone "${patterns[@]}"
+		git -C "$work" checkout -q FETCH_HEAD
+		rm -rf "$work/.git"
+		mkdir -p "$(dirname "$target")"
+		mv "$work" "$target"
+	done
+
+# Parses the whole Snakemake corpus and compares the result with Snakemake's parser.py.
+snakemake-corpus-test:
+	SNAKEMAKE_CORPUS="${SNAKEMAKE_CORPUS:-$HOME/.cache/iunctus/corpus/snakemake}" cargo test --release --locked -p snakemake-parser --test corpus -- --ignored --nocapture
+
 # Starts a local RustFS (S3-compatible) with the bucket `iunctus-test` for the S3 tests.
 # `docker stop iunctus-s3` ends it.
 s3-server:

@@ -351,3 +351,7 @@ pub fn same_value(left: &Node, right: &Node) -> bool {
         (left, right) => left == right,
     }
 }
+
+#[cfg(test)]
+#[path = "resolve_tests.rs"]
+pub(crate) mod tests;

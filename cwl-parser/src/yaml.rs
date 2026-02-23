@@ -1,0 +1,266 @@
+//! Reads YAML and JSON text into nodes, keeping the location of every value.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use granit_parser::{Event, Parser, ScalarStyle, ScanError, Span, Tag, options};
+
+use crate::error::Error;
+use crate::node::{Entry, Location, Node, Value};
+
+/// Reads the first document of a YAML stream, resolving scalars with the YAML 1.2 core schema.
+///
+/// JSON is read as YAML. Later documents in the stream are not read, as in Schema Salad.
+pub fn read(text: &str, file: &Arc<str>) -> Result<Node, Error> {
+    let mut parser = Parser::new_from_str_with_options(text, options! { emit_comments: false });
+    let mut builder = Builder {
+        file,
+        stack: Vec::new(),
+        anchors: HashMap::new(),
+        root: None,
+    };
+    while let Some(next) = parser.next_event() {
+        let (event, span) = next.map_err(|error| scan_error(&error, file))?;
+        let location = builder.location(&span);
+        match event {
+            Event::Scalar(text, style, anchor, tag) => {
+                builder.scalar(&text, style, anchor, tag.as_deref(), location)?;
+            }
+            Event::SequenceStart(_, anchor, tag) => {
+                builder.open(Value::List(Vec::new()), anchor, tag.as_deref(), location)?;
+            }
+            Event::MappingStart(_, anchor, tag) => {
+                builder.open(Value::Map(Vec::new()), anchor, tag.as_deref(), location)?;
+            }
+            Event::SequenceEnd | Event::MappingEnd => builder.close()?,
+            Event::Alias(anchor) => builder.alias(anchor, location)?,
+            Event::DocumentEnd => break,
+            _ => {}
+        }
+    }
+    let empty = Node::new(Value::Null, Location::new(file, 1, 1));
+    Ok(builder.root.unwrap_or(empty))
+}
+
+/// A list or map under construction, with the key that waits for its value.
+struct Frame {
+    node: Node,
+    anchor: usize,
+    key: Option<(String, Location)>,
+}
+
+struct Builder<'a> {
+    file: &'a Arc<str>,
+    stack: Vec<Frame>,
+    anchors: HashMap<usize, Node>,
+    root: Option<Node>,
+}
+
+impl Builder<'_> {
+    fn location(&self, span: &Span) -> Location {
+        let line = span.start.line() as u32;
+        Location::new(self.file, line, span.start.col() as u32 + 1)
+    }
+
+    fn expects_key(&self) -> bool {
+        match self.stack.last() {
+            Some(frame) => matches!(frame.node.value, Value::Map(_)) && frame.key.is_none(),
+            None => false,
+        }
+    }
+
+    fn scalar(
+        &mut self,
+        text: &str,
+        style: ScalarStyle,
+        anchor: usize,
+        tag: Option<&Tag>,
+        location: Location,
+    ) -> Result<(), Error> {
+        if self.expects_key() {
+            if style == ScalarStyle::Plain && tag.is_none() && plain_value(text) == Value::Null {
+                return Err(Error::new(&location, "a map key must not be null"));
+            }
+            if let Some(frame) = self.stack.last_mut() {
+                frame.key = Some((text.to_owned(), location));
+            }
+            return Ok(());
+        }
+        let value = match tag {
+            Some(tag) => tagged_value(text, tag, &location)?,
+            None if style == ScalarStyle::Plain => plain_value(text),
+            None => Value::String(text.to_owned()),
+        };
+        let node = Node::new(value, location);
+        if anchor != 0 {
+            self.anchors.insert(anchor, node.clone());
+        }
+        self.push(node)
+    }
+
+    fn open(
+        &mut self,
+        value: Value,
+        anchor: usize,
+        tag: Option<&Tag>,
+        location: Location,
+    ) -> Result<(), Error> {
+        if self.expects_key() {
+            return Err(Error::new(&location, "a map key must be a string"));
+        }
+        if let Some(tag) = tag {
+            let expected = if matches!(value, Value::Map(_)) {
+                "map"
+            } else {
+                "seq"
+            };
+            if tag.core_suffix() != Some(expected) {
+                return Err(Error::new(&location, format!("unsupported YAML tag {tag}")));
+            }
+        }
+        let node = Node::new(value, location);
+        self.stack.push(Frame {
+            node,
+            anchor,
+            key: None,
+        });
+        Ok(())
+    }
+
+    fn close(&mut self) -> Result<(), Error> {
+        let Some(frame) = self.stack.pop() else {
+            return Ok(());
+        };
+        if frame.anchor != 0 {
+            self.anchors.insert(frame.anchor, frame.node.clone());
+        }
+        self.push(frame.node)
+    }
+
+    fn alias(&mut self, anchor: usize, location: Location) -> Result<(), Error> {
+        if self.expects_key() {
+            return Err(Error::new(&location, "a map key must not be an alias"));
+        }
+        match self.anchors.get(&anchor) {
+            Some(node) => self.push(node.clone()),
+            None => Err(Error::new(&location, "alias to an unknown anchor")),
+        }
+    }
+
+    fn push(&mut self, node: Node) -> Result<(), Error> {
+        let Some(frame) = self.stack.last_mut() else {
+            self.root.get_or_insert(node);
+            return Ok(());
+        };
+        match &mut frame.node.value {
+            Value::List(items) => items.push(node),
+            Value::Map(entries) => {
+                let Some((key, location)) = frame.key.take() else {
+                    return Ok(());
+                };
+                if entries.iter().any(|entry| entry.key == key) {
+                    return Err(Error::new(&location, format!("duplicate key `{key}`")));
+                }
+                entries.push(Entry {
+                    key,
+                    location,
+                    value: node,
+                });
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
+fn scan_error(error: &ScanError, file: &Arc<str>) -> Error {
+    let marker = error.marker();
+    let location = Location::new(file, marker.line() as u32, marker.col() as u32 + 1);
+    Error::new(&location, error.info())
+}
+
+/// Applies a core schema tag such as `!!str` to a scalar.
+fn tagged_value(text: &str, tag: &Tag, location: &Location) -> Result<Value, Error> {
+    let resolved = plain_value(text);
+    let value = match tag.core_suffix() {
+        Some("str") => Some(Value::String(text.to_owned())),
+        Some("null") => (resolved == Value::Null).then_some(Value::Null),
+        Some("bool") => matches!(resolved, Value::Bool(_)).then_some(resolved),
+        Some("int") => matches!(resolved, Value::Integer(_)).then_some(resolved),
+        Some("float") => match resolved {
+            Value::Integer(number) => Some(Value::Float(number as f64)),
+            Value::Float(_) => Some(resolved),
+            _ => None,
+        },
+        _ if tag.handle() == "!" && tag.suffix().is_empty() => Some(Value::String(text.into())),
+        _ => return Err(Error::new(location, format!("unsupported YAML tag {tag}"))),
+    };
+    value.ok_or_else(|| Error::new(location, format!("`{text}` does not fit the tag {tag}")))
+}
+
+/// Resolves an untagged plain scalar as the YAML 1.2 core schema does.
+fn plain_value(text: &str) -> Value {
+    match text {
+        "" | "~" | "null" | "Null" | "NULL" => Value::Null,
+        "true" | "True" | "TRUE" => Value::Bool(true),
+        "false" | "False" | "FALSE" => Value::Bool(false),
+        ".nan" | ".NaN" | ".NAN" => Value::Float(f64::NAN),
+        _ => integer(text)
+            .or_else(|| float(text))
+            .unwrap_or_else(|| Value::String(text.to_owned())),
+    }
+}
+
+fn integer(text: &str) -> Option<Value> {
+    if let Some(octal) = text.strip_prefix("0o") {
+        return i64::from_str_radix(octal, 8).ok().map(Value::Integer);
+    }
+    if let Some(hex) = text.strip_prefix("0x") {
+        return i64::from_str_radix(hex, 16).ok().map(Value::Integer);
+    }
+    let digits = text.strip_prefix(['-', '+']).unwrap_or(text);
+    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    match text.parse::<i64>() {
+        Ok(number) => Some(Value::Integer(number)),
+        Err(_) => text.parse::<f64>().ok().map(Value::Float),
+    }
+}
+
+fn float(text: &str) -> Option<Value> {
+    let unsigned = text.strip_prefix(['-', '+']).unwrap_or(text);
+    if matches!(unsigned, ".inf" | ".Inf" | ".INF") {
+        let infinity = if text.starts_with('-') {
+            f64::NEG_INFINITY
+        } else {
+            f64::INFINITY
+        };
+        return Some(Value::Float(infinity));
+    }
+    let (mantissa, exponent) = match unsigned.split_once(['e', 'E']) {
+        Some((mantissa, exponent)) => (mantissa, Some(exponent)),
+        None => (unsigned, None),
+    };
+    let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    let digits = |part: &str| part.bytes().all(|byte| byte.is_ascii_digit());
+    let valid_mantissa = if mantissa.contains('.') {
+        digits(whole) && digits(fraction) && !(whole.is_empty() && fraction.is_empty())
+    } else {
+        !whole.is_empty() && digits(whole) && exponent.is_some()
+    };
+    let valid_exponent = exponent.is_none_or(|exponent| {
+        let exponent = exponent.strip_prefix(['-', '+']).unwrap_or(exponent);
+        !exponent.is_empty() && digits(exponent)
+    });
+    if !(valid_mantissa && valid_exponent) {
+        return None;
+    }
+    text.parse::<f64>().ok().map(Value::Float)
+}
+
+#[cfg(test)]
+#[path = "yaml_tests.rs"]
+mod tests;

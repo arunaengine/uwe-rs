@@ -136,3 +136,7 @@ pub fn find_object<'n>(node: &'n Node, id: &str) -> Option<&'n Node> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+#[path = "import_tests.rs"]
+mod tests;

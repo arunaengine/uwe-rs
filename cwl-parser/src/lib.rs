@@ -5,6 +5,7 @@
 mod error;
 pub mod iri;
 pub mod node;
+pub mod source;
 pub mod yaml;
 
 pub use error::Error;

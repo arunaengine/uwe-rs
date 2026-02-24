@@ -6,9 +6,12 @@ mod error;
 pub mod expression;
 pub mod iri;
 pub mod node;
+pub mod process;
+pub mod record;
 pub mod salad;
 pub mod source;
 pub mod yaml;
 
 pub use error::Error;
 pub use node::{Entry, Location, Node, Value};
+pub use process::Version;

@@ -14,8 +14,9 @@ pub mod requirement;
 pub mod salad;
 pub mod schema;
 pub mod source;
+pub mod workflow;
 pub mod yaml;
 
 pub use error::Error;
 pub use node::{Entry, Location, Node, Value};
-pub use process::Version;
+pub use process::{Class, Process, Version};

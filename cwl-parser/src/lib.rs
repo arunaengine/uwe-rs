@@ -3,9 +3,11 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub mod binding;
+mod check;
 mod error;
 pub mod expression;
 pub mod iri;
+mod load;
 pub mod node;
 pub mod parameter;
 pub mod process;
@@ -19,5 +21,6 @@ pub mod workflow;
 pub mod yaml;
 
 pub use error::Error;
+pub use load::{Document, Loader, load_file};
 pub use node::{Entry, Location, Node, Value};
 pub use process::{Class, Process, Version};

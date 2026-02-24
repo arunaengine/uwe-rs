@@ -12,6 +12,7 @@ use crate::parameter::{InputParameter, OutputParameter, read_input, read_output_
 use crate::record::{self, Context, Record};
 use crate::requirement::{Requirement, read_requirements};
 use crate::schema::Type;
+use crate::upgrade::upgrade;
 use crate::workflow::{Runs, Workflow, read_workflow};
 
 /// The CWL versions that load, in the order of cwltool's update chain.
@@ -213,7 +214,7 @@ pub fn read_process(
         Kind::Operation => Class::Operation,
     };
     let extensions = record.finish()?;
-    Ok(Process {
+    let mut process = Process {
         id,
         version: context.version,
         label,
@@ -226,7 +227,9 @@ pub fn read_process(
         class,
         extensions,
         location: node.location.clone(),
-    })
+    };
+    upgrade(&mut process);
+    Ok(process)
 }
 
 fn read_tool(

@@ -14,6 +14,7 @@ pub mod requirement;
 pub mod salad;
 pub mod schema;
 pub mod source;
+mod upgrade;
 pub mod workflow;
 pub mod yaml;
 

@@ -10,6 +10,7 @@ pub mod node;
 pub mod parameter;
 pub mod process;
 pub mod record;
+pub mod requirement;
 pub mod salad;
 pub mod schema;
 pub mod source;

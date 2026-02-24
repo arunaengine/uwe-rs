@@ -24,6 +24,13 @@ pub enum Part {
     Function(String),
 }
 
+/// A setting given as a value or as an expression that computes it at run time.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Dynamic<T> {
+    Value(T),
+    Expression(Expression),
+}
+
 /// What an expression string is as a whole.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExpressionKind {

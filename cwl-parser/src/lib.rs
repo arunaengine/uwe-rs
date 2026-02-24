@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+pub mod binding;
 mod error;
 pub mod expression;
 pub mod iri;
@@ -9,6 +10,7 @@ pub mod node;
 pub mod process;
 pub mod record;
 pub mod salad;
+pub mod schema;
 pub mod source;
 pub mod yaml;
 

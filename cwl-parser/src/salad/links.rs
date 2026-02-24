@@ -28,7 +28,8 @@ pub fn check(
             let scope = own.unwrap_or_else(|| base.to_owned());
             for entry in entries.iter_mut() {
                 let field = entry.key.as_str();
-                if context::is_link(field) && !context::is_identity(field) {
+                // Salad only warns about `$schemas`, which point at ontologies to fetch.
+                if context::is_link(field) && !context::is_identity(field) && field != "$schemas" {
                     check_field(entry, &scope, ids, documents)?;
                 }
             }

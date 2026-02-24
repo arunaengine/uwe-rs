@@ -16,6 +16,9 @@ pub struct Resolver {
     pub ids: HashSet<String>,
     pub(super) resolved: HashMap<String, Node>,
     pub(super) importing: Vec<String>,
+    /// Whether the CWL v1.0 context applies: no secondary files DSL, no `run` subscope and
+    /// no links in `specs`.
+    pub legacy: bool,
 }
 
 impl Resolver {
@@ -25,6 +28,7 @@ impl Resolver {
             ids: HashSet::new(),
             resolved: HashMap::new(),
             importing: Vec::new(),
+            legacy: false,
         }
     }
 
@@ -82,7 +86,7 @@ impl Resolver {
         }
         let mut entries = normalize_keys(entries, &scope);
         list_maps(&mut entries)?;
-        apply_dsl(&mut entries);
+        apply_dsl(&mut entries, self.legacy);
         for name in context::IDENTIFIERS {
             let Some(entry) = entries.iter_mut().find(|entry| entry.key == name) else {
                 continue;
@@ -96,7 +100,7 @@ impl Resolver {
             base = text.clone();
         }
         for entry in &mut entries {
-            if !context::is_link(&entry.key) {
+            if !context::is_link(&entry.key) || (self.legacy && entry.key == "specs") {
                 continue;
             }
             let identity = context::is_identity(&entry.key);
@@ -122,7 +126,7 @@ impl Resolver {
         }
         let mut resolved = Vec::with_capacity(entries.len());
         for entry in entries {
-            let scoped = if entry.key == "run" {
+            let scoped = if entry.key == "run" && !self.legacy {
                 format!("{base}/run")
             } else {
                 base.clone()
@@ -201,7 +205,7 @@ fn normalize_keys(entries: Vec<Entry>, scope: &Namespaces) -> Vec<Entry> {
 }
 
 /// Turns identifier maps such as `inputs: {x: File}` into lists, sorted by key as Salad does.
-fn list_maps(entries: &mut [Entry]) -> Result<(), Error> {
+pub(super) fn list_maps(entries: &mut [Entry]) -> Result<(), Error> {
     for entry in entries {
         let Some(form) = context::map_form(&entry.key) else {
             continue;
@@ -245,11 +249,11 @@ fn list_maps(entries: &mut [Entry]) -> Result<(), Error> {
 }
 
 /// Expands the type DSL (`File[]?`) and the secondary files DSL (`.bai?`).
-fn apply_dsl(entries: &mut [Entry]) {
+fn apply_dsl(entries: &mut [Entry], legacy: bool) {
     for entry in entries {
         let expand: fn(&Node) -> Option<Value> = match entry.key.as_str() {
             "type" => type_dsl,
-            "secondaryFiles" => secondary_dsl,
+            "secondaryFiles" if !legacy => secondary_dsl,
             _ => continue,
         };
         match &entry.value.value {

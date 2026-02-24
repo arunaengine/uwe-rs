@@ -6,7 +6,7 @@ use crate::error::Error;
 use crate::iri::split_fragment;
 use crate::node::{Entry, Location, Node, Value};
 use crate::salad::context::{self, Expansion, Namespaces};
-use crate::salad::resolve::{Resolver, find};
+use crate::salad::resolve::{Resolver, find, list_maps};
 
 impl Resolver {
     /// Reads and resolves a whole document, as Salad's `fetch` and `resolve_all` do.
@@ -66,10 +66,13 @@ impl Resolver {
                 let text = self.documents.text(document, at)?;
                 Ok(Node::new(Value::String(text.to_string()), location))
             }
-            "$import" if document == file && fragment.is_some() => Err(Error::new(
-                at,
-                "importing a fragment of the same document is not supported",
-            )),
+            "$import" if document == file && fragment.is_some() => {
+                let raw = self.documents.tree(file, at)?;
+                match find_raw(&raw, file, &url, namespaces) {
+                    Some((object, base)) => self.resolve(object, &base, file, namespaces),
+                    None => Err(Error::new(at, format!("`{url}` is not defined"))),
+                }
+            }
             "$import" => {
                 let resolved = self.document(document, at, namespaces)?;
                 if fragment.is_none() {
@@ -115,6 +118,36 @@ fn graph_of(node: Node) -> Node {
             None => node,
         },
         _ => node,
+    }
+}
+
+/// Finds an object of a document before resolution by the identifier it will get, together
+/// with the scope it will be resolved in; identifier maps are read as lists on the way.
+fn find_raw(node: &Node, base: &str, id: &str, namespaces: &Namespaces) -> Option<(Node, String)> {
+    match &node.value {
+        Value::Map(entries) => {
+            let own = context::IDENTIFIERS.iter().find_map(|name| {
+                let text = find(entries, name)?.as_str()?;
+                Some(namespaces.expand(text, base, Expansion::IDENTIFIER))
+            });
+            if own.as_deref() == Some(id) {
+                return Some((node.clone(), base.to_owned()));
+            }
+            let scope = own.unwrap_or_else(|| base.to_owned());
+            let mut entries = entries.clone();
+            list_maps(&mut entries).ok()?;
+            entries.iter().find_map(|entry| {
+                let inner = match entry.key.as_str() {
+                    "run" => format!("{scope}/run"),
+                    _ => scope.clone(),
+                };
+                find_raw(&entry.value, &inner, id, namespaces)
+            })
+        }
+        Value::List(items) => items
+            .iter()
+            .find_map(|item| find_raw(item, base, id, namespaces)),
+        _ => None,
     }
 }
 

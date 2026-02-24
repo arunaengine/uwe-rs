@@ -2,13 +2,13 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use crate::binding::{LoadListing, read_listing};
 use crate::error::Error;
-use crate::expression::{Dynamic, Expression};
+use crate::model::binding::{LoadListing, read_listing};
+use crate::model::expression::{Dynamic, Expression};
+use crate::model::process::Version;
+use crate::model::record::{self, Context, Record};
+use crate::model::schema::{Type, read_type};
 use crate::node::{Entry, Location, Node, Value};
-use crate::process::Version;
-use crate::record::{self, Context, Record};
-use crate::schema::{Type, read_type};
 
 /// One entry of `requirements` or `hints`.
 #[derive(Clone, Debug, PartialEq)]

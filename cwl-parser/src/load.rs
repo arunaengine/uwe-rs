@@ -6,16 +6,14 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::check::check_workflows;
 use crate::error::Error;
 use crate::iri::{self, split_fragment};
+use crate::model::record::Context;
+use crate::model::{Process, Runs, Version, check_workflows, read_process};
 use crate::node::{Location, Node, Value};
-use crate::process::{Process, Version, read_process};
-use crate::record::Context;
 use crate::salad::context::Namespaces;
 use crate::salad::{Resolver, check_links, find_object};
 use crate::source::{Documents, FileSystem, Source};
-use crate::workflow::Runs;
 
 /// A loaded document: its main process, with every `run` loaded, and document metadata.
 #[derive(Clone, Debug, PartialEq)]
@@ -162,7 +160,7 @@ impl Loader {
             None => Vec::new(),
         };
         let schemas = match tree.get("$schemas") {
-            Some(node) => crate::record::texts(node)?,
+            Some(node) => crate::model::record::texts(node)?,
             None => Vec::new(),
         };
         Ok(Prepared {

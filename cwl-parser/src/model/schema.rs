@@ -2,14 +2,14 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use crate::binding::{
+use crate::error::Error;
+use crate::model::binding::{
     CommandLineBinding, LoadListing, OutputBinding, read_binding, read_listing, read_output,
 };
-use crate::error::Error;
-use crate::expression::{Dynamic, Expression};
+use crate::model::expression::{Dynamic, Expression};
+use crate::model::process::Version;
+use crate::model::record::{self, Context, Record};
 use crate::node::{Node, Value};
-use crate::process::Version;
-use crate::record::{self, Context, Record};
 
 /// The type of a parameter or record field, after the type DSL has been expanded.
 #[derive(Clone, Debug, PartialEq)]

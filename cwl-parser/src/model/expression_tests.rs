@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use crate::expression::{Expression, ExpressionKind, Part};
+use crate::model::expression::{Expression, ExpressionKind, Part};
 
 fn parts(text: &str) -> Vec<Part> {
     Expression::parse(text, false)

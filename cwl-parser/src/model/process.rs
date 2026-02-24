@@ -4,16 +4,16 @@
 
 use std::fmt;
 
-use crate::binding::{CommandLineBinding, read_binding};
 use crate::error::Error;
-use crate::expression::Expression;
+use crate::model::binding::{CommandLineBinding, read_binding};
+use crate::model::expression::Expression;
+use crate::model::parameter::{InputParameter, OutputParameter, read_input, read_output_parameter};
+use crate::model::record::{self, Context, Record};
+use crate::model::requirement::{Requirement, read_requirements};
+use crate::model::schema::Type;
+use crate::model::upgrade::upgrade;
+use crate::model::workflow::{Runs, Workflow, read_workflow};
 use crate::node::{Entry, Location, Node, Value};
-use crate::parameter::{InputParameter, OutputParameter, read_input, read_output_parameter};
-use crate::record::{self, Context, Record};
-use crate::requirement::{Requirement, read_requirements};
-use crate::schema::Type;
-use crate::upgrade::upgrade;
-use crate::workflow::{Runs, Workflow, read_workflow};
 
 /// The CWL versions that load, in the order of cwltool's update chain.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

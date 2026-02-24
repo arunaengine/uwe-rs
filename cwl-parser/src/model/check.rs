@@ -5,10 +5,10 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::error::Error;
-use crate::process::{Class, Kind, Process};
-use crate::requirement::{Requirement, RequirementClass};
-use crate::schema::{Type, short_name};
-use crate::workflow::{Step, Workflow};
+use crate::model::process::{Class, Kind, Process};
+use crate::model::requirement::{Requirement, RequirementClass};
+use crate::model::schema::{Type, short_name};
+use crate::model::workflow::{Step, Workflow};
 
 /// Checks every workflow below a process; `inherited` are the requirements and hints of the
 /// enclosing workflows, which count for feature requirements as in cwltool.

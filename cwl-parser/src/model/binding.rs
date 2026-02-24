@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use crate::error::Error;
-use crate::expression::{Dynamic, Expression};
+use crate::model::expression::{Dynamic, Expression};
+use crate::model::process::Version;
+use crate::model::record::{self, Context, Record};
 use crate::node::{Node, Value};
-use crate::process::Version;
-use crate::record::{self, Context, Record};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LoadListing {

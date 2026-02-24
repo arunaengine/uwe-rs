@@ -79,7 +79,6 @@ pub fn read_binding(node: &Node, context: &Context) -> Result<CommandLineBinding
 }
 
 /// The `InputBinding` of workflow and expression tool inputs, which has only `loadContents`.
-///
 /// In v1.0 it had the full command line binding, which the upgrade removes.
 pub fn read_load(node: &Node, context: &Context) -> Result<CommandLineBinding, Error> {
     if context.version == Version::V1_0 {

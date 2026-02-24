@@ -11,7 +11,6 @@ use crate::error::Error;
 use crate::node::{Entry, Location, Node, Value};
 
 /// Reads the first document of a YAML stream, resolving scalars with the YAML 1.2 core schema.
-///
 /// JSON is read as YAML. Later documents in the stream are not read, as in Schema Salad.
 pub fn read(text: &str, file: &Arc<str>) -> Result<Node, Error> {
     let mut parser = Parser::new_from_str_with_options(text, options! { emit_comments: false });

@@ -46,7 +46,6 @@ pub enum ExpressionKind {
 
 impl Expression {
     /// Splits a string into parts as cwl-utils does when it evaluates one.
-    ///
     /// `old_escapes` selects the backslash rule of CWL v1.0 up to v1.2.0-dev3.
     pub fn parse(text: &str, old_escapes: bool) -> Result<Self, String> {
         if !text.contains("$(") && !text.contains("${") {

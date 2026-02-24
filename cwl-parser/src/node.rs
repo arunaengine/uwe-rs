@@ -6,7 +6,6 @@ use std::fmt;
 use std::sync::Arc;
 
 /// A place in a source document: its URL and a 1-based line and column.
-///
 /// Line 0 stands for the whole document, for errors such as a missing file.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Location {

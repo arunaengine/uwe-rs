@@ -11,7 +11,6 @@ use crate::salad::context;
 use crate::source::Documents;
 
 /// Checks every link below the node, as Salad's `validate_links` does.
-///
 /// Errors below `default`, `hints`, `specs` and extension fields are ignored, as Salad only warns.
 pub fn check(
     node: &mut Node,

@@ -104,7 +104,6 @@ impl<'n> Record<'n> {
     }
 
     /// Ends reading: unknown fields are errors, and fields named by an IRI are extensions.
-    ///
     /// Identifier fields and `$` directives are allowed everywhere, as in Salad's validation.
     pub fn finish(self) -> Result<Vec<Entry>, Error> {
         let mut extensions = Vec::new();

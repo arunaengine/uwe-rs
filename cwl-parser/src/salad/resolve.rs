@@ -10,7 +10,6 @@ use crate::salad::context::{self, Expansion, Namespaces};
 use crate::source::Documents;
 
 /// Resolves documents as Schema Salad's `resolve_all` does, and indexes every identifier.
-///
 /// The index spans all documents of one load, as the single loader of cwltool does.
 pub struct Resolver {
     pub documents: Documents,

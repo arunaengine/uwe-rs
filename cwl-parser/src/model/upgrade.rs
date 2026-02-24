@@ -2,10 +2,10 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use crate::binding::LoadListing;
-use crate::expression::Dynamic;
-use crate::process::{Class, Kind, Process, Version};
-use crate::requirement::{Requirement, RequirementClass};
+use crate::model::binding::LoadListing;
+use crate::model::expression::Dynamic;
+use crate::model::process::{Class, Kind, Process, Version};
+use crate::model::requirement::{Requirement, RequirementClass};
 
 /// Applies the v1.0 to v1.1 rules to one process; v1.1 to v1.2 changes nothing in the model.
 /// Class renames and the old `only_non_null` spelling are handled while reading.

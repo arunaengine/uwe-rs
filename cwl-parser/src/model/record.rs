@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use crate::error::Error;
-use crate::expression::Expression;
 use crate::iri::Parts;
+use crate::model::expression::Expression;
+use crate::model::process::Version;
 use crate::node::{Entry, Location, Node, Value};
-use crate::process::Version;
 
 /// What reading needs besides the node: the version of the document.
 pub struct Context {

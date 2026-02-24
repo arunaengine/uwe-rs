@@ -2,16 +2,16 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use crate::binding::{
+use crate::error::Error;
+use crate::model::binding::{
     CommandLineBinding, LoadListing, OutputBinding, read_binding, read_listing, read_load,
     read_output,
 };
-use crate::error::Error;
-use crate::expression::Expression;
+use crate::model::expression::Expression;
+use crate::model::process::{Kind, Version};
+use crate::model::record::{self, Context, Record};
+use crate::model::schema::{SecondaryFile, Type, read_secondary, read_type};
 use crate::node::{Entry, Location, Node};
-use crate::process::{Kind, Version};
-use crate::record::{self, Context, Record};
-use crate::schema::{SecondaryFile, Type, read_secondary, read_type};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LinkMerge {

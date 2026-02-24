@@ -7,6 +7,7 @@ mod error;
 pub mod expression;
 pub mod iri;
 pub mod node;
+pub mod parameter;
 pub mod process;
 pub mod record;
 pub mod salad;

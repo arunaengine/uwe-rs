@@ -134,6 +134,13 @@ fn numbers() {
 }
 
 #[test]
+fn hex_fractions() {
+    assert_eq!(texts("0x1.8p3 0x10.p-2"), ["0x1.8p3", "0x10.p-2", ""]);
+    assert_eq!(texts("0x10.c"), ["0x10", ".", "c", ""]);
+    assert_eq!(texts("0x1F.d(y)"), ["0x1F", ".", "d", "(", "y", ")", ""]);
+}
+
+#[test]
 fn comments_become_newlines() {
     assert_eq!(
         kinds("a // c\nb /* x */ c"),

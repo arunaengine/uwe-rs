@@ -361,6 +361,16 @@ fn operator_precedence() {
 }
 
 #[test]
+fn relational_levels() {
+    assert_eq!(parse("a >= b as int"), "(>= a (as b int))");
+    assert_eq!(parse("a < b instanceof C"), "(< a (instanceof b C))");
+    assert_eq!(parse("a in b !instanceof C"), "(in a (!instanceof b C))");
+    assert_eq!(parse("a instanceof B as C"), "(as (instanceof a B) C)");
+    assert_eq!(parse("a as B >= c"), "(>= (as a B) c)");
+    assert_eq!(parse("a << b as C"), "(as (<< a b) C)");
+}
+
+#[test]
 fn conditional_associativity() {
     assert_eq!(parse("a ? b : c ? d : e"), "(? a b (? c d e))");
     assert_eq!(parse("a ?: b ?: c"), "(?: a (?: b c))");

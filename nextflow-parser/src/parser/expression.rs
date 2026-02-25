@@ -10,6 +10,7 @@ use crate::ast::{
 use crate::token::TokenKind;
 
 /// Binding strength of operators, weakest first, following the levels of `ScriptParser.g4`.
+/// Each alternative there is its own level, so `as` binds tighter than `instanceof` and `<`.
 const TERNARY: u8 = 1;
 const OR: u8 = 2;
 const AND: u8 = 3;
@@ -19,12 +20,14 @@ const BIT_AND: u8 = 6;
 const REGEX: u8 = 7;
 const EQUALITY: u8 = 8;
 const RELATIONAL: u8 = 9;
-const SHIFT: u8 = 10;
-const ADDITIVE: u8 = 11;
-const MULTIPLICATIVE: u8 = 12;
-const SIGN: u8 = 13;
-const POWER: u8 = 14;
-const NEGATION: u8 = 15;
+const INSTANCE_OF: u8 = 10;
+const CAST: u8 = 11;
+const SHIFT: u8 = 12;
+const ADDITIVE: u8 = 13;
+const MULTIPLICATIVE: u8 = 14;
+const SIGN: u8 = 15;
+const POWER: u8 = 16;
+const NEGATION: u8 = 17;
 
 enum Infix {
     Binary(BinaryOperator),
@@ -139,9 +142,9 @@ impl Parser<'_> {
             Greater if self.nth(n + 1) == Greater => shift(B::RightShift, 2),
             RangeInclusive => binary(B::RangeInclusive, SHIFT, true),
             RangeExclusiveRight => binary(B::RangeExclusiveRight, SHIFT, true),
-            As => special(Infix::Cast, RELATIONAL),
-            Instanceof => special(Infix::InstanceOf { negated: false }, RELATIONAL),
-            NotInstanceof => special(Infix::InstanceOf { negated: true }, RELATIONAL),
+            As => special(Infix::Cast, CAST),
+            Instanceof => special(Infix::InstanceOf { negated: false }, INSTANCE_OF),
+            NotInstanceof => special(Infix::InstanceOf { negated: true }, INSTANCE_OF),
             Less => binary(B::Less, RELATIONAL, true),
             LessEqual => binary(B::LessEqual, RELATIONAL, true),
             Greater => binary(B::Greater, RELATIONAL, true),

@@ -3,7 +3,9 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use super::{Failed, Parse, Parser, is_keyword, is_name};
-use crate::ast::{Access, Argument, Block, Closure, Expression, ExpressionKind, Name, Parameter};
+use crate::ast::{
+    Access, Argument, Block, Closure, Expression, ExpressionKind, Literal, Name, Parameter,
+};
 use crate::token::TokenKind;
 
 impl Parser<'_> {
@@ -156,7 +158,8 @@ impl Parser<'_> {
             )
     }
 
-    /// Calls on names and properties become method calls; other callees are called as values.
+    /// Calls on names, properties and constant names like `'m'` or `int` become method calls;
+    /// other callees are called as values.
     pub(super) fn call(
         &self,
         callee: Expression,
@@ -165,7 +168,9 @@ impl Parser<'_> {
     ) -> Expression {
         let span = callee.span;
         let kind = match callee.kind {
-            ExpressionKind::Variable(text) => ExpressionKind::MethodCall {
+            ExpressionKind::Variable(text)
+            | ExpressionKind::PrimitiveType(text)
+            | ExpressionKind::Literal(Literal::String(text)) => ExpressionKind::MethodCall {
                 target: None,
                 name: Name { text, span },
                 access: Access::Normal,
@@ -229,7 +234,9 @@ pub(super) fn append_closure(callee: Expression, closure: Closure) -> Expression
             arguments.push(argument);
             ExpressionKind::Call { callee, arguments }
         }
-        ExpressionKind::Variable(text) => ExpressionKind::MethodCall {
+        ExpressionKind::Variable(text)
+        | ExpressionKind::PrimitiveType(text)
+        | ExpressionKind::Literal(Literal::String(text)) => ExpressionKind::MethodCall {
             target: None,
             name: Name { text, span },
             access: Access::Normal,

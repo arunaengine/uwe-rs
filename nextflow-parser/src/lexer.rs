@@ -181,12 +181,20 @@ impl Lexer<'_> {
         if self.peek(0) == b'0' && matches!(self.peek(1), b'x' | b'X') {
             self.position += 2;
             self.digits(|b| b.is_ascii_hexdigit());
-            if self.peek(0) == b'.' && self.peek(1).is_ascii_hexdigit() {
-                self.position += 1;
-                self.digits(|b| b.is_ascii_hexdigit());
+            // A hex fraction needs a binary exponent, as in `0x1.8p3`; so `0x10.c` is the
+            // property `c` of `0x10`, as the longest token the official lexer can match.
+            let mut exponent = 0;
+            if self.peek(0) == b'.' {
+                exponent = 1;
+                while self.peek(exponent).is_ascii_hexdigit() || self.peek(exponent) == b'_' {
+                    exponent += 1;
+                }
             }
-            if matches!(self.peek(0), b'p' | b'P') {
-                self.position += 1;
+            let sign = usize::from(matches!(self.peek(exponent + 1), b'+' | b'-'));
+            if matches!(self.peek(exponent), b'p' | b'P')
+                && self.peek(exponent + 1 + sign).is_ascii_digit()
+            {
+                self.position += exponent + 1;
                 self.exponent_digits();
                 float = true;
             }

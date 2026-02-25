@@ -206,6 +206,21 @@ fn rejects_lone_dollar() {
 }
 
 #[test]
+fn rejects_invalid_numbers() {
+    let message = |source| {
+        let errors = tokenize(source, Dialect::Script).errors;
+        errors.first().map(|error| error.message.clone())
+    };
+    let underscore = "Number ending with underscores is invalid";
+    assert_eq!(message("1_").as_deref(), Some(underscore));
+    assert_eq!(message("1_.5").as_deref(), Some(underscore));
+    assert_eq!(message("09").as_deref(), Some("Invalid octal number"));
+    assert!(message("0x1.8p3").is_some_and(|m| m.starts_with("Character x is neither")));
+    assert_eq!(message("1__0 0_7 08.5 0x1_F 0b1_0"), None);
+    assert_eq!(texts("0x 0b2"), ["0", "x", "0", "b2", ""]);
+}
+
+#[test]
 fn rejects_unterminated_strings() {
     assert_eq!(tokenize("'abc\nx", Dialect::Script).errors.len(), 1);
     assert_eq!(tokenize("\"a $x\nb", Dialect::Script).errors.len(), 1);

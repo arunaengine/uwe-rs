@@ -411,6 +411,15 @@ fn calls_and_closures() {
 }
 
 #[test]
+fn constant_method_names() {
+    assert_eq!(parse("'m'(1)"), "(m 1)");
+    assert_eq!(parse("\"m\" { it }"), "(cmd m {it})");
+    assert_eq!(parse("/m/()"), "(m)");
+    assert_eq!(parse("int()"), "(int)");
+    assert_eq!(parse("\"$m\"()"), "(call \"${m}\")");
+}
+
+#[test]
 fn property_access_kinds() {
     assert_eq!(parse("a.b?.c*.d"), "(*. (?. (. a b) c) d)");
     assert_eq!(parse("meta.id"), "(. meta id)");

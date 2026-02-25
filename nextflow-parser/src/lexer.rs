@@ -178,7 +178,13 @@ impl Lexer<'_> {
     fn number(&mut self) {
         let start = self.position;
         let mut float = false;
-        if self.peek(0) == b'0' && matches!(self.peek(1), b'x' | b'X') {
+        let mut radix = 10;
+        // Without a digit after it, `0x` is the number `0` and then a name, as in ANTLR.
+        if self.peek(0) == b'0'
+            && matches!(self.peek(1), b'x' | b'X')
+            && self.peek(2).is_ascii_hexdigit()
+        {
+            radix = 16;
             self.position += 2;
             self.digits(|b| b.is_ascii_hexdigit());
             // A hex fraction needs a binary exponent, as in `0x1.8p3`; so `0x10.c` is the
@@ -198,7 +204,11 @@ impl Lexer<'_> {
                 self.exponent_digits();
                 float = true;
             }
-        } else if self.peek(0) == b'0' && matches!(self.peek(1), b'b' | b'B') {
+        } else if self.peek(0) == b'0'
+            && matches!(self.peek(1), b'b' | b'B')
+            && matches!(self.peek(2), b'0' | b'1')
+        {
+            radix = 2;
             self.position += 2;
             self.digits(|b| b == b'0' || b == b'1');
         } else {
@@ -215,6 +225,7 @@ impl Lexer<'_> {
                 float = true;
             }
         }
+        let numeral = self.position;
         match self.peek(0) {
             b'f' | b'F' | b'd' | b'D' => {
                 self.position += 1;
@@ -230,6 +241,34 @@ impl Lexer<'_> {
             TokenKind::IntegerLiteral
         };
         self.push(kind, start, self.position);
+        self.check_number(start, numeral, float, radix);
+    }
+
+    /// Reports numbers that the official lexer rejects, or that its AST builder cannot convert
+    /// because it reads floating point numbers as decimals.
+    fn check_number(&mut self, start: usize, end: usize, float: bool, radix: u32) {
+        let text = &self.bytes[start..end];
+        let digit = |b: Option<&u8>| b.is_some_and(|b| char::from(*b).is_digit(radix));
+        // Underscores may only stand between digits.
+        let misplaced = (0..text.len()).any(|i| {
+            let before = text[..i].iter().rev().find(|b| **b != b'_');
+            let after = text[i..].iter().find(|b| **b != b'_');
+            text[i] == b'_' && !(digit(before) && digit(after))
+        });
+        let octal = !float && radix == 10 && text.len() > 1 && text[0] == b'0';
+        let message = if misplaced {
+            "Number ending with underscores is invalid".to_owned()
+        } else if float && radix == 16 {
+            let marker = char::from(text[1]);
+            format!(
+                "Character {marker} is neither a decimal digit number, decimal point, nor \"e\" notation exponential mark."
+            )
+        } else if octal && text.iter().any(|b| matches!(b, b'8' | b'9')) {
+            "Invalid octal number".to_owned()
+        } else {
+            return;
+        };
+        self.error(message, start, self.position);
     }
 
     fn digits(&mut self, digit: impl Fn(u8) -> bool) {

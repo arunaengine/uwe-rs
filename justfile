@@ -39,6 +39,53 @@ corpus:
 corpus-test:
 	NF_CORE_CORPUS="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}" cargo test --release --locked -p nextflow-parser --test corpus -- --ignored
 
+# Fetches the text-only CWL corpus at the revisions the CWL corpus test expects.
+cwl-corpus:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	root="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}"
+	fixtures="$PWD/cwl-parser/tests/fixtures/corpus"
+	paths="$(grep -v '^#' "$fixtures/revisions.txt" | cut -d' ' -f1)"
+	mkdir -p "$root"
+	grep -v '^#' "$fixtures/revisions.txt" | while read -r path url ref commit prefixes; do
+		target="$root/$path"
+		if [ -d "$target/.git" ] || { [[ "$url" == https://workflowhub.eu/* ]] && [ -d "$target" ]; }; then
+			continue
+		fi
+		# Referenced files go to the innermost checkout that holds them.
+		referenced="$(grep "^$path/" "$fixtures/referenced.txt" | while read -r file; do
+			owner="$(printf '%s\n' "$paths" | awk -v file="$file" 'index(file, $0 "/") == 1 { print length($0), $0 }' | sort -n | tail -1 | cut -d' ' -f2)"
+			if [ "$owner" = "$path" ]; then printf '%s\n' "${file#"$path"/}"; fi
+		done || true)"
+		work="$(mktemp -d "$root/.fetch.XXXXXX")"
+		if [[ "$url" == https://workflowhub.eu/* ]]; then
+			curl -sfL --retry 3 -o "$work.zip" "https://workflowhub.eu/workflows/${path##*/}/ro_crate?version=${ref#version-}"
+			{ unzip -Z1 "$work.zip" | grep -iE '\.(cwl|ya?ml|json|js)$' | grep -vx 'ro-crate-metadata.json' || true; printf '%s\n' "$referenced"; } \
+				| grep -v '^$' | xargs -r -d '\n' unzip -qo "$work.zip" -d "$work" || true
+			rm -f "$work.zip"
+		else
+			git -C "$work" init -q
+			git -C "$work" remote add origin "$url"
+			{
+				for extension in cwl CWL yml YML yaml YAML json JSON js JS; do
+					if [ -z "$prefixes" ]; then echo "*.$extension"; fi
+					for prefix in $prefixes; do
+						case "$prefix" in */) echo "/$prefix**/*.$extension" ;; esac
+					done
+				done
+				for prefix in $prefixes; do case "$prefix" in */) ;; *) echo "/$prefix" ;; esac; done
+				printf '%s\n' "$referenced" | grep -v '^$' | sed 's|^|/|' || true
+			} | git -C "$work" sparse-checkout set --no-cone --stdin
+			git -C "$work" fetch -q --depth 1 --filter=blob:none origin "$commit"
+			git -C "$work" checkout -q FETCH_HEAD
+		fi
+		# The corpus leaves out files over 1 MiB, as its first download did.
+		find "$work" -name .git -prune -o -type f -size +1M -print0 | xargs -r -0 rm -f
+		mkdir -p "$(dirname "$target")"
+		rmdir "$target" 2>/dev/null || true
+		mv "$work" "$target"
+	done
+
 # Fetches the text-only Snakemake corpus at the commits the corpus test expects.
 snakemake-corpus:
 	#!/usr/bin/env bash

@@ -86,6 +86,10 @@ cwl-corpus:
 		mv "$work" "$target"
 	done
 
+# Loads the whole CWL corpus and compares the result with `cwltool --validate`.
+cwl-corpus-test:
+	CWL_CORPUS="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}" cargo test --release --locked -p cwl-parser --test corpus -- --ignored
+
 # Fetches the text-only Snakemake corpus at the commits the corpus test expects.
 snakemake-corpus:
 	#!/usr/bin/env bash

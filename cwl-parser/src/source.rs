@@ -57,8 +57,13 @@ impl Source for Memory {
         found.ok_or_else(|| "no such document".to_owned())
     }
 
+    /// Remote URLs count as present, as they do for the file system.
     fn exists(&self, url: &str) -> bool {
-        self.files.contains_key(url)
+        let remote = matches!(
+            iri::Parts::parse(url).scheme,
+            Some("http" | "https" | "mailto")
+        );
+        remote || self.files.contains_key(url)
     }
 }
 

@@ -62,6 +62,12 @@ impl Parser<'_> {
             if (newlines > 0 && !operator.after_newline) || operator.precedence < minimum {
                 break;
             }
+            // `as` and `instanceof` may name an argument, as in the call `foo as: 1`.
+            let named = matches!(operator.infix, Infix::Cast | Infix::InstanceOf { .. });
+            if named && self.nth(newlines + 1) == TokenKind::Colon {
+                break;
+            }
+            let before = self.position;
             self.position += newlines;
             for _ in 0..operator.tokens {
                 self.bump();
@@ -69,6 +75,20 @@ impl Parser<'_> {
             self.skip_newlines();
             let start = left.span;
             let kind = match operator.infix {
+                Infix::Binary(BinaryOperator::In) => {
+                    // `in` is also a name, so without an operand after it, it starts the
+                    // arguments of a call like `foo in: 1` or `foo in, x`.
+                    let minimum = operator.precedence + 1;
+                    let Some(right) = self.speculate(|parser| parser.binary(minimum)) else {
+                        self.position = before;
+                        break;
+                    };
+                    ExpressionKind::Binary {
+                        operator: BinaryOperator::In,
+                        left: Box::new(left),
+                        right: Box::new(right),
+                    }
+                }
                 Infix::Binary(binary) => ExpressionKind::Binary {
                     operator: binary,
                     left: Box::new(left),

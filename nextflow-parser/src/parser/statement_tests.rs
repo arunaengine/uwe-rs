@@ -154,6 +154,13 @@ fn stops_at_labels() {
 }
 
 #[test]
+fn rejects_single_destructure() {
+    let mut parser = Parser::new("def (a) = x", Dialect::Script);
+    assert!(parser.statement_sequence(|_| false).is_err());
+    assert_eq!(one("(a) = x"), "(setAssign (paren a) x)");
+}
+
+#[test]
 fn rejects_missing_separator() {
     let mut parser = Parser::new("a b c", Dialect::Script);
     assert!(parser.statement_sequence(|_| false).is_err());

@@ -411,6 +411,14 @@ fn calls_and_closures() {
 }
 
 #[test]
+fn closure_after_parentheses() {
+    assert_eq!(parse("(a.b) { it }"), "(cmd .b a {it})");
+    assert_eq!(parse("((a)) { it }"), "(cmd a {it})");
+    assert_eq!(parse("(f(x)) { it }"), "(f x {it})");
+    assert_eq!(parse("(a.b)(1)"), "(call (paren (. a b)) 1)");
+}
+
+#[test]
 fn constant_method_names() {
     assert_eq!(parse("'m'(1)"), "(m 1)");
     assert_eq!(parse("\"m\" { it }"), "(cmd m {it})");

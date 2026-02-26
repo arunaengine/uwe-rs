@@ -201,7 +201,12 @@ impl Parser<'_> {
 }
 
 /// A closure after a call becomes its last argument, as in `foo(x) { ... }`.
-pub(super) fn append_closure(callee: Expression, closure: Closure) -> Expression {
+pub(super) fn append_closure(mut callee: Expression, closure: Closure) -> Expression {
+    // Unlike an argument list, the official builder ignores parentheses here: `(a.b) { }`
+    // calls the method `b` of `a`, and `(foo(x)) { }` adds the closure to that call.
+    while let ExpressionKind::Parenthesized(inner) = callee.kind {
+        callee = *inner;
+    }
     let argument = Argument {
         name: None,
         value: Expression {

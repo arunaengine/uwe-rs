@@ -127,6 +127,18 @@ impl Parser<'_> {
         Ok(left)
     }
 
+    /// Whether the token `n` places ahead continues an expression on a new line: a property
+    /// access, or an operator that cannot start a statement as `+`, `-` and the name `in` can.
+    pub(super) fn continues_at(&self, n: usize) -> bool {
+        let kind = self.nth(n);
+        let access = matches!(
+            kind,
+            TokenKind::Dot | TokenKind::SafeDot | TokenKind::SpreadDot
+        );
+        let starts = matches!(kind, TokenKind::Add | TokenKind::Subtract | TokenKind::In);
+        access || (self.operator_at(n).is_some() && !starts)
+    }
+
     fn operator_at(&self, n: usize) -> Option<Operator> {
         use BinaryOperator as B;
         use TokenKind::*;

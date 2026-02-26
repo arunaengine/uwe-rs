@@ -217,6 +217,12 @@ try {
 }
 
 #[test]
+fn rejects_closure_labels() {
+    assert!(!messages("process.ext.args = x.branch { big: 1 }\n").is_empty());
+    assert!(messages("process.ext.args = x.collect { it }\n").is_empty());
+}
+
+#[test]
 fn incomplete_statement() {
     assert_eq!(messages("process.cpus\n"), ["Incomplete statement"]);
     assert_eq!(messages("process.\n"), ["Incomplete statement"]);

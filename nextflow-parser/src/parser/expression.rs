@@ -7,7 +7,7 @@ use super::{Parse, Parser, is_keyword, is_name};
 use crate::ast::{
     Access, BinaryOperator, Expression, ExpressionKind, Literal, Name, UnaryOperator,
 };
-use crate::token::TokenKind;
+use crate::token::{Dialect, TokenKind};
 
 /// Binding strength of operators, weakest first, following the levels of `ScriptParser.g4`.
 /// Each alternative there is its own level, so `as` binds tighter than `instanceof` and `<`.
@@ -254,7 +254,8 @@ impl Parser<'_> {
                     continue;
                 }
                 TokenKind::LeftBrace => {
-                    let closure = self.closure()?;
+                    // The official config builder rejects labels in any closure.
+                    let closure = self.closure(self.dialect == Dialect::Script)?;
                     expression = append_closure(expression, closure);
                     expression.span = self.span_from(start);
                     continue;
@@ -344,7 +345,7 @@ impl Parser<'_> {
                 self.expect(TokenKind::RightParen, "')'")?;
                 ExpressionKind::Parenthesized(Box::new(inner))
             }
-            TokenKind::LeftBrace => ExpressionKind::Closure(Box::new(self.closure()?)),
+            TokenKind::LeftBrace => ExpressionKind::Closure(Box::new(self.closure(false)?)),
             TokenKind::LeftBracket => self.list_or_map()?,
             _ => return Err(self.error_here("Expected an expression")),
         };

@@ -270,9 +270,11 @@ impl Parser<'_> {
                 None
             };
             names.push(TypedName { name, annotation });
-            if !self.eat(TokenKind::Comma) {
+            // The grammar needs at least two names here.
+            if names.len() > 1 && !self.at(TokenKind::Comma) {
                 break;
             }
+            self.expect(TokenKind::Comma, "',' and another name")?;
             self.skip_newlines();
         }
         self.skip_newlines();

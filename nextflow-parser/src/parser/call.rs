@@ -6,7 +6,7 @@ use super::{Failed, Parse, Parser, is_keyword, is_name};
 use crate::ast::{
     Access, Argument, Block, Closure, Expression, ExpressionKind, Literal, Name, Parameter,
 };
-use crate::token::TokenKind;
+use crate::token::{Dialect, TokenKind};
 
 impl Parser<'_> {
     /// Turns a statement expression into a call without parentheses, like `cpus 4` or
@@ -85,7 +85,10 @@ impl Parser<'_> {
         let name = self.variable_name()?;
         let annotation = match legacy {
             Some(legacy) => Some(legacy),
-            None if self.eat(TokenKind::Colon) => Some(self.type_annotation()?),
+            // Config files have no `name: Type` parameters.
+            None if self.dialect == Dialect::Script && self.eat(TokenKind::Colon) => {
+                Some(self.type_annotation()?)
+            }
             None => None,
         };
         let default = if self.peek_past_newlines() == TokenKind::Assign {

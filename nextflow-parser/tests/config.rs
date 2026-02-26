@@ -217,6 +217,24 @@ try {
 }
 
 #[test]
+fn rejects_script_types() {
+    let sources = [
+        "x = { def a: String = y }\n",
+        "x = { def (a: String, b) = y }\n",
+        "x = { def (a,\n  b) = y }\n",
+        "x = { v: String -> v }\n",
+        "x = { try { a } catch (e: Exception) { b } }\n",
+        "x = { a as String? }\n",
+        "x = { a as List<?> }\n",
+    ];
+    for source in sources {
+        assert!(!messages(source).is_empty(), "{source}");
+    }
+    let legacy = "x = { String v -> def (a, b) = v as List<String> }\n";
+    assert!(messages(legacy).is_empty());
+}
+
+#[test]
 fn rejects_closure_labels() {
     assert!(!messages("process.ext.args = x.branch { big: 1 }\n").is_empty());
     assert!(messages("process.ext.args = x.collect { it }\n").is_empty());

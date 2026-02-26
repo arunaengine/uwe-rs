@@ -4,7 +4,7 @@
 
 use super::{Parse, Parser, is_name};
 use crate::ast::{Name, QualifiedName, Type, TypeArgument};
-use crate::token::TokenKind;
+use crate::token::{Dialect, TokenKind};
 
 impl Parser<'_> {
     /// The `type` rule, like `String`, `List<Path>` or `Map?`.
@@ -33,7 +33,9 @@ impl Parser<'_> {
             Vec::new()
         };
         // `x instanceof List ? a : b` is a conditional, so `?` before an expression is no marker.
-        let nullable = self.at(TokenKind::Question) && !starts_expression(self.nth(1));
+        // Config files have no nullable types.
+        let script = self.dialect == Dialect::Script;
+        let nullable = script && self.at(TokenKind::Question) && !starts_expression(self.nth(1));
         if nullable {
             self.bump();
         }
@@ -84,7 +86,8 @@ impl Parser<'_> {
         self.expect(TokenKind::Less, "'<'")?;
         let mut arguments = Vec::new();
         loop {
-            if self.eat(TokenKind::Question) {
+            // Config files have no wildcards.
+            if self.dialect == Dialect::Script && self.eat(TokenKind::Question) {
                 arguments.push(TypeArgument::Wildcard);
             } else {
                 arguments.push(TypeArgument::Type(self.type_annotation()?));

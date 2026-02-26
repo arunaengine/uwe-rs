@@ -7,7 +7,7 @@ use crate::ast::{
     Access, AssignOperator, Block, Catch, Expression, ExpressionKind, QualifiedName, Statement,
     StatementKind, TypedName,
 };
-use crate::token::TokenKind;
+use crate::token::{Dialect, TokenKind};
 
 impl Parser<'_> {
     /// The `statement` rule.
@@ -175,8 +175,9 @@ impl Parser<'_> {
             self.skip_newlines();
             self.bump();
             self.expect(TokenKind::LeftParen, "'(' after 'catch'")?;
-            let named_first =
-                self.at_name() && matches!(self.nth(1), TokenKind::RightParen | TokenKind::Colon);
+            // Config files only have `catch (Type e)`, without `catch (e: Type)`.
+            let colon = self.dialect == Dialect::Script && self.nth(1) == TokenKind::Colon;
+            let named_first = self.at_name() && (self.nth(1) == TokenKind::RightParen || colon);
             let (name, types) = if named_first {
                 let name = self.variable_name()?;
                 let types = if self.eat(TokenKind::Colon) {
@@ -244,7 +245,8 @@ impl Parser<'_> {
             }
         });
         let name = self.variable_name()?;
-        let annotation = if legacy_type.is_none() && self.eat(TokenKind::Colon) {
+        let typed = legacy_type.is_none() && self.dialect == Dialect::Script;
+        let annotation = if typed && self.eat(TokenKind::Colon) {
             Some(self.type_annotation()?)
         } else {
             None
@@ -258,13 +260,17 @@ impl Parser<'_> {
     }
 
     /// `( nls a: A , nls b nls )` of a destructuring declaration.
+    /// Config files allow neither types nor line breaks here.
     fn destructure_names(&mut self) -> Parse<Vec<TypedName>> {
+        let script = self.dialect == Dialect::Script;
         self.expect(TokenKind::LeftParen, "'('")?;
-        self.skip_newlines();
+        if script {
+            self.skip_newlines();
+        }
         let mut names = Vec::new();
         loop {
             let name = self.variable_name()?;
-            let annotation = if self.eat(TokenKind::Colon) {
+            let annotation = if script && self.eat(TokenKind::Colon) {
                 Some(self.type_annotation()?)
             } else {
                 None
@@ -275,9 +281,13 @@ impl Parser<'_> {
                 break;
             }
             self.expect(TokenKind::Comma, "',' and another name")?;
+            if script {
+                self.skip_newlines();
+            }
+        }
+        if script {
             self.skip_newlines();
         }
-        self.skip_newlines();
         self.expect(TokenKind::RightParen, "')'")?;
         Ok(names)
     }

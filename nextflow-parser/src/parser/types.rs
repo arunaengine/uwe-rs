@@ -25,8 +25,10 @@ impl Parser<'_> {
             });
         }
         let name = self.qualified_class_name()?;
+        // Type arguments that cannot close belong to the expression, as in `x as B < y` or
+        // `x as List<String>=~y`, where `>=` is one token.
         let arguments = if self.at(TokenKind::Less) {
-            self.type_arguments()?
+            self.speculate(Self::type_arguments).unwrap_or_default()
         } else {
             Vec::new()
         };

@@ -487,6 +487,19 @@ fn types_and_objects() {
 }
 
 #[test]
+fn unclosed_type_arguments() {
+    assert_eq!(parse("a as B < c"), "(< (as a B) c)");
+    assert_eq!(
+        parse("a as List<String>=~b"),
+        "(>= (< (as a List) String) (~ b))"
+    );
+    assert_eq!(
+        parse("a instanceof List<String>"),
+        "(instanceof a List<String>)"
+    );
+}
+
+#[test]
 fn rejects_incomplete_expressions() {
     assert!(fails("a +"));
     assert!(fails("foo(a"));

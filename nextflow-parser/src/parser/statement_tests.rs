@@ -104,6 +104,19 @@ fn command_calls() {
 }
 
 #[test]
+fn keyword_arguments() {
+    assert_eq!(one("foo in: 1"), "(cmd foo in=1)");
+    assert_eq!(one("foo in, b"), "(cmd foo in b)");
+    assert_eq!(one("foo in"), "(cmd foo in)");
+    assert_eq!(one("foo.bar in > b"), "(cmd .bar foo (> in b))");
+    assert_eq!(one("foo in b"), "(in foo b)");
+    assert_eq!(
+        one("foo as: 1, instanceof: 2"),
+        "(cmd foo as=1 instanceof=2)"
+    );
+}
+
+#[test]
 fn stops_at_labels() {
     let mut parser = Parser::new("a\nb; c\ninput:\nd", Dialect::Script);
     let statements = parser

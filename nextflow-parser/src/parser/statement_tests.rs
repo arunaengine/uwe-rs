@@ -88,6 +88,15 @@ fn closure_labels() {
 }
 
 #[test]
+fn rejects_value_labels() {
+    for source in ["x = { big: 1 }", "foo({ -> big: 1 })", "foo 1, { big: 1 }"] {
+        let mut parser = Parser::new(source, Dialect::Script);
+        let failed = parser.statement_sequence(|_| false).is_err();
+        assert!(failed || !parser.errors.is_empty(), "{source}");
+    }
+}
+
+#[test]
 fn command_calls() {
     assert_eq!(
         one("tuple val(meta), path(\"*.bam\"), emit: bam"),

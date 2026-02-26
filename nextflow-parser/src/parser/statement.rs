@@ -63,8 +63,8 @@ impl Parser<'_> {
     }
 
     /// The statements of a closure, which may carry labels as in `branch { big: it > 10 }`.
-    pub(super) fn closure_body(&mut self) -> Parse<Vec<Statement>> {
-        self.sequence(|_| false, true)
+    pub(super) fn closure_body(&mut self, labels: bool) -> Parse<Vec<Statement>> {
+        self.sequence(|_| false, labels)
     }
 
     fn sequence(&mut self, is_end: impl Fn(&Self) -> bool, labels: bool) -> Parse<Vec<Statement>> {

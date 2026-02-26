@@ -46,8 +46,9 @@ impl Parser<'_> {
         Ok(parameters)
     }
 
-    /// `{ a, b -> ... }`, `{ -> ... }` or `{ ... }` with the implicit parameter `it`.
-    pub(super) fn closure(&mut self) -> Parse<Closure> {
+    /// `{ a, b -> ... }`, `{ -> ... }` or `{ ... }` with the implicit parameter `it`. As in
+    /// the official grammar, only a closure after an expression may have `labels`.
+    pub(super) fn closure(&mut self, labels: bool) -> Parse<Closure> {
         let start = self.expect(TokenKind::LeftBrace, "'{'")?.span;
         let parameters = self.speculate(|parser| {
             parser.skip_newlines();
@@ -60,7 +61,7 @@ impl Parser<'_> {
             parser.expect(TokenKind::Arrow, "'->'")?;
             Ok(parameters)
         });
-        let statements = self.closure_body()?;
+        let statements = self.closure_body(labels)?;
         self.expect(TokenKind::RightBrace, "'}' to close the closure")?;
         Ok(Closure {
             parameters,

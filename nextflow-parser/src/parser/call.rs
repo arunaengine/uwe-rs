@@ -32,6 +32,7 @@ impl Parser<'_> {
             self.skip_newlines();
             arguments.push(self.argument()?);
         }
+        self.check_names(&arguments);
         Ok(arguments)
     }
 
@@ -116,7 +117,22 @@ impl Parser<'_> {
         }
         self.skip_newlines();
         self.expect(TokenKind::RightParen, "')'")?;
+        self.check_names(&arguments);
         Ok(arguments)
+    }
+
+    /// Reports named arguments that repeat an earlier name, like `f(a: 1, 'a': 2)`.
+    fn check_names(&mut self, arguments: &[Argument]) {
+        let names: Vec<&Name> = arguments.iter().filter_map(|a| a.name.as_ref()).collect();
+        for (index, name) in names.iter().enumerate() {
+            if names[..index]
+                .iter()
+                .any(|earlier| earlier.text == name.text)
+            {
+                let message = format!("Duplicated named argument '{}' found", name.text);
+                self.error_at(message, name.span);
+            }
+        }
     }
 
     /// An argument, which is named when it starts with a property name and a colon.

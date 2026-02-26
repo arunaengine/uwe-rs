@@ -493,3 +493,10 @@ fn rejects_incomplete_expressions() {
     assert!(fails("[a: ]"));
     assert!(fails("\"${}\""));
 }
+
+#[test]
+fn rejects_duplicate_names() {
+    assert!(fails("foo(a: 1, 'a': 2)"));
+    assert!(fails("new Foo(in: 1, x, in: 2)"));
+    assert!(!fails("foo(a: 1, b: 2, [a: 3])"));
+}

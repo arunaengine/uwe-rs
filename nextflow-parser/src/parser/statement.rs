@@ -4,7 +4,7 @@
 
 use super::{Failed, Parse, Parser};
 use crate::ast::{
-    Access, AssignOperator, Block, Catch, Expression, ExpressionKind, QualifiedName, Statement,
+    AssignOperator, Block, Catch, Expression, ExpressionKind, QualifiedName, Statement,
     StatementKind, TypedName,
 };
 use crate::token::{Dialect, TokenKind};
@@ -367,37 +367,45 @@ impl Parser<'_> {
     }
 
     /// ANTLR reads `path("x"), emit: y` as `path` with the arguments `("x")` and `emit: y`,
-    /// because the greedy reading cannot end the statement; this parses that reading.
+    /// because the greedy reading cannot end the statement; this parses that reading. Of several
+    /// such readings it takes the last name, so `a.b (x).c (y), z` calls `c` with `(y), z`.
     fn retry_command(&mut self, start: usize) -> Option<Expression> {
-        let resume = self.position;
-        self.position = start;
-        let command = self.speculate(|parser| {
-            let name = parser.name()?;
-            let mut target = Expression {
-                kind: ExpressionKind::Variable(name.text),
-                span: name.span,
+        let (resume, errors) = (self.position, self.errors.len());
+        let mut found = None;
+        for limit in 0.. {
+            self.position = start;
+            self.errors.truncate(errors);
+            let Some((target, count)) = self.speculate(|parser| parser.path(limit)) else {
+                break;
             };
-            while parser.eat(TokenKind::Dot) {
-                let property = parser.property_name()?;
-                target = Expression {
-                    span: target.span.to(property.span),
-                    kind: ExpressionKind::Property {
-                        target: Box::new(target),
-                        name: property,
-                        access: Access::Normal,
-                    },
-                };
+            let named = matches!(
+                target.kind,
+                ExpressionKind::Variable(_) | ExpressionKind::Property { .. }
+            );
+            let command = named.then(|| {
+                self.speculate(|parser| {
+                    let arguments = parser.argument_list()?;
+                    if !parser.at_statement_end() {
+                        return Err(Failed);
+                    }
+                    Ok(parser.call(target, arguments, false))
+                })
+            });
+            if let Some(command) = command.flatten() {
+                found = Some((command, self.position, self.errors.split_off(errors)));
             }
-            let arguments = parser.argument_list()?;
-            if !parser.at_statement_end() {
-                return Err(Failed);
+            if count < limit {
+                break;
             }
-            Ok(parser.call(target, arguments, false))
-        });
-        if command.is_none() {
-            self.position = resume;
         }
-        command
+        self.errors.truncate(errors);
+        let Some((command, end, messages)) = found else {
+            self.position = resume;
+            return None;
+        };
+        self.position = end;
+        self.errors.extend(messages);
+        Some(command)
     }
 }
 

@@ -115,6 +115,7 @@ fn command_calls() {
         "(cmd path (paren 'x') emit=y)"
     );
     assert_eq!(one("val(x), emit: v"), "(cmd val (paren x) emit=v)");
+    assert_eq!(one("a.b (x).c (y), z"), "(cmd .c (.b a x) (paren y) z)");
     assert_eq!(
         one("memory { 2.GB * task.attempt }"),
         "(cmd memory {(* (. 2 GB) (. task attempt))})"

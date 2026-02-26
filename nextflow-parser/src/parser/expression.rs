@@ -222,8 +222,14 @@ impl Parser<'_> {
 
     /// A primary expression followed by property accesses, calls, closures and indexes.
     fn postfix(&mut self) -> Parse<Expression> {
+        Ok(self.path(usize::MAX)?.0)
+    }
+
+    /// A primary expression and at most `limit` of the elements after it, with their number.
+    pub(super) fn path(&mut self, limit: usize) -> Parse<(Expression, usize)> {
         let mut expression = self.primary()?;
-        loop {
+        let mut count = 0;
+        while count < limit {
             let start = expression.span;
             let kind = match self.peek() {
                 TokenKind::Newline
@@ -251,6 +257,7 @@ impl Parser<'_> {
                     let arguments = self.arguments()?;
                     expression = self.call(expression, arguments, true);
                     expression.span = self.span_from(start);
+                    count += 1;
                     continue;
                 }
                 TokenKind::LeftBrace => {
@@ -258,6 +265,7 @@ impl Parser<'_> {
                     let closure = self.closure(self.dialect == Dialect::Script)?;
                     expression = append_closure(expression, closure);
                     expression.span = self.span_from(start);
+                    count += 1;
                     continue;
                 }
                 TokenKind::LeftBracket => {
@@ -270,7 +278,7 @@ impl Parser<'_> {
                     let index = if named {
                         match self.speculate(Self::index_list) {
                             Some(index) => index,
-                            None => return Ok(expression),
+                            None => return Ok((expression, count)),
                         }
                     } else {
                         self.index_list()?
@@ -280,13 +288,15 @@ impl Parser<'_> {
                         index,
                     }
                 }
-                _ => return Ok(expression),
+                _ => return Ok((expression, count)),
             };
             expression = Expression {
                 kind,
                 span: self.span_from(start),
             };
+            count += 1;
         }
+        Ok((expression, count))
     }
 
     /// The `indexPropertyArgs` rule: `[`, expressions, `]`.

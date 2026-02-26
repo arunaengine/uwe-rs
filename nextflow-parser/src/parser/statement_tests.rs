@@ -71,6 +71,15 @@ fn control_flow() {
 }
 
 #[test]
+fn closure_branches() {
+    assert_eq!(one("if (a) { -> b }"), "(if a {{ -> b}})");
+    assert_eq!(one("if (a) { b }.c() else d"), "(if a {(.c {b})} {d})");
+    assert_eq!(one("if (a) { b }\n  .c()"), "(if a {(.c {b})})");
+    assert_eq!(one("if (a) { b }\nelse { c }"), "(if a {b} {c})");
+    assert_eq!(parse("if (a) { b }\n-c"), ["(if a {b})", "(- c)"]);
+}
+
+#[test]
 fn closure_labels() {
     assert_eq!(
         one("ch.branch {\n  big: it > 10\n  small: true\n}"),

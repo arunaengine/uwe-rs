@@ -135,10 +135,29 @@ impl Parser<'_> {
         })
     }
 
-    /// A block, or a single statement treated as a block of one.
+    /// A block, or a single statement treated as a block of one. As in the official parser,
+    /// braces only make a block if the branch can end there: `if (a) { b }.c()` has a closure.
     fn statement_or_block(&mut self) -> Parse<Block> {
         if self.at(TokenKind::LeftBrace) {
-            return self.block();
+            let block = self.speculate(|parser| {
+                let block = parser.block()?;
+                let newlines = parser.newline_count();
+                let ends = match newlines {
+                    0 => matches!(
+                        parser.peek(),
+                        TokenKind::Semicolon
+                            | TokenKind::RightBrace
+                            | TokenKind::EndOfFile
+                            | TokenKind::Else
+                            | TokenKind::Catch
+                    ),
+                    _ => !parser.continues_at(newlines),
+                };
+                if ends { Ok(block) } else { Err(Failed) }
+            });
+            if let Some(block) = block {
+                return Ok(block);
+            }
         }
         let statement = self.statement()?;
         Ok(Block {

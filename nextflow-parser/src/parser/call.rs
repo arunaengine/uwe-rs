@@ -153,7 +153,8 @@ impl Parser<'_> {
         })
     }
 
-    /// Whether the next token can begin the arguments of a call without parentheses.
+    /// Whether the next token can begin the arguments of a call without parentheses. A `[`
+    /// right after the name is left over only where it could not start an index.
     fn at_argument_start(&self) -> bool {
         use TokenKind::*;
         let kind = self.peek();
@@ -171,6 +172,7 @@ impl Parser<'_> {
                     | Not
                     | BitNot
                     | PrimitiveType
+                    | LeftBracket
             )
     }
 

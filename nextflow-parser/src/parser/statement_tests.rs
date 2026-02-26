@@ -113,6 +113,15 @@ fn command_calls() {
 }
 
 #[test]
+fn collection_arguments() {
+    assert_eq!(one("foo [k: 1]"), "(cmd foo [k: 1])");
+    assert_eq!(one("foo.bar [:], 2"), "(cmd .bar foo [:] 2)");
+    assert_eq!(one("foo [k: 1].size()"), "(cmd foo (.size [k: 1]))");
+    assert_eq!(one("foo [], 1"), "(cmd foo [] 1)");
+    assert_eq!(one("foo [1, 2]"), "(index foo 1 2)");
+}
+
+#[test]
 fn keyword_arguments() {
     assert_eq!(one("foo in: 1"), "(cmd foo in=1)");
     assert_eq!(one("foo in, b"), "(cmd foo in b)");

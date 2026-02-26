@@ -260,9 +260,20 @@ impl Parser<'_> {
                     continue;
                 }
                 TokenKind::LeftBracket => {
-                    self.bump();
-                    let index = self.expression_list()?;
-                    self.expect(TokenKind::RightBracket, "']'")?;
+                    // After a name, `[` that starts no index starts the list or map argument of
+                    // a call without parentheses, as in `foo [k: 1]`.
+                    let named = matches!(
+                        expression.kind,
+                        ExpressionKind::Variable(_) | ExpressionKind::Property { .. }
+                    );
+                    let index = if named {
+                        match self.speculate(Self::index_list) {
+                            Some(index) => index,
+                            None => return Ok(expression),
+                        }
+                    } else {
+                        self.index_list()?
+                    };
                     ExpressionKind::Index {
                         target: Box::new(expression),
                         index,
@@ -275,6 +286,14 @@ impl Parser<'_> {
                 span: self.span_from(start),
             };
         }
+    }
+
+    /// The `indexPropertyArgs` rule: `[`, expressions, `]`.
+    fn index_list(&mut self) -> Parse<Vec<Expression>> {
+        self.expect(TokenKind::LeftBracket, "'['")?;
+        let index = self.expression_list()?;
+        self.expect(TokenKind::RightBracket, "']'")?;
+        Ok(index)
     }
 
     pub(super) fn primary(&mut self) -> Parse<Expression> {

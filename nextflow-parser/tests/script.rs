@@ -652,6 +652,20 @@ fn agent_sections() {
 }
 
 #[test]
+fn declaration_statements() {
+    for source in [
+        "params { v -> v }\n",
+        "workflow { it } + 1\n",
+        "record Foo { v -> v }\n",
+    ] {
+        assert!(
+            matches!(parse(source)[..], [Item::Statement(_)]),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn rejects_mixed_statements() {
     let source = "println 'Hello world!'\n\nworkflow {\n}\n";
     assert_eq!(

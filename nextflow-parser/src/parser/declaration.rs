@@ -186,8 +186,53 @@ impl Parser<'_> {
         n > 0 && end
     }
 
+    /// Whether a declaration keyword starts a statement instead, because the declaration could
+    /// not end there: `params { v -> v }` calls `params`, and so does `workflow { it } + 1`.
+    fn at_call_statement(&mut self) -> bool {
+        let named = match self.peek() {
+            TokenKind::Params | TokenKind::Output => false,
+            TokenKind::Workflow => is_name(self.nth(1)),
+            TokenKind::Record | TokenKind::Process if is_name(self.nth(1)) => true,
+            _ => return false,
+        };
+        let mut brace = if named { 2 } else { 1 };
+        while self.nth(brace) == TokenKind::Newline {
+            brace += 1;
+        }
+        if self.nth(brace) != TokenKind::LeftBrace {
+            return false;
+        }
+        // Other keywords with a closure make invalid definitions either way.
+        let keyword = matches!(self.peek(), TokenKind::Params | TokenKind::Record);
+        let closure = keyword
+            && self.lookahead(|parser| {
+                parser.position += brace;
+                let closure = parser.closure(true)?;
+                closure.parameters.map(|_| ()).ok_or(Failed)
+            });
+        let (mut end, mut depth) = (brace, 0usize);
+        loop {
+            match self.nth(end) {
+                TokenKind::LeftBrace | TokenKind::InterpolationStart => depth += 1,
+                TokenKind::RightBrace if depth == 1 => break,
+                TokenKind::RightBrace => depth -= 1,
+                TokenKind::EndOfFile => return closure,
+                _ => {}
+            }
+            end += 1;
+        }
+        let ends = matches!(
+            self.nth(end + 1),
+            TokenKind::Newline | TokenKind::Semicolon | TokenKind::EndOfFile
+        );
+        closure || !ends
+    }
+
     /// The `scriptDeclarationOrStatement` rule, deciding by the leading tokens.
     fn item(&mut self) -> Parse<Item> {
+        if self.at_call_statement() {
+            return Ok(Item::Statement(self.statement()?));
+        }
         match self.peek() {
             TokenKind::Nextflow if self.at_path_assign() => self.feature_flag(),
             TokenKind::Include => self.include(),

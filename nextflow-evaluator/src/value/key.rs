@@ -121,8 +121,10 @@ impl Value {
                 .iter()
                 .fold(0i32, |hash, item| hash.wrapping_add(item.0.java_hash())),
             Value::MapEntry(entry) => entry.0.java_hash() ^ entry.1.java_hash(),
-            // The Nextflow classes are not checked; a consistent hash of the count is enough.
-            Value::MemoryUnit(count) | Value::Duration(count) => long_hash(*count),
+            // Groovy's `@EqualsAndHashCode` over the one field; checked against Nextflow.
+            Value::MemoryUnit(count) | Value::Duration(count) => {
+                (59 * 127i32).wrapping_add(long_hash(*count))
+            }
         }
     }
 }

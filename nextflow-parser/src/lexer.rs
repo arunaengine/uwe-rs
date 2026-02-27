@@ -532,22 +532,30 @@ impl Lexer<'_> {
         )
     }
 
-    /// Lexes `/.../` if it is a complete slashy string, else lexes nothing.
+    /// Lexes `/.../` if it is a complete slashy string, else lexes nothing. As the official
+    /// lexer takes the longest match, `\/` may also be a backslash and the closing slash.
     fn slashy(&mut self) -> bool {
         let start = self.position;
         let mut i = start + 1;
-        loop {
+        let mut shorter = None;
+        let end = loop {
             match self.byte(i) {
-                0 => return false,
-                b'\\' if self.byte(i + 1) == b'/' => i += 2,
+                0 => break shorter,
+                b'\\' if self.byte(i + 1) == b'/' => {
+                    shorter = Some(i + 2);
+                    i += 2;
+                }
                 b'/' if i == start + 1 => return false,
-                b'/' => break,
-                b'$' if self.starts_interpolation(i + 1) => return false,
+                b'/' => break Some(i + 1),
+                b'$' if self.starts_interpolation(i + 1) => break shorter,
                 _ => i += 1,
             }
-        }
-        self.position = i + 1;
-        self.push(TokenKind::StringLiteral, start, self.position);
+        };
+        let Some(end) = end else {
+            return false;
+        };
+        self.position = end;
+        self.push(TokenKind::StringLiteral, start, end);
         true
     }
 

@@ -46,6 +46,15 @@ fn slash_starts_regex() {
 }
 
 #[test]
+fn slashy_backslash_end() {
+    assert_eq!(
+        texts("x = /a\\\\/\ny"),
+        ["x", "=", "/a\\\\/", "\n", "y", ""]
+    );
+    assert_eq!(texts("x = /a\\/b/"), ["x", "=", "/a\\/b/", ""]);
+}
+
+#[test]
 fn string_kinds() {
     assert_eq!(kinds("\"hello\" 'x'"), [StringLiteral, StringLiteral]);
     assert_eq!(

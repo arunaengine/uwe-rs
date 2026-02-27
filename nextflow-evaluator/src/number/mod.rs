@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod arithmetic;
 mod decimal;
 mod text;
 
@@ -10,6 +11,7 @@ use std::fmt;
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
 
+pub use arithmetic::ArithmeticError;
 pub use decimal::{BigDecimal, DivideError};
 
 /// A number of one of the six Java classes a Nextflow script can hold. The class is visible:

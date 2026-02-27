@@ -500,6 +500,13 @@ fn unclosed_type_arguments() {
 }
 
 #[test]
+fn nullable_or_conditional() {
+    assert_eq!(parse("a instanceof Path?+b"), "(+ (instanceof a Path?) b)");
+    assert_eq!(parse("a as List?\n  b : c"), "(? (as a List) b c)");
+    assert_eq!(parse("a as String? ?: b"), "(?: (as a String?) b)");
+}
+
+#[test]
 fn rejects_incomplete_expressions() {
     assert!(fails("a +"));
     assert!(fails("foo(a"));

@@ -5,7 +5,7 @@
 use super::call::append_closure;
 use super::{Parse, Parser, is_keyword, is_name};
 use crate::ast::{
-    Access, BinaryOperator, Expression, ExpressionKind, Literal, Name, UnaryOperator,
+    Access, BinaryOperator, Expression, ExpressionKind, Literal, Name, Type, UnaryOperator,
 };
 use crate::token::{Dialect, TokenKind};
 
@@ -96,11 +96,11 @@ impl Parser<'_> {
                 },
                 Infix::Cast => ExpressionKind::Cast {
                     operand: Box::new(left),
-                    target_type: self.type_annotation()?,
+                    target_type: self.operand_type()?,
                 },
                 Infix::InstanceOf { negated } => ExpressionKind::InstanceOf {
                     operand: Box::new(left),
-                    target_type: self.type_annotation()?,
+                    target_type: self.operand_type()?,
                     negated,
                 },
                 Infix::Ternary => {
@@ -125,6 +125,30 @@ impl Parser<'_> {
             };
         }
         Ok(left)
+    }
+
+    /// The type after `as` or `instanceof`. A `?` after it starts a conditional where one can
+    /// follow, even on the next line, and else marks a nullable type, as in `x as Map? + y`.
+    fn operand_type(&mut self) -> Parse<Type> {
+        let mut target = self.type_annotation()?;
+        let conditional = |parser: &mut Self| {
+            parser.expect(TokenKind::Question, "'?'")?;
+            parser.skip_newlines();
+            parser.expression()?;
+            parser.skip_newlines();
+            parser.expect(TokenKind::Colon, "':'").map(|_| ())
+        };
+        if target.nullable {
+            // Back to the `?` that the type took as its marker.
+            self.position -= 1;
+        }
+        let question = self.dialect == Dialect::Script && self.at(TokenKind::Question);
+        target.nullable = question && !self.lookahead(conditional);
+        if target.nullable {
+            self.bump();
+        }
+        target.span = self.span_from(target.span);
+        Ok(target)
     }
 
     /// Whether the token `n` places ahead continues an expression on a new line: a property

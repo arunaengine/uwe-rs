@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod compare;
 mod format;
 mod key;
 
@@ -12,6 +13,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::number::Number;
 
+pub use compare::Relation;
 pub use key::Key;
 
 /// A value of a running script. Lists, maps and sets are shared: a change through one holder
@@ -148,6 +150,35 @@ impl Value {
             Value::MapEntry(_) => "Entry",
             Value::MemoryUnit(_) => "MemoryUnit",
             Value::Duration(_) => "Duration",
+        }
+    }
+
+    /// The fully qualified Java class name, as error messages show it.
+    pub fn java_class_name(&self) -> &'static str {
+        match self {
+            Value::Null => "null",
+            Value::Boolean(_) => "java.lang.Boolean",
+            Value::Number(number) => number.java_class(),
+            Value::String(_) => "java.lang.String",
+            Value::GString(_) => "org.codehaus.groovy.runtime.GStringImpl",
+            Value::List(list) => match list.borrow().kind {
+                ListKind::ArrayList => "java.util.ArrayList",
+                ListKind::Tuple => "nextflow.util.ArrayTuple",
+                ListKind::LinkedList => "java.util.LinkedList",
+                ListKind::Array => "[Ljava.lang.String;",
+            },
+            Value::Map(map) => match map.borrow().kind {
+                MapKind::LinkedHashMap => "java.util.LinkedHashMap",
+                MapKind::Record => "nextflow.util.RecordMap",
+                MapKind::TreeMap => "java.util.TreeMap",
+            },
+            Value::Set(set) => match set.borrow().kind {
+                SetKind::LinkedHashSet => "java.util.LinkedHashSet",
+                SetKind::HashSet => "java.util.HashSet",
+            },
+            Value::MapEntry(_) => "java.util.LinkedHashMap$Entry",
+            Value::MemoryUnit(_) => "nextflow.util.MemoryUnit",
+            Value::Duration(_) => "nextflow.util.Duration",
         }
     }
 

@@ -5,6 +5,7 @@
 mod compare;
 mod format;
 mod key;
+mod operators;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -15,6 +16,7 @@ use crate::number::Number;
 
 pub use compare::Relation;
 pub use key::Key;
+pub use operators::Operator;
 
 /// A value of a running script. Lists, maps and sets are shared: a change through one holder
 /// is visible to all, as in Groovy.

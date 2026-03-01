@@ -1209,6 +1209,7 @@ name = "nextflow-evaluator"
 version = "0.1.0"
 dependencies = [
  "indexmap",
+ "nextflow-parser",
  "num-bigint",
  "num-traits",
 ]

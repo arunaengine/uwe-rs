@@ -15,6 +15,7 @@ publish = false
 
 [workspace.dependencies]
 # Workspace crates
+nextflow-parser = { path = "nextflow-parser" }
 task-model = { path = "task-model" }
 
 # Third-party crates

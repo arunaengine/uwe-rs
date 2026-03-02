@@ -12,6 +12,8 @@ use std::rc::Rc;
 
 use indexmap::{IndexMap, IndexSet};
 
+use crate::exception::Exception;
+use crate::lowered::{Code, Module};
 use crate::number::Number;
 
 pub use compare::Relation;
@@ -38,6 +40,22 @@ pub enum Value {
     MemoryUnit(i64),
     /// `nextflow.util.Duration`: a millisecond count that is never negative.
     Duration(i64),
+    Closure(Rc<Closure>),
+    /// A thrown and caught exception, as `catch (e)` binds it.
+    Exception(Rc<Exception>),
+}
+
+/// A closure: its code, the script it belongs to, and the variables it captured.
+pub struct Closure {
+    pub code: Rc<Code>,
+    pub module: Rc<Module>,
+    pub captured: Vec<Rc<RefCell<Value>>>,
+}
+
+impl std::fmt::Debug for Closure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Closure({})", self.code.name)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -152,6 +170,8 @@ impl Value {
             Value::MapEntry(_) => "Entry",
             Value::MemoryUnit(_) => "MemoryUnit",
             Value::Duration(_) => "Duration",
+            Value::Closure(_) => "Closure",
+            Value::Exception(exception) => exception.class,
         }
     }
 
@@ -181,6 +201,8 @@ impl Value {
             Value::MapEntry(_) => "java.util.LinkedHashMap$Entry",
             Value::MemoryUnit(_) => "nextflow.util.MemoryUnit",
             Value::Duration(_) => "nextflow.util.Duration",
+            Value::Closure(_) => "groovy.lang.Closure",
+            Value::Exception(exception) => exception.qualified_class(),
         }
     }
 
@@ -200,6 +222,7 @@ impl Value {
             Value::MapEntry(_) => true,
             Value::MemoryUnit(size) => *size != 0,
             Value::Duration(millis) => *millis != 0,
+            Value::Closure(_) | Value::Exception(_) => true,
         }
     }
 }

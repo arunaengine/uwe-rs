@@ -79,6 +79,8 @@ impl Value {
             }
             (Value::MemoryUnit(left), Value::MemoryUnit(right)) => left == right,
             (Value::Duration(left), Value::Duration(right)) => left == right,
+            (Value::Closure(left), Value::Closure(right)) => Rc::ptr_eq(left, right),
+            (Value::Exception(left), Value::Exception(right)) => Rc::ptr_eq(left, right),
             _ => false,
         }
     }
@@ -125,6 +127,9 @@ impl Value {
             Value::MemoryUnit(count) | Value::Duration(count) => {
                 (59 * 127i32).wrapping_add(long_hash(*count))
             }
+            // Other objects keep the identity hash, which only needs to be consistent.
+            Value::Closure(closure) => Rc::as_ptr(closure) as usize as i32,
+            Value::Exception(exception) => Rc::as_ptr(exception) as usize as i32,
         }
     }
 }

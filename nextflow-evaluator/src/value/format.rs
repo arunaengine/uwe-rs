@@ -103,6 +103,17 @@ impl Value {
             }
             Value::MemoryUnit(size) => out.push_str(&memory_text(*size)),
             Value::Duration(millis) => out.push_str(&duration_text(*millis)),
+            Value::Closure(closure) => {
+                out.push_str(&format!("Closure@{:x}", Rc::as_ptr(closure) as usize));
+            }
+            // Java's `Throwable.toString()`.
+            Value::Exception(exception) => {
+                out.push_str(exception.qualified_class());
+                if !exception.message.is_empty() {
+                    out.push_str(": ");
+                    out.push_str(&exception.message);
+                }
+            }
         }
     }
 }

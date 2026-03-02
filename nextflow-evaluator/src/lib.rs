@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub mod exception;
+pub mod lower;
 pub mod lowered;
 pub mod number;
 pub mod units;

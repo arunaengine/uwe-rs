@@ -1,0 +1,80 @@
+//! Built-in names that a script can use without declaring them, from nf-lang's DSL classes.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+/// Constants of every script (`ScriptDsl`). `params` and `args` belong to the entry workflow,
+/// but Nextflow only warns when other code uses them.
+pub(super) const SCRIPT_CONSTANTS: &[&str] = &[
+    "args",
+    "baseDir",
+    "channel",
+    "launchDir",
+    "log",
+    "moduleDir",
+    "nextflow",
+    "params",
+    "projectDir",
+    "secrets",
+    "workDir",
+    "workflow",
+];
+
+/// Functions of every script (`ScriptDsl`).
+pub(super) const SCRIPT_FUNCTIONS: &[&str] = &[
+    "branchCriteria",
+    "env",
+    "error",
+    "exit",
+    "file",
+    "files",
+    "groupKey",
+    "multiMapCriteria",
+    "print",
+    "printf",
+    "println",
+    "record",
+    "sendMail",
+    "sleep",
+    "tuple",
+];
+
+/// Classes that scripts may name, from the default imports of Groovy and Nextflow.
+pub(super) const CLASSES: &[&str] = &[
+    "BigDecimal",
+    "BigInteger",
+    "Boolean",
+    "CharSequence",
+    "Channel",
+    "Closure",
+    "Collection",
+    "Date",
+    "Double",
+    "Duration",
+    "Exception",
+    "File",
+    "Files",
+    "Float",
+    "IllegalArgumentException",
+    "IllegalStateException",
+    "Integer",
+    "Iterable",
+    "List",
+    "Long",
+    "Map",
+    "Math",
+    "MemoryUnit",
+    "Number",
+    "Object",
+    "Path",
+    "Paths",
+    "Random",
+    "Record",
+    "RuntimeException",
+    "Set",
+    "String",
+    "System",
+    "Tuple",
+    "UUID",
+    "Value",
+    "VersionNumber",
+];

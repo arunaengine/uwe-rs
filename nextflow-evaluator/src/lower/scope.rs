@@ -1,0 +1,114 @@
+//! Variable scopes while lowering: blocks inside functions and closures, and closure captures.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::rc::Rc;
+
+use nextflow_parser::Span;
+
+use crate::lowered::{Place, Slot};
+
+/// The variables of one function or closure being lowered.
+struct Frame {
+    closure: bool,
+    /// Block scopes, innermost last, with each name's slot and declaration.
+    blocks: Vec<Vec<(Rc<str>, Slot, Span)>>,
+    slot_count: usize,
+    /// The enclosing places this closure captures, in the order of `Place::Captured`.
+    captures: Vec<Place>,
+}
+
+/// The frames being lowered, innermost last.
+#[derive(Default)]
+pub(super) struct Scopes {
+    frames: Vec<Frame>,
+}
+
+/// What a finished frame needs at run time.
+pub(super) struct FrameLayout {
+    pub slot_count: usize,
+    pub captures: Vec<Place>,
+}
+
+impl Scopes {
+    pub fn push_frame(&mut self, closure: bool) {
+        self.frames.push(Frame {
+            closure,
+            blocks: vec![Vec::new()],
+            slot_count: 0,
+            captures: Vec::new(),
+        });
+    }
+
+    pub fn pop_frame(&mut self) -> FrameLayout {
+        let frame = self.frames.pop().expect("a frame is open");
+        FrameLayout {
+            slot_count: frame.slot_count,
+            captures: frame.captures,
+        }
+    }
+
+    pub fn push_block(&mut self) {
+        self.frame().blocks.push(Vec::new());
+    }
+
+    pub fn pop_block(&mut self) {
+        self.frame().blocks.pop();
+    }
+
+    /// Declares a variable in the innermost block. Like Nextflow, a name that any enclosing
+    /// block of any enclosing frame declares is an error; the result is then the first
+    /// declaration, and the variable is declared anyway.
+    pub fn declare(&mut self, name: &str, span: Span) -> (Slot, Option<Span>) {
+        let earlier = self
+            .frames
+            .iter()
+            .flat_map(|frame| frame.blocks.iter().flatten())
+            .find(|(declared, _, _)| &**declared == name)
+            .map(|(_, _, span)| *span);
+        let frame = self.frame();
+        let slot = frame.slot_count;
+        frame.slot_count += 1;
+        let block = frame.blocks.last_mut().expect("a block is open");
+        block.push((name.into(), slot, span));
+        (slot, earlier)
+    }
+
+    /// Finds a variable, capturing it into every closure between its frame and the current one.
+    pub fn resolve(&mut self, name: &str) -> Option<Place> {
+        resolve_in(&mut self.frames, name)
+    }
+
+    fn frame(&mut self) -> &mut Frame {
+        self.frames.last_mut().expect("a frame is open")
+    }
+}
+
+fn resolve_in(frames: &mut [Frame], name: &str) -> Option<Place> {
+    let (frame, outer) = frames.split_last_mut()?;
+    let local = frame
+        .blocks
+        .iter()
+        .rev()
+        .flat_map(|block| block.iter().rev())
+        .find(|(declared, _, _)| &**declared == name);
+    if let Some((_, slot, _)) = local {
+        return Some(Place::Local(*slot));
+    }
+    if !frame.closure {
+        return None;
+    }
+    let place = resolve_in(outer, name)?;
+    let index = match frame
+        .captures
+        .iter()
+        .position(|captured| *captured == place)
+    {
+        Some(index) => index,
+        None => {
+            frame.captures.push(place);
+            frame.captures.len() - 1
+        }
+    };
+    Some(Place::Captured(index))
+}

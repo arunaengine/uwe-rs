@@ -7,5 +7,6 @@ pub mod interpreter;
 pub mod lower;
 pub mod lowered;
 pub mod number;
+pub mod regex;
 pub mod units;
 pub mod value;

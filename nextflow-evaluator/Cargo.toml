@@ -12,6 +12,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+fancy-regex.workspace = true
 indexmap.workspace = true
 nextflow-parser.workspace = true
 num-bigint.workspace = true

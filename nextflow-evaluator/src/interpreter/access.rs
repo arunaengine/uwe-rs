@@ -40,14 +40,28 @@ impl Interpreter<'_> {
                 "" => Value::Null,
                 message => Value::string(message),
             },
-            _ => {
-                let class = object.class_name();
-                return Err(unsupported(
-                    format!("the property `{name}` of {class}"),
-                    span,
-                ));
-            }
+            _ => return self.getter(object, name, span),
         })
+    }
+
+    /// A property of an object that is not a map: its getter `getName()` or `isName()`.
+    fn getter(&mut self, object: &Value, name: &str, span: Span) -> Result<Value, Error> {
+        let mut capitalized = name.chars();
+        let first = capitalized
+            .next()
+            .map(|c| c.to_uppercase().collect::<String>());
+        let capitalized = format!("{}{}", first.unwrap_or_default(), capitalized.as_str());
+        for prefix in ["get", "is"] {
+            let getter = format!("{prefix}{capitalized}");
+            if let Some(value) = self.library_method(object, &getter, &[], span)? {
+                return Ok(value);
+            }
+        }
+        let class = object.class_name();
+        Err(unsupported(
+            format!("the property `{name}` of {class}"),
+            span,
+        ))
     }
 
     /// `object.name = value`. Records reject changes.
@@ -237,6 +251,9 @@ impl Interpreter<'_> {
                 self.property(object, "message", span)
             }
             _ => {
+                if let Some(value) = self.library_method(object, name, &arguments, span)? {
+                    return Ok(value);
+                }
                 let class = object.class_name();
                 Err(unsupported(format!("the method `{name}` of {class}"), span))
             }

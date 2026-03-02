@@ -5,6 +5,7 @@
 mod access;
 mod call;
 mod expression;
+mod library;
 mod statement;
 
 use std::cell::RefCell;

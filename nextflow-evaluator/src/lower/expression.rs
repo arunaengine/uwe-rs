@@ -2,16 +2,21 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::rc::Rc;
+
 use nextflow_parser::Span;
 use nextflow_parser::ast::{
-    self, ExpressionKind as Syntax, GStringPart, Literal, MapKey, UnaryOperator,
+    self, BinaryOperator as B, ExpressionKind as Syntax, GStringPart, Literal, MapKey,
+    UnaryOperator,
 };
 
 use super::Lowering;
-use super::names::{CLASSES, SCRIPT_CONSTANTS};
-use crate::lowered::{Expression, ExpressionKind as Kind, Part, Unary};
+use super::names::{CLASSES, SCRIPT_CONSTANTS, SCRIPT_FUNCTIONS};
+use crate::lowered::{
+    Arguments, Code, Expression, ExpressionKind as Kind, Function, Parameter, Part, Unary,
+};
 use crate::number::Number;
-use crate::value::Value;
+use crate::value::{Operator, Relation, Value};
 
 impl Lowering<'_> {
     pub(super) fn expression(&mut self, expression: &ast::Expression) -> Expression {
@@ -21,6 +26,7 @@ impl Lowering<'_> {
             Syntax::Literal(literal) => self.literal(literal, span),
             Syntax::GString(parts) => self.gstring(parts),
             Syntax::Parenthesized(inner) => return self.expression(inner),
+            Syntax::Closure(closure) => self.closure(closure, span),
             Syntax::List(items) => Kind::List(self.expressions(items)),
             Syntax::Map(entries) => Kind::Map(
                 entries
@@ -38,10 +44,49 @@ impl Lowering<'_> {
                 target,
                 name,
                 access,
-            } => Kind::Property {
-                target: Box::new(self.expression(target)),
-                name: name.text.as_str().into(),
-                access: *access,
+            } => match self.class_name(target) {
+                Some(class) => Kind::StaticProperty {
+                    class,
+                    name: name.text.as_str().into(),
+                },
+                None => Kind::Property {
+                    target: Box::new(self.expression(target)),
+                    name: name.text.as_str().into(),
+                    access: *access,
+                },
+            },
+            Syntax::MethodCall {
+                target,
+                name,
+                access,
+                arguments,
+                ..
+            } => {
+                let arguments = self.arguments(arguments);
+                match target {
+                    None => self.function_call(&name.text, name.span, arguments),
+                    Some(target) => match self.class_name(target) {
+                        Some(class) => Kind::CallStatic {
+                            class,
+                            name: name.text.as_str().into(),
+                            arguments,
+                        },
+                        None => Kind::CallMethod {
+                            target: Box::new(self.expression(target)),
+                            name: name.text.as_str().into(),
+                            access: *access,
+                            arguments,
+                        },
+                    },
+                }
+            }
+            Syntax::Call { callee, arguments } => Kind::CallValue {
+                callee: Box::new(self.expression(callee)),
+                arguments: self.arguments(arguments),
+            },
+            Syntax::New { class, arguments } => Kind::New {
+                class: self.type_name(class),
+                arguments: self.arguments(arguments),
             },
             Syntax::Index { target, index } => Kind::Index {
                 target: Box::new(self.expression(target)),
@@ -56,6 +101,27 @@ impl Lowering<'_> {
                 },
                 operand: Box::new(self.expression(operand)),
             },
+            Syntax::Binary {
+                operator,
+                left,
+                right,
+            } => self.binary(*operator, left, right),
+            Syntax::Cast {
+                operand,
+                target_type,
+            } => Kind::Cast {
+                operand: Box::new(self.expression(operand)),
+                class: self.type_name(target_type),
+            },
+            Syntax::InstanceOf {
+                operand,
+                target_type,
+                negated,
+            } => Kind::InstanceOf {
+                operand: Box::new(self.expression(operand)),
+                class: self.type_name(target_type),
+                negated: *negated,
+            },
             Syntax::Ternary {
                 condition,
                 then,
@@ -69,16 +135,6 @@ impl Lowering<'_> {
                 value: Box::new(self.expression(value)),
                 fallback: Box::new(self.expression(fallback)),
             },
-            Syntax::Closure(_)
-            | Syntax::MethodCall { .. }
-            | Syntax::Call { .. }
-            | Syntax::New { .. }
-            | Syntax::Binary { .. }
-            | Syntax::Cast { .. }
-            | Syntax::InstanceOf { .. } => {
-                self.error("This expression is not supported yet", span);
-                Kind::Literal(Value::Null)
-            }
             Syntax::PrimitiveType(name) => {
                 self.error(format!("The type `{name}` cannot be used as a value"), span);
                 Kind::Literal(Value::Null)
@@ -146,6 +202,157 @@ impl Lowering<'_> {
             parts,
             keep_gstring,
         }
+    }
+
+    /// A closure. Without a parameter list, or with `->` alone, it has the optional parameter `it`.
+    fn closure(&mut self, closure: &ast::Closure, span: Span) -> Kind {
+        self.scopes.push_frame(true);
+        let explicit = closure.parameters.as_ref().filter(|list| !list.is_empty());
+        let parameters = match explicit {
+            Some(list) => list
+                .iter()
+                .map(|parameter| {
+                    let slot = self.declare(&parameter.name);
+                    let default = parameter
+                        .default
+                        .as_ref()
+                        .map(|value| self.expression(value));
+                    Parameter {
+                        name: parameter.name.text.as_str().into(),
+                        slot,
+                        default,
+                    }
+                })
+                .collect(),
+            None => {
+                self.scopes.declare("it", span);
+                Vec::new()
+            }
+        };
+        let body = self.block(&closure.body);
+        let layout = self.scopes.pop_frame();
+        Kind::Closure(Rc::new(Code {
+            name: "closure".into(),
+            parameters,
+            implicit_parameter: explicit.is_none(),
+            slot_count: layout.slot_count,
+            captures: layout.captures,
+            body,
+            span,
+        }))
+    }
+
+    fn arguments(&mut self, arguments: &[ast::Argument]) -> Arguments {
+        let mut lowered = Arguments::default();
+        for argument in arguments {
+            let value = self.expression(&argument.value);
+            match &argument.name {
+                Some(name) => lowered.named.push((name.text.as_str().into(), value)),
+                None => lowered.positional.push(value),
+            }
+        }
+        lowered
+    }
+
+    /// A call without a receiver: a function of the script or a built-in function.
+    fn function_call(&mut self, name: &str, span: Span, arguments: Arguments) -> Kind {
+        let function = if self.functions.contains(name) {
+            Function::Script(name.into())
+        } else if SCRIPT_FUNCTIONS.contains(&name) {
+            Function::Builtin(name.into())
+        } else {
+            self.error(format!("`{name}` is not defined"), span);
+            return Kind::Literal(Value::Null);
+        };
+        Kind::CallFunction {
+            function,
+            arguments,
+        }
+    }
+
+    /// The class a receiver names, unless a variable of that name hides it.
+    fn class_name(&mut self, target: &ast::Expression) -> Option<Rc<str>> {
+        match &target.kind {
+            Syntax::Variable(name)
+                if CLASSES.contains(&name.as_str()) && self.scopes.resolve(name).is_none() =>
+            {
+                Some(name.as_str().into())
+            }
+            _ => None,
+        }
+    }
+
+    /// The simple name of a type, without package or type arguments.
+    fn type_name(&mut self, class: &ast::Type) -> Rc<str> {
+        let name = class
+            .name
+            .parts
+            .last()
+            .map(|part| part.text.as_str())
+            .unwrap_or("");
+        name.into()
+    }
+
+    fn binary(&mut self, operator: B, left: &ast::Expression, right: &ast::Expression) -> Kind {
+        let left = Box::new(self.expression(left));
+        let right = Box::new(self.expression(right));
+        match operator {
+            B::Power => binary(Operator::Power, left, right),
+            B::Multiply => binary(Operator::Multiply, left, right),
+            B::Divide => binary(Operator::Divide, left, right),
+            B::Modulo => binary(Operator::Modulo, left, right),
+            B::Add => binary(Operator::Add, left, right),
+            B::Subtract => binary(Operator::Subtract, left, right),
+            B::LeftShift => binary(Operator::LeftShift, left, right),
+            B::RightShift => binary(Operator::RightShift, left, right),
+            B::UnsignedShift => binary(Operator::UnsignedShift, left, right),
+            B::BitAnd => binary(Operator::BitAnd, left, right),
+            B::Xor => binary(Operator::Xor, left, right),
+            B::BitOr => binary(Operator::BitOr, left, right),
+            B::RangeInclusive | B::RangeExclusiveRight => Kind::Range {
+                from: left,
+                to: right,
+                exclusive: operator == B::RangeExclusiveRight,
+            },
+            B::Less => compare(Relation::Less, left, right),
+            B::LessEqual => compare(Relation::LessEqual, left, right),
+            B::Greater => compare(Relation::Greater, left, right),
+            B::GreaterEqual => compare(Relation::GreaterEqual, left, right),
+            B::Equal | B::NotEqual => Kind::Equal {
+                negated: operator == B::NotEqual,
+                left,
+                right,
+            },
+            B::Spaceship => Kind::Spaceship { left, right },
+            B::In | B::NotIn => Kind::In {
+                negated: operator == B::NotIn,
+                item: left,
+                container: right,
+            },
+            B::RegexFind | B::RegexMatch => Kind::Regex {
+                matches: operator == B::RegexMatch,
+                text: left,
+                pattern: right,
+            },
+            B::And => Kind::And { left, right },
+            B::Or => Kind::Or { left, right },
+        }
+    }
+}
+
+fn binary(operator: Operator, left: Box<Expression>, right: Box<Expression>) -> Kind {
+    Kind::Binary {
+        operator,
+        left,
+        right,
+    }
+}
+
+fn compare(relation: Relation, left: Box<Expression>, right: Box<Expression>) -> Kind {
+    Kind::Relation {
+        relation,
+        left,
+        right,
     }
 }
 

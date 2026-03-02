@@ -39,6 +39,121 @@ impl Exception {
     }
 }
 
+/// Exception classes by simple name, with the qualified name and the parent class.
+const CLASSES: &[(&str, &str, &str)] = &[
+    ("Throwable", "java.lang.Throwable", ""),
+    ("Exception", "java.lang.Exception", "Throwable"),
+    ("Error", "java.lang.Error", "Throwable"),
+    ("AssertionError", "java.lang.AssertionError", "Error"),
+    (
+        "RuntimeException",
+        "java.lang.RuntimeException",
+        "Exception",
+    ),
+    (
+        "ArithmeticException",
+        "java.lang.ArithmeticException",
+        "RuntimeException",
+    ),
+    (
+        "ClassCastException",
+        "java.lang.ClassCastException",
+        "RuntimeException",
+    ),
+    (
+        "IllegalArgumentException",
+        "java.lang.IllegalArgumentException",
+        "RuntimeException",
+    ),
+    (
+        "NumberFormatException",
+        "java.lang.NumberFormatException",
+        "IllegalArgumentException",
+    ),
+    (
+        "IllegalStateException",
+        "java.lang.IllegalStateException",
+        "RuntimeException",
+    ),
+    (
+        "IndexOutOfBoundsException",
+        "java.lang.IndexOutOfBoundsException",
+        "RuntimeException",
+    ),
+    (
+        "ArrayIndexOutOfBoundsException",
+        "java.lang.ArrayIndexOutOfBoundsException",
+        "IndexOutOfBoundsException",
+    ),
+    (
+        "StringIndexOutOfBoundsException",
+        "java.lang.StringIndexOutOfBoundsException",
+        "IndexOutOfBoundsException",
+    ),
+    (
+        "NullPointerException",
+        "java.lang.NullPointerException",
+        "RuntimeException",
+    ),
+    (
+        "UnsupportedOperationException",
+        "java.lang.UnsupportedOperationException",
+        "RuntimeException",
+    ),
+    (
+        "GroovyRuntimeException",
+        "groovy.lang.GroovyRuntimeException",
+        "RuntimeException",
+    ),
+    (
+        "MissingMethodException",
+        "groovy.lang.MissingMethodException",
+        "GroovyRuntimeException",
+    ),
+    (
+        "MissingPropertyException",
+        "groovy.lang.MissingPropertyException",
+        "GroovyRuntimeException",
+    ),
+    (
+        "AbortOperationException",
+        "nextflow.exception.AbortOperationException",
+        "RuntimeException",
+    ),
+];
+
+/// The static simple name of a known exception class, as `new` and `catch` name it.
+pub fn class_name(name: &str) -> Option<&'static str> {
+    CLASSES
+        .iter()
+        .find(|(class, _, _)| *class == name)
+        .map(|(class, _, _)| *class)
+}
+
+impl Exception {
+    /// The fully qualified class name, or the simple name for a class outside the table.
+    pub fn qualified_class(&self) -> &'static str {
+        CLASSES
+            .iter()
+            .find(|(name, _, _)| *name == self.class)
+            .map_or(self.class, |(_, qualified, _)| qualified)
+    }
+
+    /// Whether the exception is an instance of the class, as a `catch` clause tests it.
+    pub fn is_instance(&self, class: &str) -> bool {
+        let mut current = self.class;
+        loop {
+            if current == class {
+                return true;
+            }
+            match CLASSES.iter().find(|(name, _, _)| *name == current) {
+                Some((_, _, parent)) if !parent.is_empty() => current = parent,
+                _ => return class == "Throwable",
+            }
+        }
+    }
+}
+
 impl fmt::Display for Exception {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.class, self.message)

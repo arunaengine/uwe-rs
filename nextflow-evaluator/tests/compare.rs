@@ -30,7 +30,7 @@ fn less(left: &Value, right: &Value) -> Result<bool, String> {
 }
 
 fn kind_list(kind: ListKind, items: Vec<Value>) -> Value {
-    Value::List(Rc::new(RefCell::new(List { kind, items })))
+    Value::List(Rc::new(RefCell::new(List::new(kind, items))))
 }
 
 #[test]

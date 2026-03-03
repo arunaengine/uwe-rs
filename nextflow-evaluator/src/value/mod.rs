@@ -6,6 +6,7 @@ mod compare;
 mod format;
 mod key;
 mod operators;
+mod range;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -19,6 +20,7 @@ use crate::number::Number;
 pub use compare::Relation;
 pub use key::Key;
 pub use operators::Operator;
+pub use range::{Range, RangeClass};
 
 /// A value of a running script. Lists, maps and sets are shared: a change through one holder
 /// is visible to all, as in Groovy.
@@ -62,6 +64,18 @@ impl std::fmt::Debug for Closure {
 pub struct List {
     pub kind: ListKind,
     pub items: Vec<Value>,
+    /// The bounds of a range, whose elements are in `items`.
+    pub range: Option<Rc<Range>>,
+}
+
+impl List {
+    pub fn new(kind: ListKind, items: Vec<Value>) -> Self {
+        Self {
+            kind,
+            items,
+            range: None,
+        }
+    }
 }
 
 /// The Java classes behind a list; they differ in class name, equality and what they allow.
@@ -75,6 +89,8 @@ pub enum ListKind {
     LinkedList,
     /// `String[]`, from `split`. Java arrays are only equal to themselves.
     Array,
+    /// A range, like `1..3`, which cannot change.
+    Range,
 }
 
 #[derive(Clone, Debug)]
@@ -118,10 +134,7 @@ impl Value {
 
     /// A new `ArrayList`.
     pub fn list(items: Vec<Value>) -> Value {
-        Value::List(Rc::new(RefCell::new(List {
-            kind: ListKind::ArrayList,
-            items,
-        })))
+        Value::List(Rc::new(RefCell::new(List::new(ListKind::ArrayList, items))))
     }
 
     /// A new `LinkedHashMap`; a later entry with an equal key replaces the value in place.
@@ -157,6 +170,11 @@ impl Value {
                 ListKind::Tuple => "ArrayTuple",
                 ListKind::LinkedList => "LinkedList",
                 ListKind::Array => "String[]",
+                ListKind::Range => list
+                    .borrow()
+                    .range
+                    .as_ref()
+                    .map_or("IntRange", |r| r.class.name()),
             },
             Value::Map(map) => match map.borrow().kind {
                 MapKind::LinkedHashMap => "LinkedHashMap",
@@ -188,6 +206,12 @@ impl Value {
                 ListKind::Tuple => "nextflow.util.ArrayTuple",
                 ListKind::LinkedList => "java.util.LinkedList",
                 ListKind::Array => "[Ljava.lang.String;",
+                ListKind::Range => match list.borrow().range.as_ref().map(|range| range.class) {
+                    Some(RangeClass::Number) => "groovy.lang.NumberRange",
+                    Some(RangeClass::Object) => "groovy.lang.ObjectRange",
+                    Some(RangeClass::Empty) => "groovy.lang.EmptyRange",
+                    _ => "groovy.lang.IntRange",
+                },
             },
             Value::Map(map) => match map.borrow().kind {
                 MapKind::LinkedHashMap => "java.util.LinkedHashMap",

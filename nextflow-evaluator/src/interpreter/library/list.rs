@@ -24,7 +24,7 @@ impl Interpreter<'_> {
     ) -> Result<Option<Value>, Error> {
         let items = list.borrow().items.clone();
         let kind = list.borrow().kind;
-        let fixed = matches!(kind, ListKind::Tuple | ListKind::Array);
+        let fixed = matches!(kind, ListKind::Tuple | ListKind::Array | ListKind::Range);
         let empty = |what: &str| {
             let message = format!("Cannot access {what}() element from an empty List");
             Err(thrown(

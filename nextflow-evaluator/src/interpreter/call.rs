@@ -143,10 +143,7 @@ impl Interpreter<'_> {
 }
 
 fn tuple(items: Vec<Value>) -> Value {
-    Value::List(Rc::new(RefCell::new(List {
-        kind: ListKind::Tuple,
-        items,
-    })))
+    Value::List(Rc::new(RefCell::new(List::new(ListKind::Tuple, items))))
 }
 
 /// Whether the code takes this many arguments. Parameters with defaults are optional.

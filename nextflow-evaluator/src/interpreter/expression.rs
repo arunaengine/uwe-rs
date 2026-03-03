@@ -53,7 +53,15 @@ impl Interpreter<'_> {
                 }
                 Value::map(values)
             }
-            Kind::Range { .. } => return Err(unsupported("ranges", span)),
+            Kind::Range {
+                from,
+                to,
+                exclusive,
+            } => {
+                let from = self.expression(frame, from)?;
+                let to = self.expression(frame, to)?;
+                Value::range(from, to, *exclusive).at(span)?
+            }
             Kind::Closure(code) => make_closure(frame, code),
             Kind::Property {
                 target,

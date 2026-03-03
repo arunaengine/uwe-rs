@@ -10,7 +10,7 @@ use nextflow_parser::Span;
 use super::{AtSpan, Error, Interpreter, thrown, unsupported};
 use crate::exception::{self, Exception};
 use crate::number::Number;
-use crate::value::{Key, ListKind, MapKind, Value};
+use crate::value::{Key, List, ListKind, MapKind, Value};
 
 impl Interpreter<'_> {
     /// `object.name`. A map reads the key, so `m.class` is `m.get('class')`.
@@ -140,6 +140,27 @@ impl Interpreter<'_> {
                 .get(&Key(key.clone()))
                 .cloned()
                 .unwrap_or(Value::Null),
+            (Value::List(list), Value::List(indexes)) if indexes.borrow().range.is_some() => {
+                let list = list.borrow();
+                let (from, to, reverse) = borders(&indexes.borrow(), list.items.len(), span)?;
+                let mut items = list.items[from..to].to_vec();
+                if reverse {
+                    items.reverse();
+                }
+                Value::list(items)
+            }
+            (Value::String(text) | Value::GString(text), Value::List(indexes))
+                if indexes.borrow().range.is_some() =>
+            {
+                let units: Vec<u16> = text.encode_utf16().collect();
+                let (from, to, reverse) = borders(&indexes.borrow(), units.len(), span)?;
+                let part = String::from_utf16_lossy(&units[from..to]);
+                Value::string(if reverse {
+                    part.chars().rev().collect()
+                } else {
+                    part
+                })
+            }
             (Value::List(list), Value::Number(number)) if integral(number) => {
                 let list = list.borrow();
                 let length = list.items.len();
@@ -215,7 +236,7 @@ impl Interpreter<'_> {
             }
             (Value::List(list), Value::Number(number)) if integral(number) => {
                 let mut list = list.borrow_mut();
-                if list.kind == ListKind::Tuple {
+                if matches!(list.kind, ListKind::Tuple | ListKind::Range) {
                     return Err(rejected(span));
                 }
                 let length = list.items.len();
@@ -344,6 +365,9 @@ pub(super) fn instance_of(value: &Value, class: &str) -> bool {
         Value::String(_) => &["CharSequence", "Comparable"],
         Value::GString(_) => &["GString", "CharSequence", "Comparable"],
         Value::List(list) if list.borrow().kind == ListKind::Array => &[],
+        Value::List(list) if list.borrow().kind == ListKind::Range => {
+            &["Range", "List", "Collection", "Iterable"]
+        }
         Value::List(list) if list.borrow().kind == ListKind::Tuple => {
             &["ArrayList", "List", "Collection", "Iterable"]
         }
@@ -356,6 +380,51 @@ pub(super) fn instance_of(value: &Value, class: &str) -> bool {
         Value::MapEntry(_) | Value::Closure(_) => &[],
     };
     class == "Object" || class == own || supertypes.contains(&class)
+}
+
+/// The part of a list that an integer range selects, as Groovy's `IntRange.subListBorders`:
+/// negative ends count from the end, and a descending range gives the elements reversed.
+fn borders(indexes: &List, size: usize, span: Span) -> Result<(usize, usize, bool), Error> {
+    let bounds = indexes
+        .range
+        .as_ref()
+        .and_then(|range| match (&range.from, &range.to) {
+            (Value::Number(Number::Integer(from)), Value::Number(Number::Integer(to))) => {
+                Some((i64::from(*from), i64::from(*to), range.exclusive))
+            }
+            _ => None,
+        });
+    let Some((from, to, exclusive)) = bounds else {
+        return Err(unsupported(
+            "indexing with a range that is not of integers",
+            span,
+        ));
+    };
+    let size = size as i64;
+    let from = if from < 0 { from + size } else { from };
+    let to = if to < 0 { to + size } else { to };
+    let (start, end, reverse) = if from > to {
+        (if exclusive { to + 1 } else { to }, from + 1, true)
+    } else {
+        (from, if exclusive { to } else { to + 1 }, false)
+    };
+    // Java's `List.subList` checks, with its messages.
+    let failure = if start < 0 {
+        Some(("IndexOutOfBoundsException", format!("fromIndex = {start}")))
+    } else if end > size {
+        Some(("IndexOutOfBoundsException", format!("toIndex = {end}")))
+    } else if start > end {
+        Some((
+            "IllegalArgumentException",
+            format!("fromIndex({start}) > toIndex({end})"),
+        ))
+    } else {
+        None
+    };
+    if let Some((class, message)) = failure {
+        return Err(thrown(Exception::new(class, message), span));
+    }
+    Ok((start as usize, end as usize, reverse))
 }
 
 /// Whether a number is an index: `Integer`, `Long` or `BigInteger`.

@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use nextflow_parser::Span;
 
-use super::{Error, Interpreter, thrown, unsupported};
+use super::{AtSpan, Error, Interpreter, thrown, unsupported};
 use crate::exception::{self, Exception};
 use crate::number::Number;
 use crate::value::{Key, ListKind, MapKind, Value};
@@ -58,7 +58,8 @@ impl Interpreter<'_> {
         })
     }
 
-    /// A property of an object that is not a map: its getter `getName()` or `isName()`.
+    /// A property of an object that is not a map: its getter `getName()` or `isName()`. A number
+    /// without such a getter reads a unit, like `2.GB`.
     fn getter(&mut self, object: &Value, name: &str, span: Span) -> Result<Value, Error> {
         let mut capitalized = name.chars();
         let first = capitalized
@@ -70,6 +71,9 @@ impl Interpreter<'_> {
             if let Some(value) = self.library_method(object, &getter, &[], span)? {
                 return Ok(value);
             }
+        }
+        if let Value::Number(number) = object {
+            return super::library::unit_property(number, name, span);
         }
         let class = object.class_name();
         Err(unsupported(
@@ -278,6 +282,9 @@ impl Interpreter<'_> {
     pub(super) fn cast(&mut self, value: Value, class: &str, span: Span) -> Result<Value, Error> {
         if matches!(value, Value::Null) || instance_of(&value, class) && class != "String" {
             return Ok(value);
+        }
+        if let Some(converted) = super::library::convert(&value, class) {
+            return converted.at(span);
         }
         Ok(match (class, &value) {
             ("String", _) => Value::string(value.to_groovy_string()),

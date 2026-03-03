@@ -6,9 +6,11 @@
 mod iterable;
 mod list;
 mod map;
+mod number;
 mod string;
 
 pub(super) use iterable::elements;
+pub(super) use number::{convert, unit_property};
 
 use nextflow_parser::Span;
 
@@ -50,6 +52,10 @@ impl Interpreter<'_> {
             },
             Value::Map(map) => self.map_method(map, name, arguments, span)?,
             Value::MapEntry(pair) => map::entry_method(pair, name, arguments),
+            Value::Number(number) => self.number_method(number, name, arguments, span)?,
+            Value::MemoryUnit(_) | Value::Duration(_) => {
+                number::unit_method(object, name, arguments)
+            }
             _ => None,
         };
         if found.is_some() {

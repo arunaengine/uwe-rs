@@ -5,6 +5,7 @@
 
 mod iterable;
 mod list;
+mod map;
 mod string;
 
 pub(super) use iterable::elements;
@@ -47,6 +48,8 @@ impl Interpreter<'_> {
                     self.iterable_method(object, &items, name, arguments, span)?
                 }
             },
+            Value::Map(map) => self.map_method(map, name, arguments, span)?,
+            Value::MapEntry(pair) => map::entry_method(pair, name, arguments),
             _ => None,
         };
         if found.is_some() {

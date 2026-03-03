@@ -3,7 +3,10 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod iterable;
 mod string;
+
+pub(super) use iterable::elements;
 
 use nextflow_parser::Span;
 
@@ -23,6 +26,19 @@ impl Interpreter<'_> {
         let found = match object {
             Value::String(text) | Value::GString(text) => {
                 self.string_method(text, name, arguments, span)?
+            }
+            Value::List(list) => {
+                let items = list.borrow().items.clone();
+                self.iterable_method(object, &items, name, arguments, span)?
+            }
+            Value::Set(set) => {
+                let items: Vec<Value> = set
+                    .borrow()
+                    .items
+                    .iter()
+                    .map(|item| item.0.clone())
+                    .collect();
+                self.iterable_method(object, &items, name, arguments, span)?
             }
             _ => None,
         };

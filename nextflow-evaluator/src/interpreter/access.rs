@@ -40,6 +40,20 @@ impl Interpreter<'_> {
                 "" => Value::Null,
                 message => Value::string(message),
             },
+            Value::List(_) | Value::Set(_) => match name {
+                "size" | "first" | "last" => self.call_method(object, name, Vec::new(), span)?,
+                "empty" => self.call_method(object, "isEmpty", Vec::new(), span)?,
+                // Other names are read from each element that is not null.
+                _ => {
+                    let mut values = Vec::new();
+                    for item in super::library::elements(object) {
+                        if !matches!(item, Value::Null) {
+                            values.push(self.property(&item, name, span)?);
+                        }
+                    }
+                    Value::list(values)
+                }
+            },
             _ => return self.getter(object, name, span),
         })
     }
@@ -270,6 +284,13 @@ impl Interpreter<'_> {
             ("Boolean", _) => Value::Boolean(value.truth()),
             ("Integer", Value::Number(number)) => Value::integer(number.to_i32()),
             ("Long", Value::Number(number)) => Value::Number(Number::Long(number.to_i64())),
+            ("List", Value::Set(_) | Value::List(_)) => {
+                Value::list(super::library::elements(&value))
+            }
+            ("List", Value::String(text) | Value::GString(text)) => {
+                Value::list(text.chars().map(|c| Value::string(c.to_string())).collect())
+            }
+            ("Set", Value::List(_)) => Value::set(super::library::elements(&value)),
             ("Integer" | "Long", Value::String(text) | Value::GString(text)) => {
                 let trimmed = text.trim();
                 let parsed: Option<i64> = trimmed.parse().ok();

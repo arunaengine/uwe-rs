@@ -141,6 +141,16 @@ impl Value {
     pub fn groovy_compare(&self, other: &Value) -> Result<Ordering, Exception> {
         compare_values(self, other, false)
     }
+
+    /// Groovy's `coercedEquals`, which `unique()`, `intersect` and collection equality use.
+    pub fn coerced_equals(&self, other: &Value) -> bool {
+        coerced_equals(self, other)
+    }
+
+    /// Groovy's `NumberAwareComparator`, the default order of `sort()`.
+    pub fn number_aware_compare(&self, other: &Value) -> Ordering {
+        number_aware_compare(self, other)
+    }
 }
 
 /// Whether the Java class implements `Comparable`.

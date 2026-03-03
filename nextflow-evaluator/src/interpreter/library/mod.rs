@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod iterable;
+mod list;
 mod string;
 
 pub(super) use iterable::elements;
@@ -27,19 +28,25 @@ impl Interpreter<'_> {
             Value::String(text) | Value::GString(text) => {
                 self.string_method(text, name, arguments, span)?
             }
-            Value::List(list) => {
-                let items = list.borrow().items.clone();
-                self.iterable_method(object, &items, name, arguments, span)?
-            }
-            Value::Set(set) => {
-                let items: Vec<Value> = set
-                    .borrow()
-                    .items
-                    .iter()
-                    .map(|item| item.0.clone())
-                    .collect();
-                self.iterable_method(object, &items, name, arguments, span)?
-            }
+            Value::List(list) => match self.list_method(list, name, arguments, span)? {
+                Some(value) => Some(value),
+                None => {
+                    let items = list.borrow().items.clone();
+                    self.iterable_method(object, &items, name, arguments, span)?
+                }
+            },
+            Value::Set(set) => match self.set_method(set, name, arguments, span)? {
+                Some(value) => Some(value),
+                None => {
+                    let items: Vec<Value> = set
+                        .borrow()
+                        .items
+                        .iter()
+                        .map(|item| item.0.clone())
+                        .collect();
+                    self.iterable_method(object, &items, name, arguments, span)?
+                }
+            },
             _ => None,
         };
         if found.is_some() {

@@ -177,7 +177,7 @@ fn text_value(text: &Option<String>) -> Value {
 
 fn strings(kind: ListKind, items: Vec<String>) -> Value {
     let items = items.into_iter().map(Value::string).collect();
-    Value::List(Rc::new(RefCell::new(List { kind, items })))
+    Value::List(Rc::new(RefCell::new(List::new(kind, items))))
 }
 
 /// A pattern from a string argument or an existing pattern.

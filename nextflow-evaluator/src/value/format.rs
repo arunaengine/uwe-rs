@@ -21,7 +21,14 @@ impl Value {
     /// Groovy's `FormatHelper.write`, used for a value inserted into a GString. It differs
     /// from `to_groovy_string` for ranges, which it writes as lists.
     pub fn to_interpolated(&self) -> String {
-        self.to_groovy_string()
+        match self {
+            Value::List(list) if list.borrow().range.is_some() => {
+                let mut text = String::new();
+                write_items(&mut text, list, |item, out| item.write_groovy(out));
+                text
+            }
+            _ => self.to_groovy_string(),
+        }
     }
 
     /// Java's `toString()`, as `String.valueOf` gives it: `{a=1}` for maps and `a=1` for entries.
@@ -33,6 +40,7 @@ impl Value {
 
     fn write_groovy(&self, out: &mut String) {
         match self {
+            Value::List(list) if list.borrow().range.is_some() => self.write_java(out),
             Value::List(list) => write_items(out, list, |item, out| item.write_groovy(out)),
             Value::Set(set) => {
                 out.push('[');
@@ -72,7 +80,10 @@ impl Value {
             Value::Boolean(value) => out.push_str(if *value { "true" } else { "false" }),
             Value::Number(number) => out.push_str(&number.to_string()),
             Value::String(text) | Value::GString(text) => out.push_str(text),
-            Value::List(list) => write_items(out, list, |item, out| item.write_java(out)),
+            Value::List(list) => match &list.borrow().range {
+                Some(range) => out.push_str(&range.text()),
+                None => write_items(out, list, |item, out| item.write_java(out)),
+            },
             Value::Set(set) => {
                 out.push('[');
                 for (index, item) in set.borrow().items.iter().enumerate() {

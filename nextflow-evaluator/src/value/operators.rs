@@ -91,7 +91,10 @@ impl Value {
             }
             (LeftShift, Value::List(list), item) => {
                 let mut list_ref = list.borrow_mut();
-                if list_ref.kind == ListKind::Tuple || list_ref.kind == ListKind::Array {
+                if matches!(
+                    list_ref.kind,
+                    ListKind::Tuple | ListKind::Array | ListKind::Range
+                ) {
                     return Err(unsupported_change());
                 }
                 list_ref.items.push(item.clone());
@@ -211,11 +214,13 @@ impl Value {
     pub fn is_case(&self, item: &Value) -> Result<bool, Exception> {
         Ok(match self {
             Value::Null => matches!(item, Value::Null),
-            Value::List(list) => list
-                .borrow()
-                .items
-                .iter()
-                .any(|other| other.java_equals(item)),
+            Value::List(list) => {
+                let list = list.borrow();
+                match &list.range {
+                    Some(range) => range.contains(&list.items, item),
+                    None => list.items.iter().any(|other| other.java_equals(item)),
+                }
+            }
             Value::Set(set) => set.borrow().items.contains(&Key(item.clone())),
             Value::Map(map) => map
                 .borrow()
@@ -280,10 +285,10 @@ fn remove_all(items: Vec<Value>, removed: &Value) -> Vec<Value> {
 fn similar_list(original: &Rc<RefCell<List>>, items: Vec<Value>) -> Result<Value, Exception> {
     let kind = match original.borrow().kind {
         ListKind::Tuple => return Err(unsupported_change()),
-        ListKind::Array => ListKind::ArrayList,
+        ListKind::Array | ListKind::Range => ListKind::ArrayList,
         kind => kind,
     };
-    Ok(Value::List(Rc::new(RefCell::new(List { kind, items }))))
+    Ok(Value::List(Rc::new(RefCell::new(List::new(kind, items)))))
 }
 
 fn new_map(kind: MapKind, entries: indexmap::IndexMap<Key, Value>) -> Value {

@@ -33,14 +33,14 @@ impl Interpreter<'_> {
             ),
             ("each", [Value::Closure(f)]) => {
                 for item in items {
-                    self.call_closure_value(&f, vec![item.clone()], span)?;
+                    self.call_closure_value(f, vec![item.clone()], span)?;
                 }
                 object.clone()
             }
             ("eachWithIndex", [Value::Closure(f)]) => {
                 for (index, item) in items.iter().enumerate() {
                     let arguments = vec![item.clone(), Value::integer(index as i32)];
-                    self.call_closure_value(&f, arguments, span)?;
+                    self.call_closure_value(f, arguments, span)?;
                 }
                 object.clone()
             }
@@ -60,7 +60,7 @@ impl Interpreter<'_> {
                 let mut passed = Vec::new();
                 for item in items {
                     passed.push(
-                        self.call_closure_value(&f, vec![item.clone()], span)?
+                        self.call_closure_value(f, vec![item.clone()], span)?
                             .truth(),
                     );
                 }
@@ -113,14 +113,14 @@ impl Interpreter<'_> {
                     let exception = Exception::new("NoSuchElementException", message);
                     return Err(thrown(exception, span));
                 };
-                self.fold(first.clone(), rest, &f, span)?
+                self.fold(first.clone(), rest, f, span)?
             }
             ("inject", [initial, Value::Closure(f)]) => {
                 self.fold(initial.clone(), items, f, span)?
             }
             ("max" | "min", []) => extreme(items, name == "max", span)?,
             ("max" | "min", [Value::Closure(f)]) => {
-                let keys = self.map_items(items, &f, span)?;
+                let keys = self.map_items(items, f, span)?;
                 let mut best: Option<usize> = None;
                 for index in 0..items.len() {
                     let better = match best {

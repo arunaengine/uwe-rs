@@ -26,6 +26,12 @@ impl Lowering<'_> {
 
     fn statement(&mut self, statement: &ast::Statement) -> Option<Statement> {
         let span = statement.span;
+        if self.in_workflow
+            && !self.scopes.in_closure()
+            && let Some(set) = self.set_statement(statement)
+        {
+            return Some(set);
+        }
         let kind = match &statement.kind {
             Kind::Expression(expression) => StatementKind::Expression(self.expression(expression)),
             Kind::Declaration {
@@ -148,13 +154,22 @@ impl Lowering<'_> {
     }
 
     /// A variable on the left of `=`, which must be declared in functions and closures.
-    fn assigned_variable(&mut self, name: &str, span: nextflow_parser::Span) -> Option<Place> {
+    pub(super) fn assigned_variable(
+        &mut self,
+        name: &str,
+        span: nextflow_parser::Span,
+    ) -> Option<Place> {
         if let Some(place) = self.scopes.resolve(name) {
             return Some(place);
         }
         if super::names::SCRIPT_CONSTANTS.contains(&name) || (self.in_process && name == "task") {
             self.error("Built-in constant or namespace cannot be re-assigned", span);
             return None;
+        }
+        // In a workflow, an operator name resolves, so Nextflow accepts the assignment even in a
+        // closure; like Groovy's binding, the name then holds the value.
+        if self.in_workflow && super::names::OPERATORS.contains(&name) {
+            return Some(Place::Local(self.scopes.declare_in_frame(name, span)));
         }
         if !self.implicit_declarations {
             self.error(format!("`{name}` was assigned but not declared"), span);

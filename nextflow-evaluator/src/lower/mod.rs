@@ -8,27 +8,64 @@ mod names;
 mod process;
 mod scope;
 mod statement;
+mod workflow;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use nextflow_parser::ast::{self, Item};
 use nextflow_parser::{Diagnostic, Span};
 
-use crate::lowered::{Code, Module, Parameter};
+use crate::lowered::{
+    Code, DefinitionKind, Include, Module, Parameter, Statement, StatementKind, Workflow,
+};
 use scope::Scopes;
 
-/// Lowers the functions and processes of a script. Other script items are not supported yet.
-pub fn lower_module(script: &ast::Script, source: &str) -> Result<Module, Vec<Diagnostic>> {
-    let mut lowering = Lowering::new(source);
-    for item in &script.items {
-        if let Item::Function(function) = item {
-            lowering
-                .functions
-                .insert(function.name.text.as_str().into());
-        }
+/// Tells lowering what a name that a script includes stands for.
+pub trait Imports {
+    /// The kind of `name` in the script that `source` names, relative to the including script,
+    /// or the error to report.
+    fn kind(&mut self, source: &str, name: &str) -> Result<DefinitionKind, String>;
+}
+
+/// For a script that includes nothing.
+struct NoImports;
+
+impl Imports for NoImports {
+    fn kind(&mut self, source: &str, _: &str) -> Result<DefinitionKind, String> {
+        Err(format!("Cannot include '{source}' without a module loader"))
     }
+}
+
+/// Lowers a script that includes nothing.
+pub fn lower_module(script: &ast::Script, source: &str) -> Result<Module, Vec<Diagnostic>> {
+    lower_script(script, source, &mut NoImports)
+}
+
+/// Lowers a script: functions, processes, workflows, includes and `params.x = value`.
+/// A script of statements only is the entry workflow; the parser rejects other mixes.
+pub fn lower_script(
+    script: &ast::Script,
+    source: &str,
+    imports: &mut dyn Imports,
+) -> Result<Module, Vec<Diagnostic>> {
+    let mut lowering = Lowering::new(source);
     let mut module = Module::default();
+    lowering.declare_definitions(script, imports, &mut module);
+    let statements: Vec<&ast::Statement> = script
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Statement(statement) => Some(statement),
+            _ => None,
+        })
+        .collect();
+    let declares = script.items.iter().any(|item| {
+        !matches!(
+            item,
+            Item::Statement(_) | Item::Include(_) | Item::FeatureFlag { .. } | Item::Import { .. }
+        )
+    });
     for item in &script.items {
         match item {
             Item::Function(function) => {
@@ -42,9 +79,22 @@ pub fn lower_module(script: &ast::Script, source: &str) -> Result<Module, Vec<Di
                 let process = lowering.process(process);
                 module.processes.push(Rc::new(process));
             }
-            Item::FeatureFlag { .. } => {}
+            Item::Workflow(workflow) => {
+                let workflow = lowering.workflow(workflow);
+                module.workflows.push(Rc::new(workflow));
+            }
+            Item::LegacyParameter { path, value, span } => {
+                let path = path.iter().map(|name| name.text.as_str().into()).collect();
+                let code = lowering.expression_code("params", value, *span);
+                module.parameters.push((path, Rc::new(code)));
+            }
+            Item::Include(_) | Item::FeatureFlag { .. } | Item::Statement(_) => {}
             other => lowering.error("This script item is not supported yet", item_span(other)),
         }
+    }
+    if !declares && !statements.is_empty() {
+        let workflow = lowering.implicit_workflow(&statements);
+        module.workflows.push(Rc::new(workflow));
     }
     if lowering.errors.is_empty() {
         Ok(module)
@@ -60,6 +110,10 @@ pub(crate) struct Lowering<'a> {
     errors: Vec<Diagnostic>,
     /// The functions the script declares.
     functions: HashSet<Rc<str>>,
+    /// The processes and workflows the script declares, and every name it includes.
+    definitions: HashMap<Rc<str>, DefinitionKind>,
+    /// Whether the code is the body of a workflow, where processes and workflows can be called.
+    in_workflow: bool,
     /// Whether the code being lowered is inside the `${...}` of a GString.
     in_gstring: bool,
     /// Whether GStrings escape staged file names: in a process `script:` or `stub:`.
@@ -77,6 +131,8 @@ impl<'a> Lowering<'a> {
             scopes: Scopes::default(),
             errors: Vec::new(),
             functions: HashSet::new(),
+            definitions: HashMap::new(),
+            in_workflow: false,
             in_gstring: false,
             escape_paths: false,
             in_process: false,
@@ -116,6 +172,101 @@ impl<'a> Lowering<'a> {
             captures: layout.captures,
             body,
             span: function.span,
+        }
+    }
+
+    /// Records the names the script defines and includes, before lowering any code.
+    fn declare_definitions(
+        &mut self,
+        script: &ast::Script,
+        imports: &mut dyn Imports,
+        module: &mut Module,
+    ) {
+        for item in &script.items {
+            let (name, kind) = match item {
+                Item::Function(function) => {
+                    self.functions.insert(function.name.text.as_str().into());
+                    continue;
+                }
+                Item::Process(process) => (&process.name, DefinitionKind::Process),
+                Item::Workflow(workflow) => match &workflow.name {
+                    Some(name) => (name, DefinitionKind::Workflow),
+                    None => continue,
+                },
+                Item::Include(include) => {
+                    for included in &include.names {
+                        let alias = included.alias.as_ref().unwrap_or(&included.name);
+                        if self.definitions.contains_key(alias.text.as_str()) {
+                            self.error(format!("`{}` is already included", alias.text), alias.span);
+                            continue;
+                        }
+                        match imports.kind(&include.source.text, &included.name.text) {
+                            Ok(kind) => {
+                                self.definitions.insert(alias.text.as_str().into(), kind);
+                            }
+                            Err(message) => self.error(message, included.name.span),
+                        }
+                        module.includes.push(Include {
+                            name: included.name.text.as_str().into(),
+                            alias: alias.text.as_str().into(),
+                            source: include.source.text.as_str().into(),
+                            span: include.span,
+                        });
+                    }
+                    continue;
+                }
+                _ => continue,
+            };
+            if self
+                .definitions
+                .insert(name.text.as_str().into(), kind)
+                .is_some()
+            {
+                self.error(format!("`{}` is already declared", name.text), name.span);
+            }
+        }
+    }
+
+    /// A value evaluated on its own, as a function without parameters.
+    fn expression_code(&mut self, name: &str, value: &ast::Expression, span: Span) -> Code {
+        self.scopes.push_frame(false);
+        let value = self.expression(value);
+        let layout = self.scopes.pop_frame();
+        Code {
+            name: name.into(),
+            parameters: Vec::new(),
+            implicit_parameter: false,
+            slot_count: layout.slot_count,
+            captures: layout.captures,
+            body: vec![Statement {
+                span: value.span,
+                kind: StatementKind::Expression(value),
+            }],
+            span,
+        }
+    }
+
+    /// The entry workflow of a script that has only statements.
+    fn implicit_workflow(&mut self, statements: &[&ast::Statement]) -> Workflow {
+        self.scopes.push_frame(false);
+        self.in_workflow = true;
+        self.implicit_declarations = true;
+        let statements: Vec<ast::Statement> = statements.iter().map(|&s| s.clone()).collect();
+        let main = self.statements(&statements);
+        self.implicit_declarations = false;
+        self.in_workflow = false;
+        let layout = self.scopes.pop_frame();
+        let span = match (statements.first(), statements.last()) {
+            (Some(first), Some(last)) => first.span.to(last.span),
+            _ => Span::default(),
+        };
+        Workflow {
+            name: None,
+            slot_count: layout.slot_count,
+            takes: Vec::new(),
+            main,
+            emits: Vec::new(),
+            span,
         }
     }
 

@@ -140,6 +140,31 @@ impl Interpreter<'_> {
                 .get(&Key(key.clone()))
                 .cloned()
                 .unwrap_or(Value::Null),
+            // All matches from the start; a pattern with groups gives a list per match.
+            (Value::Matcher(matcher), Value::Number(number)) if integral(number) => {
+                let count = matcher.matches.len();
+                let groups = match position(number.to_i64(), count).filter(|p| *p < count) {
+                    Some(position) => &matcher.matches[position],
+                    None => {
+                        let message = format!(
+                            "index is out of range {}..{} (index = {number})",
+                            -(count as i64),
+                            count as i64 - 1
+                        );
+                        return Err(thrown(
+                            Exception::new("IndexOutOfBoundsException", message),
+                            span,
+                        ));
+                    }
+                };
+                let text =
+                    |group: &Option<String>| group.as_deref().map_or(Value::Null, Value::string);
+                if matcher.pattern.group_count() == 0 {
+                    text(&groups[0])
+                } else {
+                    Value::list(groups.iter().map(text).collect())
+                }
+            }
             (Value::List(list), Value::List(indexes)) if indexes.borrow().range.is_some() => {
                 let list = list.borrow();
                 let (from, to, reverse) = borders(&indexes.borrow(), list.items.len(), span)?;
@@ -377,7 +402,7 @@ pub(super) fn instance_of(value: &Value, class: &str) -> bool {
         Value::Map(_) => &["Map"],
         Value::MemoryUnit(_) | Value::Duration(_) => &["Comparable"],
         Value::Exception(exception) => return class == "Object" || exception.is_instance(class),
-        Value::MapEntry(_) | Value::Closure(_) => &[],
+        Value::MapEntry(_) | Value::Closure(_) | Value::Pattern(_) | Value::Matcher(_) => &[],
     };
     class == "Object" || class == own || supertypes.contains(&class)
 }

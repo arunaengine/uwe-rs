@@ -133,6 +133,26 @@ impl Pattern {
     }
 }
 
+/// A `java.util.regex.Matcher` from `text =~ pattern`, with all its matches found at once.
+#[derive(Debug)]
+pub struct Matcher {
+    pub pattern: std::rc::Rc<Pattern>,
+    pub text: String,
+    /// Each match: the whole match, then each group or `None`.
+    pub matches: Vec<Vec<Option<String>>>,
+}
+
+impl Matcher {
+    pub fn new(pattern: std::rc::Rc<Pattern>, text: String) -> Self {
+        let matches = pattern.all_groups(&text);
+        Self {
+            pattern,
+            text,
+            matches,
+        }
+    }
+}
+
 /// Appends a Java replacement string with the groups of one match.
 fn expand(
     captures: &Captures<'_, str>,

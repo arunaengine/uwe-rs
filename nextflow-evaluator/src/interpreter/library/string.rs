@@ -184,6 +184,7 @@ fn strings(kind: ListKind, items: Vec<String>) -> Value {
 fn pattern(value: &Value, span: Span) -> Result<Pattern, Error> {
     match value {
         Value::String(text) | Value::GString(text) => Pattern::new(text).at(span),
+        Value::Pattern(pattern) => Ok(Pattern::clone(pattern)),
         _ => Err(wrong_arguments("a regular expression method", span)),
     }
 }

@@ -117,6 +117,12 @@ impl Value {
             Value::Closure(closure) => {
                 out.push_str(&format!("Closure@{:x}", Rc::as_ptr(closure) as usize));
             }
+            Value::Pattern(pattern) => out.push_str(&pattern.source),
+            Value::Matcher(matcher) => out.push_str(&format!(
+                "java.util.regex.Matcher[pattern={} region=0,{} lastmatch=]",
+                matcher.pattern.source,
+                matcher.text.encode_utf16().count()
+            )),
             // Java's `Throwable.toString()`.
             Value::Exception(exception) => {
                 out.push_str(exception.qualified_class());

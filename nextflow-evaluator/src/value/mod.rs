@@ -45,6 +45,10 @@ pub enum Value {
     Closure(Rc<Closure>),
     /// A thrown and caught exception, as `catch (e)` binds it.
     Exception(Rc<Exception>),
+    /// `java.util.regex.Pattern`, from `~'text'`.
+    Pattern(Rc<crate::regex::Pattern>),
+    /// `java.util.regex.Matcher`, from `text =~ pattern`.
+    Matcher(Rc<crate::regex::Matcher>),
 }
 
 /// A closure: its code, the script it belongs to, and the variables it captured.
@@ -190,6 +194,8 @@ impl Value {
             Value::Duration(_) => "Duration",
             Value::Closure(_) => "Closure",
             Value::Exception(exception) => exception.class,
+            Value::Pattern(_) => "Pattern",
+            Value::Matcher(_) => "Matcher",
         }
     }
 
@@ -227,6 +233,8 @@ impl Value {
             Value::Duration(_) => "nextflow.util.Duration",
             Value::Closure(_) => "groovy.lang.Closure",
             Value::Exception(exception) => exception.qualified_class(),
+            Value::Pattern(_) => "java.util.regex.Pattern",
+            Value::Matcher(_) => "java.util.regex.Matcher",
         }
     }
 
@@ -246,7 +254,9 @@ impl Value {
             Value::MapEntry(_) => true,
             Value::MemoryUnit(size) => *size != 0,
             Value::Duration(millis) => *millis != 0,
-            Value::Closure(_) | Value::Exception(_) => true,
+            Value::Closure(_) | Value::Exception(_) | Value::Pattern(_) => true,
+            // Groovy's `Matcher.asBoolean()` is `find(0)`: the pattern occurs somewhere.
+            Value::Matcher(matcher) => !matcher.matches.is_empty(),
         }
     }
 }

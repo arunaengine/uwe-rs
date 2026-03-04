@@ -7,6 +7,7 @@ mod iterable;
 mod list;
 mod map;
 mod number;
+mod regex;
 mod string;
 
 pub(super) use iterable::elements;
@@ -53,6 +54,8 @@ impl Interpreter<'_> {
             Value::Map(map) => self.map_method(map, name, arguments, span)?,
             Value::MapEntry(pair) => map::entry_method(pair, name, arguments),
             Value::Number(number) => self.number_method(number, name, arguments, span)?,
+            Value::Pattern(pattern) => regex::pattern_method(pattern, name, arguments),
+            Value::Matcher(matcher) => regex::matcher_method(matcher, name, arguments),
             Value::MemoryUnit(_) | Value::Duration(_) => {
                 number::unit_method(object, name, arguments)
             }

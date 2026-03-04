@@ -34,6 +34,16 @@ pub struct Module {
     /// `params.a.b = value` statements in load order; each value is a function without
     /// parameters.
     pub parameters: Vec<(Vec<Rc<str>>, Rc<Code>)>,
+    /// What each include refers to: the included script and the name there. The module loader
+    /// fills this in once the included scripts are loaded.
+    pub links: std::cell::RefCell<HashMap<Rc<str>, Link>>,
+}
+
+/// The script and name that an included name refers to.
+#[derive(Clone, Debug)]
+pub struct Link {
+    pub module: Rc<Module>,
+    pub name: Rc<str>,
 }
 
 /// What a name of a script stands for: a function, a process or a workflow.

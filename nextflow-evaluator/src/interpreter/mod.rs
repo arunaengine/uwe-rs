@@ -4,6 +4,7 @@
 
 mod access;
 mod call;
+mod dataflow;
 mod expression;
 mod library;
 mod statement;
@@ -17,7 +18,7 @@ use std::rc::Rc;
 use nextflow_parser::Span;
 
 use crate::exception::Exception;
-use crate::lowered::{Module, Place};
+use crate::lowered::{Module, Place, Process};
 use crate::value::{Closure, Value};
 
 pub use task::{
@@ -34,6 +35,39 @@ pub trait Host {
         std::env::current_dir()
             .map(|dir| dir.to_string_lossy().into_owned())
             .unwrap_or_else(|_| "/".into())
+    }
+
+    /// A method of a namespace like `channel` or `log`; `None` when it has no such method.
+    fn namespace_method(
+        &mut self,
+        _namespace: &str,
+        _name: &str,
+        _arguments: Vec<Value>,
+    ) -> Result<Option<Value>, Error> {
+        Ok(None)
+    }
+
+    /// An operator applied to a channel or to the outputs of a call; `None` when there is no
+    /// such operator.
+    fn operator(
+        &mut self,
+        _source: &Value,
+        _name: &str,
+        _arguments: Vec<Value>,
+    ) -> Result<Option<Value>, Error> {
+        Ok(None)
+    }
+
+    /// Calls a process with its input channels or values, as a workflow does; the result is
+    /// the outputs of the call.
+    fn call_process(
+        &mut self,
+        _module: &Rc<Module>,
+        process: &Rc<Process>,
+        _arguments: Vec<Value>,
+    ) -> Result<Value, Error> {
+        let message = format!("calling the process `{}`", process.name);
+        Err(unsupported(message, Span::default()))
     }
 }
 
@@ -55,6 +89,15 @@ impl Error {
             Error::Thrown { span, .. } | Error::Unsupported { span, .. } => *span,
         }
     }
+
+    /// The error with a position, if it has none yet, as errors from the host have.
+    fn or_at(mut self, position: Span) -> Error {
+        let (Error::Thrown { span, .. } | Error::Unsupported { span, .. }) = &mut self;
+        if *span == Span::default() {
+            *span = position;
+        }
+        self
+    }
 }
 
 impl fmt::Display for Error {
@@ -72,6 +115,8 @@ impl std::error::Error for Error {}
 pub struct Interpreter<'h> {
     host: &'h mut dyn Host,
     globals: HashMap<Rc<str>, Value>,
+    /// The outputs of the last call of each process and workflow, by script and name, for `.out`.
+    outputs: HashMap<(usize, Rc<str>), Value>,
 }
 
 impl<'h> Interpreter<'h> {
@@ -79,6 +124,7 @@ impl<'h> Interpreter<'h> {
         Self {
             host,
             globals: HashMap::new(),
+            outputs: HashMap::new(),
         }
     }
 

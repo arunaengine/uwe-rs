@@ -7,7 +7,7 @@ use std::rc::Rc;
 use super::{AtSpan, Error, Frame, Interpreter, unsupported};
 use crate::lowered::{Access, Code, Expression, ExpressionKind as Kind, Function, Part, Unary};
 use crate::regex::{Matcher, Pattern};
-use crate::value::{Closure, ListKind, Value};
+use crate::value::{Closure, DefinitionRef, ListKind, Operator, Value};
 
 impl Interpreter<'_> {
     pub(super) fn expression(
@@ -19,15 +19,11 @@ impl Interpreter<'_> {
         Ok(match &expression.kind {
             Kind::Literal(value) => value.clone(),
             Kind::Variable(place) => frame.get(*place),
-            Kind::Operator(name) => {
-                return Err(unsupported(format!("operators as values (`{name}`)"), span));
-            }
-            Kind::Definition(name) => {
-                return Err(unsupported(
-                    format!("processes and workflows as values (`{name}`)"),
-                    span,
-                ));
-            }
+            Kind::Operator(name) => Value::Operator(Rc::new((name.clone(), Vec::new()))),
+            Kind::Definition(name) => Value::Definition(Rc::new(DefinitionRef {
+                module: frame.module.clone(),
+                name: name.clone(),
+            })),
             Kind::Builtin(name) => match self.globals.get(name) {
                 Some(value) => value.clone(),
                 None => return Err(unsupported(format!("the built-in `{name}`"), span)),
@@ -108,16 +104,25 @@ impl Interpreter<'_> {
                         self.call_script_function(&module, name, arguments, span)?
                     }
                     Function::Builtin(name) => self.call_builtin(name, arguments, span)?,
-                    Function::Definition(name) | Function::Operator(name) => {
-                        let message = format!("calling processes and workflows (`{name}`)");
-                        return Err(unsupported(message, span));
+                    Function::Definition(name) => {
+                        let module = frame.module.clone();
+                        self.call_definition(&module, name, arguments, span)?
                     }
+                    Function::Operator(name) => Value::Operator(Rc::new((name.clone(), arguments))),
                 }
             }
             Kind::CallValue { callee, arguments } => {
                 let callee = self.expression(frame, callee)?;
                 let arguments = self.arguments(frame, arguments)?;
                 self.call_method(&callee, "call", arguments, span)?
+            }
+            Kind::CallStatic {
+                class,
+                name,
+                arguments,
+            } if &**class == "Channel" => {
+                let arguments = self.arguments(frame, arguments)?;
+                self.namespace_call("channel", name, arguments, span)?
             }
             Kind::CallStatic { class, name, .. } | Kind::StaticProperty { class, name } => {
                 return Err(unsupported(format!("`{class}.{name}`"), span));
@@ -155,7 +160,14 @@ impl Interpreter<'_> {
             } => {
                 let left = self.expression(frame, left)?;
                 let right = self.expression(frame, right)?;
-                left.apply(*operator, &right).at(span)?
+                match (operator, &left, &right) {
+                    (
+                        Operator::BitOr,
+                        Value::Channel(_) | Value::ChannelOut(_),
+                        Value::Definition(_) | Value::Operator(_),
+                    ) => self.pipe(left, &right, span)?,
+                    _ => left.apply(*operator, &right).at(span)?,
+                }
             }
             Kind::Relation {
                 relation,

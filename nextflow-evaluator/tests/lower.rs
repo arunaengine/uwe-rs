@@ -106,7 +106,7 @@ fn nested_gstrings_stay_gstrings() {
 #[test]
 fn unsupported_items_fail_loudly() {
     assert_eq!(
-        errors("workflow {\n    main:\n    println(1)\n}"),
+        errors("enum Color {\n    RED\n}"),
         ["1:1: This script item is not supported yet"]
     );
 }

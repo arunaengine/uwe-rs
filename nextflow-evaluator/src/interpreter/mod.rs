@@ -7,6 +7,7 @@ mod call;
 mod expression;
 mod library;
 mod statement;
+mod task;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -18,6 +19,10 @@ use nextflow_parser::Span;
 use crate::exception::Exception;
 use crate::lowered::{Module, Place};
 use crate::value::{Closure, Value};
+
+pub use task::{
+    RenderedOutput, RenderedPart, RenderedTask, TaskDirective, TaskFrame, normalise_script,
+};
 
 /// What the interpreter needs from its surroundings.
 pub trait Host {

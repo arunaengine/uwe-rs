@@ -1,0 +1,108 @@
+//! Checks `file()` and path methods against Nextflow 26.04.6 (Groovy spec, sections 6.4 and 10.7).
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::rc::Rc;
+
+use nextflow_evaluator::interpreter::{Host, Interpreter};
+use nextflow_evaluator::lower::lower_module;
+use nextflow_parser::parse_script;
+
+struct Launch;
+
+impl Host for Launch {
+    fn print(&mut self, _: &str) {}
+
+    fn launch_dir(&self) -> String {
+        "/launch".into()
+    }
+}
+
+/// The value of the body of a function, as its Groovy text, or the error.
+fn eval(body: &str) -> Result<String, String> {
+    let source = format!("def f() {{\n{body}\n}}");
+    let parsed = parse_script(&source);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let module = Rc::new(lower_module(&parsed.tree, &source).expect("lowers"));
+    let mut host = Launch;
+    let mut interpreter = Interpreter::new(&mut host);
+    interpreter
+        .call_function(&module, "f", Vec::new())
+        .map(|value| value.to_string())
+        .map_err(|error| error.to_string())
+}
+
+fn value(body: &str) -> String {
+    eval(body).expect("evaluates")
+}
+
+#[test]
+fn remote_paths_print_without_scheme() {
+    let s3 = "def s = file('s3://bucket/dir/x.txt')\n[s.toString(), s.toUriString(), s.name, s.parent, s.scheme]";
+    assert_eq!(
+        value(s3),
+        "[/bucket/dir/x.txt, s3://bucket/dir/x.txt, x.txt, /bucket/dir, s3]"
+    );
+    let web = "def h = file('https://example.com/a/b.txt')\n[h.toString(), h.toUriString(), h.parent, h.scheme]";
+    assert_eq!(
+        value(web),
+        "[/a/b.txt, https://example.com/a/b.txt, /a, https]"
+    );
+}
+
+#[test]
+fn local_paths_and_names() {
+    let names =
+        "def l = file('rel/../x.tar.gz')\n[l, l.baseName, l.simpleName, l.extension, l.name]";
+    assert_eq!(value(names), "[/launch/x.tar.gz, x.tar, x, gz, x.tar.gz]");
+    assert_eq!(
+        value(
+            "[file('/tmp/a/'), file('/').name, file('.bashrc').baseName, file('README').extension]"
+        ),
+        "[/tmp/a, , , ]"
+    );
+    assert_eq!(
+        value(
+            "[file('/tmp/x.gz') + '.bai', file('/tmp') / 'a/b', file('/tmp/a').resolveSibling('b')]"
+        ),
+        "[/tmp/x.gz.bai, /tmp/a/b, /tmp/b]"
+    );
+    assert_eq!(
+        value(
+            "[file('/tmp/a').parent.parent, file('/tmp/a').parent.parent.parent, \"${file('/tmp/a b')}\"]"
+        ),
+        "[/, null, /tmp/a b]"
+    );
+    assert_eq!(
+        value(
+            "[file('/tmp/a') == file('/tmp/a'), file('/tmp/a') == '/tmp/a', file('/a') < file('/b')]"
+        ),
+        "[true, false, true]"
+    );
+}
+
+#[test]
+fn gunzip_names() {
+    let body = "def archive = file('/data/sample.fastq.gz')
+def nameWithoutGz = archive.extension == 'gz' ? archive.baseName : archive.name
+def extension = file(nameWithoutGz).extension
+def name = file(nameWithoutGz).baseName
+name + \".${extension}\"";
+    assert_eq!(value(body), "sample.fastq");
+}
+
+#[test]
+fn invalid_patterns() {
+    assert_eq!(
+        eval("file('')").unwrap_err(),
+        "IllegalArgumentException: Argument of `file()` function cannot be empty"
+    );
+    assert_eq!(
+        eval("file(null)").unwrap_err(),
+        "IllegalArgumentException: Argument of `file()` function cannot be null"
+    );
+    assert_eq!(
+        eval("file('*.txt')").unwrap_err(),
+        "Not supported yet: glob patterns in `file()`"
+    );
+}

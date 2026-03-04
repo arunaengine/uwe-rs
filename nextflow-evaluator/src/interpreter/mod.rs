@@ -23,6 +23,13 @@ use crate::value::{Closure, Value};
 pub trait Host {
     /// Writes text to standard output, as `print` and `println` do.
     fn print(&mut self, text: &str);
+
+    /// The directory the run started in, which relative paths in `file()` start from.
+    fn launch_dir(&self) -> String {
+        std::env::current_dir()
+            .map(|dir| dir.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| "/".into())
+    }
 }
 
 /// Why running code stopped before its end.

@@ -83,6 +83,7 @@ impl Value {
             (Value::Exception(left), Value::Exception(right)) => Rc::ptr_eq(left, right),
             (Value::Pattern(left), Value::Pattern(right)) => Rc::ptr_eq(left, right),
             (Value::Matcher(left), Value::Matcher(right)) => Rc::ptr_eq(left, right),
+            (Value::Path(left), Value::Path(right)) => left == right,
             _ => false,
         }
     }
@@ -134,6 +135,7 @@ impl Value {
             Value::Exception(exception) => Rc::as_ptr(exception) as usize as i32,
             Value::Pattern(pattern) => Rc::as_ptr(pattern) as usize as i32,
             Value::Matcher(matcher) => Rc::as_ptr(matcher) as usize as i32,
+            Value::Path(path) => string_hash(&path.uri()),
         }
     }
 }

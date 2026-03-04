@@ -99,6 +99,9 @@ pub enum ListKind {
     Array,
     /// A range, like `1..3`, which cannot change.
     Range,
+    /// `nextflow.util.BlankSeparatedList`: the files of one task input, which Java's
+    /// `toString()` joins with spaces.
+    BlankSeparated,
 }
 
 #[derive(Clone, Debug)]
@@ -178,6 +181,7 @@ impl Value {
                 ListKind::Tuple => "ArrayTuple",
                 ListKind::LinkedList => "LinkedList",
                 ListKind::Array => "String[]",
+                ListKind::BlankSeparated => "BlankSeparatedList",
                 ListKind::Range => list
                     .borrow()
                     .range
@@ -221,6 +225,7 @@ impl Value {
                 ListKind::Tuple => "nextflow.util.ArrayTuple",
                 ListKind::LinkedList => "java.util.LinkedList",
                 ListKind::Array => "[Ljava.lang.String;",
+                ListKind::BlankSeparated => "nextflow.util.BlankSeparatedList",
                 ListKind::Range => match list.borrow().range.as_ref().map(|range| range.class) {
                     Some(RangeClass::Number) => "groovy.lang.NumberRange",
                     Some(RangeClass::Object) => "groovy.lang.ObjectRange",

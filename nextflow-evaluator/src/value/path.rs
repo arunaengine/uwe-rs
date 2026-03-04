@@ -9,6 +9,8 @@
 pub struct PathValue {
     pub prefix: Option<String>,
     pub path: String,
+    /// For an input file of a task, the name it is staged under, which is what it prints.
+    pub staged: Option<String>,
 }
 
 impl PathValue {
@@ -30,11 +32,13 @@ impl PathValue {
                 return PathValue {
                     prefix: Some(format!("{scheme}://{host}")),
                     path: normalise(&format!("/{path}")),
+                    staged: None,
                 };
             }
             return PathValue {
                 prefix: Some(format!("{scheme}:/")),
                 path: normalise(&format!("/{rest}")),
+                staged: None,
             };
         }
         PathValue::local(text, base)
@@ -49,6 +53,7 @@ impl PathValue {
         PathValue {
             prefix: None,
             path: normalise(&absolute),
+            staged: None,
         }
     }
 
@@ -65,9 +70,17 @@ impl PathValue {
         format!("{}{}", self.prefix.as_deref().unwrap_or(""), self.path)
     }
 
-    /// The file name; empty for the root.
+    /// The text of the path: the staged name of a task input, else the path.
+    pub fn text(&self) -> &str {
+        self.staged.as_deref().unwrap_or(&self.path)
+    }
+
+    /// The file name; empty for the root. A task input's name is its staged name.
     pub fn name(&self) -> &str {
-        self.path.rsplit('/').next().unwrap_or("")
+        match &self.staged {
+            Some(staged) => staged,
+            None => self.path.rsplit('/').next().unwrap_or(""),
+        }
     }
 
     /// The name without its last extension: `sample.fastq.gz` gives `sample.fastq`.
@@ -91,9 +104,9 @@ impl PathValue {
         name.rfind('.').map_or("", |dot| &name[dot + 1..])
     }
 
-    /// The parent directory; `None` for the root.
+    /// The parent directory; `None` for the root and for a task input.
     pub fn parent(&self) -> Option<PathValue> {
-        if self.path == "/" {
+        if self.path == "/" || self.staged.is_some() {
             return None;
         }
         let end = self.path.rfind('/').unwrap_or(0);
@@ -101,6 +114,7 @@ impl PathValue {
         Some(PathValue {
             prefix: self.prefix.clone(),
             path: parent.to_owned(),
+            staged: None,
         })
     }
 
@@ -117,6 +131,7 @@ impl PathValue {
         PathValue {
             prefix: self.prefix.clone(),
             path: normalise(&path),
+            staged: None,
         }
     }
 
@@ -130,6 +145,7 @@ impl PathValue {
         PathValue {
             prefix: self.prefix.clone(),
             path: format!("{}{suffix}", self.path),
+            staged: None,
         }
     }
 }

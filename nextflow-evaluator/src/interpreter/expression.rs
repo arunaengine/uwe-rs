@@ -7,7 +7,7 @@ use std::rc::Rc;
 use super::{AtSpan, Error, Frame, Interpreter, unsupported};
 use crate::lowered::{Access, Code, Expression, ExpressionKind as Kind, Function, Part, Unary};
 use crate::regex::{Matcher, Pattern};
-use crate::value::{Closure, Value};
+use crate::value::{Closure, ListKind, Value};
 
 impl Interpreter<'_> {
     pub(super) fn expression(
@@ -26,7 +26,7 @@ impl Interpreter<'_> {
             Kind::Interpolate {
                 parts,
                 keep_gstring,
-                ..
+                escape_paths,
             } => {
                 let mut text = String::new();
                 for part in parts {
@@ -36,6 +36,7 @@ impl Interpreter<'_> {
                             Value::Closure(_) => {
                                 return Err(unsupported("a closure inside a GString", part.span));
                             }
+                            value if *escape_paths => text.push_str(&escaped(&value)),
                             value => text.push_str(&value.to_interpolated()),
                         },
                     }
@@ -277,6 +278,46 @@ impl Interpreter<'_> {
             (Access::Spread, other) => apply(self, other),
         }
     }
+}
+
+/// A value inserted into a task script: a staged input file, or the files of one input, with
+/// their special characters escaped (Nextflow's `LangHelpers.applyPathEscapeAware`).
+fn escaped(value: &Value) -> String {
+    match value {
+        Value::Path(path) if path.staged.is_some() => escape_path(path.name()),
+        Value::List(list) if list.borrow().kind == ListKind::BlankSeparated => {
+            let names: Vec<String> = list
+                .borrow()
+                .items
+                .iter()
+                .map(|item| match item {
+                    Value::Path(path) => escape_path(path.name()),
+                    other => other.to_java_string(),
+                })
+                .collect();
+            names.join(" ")
+        }
+        other => other.to_interpolated(),
+    }
+}
+
+/// Nextflow's `Escape.path`: a backslash before each of `'"()\!&|<>`:;` and space. A `!`
+/// right after an unescaped `[` with a `]` later is a glob complement and stays.
+fn escape_path(name: &str) -> String {
+    let characters: Vec<char> = name.chars().collect();
+    let mut escaped = String::new();
+    for (index, character) in characters.iter().enumerate() {
+        let complement = *character == '!'
+            && index > 0
+            && characters[index - 1] == '['
+            && (index < 2 || characters[index - 2] != '\\')
+            && characters[index + 1..].contains(&']');
+        if !complement && "'\" ()\\!&|<>`:;".contains(*character) {
+            escaped.push('\\');
+        }
+        escaped.push(*character);
+    }
+    escaped
 }
 
 /// A closure value that shares the cells of the variables it captures.

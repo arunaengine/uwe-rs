@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
-use super::Value;
+use super::{ListKind, Value};
 use crate::units::{duration_text, memory_text};
 
 impl Value {
@@ -82,6 +82,15 @@ impl Value {
             Value::String(text) | Value::GString(text) => out.push_str(text),
             Value::List(list) => match &list.borrow().range {
                 Some(range) => out.push_str(&range.text()),
+                None if list.borrow().kind == ListKind::BlankSeparated => {
+                    let names: Vec<String> = list
+                        .borrow()
+                        .items
+                        .iter()
+                        .map(Value::to_java_string)
+                        .collect();
+                    out.push_str(&names.join(" "));
+                }
                 None => write_items(out, list, |item, out| item.write_java(out)),
             },
             Value::Set(set) => {
@@ -118,7 +127,7 @@ impl Value {
                 out.push_str(&format!("Closure@{:x}", Rc::as_ptr(closure) as usize));
             }
             Value::Pattern(pattern) => out.push_str(&pattern.source),
-            Value::Path(path) => out.push_str(&path.path),
+            Value::Path(path) => out.push_str(path.text()),
             Value::Matcher(matcher) => out.push_str(&format!(
                 "java.util.regex.Matcher[pattern={} region=0,{} lastmatch=]",
                 matcher.pattern.source,

@@ -163,6 +163,7 @@ fn comparable(value: &Value) -> bool {
             | Value::GString(_)
             | Value::MemoryUnit(_)
             | Value::Duration(_)
+            | Value::Path(_)
     )
 }
 
@@ -193,6 +194,7 @@ fn compare_values(left: &Value, right: &Value, equality: bool) -> Result<Orderin
             Ok(a.encode_utf16().cmp(b.encode_utf16()))
         }
         (Value::Boolean(a), Value::Boolean(b)) => Ok(a.cmp(b)),
+        (Value::Path(a), Value::Path(b)) => Ok(a.uri().cmp(&b.uri())),
         (Value::MemoryUnit(a), Value::MemoryUnit(b)) | (Value::Duration(a), Value::Duration(b)) => {
             Ok(a.cmp(b))
         }

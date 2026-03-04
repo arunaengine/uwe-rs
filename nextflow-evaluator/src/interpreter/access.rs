@@ -402,6 +402,7 @@ pub(super) fn instance_of(value: &Value, class: &str) -> bool {
         Value::Map(_) => &["Map"],
         Value::MemoryUnit(_) | Value::Duration(_) => &["Comparable"],
         Value::Exception(exception) => return class == "Object" || exception.is_instance(class),
+        Value::Path(_) => &["Path", "Comparable"],
         Value::MapEntry(_) | Value::Closure(_) | Value::Pattern(_) | Value::Matcher(_) => &[],
     };
     class == "Object" || class == own || supertypes.contains(&class)

@@ -11,7 +11,7 @@ use super::statement::Completion;
 use super::{Error, Frame, Interpreter, thrown, unsupported};
 use crate::exception::Exception;
 use crate::lowered::{Arguments, Code, Module, Place};
-use crate::value::{Closure, List, ListKind, Value};
+use crate::value::{Closure, List, ListKind, PathValue, Value};
 
 impl Interpreter<'_> {
     /// Evaluates call arguments. Named arguments become one map in first position.
@@ -129,6 +129,14 @@ impl Interpreter<'_> {
                 return Ok(tuple(items));
             }
             ("tuple", _) => return Ok(tuple(arguments)),
+            ("file" | "files", [.., pattern]) => {
+                let path = self.file(pattern, span)?;
+                return Ok(if name == "files" {
+                    Value::list(vec![path])
+                } else {
+                    path
+                });
+            }
             ("error", []) => {
                 return Err(thrown(Exception::new("AbortOperationException", ""), span));
             }
@@ -139,6 +147,37 @@ impl Interpreter<'_> {
             _ => return Err(unsupported(format!("the function `{name}`"), span)),
         }
         Ok(Value::Null)
+    }
+}
+
+impl Interpreter<'_> {
+    /// `file(pattern)` for a single path. Relative paths start at the launch directory.
+    fn file(&mut self, pattern: &Value, span: Span) -> Result<Value, Error> {
+        let text = match pattern {
+            Value::Null => None,
+            Value::String(text) | Value::GString(text) => Some(text.to_string()),
+            Value::Path(path) => Some(path.uri()),
+            other => {
+                let message = format!(
+                    "Invalid file path type - offending value: {other} [{}]",
+                    other.java_class_name()
+                );
+                return Err(thrown(Exception::illegal_argument(message), span));
+            }
+        };
+        let text = match text {
+            Some(text) if !text.is_empty() => text,
+            empty => {
+                let what = if empty.is_some() { "empty" } else { "null" };
+                let message = format!("Argument of `file()` function cannot be {what}");
+                return Err(thrown(Exception::illegal_argument(message), span));
+            }
+        };
+        if text.contains(['*', '?', '[', '{']) {
+            return Err(unsupported("glob patterns in `file()`", span));
+        }
+        let launch = self.host.launch_dir();
+        Ok(Value::Path(Rc::new(PathValue::parse(&text, &launch))))
     }
 }
 

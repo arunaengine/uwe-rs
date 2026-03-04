@@ -6,6 +6,7 @@ mod compare;
 mod format;
 mod key;
 mod operators;
+mod path;
 mod range;
 
 use std::cell::RefCell;
@@ -20,6 +21,7 @@ use crate::number::Number;
 pub use compare::Relation;
 pub use key::Key;
 pub use operators::Operator;
+pub use path::PathValue;
 pub use range::{Range, RangeClass};
 
 /// A value of a running script. Lists, maps and sets are shared: a change through one holder
@@ -49,6 +51,8 @@ pub enum Value {
     Pattern(Rc<crate::regex::Pattern>),
     /// `java.util.regex.Matcher`, from `text =~ pattern`.
     Matcher(Rc<crate::regex::Matcher>),
+    /// `java.nio.file.Path`, from `file()` and path operations.
+    Path(Rc<PathValue>),
 }
 
 /// A closure: its code, the script it belongs to, and the variables it captured.
@@ -196,6 +200,11 @@ impl Value {
             Value::Exception(exception) => exception.class,
             Value::Pattern(_) => "Pattern",
             Value::Matcher(_) => "Matcher",
+            Value::Path(path) => match path.scheme() {
+                "file" => "UnixPath",
+                "s3" => "S3Path",
+                _ => "XPath",
+            },
         }
     }
 
@@ -235,6 +244,11 @@ impl Value {
             Value::Exception(exception) => exception.qualified_class(),
             Value::Pattern(_) => "java.util.regex.Pattern",
             Value::Matcher(_) => "java.util.regex.Matcher",
+            Value::Path(path) => match path.scheme() {
+                "file" => "sun.nio.fs.UnixPath",
+                "s3" => "nextflow.cloud.aws.nio.S3Path",
+                _ => "nextflow.file.http.XPath",
+            },
         }
     }
 
@@ -254,7 +268,7 @@ impl Value {
             Value::MapEntry(_) => true,
             Value::MemoryUnit(size) => *size != 0,
             Value::Duration(millis) => *millis != 0,
-            Value::Closure(_) | Value::Exception(_) | Value::Pattern(_) => true,
+            Value::Closure(_) | Value::Exception(_) | Value::Pattern(_) | Value::Path(_) => true,
             // Groovy's `Matcher.asBoolean()` is `find(0)`: the pattern occurs somewhere.
             Value::Matcher(matcher) => !matcher.matches.is_empty(),
         }

@@ -182,6 +182,13 @@ impl Value {
             (Divide, Value::Duration(millis), Value::Number(divisor)) => {
                 Value::Duration(divide_count(*millis, divisor, "Duration")?)
             }
+            (Divide, Value::Path(path), Value::String(text) | Value::GString(text)) => {
+                Value::Path(Rc::new(path.resolve(text)))
+            }
+            (Divide, Value::Path(_), Value::Null) => self.clone(),
+            (Add, Value::Path(path), Value::String(text) | Value::GString(text)) => {
+                Value::Path(Rc::new(path.with_suffix(text)))
+            }
             (BitAnd, Value::Boolean(left), Value::Boolean(right)) => Value::Boolean(*left & *right),
             (BitOr, Value::Boolean(left), Value::Boolean(right)) => Value::Boolean(*left | *right),
             (Xor, Value::Boolean(left), Value::Boolean(right)) => Value::Boolean(*left ^ *right),

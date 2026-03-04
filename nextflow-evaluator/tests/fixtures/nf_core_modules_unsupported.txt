@@ -1,0 +1,5 @@
+# nf-core module files that lowering rejects on purpose, relative to the modules directory of
+# the corpus, with the first error. All other module files must lower. A file leaves this list
+# when iunctus supports what it uses.
+modules/nf-core/elprep/fastatoelfasta/main.nf The class `java.time.format.DateTimeFormatter` is not supported yet
+modules/nf-core/elprep/filter/main.nf The class `java.time.format.DateTimeFormatter` is not supported yet

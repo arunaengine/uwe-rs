@@ -35,9 +35,10 @@ corpus:
 		mv "$work" "$target"
 	done
 
-# Parses the whole nf-core corpus and compares the result with `nextflow lint`.
+# Parses the nf-core corpus, compares the result with `nextflow lint`, and lowers every module.
 corpus-test:
 	NF_CORE_CORPUS="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}" cargo test --release --locked -p nextflow-parser --test corpus -- --ignored
+	NF_CORE_CORPUS="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}" cargo test --release --locked -p nextflow-evaluator --test corpus -- --ignored
 
 # Fetches the text-only CWL corpus at the revisions the CWL corpus test expects.
 cwl-corpus:

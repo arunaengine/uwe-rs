@@ -11,9 +11,12 @@ use nextflow_parser::ast::{
 };
 
 use super::Lowering;
-use super::names::{CLASSES, ENTRY_CONSTANTS, PACKAGES, SCRIPT_CONSTANTS, SCRIPT_FUNCTIONS};
+use super::names::{
+    CLASSES, ENTRY_CONSTANTS, OPERATORS, PACKAGES, SCRIPT_CONSTANTS, SCRIPT_FUNCTIONS,
+};
 use crate::lowered::{
-    Arguments, Code, Expression, ExpressionKind as Kind, Function, Parameter, Part, Unary,
+    Arguments, Code, DefinitionKind, Expression, ExpressionKind as Kind, Function, Parameter, Part,
+    Unary,
 };
 use crate::number::Number;
 use crate::value::{Operator, Relation, Value};
@@ -151,9 +154,16 @@ impl Lowering<'_> {
     }
 
     /// A name used as a value: a variable, a built-in constant, or an error.
-    fn variable(&mut self, name: &str, span: Span) -> Kind {
+    pub(super) fn variable(&mut self, name: &str, span: Span) -> Kind {
         if let Some(place) = self.scopes.resolve(name) {
             return Kind::Variable(place);
+        }
+        if let Some(DefinitionKind::Process | DefinitionKind::Workflow) = self.definitions.get(name)
+        {
+            return Kind::Definition(name.into());
+        }
+        if self.in_workflow && OPERATORS.contains(&name) {
+            return Kind::Operator(name.into());
         }
         if SCRIPT_CONSTANTS.contains(&name)
             || ENTRY_CONSTANTS.contains(&name)
@@ -262,6 +272,31 @@ impl Lowering<'_> {
     fn function_call(&mut self, name: &str, span: Span, arguments: Arguments) -> Kind {
         let function = if self.functions.contains(name) {
             Function::Script(name.into())
+        } else if let Some(kind) = self.definitions.get(name).copied() {
+            let what = match kind {
+                DefinitionKind::Function => {
+                    return Kind::CallFunction {
+                        function: Function::Definition(name.into()),
+                        arguments,
+                    };
+                }
+                DefinitionKind::Process => "Processes",
+                DefinitionKind::Workflow => "Workflows",
+            };
+            if !self.in_workflow {
+                self.error(format!("{what} can only be called from a workflow"), span);
+            } else if self.scopes.in_closure() {
+                self.error(
+                    format!("{what} cannot be called from within a closure"),
+                    span,
+                );
+            }
+            Function::Definition(name.into())
+        } else if self.in_workflow && OPERATORS.contains(&name) {
+            if self.scopes.in_closure() {
+                self.error("Operators cannot be called from within a closure", span);
+            }
+            Function::Operator(name.into())
         } else if SCRIPT_FUNCTIONS.contains(&name) || (self.in_process && name == "template") {
             Function::Builtin(name.into())
         } else {

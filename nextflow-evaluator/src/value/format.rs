@@ -128,6 +128,11 @@ impl Value {
             }
             Value::Pattern(pattern) => out.push_str(&pattern.source),
             Value::Path(path) => out.push_str(path.text()),
+            Value::Channel(id) => out.push_str(&format!("DataflowBroadcast@{}", id.0)),
+            Value::ChannelOut(_) => out.push_str("ChannelOut"),
+            Value::Definition(definition) => out.push_str(&definition.name),
+            Value::Namespace(name) => out.push_str(name),
+            Value::Operator(operator) => out.push_str(&operator.0),
             Value::Matcher(matcher) => out.push_str(&format!(
                 "java.util.regex.Matcher[pattern={} region=0,{} lastmatch=]",
                 matcher.pattern.source,

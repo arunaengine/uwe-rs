@@ -36,6 +36,23 @@ impl Interpreter<'_> {
                     .cloned()
                     .unwrap_or(Value::Null)
             }
+            Value::ChannelOut(out) => {
+                let found = out
+                    .names
+                    .iter()
+                    .position(|emit| emit.as_deref() == Some(name));
+                match found {
+                    Some(index) => out.values[index].clone(),
+                    None => {
+                        let message = format!("Unknown output `{name}`");
+                        return Err(thrown(
+                            Exception::new("MissingPropertyException", message),
+                            span,
+                        ));
+                    }
+                }
+            }
+            Value::Definition(definition) => self.definition_property(definition, name, span)?,
             Value::Exception(exception) if name == "message" => match exception.message.as_str() {
                 "" => Value::Null,
                 message => Value::string(message),
@@ -141,6 +158,21 @@ impl Interpreter<'_> {
                 .cloned()
                 .unwrap_or(Value::Null),
             // All matches from the start; a pattern with groups gives a list per match.
+            (Value::ChannelOut(out), Value::Number(number)) if integral(number) => {
+                match position(number.to_i64(), out.values.len()) {
+                    Some(position) if position < out.values.len() => out.values[position].clone(),
+                    _ => {
+                        let message = format!(
+                            "Index {number} out of bounds for length {}",
+                            out.values.len()
+                        );
+                        return Err(thrown(
+                            Exception::new("IndexOutOfBoundsException", message),
+                            span,
+                        ));
+                    }
+                }
+            }
             (Value::Matcher(matcher), Value::Number(number)) if integral(number) => {
                 let count = matcher.matches.len();
                 let groups = match position(number.to_i64(), count).filter(|p| *p < count) {
@@ -311,6 +343,13 @@ impl Interpreter<'_> {
                 ))
             }
             (Value::Closure(closure), "call") => self.call_closure_value(closure, arguments, span),
+            (Value::Namespace(namespace), _) => {
+                let namespace = namespace.clone();
+                self.namespace_call(&namespace, name, arguments, span)
+            }
+            (Value::Channel(_) | Value::ChannelOut(_), _) => {
+                self.operator(object, name, arguments, span)
+            }
             (Value::Exception(_), "getMessage") if arguments.is_empty() => {
                 self.property(object, "message", span)
             }
@@ -403,6 +442,8 @@ pub(super) fn instance_of(value: &Value, class: &str) -> bool {
         Value::MemoryUnit(_) | Value::Duration(_) => &["Comparable"],
         Value::Exception(exception) => return class == "Object" || exception.is_instance(class),
         Value::Path(_) => &["Path", "Comparable"],
+        Value::Channel(_) | Value::ChannelOut(_) => &["Channel"],
+        Value::Definition(_) | Value::Namespace(_) | Value::Operator(_) => &[],
         Value::MapEntry(_) | Value::Closure(_) | Value::Pattern(_) | Value::Matcher(_) => &[],
     };
     class == "Object" || class == own || supertypes.contains(&class)

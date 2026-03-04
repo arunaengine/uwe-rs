@@ -84,6 +84,11 @@ impl Value {
             (Value::Pattern(left), Value::Pattern(right)) => Rc::ptr_eq(left, right),
             (Value::Matcher(left), Value::Matcher(right)) => Rc::ptr_eq(left, right),
             (Value::Path(left), Value::Path(right)) => left == right,
+            (Value::Channel(left), Value::Channel(right)) => left == right,
+            (Value::ChannelOut(left), Value::ChannelOut(right)) => Rc::ptr_eq(left, right),
+            (Value::Definition(left), Value::Definition(right)) => Rc::ptr_eq(left, right),
+            (Value::Namespace(left), Value::Namespace(right)) => left == right,
+            (Value::Operator(left), Value::Operator(right)) => Rc::ptr_eq(left, right),
             _ => false,
         }
     }
@@ -136,6 +141,11 @@ impl Value {
             Value::Pattern(pattern) => Rc::as_ptr(pattern) as usize as i32,
             Value::Matcher(matcher) => Rc::as_ptr(matcher) as usize as i32,
             Value::Path(path) => string_hash(&path.uri()),
+            Value::Channel(id) => id.0 as i32,
+            Value::ChannelOut(out) => Rc::as_ptr(out) as usize as i32,
+            Value::Definition(definition) => string_hash(&definition.name),
+            Value::Namespace(name) => string_hash(name),
+            Value::Operator(operator) => Rc::as_ptr(operator) as usize as i32,
         }
     }
 }

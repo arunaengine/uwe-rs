@@ -53,6 +53,35 @@ pub enum Value {
     Matcher(Rc<crate::regex::Matcher>),
     /// `java.nio.file.Path`, from `file()` and path operations.
     Path(Rc<PathValue>),
+    /// A channel of the dataflow network, by its number in the network.
+    Channel(ChannelId),
+    /// The outputs of a process or workflow call.
+    ChannelOut(Rc<ChannelOut>),
+    /// A process or workflow of a script used as a value, as in `FASTQC.out`.
+    Definition(Rc<DefinitionRef>),
+    /// A namespace whose methods the host provides, like `channel` or `log`.
+    Namespace(Rc<str>),
+    /// An operator called without a receiver, applied to the channel piped into it:
+    /// `ch | map { ... }`.
+    Operator(Rc<(Rc<str>, Vec<Value>)>),
+}
+
+/// The number of a channel in the dataflow network.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ChannelId(pub u32);
+
+/// The outputs of a process or workflow call, by position and by `emit` name.
+#[derive(Debug)]
+pub struct ChannelOut {
+    pub values: Vec<Value>,
+    pub names: Vec<Option<Rc<str>>>,
+}
+
+/// A process or workflow of a script.
+#[derive(Debug)]
+pub struct DefinitionRef {
+    pub module: Rc<Module>,
+    pub name: Rc<str>,
 }
 
 /// A closure: its code, the script it belongs to, and the variables it captured.
@@ -209,6 +238,11 @@ impl Value {
                 "s3" => "S3Path",
                 _ => "XPath",
             },
+            Value::Channel(_) => "DataflowBroadcast",
+            Value::ChannelOut(_) => "ChannelOut",
+            Value::Definition(_) => "ProcessDef",
+            Value::Namespace(_) => "Namespace",
+            Value::Operator(_) => "OpCall",
         }
     }
 
@@ -254,6 +288,11 @@ impl Value {
                 "s3" => "nextflow.cloud.aws.nio.S3Path",
                 _ => "nextflow.file.http.XPath",
             },
+            Value::Channel(_) => "groovyx.gpars.dataflow.DataflowBroadcast",
+            Value::ChannelOut(_) => "nextflow.script.ChannelOut",
+            Value::Definition(_) => "nextflow.script.ProcessDef",
+            Value::Namespace(_) => "nextflow.Channel",
+            Value::Operator(_) => "nextflow.extension.OpCall",
         }
     }
 
@@ -274,6 +313,11 @@ impl Value {
             Value::MemoryUnit(size) => *size != 0,
             Value::Duration(millis) => *millis != 0,
             Value::Closure(_) | Value::Exception(_) | Value::Pattern(_) | Value::Path(_) => true,
+            Value::Channel(_)
+            | Value::ChannelOut(_)
+            | Value::Definition(_)
+            | Value::Namespace(_)
+            | Value::Operator(_) => true,
             // Groovy's `Matcher.asBoolean()` is `find(0)`: the pattern occurs somewhere.
             Value::Matcher(matcher) => !matcher.matches.is_empty(),
         }

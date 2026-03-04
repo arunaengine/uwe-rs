@@ -29,6 +29,42 @@ pub struct Module {
     /// Function indexes by name; Groovy allows several functions with one name.
     pub function_names: HashMap<Rc<str>, Vec<usize>>,
     pub processes: Vec<Rc<Process>>,
+    pub workflows: Vec<Rc<Workflow>>,
+    pub includes: Vec<Include>,
+    /// `params.a.b = value` statements in load order; each value is a function without
+    /// parameters.
+    pub parameters: Vec<(Vec<Rc<str>>, Rc<Code>)>,
+}
+
+/// What a name of a script stands for: a function, a process or a workflow.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DefinitionKind {
+    Function,
+    Process,
+    Workflow,
+}
+
+/// `include { NAME as ALIAS } from 'source'`.
+#[derive(Debug)]
+pub struct Include {
+    /// The name in the included script.
+    pub name: Rc<str>,
+    /// The name in this script.
+    pub alias: Rc<str>,
+    pub source: Rc<str>,
+    pub span: Span,
+}
+
+/// A workflow; the entry workflow has no name. Its takes, the variables its body assigns
+/// without `def`, and its locals share one frame.
+#[derive(Debug)]
+pub struct Workflow {
+    pub name: Option<Rc<str>>,
+    pub slot_count: usize,
+    pub takes: Vec<(Rc<str>, Slot)>,
+    pub main: Vec<Statement>,
+    pub emits: Vec<(Rc<str>, Expression)>,
+    pub span: Span,
 }
 
 /// A process. Its inputs, the variables its script section sets without `def`, and the
@@ -217,6 +253,10 @@ pub enum ExpressionKind {
     Variable(Place),
     /// A built-in constant of the current scope, like `params`, `workflow` or `task`.
     Builtin(Rc<str>),
+    /// A process or workflow used as a value, as in `FASTQC.out.html`.
+    Definition(Rc<str>),
+    /// A channel operator used as a value, as in `ch | view`.
+    Operator(Rc<str>),
     /// A GString. Nextflow makes it a `String` unless it is nested in another GString.
     Interpolate {
         parts: Vec<Part>,
@@ -364,4 +404,8 @@ pub enum Function {
     Script(Rc<str>),
     /// A built-in function of the current scope, like `file` or `println`.
     Builtin(Rc<str>),
+    /// A process or workflow of the script, or an included name that is one.
+    Definition(Rc<str>),
+    /// A channel operator called without a receiver, as in `ch | map { ... }`.
+    Operator(Rc<str>),
 }

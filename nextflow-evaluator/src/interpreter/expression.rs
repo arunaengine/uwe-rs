@@ -19,6 +19,15 @@ impl Interpreter<'_> {
         Ok(match &expression.kind {
             Kind::Literal(value) => value.clone(),
             Kind::Variable(place) => frame.get(*place),
+            Kind::Operator(name) => {
+                return Err(unsupported(format!("operators as values (`{name}`)"), span));
+            }
+            Kind::Definition(name) => {
+                return Err(unsupported(
+                    format!("processes and workflows as values (`{name}`)"),
+                    span,
+                ));
+            }
             Kind::Builtin(name) => match self.globals.get(name) {
                 Some(value) => value.clone(),
                 None => return Err(unsupported(format!("the built-in `{name}`"), span)),
@@ -99,6 +108,10 @@ impl Interpreter<'_> {
                         self.call_script_function(&module, name, arguments, span)?
                     }
                     Function::Builtin(name) => self.call_builtin(name, arguments, span)?,
+                    Function::Definition(name) | Function::Operator(name) => {
+                        let message = format!("calling processes and workflows (`{name}`)");
+                        return Err(unsupported(message, span));
+                    }
                 }
             }
             Kind::CallValue { callee, arguments } => {

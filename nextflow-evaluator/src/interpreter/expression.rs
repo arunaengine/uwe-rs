@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use super::{AtSpan, Error, Frame, Interpreter, unsupported};
 use crate::lowered::{Access, Code, Expression, ExpressionKind as Kind, Function, Part, Unary};
+use crate::regex::{Matcher, Pattern};
 use crate::value::{Closure, Value};
 
 impl Interpreter<'_> {
@@ -117,6 +118,9 @@ impl Interpreter<'_> {
                     (Unary::Not, _) => Value::Boolean(!value.truth()),
                     (Unary::Negate, _) => value.negate().at(span)?,
                     (Unary::Positive, Value::Number(_)) => value,
+                    (Unary::BitwiseNot, Value::String(text) | Value::GString(text)) => {
+                        Value::Pattern(Rc::new(Pattern::new(text).at(span)?))
+                    }
                     (Unary::BitwiseNot, Value::Number(number)) => {
                         let result = number.bitwise_not().map_err(Into::into).at(span)?;
                         Value::Number(result)
@@ -170,7 +174,28 @@ impl Interpreter<'_> {
                 let container = self.expression(frame, container)?;
                 Value::Boolean(container.is_case(&item).at(span)? != *negated)
             }
-            Kind::Regex { .. } => return Err(unsupported("regular expressions", span)),
+            Kind::Regex {
+                matches,
+                text,
+                pattern,
+            } => {
+                let text = self.expression(frame, text)?;
+                let pattern = self.expression(frame, pattern)?;
+                if *matches && (matches!(text, Value::Null) || matches!(pattern, Value::Null)) {
+                    return Ok(Value::Boolean(false));
+                }
+                // A value other than a string is matched by its Groovy text.
+                let text = text.to_groovy_string();
+                let pattern = match pattern {
+                    Value::Pattern(pattern) => pattern,
+                    other => Rc::new(Pattern::new(&other.to_groovy_string()).at(span)?),
+                };
+                if *matches {
+                    Value::Boolean(pattern.matches(&text))
+                } else {
+                    Value::Matcher(Rc::new(Matcher::new(pattern, text)))
+                }
+            }
             Kind::And { left, right } => Value::Boolean(
                 self.expression(frame, left)?.truth() && self.expression(frame, right)?.truth(),
             ),

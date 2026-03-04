@@ -63,6 +63,9 @@ impl Value {
             (Add, Value::Null, Value::String(right) | Value::GString(right)) => {
                 Value::string(format!("null{right}"))
             }
+            (Subtract, Value::String(left) | Value::GString(left), Value::Pattern(pattern)) => {
+                Value::string(pattern.replace(left, "", false)?)
+            }
             (Subtract, Value::String(left) | Value::GString(left), right) => {
                 Value::string(left.replacen(&right.to_groovy_string(), "", 1))
             }
@@ -229,6 +232,9 @@ impl Value {
                 .is_some_and(Value::truth),
             Value::String(text) | Value::GString(text) => {
                 !matches!(item, Value::Null) && item.to_java_string() == **text
+            }
+            Value::Pattern(pattern) => {
+                !matches!(item, Value::Null) && pattern.matches(&item.to_java_string())
             }
             Value::Number(number) => match item {
                 Value::Number(other) => number.compare(other).is_eq(),

@@ -152,12 +152,18 @@ impl Lowering<'_> {
         if let Some(place) = self.scopes.resolve(name) {
             return Some(place);
         }
-        if super::names::SCRIPT_CONSTANTS.contains(&name) {
+        if super::names::SCRIPT_CONSTANTS.contains(&name) || (self.in_process && name == "task") {
             self.error("Built-in constant or namespace cannot be re-assigned", span);
-        } else {
-            self.error(format!("`{name}` was assigned but not declared"), span);
+            return None;
         }
-        None
+        if !self.implicit_declarations {
+            self.error(format!("`{name}` was assigned but not declared"), span);
+            return None;
+        }
+        if self.scopes.in_closure() {
+            self.error("Variables in a closure should be declared with `def`", span);
+        }
+        Some(Place::Local(self.scopes.declare_in_frame(name, span)))
     }
 }
 

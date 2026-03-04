@@ -11,7 +11,7 @@ use nextflow_parser::ast::{
 };
 
 use super::Lowering;
-use super::names::{CLASSES, SCRIPT_CONSTANTS, SCRIPT_FUNCTIONS};
+use super::names::{CLASSES, ENTRY_CONSTANTS, PACKAGES, SCRIPT_CONSTANTS, SCRIPT_FUNCTIONS};
 use crate::lowered::{
     Arguments, Code, Expression, ExpressionKind as Kind, Function, Parameter, Part, Unary,
 };
@@ -155,7 +155,10 @@ impl Lowering<'_> {
         if let Some(place) = self.scopes.resolve(name) {
             return Kind::Variable(place);
         }
-        if SCRIPT_CONSTANTS.contains(&name) {
+        if SCRIPT_CONSTANTS.contains(&name)
+            || ENTRY_CONSTANTS.contains(&name)
+            || (self.in_process && name == "task")
+        {
             return Kind::Builtin(name.into());
         }
         if CLASSES.contains(&name) {
@@ -201,6 +204,7 @@ impl Lowering<'_> {
         Kind::Interpolate {
             parts,
             keep_gstring,
+            escape_paths: self.escape_paths,
         }
     }
 
@@ -242,7 +246,7 @@ impl Lowering<'_> {
         }))
     }
 
-    fn arguments(&mut self, arguments: &[ast::Argument]) -> Arguments {
+    pub(super) fn arguments(&mut self, arguments: &[ast::Argument]) -> Arguments {
         let mut lowered = Arguments::default();
         for argument in arguments {
             let value = self.expression(&argument.value);
@@ -258,7 +262,7 @@ impl Lowering<'_> {
     fn function_call(&mut self, name: &str, span: Span, arguments: Arguments) -> Kind {
         let function = if self.functions.contains(name) {
             Function::Script(name.into())
-        } else if SCRIPT_FUNCTIONS.contains(&name) {
+        } else if SCRIPT_FUNCTIONS.contains(&name) || (self.in_process && name == "template") {
             Function::Builtin(name.into())
         } else {
             self.error(format!("`{name}` is not defined"), span);
@@ -270,13 +274,33 @@ impl Lowering<'_> {
         }
     }
 
-    /// The class a receiver names, unless a variable of that name hides it.
+    /// The class a receiver names, unless a variable of that name hides it. A fully qualified
+    /// name like `java.util.UUID` names the class by its last part.
     fn class_name(&mut self, target: &ast::Expression) -> Option<Rc<str>> {
         match &target.kind {
             Syntax::Variable(name)
                 if CLASSES.contains(&name.as_str()) && self.scopes.resolve(name).is_none() =>
             {
                 Some(name.as_str().into())
+            }
+            Syntax::Property { .. } => {
+                let parts = qualified_name(target)?;
+                let first = parts.first()?;
+                let last = parts.last()?;
+                let class_like = last.starts_with(|c: char| c.is_ascii_uppercase());
+                if parts.len() < 2 || !PACKAGES.contains(first) || !class_like {
+                    return None;
+                }
+                if self.scopes.resolve(first).is_some() {
+                    return None;
+                }
+                if !CLASSES.contains(last) {
+                    self.error(
+                        format!("The class `{}` is not supported yet", parts.join(".")),
+                        target.span,
+                    );
+                }
+                Some((*last).into())
             }
             _ => None,
         }
@@ -337,6 +361,23 @@ impl Lowering<'_> {
             B::And => Kind::And { left, right },
             B::Or => Kind::Or { left, right },
         }
+    }
+}
+
+/// The names of a chain of plain property reads, like `java.util.UUID`.
+fn qualified_name(expression: &ast::Expression) -> Option<Vec<&str>> {
+    match &expression.kind {
+        Syntax::Variable(name) => Some(vec![name.as_str()]),
+        Syntax::Property {
+            target,
+            name,
+            access: ast::Access::Normal,
+        } => {
+            let mut parts = qualified_name(target)?;
+            parts.push(&name.text);
+            Some(parts)
+        }
+        _ => None,
     }
 }
 

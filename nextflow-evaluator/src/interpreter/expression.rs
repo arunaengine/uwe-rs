@@ -26,6 +26,7 @@ impl Interpreter<'_> {
             Kind::Interpolate {
                 parts,
                 keep_gstring,
+                ..
             } => {
                 let mut text = String::new();
                 for part in parts {

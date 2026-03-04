@@ -22,12 +22,88 @@ pub enum Place {
     Captured(usize),
 }
 
-/// The functions of one script file.
+/// The functions and processes of one script file.
 #[derive(Debug, Default)]
 pub struct Module {
     pub functions: Vec<Rc<Code>>,
     /// Function indexes by name; Groovy allows several functions with one name.
     pub function_names: HashMap<Rc<str>, Vec<usize>>,
+    pub processes: Vec<Rc<Process>>,
+}
+
+/// A process. Its inputs, the variables its script section sets without `def`, and the
+/// locals of its sections share one frame, which is made anew for each task.
+#[derive(Debug)]
+pub struct Process {
+    pub name: Rc<str>,
+    pub slot_count: usize,
+    pub directives: Vec<Directive>,
+    pub inputs: Vec<Input>,
+    pub outputs: Vec<Output>,
+    pub when: Option<Expression>,
+    pub body: Option<Body>,
+    pub stub: Option<Vec<Statement>>,
+    pub span: Span,
+}
+
+/// A process directive, like `cpus 2` or `tag "${meta.id}"`, evaluated for each task.
+#[derive(Debug)]
+pub struct Directive {
+    pub name: Rc<str>,
+    pub arguments: Arguments,
+    pub span: Span,
+}
+
+#[derive(Debug)]
+pub enum Input {
+    /// `val(x)`
+    Value {
+        slot: Slot,
+    },
+    /// `path(x)` with options like `stageAs:`, or `path 'name'` without a variable.
+    Path {
+        slot: Option<Slot>,
+        pattern: Option<Expression>,
+        options: Arguments,
+    },
+    /// `env(NAME)`
+    Env(Rc<str>),
+    Stdin,
+    Tuple(Vec<Input>),
+    /// `each x`, which repeats the task for every element.
+    Each(Box<Input>),
+}
+
+/// A process output: one part, or a `tuple` of parts, with `emit:`, `topic:` and `optional:`.
+#[derive(Debug)]
+pub struct Output {
+    pub parts: Vec<OutputPart>,
+    pub tuple: bool,
+    pub emit: Option<Rc<str>>,
+    pub topic: Option<Rc<str>>,
+    pub optional: Option<Expression>,
+    pub span: Span,
+}
+
+#[derive(Debug)]
+pub enum OutputPart {
+    Value(Expression),
+    /// `path(pattern)` with options like `arity:` or `includeInputs:`.
+    Path {
+        pattern: Expression,
+        options: Arguments,
+    },
+    Env(Rc<str>),
+    /// `eval(command)`: the output of a command run after the script.
+    Eval(Expression),
+    Stdout,
+}
+
+/// The `script:`, `shell:` or `exec:` section of a process.
+#[derive(Debug)]
+pub struct Body {
+    pub kind: nextflow_parser::ast::BodyKind,
+    pub statements: Vec<Statement>,
 }
 
 /// The code of a function or closure.
@@ -145,6 +221,9 @@ pub enum ExpressionKind {
     Interpolate {
         parts: Vec<Part>,
         keep_gstring: bool,
+        /// In a task script, a staged input file is inserted with its special characters
+        /// escaped, as Nextflow's `TaskCmdXformVisitor` arranges.
+        escape_paths: bool,
     },
     List(Vec<Expression>),
     Map(Vec<(Expression, Expression)>),

@@ -74,6 +74,21 @@ impl Scopes {
         (slot, earlier)
     }
 
+    /// Declares a variable in the outermost block of the current frame, as Nextflow does for a
+    /// variable that a process or workflow section assigns without `def`.
+    pub fn declare_in_frame(&mut self, name: &str, span: Span) -> Slot {
+        let frame = self.frame();
+        let slot = frame.slot_count;
+        frame.slot_count += 1;
+        frame.blocks[0].push((name.into(), slot, span));
+        slot
+    }
+
+    /// Whether the code being lowered is inside a closure.
+    pub fn in_closure(&self) -> bool {
+        self.frames.last().is_some_and(|frame| frame.closure)
+    }
+
     /// Finds a variable, capturing it into every closure between its frame and the current one.
     pub fn resolve(&mut self, name: &str) -> Option<Place> {
         resolve_in(&mut self.frames, name)

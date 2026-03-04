@@ -57,6 +57,12 @@ pub(crate) struct Lowering<'a> {
     functions: HashSet<Rc<str>>,
     /// Whether the code being lowered is inside the `${...}` of a GString.
     in_gstring: bool,
+    /// Whether GStrings escape staged file names: in a process `script:` or `stub:`.
+    escape_paths: bool,
+    /// Whether the code belongs to a process, where `task` and `template` exist.
+    in_process: bool,
+    /// Whether assigning an undeclared name declares it, as in process and workflow sections.
+    implicit_declarations: bool,
 }
 
 impl<'a> Lowering<'a> {
@@ -67,6 +73,9 @@ impl<'a> Lowering<'a> {
             errors: Vec::new(),
             functions: HashSet::new(),
             in_gstring: false,
+            escape_paths: false,
+            in_process: false,
+            implicit_declarations: false,
         }
     }
 

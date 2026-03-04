@@ -5,6 +5,7 @@
 
 mod expression;
 mod names;
+mod process;
 mod scope;
 mod statement;
 
@@ -17,7 +18,7 @@ use nextflow_parser::{Diagnostic, Span};
 use crate::lowered::{Code, Module, Parameter};
 use scope::Scopes;
 
-/// Lowers the functions of a script. Other script items are not supported yet.
+/// Lowers the functions and processes of a script. Other script items are not supported yet.
 pub fn lower_module(script: &ast::Script, source: &str) -> Result<Module, Vec<Diagnostic>> {
     let mut lowering = Lowering::new(source);
     for item in &script.items {
@@ -36,6 +37,10 @@ pub fn lower_module(script: &ast::Script, source: &str) -> Result<Module, Vec<Di
                 module.functions.push(Rc::new(code));
                 let name: Rc<str> = function.name.text.as_str().into();
                 module.function_names.entry(name).or_default().push(index);
+            }
+            Item::Process(process) => {
+                let process = lowering.process(process);
+                module.processes.push(Rc::new(process));
             }
             Item::FeatureFlag { .. } => {}
             other => lowering.error("This script item is not supported yet", item_span(other)),

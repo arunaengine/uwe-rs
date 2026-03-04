@@ -85,6 +85,7 @@ fn nested_gstrings_stay_gstrings() {
     let ExpressionKind::Interpolate {
         parts,
         keep_gstring,
+        ..
     } = &outer.kind
     else {
         panic!("GString")
@@ -105,7 +106,7 @@ fn nested_gstrings_stay_gstrings() {
 #[test]
 fn unsupported_items_fail_loudly() {
     assert_eq!(
-        errors("process FOO {\n    script:\n    'x'\n}"),
+        errors("workflow {\n    main:\n    println(1)\n}"),
         ["1:1: This script item is not supported yet"]
     );
 }

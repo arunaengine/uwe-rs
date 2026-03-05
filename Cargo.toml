@@ -4,7 +4,7 @@
 
 [workspace]
 resolver = "3"
-members = ["argo-parser", "content-store", "cwl-parser", "nextflow-evaluator", "nextflow-parser", "snakemake-parser", "task-model"]
+members = ["argo-parser", "content-store", "cwl-parser", "nextflow-evaluator", "nextflow-parser", "nextflow-runtime", "snakemake-parser", "task-model"]
 
 [workspace.package]
 version = "0.1.0"
@@ -15,6 +15,7 @@ publish = false
 
 [workspace.dependencies]
 # Workspace crates
+nextflow-evaluator = { path = "nextflow-evaluator" }
 nextflow-parser = { path = "nextflow-parser" }
 task-model = { path = "task-model" }
 

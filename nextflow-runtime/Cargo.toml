@@ -1,0 +1,16 @@
+# Manifest of nextflow-runtime, which runs Nextflow workflows as a dataflow network.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "nextflow-runtime"
+description = "Module loading, the dataflow network, operators and processes to tasks for Nextflow"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+nextflow-evaluator.workspace = true
+nextflow-parser.workspace = true

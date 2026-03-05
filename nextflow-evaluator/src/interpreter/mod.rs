@@ -128,6 +128,11 @@ impl<'h> Interpreter<'h> {
         }
     }
 
+    /// Writes text to standard output through the host, as `view` does.
+    pub fn print(&mut self, text: &str) {
+        self.host.print(text);
+    }
+
     /// Sets a built-in constant, like `params` or `workflow`.
     pub fn set_global(&mut self, name: &str, value: Value) {
         self.globals.insert(name.into(), value);

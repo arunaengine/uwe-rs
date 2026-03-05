@@ -1246,6 +1246,14 @@ name = "nextflow-parser"
 version = "0.1.0"
 
 [[package]]
+name = "nextflow-runtime"
+version = "0.1.0"
+dependencies = [
+ "nextflow-evaluator",
+ "nextflow-parser",
+]
+
+[[package]]
 name = "num-bigint"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

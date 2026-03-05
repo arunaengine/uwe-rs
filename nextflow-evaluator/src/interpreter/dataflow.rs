@@ -52,12 +52,21 @@ impl Interpreter<'_> {
             .iter()
             .find(|workflow| workflow.name.as_deref() == Some(&*target_name))
             .cloned();
+        // A definition is known by the name it is called with, which may be an include alias.
+        let mut path = self.workflow_path.clone();
+        path.push(name.into());
+        let qualified = path.join(":");
         let outputs = match (process, workflow) {
             (Some(process), _) => self
                 .host
-                .call_process(&target, &process, arguments)
+                .call_process(&target, &process, &qualified, arguments)
                 .map_err(|error| error.or_at(span))?,
-            (None, Some(workflow)) => self.call_workflow(&target, &workflow, arguments, span)?,
+            (None, Some(workflow)) => {
+                self.workflow_path.push(name.into());
+                let result = self.call_workflow(&target, &workflow, arguments, span);
+                self.workflow_path.pop();
+                result?
+            }
             (None, None) => {
                 return self.call_script_function(&target, &target_name, arguments, span);
             }

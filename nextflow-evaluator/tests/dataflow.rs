@@ -77,6 +77,7 @@ impl Host for Network {
         &mut self,
         _: &Rc<Module>,
         process: &Rc<Process>,
+        name: &str,
         arguments: Vec<Value>,
     ) -> Result<Value, Error> {
         let arguments: Vec<String> = arguments.iter().map(describe).collect();
@@ -88,8 +89,7 @@ impl Host for Network {
             .collect();
         let out = Value::ChannelOut(Rc::new(ChannelOut { values, names }));
         self.calls.push(format!(
-            "{}({}) = {}",
-            process.name,
+            "{name}({}) = {}",
             arguments.join(", "),
             describe(&out)
         ));
@@ -125,7 +125,7 @@ fn workflows_wire_processes_and_operators() {
         [
             "channel.of(1, 2) = #1",
             "#1.map({..}) = #2",
-            "P(#2) = out[\"#3\"]",
+            "W:P(#2) = out[\"#3\"]",
             "channel.value(1) = #4",
             "#3.view() = #5",
             "#4.view() = #6",

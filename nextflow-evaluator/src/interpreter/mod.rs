@@ -59,11 +59,12 @@ pub trait Host {
     }
 
     /// Calls a process with its input channels or values, as a workflow does; the result is
-    /// the outputs of the call.
+    /// the outputs of the call. `name` is the fully qualified name, like `RNASEQ:FASTQC`.
     fn call_process(
         &mut self,
         _module: &Rc<Module>,
         process: &Rc<Process>,
+        _name: &str,
         _arguments: Vec<Value>,
     ) -> Result<Value, Error> {
         let message = format!("calling the process `{}`", process.name);
@@ -117,6 +118,8 @@ pub struct Interpreter<'h> {
     globals: HashMap<Rc<str>, Value>,
     /// The outputs of the last call of each process and workflow, by script and name, for `.out`.
     outputs: HashMap<(usize, Rc<str>), Value>,
+    /// The names of the named workflows being called, outermost first.
+    workflow_path: Vec<Rc<str>>,
 }
 
 impl<'h> Interpreter<'h> {
@@ -125,6 +128,7 @@ impl<'h> Interpreter<'h> {
             host,
             globals: HashMap::new(),
             outputs: HashMap::new(),
+            workflow_path: Vec::new(),
         }
     }
 

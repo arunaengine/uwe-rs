@@ -4,5 +4,6 @@
 
 pub mod channel;
 mod network;
+mod operator;
 
 pub use network::Network;

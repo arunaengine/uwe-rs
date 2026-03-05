@@ -91,6 +91,14 @@ impl Channel {
         }
     }
 
+    /// The next message for a reader without reading it; a value channel's binding.
+    pub fn peek(&self, cursor: Cursor) -> Option<&Message> {
+        match self {
+            Channel::Queue { messages, cursors } => messages.get(cursors[cursor.0]),
+            Channel::Value(bound) => bound.as_ref(),
+        }
+    }
+
     /// Whether a reader has a message waiting.
     pub fn ready(&self, cursor: Cursor) -> bool {
         match self {

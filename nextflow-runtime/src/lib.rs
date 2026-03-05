@@ -6,6 +6,7 @@ mod build;
 pub mod channel;
 mod network;
 mod operator;
+mod process;
 
 use std::rc::Rc;
 
@@ -15,6 +16,7 @@ use nextflow_evaluator::lowered::Module;
 use nextflow_evaluator::value::Value;
 
 pub use network::Network;
+pub use process::{TaskId, TaskOutcome, TaskRequest};
 
 /// Runs the entry workflow of a script: builds the network, ignites it and runs it until
 /// nothing is left to do. A run that would wait forever in Nextflow is an error here.

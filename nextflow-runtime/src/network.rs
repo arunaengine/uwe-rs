@@ -3,13 +3,21 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
 use nextflow_evaluator::interpreter::{Error, Interpreter};
 use nextflow_evaluator::value::{ChannelId, Value};
 
 use crate::channel::{Channel, Cursor, Message};
+use crate::process::{TaskId, TaskOutcome, TaskRequest};
+
+/// Why a node runs.
+enum Step {
+    Ignite,
+    Run,
+    Complete(TaskOutcome),
+}
 
 /// What a node does with the messages of its inputs.
 pub(crate) trait Behaviour {
@@ -20,6 +28,11 @@ pub(crate) trait Behaviour {
 
     /// Acts on the messages that are waiting on the inputs.
     fn run(&mut self, context: &mut Context) -> Result<State, Error>;
+
+    /// Takes the outcome of a task that this node requested.
+    fn complete(&mut self, _context: &mut Context, _outcome: TaskOutcome) -> Result<State, Error> {
+        Ok(State::Running)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,6 +65,11 @@ pub struct Network {
     /// Nodes with messages waiting, in the order they got them.
     waiting: VecDeque<usize>,
     queued: Vec<bool>,
+    /// Tasks that nodes requested and that were not handed out yet.
+    requests: Vec<TaskRequest>,
+    /// The node that requested each task in flight.
+    owners: HashMap<TaskId, usize>,
+    next_task: u64,
 }
 
 /// What a running node can see: its inputs, the channels it writes, and the interpreter for
@@ -60,6 +78,8 @@ pub(crate) struct Context<'n, 'i, 'h> {
     channels: &'n mut [Channel],
     inputs: &'n mut [Input],
     written: Vec<ChannelId>,
+    requests: Vec<TaskRequest>,
+    next_task: &'n mut u64,
     pub interpreter: &'i mut Interpreter<'h>,
 }
 
@@ -83,6 +103,36 @@ impl Context<'_, '_, '_> {
 
     pub fn input_count(&self) -> usize {
         self.inputs.len()
+    }
+
+    /// Whether an input is a value channel, which a process reads again in every round.
+    pub fn is_value(&self, input: usize) -> bool {
+        self.channels[self.inputs[input].channel.0 as usize].is_value()
+    }
+
+    /// The next message of an input without reading it; a value channel's binding.
+    pub fn peek(&self, input: usize) -> Option<Message> {
+        let input = &self.inputs[input];
+        self.channels[input.channel.0 as usize]
+            .peek(input.cursor)
+            .cloned()
+    }
+
+    /// Reads the next message of a queue input.
+    pub fn consume(&mut self, input: usize) -> Option<Message> {
+        let input = &self.inputs[input];
+        self.channels[input.channel.0 as usize].read(input.cursor)
+    }
+
+    /// A new task number.
+    pub fn task_id(&mut self) -> TaskId {
+        *self.next_task += 1;
+        TaskId(*self.next_task)
+    }
+
+    /// Asks for a task to run.
+    pub fn request(&mut self, request: TaskRequest) {
+        self.requests.push(request);
     }
 
     pub fn write(&mut self, channel: ChannelId, message: Message) {
@@ -109,6 +159,11 @@ impl Network {
         });
         self.readers.push(Vec::new());
         ChannelId(self.channels.len() as u32 - 1)
+    }
+
+    /// Binds a value channel now, as a plain process argument is at call time.
+    pub(crate) fn bind(&mut self, channel: ChannelId, value: Value) {
+        self.channels[channel.0 as usize].write(Message::Value(value));
     }
 
     pub fn is_value(&self, channel: ChannelId) -> bool {
@@ -141,7 +196,7 @@ impl Network {
     /// Starts every node in the order it was created, then runs until nothing is waiting.
     pub fn ignite(&mut self, interpreter: &mut Interpreter) -> Result<(), Error> {
         for index in 0..self.nodes.len() {
-            self.step(index, interpreter, true)?;
+            self.step(index, interpreter, Step::Ignite)?;
             self.enqueue(index);
         }
         self.run(interpreter)
@@ -151,9 +206,32 @@ impl Network {
     pub fn run(&mut self, interpreter: &mut Interpreter) -> Result<(), Error> {
         while let Some(index) = self.waiting.pop_front() {
             self.queued[index] = false;
-            self.step(index, interpreter, false)?;
+            self.step(index, interpreter, Step::Run)?;
         }
         Ok(())
+    }
+
+    /// The tasks that nodes asked for since the last call.
+    pub fn take_requests(&mut self) -> Vec<TaskRequest> {
+        std::mem::take(&mut self.requests)
+    }
+
+    /// Whether tasks are in flight.
+    pub fn has_tasks(&self) -> bool {
+        !self.owners.is_empty()
+    }
+
+    /// Delivers the outcome of a task to the node that asked for it, then runs the network.
+    pub fn complete(
+        &mut self,
+        outcome: TaskOutcome,
+        interpreter: &mut Interpreter,
+    ) -> Result<(), Error> {
+        let Some(index) = self.owners.remove(&outcome.id) else {
+            return Ok(());
+        };
+        self.step(index, interpreter, Step::Complete(outcome))?;
+        self.run(interpreter)
     }
 
     /// The nodes that have not stopped, by name; after a run, they wait for input that will
@@ -170,7 +248,7 @@ impl Network {
         &mut self,
         index: usize,
         interpreter: &mut Interpreter,
-        ignite: bool,
+        step: Step,
     ) -> Result<(), Error> {
         let node = &mut self.nodes[index];
         if node.state == State::Stopped {
@@ -184,14 +262,21 @@ impl Network {
             channels: &mut self.channels,
             inputs: &mut node.inputs,
             written: Vec::new(),
+            requests: Vec::new(),
+            next_task: &mut self.next_task,
             interpreter,
         };
-        let result = if ignite {
-            behaviour.ignite(&mut context)
-        } else {
-            behaviour.run(&mut context)
+        let result = match step {
+            Step::Ignite => behaviour.ignite(&mut context),
+            Step::Run => behaviour.run(&mut context),
+            Step::Complete(outcome) => behaviour.complete(&mut context, outcome),
         };
         let written = std::mem::take(&mut context.written);
+        let requests = std::mem::take(&mut context.requests);
+        for request in &requests {
+            self.owners.insert(request.id, index);
+        }
+        self.requests.extend(requests);
         node.behaviour = Some(behaviour);
         node.state = result?;
         for channel in written {

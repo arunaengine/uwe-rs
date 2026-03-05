@@ -7,7 +7,7 @@ use std::rc::Rc;
 use super::{AtSpan, Error, Frame, Interpreter, unsupported};
 use crate::lowered::{Access, Code, Expression, ExpressionKind as Kind, Function, Part, Unary};
 use crate::regex::{Matcher, Pattern};
-use crate::value::{Closure, DefinitionRef, ListKind, Operator, Value};
+use crate::value::{Closure, DefinitionRef, ListKind, Operator, PathValue, Value};
 
 impl Interpreter<'_> {
     pub(super) fn expression(
@@ -24,6 +24,15 @@ impl Interpreter<'_> {
                 module: frame.module.clone(),
                 name: name.clone(),
             })),
+            Kind::Builtin(name) if &**name == "moduleDir" => {
+                let directory = frame.module.directory.borrow().clone();
+                match directory {
+                    Some(directory) => Value::Path(Rc::new(PathValue::parse(&directory, "/"))),
+                    None => {
+                        return Err(unsupported("`moduleDir` of a script without a file", span));
+                    }
+                }
+            }
             Kind::Builtin(name) => match self.globals.get(name) {
                 Some(value) => value.clone(),
                 None => return Err(unsupported(format!("the built-in `{name}`"), span)),

@@ -37,6 +37,8 @@ pub struct Module {
     /// What each include refers to: the included script and the name there. The module loader
     /// fills this in once the included scripts are loaded.
     pub links: std::cell::RefCell<HashMap<Rc<str>, Link>>,
+    /// The directory of the script file, which `moduleDir` gives; the loader sets it.
+    pub directory: std::cell::RefCell<Option<Rc<str>>>,
 }
 
 /// The script and name that an included name refers to.

@@ -44,8 +44,7 @@ fn render(stub: bool) -> (Vec<TaskDirective>, RenderedTask) {
         "workflow",
         Value::map([(Value::string("containerEngine"), Value::Null)]),
     );
-    let module_dir = PathValue::parse("/modules/gunzip", "/");
-    interpreter.set_global("moduleDir", Value::Path(Rc::new(module_dir)));
+    *module.directory.borrow_mut() = Some("/modules/gunzip".into());
     let meta = Value::map([(Value::string("id"), Value::string("S1"))]);
     let archive = Value::Path(Rc::new(PathValue::parse("/data/sample.fastq.gz", "/")));
     let input = Value::list(vec![meta, archive]);

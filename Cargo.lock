@@ -1251,6 +1251,7 @@ version = "0.1.0"
 dependencies = [
  "nextflow-evaluator",
  "nextflow-parser",
+ "tempfile",
 ]
 
 [[package]]

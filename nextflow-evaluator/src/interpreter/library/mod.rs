@@ -55,7 +55,10 @@ impl Interpreter<'_> {
             Value::Map(map) => self.map_method(map, name, arguments, span)?,
             Value::MapEntry(pair) => map::entry_method(pair, name, arguments),
             Value::Number(number) => self.number_method(number, name, arguments, span)?,
-            Value::Path(path) => path::path_method(path, name, arguments),
+            Value::Path(path) => match path::path_method(path, name, arguments) {
+                Some(value) => Some(value),
+                None => self.file_method(path, name, arguments, span)?,
+            },
             Value::Pattern(pattern) => regex::pattern_method(pattern, name, arguments),
             Value::Matcher(matcher) => regex::matcher_method(matcher, name, arguments),
             Value::MemoryUnit(_) | Value::Duration(_) => {

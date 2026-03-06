@@ -19,7 +19,7 @@ use nextflow_parser::Span;
 
 use crate::exception::Exception;
 use crate::lowered::{Module, Place, Process};
-use crate::value::{Closure, Value};
+use crate::value::{Closure, PathValue, Value};
 
 pub use task::{
     RenderedOutput, RenderedPart, RenderedTask, TaskDirective, TaskFrame, normalise_script,
@@ -35,6 +35,36 @@ pub trait Host {
         std::env::current_dir()
             .map(|dir| dir.to_string_lossy().into_owned())
             .unwrap_or_else(|_| "/".into())
+    }
+
+    /// The bytes of a file. The default reads local files.
+    fn read(&mut self, path: &PathValue) -> Result<Vec<u8>, Error> {
+        if path.prefix.is_some() {
+            return Err(unsupported(
+                format!("reading remote files like {}", path.uri()),
+                Span::default(),
+            ));
+        }
+        std::fs::read(&path.path).map_err(|error| file_error(path, &error))
+    }
+
+    /// Whether a file exists: `None` when it does not, else whether it is a directory and its
+    /// size. The default looks at local files.
+    fn metadata(&mut self, path: &PathValue) -> Result<Option<FileMetadata>, Error> {
+        if path.prefix.is_some() {
+            return Err(unsupported(
+                format!("reading remote files like {}", path.uri()),
+                Span::default(),
+            ));
+        }
+        match std::fs::metadata(&path.path) {
+            Ok(metadata) => Ok(Some(FileMetadata {
+                directory: metadata.is_dir(),
+                size: metadata.len(),
+            })),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(file_error(path, &error)),
+        }
     }
 
     /// A method of a namespace like `channel` or `log`; `None` when it has no such method.
@@ -70,6 +100,22 @@ pub trait Host {
         let message = format!("calling the process `{}`", process.name);
         Err(unsupported(message, Span::default()))
     }
+}
+
+/// What `metadata` tells about a file that exists.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FileMetadata {
+    pub directory: bool,
+    pub size: u64,
+}
+
+/// Java's `NoSuchFileException` for a missing file, else an `IOException`.
+fn file_error(path: &PathValue, error: &std::io::Error) -> Error {
+    let class = match error.kind() {
+        std::io::ErrorKind::NotFound => "NoSuchFileException",
+        _ => "IOException",
+    };
+    thrown(Exception::new(class, path.uri()), Span::default())
 }
 
 /// Why running code stopped before its end.

@@ -4,6 +4,10 @@
 
 use std::rc::Rc;
 
+use nextflow_parser::Span;
+
+use super::super::{Error, Interpreter};
+use crate::number::Number;
 use crate::value::{PathValue, Value};
 
 pub(super) fn path_method(path: &Rc<PathValue>, name: &str, arguments: &[Value]) -> Option<Value> {
@@ -38,5 +42,48 @@ pub(super) fn path_method(path: &Rc<PathValue>, name: &str, arguments: &[Value])
         ("resolve", [other]) => path_value(path.resolve(&text(other)?)),
         ("resolveSibling", [other]) => path_value(path.resolve_sibling(&text(other)?)),
         _ => None,
+    }
+}
+
+impl Interpreter<'_> {
+    /// Methods of paths that read the file system through the host.
+    pub(super) fn file_method(
+        &mut self,
+        path: &PathValue,
+        name: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Option<Value>, Error> {
+        if !arguments.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(match name {
+            "getText" | "readLines" => {
+                let bytes = self.host.read(path).map_err(|error| error.or_at(span))?;
+                let text = String::from_utf8_lossy(&bytes).into_owned();
+                if name == "getText" {
+                    Value::string(text)
+                } else {
+                    return self.string_method(&text, "readLines", &[], span);
+                }
+            }
+            "exists" | "isFile" | "isDirectory" | "size" | "isEmpty" => {
+                let metadata = self
+                    .host
+                    .metadata(path)
+                    .map_err(|error| error.or_at(span))?;
+                match name {
+                    "exists" => Value::Boolean(metadata.is_some()),
+                    "isFile" => Value::Boolean(metadata.is_some_and(|file| !file.directory)),
+                    "isDirectory" => Value::Boolean(metadata.is_some_and(|file| file.directory)),
+                    "size" => {
+                        Value::Number(Number::Long(metadata.map_or(0, |file| file.size as i64)))
+                    }
+                    // Nextflow's `isEmpty`: missing, or no bytes.
+                    _ => Value::Boolean(metadata.is_none_or(|file| file.size == 0)),
+                }
+            }
+            _ => return Ok(None),
+        }))
     }
 }

@@ -100,6 +100,12 @@ const CLASSES: &[(&str, &str, &str)] = &[
         "java.util.NoSuchElementException",
         "RuntimeException",
     ),
+    ("IOException", "java.io.IOException", "Exception"),
+    (
+        "NoSuchFileException",
+        "java.nio.file.NoSuchFileException",
+        "IOException",
+    ),
     (
         "UnsupportedOperationException",
         "java.lang.UnsupportedOperationException",

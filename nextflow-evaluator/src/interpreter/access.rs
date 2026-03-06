@@ -30,11 +30,13 @@ impl Interpreter<'_> {
             }
             Value::Map(map) => {
                 let key = Key(Value::string(name));
-                map.borrow()
-                    .entries
-                    .get(&key)
-                    .cloned()
-                    .unwrap_or(Value::Null)
+                let value = map.borrow().entries.get(&key).cloned();
+                match value {
+                    Some(Value::Closure(closure)) if map.borrow().kind == MapKind::Lazy => {
+                        self.call_closure_value(&closure, Vec::new(), span)?
+                    }
+                    value => value.unwrap_or(Value::Null),
+                }
             }
             Value::ChannelOut(out) => {
                 let found = out

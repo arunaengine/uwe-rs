@@ -12,7 +12,8 @@ use nextflow_parser::ast::{
 
 use super::Lowering;
 use super::names::{
-    CLASSES, ENTRY_CONSTANTS, OPERATORS, PACKAGES, SCRIPT_CONSTANTS, SCRIPT_FUNCTIONS,
+    CLASSES, CONFIG_CONSTANTS, ENTRY_CONSTANTS, OPERATORS, PACKAGES, SCRIPT_CONSTANTS,
+    SCRIPT_FUNCTIONS,
 };
 use crate::lowered::{
     Arguments, Code, DefinitionKind, Expression, ExpressionKind as Kind, Function, Parameter, Part,
@@ -158,6 +159,9 @@ impl Lowering<'_> {
         if let Some(place) = self.scopes.resolve(name) {
             return Kind::Variable(place);
         }
+        if self.config {
+            return self.config_variable(name, span);
+        }
         if let Some(DefinitionKind::Process | DefinitionKind::Workflow) = self.definitions.get(name)
         {
             return Kind::Definition(name.into());
@@ -179,6 +183,28 @@ impl Lowering<'_> {
         } else {
             self.error(format!("`{name}` is not defined"), span);
         }
+        Kind::Literal(Value::Null)
+    }
+
+    /// A name in a config value that is not a local variable of a closure in it.
+    fn config_variable(&mut self, name: &str, span: Span) -> Kind {
+        let in_closure = self.scopes.in_closure();
+        if CONFIG_CONSTANTS.contains(&name) || (in_closure && SCRIPT_CONSTANTS.contains(&name)) {
+            return Kind::Builtin(name.into());
+        }
+        if in_closure && self.dynamic_names {
+            return Kind::Dynamic(name.into());
+        }
+        let environment = name
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+            && name.starts_with(|c: char| c.is_ascii_uppercase() || c == '_');
+        let hint = if environment {
+            " (hint: use `env('...')` to access environment variable)"
+        } else {
+            ""
+        };
+        self.error(format!("`{name}` is not defined{hint}"), span);
         Kind::Literal(Value::Null)
     }
 

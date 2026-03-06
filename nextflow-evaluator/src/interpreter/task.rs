@@ -20,6 +20,8 @@ pub struct TaskFrame {
     frame: Frame,
     /// Each input file and the name it is staged under.
     pub staged: Vec<(PathValue, String)>,
+    /// The inputs and section variables by name, for config closures.
+    variables: Vec<(Rc<str>, Rc<RefCell<Value>>)>,
 }
 
 /// A directive of one task, with its evaluated arguments.
@@ -71,15 +73,22 @@ impl Interpreter<'_> {
         process: &Process,
         inputs: &[Value],
     ) -> Result<TaskFrame, Error> {
+        let slots: Vec<_> = (0..process.slot_count)
+            .map(|_| Rc::new(RefCell::new(Value::Null)))
+            .collect();
+        let variables = process
+            .variables
+            .iter()
+            .map(|(name, slot)| (name.clone(), slots[*slot].clone()))
+            .collect();
         let mut task = TaskFrame {
             frame: Frame {
                 module: module.clone(),
-                slots: (0..process.slot_count)
-                    .map(|_| Rc::new(RefCell::new(Value::Null)))
-                    .collect(),
+                slots,
                 captured: Vec::new(),
             },
             staged: Vec::new(),
+            variables,
         };
         if inputs.len() != process.inputs.len() {
             let message = format!(
@@ -174,18 +183,73 @@ impl Interpreter<'_> {
         process: &Process,
         task_object: &Value,
     ) -> Result<Vec<TaskDirective>, Error> {
+        let variables = task.variables.clone();
+        self.with_task(variables, task_object, |this| {
+            let mut directives = Vec::new();
+            for directive in &process.directives {
+                let arguments = this.arguments(&mut task.frame, &directive.arguments)?;
+                directives.push(TaskDirective {
+                    name: directive.name.clone(),
+                    arguments,
+                });
+            }
+            Ok(directives)
+        })
+    }
+
+    /// The value of a config setting for a task: a closure is called with the task's
+    /// variables in scope, any other value stays as it is.
+    pub fn resolve_setting(
+        &mut self,
+        task: &TaskFrame,
+        value: &Value,
+        task_object: &Value,
+    ) -> Result<Value, Error> {
+        match value {
+            Value::Closure(closure) => {
+                self.with_task(task.variables.clone(), task_object, |this| {
+                    this.call_closure_value(closure, Vec::new(), Span::default())
+                })
+            }
+            other => Ok(other.clone()),
+        }
+    }
+
+    /// Runs `f` with `task` and the task's variables in scope.
+    fn with_task<T>(
+        &mut self,
+        variables: Vec<(Rc<str>, Rc<RefCell<Value>>)>,
+        task_object: &Value,
+        f: impl FnOnce(&mut Self) -> Result<T, Error>,
+    ) -> Result<T, Error> {
         let previous = self.globals.insert("task".into(), task_object.clone());
-        let mut directives = Vec::new();
-        let result = process.directives.iter().try_for_each(|directive| {
-            let arguments = self.arguments(&mut task.frame, &directive.arguments)?;
-            directives.push(TaskDirective {
-                name: directive.name.clone(),
-                arguments,
-            });
-            Ok(())
-        });
-        self.restore_task(previous);
-        result.map(|()| directives)
+        let previous_variables = std::mem::replace(&mut self.task_variables, variables);
+        let result = f(self);
+        self.task_variables = previous_variables;
+        match previous {
+            Some(value) => self.globals.insert("task".into(), value),
+            None => self.globals.remove("task"),
+        };
+        result
+    }
+
+    /// A name of a config closure, looked up as Nextflow's task context does: the task's
+    /// variables, the script's globals like `params`, then the launch environment.
+    pub(super) fn dynamic(&mut self, name: &str, span: Span) -> Result<Value, Error> {
+        if let Some((_, cell)) = self.task_variables.iter().find(|(n, _)| **n == *name) {
+            return Ok(cell.borrow().clone());
+        }
+        if let Some(value) = self.globals.get(name) {
+            return Ok(value.clone());
+        }
+        if let Some(value) = self.host.environment(name) {
+            return Ok(Value::string(value));
+        }
+        let message = format!("No such variable: {name}");
+        Err(thrown(
+            Exception::new("MissingPropertyException", message),
+            span,
+        ))
     }
 
     /// Evaluates `when:`, the script (or the stub) and the output patterns of a task.
@@ -196,10 +260,10 @@ impl Interpreter<'_> {
         task_object: &Value,
         stub: bool,
     ) -> Result<RenderedTask, Error> {
-        let previous = self.globals.insert("task".into(), task_object.clone());
-        let result = self.render_sections(task, process, task_object, stub);
-        self.restore_task(previous);
-        result
+        let variables = task.variables.clone();
+        self.with_task(variables, task_object, |this| {
+            this.render_sections(task, process, task_object, stub)
+        })
     }
 
     fn render_sections(
@@ -279,13 +343,6 @@ impl Interpreter<'_> {
             script: normalise_script(&script, shell.as_ref()),
             outputs,
         })
-    }
-
-    fn restore_task(&mut self, previous: Option<Value>) {
-        match previous {
-            Some(value) => self.globals.insert("task".into(), value),
-            None => self.globals.remove("task"),
-        };
     }
 }
 

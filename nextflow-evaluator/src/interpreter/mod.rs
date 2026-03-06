@@ -18,7 +18,7 @@ use std::rc::Rc;
 use nextflow_parser::Span;
 
 use crate::exception::Exception;
-use crate::lowered::{Module, Place, Process};
+use crate::lowered::{Code, Module, Place, Process};
 use crate::value::{Closure, PathValue, Value};
 
 pub use task::{
@@ -65,6 +65,11 @@ pub trait Host {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(error) => Err(file_error(path, &error)),
         }
+    }
+
+    /// A variable of the launch environment, as `env('HOME')` reads it.
+    fn environment(&self, name: &str) -> Option<String> {
+        std::env::var(name).ok()
     }
 
     /// A method of a namespace like `channel` or `log`; `None` when it has no such method.
@@ -166,6 +171,8 @@ pub struct Interpreter<'h> {
     outputs: HashMap<(usize, Rc<str>), Value>,
     /// The names of the named workflows being called, outermost first.
     workflow_path: Vec<Rc<str>>,
+    /// The variables of the task being evaluated, by name, which config closures can read.
+    task_variables: Vec<(Rc<str>, Rc<RefCell<Value>>)>,
 }
 
 impl<'h> Interpreter<'h> {
@@ -175,6 +182,7 @@ impl<'h> Interpreter<'h> {
             globals: HashMap::new(),
             outputs: HashMap::new(),
             workflow_path: Vec::new(),
+            task_variables: Vec::new(),
         }
     }
 
@@ -196,6 +204,12 @@ impl<'h> Interpreter<'h> {
         arguments: Vec<Value>,
     ) -> Result<Value, Error> {
         self.call_script_function(module, name, arguments, Span::default())
+    }
+
+    /// Evaluates code without parameters, like a config value or a `params.x = value` of a
+    /// script, in a new frame of `module`.
+    pub fn evaluate(&mut self, code: &Rc<Code>, module: &Rc<Module>) -> Result<Value, Error> {
+        self.run(code, module, Vec::new(), Vec::new())
     }
 
     /// Calls a closure with Groovy's argument adaptation.

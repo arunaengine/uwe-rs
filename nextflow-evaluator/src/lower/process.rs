@@ -67,6 +67,7 @@ impl Lowering<'_> {
             when,
             body,
             stub,
+            variables: layout.names,
             span: process.span,
         }
     }

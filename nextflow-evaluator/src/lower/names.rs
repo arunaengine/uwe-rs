@@ -20,6 +20,10 @@ pub(super) const SCRIPT_CONSTANTS: &[&str] = &[
 /// assigning them declares a variable, as nf-core modules do with `args = task.ext.args`.
 pub(super) const ENTRY_CONSTANTS: &[&str] = &["args", "params"];
 
+/// Constants of config files (nf-lang `ConfigDsl`).
+pub(super) const CONFIG_CONSTANTS: &[&str] =
+    &["baseDir", "launchDir", "params", "projectDir", "secrets"];
+
 /// Packages whose classes scripts may name in full, like `java.util.UUID`.
 pub(super) const PACKAGES: &[&str] = &["groovy", "java", "javax", "nextflow", "org"];
 

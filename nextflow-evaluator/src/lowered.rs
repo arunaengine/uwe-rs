@@ -91,6 +91,9 @@ pub struct Process {
     pub when: Option<Expression>,
     pub body: Option<Body>,
     pub stub: Option<Vec<Statement>>,
+    /// The inputs and the variables the sections assign without `def`, by name, for the
+    /// names that config closures read when a task runs.
+    pub variables: Vec<(Rc<str>, Slot)>,
     pub span: Span,
 }
 
@@ -267,6 +270,10 @@ pub enum ExpressionKind {
     Builtin(Rc<str>),
     /// A process or workflow used as a value, as in `FASTQC.out.html`.
     Definition(Rc<str>),
+    /// A name that only a running task can resolve, as in a config closure like
+    /// `ext.prefix = { meta.id }`: a task variable, a global like `params`, or an environment
+    /// variable.
+    Dynamic(Rc<str>),
     /// A channel operator used as a value, as in `ch | view`.
     Operator(Rc<str>),
     /// A GString. Nextflow makes it a `String` unless it is nested in another GString.

@@ -67,7 +67,7 @@ fn gunzip_lowers() {
 fn inputs_and_outputs() {
     let source = process(
         "input:\n    path (indexes), stageAs: 'dir*'\n    each mode\n    path 'x.txt'\n    stdin\n\
-         output:\n    path 'out.txt', optional: true, emit: out\n    stdout\n    env(FOO)\n\
+         output:\n    path 'out.txt', optional: true, emit: out\n    stdout\n    env('FOO'), emit: foo\n\
          script:\n    \"${indexes} ${mode}\"",
     );
     let module = lower(&source).expect("lowers");
@@ -104,6 +104,9 @@ fn errors() {
         errors("    cpus y\n    script:\n    'x'"),
         ["2:10: `y` is not defined"]
     );
+    // An `env` name must be a string; Nextflow resolves a bare name as a variable.
+    let env = "    output:\n    env LINES\n    script:\n    'x'";
+    assert_eq!(errors(env), ["3:9: `LINES` is not defined"]);
     let closure = "    script:\n    [1].each { v -> total = v }\n    'x'";
     assert_eq!(
         errors(closure),

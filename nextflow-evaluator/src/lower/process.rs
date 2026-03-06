@@ -148,7 +148,7 @@ impl Lowering<'_> {
                     }),
                 }
             }
-            ("env", [value]) => name_or_text(value).map(|name| Input::Env(name.into())),
+            ("env", [value]) => self.env_name(value).map(Input::Env),
             ("stdin", []) => Some(Input::Stdin),
             ("tuple", parts) => {
                 let mut inputs = Vec::new();
@@ -188,6 +188,23 @@ impl Lowering<'_> {
                     format!("Unrecognized process input qualifier `{name}`"),
                     span,
                 );
+                None
+            }
+        }
+    }
+
+    /// The name of an `env` input or output, which must be a string: Nextflow resolves a bare
+    /// name as a variable.
+    fn env_name(&mut self, value: &ast::Expression) -> Option<Rc<str>> {
+        let value = unparenthesized(value);
+        match &value.kind {
+            Syntax::Literal(ast::Literal::String(name)) => Some(name.as_str().into()),
+            Syntax::Variable(name) => {
+                self.error(format!("`{name}` is not defined"), value.span);
+                None
+            }
+            _ => {
+                self.error("Invalid environment variable name", value.span);
                 None
             }
         }
@@ -325,13 +342,7 @@ impl Lowering<'_> {
                 pattern: self.expression(pattern),
                 options: self.arguments(&named),
             },
-            ("env", [value]) => match name_or_text(value) {
-                Some(name) => OutputPart::Env(name.into()),
-                None => {
-                    self.error("Invalid process output", span);
-                    return None;
-                }
-            },
+            ("env", [value]) => OutputPart::Env(self.env_name(value)?),
             ("eval", [command]) => OutputPart::Eval(self.expression(command)),
             ("stdout", []) => OutputPart::Stdout,
             _ => {

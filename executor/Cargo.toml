@@ -1,0 +1,19 @@
+# Manifest of executor, which runs tasks: the wrapper, the result manifest and the executors.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "executor"
+description = "The task wrapper, the result manifest and the executors that run tasks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+task-model.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

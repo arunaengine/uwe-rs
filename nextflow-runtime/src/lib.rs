@@ -8,6 +8,7 @@ mod loader;
 mod network;
 mod operator;
 mod process;
+pub mod task;
 
 use std::rc::Rc;
 

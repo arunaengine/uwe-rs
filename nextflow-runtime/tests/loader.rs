@@ -1,0 +1,101 @@
+//! Loads scripts with includes from files and checks the errors of bad includes.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::path::Path;
+
+use nextflow_evaluator::interpreter::Host;
+use nextflow_runtime::Loader;
+
+#[derive(Default)]
+struct Output(String);
+
+impl Host for Output {
+    fn print(&mut self, text: &str) {
+        self.0.push_str(text);
+    }
+}
+
+fn write(root: &Path, name: &str, text: &str) {
+    let path = root.join(name);
+    std::fs::create_dir_all(path.parent().expect("a parent")).expect("creates directories");
+    std::fs::write(path, text).expect("writes the script");
+}
+
+#[test]
+fn includes_link_to_their_scripts() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    write(root.path(), "lib.nf", "def twice(x) { x * 2 }\n");
+    write(
+        root.path(),
+        "subworkflows/show/main.nf",
+        "include { twice as times2 } from '../../lib'\n\
+         workflow SHOW {\n    take:\n    ch\n    main:\n    ch.map { v -> times2(v) }.view()\n}\n",
+    );
+    write(
+        root.path(),
+        "main.nf",
+        "include { SHOW } from './subworkflows/show'\nworkflow {\n    SHOW(channel.of(1, 2))\n    println(moduleDir.name)\n}\n",
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let mut output = Output::default();
+    nextflow_runtime::run(&module, &mut output).expect("runs");
+    let directory = root
+        .path()
+        .file_name()
+        .expect("a name")
+        .to_string_lossy()
+        .into_owned();
+    assert_eq!(output.0, format!("{directory}\n2\n4\n"));
+}
+
+#[test]
+fn bad_includes() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    write(
+        root.path(),
+        "a.nf",
+        "include { B } from './b'\nworkflow A {\n    main:\n    B()\n}\n",
+    );
+    write(
+        root.path(),
+        "b.nf",
+        "include { A } from './a'\nworkflow B {\n    main:\n    A()\n}\n",
+    );
+    write(
+        root.path(),
+        "missing.nf",
+        "include { X } from './nowhere'\n",
+    );
+    write(root.path(), "c.nf", "def c() { 1 }\n");
+    write(root.path(), "undefined.nf", "include { X } from './c'\n");
+    write(root.path(), "broken.nf", "def f( {\n");
+    let error = |name: &str| {
+        let path = root.path().join(name);
+        let error = Loader::default().load(&path).expect_err("fails");
+        error
+            .messages
+            .join("\n")
+            .replace(&root.path().display().to_string(), "<root>")
+    };
+    assert!(
+        error("a.nf").contains("<root>/a.nf: the script includes itself"),
+        "{}",
+        error("a.nf")
+    );
+    assert_eq!(
+        error("missing.nf"),
+        "<root>/missing.nf:1:11: Invalid include source: '<root>/nowhere.nf'"
+    );
+    assert_eq!(
+        error("undefined.nf"),
+        "<root>/undefined.nf:1:11: Included name 'X' is not defined in module '<root>/c.nf'"
+    );
+    assert!(
+        error("broken.nf").starts_with("<root>/broken.nf:1:"),
+        "{}",
+        error("broken.nf")
+    );
+}

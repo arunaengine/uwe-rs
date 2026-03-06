@@ -40,6 +40,8 @@ pub struct S3Options {
 #[derive(Clone, Debug)]
 pub struct Store {
     operator: Operator,
+    /// The directory of a local store.
+    root: Option<std::path::PathBuf>,
 }
 
 impl Store {
@@ -48,7 +50,14 @@ impl Store {
         let root = root.to_str().ok_or_else(|| {
             StoreError::Location(format!("store path `{}` is not UTF-8", root.display()))
         })?;
-        Self::with(Operator::new(Fs::default().root(root))?)
+        let mut store = Self::with(Operator::new(Fs::default().root(root))?)?;
+        store.root = Some(root.into());
+        Ok(store)
+    }
+
+    /// Where an object of a local store is on disk; `None` for other stores.
+    pub fn local_path(&self, location: &str) -> Option<std::path::PathBuf> {
+        self.root.as_ref().map(|root| root.join(location))
     }
 
     pub fn s3(options: &S3Options) -> Result<Self, StoreError> {
@@ -75,6 +84,7 @@ impl Store {
     fn with(operator: Operator) -> Result<Self, StoreError> {
         Ok(Self {
             operator: operator.layer(RetryLayer::new()),
+            root: None,
         })
     }
 

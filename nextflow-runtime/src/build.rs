@@ -6,14 +6,18 @@ use std::rc::Rc;
 
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, Host};
-use nextflow_evaluator::value::{ChannelId, ListKind, Value};
+use nextflow_evaluator::lowered::{Input, Module, Process};
+use nextflow_evaluator::value::{ChannelId, ChannelOut, ListKind, Value};
 
 use crate::network::Network;
 use crate::operator::{Each, Factory, Gather, Gathering, Mix, Single};
+use crate::process::{ProcessNode, singleton};
 
 pub(crate) struct Builder<'a> {
     pub network: &'a mut Network,
     pub base: &'a mut dyn Host,
+    /// Whether tasks run their `stub:` section.
+    pub stub: bool,
 }
 
 impl Host for Builder<'_> {
@@ -63,6 +67,84 @@ impl Host for Builder<'_> {
         };
         self.network.add(name, &[], Box::new(factory));
         Ok(Some(Value::Channel(output)))
+    }
+
+    /// A process call: each input reads its channel; a plain value becomes a bound value
+    /// channel. A process without queue inputs runs one task and emits value channels.
+    fn call_process(
+        &mut self,
+        module: &Rc<Module>,
+        process: &Rc<Process>,
+        name: &str,
+        arguments: Vec<Value>,
+    ) -> Result<Value, Error> {
+        let arguments: Vec<Value> = arguments
+            .into_iter()
+            .flat_map(|argument| match argument {
+                Value::ChannelOut(out) => out.values.clone(),
+                other => vec![other],
+            })
+            .collect();
+        if arguments.len() != process.inputs.len() {
+            let message = format!(
+                "Process `{name}` declares {} input channels but {} were given",
+                process.inputs.len(),
+                arguments.len()
+            );
+            return Err(thrown(message));
+        }
+        if process
+            .inputs
+            .iter()
+            .any(|input| matches!(input, Input::Each(_)))
+        {
+            return Err(Error::Unsupported {
+                message: "`each` process inputs".into(),
+                span: process.span,
+            });
+        }
+        let mut inputs = Vec::new();
+        let mut queue_inputs = false;
+        for argument in arguments {
+            let channel = match argument {
+                Value::Channel(channel) => channel,
+                Value::Null => {
+                    return Err(thrown("A process input channel evaluates to null".into()));
+                }
+                plain => {
+                    let channel = self.network.channel(true);
+                    self.network.bind(channel, plain);
+                    channel
+                }
+            };
+            queue_inputs |= !self.network.is_value(channel);
+            inputs.push(channel);
+        }
+        let singleton = singleton(process, queue_inputs);
+        let outputs: Vec<ChannelId> = process
+            .outputs
+            .iter()
+            .map(|_| self.network.channel(singleton))
+            .collect();
+        let node = ProcessNode {
+            module: module.clone(),
+            process: process.clone(),
+            name: name.into(),
+            outputs: outputs.clone(),
+            singleton,
+            stub: self.stub,
+            rounds: 0,
+            poisoned: false,
+            pending: Default::default(),
+        };
+        self.network.add(name, &inputs, Box::new(node));
+        let values = outputs.into_iter().map(Value::Channel).collect();
+        let names = process
+            .outputs
+            .iter()
+            .map(|output| output.emit.clone())
+            .collect();
+        Ok(Value::ChannelOut(Rc::new(ChannelOut { values, names })))
     }
 
     fn operator(

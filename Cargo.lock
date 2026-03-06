@@ -1253,6 +1253,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nextflow-config"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "nextflow-evaluator",
+ "nextflow-parser",
+ "tempfile",
+]
+
+[[package]]
 name = "nextflow-evaluator"
 version = "0.1.0"
 dependencies = [

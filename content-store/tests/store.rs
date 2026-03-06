@@ -60,6 +60,12 @@ async fn local_contract() {
     check_contract(&store).await;
     let digest = Digest::sha256(b"reads\n");
     assert!(root.path().join(layout::content(&digest)).is_file());
+    let path = store.local_path(&layout::content(&digest));
+    assert_eq!(path, Some(root.path().join(layout::content(&digest))));
+    assert_eq!(
+        Store::memory().expect("memory store").local_path("cas"),
+        None
+    );
 }
 
 #[tokio::test]

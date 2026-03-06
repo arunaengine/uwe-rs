@@ -1,0 +1,25 @@
+# Manifest of task-runner, which runs task requests with the cache, the store and an executor.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "task-runner"
+description = "Runs task requests: cache lookups, staging from the store, executors and results"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+bytes.workspace = true
+content-store.workspace = true
+executor.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+task-model.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

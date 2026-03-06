@@ -1,0 +1,23 @@
+# Manifest of iunctus, the command that runs workflows.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "iunctus"
+description = "Runs Nextflow workflows in containers with a shared, content-addressed cache"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+content-store.workspace = true
+executor.workspace = true
+nextflow-evaluator.workspace = true
+nextflow-runtime.workspace = true
+task-model.workspace = true
+task-runner.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

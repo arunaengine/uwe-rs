@@ -82,7 +82,7 @@ impl Interpreter<'_> {
     }
 
     /// Runs code in a new frame, binding the arguments and evaluating missing defaults.
-    fn run(
+    pub(super) fn run(
         &mut self,
         code: &Rc<Code>,
         module: &Rc<Module>,
@@ -136,6 +136,10 @@ impl Interpreter<'_> {
                 } else {
                     path
                 });
+            }
+            ("env", [name]) => {
+                let value = self.host.environment(&name.to_string());
+                return Ok(value.map_or(Value::Null, Value::string));
             }
             ("error", []) => {
                 return Err(thrown(Exception::new("AbortOperationException", ""), span));

@@ -42,6 +42,26 @@ pub fn lower_module(script: &ast::Script, source: &str) -> Result<Module, Vec<Di
     lower_script(script, source, &mut NoImports)
 }
 
+/// Lowers the value of one config setting. Outside closures, config code may only use
+/// `params`, the directory constants, `secrets` and `env()`. Closures may also use the names of
+/// scripts. In the `process` scope, a closure may use any other name too, like the task input
+/// `meta`, which is looked up when the task runs.
+pub fn lower_config_value(
+    value: &ast::Expression,
+    source: &str,
+    process_scope: bool,
+) -> Result<Code, Vec<Diagnostic>> {
+    let mut lowering = Lowering::new(source);
+    lowering.config = true;
+    lowering.dynamic_names = process_scope;
+    let code = lowering.expression_code("config", value, value.span);
+    if lowering.errors.is_empty() {
+        Ok(code)
+    } else {
+        Err(lowering.errors)
+    }
+}
+
 /// Lowers a script: functions, processes, workflows, includes and `params.x = value`.
 /// A script of statements only is the entry workflow; the parser rejects other mixes.
 pub fn lower_script(
@@ -122,6 +142,10 @@ pub(crate) struct Lowering<'a> {
     in_process: bool,
     /// Whether assigning an undeclared name declares it, as in process and workflow sections.
     implicit_declarations: bool,
+    /// Whether the code is a config value, which knows fewer names than a script.
+    config: bool,
+    /// Whether closures resolve unknown names when a task runs, as in the config `process` scope.
+    dynamic_names: bool,
 }
 
 impl<'a> Lowering<'a> {
@@ -137,6 +161,8 @@ impl<'a> Lowering<'a> {
             escape_paths: false,
             in_process: false,
             implicit_declarations: false,
+            config: false,
+            dynamic_names: false,
         }
     }
 

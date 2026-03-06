@@ -147,6 +147,9 @@ pub enum MapKind {
     Record,
     /// `java.util.TreeMap`, from `sort()`; keeps its keys sorted.
     TreeMap,
+    /// `nextflow.processor.LazyMap`, the `task.ext` map: reading a closure value calls it
+    /// with the task's variables in scope.
+    Lazy,
 }
 
 #[derive(Clone, Debug)]
@@ -221,6 +224,7 @@ impl Value {
                 MapKind::LinkedHashMap => "LinkedHashMap",
                 MapKind::Record => "RecordMap",
                 MapKind::TreeMap => "TreeMap",
+                MapKind::Lazy => "LazyMap",
             },
             Value::Set(set) => match set.borrow().kind {
                 SetKind::LinkedHashSet => "LinkedHashSet",
@@ -271,6 +275,7 @@ impl Value {
                 MapKind::LinkedHashMap => "java.util.LinkedHashMap",
                 MapKind::Record => "nextflow.util.RecordMap",
                 MapKind::TreeMap => "java.util.TreeMap",
+                MapKind::Lazy => "nextflow.processor.LazyMap",
             },
             Value::Set(set) => match set.borrow().kind {
                 SetKind::LinkedHashSet => "java.util.LinkedHashSet",

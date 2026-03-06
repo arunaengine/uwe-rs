@@ -28,6 +28,8 @@ pub(super) struct Scopes {
 pub(super) struct FrameLayout {
     pub slot_count: usize,
     pub captures: Vec<Place>,
+    /// The names declared in the outermost block, with their slots.
+    pub names: Vec<(Rc<str>, Slot)>,
 }
 
 impl Scopes {
@@ -42,9 +44,14 @@ impl Scopes {
 
     pub fn pop_frame(&mut self) -> FrameLayout {
         let frame = self.frames.pop().expect("a frame is open");
+        let names = frame.blocks[0]
+            .iter()
+            .map(|(name, slot, _)| (name.clone(), *slot))
+            .collect();
         FrameLayout {
             slot_count: frame.slot_count,
             captures: frame.captures,
+            names,
         }
     }
 

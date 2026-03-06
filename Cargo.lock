@@ -2363,6 +2363,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "task-runner"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "content-store",
+ "executor",
+ "serde",
+ "serde_json",
+ "task-model",
+ "tempfile",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

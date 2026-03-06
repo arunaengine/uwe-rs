@@ -114,6 +114,58 @@ impl LocalContainer {
     }
 }
 
+impl LocalContainer {
+    /// The image pinned to its digest, like `debian@sha256:...`, pulling it first when it is
+    /// not local. `None` for an image without a registry digest, such as one built locally.
+    pub fn pin(&self, reference: &str) -> Result<Option<String>, ExecutorError> {
+        if reference.contains("@sha256:") {
+            return Ok(Some(reference.to_owned()));
+        }
+        let inspect = |engine: &str| {
+            Command::new(engine)
+                .args([
+                    "image",
+                    "inspect",
+                    "--format",
+                    "{{json .RepoDigests}}",
+                    reference,
+                ])
+                .output()
+        };
+        let engine_error = |message: String| ExecutorError::Engine {
+            engine: self.engine.clone(),
+            message,
+        };
+        let mut output = inspect(&self.engine).map_err(|error| engine_error(error.to_string()))?;
+        if !output.status.success() {
+            let pull = Command::new(&self.engine)
+                .args(["pull", "--quiet", reference])
+                .output()
+                .map_err(|error| engine_error(error.to_string()))?;
+            if !pull.status.success() {
+                return Err(engine_error(
+                    String::from_utf8_lossy(&pull.stderr).trim().to_owned(),
+                ));
+            }
+            output = inspect(&self.engine).map_err(|error| engine_error(error.to_string()))?;
+        }
+        // The digests look like `["debian@sha256:..."]`; the repository of the first is kept.
+        let digests = String::from_utf8_lossy(&output.stdout);
+        let first = digests
+            .split('"')
+            .nth(1)
+            .filter(|digest| digest.contains("@sha256:"));
+        Ok(first.map(|digest| {
+            let hash = digest.split_once('@').map_or(digest, |(_, hash)| hash);
+            let name = reference
+                .rsplit_once(':')
+                .filter(|(_, tag)| !tag.contains('/'));
+            let name = name.map_or(reference, |(name, _)| name);
+            format!("{name}@{hash}")
+        }))
+    }
+}
+
 fn text(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }

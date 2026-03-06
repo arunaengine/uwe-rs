@@ -119,3 +119,21 @@ fn reports_failures() {
         "{error}"
     );
 }
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn pins_images_to_digests() {
+    let executor = LocalContainer {
+        engine: "docker".into(),
+        scratch: std::env::temp_dir(),
+    };
+    let pinned = executor
+        .pin("debian:stable-slim")
+        .expect("inspects")
+        .expect("a digest");
+    assert!(pinned.starts_with("debian@sha256:"), "{pinned}");
+    assert_eq!(
+        executor.pin(&pinned).expect("keeps it"),
+        Some(pinned.clone())
+    );
+}

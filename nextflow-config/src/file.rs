@@ -2,15 +2,17 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, Host, Interpreter};
 use nextflow_evaluator::lower::lower_config_value;
 use nextflow_evaluator::lowered::Module;
+use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{PathValue, Value};
-use nextflow_parser::ast::{ConfigStatement, Expression};
+use nextflow_parser::ast::{ConfigStatement, Expression, Literal};
 use nextflow_parser::{LineIndex, Span, parse_config};
 
 use crate::tree;
@@ -19,6 +21,8 @@ use crate::{ConfigError, Options};
 pub(crate) struct Evaluator<'a> {
     options: &'a Options,
     host: &'a mut dyn Host,
+    /// The names of all profiles defined in the files and includes that ran.
+    pub declared_profiles: BTreeSet<String>,
     sources: HashMap<PathBuf, Rc<str>>,
 }
 
@@ -36,6 +40,7 @@ impl<'a> Evaluator<'a> {
         Self {
             options,
             host,
+            declared_profiles: BTreeSet::new(),
             sources: HashMap::new(),
         }
     }
@@ -67,7 +72,7 @@ impl<'a> Evaluator<'a> {
             tree,
             module: Rc::new(Module::default()),
         };
-        self.statements(&mut file, &parsed.tree.statements, &[])?;
+        self.statements(&mut file, &parsed.tree.statements, &[], false)?;
         Ok(file.tree)
     }
 
@@ -87,12 +92,13 @@ impl<'a> Evaluator<'a> {
         Ok(source)
     }
 
-    /// Runs statements below the scope `prefix`.
+    /// Runs statements below the scope `prefix`. A profile body runs at the top level.
     fn statements(
         &mut self,
         file: &mut File,
         statements: &[ConfigStatement],
         prefix: &[Rc<str>],
+        in_profile: bool,
     ) -> Result<(), ConfigError> {
         for statement in statements {
             match statement {
@@ -102,36 +108,53 @@ impl<'a> Evaluator<'a> {
                             "Config includes are only allowed at the top-level or in a profile";
                         return Err(invalid(file, message, *span));
                     }
-                    let error = Error::Unsupported {
-                        message: "`includeConfig`".into(),
-                        span: path.span,
-                    };
-                    return Err(ConfigError::Failed {
-                        file: file.path.clone(),
-                        error,
-                    });
+                    self.include(file, path)?;
                 }
                 ConfigStatement::Assign { path, value, span } => {
                     let mut full: Vec<Rc<str>> = prefix.to_vec();
                     full.extend(path.iter().map(|name| Rc::from(name.text.as_str())));
-                    let value = self.value(file, value, &full)?;
+                    let value = match self.cli_param(&full) {
+                        Some(cli) => {
+                            let config = self.value(file, value, &full)?;
+                            convert(&cli, &config)
+                        }
+                        None => self.value(file, value, &full)?,
+                    };
                     tree::assign(&file.tree, &full, value)
                         .map_err(|message| invalid(file, &message, *span))?;
+                }
+                ConfigStatement::Block { name, body, .. }
+                    if name.text == "profiles" && prefix.is_empty() =>
+                {
+                    self.profiles(file, body)?;
                 }
                 ConfigStatement::Block { name, body, .. } => {
                     let mut inner = prefix.to_vec();
                     inner.push(name.text.as_str().into());
-                    self.statements(file, body, &inner)?;
+                    self.statements(file, body, &inner, false)?;
                 }
-                ConfigStatement::Apply { span, .. } => {
-                    let error = Error::Unsupported {
-                        message: "`plugins` blocks".into(),
-                        span: *span,
-                    };
-                    return Err(ConfigError::Failed {
-                        file: file.path.clone(),
-                        error,
-                    });
+                ConfigStatement::Apply { name, calls, span } => {
+                    if name.text != "plugins" {
+                        let message = "Config settings must be assigned with an equals sign (`=`)";
+                        return Err(invalid(file, message, *span));
+                    }
+                    // Only a `plugins` block at the top level of a file counts.
+                    if prefix.is_empty() && !in_profile {
+                        let mut ids = Vec::new();
+                        for call in calls {
+                            for argument in &call.arguments {
+                                if let nextflow_parser::ast::ExpressionKind::Literal(
+                                    Literal::String(id),
+                                ) = &argument.value.kind
+                                {
+                                    ids.push(Value::string(id.as_str()));
+                                }
+                            }
+                        }
+                        let set = Value::set(ids);
+                        tree::assign(&file.tree, &["plugins".into()], set)
+                            .map_err(|message| invalid(file, &message, *span))?;
+                    }
                 }
                 ConfigStatement::Selector {
                     kind,
@@ -148,11 +171,78 @@ impl<'a> Evaluator<'a> {
                         return Err(invalid(file, &message, kind.span));
                     }
                     let scope: Rc<str> = format!("{}:{}", kind.text, target.text).into();
-                    self.statements(file, body, &["process".into(), scope])?;
+                    self.statements(file, body, &["process".into(), scope], false)?;
                 }
             }
         }
         Ok(())
+    }
+
+    /// A `profiles` block: the selected profiles it defines run at its end, in the order of
+    /// `-profile`. A profile defined twice in one block keeps its last body.
+    fn profiles(&mut self, file: &mut File, body: &[ConfigStatement]) -> Result<(), ConfigError> {
+        let mut defined: HashMap<&str, &[ConfigStatement]> = HashMap::new();
+        for statement in body {
+            match statement {
+                ConfigStatement::Block { name, body, .. } => {
+                    defined.insert(&name.text, body);
+                    self.declared_profiles.insert(name.text.clone());
+                }
+                ConfigStatement::Assign { span, .. }
+                | ConfigStatement::Include { span, .. }
+                | ConfigStatement::Apply { span, .. }
+                | ConfigStatement::Selector { span, .. } => {
+                    let message = "Only profile blocks are allowed in the `profiles` scope";
+                    return Err(invalid(file, message, *span));
+                }
+            }
+        }
+        let standard = vec!["standard".to_owned()];
+        let selected = self.options.profiles.clone().unwrap_or(standard);
+        for name in &selected {
+            if let Some(body) = defined.get(name.as_str()) {
+                self.statements(file, body, &[], true)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// `includeConfig path`: the file runs with a copy of the current params, and its tree
+    /// merges into this one.
+    fn include(&mut self, file: &mut File, path: &Expression) -> Result<(), ConfigError> {
+        let target = self.value(file, path, &[])?;
+        let text = target.to_string();
+        if !target.truth() {
+            let exception =
+                Exception::assertion(format!("assert includeFile\n       |\n       {target}"));
+            return Err(failed(file, exception, path.span));
+        }
+        if text == "/dev/null" {
+            return Ok(());
+        }
+        if text.contains("://") {
+            return Err(ConfigError::Failed {
+                file: file.path.clone(),
+                error: Error::Unsupported {
+                    message: format!("including remote config files like {text}"),
+                    span: path.span,
+                },
+            });
+        }
+        let base = file.path.parent().unwrap_or(Path::new("/"));
+        let included = base.join(&text);
+        let params = tree::get(&file.tree, &["params"]).unwrap_or_else(tree::map);
+        let tree = self.file(&included, tree::deep_copy(&params))?;
+        tree::deep_merge(&file.tree, &tree);
+        Ok(())
+    }
+
+    /// The command-line value of `params.<name>`, for a setting with exactly two parts.
+    fn cli_param(&self, path: &[Rc<str>]) -> Option<Value> {
+        match path {
+            [scope, name] if &**scope == "params" => tree::get(&self.options.params, &[name]),
+            _ => None,
+        }
     }
 
     /// Evaluates a setting's value with the file's current params.
@@ -190,6 +280,30 @@ impl<'a> Evaluator<'a> {
     }
 }
 
+/// A command-line param as the config sees it: a string becomes the type of the config value
+/// when it can, so `--n 7` is the Integer 7 for `params.n = 5`.
+fn convert(cli: &Value, config: &Value) -> Value {
+    let Value::String(text) = cli else {
+        return cli.clone();
+    };
+    match config {
+        Value::Boolean(_) if text.eq_ignore_ascii_case("true") => Value::Boolean(true),
+        Value::Boolean(_) if text.eq_ignore_ascii_case("false") => Value::Boolean(false),
+        Value::Number(_) => {
+            if let Ok(value) = text.parse::<i32>() {
+                Value::Number(Number::Integer(value))
+            } else if let Ok(value) = text.parse::<i64>() {
+                Value::Number(Number::Long(value))
+            } else if let Ok(value) = text.parse::<f32>() {
+                Value::Number(Number::Float(value))
+            } else {
+                cli.clone()
+            }
+        }
+        _ => cli.clone(),
+    }
+}
+
 fn invalid(file: &File, message: &str, span: Span) -> ConfigError {
     let lines = LineIndex::new(&file.source);
     let diagnostic = nextflow_parser::Diagnostic::new(message, span);
@@ -199,5 +313,15 @@ fn invalid(file: &File, message: &str, span: Span) -> ConfigError {
             file.path.display(),
             lines.locate(&diagnostic)
         )],
+    }
+}
+
+fn failed(file: &File, exception: Exception, span: Span) -> ConfigError {
+    ConfigError::Failed {
+        file: file.path.clone(),
+        error: Error::Thrown {
+            exception: Rc::new(exception),
+            span,
+        },
     }
 }

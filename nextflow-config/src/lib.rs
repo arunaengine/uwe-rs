@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod file;
+mod flat;
 pub mod tree;
 
 use std::collections::BTreeSet;
@@ -37,6 +38,11 @@ impl Config {
     /// The value of a setting, like `["docker", "enabled"]`.
     pub fn get(&self, path: &[&str]) -> Option<Value> {
         tree::get(&self.tree, path)
+    }
+
+    /// One `a.b.c = value` line per setting, as `nextflow config -flat` prints them.
+    pub fn flat(&self) -> String {
+        flat::flat(&self.tree)
     }
 
     /// The final params: the config params with the command-line values over them.

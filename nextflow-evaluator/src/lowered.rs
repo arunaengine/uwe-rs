@@ -39,6 +39,9 @@ pub struct Module {
     pub links: std::cell::RefCell<HashMap<Rc<str>, Link>>,
     /// The directory of the script file, which `moduleDir` gives; the loader sets it.
     pub directory: std::cell::RefCell<Option<Rc<str>>>,
+    /// The text of the file, which config output needs to show closures; the config loader
+    /// sets it.
+    pub source: std::cell::RefCell<Option<Rc<str>>>,
 }
 
 /// The script and name that an included name refers to.

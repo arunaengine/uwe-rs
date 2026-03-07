@@ -1,0 +1,17 @@
+params.n = 5
+params.flag = false
+params.outdir = 'results'
+params.is_int = true
+params.seen = 'results/base'
+params.r = 'a'
+params.from_b = 'b'
+params.after = 'a-after'
+process.cpus = 2
+process.'withLabel:big'.memory = { 2.GB * task.attempt }
+process.shell = ['bash', '-euo', 'pipefail']
+process.'withName:FOO|BAR'.ext.args = { "--id ${meta.id}" }
+process.'withName:FOO|BAR'.publishDir.path = { "${params.outdir}/foo" }
+process.'withName:FOO|BAR'.publishDir.mode = 'copy'
+manifest.contributors = [[name:'A', roles:['x', 'y']]]
+env.GREETING = 'it\'s'
+timeline.file = 'results/t.html'

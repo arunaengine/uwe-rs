@@ -134,7 +134,18 @@ impl Interpreter<'_> {
                 let arguments = self.arguments(frame, arguments)?;
                 self.namespace_call("channel", name, arguments, span)?
             }
-            Kind::CallStatic { class, name, .. } | Kind::StaticProperty { class, name } => {
+            Kind::CallStatic {
+                class,
+                name,
+                arguments,
+            } => {
+                let arguments = self.arguments(frame, arguments)?;
+                match self.static_method(class, name, &arguments) {
+                    Some(value) => value,
+                    None => return Err(unsupported(format!("`{class}.{name}`"), span)),
+                }
+            }
+            Kind::StaticProperty { class, name } => {
                 return Err(unsupported(format!("`{class}.{name}`"), span));
             }
             Kind::Index { target, index } => {

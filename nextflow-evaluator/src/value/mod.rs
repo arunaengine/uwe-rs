@@ -44,6 +44,8 @@ pub enum Value {
     MemoryUnit(i64),
     /// `nextflow.util.Duration`: a millisecond count that is never negative.
     Duration(i64),
+    /// `java.util.Date`: milliseconds since 1970, shown in the local time zone.
+    Date(i64),
     Closure(Rc<Closure>),
     /// A thrown and caught exception, as `catch (e)` binds it.
     Exception(Rc<Exception>),
@@ -233,6 +235,7 @@ impl Value {
             Value::MapEntry(_) => "Entry",
             Value::MemoryUnit(_) => "MemoryUnit",
             Value::Duration(_) => "Duration",
+            Value::Date(_) => "Date",
             Value::Closure(_) => "Closure",
             Value::Exception(exception) => exception.class,
             Value::Pattern(_) => "Pattern",
@@ -284,6 +287,7 @@ impl Value {
             Value::MapEntry(_) => "java.util.LinkedHashMap$Entry",
             Value::MemoryUnit(_) => "nextflow.util.MemoryUnit",
             Value::Duration(_) => "nextflow.util.Duration",
+            Value::Date(_) => "java.util.Date",
             Value::Closure(_) => "groovy.lang.Closure",
             Value::Exception(exception) => exception.qualified_class(),
             Value::Pattern(_) => "java.util.regex.Pattern",
@@ -317,7 +321,11 @@ impl Value {
             Value::MapEntry(_) => true,
             Value::MemoryUnit(size) => *size != 0,
             Value::Duration(millis) => *millis != 0,
-            Value::Closure(_) | Value::Exception(_) | Value::Pattern(_) | Value::Path(_) => true,
+            Value::Date(_)
+            | Value::Closure(_)
+            | Value::Exception(_)
+            | Value::Pattern(_)
+            | Value::Path(_) => true,
             Value::Channel(_)
             | Value::ChannelOut(_)
             | Value::Definition(_)

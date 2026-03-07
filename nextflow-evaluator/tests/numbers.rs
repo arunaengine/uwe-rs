@@ -110,3 +110,31 @@ fn casts() {
             .starts_with("AssertionError")
     );
 }
+
+#[test]
+fn math_and_system_methods() {
+    assert_eq!(
+        value(
+            "def values = [Math.max(1, 2), Math.max(1, 2L), Math.min(3, 2.0d), Math.round(2.5), \
+             Math.round(2.5f), Math.ceil(1.2), Math.pow(2, 10), Math.abs(-3), Math.floor(2.7)]\n\
+             [values, values[0] instanceof Integer, values[1] instanceof Long, \
+             values[3] instanceof Long, values[4] instanceof Integer]"
+        ),
+        "[[2, 2, 2.0, 3, 3, 2.0, 1024.0, 3, 2.0], true, true, true, true]"
+    );
+    assert_eq!(value("System.getenv('IUNCTUS_NOT_SET')"), "null");
+}
+
+#[test]
+fn dates_format_like_simple_date_format() {
+    // The middle of a month is the same month in every time zone.
+    let june: i64 = 1_592_222_400_000; // 2020-06-15T12:00:00Z
+    assert_eq!(
+        value(&format!("new Date({june}L).format(\"yyyy'T'MM''\")")),
+        "2020T06'"
+    );
+    assert_eq!(
+        value(&format!("new Date({june}L).getTime()")),
+        "1592222400000"
+    );
+}

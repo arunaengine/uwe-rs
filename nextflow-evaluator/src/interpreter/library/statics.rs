@@ -1,0 +1,108 @@
+//! Static methods of Java classes that scripts and configs call, like `System.getenv('X')`
+//! and `Math.max(a, b)`.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use crate::number::Number;
+use crate::units::java_round;
+use crate::value::Value;
+
+use super::super::Interpreter;
+
+impl Interpreter<'_> {
+    /// `Class.name(arguments)`, or `None` when the class has no such method.
+    pub(in crate::interpreter) fn static_method(
+        &mut self,
+        class: &str,
+        name: &str,
+        arguments: &[Value],
+    ) -> Option<Value> {
+        Some(match (class, name, arguments) {
+            ("System", "getenv", [variable]) => self
+                .host
+                .environment(&variable.to_string())
+                .map_or(Value::Null, Value::string),
+            ("System", "getProperty", [property]) => property_value(&property.to_string()),
+            ("System", "currentTimeMillis", []) => Value::Number(Number::Long(crate::date::now())),
+            ("Math", _, [Value::Number(a), Value::Number(b)]) => math2(name, a, b)?,
+            ("Math", _, [Value::Number(a)]) => math1(name, a)?,
+            _ => return None,
+        })
+    }
+}
+
+/// `System.getProperty` for the properties that pipelines read.
+fn property_value(name: &str) -> Value {
+    let variable = |name: &str| std::env::var(name).ok();
+    let value = match name {
+        "user.name" => variable("USER"),
+        "user.home" => variable("HOME"),
+        "user.dir" => std::env::current_dir()
+            .ok()
+            .map(|dir| dir.to_string_lossy().into_owned()),
+        "java.io.tmpdir" => Some("/tmp".into()),
+        "line.separator" => Some("\n".into()),
+        "file.separator" => Some("/".into()),
+        _ => None,
+    };
+    value.map_or(Value::Null, Value::string)
+}
+
+/// Java's overloads by argument type: `int` if both are, else `long`, else `double`.
+fn math2(name: &str, a: &Number, b: &Number) -> Option<Value> {
+    // Groovy finds `Math.max(1, 2.5)` ambiguous, so big numbers are left out.
+    let big = |n: &Number| matches!(n, Number::BigInteger(_) | Number::BigDecimal(_));
+    if big(a) || big(b) {
+        return None;
+    }
+    let integral = |n: &Number| matches!(n, Number::Integer(_) | Number::Long(_));
+    let number = match name {
+        "max" | "min" => {
+            let pick_first = if name == "max" {
+                a.to_f64() >= b.to_f64()
+            } else {
+                a.to_f64() <= b.to_f64()
+            };
+            match (a, b) {
+                (Number::Integer(_), Number::Integer(_)) => {
+                    let value = if pick_first { a } else { b };
+                    Number::Integer(value.to_i32())
+                }
+                _ if integral(a) && integral(b) => {
+                    Number::Long(if pick_first { a.to_i64() } else { b.to_i64() })
+                }
+                _ => Number::Double(if name == "max" {
+                    a.to_f64().max(b.to_f64())
+                } else {
+                    a.to_f64().min(b.to_f64())
+                }),
+            }
+        }
+        "pow" => Number::Double(a.to_f64().powf(b.to_f64())),
+        _ => return None,
+    };
+    Some(Value::Number(number))
+}
+
+fn math1(name: &str, a: &Number) -> Option<Value> {
+    let value = a.to_f64();
+    let number = match name {
+        "ceil" => Number::Double(value.ceil()),
+        "floor" => Number::Double(value.floor()),
+        "sqrt" => Number::Double(value.sqrt()),
+        "log" => Number::Double(value.ln()),
+        "log10" => Number::Double(value.log10()),
+        "exp" => Number::Double(value.exp()),
+        "round" => match a {
+            Number::Float(value) => Number::Integer(java_round(f64::from(*value)) as i32),
+            _ => Number::Long(java_round(value)),
+        },
+        "abs" => match a {
+            Number::Integer(value) => Number::Integer(value.wrapping_abs()),
+            Number::Long(value) => Number::Long(value.wrapping_abs()),
+            _ => Number::Double(value.abs()),
+        },
+        _ => return None,
+    };
+    Some(Value::Number(number))
+}

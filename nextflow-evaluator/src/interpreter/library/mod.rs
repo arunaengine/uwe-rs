@@ -9,6 +9,7 @@ mod map;
 mod number;
 mod path;
 mod regex;
+mod statics;
 mod string;
 
 pub(super) use iterable::elements;
@@ -16,7 +17,7 @@ pub(super) use number::{convert, unit_property};
 
 use nextflow_parser::Span;
 
-use super::{Error, Interpreter};
+use super::{AtSpan, Error, Interpreter};
 use crate::value::Value;
 
 impl Interpreter<'_> {
@@ -64,6 +65,14 @@ impl Interpreter<'_> {
             Value::MemoryUnit(_) | Value::Duration(_) => {
                 number::unit_method(object, name, arguments)
             }
+            Value::Date(millis) => match (name, arguments) {
+                ("format", [pattern]) => {
+                    let text = crate::date::format(*millis, &pattern.to_string()).at(span)?;
+                    Some(Value::string(text))
+                }
+                ("getTime", []) => Some(Value::Number(crate::number::Number::Long(*millis))),
+                _ => None,
+            },
             _ => None,
         };
         if found.is_some() {

@@ -70,6 +70,13 @@ fn writing_below_a_value_is_an_error() {
 }
 
 #[test]
+fn flat_output_equals_the_oracle() {
+    let config = load_fixture(&["b", "a"], Value::map([])).unwrap();
+    let expected = std::fs::read_to_string(fixture("profiles/oracle.txt")).unwrap();
+    assert_eq!(config.flat(), expected);
+}
+
+#[test]
 fn command_line_params_take_the_config_type_inside_the_config_only() {
     let params = Value::map([
         (Value::string("n"), Value::string("7")),

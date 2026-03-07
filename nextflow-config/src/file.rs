@@ -72,6 +72,7 @@ impl<'a> Evaluator<'a> {
             tree,
             module: Rc::new(Module::default()),
         };
+        *file.module.source.borrow_mut() = Some(file.source.clone());
         self.statements(&mut file, &parsed.tree.statements, &[], false)?;
         Ok(file.tree)
     }

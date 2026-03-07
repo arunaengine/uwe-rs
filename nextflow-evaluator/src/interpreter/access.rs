@@ -416,6 +416,8 @@ impl Interpreter<'_> {
                 let exception = Exception::new(class, message.to_string());
                 Ok(Value::Exception(Rc::new(exception)))
             }
+            (None, []) if class == "Date" => Ok(Value::Date(crate::date::now())),
+            (None, [Value::Number(millis)]) if class == "Date" => Ok(Value::Date(millis.to_i64())),
             _ => Err(unsupported(format!("`new {class}(...)`"), span)),
         }
     }
@@ -441,7 +443,7 @@ pub(super) fn instance_of(value: &Value, class: &str) -> bool {
         Value::Set(_) => &["HashSet", "Set", "Collection", "Iterable"],
         Value::Map(map) if map.borrow().kind == MapKind::Record => &["LinkedHashMap", "Map"],
         Value::Map(_) => &["Map"],
-        Value::MemoryUnit(_) | Value::Duration(_) => &["Comparable"],
+        Value::MemoryUnit(_) | Value::Duration(_) | Value::Date(_) => &["Comparable"],
         Value::Exception(exception) => return class == "Object" || exception.is_instance(class),
         Value::Path(_) => &["Path", "Comparable"],
         Value::Channel(_) | Value::ChannelOut(_) => &["Channel"],

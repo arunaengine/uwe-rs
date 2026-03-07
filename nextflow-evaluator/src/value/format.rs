@@ -80,6 +80,7 @@ impl Value {
             Value::Boolean(value) => out.push_str(if *value { "true" } else { "false" }),
             Value::Number(number) => out.push_str(&number.to_string()),
             Value::String(text) | Value::GString(text) => out.push_str(text),
+            Value::Date(millis) => out.push_str(&crate::date::text(*millis)),
             Value::List(list) => match &list.borrow().range {
                 Some(range) => out.push_str(&range.text()),
                 None if list.borrow().kind == ListKind::BlankSeparated => {

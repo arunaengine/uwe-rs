@@ -40,6 +40,22 @@ corpus-test:
 	NF_CORE_CORPUS="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}" cargo test --release --locked -p nextflow-parser --test corpus -- --ignored
 	NF_CORE_CORPUS="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}" cargo test --release --locked -p nextflow-evaluator --test corpus -- --ignored
 
+# Records `nextflow config -flat -profile test` of every nf-core pipeline for the config test.
+config-oracle:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	corpus="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}/pipelines"
+	oracle="${IUNCTUS_CONFIG_ORACLE:-$HOME/.cache/iunctus/oracle/config}"
+	mkdir -p "$oracle"
+	find "$corpus" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | xargs -P 8 -I{} sh -c \
+		"cd '$corpus/{}' && nextflow config -flat -profile test . > '$oracle/{}.txt' 2> '$oracle/{}.err'; echo \$? > '$oracle/{}.exit'"
+
+# Compares `iunctus config` with the recorded `nextflow config` of every nf-core pipeline.
+config-corpus-test:
+	NF_CORE_CORPUS="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}" \
+	IUNCTUS_CONFIG_ORACLE="${IUNCTUS_CONFIG_ORACLE:-$HOME/.cache/iunctus/oracle/config}" \
+	cargo test --release --locked -p iunctus --test config_corpus -- --ignored
+
 # Fetches the text-only CWL corpus at the revisions the CWL corpus test expects.
 cwl-corpus:
 	#!/usr/bin/env bash

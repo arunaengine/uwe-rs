@@ -12,6 +12,7 @@ pub mod task;
 
 use std::rc::Rc;
 
+use nextflow_config::{Config, tree};
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, Host, Interpreter};
 use nextflow_evaluator::lowered::Module;
@@ -28,8 +29,10 @@ pub struct Options {
     pub stub: bool,
     /// The container engine, like `docker`, which `workflow.containerEngine` gives.
     pub container_engine: Option<String>,
-    /// The params of the config and the command line, a map.
-    pub params: Value,
+    /// The merged config, with the params of the command line.
+    pub config: Config,
+    /// The profiles of `-profile`, as `workflow.profile` shows them.
+    pub profile: String,
 }
 
 /// A run of a script: its network, which asks for tasks and takes their outcomes.
@@ -52,9 +55,12 @@ impl Run {
                 network: &mut network,
                 base: host,
                 stub: options.stub,
+                config: &options.config,
             };
             let mut interpreter = Interpreter::new(&mut builder);
             set_globals(&mut interpreter, options);
+            let params = options.config.params();
+            script_params(&mut interpreter, module, &params, &mut Vec::new())?;
             interpreter.run_entry(module)?;
         }
         let mut interpreter = Interpreter::new(host);
@@ -113,13 +119,48 @@ impl Default for Options {
         Self {
             stub: false,
             container_engine: None,
-            params: Value::map([]),
+            config: Config::default(),
+            profile: "standard".into(),
         }
     }
 }
 
+/// Runs the `params.x = value` statements of a script and the scripts it includes: each one
+/// only sets a param that the config and the command line leave unset.
+fn script_params(
+    interpreter: &mut Interpreter,
+    module: &Rc<Module>,
+    params: &Value,
+    done: &mut Vec<*const Module>,
+) -> Result<(), Error> {
+    if done.contains(&Rc::as_ptr(module)) {
+        return Ok(());
+    }
+    done.push(Rc::as_ptr(module));
+    for (path, code) in &module.parameters {
+        let names: Vec<&str> = path.iter().map(|name| &**name).collect();
+        if tree::get(params, &names).is_none() {
+            let value = interpreter.evaluate(code, module)?;
+            tree::assign(params, path, value).map_err(|message| Error::Thrown {
+                exception: Rc::new(Exception::illegal_argument(message)),
+                span: code.span,
+            })?;
+        }
+    }
+    let included: Vec<Rc<Module>> = module
+        .links
+        .borrow()
+        .values()
+        .map(|link| link.module.clone())
+        .collect();
+    for module in included {
+        script_params(interpreter, &module, params, done)?;
+    }
+    Ok(())
+}
+
 fn set_globals(interpreter: &mut Interpreter, options: &Options) {
-    interpreter.set_global("params", options.params.clone());
+    interpreter.set_global("params", options.config.params());
     interpreter.set_global("channel", Value::Namespace("channel".into()));
     interpreter.set_global("log", Value::Namespace("log".into()));
     let engine = options
@@ -129,6 +170,10 @@ fn set_globals(interpreter: &mut Interpreter, options: &Options) {
     let workflow = Value::map([
         (Value::string("containerEngine"), engine),
         (Value::string("stubRun"), Value::Boolean(options.stub)),
+        (
+            Value::string("profile"),
+            Value::string(options.profile.as_str()),
+        ),
     ]);
     interpreter.set_global("workflow", workflow);
 }

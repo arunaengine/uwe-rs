@@ -6,11 +6,12 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use nextflow_config::ProcessSettings;
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, RenderedOutput, RenderedPart, TaskDirective};
 use nextflow_evaluator::lowered::{Input, Module, Process};
 use nextflow_evaluator::units::{parse_duration, parse_memory};
-use nextflow_evaluator::value::{ChannelId, Key, PathValue, Value};
+use nextflow_evaluator::value::{ChannelId, Key, MapKind, PathValue, Value};
 
 use crate::channel::Message;
 use crate::network::{Behaviour, Context, State};
@@ -59,6 +60,8 @@ pub(crate) struct ProcessNode {
     /// A process whose inputs are all values runs one task.
     pub singleton: bool,
     pub stub: bool,
+    /// The config settings of this call of the process.
+    pub settings: Rc<ProcessSettings>,
     pub rounds: u32,
     /// Whether an input closed, so no more rounds start.
     pub poisoned: bool,
@@ -139,9 +142,33 @@ impl ProcessNode {
         let index = self.rounds;
         let interpreter = &mut *context.interpreter;
         let mut frame = interpreter.bind_task(&self.module, &self.process, &values)?;
-        let base = task_object(&self.name, index, &[]);
-        let directives = interpreter.directives(&mut frame, &self.process, &base)?;
-        let task = task_object(&self.name, index, &directives);
+        let ext = ext_map(&self.settings);
+        let base = task_object(&self.name, index, &[], &ext);
+        let mut directives = interpreter.directives(&mut frame, &self.process, &base)?;
+        // Selectors replace the process's own directives; plain settings fill in the rest.
+        for (name, value) in &self.settings.selected {
+            if &**name != "ext" {
+                let value = interpreter.resolve_setting(&frame, value, &base)?;
+                directives.retain(|directive| directive.name != *name);
+                directives.push(TaskDirective {
+                    name: name.clone(),
+                    arguments: vec![value],
+                });
+            }
+        }
+        for (name, value) in &self.settings.defaults {
+            let current = directives.iter().find(|directive| directive.name == *name);
+            if &**name != "ext" && current.is_none_or(built_in_default) {
+                let value = interpreter.resolve_setting(&frame, value, &base)?;
+                directives.retain(|directive| directive.name != *name);
+                directives.push(TaskDirective {
+                    name: name.clone(),
+                    arguments: vec![value],
+                });
+            }
+        }
+        limit_resources(&mut directives);
+        let task = task_object(&self.name, index, &directives, &ext);
         let rendered = interpreter.render(&mut frame, &self.process, &task, self.stub)?;
         if !rendered.run {
             return Ok(());
@@ -240,14 +267,61 @@ impl ProcessNode {
     }
 }
 
+/// The `task.ext` map of the config: selectors replace entries, plain settings add missing
+/// ones. Closures in it are called when a script reads them.
+fn ext_map(settings: &ProcessSettings) -> Value {
+    let ext = Value::map([]);
+    let Value::Map(map) = &ext else {
+        unreachable!("a map")
+    };
+    map.borrow_mut().kind = MapKind::Lazy;
+    let selected = settings.selected.iter().map(|setting| (setting, true));
+    let defaults = settings.defaults.iter().map(|setting| (setting, false));
+    for ((name, value), replace) in selected.chain(defaults) {
+        let Value::Map(entries) = value else {
+            continue;
+        };
+        if &**name != "ext" {
+            continue;
+        }
+        for (key, value) in &entries.borrow().entries {
+            let mut map = map.borrow_mut();
+            if replace || !map.entries.contains_key(key) {
+                map.entries.insert(key.clone(), value.clone());
+            }
+        }
+    }
+    ext
+}
+
+/// Whether a directive has the value Nextflow gives it when nothing sets it, which a plain
+/// config setting replaces.
+fn built_in_default(directive: &TaskDirective) -> bool {
+    let [value] = directive.arguments.as_slice() else {
+        return false;
+    };
+    match (&*directive.name, value) {
+        ("debug", Value::Boolean(value)) => !value,
+        ("cacheable", Value::Boolean(value)) => *value,
+        ("maxRetries", Value::Number(value)) => value.to_f64() == 1.0,
+        ("maxErrors", Value::Number(value)) => value.to_f64() == -1.0,
+        ("errorStrategy", Value::String(text)) => text.eq_ignore_ascii_case("terminate"),
+        ("shell", Value::List(list)) => {
+            let items: Vec<String> = list.borrow().items.iter().map(Value::to_string).collect();
+            items == ["/bin/bash", "-ue"]
+        }
+        _ => false,
+    }
+}
+
 /// The `task` object of a task: the directives' values, with Nextflow's defaults.
-fn task_object(process: &str, index: u32, directives: &[TaskDirective]) -> Value {
+fn task_object(process: &str, index: u32, directives: &[TaskDirective], ext: &Value) -> Value {
     let mut entries: Vec<(Value, Value)> = vec![
         (Value::string("process"), Value::string(process)),
         (Value::string("index"), Value::integer(index as i32)),
         (Value::string("attempt"), Value::integer(1)),
         (Value::string("cpus"), Value::integer(1)),
-        (Value::string("ext"), Value::map([])),
+        (Value::string("ext"), ext.clone()),
         (
             Value::string("shell"),
             Value::list(vec![Value::string("/bin/bash"), Value::string("-ue")]),
@@ -267,6 +341,45 @@ fn task_object(process: &str, index: u32, directives: &[TaskDirective]) -> Value
         entries.push((Value::string(&*directive.name), value));
     }
     Value::map(entries)
+}
+
+/// Reduces the `cpus`, `memory` and `time` directives to the `resourceLimits` directive.
+fn limit_resources(directives: &mut [TaskDirective]) {
+    let limits = directives
+        .iter()
+        .find(|directive| &*directive.name == "resourceLimits")
+        .and_then(|directive| directive.arguments.first().cloned());
+    let Some(Value::Map(limits)) = limits else {
+        return;
+    };
+    let unit = |name: &str, value: &Value| match (name, value) {
+        ("memory", Value::String(text)) => {
+            parse_memory(text).map_or(Value::Null, Value::MemoryUnit)
+        }
+        ("time", Value::String(text)) => parse_duration(text).map_or(Value::Null, Value::Duration),
+        _ => value.clone(),
+    };
+    for directive in directives.iter_mut() {
+        let name = &*directive.name;
+        let limit = limits
+            .borrow()
+            .entries
+            .get(&Key(Value::string(name)))
+            .cloned();
+        let (Some(limit), [value]) = (limit, directive.arguments.as_slice()) else {
+            continue;
+        };
+        let (limit, value) = (unit(name, &limit), unit(name, value));
+        let larger = match (&value, &limit) {
+            (Value::Number(value), Value::Number(limit)) => value.to_f64() > limit.to_f64(),
+            (Value::MemoryUnit(value), Value::MemoryUnit(limit))
+            | (Value::Duration(value), Value::Duration(limit)) => value > limit,
+            _ => false,
+        };
+        if larger && matches!(name, "cpus" | "memory" | "time") {
+            directive.arguments = vec![limit];
+        }
+    }
 }
 
 /// `NAME (tag)`, else `NAME (index)` for a process that runs several tasks, else `NAME`.

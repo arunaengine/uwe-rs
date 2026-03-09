@@ -37,6 +37,17 @@ pub struct Config {
     pub tree: Value,
 }
 
+impl Default for Config {
+    /// A config without settings, as when no config file exists.
+    fn default() -> Self {
+        let tree = tree::map();
+        for scope in ["env", "executor", "params", "process"] {
+            tree::assign(&tree, &[scope.into()], tree::map()).expect("the top level is a map");
+        }
+        Config { tree }
+    }
+}
+
 impl Config {
     /// The value of a setting, like `["docker", "enabled"]`.
     pub fn get(&self, path: &[&str]) -> Option<Value> {

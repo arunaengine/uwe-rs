@@ -117,6 +117,46 @@ fn gunzip_stub_run() {
     );
 }
 
+/// A config from its text.
+fn config(text: &str) -> nextflow_config::Config {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let file = directory.path().join("nextflow.config");
+    std::fs::write(&file, text).expect("writes the config");
+    let options = nextflow_config::Options {
+        profiles: None,
+        params: nextflow_evaluator::value::Value::map([]),
+        project_dir: "/project".into(),
+        launch_dir: "/launch".into(),
+    };
+    nextflow_config::load(&[file], &options, &mut Output::default()).expect("loads")
+}
+
+#[test]
+fn config_settings_reach_the_task() {
+    let source = format!(
+        "{GUNZIP}\nworkflow {{\n    GUNZIP(channel.of([[id: 'S1'], file('/data/sample.fastq.gz')]))\n}}"
+    );
+    let text = "process {\n    cpus = 2\n    ext.args = '-v'\n    resourceLimits = [cpus: 4]\n\
+                withName: 'GUNZIP' {\n        cpus = { 8 * task.attempt }\n        \
+                ext.prefix = { \"${meta.id}.custom\" }\n    }\n}\n";
+    let options = Options {
+        stub: true,
+        config: config(text),
+        ..Options::default()
+    };
+    let (tasks, _) = run(&source, &options).expect("runs");
+    let [task] = tasks.as_slice() else {
+        panic!("one task")
+    };
+    assert_eq!(task.script, "#!/bin/bash -ue\ntouch S1.custom.fastq\n");
+    let cpus = task
+        .directives
+        .iter()
+        .find(|directive| &*directive.name == "cpus")
+        .map(|directive| directive.arguments[0].to_string());
+    assert_eq!(cpus.as_deref(), Some("4"));
+}
+
 #[test]
 fn missing_outputs_and_failures() {
     let process = "process P {\n    input:\n    val x\n    output:\n    path 'out.txt'\n    script:\n    'x'\n}\n";

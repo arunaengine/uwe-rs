@@ -22,12 +22,14 @@ pub use network::Network;
 pub use process::{TaskId, TaskOutcome, TaskRequest};
 
 /// How a run behaves.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Options {
     /// Run the `stub:` section of processes instead of their script.
     pub stub: bool,
     /// The container engine, like `docker`, which `workflow.containerEngine` gives.
     pub container_engine: Option<String>,
+    /// The params of the config and the command line, a map.
+    pub params: Value,
 }
 
 /// A run of a script: its network, which asks for tasks and takes their outcomes.
@@ -106,7 +108,18 @@ pub fn run(module: &Rc<Module>, host: &mut dyn Host) -> Result<(), Error> {
     run.finish()
 }
 
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            stub: false,
+            container_engine: None,
+            params: Value::map([]),
+        }
+    }
+}
+
 fn set_globals(interpreter: &mut Interpreter, options: &Options) {
+    interpreter.set_global("params", options.params.clone());
     interpreter.set_global("channel", Value::Namespace("channel".into()));
     interpreter.set_global("log", Value::Namespace("log".into()));
     let engine = options

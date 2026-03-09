@@ -4,22 +4,30 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use content_store::Store;
 use executor::local::LocalContainer;
+use nextflow_config::Config;
+use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, Host};
 use nextflow_evaluator::value::PathValue;
 use nextflow_runtime::task::{
     ENVIRONMENT, STDOUT, command_script, container, read_environment, task_request,
 };
 use nextflow_runtime::{Loader, Options, Run, TaskOutcome, TaskRequest};
+use sha2::{Digest, Sha256};
 use task_runner::Runner;
+
+use crate::arguments::Arguments;
 
 pub struct Settings {
     pub store: PathBuf,
     pub scratch: PathBuf,
     pub engine: String,
     pub stub: bool,
+    /// Whether tasks only pretend to run: each output pattern gets one empty file.
+    pub mock: bool,
 }
 
 /// Why a run failed, and whether the cause is a feature iunctus does not support yet.
@@ -44,17 +52,94 @@ fn failure(message: impl Into<String>) -> Failure {
     }
 }
 
-/// Prints what the workflow prints.
-struct Console;
+/// Prints what the workflow prints, and downloads remote files into a cache.
+struct Console {
+    downloads: PathBuf,
+}
 
 impl Host for Console {
     fn print(&mut self, text: &str) {
         print!("{text}");
     }
+
+    fn download(&mut self, path: &PathValue) -> Result<PathBuf, Error> {
+        let url = path.uri();
+        let unsupported = |message: String| Error::Unsupported {
+            message,
+            span: Default::default(),
+        };
+        if !matches!(path.scheme(), "http" | "https") {
+            return Err(unsupported(format!("reading remote files like {url}")));
+        }
+        let digest = Sha256::digest(url.as_bytes());
+        let name: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+        let local = self.downloads.join(name);
+        if local.is_file() {
+            return Ok(local);
+        }
+        let failed = |message: String| Error::Thrown {
+            exception: Rc::new(Exception::new("IOException", message)),
+            span: Default::default(),
+        };
+        let response = reqwest::blocking::get(&url)
+            .and_then(|response| response.error_for_status())
+            .and_then(|response| response.bytes())
+            .map_err(|error| failed(format!("Cannot read {url}: {error}")))?;
+        std::fs::create_dir_all(&self.downloads).map_err(|error| failed(error.to_string()))?;
+        let partial = local.with_extension("partial");
+        std::fs::write(&partial, &response)
+            .and_then(|()| std::fs::rename(&partial, &local))
+            .map_err(|error| failed(error.to_string()))?;
+        Ok(local)
+    }
 }
 
-pub fn run(script: &Path, settings: &Settings) -> Result<(), Failure> {
-    let module = Loader::default().load(script).map_err(|error| Failure {
+/// `iunctus config`: the config of a project in the flat form of `nextflow config -flat`.
+pub fn print_config(arguments: &Arguments) -> Result<(), Failure> {
+    let project = arguments.target.clone().unwrap_or_else(|| ".".into());
+    let config = load_config(&project, arguments)?;
+    print!("{}", config.flat());
+    Ok(())
+}
+
+/// The host of a run; remote files are cached in `downloads` of the cache directory.
+fn console() -> Console {
+    Console {
+        downloads: crate::cache_directory().join("downloads"),
+    }
+}
+
+/// Loads the config files of a project directory, as `nextflow run` does.
+fn load_config(project: &Path, arguments: &Arguments) -> Result<Config, Failure> {
+    let launch = std::env::current_dir().map_err(|error| failure(error.to_string()))?;
+    let project = std::path::absolute(project).unwrap_or_else(|_| project.to_owned());
+    let files = nextflow_config::files(&project, &launch, &arguments.configs);
+    let options = nextflow_config::Options {
+        profiles: arguments.profiles.clone(),
+        params: arguments.params.clone(),
+        project_dir: project.to_string_lossy().into_owned(),
+        launch_dir: launch.to_string_lossy().into_owned(),
+    };
+    nextflow_config::load(&files, &options, &mut console()).map_err(|error| Failure {
+        unsupported: error.unsupported(),
+        message: error.to_string(),
+    })
+}
+
+pub fn run(target: &Path, arguments: &Arguments, settings: &Settings) -> Result<(), Failure> {
+    // A project directory runs its `manifest.mainScript`, else `main.nf`.
+    let (project, script) = if target.is_dir() {
+        let config = load_config(target, arguments)?;
+        let main = config
+            .get(&["manifest", "mainScript"])
+            .map_or("main.nf".into(), |name| name.to_string());
+        (target.to_owned(), target.join(main))
+    } else {
+        let project = target.parent().unwrap_or(Path::new("."));
+        (project.to_owned(), target.to_owned())
+    };
+    let config = load_config(&project, arguments)?;
+    let module = Loader::default().load(&script).map_err(|error| Failure {
         unsupported: error
             .messages
             .iter()
@@ -77,13 +162,19 @@ pub fn run(script: &Path, settings: &Settings) -> Result<(), Failure> {
     let options = Options {
         stub: settings.stub,
         container_engine: Some(settings.engine.clone()),
+        params: config.params(),
     };
-    let mut console = Console;
+    let mut console = console();
     let (mut run, mut queue) = Run::start(&module, &options, &mut console)?;
     let mut pinned = HashMap::new();
+    let mock = settings.scratch.join("mock").join(&run_id);
     while !queue.is_empty() {
         let request = queue.remove(0);
-        let outcome = execute(&runner, &request, &mut pinned)?;
+        let outcome = if settings.mock {
+            pretend(&request, &mock).map_err(|error| failure(error.to_string()))?
+        } else {
+            execute(&runner, &request, &mut pinned)?
+        };
         queue.extend(run.complete(outcome, &mut console)?);
     }
     run.finish()?;
@@ -182,6 +273,68 @@ fn execute(
         outcome.files.push((file.path.clone(), path));
     }
     Ok(outcome)
+}
+
+/// The mock executor: a task that does not run, with one empty file for each output pattern
+/// and empty text for its other outputs.
+fn pretend(request: &TaskRequest, directory: &Path) -> std::io::Result<TaskOutcome> {
+    let work = directory.join(request.id.0.to_string());
+    std::fs::create_dir_all(&work)?;
+    println!("[mock] {}", request.name);
+    let mut outcome = TaskOutcome {
+        id: request.id,
+        eval: vec![String::new(); request.eval.len()],
+        ..TaskOutcome::default()
+    };
+    for name in &request.env {
+        outcome.env.insert(name.to_string(), String::new());
+    }
+    for pattern in &request.output_patterns {
+        let name = file_name(pattern);
+        let path = work.join(&name);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        if name.ends_with('/') {
+            std::fs::create_dir_all(&path)?;
+        } else {
+            std::fs::write(&path, "")?;
+        }
+        let name = name.trim_end_matches('/').to_owned();
+        let path = PathValue::parse(&work.join(&name).to_string_lossy(), "/");
+        outcome.files.push((name, path));
+    }
+    Ok(outcome)
+}
+
+/// A file name that a glob pattern matches: `*` becomes `mock`, `?` becomes `x`, and a group
+/// like `{html,zip}` or `[ab]` its first choice.
+fn file_name(pattern: &str) -> String {
+    let mut name = String::new();
+    let mut characters = pattern.chars().peekable();
+    while let Some(character) = characters.next() {
+        match character {
+            '*' => {
+                let double = characters.next_if_eq(&'*').is_some();
+                if double && characters.next_if_eq(&'/').is_some() {
+                    continue;
+                }
+                name.push_str("mock");
+            }
+            '?' => name.push('x'),
+            '{' => {
+                let group: String = characters.by_ref().take_while(|c| *c != '}').collect();
+                name.push_str(group.split(',').next().unwrap_or_default());
+            }
+            '[' => {
+                let group: String = characters.by_ref().take_while(|c| *c != ']').collect();
+                let group = group.trim_start_matches(['!', '^']);
+                name.extend(group.chars().next());
+            }
+            other => name.push(other),
+        }
+    }
+    name
 }
 
 /// A run id from the clock and the process id.

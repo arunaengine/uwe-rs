@@ -10,7 +10,7 @@ use nextflow_parser::Span;
 use super::{AtSpan, Error, Interpreter, thrown, unsupported};
 use crate::exception::{self, Exception};
 use crate::number::Number;
-use crate::value::{Key, List, ListKind, MapKind, Object, State, Value};
+use crate::value::{Key, List, ListKind, MapKind, Object, PathValue, State, Value};
 
 impl Interpreter<'_> {
     /// `object.name`. A map reads the key, so `m.class` is `m.get('class')`.
@@ -122,6 +122,10 @@ impl Interpreter<'_> {
                 map.borrow_mut()
                     .entries
                     .insert(Key(Value::string(name)), value);
+                Ok(())
+            }
+            Value::Path(_) if name == "text" => {
+                self.call_method(object, "setText", vec![value], span)?;
                 Ok(())
             }
             _ => {
@@ -417,6 +421,18 @@ impl Interpreter<'_> {
                 Ok(Value::Exception(Rc::new(exception)))
             }
             (None, []) if class == "Date" => Ok(Value::Date(crate::date::now())),
+            (None, [path]) if class == "File" => {
+                let launch = self.host.launch_dir();
+                Ok(Value::Path(Rc::new(PathValue::parse(
+                    &path.to_string(),
+                    &launch,
+                ))))
+            }
+            (None, [parent, child]) if class == "File" => {
+                let launch = self.host.launch_dir();
+                let parent = PathValue::parse(&parent.to_string(), &launch);
+                Ok(Value::Path(Rc::new(parent.resolve(&child.to_string()))))
+            }
             (None, []) if class == "JsonGenerator.Options" || class == "JsonSlurper" => {
                 let (class, state) = match class {
                     "JsonSlurper" => ("groovy.json.JsonSlurper", State::JsonSlurper),

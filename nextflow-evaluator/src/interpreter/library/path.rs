@@ -38,7 +38,9 @@ pub(super) fn path_method(path: &Rc<PathValue>, name: &str, arguments: &[Value])
         ),
         ("getScheme", []) => Some(Value::string(path.scheme())),
         ("toUriString", []) => Some(Value::string(path.uri())),
-        ("toAbsolutePath" | "normalize" | "toRealPath", []) => Some(Value::Path(path.clone())),
+        ("toAbsolutePath" | "normalize" | "toRealPath" | "toPath" | "toFile", []) => {
+            Some(Value::Path(path.clone()))
+        }
         ("resolve", [other]) => path_value(path.resolve(&text(other)?)),
         ("resolveSibling", [other]) => path_value(path.resolve_sibling(&text(other)?)),
         _ => None,
@@ -54,8 +56,32 @@ impl Interpreter<'_> {
         arguments: &[Value],
         span: Span,
     ) -> Result<Option<Value>, Error> {
-        if !arguments.is_empty() {
-            return Ok(None);
+        let host_error = |error: Error| error.or_at(span);
+        match (name, arguments) {
+            ("setText" | "write", [text]) => {
+                let text = text.to_string();
+                self.host.write(path, text.as_bytes()).map_err(host_error)?;
+                return Ok(Some(Value::Null));
+            }
+            ("copyTo", [target]) => {
+                let target = match target {
+                    Value::Path(target) => (**target).clone(),
+                    other => PathValue::parse(&other.to_string(), &self.host.launch_dir()),
+                };
+                let bytes = self.host.read(path).map_err(host_error)?;
+                self.host.write(&target, &bytes).map_err(host_error)?;
+                return Ok(Some(Value::Path(Rc::new(target))));
+            }
+            ("delete", []) => {
+                let existed = self.host.delete(path).map_err(host_error)?;
+                return Ok(Some(Value::Boolean(existed)));
+            }
+            ("mkdirs" | "mkdir", []) => {
+                self.host.create_directories(path).map_err(host_error)?;
+                return Ok(Some(Value::Boolean(true)));
+            }
+            (_, []) => {}
+            _ => return Ok(None),
         }
         Ok(Some(match name {
             "getText" | "readLines" => {

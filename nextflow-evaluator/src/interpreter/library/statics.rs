@@ -22,6 +22,10 @@ impl Interpreter<'_> {
         span: Span,
     ) -> Result<Option<Value>, Error> {
         Ok(Some(match (class, name, arguments) {
+            ("FilesEx", "copyTo", [source @ Value::Path(_), target]) => {
+                let copied = self.call_method(source, "copyTo", vec![target.clone()], span)?;
+                return Ok(Some(copied));
+            }
             ("JsonOutput", "toJson", [value]) => {
                 Value::string(self.json_text(value, &JsonOptions::default(), span)?)
             }

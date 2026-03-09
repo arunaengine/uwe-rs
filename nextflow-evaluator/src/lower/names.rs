@@ -150,6 +150,7 @@ pub(super) const CLASSES: &[&str] = &[
     "Exception",
     "File",
     "Files",
+    "FilesEx",
     "Float",
     "IllegalArgumentException",
     "IllegalStateException",

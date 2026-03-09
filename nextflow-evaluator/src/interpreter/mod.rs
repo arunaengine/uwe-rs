@@ -72,6 +72,29 @@ pub trait Host {
         }
     }
 
+    /// Writes a file, creating its directory. The default writes local files.
+    fn write(&mut self, path: &PathValue, bytes: &[u8]) -> Result<(), Error> {
+        let local = local_path(path)?;
+        if let Some(parent) = local.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| file_error(path, &error))?;
+        }
+        std::fs::write(local, bytes).map_err(|error| file_error(path, &error))
+    }
+
+    /// Deletes a file; the result is whether it existed. The default deletes local files.
+    fn delete(&mut self, path: &PathValue) -> Result<bool, Error> {
+        match std::fs::remove_file(local_path(path)?) {
+            Ok(()) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(file_error(path, &error)),
+        }
+    }
+
+    /// Creates a directory and its parents. The default creates local directories.
+    fn create_directories(&mut self, path: &PathValue) -> Result<(), Error> {
+        std::fs::create_dir_all(local_path(path)?).map_err(|error| file_error(path, &error))
+    }
+
     /// A variable of the launch environment, as `env('HOME')` reads it.
     fn environment(&self, name: &str) -> Option<String> {
         std::env::var(name).ok()
@@ -117,6 +140,17 @@ pub trait Host {
 pub struct FileMetadata {
     pub directory: bool,
     pub size: u64,
+}
+
+/// The local file of a path; remote files cannot be written yet.
+fn local_path(path: &PathValue) -> Result<PathBuf, Error> {
+    match path.prefix {
+        Some(_) => Err(unsupported(
+            format!("writing remote files like {}", path.uri()),
+            Span::default(),
+        )),
+        None => Ok(PathBuf::from(&path.path)),
+    }
 }
 
 /// Java's `NoSuchFileException` for a missing file, else an `IOException`.

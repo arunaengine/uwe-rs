@@ -16,7 +16,7 @@ test:
 check:
 	cargo check --workspace --all-targets --all-features --locked
 
-# Fetches the text-only nf-core corpus at the commits the corpus test expects.
+# Fetches the text-only nf-core corpus at the commits the corpus tests expect.
 corpus:
 	#!/usr/bin/env bash
 	set -euo pipefail
@@ -28,9 +28,13 @@ corpus:
 		git -C "$work" init -q
 		git -C "$work" remote add origin "https://github.com/nf-core/$name.git"
 		git -C "$work" fetch -q --depth 1 --filter=blob:none origin "$commit"
-		git -C "$work" sparse-checkout set --no-cone '*.nf' '*.config' 'nextflow_schema.json'
+		# Scripts, configs and schemas, and the small text files of assets/ that runs read.
+		git -C "$work" sparse-checkout set --no-cone '*.nf' '*.config' 'nextflow_schema.json' \
+			'/assets/**/*.json' '/assets/**/*.csv' '/assets/**/*.tsv' '/assets/**/*.yml' \
+			'/assets/**/*.yaml' '/assets/**/*.txt'
 		git -C "$work" checkout -q FETCH_HEAD
 		rm -rf "$work/.git"
+		find "$work" -path '*/assets/*' -type f -size +1M -delete
 		mkdir -p "$(dirname "$target")"
 		mv "$work" "$target"
 	done

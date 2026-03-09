@@ -13,6 +13,7 @@ mod task;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use nextflow_parser::Span;
@@ -37,27 +38,31 @@ pub trait Host {
             .unwrap_or_else(|_| "/".into())
     }
 
-    /// The bytes of a file. The default reads local files.
+    /// A local copy of a remote file, like one on `https://`. The default has none.
+    fn download(&mut self, path: &PathValue) -> Result<PathBuf, Error> {
+        Err(unsupported(
+            format!("reading remote files like {}", path.uri()),
+            Span::default(),
+        ))
+    }
+
+    /// The bytes of a file. The default reads local files and downloads remote ones.
     fn read(&mut self, path: &PathValue) -> Result<Vec<u8>, Error> {
-        if path.prefix.is_some() {
-            return Err(unsupported(
-                format!("reading remote files like {}", path.uri()),
-                Span::default(),
-            ));
-        }
-        std::fs::read(&path.path).map_err(|error| file_error(path, &error))
+        let local = match path.prefix {
+            Some(_) => self.download(path)?,
+            None => PathBuf::from(&path.path),
+        };
+        std::fs::read(local).map_err(|error| file_error(path, &error))
     }
 
     /// Whether a file exists: `None` when it does not, else whether it is a directory and its
-    /// size. The default looks at local files.
+    /// size. The default looks at local files and downloads remote ones.
     fn metadata(&mut self, path: &PathValue) -> Result<Option<FileMetadata>, Error> {
-        if path.prefix.is_some() {
-            return Err(unsupported(
-                format!("reading remote files like {}", path.uri()),
-                Span::default(),
-            ));
-        }
-        match std::fs::metadata(&path.path) {
+        let local = match path.prefix {
+            Some(_) => self.download(path)?,
+            None => PathBuf::from(&path.path),
+        };
+        match std::fs::metadata(local) {
             Ok(metadata) => Ok(Some(FileMetadata {
                 directory: metadata.is_dir(),
                 size: metadata.len(),

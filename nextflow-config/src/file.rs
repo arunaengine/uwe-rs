@@ -81,14 +81,24 @@ impl<'a> Evaluator<'a> {
         if let Some(source) = self.sources.get(path) {
             return Ok(source.clone());
         }
-        let source: Rc<str> = std::fs::read_to_string(path)
-            .map_err(|error| ConfigError::Invalid {
+        let text = path.to_string_lossy();
+        let bytes = if text.contains("://") {
+            let remote = PathValue::parse(&text, "/");
+            self.host
+                .read(&remote)
+                .map_err(|error| ConfigError::Failed {
+                    file: path.to_owned(),
+                    error,
+                })?
+        } else {
+            std::fs::read(path).map_err(|error| ConfigError::Invalid {
                 messages: vec![format!(
                     "Config file does not exist: {} ({error})",
                     path.display()
                 )],
             })?
-            .into();
+        };
+        let source: Rc<str> = String::from_utf8_lossy(&bytes).into();
         self.sources.insert(path.to_owned(), source.clone());
         Ok(source)
     }
@@ -221,17 +231,11 @@ impl<'a> Evaluator<'a> {
         if text == "/dev/null" {
             return Ok(());
         }
-        if text.contains("://") {
-            return Err(ConfigError::Failed {
-                file: file.path.clone(),
-                error: Error::Unsupported {
-                    message: format!("including remote config files like {text}"),
-                    span: path.span,
-                },
-            });
-        }
         let base = file.path.parent().unwrap_or(Path::new("/"));
-        let included = base.join(&text);
+        let included = match text.contains("://") {
+            true => PathBuf::from(&text),
+            false => base.join(&text),
+        };
         let params = tree::get(&file.tree, &["params"]).unwrap_or_else(tree::map);
         let tree = self.file(&included, tree::deep_copy(&params))?;
         tree::deep_merge(&file.tree, &tree);

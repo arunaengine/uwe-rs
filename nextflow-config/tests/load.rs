@@ -103,3 +103,31 @@ fn unknown_profiles_are_errors() {
         "Unknown configuration profile: 'c'\n\nAvailable config profiles: a, b"
     );
 }
+
+#[test]
+fn process_selectors_apply_in_order() {
+    let text = "process {\n    cpus = 1\n    ext.dflt = 'd'\n\
+                withLabel: 'big' { cpus = 4 }\n    withLabel: '!big' { memory = 1.GB }\n\
+                withName: 'OUTER:SUB:BAR' { ext.args = 'full' }\n\
+                withName: 'FOO|BAR' { ext.args = 'foo' }\n    withName: BAR { ext.args = 'bar' }\n\
+                withName: 'UNTAR_*' { ext.args = 'untar' }\n}\n";
+    let config = load_text(text).unwrap();
+    let show = |settings: &[(std::rc::Rc<str>, Value)]| {
+        let items: Vec<String> = settings
+            .iter()
+            .map(|(name, value)| format!("{name}={value}"))
+            .collect();
+        items.join(" ")
+    };
+    let names = ["FOO", "BAR", "OUTER:SUB:BAR"];
+    let settings = config.process_settings(&names, &[]).unwrap();
+    assert_eq!(
+        show(&settings.selected),
+        "memory=1 GB ext=[args:foo] ext=[args:foo] ext=[args:bar] ext=[args:full]"
+    );
+    assert_eq!(show(&settings.defaults), "cpus=1 ext=[dflt:d]");
+    let settings = config
+        .process_settings(&["UNTAR_FOO"], &["big".to_owned()])
+        .unwrap();
+    assert_eq!(show(&settings.selected), "cpus=4");
+}

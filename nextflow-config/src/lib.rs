@@ -5,6 +5,7 @@
 
 mod file;
 mod flat;
+mod process;
 pub mod tree;
 
 use std::collections::BTreeSet;
@@ -13,6 +14,8 @@ use std::path::{Path, PathBuf};
 
 use nextflow_evaluator::interpreter::{Error, Host};
 use nextflow_evaluator::value::Value;
+
+pub use process::ProcessSettings;
 
 /// What the command line gives the config.
 #[derive(Clone, Debug)]

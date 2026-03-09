@@ -448,7 +448,11 @@ pub(super) fn instance_of(value: &Value, class: &str) -> bool {
         Value::Path(_) => &["Path", "Comparable"],
         Value::Channel(_) | Value::ChannelOut(_) => &["Channel"],
         Value::Definition(_) | Value::Namespace(_) | Value::Operator(_) => &[],
-        Value::MapEntry(_) | Value::Closure(_) | Value::Pattern(_) | Value::Matcher(_) => &[],
+        Value::MapEntry(_)
+        | Value::Closure(_)
+        | Value::Class(_)
+        | Value::Pattern(_)
+        | Value::Matcher(_) => &[],
     };
     class == "Object" || class == own || supertypes.contains(&class)
 }

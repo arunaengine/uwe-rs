@@ -145,6 +145,9 @@ impl Interpreter<'_> {
                     None => return Err(unsupported(format!("`{class}.{name}`"), span)),
                 }
             }
+            Kind::StaticProperty { class, name } if self.static_property(class, name).is_some() => {
+                self.static_property(class, name).unwrap_or(Value::Null)
+            }
             Kind::StaticProperty { class, name } => {
                 return Err(unsupported(format!("`{class}.{name}`"), span));
             }

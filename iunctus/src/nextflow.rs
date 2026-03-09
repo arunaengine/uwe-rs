@@ -167,6 +167,10 @@ pub fn run(target: &Path, arguments: &Arguments, settings: &Settings) -> Result<
             .profiles
             .as_ref()
             .map_or("standard".into(), |names| names.join(",")),
+        project_dir: std::path::absolute(&project)
+            .unwrap_or(project.clone())
+            .to_string_lossy()
+            .into_owned(),
     };
     let mut console = console();
     let (mut run, mut queue) = Run::start(&module, &options, &mut console)?;

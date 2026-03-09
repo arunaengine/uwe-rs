@@ -121,6 +121,17 @@ pub trait Host {
         Ok(None)
     }
 
+    /// Calls a function of a plugin, like `samplesheetToList` of `nf-schema`.
+    fn plugin_function(
+        &mut self,
+        plugin: &str,
+        name: &str,
+        _arguments: Vec<Value>,
+    ) -> Result<Value, Error> {
+        let message = format!("the function `{name}` of the plugin `{plugin}`");
+        Err(unsupported(message, Span::default()))
+    }
+
     /// Calls a process with its input channels or values, as a workflow does; the result is
     /// the outputs of the call. `name` is the fully qualified name, like `RNASEQ:FASTQC`.
     fn call_process(

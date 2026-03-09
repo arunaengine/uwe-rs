@@ -42,6 +42,9 @@ pub struct Module {
     /// The text of the file, which config output needs to show closures; the config loader
     /// sets it.
     pub source: std::cell::RefCell<Option<Rc<str>>>,
+    /// The plugin, like `nf-schema`, when this stands for the functions of a plugin, which the
+    /// host provides.
+    pub plugin: Option<Rc<str>>,
 }
 
 /// The script and name that an included name refers to.

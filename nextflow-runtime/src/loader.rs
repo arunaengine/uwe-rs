@@ -29,6 +29,8 @@ impl std::error::Error for LoadError {}
 #[derive(Default)]
 pub struct Loader {
     modules: HashMap<PathBuf, Rc<Module>>,
+    /// The modules that stand for plugins, by plugin id.
+    plugins: HashMap<Rc<str>, Rc<Module>>,
     loading: HashSet<PathBuf>,
     errors: Vec<String>,
 }
@@ -100,6 +102,23 @@ impl Loader {
     fn link(&mut self, module: &Rc<Module>, path: &Path) {
         let directory = path.parent().unwrap_or(Path::new("/")).to_owned();
         for include in &module.includes {
+            if let Some(plugin) = include.source.strip_prefix("plugin/") {
+                let target = self.plugins.entry(plugin.into()).or_insert_with(|| {
+                    Rc::new(Module {
+                        plugin: Some(plugin.into()),
+                        ..Module::default()
+                    })
+                });
+                let link = Link {
+                    module: target.clone(),
+                    name: include.name.clone(),
+                };
+                module
+                    .links
+                    .borrow_mut()
+                    .insert(include.alias.clone(), link);
+                continue;
+            }
             let Some(target) = include_path(&directory, &include.source) else {
                 continue;
             };
@@ -142,6 +161,15 @@ struct Includes<'a> {
 
 impl Imports for Includes<'_> {
     fn kind(&mut self, source: &str, name: &str) -> Result<DefinitionKind, String> {
+        if let Some(plugin) = source.strip_prefix("plugin/") {
+            return match nextflow_plugins::functions(plugin) {
+                Some(functions) if functions.contains(&name) => Ok(DefinitionKind::Function),
+                Some(_) => Err(format!(
+                    "`{name}` is not a function of the plugin `{plugin}`"
+                )),
+                None => Err(format!("Plugins are not supported yet: {source}")),
+            };
+        }
         let Some(path) = include_path(&self.directory, source) else {
             return Err(format!("Plugins are not supported yet: {source}"));
         };

@@ -1,7 +1,9 @@
-//! The `iunctus` command: `iunctus run <script> [-stub] [-store <directory>]`.
+//! The `iunctus` command: `iunctus run` runs a Nextflow script, `iunctus config` prints its
+//! config.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod arguments;
 mod nextflow;
 
 use std::path::PathBuf;
@@ -16,41 +18,19 @@ fn main() -> ExitCode {
     let Some((command, rest)) = arguments.split_first() else {
         return usage();
     };
-    if command != "run" {
-        return usage();
-    }
-    let mut script = None;
-    let mut stub = false;
-    let mut store = None;
-    let mut rest = rest.iter();
-    while let Some(argument) = rest.next() {
-        match argument.as_str() {
-            "-stub" | "-stub-run" => stub = true,
-            "-store" => {
-                store = rest.next().map(|directory| {
-                    std::path::absolute(directory).unwrap_or_else(|_| directory.into())
-                })
-            }
-            other if script.is_none() && !other.starts_with('-') => {
-                script = Some(PathBuf::from(other))
-            }
-            other => {
-                eprintln!("iunctus: unknown option `{other}`");
-                return usage();
-            }
+    let arguments = match arguments::parse(rest) {
+        Ok(arguments) => arguments,
+        Err(message) => {
+            eprintln!("iunctus: {message}");
+            return usage();
         }
-    }
-    let Some(script) = script else {
-        return usage();
     };
-    let cache = cache_directory();
-    let settings = nextflow::Settings {
-        store: store.unwrap_or_else(|| cache.join("store")),
-        scratch: cache.join("scratch"),
-        engine: std::env::var("IUNCTUS_ENGINE").unwrap_or_else(|_| "docker".into()),
-        stub,
+    let result = match command.as_str() {
+        "run" => run(arguments),
+        "config" => nextflow::print_config(&arguments),
+        _ => return usage(),
     };
-    match nextflow::run(&script, &settings) {
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(failure) => {
             eprintln!("{}", failure.message);
@@ -59,8 +39,42 @@ fn main() -> ExitCode {
     }
 }
 
+fn run(arguments: arguments::Arguments) -> Result<(), nextflow::Failure> {
+    let Some(target) = &arguments.target else {
+        return Err(nextflow::Failure {
+            message: "iunctus: `run` needs a script or a project directory".into(),
+            unsupported: false,
+        });
+    };
+    let cache = cache_directory();
+    let settings = nextflow::Settings {
+        store: arguments
+            .store
+            .clone()
+            .unwrap_or_else(|| cache.join("store")),
+        scratch: cache.join("scratch"),
+        engine: std::env::var("IUNCTUS_ENGINE").unwrap_or_else(|_| "docker".into()),
+        stub: arguments.stub,
+        mock: match arguments.executor.as_str() {
+            "local" => false,
+            "mock" => true,
+            other => {
+                return Err(nextflow::Failure {
+                    message: format!("iunctus: unknown executor `{other}`; use `local` or `mock`"),
+                    unsupported: false,
+                });
+            }
+        },
+    };
+    nextflow::run(target, &arguments, &settings)
+}
+
 fn usage() -> ExitCode {
-    eprintln!("usage: iunctus run <script.nf> [-stub] [-store <directory>]");
+    eprintln!(
+        "usage: iunctus run <script.nf or project> [-stub] [-profile <names>] [-c <config>] \
+         [--<param> <value>] [-executor local|mock] [-store <directory>]\n       \
+         iunctus config [<project>] [-profile <names>] [-c <config>] [--<param> <value>]"
+    );
     ExitCode::from(2)
 }
 

@@ -82,3 +82,44 @@ fn unsupported_features_exit_with_33() {
         "{output}"
     );
 }
+
+const GREETER: &str = r#"
+process SAY {
+    input:
+    val(name)
+    output:
+    path("${name}.txt")
+    script:
+    """
+    echo ${params.greeting} > ${name}.txt
+    """
+}
+
+workflow {
+    SAY(channel.of('a', 'b')).map { file -> "${file.name}: ${params.greeting}" }.view()
+}
+"#;
+
+const GREETER_CONFIG: &str =
+    "params.greeting = 'hi'\nprofiles {\n    loud { params.greeting = 'HI' }\n}\n";
+
+#[test]
+fn mock_runs_use_the_config_and_the_command_line() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    std::fs::write(directory.path().join("main.nf"), GREETER).expect("writes the script");
+    std::fs::write(directory.path().join("nextflow.config"), GREETER_CONFIG)
+        .expect("writes the config");
+    let arguments = ["run", "main.nf", "-executor", "mock", "-profile", "loud"];
+    let (code, output) = iunctus(directory.path(), &arguments);
+    assert_eq!(code, 0, "{output}");
+    let mut lines: Vec<&str> = output.lines().collect();
+    lines.sort_unstable();
+    assert_eq!(
+        lines,
+        ["[mock] SAY (1)", "[mock] SAY (2)", "a.txt: HI", "b.txt: HI"]
+    );
+    let arguments = ["config", "-profile", "loud", "--greeting", "hey"];
+    let (code, output) = iunctus(directory.path(), &arguments);
+    assert_eq!(code, 0, "{output}");
+    assert_eq!(output, "params.greeting = 'hey'\n");
+}

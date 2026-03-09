@@ -14,8 +14,11 @@ publish.workspace = true
 [dependencies]
 content-store.workspace = true
 executor.workspace = true
+nextflow-config.workspace = true
 nextflow-evaluator.workspace = true
 nextflow-runtime.workspace = true
+reqwest.workspace = true
+sha2.workspace = true
 task-model.workspace = true
 task-runner.workspace = true
 

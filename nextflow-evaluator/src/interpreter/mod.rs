@@ -22,6 +22,7 @@ use crate::exception::Exception;
 use crate::lowered::{Code, Module, Place, Process};
 use crate::value::{Closure, PathValue, Value};
 
+pub use library::parse_json;
 pub use task::{
     RenderedOutput, RenderedPart, RenderedTask, TaskDirective, TaskFrame, normalise_script,
 };

@@ -2,6 +2,8 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod nf_schema;
+
 use nextflow_config::Config;
 use nextflow_evaluator::interpreter::{Error, Host};
 use nextflow_evaluator::value::Value;
@@ -38,11 +40,14 @@ pub struct Context<'a> {
 pub fn call(
     plugin: &str,
     name: &str,
-    _arguments: Vec<Value>,
-    _context: &mut Context,
+    arguments: Vec<Value>,
+    context: &mut Context,
 ) -> Result<Value, Error> {
-    Err(Error::Unsupported {
-        message: format!("the function `{name}` of the plugin `{plugin}`"),
-        span: Default::default(),
-    })
+    match plugin {
+        "nf-schema" => nf_schema::call(name, arguments, context),
+        _ => Err(Error::Unsupported {
+            message: format!("the function `{name}` of the plugin `{plugin}`"),
+            span: Default::default(),
+        }),
+    }
 }

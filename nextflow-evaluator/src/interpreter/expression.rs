@@ -140,7 +140,7 @@ impl Interpreter<'_> {
                 arguments,
             } => {
                 let arguments = self.arguments(frame, arguments)?;
-                match self.static_method(class, name, &arguments) {
+                match self.static_method(class, name, &arguments, span)? {
                     Some(value) => value,
                     None => return Err(unsupported(format!("`{class}.{name}`"), span)),
                 }

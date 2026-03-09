@@ -3,11 +3,14 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use nextflow_parser::Span;
+
 use crate::number::Number;
 use crate::units::java_round;
-use crate::value::Value;
+use crate::value::{JsonOptions, Value};
 
-use super::super::Interpreter;
+use super::super::{AtSpan, Error, Interpreter};
+use super::json;
 
 impl Interpreter<'_> {
     /// `Class.name(arguments)`, or `None` when the class has no such method.
@@ -16,18 +19,31 @@ impl Interpreter<'_> {
         class: &str,
         name: &str,
         arguments: &[Value],
-    ) -> Option<Value> {
-        Some(match (class, name, arguments) {
+        span: Span,
+    ) -> Result<Option<Value>, Error> {
+        Ok(Some(match (class, name, arguments) {
+            ("JsonOutput", "toJson", [value]) => {
+                Value::string(self.json_text(value, &JsonOptions::default(), span)?)
+            }
+            ("JsonOutput", "prettyPrint", [text]) => {
+                Value::string(json::pretty_print(&text.to_string()).at(span)?)
+            }
             ("System", "getenv", [variable]) => self
                 .host
                 .environment(&variable.to_string())
                 .map_or(Value::Null, Value::string),
             ("System", "getProperty", [property]) => property_value(&property.to_string()),
             ("System", "currentTimeMillis", []) => Value::Number(Number::Long(crate::date::now())),
-            ("Math", _, [Value::Number(a), Value::Number(b)]) => math2(name, a, b)?,
-            ("Math", _, [Value::Number(a)]) => math1(name, a)?,
-            _ => return None,
-        })
+            ("Math", _, [Value::Number(a), Value::Number(b)]) => match math2(name, a, b) {
+                Some(value) => value,
+                None => return Ok(None),
+            },
+            ("Math", _, [Value::Number(a)]) => match math1(name, a) {
+                Some(value) => value,
+                None => return Ok(None),
+            },
+            _ => return Ok(None),
+        }))
     }
 }
 

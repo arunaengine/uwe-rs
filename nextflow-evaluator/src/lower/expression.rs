@@ -387,15 +387,19 @@ impl Lowering<'_> {
         (named && self.scopes.resolve(first).is_none()).then_some(())
     }
 
-    /// The simple name of a type, without package or type arguments.
+    /// The name of a type without package or type arguments; a nested class keeps its outer
+    /// class, as in `JsonGenerator.Options`.
     fn type_name(&mut self, class: &ast::Type) -> Rc<str> {
-        let name = class
-            .name
-            .parts
-            .last()
+        let parts = &class.name.parts;
+        let first_class = parts
+            .iter()
+            .position(|part| part.text.starts_with(|c: char| c.is_ascii_uppercase()))
+            .unwrap_or(parts.len().saturating_sub(1));
+        let names: Vec<&str> = parts[first_class..]
+            .iter()
             .map(|part| part.text.as_str())
-            .unwrap_or("");
-        name.into()
+            .collect();
+        names.join(".").into()
     }
 
     fn binary(&mut self, operator: B, left: &ast::Expression, right: &ast::Expression) -> Kind {

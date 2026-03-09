@@ -6,6 +6,7 @@ mod class;
 mod compare;
 mod format;
 mod key;
+mod object;
 mod operators;
 mod path;
 mod range;
@@ -22,6 +23,7 @@ use crate::number::Number;
 pub use class::{class_text, qualified_class_name, simple_class_name};
 pub use compare::Relation;
 pub use key::Key;
+pub use object::{JsonOptions, Object, State};
 pub use operators::Operator;
 pub use path::PathValue;
 pub use range::{Range, RangeClass};
@@ -53,6 +55,8 @@ pub enum Value {
     Exception(Rc<Exception>),
     /// `java.lang.Class`, by the fully qualified name of the class.
     Class(Rc<str>),
+    /// An object of a Java class that iunctus stands in for.
+    Object(Rc<RefCell<Object>>),
     /// `java.util.regex.Pattern`, from `~'text'`.
     Pattern(Rc<crate::regex::Pattern>),
     /// `java.util.regex.Matcher`, from `text =~ pattern`.
@@ -243,6 +247,7 @@ impl Value {
             Value::Closure(_) => "Closure",
             Value::Exception(exception) => exception.class,
             Value::Class(_) => "Class",
+            Value::Object(object) => super::value::simple_class_name(object.borrow().class),
             Value::Pattern(_) => "Pattern",
             Value::Matcher(_) => "Matcher",
             Value::Path(path) => match path.scheme() {
@@ -296,6 +301,7 @@ impl Value {
             Value::Closure(_) => "groovy.lang.Closure",
             Value::Exception(exception) => exception.qualified_class(),
             Value::Class(_) => "java.lang.Class",
+            Value::Object(object) => object.borrow().class,
             Value::Pattern(_) => "java.util.regex.Pattern",
             Value::Matcher(_) => "java.util.regex.Matcher",
             Value::Path(path) => match path.scheme() {
@@ -329,6 +335,7 @@ impl Value {
             Value::Duration(millis) => *millis != 0,
             Value::Date(_)
             | Value::Class(_)
+            | Value::Object(_)
             | Value::Closure(_)
             | Value::Exception(_)
             | Value::Pattern(_)

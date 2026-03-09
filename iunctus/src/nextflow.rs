@@ -162,7 +162,11 @@ pub fn run(target: &Path, arguments: &Arguments, settings: &Settings) -> Result<
     let options = Options {
         stub: settings.stub,
         container_engine: Some(settings.engine.clone()),
-        params: config.params(),
+        config,
+        profile: arguments
+            .profiles
+            .as_ref()
+            .map_or("standard".into(), |names| names.join(",")),
     };
     let mut console = console();
     let (mut run, mut queue) = Run::start(&module, &options, &mut console)?;

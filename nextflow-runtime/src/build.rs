@@ -4,9 +4,10 @@
 
 use std::rc::Rc;
 
+use nextflow_config::Config;
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, Host};
-use nextflow_evaluator::lowered::{Input, Module, Process};
+use nextflow_evaluator::lowered::{Expression, ExpressionKind, Input, Module, Process};
 use nextflow_evaluator::value::{ChannelId, ChannelOut, ListKind, Value};
 
 use crate::network::Network;
@@ -18,6 +19,7 @@ pub(crate) struct Builder<'a> {
     pub base: &'a mut dyn Host,
     /// Whether tasks run their `stub:` section.
     pub stub: bool,
+    pub config: &'a Config,
 }
 
 impl Host for Builder<'_> {
@@ -120,6 +122,15 @@ impl Host for Builder<'_> {
             queue_inputs |= !self.network.is_value(channel);
             inputs.push(channel);
         }
+        // Selectors match the definition name, the alias and the fully qualified name.
+        let alias = name.rsplit(':').next().unwrap_or(name);
+        let settings = self
+            .config
+            .process_settings(&[&process.name, alias, name], &labels(process))
+            .map_err(|exception| Error::Thrown {
+                exception: Rc::new(exception),
+                span: process.span,
+            })?;
         let singleton = singleton(process, queue_inputs);
         let outputs: Vec<ChannelId> = process
             .outputs
@@ -133,6 +144,7 @@ impl Host for Builder<'_> {
             outputs: outputs.clone(),
             singleton,
             stub: self.stub,
+            settings: Rc::new(settings),
             rounds: 0,
             poisoned: false,
             pending: Default::default(),
@@ -236,6 +248,22 @@ impl Host for Builder<'_> {
         }
         Ok(Some(Value::Channel(output)))
     }
+}
+
+/// The labels of a process, from its `label` directives, which must be plain strings.
+fn labels(process: &Process) -> Vec<String> {
+    process
+        .directives
+        .iter()
+        .filter(|directive| &*directive.name == "label")
+        .filter_map(|directive| match directive.arguments.positional.first() {
+            Some(Expression {
+                kind: ExpressionKind::Literal(label),
+                ..
+            }) => Some(label.to_string()),
+            _ => None,
+        })
+        .collect()
 }
 
 enum Kind {

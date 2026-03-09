@@ -1286,6 +1286,7 @@ version = "0.1.0"
 name = "nextflow-runtime"
 version = "0.1.0"
 dependencies = [
+ "nextflow-config",
  "nextflow-evaluator",
  "nextflow-parser",
  "task-model",

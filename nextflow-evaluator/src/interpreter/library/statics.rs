@@ -31,6 +31,28 @@ impl Interpreter<'_> {
     }
 }
 
+impl Interpreter<'_> {
+    /// `Class.name`: a constant like `Integer.MAX_VALUE`, or a property of the class itself.
+    pub(in crate::interpreter) fn static_property(
+        &mut self,
+        class: &str,
+        name: &str,
+    ) -> Option<Value> {
+        let number = |number| Some(Value::Number(number));
+        match (class, name) {
+            ("Integer", "MAX_VALUE") => number(Number::Integer(i32::MAX)),
+            ("Integer", "MIN_VALUE") => number(Number::Integer(i32::MIN)),
+            ("Long", "MAX_VALUE") => number(Number::Long(i64::MAX)),
+            ("Long", "MIN_VALUE") => number(Number::Long(i64::MIN)),
+            (_, "name") => crate::value::qualified_class_name(class).map(Value::string),
+            (_, "simpleName") => {
+                crate::value::qualified_class_name(class).map(|_| Value::string(class))
+            }
+            _ => None,
+        }
+    }
+}
+
 /// `System.getProperty` for the properties that pipelines read.
 fn property_value(name: &str) -> Value {
     let variable = |name: &str| std::env::var(name).ok();

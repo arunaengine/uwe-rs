@@ -65,6 +65,13 @@ impl Interpreter<'_> {
             Value::MemoryUnit(_) | Value::Duration(_) => {
                 number::unit_method(object, name, arguments)
             }
+            Value::Class(class) => match (name, arguments) {
+                ("getSimpleName", []) => {
+                    Some(Value::string(crate::value::simple_class_name(class)))
+                }
+                ("getName", []) => Some(Value::String(class.clone())),
+                _ => None,
+            },
             Value::Boolean(value) => match (name, arguments) {
                 ("toBoolean" | "booleanValue", []) => Some(Value::Boolean(*value)),
                 _ => None,
@@ -95,6 +102,7 @@ fn object_method(object: &Value, name: &str, arguments: &[Value]) -> Option<Valu
             _ => object.java_equals(other),
         }),
         ("hashCode", []) => Value::integer(object.java_hash()),
+        ("getClass", []) => Value::Class(object.java_class_name().into()),
         _ => return None,
     })
 }

@@ -88,6 +88,7 @@ impl Value {
             (Value::ChannelOut(left), Value::ChannelOut(right)) => Rc::ptr_eq(left, right),
             (Value::Definition(left), Value::Definition(right)) => Rc::ptr_eq(left, right),
             (Value::Date(left), Value::Date(right)) => left == right,
+            (Value::Class(left), Value::Class(right)) => left == right,
             (Value::Namespace(left), Value::Namespace(right)) => left == right,
             (Value::Operator(left), Value::Operator(right)) => Rc::ptr_eq(left, right),
             _ => false,
@@ -137,6 +138,7 @@ impl Value {
                 (59 * 127i32).wrapping_add(long_hash(*count))
             }
             Value::Date(millis) => long_hash(*millis),
+            Value::Class(name) => string_hash(name),
             // Other objects keep the identity hash, which only needs to be consistent.
             Value::Closure(closure) => Rc::as_ptr(closure) as usize as i32,
             Value::Exception(exception) => Rc::as_ptr(exception) as usize as i32,

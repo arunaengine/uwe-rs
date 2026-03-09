@@ -142,3 +142,17 @@ fn dates_format_like_simple_date_format() {
         "1592222400000"
     );
 }
+
+#[test]
+fn class_values() {
+    assert_eq!(
+        value(
+            "[Path, Path.simpleName, 'x'.getClass(), [1].getClass().name, \
+             nextflow.script.types.VersionNumber, 1.getClass() == Integer, \
+             [a: 1].getClass().simpleName, Integer.name, Integer.MAX_VALUE]"
+        ),
+        "[interface java.nio.file.Path, Path, class java.lang.String, java.util.ArrayList, \
+         interface nextflow.script.types.VersionNumber, true, LinkedHashMap, java.lang.Integer, \
+         2147483647]"
+    );
+}

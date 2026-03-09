@@ -44,6 +44,10 @@ impl Lowering<'_> {
                     })
                     .collect(),
             ),
+            Syntax::Property { .. } if self.class_value(expression).is_some() => {
+                let parts = qualified_name(expression).unwrap_or_default();
+                Kind::Literal(Value::Class(parts.join(".").into()))
+            }
             Syntax::Property {
                 target,
                 name,
@@ -174,6 +178,9 @@ impl Lowering<'_> {
             || (self.in_process && name == "task")
         {
             return Kind::Builtin(name.into());
+        }
+        if let Some(qualified) = crate::value::qualified_class_name(name) {
+            return Kind::Literal(Value::Class(qualified.into()));
         }
         if CLASSES.contains(&name) {
             self.error(
@@ -365,6 +372,19 @@ impl Lowering<'_> {
             }
             _ => None,
         }
+    }
+
+    /// Whether an expression like `nextflow.script.types.VersionNumber` names a class.
+    fn class_value(&mut self, expression: &ast::Expression) -> Option<()> {
+        let parts = qualified_name(expression)?;
+        let first = parts.first()?;
+        let last = parts.last()?;
+        let class_like = last.starts_with(|c: char| c.is_ascii_uppercase());
+        let package = parts[..parts.len() - 1]
+            .iter()
+            .all(|part| part.starts_with(|c: char| c.is_ascii_lowercase()));
+        let named = parts.len() > 1 && PACKAGES.contains(first) && class_like && package;
+        (named && self.scopes.resolve(first).is_none()).then_some(())
     }
 
     /// The simple name of a type, without package or type arguments.

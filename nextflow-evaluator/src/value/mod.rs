@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod class;
 mod compare;
 mod format;
 mod key;
@@ -18,6 +19,7 @@ use crate::exception::Exception;
 use crate::lowered::{Code, Module};
 use crate::number::Number;
 
+pub use class::{class_text, qualified_class_name, simple_class_name};
 pub use compare::Relation;
 pub use key::Key;
 pub use operators::Operator;
@@ -49,6 +51,8 @@ pub enum Value {
     Closure(Rc<Closure>),
     /// A thrown and caught exception, as `catch (e)` binds it.
     Exception(Rc<Exception>),
+    /// `java.lang.Class`, by the fully qualified name of the class.
+    Class(Rc<str>),
     /// `java.util.regex.Pattern`, from `~'text'`.
     Pattern(Rc<crate::regex::Pattern>),
     /// `java.util.regex.Matcher`, from `text =~ pattern`.
@@ -238,6 +242,7 @@ impl Value {
             Value::Date(_) => "Date",
             Value::Closure(_) => "Closure",
             Value::Exception(exception) => exception.class,
+            Value::Class(_) => "Class",
             Value::Pattern(_) => "Pattern",
             Value::Matcher(_) => "Matcher",
             Value::Path(path) => match path.scheme() {
@@ -290,6 +295,7 @@ impl Value {
             Value::Date(_) => "java.util.Date",
             Value::Closure(_) => "groovy.lang.Closure",
             Value::Exception(exception) => exception.qualified_class(),
+            Value::Class(_) => "java.lang.Class",
             Value::Pattern(_) => "java.util.regex.Pattern",
             Value::Matcher(_) => "java.util.regex.Matcher",
             Value::Path(path) => match path.scheme() {
@@ -322,6 +328,7 @@ impl Value {
             Value::MemoryUnit(size) => *size != 0,
             Value::Duration(millis) => *millis != 0,
             Value::Date(_)
+            | Value::Class(_)
             | Value::Closure(_)
             | Value::Exception(_)
             | Value::Pattern(_)

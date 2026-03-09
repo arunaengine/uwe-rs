@@ -10,7 +10,7 @@ use nextflow_parser::Span;
 use super::{AtSpan, Error, Interpreter, thrown, unsupported};
 use crate::exception::{self, Exception};
 use crate::number::Number;
-use crate::value::{Key, List, ListKind, MapKind, Value};
+use crate::value::{Key, List, ListKind, MapKind, Object, State, Value};
 
 impl Interpreter<'_> {
     /// `object.name`. A map reads the key, so `m.class` is `m.get('class')`.
@@ -417,6 +417,19 @@ impl Interpreter<'_> {
                 Ok(Value::Exception(Rc::new(exception)))
             }
             (None, []) if class == "Date" => Ok(Value::Date(crate::date::now())),
+            (None, []) if class == "JsonGenerator.Options" || class == "JsonSlurper" => {
+                let (class, state) = match class {
+                    "JsonSlurper" => ("groovy.json.JsonSlurper", State::JsonSlurper),
+                    _ => (
+                        "groovy.json.JsonGenerator$Options",
+                        State::Json(Default::default()),
+                    ),
+                };
+                Ok(Value::Object(Rc::new(std::cell::RefCell::new(Object {
+                    class,
+                    state,
+                }))))
+            }
             (None, [Value::Number(millis)]) if class == "Date" => Ok(Value::Date(millis.to_i64())),
             _ => Err(unsupported(format!("`new {class}(...)`"), span)),
         }
@@ -451,6 +464,7 @@ pub(super) fn instance_of(value: &Value, class: &str) -> bool {
         Value::MapEntry(_)
         | Value::Closure(_)
         | Value::Class(_)
+        | Value::Object(_)
         | Value::Pattern(_)
         | Value::Matcher(_) => &[],
     };

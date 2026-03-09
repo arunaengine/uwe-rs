@@ -193,7 +193,7 @@ pub(super) fn pretty_print(text: &str) -> Result<String, Exception> {
 
 /// `JsonSlurper.parseText`: objects become maps and arrays lists. Whole numbers become an
 /// `Integer`, else a `Long` (which wraps, as in Groovy); other numbers a `BigDecimal`.
-pub(super) fn parse(text: &str) -> Result<Value, Exception> {
+pub fn parse(text: &str) -> Result<Value, Exception> {
     let tokens = tokens(text)?;
     let mut position = 0;
     let value = parse_value(&tokens, &mut position)?;

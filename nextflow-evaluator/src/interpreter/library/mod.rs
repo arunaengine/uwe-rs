@@ -14,6 +14,7 @@ mod statics;
 mod string;
 
 pub(super) use iterable::elements;
+pub use json::parse as parse_json;
 pub(super) use number::{convert, unit_property};
 
 use nextflow_parser::Span;

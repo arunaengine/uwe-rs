@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "sample": {"type": "string", "pattern": "^\\S+$", "meta": ["id"]},
+      "group": {"type": "integer", "meta": ["group", "grp"]},
+      "flag": {"type": "boolean", "meta": ["flag"]},
+      "fastq_1": {"type": "string", "format": "file-path", "exists": false},
+      "fastq_2": {"type": "string", "format": "file-path"},
+      "score": {"type": "number"},
+      "note": {"type": "string", "meta": ["note"]}
+    },
+    "required": ["sample", "fastq_1"]
+  }
+}

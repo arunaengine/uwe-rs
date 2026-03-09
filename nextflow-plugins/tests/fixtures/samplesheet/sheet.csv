@@ -1,0 +1,3 @@
+sample,group,flag,fastq_1,fastq_2,score,note,extra
+S1,1,true,/data/a_1.fq.gz,/data/a_2.fq.gz,1.5,hello,x
+S2,,false,b_1.fq.gz,,,,

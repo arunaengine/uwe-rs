@@ -15,6 +15,7 @@ publish.workspace = true
 nextflow-config.workspace = true
 nextflow-evaluator.workspace = true
 nextflow-parser.workspace = true
+nextflow-plugins.workspace = true
 task-model.workspace = true
 
 [dev-dependencies]

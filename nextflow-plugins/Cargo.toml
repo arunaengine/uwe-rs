@@ -1,0 +1,16 @@
+# Manifest of nextflow-plugins, native versions of Nextflow plugin functions.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "nextflow-plugins"
+description = "Native versions of Nextflow plugin functions, starting with nf-schema"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+nextflow-config.workspace = true
+nextflow-evaluator.workspace = true

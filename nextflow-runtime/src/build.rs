@@ -2,13 +2,14 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use nextflow_config::Config;
 use nextflow_evaluator::exception::Exception;
-use nextflow_evaluator::interpreter::{Error, Host};
+use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
 use nextflow_evaluator::lowered::{Expression, ExpressionKind, Input, Module, Process};
-use nextflow_evaluator::value::{ChannelId, ChannelOut, ListKind, Value};
+use nextflow_evaluator::value::{ChannelId, ChannelOut, ListKind, PathValue, Value};
 
 use crate::network::Network;
 use crate::operator::{Each, Factory, Gather, Gathering, Mix, Single};
@@ -29,6 +30,43 @@ impl Host for Builder<'_> {
 
     fn launch_dir(&self) -> String {
         self.base.launch_dir()
+    }
+
+    fn download(&mut self, path: &PathValue) -> Result<PathBuf, Error> {
+        self.base.download(path)
+    }
+
+    fn read(&mut self, path: &PathValue) -> Result<Vec<u8>, Error> {
+        self.base.read(path)
+    }
+
+    fn metadata(&mut self, path: &PathValue) -> Result<Option<FileMetadata>, Error> {
+        self.base.metadata(path)
+    }
+
+    fn write(&mut self, path: &PathValue, bytes: &[u8]) -> Result<(), Error> {
+        self.base.write(path, bytes)
+    }
+
+    fn delete(&mut self, path: &PathValue) -> Result<bool, Error> {
+        self.base.delete(path)
+    }
+
+    fn create_directories(&mut self, path: &PathValue) -> Result<(), Error> {
+        self.base.create_directories(path)
+    }
+
+    fn environment(&self, name: &str) -> Option<String> {
+        self.base.environment(name)
+    }
+
+    fn plugin_function(
+        &mut self,
+        plugin: &str,
+        name: &str,
+        arguments: Vec<Value>,
+    ) -> Result<Value, Error> {
+        self.base.plugin_function(plugin, name, arguments)
     }
 
     fn namespace_method(

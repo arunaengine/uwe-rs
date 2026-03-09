@@ -42,6 +42,12 @@ impl Interpreter<'_> {
         span: Span,
     ) -> Result<Value, Error> {
         let (target, target_name) = resolve(module, name);
+        if let Some(plugin) = &target.plugin {
+            return self
+                .host
+                .plugin_function(plugin, &target_name, arguments)
+                .map_err(|error| error.or_at(span));
+        }
         let process = target
             .processes
             .iter()

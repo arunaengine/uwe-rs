@@ -99,3 +99,43 @@ fn bad_includes() {
         error("broken.nf")
     );
 }
+
+#[test]
+fn plugin_includes_call_the_host() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    write(
+        root.path(),
+        "main.nf",
+        "include { samplesheetToList as toList } from 'plugin/nf-schema'\n\
+         workflow {\n    toList('sheet.csv', 'schema.json')\n}\n",
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let error = nextflow_runtime::run(&module, &mut Output::default()).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "Not supported yet: the function `samplesheetToList` of the plugin `nf-schema`"
+    );
+    write(
+        root.path(),
+        "other.nf",
+        "include { fromSamplesheet } from 'plugin/nf-validation'\n\
+         include { nothing } from 'plugin/nf-schema'\nworkflow {\n}\n",
+    );
+    let error = Loader::default()
+        .load(&root.path().join("other.nf"))
+        .unwrap_err()
+        .to_string();
+    let lines: Vec<&str> = error
+        .lines()
+        .map(|line| line.rsplit("other.nf:").next().unwrap_or(line))
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            "1:11: Plugins are not supported yet: plugin/nf-validation",
+            "2:11: `nothing` is not a function of the plugin `nf-schema`"
+        ]
+    );
+}

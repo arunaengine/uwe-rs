@@ -8,6 +8,7 @@ mod loader;
 mod network;
 mod operator;
 mod process;
+mod session;
 pub mod task;
 
 use std::rc::Rc;
@@ -22,6 +23,8 @@ pub use loader::{LoadError, Loader};
 pub use network::Network;
 pub use process::{TaskId, TaskOutcome, TaskRequest};
 
+use session::Session;
+
 /// How a run behaves.
 #[derive(Clone, Debug)]
 pub struct Options {
@@ -33,6 +36,8 @@ pub struct Options {
     pub config: Config,
     /// The profiles of `-profile`, as `workflow.profile` shows them.
     pub profile: String,
+    /// The directory of the main script, `projectDir`.
+    pub project_dir: String,
 }
 
 /// A run of a script: its network, which asks for tasks and takes their outcomes.
@@ -50,10 +55,14 @@ impl Run {
         host: &mut dyn Host,
     ) -> Result<(Run, Vec<TaskRequest>), Error> {
         let mut network = Network::default();
+        let mut session = Session {
+            base: host,
+            options,
+        };
         {
             let mut builder = build::Builder {
                 network: &mut network,
-                base: host,
+                base: &mut session,
                 stub: options.stub,
                 config: &options.config,
             };
@@ -63,7 +72,7 @@ impl Run {
             script_params(&mut interpreter, module, &params, &mut Vec::new())?;
             interpreter.run_entry(module)?;
         }
-        let mut interpreter = Interpreter::new(host);
+        let mut interpreter = Interpreter::new(&mut session);
         set_globals(&mut interpreter, options);
         network.ignite(&mut interpreter)?;
         let requests = network.take_requests();
@@ -77,7 +86,11 @@ impl Run {
         outcome: TaskOutcome,
         host: &mut dyn Host,
     ) -> Result<Vec<TaskRequest>, Error> {
-        let mut interpreter = Interpreter::new(host);
+        let mut session = Session {
+            base: host,
+            options: &self.options,
+        };
+        let mut interpreter = Interpreter::new(&mut session);
         set_globals(&mut interpreter, &self.options);
         self.network.complete(outcome, &mut interpreter)?;
         Ok(self.network.take_requests())
@@ -121,6 +134,7 @@ impl Default for Options {
             container_engine: None,
             config: Config::default(),
             profile: "standard".into(),
+            project_dir: "/".into(),
         }
     }
 }

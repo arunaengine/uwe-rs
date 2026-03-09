@@ -65,6 +65,10 @@ impl Interpreter<'_> {
             Value::MemoryUnit(_) | Value::Duration(_) => {
                 number::unit_method(object, name, arguments)
             }
+            Value::Boolean(value) => match (name, arguments) {
+                ("toBoolean" | "booleanValue", []) => Some(Value::Boolean(*value)),
+                _ => None,
+            },
             Value::Date(millis) => match (name, arguments) {
                 ("format", [pattern]) => {
                     let text = crate::date::format(*millis, &pattern.to_string()).at(span)?;

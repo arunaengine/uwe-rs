@@ -1276,6 +1276,7 @@ dependencies = [
  "nextflow-parser",
  "num-bigint",
  "num-traits",
+ "tempfile",
 ]
 
 [[package]]

@@ -106,3 +106,17 @@ fn invalid_patterns() {
         "Not supported yet: glob patterns in `file()`"
     );
 }
+
+#[test]
+fn writing_copying_and_deleting_files() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let dir = directory.path().display();
+    let body = format!(
+        "def f = new File('{dir}', 'a.txt')\n\
+         f.text = 'hi'\n\
+         nextflow.extension.FilesEx.copyTo(f.toPath(), '{dir}/sub/b.txt')\n\
+         def g = file('{dir}/sub/b.txt')\n\
+         [g.text, f.delete(), f.exists(), g.copyTo(file('{dir}/c.txt')).text, f.delete()]"
+    );
+    assert_eq!(value(&body), "[hi, true, false, hi, false]");
+}

@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod iterable;
+mod json;
 mod list;
 mod map;
 mod number;
@@ -65,6 +66,7 @@ impl Interpreter<'_> {
             Value::MemoryUnit(_) | Value::Duration(_) => {
                 number::unit_method(object, name, arguments)
             }
+            Value::Object(object) => self.json_method(object, name, arguments, span)?,
             Value::Class(class) => match (name, arguments) {
                 ("getSimpleName", []) => {
                     Some(Value::string(crate::value::simple_class_name(class)))

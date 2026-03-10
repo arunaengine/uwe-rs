@@ -7,7 +7,7 @@ use nextflow_evaluator::interpreter::{Error, parse_json};
 use nextflow_evaluator::number::{BigDecimal, Number};
 use nextflow_evaluator::value::{PathValue, Value};
 
-use super::{entries, get, json, path, read, schema, thrown};
+use super::{entries, errors, get, json, path, plain, read, schema, thrown};
 use crate::Context;
 
 /// Each row becomes a list: a map of the fields with `meta` keys first, if the schema has
@@ -120,18 +120,21 @@ fn check(
             )
         })
         .collect();
-    let errors: Vec<String> = validator
-        .iter_errors(&instance)
-        .map(|error| {
-            let location = error.instance_path().to_string();
+    let errors: Vec<String> = errors(&validator, &instance, "field")
+        .into_iter()
+        .map(|(location, message)| {
             let mut parts = location.trim_start_matches('/').splitn(2, '/');
             let entry = parts.next().and_then(|index| index.parse::<usize>().ok());
             match (entry, parts.next()) {
                 (Some(index), Some(field)) => {
-                    format!("-> Entry {}: Error for field '{field}': {error}", index + 1)
+                    let value = instance[index].get(field).map(plain).unwrap_or_default();
+                    format!(
+                        "-> Entry {}: Error for field '{field}' ({value}): {message}",
+                        index + 1
+                    )
                 }
-                (Some(index), None) => format!("-> Entry {}: {error}", index + 1),
-                _ => format!("-> {error}"),
+                (Some(index), None) => format!("-> Entry {}: {message}", index + 1),
+                _ => format!("-> {message}"),
             }
         })
         .collect();
@@ -139,7 +142,7 @@ fn check(
         return Ok(());
     }
     Err(thrown(format!(
-        "Validation of samplesheet failed!\n\nThe following errors have been detected in {}:\n\n{}",
+        "The following errors have been detected in {}:\n\n{}\n",
         file.uri(),
         errors.join("\n")
     )))

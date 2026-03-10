@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "$defs": {
+    "io": {"title": "Input/output options", "type": "object", "required": ["outdir"],
+      "properties": {
+        "input": {"type": "string", "pattern": "^\\S+\\.csv$"},
+        "outdir": {"type": "string", "description": "Output directory"}
+      }},
+    "generic": {"title": "Generic options", "type": "object",
+      "properties": {
+        "n": {"type": "integer", "default": 5},
+        "flag": {"type": "boolean"},
+        "mode": {"type": "string", "enum": ["a", "b"], "default": "a"}
+      }}
+  },
+  "allOf": [{"$ref": "#/$defs/io"}, {"$ref": "#/$defs/generic"}]
+}

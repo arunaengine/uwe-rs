@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod params;
 mod samplesheet;
 
 use std::rc::Rc;
@@ -19,11 +20,28 @@ pub(crate) fn call(
     arguments: Vec<Value>,
     context: &mut Context,
 ) -> Result<Value, Error> {
-    let (options, positional) = split(arguments);
-    match (name, positional.as_slice()) {
-        ("samplesheetToList", [samplesheet, schema]) => {
-            samplesheet::to_list(samplesheet, schema, options.as_ref(), context)
+    // Named arguments come first as a map; nf-schema also takes a map of options as the last
+    // argument of `samplesheetToList`.
+    match (name, arguments.as_slice()) {
+        ("samplesheetToList", [sheet, schema]) => {
+            samplesheet::to_list(sheet, schema, None, context)
         }
+        ("samplesheetToList", [options @ Value::Map(_), sheet, schema])
+        | ("samplesheetToList", [sheet, schema, options]) => {
+            samplesheet::to_list(sheet, schema, Some(options), context)
+        }
+        ("validateParameters", []) => params::validate(None, context),
+        ("validateParameters", [options]) => params::validate(Some(options), context),
+        ("paramsSummaryMap", [workflow]) => params::summary(None, workflow, context),
+        ("paramsSummaryMap", [options, workflow]) => {
+            params::summary(Some(options), workflow, context)
+        }
+        ("paramsSummaryLog", [workflow]) => params::summary_log(None, workflow, context),
+        ("paramsSummaryLog", [options, workflow]) => {
+            params::summary_log(Some(options), workflow, context)
+        }
+        ("paramsHelp", []) => params::help(None, context),
+        ("paramsHelp", [options @ Value::Map(_), ..]) => params::help(Some(options), context),
         _ => Err(Error::Unsupported {
             message: format!(
                 "the function `{name}` of the plugin `nf-schema` with these arguments"
@@ -31,13 +49,6 @@ pub(crate) fn call(
             span: Default::default(),
         }),
     }
-}
-
-/// Named arguments, which come first as a map, and the others.
-fn split(arguments: Vec<Value>) -> (Option<Value>, Vec<Value>) {
-    let mut arguments = arguments.into_iter().peekable();
-    let options = arguments.next_if(|argument| matches!(argument, Value::Map(_)));
-    (options, arguments.collect())
 }
 
 /// The value of a key of a map.
@@ -107,6 +118,85 @@ fn json(value: &Value) -> serde_json::Value {
                 .collect(),
         ),
         other => serde_json::Value::String(other.to_string()),
+    }
+}
+
+/// The errors of an instance, in nf-schema's words, by the path of the value they concern.
+/// Missing required fields become one error of the object, like `Missing required field(s):
+/// a, b`; `what` names the fields, like `field` or `parameter`.
+fn errors(
+    validator: &jsonschema::Validator,
+    instance: &serde_json::Value,
+    what: &str,
+) -> Vec<(String, String)> {
+    use jsonschema::error::{TypeKind, ValidationErrorKind as Kind};
+    let mut errors: Vec<(String, String)> = Vec::new();
+    let mut missing: Vec<(String, Vec<String>)> = Vec::new();
+    for error in validator.iter_errors(instance) {
+        let path = error.instance_path().to_string();
+        let value = error.instance();
+        let message = match error.kind() {
+            Kind::Required { property } => {
+                let property = property.as_str().unwrap_or_default().to_owned();
+                match missing.iter_mut().find(|(at, _)| *at == path) {
+                    Some((_, names)) => names.push(property),
+                    None => missing.push((path, vec![property])),
+                }
+                continue;
+            }
+            Kind::Type { kind } => {
+                let expected = match kind {
+                    TypeKind::Single(kind) => kind.to_string(),
+                    TypeKind::Multiple(kinds) => {
+                        let kinds: Vec<String> =
+                            kinds.iter().map(|kind| kind.to_string()).collect();
+                        kinds.join(", ")
+                    }
+                };
+                format!("Value is [{}] but should be [{expected}]", json_type(value))
+            }
+            Kind::Pattern { pattern } => {
+                format!("{value} does not match regular expression [{pattern}]")
+            }
+            Kind::Enum { options } => {
+                let options: Vec<String> = options
+                    .as_array()
+                    .map(|items| items.iter().map(plain).collect())
+                    .unwrap_or_default();
+                format!("Expected any of [[{}]]", options.join(", "))
+            }
+            _ => error.to_string(),
+        };
+        errors.push((path, message));
+    }
+    for (path, mut names) in missing {
+        names.sort();
+        errors.push((
+            path,
+            format!("Missing required {what}(s): {}", names.join(", ")),
+        ));
+    }
+    errors
+}
+
+/// The JSON type of a value, as nf-schema names it.
+fn json_type(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "boolean",
+        serde_json::Value::Number(number) if number.is_f64() => "number",
+        serde_json::Value::Number(_) => "integer",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    }
+}
+
+/// A JSON value as Groovy prints it: text without quotes.
+fn plain(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(text) => text.clone(),
+        other => other.to_string(),
     }
 }
 

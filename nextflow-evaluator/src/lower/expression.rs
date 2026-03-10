@@ -87,7 +87,7 @@ impl Lowering<'_> {
                 arguments,
                 ..
             } => {
-                let arguments = self.arguments(arguments);
+                let arguments = self.call_arguments(&name.text, arguments);
                 match target {
                     None => self.function_call(&name.text, name.span, arguments),
                     Some(target) => match self.class_name(target) {
@@ -303,6 +303,53 @@ impl Lowering<'_> {
             body,
             span,
         }))
+    }
+
+    /// The arguments of a call. The criteria closure of `branch` and `multiMap` is rewritten,
+    /// and the list of its labels comes first.
+    fn call_arguments(&mut self, name: &str, arguments: &[ast::Argument]) -> Arguments {
+        type Rewrite = fn(&ast::Closure) -> Result<(Vec<String>, ast::Closure), (String, Span)>;
+        let rewrite: Option<Rewrite> = match name {
+            "branch" | "branchCriteria" => Some(super::criteria::branch),
+            "multiMap" | "multiMapCriteria" => Some(super::criteria::multi_map),
+            _ => None,
+        };
+        let (Some(rewrite), [argument]) = (rewrite, arguments) else {
+            return self.arguments(arguments);
+        };
+        let (None, Syntax::Closure(closure)) = (&argument.name, &argument.value.kind) else {
+            return self.arguments(arguments);
+        };
+        let span = argument.value.span;
+        match rewrite(closure) {
+            Ok((labels, closure)) => {
+                let labels = labels
+                    .into_iter()
+                    .map(|label| Expression {
+                        kind: Kind::Literal(Value::string(label)),
+                        span,
+                    })
+                    .collect();
+                let closure = self.closure(&closure, span);
+                Arguments {
+                    named: Vec::new(),
+                    positional: vec![
+                        Expression {
+                            kind: Kind::List(labels),
+                            span,
+                        },
+                        Expression {
+                            kind: closure,
+                            span,
+                        },
+                    ],
+                }
+            }
+            Err((message, span)) => {
+                self.error(message, span);
+                self.arguments(arguments)
+            }
+        }
     }
 
     pub(super) fn arguments(&mut self, arguments: &[ast::Argument]) -> Arguments {

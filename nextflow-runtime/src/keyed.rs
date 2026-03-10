@@ -1,0 +1,246 @@
+//! Operators that group or pair values by a key: `groupTuple` and `join` (channels spec,
+//! sections 5.18 and 5.20).
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::rc::Rc;
+
+use indexmap::IndexMap;
+use nextflow_evaluator::exception::Exception;
+use nextflow_evaluator::interpreter::Error;
+use nextflow_evaluator::value::{ChannelId, Key, Value};
+
+use crate::channel::Message;
+use crate::network::{Behaviour, Context, State};
+
+/// The elements of a value: a list gives its items, any other value is one element.
+fn items(value: &Value) -> Vec<Value> {
+    match value {
+        Value::List(list) => list.borrow().items.clone(),
+        other => vec![other.clone()],
+    }
+}
+
+/// The key of a value at the `by` indexes, in index order. A value that is not a list is its
+/// own key when `by` is `[0]`.
+fn key(value: &Value, by: &[usize]) -> Result<Vec<Key>, Error> {
+    match value {
+        Value::List(list) => {
+            let list = list.borrow();
+            let mut indexes = by.to_vec();
+            indexes.sort_unstable();
+            indexes
+                .iter()
+                .map(|index| match list.items.get(*index) {
+                    Some(item) => Ok(Key(string_key(item))),
+                    None => Err(thrown(format!("Not a valid `by` index: {index}"))),
+                })
+                .collect()
+        }
+        other if by == [0] => Ok(vec![Key(string_key(other))]),
+        _ => Err(thrown(format!("Not a valid `by` index: {by:?}"))),
+    }
+}
+
+/// Key elements compare as Java does, with GStrings as Strings.
+fn string_key(value: &Value) -> Value {
+    match value {
+        Value::GString(text) => Value::String(text.clone()),
+        other => other.clone(),
+    }
+}
+
+/// The key elements, then the other elements of each part, in order; one element is bare.
+fn joined(by: &[usize], parts: &[&Value]) -> Value {
+    let mut result: Vec<Value> = Vec::new();
+    if let Some(first) = parts.first() {
+        let first = items(first);
+        let mut indexes = by.to_vec();
+        indexes.sort_unstable();
+        result.extend(
+            indexes
+                .iter()
+                .filter_map(|index| first.get(*index).cloned()),
+        );
+    }
+    for part in parts {
+        let part = items(part);
+        result.extend(
+            part.into_iter()
+                .enumerate()
+                .filter(|(index, _)| !by.contains(index))
+                .map(|(_, item)| item),
+        );
+    }
+    match <[Value; 1]>::try_from(result) {
+        Ok([single]) => single,
+        Err(result) => Value::list(result),
+    }
+}
+
+/// `groupTuple`: tuples with equal keys become one tuple, whose other positions are lists.
+pub(crate) struct GroupTuple {
+    pub output: ChannelId,
+    pub by: Vec<usize>,
+    /// A group is emitted as soon as it has this many tuples.
+    pub size: Option<usize>,
+    /// Whether incomplete groups are emitted at the end when there is a size.
+    pub remainder: bool,
+    /// Whether each list of a group is sorted before it is emitted.
+    pub sort: bool,
+    /// The open groups in first-seen key order, with their number of tuples.
+    pub groups: IndexMap<Vec<Key>, (Vec<Value>, usize)>,
+}
+
+impl Behaviour for GroupTuple {
+    fn run(&mut self, context: &mut Context) -> Result<State, Error> {
+        while let Some(message) = context.read(0) {
+            let Message::Value(value) = message else {
+                for (_, (group, count)) in std::mem::take(&mut self.groups) {
+                    let complete = self.size.is_none_or(|size| count == size);
+                    if complete || self.remainder {
+                        context.emit(self.output, self.group_value(group));
+                    }
+                }
+                context.close(self.output);
+                return Ok(State::Stopped);
+            };
+            let Value::List(_) = value else {
+                let message = "Unknown method invocation `collect` on GroupTupleOp type";
+                return Err(thrown(message.into()));
+            };
+            let tuple = items(&value);
+            let key = key(&value, &self.by)?;
+            let by = self.by.clone();
+            let (group, count) = self.groups.entry(key.clone()).or_insert_with(|| {
+                let group = (0..tuple.len())
+                    .map(|index| match by.contains(&index) {
+                        true => string_key(&tuple[index]),
+                        false => Value::list(Vec::new()),
+                    })
+                    .collect();
+                (group, 0)
+            });
+            for (index, item) in tuple.into_iter().enumerate() {
+                if let (false, Some(Value::List(bag))) = (by.contains(&index), group.get(index)) {
+                    bag.borrow_mut().items.push(item);
+                }
+            }
+            *count += 1;
+            if self.size == Some(*count)
+                && let Some((group, _)) = self.groups.shift_remove(&key)
+            {
+                context.emit(self.output, self.group_value(group));
+            }
+        }
+        Ok(State::Running)
+    }
+}
+
+impl GroupTuple {
+    fn group_value(&self, group: Vec<Value>) -> Value {
+        if self.sort {
+            for item in &group {
+                if let Value::List(list) = item {
+                    list.borrow_mut()
+                        .items
+                        .sort_by(|a, b| a.number_aware_compare(b));
+                }
+            }
+        }
+        Value::list(group)
+    }
+}
+
+/// `join`: pairs values of two channels with equal keys, first come first paired.
+pub(crate) struct Join {
+    pub output: ChannelId,
+    pub by: Vec<usize>,
+    pub remainder: bool,
+    /// Values waiting for a partner, by key in first-seen order, for the left and right side.
+    pub pending: [IndexMap<Vec<Key>, Vec<Value>>; 2],
+    pub done: [bool; 2],
+    /// Whether any value had elements besides its key.
+    pub has_values: bool,
+}
+
+impl Behaviour for Join {
+    fn run(&mut self, context: &mut Context) -> Result<State, Error> {
+        for side in 0..2 {
+            while !self.done[side] {
+                match context.read(side) {
+                    Some(Message::Value(value)) => self.take(context, side, value)?,
+                    Some(Message::Stop) => self.done[side] = true,
+                    None => break,
+                }
+            }
+        }
+        if !(self.done[0] && self.done[1]) {
+            return Ok(State::Running);
+        }
+        if self.remainder {
+            let mut keys: Vec<Vec<Key>> = self.pending[0].keys().cloned().collect();
+            keys.extend(
+                self.pending[1]
+                    .keys()
+                    .filter(|key| !self.pending[0].contains_key(*key))
+                    .cloned(),
+            );
+            for key in keys {
+                for side in 0..2 {
+                    for value in self.pending[side].shift_remove(&key).unwrap_or_default() {
+                        context.emit(self.output, self.remainder_value(side, &value));
+                    }
+                }
+            }
+        }
+        context.close(self.output);
+        Ok(State::Stopped)
+    }
+}
+
+impl Join {
+    fn take(&mut self, context: &mut Context, side: usize, value: Value) -> Result<(), Error> {
+        let key = key(&value, &self.by)?;
+        self.has_values |= items(&value).len() > self.by.len();
+        let other = 1 - side;
+        let partner = self.pending[other]
+            .get_mut(&key)
+            .and_then(|values| (!values.is_empty()).then(|| values.remove(0)));
+        match partner {
+            Some(partner) => {
+                let (left, right) = if side == 0 {
+                    (&value, &partner)
+                } else {
+                    (&partner, &value)
+                };
+                context.emit(self.output, joined(&self.by, &[left, right]));
+            }
+            None => self.pending[side].entry(key).or_default().push(value),
+        }
+        Ok(())
+    }
+
+    /// A value without a partner: the key, the value's other elements and `null` for the
+    /// missing side; just the key when no value ever had other elements.
+    fn remainder_value(&self, side: usize, value: &Value) -> Value {
+        if !self.has_values {
+            return joined(&self.by, &[value]);
+        }
+        let mut result = items(&joined(&self.by, &[value]));
+        let position = if side == 0 {
+            result.len()
+        } else {
+            self.by.len()
+        };
+        result.insert(position, Value::Null);
+        Value::list(result)
+    }
+}
+
+fn thrown(message: String) -> Error {
+    Error::Thrown {
+        exception: Rc::new(Exception::illegal_argument(message)),
+        span: Default::default(),
+    }
+}

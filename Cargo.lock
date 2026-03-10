@@ -1459,6 +1459,7 @@ dependencies = [
 name = "nextflow-runtime"
 version = "0.1.0"
 dependencies = [
+ "indexmap",
  "nextflow-config",
  "nextflow-evaluator",
  "nextflow-parser",

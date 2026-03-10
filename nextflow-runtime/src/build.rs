@@ -11,6 +11,7 @@ use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
 use nextflow_evaluator::lowered::{Expression, ExpressionKind, Input, Module, Process};
 use nextflow_evaluator::value::{ChannelId, ChannelOut, ListKind, PathValue, Value};
 
+use crate::keyed::{GroupTuple, Join};
 use crate::network::Network;
 use crate::operator::{Each, Factory, Gather, Gathering, Mix, Single};
 use crate::process::{ProcessNode, singleton};
@@ -266,7 +267,7 @@ impl Host for Builder<'_> {
                     "Operator 'mix' should have at least one right operand".into(),
                 ));
             }
-            _ => return Ok(None),
+            _ => return self.keyed_operator(source, name, &arguments),
         };
         let output = self.network.channel(value);
         match kind {
@@ -302,6 +303,81 @@ fn labels(process: &Process) -> Vec<String> {
             _ => None,
         })
         .collect()
+}
+
+impl Builder<'_> {
+    /// The operators with several inputs: `groupTuple` and `join`.
+    fn keyed_operator(
+        &mut self,
+        source: ChannelId,
+        name: &str,
+        arguments: &[Value],
+    ) -> Result<Option<Value>, Error> {
+        let (options, rest): (Option<Value>, &[Value]) = match arguments {
+            [options @ Value::Map(_), rest @ ..] => (Some(options.clone()), rest),
+            _ => (None, arguments),
+        };
+        let queue = |builder: &mut Self| builder.network.channel(false);
+        let node: (Vec<ChannelId>, Box<dyn crate::network::Behaviour>, Value) = match (name, rest) {
+            ("groupTuple", []) => {
+                let output = queue(self);
+                let size = option(&options, "size").and_then(|size| match size {
+                    Value::Number(size) if size.to_i64() > 0 => Some(size.to_i64() as usize),
+                    _ => None,
+                });
+                let node = GroupTuple {
+                    output,
+                    by: indexes(&options, "by").unwrap_or(vec![0]),
+                    size,
+                    remainder: option(&options, "remainder").is_some_and(|value| value.truth()),
+                    sort: option(&options, "sort").is_some_and(|value| value.truth()),
+                    groups: Default::default(),
+                };
+                (vec![source], Box::new(node), Value::Channel(output))
+            }
+            ("join", [right]) => {
+                let Some([right]) = channels(right)
+                    .as_deref()
+                    .map(<[ChannelId; 1]>::try_from)
+                    .and_then(Result::ok)
+                else {
+                    return Err(thrown(format!("Invalid `join` operand: {right}")));
+                };
+                let output = queue(self);
+                let node = Join {
+                    output,
+                    by: indexes(&options, "by").unwrap_or(vec![0]),
+                    remainder: option(&options, "remainder").is_some_and(|value| value.truth()),
+                    pending: Default::default(),
+                    done: [false; 2],
+                    has_values: false,
+                };
+                (vec![source, right], Box::new(node), Value::Channel(output))
+            }
+            _ => return Ok(None),
+        };
+        let (inputs, behaviour, result) = node;
+        self.network.add(name, &inputs, behaviour);
+        Ok(Some(result))
+    }
+}
+
+/// An option that holds an index or a list of indexes, like `by: [0, 1]`.
+fn indexes(options: &Option<Value>, name: &str) -> Option<Vec<usize>> {
+    match option(options, name)? {
+        Value::Number(index) => Some(vec![index.to_i64() as usize]),
+        Value::List(list) => Some(
+            list.borrow()
+                .items
+                .iter()
+                .filter_map(|item| match item {
+                    Value::Number(index) => Some(index.to_i64() as usize),
+                    _ => None,
+                })
+                .collect(),
+        ),
+        _ => None,
+    }
 }
 
 enum Kind {

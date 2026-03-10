@@ -137,6 +137,10 @@ impl Interpreter<'_> {
                     path
                 });
             }
+            // The criteria of `branch` and `multiMap`, with the labels that lowering adds.
+            ("branchCriteria" | "multiMapCriteria", [labels, criteria]) => {
+                return Ok(Value::list(vec![labels.clone(), criteria.clone()]));
+            }
             ("env", [name]) => {
                 let value = self.host.environment(&name.to_string());
                 return Ok(value.map_or(Value::Null, Value::string));

@@ -20,6 +20,18 @@ pub enum State {
     Json(JsonOptions),
     /// `groovy.json.JsonSlurper`
     JsonSlurper,
+    /// `nextflow.script.WorkflowMetadata`, the `workflow` of a run.
+    Workflow(Workflow),
+}
+
+/// The `workflow` of a run: its properties, and the handlers that run when it ends.
+#[derive(Debug)]
+pub struct Workflow {
+    /// A map of the properties, like `runName` and `manifest`.
+    pub properties: super::Value,
+    /// The closures of `workflow.onComplete` and `workflow.onError`, in order.
+    pub on_complete: Vec<Rc<Closure>>,
+    pub on_error: Vec<Rc<Closure>>,
 }
 
 /// How a JSON generator writes values.

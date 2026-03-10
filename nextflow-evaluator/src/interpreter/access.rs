@@ -55,6 +55,28 @@ impl Interpreter<'_> {
                 }
             }
             Value::Definition(definition) => self.definition_property(definition, name, span)?,
+            Value::Object(object) if matches!(object.borrow().state, State::Workflow(_)) => {
+                let properties = match &object.borrow().state {
+                    State::Workflow(workflow) => workflow.properties.clone(),
+                    _ => unreachable!("a workflow"),
+                };
+                match &properties {
+                    Value::Map(map)
+                        if map.borrow().entries.contains_key(&Key(Value::string(name))) =>
+                    {
+                        self.property(&properties, name, span)?
+                    }
+                    _ => {
+                        let message = format!(
+                            "No such property: {name} for class: nextflow.script.WorkflowMetadata"
+                        );
+                        return Err(thrown(
+                            Exception::new("MissingPropertyException", message),
+                            span,
+                        ));
+                    }
+                }
+            }
             Value::Exception(exception) if name == "message" => match exception.message.as_str() {
                 "" => Value::Null,
                 message => Value::string(message),

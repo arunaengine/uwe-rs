@@ -109,6 +109,16 @@ fn console() -> Console {
     }
 }
 
+/// The config files of a run, as `nextflow run` finds them.
+fn config_files(project: &Path, arguments: &Arguments) -> Vec<String> {
+    let launch = std::env::current_dir().unwrap_or_default();
+    let project = std::path::absolute(project).unwrap_or_else(|_| project.to_owned());
+    nextflow_config::files(&project, &launch, &arguments.configs)
+        .iter()
+        .map(|file| file.to_string_lossy().into_owned())
+        .collect()
+}
+
 /// Loads the config files of a project directory, as `nextflow run` does.
 fn load_config(project: &Path, arguments: &Arguments) -> Result<Config, Failure> {
     let launch = std::env::current_dir().map_err(|error| failure(error.to_string()))?;
@@ -171,6 +181,13 @@ pub fn run(target: &Path, arguments: &Arguments, settings: &Settings) -> Result<
             .unwrap_or(project.clone())
             .to_string_lossy()
             .into_owned(),
+        script_file: std::path::absolute(&script)
+            .unwrap_or(script.clone())
+            .to_string_lossy()
+            .into_owned(),
+        run_name: run_id.clone(),
+        config_files: config_files(&project, arguments),
+        command_line: std::env::args().collect::<Vec<_>>().join(" "),
     };
     let mut console = console();
     let (mut run, mut queue) = Run::start(&module, &options, &mut console)?;
@@ -185,7 +202,7 @@ pub fn run(target: &Path, arguments: &Arguments, settings: &Settings) -> Result<
         };
         queue.extend(run.complete(outcome, &mut console)?);
     }
-    run.finish()?;
+    run.finish(&mut console)?;
     Ok(())
 }
 

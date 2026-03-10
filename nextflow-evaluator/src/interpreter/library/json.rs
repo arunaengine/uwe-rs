@@ -94,8 +94,8 @@ impl Interpreter<'_> {
         Ok(())
     }
 
-    /// Methods of the JSON objects.
-    pub(in crate::interpreter) fn json_method(
+    /// Methods of the stood-in objects: the JSON classes and `workflow`.
+    pub(in crate::interpreter) fn object_method(
         &mut self,
         object: &Rc<RefCell<Object>>,
         name: &str,
@@ -129,6 +129,14 @@ impl Interpreter<'_> {
                 Value::string(self.json_text(value, &options, span)?)
             }
             (State::JsonSlurper, "parseText", [text]) => parse(&text.to_string()).at(span)?,
+            (State::Workflow(workflow), "onComplete", [Value::Closure(handler)]) => {
+                workflow.on_complete.push(handler.clone());
+                Value::Null
+            }
+            (State::Workflow(workflow), "onError", [Value::Closure(handler)]) => {
+                workflow.on_error.push(handler.clone());
+                Value::Null
+            }
             _ => return Ok(None),
         };
         Ok(Some(value))

@@ -10,6 +10,7 @@ mod operator;
 mod process;
 mod session;
 pub mod task;
+mod workflow;
 
 use std::rc::Rc;
 
@@ -38,12 +39,24 @@ pub struct Options {
     pub profile: String,
     /// The directory of the main script, `projectDir`.
     pub project_dir: String,
+    /// The main script.
+    pub script_file: String,
+    /// The name of the run, `workflow.runName`.
+    pub run_name: String,
+    /// The config files that were read, in order.
+    pub config_files: Vec<String>,
+    /// The command line that started the run.
+    pub command_line: String,
 }
 
 /// A run of a script: its network, which asks for tasks and takes their outcomes.
 pub struct Run {
     network: Network,
     options: Options,
+    /// The `workflow` object of the run.
+    workflow: Value,
+    /// The number of tasks that succeeded.
+    succeeded: i64,
 }
 
 impl Run {
@@ -55,6 +68,7 @@ impl Run {
         host: &mut dyn Host,
     ) -> Result<(Run, Vec<TaskRequest>), Error> {
         let mut network = Network::default();
+        let workflow = workflow::metadata(options, &host.launch_dir());
         let mut session = Session {
             base: host,
             options,
@@ -67,20 +81,25 @@ impl Run {
                 config: &options.config,
             };
             let mut interpreter = Interpreter::new(&mut builder);
-            set_globals(&mut interpreter, options);
+            set_globals(&mut interpreter, options, &workflow);
             let params = options.config.params();
             script_params(&mut interpreter, module, &params, &mut Vec::new())
                 .and_then(|()| interpreter.run_entry(module))
                 .map_err(|error| interpreter.locate(error))?;
         }
         let mut interpreter = Interpreter::new(&mut session);
-        set_globals(&mut interpreter, options);
+        set_globals(&mut interpreter, options, &workflow);
         network
             .ignite(&mut interpreter)
             .map_err(|error| interpreter.locate(error))?;
         let requests = network.take_requests();
-        let options = options.clone();
-        Ok((Run { network, options }, requests))
+        let run = Run {
+            network,
+            options: options.clone(),
+            workflow,
+            succeeded: 0,
+        };
+        Ok((run, requests))
     }
 
     /// Takes the outcome of a task; the result has the tasks that can run now.
@@ -93,19 +112,35 @@ impl Run {
             base: host,
             options: &self.options,
         };
+        if outcome.exit_status == 0 {
+            self.succeeded += 1;
+        }
         let mut interpreter = Interpreter::new(&mut session);
-        set_globals(&mut interpreter, &self.options);
+        set_globals(&mut interpreter, &self.options, &self.workflow);
         self.network
             .complete(outcome, &mut interpreter)
             .map_err(|error| interpreter.locate(error))?;
         Ok(self.network.take_requests())
     }
 
-    /// Checks that the run ended: no task runs and no step waits for input. A run that would
-    /// wait forever in Nextflow is an error here.
-    pub fn finish(&self) -> Result<(), Error> {
+    /// Checks that the run ended, then runs the `workflow.onComplete` handlers. No task may
+    /// run and no step may wait for input: a run that would wait forever in Nextflow is an
+    /// error here.
+    pub fn finish(&mut self, host: &mut dyn Host) -> Result<(), Error> {
         let waiting = self.network.running();
         if waiting.is_empty() && !self.network.has_tasks() {
+            workflow::finish(&self.workflow, true, self.succeeded);
+            let mut session = Session {
+                base: host,
+                options: &self.options,
+            };
+            let mut interpreter = Interpreter::new(&mut session);
+            set_globals(&mut interpreter, &self.options, &self.workflow);
+            for handler in workflow::handlers(&self.workflow, false) {
+                interpreter
+                    .call_closure(&handler, Vec::new())
+                    .map_err(|error| interpreter.locate(error))?;
+            }
             return Ok(());
         }
         let names: Vec<&str> = waiting.iter().map(|name| &**name).collect();
@@ -122,14 +157,14 @@ impl Run {
 
 /// Runs a script whose workflow runs no tasks.
 pub fn run(module: &Rc<Module>, host: &mut dyn Host) -> Result<(), Error> {
-    let (run, requests) = Run::start(module, &Options::default(), host)?;
+    let (mut run, requests) = Run::start(module, &Options::default(), host)?;
     if let Some(request) = requests.first() {
         return Err(Error::Unsupported {
             message: format!("running the task `{}` without an executor", request.name),
             span: Default::default(),
         });
     }
-    run.finish()
+    run.finish(host)
 }
 
 impl Default for Options {
@@ -140,6 +175,10 @@ impl Default for Options {
             config: Config::default(),
             profile: "standard".into(),
             project_dir: "/".into(),
+            script_file: "/main.nf".into(),
+            run_name: "iunctus".into(),
+            config_files: Vec::new(),
+            command_line: String::new(),
         }
     }
 }
@@ -178,23 +217,12 @@ fn script_params(
     Ok(())
 }
 
-fn set_globals(interpreter: &mut Interpreter, options: &Options) {
+fn set_globals(interpreter: &mut Interpreter, options: &Options, workflow: &Value) {
     interpreter.set_global("params", options.config.params());
     // The command-line arguments after the script; iunctus takes none.
     interpreter.set_global("args", Value::list(Vec::new()));
     interpreter.set_global("channel", Value::Namespace("channel".into()));
     interpreter.set_global("log", Value::Namespace("log".into()));
-    let engine = options
-        .container_engine
-        .as_deref()
-        .map_or(Value::Null, Value::string);
-    let workflow = Value::map([
-        (Value::string("containerEngine"), engine),
-        (Value::string("stubRun"), Value::Boolean(options.stub)),
-        (
-            Value::string("profile"),
-            Value::string(options.profile.as_str()),
-        ),
-    ]);
-    interpreter.set_global("workflow", workflow);
+    interpreter.set_global("workflow", workflow.clone());
+    interpreter.set_global("nextflow", workflow::nextflow());
 }

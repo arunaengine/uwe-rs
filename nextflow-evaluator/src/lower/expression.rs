@@ -64,6 +64,23 @@ impl Lowering<'_> {
                 },
             },
             Syntax::MethodCall {
+                target: Some(target),
+                name,
+                arguments,
+                ..
+            } if self.in_workflow
+                && name.text == "tap"
+                && super::workflow::set_target(arguments).is_some() =>
+            {
+                let (variable, variable_span) =
+                    super::workflow::set_target(arguments).expect("a variable");
+                let source = Box::new(self.expression(target));
+                match self.assigned_variable(variable, variable_span) {
+                    Some(target) => Kind::Tap { source, target },
+                    None => return *source,
+                }
+            }
+            Syntax::MethodCall {
                 target,
                 name,
                 access,

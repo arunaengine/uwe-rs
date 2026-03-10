@@ -126,3 +126,13 @@ fn pipes_and_waiting() {
         "The run cannot finish, because these steps wait for input that never comes: view";
     assert_eq!(error, format!("IllegalStateException: {message}"));
 }
+
+#[test]
+fn tap_in_a_chain_assigns_the_channel() {
+    let mut printed = lines(
+        "channel.of(1, 2).map { v -> v * 2 }.tap { doubled }.map { v -> v + 1 }.view()\n\
+         doubled.view { v -> \"d${v}\" }",
+    );
+    printed.sort();
+    assert_eq!(printed, ["3", "5", "d2", "d4"]);
+}

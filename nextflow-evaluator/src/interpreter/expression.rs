@@ -34,6 +34,11 @@ impl Interpreter<'_> {
                 }
             }
             Kind::Dynamic(name) => self.dynamic(name, span)?,
+            Kind::Tap { source, target } => {
+                let value = self.expression(frame, source)?;
+                frame.set(*target, value.clone());
+                value
+            }
             Kind::Builtin(name) => match self.globals.get(name) {
                 Some(value) => value.clone(),
                 None => return Err(unsupported(format!("the built-in `{name}`"), span)),

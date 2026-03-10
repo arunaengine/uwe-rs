@@ -60,7 +60,7 @@ fn run(source: &str, options: &Options) -> Result<(Vec<TaskRequest>, String), St
             .map_err(|error| error.to_string())?;
         queue.extend(more);
     }
-    run.finish().map_err(|error| error.to_string())?;
+    run.finish(&mut output).map_err(|error| error.to_string())?;
     Ok((done, output.0))
 }
 
@@ -155,6 +155,21 @@ fn config_settings_reach_the_task() {
         .find(|directive| &*directive.name == "cpus")
         .map(|directive| directive.arguments[0].to_string());
     assert_eq!(cpus.as_deref(), Some("4"));
+}
+
+#[test]
+fn workflow_metadata_and_completion_handlers() {
+    let source = format!(
+        "{DOUBLE}workflow {{\n    DOUBLE(channel.of(1, 2))\n    \
+         println \"${{workflow.runName}} ${{workflow.profile}} ${{workflow.manifest.name}} ${{workflow.launchDir}}\"\n    \
+         workflow.onComplete {{ println \"done ${{workflow.success}} ${{workflow.stats.succeededCount}}\" }}\n}}"
+    );
+    let options = Options {
+        config: config("manifest.name = 'demo'\n"),
+        ..Options::default()
+    };
+    let (_, printed) = run(&source, &options).expect("runs");
+    assert_eq!(printed, "iunctus standard demo /launch\ndone true 2\n");
 }
 
 #[test]

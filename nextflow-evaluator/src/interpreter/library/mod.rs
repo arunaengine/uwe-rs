@@ -67,7 +67,7 @@ impl Interpreter<'_> {
             Value::MemoryUnit(_) | Value::Duration(_) => {
                 number::unit_method(object, name, arguments)
             }
-            Value::Object(object) => self.json_method(object, name, arguments, span)?,
+            Value::Object(object) => self.object_method(object, name, arguments, span)?,
             Value::Class(class) => match (name, arguments) {
                 ("getSimpleName", []) => {
                     Some(Value::string(crate::value::simple_class_name(class)))

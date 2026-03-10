@@ -44,6 +44,11 @@ impl Lowering<'_> {
                     };
                     emits.push((name.text.as_str().into(), value));
                 }
+                // Nextflow names an emit that is only an expression `$out`.
+                NamedOutput::Statement(ast::Statement {
+                    kind: Kind::Expression(value),
+                    ..
+                }) => emits.push(("$out".into(), self.expression(value))),
                 NamedOutput::Statement(statement) => {
                     self.error("Invalid workflow emit", statement.span);
                 }

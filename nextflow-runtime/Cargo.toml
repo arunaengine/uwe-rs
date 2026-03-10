@@ -12,6 +12,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+indexmap.workspace = true
 nextflow-config.workspace = true
 nextflow-evaluator.workspace = true
 nextflow-parser.workspace = true

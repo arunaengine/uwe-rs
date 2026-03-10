@@ -136,3 +136,48 @@ fn tap_in_a_chain_assigns_the_channel() {
     printed.sort();
     assert_eq!(printed, ["3", "5", "d2", "d4"]);
 }
+
+fn sorted(body: &str) -> Vec<String> {
+    let mut lines = lines(body);
+    lines.sort();
+    lines
+}
+
+#[test]
+fn group_tuple() {
+    let source = "channel.of(['a', 1], ['b', 2], ['a', 3], ['b', 4], ['c', 5])";
+    assert_eq!(
+        lines(&format!("{source}.groupTuple().view()")),
+        ["[a, [1, 3]]", "[b, [2, 4]]", "[c, [5]]"]
+    );
+    assert_eq!(
+        sorted(&format!("{source}.groupTuple(size: 2).view()")),
+        ["[a, [1, 3]]", "[b, [2, 4]]"]
+    );
+    assert_eq!(
+        sorted(&format!(
+            "{source}.groupTuple(size: 2, remainder: true).view()"
+        )),
+        ["[a, [1, 3]]", "[b, [2, 4]]", "[c, [5]]"]
+    );
+}
+
+#[test]
+fn join() {
+    let left = "channel.of(['a', 1], ['b', 2], ['a', 3], ['c', 4])";
+    let right = "channel.of(['a', 'x'], ['a', 'y'], ['b', 'z'], ['d', 'w'])";
+    assert_eq!(
+        sorted(&format!("{left}.join({right}).view()")),
+        ["[a, 1, x]", "[a, 3, y]", "[b, 2, z]"]
+    );
+    assert_eq!(
+        sorted(&format!("{left}.join({right}, remainder: true).view()")),
+        [
+            "[a, 1, x]",
+            "[a, 3, y]",
+            "[b, 2, z]",
+            "[c, 4, null]",
+            "[d, null, w]"
+        ]
+    );
+}

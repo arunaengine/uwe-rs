@@ -33,6 +33,9 @@ fn workflows_call_processes_and_emit() {
     assert_eq!(takes, ["x"]);
     let emits: Vec<&str> = workflow.emits.iter().map(|(name, _)| &**name).collect();
     assert_eq!(emits, ["out", "x"]);
+    let single = format!("{PROCESS}workflow W {{\n    main:\n    P(1)\n    emit:\n    P.out\n}}");
+    let module = lower(&single).expect("lowers");
+    assert_eq!(&*module.workflows[0].emits[0].0, "$out");
 }
 
 #[test]

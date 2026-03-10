@@ -161,7 +161,7 @@ fn config_settings_reach_the_task() {
 fn workflow_metadata_and_completion_handlers() {
     let source = format!(
         "{DOUBLE}workflow {{\n    DOUBLE(channel.of(1, 2))\n    \
-         println \"${{workflow.runName}} ${{workflow.profile}} ${{workflow.manifest.name}} ${{workflow.launchDir}}\"\n    \
+         println \"${{workflow.runName}} ${{workflow.profile}} ${{workflow.manifest.name}} ${{launchDir}} ${{projectDir}}\"\n    \
          workflow.onComplete {{ println \"done ${{workflow.success}} ${{workflow.stats.succeededCount}}\" }}\n}}"
     );
     let options = Options {
@@ -169,7 +169,7 @@ fn workflow_metadata_and_completion_handlers() {
         ..Options::default()
     };
     let (_, printed) = run(&source, &options).expect("runs");
-    assert_eq!(printed, "iunctus standard demo /launch\ndone true 2\n");
+    assert_eq!(printed, "iunctus standard demo /launch /\ndone true 2\n");
 }
 
 #[test]

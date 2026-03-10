@@ -225,4 +225,14 @@ fn set_globals(interpreter: &mut Interpreter, options: &Options, workflow: &Valu
     interpreter.set_global("log", Value::Namespace("log".into()));
     interpreter.set_global("workflow", workflow.clone());
     interpreter.set_global("nextflow", workflow::nextflow());
+    for (name, property) in [
+        ("projectDir", "projectDir"),
+        ("baseDir", "projectDir"),
+        ("launchDir", "launchDir"),
+        ("workDir", "workDir"),
+    ] {
+        interpreter.set_global(name, workflow::property(workflow, property));
+    }
+    // Secrets are not supported; reading one gives `null`, as a missing secret does.
+    interpreter.set_global("secrets", Value::map([]));
 }

@@ -131,6 +131,19 @@ pub(crate) fn finish(workflow: &Value, success: bool, succeeded: i64) {
     tree::assign(&workflow.properties, &path, count).expect("a map");
 }
 
+/// A property of the `workflow` object.
+pub(crate) fn property(workflow: &Value, name: &str) -> Value {
+    let Value::Object(object) = workflow else {
+        return Value::Null;
+    };
+    match &object.borrow().state {
+        State::Workflow(workflow) => {
+            tree::get(&workflow.properties, &[name]).unwrap_or(Value::Null)
+        }
+        _ => Value::Null,
+    }
+}
+
 /// The handlers of `workflow.onComplete`, or of `workflow.onError`, in order.
 pub(crate) fn handlers(
     workflow: &Value,

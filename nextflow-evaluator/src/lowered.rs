@@ -388,6 +388,11 @@ pub enum ExpressionKind {
         value: Box<Expression>,
         fallback: Box<Expression>,
     },
+    /// `source.tap { x }` inside a chain of a workflow: `x` gets the channel, which passes on.
+    Tap {
+        source: Box<Expression>,
+        target: Place,
+    },
     Cast {
         operand: Box<Expression>,
         class: Rc<str>,

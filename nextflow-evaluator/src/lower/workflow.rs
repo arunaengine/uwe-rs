@@ -108,7 +108,7 @@ impl Lowering<'_> {
 }
 
 /// The variable of `set { x }`: a closure whose body is that one name.
-fn set_target(arguments: &[Argument]) -> Option<(&str, nextflow_parser::Span)> {
+pub(super) fn set_target(arguments: &[Argument]) -> Option<(&str, nextflow_parser::Span)> {
     let [argument] = arguments else { return None };
     let Syntax::Closure(closure) = &argument.value.kind else {
         return None;

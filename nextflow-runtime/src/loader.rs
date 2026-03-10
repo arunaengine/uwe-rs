@@ -90,7 +90,11 @@ impl Loader {
             directory: path.parent().unwrap_or(Path::new("/")).to_owned(),
         };
         match lower_script(&parsed.tree, &source, &mut imports) {
-            Ok(module) => Some(module),
+            Ok(module) => {
+                *module.source.borrow_mut() = Some(source.as_str().into());
+                *module.path.borrow_mut() = Some(path.to_string_lossy().into());
+                Some(module)
+            }
             Err(errors) => {
                 self.errors.extend(errors.iter().map(located));
                 None

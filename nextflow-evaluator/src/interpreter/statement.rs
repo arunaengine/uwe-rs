@@ -27,7 +27,17 @@ impl Interpreter<'_> {
     ) -> Result<Completion, Error> {
         let mut last = Value::Null;
         for statement in statements {
-            match self.statement(frame, statement)? {
+            let completion = match self.statement(frame, statement) {
+                Ok(completion) => completion,
+                Err(error) => {
+                    // The innermost statement knows the script of the error.
+                    if self.error_module.is_none() {
+                        self.error_module = Some(frame.module.clone());
+                    }
+                    return Err(error.or_at(statement.span));
+                }
+            };
+            match completion {
                 Completion::Normal(value) => last = value,
                 done @ Completion::Return(_) => return Ok(done),
             }
@@ -123,6 +133,7 @@ impl Interpreter<'_> {
                 let Some(catch) = caught else {
                     return Err(error);
                 };
+                self.error_module = None;
                 let place = Place::Local(catch.slot);
                 frame.set(place, Value::Exception(exception.clone()));
                 return self.block(frame, &catch.body);

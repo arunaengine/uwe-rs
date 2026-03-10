@@ -81,7 +81,7 @@ impl ConfigError {
             ConfigError::Invalid { messages } => messages
                 .iter()
                 .any(|message| message.contains("not supported yet")),
-            ConfigError::Failed { error, .. } => matches!(error, Error::Unsupported { .. }),
+            ConfigError::Failed { error, .. } => error.unsupported(),
         }
     }
 }

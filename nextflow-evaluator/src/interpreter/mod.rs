@@ -184,20 +184,40 @@ pub enum Error {
     },
     /// A feature that Nextflow supports but iunctus does not yet. Scripts cannot catch it.
     Unsupported { message: String, span: Span },
+    /// An error with the file and position where it happened, like `main.nf:3:5`, once it
+    /// leaves the scripts.
+    Located {
+        error: Box<Error>,
+        location: Rc<str>,
+    },
 }
 
 impl Error {
     pub fn span(&self) -> Span {
         match self {
             Error::Thrown { span, .. } | Error::Unsupported { span, .. } => *span,
+            Error::Located { error, .. } => error.span(),
+        }
+    }
+
+    /// Whether the cause is a feature that iunctus does not support yet.
+    pub fn unsupported(&self) -> bool {
+        match self {
+            Error::Unsupported { .. } => true,
+            Error::Thrown { .. } => false,
+            Error::Located { error, .. } => error.unsupported(),
         }
     }
 
     /// The error with a position, if it has none yet, as errors from the host have.
     fn or_at(mut self, position: Span) -> Error {
-        let (Error::Thrown { span, .. } | Error::Unsupported { span, .. }) = &mut self;
-        if *span == Span::default() {
-            *span = position;
+        match &mut self {
+            Error::Thrown { span, .. } | Error::Unsupported { span, .. } => {
+                if *span == Span::default() {
+                    *span = position;
+                }
+            }
+            Error::Located { .. } => {}
         }
         self
     }
@@ -208,6 +228,7 @@ impl fmt::Display for Error {
         match self {
             Error::Thrown { exception, .. } => write!(f, "{exception}"),
             Error::Unsupported { message, .. } => write!(f, "Not supported yet: {message}"),
+            Error::Located { error, location } => write!(f, "{location}: {error}"),
         }
     }
 }
@@ -224,6 +245,8 @@ pub struct Interpreter<'h> {
     workflow_path: Vec<Rc<str>>,
     /// The variables of the task being evaluated, by name, which config closures can read.
     task_variables: Vec<(Rc<str>, Rc<RefCell<Value>>)>,
+    /// The script of the statement where the error that is being raised happened.
+    error_module: Option<Rc<Module>>,
 }
 
 impl<'h> Interpreter<'h> {
@@ -234,6 +257,7 @@ impl<'h> Interpreter<'h> {
             outputs: HashMap::new(),
             workflow_path: Vec::new(),
             task_variables: Vec::new(),
+            error_module: None,
         }
     }
 
@@ -261,6 +285,28 @@ impl<'h> Interpreter<'h> {
     /// script, in a new frame of `module`.
     pub fn evaluate(&mut self, code: &Rc<Code>, module: &Rc<Module>) -> Result<Value, Error> {
         self.run(code, module, Vec::new(), Vec::new())
+    }
+
+    /// The error with the file and position where it happened, when the script is known.
+    pub fn locate(&mut self, error: Error) -> Error {
+        let module = self.error_module.take();
+        let Some(module) = module else {
+            return error;
+        };
+        let (Some(path), Some(source)) =
+            (module.path.borrow().clone(), module.source.borrow().clone())
+        else {
+            return error;
+        };
+        if matches!(error, Error::Located { .. }) {
+            return error;
+        }
+        let (line, column) =
+            nextflow_parser::LineIndex::new(&source).line_column(error.span().start);
+        Error::Located {
+            error: Box::new(error),
+            location: format!("{path}:{line}:{column}").into(),
+        }
     }
 
     /// Calls a closure with Groovy's argument adaptation.

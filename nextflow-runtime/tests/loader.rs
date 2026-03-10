@@ -101,7 +101,7 @@ fn bad_includes() {
 }
 
 #[test]
-fn plugin_includes_call_the_host() {
+fn plugin_includes_call_the_plugin() {
     let root = tempfile::tempdir().expect("a temporary directory");
     write(
         root.path(),
@@ -113,9 +113,10 @@ fn plugin_includes_call_the_host() {
         .load(&root.path().join("main.nf"))
         .expect("loads");
     let error = nextflow_runtime::run(&module, &mut Output::default()).unwrap_err();
-    assert_eq!(
-        error.to_string(),
-        "Not supported yet: the function `samplesheetToList` of the plugin `nf-schema`"
+    let error = error.to_string();
+    assert!(
+        error.ends_with("main.nf:3:5: NoSuchFileException: /schema.json"),
+        "{error}"
     );
     write(
         root.path(),

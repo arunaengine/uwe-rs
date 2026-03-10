@@ -39,12 +39,14 @@ pub struct Module {
     pub links: std::cell::RefCell<HashMap<Rc<str>, Link>>,
     /// The directory of the script file, which `moduleDir` gives; the loader sets it.
     pub directory: std::cell::RefCell<Option<Rc<str>>>,
-    /// The text of the file, which config output needs to show closures; the config loader
-    /// sets it.
+    /// The text of the file, which config output needs to show closures and error messages
+    /// need for positions; the loaders set it.
     pub source: std::cell::RefCell<Option<Rc<str>>>,
     /// The plugin, like `nf-schema`, when this stands for the functions of a plugin, which the
     /// host provides.
     pub plugin: Option<Rc<str>>,
+    /// The file of the script, for error messages; the loader sets it.
+    pub path: std::cell::RefCell<Option<Rc<str>>>,
 }
 
 /// The script and name that an included name refers to.

@@ -69,12 +69,15 @@ impl Run {
             let mut interpreter = Interpreter::new(&mut builder);
             set_globals(&mut interpreter, options);
             let params = options.config.params();
-            script_params(&mut interpreter, module, &params, &mut Vec::new())?;
-            interpreter.run_entry(module)?;
+            script_params(&mut interpreter, module, &params, &mut Vec::new())
+                .and_then(|()| interpreter.run_entry(module))
+                .map_err(|error| interpreter.locate(error))?;
         }
         let mut interpreter = Interpreter::new(&mut session);
         set_globals(&mut interpreter, options);
-        network.ignite(&mut interpreter)?;
+        network
+            .ignite(&mut interpreter)
+            .map_err(|error| interpreter.locate(error))?;
         let requests = network.take_requests();
         let options = options.clone();
         Ok((Run { network, options }, requests))
@@ -92,7 +95,9 @@ impl Run {
         };
         let mut interpreter = Interpreter::new(&mut session);
         set_globals(&mut interpreter, &self.options);
-        self.network.complete(outcome, &mut interpreter)?;
+        self.network
+            .complete(outcome, &mut interpreter)
+            .map_err(|error| interpreter.locate(error))?;
         Ok(self.network.take_requests())
     }
 
@@ -175,6 +180,8 @@ fn script_params(
 
 fn set_globals(interpreter: &mut Interpreter, options: &Options) {
     interpreter.set_global("params", options.config.params());
+    // The command-line arguments after the script; iunctus takes none.
+    interpreter.set_global("args", Value::list(Vec::new()));
     interpreter.set_global("channel", Value::Namespace("channel".into()));
     interpreter.set_global("log", Value::Namespace("log".into()));
     let engine = options

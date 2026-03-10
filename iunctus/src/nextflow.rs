@@ -39,7 +39,7 @@ pub struct Failure {
 impl From<Error> for Failure {
     fn from(error: Error) -> Self {
         Failure {
-            unsupported: matches!(error, Error::Unsupported { .. }),
+            unsupported: error.unsupported(),
             message: error.to_string(),
         }
     }

@@ -124,6 +124,10 @@ fn math_and_system_methods() {
     );
     assert_eq!(value("System.getenv('IUNCTUS_NOT_SET')"), "null");
     assert_eq!(
+        value("[Arrays.asList(1, 2), Arrays.asList(['a'])]"),
+        "[[1, 2], [a]]"
+    );
+    assert_eq!(
         value("[true.toBoolean(), false.booleanValue()]"),
         "[true, false]"
     );

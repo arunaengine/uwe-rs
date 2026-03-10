@@ -160,10 +160,9 @@ impl Lowering<'_> {
                 value: Box::new(self.expression(value)),
                 fallback: Box::new(self.expression(fallback)),
             },
-            Syntax::PrimitiveType(name) => {
-                self.error(format!("The type `{name}` cannot be used as a value"), span);
-                Kind::Literal(Value::Null)
-            }
+            // nf-lang reads a primitive type like `char` in an expression as a variable, so
+            // `(char) x` loads and fails only when it runs.
+            Syntax::PrimitiveType(name) => Kind::Dynamic(name.as_str().into()),
         };
         Expression { kind, span }
     }

@@ -156,3 +156,12 @@ fn class_values() {
          2147483647]"
     );
 }
+
+#[test]
+fn primitive_casts_load_but_fail_when_they_run() {
+    // Nextflow fails with "Missing process or function call([A])".
+    assert_eq!(
+        eval("(char)('A')").unwrap_err(),
+        "MissingPropertyException: No such variable: char"
+    );
+}

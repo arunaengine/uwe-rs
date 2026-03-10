@@ -27,6 +27,7 @@ const QUALIFIED: &[&str] = &[
     "java.nio.file.Files",
     "java.nio.file.Path",
     "java.nio.file.Paths",
+    "java.util.Arrays",
     "java.util.Collection",
     "java.util.Date",
     "java.util.List",

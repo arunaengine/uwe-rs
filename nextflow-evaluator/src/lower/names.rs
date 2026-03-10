@@ -137,6 +137,7 @@ pub(super) const DIRECTIVES: &[&str] = &[
 
 /// Classes that scripts may name, from the default imports of Groovy and Nextflow.
 pub(super) const CLASSES: &[&str] = &[
+    "Arrays",
     "BigDecimal",
     "BigInteger",
     "Boolean",

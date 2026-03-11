@@ -11,7 +11,7 @@ use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
 use nextflow_evaluator::lowered::{Expression, ExpressionKind, Input, Module, Process};
 use nextflow_evaluator::value::{ChannelId, ChannelOut, ListKind, PathValue, Value};
 
-use crate::keyed::{GroupTuple, Join};
+use crate::keyed::{Combine, Cross, GroupTuple, Join};
 use crate::network::Network;
 use crate::operator::{Each, Factory, Gather, Gathering, Mix, Single};
 use crate::process::{ProcessNode, singleton};
@@ -306,7 +306,7 @@ fn labels(process: &Process) -> Vec<String> {
 }
 
 impl Builder<'_> {
-    /// The operators with several inputs: `groupTuple` and `join`.
+    /// The operators with several inputs: `groupTuple`, `join`, `combine` and `cross`.
     fn keyed_operator(
         &mut self,
         source: ChannelId,
@@ -351,6 +351,43 @@ impl Builder<'_> {
                     pending: Default::default(),
                     done: [false; 2],
                     has_values: false,
+                };
+                (vec![source, right], Box::new(node), Value::Channel(output))
+            }
+            ("combine", [right]) => {
+                let output = queue(self);
+                let by = indexes(&options, "by");
+                let (inputs, seen, done) = match channels(right).as_deref() {
+                    Some([right]) => (vec![source, *right], Vec::new(), false),
+                    _ => (vec![source], elements(right), true),
+                };
+                let node = Combine {
+                    output,
+                    by,
+                    seen: [Vec::new(), seen],
+                    done: [false, done],
+                };
+                (inputs, Box::new(node), Value::Channel(output))
+            }
+            ("cross", [right, ..]) => {
+                let Some([right]) = channels(right)
+                    .as_deref()
+                    .map(<[ChannelId; 1]>::try_from)
+                    .and_then(Result::ok)
+                else {
+                    return Err(thrown(format!("Invalid `cross` operand: {right}")));
+                };
+                let output = queue(self);
+                let key = match rest {
+                    [_, Value::Closure(closure)] => Some(closure.clone()),
+                    _ => None,
+                };
+                let node = Cross {
+                    output,
+                    key,
+                    left: Default::default(),
+                    waiting: Default::default(),
+                    done: [false; 2],
                 };
                 (vec![source, right], Box::new(node), Value::Channel(output))
             }

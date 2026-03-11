@@ -1,5 +1,5 @@
-//! Operators that group or pair values by a key: `groupTuple` and `join` (channels spec,
-//! sections 5.18 and 5.20).
+//! Operators that group or pair values by a key: `groupTuple`, `join`, `combine` and `cross`
+//! (channels spec, sections 5.7, 5.11, 5.18 and 5.20).
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -8,7 +8,7 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::Error;
-use nextflow_evaluator::value::{ChannelId, Key, Value};
+use nextflow_evaluator::value::{ChannelId, Closure, Key, Value};
 
 use crate::channel::Message;
 use crate::network::{Behaviour, Context, State};
@@ -235,6 +235,121 @@ impl Join {
         };
         result.insert(position, Value::Null);
         Value::list(result)
+    }
+}
+
+/// `combine`: every pair of a left and a right value, with equal keys when `by` is given.
+pub(crate) struct Combine {
+    pub output: ChannelId,
+    pub by: Option<Vec<usize>>,
+    /// The values of each side so far; the right side may be a list given at the call.
+    pub seen: [Vec<Value>; 2],
+    pub done: [bool; 2],
+}
+
+impl Behaviour for Combine {
+    fn run(&mut self, context: &mut Context) -> Result<State, Error> {
+        for side in 0..context.input_count() {
+            while !self.done[side] {
+                match context.read(side) {
+                    Some(Message::Value(value)) => {
+                        for other in self.seen[1 - side].clone() {
+                            let (left, right) = if side == 0 {
+                                (&value, &other)
+                            } else {
+                                (&other, &value)
+                            };
+                            if let Some(pair) = self.pair(left, right)? {
+                                context.emit(self.output, pair);
+                            }
+                        }
+                        self.seen[side].push(value);
+                    }
+                    Some(Message::Stop) => self.done[side] = true,
+                    None => break,
+                }
+            }
+        }
+        if self.done[0] && self.done[1] {
+            context.close(self.output);
+            return Ok(State::Stopped);
+        }
+        Ok(State::Running)
+    }
+}
+
+impl Combine {
+    fn pair(&self, left: &Value, right: &Value) -> Result<Option<Value>, Error> {
+        match &self.by {
+            None => Ok(Some(joined(&[], &[left, right]))),
+            Some(by) if key(left, by)? == key(right, by)? => Ok(Some(joined(by, &[left, right]))),
+            Some(_) => Ok(None),
+        }
+    }
+}
+
+/// `cross`: pairs each right value with the latest left value of its key, as `[left, right]`.
+pub(crate) struct Cross {
+    pub output: ChannelId,
+    pub key: Option<Rc<Closure>>,
+    pub left: IndexMap<Key, Value>,
+    /// Right values that came before any left value of their key.
+    pub waiting: IndexMap<Key, Vec<Value>>,
+    pub done: [bool; 2],
+}
+
+impl Behaviour for Cross {
+    fn run(&mut self, context: &mut Context) -> Result<State, Error> {
+        for side in 0..2 {
+            while !self.done[side] {
+                let value = match context.read(side) {
+                    Some(Message::Value(value)) => value,
+                    Some(Message::Stop) => {
+                        self.done[side] = true;
+                        continue;
+                    }
+                    None => break,
+                };
+                let key = Key(match &self.key {
+                    Some(closure) => context
+                        .interpreter
+                        .call_closure(closure, vec![value.clone()])?,
+                    None => cross_key(&value),
+                });
+                if side == 0 {
+                    for right in self.waiting.shift_remove(&key).unwrap_or_default() {
+                        context.emit(self.output, Value::list(vec![value.clone(), right]));
+                    }
+                    self.left.insert(key, value);
+                } else if let Some(left) = self.left.get(&key) {
+                    context.emit(self.output, Value::list(vec![left.clone(), value]));
+                } else {
+                    self.waiting.entry(key).or_default().push(value);
+                }
+            }
+        }
+        if self.done[0] && self.done[1] {
+            context.close(self.output);
+            return Ok(State::Stopped);
+        }
+        Ok(State::Running)
+    }
+}
+
+/// The default key of `cross`: the first element of a list, the first value of a map, the
+/// key of a map entry, or the value itself.
+fn cross_key(value: &Value) -> Value {
+    match value {
+        Value::List(list) => list.borrow().items.first().cloned().unwrap_or(Value::Null),
+        Value::Map(map) => map
+            .borrow()
+            .entries
+            .values()
+            .next()
+            .cloned()
+            .unwrap_or(Value::Null),
+        Value::MapEntry(entry) => entry.0.clone(),
+        other => other.clone(),
     }
 }
 

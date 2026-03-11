@@ -12,6 +12,7 @@ mod operator;
 mod process;
 mod route;
 mod session;
+mod split;
 pub mod task;
 mod workflow;
 

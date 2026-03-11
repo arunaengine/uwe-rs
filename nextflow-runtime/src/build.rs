@@ -18,6 +18,7 @@ use crate::network::Network;
 use crate::operator::{Each, Factory, Gather, Gathering, Mix, Single};
 use crate::process::{ProcessNode, singleton};
 use crate::route::{Concat, Merge, Route};
+use crate::split::{Format, Split, Subscribe};
 
 pub(crate) struct Builder<'a> {
     pub network: &'a mut Network,
@@ -613,6 +614,67 @@ impl Builder<'_> {
                     files: Default::default(),
                 };
                 (vec![source], Box::new(node), Value::Channel(output))
+            }
+            ("splitCsv" | "splitText" | "splitFasta" | "splitFastq", []) => {
+                let output = queue(self);
+                let number = |name: &str| match option(&options, name) {
+                    Some(Value::Number(number)) if number.to_i64() > 0 => {
+                        Some(number.to_i64() as usize)
+                    }
+                    _ => None,
+                };
+                let format = match name {
+                    "splitCsv" => Format::Csv {
+                        separator: option(&options, "sep")
+                            .and_then(|sep| sep.to_string().chars().next())
+                            .unwrap_or(','),
+                        quote: option(&options, "quote")
+                            .and_then(|quote| quote.to_string().chars().next())
+                            .unwrap_or('"'),
+                        header: match option(&options, "header") {
+                            Some(Value::List(names)) => Some(Some(names.borrow().items.clone())),
+                            Some(value) if value.truth() => Some(None),
+                            _ => None,
+                        },
+                        skip: number("skip").unwrap_or(0),
+                        strip: option(&options, "strip").is_some_and(|value| value.truth()),
+                    },
+                    "splitText" => Format::Text {
+                        keep_header: option(&options, "keepHeader")
+                            .is_some_and(|value| value.truth()),
+                    },
+                    "splitFasta" => Format::Fasta,
+                    _ => Format::Fastq,
+                };
+                let launch = self.base.launch_dir();
+                let files = option(&options, "file")
+                    .filter(|value| value.truth())
+                    .map(|_| PathValue::parse(&format!("work/split/{}", output.0), &launch));
+                let node = Split {
+                    output,
+                    format,
+                    by: number("by"),
+                    limit: number("limit"),
+                    elem: number("elem"),
+                    each: match option(&options, "each") {
+                        Some(Value::Closure(closure)) => Some(closure),
+                        _ => None,
+                    },
+                    files,
+                    count: 0,
+                };
+                (vec![source], Box::new(node), Value::Channel(output))
+            }
+            ("subscribe", rest) => {
+                let closure = |value: Option<Value>| match value {
+                    Some(Value::Closure(closure)) => Some(closure),
+                    _ => None,
+                };
+                let node = Subscribe {
+                    on_next: closure(rest.first().cloned().or_else(|| option(&options, "onNext"))),
+                    on_complete: closure(option(&options, "onComplete")),
+                };
+                (vec![source], Box::new(node), Value::Null)
             }
             ("branch" | "multiMap", criteria) => {
                 let (labels, closure) = match criteria {

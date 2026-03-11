@@ -283,6 +283,16 @@ impl<'h> Interpreter<'h> {
         self.host.print(text);
     }
 
+    /// The host, for operators that read and write files.
+    pub fn host(&mut self) -> &mut dyn Host {
+        &mut *self.host
+    }
+
+    /// A global, like `workflow`.
+    pub fn global(&self, name: &str) -> Option<Value> {
+        self.globals.get(name).cloned()
+    }
+
     /// Sets a built-in constant, like `params` or `workflow`.
     pub fn set_global(&mut self, name: &str, value: Value) {
         self.globals.insert(name.into(), value);

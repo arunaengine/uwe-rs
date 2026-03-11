@@ -4,6 +4,7 @@
 
 mod build;
 pub mod channel;
+mod files;
 mod keyed;
 mod loader;
 mod network;

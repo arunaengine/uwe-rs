@@ -289,3 +289,23 @@ fn from_and_from_path() {
         "{error}"
     );
 }
+
+#[test]
+fn collect_file_writes_files_at_the_end() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let d = directory.path().display();
+    assert_eq!(
+        run(&format!(
+            "channel.of('b', 'a').collectFile(name: 'x.txt', newLine: true, storeDir: '{d}')\n\
+             .map {{ f -> f.text }}.view()"
+        ))
+        .unwrap(),
+        "a\nb\n\n"
+    );
+    assert_eq!(
+        lines(&format!(
+            "channel.of(['y.txt', 'one'], ['x.txt', 'two']).collectFile(storeDir: '{d}').map {{ f -> f.name }}.view()"
+        )),
+        ["x.txt", "y.txt"]
+    );
+}

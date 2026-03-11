@@ -131,3 +131,11 @@ fn case_whitespace_and_order() {
         "[true, true, 97]"
     );
 }
+
+#[test]
+fn inspect_quotes_and_escapes() {
+    assert_eq!(
+        value("[[a: \"x\\ty\", 1: [2, null, true]].inspect(), \"it's\".inspect()]"),
+        "[['a':'x\\ty', 1:[2, null, true]], 'it\\'s']"
+    );
+}

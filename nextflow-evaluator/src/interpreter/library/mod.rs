@@ -106,6 +106,40 @@ fn object_method(object: &Value, name: &str, arguments: &[Value]) -> Option<Valu
         }),
         ("hashCode", []) => Value::integer(object.java_hash()),
         ("getClass", []) => Value::Class(object.java_class_name().into()),
+        ("inspect", []) => Value::string(inspect(object)),
         _ => return None,
     })
+}
+
+/// Groovy's `inspect()`: text in quotes with escapes, and lists and maps of inspected values.
+fn inspect(value: &Value) -> String {
+    match value {
+        Value::String(text) | Value::GString(text) => {
+            let escaped = text
+                .replace('\\', "\\\\")
+                .replace('\n', "\\n")
+                .replace('\r', "\\r")
+                .replace('\t', "\\t")
+                .replace('\u{c}', "\\f")
+                .replace('\'', "\\'");
+            format!("'{escaped}'")
+        }
+        Value::List(list) => {
+            let items: Vec<String> = list.borrow().items.iter().map(inspect).collect();
+            format!("[{}]", items.join(", "))
+        }
+        Value::Map(map) => {
+            let map = map.borrow();
+            if map.entries.is_empty() {
+                return "[:]".into();
+            }
+            let entries: Vec<String> = map
+                .entries
+                .iter()
+                .map(|(key, value)| format!("{}:{}", inspect(&key.0), inspect(value)))
+                .collect();
+            format!("[{}]", entries.join(", "))
+        }
+        other => other.to_groovy_string(),
+    }
 }

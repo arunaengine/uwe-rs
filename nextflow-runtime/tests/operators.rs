@@ -163,7 +163,7 @@ fn group_tuple() {
 }
 
 #[test]
-fn join() {
+fn join_combine_and_cross() {
     let left = "channel.of(['a', 1], ['b', 2], ['a', 3], ['c', 4])";
     let right = "channel.of(['a', 'x'], ['a', 'y'], ['b', 'z'], ['d', 'w'])";
     assert_eq!(
@@ -179,5 +179,25 @@ fn join() {
             "[c, 4, null]",
             "[d, null, w]"
         ]
+    );
+    assert_eq!(
+        sorted("channel.of(['a', 1], ['b', 2]).combine(channel.of('x', 'y')).view()"),
+        ["[a, 1, x]", "[a, 1, y]", "[b, 2, x]", "[b, 2, y]"]
+    );
+    assert_eq!(
+        sorted(
+            "channel.of(['a', 1], ['a', 2], ['b', 3]).combine(channel.of(['a', 'x'], ['b', 'y']), by: 0).view()"
+        ),
+        ["[a, 1, x]", "[a, 2, x]", "[b, 3, y]"]
+    );
+    assert_eq!(
+        lines("channel.of([1, [2, 3]]).combine([4, [5]]).view()"),
+        ["[1, [2, 3], 4]", "[1, [2, 3], 5]"]
+    );
+    assert_eq!(
+        sorted(
+            "channel.of(['a', 1], ['b', 2]).cross(channel.of(['a', 'x'], ['a', 'y'], ['b', 'z'])).view()"
+        ),
+        ["[[a, 1], [a, x]]", "[[a, 1], [a, y]]", "[[b, 2], [b, z]]"]
     );
 }

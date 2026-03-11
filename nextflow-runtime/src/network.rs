@@ -70,6 +70,9 @@ pub struct Network {
     /// The node that requested each task in flight.
     owners: HashMap<TaskId, usize>,
     next_task: u64,
+    /// Topics by name: the channel of `channel.topic(name)`, if a script reads it, and the
+    /// process outputs that write to the topic.
+    topics: indexmap::IndexMap<Rc<str>, (Option<ChannelId>, Vec<ChannelId>)>,
 }
 
 /// What a running node can see: its inputs, the channels it writes, and the interpreter for
@@ -161,6 +164,21 @@ impl Network {
         ChannelId(self.channels.len() as u32 - 1)
     }
 
+    /// The channel of a topic, as `channel.topic(name)` gives it.
+    pub(crate) fn topic(&mut self, name: &str) -> ChannelId {
+        if let Some((Some(channel), _)) = self.topics.get(name) {
+            return *channel;
+        }
+        let channel = self.channel(false);
+        self.topics.entry(name.into()).or_default().0 = Some(channel);
+        channel
+    }
+
+    /// Records a process output that writes to a topic.
+    pub(crate) fn add_topic_source(&mut self, name: &str, source: ChannelId) {
+        self.topics.entry(name.into()).or_default().1.push(source);
+    }
+
     /// Binds a value channel now, as a plain process argument is at call time.
     pub(crate) fn bind(&mut self, channel: ChannelId, value: Value) {
         self.channels[channel.0 as usize].write(Message::Value(value));
@@ -195,6 +213,19 @@ impl Network {
 
     /// Starts every node in the order it was created, then runs until nothing is waiting.
     pub fn ignite(&mut self, interpreter: &mut Interpreter) -> Result<(), Error> {
+        // Each topic that a script reads mixes all its sources, or is empty without any.
+        for (name, (channel, sources)) in std::mem::take(&mut self.topics) {
+            let Some(output) = channel else {
+                continue;
+            };
+            if sources.is_empty() {
+                self.channels[output.0 as usize].write(Message::Stop);
+                continue;
+            }
+            let closed = vec![false; sources.len()];
+            let mix = crate::operator::Mix { output, closed };
+            self.add(&format!("topic {name}"), &sources, Box::new(mix));
+        }
         for index in 0..self.nodes.len() {
             self.step(index, interpreter, Step::Ignite)?;
             self.enqueue(index);

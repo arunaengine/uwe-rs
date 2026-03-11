@@ -53,6 +53,10 @@ impl Host for Session<'_> {
         self.base.environment(name)
     }
 
+    fn list(&mut self, directory: &PathValue) -> Result<Vec<(String, bool)>, Error> {
+        self.base.list(directory)
+    }
+
     fn namespace_method(
         &mut self,
         namespace: &str,

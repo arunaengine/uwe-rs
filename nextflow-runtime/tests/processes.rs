@@ -173,6 +173,19 @@ fn workflow_metadata_and_completion_handlers() {
 }
 
 #[test]
+fn topic_channels_collect_process_outputs() {
+    let process = "process P {\n    input:\n    val x\n    output:\n    val y, topic: 'vers'\n    script:\n    y = \"A${x}\"\n    'true'\n}\n";
+    let source = format!(
+        "{process}workflow {{\n    P(channel.of(1, 2))\n    channel.topic('vers').toList().view()\n    \
+         channel.topic('nothing').toList().view()\n}}"
+    );
+    let (_, printed) = run(&source, &Options::default()).expect("runs");
+    let mut lines: Vec<&str> = printed.lines().collect();
+    lines.sort_unstable();
+    assert_eq!(lines, ["[A1, A2]", "[]"]);
+}
+
+#[test]
 fn missing_outputs_and_failures() {
     let process = "process P {\n    input:\n    val x\n    output:\n    path 'out.txt'\n    script:\n    'x'\n}\n";
     let parsed_source = format!("{process}workflow {{\n    P(1)\n}}");

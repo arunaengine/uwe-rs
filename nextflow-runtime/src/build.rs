@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use nextflow_config::Config;
 use nextflow_evaluator::exception::Exception;
+use nextflow_evaluator::interpreter::glob::{FileType, GlobOptions, glob, is_glob, no_match};
 use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
 use nextflow_evaluator::lowered::{Expression, ExpressionKind, Input, Module, Process};
 use nextflow_evaluator::value::{ChannelId, ChannelOut, ListKind, PathValue, Value};
@@ -62,6 +63,10 @@ impl Host for Builder<'_> {
         self.base.environment(name)
     }
 
+    fn list(&mut self, directory: &PathValue) -> Result<Vec<(String, bool)>, Error> {
+        self.base.list(directory)
+    }
+
     fn plugin_function(
         &mut self,
         plugin: &str,
@@ -82,6 +87,14 @@ impl Host for Builder<'_> {
             return Err(thrown(message));
         }
         let (values, value, close) = match (namespace, name, arguments.as_slice()) {
+            ("channel", "topic", [topic]) => {
+                return Ok(Some(Value::Channel(self.network.topic(&topic.to_string()))));
+            }
+            ("channel", "fromPath", [.., _]) => (self.from_path(&arguments)?, false, true),
+            ("channel", "from", [single @ (Value::List(_) | Value::Set(_))]) => {
+                (elements(single), false, true)
+            }
+            ("channel", "from", _) => (arguments, false, true),
             ("channel", "of", _) => (expand_ranges(arguments), false, true),
             ("channel", "fromList", [list]) => (elements(list), false, true),
             ("channel", "empty", []) => (Vec::new(), false, true),
@@ -190,6 +203,11 @@ impl Host for Builder<'_> {
             pending: Default::default(),
         };
         self.network.add(name, &inputs, Box::new(node));
+        for (output, channel) in process.outputs.iter().zip(&outputs) {
+            if let Some(topic) = &output.topic {
+                self.network.add_topic_source(topic, *channel);
+            }
+        }
         let values = outputs.into_iter().map(Value::Channel).collect();
         let names = process
             .outputs
@@ -346,6 +364,65 @@ impl Host for Builder<'_> {
             }
         }
         Ok(Some(Value::Channel(output)))
+    }
+}
+
+impl Builder<'_> {
+    /// The paths of `channel.fromPath(pattern, [options])`: each pattern in turn, a glob
+    /// expanded to the matching files sorted by path.
+    fn from_path(&mut self, arguments: &[Value]) -> Result<Vec<Value>, Error> {
+        let (options, patterns) = match arguments {
+            [options @ Value::Map(_), patterns] => (Some(options.clone()), patterns),
+            [patterns] => (None, patterns),
+            _ => return Err(thrown("Missing `fromPath` parameter".into())),
+        };
+        let file_type = match option(&options, "type")
+            .map(|kind| kind.to_string())
+            .as_deref()
+        {
+            None | Some("file") => FileType::File,
+            Some("dir") => FileType::Directory,
+            Some("any") => FileType::Any,
+            Some(other) => return Err(thrown(format!("Not a valid type: {other}"))),
+        };
+        let glob_options = GlobOptions {
+            file_type,
+            hidden: option(&options, "hidden").map(|value| value.truth()),
+            max_depth: option(&options, "maxDepth").and_then(|depth| match depth {
+                Value::Number(depth) => Some(depth.to_i64() as usize),
+                _ => None,
+            }),
+        };
+        let check = option(&options, "checkIfExists").is_some_and(|value| value.truth());
+        let globbing = option(&options, "glob").is_none_or(|value| value.truth());
+        let mut paths = Vec::new();
+        for pattern in elements(patterns) {
+            let text = match &pattern {
+                Value::Path(path) => path.uri(),
+                other => other.to_string(),
+            };
+            if globbing && is_glob(&text) {
+                let found = glob(&mut *self.base, &text, &glob_options)?;
+                if found.is_empty() && check {
+                    return Err(no_match(&text));
+                }
+                paths.extend(found);
+                continue;
+            }
+            let path = PathValue::parse(&text, &self.base.launch_dir());
+            if check && self.base.metadata(&path)?.is_none() {
+                let message = format!("No such file or directory: {}", path.uri());
+                return Err(Error::Thrown {
+                    exception: Rc::new(Exception::new("NoSuchFileException", message)),
+                    span: Default::default(),
+                });
+            }
+            paths.push(path);
+        }
+        Ok(paths
+            .into_iter()
+            .map(|path| Value::Path(Rc::new(path)))
+            .collect())
     }
 }
 

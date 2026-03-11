@@ -258,3 +258,34 @@ fn filtering_and_reducing_operators() {
         ["[1, 2, 3]", "3", "6", "1", "1", "4", "3"]
     );
 }
+
+#[test]
+fn from_and_from_path() {
+    assert_eq!(lines("channel.from(1, 2).view()"), ["1", "2"]);
+    assert_eq!(lines("channel.from([3, 4]).view()"), ["3", "4"]);
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    for name in ["b_1.fq", "a_1.fq", "a_2.fq"] {
+        std::fs::write(directory.path().join(name), "").expect("writes a file");
+    }
+    let d = directory.path().display();
+    assert_eq!(
+        lines(&format!(
+            "channel.fromPath('{d}/*_1.fq').map {{ f -> f.name }}.view()"
+        )),
+        ["a_1.fq", "b_1.fq"]
+    );
+    assert_eq!(
+        lines(&format!(
+            "channel.fromPath(['{d}/a_2.fq', '{d}/none.fq']).map {{ f -> f.name }}.view()"
+        )),
+        ["a_2.fq", "none.fq"]
+    );
+    let error = run(&format!(
+        "channel.fromPath('{d}/*.txt', checkIfExists: true).view()"
+    ))
+    .unwrap_err();
+    assert!(
+        error.ends_with(&format!("No files match pattern `{d}/*.txt`")),
+        "{error}"
+    );
+}

@@ -6,6 +6,7 @@ mod access;
 mod call;
 mod dataflow;
 mod expression;
+pub mod glob;
 mod library;
 mod statement;
 mod task;
@@ -71,6 +72,22 @@ pub trait Host {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(error) => Err(file_error(path, &error)),
         }
+    }
+
+    /// The entries of a directory: each name and whether it is a directory. The default lists
+    /// local directories.
+    fn list(&mut self, directory: &PathValue) -> Result<Vec<(String, bool)>, Error> {
+        let local = local_path(directory)?;
+        let entries = std::fs::read_dir(local).map_err(|error| file_error(directory, &error))?;
+        let mut result = Vec::new();
+        for entry in entries.flatten() {
+            let is_directory = std::fs::metadata(entry.path()).is_ok_and(|m| m.is_dir());
+            result.push((
+                entry.file_name().to_string_lossy().into_owned(),
+                is_directory,
+            ));
+        }
+        Ok(result)
     }
 
     /// Writes a file, creating its directory. The default writes local files.

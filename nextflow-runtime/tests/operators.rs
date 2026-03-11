@@ -201,3 +201,28 @@ fn join_combine_and_cross() {
         ["[[a, 1], [a, x]]", "[[a, 1], [a, y]]", "[[b, 2], [b, z]]"]
     );
 }
+
+#[test]
+fn branch_multi_map_concat_and_merge() {
+    assert_eq!(
+        lines(
+            "def result = channel.of(1, 2, 3, 4).branch { v ->\n    small: v < 2\n    big: v > 2\n        return v * 10\n}\n\
+             result.small.view { v -> \"small ${v}\" }\nresult.big.view { v -> \"big ${v}\" }"
+        ),
+        ["small 1", "big 30", "big 40"]
+    );
+    assert_eq!(
+        sorted(
+            "channel.of(1, 2).multiMap { v ->\n    a: v\n    b: c: v * 10\n}.set { out }\nout.a.view { v -> \"a${v}\" }\nout.c.view { v -> \"c${v}\" }"
+        ),
+        ["a1", "a2", "c10", "c20"]
+    );
+    assert_eq!(
+        lines("channel.value(1).concat(channel.of(2, 3)).view()"),
+        ["1", "2", "3"]
+    );
+    assert_eq!(
+        lines("channel.of(1, 2, 3).merge(channel.of('a', 'b')).view()"),
+        ["[1, a]", "[2, b]"]
+    );
+}

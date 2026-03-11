@@ -15,6 +15,7 @@ use crate::keyed::{Combine, Cross, GroupTuple, Join};
 use crate::network::Network;
 use crate::operator::{Each, Factory, Gather, Gathering, Mix, Single};
 use crate::process::{ProcessNode, singleton};
+use crate::route::{Concat, Merge, Route};
 
 pub(crate) struct Builder<'a> {
     pub network: &'a mut Network,
@@ -306,7 +307,8 @@ fn labels(process: &Process) -> Vec<String> {
 }
 
 impl Builder<'_> {
-    /// The operators with several inputs: `groupTuple`, `join`, `combine` and `cross`.
+    /// The operators with several inputs or outputs: `groupTuple`, `join`, `combine`,
+    /// `cross`, `concat`, `merge`, `branch` and `multiMap`.
     fn keyed_operator(
         &mut self,
         source: ChannelId,
@@ -390,6 +392,72 @@ impl Builder<'_> {
                     done: [false; 2],
                 };
                 (vec![source, right], Box::new(node), Value::Channel(output))
+            }
+            ("concat", others) => {
+                let mut inputs = vec![source];
+                for other in others {
+                    inputs.extend(
+                        channels(other)
+                            .ok_or_else(|| thrown(format!("Invalid `concat` operand: {other}")))?,
+                    );
+                }
+                let output = queue(self);
+                (
+                    inputs,
+                    Box::new(Concat { output, current: 0 }),
+                    Value::Channel(output),
+                )
+            }
+            ("merge", others) => {
+                let mut inputs = vec![source];
+                let mut closure = None;
+                for other in others {
+                    match other {
+                        Value::Closure(value) => closure = Some(value.clone()),
+                        other => {
+                            inputs.extend(channels(other).ok_or_else(|| {
+                                thrown(format!("Invalid `merge` operand: {other}"))
+                            })?)
+                        }
+                    }
+                }
+                let output = self.network.channel(self.network.is_value(source));
+                (
+                    inputs,
+                    Box::new(Merge { output, closure }),
+                    Value::Channel(output),
+                )
+            }
+            ("branch" | "multiMap", criteria) => {
+                let (labels, closure) = match criteria {
+                    [Value::List(labels), Value::Closure(closure)] => {
+                        (labels.clone(), closure.clone())
+                    }
+                    [Value::List(pair)] => match pair.borrow().items.as_slice() {
+                        [Value::List(labels), Value::Closure(closure)] => {
+                            (labels.clone(), closure.clone())
+                        }
+                        _ => return Ok(None),
+                    },
+                    _ => return Ok(None),
+                };
+                let labels = labels.borrow().items.clone();
+                let value = self.network.is_value(source);
+                let outputs: Vec<ChannelId> =
+                    labels.iter().map(|_| self.network.channel(value)).collect();
+                let node = Route {
+                    criteria: closure,
+                    labels: labels.clone(),
+                    outputs: outputs.clone(),
+                    all: name == "multiMap",
+                };
+                let names = labels
+                    .iter()
+                    .map(|label| Some(label.to_string().into()))
+                    .collect();
+                let values = outputs.into_iter().map(Value::Channel).collect();
+                let out = Value::ChannelOut(Rc::new(ChannelOut { values, names }));
+                (vec![source], Box::new(node), out)
             }
             _ => return Ok(None),
         };

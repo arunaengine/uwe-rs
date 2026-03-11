@@ -309,3 +309,33 @@ fn collect_file_writes_files_at_the_end() {
         ["x.txt", "y.txt"]
     );
 }
+
+#[test]
+fn splitters() {
+    assert_eq!(
+        lines("channel.of(\"a,b\\n1,2\\n3,4\\n\").splitCsv(header: true).view()"),
+        ["[a:1, b:2]", "[a:3, b:4]"]
+    );
+    assert_eq!(
+        lines("channel.of(\"a,b\\n1,2\\n3,4\\n\").splitCsv(by: 2).view()"),
+        ["[[a, b], [1, 2]]", "[[3, 4]]"]
+    );
+    assert_eq!(
+        lines("channel.of(\"x\\ny\\nz\\n\").splitText(by: 2).view { v -> v.inspect() }"),
+        ["'x\\ny\\n'", "'z\\n'"]
+    );
+    assert_eq!(
+        lines("channel.of('>a\\nAC\\n>b\\nGT\\n').splitFasta().view { v -> v.inspect() }"),
+        ["'>a\\nAC\\n'", "'>b\\nGT\\n'"]
+    );
+    assert_eq!(
+        lines("channel.of(['id', \"a;b\\n1;2\\n\"]).splitCsv(elem: 1, sep: ';').view()"),
+        ["[id, [a, b]]", "[id, [1, 2]]"]
+    );
+    assert_eq!(
+        lines(
+            "channel.of(1, 2).subscribe(onNext: { v -> println \"n${v}\" }, onComplete: { println 'done' })"
+        ),
+        ["n1", "n2", "done"]
+    );
+}

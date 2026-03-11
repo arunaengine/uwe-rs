@@ -90,7 +90,7 @@ impl Host for Builder<'_> {
             ("channel", "topic", [topic]) => {
                 return Ok(Some(Value::Channel(self.network.topic(&topic.to_string()))));
             }
-            ("channel", "fromPath", [.., _]) => (self.from_path(&arguments)?, false, true),
+            ("channel", "fromPath", [.., _]) => (self.path_values(&arguments)?, false, true),
             ("channel", "from", [single @ (Value::List(_) | Value::Set(_))]) => {
                 (elements(single), false, true)
             }
@@ -370,7 +370,7 @@ impl Host for Builder<'_> {
 impl Builder<'_> {
     /// The paths of `channel.fromPath(pattern, [options])`: each pattern in turn, a glob
     /// expanded to the matching files sorted by path.
-    fn from_path(&mut self, arguments: &[Value]) -> Result<Vec<Value>, Error> {
+    fn path_values(&mut self, arguments: &[Value]) -> Result<Vec<Value>, Error> {
         let (options, patterns) = match arguments {
             [options @ Value::Map(_), patterns] => (Some(options.clone()), patterns),
             [patterns] => (None, patterns),

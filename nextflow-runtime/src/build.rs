@@ -12,6 +12,7 @@ use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
 use nextflow_evaluator::lowered::{Expression, ExpressionKind, Input, Module, Process};
 use nextflow_evaluator::value::{ChannelId, ChannelOut, ListKind, PathValue, Value};
 
+use crate::files::CollectFile;
 use crate::keyed::{Combine, Cross, GroupTuple, Join};
 use crate::network::Network;
 use crate::operator::{Each, Factory, Gather, Gathering, Mix, Single};
@@ -563,6 +564,55 @@ impl Builder<'_> {
                     Box::new(Merge { output, closure }),
                     Value::Channel(output),
                 )
+            }
+            ("collectFile", rest) => {
+                let output = queue(self);
+                let closure = match rest {
+                    [Value::Closure(closure)] => Some(closure.clone()),
+                    _ => None,
+                };
+                let launch = self.base.launch_dir();
+                let mut name = option(&options, "name").map(|name| match name {
+                    Value::Path(path) => path.uri(),
+                    other => other.to_string(),
+                });
+                let mut directory = match option(&options, "storeDir") {
+                    Some(Value::Path(path)) => (*path).clone(),
+                    Some(other) => PathValue::parse(&other.to_string(), &launch),
+                    None => PathValue::parse(&format!("work/collect-file/{}", output.0), &launch),
+                };
+                // A name with a directory also chooses where the file goes.
+                if let Some(text) = name.clone().filter(|text| text.contains('/')) {
+                    let path = PathValue::parse(&text, &launch);
+                    if let Some(parent) = path.parent() {
+                        directory = parent;
+                    }
+                    name = Some(path.name().to_owned());
+                }
+                let sort = !matches!(
+                    option(&options, "sort")
+                        .map(|sort| sort.to_string())
+                        .as_deref(),
+                    Some("false" | "none" | "index")
+                );
+                let keep_header = option(&options, "keepHeader").is_some_and(|value| value.truth());
+                let skip = match option(&options, "skip") {
+                    Some(Value::Number(skip)) => skip.to_i64() as usize,
+                    _ => usize::from(keep_header),
+                };
+                let node = CollectFile {
+                    output,
+                    closure,
+                    name,
+                    directory,
+                    new_line: option(&options, "newLine").is_some_and(|value| value.truth()),
+                    sort,
+                    skip,
+                    keep_header,
+                    seed: option(&options, "seed").map(|seed| seed.to_string()),
+                    files: Default::default(),
+                };
+                (vec![source], Box::new(node), Value::Channel(output))
             }
             ("branch" | "multiMap", criteria) => {
                 let (labels, closure) = match criteria {

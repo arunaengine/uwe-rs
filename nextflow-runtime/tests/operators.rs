@@ -226,3 +226,35 @@ fn branch_multi_map_concat_and_merge() {
         ["[1, a]", "[2, b]"]
     );
 }
+
+#[test]
+fn filtering_and_reducing_operators() {
+    let source = "channel.of(1, 1, 2, 2, 1)";
+    assert_eq!(lines(&format!("{source}.unique().view()")), ["1", "2"]);
+    assert_eq!(
+        lines(&format!("{source}.distinct().view()")),
+        ["1", "2", "1"]
+    );
+    assert_eq!(lines(&format!("{source}.take(2).view()")), ["1", "1"]);
+    assert_eq!(
+        lines("channel.of(1, 2, 3).until { v -> v == 2 }.view()"),
+        ["1"]
+    );
+    assert_eq!(
+        lines("channel.of(['a', [1, 2, 3], ['x', 'y']]).transpose().view()"),
+        ["[a, 1, x]", "[a, 2, y]"]
+    );
+    assert_eq!(
+        lines("channel.of(['a', [1, 2, 3], ['x', 'y']]).transpose(remainder: true).view()"),
+        ["[a, 1, x]", "[a, 2, y]", "[a, 3, null]"]
+    );
+    assert_eq!(
+        lines(
+            "channel.of(3, 1, 2).toSortedList().view()\nchannel.of(3, 1, 2).count().view()\n\
+             channel.of(3, 1, 2).sum().view()\nchannel.of(3, 1, 2).min().view()\n\
+             channel.of(3, 1, 2).max { v -> -v }.view()\nchannel.of(1, 2, 3).reduce { a, b -> b == 2 ? null : a + b }.view()\n\
+             channel.of(1, 2, 3).last().view()"
+        ),
+        ["[1, 2, 3]", "3", "6", "1", "1", "4", "3"]
+    );
+}

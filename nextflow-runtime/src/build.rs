@@ -268,6 +268,65 @@ impl Host for Builder<'_> {
                     "Operator 'mix' should have at least one right operand".into(),
                 ));
             }
+            ("unique", rest) => {
+                let (_, closure) = options_and_closure(rest);
+                let seen = Vec::new();
+                (Kind::Each(Each::Unique { closure, seen }), same_kind)
+            }
+            ("distinct", rest) => {
+                let (_, closure) = options_and_closure(rest);
+                let previous = Value::Null;
+                (Kind::Each(Each::Distinct { closure, previous }), same_kind)
+            }
+            ("take", [Value::Number(count)]) => {
+                let count = count.to_i64();
+                (
+                    Kind::Each(Each::Take(if count < 0 { -1 } else { count })),
+                    false,
+                )
+            }
+            ("until", [Value::Closure(closure)]) => {
+                (Kind::Each(Each::Until(closure.clone())), same_kind)
+            }
+            ("transpose", rest) => {
+                let (options, _) = options_and_closure(rest);
+                let by = indexes(&options, "by");
+                let remainder = option(&options, "remainder").is_some_and(|value| value.truth());
+                (Kind::Each(Each::Transpose { by, remainder }), false)
+            }
+            // `dump` prints only with `-dump-channels`, which iunctus does not have, so it is
+            // the source itself.
+            ("dump", _) => return Ok(Some(Value::Channel(source))),
+            ("toSortedList", rest) => {
+                let (_, closure) = options_and_closure(rest);
+                (Kind::Gather(Gather::ToSortedList(closure)), true)
+            }
+            ("count", []) => (Kind::Gather(Gather::Count(None)), true),
+            ("count", [criteria]) => (Kind::Gather(Gather::Count(Some(criteria.clone()))), true),
+            ("sum" | "min" | "max", rest) => {
+                let (_, closure) = options_and_closure(rest);
+                let kind = match name {
+                    "sum" => Gather::Sum(closure),
+                    "min" => Gather::Min(closure),
+                    _ => Gather::Max(closure),
+                };
+                (Kind::Gather(kind), true)
+            }
+            ("reduce", [Value::Closure(closure)]) => {
+                (Kind::Gather(Gather::Reduce(closure.clone())), true)
+            }
+            ("reduce", [seed, Value::Closure(closure)]) => {
+                let output = self.network.channel(true);
+                let gathering = Gathering {
+                    kind: Gather::Reduce(closure.clone()),
+                    output,
+                    items: vec![seed.clone()],
+                    done: false,
+                };
+                self.network.add(name, &[source], Box::new(gathering));
+                return Ok(Some(Value::Channel(output)));
+            }
+            ("last", []) => (Kind::Gather(Gather::Last), true),
             _ => return self.keyed_operator(source, name, &arguments),
         };
         let output = self.network.channel(value);

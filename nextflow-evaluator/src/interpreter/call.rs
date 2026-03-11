@@ -130,12 +130,11 @@ impl Interpreter<'_> {
             }
             ("tuple", _) => return Ok(tuple(arguments)),
             ("file" | "files", [.., pattern]) => {
-                let path = self.file(pattern, span)?;
-                return Ok(if name == "files" {
-                    Value::list(vec![path])
-                } else {
-                    path
-                });
+                let options = match arguments.as_slice() {
+                    [options @ Value::Map(_), _] => Some(options.clone()),
+                    _ => None,
+                };
+                return self.file(pattern, options.as_ref(), name == "files", span);
             }
             // The criteria of `branch` and `multiMap`, with the labels that lowering adds.
             ("branchCriteria" | "multiMapCriteria", [labels, criteria]) => {
@@ -160,7 +159,13 @@ impl Interpreter<'_> {
 
 impl Interpreter<'_> {
     /// `file(pattern)` for a single path. Relative paths start at the launch directory.
-    fn file(&mut self, pattern: &Value, span: Span) -> Result<Value, Error> {
+    fn file(
+        &mut self,
+        pattern: &Value,
+        options: Option<&Value>,
+        list: bool,
+        span: Span,
+    ) -> Result<Value, Error> {
         let text = match pattern {
             Value::Null => None,
             Value::String(text) | Value::GString(text) => Some(text.to_string()),
@@ -181,11 +186,46 @@ impl Interpreter<'_> {
                 return Err(thrown(Exception::illegal_argument(message), span));
             }
         };
-        if text.contains(['*', '?', '[', '{']) {
-            return Err(unsupported("glob patterns in `file()`", span));
+        let option = |name: &str| match options {
+            Some(Value::Map(map)) => map
+                .borrow()
+                .entries
+                .get(&crate::value::Key(Value::string(name)))
+                .cloned(),
+            _ => None,
+        };
+        let check = option("checkIfExists").is_some_and(|value| value.truth());
+        if super::glob::is_glob(&text) && option("glob").is_none_or(|value| value.truth()) {
+            let options = super::glob::GlobOptions {
+                hidden: option("hidden").map(|value| value.truth()),
+                ..Default::default()
+            };
+            let paths =
+                super::glob::glob(&mut *self.host, &text, &options).map_err(|e| e.or_at(span))?;
+            if paths.is_empty() && check {
+                return Err(super::glob::no_match(&text).or_at(span));
+            }
+            let paths = paths
+                .into_iter()
+                .map(|path| Value::Path(Rc::new(path)))
+                .collect();
+            let list = crate::value::List::new(crate::value::ListKind::LinkedList, paths);
+            return Ok(Value::List(Rc::new(std::cell::RefCell::new(list))));
         }
         let launch = self.host.launch_dir();
-        Ok(Value::Path(Rc::new(PathValue::parse(&text, &launch))))
+        let path = PathValue::parse(&text, &launch);
+        if check
+            && self
+                .host
+                .metadata(&path)
+                .map_err(|e| e.or_at(span))?
+                .is_none()
+        {
+            let message = format!("No such file or directory: {}", path.uri());
+            return Err(thrown(Exception::new("NoSuchFileException", message), span));
+        }
+        let path = Value::Path(Rc::new(path));
+        Ok(if list { Value::list(vec![path]) } else { path })
     }
 }
 

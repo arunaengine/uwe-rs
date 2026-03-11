@@ -101,10 +101,6 @@ fn invalid_patterns() {
         eval("file(null)").unwrap_err(),
         "IllegalArgumentException: Argument of `file()` function cannot be null"
     );
-    assert_eq!(
-        eval("file('*.txt')").unwrap_err(),
-        "Not supported yet: glob patterns in `file()`"
-    );
 }
 
 #[test]
@@ -119,4 +115,37 @@ fn writing_copying_and_deleting_files() {
          [g.text, f.delete(), f.exists(), g.copyTo(file('{dir}/c.txt')).text, f.delete()]"
     );
     assert_eq!(value(&body), "[hi, true, false, hi, false]");
+}
+
+#[test]
+fn globs_match_like_java_globs() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let d = directory.path().display();
+    for file in [
+        "a_1.fq",
+        "a_2.fq",
+        "b_1.fq",
+        "sub/c_1.fq",
+        "sub/deep/e_1.fq",
+        ".hidden.fq",
+    ] {
+        let path = directory.path().join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, "").unwrap();
+    }
+    let names = |pattern: &str| value(&format!("file('{d}/{pattern}').collect {{ it.name }}"));
+    assert_eq!(names("*_1.fq"), "[a_1.fq, b_1.fq]");
+    assert_eq!(names("**/*.fq"), "[c_1.fq, e_1.fq]");
+    assert_eq!(names("**.fq"), "[a_1.fq, a_2.fq, b_1.fq, c_1.fq, e_1.fq]");
+    assert_eq!(names("{a,b}_1.fq"), "[a_1.fq, b_1.fq]");
+    assert_eq!(names("*/*.fq"), "[c_1.fq]");
+    assert_eq!(
+        value(&format!("file('{d}/*_1.fq').getClass().simpleName")),
+        "LinkedList"
+    );
+    assert_eq!(value(&format!("files('{d}/x.fq')")), format!("[{d}/x.fq]"));
+    assert_eq!(
+        eval(&format!("file('{d}/x.fq', checkIfExists: true)")).unwrap_err(),
+        format!("NoSuchFileException: No such file or directory: {d}/x.fq")
+    );
 }

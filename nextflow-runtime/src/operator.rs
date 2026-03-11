@@ -49,6 +49,25 @@ pub(crate) enum Each {
         closure: Option<Rc<Closure>>,
         new_line: bool,
     },
+    /// `unique`: values whose key, the closure's result or the value, was not seen before.
+    Unique {
+        closure: Option<Rc<Closure>>,
+        seen: Vec<Value>,
+    },
+    /// `distinct`: drops a value whose key equals the previous one, which starts as `null`.
+    Distinct {
+        closure: Option<Rc<Closure>>,
+        previous: Value,
+    },
+    /// `take(n)`: the first `n` values; all of them for a negative `n`.
+    Take(i64),
+    /// `until`: values until the closure is true for one.
+    Until(Rc<Closure>),
+    /// `transpose`: a tuple with lists becomes one tuple per list element.
+    Transpose {
+        by: Option<Vec<usize>>,
+        remainder: bool,
+    },
 }
 
 pub(crate) struct Single {
@@ -57,13 +76,21 @@ pub(crate) struct Single {
 }
 
 impl Behaviour for Single {
+    fn ignite(&mut self, context: &mut Context) -> Result<State, Error> {
+        if let Each::Take(0) = self.kind {
+            context.close(self.output);
+            return Ok(State::Stopped);
+        }
+        self.run(context)
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         while let Some(message) = context.read(0) {
             let Message::Value(value) = message else {
                 context.close(self.output);
                 return Ok(State::Stopped);
             };
-            match &self.kind {
+            match &mut self.kind {
                 Each::Map(closure) => {
                     let result = context.interpreter.call_closure(closure, vec![value])?;
                     if !matches!(result, Value::Null) {
@@ -109,10 +136,105 @@ impl Behaviour for Single {
                     context.interpreter.print(&format!("{shown}{end}"));
                     context.emit(self.output, value);
                 }
+                Each::Unique { closure, seen } => {
+                    let key = match closure {
+                        Some(closure) => context
+                            .interpreter
+                            .call_closure(closure, vec![value.clone()])?,
+                        None => value.clone(),
+                    };
+                    if !seen.iter().any(|earlier| earlier.groovy_equals(&key)) {
+                        seen.push(key);
+                        context.emit(self.output, value);
+                    }
+                }
+                Each::Distinct { closure, previous } => {
+                    let key = match closure {
+                        Some(closure) => context
+                            .interpreter
+                            .call_closure(closure, vec![value.clone()])?,
+                        None => value.clone(),
+                    };
+                    if !key.groovy_equals(previous) {
+                        *previous = key;
+                        context.emit(self.output, value);
+                    }
+                }
+                Each::Take(remaining) => {
+                    if *remaining != 0 {
+                        context.emit(self.output, value);
+                        *remaining -= 1;
+                    }
+                    if *remaining == 0 {
+                        context.close(self.output);
+                        return Ok(State::Stopped);
+                    }
+                }
+                Each::Until(closure) => {
+                    if context
+                        .interpreter
+                        .call_closure(closure, vec![value.clone()])?
+                        .truth()
+                    {
+                        context.close(self.output);
+                        return Ok(State::Stopped);
+                    }
+                    context.emit(self.output, value);
+                }
+                Each::Transpose { by, remainder } => {
+                    for tuple in transposed(&value, by.as_deref(), *remainder)? {
+                        context.emit(self.output, tuple);
+                    }
+                }
             }
         }
         Ok(State::Running)
     }
+}
+
+/// The tuples `transpose` makes of one value: element `i` of each transposed list, with the
+/// other positions unchanged. A value without lists stays as it is.
+fn transposed(value: &Value, by: Option<&[usize]>, remainder: bool) -> Result<Vec<Value>, Error> {
+    let Value::List(list) = value else {
+        return Ok(vec![value.clone()]);
+    };
+    let items = list.borrow().items.clone();
+    let lists: Vec<usize> = match by {
+        Some(by) => by.to_vec(),
+        None => (0..items.len())
+            .filter(|index| matches!(items[*index], Value::List(_)))
+            .collect(),
+    };
+    if lists.is_empty() {
+        return Ok(vec![value.clone()]);
+    }
+    let mut columns = Vec::new();
+    for index in &lists {
+        match items.get(*index) {
+            Some(Value::List(column)) => columns.push(column.borrow().items.clone()),
+            _ => {
+                return Err(thrown_text(format!(
+                    "Not a valid collection at index {index}"
+                )));
+            }
+        }
+    }
+    let lengths = columns.iter().map(Vec::len);
+    let count = if remainder {
+        lengths.max()
+    } else {
+        lengths.min()
+    }
+    .unwrap_or(0);
+    Ok((0..count)
+        .map(|row| {
+            let mut tuple = items.clone();
+            for (index, column) in lists.iter().zip(&columns) {
+                tuple[*index] = column.get(row).cloned().unwrap_or(Value::Null);
+            }
+            Value::list(tuple)
+        })
+        .collect())
 }
 
 /// The operators that wait for the end of their source: `collect`, `toList` and `ifEmpty`.
@@ -128,6 +250,18 @@ pub(crate) enum Gather {
     IfEmpty(Value),
     /// `first([criteria])`: the first value that passes; unbound when none does.
     First(Option<Value>),
+    /// `toSortedList([closure])`: a sorted list, `[]` when nothing came.
+    ToSortedList(Option<Rc<Closure>>),
+    /// `count([criteria])`: the number of values that pass.
+    Count(Option<Value>),
+    /// `sum([closure])`, `min([closure])` and `max([closure])`: `null` when nothing came.
+    Sum(Option<Rc<Closure>>),
+    Min(Option<Rc<Closure>>),
+    Max(Option<Rc<Closure>>),
+    /// `reduce([seed], closure)`: the accumulator, which starts as the seed.
+    Reduce(Rc<Closure>),
+    /// `last()`: the last value, `null` when nothing came.
+    Last,
 }
 
 pub(crate) struct Gathering {
@@ -154,7 +288,56 @@ impl Behaviour for Gathering {
                         _ => self.items.push(item),
                     }
                 }
-                Gather::ToList => self.items.push(value),
+                Gather::ToList | Gather::ToSortedList(_) | Gather::Min(_) | Gather::Max(_) => {
+                    self.items.push(value)
+                }
+                Gather::Last => self.items = vec![value],
+                Gather::Count(criteria) => {
+                    let passes = match criteria {
+                        None => true,
+                        Some(Value::Closure(closure)) => context
+                            .interpreter
+                            .call_closure(closure, vec![value.clone()])?
+                            .truth(),
+                        Some(other) => other.is_case(&value).map_err(thrown)?,
+                    };
+                    if passes {
+                        self.items.push(Value::Null);
+                    }
+                }
+                Gather::Sum(closure) => {
+                    let item = match closure {
+                        Some(closure) => context.interpreter.call_closure(closure, vec![value])?,
+                        None => value,
+                    };
+                    if matches!(item, Value::Null) {
+                        continue;
+                    }
+                    let total = match self.items.pop() {
+                        None => item,
+                        Some(total) => total
+                            .apply(nextflow_evaluator::value::Operator::Add, &item)
+                            .map_err(thrown)?,
+                    };
+                    self.items.push(total);
+                }
+                Gather::Reduce(closure) => {
+                    let accumulator = self.items.pop();
+                    let next = match accumulator {
+                        None | Some(Value::Null) => value,
+                        Some(accumulator) => {
+                            let result = context
+                                .interpreter
+                                .call_closure(closure, vec![accumulator.clone(), value])?;
+                            if matches!(result, Value::Null) {
+                                accumulator
+                            } else {
+                                result
+                            }
+                        }
+                    };
+                    self.items.push(next);
+                }
                 Gather::IfEmpty(_) => {
                     self.items.push(Value::Null);
                     context.emit(self.output, value);
@@ -190,6 +373,25 @@ impl Gathering {
             Gather::Collect { .. } | Gather::ToList => {
                 context.emit(self.output, Value::list(items))
             }
+            Gather::ToSortedList(closure) => {
+                let sorted = sorted(context, items, closure.as_ref())?;
+                context.emit(self.output, Value::list(sorted));
+            }
+            Gather::Count(_) => {
+                context.emit(self.output, Value::integer(items.len() as i32));
+            }
+            Gather::Sum(_) | Gather::Reduce(_) | Gather::Last => {
+                context.emit(self.output, items.into_iter().next().unwrap_or(Value::Null));
+            }
+            Gather::Min(closure) | Gather::Max(closure) => {
+                let closure = closure.clone();
+                let sorted = sorted(context, items, closure.as_ref())?;
+                let extreme = match self.kind {
+                    Gather::Min(_) => sorted.first().cloned(),
+                    _ => sorted.last().cloned(),
+                };
+                context.emit(self.output, extreme.unwrap_or(Value::Null));
+            }
             Gather::IfEmpty(default) if items.is_empty() => {
                 let default = match default {
                     Value::Closure(closure) => {
@@ -210,6 +412,48 @@ impl Gathering {
         }
         Ok(State::Stopped)
     }
+}
+
+/// Values sorted by natural order, by the key a one-parameter closure gives, or by a
+/// two-parameter comparator closure. The sort is stable.
+fn sorted(
+    context: &mut Context,
+    items: Vec<Value>,
+    closure: Option<&Rc<Closure>>,
+) -> Result<Vec<Value>, Error> {
+    let Some(closure) = closure else {
+        let mut items = items;
+        items.sort_by(|a, b| a.number_aware_compare(b));
+        return Ok(items);
+    };
+    if closure.code.parameters.len() == 2 {
+        // Insertion sort, which calls the comparator as few times as the order needs.
+        let mut result: Vec<Value> = Vec::new();
+        for item in items {
+            let mut position = result.len();
+            while position > 0 {
+                let order = context
+                    .interpreter
+                    .call_closure(closure, vec![result[position - 1].clone(), item.clone()])?;
+                let greater = matches!(order, Value::Number(ref n) if n.to_f64() > 0.0);
+                if !greater {
+                    break;
+                }
+                position -= 1;
+            }
+            result.insert(position, item);
+        }
+        return Ok(result);
+    }
+    let mut keyed = Vec::new();
+    for item in items {
+        let key = context
+            .interpreter
+            .call_closure(closure, vec![item.clone()])?;
+        keyed.push((key, item));
+    }
+    keyed.sort_by(|a, b| a.0.number_aware_compare(&b.0));
+    Ok(keyed.into_iter().map(|(_, item)| item).collect())
 }
 
 /// `mix`: every value of every input as it comes; closes when all inputs have closed.
@@ -276,6 +520,12 @@ fn flatten(value: Value, leaves: &mut Vec<Value>) {
         }
         other => leaves.push(other),
     }
+}
+
+fn thrown_text(message: String) -> Error {
+    thrown(nextflow_evaluator::exception::Exception::illegal_argument(
+        message,
+    ))
 }
 
 fn thrown(exception: nextflow_evaluator::exception::Exception) -> Error {

@@ -161,6 +161,18 @@ impl Interpreter<'_> {
                         .map(|(key, group)| (key.0, Value::list(group))),
                 )
             }
+            ("countBy", [Value::Closure(f)]) => {
+                let keys = self.map_items(items, f, span)?;
+                let mut counts: indexmap::IndexMap<Key, i32> = indexmap::IndexMap::new();
+                for key in keys {
+                    *counts.entry(Key(key)).or_default() += 1;
+                }
+                Value::map(
+                    counts
+                        .into_iter()
+                        .map(|(key, count)| (key.0, Value::integer(count))),
+                )
+            }
             ("collectEntries", []) => Value::map(entries(items.to_vec())),
             ("collectEntries", [Value::Closure(f)]) => {
                 let results = self.map_items(items, f, span)?;

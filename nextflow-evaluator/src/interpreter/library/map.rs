@@ -137,6 +137,8 @@ impl Interpreter<'_> {
                 }
                 Value::map(collected.into_iter().map(|(key, value)| (key.0, value)))
             }
+            // An unmodifiable view; changes through it are not checked yet.
+            ("asImmutable" | "asUnmodifiable", []) => Value::Map(map.clone()),
             ("groupBy", [Value::Closure(f)]) => {
                 let keys = self.map_entries(&entries, f, span)?;
                 let mut groups: IndexMap<Key, Vec<(Value, Value)>> = IndexMap::new();

@@ -339,3 +339,14 @@ fn splitters() {
         ["n1", "n2", "done"]
     );
 }
+
+#[test]
+fn set_in_a_pipe_binds_all_outputs() {
+    assert_eq!(
+        lines(
+            "channel.of(1, 2) | branch { v ->\n    small: v < 2\n    big: true\n} | set { ch }\n\
+             ch.small.view { v -> \"small ${v}\" }"
+        ),
+        ["small 1"]
+    );
+}

@@ -45,13 +45,9 @@ impl Interpreter<'_> {
                     .position(|emit| emit.as_deref() == Some(name));
                 match found {
                     Some(index) => out.values[index].clone(),
-                    None => {
-                        let message = format!("Unknown output `{name}`");
-                        return Err(thrown(
-                            Exception::new("MissingPropertyException", message),
-                            span,
-                        ));
-                    }
+                    // Nextflow reads the property of each output channel, which gives a list
+                    // of expressions without a value.
+                    None => Value::list(vec![Value::Null; out.values.len()]),
                 }
             }
             Value::Definition(definition) => self.definition_property(definition, name, span)?,

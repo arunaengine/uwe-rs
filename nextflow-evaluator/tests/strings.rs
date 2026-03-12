@@ -139,3 +139,14 @@ fn inspect_quotes_and_escapes() {
         "[['a':'x\\ty', 1:[2, null, true]], 'it\\'s']"
     );
 }
+
+#[test]
+fn simple_template_engine() {
+    assert_eq!(
+        value(
+            "new groovy.text.SimpleTemplateEngine().createTemplate('Hi ${name}, $workflow.manifest.name v${x + 1} \\\\$HOME end.')\
+             .make([name: 'you', workflow: [manifest: [name: 'demo']], x: 1]).toString()"
+        ),
+        "Hi you, demo v2 $HOME end."
+    );
+}

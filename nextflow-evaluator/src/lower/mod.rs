@@ -63,6 +63,24 @@ pub fn lower_config_value(
     }
 }
 
+/// Lowers an expression of a template, like `workflow.manifest.name` in `${...}`: every name
+/// that is not a built-in constant is looked up when the template renders.
+pub fn lower_template_value(
+    value: &ast::Expression,
+    source: &str,
+) -> Result<Code, Vec<Diagnostic>> {
+    let mut lowering = Lowering::new(source);
+    lowering.config = true;
+    lowering.dynamic_names = true;
+    lowering.template = true;
+    let code = lowering.expression_code("template", value, value.span);
+    if lowering.errors.is_empty() {
+        Ok(code)
+    } else {
+        Err(lowering.errors)
+    }
+}
+
 /// Lowers a script: functions, processes, workflows, includes and `params.x = value`.
 /// A script of statements only is the entry workflow; the parser rejects other mixes.
 pub fn lower_script(
@@ -147,6 +165,8 @@ pub(crate) struct Lowering<'a> {
     config: bool,
     /// Whether closures resolve unknown names when a task runs, as in the config `process` scope.
     dynamic_names: bool,
+    /// Whether the code is a template expression, where every unknown name is resolved late.
+    template: bool,
 }
 
 impl<'a> Lowering<'a> {
@@ -164,6 +184,7 @@ impl<'a> Lowering<'a> {
             implicit_declarations: false,
             config: false,
             dynamic_names: false,
+            template: false,
         }
     }
 

@@ -10,6 +10,7 @@ pub mod glob;
 mod library;
 mod statement;
 mod task;
+mod template;
 
 use std::cell::RefCell;
 use std::collections::HashMap;

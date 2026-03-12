@@ -140,3 +140,26 @@ fn plugin_includes_call_the_plugin() {
         ]
     );
 }
+
+#[test]
+fn process_templates_render_with_task_variables() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    write(
+        root.path(),
+        "templates/hello.sh",
+        "echo ${x} $task.process\n",
+    );
+    write(
+        root.path(),
+        "main.nf",
+        "process P {\n    input:\n    val x\n    script:\n    template 'hello.sh'\n}\n\
+         workflow {\n    P(channel.of('a'))\n}\n",
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let options = nextflow_runtime::Options::default();
+    let (_, requests) =
+        nextflow_runtime::Run::start(&module, &options, &mut Output::default()).expect("starts");
+    assert_eq!(requests[0].script, "#!/bin/bash -ue\necho a P\n");
+}

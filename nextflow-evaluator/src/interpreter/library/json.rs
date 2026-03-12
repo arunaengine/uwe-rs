@@ -94,7 +94,7 @@ impl Interpreter<'_> {
         Ok(())
     }
 
-    /// Methods of the stood-in objects: the JSON classes and `workflow`.
+    /// Methods of the stood-in objects: the JSON classes, templates and `workflow`.
     pub(in crate::interpreter) fn object_method(
         &mut self,
         object: &Rc<RefCell<Object>>,
@@ -132,6 +132,38 @@ impl Interpreter<'_> {
             (State::Workflow(workflow), "onComplete", [Value::Closure(handler)]) => {
                 workflow.on_complete.push(handler.clone());
                 Value::Null
+            }
+            (State::TemplateEngine, "createTemplate", [text]) => {
+                let text = match text {
+                    Value::Path(path) => {
+                        let bytes = self.host.read(path).map_err(|error| error.or_at(span))?;
+                        String::from_utf8_lossy(&bytes).into_owned()
+                    }
+                    other => other.to_string(),
+                };
+                Value::Object(Rc::new(RefCell::new(Object {
+                    class: "groovy.text.SimpleTemplateEngine$SimpleTemplate",
+                    state: State::Template(text.into()),
+                })))
+            }
+            (State::Template(text), "make", binding) => {
+                let text = text.clone();
+                let binding = match binding {
+                    [Value::Map(map)] => map
+                        .borrow()
+                        .entries
+                        .iter()
+                        .map(|(key, value)| {
+                            (
+                                Rc::from(key.0.to_string()),
+                                Rc::new(RefCell::new(value.clone())),
+                            )
+                        })
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                drop(target);
+                Value::string(self.render_template(&text, binding, span)?)
             }
             (State::Workflow(workflow), "toMap", []) => {
                 crate::interpreter::library::copy_map(&workflow.properties)

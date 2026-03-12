@@ -460,6 +460,12 @@ impl Interpreter<'_> {
                 let parent = PathValue::parse(&parent.to_string(), &launch);
                 Ok(Value::Path(Rc::new(parent.resolve(&child.to_string()))))
             }
+            (None, []) if class == "SimpleTemplateEngine" => {
+                Ok(Value::Object(Rc::new(std::cell::RefCell::new(Object {
+                    class: "groovy.text.SimpleTemplateEngine",
+                    state: State::TemplateEngine,
+                }))))
+            }
             (None, []) if class == "JsonGenerator.Options" || class == "JsonSlurper" => {
                 let (class, state) = match class {
                     "JsonSlurper" => ("groovy.json.JsonSlurper", State::JsonSlurper),

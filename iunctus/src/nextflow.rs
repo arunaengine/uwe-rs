@@ -301,7 +301,8 @@ fn execute(
 }
 
 /// The mock executor: a task that does not run, with one empty file for each output pattern
-/// and empty text for its other outputs.
+/// and empty text for its other outputs. A `versions.yml` gets the one entry that nf-core code
+/// reads, as a module's stub writes it.
 fn pretend(request: &TaskRequest, directory: &Path) -> std::io::Result<TaskOutcome> {
     let work = directory.join(request.id.0.to_string());
     std::fs::create_dir_all(&work)?;
@@ -322,6 +323,11 @@ fn pretend(request: &TaskRequest, directory: &Path) -> std::io::Result<TaskOutco
         }
         if name.ends_with('/') {
             std::fs::create_dir_all(&path)?;
+        } else if name == "versions.yml" {
+            std::fs::write(
+                &path,
+                format!("\"{}\":\n    mock: 1.0.0\n", request.process),
+            )?;
         } else {
             std::fs::write(&path, "")?;
         }

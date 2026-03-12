@@ -179,4 +179,5 @@ pub(super) const CLASSES: &[&str] = &[
     "UUID",
     "Value",
     "VersionNumber",
+    "Yaml",
 ];

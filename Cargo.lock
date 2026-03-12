@@ -1437,6 +1437,7 @@ dependencies = [
  "nextflow-parser",
  "num-bigint 0.5.1",
  "num-traits",
+ "saphyr-parser",
  "tempfile",
 ]
 

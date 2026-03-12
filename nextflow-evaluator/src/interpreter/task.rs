@@ -362,17 +362,27 @@ fn stage(
         }))
     };
     match value {
-        Value::Path(path) => Ok(stage_one(path)),
         Value::List(list) => {
             let mut staged = Vec::new();
             for item in list.borrow().items.iter() {
-                match item {
-                    Value::Path(path) => staged.push(stage_one(path)),
-                    other => return Err(not_a_file(other, span)),
-                }
+                staged.push(stage_one(&input_path(item, span)?));
             }
             let list = List::new(ListKind::BlankSeparated, staged);
             Ok(Value::List(Rc::new(RefCell::new(list))))
+        }
+        other => Ok(stage_one(&input_path(other, span)?)),
+    }
+}
+
+/// The path of an input value: a path, or text that is an absolute path or a URL, as
+/// Nextflow's `normalizeInputToFile` takes it.
+fn input_path(value: &Value, span: Span) -> Result<PathValue, Error> {
+    match value {
+        Value::Path(path) => Ok((**path).clone()),
+        Value::String(text) | Value::GString(text)
+            if text.starts_with('/') || text.contains("://") =>
+        {
+            Ok(PathValue::parse(text, "/"))
         }
         other => Err(not_a_file(other, span)),
     }

@@ -133,6 +133,9 @@ impl Interpreter<'_> {
                 workflow.on_complete.push(handler.clone());
                 Value::Null
             }
+            (State::Workflow(workflow), "toMap", []) => {
+                crate::interpreter::library::copy_map(&workflow.properties)
+            }
             (State::Workflow(workflow), "onError", [Value::Closure(handler)]) => {
                 workflow.on_error.push(handler.clone());
                 Value::Null

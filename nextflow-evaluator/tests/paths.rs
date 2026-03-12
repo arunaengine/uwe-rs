@@ -149,3 +149,12 @@ fn globs_match_like_java_globs() {
         format!("NoSuchFileException: No such file or directory: {d}/x.fq")
     );
 }
+
+#[test]
+fn output_globs_have_choices_and_classes() {
+    use nextflow_evaluator::interpreter::glob::matches;
+    assert!(matches("*.{mzML,mgf}", "run.mgf"));
+    assert!(matches("out_[ab].txt", "out_b.txt"));
+    assert!(!matches("*.txt", "sub/a.txt"));
+    assert!(matches("**.txt", "sub/a.txt"));
+}

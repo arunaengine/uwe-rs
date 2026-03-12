@@ -169,3 +169,14 @@ fn primitive_casts_load_but_fail_when_they_run() {
         "MissingPropertyException: No such variable: char"
     );
 }
+
+#[test]
+fn primitive_casts_constants_and_counts() {
+    assert_eq!(
+        value(
+            "[3.7 as int, 0 as boolean, Double.NEGATIVE_INFINITY, [1, 2, 3].countBy { v -> v % 2 }, \
+             [a: 1].asImmutable()]"
+        ),
+        "[3, false, -Infinity, [1:2, 0:1], [a:1]]"
+    );
+}

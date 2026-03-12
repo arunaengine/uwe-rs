@@ -389,6 +389,15 @@ impl Interpreter<'_> {
 
     /// `value as Class` for the conversions of the core; `null` stays `null`.
     pub(super) fn cast(&mut self, value: Value, class: &str, span: Span) -> Result<Value, Error> {
+        // A primitive type converts as its boxed class does.
+        let class = match class {
+            "int" => "Integer",
+            "long" => "Long",
+            "boolean" => "Boolean",
+            "double" => "Double",
+            "float" => "Float",
+            other => other,
+        };
         if matches!(value, Value::Null) || instance_of(&value, class) && class != "String" {
             return Ok(value);
         }

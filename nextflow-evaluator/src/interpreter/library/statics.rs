@@ -64,6 +64,10 @@ impl Interpreter<'_> {
         match (class, name) {
             ("Integer", "MAX_VALUE") => number(Number::Integer(i32::MAX)),
             ("Integer", "MIN_VALUE") => number(Number::Integer(i32::MIN)),
+            ("Double", "POSITIVE_INFINITY") => number(Number::Double(f64::INFINITY)),
+            ("Double", "NEGATIVE_INFINITY") => number(Number::Double(f64::NEG_INFINITY)),
+            ("Double", "NaN") => number(Number::Double(f64::NAN)),
+            ("Double", "MAX_VALUE") => number(Number::Double(f64::MAX)),
             ("Long", "MAX_VALUE") => number(Number::Long(i64::MAX)),
             ("Long", "MIN_VALUE") => number(Number::Long(i64::MIN)),
             (_, "name") => crate::value::qualified_class_name(class).map(Value::string),

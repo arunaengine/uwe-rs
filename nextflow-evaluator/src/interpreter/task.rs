@@ -157,15 +157,6 @@ impl Interpreter<'_> {
                     (None, Some(name)) => Some(name.to_string()),
                     (None, None) => None,
                 };
-                if name
-                    .as_deref()
-                    .is_some_and(|name| name.contains(['*', '?']))
-                {
-                    return Err(unsupported(
-                        "staging input files with a wildcard name",
-                        span,
-                    ));
-                }
                 let staged = stage(task, value, name.as_deref(), span)?;
                 if let Some(slot) = slot {
                     task.frame.set(Place::Local(*slot), staged);
@@ -346,31 +337,88 @@ impl Interpreter<'_> {
     }
 }
 
-/// The staged form of an input value: a path, or a `BlankSeparatedList` of paths.
+/// The staged form of an input value: a path, or a `BlankSeparatedList` of paths. A name
+/// pattern names the files as Nextflow's `expandWildcards` does.
 fn stage(
     task: &mut TaskFrame,
     value: &Value,
     name: Option<&str>,
     span: Span,
 ) -> Result<Value, Error> {
-    let mut stage_one = |path: &PathValue| {
-        let staged = name.unwrap_or(path.name()).to_owned();
-        task.staged.push((path.clone(), staged.clone()));
-        Value::Path(Rc::new(PathValue {
-            staged: Some(staged),
-            ..path.clone()
-        }))
+    let files = match value {
+        Value::List(list) => list
+            .borrow()
+            .items
+            .iter()
+            .map(|item| input_path(item, span))
+            .collect::<Result<Vec<_>, _>>()?,
+        other => vec![input_path(other, span)?],
     };
+    let size = files.len();
+    let mut pattern = name
+        .filter(|name| !name.is_empty() && *name != "*")
+        .map(str::to_owned);
+    if let Some(pattern) = &mut pattern
+        && !pattern.contains(['*', '?'])
+        && size > 1
+    {
+        pattern.push('*');
+    }
+    let mut staged = Vec::new();
+    for (index, path) in files.into_iter().enumerate() {
+        let name = match &pattern {
+            Some(pattern) => stage_name(pattern, path.name(), index + 1, size),
+            None => path.name().to_owned(),
+        };
+        task.staged.push((path.clone(), name.clone()));
+        staged.push(Value::Path(Rc::new(PathValue {
+            staged: Some(name),
+            ..path
+        })));
+    }
     match value {
-        Value::List(list) => {
-            let mut staged = Vec::new();
-            for item in list.borrow().items.iter() {
-                staged.push(stage_one(&input_path(item, span)?));
-            }
+        Value::List(_) => {
             let list = List::new(ListKind::BlankSeparated, staged);
             Ok(Value::List(Rc::new(RefCell::new(list))))
         }
-        other => Ok(stage_one(&input_path(other, span)?)),
+        _ => Ok(staged.remove(0)),
+    }
+}
+
+/// The name of the `index`-th of `size` files for a name pattern: `*` is the index, or
+/// nothing in the file name of a single file; `?` is the index padded to its width; a file
+/// name of `*` is the file's own name.
+fn stage_name(pattern: &str, own: &str, index: usize, size: usize) -> String {
+    let (parent, name) = match pattern.rsplit_once('/') {
+        Some((parent, name)) => (Some(parent), name),
+        None => (None, pattern),
+    };
+    let expand = |text: &str, strip: bool| {
+        let number = index.to_string();
+        let starred = text.replace('*', if strip { "" } else { &number });
+        let mut result = String::new();
+        let mut characters = starred.chars().peekable();
+        while let Some(character) = characters.next() {
+            if character == '?' {
+                let mut width = 1;
+                while characters.next_if_eq(&'?').is_some() {
+                    width += 1;
+                }
+                result.push_str(&format!("{index:0width$}"));
+            } else {
+                result.push(character);
+            }
+        }
+        result
+    };
+    let name = if name.is_empty() || name == "*" {
+        own.to_owned()
+    } else {
+        expand(name, size <= 1)
+    };
+    match parent {
+        Some(parent) => format!("{}/{name}", expand(parent, false)),
+        None => name,
     }
 }
 

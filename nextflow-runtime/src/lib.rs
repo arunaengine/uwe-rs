@@ -88,6 +88,7 @@ impl Run {
             set_globals(&mut interpreter, options, &workflow);
             let params = options.config.params();
             script_params(&mut interpreter, module, &params, &mut Vec::new())
+                .and_then(|()| typed_params(&mut interpreter, module, &params))
                 .and_then(|()| interpreter.run_entry(module))
                 .map_err(|error| interpreter.locate(error))?;
         }
@@ -219,6 +220,77 @@ fn script_params(
         script_params(interpreter, &module, params, done)?;
     }
     Ok(())
+}
+
+/// Applies the typed `params { }` block of the main script: each param takes its value from
+/// the command line or the config, converted to its type, else its default. A `Boolean`
+/// without a default is `false`, a nullable type may stay `null`, other params are required.
+fn typed_params(
+    interpreter: &mut Interpreter,
+    module: &Rc<Module>,
+    params: &Value,
+) -> Result<(), Error> {
+    for parameter in &module.typed_parameters {
+        let class = parameter.class.as_deref().unwrap_or("Object");
+        let value = match tree::get(params, &[&parameter.name]) {
+            Some(Value::Null) | None => match &parameter.default {
+                Some(code) => interpreter.evaluate(code, module)?,
+                None if class == "Boolean" => Value::Boolean(false),
+                None if parameter.nullable => Value::Null,
+                None => {
+                    let message = format!(
+                        "Parameter `{}` is required but was not specified on the command line, params file, or config",
+                        parameter.name
+                    );
+                    return Err(Error::Thrown {
+                        exception: Rc::new(Exception::illegal_argument(message)),
+                        span: parameter.span,
+                    });
+                }
+            },
+            Some(Value::String(text)) => typed_value(&text, class).ok_or_else(|| {
+                let message = format!(
+                    "Parameter `{}` with type {class} cannot be assigned to '{text}'",
+                    parameter.name
+                );
+                Error::Thrown {
+                    exception: Rc::new(Exception::illegal_argument(message)),
+                    span: parameter.span,
+                }
+            })?,
+            Some(value) => value,
+        };
+        let path = [parameter.name.clone()];
+        tree::assign(params, &path, value).expect("params is a map");
+    }
+    Ok(())
+}
+
+/// Text as a value of a declared param type, or `None` when it does not fit.
+fn typed_value(text: &str, class: &str) -> Option<Value> {
+    use nextflow_evaluator::number::{BigDecimal, Number};
+    use nextflow_evaluator::units::{parse_duration, parse_memory};
+    Some(match class {
+        "Integer" => match text.trim().parse::<i32>() {
+            Ok(value) => Value::integer(value),
+            Err(_) => Value::Number(Number::Long(text.trim().parse().ok()?)),
+        },
+        "Float" | "Double" | "Number" => {
+            Value::Number(Number::BigDecimal(BigDecimal::parse(text.trim())?))
+        }
+        "Boolean" if text.eq_ignore_ascii_case("true") => Value::Boolean(true),
+        "Boolean" if text.eq_ignore_ascii_case("false") => Value::Boolean(false),
+        "Boolean" => return None,
+        "Path" => Value::Path(Rc::new(nextflow_evaluator::value::PathValue::parse(
+            text,
+            &std::env::current_dir()
+                .unwrap_or_default()
+                .to_string_lossy(),
+        ))),
+        "Duration" => Value::Duration(parse_duration(text).ok()?),
+        "MemoryUnit" => Value::MemoryUnit(parse_memory(text).ok()?),
+        _ => Value::string(text),
+    })
 }
 
 fn set_globals(interpreter: &mut Interpreter, options: &Options, workflow: &Value) {

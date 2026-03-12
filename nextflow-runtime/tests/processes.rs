@@ -226,6 +226,20 @@ fn staged_names_expand_wildcards() {
 }
 
 #[test]
+fn typed_params_take_their_types_and_defaults() {
+    let source = "params {\n    input: String? = null\n    n: Integer = 3\n    flag: Boolean\n    outdir: String\n}\n\
+                  workflow {\n    println \"${params.input} ${params.n + 1} ${params.flag} ${params.outdir}\"\n}";
+    let with = |text: &str| Options {
+        config: config(text),
+        ..Options::default()
+    };
+    let (_, printed) = run(source, &with("params.outdir = 'x'\nparams.n = '7'\n")).expect("runs");
+    assert_eq!(printed, "null 8 false x\n");
+    let error = run(source, &with("")).unwrap_err();
+    assert!(error.ends_with("IllegalArgumentException: Parameter `outdir` is required but was not specified on the command line, params file, or config"), "{error}");
+}
+
+#[test]
 fn missing_outputs_and_failures() {
     let process = "process P {\n    input:\n    val x\n    output:\n    path 'out.txt'\n    script:\n    'x'\n}\n";
     let parsed_source = format!("{process}workflow {{\n    P(1)\n}}");

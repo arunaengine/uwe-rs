@@ -408,25 +408,9 @@ fn option(options: &Value, name: &str) -> Option<Value> {
     }
 }
 
-/// A glob pattern with `*`, `?` and `**` against a relative file name.
+/// A glob pattern with `*`, `?`, `**`, `{a,b}` and `[...]` against a relative file name.
 pub(crate) fn glob_matches(pattern: &str, name: &str) -> bool {
-    fn matches(pattern: &[char], name: &[char]) -> bool {
-        match (pattern.first(), name.first()) {
-            (None, None) => true,
-            (Some('*'), _) if pattern.get(1) == Some(&'*') => {
-                (0..=name.len()).any(|skip| matches(&pattern[2..], &name[skip..]))
-            }
-            (Some('*'), _) => (0..=name.len())
-                .take_while(|skip| *skip == 0 || name[skip - 1] != '/')
-                .any(|skip| matches(&pattern[1..], &name[skip..])),
-            (Some('?'), Some(c)) if *c != '/' => matches(&pattern[1..], &name[1..]),
-            (Some(p), Some(c)) if p == c => matches(&pattern[1..], &name[1..]),
-            _ => false,
-        }
-    }
-    let pattern: Vec<char> = pattern.chars().collect();
-    let name: Vec<char> = name.chars().collect();
-    matches(&pattern, &name)
+    nextflow_evaluator::interpreter::glob::matches(pattern, name)
 }
 
 /// Whether the process runs one task: none of its inputs is a queue channel, and it has no

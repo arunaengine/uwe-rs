@@ -102,6 +102,11 @@ pub fn glob(
     Ok(found)
 }
 
+/// Whether a relative file name matches a glob pattern, as output patterns match task files.
+pub fn matches(glob: &str, name: &str) -> bool {
+    Pattern::new(&glob_regex(glob)).is_ok_and(|pattern| pattern.matches(name))
+}
+
 /// Java's glob syntax as a regular expression: `**` crosses directories, `*` and `?` do not,
 /// `{a,b}` is a choice and `[...]` a character class.
 fn glob_regex(glob: &str) -> String {

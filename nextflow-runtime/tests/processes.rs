@@ -161,7 +161,7 @@ fn config_settings_reach_the_task() {
 fn workflow_metadata_and_completion_handlers() {
     let source = format!(
         "{DOUBLE}workflow {{\n    DOUBLE(channel.of(1, 2))\n    \
-         println \"${{workflow.runName}} ${{workflow.profile}} ${{workflow.manifest.name}} ${{launchDir}} ${{projectDir}}\"\n    \
+         println \"${{workflow.toMap().runName}} ${{workflow.profile}} ${{workflow.manifest.name}} ${{launchDir}} ${{projectDir}}\"\n    \
          workflow.onComplete {{ println \"done ${{workflow.success}} ${{workflow.stats.succeededCount}}\" }}\n}}"
     );
     let options = Options {
@@ -183,6 +183,22 @@ fn topic_channels_collect_process_outputs() {
     let mut lines: Vec<&str> = printed.lines().collect();
     lines.sort_unstable();
     assert_eq!(lines, ["[A1, A2]", "[]"]);
+}
+
+#[test]
+fn text_paths_are_input_files() {
+    let process =
+        "process P {\n    input:\n    path x\n    output:\n    val x\n    script:\n    'true'\n}\n";
+    let source = format!("{process}workflow {{\n    P('https://host/data/a.txt').view()\n}}");
+    let (tasks, printed) = run(&source, &Options::default()).expect("runs");
+    assert_eq!(tasks[0].staged[0].1, "a.txt");
+    assert_eq!(printed, "a.txt\n");
+    let source = format!("{process}workflow {{\n    P('a.txt')\n}}");
+    let error = run(&source, &Options::default()).unwrap_err();
+    assert!(
+        error.contains("Not a valid path value type: java.lang.String (a.txt)"),
+        "{error}"
+    );
 }
 
 #[test]

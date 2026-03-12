@@ -143,3 +143,16 @@ fn inspect(value: &Value) -> String {
         other => other.to_groovy_string(),
     }
 }
+
+/// A new map with the entries of a map, as `toMap()` gives it.
+pub(in crate::interpreter) fn copy_map(map: &Value) -> Value {
+    match map {
+        Value::Map(map) => Value::Map(std::rc::Rc::new(std::cell::RefCell::new(
+            crate::value::Map {
+                kind: crate::value::MapKind::LinkedHashMap,
+                entries: map.borrow().entries.clone(),
+            },
+        ))),
+        other => other.clone(),
+    }
+}

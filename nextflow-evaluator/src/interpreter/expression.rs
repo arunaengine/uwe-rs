@@ -118,6 +118,10 @@ impl Interpreter<'_> {
                         let module = frame.module.clone();
                         self.call_script_function(&module, name, arguments, span)?
                     }
+                    Function::Builtin(name) if &**name == "template" => {
+                        let module = frame.module.clone();
+                        self.template_file(&module, &arguments, span)?
+                    }
                     Function::Builtin(name) => self.call_builtin(name, arguments, span)?,
                     Function::Definition(name) => {
                         let module = frame.module.clone();

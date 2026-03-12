@@ -211,6 +211,10 @@ impl Lowering<'_> {
 
     /// A name in a config value that is not a local variable of a closure in it.
     fn config_variable(&mut self, name: &str, span: Span) -> Kind {
+        // A template reads its binding first, then the globals.
+        if self.template {
+            return Kind::Dynamic(name.into());
+        }
         let in_closure = self.scopes.in_closure();
         if CONFIG_CONSTANTS.contains(&name) || (in_closure && SCRIPT_CONSTANTS.contains(&name)) {
             return Kind::Builtin(name.into());

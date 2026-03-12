@@ -22,6 +22,10 @@ pub enum State {
     JsonSlurper,
     /// `nextflow.script.WorkflowMetadata`, the `workflow` of a run.
     Workflow(Workflow),
+    /// `groovy.text.SimpleTemplateEngine`
+    TemplateEngine,
+    /// A template of the engine, with its text.
+    Template(Rc<str>),
 }
 
 /// The `workflow` of a run: its properties, and the handlers that run when it ends.

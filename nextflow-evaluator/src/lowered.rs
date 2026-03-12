@@ -34,6 +34,8 @@ pub struct Module {
     /// `params.a.b = value` statements in load order; each value is a function without
     /// parameters.
     pub parameters: Vec<(Vec<Rc<str>>, Rc<Code>)>,
+    /// The typed `params { }` block, in order.
+    pub typed_parameters: Vec<TypedParameter>,
     /// What each include refers to: the included script and the name there. The module loader
     /// fills this in once the included scripts are loaded.
     pub links: std::cell::RefCell<HashMap<Rc<str>, Link>>,
@@ -47,6 +49,18 @@ pub struct Module {
     pub plugin: Option<Rc<str>>,
     /// The file of the script, for error messages; the loader sets it.
     pub path: std::cell::RefCell<Option<Rc<str>>>,
+}
+
+/// A param of the typed `params { }` block, like `input: String? = null`.
+#[derive(Debug)]
+pub struct TypedParameter {
+    pub name: Rc<str>,
+    /// The simple name of the declared type, if any.
+    pub class: Option<Rc<str>>,
+    /// Whether the type ends with `?`, so the param may stay `null`.
+    pub nullable: bool,
+    pub default: Option<Rc<Code>>,
+    pub span: Span,
 }
 
 /// The script and name that an included name refers to.

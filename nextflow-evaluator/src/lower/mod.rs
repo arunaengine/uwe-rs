@@ -18,7 +18,8 @@ use nextflow_parser::ast::{self, Item};
 use nextflow_parser::{Diagnostic, Span};
 
 use crate::lowered::{
-    Code, DefinitionKind, Include, Module, Parameter, Statement, StatementKind, Workflow,
+    Code, DefinitionKind, Include, Module, Parameter, Statement, StatementKind, TypedParameter,
+    Workflow,
 };
 use scope::Scopes;
 
@@ -126,6 +127,37 @@ pub fn lower_script(
                 let path = path.iter().map(|name| name.text.as_str().into()).collect();
                 let code = lowering.expression_code("params", value, *span);
                 module.parameters.push((path, Rc::new(code)));
+            }
+            Item::Parameters { parameters, .. } => {
+                for parameter in parameters {
+                    match parameter {
+                        ast::ParameterDeclaration::Parameter {
+                            name,
+                            annotation,
+                            default,
+                        } => {
+                            let default = default.as_ref().map(|value| {
+                                Rc::new(lowering.expression_code("params", value, name.span))
+                            });
+                            module.typed_parameters.push(TypedParameter {
+                                name: name.text.as_str().into(),
+                                class: annotation.as_ref().and_then(|annotation| {
+                                    annotation
+                                        .name
+                                        .parts
+                                        .last()
+                                        .map(|part| part.text.as_str().into())
+                                }),
+                                nullable: annotation.as_ref().is_some_and(|a| a.nullable),
+                                default,
+                                span: name.span,
+                            });
+                        }
+                        ast::ParameterDeclaration::Statement(statement) => {
+                            lowering.error("Invalid parameter declaration", statement.span);
+                        }
+                    }
+                }
             }
             Item::Include(_) | Item::FeatureFlag { .. } | Item::Statement(_) => {}
             other => lowering.error("This script item is not supported yet", item_span(other)),

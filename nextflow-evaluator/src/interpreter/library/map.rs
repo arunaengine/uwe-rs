@@ -137,6 +137,8 @@ impl Interpreter<'_> {
                 }
                 Value::map(collected.into_iter().map(|(key, value)| (key.0, value)))
             }
+            // `workflow.manifest` is a map here; its `toMap()` gives a copy.
+            ("toMap", []) => super::copy_map(&Value::Map(map.clone())),
             // An unmodifiable view; changes through it are not checked yet.
             ("asImmutable" | "asUnmodifiable", []) => Value::Map(map.clone()),
             ("groupBy", [Value::Closure(f)]) => {

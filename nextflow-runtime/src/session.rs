@@ -63,6 +63,19 @@ impl Host for Session<'_> {
         name: &str,
         arguments: Vec<Value>,
     ) -> Result<Option<Value>, Error> {
+        if let ("log", "info" | "warn" | "error" | "debug", [message]) =
+            (namespace, name, arguments.as_slice())
+        {
+            let prefix = match name {
+                "warn" => "WARN: ",
+                "error" => "ERROR ~ ",
+                _ => "",
+            };
+            if name != "debug" {
+                self.base.print(&format!("{prefix}{message}\n"));
+            }
+            return Ok(Some(Value::Null));
+        }
         self.base.namespace_method(namespace, name, arguments)
     }
 

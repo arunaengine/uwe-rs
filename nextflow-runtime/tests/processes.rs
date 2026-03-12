@@ -162,7 +162,7 @@ fn workflow_metadata_and_completion_handlers() {
     let source = format!(
         "{DOUBLE}workflow {{\n    DOUBLE(channel.of(1, 2))\n    \
          println \"${{workflow.toMap().runName}} ${{workflow.profile}} ${{workflow.manifest.name}} ${{launchDir}} ${{projectDir}}\"\n    \
-         workflow.onComplete {{ println \"done ${{workflow.success}} ${{workflow.stats.succeededCount}}\" }}\n}}"
+         workflow.onComplete {{ log.info \"done ${{workflow.success}} ${{workflow.stats.succeededCount}}\" }}\n}}"
     );
     let options = Options {
         config: config("manifest.name = 'demo'\n"),

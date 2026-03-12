@@ -466,6 +466,24 @@ impl Lowering<'_> {
     }
 
     fn binary(&mut self, operator: B, left: &ast::Expression, right: &ast::Expression) -> Kind {
+        // `source | set { x }` and `source | tap { x }` in a workflow assign the source to `x`.
+        if operator == B::BitOr
+            && self.in_workflow
+            && let Syntax::MethodCall {
+                target: None,
+                name,
+                arguments,
+                ..
+            } = &right.kind
+            && matches!(name.text.as_str(), "set" | "tap")
+            && let Some((variable, span)) = super::workflow::set_target(arguments)
+        {
+            let source = Box::new(self.expression(left));
+            return match self.assigned_variable(variable, span) {
+                Some(target) => Kind::Tap { source, target },
+                None => source.kind,
+            };
+        }
         let left = Box::new(self.expression(left));
         let right = Box::new(self.expression(right));
         match operator {

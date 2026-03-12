@@ -30,9 +30,9 @@ corpus:
 		git -C "$work" fetch -q --depth 1 --filter=blob:limit=1m origin "$commit"
 		git -C "$work" sparse-checkout set --no-cone '*.nf' '*.config' 'nextflow_schema.json'
 		git -C "$work" checkout -q FETCH_HEAD
-		# The files of assets/, bin/ and tests/ that runs read; files over 1 MiB are not
-		# downloaded and stay empty, so that they exist.
-		git -C "$work" ls-tree -r -l FETCH_HEAD -- assets bin tests | while IFS=$'\t' read -r meta path; do
+		# The files of assets/, bin/, tests/ and templates/ that runs read; files over 1 MiB are
+		# not downloaded and stay empty, so that they exist.
+		git -C "$work" ls-tree -r -l FETCH_HEAD | grep -E $'\t(assets|bin|tests)/|/templates/' | while IFS=$'\t' read -r meta path; do
 			read -r mode type sha size <<< "$meta"
 			[ "$type" = blob ] || continue
 			mkdir -p "$(dirname "$work/$path")"

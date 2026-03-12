@@ -103,18 +103,7 @@ impl Host for Builder<'_> {
             // `channel.value()` and `channel.value(null)` are never bound.
             ("channel", "value", [] | [Value::Null]) => (Vec::new(), true, false),
             ("channel", "value", [value]) => (vec![value.clone()], true, true),
-            ("log", "info" | "warn" | "error" | "debug", [message]) => {
-                let prefix = match name {
-                    "warn" => "WARN: ",
-                    "error" => "ERROR ~ ",
-                    _ => "",
-                };
-                if name != "debug" {
-                    self.base.print(&format!("{prefix}{message}\n"));
-                }
-                return Ok(Some(Value::Null));
-            }
-            _ => return Ok(None),
+            _ => return self.base.namespace_method(namespace, name, arguments),
         };
         let output = self.network.channel(value);
         let factory = Factory {

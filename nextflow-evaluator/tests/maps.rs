@@ -80,3 +80,11 @@ fn reading_and_changing() {
         "[[a:1], [a:1, b:2]]"
     );
 }
+
+#[test]
+fn to_map_copies() {
+    assert_eq!(
+        value("def m = [a: 1]\ndef c = m.toMap()\nc.b = 2\n[m, c]"),
+        "[[a:1], [a:1, b:2]]"
+    );
+}

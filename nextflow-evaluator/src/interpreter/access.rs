@@ -460,6 +460,12 @@ impl Interpreter<'_> {
                 let parent = PathValue::parse(&parent.to_string(), &launch);
                 Ok(Value::Path(Rc::new(parent.resolve(&child.to_string()))))
             }
+            (None, []) if class == "Yaml" => {
+                Ok(Value::Object(Rc::new(std::cell::RefCell::new(Object {
+                    class: "org.yaml.snakeyaml.Yaml",
+                    state: State::Yaml,
+                }))))
+            }
             (None, []) if class == "SimpleTemplateEngine" => {
                 Ok(Value::Object(Rc::new(std::cell::RefCell::new(Object {
                     class: "groovy.text.SimpleTemplateEngine",

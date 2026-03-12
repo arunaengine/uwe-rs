@@ -12,6 +12,7 @@ mod path;
 mod regex;
 mod statics;
 mod string;
+mod yaml;
 
 pub(super) use iterable::elements;
 pub use json::parse as parse_json;

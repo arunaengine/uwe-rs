@@ -158,3 +158,21 @@ fn output_globs_have_choices_and_classes() {
     assert!(!matches("*.txt", "sub/a.txt"));
     assert!(matches("**.txt", "sub/a.txt"));
 }
+
+#[test]
+fn yaml_load_and_dump() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let file = directory.path().join("v.yml");
+    std::fs::write(&file, "\"P:GUNZIP\":\n    gunzip: 1.13\n    other: 2.0.1\n").unwrap();
+    let body = format!(
+        "def yaml = new org.yaml.snakeyaml.Yaml()\n\
+         def loaded = yaml.load(file('{}'))\n\
+         def versions = loaded.collectEntries {{ k, v -> [k.tokenize(':')[-1], v] }}\n\
+         [loaded, yaml.dumpAsMap(versions).trim(), yaml.load('') == null]",
+        file.display()
+    );
+    assert_eq!(
+        value(&body),
+        "[[P:GUNZIP:[gunzip:1.13, other:2.0.1]], GUNZIP:\n  gunzip: 1.13\n  other: 2.0.1, true]"
+    );
+}

@@ -24,6 +24,8 @@ pub enum State {
     Workflow(Workflow),
     /// `groovy.text.SimpleTemplateEngine`
     TemplateEngine,
+    /// `org.yaml.snakeyaml.Yaml`
+    Yaml,
     /// A template of the engine, with its text.
     Template(Rc<str>),
 }

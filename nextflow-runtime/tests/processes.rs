@@ -202,6 +202,30 @@ fn text_paths_are_input_files() {
 }
 
 #[test]
+fn staged_names_expand_wildcards() {
+    let staged = |pattern: &str, files: &str| {
+        let process = format!(
+            "process P {{\n    input:\n    path x, stageAs: '{pattern}'\n    script:\n    'true'\n}}\n"
+        );
+        let source = format!("{process}workflow {{\n    P({files})\n}}");
+        let (tasks, _) = run(&source, &Options::default()).expect("runs");
+        let names: Vec<String> = tasks[0]
+            .staged
+            .iter()
+            .map(|(_, name)| name.clone())
+            .collect();
+        names.join(" ")
+    };
+    let two = "[file('/d/a.txt'), file('/d/b.txt')]";
+    assert_eq!(staged("x*.txt", two), "x1.txt x2.txt");
+    assert_eq!(staged("x*.txt", "file('/d/a.txt')"), "x.txt");
+    assert_eq!(staged("in??.fa", two), "in01.fa in02.fa");
+    assert_eq!(staged("dir*/*", two), "dir1/a.txt dir2/b.txt");
+    assert_eq!(staged("data", two), "data1 data2");
+    assert_eq!(staged("*", two), "a.txt b.txt");
+}
+
+#[test]
 fn missing_outputs_and_failures() {
     let process = "process P {\n    input:\n    val x\n    output:\n    path 'out.txt'\n    script:\n    'x'\n}\n";
     let parsed_source = format!("{process}workflow {{\n    P(1)\n}}");

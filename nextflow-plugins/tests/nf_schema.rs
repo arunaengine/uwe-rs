@@ -7,7 +7,10 @@ use std::path::Path;
 
 use nextflow_config::Config;
 use nextflow_evaluator::interpreter::{Error, Host};
-use nextflow_evaluator::value::Value;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use nextflow_evaluator::value::{Object, State, Value, Workflow};
 use nextflow_plugins::{Context, call};
 
 /// A host whose launch directory is the fixture directory.
@@ -154,7 +157,7 @@ fn parameters_are_validated_as_nf_schema_does() {
 #[test]
 fn summaries_show_what_differs_from_the_defaults() {
     let text = |name: &str, value: &str| (Value::string(name), Value::string(value));
-    let workflow = Value::map([
+    let properties = Value::map([
         text("runName", "magical_mahavira"),
         text("launchDir", "/tmp/nfschema2"),
         text("workDir", "/tmp/nfschema2/work"),
@@ -166,6 +169,14 @@ fn summaries_show_what_differs_from_the_defaults() {
             Value::list(vec![Value::string("/tmp/nfschema2/nextflow.config")]),
         ),
     ]);
+    let workflow = Value::Object(Rc::new(RefCell::new(Object {
+        class: "nextflow.script.WorkflowMetadata",
+        state: State::Workflow(Workflow {
+            properties,
+            on_complete: Vec::new(),
+            on_error: Vec::new(),
+        }),
+    })));
     let values = params(&[("outdir", "res"), ("n", "7")]);
     let map = params_call("paramsSummaryMap", values.clone(), vec![workflow.clone()]).unwrap();
     assert_eq!(

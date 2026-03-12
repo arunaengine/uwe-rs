@@ -11,7 +11,7 @@ use std::rc::Rc;
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, parse_json};
 use nextflow_evaluator::number::Number;
-use nextflow_evaluator::value::{Key, PathValue, Value};
+use nextflow_evaluator::value::{Key, PathValue, State, Value};
 
 use crate::Context;
 
@@ -51,10 +51,14 @@ pub(crate) fn call(
     }
 }
 
-/// The value of a key of a map.
+/// The value of a key of a map, or a property of the `workflow` object.
 fn get(map: &Value, key: &str) -> Option<Value> {
     match map {
         Value::Map(map) => map.borrow().entries.get(&Key(Value::string(key))).cloned(),
+        Value::Object(object) => match &object.borrow().state {
+            State::Workflow(workflow) => get(&workflow.properties, key),
+            _ => None,
+        },
         _ => None,
     }
 }

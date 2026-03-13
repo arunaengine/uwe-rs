@@ -32,6 +32,22 @@ pub(super) fn path_method(path: &Rc<PathValue>, name: &str, arguments: &[Value])
         }
         ("getSimpleName", []) => Some(Value::string(path.simple_name())),
         ("getExtension", []) => Some(Value::string(path.extension())),
+        // Java's `Path.startsWith` and `endsWith` compare whole name parts.
+        ("startsWith" | "endsWith", [other]) => {
+            let other = text(other)?;
+            let own: Vec<&str> = path
+                .path
+                .split('/')
+                .filter(|part| !part.is_empty())
+                .collect();
+            let wanted: Vec<&str> = other.split('/').filter(|part| !part.is_empty()).collect();
+            let fits = if name == "startsWith" {
+                (other.starts_with('/') == path.path.starts_with('/')) && own.starts_with(&wanted)
+            } else {
+                !other.starts_with('/') && own.ends_with(&wanted)
+            };
+            Some(Value::Boolean(fits && !wanted.is_empty()))
+        }
         ("getParent", []) => Some(
             path.parent()
                 .map_or(Value::Null, |p| Value::Path(Rc::new(p))),
@@ -81,6 +97,30 @@ impl Interpreter<'_> {
             ("mkdirs" | "mkdir", []) => {
                 self.host.create_directories(path).map_err(host_error)?;
                 return Ok(Some(Value::Boolean(true)));
+            }
+            ("listFiles", []) => {
+                let entries = self.host.list(path).map_err(host_error)?;
+                let mut files: Vec<PathValue> = entries
+                    .into_iter()
+                    .map(|(name, _)| path.resolve(&name))
+                    .collect();
+                files.sort_by(|a, b| a.path.cmp(&b.path));
+                return Ok(Some(Value::list(
+                    files
+                        .into_iter()
+                        .map(|file| Value::Path(Rc::new(file)))
+                        .collect(),
+                )));
+            }
+            ("countLines" | "countFasta" | "countFastq", []) => {
+                let bytes = self.host.read(path).map_err(host_error)?;
+                let text = String::from_utf8_lossy(&bytes);
+                let count = match name {
+                    "countLines" => text.lines().count(),
+                    "countFasta" => text.lines().filter(|line| line.starts_with('>')).count(),
+                    _ => text.lines().count() / 4,
+                };
+                return Ok(Some(Value::Number(Number::Long(count as i64))));
             }
             (_, []) => {}
             _ => return Ok(None),

@@ -165,3 +165,16 @@ fn list_properties() {
     );
     assert_eq!(value("[[a: 1], [a: 2], [b: 3], null].a"), "[1, 2, null]");
 }
+
+#[test]
+fn more_collection_and_path_methods() {
+    assert_eq!(
+        value(
+            "def m = [a: 1, b: 2, c: 3]\ndef l = [3, 1, 3]\n\
+             [m.subMap('a', 'c'), [b: 2, a: 1].toSorted { x, y -> x.key <=> y.key }, (1..10).step(3), \
+             file('/a/b/c.txt').endsWith('b/c.txt'), file('/a/b/c.txt').startsWith('/a'), 5.collect { it * 2 }, \
+             l.unique(false), l, [3, 1, 2].sort(false)]"
+        ),
+        "[[a:1, c:3], [a:1, b:2], [1, 4, 7, 10], true, true, [10], [3, 1], [3, 1, 3], [1, 2, 3]]"
+    );
+}

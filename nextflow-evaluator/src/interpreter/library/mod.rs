@@ -93,6 +93,25 @@ impl Interpreter<'_> {
         if found.is_some() {
             return Ok(found);
         }
+        // Groovy iterates any other object as one element, and a path as its name parts.
+        if let ("collect", [Value::Closure(f)]) = (name, arguments) {
+            let items = match object {
+                Value::Path(path) => path
+                    .path
+                    .split('/')
+                    .filter(|part| !part.is_empty())
+                    .map(|part| {
+                        Value::Path(std::rc::Rc::new(crate::value::PathValue::parse(part, "/")))
+                    })
+                    .collect(),
+                other => vec![other.clone()],
+            };
+            let mut result = Vec::new();
+            for item in items {
+                result.push(self.call_closure_value(f, vec![item], span)?);
+            }
+            return Ok(Some(Value::list(result)));
+        }
         Ok(object_method(object, name, arguments))
     }
 }

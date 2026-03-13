@@ -22,6 +22,16 @@ impl Interpreter<'_> {
         arguments: &[Value],
         span: Span,
     ) -> Result<Option<Value>, Error> {
+        // `sort(false)` and `unique(false)` leave the list as it is, as `toSorted()` and
+        // `toUnique()` do.
+        if let ("sort" | "unique", [Value::Boolean(mutate), rest @ ..]) = (name, arguments) {
+            let name = match (name, mutate) {
+                (_, true) => name,
+                ("sort", false) => "toSorted",
+                _ => "toUnique",
+            };
+            return self.list_method(list, name, rest, span);
+        }
         let items = list.borrow().items.clone();
         let kind = list.borrow().kind;
         let fixed = matches!(kind, ListKind::Tuple | ListKind::Array | ListKind::Range);
@@ -128,6 +138,20 @@ impl Interpreter<'_> {
                     .map(Value::list)
                     .collect();
                 Value::list(windows)
+            }
+            ("step", [Value::Number(step)]) if kind == ListKind::Range && step.to_i64() != 0 => {
+                let step = step.to_i64();
+                let ordered: Vec<Value> = if step > 0 {
+                    items.clone()
+                } else {
+                    items.iter().rev().cloned().collect()
+                };
+                Value::list(
+                    ordered
+                        .into_iter()
+                        .step_by(step.unsigned_abs() as usize)
+                        .collect(),
+                )
             }
             ("transpose", []) => {
                 let rows: Vec<Vec<Value>> = items.iter().map(elements).collect();
@@ -308,7 +332,12 @@ impl Interpreter<'_> {
     }
 
     /// Sorts stably with a closure: one parameter gives a key, two parameters compare.
-    fn sort_with(&mut self, items: &mut [Value], f: &Rc<Closure>, span: Span) -> Result<(), Error> {
+    pub(super) fn sort_with(
+        &mut self,
+        items: &mut [Value],
+        f: &Rc<Closure>,
+        span: Span,
+    ) -> Result<(), Error> {
         let mut failure = None;
         if f.code.parameters.len() == 2 {
             items.sort_by(|a, b| {

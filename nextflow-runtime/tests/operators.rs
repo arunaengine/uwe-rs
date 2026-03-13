@@ -350,3 +350,18 @@ fn set_in_a_pipe_binds_all_outputs() {
         ["small 1"]
     );
 }
+
+#[test]
+fn chains_declare_before_their_arguments_and_pipes_call_functions() {
+    let source = "def twice(ch) {\n    ch.map { v -> v * 2 }\n}\n\
+                  workflow {\n    channel.of(1, 2).tap { t }.combine(t).map { a, b -> a + b }.toSortedList().view()\n    \
+                  channel.of(3) | twice | view\n}";
+    let parsed = parse_script(source);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let module = Rc::new(lower_module(&parsed.tree, source).expect("lowers"));
+    let mut output = Output::default();
+    nextflow_runtime::run(&module, &mut output).expect("runs");
+    let mut printed: Vec<&str> = output.0.lines().collect();
+    printed.sort_unstable();
+    assert_eq!(printed, ["6", "[2, 3, 3, 4]"]);
+}

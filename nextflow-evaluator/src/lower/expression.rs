@@ -87,21 +87,25 @@ impl Lowering<'_> {
                 arguments,
                 ..
             } => {
+                // The target comes first, as Nextflow checks names in that order, so a
+                // `tap { x }` in the target declares `x` for the arguments.
+                let target = target.as_ref().map(|target| match self.class_name(target) {
+                    Some(class) => Err(class),
+                    None => Ok(Box::new(self.expression(target))),
+                });
                 let arguments = self.call_arguments(&name.text, arguments);
                 match target {
                     None => self.function_call(&name.text, name.span, arguments),
-                    Some(target) => match self.class_name(target) {
-                        Some(class) => Kind::CallStatic {
-                            class,
-                            name: name.text.as_str().into(),
-                            arguments,
-                        },
-                        None => Kind::CallMethod {
-                            target: Box::new(self.expression(target)),
-                            name: name.text.as_str().into(),
-                            access: *access,
-                            arguments,
-                        },
+                    Some(Err(class)) => Kind::CallStatic {
+                        class,
+                        name: name.text.as_str().into(),
+                        arguments,
+                    },
+                    Some(Ok(target)) => Kind::CallMethod {
+                        target,
+                        name: name.text.as_str().into(),
+                        access: *access,
+                        arguments,
                     },
                 }
             }
@@ -183,6 +187,13 @@ impl Lowering<'_> {
             return self.config_variable(name, span);
         }
         if let Some(DefinitionKind::Process | DefinitionKind::Workflow) = self.definitions.get(name)
+        {
+            return Kind::Definition(name.into());
+        }
+        // In a workflow, a function name is the function, which a pipe calls: `ch | f`.
+        if self.in_workflow
+            && (self.functions.contains(name)
+                || self.definitions.get(name) == Some(&DefinitionKind::Function))
         {
             return Kind::Definition(name.into());
         }

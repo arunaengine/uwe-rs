@@ -165,8 +165,12 @@ impl Interpreter<'_> {
                 }
                 accumulator
             }
-            ("subMap", [keys]) => {
-                let chosen = elements(keys)
+            ("subMap", keys) if !keys.is_empty() => {
+                let keys = match keys {
+                    [single] => elements(single),
+                    several => several.to_vec(),
+                };
+                let chosen = keys
                     .into_iter()
                     .filter_map(|key| get(&key).map(|value| (key, value)))
                     .collect::<Vec<_>>();
@@ -175,6 +179,19 @@ impl Interpreter<'_> {
                     sub.borrow_mut().kind = MapKind::Record;
                 }
                 sub
+            }
+            ("toSorted", []) => {
+                let mut sorted = entries;
+                sorted.sort_by(|a, b| a.0.number_aware_compare(&b.0));
+                Value::map(sorted)
+            }
+            ("toSorted", [Value::Closure(f)]) => {
+                let mut sorted: Vec<Value> = entries.into_iter().map(entry).collect();
+                self.sort_with(&mut sorted, f, span)?;
+                Value::map(sorted.into_iter().filter_map(|item| match item {
+                    Value::MapEntry(pair) => Some((pair.0.clone(), pair.1.clone())),
+                    _ => None,
+                }))
             }
             ("sort", []) => {
                 let mut sorted = entries;

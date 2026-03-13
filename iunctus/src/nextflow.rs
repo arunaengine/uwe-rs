@@ -315,13 +315,21 @@ fn pretend(request: &TaskRequest, directory: &Path) -> std::io::Result<TaskOutco
     for name in &request.env {
         outcome.env.insert(name.to_string(), String::new());
     }
-    for pattern in &request.output_patterns {
-        let name = file_name(pattern);
+    // Deeper paths first, so that a directory that holds other outputs is not made a file.
+    let mut names: Vec<String> = request
+        .output_patterns
+        .iter()
+        .map(|p| file_name(p))
+        .collect();
+    names.sort_by_key(|name| std::cmp::Reverse(name.trim_end_matches('/').matches('/').count()));
+    for name in names {
         let path = work.join(&name);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        if name.ends_with('/') {
+        if path.exists() {
+            // Made already, as a directory of a deeper output.
+        } else if name.ends_with('/') {
             std::fs::create_dir_all(&path)?;
         } else if name == "versions.yml" {
             std::fs::write(
@@ -333,7 +341,9 @@ fn pretend(request: &TaskRequest, directory: &Path) -> std::io::Result<TaskOutco
         }
         let name = name.trim_end_matches('/').to_owned();
         let path = PathValue::parse(&work.join(&name).to_string_lossy(), "/");
-        outcome.files.push((name, path));
+        if !outcome.files.iter().any(|(known, _)| *known == name) {
+            outcome.files.push((name, path));
+        }
     }
     Ok(outcome)
 }

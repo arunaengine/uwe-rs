@@ -123,3 +123,18 @@ fn mock_runs_use_the_config_and_the_command_line() {
     assert_eq!(code, 0, "{output}");
     assert_eq!(output, "params.greeting = 'hey'\n");
 }
+
+#[test]
+fn mock_outputs_include_directories() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let script = "process P {\n    output:\n    path 'db/', emit: db\n    path 'db/x.txt', emit: x\n    \
+                  path '*.{csv,tsv}', emit: table\n    script:\n    'true'\n}\n\
+                  workflow {\n    P()\n    P.out.db.view { d -> \"${d.name} ${d.isDirectory()}\" }\n    \
+                  P.out.x.view { f -> f.name }\n    P.out.table.view { f -> f.name }\n}\n";
+    std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
+    let (code, output) = iunctus(directory.path(), &["run", "main.nf", "-executor", "mock"]);
+    assert_eq!(code, 0, "{output}");
+    let mut lines: Vec<&str> = output.lines().collect();
+    lines.sort_unstable();
+    assert_eq!(lines, ["[mock] P", "db true", "mock.csv", "x.txt"]);
+}

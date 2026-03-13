@@ -618,7 +618,7 @@ impl Builder<'_> {
                 };
                 (vec![source], Box::new(node), Value::Channel(output))
             }
-            ("splitCsv" | "splitText" | "splitFasta" | "splitFastq", []) => {
+            ("splitCsv" | "splitText" | "splitFasta" | "splitFastq", [] | [Value::Closure(_)]) => {
                 let output = queue(self);
                 let number = |name: &str| match option(&options, name) {
                     Some(Value::Number(number)) if number.to_i64() > 0 => {
@@ -646,8 +646,33 @@ impl Builder<'_> {
                         keep_header: option(&options, "keepHeader")
                             .is_some_and(|value| value.truth()),
                     },
-                    "splitFasta" => Format::Fasta,
-                    _ => Format::Fastq,
+                    _ => {
+                        let all = if name == "splitFasta" {
+                            ["id", "desc", "header", "text", "seqString", "sequence"].as_slice()
+                        } else {
+                            ["readHeader", "readString", "qualityHeader", "qualityString"]
+                                .as_slice()
+                        };
+                        let fields = match option(&options, "record") {
+                            Some(Value::Map(map)) => Some(
+                                map.borrow()
+                                    .entries
+                                    .iter()
+                                    .filter(|(_, wanted)| wanted.truth())
+                                    .map(|(field, _)| field.0.to_string())
+                                    .collect(),
+                            ),
+                            Some(value) if value.truth() => {
+                                Some(all.iter().map(|field| field.to_string()).collect())
+                            }
+                            _ => None,
+                        };
+                        if name == "splitFasta" {
+                            Format::Fasta(fields)
+                        } else {
+                            Format::Fastq(fields)
+                        }
+                    }
                 };
                 let launch = self.base.launch_dir();
                 let files = option(&options, "file")
@@ -659,8 +684,9 @@ impl Builder<'_> {
                     by: number("by"),
                     limit: number("limit"),
                     elem: number("elem"),
-                    each: match option(&options, "each") {
-                        Some(Value::Closure(closure)) => Some(closure),
+                    each: match (rest, option(&options, "each")) {
+                        ([Value::Closure(closure)], _) => Some(closure.clone()),
+                        ([], Some(Value::Closure(closure))) => Some(closure),
                         _ => None,
                     },
                     files,

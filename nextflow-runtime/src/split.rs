@@ -23,8 +23,50 @@ pub(crate) enum Format {
     Text {
         keep_header: bool,
     },
-    Fasta,
-    Fastq,
+    /// FASTA and FASTQ records as text, or as maps of the named fields.
+    Fasta(Option<Vec<String>>),
+    Fastq(Option<Vec<String>>),
+}
+
+/// The fields of FASTA and FASTQ records, in the order Nextflow puts them in a record map.
+const FASTA_FIELDS: &[&str] = &["id", "desc", "header", "text", "seqString", "sequence"];
+const FASTQ_FIELDS: &[&str] = &["readHeader", "readString", "qualityHeader", "qualityString"];
+
+/// A FASTA or FASTQ record as a map of the requested fields.
+fn record_map(text: &str, fields: &[String], fastq: bool) -> Value {
+    let lines: Vec<&str> = text.lines().collect();
+    let all = if fastq { FASTQ_FIELDS } else { FASTA_FIELDS };
+    let mut entries = Vec::new();
+    for field in all
+        .iter()
+        .filter(|field| fields.iter().any(|wanted| wanted == *field))
+    {
+        let header = lines.first().map_or("", |line| &line[1.min(line.len())..]);
+        let value = match (*field, fastq) {
+            ("id", _) => Value::string(header.split_whitespace().next().unwrap_or("")),
+            ("desc", _) => header
+                .split_once(char::is_whitespace)
+                .map_or(Value::Null, |(_, desc)| Value::string(desc.trim())),
+            ("header", _) => Value::string(header),
+            ("text", _) => Value::string(text),
+            ("seqString", _) => Value::string(lines.iter().skip(1).copied().collect::<String>()),
+            ("sequence", _) => Value::string(
+                lines
+                    .iter()
+                    .skip(1)
+                    .map(|line| format!("{line}\n"))
+                    .collect::<String>(),
+            ),
+            ("readHeader", _) => Value::string(header),
+            ("readString", _) => Value::string(lines.get(1).copied().unwrap_or("")),
+            ("qualityHeader", _) => {
+                Value::string(lines.get(2).map_or("", |line| &line[1.min(line.len())..]))
+            }
+            _ => Value::string(lines.get(3).copied().unwrap_or("")),
+        };
+        entries.push((Value::string(*field), value));
+    }
+    Value::map(entries)
 }
 
 pub(crate) struct Split {
@@ -121,9 +163,16 @@ impl Split {
         let mut records = match &self.format {
             Format::Csv { .. } => self.csv(text),
             Format::Text { .. } => text.split_inclusive('\n').map(Value::string).collect(),
-            Format::Fasta => records(text, |line, _| line.starts_with('>')),
-            Format::Fastq => records(text, |_, index| index % 4 == 0),
+            Format::Fasta(_) => records(text, |line, _| line.starts_with('>')),
+            Format::Fastq(_) => records(text, |_, index| index % 4 == 0),
         };
+        if let Format::Fasta(Some(fields)) | Format::Fastq(Some(fields)) = &self.format {
+            let fastq = matches!(self.format, Format::Fastq(_));
+            records = records
+                .iter()
+                .map(|record| record_map(&record.to_string(), fields, fastq))
+                .collect();
+        }
         if let Some(limit) = self.limit {
             records.truncate(limit);
         }
@@ -139,7 +188,9 @@ impl Split {
         records
             .chunks(by)
             .map(|chunk| match self.format {
-                Format::Csv { .. } => Value::list(chunk.to_vec()),
+                Format::Csv { .. } | Format::Fasta(Some(_)) | Format::Fastq(Some(_)) => {
+                    Value::list(chunk.to_vec())
+                }
                 _ => {
                     let mut text = header.clone().unwrap_or_default();
                     text.extend(chunk.iter().map(Value::to_string));

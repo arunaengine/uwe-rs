@@ -1,0 +1,1 @@
+{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "array", "items": {"type": "object", "properties": {"reads": {"type": "number"}, "completeness": {"anyOf": [{"type": "number"}, {"type": "string", "maxLength": 0}]}, "rna": {"anyOf": [{"type": "boolean"}, {"type": "string", "enum": ["unknown"]}]}}}}

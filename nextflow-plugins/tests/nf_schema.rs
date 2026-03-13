@@ -64,6 +64,10 @@ fn samplesheets_become_lists() {
         format!("[[{dir}/a.fq], [{dir}/b.fq]]")
     );
     assert_eq!(
+        to_list("sheet4.csv", "schema4.json").unwrap(),
+        "[[8000, 61.0, false], [10, [], unknown]]"
+    );
+    assert_eq!(
         to_list("sheet.tsv", "schema.json").unwrap(),
         format!("[[[id:S1, group:[], grp:[], flag:[], note:[]], {dir}/x.fq, [], []]]")
     );

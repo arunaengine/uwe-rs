@@ -54,15 +54,20 @@ impl Lowering<'_> {
                 }
             }
         }
+        let mut publishers = Vec::new();
         for publisher in &workflow.publishers {
-            let span = match publisher {
-                NamedOutput::Named { target, .. } => target.name.span,
-                NamedOutput::Statement(statement) => statement.span,
-            };
-            self.error(
-                "Workflow outputs with `publish:` are not supported yet",
-                span,
-            );
+            match publisher {
+                NamedOutput::Named {
+                    target,
+                    value: Some(value),
+                } => publishers.push((target.name.text.as_str().into(), self.expression(value))),
+                NamedOutput::Named { target, .. } => {
+                    self.error("Invalid workflow publish statement", target.name.span);
+                }
+                NamedOutput::Statement(statement) => {
+                    self.error("Invalid workflow publish statement", statement.span);
+                }
+            }
         }
         for block in [&workflow.on_complete, &workflow.on_error]
             .into_iter()
@@ -81,6 +86,7 @@ impl Lowering<'_> {
             takes,
             main,
             emits,
+            publishers,
             span: workflow.span,
         }
     }

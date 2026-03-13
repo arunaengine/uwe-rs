@@ -36,6 +36,8 @@ pub struct Module {
     pub parameters: Vec<(Vec<Rc<str>>, Rc<Code>)>,
     /// The typed `params { }` block, in order.
     pub typed_parameters: Vec<TypedParameter>,
+    /// The names that the `output { }` block declares.
+    pub output_names: Vec<Rc<str>>,
     /// What each include refers to: the included script and the name there. The module loader
     /// fills this in once the included scripts are loaded.
     pub links: std::cell::RefCell<HashMap<Rc<str>, Link>>,
@@ -98,6 +100,8 @@ pub struct Workflow {
     pub takes: Vec<(Rc<str>, Slot)>,
     pub main: Vec<Statement>,
     pub emits: Vec<(Rc<str>, Expression)>,
+    /// The `publish:` assignments of the entry workflow, which run after its body.
+    pub publishers: Vec<(Rc<str>, Expression)>,
     pub span: Span,
 }
 

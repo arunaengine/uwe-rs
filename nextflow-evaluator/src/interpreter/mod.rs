@@ -140,6 +140,12 @@ pub trait Host {
         Ok(None)
     }
 
+    /// Publishes a channel as a workflow output, from the `publish:` section.
+    fn publish(&mut self, name: &str, _channel: Value) -> Result<(), Error> {
+        let message = format!("publishing the workflow output `{name}`");
+        Err(unsupported(message, Span::default()))
+    }
+
     /// Calls a function of a plugin, like `samplesheetToList` of `nf-schema`.
     fn plugin_function(
         &mut self,

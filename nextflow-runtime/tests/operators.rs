@@ -378,3 +378,28 @@ fn published_outputs_are_read_to_the_end() {
     nextflow_runtime::run(&module, &mut output).expect("runs");
     assert_eq!(output.0, "2\n4\n");
 }
+
+#[test]
+fn splitter_records_and_closures() {
+    assert_eq!(
+        lines(
+            "channel.of(\">s1 first seq\\nACGT\\nGG\\n>s2\\nTT\\n\").splitFasta(record: [id: true, header: true, \
+             desc: true, seqString: true, sequence: true, text: true]).view { r -> r.inspect() }"
+        ),
+        [
+            "['id':'s1', 'desc':'first seq', 'header':'s1 first seq', 'text':'>s1 first seq\\nACGT\\nGG\\n', \
+             'seqString':'ACGTGG', 'sequence':'ACGT\\nGG\\n']",
+            "['id':'s2', 'desc':null, 'header':'s2', 'text':'>s2\\nTT\\n', 'seqString':'TT', 'sequence':'TT\\n']"
+        ]
+    );
+    assert_eq!(
+        lines("channel.of(\"@r1 x\\nACGT\\n+\\nIIII\\n\").splitFastq(record: true).view()"),
+        ["[readHeader:r1 x, readString:ACGT, qualityHeader:, qualityString:IIII]"]
+    );
+    assert_eq!(
+        lines(
+            "channel.of(\"a\\nb\\nc\\n\").splitText(limit: 2) { v -> v.trim().toUpperCase() }.view()"
+        ),
+        ["A", "B"]
+    );
+}

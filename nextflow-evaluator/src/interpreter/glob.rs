@@ -103,7 +103,9 @@ pub fn glob(
 }
 
 /// Whether a relative file name matches a glob pattern, as output patterns match task files.
+/// A pattern that ends with `/`, like `db/`, matches the directory.
 pub fn matches(glob: &str, name: &str) -> bool {
+    let glob = glob.strip_suffix('/').unwrap_or(glob);
     Pattern::new(&glob_regex(glob)).is_ok_and(|pattern| pattern.matches(name))
 }
 

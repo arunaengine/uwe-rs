@@ -365,3 +365,16 @@ fn chains_declare_before_their_arguments_and_pipes_call_functions() {
     printed.sort_unstable();
     assert_eq!(printed, ["6", "[2, 3, 3, 4]"]);
 }
+
+#[test]
+fn published_outputs_are_read_to_the_end() {
+    let source = "workflow {\n    main:\n    ch = channel.of(1, 2).map { v -> v * 2 }\n    ch.view()\n\n    \
+                  publish:\n    doubled = ch\n}\n\noutput {\n    doubled {\n        path '.'\n    }\n}\n";
+    let parsed = parse_script(source);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let module = Rc::new(lower_module(&parsed.tree, source).expect("lowers"));
+    assert_eq!(&*module.output_names[0], "doubled");
+    let mut output = Output::default();
+    nextflow_runtime::run(&module, &mut output).expect("runs");
+    assert_eq!(output.0, "2\n4\n");
+}

@@ -78,6 +78,20 @@ impl Host for Builder<'_> {
         self.base.plugin_function(plugin, name, arguments)
     }
 
+    /// A workflow output reads its channel to the end. Files are not copied yet.
+    fn publish(&mut self, name: &str, channel: Value) -> Result<(), Error> {
+        let Value::Channel(channel) = channel else {
+            return Err(thrown(format!("Invalid workflow output `{name}`")));
+        };
+        let node = Subscribe {
+            on_next: None,
+            on_complete: None,
+        };
+        self.network
+            .add(&format!("output {name}"), &[channel], Box::new(node));
+        Ok(())
+    }
+
     fn namespace_method(
         &mut self,
         namespace: &str,

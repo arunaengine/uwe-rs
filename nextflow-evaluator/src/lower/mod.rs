@@ -159,6 +159,19 @@ pub fn lower_script(
                     }
                 }
             }
+            // The directives of the outputs are not read yet: iunctus does not publish files.
+            Item::Output { targets, .. } => {
+                for target in targets {
+                    match target {
+                        ast::OutputTarget::Target { name, .. } => {
+                            module.output_names.push(name.text.as_str().into());
+                        }
+                        ast::OutputTarget::Statement(statement) => {
+                            lowering.error("Invalid output declaration", statement.span);
+                        }
+                    }
+                }
+            }
             Item::Include(_) | Item::FeatureFlag { .. } | Item::Statement(_) => {}
             other => lowering.error("This script item is not supported yet", item_span(other)),
         }
@@ -346,6 +359,7 @@ impl<'a> Lowering<'a> {
             takes: Vec::new(),
             main,
             emits: Vec::new(),
+            publishers: Vec::new(),
             span,
         }
     }

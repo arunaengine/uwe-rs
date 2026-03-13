@@ -113,6 +113,23 @@ impl Interpreter<'_> {
         if let Completion::Return(_) = self.block(&mut frame, &workflow.main)? {
             return Err(unsupported("`return` in a workflow", span));
         }
+        for (name, expression) in &workflow.publishers {
+            let value = match self.expression(&mut frame, expression)? {
+                Value::ChannelOut(out) if out.values.len() == 1 => out.values[0].clone(),
+                Value::ChannelOut(_) => {
+                    let message = format!("Cannot publish a multi-channel output to `{name}`");
+                    return Err(thrown(
+                        Exception::illegal_argument(message),
+                        expression.span,
+                    ));
+                }
+                value @ Value::Channel(_) => value,
+                plain => self.namespace_call("channel", "value", vec![plain], expression.span)?,
+            };
+            self.host
+                .publish(name, value)
+                .map_err(|error| error.or_at(expression.span))?;
+        }
         let mut values = Vec::new();
         let mut names = Vec::new();
         for (emit, expression) in &workflow.emits {

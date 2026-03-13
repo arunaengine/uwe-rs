@@ -71,24 +71,46 @@ pub(super) fn to_list(
     Ok(Value::list(result))
 }
 
-/// A field's text as the type of its schema: `integer`, `number` or `boolean`, else text.
+/// A field's text as a type its schema allows: the `type`, or the types of `anyOf` and
+/// `oneOf` choices. Whole numbers are tried first, then numbers, then booleans; other text
+/// stays text.
 fn typed_value(text: &str, definition: &Value) -> Value {
-    let kind = get(definition, "type").map(|kind| kind.to_string());
-    match kind.as_deref() {
-        Some("integer") => match text.parse::<i32>() {
-            Ok(value) => Value::Number(Number::Integer(value)),
-            Err(_) => text
-                .parse::<i64>()
-                .map_or_else(|_| Value::string(text), |v| Value::Number(Number::Long(v))),
-        },
-        Some("number") => BigDecimal::parse(text).map_or_else(
-            || Value::string(text),
-            |v| Value::Number(Number::BigDecimal(v)),
-        ),
-        Some("boolean") if text.eq_ignore_ascii_case("true") => Value::Boolean(true),
-        Some("boolean") if text.eq_ignore_ascii_case("false") => Value::Boolean(false),
-        _ => Value::string(text),
+    let mut kinds = Vec::new();
+    let mut add = |definition: &Value| match get(definition, "type") {
+        Some(Value::List(list)) => kinds.extend(list.borrow().items.iter().map(Value::to_string)),
+        Some(kind) => kinds.push(kind.to_string()),
+        None => {}
+    };
+    add(definition);
+    for choice in ["anyOf", "oneOf"] {
+        if let Some(Value::List(choices)) = get(definition, choice) {
+            choices.borrow().items.iter().for_each(&mut add);
+        }
     }
+    let allows = |kind: &str| kinds.iter().any(|allowed| allowed == kind);
+    if allows("integer") || allows("number") {
+        if let Ok(value) = text.parse::<i32>() {
+            return Value::Number(Number::Integer(value));
+        }
+        if let Ok(value) = text.parse::<i64>() {
+            return Value::Number(Number::Long(value));
+        }
+    }
+    if allows("number")
+        && text.parse::<f64>().is_ok()
+        && let Some(value) = BigDecimal::parse(text)
+    {
+        return Value::Number(Number::BigDecimal(value));
+    }
+    if allows("boolean") {
+        if text.eq_ignore_ascii_case("true") {
+            return Value::Boolean(true);
+        }
+        if text.eq_ignore_ascii_case("false") {
+            return Value::Boolean(false);
+        }
+    }
+    Value::string(text)
 }
 
 /// A field with a path format becomes a path, which relative text starts at `launch`.

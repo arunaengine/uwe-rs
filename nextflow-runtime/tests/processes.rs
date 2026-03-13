@@ -240,6 +240,22 @@ fn typed_params_take_their_types_and_defaults() {
 }
 
 #[test]
+fn one_file_is_a_path_unless_the_arity_allows_more() {
+    let class = |input: &str, files: &str| {
+        let process = format!(
+            "process P {{\n    input:\n    {input}\n    output:\n    val y\n    script:\n    y = x instanceof Path\n    'true'\n}}\n"
+        );
+        let source = format!("{process}workflow {{\n    P({files}).view()\n}}");
+        run(&source, &Options::default()).expect("runs").1
+    };
+    assert_eq!(class("path x", "[file('/d/a.txt')]"), "true\n");
+    assert_eq!(
+        class("path x, arity: '1..*'", "file('/d/a.txt')"),
+        "false\n"
+    );
+}
+
+#[test]
 fn missing_outputs_and_failures() {
     let process = "process P {\n    input:\n    val x\n    output:\n    path 'out.txt'\n    script:\n    'x'\n}\n";
     let parsed_source = format!("{process}workflow {{\n    P(1)\n}}");

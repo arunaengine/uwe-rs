@@ -138,18 +138,26 @@ impl Interpreter<'_> {
                 options,
             } => {
                 let options = self.arguments(&mut task.frame, options)?;
-                let stage_as = match options.first() {
-                    Some(Value::Map(map)) => {
-                        let map = map.borrow();
-                        let key = |name: &str| {
-                            map.entries
-                                .get(&crate::value::Key(Value::string(name)))
-                                .cloned()
-                        };
-                        key("stageAs").or_else(|| key("name"))
-                    }
+                let option = |name: &str| match options.first() {
+                    Some(Value::Map(map)) => map
+                        .borrow()
+                        .entries
+                        .get(&crate::value::Key(Value::string(name)))
+                        .cloned(),
                     _ => None,
                 };
+                let stage_as = option("stageAs").or_else(|| option("name"));
+                // One file is a path, not a list, unless the arity allows more.
+                let single = option("arity").is_none_or(|arity| {
+                    let arity = arity.to_string();
+                    let most = arity
+                        .rsplit("..")
+                        .next()
+                        .unwrap_or(&arity)
+                        .trim()
+                        .to_owned();
+                    most == "1"
+                });
                 let name = match (pattern, stage_as) {
                     (Some(pattern), _) => {
                         Some(self.expression(&mut task.frame, pattern)?.to_string())
@@ -157,7 +165,7 @@ impl Interpreter<'_> {
                     (None, Some(name)) => Some(name.to_string()),
                     (None, None) => None,
                 };
-                let staged = stage(task, value, name.as_deref(), span)?;
+                let staged = stage(task, value, name.as_deref(), single, span)?;
                 if let Some(slot) = slot {
                     task.frame.set(Place::Local(*slot), staged);
                 }
@@ -337,12 +345,14 @@ impl Interpreter<'_> {
     }
 }
 
-/// The staged form of an input value: a path, or a `BlankSeparatedList` of paths. A name
-/// pattern names the files as Nextflow's `expandWildcards` does.
+/// The staged form of an input value: a path, or a `BlankSeparatedList` of paths, which is
+/// also the form of one file when `single` is false. A name pattern names the files as
+/// Nextflow's `expandWildcards` does.
 fn stage(
     task: &mut TaskFrame,
     value: &Value,
     name: Option<&str>,
+    single: bool,
     span: Span,
 ) -> Result<Value, Error> {
     let files = match value {
@@ -376,13 +386,11 @@ fn stage(
             ..path
         })));
     }
-    match value {
-        Value::List(_) => {
-            let list = List::new(ListKind::BlankSeparated, staged);
-            Ok(Value::List(Rc::new(RefCell::new(list))))
-        }
-        _ => Ok(staged.remove(0)),
+    if staged.len() == 1 && single {
+        return Ok(staged.remove(0));
     }
+    let list = List::new(ListKind::BlankSeparated, staged);
+    Ok(Value::List(Rc::new(RefCell::new(list))))
 }
 
 /// The name of the `index`-th of `size` files for a name pattern: `*` is the index, or

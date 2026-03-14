@@ -61,7 +61,15 @@ impl Interpreter<'_> {
             Value::Number(number) => self.number_method(number, name, arguments, span)?,
             Value::Path(path) => match path::path_method(path, name, arguments) {
                 Some(value) => Some(value),
-                None => self.file_method(path, name, arguments, span)?,
+                None => match self.file_method(path, name, arguments, span)? {
+                    Some(value) => Some(value),
+                    // Groovy iterates a path: a staged input file as itself, as Nextflow's
+                    // task paths do, and another path as its name parts.
+                    None => {
+                        let items = path_items(path);
+                        self.iterable_method(object, &items, name, arguments, span)?
+                    }
+                },
             },
             Value::Pattern(pattern) => regex::pattern_method(pattern, name, arguments),
             Value::Matcher(matcher) => regex::matcher_method(matcher, name, arguments),
@@ -93,24 +101,10 @@ impl Interpreter<'_> {
         if found.is_some() {
             return Ok(found);
         }
-        // Groovy iterates any other object as one element, and a path as its name parts.
+        // Groovy iterates any other object as one element.
         if let ("collect", [Value::Closure(f)]) = (name, arguments) {
-            let items = match object {
-                Value::Path(path) => path
-                    .path
-                    .split('/')
-                    .filter(|part| !part.is_empty())
-                    .map(|part| {
-                        Value::Path(std::rc::Rc::new(crate::value::PathValue::parse(part, "/")))
-                    })
-                    .collect(),
-                other => vec![other.clone()],
-            };
-            let mut result = Vec::new();
-            for item in items {
-                result.push(self.call_closure_value(f, vec![item], span)?);
-            }
-            return Ok(Some(Value::list(result)));
+            let result = self.call_closure_value(f, vec![object.clone()], span)?;
+            return Ok(Some(Value::list(vec![result])));
         }
         Ok(object_method(object, name, arguments))
     }
@@ -175,4 +169,23 @@ pub(in crate::interpreter) fn copy_map(map: &Value) -> Value {
         ))),
         other => other.clone(),
     }
+}
+
+/// The elements Groovy iterates for a path: a staged input file is one element, itself, as
+/// Nextflow's task paths are; another path gives its name parts.
+pub(in crate::interpreter) fn path_items(
+    path: &std::rc::Rc<crate::value::PathValue>,
+) -> Vec<Value> {
+    if path.staged.is_some() {
+        return vec![Value::Path(path.clone())];
+    }
+    path.path
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut name = crate::value::PathValue::parse(part, "/");
+            name.path = part.to_owned();
+            Value::Path(std::rc::Rc::new(name))
+        })
+        .collect()
 }

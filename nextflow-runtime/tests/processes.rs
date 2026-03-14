@@ -267,6 +267,16 @@ fn tuples_of_another_size_are_errors() {
 }
 
 #[test]
+fn a_staged_file_iterates_as_itself() {
+    let process = "process P {\n    input:\n    path reads\n    output:\n    val y\n    script:\n    y = \"${reads[0]} ${reads.join(',')} ${reads.collectMany { [it] }}\"\n    'true'\n}\n";
+    let source = format!(
+        "{process}workflow {{\n    P([file('/d/a.txt')]).view()\n    println file('/x/y/a.txt')[1]\n}}"
+    );
+    let (_, printed) = run(&source, &Options::default()).expect("runs");
+    assert_eq!(printed, "y\na.txt a.txt [a.txt]\n");
+}
+
+#[test]
 fn missing_outputs_and_failures() {
     let process = "process P {\n    input:\n    val x\n    output:\n    path 'out.txt'\n    script:\n    'x'\n}\n";
     let parsed_source = format!("{process}workflow {{\n    P(1)\n}}");

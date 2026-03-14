@@ -168,6 +168,19 @@ impl Interpreter<'_> {
             return Err(unsupported("indexing with several indexes", span));
         };
         Ok(match (object, index) {
+            (Value::Path(path), Value::Number(position)) => {
+                let items = super::library::path_items(path);
+                let position = position.to_i64();
+                let position = if position < 0 {
+                    items.len() as i64 + position
+                } else {
+                    position
+                };
+                match usize::try_from(position).ok().and_then(|p| items.get(p)) {
+                    Some(item) => item.clone(),
+                    None => Value::Null,
+                }
+            }
             (Value::Null, _) => {
                 let message = "Cannot invoke method getAt() on null object";
                 return Err(thrown(

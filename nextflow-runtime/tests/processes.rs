@@ -256,6 +256,17 @@ fn one_file_is_a_path_unless_the_arity_allows_more() {
 }
 
 #[test]
+fn tuples_of_another_size_are_errors() {
+    let process = "process P {\n    input:\n    tuple val(a), val(b)\n    script:\n    'true'\n}\n";
+    let source = format!("{process}workflow {{\n    P(channel.of([1, 2, 3]))\n}}");
+    let error = run(&source, &Options::default()).unwrap_err();
+    assert!(
+        error.ends_with("Input tuple does not match tuple declaration in process `P` -- offending value: [1, 2, 3]"),
+        "{error}"
+    );
+}
+
+#[test]
 fn missing_outputs_and_failures() {
     let process = "process P {\n    input:\n    val x\n    output:\n    path 'out.txt'\n    script:\n    'x'\n}\n";
     let parsed_source = format!("{process}workflow {{\n    P(1)\n}}");

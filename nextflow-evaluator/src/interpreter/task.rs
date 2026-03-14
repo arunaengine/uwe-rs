@@ -22,6 +22,8 @@ pub struct TaskFrame {
     pub staged: Vec<(PathValue, String)>,
     /// The inputs and section variables by name, for config closures.
     variables: Vec<(Rc<str>, Rc<RefCell<Value>>)>,
+    /// The name of the process, for messages.
+    process: Rc<str>,
 }
 
 /// A directive of one task, with its evaluated arguments.
@@ -89,6 +91,7 @@ impl Interpreter<'_> {
             },
             staged: Vec::new(),
             variables,
+            process: process.name.clone(),
         };
         if inputs.len() != process.inputs.len() {
             let message = format!(
@@ -122,11 +125,10 @@ impl Interpreter<'_> {
                 };
                 if items.len() != parts.len() {
                     let message = format!(
-                        "Input tuple does not match tuple declaration in process: {} values for {} parts",
-                        items.len(),
-                        parts.len()
+                        "Input tuple does not match tuple declaration in process `{}` -- offending value: {value}",
+                        task.process
                     );
-                    return Err(unsupported(message, span));
+                    return Err(thrown(Exception::illegal_argument(message), span));
                 }
                 for (part, item) in parts.iter().zip(&items) {
                     self.bind_input(task, part, item, span)?;
@@ -434,6 +436,11 @@ fn stage_name(pattern: &str, own: &str, index: usize, size: usize) -> String {
 /// Nextflow's `normalizeInputToFile` takes it.
 fn input_path(value: &Value, span: Span) -> Result<PathValue, Error> {
     match value {
+        Value::Null => {
+            let exception =
+                Exception::new("ProcessUnrecoverableException", "Path value cannot be null");
+            Err(thrown(exception, span))
+        }
         Value::Path(path) => Ok((**path).clone()),
         Value::String(text) | Value::GString(text)
             if text.starts_with('/') || text.contains("://") =>

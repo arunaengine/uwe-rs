@@ -491,6 +491,7 @@ impl Interpreter<'_> {
                 let parent = PathValue::parse(&parent.to_string(), &launch);
                 Ok(Value::Path(Rc::new(parent.resolve(&child.to_string()))))
             }
+            (None, [text]) if class == "URI" => Ok(super::library::uri(&text.to_string())),
             (None, []) if class == "Yaml" => {
                 Ok(Value::Object(Rc::new(std::cell::RefCell::new(Object {
                     class: "org.yaml.snakeyaml.Yaml",

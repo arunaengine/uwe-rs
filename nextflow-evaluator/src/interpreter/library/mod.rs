@@ -202,3 +202,58 @@ pub(in crate::interpreter) fn path_items(
         })
         .collect()
 }
+
+/// A new `java.net.URI` of the text.
+pub(in crate::interpreter) fn uri(text: &str) -> Value {
+    Value::Object(std::rc::Rc::new(std::cell::RefCell::new(
+        crate::value::Object {
+            class: "java.net.URI",
+            state: crate::value::State::Uri(text.into()),
+        },
+    )))
+}
+
+/// A part of a URI, as `java.net.URI` gives it: `scheme`, `authority`, `host`, `port`, `path`,
+/// `query` or `fragment`; `None` when the URI has no such part.
+pub(in crate::interpreter) fn uri_part(text: &str, part: &str) -> Option<String> {
+    let (scheme, rest) = match text.split_once(':') {
+        Some((scheme, rest))
+            if scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+                && scheme
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "+.-".contains(c)) =>
+        {
+            (Some(scheme), rest)
+        }
+        _ => (None, text),
+    };
+    let (rest, fragment) = match rest.split_once('#') {
+        Some((rest, fragment)) => (rest, Some(fragment)),
+        None => (rest, None),
+    };
+    let (rest, query) = match rest.split_once('?') {
+        Some((rest, query)) => (rest, Some(query)),
+        None => (rest, None),
+    };
+    let (authority, path) = match rest.strip_prefix("//") {
+        Some(rest) => match rest.find('/') {
+            Some(slash) => (Some(&rest[..slash]), &rest[slash..]),
+            None => (Some(rest), ""),
+        },
+        None => (None, rest),
+    };
+    let host_port = authority.map(|authority| authority.rsplit('@').next().unwrap_or(authority));
+    let value = match part {
+        "scheme" => scheme,
+        "authority" => authority.filter(|a| !a.is_empty()),
+        "host" => host_port
+            .map(|h| h.split(':').next().unwrap_or(h))
+            .filter(|h| !h.is_empty()),
+        "port" => host_port.and_then(|h| h.split_once(':').map(|(_, port)| port)),
+        "path" => Some(path),
+        "query" => query,
+        "fragment" => fragment,
+        _ => None,
+    };
+    value.map(str::to_owned)
+}

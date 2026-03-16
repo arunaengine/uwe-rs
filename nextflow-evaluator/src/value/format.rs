@@ -128,10 +128,13 @@ impl Value {
             Value::Closure(closure) => {
                 out.push_str(&format!("Closure@{:x}", Rc::as_ptr(closure) as usize));
             }
-            Value::Object(object) => {
-                let class = object.borrow().class;
-                out.push_str(&format!("{class}@{:x}", Rc::as_ptr(object) as usize));
-            }
+            Value::Object(object) => match &object.borrow().state {
+                super::State::Uri(text) => out.push_str(text),
+                _ => {
+                    let class = object.borrow().class;
+                    out.push_str(&format!("{class}@{:x}", Rc::as_ptr(object) as usize));
+                }
+            },
             Value::Pattern(pattern) => out.push_str(&pattern.source),
             Value::Path(path) => out.push_str(path.text()),
             Value::Channel(id) => out.push_str(&format!("DataflowBroadcast@{}", id.0)),

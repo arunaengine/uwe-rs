@@ -102,6 +102,18 @@ impl Interpreter<'_> {
         arguments: &[Value],
         span: Span,
     ) -> Result<Option<Value>, Error> {
+        // A group key stands for its key.
+        let group = match &object.borrow().state {
+            State::GroupKey(target, size) => Some((target.clone(), *size)),
+            _ => None,
+        };
+        if let Some((target, size)) = group {
+            return Ok(Some(match (name, arguments) {
+                ("getGroupSize", []) => Value::integer(size),
+                ("getGroupTarget", []) => target,
+                _ => self.call_method(&target, name, arguments.to_vec(), span)?,
+            }));
+        }
         let builder = object.borrow().class == "groovy.json.JsonGenerator$Options";
         let mut target = object.borrow_mut();
         let value = match (&mut target.state, name, arguments) {

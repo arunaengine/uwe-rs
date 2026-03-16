@@ -144,6 +144,15 @@ impl Interpreter<'_> {
                 let millis = u64::try_from(millis.to_i64()).unwrap_or(0);
                 std::thread::sleep(std::time::Duration::from_millis(millis));
             }
+            ("groupKey", [key, Value::Number(size)]) => {
+                let key = key.group_target().unwrap_or_else(|| key.clone());
+                return Ok(Value::Object(Rc::new(std::cell::RefCell::new(
+                    crate::value::Object {
+                        class: "nextflow.extension.GroupKey",
+                        state: crate::value::State::GroupKey(key, size.to_i32()),
+                    },
+                ))));
+            }
             ("env", [name]) => {
                 let value = self.host.environment(&name.to_string());
                 return Ok(value.map_or(Value::Null, Value::string));

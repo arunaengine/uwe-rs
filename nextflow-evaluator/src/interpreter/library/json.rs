@@ -114,6 +114,9 @@ impl Interpreter<'_> {
                 _ => self.call_method(&target, name, arguments.to_vec(), span)?,
             }));
         }
+        if matches!(object.borrow().state, State::Stream(..)) {
+            return self.stream_method(object, name, arguments, span);
+        }
         let builder = object.borrow().class == "groovy.json.JsonGenerator$Options";
         let mut target = object.borrow_mut();
         let value = match (&mut target.state, name, arguments) {
@@ -208,6 +211,61 @@ impl Interpreter<'_> {
             _ => return Ok(None),
         };
         Ok(Some(value))
+    }
+}
+
+impl Interpreter<'_> {
+    /// Methods of input streams and readers: lines and text from the position on.
+    fn stream_method(
+        &mut self,
+        object: &Rc<RefCell<Object>>,
+        name: &str,
+        arguments: &[Value],
+        span: Span,
+    ) -> Result<Option<Value>, Error> {
+        let (bytes, position) = match &object.borrow().state {
+            State::Stream(bytes, position) => (bytes.clone(), *position),
+            _ => unreachable!("a stream"),
+        };
+        let rest = String::from_utf8_lossy(&bytes[position.min(bytes.len())..]).into_owned();
+        let finish = |object: &Rc<RefCell<Object>>, position: usize| {
+            object.borrow_mut().state = State::Stream(bytes.clone(), position);
+        };
+        Ok(Some(match (name, arguments) {
+            ("readLine", []) => {
+                if rest.is_empty() {
+                    return Ok(Some(Value::Null));
+                }
+                let line = rest.split_inclusive('\n').next().unwrap_or_default();
+                finish(object, position + line.len());
+                Value::string(line.trim_end_matches(['\n', '\r']))
+            }
+            ("eachLine", [Value::Closure(f)]) => {
+                finish(object, bytes.len());
+                let mut last = Value::Null;
+                for (index, line) in rest.lines().enumerate() {
+                    let mut arguments = vec![Value::string(line)];
+                    if f.code.parameters.len() == 2 {
+                        arguments.push(Value::integer(index as i32 + 1));
+                    }
+                    last = self.call_closure_value(f, arguments, span)?;
+                }
+                last
+            }
+            ("getText", []) => {
+                finish(object, bytes.len());
+                Value::string(rest)
+            }
+            ("readLines", []) => {
+                finish(object, bytes.len());
+                Value::list(rest.lines().map(Value::string).collect())
+            }
+            ("withReader" | "withStream", [Value::Closure(f)]) => {
+                self.call_closure_value(f, vec![Value::Object(object.clone())], span)?
+            }
+            ("close", []) => Value::Null,
+            _ => return Ok(None),
+        }))
     }
 }
 

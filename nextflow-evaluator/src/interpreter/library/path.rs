@@ -103,6 +103,22 @@ impl Interpreter<'_> {
                 self.host.create_directories(path).map_err(host_error)?;
                 return Ok(Some(Value::Boolean(true)));
             }
+            ("newInputStream" | "newReader", []) => {
+                let bytes = self.host.read(path).map_err(host_error)?;
+                return Ok(Some(super::stream(bytes)));
+            }
+            ("withInputStream" | "withReader", [Value::Closure(f)]) => {
+                let bytes = self.host.read(path).map_err(host_error)?;
+                let stream = super::stream(bytes);
+                return Ok(Some(self.call_closure_value(f, vec![stream], span)?));
+            }
+            ("eachLine", [Value::Closure(f)]) => {
+                let bytes = self.host.read(path).map_err(host_error)?;
+                let stream = super::stream(bytes);
+                return self
+                    .call_method(&stream, "eachLine", vec![Value::Closure(f.clone())], span)
+                    .map(Some);
+            }
             ("listFiles", []) => {
                 let entries = self.host.list(path).map_err(host_error)?;
                 let mut files: Vec<PathValue> = entries

@@ -65,6 +65,16 @@ config-corpus-test:
 	IUNCTUS_CONFIG_ORACLE="${IUNCTUS_CONFIG_ORACLE:-$HOME/.cache/iunctus/oracle/config}" \
 	cargo test --release --locked -p iunctus --test config_corpus -- --ignored
 
+# Records the stub scripts of the pipelines in iunctus/tests/fixtures/oracle/stub with Nextflow
+# and Docker; give the pipelines as arguments, like `just stub-oracle demo`.
+stub-oracle +pipelines:
+	iunctus/tests/fixtures/oracle/stub/record.sh "${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}/pipelines" {{pipelines}}
+
+# Runs the recorded pipelines with -stub and the mock executor and compares the task scripts.
+stub-corpus-test:
+	NF_CORE_CORPUS="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}" \
+	cargo test --release --locked -p iunctus --test stub_corpus -- --ignored
+
 # Fetches the text-only CWL corpus at the revisions the CWL corpus test expects.
 cwl-corpus:
 	#!/usr/bin/env bash

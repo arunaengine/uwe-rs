@@ -15,7 +15,7 @@ use nextflow_evaluator::value::{ChannelId, ChannelOut, ListKind, PathValue, Valu
 use crate::files::CollectFile;
 use crate::keyed::{Combine, Cross, GroupTuple, Join};
 use crate::network::Network;
-use crate::operator::{Each, Factory, Gather, Gathering, Mix, Single};
+use crate::operator::{Collate, Each, Factory, Gather, Gathering, Mix, Single};
 use crate::process::{ProcessNode, singleton};
 use crate::route::{Concat, Merge, Route};
 use crate::split::{Format, Split, Subscribe};
@@ -316,6 +316,29 @@ impl Host for Builder<'_> {
                 let by = indexes(&options, "by");
                 let remainder = option(&options, "remainder").is_some_and(|value| value.truth());
                 (Kind::Each(Each::Transpose { by, remainder }), false)
+            }
+            ("collate", [Value::Number(size), rest @ ..]) if size.to_i64() > 0 => {
+                let size = size.to_i64() as usize;
+                let (step, remainder) = match rest {
+                    [] => (size, true),
+                    [Value::Boolean(remainder)] => (size, *remainder),
+                    [Value::Number(step)] => (step.to_i64().max(1) as usize, true),
+                    [Value::Number(step), Value::Boolean(remainder)] => {
+                        (step.to_i64().max(1) as usize, *remainder)
+                    }
+                    _ => return Ok(None),
+                };
+                let output = self.network.channel(false);
+                let node = Collate {
+                    output,
+                    size,
+                    step,
+                    remainder,
+                    windows: Vec::new(),
+                    count: 0,
+                };
+                self.network.add(name, &[source], Box::new(node));
+                return Ok(Some(Value::Channel(output)));
             }
             // `dump` prints only with `-dump-channels`, which iunctus does not have, so it is
             // the source itself.

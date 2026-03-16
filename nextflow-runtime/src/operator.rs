@@ -456,6 +456,50 @@ fn sorted(
     Ok(keyed.into_iter().map(|(_, item)| item).collect())
 }
 
+/// `collate(size, [step], remainder = true)`: windows of `size` values; a new window starts
+/// every `step` values. At the end the open windows are emitted when `remainder` is true.
+pub(crate) struct Collate {
+    pub output: ChannelId,
+    pub size: usize,
+    pub step: usize,
+    pub remainder: bool,
+    pub windows: Vec<Vec<Value>>,
+    pub count: usize,
+}
+
+impl Behaviour for Collate {
+    fn run(&mut self, context: &mut Context) -> Result<State, Error> {
+        while let Some(message) = context.read(0) {
+            let Message::Value(value) = message else {
+                if self.remainder {
+                    for window in std::mem::take(&mut self.windows) {
+                        if !window.is_empty() {
+                            context.emit(self.output, Value::list(window));
+                        }
+                    }
+                }
+                context.close(self.output);
+                return Ok(State::Stopped);
+            };
+            if self.count.is_multiple_of(self.step) {
+                self.windows.push(Vec::new());
+            }
+            self.count += 1;
+            for window in &mut self.windows {
+                window.push(value.clone());
+            }
+            while self
+                .windows
+                .first()
+                .is_some_and(|window| window.len() == self.size)
+            {
+                context.emit(self.output, Value::list(self.windows.remove(0)));
+            }
+        }
+        Ok(State::Running)
+    }
+}
+
 /// `mix`: every value of every input as it comes; closes when all inputs have closed.
 pub(crate) struct Mix {
     pub output: ChannelId,

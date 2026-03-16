@@ -284,6 +284,21 @@ fn closure_arguments_give_their_result() {
 }
 
 #[test]
+fn manifest_settings_are_text_and_null_has_methods() {
+    let source = "workflow {\n    println([null.equals(null), null.toString(), workflow.manifest.doi, \
+                  workflow.manifest.doi.tokenize(','), workflow.manifest.mainScript, workflow.manifest.version])\n}";
+    let options = Options {
+        config: config("manifest {\n    name = 'demo'\n    doi = ['10.1/a', '10.2/b']\n}\n"),
+        ..Options::default()
+    };
+    let (_, printed) = run(source, &options).expect("runs");
+    assert_eq!(
+        printed,
+        "[true, null, [10.1/a, 10.2/b], [[10.1/a,  10.2/b]], main.nf, null]\n"
+    );
+}
+
+#[test]
 fn missing_outputs_and_failures() {
     let process = "process P {\n    input:\n    val x\n    output:\n    path 'out.txt'\n    script:\n    'x'\n}\n";
     let parsed_source = format!("{process}workflow {{\n    P(1)\n}}");

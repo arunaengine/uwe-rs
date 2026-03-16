@@ -29,10 +29,7 @@ pub(crate) fn metadata(options: &Options, launch_dir: &str) -> Value {
         .parent()
         .map(|parent| parent.name().to_owned())
         .unwrap_or_default();
-    let manifest = options
-        .config
-        .get(&["manifest"])
-        .map_or_else(tree::map, |manifest| tree::deep_copy(&manifest));
+    let manifest = manifest(options);
     let config_files = options.config_files.iter().map(|file| path(file)).collect();
     let engine = options
         .container_engine
@@ -94,6 +91,47 @@ pub(crate) fn metadata(options: &Options, launch_dir: &str) -> Value {
             on_error: Vec::new(),
         }),
     })))
+}
+
+/// `workflow.manifest`, as Nextflow's `Manifest` holds the `manifest` settings: most of them
+/// as text, so a list of DOIs becomes the text of the list.
+fn manifest(options: &Options) -> Value {
+    let setting = |name: &str| options.config.get(&["manifest", name]);
+    let text = |name: &str| match setting(name) {
+        None | Some(Value::Null) => Value::Null,
+        Some(value) => Value::string(value.to_string()),
+    };
+    let mut entries = Vec::new();
+    for name in [
+        "author",
+        "defaultBranch",
+        "description",
+        "docsUrl",
+        "doi",
+        "homePage",
+        "icon",
+        "license",
+        "mainScript",
+        "name",
+        "nextflowVersion",
+        "organization",
+        "version",
+    ] {
+        let value = match (name, text(name)) {
+            ("mainScript", Value::Null) => Value::string("main.nf"),
+            (_, value) => value,
+        };
+        entries.push((Value::string(name), value));
+    }
+    let contributors = setting("contributors").unwrap_or_else(|| Value::list(Vec::new()));
+    entries.push((Value::string("contributors"), contributors));
+    entries.push((
+        Value::string("gitmodules"),
+        setting("gitmodules").unwrap_or(Value::Null),
+    ));
+    let recurse = setting("recurseSubmodules").is_some_and(|value| value.truth());
+    entries.push((Value::string("recurseSubmodules"), Value::Boolean(recurse)));
+    Value::map(entries)
 }
 
 /// `nextflow`: the version of Nextflow that iunctus follows.

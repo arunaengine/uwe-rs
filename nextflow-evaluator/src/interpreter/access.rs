@@ -372,6 +372,12 @@ impl Interpreter<'_> {
         span: Span,
     ) -> Result<Value, Error> {
         match (object, name) {
+            // Groovy's null object has a few methods of its own.
+            (Value::Null, "equals" | "is") if arguments.len() == 1 => {
+                Ok(Value::Boolean(matches!(arguments[0], Value::Null)))
+            }
+            (Value::Null, "toString") if arguments.is_empty() => Ok(Value::string("null")),
+            (Value::Null, "hashCode") if arguments.is_empty() => Ok(Value::integer(0)),
             (Value::Null, _) => {
                 let message = format!("Cannot invoke method {name}() on null object");
                 Err(thrown(

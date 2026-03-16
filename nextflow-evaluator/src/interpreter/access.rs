@@ -51,6 +51,16 @@ impl Interpreter<'_> {
                 }
             }
             Value::Definition(definition) => self.definition_property(definition, name, span)?,
+            Value::Object(object) if matches!(object.borrow().state, State::GroupKey(..)) => {
+                let State::GroupKey(target, size) = &object.borrow().state else {
+                    unreachable!("a group key")
+                };
+                match name {
+                    "groupSize" => Value::integer(*size),
+                    "groupTarget" => target.clone(),
+                    _ => self.property(&target.clone(), name, span)?,
+                }
+            }
             Value::Object(object) if matches!(object.borrow().state, State::Workflow(_)) => {
                 let properties = match &object.borrow().state {
                     State::Workflow(workflow) => workflow.properties.clone(),

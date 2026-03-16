@@ -423,3 +423,15 @@ fn collate_and_small_library_methods() {
         ["[abc, abc, -b-a, cdef, ef, abcd]", "out line", "[a:1, b:2]"]
     );
 }
+
+#[test]
+fn group_keys_give_the_group_size() {
+    assert_eq!(
+        lines(
+            "channel.of([groupKey([id: 'a'], 2), 1], [groupKey([id: 'b'], 3), 2], [groupKey([id: 'a'], 2), 3])\n\
+             .groupTuple().view { key, values -> \"${key} ${key.id} ${key.groupSize} ${values}\" }\n\
+             def k = groupKey('x', 5)\nprintln([k == 'x', k.toUpperCase(), k.getGroupSize(), \"${k}\"])"
+        ),
+        ["[true, X, 5, x]", "[id:a] a 2 [1, 3]"]
+    );
+}

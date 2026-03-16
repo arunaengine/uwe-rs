@@ -317,6 +317,17 @@ impl Value {
         }
     }
 
+    /// The key of a group key from `groupKey`, which the group key stands for.
+    pub fn group_target(&self) -> Option<Value> {
+        let Value::Object(object) = self else {
+            return None;
+        };
+        match &object.borrow().state {
+            State::GroupKey(target, _) => Some(target.clone()),
+            _ => None,
+        }
+    }
+
     /// Groovy truth, as `if`, `!`, `&&`, `||` and `?:` see the value.
     pub fn truth(&self) -> bool {
         match self {

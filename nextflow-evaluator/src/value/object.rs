@@ -28,6 +28,9 @@ pub enum State {
     Yaml,
     /// `java.net.URI`, by its text.
     Uri(Rc<str>),
+    /// `nextflow.extension.GroupKey` from `groupKey(key, size)`: the key, which it stands for,
+    /// with the size of its group for `groupTuple`.
+    GroupKey(super::Value, i32),
     /// A template of the engine, with its text.
     Template(Rc<str>),
 }

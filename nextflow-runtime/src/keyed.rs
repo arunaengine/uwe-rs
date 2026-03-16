@@ -88,16 +88,16 @@ pub(crate) struct GroupTuple {
     pub remainder: bool,
     /// Whether each list of a group is sorted before it is emitted.
     pub sort: bool,
-    /// The open groups in first-seen key order, with their number of tuples.
-    pub groups: IndexMap<Vec<Key>, (Vec<Value>, usize)>,
+    /// The open groups in first-seen key order, with their number of tuples and their size.
+    pub groups: IndexMap<Vec<Key>, (Vec<Value>, usize, Option<usize>)>,
 }
 
 impl Behaviour for GroupTuple {
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         while let Some(message) = context.read(0) {
             let Message::Value(value) = message else {
-                for (_, (group, count)) in std::mem::take(&mut self.groups) {
-                    let complete = self.size.is_none_or(|size| count == size);
+                for (_, (group, count, size)) in std::mem::take(&mut self.groups) {
+                    let complete = size.is_none_or(|size| count == size);
                     if complete || self.remainder {
                         context.emit(self.output, self.group_value(group));
                     }
@@ -112,14 +112,27 @@ impl Behaviour for GroupTuple {
             let tuple = items(&value);
             let key = key(&value, &self.by)?;
             let by = self.by.clone();
-            let (group, count) = self.groups.entry(key.clone()).or_insert_with(|| {
+            // Without a `size` option, a group key from `groupKey` gives the size.
+            let size = self.size.or_else(|| match by.as_slice() {
+                [index] => match tuple.get(*index) {
+                    Some(Value::Object(object)) => match &object.borrow().state {
+                        nextflow_evaluator::value::State::GroupKey(_, size) if *size > 0 => {
+                            Some(*size as usize)
+                        }
+                        _ => None,
+                    },
+                    _ => None,
+                },
+                _ => None,
+            });
+            let (group, count, size) = self.groups.entry(key.clone()).or_insert_with(|| {
                 let group = (0..tuple.len())
                     .map(|index| match by.contains(&index) {
                         true => string_key(&tuple[index]),
                         false => Value::list(Vec::new()),
                     })
                     .collect();
-                (group, 0)
+                (group, 0, size)
             });
             for (index, item) in tuple.into_iter().enumerate() {
                 if let (false, Some(Value::List(bag))) = (by.contains(&index), group.get(index)) {
@@ -127,8 +140,8 @@ impl Behaviour for GroupTuple {
                 }
             }
             *count += 1;
-            if self.size == Some(*count)
-                && let Some((group, _)) = self.groups.shift_remove(&key)
+            if *size == Some(*count)
+                && let Some((group, _, _)) = self.groups.shift_remove(&key)
             {
                 context.emit(self.output, self.group_value(group));
             }

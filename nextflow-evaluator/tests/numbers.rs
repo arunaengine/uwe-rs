@@ -180,3 +180,14 @@ fn primitive_casts_constants_and_counts() {
         "[3, false, -Infinity, [1:2, 0:1], [a:1]]"
     );
 }
+
+#[test]
+fn operator_methods() {
+    assert_eq!(
+        value(
+            "[2.GB.multiply(1.5), 2.GB.div(2), 1.GB.plus(1.GB), 3.GB.minus(1.GB), 1.h.multiply(2), \
+             6.multiply(7), 7.div(2), 1.plus(2), 5.minus(1), 2.power(3), 7.mod(3)]"
+        ),
+        "[3 GB, 1 GB, 2 GB, 2 GB, 2h, 42, 3.5, 3, 4, 8, 1]"
+    );
+}

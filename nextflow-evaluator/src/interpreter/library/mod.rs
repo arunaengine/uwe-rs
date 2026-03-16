@@ -101,6 +101,19 @@ impl Interpreter<'_> {
         if found.is_some() {
             return Ok(found);
         }
+        // The method of an operator, like `multiply` for `*`, applies the operator.
+        if let [other] = arguments {
+            use crate::value::Operator::*;
+            let operator = [Add, Subtract, Multiply, Divide, Modulo, Power]
+                .into_iter()
+                .find(|operator| operator.method() == name);
+            if let Some(operator) = operator
+                && !matches!(object, Value::List(_) | Value::Set(_) | Value::Map(_))
+                && let Ok(value) = object.apply(operator, other)
+            {
+                return Ok(Some(value));
+            }
+        }
         // Groovy iterates any other object as one element.
         if let ("collect", [Value::Closure(f)]) = (name, arguments) {
             let result = self.call_closure_value(f, vec![object.clone()], span)?;

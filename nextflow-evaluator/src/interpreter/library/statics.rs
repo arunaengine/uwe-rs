@@ -70,6 +70,8 @@ impl Interpreter<'_> {
             ("Double", "MAX_VALUE") => number(Number::Double(f64::MAX)),
             ("Long", "MAX_VALUE") => number(Number::Long(i64::MAX)),
             ("Long", "MIN_VALUE") => number(Number::Long(i64::MIN)),
+            // `System.out` and `System.err` print through the host.
+            ("System", "out" | "err") => Some(Value::Namespace(format!("System.{name}").into())),
             (_, "name") => crate::value::qualified_class_name(class).map(Value::string),
             (_, "simpleName") => {
                 crate::value::qualified_class_name(class).map(|_| Value::string(class))

@@ -76,6 +76,13 @@ impl Host for Session<'_> {
             }
             return Ok(Some(Value::Null));
         }
+        if let ("System.out" | "System.err", "println" | "print", [message]) =
+            (namespace, name, arguments.as_slice())
+        {
+            let end = if name == "println" { "\n" } else { "" };
+            self.base.print(&format!("{message}{end}"));
+            return Ok(Some(Value::Null));
+        }
         self.base.namespace_method(namespace, name, arguments)
     }
 

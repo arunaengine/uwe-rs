@@ -461,6 +461,18 @@ impl Interpreter<'_> {
                 Ok(Value::Exception(Rc::new(exception)))
             }
             (None, []) if class == "Date" => Ok(Value::Date(crate::date::now())),
+            (None, []) if matches!(class, "LinkedHashMap" | "HashMap" | "TreeMap") => {
+                Ok(Value::map([]))
+            }
+            (None, [Value::Map(map)]) if matches!(class, "LinkedHashMap" | "HashMap") => {
+                Ok(super::library::copy_map(&Value::Map(map.clone())))
+            }
+            (None, []) if matches!(class, "ArrayList" | "LinkedList") => {
+                Ok(Value::list(Vec::new()))
+            }
+            (None, [items @ (Value::List(_) | Value::Set(_))]) if class == "ArrayList" => {
+                Ok(Value::list(super::library::elements(items)))
+            }
             (None, [path]) if class == "File" => {
                 let launch = self.host.launch_dir();
                 Ok(Value::Path(Rc::new(PathValue::parse(

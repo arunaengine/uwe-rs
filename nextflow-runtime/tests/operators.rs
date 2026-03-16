@@ -403,3 +403,23 @@ fn splitter_records_and_closures() {
         ["A", "B"]
     );
 }
+
+#[test]
+fn collate_and_small_library_methods() {
+    assert_eq!(
+        lines("channel.of(1, 2, 3, 4, 5).collate(2).view()"),
+        ["[1, 2]", "[3, 4]", "[5]"]
+    );
+    assert_eq!(
+        lines("channel.of(1, 2, 3, 4, 5).collate(3, 1).view()"),
+        ["[1, 2, 3]", "[2, 3, 4]", "[3, 4, 5]", "[4, 5]", "[5]"]
+    );
+    assert_eq!(
+        lines(
+            "println([\"abcdef\".take(3), \"abc\".take(10), \"a-b-a\".minus(\"a\"), \"abcdef\".drop(2), \
+             \"abcdef\".takeRight(2), \"abcdef\".dropRight(2)])\nSystem.out.println(\"out line\")\n\
+             def m = new LinkedHashMap([a: 1])\nm.b = 2\nprintln m\nsleep(1)"
+        ),
+        ["[abc, abc, -b-a, cdef, ef, abcd]", "out line", "[a:1, b:2]"]
+    );
+}

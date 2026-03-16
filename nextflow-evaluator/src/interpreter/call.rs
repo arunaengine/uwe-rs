@@ -140,6 +140,10 @@ impl Interpreter<'_> {
             ("branchCriteria" | "multiMapCriteria", [labels, criteria]) => {
                 return Ok(Value::list(vec![labels.clone(), criteria.clone()]));
             }
+            ("sleep", [Value::Number(millis)]) => {
+                let millis = u64::try_from(millis.to_i64()).unwrap_or(0);
+                std::thread::sleep(std::time::Duration::from_millis(millis));
+            }
             ("env", [name]) => {
                 let value = self.host.environment(&name.to_string());
                 return Ok(value.map_or(Value::Null, Value::string));

@@ -32,6 +32,21 @@ impl Interpreter<'_> {
         let length = || text.encode_utf16().count();
         Ok(Some(match (name, arguments) {
             ("size" | "length", []) => Value::integer(length() as i32),
+            ("take" | "drop" | "takeRight" | "dropRight", [count]) if integer(count).is_some() => {
+                let count = integer(count).unwrap_or(0).max(0) as usize;
+                let characters: Vec<char> = text.chars().collect();
+                let count = count.min(characters.len());
+                let kept: String = match name {
+                    "take" => characters[..count].iter().collect(),
+                    "drop" => characters[count..].iter().collect(),
+                    "takeRight" => characters[characters.len() - count..].iter().collect(),
+                    _ => characters[..characters.len() - count].iter().collect(),
+                };
+                Value::string(kept)
+            }
+            ("minus", [other]) => Value::string(text)
+                .apply(crate::value::Operator::Subtract, other)
+                .at(span)?,
             ("isEmpty", []) => Value::Boolean(text.is_empty()),
             ("isBlank", []) => Value::Boolean(text.chars().all(char::is_whitespace)),
             ("toString", []) => Value::string(text),

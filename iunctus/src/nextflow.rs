@@ -306,6 +306,9 @@ fn execute(
 fn pretend(request: &TaskRequest, directory: &Path) -> std::io::Result<TaskOutcome> {
     let work = directory.join(request.id.0.to_string());
     std::fs::create_dir_all(&work)?;
+    // The script and name of the task, to compare with a Nextflow run.
+    std::fs::write(work.join(".command.sh"), &request.script)?;
+    std::fs::write(work.join(".command.name"), &request.name)?;
     println!("[mock] {}", request.name);
     let mut outcome = TaskOutcome {
         id: request.id,

@@ -26,6 +26,8 @@ pub enum State {
     TemplateEngine,
     /// `org.yaml.snakeyaml.Yaml`
     Yaml,
+    /// `java.net.URI`, by its text.
+    Uri(Rc<str>),
     /// A template of the engine, with its text.
     Template(Rc<str>),
 }

@@ -54,8 +54,13 @@ pub(super) fn path_method(path: &Rc<PathValue>, name: &str, arguments: &[Value])
         ),
         ("getScheme", []) => Some(Value::string(path.scheme())),
         ("toUriString", []) => Some(Value::string(path.uri())),
-        // `java.net.URI`, which prints as its text.
-        ("toUri", []) => Some(Value::string(path.uri())),
+        ("toUri", []) => {
+            let text = match path.prefix {
+                Some(_) => path.uri(),
+                None => format!("file://{}", path.path),
+            };
+            Some(super::uri(&text))
+        }
         ("toAbsolutePath" | "normalize" | "toRealPath" | "toPath" | "toFile", []) => {
             Some(Value::Path(path.clone()))
         }

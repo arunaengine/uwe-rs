@@ -176,3 +176,17 @@ fn yaml_load_and_dump() {
         "[[P:GUNZIP:[gunzip:1.13, other:2.0.1]], GUNZIP:\n  gunzip: 1.13\n  other: 2.0.1, true]"
     );
 }
+
+#[test]
+fn uris_have_their_parts() {
+    assert_eq!(
+        value(
+            "def u = new URI('https://user@example.org:8080/a/b.txt?x=1#top')\n\
+             def f = file('/tmp/x.txt').toUri()\n\
+             [u.scheme, u.host, u.port, u.path, u.query, u.fragment, u.authority, u.toString(), \
+             f.scheme, f.path, f.host, f.toString(), new URI('data/x.csv').scheme]"
+        ),
+        "[https, example.org, 8080, /a/b.txt, x=1, top, user@example.org:8080, \
+         https://user@example.org:8080/a/b.txt?x=1#top, file, /tmp/x.txt, null, file:///tmp/x.txt, null]"
+    );
+}

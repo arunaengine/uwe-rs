@@ -176,6 +176,7 @@ pub(super) const CLASSES: &[&str] = &[
     "String",
     "System",
     "Tuple",
+    "URI",
     "UUID",
     "Value",
     "VersionNumber",

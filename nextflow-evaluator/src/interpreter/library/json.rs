@@ -133,6 +133,16 @@ impl Interpreter<'_> {
                 workflow.on_complete.push(handler.clone());
                 Value::Null
             }
+            (State::Uri(text), part, []) if part.starts_with("get") => {
+                let part = part.trim_start_matches("get").to_ascii_lowercase();
+                if part == "port" {
+                    let port = super::uri_part(text, "port").and_then(|p| p.parse::<i32>().ok());
+                    Value::integer(port.unwrap_or(-1))
+                } else {
+                    super::uri_part(text, &part).map_or(Value::Null, Value::string)
+                }
+            }
+            (State::Uri(text), "toString", []) => Value::string(text.as_ref()),
             (State::Yaml, "load", [source]) => {
                 let text = match source {
                     Value::Path(path) => {

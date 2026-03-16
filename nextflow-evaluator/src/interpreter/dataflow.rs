@@ -63,10 +63,21 @@ impl Interpreter<'_> {
         path.push(name.into());
         let qualified = path.join(":");
         let outputs = match (process, workflow) {
-            (Some(process), _) => self
-                .host
-                .call_process(&target, &process, &qualified, arguments)
-                .map_err(|error| error.or_at(span))?,
+            (Some(process), _) => {
+                // A closure argument gives its result, as Nextflow's process inputs take it.
+                let mut values = Vec::new();
+                for argument in arguments {
+                    values.push(match argument {
+                        Value::Closure(closure) => {
+                            self.call_closure_value(&closure, Vec::new(), span)?
+                        }
+                        other => other,
+                    });
+                }
+                self.host
+                    .call_process(&target, &process, &qualified, values)
+                    .map_err(|error| error.or_at(span))?
+            }
             (None, Some(workflow)) => {
                 self.workflow_path.push(name.into());
                 let result = self.call_workflow(&target, &workflow, arguments, span);

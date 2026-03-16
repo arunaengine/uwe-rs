@@ -65,6 +65,11 @@ config-corpus-test:
 	IUNCTUS_CONFIG_ORACLE="${IUNCTUS_CONFIG_ORACLE:-$HOME/.cache/iunctus/oracle/config}" \
 	cargo test --release --locked -p iunctus --test config_corpus -- --ignored
 
+# Runs every nf-core pipeline of the corpus with the mock executor and compares the outcomes.
+run-corpus-test:
+	NF_CORE_CORPUS="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}" \
+	cargo test --release --locked -p iunctus --test run_corpus -- --ignored
+
 # Records the stub scripts of the pipelines in iunctus/tests/fixtures/oracle/stub with Nextflow
 # and Docker; give the pipelines as arguments, like `just stub-oracle demo`.
 stub-oracle +pipelines:

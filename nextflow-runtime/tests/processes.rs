@@ -277,6 +277,13 @@ fn a_staged_file_iterates_as_itself() {
 }
 
 #[test]
+fn closure_arguments_give_their_result() {
+    let source = format!("{DOUBLE}workflow {{\n    DOUBLE {{ channel.of(4) }}.view()\n}}");
+    let (_, printed) = run(&source, &Options::default()).expect("runs");
+    assert_eq!(printed, "8\n");
+}
+
+#[test]
 fn missing_outputs_and_failures() {
     let process = "process P {\n    input:\n    val x\n    output:\n    path 'out.txt'\n    script:\n    'x'\n}\n";
     let parsed_source = format!("{process}workflow {{\n    P(1)\n}}");

@@ -28,6 +28,9 @@ pub enum State {
     Yaml,
     /// `java.net.URI`, by its text.
     Uri(Rc<str>),
+    /// An input stream or reader over bytes that were read at once, as `newInputStream()`,
+    /// `GZIPInputStream` and readers give it, with the position of the next byte.
+    Stream(Rc<[u8]>, usize),
     /// `nextflow.extension.GroupKey` from `groupKey(key, size)`: the key, which it stands for,
     /// with the size of its group for `groupTuple`.
     GroupKey(super::Value, i32),

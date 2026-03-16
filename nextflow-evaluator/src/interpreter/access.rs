@@ -502,6 +502,27 @@ impl Interpreter<'_> {
                 Ok(Value::Path(Rc::new(parent.resolve(&child.to_string()))))
             }
             (None, [text]) if class == "URI" => Ok(super::library::uri(&text.to_string())),
+            // Readers read the stream they wrap.
+            (None, [stream @ Value::Object(_), ..])
+                if matches!(class, "InputStreamReader" | "BufferedReader") =>
+            {
+                Ok(stream.clone())
+            }
+            (None, [Value::Object(object)]) if class == "GZIPInputStream" => {
+                let State::Stream(bytes, position) = &object.borrow().state else {
+                    return Err(unsupported(
+                        "a GZIPInputStream of something other than a stream",
+                        span,
+                    ));
+                };
+                let mut decoded = Vec::new();
+                let mut decoder =
+                    flate2::read::MultiGzDecoder::new(&bytes[(*position).min(bytes.len())..]);
+                std::io::Read::read_to_end(&mut decoder, &mut decoded).map_err(|error| {
+                    thrown(Exception::new("ZipException", error.to_string()), span)
+                })?;
+                Ok(super::library::stream(decoded))
+            }
             (None, []) if class == "Yaml" => {
                 Ok(Value::Object(Rc::new(std::cell::RefCell::new(Object {
                     class: "org.yaml.snakeyaml.Yaml",

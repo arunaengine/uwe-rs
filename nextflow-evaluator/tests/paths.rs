@@ -190,3 +190,23 @@ fn uris_have_their_parts() {
          https://user@example.org:8080/a/b.txt?x=1#top, file, /tmp/x.txt, null, file:///tmp/x.txt, null]"
     );
 }
+
+#[test]
+fn streams_readers_and_gzip() {
+    use std::io::Write;
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let plain = directory.path().join("x.txt");
+    std::fs::write(&plain, "a\nb\nc\n").unwrap();
+    let gz = directory.path().join("x.txt.gz");
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder.write_all(b"a\nb\nc\n").unwrap();
+    std::fs::write(&gz, encoder.finish().unwrap()).unwrap();
+    let (plain, gz) = (plain.display(), gz.display());
+    let body = format!(
+        "def seen = []\nfile('{plain}').eachLine {{ l -> seen << l }}\n\
+         def unzipped = []\nnew java.util.zip.GZIPInputStream(file('{gz}').newInputStream()).eachLine {{ l, n -> unzipped << \"${{n}}${{l}}\" }}\n\
+         def first\nfile('{gz}').withInputStream {{ first = new BufferedReader(new InputStreamReader(new java.util.zip.GZIPInputStream(it), 'ASCII')).readLine() }}\n\
+         [seen, unzipped, first, file('{plain}').newInputStream().withReader {{ r -> r.readLine() + r.readLine() }}]"
+    );
+    assert_eq!(value(&body), "[[a, b, c], [1a, 2b, 3c], a, ab]");
+}

@@ -257,3 +257,13 @@ pub(in crate::interpreter) fn uri_part(text: &str, part: &str) -> Option<String>
     };
     value.map(str::to_owned)
 }
+
+/// A new input stream over bytes.
+pub(in crate::interpreter) fn stream(bytes: Vec<u8>) -> Value {
+    Value::Object(std::rc::Rc::new(std::cell::RefCell::new(
+        crate::value::Object {
+            class: "java.io.InputStream",
+            state: crate::value::State::Stream(bytes.into(), 0),
+        },
+    )))
+}

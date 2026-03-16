@@ -1,11 +1,8 @@
 # nf-core module and subworkflow files that lowering rejects on purpose, relative to the modules
 # checkout of the corpus, with the first error. All other files must lower. A file leaves this list
 # when iunctus supports what it uses.
-modules/nf-core/elprep/fastatoelfasta/main.nf The class `java.time.format.DateTimeFormatter` is not supported yet
-modules/nf-core/elprep/filter/main.nf The class `java.time.format.DateTimeFormatter` is not supported yet
-subworkflows/nf-core/fasta_clean_faidx/main.nf The class `groovy.json.JsonOutput` is not supported yet
-subworkflows/nf-core/utils_nextflow_pipeline/main.nf Using the class `MemoryUnit` as a value is not supported yet
-subworkflows/nf-core/utils_nfcore_pipeline/main.nf The class `nextflow.extension.FilesEx` is not supported yet
+modules/nf-core/elprep/fastatoelfasta/main.nf The class `java.time.OffsetDateTime` is not supported yet
+modules/nf-core/elprep/filter/main.nf The class `java.time.OffsetDateTime` is not supported yet
 subworkflows/nf-core/utils_nfschema_plugin/main.nf Plugins are not supported yet: plugin/nf-schema
 subworkflows/nf-core/utils_nfvalidation_plugin/main.nf Plugins are not supported yet: plugin/nf-validation
 subworkflows/nf-core/utils_references/main.nf Plugins are not supported yet: plugin/nf-schema

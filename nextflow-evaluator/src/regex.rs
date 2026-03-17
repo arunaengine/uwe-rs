@@ -25,10 +25,11 @@ impl Pattern {
                 )
             })
         };
+        let translated = unquoted(source);
         Ok(Self {
             source: source.to_owned(),
-            regex: compile(source)?,
-            whole: compile(&format!(r"\A(?:{source})\z"))?,
+            regex: compile(&translated)?,
+            whole: compile(&format!(r"\A(?:{translated})\z"))?,
         })
     }
 
@@ -140,6 +141,8 @@ pub struct Matcher {
     pub text: String,
     /// Each match: the whole match, then each group or `None`.
     pub matches: Vec<Vec<Option<String>>>,
+    /// The match that `find()` reached last.
+    pub current: std::cell::Cell<Option<usize>>,
 }
 
 impl Matcher {
@@ -149,8 +152,24 @@ impl Matcher {
             pattern,
             text,
             matches,
+            current: std::cell::Cell::new(None),
         }
     }
+}
+
+/// Java's `\Q...\E` quotes as escaped text, which the Rust engine does not know.
+fn unquoted(source: &str) -> String {
+    let mut result = String::new();
+    let mut rest = source;
+    while let Some(start) = rest.find("\\Q") {
+        result.push_str(&rest[..start]);
+        let quoted = &rest[start + 2..];
+        let end = quoted.find("\\E").unwrap_or(quoted.len());
+        result.push_str(&fancy_regex::escape(&quoted[..end]));
+        rest = quoted.get(end + 2..).unwrap_or("");
+    }
+    result.push_str(rest);
+    result
 }
 
 /// Appends a Java replacement string with the groups of one match.

@@ -30,6 +30,29 @@ pub(super) fn matcher_method(matcher: &Matcher, name: &str, arguments: &[Value])
         ("size", []) => Some(Value::Number(Number::Long(matcher.matches.len() as i64))),
         ("matches", []) => Some(Value::Boolean(matcher.pattern.matches(&matcher.text))),
         ("groupCount", []) => Some(Value::integer(matcher.pattern.group_count() as i32)),
+        ("find", []) => {
+            let next = matcher.current.get().map_or(0, |current| current + 1);
+            let found = next < matcher.matches.len();
+            matcher.current.set(Some(next.min(matcher.matches.len())));
+            Some(Value::Boolean(found))
+        }
+        ("group", [] | [Value::Number(_)]) => {
+            let group = match arguments {
+                [Value::Number(group)] => group.to_i64() as usize,
+                _ => 0,
+            };
+            let found = matcher
+                .current
+                .get()
+                .and_then(|current| matcher.matches.get(current))?;
+            Some(
+                found
+                    .get(group)
+                    .cloned()
+                    .flatten()
+                    .map_or(Value::Null, Value::string),
+            )
+        }
         _ => None,
     }
 }

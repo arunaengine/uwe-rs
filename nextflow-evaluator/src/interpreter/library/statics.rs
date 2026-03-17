@@ -22,6 +22,15 @@ impl Interpreter<'_> {
         span: Span,
     ) -> Result<Option<Value>, Error> {
         Ok(Some(match (class, name, arguments) {
+            ("Pattern", "compile", [text]) => {
+                let pattern = crate::regex::Pattern::new(&text.to_string()).at(span)?;
+                Value::Pattern(std::rc::Rc::new(pattern))
+            }
+            ("Pattern", "quote", [text]) => Value::string(format!("\\Q{text}\\E")),
+            ("Pattern", "matches", [regex, text]) => {
+                let pattern = crate::regex::Pattern::new(&regex.to_string()).at(span)?;
+                Value::Boolean(pattern.matches(&text.to_string()))
+            }
             ("Arrays", "asList", [Value::List(list)]) => Value::list(list.borrow().items.clone()),
             ("Arrays", "asList", items) => Value::list(items.to_vec()),
             ("FilesEx", "copyTo", [source @ Value::Path(_), target]) => {
@@ -70,6 +79,8 @@ impl Interpreter<'_> {
             ("Double", "MAX_VALUE") => number(Number::Double(f64::MAX)),
             ("Long", "MAX_VALUE") => number(Number::Long(i64::MAX)),
             ("Long", "MIN_VALUE") => number(Number::Long(i64::MIN)),
+            // The kinds of files that `eachFile` and `eachFileRecurse` visit.
+            ("FileType", "FILES" | "DIRECTORIES" | "ANY") => Some(Value::string(name)),
             // `System.out` and `System.err` print through the host.
             ("System", "out" | "err") => Some(Value::Namespace(format!("System.{name}").into())),
             (_, "name") => crate::value::qualified_class_name(class).map(Value::string),

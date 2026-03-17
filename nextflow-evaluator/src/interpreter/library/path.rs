@@ -119,6 +119,36 @@ impl Interpreter<'_> {
                     .call_method(&stream, "eachLine", vec![Value::Closure(f.clone())], span)
                     .map(Some);
             }
+            ("eachFile" | "eachFileRecurse" | "eachDir", [.., Value::Closure(f)]) => {
+                // The kind of files to visit: `FileType.FILES`, `DIRECTORIES` or `ANY`.
+                let kind = match (name, arguments) {
+                    ("eachDir", _) => "DIRECTORIES".to_owned(),
+                    (_, [kind, _]) => kind.to_string(),
+                    _ => "ANY".to_owned(),
+                };
+                let recurse = name == "eachFileRecurse";
+                let mut pending = vec![path.clone()];
+                while let Some(directory) = pending.pop() {
+                    let mut entries = self.host.list(&directory).map_err(host_error)?;
+                    entries.sort();
+                    for (entry, is_directory) in entries {
+                        let file = directory.resolve(&entry);
+                        let wanted = match kind.as_str() {
+                            "FILES" => !is_directory,
+                            "DIRECTORIES" => is_directory,
+                            _ => true,
+                        };
+                        if wanted {
+                            let file = Value::Path(Rc::new(file.clone()));
+                            self.call_closure_value(f, vec![file], span)?;
+                        }
+                        if recurse && is_directory {
+                            pending.push(file);
+                        }
+                    }
+                }
+                return Ok(Some(Value::Null));
+            }
             ("listFiles", []) => {
                 let entries = self.host.list(path).map_err(host_error)?;
                 let mut files: Vec<PathValue> = entries

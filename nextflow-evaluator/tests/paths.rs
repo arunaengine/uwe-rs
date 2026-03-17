@@ -210,3 +210,27 @@ fn streams_readers_and_gzip() {
     );
     assert_eq!(value(&body), "[[a, b, c], [1a, 2b, 3c], a, ab]");
 }
+
+#[test]
+fn regex_classes_and_file_walks() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    for file in ["x.txt", "a/y.txt", "a/b/z.txt"] {
+        let path = directory.path().join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, "").unwrap();
+    }
+    let d = directory.path().display();
+    let body = format!(
+        "def p = java.util.regex.Pattern.compile(\"(?:^|\\\\s)${{java.util.regex.Pattern.quote('--k.x')}}\\\\s+(\\\\S+)\")\n\
+         def m = p.matcher('a --k.x 5 b')\n\
+         def first = [m.find(), m.group(1), java.util.regex.Pattern.quote('a.b'), java.util.regex.Pattern.matches('a.c', 'abc')]\n\
+         def files = []\nfile('{d}').toFile().eachFileRecurse(groovy.io.FileType.FILES) {{ f -> files << f.name }}\n\
+         def dirs = []\nfile('{d}').eachFileRecurse(groovy.io.FileType.DIRECTORIES) {{ f -> dirs << f.name }}\n\
+         def all = []\nfile('{d}').eachFile {{ f -> all << f.name }}\n\
+         [first, files.sort(), dirs.sort(), all.sort()]"
+    );
+    assert_eq!(
+        value(&body),
+        "[[true, 5, \\Qa.b\\E, true], [x.txt, y.txt, z.txt], [a, b], [a, x.txt]]"
+    );
+}

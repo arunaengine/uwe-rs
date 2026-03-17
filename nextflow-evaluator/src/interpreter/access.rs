@@ -502,6 +502,30 @@ impl Interpreter<'_> {
                 Ok(Value::Path(Rc::new(parent.resolve(&child.to_string()))))
             }
             (None, [text]) if class == "URI" => Ok(super::library::uri(&text.to_string())),
+            // `new URI(scheme, userInfo, host, port, path, query, fragment)`, where `null` and
+            // a port of -1 leave a part out.
+            (None, [scheme, user, host, port, path, query, fragment]) if class == "URI" => {
+                let part = |value: &Value, before: &str, after: &str| match value {
+                    Value::Null => String::new(),
+                    value => format!("{before}{value}{after}"),
+                };
+                let port = match port {
+                    Value::Number(port) if port.to_i64() != -1 => format!(":{port}"),
+                    _ => String::new(),
+                };
+                let mut authority = format!("{}{}{port}", part(user, "", "@"), part(host, "", ""));
+                if !authority.is_empty() {
+                    authority.insert_str(0, "//");
+                }
+                let text = format!(
+                    "{}{authority}{}{}{}",
+                    part(scheme, "", ":"),
+                    part(path, "", ""),
+                    part(query, "?", ""),
+                    part(fragment, "#", "")
+                );
+                Ok(super::library::uri(&text))
+            }
             // Readers read the stream they wrap.
             (None, [stream @ Value::Object(_), ..])
                 if matches!(class, "InputStreamReader" | "BufferedReader") =>

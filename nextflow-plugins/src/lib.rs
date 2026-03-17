@@ -17,10 +17,59 @@ const NF_SCHEMA: &[&str] = &[
     "validateParameters",
 ];
 
+/// The functions of nf-core-utils 0.5.0. Those that `nf_core_utils.nf` defines run as
+/// script code; the others are not supported yet.
+const NF_CORE_UTILS: &[&str] = &[
+    "autoToolBibliographyText",
+    "autoToolCitationText",
+    "checkCondaChannels",
+    "checkConfigProvided",
+    "checkProfileProvided",
+    "collectCitationsFromFiles",
+    "collectVersions",
+    "completionEmail",
+    "completionSummary",
+    "convertLegacyYamlToEvalSyntax",
+    "convertMetaYamlToTopicFormat",
+    "dumpParametersToJSON",
+    "generateCitationReport",
+    "generateComprehensiveReport",
+    "generateModuleToolCitation",
+    "generateVersionReport",
+    "generateYamlFromEvalSyntax",
+    "getCitation",
+    "getGenomeAttribute",
+    "getReferencesFile",
+    "getReferencesValue",
+    "getWorkflowVersion",
+    "imNotification",
+    "methodsDescriptionText",
+    "paramsSummaryMultiqc",
+    "processCitationsFromFile",
+    "processCitationsFromTopic",
+    "processMixedCitationSources",
+    "processMixedVersionSources",
+    "processVersionsFromFile",
+    "processVersionsFromTopic",
+    "softwareVersionsToYAML",
+    "toolBibliographyText",
+    "toolCitationText",
+    "workflowVersionToChannel",
+];
+
 /// The functions of a plugin, or `None` for a plugin iunctus does not have.
 pub fn functions(plugin: &str) -> Option<&'static [&'static str]> {
     match plugin {
+        "nf-core-utils" => Some(NF_CORE_UTILS),
         "nf-schema" => Some(NF_SCHEMA),
+        _ => None,
+    }
+}
+
+/// The script that ports functions of a plugin to Nextflow script, if there is one.
+pub fn script(plugin: &str) -> Option<&'static str> {
+    match plugin {
+        "nf-core-utils" => Some(include_str!("nf_core_utils.nf")),
         _ => None,
     }
 }

@@ -142,6 +142,49 @@ fn plugin_includes_call_the_plugin() {
 }
 
 #[test]
+fn plugin_scripts_port_plugin_functions() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    write(
+        root.path(),
+        "main.nf",
+        "include { getWorkflowVersion; checkConfigProvided; softwareVersionsToYAML } from 'plugin/nf-core-utils'\n\
+         workflow {\n\
+             println(getWorkflowVersion('1.0', 'abcdef123'))\n\
+             println(checkConfigProvided())\n\
+             def versions = channel.of(['A:FASTQC', 'fastqc', '0.12.1'], \"B:\\n  x:y: '2'\\n\")\n\
+             softwareVersionsToYAML(softwareVersions: versions, nextflowVersion: '26.04.6').view()\n\
+         }\n",
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let mut output = Output::default();
+    nextflow_runtime::run(&module, &mut output).expect("runs");
+    assert_eq!(
+        output.0,
+        "v1.0-gabcdef1\nfalse\nB:\n  y: '2'\nFASTQC:\n  fastqc: 0.12.1\n\
+         Workflow:\n    unknown: \n    Nextflow: 26.04.6\n"
+    );
+    write(
+        root.path(),
+        "email.nf",
+        "include { completionEmail } from 'plugin/nf-core-utils'\n\
+         workflow {\n    completionEmail([:], 'a@b.c', null, false, 'out', true, [])\n}\n",
+    );
+    let module = Loader::default()
+        .load(&root.path().join("email.nf"))
+        .expect("loads");
+    let error = nextflow_runtime::run(&module, &mut Output::default()).unwrap_err();
+    let error = error.to_string();
+    assert!(
+        error.ends_with(
+            "email.nf:3:5: Not supported yet: the function `completionEmail` of the plugin `nf-core-utils`"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
 fn process_templates_render_with_task_variables() {
     let root = tempfile::tempdir().expect("a temporary directory");
     write(

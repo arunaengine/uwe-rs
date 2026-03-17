@@ -68,6 +68,18 @@ fn runs_and_reuses_tasks() {
 }
 
 #[test]
+fn a_bare_script_name_has_the_launch_directory_as_project() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    std::fs::write(
+        directory.path().join("main.nf"),
+        "workflow {\n    println(projectDir == launchDir)\n}\n",
+    )
+    .expect("writes the script");
+    let (code, output) = iunctus(directory.path(), &["run", "main.nf"]);
+    assert_eq!((code, output.as_str()), (0, "true\n"));
+}
+
+#[test]
 fn unsupported_features_exit_with_33() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(

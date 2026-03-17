@@ -151,7 +151,11 @@ pub fn run(target: &Path, arguments: &Arguments, settings: &Settings) -> Result<
             .map_or("main.nf".into(), |name| name.to_string());
         (target.to_owned(), target.join(main))
     } else {
-        let project = target.parent().unwrap_or(Path::new("."));
+        // The parent of a bare file name like `main.nf` is empty.
+        let project = target
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
         (project.to_owned(), target.to_owned())
     };
     let config = load_config(&project, arguments)?;

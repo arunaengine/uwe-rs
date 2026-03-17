@@ -10,16 +10,16 @@ use content_store::Store;
 use executor::local::LocalContainer;
 use nextflow_config::Config;
 use nextflow_evaluator::exception::Exception;
-use nextflow_evaluator::interpreter::{Error, Host};
+use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
 use nextflow_evaluator::value::PathValue;
 use nextflow_runtime::task::{
     ENVIRONMENT, STDOUT, command_script, container, read_environment, task_request,
 };
 use nextflow_runtime::{Loader, Options, Run, TaskOutcome, TaskRequest};
-use sha2::{Digest, Sha256};
 use task_runner::Runner;
 
 use crate::arguments::Arguments;
+use crate::remote;
 
 pub struct Settings {
     pub store: PathBuf,
@@ -63,34 +63,40 @@ impl Host for Console {
     }
 
     fn download(&mut self, path: &PathValue) -> Result<PathBuf, Error> {
-        let url = path.uri();
-        let unsupported = |message: String| Error::Unsupported {
-            message,
-            span: Default::default(),
+        let Some(url) = remote::https_url(path) else {
+            return Err(Error::Unsupported {
+                message: format!("reading remote files like {}", path.uri()),
+                span: Default::default(),
+            });
         };
-        if !matches!(path.scheme(), "http" | "https") {
-            return Err(unsupported(format!("reading remote files like {url}")));
+        remote::download(&url, &self.downloads).map_err(io_error)
+    }
+
+    fn metadata(&mut self, path: &PathValue) -> Result<Option<FileMetadata>, Error> {
+        if path.prefix.is_none() {
+            return match std::fs::metadata(&path.path) {
+                Ok(metadata) => Ok(Some(FileMetadata {
+                    directory: metadata.is_dir(),
+                    size: metadata.len(),
+                })),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(error) => Err(io_error(format!("{}: {error}", path.path))),
+            };
         }
-        let digest = Sha256::digest(url.as_bytes());
-        let name: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
-        let local = self.downloads.join(name);
-        if local.is_file() {
-            return Ok(local);
+        match remote::https_url(path) {
+            Some(url) => remote::metadata(path, &url).map_err(io_error),
+            None => Err(Error::Unsupported {
+                message: format!("reading remote files like {}", path.uri()),
+                span: Default::default(),
+            }),
         }
-        let failed = |message: String| Error::Thrown {
-            exception: Rc::new(Exception::new("IOException", message)),
-            span: Default::default(),
-        };
-        let response = reqwest::blocking::get(&url)
-            .and_then(|response| response.error_for_status())
-            .and_then(|response| response.bytes())
-            .map_err(|error| failed(format!("Cannot read {url}: {error}")))?;
-        std::fs::create_dir_all(&self.downloads).map_err(|error| failed(error.to_string()))?;
-        let partial = local.with_extension("partial");
-        std::fs::write(&partial, &response)
-            .and_then(|()| std::fs::rename(&partial, &local))
-            .map_err(|error| failed(error.to_string()))?;
-        Ok(local)
+    }
+}
+
+fn io_error(message: String) -> Error {
+    Error::Thrown {
+        exception: Rc::new(Exception::new("IOException", message)),
+        span: Default::default(),
     }
 }
 

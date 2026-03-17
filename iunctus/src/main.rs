@@ -5,6 +5,7 @@
 
 mod arguments;
 mod nextflow;
+mod remote;
 
 use std::path::PathBuf;
 use std::process::ExitCode;

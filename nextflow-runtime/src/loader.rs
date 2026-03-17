@@ -31,6 +31,8 @@ pub struct Loader {
     modules: HashMap<PathBuf, Rc<Module>>,
     /// The modules that stand for plugins, by plugin id.
     plugins: HashMap<Rc<str>, Rc<Module>>,
+    /// The scripts that port plugin functions, by plugin id.
+    plugin_scripts: HashMap<Rc<str>, Rc<Module>>,
     loading: HashSet<PathBuf>,
     errors: Vec<String>,
 }
@@ -76,11 +78,26 @@ impl Loader {
                 return None;
             }
         };
-        let lines = LineIndex::new(&source);
+        self.lower(&source, path)
+    }
+
+    /// The script that ports functions of a plugin, loaded once.
+    fn plugin_script(&mut self, plugin: &str, source: &str) -> Option<Rc<Module>> {
+        if let Some(module) = self.plugin_scripts.get(plugin) {
+            return Some(module.clone());
+        }
+        let module = Rc::new(self.lower(source, Path::new(&format!("plugin/{plugin}.nf")))?);
+        self.plugin_scripts.insert(plugin.into(), module.clone());
+        Some(module)
+    }
+
+    /// Parses and lowers the source of a script.
+    fn lower(&mut self, source: &str, path: &Path) -> Option<Module> {
+        let lines = LineIndex::new(source);
         let located = |error: &nextflow_parser::Diagnostic| {
             format!("{}:{}", path.display(), lines.locate(error))
         };
-        let parsed = parse_script(&source);
+        let parsed = parse_script(source);
         if !parsed.errors.is_empty() {
             self.errors.extend(parsed.errors.iter().map(located));
             return None;
@@ -89,9 +106,9 @@ impl Loader {
             loader: self,
             directory: path.parent().unwrap_or(Path::new("/")).to_owned(),
         };
-        match lower_script(&parsed.tree, &source, &mut imports) {
+        match lower_script(&parsed.tree, source, &mut imports) {
             Ok(module) => {
-                *module.source.borrow_mut() = Some(source.as_str().into());
+                *module.source.borrow_mut() = Some(source.into());
                 *module.path.borrow_mut() = Some(path.to_string_lossy().into());
                 Some(module)
             }
@@ -107,14 +124,23 @@ impl Loader {
         let directory = path.parent().unwrap_or(Path::new("/")).to_owned();
         for include in &module.includes {
             if let Some(plugin) = include.source.strip_prefix("plugin/") {
-                let target = self.plugins.entry(plugin.into()).or_insert_with(|| {
-                    Rc::new(Module {
-                        plugin: Some(plugin.into()),
-                        ..Module::default()
-                    })
+                // A function that a script ports runs as script code.
+                let script = self
+                    .plugin_scripts
+                    .get(plugin)
+                    .filter(|script| script.function_names.contains_key(&include.name))
+                    .cloned();
+                let target = script.unwrap_or_else(|| {
+                    let native = self.plugins.entry(plugin.into()).or_insert_with(|| {
+                        Rc::new(Module {
+                            plugin: Some(plugin.into()),
+                            ..Module::default()
+                        })
+                    });
+                    native.clone()
                 });
                 let link = Link {
-                    module: target.clone(),
+                    module: target,
                     name: include.name.clone(),
                 };
                 module
@@ -166,6 +192,9 @@ struct Includes<'a> {
 impl Imports for Includes<'_> {
     fn kind(&mut self, source: &str, name: &str) -> Result<DefinitionKind, String> {
         if let Some(plugin) = source.strip_prefix("plugin/") {
+            if let Some(script) = nextflow_plugins::script(plugin) {
+                self.loader.plugin_script(plugin, script);
+            }
             return match nextflow_plugins::functions(plugin) {
                 Some(functions) if functions.contains(&name) => Ok(DefinitionKind::Function),
                 Some(_) => Err(format!(

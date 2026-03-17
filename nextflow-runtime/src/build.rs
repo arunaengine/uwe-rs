@@ -713,6 +713,7 @@ impl Builder<'_> {
                         _ => None,
                     },
                     files,
+                    decompress: option(&options, "decompress").is_none_or(|value| value.truth()),
                     count: 0,
                 };
                 (vec![source], Box::new(node), Value::Channel(output))

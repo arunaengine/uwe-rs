@@ -435,3 +435,20 @@ fn group_keys_give_the_group_size() {
         ["[true, X, 5, x]", "[id:a] a 2 [1, 3]"]
     );
 }
+
+#[test]
+fn splitters_read_gzip_files() {
+    use std::io::Write;
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let gz = directory.path().join("rows.csv.gz");
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder.write_all(b"a,b\n1,2\n").unwrap();
+    std::fs::write(&gz, encoder.finish().unwrap()).unwrap();
+    assert_eq!(
+        lines(&format!(
+            "channel.fromPath('{}').splitCsv(header: true).view()",
+            gz.display()
+        )),
+        ["[a:1, b:2]"]
+    );
+}

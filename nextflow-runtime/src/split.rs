@@ -83,6 +83,8 @@ pub(crate) struct Split {
     pub each: Option<Rc<Closure>>,
     /// Where `file: true` writes the chunks, which are then emitted as files.
     pub files: Option<PathValue>,
+    /// Whether `.gz` files are decompressed first, which `decompress: false` turns off.
+    pub decompress: bool,
     pub count: usize,
 }
 
@@ -110,17 +112,12 @@ impl Behaviour for Split {
             };
             let (text, name) = match &target {
                 Value::Path(path) => {
-                    if path.name().ends_with(".gz") {
-                        return Err(Error::Unsupported {
-                            message: format!("splitting compressed files like {}", path.uri()),
-                            span: Default::default(),
-                        });
+                    let mut bytes = context.interpreter.host().read(path)?;
+                    if path.name().ends_with(".gz") && self.decompress {
+                        bytes = decompressed(&bytes, path)?;
                     }
-                    let bytes = context.interpreter.host().read(path)?;
-                    (
-                        String::from_utf8_lossy(&bytes).into_owned(),
-                        path.base_name().to_owned(),
-                    )
+                    let text = String::from_utf8_lossy(&bytes).into_owned();
+                    (text, path.base_name().to_owned())
                 }
                 other => (other.to_string(), "chunk".to_owned()),
             };
@@ -234,6 +231,23 @@ impl Split {
         })
         .collect()
     }
+}
+
+/// The bytes of a gzip file, decompressed.
+fn decompressed(bytes: &[u8], path: &PathValue) -> Result<Vec<u8>, Error> {
+    let mut decoded = Vec::new();
+    let mut decoder = flate2::read::MultiGzDecoder::new(bytes);
+    std::io::Read::read_to_end(&mut decoder, &mut decoded).map_err(|error| {
+        let message = format!("Cannot decompress {}: {error}", path.uri());
+        Error::Thrown {
+            exception: Rc::new(nextflow_evaluator::exception::Exception::new(
+                "ZipException",
+                message,
+            )),
+            span: Default::default(),
+        }
+    })?;
+    Ok(decoded)
 }
 
 /// The records of a text: a record starts at each line that `starts` accepts.

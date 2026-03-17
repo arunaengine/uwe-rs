@@ -148,7 +148,7 @@ impl Interpreter<'_> {
                 workflow.on_complete.push(handler.clone());
                 Value::Null
             }
-            (State::Uri(text), part, []) if part.starts_with("get") => {
+            (State::Uri(text), part, []) if part.starts_with("get") && part != "getClass" => {
                 let part = part.trim_start_matches("get").to_ascii_lowercase();
                 if part == "port" {
                     let port = super::uri_part(text, "port").and_then(|p| p.parse::<i32>().ok());

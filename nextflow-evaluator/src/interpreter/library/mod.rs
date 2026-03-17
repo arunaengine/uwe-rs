@@ -218,8 +218,8 @@ pub(in crate::interpreter) fn uri(text: &str) -> Value {
     )))
 }
 
-/// A part of a URI, as `java.net.URI` gives it: `scheme`, `authority`, `host`, `port`, `path`,
-/// `query` or `fragment`; `None` when the URI has no such part.
+/// A part of a URI, as `java.net.URI` gives it: `scheme`, `authority`, `userinfo`, `host`,
+/// `port`, `path`, `query` or `fragment`; `None` when the URI has no such part.
 pub(in crate::interpreter) fn uri_part(text: &str, part: &str) -> Option<String> {
     let (scheme, rest) = match text.split_once(':') {
         Some((scheme, rest))
@@ -251,6 +251,7 @@ pub(in crate::interpreter) fn uri_part(text: &str, part: &str) -> Option<String>
     let value = match part {
         "scheme" => scheme,
         "authority" => authority.filter(|a| !a.is_empty()),
+        "userinfo" => authority.and_then(|a| a.rsplit_once('@').map(|(user, _)| user)),
         "host" => host_port
             .map(|h| h.split(':').next().unwrap_or(h))
             .filter(|h| !h.is_empty()),

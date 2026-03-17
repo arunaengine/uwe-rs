@@ -189,6 +189,14 @@ fn uris_have_their_parts() {
         "[https, example.org, 8080, /a/b.txt, x=1, top, user@example.org:8080, \
          https://user@example.org:8080/a/b.txt?x=1#top, file, /tmp/x.txt, null, file:///tmp/x.txt, null]"
     );
+    assert_eq!(
+        value(
+            "[new URI('https', null, 'host', -1, '/p/', null, null), \
+             new URI('s3', 'me', 'bucket', 9000, '/key', 'q=1', 'f'), \
+             new URI('https://me@host/p').userInfo, new URI('https://host/p').userInfo]"
+        ),
+        "[https://host/p/, s3://me@bucket:9000/key?q=1#f, me, null]"
+    );
 }
 
 #[test]

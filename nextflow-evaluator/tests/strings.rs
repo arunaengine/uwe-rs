@@ -50,6 +50,34 @@ fn splitting_and_tokens() {
 }
 
 #[test]
+fn formats() {
+    assert_eq!(
+        value(
+            "String.format('%03d|%-5s|%5s|%.1f|%.3f|%x|%X|%,d|%+d|%08.2f|%%|%s|%b|%c', 7, 'ab', \
+             'cd', 0.15, 2.0005d, 255, 255, 1234567, 5, -3.14159, null, 'x', 65)"
+        ),
+        "007|ab   |   cd|0.2|2.001|ff|FF|1,234,567|+5|-0003.14|%|null|true|A"
+    );
+    assert_eq!(value("String.format('%2$s %1$s %s', 'a', 'b')"), "b a a");
+    assert_eq!(
+        value("String.format('%.2f %.0f %.0f %f', 0.125, 2.5, -2.5, 1.5)"),
+        "0.13 3 -3 1.500000"
+    );
+    assert_eq!(
+        value("String.format('%s %s', [1, 2], [a: 1])"),
+        "[1, 2] {a=1}"
+    );
+    assert_eq!(
+        value("String.format(java.util.Locale.ROOT, '%.2f', 1.234G)"),
+        "1.23"
+    );
+    assert_eq!(
+        eval("String.format('%d', 'x')").unwrap_err(),
+        "IllegalFormatConversionException: d != java.lang.String"
+    );
+}
+
+#[test]
 fn searching_and_slicing() {
     assert_eq!(value("'file.fastq.gz'.endsWith('.gz')"), "true");
     assert_eq!(value("'file.fastq.gz'.startsWith('file')"), "true");

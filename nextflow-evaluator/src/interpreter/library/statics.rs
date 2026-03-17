@@ -7,10 +7,10 @@ use nextflow_parser::Span;
 
 use crate::number::Number;
 use crate::units::java_round;
-use crate::value::{JsonOptions, Value};
+use crate::value::{JsonOptions, State, Value};
 
 use super::super::{AtSpan, Error, Interpreter};
-use super::json;
+use super::{format, json};
 
 impl Interpreter<'_> {
     /// `Class.name(arguments)`, or `None` when the class has no such method.
@@ -30,6 +30,15 @@ impl Interpreter<'_> {
             ("Pattern", "matches", [regex, text]) => {
                 let pattern = crate::regex::Pattern::new(&regex.to_string()).at(span)?;
                 Value::Boolean(pattern.matches(&text.to_string()))
+            }
+            // Numbers are formatted as the root locale does, whatever locale is given.
+            ("String", "format", [Value::Object(locale), pattern, rest @ ..])
+                if matches!(locale.borrow().state, State::Locale(_)) =>
+            {
+                Value::string(format::format(&pattern.to_string(), rest).at(span)?)
+            }
+            ("String", "format", [pattern, rest @ ..]) => {
+                Value::string(format::format(&pattern.to_string(), rest).at(span)?)
             }
             ("Arrays", "asList", [Value::List(list)]) => Value::list(list.borrow().items.clone()),
             ("Arrays", "asList", items) => Value::list(items.to_vec()),
@@ -81,6 +90,20 @@ impl Interpreter<'_> {
             ("Long", "MIN_VALUE") => number(Number::Long(i64::MIN)),
             // The kinds of files that `eachFile` and `eachFileRecurse` visit.
             ("FileType", "FILES" | "DIRECTORIES" | "ANY") => Some(Value::string(name)),
+            ("Locale", "ROOT" | "US" | "UK" | "ENGLISH") => {
+                let tag = match name {
+                    "ROOT" => "",
+                    "US" => "en_US",
+                    "UK" => "en_GB",
+                    _ => "en",
+                };
+                Some(Value::Object(std::rc::Rc::new(std::cell::RefCell::new(
+                    crate::value::Object {
+                        class: "java.util.Locale",
+                        state: State::Locale(tag.into()),
+                    },
+                ))))
+            }
             // `System.out` and `System.err` print through the host.
             ("System", "out" | "err") => Some(Value::Namespace(format!("System.{name}").into())),
             (_, "name") => crate::value::qualified_class_name(class).map(Value::string),

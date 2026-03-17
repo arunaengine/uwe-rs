@@ -190,6 +190,37 @@ impl Interpreter<'_> {
             ),
             ("toList", []) => Value::list(items.to_vec()),
             ("toSet", []) => hash_set(items),
+            ("grep", []) => {
+                Value::list(items.iter().filter(|item| item.truth()).cloned().collect())
+            }
+            // `grep(filter)` keeps the elements the filter accepts, as `isCase` decides.
+            ("grep", [filter]) => {
+                let mut chosen = Vec::new();
+                for item in items {
+                    let accepted = match filter {
+                        Value::Closure(f) => self
+                            .call_closure_value(f, vec![item.clone()], span)?
+                            .truth(),
+                        other => other.is_case(item).at(span)?,
+                    };
+                    if accepted {
+                        chosen.push(item.clone());
+                    }
+                }
+                Value::list(chosen)
+            }
+            // Other iterables, like a path of name parts, sort into a new list.
+            ("sort", rest) => {
+                let mut sorted = items.to_vec();
+                match rest {
+                    [] | [Value::Boolean(_)] => sorted.sort_by(Value::number_aware_compare),
+                    [Value::Closure(f)] | [Value::Boolean(_), Value::Closure(f)] => {
+                        self.sort_with(&mut sorted, f, span)?
+                    }
+                    _ => return Ok(None),
+                }
+                Value::list(sorted)
+            }
             ("plus" | "minus", [other]) => {
                 let operator = if name == "plus" {
                     Operator::Add

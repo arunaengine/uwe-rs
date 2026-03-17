@@ -36,6 +36,8 @@ pub enum State {
     GroupKey(super::Value, i32),
     /// A template of the engine, with its text.
     Template(Rc<str>),
+    /// `java.util.Locale`, by its tag like `en_US`.
+    Locale(Rc<str>),
 }
 
 /// The `workflow` of a run: its properties, and the handlers that run when it ends.

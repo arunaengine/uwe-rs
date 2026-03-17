@@ -129,7 +129,7 @@ impl Value {
                 out.push_str(&format!("Closure@{:x}", Rc::as_ptr(closure) as usize));
             }
             Value::Object(object) => match &object.borrow().state {
-                super::State::Uri(text) => out.push_str(text),
+                super::State::Uri(text) | super::State::Locale(text) => out.push_str(text),
                 // `GroupKey.toString()` is Groovy code, so a map key prints as Groovy shows it.
                 super::State::GroupKey(target, _) => out.push_str(&target.to_groovy_string()),
                 _ => {

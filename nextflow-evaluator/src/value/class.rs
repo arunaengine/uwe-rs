@@ -31,6 +31,7 @@ const QUALIFIED: &[&str] = &[
     "java.util.Collection",
     "java.util.Date",
     "java.util.List",
+    "java.util.Locale",
     "java.util.Map",
     "java.util.Random",
     "java.util.Set",

@@ -162,6 +162,7 @@ pub(super) const CLASSES: &[&str] = &[
     "JsonOutput",
     "JsonSlurper",
     "List",
+    "Locale",
     "Long",
     "Map",
     "Math",

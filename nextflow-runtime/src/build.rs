@@ -641,8 +641,14 @@ impl Builder<'_> {
                 };
                 (vec![source], Box::new(node), Value::Channel(output))
             }
-            ("splitCsv" | "splitText" | "splitFasta" | "splitFastq", [] | [Value::Closure(_)]) => {
-                let output = queue(self);
+            (
+                "splitCsv" | "splitText" | "splitFasta" | "splitFastq" | "countLines"
+                | "countFasta" | "countFastq",
+                [] | [Value::Closure(_)],
+            ) => {
+                // The count operators give the number of records in a value channel.
+                let counting = name.starts_with("count");
+                let output = self.network.channel(counting);
                 let number = |name: &str| match option(&options, name) {
                     Some(Value::Number(number)) if number.to_i64() > 0 => {
                         Some(number.to_i64() as usize)
@@ -665,12 +671,13 @@ impl Builder<'_> {
                         skip: number("skip").unwrap_or(0),
                         strip: option(&options, "strip").is_some_and(|value| value.truth()),
                     },
-                    "splitText" => Format::Text {
+                    "splitText" | "countLines" => Format::Text {
                         keep_header: option(&options, "keepHeader")
                             .is_some_and(|value| value.truth()),
                     },
                     _ => {
-                        let all = if name == "splitFasta" {
+                        let fasta = matches!(name, "splitFasta" | "countFasta");
+                        let all = if fasta {
                             ["id", "desc", "header", "text", "seqString", "sequence"].as_slice()
                         } else {
                             ["readHeader", "readString", "qualityHeader", "qualityString"]
@@ -690,7 +697,7 @@ impl Builder<'_> {
                             }
                             _ => None,
                         };
-                        if name == "splitFasta" {
+                        if fasta {
                             Format::Fasta(fields)
                         } else {
                             Format::Fastq(fields)
@@ -715,6 +722,7 @@ impl Builder<'_> {
                     files,
                     decompress: option(&options, "decompress").is_none_or(|value| value.truth()),
                     count: 0,
+                    total: counting.then_some(0),
                 };
                 (vec![source], Box::new(node), Value::Channel(output))
             }

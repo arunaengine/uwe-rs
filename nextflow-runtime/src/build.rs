@@ -15,10 +15,69 @@ use nextflow_evaluator::value::{ChannelId, ChannelOut, ListKind, PathValue, Valu
 use crate::files::CollectFile;
 use crate::keyed::{Combine, Cross, GroupTuple, Join};
 use crate::network::Network;
-use crate::operator::{Collate, Each, Factory, Gather, Gathering, Mix, Single};
+use crate::operator::{Collate, Each, Factory, Gather, Gathering, Invoke, Mix, Single};
 use crate::process::{ProcessNode, singleton};
 use crate::route::{Concat, Merge, Route};
 use crate::split::{Format, Split, Subscribe};
+
+/// The channel operators of Nextflow (`OperatorImpl` and `ChannelEx`). Another method of a
+/// value channel is a method of its value.
+const OPERATORS: &[&str] = &[
+    "branch",
+    "buffer",
+    "chain",
+    "collate",
+    "collect",
+    "collectFile",
+    "combine",
+    "concat",
+    "count",
+    "countFasta",
+    "countFastq",
+    "countJson",
+    "countLines",
+    "cross",
+    "distinct",
+    "dump",
+    "filter",
+    "first",
+    "flatMap",
+    "flatten",
+    "groupBy",
+    "groupTuple",
+    "ifEmpty",
+    "join",
+    "last",
+    "map",
+    "max",
+    "mean",
+    "merge",
+    "min",
+    "mix",
+    "multiMap",
+    "randomSample",
+    "reduce",
+    "set",
+    "splitCsv",
+    "splitFasta",
+    "splitFastq",
+    "splitJson",
+    "splitText",
+    "subscribe",
+    "sum",
+    "take",
+    "tap",
+    "toDouble",
+    "toFloat",
+    "toInteger",
+    "toList",
+    "toLong",
+    "toSortedList",
+    "transpose",
+    "unique",
+    "until",
+    "view",
+];
 
 pub(crate) struct Builder<'a> {
     pub network: &'a mut Network,
@@ -248,6 +307,28 @@ impl Host for Builder<'_> {
             _ => return Ok(None),
         };
         let same_kind = self.network.is_value(source);
+        let own = matches!(name, "getClass" | "toString" | "hashCode" | "equals");
+        if same_kind && !own && !OPERATORS.contains(&name) {
+            let output = self.network.channel(true);
+            let mut inputs = vec![source];
+            let arguments = arguments
+                .into_iter()
+                .map(|argument| match argument {
+                    Value::Channel(channel) if self.network.is_value(channel) => {
+                        inputs.push(channel);
+                        None
+                    }
+                    other => Some(other),
+                })
+                .collect();
+            let node = Invoke {
+                output,
+                name: name.into(),
+                arguments,
+            };
+            self.network.add(name, &inputs, Box::new(node));
+            return Ok(Some(Value::Channel(output)));
+        }
         let (kind, value) = match (name, arguments.as_slice()) {
             ("map", [Value::Closure(closure)]) => {
                 (Kind::Each(Each::Map(closure.clone())), same_kind)

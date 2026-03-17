@@ -412,6 +412,19 @@ fn splitter_records_and_closures() {
 }
 
 #[test]
+fn methods_of_value_channels_act_on_the_value() {
+    assert_eq!(
+        lines(
+            "def a = channel.of(1, 2, 3).collect()\n\
+             a.minus(channel.of(2).collect()).view()\n\
+             a.toSet().view { v -> v.getClass().getSimpleName() }\n\
+             (a.size() + 10).view()"
+        ),
+        ["[1, 3]", "HashSet", "13"]
+    );
+}
+
+#[test]
 fn collate_and_small_library_methods() {
     assert_eq!(
         lines("channel.of(1, 2, 3, 4, 5).collate(2).view()"),

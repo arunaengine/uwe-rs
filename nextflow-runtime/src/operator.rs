@@ -578,3 +578,45 @@ fn thrown(exception: nextflow_evaluator::exception::Exception) -> Error {
         span: Default::default(),
     }
 }
+
+/// A method that is no operator, called on a value channel: it is called on the value once
+/// the channel and the value channels among the arguments are bound, and its result binds a
+/// new value channel, as GPars' `DataflowInvocationExpression` does.
+pub(crate) struct Invoke {
+    pub output: ChannelId,
+    pub name: Rc<str>,
+    /// The arguments; `None` stands for the next input after the receiver.
+    pub arguments: Vec<Option<Value>>,
+}
+
+impl Behaviour for Invoke {
+    fn run(&mut self, context: &mut Context) -> Result<State, Error> {
+        let mut values = Vec::new();
+        for input in 0..context.input_count() {
+            match context.peek(input) {
+                Some(Message::Value(value)) => values.push(value),
+                Some(Message::Stop) => {
+                    context.close(self.output);
+                    return Ok(State::Stopped);
+                }
+                None => return Ok(State::Running),
+            }
+        }
+        let mut values = values.into_iter();
+        let object = values.next().unwrap_or(Value::Null);
+        let arguments = self
+            .arguments
+            .iter()
+            .map(|argument| match argument {
+                Some(argument) => argument.clone(),
+                None => values.next().unwrap_or(Value::Null),
+            })
+            .collect();
+        let result = context
+            .interpreter
+            .invoke_method(&object, &self.name, arguments)?;
+        context.emit(self.output, result);
+        context.close(self.output);
+        Ok(State::Stopped)
+    }
+}

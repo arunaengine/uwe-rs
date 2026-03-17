@@ -199,6 +199,17 @@ impl Interpreter<'_> {
                         Value::Channel(_) | Value::ChannelOut(_),
                         Value::Definition(_) | Value::Operator(_),
                     ) => self.pipe(left, &right, span)?,
+                    // Arithmetic on a channel calls the method of the operator, like `plus`.
+                    (
+                        Operator::Add
+                        | Operator::Subtract
+                        | Operator::Multiply
+                        | Operator::Divide
+                        | Operator::Modulo
+                        | Operator::Power,
+                        Value::Channel(_),
+                        _,
+                    ) => self.operator(&left, operator.method(), vec![right], span)?,
                     _ => left.apply(*operator, &right).at(span)?,
                 }
             }

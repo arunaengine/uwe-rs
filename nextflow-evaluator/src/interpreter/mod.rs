@@ -351,6 +351,16 @@ impl<'h> Interpreter<'h> {
     ) -> Result<Value, Error> {
         self.call_closure_value(closure, arguments, Span::default())
     }
+
+    /// Calls a method of a value, as a script does with `value.name(arguments)`.
+    pub fn invoke_method(
+        &mut self,
+        object: &Value,
+        name: &str,
+        arguments: Vec<Value>,
+    ) -> Result<Value, Error> {
+        self.call_method(object, name, arguments, Span::default())
+    }
 }
 
 /// The variables of one running function or closure.

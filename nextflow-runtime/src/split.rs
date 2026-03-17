@@ -6,6 +6,7 @@
 use std::rc::Rc;
 
 use nextflow_evaluator::interpreter::Error;
+use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{ChannelId, Closure, PathValue, Value};
 
 use crate::channel::Message;
@@ -86,12 +87,17 @@ pub(crate) struct Split {
     /// Whether `.gz` files are decompressed first, which `decompress: false` turns off.
     pub decompress: bool,
     pub count: usize,
+    /// For the count operators: the number of records so far, which is emitted at the end.
+    pub total: Option<i64>,
 }
 
 impl Behaviour for Split {
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         while let Some(message) = context.read(0) {
             let Message::Value(value) = message else {
+                if let Some(total) = self.total {
+                    context.emit(self.output, Value::Number(Number::Long(total)));
+                }
                 context.close(self.output);
                 return Ok(State::Stopped);
             };
@@ -121,7 +127,12 @@ impl Behaviour for Split {
                 }
                 other => (other.to_string(), "chunk".to_owned()),
             };
-            for (index, chunk) in self.chunks(&text).into_iter().enumerate() {
+            let chunks = self.chunks(&text);
+            if let Some(total) = &mut self.total {
+                *total += chunks.len() as i64;
+                continue;
+            }
+            for (index, chunk) in chunks.into_iter().enumerate() {
                 let chunk = match (&self.files, &chunk) {
                     (Some(directory), Value::String(text)) => {
                         self.count += 1;

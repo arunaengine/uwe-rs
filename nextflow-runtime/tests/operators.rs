@@ -402,6 +402,13 @@ fn splitter_records_and_closures() {
         ),
         ["A", "B"]
     );
+    assert_eq!(
+        lines(
+            "channel.of(\"a\\nb\\n\", \"c\\n\").countLines().view()\n\
+             channel.of(\">a\\nAC\\n>b\\nGT\\n\").countFasta().view { v -> \"fasta ${v}\" }"
+        ),
+        ["3", "fasta 2"]
+    );
 }
 
 #[test]

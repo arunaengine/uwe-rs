@@ -33,6 +33,26 @@ fn value(body: &str) -> String {
 }
 
 #[test]
+fn grep_and_sort_without_change() {
+    assert_eq!(
+        value(
+            "[[1, null, 'x', '', 0].grep(), ['ab', 'cd'].grep(~/a.*/), ['ab', null].grep { it != null }]"
+        ),
+        "[[1, x], [ab], [ab]]"
+    );
+    assert_eq!(
+        value("def l = [3, 1, 2]\n[l.sort(false) { a, b -> a <=> b }, l]"),
+        "[[1, 2, 3], [3, 1, 2]]"
+    );
+    assert_eq!(
+        value(
+            "[file('/a/b/c.txt').sort(false) { a, b -> b.name <=> a.name }, file('/a/b/c.txt').sort()]"
+        ),
+        "[[c.txt, b, a], [a, b, c.txt]]"
+    );
+}
+
+#[test]
 fn queries_and_folds() {
     assert_eq!(
         value("[[3, 1, 2].intersect([2, 3]), [1, 1, 2].intersect([1]), [1, 2].intersect([1L])]"),

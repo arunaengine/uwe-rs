@@ -139,6 +139,8 @@ impl Interpreter<'_> {
                 let parts = pattern(regex, span)?.split(text, limit);
                 strings(ListKind::Array, parts)
             }
+            // Groovy's `split()` gives the words between whitespace, as `tokenize()` does.
+            ("split", []) => strings(ListKind::Array, tokens(text, " \t\n\r\u{0C}")),
             ("matches", [regex]) => Value::Boolean(pattern(regex, span)?.matches(text)),
             ("find", [regex]) => match pattern(regex, span)?.all_groups(text).first() {
                 Some(groups) => text_value(&groups[0]),

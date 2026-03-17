@@ -78,9 +78,13 @@ impl Interpreter<'_> {
             }
             Value::Object(object) => self.object_method(object, name, arguments, span)?,
             Value::Class(class) => match (name, arguments) {
-                ("getSimpleName", []) => {
-                    Some(Value::string(crate::value::simple_class_name(class)))
-                }
+                // An array class like `[Ljava.lang.String;` is `String[]`.
+                ("getSimpleName", []) => Some(Value::string(
+                    match class.strip_prefix("[L").and_then(|c| c.strip_suffix(';')) {
+                        Some(element) => format!("{}[]", crate::value::simple_class_name(element)),
+                        None => crate::value::simple_class_name(class).to_owned(),
+                    },
+                )),
                 ("getName", []) => Some(Value::String(class.clone())),
                 _ => None,
             },

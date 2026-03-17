@@ -40,6 +40,11 @@ fn splitting_and_tokens() {
     assert_eq!(value("'a.b.c'.split('.')"), "[]");
     assert_eq!(value("''.split(',')"), "[]");
     assert_eq!(value("'a,b,,'.split(',', -1)"), "[a, b, , ]");
+    assert_eq!(value("' a  b\\tc '.split()"), "[a, b, c]");
+    assert_eq!(
+        value("' a '.split().getClass().getSimpleName()"),
+        "String[]"
+    );
     assert_eq!(value("'a\\nb\\r\\nc\\n'.readLines()"), "[a, b, c]");
     assert_eq!(value("'abc'.toList()"), "[a, b, c]");
 }

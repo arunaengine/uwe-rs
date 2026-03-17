@@ -162,13 +162,18 @@ impl Interpreter<'_> {
                 Value::list(columns)
             }
             ("sort" | "toSorted", rest) => {
+                // `sort(false)` gives a new list and leaves this one as it is.
+                let (mutate, rest) = match rest {
+                    [Value::Boolean(mutate), rest @ ..] if name == "sort" => (*mutate, rest),
+                    rest => (name == "sort", rest),
+                };
                 let mut sorted = items.clone();
                 match rest {
                     [] => sorted.sort_by(Value::number_aware_compare),
                     [Value::Closure(f)] => self.sort_with(&mut sorted, f, span)?,
                     _ => return Ok(None),
                 }
-                if name == "sort" {
+                if mutate {
                     list.borrow_mut().items = sorted;
                     Value::List(list.clone())
                 } else {

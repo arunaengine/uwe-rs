@@ -23,6 +23,20 @@ pub(super) fn pattern_method(
     }
 }
 
+/// The matches as Groovy iterates a matcher: the list of the groups of each match when the
+/// pattern has groups, else the text of each match.
+pub(super) fn matcher_items(matcher: &Matcher) -> Vec<Value> {
+    let text = |group: &Option<String>| group.as_deref().map_or(Value::Null, Value::string);
+    matcher
+        .matches
+        .iter()
+        .map(|groups| match matcher.pattern.group_count() {
+            0 => text(&groups[0]),
+            _ => Value::list(groups.iter().map(text).collect()),
+        })
+        .collect()
+}
+
 pub(super) fn matcher_method(matcher: &Matcher, name: &str, arguments: &[Value]) -> Option<Value> {
     match (name, arguments) {
         // `getCount()` is an `Integer`, but `size()` is a `Long` (Groovy spec, section 8.6).

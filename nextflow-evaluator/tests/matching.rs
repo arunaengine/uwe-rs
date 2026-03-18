@@ -55,6 +55,19 @@ fn matchers() {
 }
 
 #[test]
+fn matchers_iterate_their_matches() {
+    assert_eq!(
+        value(
+            "[('-o out.fa --x' =~ /-o(?:utput)?\\s(.*)\\s?/).findAll(), \
+             (null =~ /-o\\s(.*)/).findAll(), ('a1b22' =~ /\\d+/).findAll(), \
+             ('a1b22' =~ /(\\d)(x)?/).collect { m -> m }, \
+             ('a1b22' =~ /\\d+/).findAll { m -> m.size() > 1 }]"
+        ),
+        "[[[-o out.fa --x, out.fa --x]], [], [1, 22], [[1, 1, null], [2, 2, null], [2, 2, null]], [22]]"
+    );
+}
+
+#[test]
 fn full_matches_and_patterns() {
     assert_eq!(
         value("['ABC' ==~ /(?i)abc/, 'abc' ==~ /b/, null ==~ /x/]"),

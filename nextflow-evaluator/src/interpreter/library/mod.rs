@@ -75,7 +75,13 @@ impl Interpreter<'_> {
                 },
             },
             Value::Pattern(pattern) => regex::pattern_method(pattern, name, arguments),
-            Value::Matcher(matcher) => regex::matcher_method(matcher, name, arguments),
+            Value::Matcher(matcher) => match regex::matcher_method(matcher, name, arguments) {
+                Some(value) => Some(value),
+                None => {
+                    let items = regex::matcher_items(matcher);
+                    self.iterable_method(object, &items, name, arguments, span)?
+                }
+            },
             Value::MemoryUnit(_) | Value::Duration(_) => {
                 number::unit_method(object, name, arguments)
             }

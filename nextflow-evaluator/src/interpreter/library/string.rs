@@ -146,6 +146,14 @@ impl Interpreter<'_> {
                 Some(groups) => text_value(&groups[0]),
                 None => Value::Null,
             },
+            ("padLeft" | "padRight" | "center", [width, rest @ ..]) if rest.len() <= 1 => {
+                let width = integer(width).ok_or_else(|| wrong_arguments(name, span))? as usize;
+                let padding = match rest {
+                    [padding] => string(padding).ok_or_else(|| wrong_arguments(name, span))?,
+                    _ => " ".into(),
+                };
+                Value::string(padded(text, name, width, &padding))
+            }
             ("tokenize", []) => strings(ListKind::ArrayList, tokens(text, " \t\n\r\u{0C}")),
             ("tokenize", [delimiters]) if string(delimiters).is_some() => {
                 let delimiters = string(delimiters).unwrap_or_default();
@@ -344,5 +352,25 @@ fn java_float(text: &str) -> Option<f64> {
         "NaN" | "Infinity" => text.replace("Infinity", "inf").parse().ok(),
         "inf" | "infinity" | "nan" => None,
         _ => text.parse().ok(),
+    }
+}
+
+/// Groovy's `padLeft`, `padRight` and `center`: the text with the padding repeated around it
+/// up to `width` characters.
+fn padded(text: &str, name: &str, width: usize, padding: &str) -> String {
+    let length = text.chars().count();
+    if width <= length || padding.is_empty() {
+        return text.to_owned();
+    }
+    let fill = |count: usize| padding.chars().cycle().take(count).collect::<String>();
+    let missing = width - length;
+    match name {
+        "padLeft" => format!("{}{text}", fill(missing)),
+        "padRight" => format!("{text}{}", fill(missing)),
+        _ => {
+            let half = fill(missing / 2 + missing % 2);
+            let left: String = half.chars().take(missing / 2).collect();
+            format!("{left}{text}{half}")
+        }
     }
 }

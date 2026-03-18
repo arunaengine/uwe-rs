@@ -40,6 +40,9 @@ impl Interpreter<'_> {
             ("String", "format", [pattern, rest @ ..]) => {
                 Value::string(format::format(&pattern.to_string(), rest).at(span)?)
             }
+            ("MessageDigest", "getInstance", [algorithm]) => {
+                super::bytes::message_digest(&algorithm.to_string()).at(span)?
+            }
             ("Arrays", "asList", [Value::List(list)]) => Value::list(list.borrow().items.clone()),
             ("Arrays", "asList", items) => Value::list(items.to_vec()),
             ("FilesEx", "copyTo", [source @ Value::Path(_), target]) => {

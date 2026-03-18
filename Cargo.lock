@@ -1475,6 +1475,7 @@ dependencies = [
  "num-bigint 0.5.1",
  "num-traits",
  "saphyr-parser",
+ "sha2",
  "tempfile",
 ]
 

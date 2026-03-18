@@ -38,6 +38,10 @@ pub enum State {
     Template(Rc<str>),
     /// `java.util.Locale`, by its tag like `en_US`.
     Locale(Rc<str>),
+    /// `byte[]`, which like every Java array is only equal to itself.
+    Bytes(Rc<[u8]>),
+    /// `java.security.MessageDigest`, by its algorithm.
+    Digest(&'static str),
 }
 
 /// The `workflow` of a run: its properties, and the handlers that run when it ends.

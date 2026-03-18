@@ -117,6 +117,13 @@ impl Interpreter<'_> {
         if matches!(object.borrow().state, State::Stream(..)) {
             return self.stream_method(object, name, arguments, span);
         }
+        match &object.borrow().state {
+            State::Bytes(bytes) => return Ok(super::bytes::bytes_method(bytes, name, arguments)),
+            State::Digest(algorithm) => {
+                return Ok(super::bytes::digest_method(algorithm, name, arguments));
+            }
+            _ => {}
+        }
         let builder = object.borrow().class == "groovy.json.JsonGenerator$Options";
         let mut target = object.borrow_mut();
         let value = match (&mut target.state, name, arguments) {

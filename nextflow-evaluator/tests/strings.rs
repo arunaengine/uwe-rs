@@ -75,6 +75,24 @@ fn margins() {
 }
 
 #[test]
+fn bytes_and_digests() {
+    assert_eq!(
+        value(
+            "['hi'.bytes, 'ü'.bytes, 'hi'.bytes.encodeBase64().toString(), \
+             'abcd'.bytes.encodeBase64(), 'hi'.bytes.getClass().getName()]"
+        ),
+        "[[104, 105], [-61, -68], aGk=, YWJjZA==, [B]"
+    );
+    assert_eq!(
+        value(
+            "java.security.MessageDigest.getInstance('SHA-256').digest('S1'.bytes).encodeHex()\
+             .toString().substring(0, 20).toUpperCase()"
+        ),
+        "3696AD59777E09D5F2DA"
+    );
+}
+
+#[test]
 fn formats() {
     assert_eq!(
         value(

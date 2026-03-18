@@ -160,6 +160,7 @@ impl Interpreter<'_> {
                 strings(ListKind::ArrayList, tokens(text, &delimiters))
             }
             ("readLines", []) => strings(ListKind::ArrayList, lines(text)),
+            ("getBytes", []) => super::bytes::bytes(text.as_bytes().to_vec()),
             ("stripMargin", rest) if rest.len() <= 1 => {
                 let marker = match rest {
                     [marker] => string(marker)

@@ -167,6 +167,7 @@ pub(super) const CLASSES: &[&str] = &[
     "Map",
     "Math",
     "MemoryUnit",
+    "MessageDigest",
     "Number",
     "Object",
     "Path",

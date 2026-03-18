@@ -1,6 +1,7 @@
 //! Runs every nf-core pipeline of the corpus with `-profile test` and the mock executor, and
 //! compares the outcome with `tests/fixtures/run_corpus.txt`: `ok`, or the exit code and the
-//! first line of the error. Run with `just run-corpus-test`; on a difference the test prints
+//! first line of the error. The runs are stub runs, as pipelines then do not read the content
+//! of the outputs that the mock makes up. Run with `just run-corpus-test`; on a difference the test prints
 //! the lines of the new fixture.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -15,7 +16,7 @@ use fancy_regex::Regex;
 fn outcome(corpus: &Path, pipeline: &str, cache: &Path) -> String {
     let output = Command::new(env!("CARGO_BIN_EXE_iunctus"))
         .args(["run", &corpus.join(pipeline).to_string_lossy()])
-        .args(["-profile", "test", "-executor", "mock"])
+        .args(["-profile", "test", "-stub-run", "-executor", "mock"])
         .args(["--outdir", &cache.join("out").to_string_lossy()])
         .env("XDG_CACHE_HOME", cache)
         .current_dir(cache)

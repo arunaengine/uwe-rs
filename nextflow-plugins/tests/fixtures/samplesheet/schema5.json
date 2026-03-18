@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "sample": { "type": "string", "meta": ["id"] },
+      "n": { "type": ["integer", "string"] },
+      "x": { "type": "number" },
+      "f": { "type": "string", "format": "file-path", "exists": true },
+      "d": {
+        "oneOf": [
+          { "type": "string", "format": "file-path", "pattern": "\\.json$" },
+          { "type": "string", "format": "directory-path" }
+        ]
+      }
+    }
+  }
+}

@@ -118,6 +118,20 @@ fn writing_copying_and_deleting_files() {
 }
 
 #[test]
+fn directories_are_made_and_files_copied_into_them() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let dir = directory.path().display();
+    let body = format!(
+        "def a = [file('{dir}/out/input').mkdir(), file('{dir}/out2').mkdir(), \
+         file('{dir}/out2').mkdir(), file('{dir}/out2/a/b').mkdirs(), file('{dir}/out2/a/b').mkdirs()]\n\
+         file('{dir}/x.txt').text = 'hi'\n\
+         file('{dir}/x.txt').copyTo('{dir}/out2/a')\n\
+         a + [file('{dir}/out2/a/x.txt').text, file('{dir}/x.txt').mkdirs()]"
+    );
+    assert_eq!(value(&body), "[false, true, false, true, true, hi, false]");
+}
+
+#[test]
 fn globs_match_like_java_globs() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let d = directory.path().display();

@@ -50,6 +50,17 @@ fn splitting_and_tokens() {
 }
 
 #[test]
+fn padding() {
+    assert_eq!(
+        value(
+            "[\"7\".padLeft(3, '0'), 'ab'.padLeft(7, 'xyz'), 'ab'.padRight(5), 'abc'.padRight(2), \
+             'ab'.center(5, '12'), 'ab'.center(6, '-'), 'a'.center(4)].join('|')"
+        ),
+        "007|xyzxyab|ab   |abc|1ab12|--ab--| a  "
+    );
+}
+
+#[test]
 fn formats() {
     assert_eq!(
         value(

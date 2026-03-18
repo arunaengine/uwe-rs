@@ -33,6 +33,20 @@ fn value(body: &str) -> String {
 }
 
 #[test]
+fn hash_sets_keep_the_order_of_java_tables() {
+    assert_eq!(
+        value(
+            "def s = new HashSet()\n\
+             ['pna-2', 'mpx', 'zeta', 'alpha', 'b'].each { v -> s << v }\n\
+             def l = new LinkedHashSet(['z', 'a'])\n\
+             l << 'b'\n\
+             [s, new HashSet([3, 1, 2, 1]), l, s.getClass().getSimpleName()]"
+        ),
+        "[[zeta, b, mpx, pna-2, alpha], [1, 2, 3], [z, a, b], HashSet]"
+    );
+}
+
+#[test]
 fn grep_and_sort_without_change() {
     assert_eq!(
         value(

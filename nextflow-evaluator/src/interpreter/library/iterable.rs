@@ -9,7 +9,7 @@ use nextflow_parser::Span;
 
 use super::super::{AtSpan, Error, Interpreter, thrown};
 use crate::exception::Exception;
-use crate::value::{Closure, Key, Operator, SetKind, Value};
+use crate::value::{Closure, Key, Operator, Set, SetKind, Value};
 
 impl Interpreter<'_> {
     pub(super) fn iterable_method(
@@ -189,7 +189,8 @@ impl Interpreter<'_> {
                     .collect(),
             ),
             ("toList", []) => Value::list(items.to_vec()),
-            ("toSet", []) => hash_set(items),
+            // Groovy's `toSet()` is `new HashSet(size())`.
+            ("toSet", []) => hash_set(items.len().next_power_of_two(), items),
             ("grep", []) => {
                 Value::list(items.iter().filter(|item| item.truth()).cloned().collect())
             }
@@ -348,31 +349,14 @@ fn flatten(items: &[Value]) -> Vec<Value> {
     flat
 }
 
-/// `toSet()`: a `HashSet`, which iterates in Java's hash table order. The table starts with
-/// the smallest power of two that holds the elements and doubles above a load of 0.75.
-fn hash_set(items: &[Value]) -> Value {
-    let mut unique: Vec<Value> = Vec::new();
-    for item in items {
-        if !unique.iter().any(|other| other.java_equals(item)) {
-            unique.push(item.clone());
-        }
-    }
-    let mut capacity = items.len().max(1).next_power_of_two();
-    let mut count = 0;
-    for _ in &unique {
-        count += 1;
-        if count as f64 > 0.75 * capacity as f64 {
-            capacity *= 2;
-        }
-    }
-    let bucket = |value: &Value| {
-        let hash = value.java_hash() as u32;
-        ((hash ^ (hash >> 16)) as usize) & (capacity - 1)
+/// A `HashSet` with a table of `capacity`, which must be a power of two, and the items.
+pub(in crate::interpreter) fn hash_set(capacity: usize, items: &[Value]) -> Value {
+    let mut set = Set {
+        kind: SetKind::HashSet(capacity.max(1)),
+        items: Default::default(),
     };
-    unique.sort_by_key(bucket);
-    let set = Value::set(unique);
-    if let Value::Set(set) = &set {
-        set.borrow_mut().kind = SetKind::HashSet;
+    for item in items {
+        set.add(item.clone());
     }
-    set
+    Value::Set(Rc::new(std::cell::RefCell::new(set)))
 }

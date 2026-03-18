@@ -422,6 +422,11 @@ fn methods_of_value_channels_act_on_the_value() {
         ),
         ["[1, 3]", "HashSet", "13"]
     );
+    // GPars' own `length()` counts the values a channel holds, which is none yet.
+    assert_eq!(
+        lines("def n = channel.of(1).collect()\nprintln(n.length())"),
+        ["0"]
+    );
 }
 
 #[test]

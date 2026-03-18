@@ -216,6 +216,12 @@ impl Interpreter<'_> {
         arguments: Vec<Value>,
         span: Span,
     ) -> Result<Value, Error> {
+        // GPars' `length()`: how many values a channel holds now. Channels are empty while
+        // the workflow is built, and closures at run time cannot see them, so it is 0, which
+        // Nextflow also gives when the value is not there yet.
+        if let (Value::Channel(_), "length", []) = (source, name, arguments.as_slice()) {
+            return Ok(Value::integer(0));
+        }
         match self
             .host
             .operator(source, name, arguments)

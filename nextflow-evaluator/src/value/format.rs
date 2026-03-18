@@ -129,7 +129,9 @@ impl Value {
                 out.push_str(&format!("Closure@{:x}", Rc::as_ptr(closure) as usize));
             }
             Value::Object(object) => match &object.borrow().state {
-                super::State::Uri(text) | super::State::Locale(text) => out.push_str(text),
+                super::State::Uri(text) | super::State::Locale(text) | super::State::Text(text) => {
+                    out.push_str(text)
+                }
                 super::State::Bytes(bytes) => {
                     let items: Vec<String> = bytes.iter().map(|b| (*b as i8).to_string()).collect();
                     out.push_str(&format!("[{}]", items.join(", ")));

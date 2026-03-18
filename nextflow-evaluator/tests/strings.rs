@@ -61,6 +61,20 @@ fn padding() {
 }
 
 #[test]
+fn margins() {
+    assert_eq!(
+        value("'\\n  |one\\n    |  two\\n  three|\\n\\t|four\\n  |'.stripMargin().inspect()"),
+        "'\\none\\n  two\\n  three|\\nfour\\n'"
+    );
+    assert_eq!(
+        value(
+            "['x\\n  #y\\r\\n#z'.stripMargin('#'), ''.stripMargin(), 'a\\n'.stripMargin()].inspect()"
+        ),
+        "['x\\ny\\nz', '', 'a\\n']"
+    );
+}
+
+#[test]
 fn formats() {
     assert_eq!(
         value(

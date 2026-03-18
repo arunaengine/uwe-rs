@@ -87,10 +87,15 @@ impl Interpreter<'_> {
                 return Ok(Some(Value::Null));
             }
             ("copyTo", [target]) => {
-                let target = match target {
+                let mut target = match target {
                     Value::Path(target) => (**target).clone(),
                     other => PathValue::parse(&other.to_string(), &self.host.launch_dir()),
                 };
+                // A file copied to a directory goes into it.
+                let metadata = self.host.metadata(&target).map_err(host_error)?;
+                if metadata.is_some_and(|metadata| metadata.directory) {
+                    target = target.resolve(path.name());
+                }
                 let bytes = self.host.read(path).map_err(host_error)?;
                 self.host.write(&target, &bytes).map_err(host_error)?;
                 return Ok(Some(Value::Path(Rc::new(target))));
@@ -99,9 +104,20 @@ impl Interpreter<'_> {
                 let existed = self.host.delete(path).map_err(host_error)?;
                 return Ok(Some(Value::Boolean(existed)));
             }
+            // `mkdir` creates one directory in an existing one; both give false on failure.
             ("mkdirs" | "mkdir", []) => {
-                self.host.create_directories(path).map_err(host_error)?;
-                return Ok(Some(Value::Boolean(true)));
+                let parent_exists = match path.parent() {
+                    Some(parent) => self.host.metadata(&parent).ok().flatten().is_some(),
+                    None => true,
+                };
+                let exists = self.host.metadata(path).ok().flatten();
+                let created = match (name, exists) {
+                    ("mkdir", Some(_)) => false,
+                    ("mkdir", None) if !parent_exists => false,
+                    (_, Some(metadata)) => metadata.directory,
+                    _ => self.host.create_directories(path).is_ok(),
+                };
+                return Ok(Some(Value::Boolean(created)));
             }
             ("newInputStream" | "newReader", []) => {
                 let bytes = self.host.read(path).map_err(host_error)?;

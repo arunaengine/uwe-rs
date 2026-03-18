@@ -151,6 +151,10 @@ impl Interpreter<'_> {
                 Value::string(self.json_text(value, &options, span)?)
             }
             (State::JsonSlurper, "parseText", [text]) => parse(&text.to_string()).at(span)?,
+            (State::JsonSlurper, "parse", [Value::Path(path)]) => {
+                let bytes = self.host.read(path).map_err(|error| error.or_at(span))?;
+                parse(&String::from_utf8_lossy(&bytes)).at(span)?
+            }
             (State::Workflow(workflow), "onComplete", [Value::Closure(handler)]) => {
                 workflow.on_complete.push(handler.clone());
                 Value::Null

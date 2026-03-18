@@ -45,6 +45,15 @@ impl Interpreter<'_> {
             }
             ("Arrays", "asList", [Value::List(list)]) => Value::list(list.borrow().items.clone()),
             ("Arrays", "asList", items) => Value::list(items.to_vec()),
+            ("Files", "size", [Value::Path(path)]) => match self.host.metadata(path) {
+                Ok(Some(metadata)) => Value::Number(Number::Long(metadata.size as i64)),
+                Ok(None) => {
+                    let exception =
+                        crate::exception::Exception::new("NoSuchFileException", path.text());
+                    return Err(super::super::thrown(exception, span));
+                }
+                Err(error) => return Err(error.or_at(span)),
+            },
             ("FilesEx", "copyTo", [source @ Value::Path(_), target]) => {
                 let copied = self.call_method(source, "copyTo", vec![target.clone()], span)?;
                 return Ok(Some(copied));

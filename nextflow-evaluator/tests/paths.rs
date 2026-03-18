@@ -132,6 +132,18 @@ fn directories_are_made_and_files_copied_into_them() {
 }
 
 #[test]
+fn file_sizes_and_json_files() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let dir = directory.path().display();
+    let body = format!(
+        "file('{dir}/s.json').text = '{{\"a\": {{\"b\": 12}}}}'\n\
+         [java.nio.file.Files.size(file('{dir}/s.json')), \
+         new groovy.json.JsonSlurper().parse(file('{dir}/s.json')).a.b]"
+    );
+    assert_eq!(value(&body), "[16, 12]");
+}
+
+#[test]
 fn globs_match_like_java_globs() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let d = directory.path().display();

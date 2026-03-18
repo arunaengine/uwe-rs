@@ -160,6 +160,15 @@ impl Interpreter<'_> {
                 strings(ListKind::ArrayList, tokens(text, &delimiters))
             }
             ("readLines", []) => strings(ListKind::ArrayList, lines(text)),
+            ("stripMargin", rest) if rest.len() <= 1 => {
+                let marker = match rest {
+                    [marker] => string(marker)
+                        .and_then(|marker| marker.chars().next())
+                        .ok_or_else(|| wrong_arguments(name, span))?,
+                    _ => '|',
+                };
+                Value::string(strip_margin(text, marker))
+            }
             ("toList", []) => strings(
                 ListKind::ArrayList,
                 text.chars().map(String::from).collect(),
@@ -373,4 +382,19 @@ fn padded(text: &str, name: &str, width: usize, padding: &str) -> String {
             format!("{left}{text}{half}")
         }
     }
+}
+
+/// Groovy's `stripMargin`: each line without the blanks and the marker it starts with, if it
+/// does. Line ends become `\n`.
+fn strip_margin(text: &str, marker: char) -> String {
+    let mut out = String::new();
+    for line in lines(text) {
+        let rest = line.trim_start_matches(|c: char| c <= ' ');
+        out.push_str(rest.strip_prefix(marker).unwrap_or(&line));
+        out.push('\n');
+    }
+    if !text.ends_with('\n') {
+        out.pop();
+    }
+    out
 }

@@ -71,6 +71,17 @@ fn samplesheets_become_lists() {
         to_list("sheet.tsv", "schema.json").unwrap(),
         format!("[[[id:S1, group:[], grp:[], flag:[], note:[]], {dir}/x.fq, [], []]]")
     );
+    // Types come from the text, a `oneOf` with path formats gives a path, and a sheet
+    // without header gives single values.
+    let fixtures = dir.trim_end_matches("/samplesheet");
+    assert_eq!(
+        to_list("sheet5.csv", "schema5.json").unwrap(),
+        format!(
+            "[[[id:S1], 007, -0.0, {dir}/sheet.csv, {fixtures}/params], \
+             [[id:S2], [], 1E+3, {dir}/sheet2.csv, {dir}/schema.json]]"
+        )
+    );
+    assert_eq!(to_list("ids.csv", "schema6.json").unwrap(), "[SRR1, SRR22]");
 }
 
 #[test]

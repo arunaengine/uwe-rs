@@ -10,7 +10,7 @@ use crate::value::Value;
 
 /// `yaml.load(text)`: mappings become maps and sequences lists; plain scalars are resolved
 /// as YAML 1.1 does, so `1.13` is a number and `yes` a boolean. An empty text gives `null`.
-pub(super) fn load(text: &str) -> Result<Value, Exception> {
+pub fn load(text: &str) -> Result<Value, Exception> {
     let mut stack: Vec<(Vec<Value>, bool)> = Vec::new();
     let mut root = None;
     for event in Parser::new_from_str(text) {

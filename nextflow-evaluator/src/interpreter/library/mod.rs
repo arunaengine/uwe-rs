@@ -18,6 +18,7 @@ mod yaml;
 pub(super) use iterable::elements;
 pub use json::parse as parse_json;
 pub(super) use number::{convert, unit_property};
+pub use yaml::load as parse_yaml;
 
 use nextflow_parser::Span;
 

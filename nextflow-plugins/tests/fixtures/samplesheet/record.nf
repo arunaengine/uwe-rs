@@ -7,4 +7,6 @@ workflow {
     println samplesheetToList("sheet2.csv", "schema3.json")
     println samplesheetToList("sheet.tsv", "schema.json")
     println samplesheetToList("sheet4.csv", "schema4.json")
+    println samplesheetToList("sheet5.csv", "schema5.json")
+    println samplesheetToList("ids.csv", "schema6.json")
 }

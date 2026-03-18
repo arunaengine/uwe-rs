@@ -1,17 +1,20 @@
-//! `samplesheetToList`: the rows of a CSV, TSV or JSON samplesheet as lists, converted and
-//! checked by the schema of its items.
+//! `samplesheetToList`: the entries of a CSV, TSV, JSON or YAML samplesheet, checked against
+//! a schema and converted by it, as nf-schema does.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use nextflow_evaluator::interpreter::{Error, parse_json};
+use nextflow_evaluator::interpreter::{Error, parse_json, parse_yaml};
 use nextflow_evaluator::number::{BigDecimal, Number};
 use nextflow_evaluator::value::{PathValue, Value};
 
 use super::{entries, errors, get, json, path, plain, read, schema, thrown};
 use crate::Context;
 
-/// Each row becomes a list: a map of the fields with `meta` keys first, if the schema has
-/// any, then the other fields in schema order. A missing field is its default, else `[]`.
+const PATH_FORMATS: &[&str] = &["file-path", "path", "directory-path", "file-path-pattern"];
+
+/// Reads the samplesheet, checks it, then converts each entry: a map becomes the list of its
+/// fields in schema order, with the `meta` fields in a map first, and text of a path format
+/// becomes a path.
 pub(super) fn to_list(
     samplesheet: &Value,
     schema_path: &Value,
@@ -21,129 +24,398 @@ pub(super) fn to_list(
     let launch = context.host.launch_dir();
     let file = path(samplesheet, &launch);
     let schema = schema(schema_path, context)?;
+    let items = get(&schema.tree, "items").unwrap_or(Value::Null);
     let text = read(&file, context)?;
-    let rows = rows(&file, &text)?;
-    let items = get(&schema.tree, "items").unwrap_or_else(|| Value::map([]));
-    let properties = get(&items, "properties").map_or_else(Vec::new, |p| entries(&p));
-    // Values of the types of the schema, which are checked before they become paths.
-    let mut typed_rows = Vec::new();
-    for row in &rows {
-        let mut typed = Vec::new();
-        for (name, definition) in &properties {
-            let text = row
-                .iter()
-                .find(|(header, _)| header == name)
-                .map(|(_, v)| v.as_str());
-            if let Some(value) = text.filter(|text| !text.is_empty()) {
-                typed.push((name.clone(), typed_value(value, definition)));
-            }
-        }
-        typed_rows.push(typed);
-    }
-    check(&schema.json, &typed_rows, &file, context)?;
-    let has_meta = properties
-        .iter()
-        .any(|(_, definition)| get(definition, "meta").is_some());
+    let object = file_object(&file, &text, &schema.tree)?;
+    check(&schema.json, &without_nulls(json(&object)), &file, context)?;
+    let Value::List(list) = &object else {
+        return Err(thrown(format!(
+            "The samplesheet {} is not a list",
+            file.uri()
+        )));
+    };
+    let mut converter = Converter {
+        launch,
+        unrecognised: Vec::new(),
+    };
     let mut result = Vec::new();
-    for typed in typed_rows {
+    for entry in list.borrow().items.iter() {
         let mut meta = Vec::new();
-        let mut fields = Vec::new();
-        for (name, definition) in &properties {
-            let value = match typed.iter().find(|(field, _)| field == name) {
-                Some((_, value)) => file_value(value, definition, &launch),
-                None => get(definition, "default").unwrap_or_else(|| Value::list(Vec::new())),
-            };
-            match get(definition, "meta") {
-                Some(Value::List(keys)) => {
-                    for key in keys.borrow().items.iter() {
-                        meta.push((key.clone(), value.clone()));
-                    }
-                }
-                Some(key) => meta.push((key, value)),
-                None => fields.push(value),
+        let converted = converter.format_entry(entry, &items, "", &mut meta);
+        result.push(match converted {
+            _ if meta.is_empty() => converted,
+            Value::List(fields) => {
+                fields.borrow_mut().items.insert(0, Value::map(meta));
+                Value::List(fields)
             }
-        }
-        if has_meta {
-            fields.insert(0, Value::map(meta));
-        }
-        result.push(Value::list(fields));
+            other => Value::list(vec![Value::map(meta), other]),
+        });
+    }
+    if !converter.unrecognised.is_empty() {
+        let headers: Vec<String> = converter
+            .unrecognised
+            .iter()
+            .map(|header| format!("\t- {header}"))
+            .collect();
+        context.host.print(&format!(
+            "WARN: Found the following unidentified headers in {}:\n{}\n\n",
+            file.uri(),
+            headers.join("\n")
+        ));
     }
     Ok(Value::list(result))
 }
 
-/// A field's text as a type its schema allows: the `type`, or the types of `anyOf` and
-/// `oneOf` choices. Whole numbers are tried first, then numbers, then booleans; other text
-/// stays text.
-fn typed_value(text: &str, definition: &Value) -> Value {
-    let mut kinds = Vec::new();
-    let mut add = |definition: &Value| match get(definition, "type") {
-        Some(Value::List(list)) => kinds.extend(list.borrow().items.iter().map(Value::to_string)),
-        Some(kind) => kinds.push(kind.to_string()),
-        None => {}
+struct Converter {
+    launch: String,
+    /// The fields that the schema does not know, as nf-schema names them, like `a.b`.
+    unrecognised: Vec<String>,
+}
+
+impl Converter {
+    /// An entry for the result: maps become lists of their fields, and `meta` fields go into
+    /// `meta` instead.
+    fn format_entry(
+        &mut self,
+        input: &Value,
+        schema: &Value,
+        prefix: &str,
+        meta: &mut Vec<(Value, Value)>,
+    ) -> Value {
+        let input = with_default(input, schema);
+        match &input {
+            Value::Map(_) => {
+                let properties = self.properties(&input, schema, prefix);
+                let mut result = Vec::new();
+                for (property, definition) in &properties {
+                    let value = get(&input, property).unwrap_or(Value::Null);
+                    let prefix = format!("{prefix}{property}.");
+                    let ids = match get(definition, "meta") {
+                        Some(Value::List(ids)) => ids.borrow().items.clone(),
+                        Some(id @ Value::String(_)) => vec![id],
+                        _ => Vec::new(),
+                    };
+                    if ids.is_empty() {
+                        result.push(self.format_entry(&value, definition, &prefix, meta));
+                    }
+                    for id in ids {
+                        let converted = self.process_meta(&value, definition, &prefix);
+                        meta.push((Value::string(id.to_string()), converted));
+                    }
+                }
+                Value::list(result)
+            }
+            Value::List(list) => {
+                let items = find_deep(schema, "items").unwrap_or(Value::Null);
+                let entries = list.borrow().items.clone();
+                let converted = entries
+                    .iter()
+                    .enumerate()
+                    .map(|(count, entry)| {
+                        self.format_entry(entry, &items, &format!("{prefix}{count}."), meta)
+                    })
+                    .collect();
+                Value::list(converted)
+            }
+            other => self.process_value(other, schema),
+        }
+    }
+
+    /// A value for the `meta` map: maps stay maps.
+    fn process_meta(&mut self, input: &Value, schema: &Value, prefix: &str) -> Value {
+        let input = with_default(input, schema);
+        match &input {
+            Value::Map(_) => {
+                let properties = self.properties(&input, schema, prefix);
+                Value::map(properties.iter().map(|(property, definition)| {
+                    let value = get(&input, property).unwrap_or(Value::Null);
+                    let prefix = format!("{prefix}{property}.");
+                    let converted = self.process_meta(&value, definition, &prefix);
+                    (Value::string(property.as_str()), converted)
+                }))
+            }
+            Value::List(list) => {
+                let items = find_deep(schema, "items").unwrap_or(Value::Null);
+                let entries = list.borrow().items.clone();
+                let converted = entries
+                    .iter()
+                    .enumerate()
+                    .map(|(count, entry)| {
+                        self.process_meta(entry, &items, &format!("{prefix}{count}."))
+                    })
+                    .collect();
+                Value::list(converted)
+            }
+            other => self.process_value(other, schema),
+        }
+    }
+
+    /// The properties of the schema, noting the fields of the input that it does not know.
+    fn properties(&mut self, input: &Value, schema: &Value, prefix: &str) -> Vec<(String, Value)> {
+        let properties = find_deep(schema, "properties").map_or_else(Vec::new, |p| entries(&p));
+        for (key, _) in entries(input) {
+            let header = format!("{prefix}{key}");
+            let known = properties.iter().any(|(name, _)| *name == key);
+            if !known && !self.unrecognised.contains(&header) {
+                self.unrecognised.push(header);
+            }
+        }
+        properties
+    }
+
+    /// Text becomes a path when the schema, or one of its `anyOf`, `oneOf` and `allOf`
+    /// choices, is a string of a path format. When other string choices have no path
+    /// format, only text that looks like a file name becomes a path.
+    fn process_value(&self, value: &Value, schema: &Value) -> Value {
+        let Value::String(text) = value else {
+            return value.clone();
+        };
+        let default_format = get(schema, "format").map(|format| format.to_string());
+        let (mut path_format, mut other_format) = (false, false);
+        let mut look = |entry: &Value| {
+            if get(entry, "type").is_some_and(|kind| kind.to_string() == "string") {
+                let format = get(entry, "format").map(|format| format.to_string());
+                let format = format
+                    .or_else(|| default_format.clone())
+                    .unwrap_or_default();
+                if PATH_FORMATS.contains(&format.as_str()) {
+                    path_format = true;
+                } else {
+                    other_format = true;
+                }
+            }
+        };
+        look(schema);
+        for option in ["anyOf", "oneOf", "allOf"] {
+            if let Some(Value::List(choices)) = get(schema, option) {
+                choices.borrow().items.iter().for_each(&mut look);
+            }
+        }
+        let characters: Vec<char> = text.chars().collect();
+        let looks_like_file = text.contains('/')
+            || (characters.len() >= 7 && characters[characters.len() - 7..].contains(&'.'))
+            || (characters.len() < 7 && text.contains('.'));
+        if path_format && (!other_format || looks_like_file) {
+            return Value::Path(std::rc::Rc::new(PathValue::parse(text, &self.launch)));
+        }
+        value.clone()
+    }
+}
+
+/// The input, or for a missing one the first `default` in the schema, else `[]`.
+fn with_default(input: &Value, schema: &Value) -> Value {
+    match input {
+        Value::Null => find_deep(schema, "default").unwrap_or_else(|| Value::list(Vec::new())),
+        other => other.clone(),
+    }
+}
+
+/// The value of the first `key` in a map, looking depth first through maps and lists.
+fn find_deep(value: &Value, key: &str) -> Option<Value> {
+    match value {
+        Value::Map(_) => {
+            get(value, key).or_else(|| entries(value).iter().find_map(|(_, v)| find_deep(v, key)))
+        }
+        Value::List(list) => {
+            let items = list.borrow().items.clone();
+            items.iter().find_map(|item| find_deep(item, key))
+        }
+        _ => None,
+    }
+}
+
+/// The samplesheet as a structure: YAML and JSON as they are, CSV and TSV as a list of
+/// maps when the schema's items have properties, else of lists, or of single values for
+/// rows with one field. The text of CSV and TSV fields becomes numbers, booleans or null
+/// where it reads as such.
+fn file_object(file: &PathValue, text: &str, schema: &Value) -> Result<Value, Error> {
+    let kind = file_type(file, text);
+    let items = get(schema, "items");
+    if matches!(kind, "csv" | "tsv") {
+        if get(schema, "type").is_some_and(|kind| kind.to_string() == "object") {
+            return Err(thrown(format!(
+                "CSV or TSV files are not supported. Use a JSON or YAML file instead of {}. \
+                 (Expected a non-list data structure, which is not supported in CSV or TSV)",
+                file.uri()
+            )));
+        }
+        let properties = items
+            .as_ref()
+            .and_then(|items| get(items, "properties"))
+            .or_else(|| get(schema, "properties"));
+        let nested = properties.iter().flat_map(entries).any(|(_, property)| {
+            get(&property, "type").is_some_and(|kind| {
+                let kind = kind.to_string();
+                kind == "array" || kind == "object"
+            })
+        });
+        if nested {
+            return Err(thrown(format!(
+                "Using \"type\": \"array\" or \"type\": \"object\" in schema with a \".{kind}\" \
+                 samplesheet is not supported\n"
+            )));
+        }
+    }
+    let parsed = match kind {
+        "yaml" => parse_yaml(text),
+        "json" => parse_json(text),
+        _ => {
+            let header = items.is_some_and(|items| get(&items, "properties").is_some());
+            let separator = if kind == "csv" { ',' } else { '\t' };
+            return Ok(inferred(&csv(text, separator, header)));
+        }
     };
-    add(definition);
-    for choice in ["anyOf", "oneOf"] {
-        if let Some(Value::List(choices)) = get(definition, choice) {
-            choices.borrow().items.iter().for_each(&mut add);
+    parsed.map_err(|exception| thrown(exception.message))
+}
+
+/// `csv`, `tsv`, `yaml` or `json` by the extension, else by the separator the first line
+/// has more of.
+fn file_type(file: &PathValue, text: &str) -> &'static str {
+    let name = file.name();
+    let extension = name.rsplit_once('.').map_or("", |(_, extension)| extension);
+    match extension {
+        "csv" => "csv",
+        "tsv" => "tsv",
+        "yml" | "yaml" => "yaml",
+        "json" => "json",
+        _ => {
+            let first = text.lines().next().unwrap_or_default();
+            if first.matches(',').count() > first.matches('\t').count() {
+                "csv"
+            } else {
+                "tsv"
+            }
         }
     }
-    let allows = |kind: &str| kinds.iter().any(|allowed| allowed == kind);
-    if allows("integer") || allows("number") {
-        if let Ok(value) = text.parse::<i32>() {
-            return Value::Number(Number::Integer(value));
-        }
-        if let Ok(value) = text.parse::<i64>() {
-            return Value::Number(Number::Long(value));
-        }
-    }
-    if allows("number")
-        && text.parse::<f64>().is_ok()
-        && let Some(value) = BigDecimal::parse(text)
+}
+
+/// The rows of a CSV or TSV text. With a header, each row is a map of the header fields,
+/// with null for missing ones; separators at the end of the header are removed from every
+/// line. Without, a row is its list of fields, or its only field.
+fn csv(text: &str, separator: char, header: bool) -> Value {
+    let mut lines: Vec<&str> = text.lines().collect();
+    if header
+        && lines
+            .first()
+            .is_some_and(|line| line.ends_with([',', '\t']))
     {
-        return Value::Number(Number::BigDecimal(value));
+        lines = lines
+            .into_iter()
+            .take_while(|line| !line.is_empty())
+            .map(|line| line.trim_end_matches([',', '\t']))
+            .collect();
     }
-    if allows("boolean") {
-        if text.eq_ignore_ascii_case("true") {
-            return Value::Boolean(true);
-        }
-        if text.eq_ignore_ascii_case("false") {
-            return Value::Boolean(false);
-        }
+    let mut rows = lines
+        .into_iter()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| fields(line, separator));
+    if !header {
+        return Value::list(
+            rows.map(|mut row| match row.len() {
+                1 => Value::string(row.remove(0)),
+                _ => Value::list(row.into_iter().map(Value::string).collect()),
+            })
+            .collect(),
+        );
     }
-    Value::string(text)
+    let names = rows.next().unwrap_or_default();
+    Value::list(
+        rows.map(|row| {
+            Value::map(names.iter().enumerate().map(|(index, name)| {
+                let field = row
+                    .get(index)
+                    .map_or(Value::Null, |f| Value::string(f.as_str()));
+                (Value::string(name.as_str()), field)
+            }))
+        })
+        .collect(),
+    )
 }
 
-/// A field with a path format becomes a path, which relative text starts at `launch`.
-fn file_value(value: &Value, definition: &Value, launch: &str) -> Value {
-    let format = get(definition, "format").map(|format| format.to_string());
-    match (format.as_deref(), value) {
-        (Some("file-path" | "directory-path" | "path"), Value::String(text)) => {
-            Value::Path(std::rc::Rc::new(PathValue::parse(text, launch)))
-        }
-        _ => value.clone(),
+/// nf-schema's `inferType`: text as org.json reads it, so `1` is an integer, `2.5` a
+/// decimal, `true` a boolean and empty text null; `007` stays text.
+fn inferred(value: &Value) -> Value {
+    match value {
+        Value::Map(_) => Value::map(
+            entries(value)
+                .into_iter()
+                .map(|(key, value)| (Value::string(key), inferred(&value))),
+        ),
+        Value::List(list) => Value::list(list.borrow().items.iter().map(inferred).collect()),
+        Value::String(text) => text_value(text),
+        _ => Value::Null,
     }
 }
 
-/// Checks the rows against the schema, as an array of objects.
+fn text_value(text: &str) -> Value {
+    if text.is_empty() || text.eq_ignore_ascii_case("null") {
+        return Value::Null;
+    }
+    if text.eq_ignore_ascii_case("true") {
+        return Value::Boolean(true);
+    }
+    if text.eq_ignore_ascii_case("false") {
+        return Value::Boolean(false);
+    }
+    let digits = text.strip_prefix('-').unwrap_or(text);
+    if !digits.starts_with(|c: char| c.is_ascii_digit()) {
+        return Value::string(text);
+    }
+    if text.contains(['.', 'e', 'E']) || text == "-0" {
+        return match BigDecimal::parse(text) {
+            // A negative zero is the double `-0.0`.
+            Some(value) if text.starts_with('-') && value.signum() == 0 => {
+                Value::Number(Number::Double(-0.0))
+            }
+            Some(value) => Value::Number(Number::BigDecimal(value)),
+            None => Value::string(text),
+        };
+    }
+    // A leading zero before another digit is not a number.
+    let leading_zero = digits.len() > 1 && digits.starts_with('0');
+    if leading_zero || !digits.chars().all(|c| c.is_ascii_digit()) {
+        return Value::string(text);
+    }
+    if let Ok(value) = text.parse::<i32>() {
+        return Value::Number(Number::Integer(value));
+    }
+    if let Ok(value) = text.parse::<i64>() {
+        return Value::Number(Number::Long(value));
+    }
+    BigDecimal::parse(text).map_or_else(
+        || Value::string(text),
+        |value| Value::Number(Number::BigInteger(value.to_bigint())),
+    )
+}
+
+/// JSON without nulls, as nf-schema writes the samplesheet for validation.
+fn without_nulls(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Array(items) => items
+            .into_iter()
+            .filter(|item| !item.is_null())
+            .map(without_nulls)
+            .collect(),
+        serde_json::Value::Object(map) => serde_json::Value::Object(
+            map.into_iter()
+                .filter(|(_, value)| !value.is_null())
+                .map(|(key, value)| (key, without_nulls(value)))
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
+/// Checks the samplesheet against the schema.
 fn check(
     schema: &serde_json::Value,
-    rows: &[Vec<(String, Value)>],
+    instance: &serde_json::Value,
     file: &PathValue,
     context: &mut Context,
 ) -> Result<(), Error> {
-    let instance: serde_json::Value = rows
-        .iter()
-        .map(|row| {
-            serde_json::Value::Object(
-                row.iter()
-                    .map(|(name, value)| (name.clone(), json(value)))
-                    .collect(),
-            )
-        })
-        .collect();
-    let validator = super::paths::validator(schema, &instance, context)
+    let validator = super::paths::validator(schema, instance, context)
         .map_err(|error| thrown(format!("Invalid samplesheet schema: {error}")))?;
-    let errors: Vec<String> = errors(&validator, &instance, "field")
+    let errors: Vec<String> = errors(&validator, instance, "field")
         .into_iter()
         .map(|(location, message)| {
             let mut parts = location.trim_start_matches('/').splitn(2, '/');
@@ -169,66 +441,6 @@ fn check(
         file.uri(),
         errors.join("\n")
     )))
-}
-
-/// The rows of a samplesheet as pairs of header and text. JSON files hold a list of objects.
-fn rows(file: &PathValue, text: &str) -> Result<Vec<Vec<(String, String)>>, Error> {
-    let name = file.name().to_ascii_lowercase();
-    if name.ends_with(".json") {
-        let parsed = parse_json(text).map_err(|exception| thrown(exception.message))?;
-        let Value::List(list) = parsed else {
-            return Err(thrown(format!(
-                "The samplesheet {} is not a list",
-                file.uri()
-            )));
-        };
-        let items = list.borrow().items.clone();
-        return Ok(items
-            .iter()
-            .map(|row| {
-                entries(row)
-                    .into_iter()
-                    .map(|(key, value)| {
-                        (
-                            key,
-                            if let Value::Null = value {
-                                String::new()
-                            } else {
-                                value.to_string()
-                            },
-                        )
-                    })
-                    .collect()
-            })
-            .collect());
-    }
-    let separator = match () {
-        _ if name.ends_with(".csv") => ',',
-        _ if name.ends_with(".tsv") => '\t',
-        _ => {
-            return Err(Error::Unsupported {
-                message: format!(
-                    "samplesheets like {} that are not CSV, TSV or JSON",
-                    file.uri()
-                ),
-                span: Default::default(),
-            });
-        }
-    };
-    let mut lines = text.lines().filter(|line| !line.trim().is_empty());
-    let headers = lines
-        .next()
-        .map(|line| fields(line, separator))
-        .unwrap_or_default();
-    Ok(lines
-        .map(|line| {
-            headers
-                .iter()
-                .cloned()
-                .zip(fields(line, separator))
-                .collect()
-        })
-        .collect())
 }
 
 /// The fields of one line; double quotes group text with separators and `""` is a quote.

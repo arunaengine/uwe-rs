@@ -172,8 +172,31 @@ pub struct Set {
 pub enum SetKind {
     /// `java.util.LinkedHashSet`, from `as Set`; keeps insertion order.
     LinkedHashSet,
-    /// `java.util.HashSet`, from `toSet()`; iterates in Java's hash table order.
-    HashSet,
+    /// `java.util.HashSet`, from `toSet()`; iterates in Java's hash table order. It has the
+    /// size of its table, which doubles when the set gets more than three quarters full.
+    HashSet(usize),
+}
+
+impl Set {
+    /// Adds an item, if the set does not have it: at the end, or for a `HashSet` in the
+    /// order of Java's table. Within a bucket, Java keeps the items in the order they came.
+    pub fn add(&mut self, item: Value) -> bool {
+        if !self.items.insert(Key(item)) {
+            return false;
+        }
+        if let SetKind::HashSet(capacity) = &mut self.kind {
+            if self.items.len() as f64 > 0.75 * *capacity as f64 {
+                *capacity *= 2;
+            }
+            let mask = *capacity - 1;
+            let bucket = |key: &Key| {
+                let hash = key.0.java_hash() as u32;
+                ((hash ^ (hash >> 16)) as usize) & mask
+            };
+            self.items.sort_by(|a, b| bucket(a).cmp(&bucket(b)));
+        }
+        true
+    }
 }
 
 impl Value {
@@ -238,7 +261,7 @@ impl Value {
             },
             Value::Set(set) => match set.borrow().kind {
                 SetKind::LinkedHashSet => "LinkedHashSet",
-                SetKind::HashSet => "HashSet",
+                SetKind::HashSet(_) => "HashSet",
             },
             Value::MapEntry(_) => "Entry",
             Value::MemoryUnit(_) => "MemoryUnit",
@@ -292,7 +315,7 @@ impl Value {
             },
             Value::Set(set) => match set.borrow().kind {
                 SetKind::LinkedHashSet => "java.util.LinkedHashSet",
-                SetKind::HashSet => "java.util.HashSet",
+                SetKind::HashSet(_) => "java.util.HashSet",
             },
             Value::MapEntry(_) => "java.util.LinkedHashMap$Entry",
             Value::MemoryUnit(_) => "nextflow.util.MemoryUnit",

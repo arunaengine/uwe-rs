@@ -117,7 +117,7 @@ impl Value {
                 })))
             }
             (LeftShift, Value::Set(set), item) => {
-                set.borrow_mut().items.insert(Key(item.clone()));
+                set.borrow_mut().add(item.clone());
                 return Ok(self.clone());
             }
             (Add, Value::Map(left), Value::Map(right)) => {

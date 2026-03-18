@@ -492,6 +492,20 @@ impl Interpreter<'_> {
             (None, [Value::Map(map)]) if matches!(class, "LinkedHashMap" | "HashMap") => {
                 Ok(super::library::copy_map(&Value::Map(map.clone())))
             }
+            (None, []) if class == "HashSet" => Ok(super::library::hash_set(16, &[])),
+            // Java sizes the table of `new HashSet(items)` for at least 16.
+            (None, [items @ (Value::List(_) | Value::Set(_))]) if class == "HashSet" => {
+                let items = super::library::elements(items);
+                let capacity = ((items.len() as f64 / 0.75) as usize + 1).max(16);
+                Ok(super::library::hash_set(
+                    capacity.next_power_of_two(),
+                    &items,
+                ))
+            }
+            (None, []) if class == "LinkedHashSet" => Ok(Value::set([])),
+            (None, [items @ (Value::List(_) | Value::Set(_))]) if class == "LinkedHashSet" => {
+                Ok(Value::set(super::library::elements(items)))
+            }
             (None, []) if matches!(class, "ArrayList" | "LinkedList") => {
                 Ok(Value::list(Vec::new()))
             }

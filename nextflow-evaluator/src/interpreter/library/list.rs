@@ -308,13 +308,13 @@ impl Interpreter<'_> {
             .map(|item| item.0.clone())
             .collect();
         Ok(Some(match (name, arguments) {
-            ("add", [item]) => Value::Boolean(set.borrow_mut().items.insert(Key(item.clone()))),
+            ("add", [item]) => Value::Boolean(set.borrow_mut().add(item.clone())),
             ("addAll", [others]) => {
-                let before = items.len();
-                set.borrow_mut()
-                    .items
-                    .extend(elements(others).into_iter().map(Key));
-                Value::Boolean(set.borrow().items.len() != before)
+                let mut changed = false;
+                for item in elements(others) {
+                    changed |= set.borrow_mut().add(item);
+                }
+                Value::Boolean(changed)
             }
             ("remove", [item]) => {
                 Value::Boolean(set.borrow_mut().items.shift_remove(&Key(item.clone())))

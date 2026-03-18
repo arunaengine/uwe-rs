@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod nf_fgbio;
 mod nf_schema;
 
 use nextflow_config::Config;
@@ -61,6 +62,7 @@ const NF_CORE_UTILS: &[&str] = &[
 pub fn functions(plugin: &str) -> Option<&'static [&'static str]> {
     match plugin {
         "nf-core-utils" => Some(NF_CORE_UTILS),
+        "nf-fgbio" => Some(&["readStructure"]),
         "nf-schema" => Some(NF_SCHEMA),
         _ => None,
     }
@@ -93,6 +95,7 @@ pub fn call(
     context: &mut Context,
 ) -> Result<Value, Error> {
     match plugin {
+        "nf-fgbio" => nf_fgbio::call(name, arguments),
         "nf-schema" => nf_schema::call(name, arguments, context),
         _ => Err(Error::Unsupported {
             message: format!("the function `{name}` of the plugin `{plugin}`"),

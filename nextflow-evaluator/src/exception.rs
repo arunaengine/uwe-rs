@@ -6,11 +6,13 @@ use std::fmt;
 
 use crate::number::ArithmeticError;
 
-/// A thrown Java exception or error: its simple class name and its message.
+/// A thrown Java exception or error: its simple class name, its message and the exception
+/// that caused it, if any.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Exception {
     pub class: &'static str,
     pub message: String,
+    pub cause: Option<Box<Exception>>,
 }
 
 impl Exception {
@@ -18,6 +20,7 @@ impl Exception {
         Self {
             class,
             message: message.into(),
+            cause: None,
         }
     }
 
@@ -44,6 +47,16 @@ const CLASSES: &[(&str, &str, &str)] = &[
     ("Throwable", "java.lang.Throwable", ""),
     ("Exception", "java.lang.Exception", "Throwable"),
     ("Error", "java.lang.Error", "Throwable"),
+    (
+        "ReflectiveOperationException",
+        "java.lang.ReflectiveOperationException",
+        "Exception",
+    ),
+    (
+        "InvocationTargetException",
+        "java.lang.reflect.InvocationTargetException",
+        "ReflectiveOperationException",
+    ),
     ("AssertionError", "java.lang.AssertionError", "Error"),
     (
         "RuntimeException",

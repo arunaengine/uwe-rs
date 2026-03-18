@@ -42,6 +42,8 @@ pub enum State {
     Bytes(Rc<[u8]>),
     /// `java.security.MessageDigest`, by its algorithm.
     Digest(&'static str),
+    /// An object of a plugin class that is known by its text, like fgbio's `ReadStructure`.
+    Text(Rc<str>),
 }
 
 /// The `workflow` of a run: its properties, and the handlers that run when it ends.

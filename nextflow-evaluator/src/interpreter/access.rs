@@ -83,6 +83,10 @@ impl Interpreter<'_> {
                     }
                 }
             }
+            Value::Exception(exception) if name == "cause" => match &exception.cause {
+                Some(cause) => Value::Exception(Rc::new((**cause).clone())),
+                None => Value::Null,
+            },
             Value::Exception(exception) if name == "message" => match exception.message.as_str() {
                 "" => Value::Null,
                 message => Value::string(message),
@@ -403,8 +407,13 @@ impl Interpreter<'_> {
             (Value::Channel(_) | Value::ChannelOut(_), _) => {
                 self.operator(object, name, arguments, span)
             }
-            (Value::Exception(_), "getMessage") if arguments.is_empty() => {
-                self.property(object, "message", span)
+            (Value::Exception(_), "getMessage" | "getCause") if arguments.is_empty() => {
+                let name = if name == "getMessage" {
+                    "message"
+                } else {
+                    "cause"
+                };
+                self.property(object, name, span)
             }
             _ => {
                 if let Some(value) = self.library_method(object, name, &arguments, span)? {

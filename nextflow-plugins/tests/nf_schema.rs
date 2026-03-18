@@ -91,6 +91,15 @@ fn invalid_samplesheets_fail() {
         ),
         "{error}"
     );
+    let error = to_list("bad5.csv", "schema5.json").unwrap_err().to_string();
+    assert!(
+        error.ends_with(
+            "bad5.csv:\n\n-> Entry 1: Error for field 'f' (../params): '../params' is not a \
+             file, but a directory\n-> Entry 2: Error for field 'f' (missing.csv): the file or \
+             directory 'missing.csv' does not exist\n"
+        ),
+        "{error}"
+    );
 }
 
 /// The params of the probe: `nextflow.config` sets `input = 'x.csv'`, `outdir = null`,

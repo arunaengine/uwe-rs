@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod params;
+mod paths;
 mod samplesheet;
 
 use std::rc::Rc;

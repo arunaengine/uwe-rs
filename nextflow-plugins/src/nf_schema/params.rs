@@ -39,9 +39,9 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
         );
         context.host.print(&message);
     }
-    let validator = jsonschema::validator_for(&schema.json)
-        .map_err(|error| thrown(format!("Invalid parameters schema: {error}")))?;
     let instance = serde_json::Value::Object(instance);
+    let validator = super::paths::validator(&schema.json, &instance, context)
+        .map_err(|error| thrown(format!("Invalid parameters schema: {error}")))?;
     let errors: Vec<String> = errors(&validator, &instance, "parameter")
         .into_iter()
         .map(|(path, message)| {

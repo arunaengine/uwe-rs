@@ -40,7 +40,7 @@ pub(super) fn to_list(
         }
         typed_rows.push(typed);
     }
-    check(&schema.json, &typed_rows, &file)?;
+    check(&schema.json, &typed_rows, &file, context)?;
     let has_meta = properties
         .iter()
         .any(|(_, definition)| get(definition, "meta").is_some());
@@ -129,9 +129,8 @@ fn check(
     schema: &serde_json::Value,
     rows: &[Vec<(String, Value)>],
     file: &PathValue,
+    context: &mut Context,
 ) -> Result<(), Error> {
-    let validator = jsonschema::validator_for(schema)
-        .map_err(|error| thrown(format!("Invalid samplesheet schema: {error}")))?;
     let instance: serde_json::Value = rows
         .iter()
         .map(|row| {
@@ -142,6 +141,8 @@ fn check(
             )
         })
         .collect();
+    let validator = super::paths::validator(schema, &instance, context)
+        .map_err(|error| thrown(format!("Invalid samplesheet schema: {error}")))?;
     let errors: Vec<String> = errors(&validator, &instance, "field")
         .into_iter()
         .map(|(location, message)| {

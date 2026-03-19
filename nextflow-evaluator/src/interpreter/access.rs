@@ -392,7 +392,26 @@ impl Interpreter<'_> {
             }
             (Value::Null, "toString") if arguments.is_empty() => Ok(Value::string("null")),
             (Value::Null, "hashCode") if arguments.is_empty() => Ok(Value::integer(0)),
+            (Value::Null, "asBoolean") if arguments.is_empty() => Ok(Value::Boolean(false)),
             (Value::Null, _) => {
+                // Groovy iterates null as nothing for these methods of every object.
+                let iterates = matches!(
+                    name,
+                    "findAll"
+                        | "collect"
+                        | "each"
+                        | "eachWithIndex"
+                        | "find"
+                        | "any"
+                        | "every"
+                        | "grep"
+                        | "inject"
+                );
+                if iterates
+                    && let Some(value) = self.library_method(object, name, &arguments, span)?
+                {
+                    return Ok(value);
+                }
                 let message = format!("Cannot invoke method {name}() on null object");
                 Err(thrown(
                     Exception::new("NullPointerException", message),

@@ -113,6 +113,47 @@ fn invalid_samplesheets_fail() {
     );
 }
 
+#[test]
+fn values_are_validated_against_a_schema() {
+    let directory = directory();
+    let mut host = Fixtures(directory.clone());
+    let config = Config::default();
+    let mut context = Context {
+        host: &mut host,
+        config: &config,
+        params: Value::map([]),
+        project_dir: &directory,
+    };
+    let mut validate = |arguments: Vec<Value>| {
+        call("nf-schema", "validate", arguments, &mut context).map(|errors| errors.to_string())
+    };
+    let input = |entries: &[(&str, Value)]| {
+        Value::map(
+            entries
+                .iter()
+                .map(|(key, value)| (Value::string(*key), value.clone())),
+        )
+    };
+    let schema = || Value::string("object_schema.json");
+    let good = input(&[("n", Value::integer(1))]);
+    assert_eq!(validate(vec![good, schema()]).unwrap(), "[]");
+    let bad = input(&[
+        ("n", Value::string("a")),
+        ("f", Value::string("missing.txt")),
+    ]);
+    let options = input(&[("exitOnError", Value::Boolean(false))]);
+    assert_eq!(
+        validate(vec![options, bad.clone(), schema()]).unwrap(),
+        "[/f (missing.txt): the file or directory 'missing.txt' does not exist, \
+         /n (a): Value is [string] but should be [integer]]"
+    );
+    let error = validate(vec![bad, schema()]).unwrap_err().to_string();
+    assert!(
+        error.ends_with("/n (a): Value is [string] but should be [integer]\n"),
+        "{error}"
+    );
+}
+
 /// The params of the probe: `nextflow.config` sets `input = 'x.csv'`, `outdir = null`,
 /// `n = 5`, `flag = false` and `mode = 'a'`, and `main.nf` prints `paramsSummaryMap(workflow)`
 /// and `paramsSummaryLog(workflow)`, then calls `validateParameters()`.

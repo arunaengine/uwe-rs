@@ -171,16 +171,21 @@ fn errors(
 ) -> Vec<(String, String)> {
     use jsonschema::error::{TypeKind, ValidationErrorKind as Kind};
     let mut errors: Vec<(String, String)> = Vec::new();
-    let mut missing: Vec<(String, Vec<String>)> = Vec::new();
+    // Missing fields by the value and the `required` keyword that asks for them.
+    let mut missing: Vec<(String, String, Vec<String>)> = Vec::new();
     for error in validator.iter_errors(instance) {
         let path = error.instance_path().to_string();
         let value = error.instance();
         let message = match error.kind() {
             Kind::Required { property } => {
                 let property = property.as_str().unwrap_or_default().to_owned();
-                match missing.iter_mut().find(|(at, _)| *at == path) {
-                    Some((_, names)) => names.push(property),
-                    None => missing.push((path, vec![property])),
+                let keyword = error.schema_path().to_string();
+                let group = missing
+                    .iter_mut()
+                    .find(|(at, by, _)| *at == path && *by == keyword);
+                match group {
+                    Some((_, _, names)) => names.push(property),
+                    None => missing.push((path, keyword, vec![property])),
                 }
                 continue;
             }
@@ -209,7 +214,7 @@ fn errors(
         };
         errors.push((path, message));
     }
-    for (path, mut names) in missing {
+    for (path, _, mut names) in missing {
         names.sort();
         errors.push((
             path,

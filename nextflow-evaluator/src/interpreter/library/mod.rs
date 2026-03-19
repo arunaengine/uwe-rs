@@ -86,6 +86,7 @@ impl Interpreter<'_> {
                 number::unit_method(object, name, arguments)
             }
             Value::Object(object) => self.object_method(object, name, arguments, span)?,
+            Value::Null => self.iterable_method(object, &[], name, arguments, span)?,
             Value::Class(class) => match (name, arguments) {
                 // An array class like `[Ljava.lang.String;` is `String[]`.
                 ("getSimpleName", []) => Some(Value::string(

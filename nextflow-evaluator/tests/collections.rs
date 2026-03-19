@@ -33,6 +33,23 @@ fn value(body: &str) -> String {
 }
 
 #[test]
+fn null_iterates_as_nothing() {
+    assert_eq!(
+        value(
+            "def n = null\n\
+             [n.findAll { x -> true }, n.collect { x -> x }, n.each { x -> x }, n.find { x -> true }, \
+             n.any { x -> true }, n.every { x -> false }, n.grep(), n.inject(5) { a, b -> a }, \
+             n.asBoolean()]"
+        ),
+        "[[], [], null, null, false, true, [], 5, false]"
+    );
+    assert_eq!(
+        eval("null.size()").unwrap_err(),
+        "NullPointerException: Cannot invoke method size() on null object"
+    );
+}
+
+#[test]
 fn hash_sets_keep_the_order_of_java_tables() {
     assert_eq!(
         value(

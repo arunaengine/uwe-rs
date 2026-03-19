@@ -186,6 +186,18 @@ fn output_globs_have_choices_and_classes() {
 }
 
 #[test]
+fn yaml_anchors_aliases_and_merge_keys() {
+    let text = "base: &base\n  a: 1\n  b: two\nmore: &more\n  <<: *base\n  c: 3\ns: &s hello\n\
+                use:\n  x: 0\n  <<: [*more, {d: 4, a: 9}]\n  b: over\n  '<<': quoted\nref: *s\n";
+    let body = format!("new org.yaml.snakeyaml.Yaml().load({text:?})");
+    assert_eq!(
+        value(&body),
+        "[base:[a:1, b:two], more:[a:1, b:two, c:3], s:hello, \
+         use:[x:0, a:1, b:over, c:3, d:4, <<:quoted], ref:hello]"
+    );
+}
+
+#[test]
 fn yaml_load_and_dump() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let file = directory.path().join("v.yml");

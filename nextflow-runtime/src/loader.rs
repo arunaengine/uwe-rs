@@ -41,11 +41,38 @@ impl Loader {
     /// Loads a script file with everything it includes.
     pub fn load(&mut self, path: &Path) -> Result<Rc<Module>, LoadError> {
         let module = self.load_file(path);
+        if self.errors.is_empty() {
+            self.check_calls();
+        }
         match module {
             Some(module) if self.errors.is_empty() => Ok(module),
             _ => Err(LoadError {
                 messages: std::mem::take(&mut self.errors),
             }),
+        }
+    }
+
+    /// Checks that each call of a process or workflow has as many arguments as it takes, as
+    /// Nextflow's type check does.
+    fn check_calls(&mut self) {
+        let mut modules: Vec<(&PathBuf, &Rc<Module>)> = self.modules.iter().collect();
+        modules.sort_by_key(|(path, _)| *path);
+        for (path, module) in modules {
+            let source = module.source.borrow().clone().unwrap_or_default();
+            let lines = LineIndex::new(&source);
+            for (name, count, span) in &module.definition_calls {
+                let Some(expected) = parameter_count(module, name) else {
+                    continue;
+                };
+                if expected != *count {
+                    let (line, column) = lines.line_column(span.start);
+                    self.errors.push(format!(
+                        "{}:{line}:{column}: Incorrect number of call arguments, expected \
+                         {expected} but received {count}",
+                        path.display()
+                    ));
+                }
+            }
         }
     }
 
@@ -164,6 +191,24 @@ impl Loader {
             }
         }
     }
+}
+
+/// The number of inputs of a process, or takes of a workflow, that a name of a module stands
+/// for, following includes.
+fn parameter_count(module: &Module, name: &str) -> Option<usize> {
+    if let Some(process) = module.processes.iter().find(|p| &*p.name == name) {
+        return Some(process.inputs.len());
+    }
+    if let Some(workflow) = module
+        .workflows
+        .iter()
+        .find(|workflow| workflow.name.as_deref() == Some(name))
+    {
+        return Some(workflow.takes.len());
+    }
+    let links = module.links.borrow();
+    let link = links.get(name)?;
+    parameter_count(&link.module, &link.name)
 }
 
 /// The file an include source names: relative to the including script, with `.nf` added, or

@@ -180,6 +180,7 @@ pub fn lower_script(
         let workflow = lowering.implicit_workflow(&statements);
         module.workflows.push(Rc::new(workflow));
     }
+    module.definition_calls = std::mem::take(&mut lowering.definition_calls);
     if lowering.errors.is_empty() {
         Ok(module)
     } else {
@@ -212,6 +213,8 @@ pub(crate) struct Lowering<'a> {
     dynamic_names: bool,
     /// Whether the code is a template expression, where every unknown name is resolved late.
     template: bool,
+    /// The calls of processes and workflows, for `Module::definition_calls`.
+    definition_calls: Vec<(Rc<str>, usize, Span)>,
 }
 
 impl<'a> Lowering<'a> {
@@ -230,6 +233,7 @@ impl<'a> Lowering<'a> {
             config: false,
             dynamic_names: false,
             template: false,
+            definition_calls: Vec::new(),
         }
     }
 

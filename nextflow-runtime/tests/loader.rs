@@ -101,6 +101,38 @@ fn bad_includes() {
 }
 
 #[test]
+fn calls_need_as_many_arguments_as_inputs() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    write(
+        root.path(),
+        "lib.nf",
+        "process HELLO {\n    input:\n    val x\n    script:\n    \"echo ${x}\"\n}\n",
+    );
+    write(
+        root.path(),
+        "main.nf",
+        "include { HELLO as SAY } from './lib'\n\
+         workflow SUB {\n    take:\n    a\n    b\n    main:\n    println(a)\n}\n\
+         workflow {\n    SAY('a', 'b')\n    SUB('x')\n    SUB(k: 1, 'x')\n}\n",
+    );
+    let error = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .unwrap_err()
+        .to_string();
+    let lines: Vec<&str> = error
+        .lines()
+        .map(|line| line.rsplit("main.nf:").next().unwrap_or(line))
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            "10:5: Incorrect number of call arguments, expected 1 but received 2",
+            "11:5: Incorrect number of call arguments, expected 2 but received 1"
+        ]
+    );
+}
+
+#[test]
 fn plugin_includes_call_the_plugin() {
     let root = tempfile::tempdir().expect("a temporary directory");
     write(

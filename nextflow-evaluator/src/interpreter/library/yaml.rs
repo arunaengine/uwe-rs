@@ -2,57 +2,113 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashMap;
+
+use indexmap::IndexMap;
 use saphyr_parser::{Event, Parser, ScalarStyle};
 
 use crate::exception::Exception;
 use crate::number::Number;
-use crate::value::Value;
+use crate::value::{Key, Value};
 
 /// `yaml.load(text)`: mappings become maps and sequences lists; plain scalars are resolved
 /// as YAML 1.1 does, so `1.13` is a number and `yes` a boolean. An empty text gives `null`.
+/// An alias gives the value of its anchor, and a merge key `<<` adds the entries of a map, or
+/// of a list of maps, that the mapping does not have, as SnakeYAML does.
 pub fn load(text: &str) -> Result<Value, Exception> {
-    let mut stack: Vec<(Vec<Value>, bool)> = Vec::new();
+    let mut stack: Vec<Collection> = Vec::new();
+    let mut anchors: HashMap<usize, Value> = HashMap::new();
     let mut root = None;
     for event in Parser::new_from_str(text) {
         let (event, _) =
             event.map_err(|error| Exception::new("YAMLException", error.info().to_owned()))?;
-        let value = match event {
-            Event::SequenceStart(..) => {
-                stack.push((Vec::new(), false));
+        let (value, anchor) = match event {
+            Event::SequenceStart(anchor, _) => {
+                stack.push(Collection::new(false, anchor));
                 continue;
             }
-            Event::MappingStart(..) => {
-                stack.push((Vec::new(), true));
+            Event::MappingStart(anchor, _) => {
+                stack.push(Collection::new(true, anchor));
                 continue;
             }
             Event::SequenceEnd | Event::MappingEnd => {
-                let (items, mapping) = stack.pop().expect("an open collection");
-                if mapping {
-                    let pairs: Vec<(Value, Value)> = items
-                        .chunks(2)
-                        .map(|pair| (pair[0].clone(), pair.get(1).cloned().unwrap_or(Value::Null)))
-                        .collect();
-                    Value::map(pairs)
-                } else {
-                    Value::list(items)
+                let collection = stack.pop().expect("an open collection");
+                let anchor = collection.anchor;
+                (collection.value(), anchor)
+            }
+            Event::Scalar(text, ScalarStyle::Plain, anchor, _) => {
+                // A plain `<<` in the place of a key is a merge key.
+                if let Some(top) = stack.last_mut()
+                    && top.mapping
+                    && top.items.len() % 2 == 0
+                    && text == "<<"
+                {
+                    top.merges.push(top.items.len());
                 }
+                (scalar(&text), anchor)
             }
-            Event::Scalar(text, ScalarStyle::Plain, ..) => scalar(&text),
-            Event::Scalar(text, ..) => Value::string(text.as_ref()),
-            Event::Alias(_) => {
-                return Err(Exception::new(
-                    "YAMLException",
-                    "YAML aliases are not supported yet",
-                ));
-            }
+            Event::Scalar(text, _, anchor, _) => (Value::string(text.as_ref()), anchor),
+            Event::Alias(anchor) => match anchors.get(&anchor) {
+                Some(value) => (value.clone(), 0),
+                None => return Err(Exception::new("YAMLException", "found undefined alias")),
+            },
             _ => continue,
         };
+        if anchor > 0 {
+            anchors.insert(anchor, value.clone());
+        }
         match stack.last_mut() {
-            Some((items, _)) => items.push(value),
+            Some(collection) => collection.items.push(value),
             None => root = Some(value),
         }
     }
     Ok(root.unwrap_or(Value::Null))
+}
+
+/// A mapping or sequence while it is read: its items, keys and values in turn for a mapping.
+struct Collection {
+    mapping: bool,
+    anchor: usize,
+    items: Vec<Value>,
+    /// The places of merge keys among the items.
+    merges: Vec<usize>,
+}
+
+impl Collection {
+    fn new(mapping: bool, anchor: usize) -> Self {
+        Self {
+            mapping,
+            anchor,
+            items: Vec::new(),
+            merges: Vec::new(),
+        }
+    }
+
+    fn value(self) -> Value {
+        if !self.mapping {
+            return Value::list(self.items);
+        }
+        let mut entries: IndexMap<Key, Value> = IndexMap::new();
+        for (index, pair) in self.items.chunks(2).enumerate() {
+            let value = pair.get(1).cloned().unwrap_or(Value::Null);
+            if !self.merges.contains(&(index * 2)) {
+                entries.insert(Key(pair[0].clone()), value);
+                continue;
+            }
+            let sources = match &value {
+                Value::List(list) => list.borrow().items.clone(),
+                other => vec![other.clone()],
+            };
+            for source in sources {
+                if let Value::Map(source) = source {
+                    for (key, value) in &source.borrow().entries {
+                        entries.entry(key.clone()).or_insert_with(|| value.clone());
+                    }
+                }
+            }
+        }
+        Value::map(entries.into_iter().map(|(key, value)| (key.0, value)))
+    }
 }
 
 /// A plain scalar as YAML 1.1 resolves it: null, a boolean, a whole number, a decimal

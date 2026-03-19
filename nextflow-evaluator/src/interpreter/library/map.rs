@@ -46,7 +46,17 @@ impl Interpreter<'_> {
             ("containsValue", [value]) => {
                 Value::Boolean(entries.iter().any(|(_, other)| other.java_equals(value)))
             }
-            ("get" | "getAt", [key]) => get(key).unwrap_or(Value::Null),
+            ("get" | "getAt", [key]) => match get(key) {
+                Some(value) => value,
+                None => self.default_value(map, key, span)?,
+            },
+            ("withDefault", [Value::Closure(f)]) => {
+                let copy = super::copy_map(&object);
+                if let Value::Map(copy) = &copy {
+                    copy.borrow_mut().default = Some(f.clone());
+                }
+                copy
+            }
             ("getOrDefault", [key, default]) => get(key).unwrap_or_else(|| default.clone()),
             ("get", [key, default]) => match get(key) {
                 Some(value) => value,

@@ -192,6 +192,7 @@ pub(in crate::interpreter) fn copy_map(map: &Value) -> Value {
             crate::value::Map {
                 kind: crate::value::MapKind::LinkedHashMap,
                 entries: map.borrow().entries.clone(),
+                default: None,
             },
         ))),
         other => other.clone(),

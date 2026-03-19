@@ -94,6 +94,7 @@ pub fn deep_copy(value: &Value) -> Value {
             Value::Map(Rc::new(RefCell::new(Map {
                 kind: map.kind,
                 entries,
+                default: None,
             })))
         }
         Value::List(list) => {

@@ -79,7 +79,15 @@ impl Host for Console {
                     directory: metadata.is_dir(),
                     size: metadata.len(),
                 })),
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                // As in Java, a path below a file does not exist.
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                    ) =>
+                {
+                    Ok(None)
+                }
                 Err(error) => Err(io_error(format!("{}: {error}", path.path))),
             };
         }

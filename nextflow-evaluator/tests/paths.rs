@@ -132,6 +132,16 @@ fn directories_are_made_and_files_copied_into_them() {
 }
 
 #[test]
+fn paths_below_files_do_not_exist() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let dir = directory.path().display();
+    let body = format!(
+        "file('{dir}/a').text = 'x'\n[file('{dir}/a/b').exists(), file('{dir}/a/b').isDirectory()]"
+    );
+    assert_eq!(value(&body), "[false, false]");
+}
+
+#[test]
 fn file_sizes_and_json_files() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let dir = directory.path().display();

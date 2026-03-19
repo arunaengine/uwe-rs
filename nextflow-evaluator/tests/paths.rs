@@ -136,9 +136,10 @@ fn paths_below_files_do_not_exist() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let dir = directory.path().display();
     let body = format!(
-        "file('{dir}/a').text = 'x'\n[file('{dir}/a/b').exists(), file('{dir}/a/b').isDirectory()]"
+        "file('{dir}/a').text = 'x'\n[file('{dir}/a/b').exists(), file('{dir}/a/b').isDirectory(), \
+         file('{dir}/a').listFiles(), file('{dir}/c').listFiles()]"
     );
-    assert_eq!(value(&body), "[false, false]");
+    assert_eq!(value(&body), "[false, false, null, null]");
 }
 
 #[test]

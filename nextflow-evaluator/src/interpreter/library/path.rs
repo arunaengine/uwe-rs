@@ -165,7 +165,12 @@ impl Interpreter<'_> {
                 }
                 return Ok(Some(Value::Null));
             }
+            // Like `File.listFiles()`, null for a path that is not a directory.
             ("listFiles", []) => {
+                let metadata = self.host.metadata(path).map_err(host_error)?;
+                if !metadata.is_some_and(|metadata| metadata.directory) {
+                    return Ok(Some(Value::Null));
+                }
                 let entries = self.host.list(path).map_err(host_error)?;
                 let mut files: Vec<PathValue> = entries
                     .into_iter()

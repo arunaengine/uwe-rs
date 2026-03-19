@@ -33,6 +33,20 @@ fn value(body: &str) -> String {
 }
 
 #[test]
+fn maps_with_defaults() {
+    assert_eq!(
+        value(
+            "def flags = [:].withDefault { [hasNo: false] }\n\
+             flags['a'].hasNo = true\n\
+             flags.b\n\
+             def counts = [x: 1].withDefault { k -> k.size() }\n\
+             [flags, counts.get('abc'), counts['zz'], counts.containsKey('q'), counts]"
+        ),
+        "[[a:[hasNo:true], b:[hasNo:false]], 3, 2, false, [x:1, abc:3, zz:2]]"
+    );
+}
+
+#[test]
 fn closures_get_keys_and_values_or_entries() {
     assert_eq!(value("[a: 1, b: 2].findAll { k, v -> v > 1 }"), "[b:2]");
     assert_eq!(value("[a: 1].find { it.value == 1 }"), "a=1");

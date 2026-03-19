@@ -147,6 +147,8 @@ pub enum ListKind {
 pub struct Map {
     pub kind: MapKind,
     pub entries: IndexMap<Key, Value>,
+    /// From `withDefault { }`: makes the value of a key that the map lacks when it is read.
+    pub default: Option<Rc<Closure>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -222,6 +224,7 @@ impl Value {
         Value::Map(Rc::new(RefCell::new(Map {
             kind: MapKind::LinkedHashMap,
             entries,
+            default: None,
         })))
     }
 

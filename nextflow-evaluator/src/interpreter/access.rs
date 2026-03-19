@@ -35,7 +35,8 @@ impl Interpreter<'_> {
                     Some(Value::Closure(closure)) if map.borrow().kind == MapKind::Lazy => {
                         self.call_closure_value(&closure, Vec::new(), span)?
                     }
-                    value => value.unwrap_or(Value::Null),
+                    Some(value) => value,
+                    None => self.default_value(map, &key.0, span)?,
                 }
             }
             Value::ChannelOut(out) => {
@@ -202,12 +203,13 @@ impl Interpreter<'_> {
                     span,
                 ));
             }
-            (Value::Map(map), key) => map
-                .borrow()
-                .entries
-                .get(&Key(key.clone()))
-                .cloned()
-                .unwrap_or(Value::Null),
+            (Value::Map(map), key) => {
+                let value = map.borrow().entries.get(&Key(key.clone())).cloned();
+                match value {
+                    Some(value) => value,
+                    None => self.default_value(map, key, span)?,
+                }
+            }
             // All matches from the start; a pattern with groups gives a list per match.
             (Value::ChannelOut(out), Value::Number(number)) if integral(number) => {
                 match position(number.to_i64(), out.values.len()) {
@@ -375,6 +377,24 @@ impl Interpreter<'_> {
                 Err(unsupported(format!("setting an index of {class}"), span))
             }
         }
+    }
+
+    /// The value of a key that a map lacks: null, or for a map from `withDefault { }` the
+    /// closure's value for the key, which the map keeps.
+    pub(super) fn default_value(
+        &mut self,
+        map: &Rc<std::cell::RefCell<crate::value::Map>>,
+        key: &Value,
+        span: Span,
+    ) -> Result<Value, Error> {
+        let Some(default) = map.borrow().default.clone() else {
+            return Ok(Value::Null);
+        };
+        let value = self.call_closure_value(&default, vec![key.clone()], span)?;
+        map.borrow_mut()
+            .entries
+            .insert(Key(key.clone()), value.clone());
+        Ok(value)
     }
 
     /// `object.name(arguments)`. Only `call` on closures and the core of exceptions so far.

@@ -305,7 +305,11 @@ fn similar_list(original: &Rc<RefCell<List>>, items: Vec<Value>) -> Result<Value
 }
 
 fn new_map(kind: MapKind, entries: indexmap::IndexMap<Key, Value>) -> Value {
-    Value::Map(Rc::new(RefCell::new(Map { kind, entries })))
+    Value::Map(Rc::new(RefCell::new(Map {
+        kind,
+        entries,
+        default: None,
+    })))
 }
 
 fn unsupported_change() -> Exception {

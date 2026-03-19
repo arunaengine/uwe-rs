@@ -31,6 +31,10 @@ pub(crate) fn call(
         | ("samplesheetToList", [sheet, schema, options]) => {
             samplesheet::to_list(sheet, schema, Some(options), context)
         }
+        ("validate", [options @ Value::Map(_), input, schema]) => {
+            validate(Some(options), input, schema, context)
+        }
+        ("validate", [input, schema]) => validate(None, input, schema, context),
         ("validateParameters", []) => params::validate(None, context),
         ("validateParameters", [options]) => params::validate(Some(options), context),
         ("paramsSummaryMap", [workflow]) => params::summary(None, workflow, context),
@@ -50,6 +54,37 @@ pub(crate) fn call(
             span: Default::default(),
         }),
     }
+}
+
+/// `validate`: the errors of a value against a schema. With `exitOnError`, which is on by
+/// default, errors fail the call instead.
+fn validate(
+    options: Option<&Value>,
+    input: &Value,
+    schema_path: &Value,
+    context: &mut Context,
+) -> Result<Value, Error> {
+    let exit = options
+        .and_then(|options| get(options, "exitOnError"))
+        .is_none_or(|exit| exit.truth());
+    let schema = schema(schema_path, context)?;
+    let instance = json(input);
+    let validator = paths::validator(&schema.json, &instance, context)
+        .map_err(|error| thrown(format!("Invalid JSON schema: {error}")))?;
+    let errors: Vec<String> = errors(&validator, &instance, "object")
+        .into_iter()
+        .map(|(location, message)| {
+            let value = instance.pointer(&location).map(plain).unwrap_or_default();
+            match location.as_str() {
+                "" => format!("({value}): {message}"),
+                location => format!("{location} ({value}): {message}"),
+            }
+        })
+        .collect();
+    if exit && !errors.is_empty() {
+        return Err(thrown(format!("{}\n", errors.join("\n"))));
+    }
+    Ok(Value::list(errors.into_iter().map(Value::string).collect()))
 }
 
 /// The value of a key of a map, or a property of the `workflow` object.

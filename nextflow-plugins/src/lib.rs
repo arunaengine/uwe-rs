@@ -15,6 +15,7 @@ const NF_SCHEMA: &[&str] = &[
     "paramsSummaryLog",
     "paramsSummaryMap",
     "samplesheetToList",
+    "validate",
     "validateParameters",
 ];
 

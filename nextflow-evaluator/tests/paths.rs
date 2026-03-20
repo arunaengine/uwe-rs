@@ -132,6 +132,18 @@ fn directories_are_made_and_files_copied_into_them() {
 }
 
 #[test]
+fn input_streams_read_bytes() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let dir = directory.path().display();
+    let body = format!(
+        "file('{dir}/two.txt').text = 'ab'\n\
+         def s = java.nio.file.Files.newInputStream(file('{dir}/two.txt'))\n\
+         [s.read(), s.read(), s.read()]"
+    );
+    assert_eq!(value(&body), "[97, 98, -1]");
+}
+
+#[test]
 fn paths_below_files_do_not_exist() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let dir = directory.path().display();

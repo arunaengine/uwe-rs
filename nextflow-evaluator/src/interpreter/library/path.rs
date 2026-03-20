@@ -81,6 +81,22 @@ impl Interpreter<'_> {
     ) -> Result<Option<Value>, Error> {
         let host_error = |error: Error| error.or_at(span);
         match (name, arguments) {
+            // Records of a file, which is decompressed first when its name ends with `.gz`.
+            ("splitCsv", [] | [Value::Map(_)]) => {
+                let mut bytes = self.host.read(path).map_err(host_error)?;
+                if path.name().ends_with(".gz") {
+                    let mut decoded = Vec::new();
+                    let mut decoder = flate2::read::MultiGzDecoder::new(bytes.as_slice());
+                    std::io::Read::read_to_end(&mut decoder, &mut decoded).map_err(|error| {
+                        let message = format!("Cannot decompress {}: {error}", path.uri());
+                        let exception = crate::exception::Exception::new("ZipException", message);
+                        super::super::thrown(exception, span)
+                    })?;
+                    bytes = decoded;
+                }
+                let text = String::from_utf8_lossy(&bytes);
+                return Ok(Some(super::csv_records(&text, arguments.first())));
+            }
             ("setText" | "write", [text]) => {
                 let text = text.to_string();
                 self.host.write(path, text.as_bytes()).map_err(host_error)?;

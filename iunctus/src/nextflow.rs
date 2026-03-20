@@ -321,7 +321,7 @@ fn execute(
 
 /// The mock executor: a task that does not run. Its output files are the names in its script
 /// that the output patterns match, like those a stub `touch`es, else one empty file for each
-/// pattern; its other outputs are empty text. A `versions.yml` gets the one entry that nf-core
+/// pattern, which is an empty gzip file for a `.gz` name; its other outputs are empty text. A `versions.yml` gets the one entry that nf-core
 /// code reads, as a module's stub writes it.
 fn pretend(request: &TaskRequest, directory: &Path) -> std::io::Result<TaskOutcome> {
     let work = directory.join(request.id.0.to_string());
@@ -394,6 +394,8 @@ fn pretend(request: &TaskRequest, directory: &Path) -> std::io::Result<TaskOutco
                 &path,
                 format!("\"{}\":\n    mock: 1.0.0\n", request.process),
             )?;
+        } else if name.ends_with(".gz") {
+            std::fs::write(&path, EMPTY_GZIP)?;
         } else {
             std::fs::write(&path, "")?;
         }
@@ -406,6 +408,12 @@ fn pretend(request: &TaskRequest, directory: &Path) -> std::io::Result<TaskOutco
     }
     Ok(outcome)
 }
+
+/// A gzip file of no data, for mock outputs whose name ends with `.gz`, so that they can be read.
+const EMPTY_GZIP: &[u8] = &[
+    0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00,
+];
 
 /// The words of a script that may name files it makes, each with whether `mkdir` makes it:
 /// no options, variables, globs or assignments, and no staged inputs.

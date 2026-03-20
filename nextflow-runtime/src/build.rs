@@ -170,6 +170,10 @@ impl Host for Builder<'_> {
                 (elements(single), false, true)
             }
             ("channel", "from", _) => (arguments, false, true),
+            // A Java array as the only argument is the list of values, as Groovy passes it.
+            ("channel", "of", [Value::List(list)]) if list.borrow().kind == ListKind::Array => {
+                (list.borrow().items.clone(), false, true)
+            }
             ("channel", "of", _) => (expand_ranges(arguments), false, true),
             ("channel", "fromList", [list]) => (elements(list), false, true),
             ("channel", "empty", []) => (Vec::new(), false, true),

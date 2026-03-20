@@ -122,6 +122,7 @@ fn queries_and_folds() {
 fn transformations() {
     assert_eq!(value("[1, [2, [3]]].flatten()"), "[1, 2, 3]");
     assert_eq!(value("[4, 5].withIndex()"), "[[4, 0], [5, 1]]");
+    assert_eq!(value("[4, 5].withIndex(1)"), "[[4, 1], [5, 2]]");
     assert_eq!(
         value("[[1, 'a'], [2, 'b']].transpose()"),
         "[[1, 2], [a, b]]"

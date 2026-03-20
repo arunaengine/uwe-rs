@@ -10,6 +10,7 @@ use content_store::Store;
 use executor::local::LocalContainer;
 use nextflow_config::Config;
 use nextflow_evaluator::exception::Exception;
+use nextflow_evaluator::interpreter::glob;
 use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
 use nextflow_evaluator::value::PathValue;
 use nextflow_runtime::task::{
@@ -318,9 +319,10 @@ fn execute(
     Ok(outcome)
 }
 
-/// The mock executor: a task that does not run, with one empty file for each output pattern
-/// and empty text for its other outputs. A `versions.yml` gets the one entry that nf-core code
-/// reads, as a module's stub writes it.
+/// The mock executor: a task that does not run. Its output files are the names in its script
+/// that the output patterns match, like those a stub `touch`es, else one empty file for each
+/// pattern; its other outputs are empty text. A `versions.yml` gets the one entry that nf-core
+/// code reads, as a module's stub writes it.
 fn pretend(request: &TaskRequest, directory: &Path) -> std::io::Result<TaskOutcome> {
     let work = directory.join(request.id.0.to_string());
     std::fs::create_dir_all(&work)?;
@@ -336,21 +338,56 @@ fn pretend(request: &TaskRequest, directory: &Path) -> std::io::Result<TaskOutco
     for name in &request.env {
         outcome.env.insert(name.to_string(), String::new());
     }
-    // Deeper paths first, so that a directory that holds other outputs is not made a file.
-    let mut names: Vec<String> = request
-        .output_patterns
+    let staged: Vec<&str> = request
+        .staged
         .iter()
-        .map(|p| file_name(p))
+        .map(|(_, name)| name.as_str())
         .collect();
-    names.sort_by_key(|name| std::cmp::Reverse(name.trim_end_matches('/').matches('/').count()));
-    for name in names {
+    let words = script_words(&request.script, &staged);
+    // Each path to make, with whether it is a directory, and the outputs among them.
+    let mut paths: Vec<(String, bool)> = Vec::new();
+    let mut outputs: Vec<String> = Vec::new();
+    for pattern in &request.output_patterns {
+        let literal = !pattern.trim_end_matches('/').contains(['*', '?', '[', '{']);
+        let inside: Vec<&(String, bool)> = words
+            .iter()
+            .filter(|(word, _)| {
+                literal && word.starts_with(&format!("{}/", pattern.trim_end_matches('/')))
+            })
+            .collect();
+        let matched: Vec<&(String, bool)> = words
+            .iter()
+            .filter(|(word, _)| glob::matches(pattern, word) && has_literal(pattern))
+            .collect();
+        if literal && !inside.is_empty() {
+            // Files in a directory output, like `touch db/a.txt` for `db`.
+            paths.extend(inside.into_iter().cloned());
+            let directory = pattern.trim_end_matches('/').to_owned();
+            paths.push((directory.clone(), true));
+            outputs.push(directory);
+        } else if !matched.is_empty() {
+            for (word, directory) in matched {
+                paths.push((word.clone(), *directory || pattern.ends_with('/')));
+                outputs.push(word.clone());
+            }
+        } else {
+            let name = file_name(pattern);
+            let directory = name.ends_with('/');
+            let name = name.trim_end_matches('/').to_owned();
+            paths.push((name.clone(), directory));
+            outputs.push(name);
+        }
+    }
+    // Deeper paths first, so that a directory that holds other outputs is not made a file.
+    paths.sort_by_key(|(name, _)| std::cmp::Reverse(name.matches('/').count()));
+    for (name, directory) in paths {
         let path = work.join(&name);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
         if path.exists() {
-            // Made already, as a directory of a deeper output.
-        } else if name.ends_with('/') {
+            // Made already, as a directory of a deeper path.
+        } else if directory {
             std::fs::create_dir_all(&path)?;
         } else if name == "versions.yml" {
             std::fs::write(
@@ -360,13 +397,52 @@ fn pretend(request: &TaskRequest, directory: &Path) -> std::io::Result<TaskOutco
         } else {
             std::fs::write(&path, "")?;
         }
-        let name = name.trim_end_matches('/').to_owned();
+    }
+    for name in outputs {
         let path = PathValue::parse(&work.join(&name).to_string_lossy(), "/");
         if !outcome.files.iter().any(|(known, _)| *known == name) {
             outcome.files.push((name, path));
         }
     }
     Ok(outcome)
+}
+
+/// The words of a script that may name files it makes, each with whether `mkdir` makes it:
+/// no options, variables, globs or assignments, and no staged inputs.
+fn script_words(script: &str, staged: &[&str]) -> Vec<(String, bool)> {
+    let mut words: Vec<(String, bool)> = Vec::new();
+    let mut after_mkdir = false;
+    for word in script.split(|c: char| c.is_whitespace() || "\"';|&<>()`".contains(c)) {
+        if word.is_empty() {
+            continue;
+        }
+        if word == "mkdir" {
+            after_mkdir = true;
+            continue;
+        }
+        let skip = word.starts_with('-')
+            || word.contains(['$', '=', '*', '?', '[', '{', '\\'])
+            || staged.contains(&word);
+        if !word.starts_with('-') {
+            let mkdir = std::mem::take(&mut after_mkdir);
+            if skip {
+                continue;
+            }
+            let word = word.trim_start_matches("./").trim_end_matches('/');
+            match words.iter_mut().find(|(known, _)| known == word) {
+                Some((_, directory)) => *directory |= mkdir,
+                None => words.push((word.to_owned(), mkdir)),
+            }
+        }
+    }
+    words
+}
+
+/// Whether a glob pattern has text besides wildcards, so that not every word matches it.
+fn has_literal(pattern: &str) -> bool {
+    pattern
+        .chars()
+        .any(|c| !matches!(c, '*' | '?' | '[' | ']' | '{' | '}' | ',' | '/'))
 }
 
 /// A file name that a glob pattern matches: `*` becomes `mock`, `?` becomes `x`, and a group

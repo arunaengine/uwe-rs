@@ -5,6 +5,7 @@
 
 use std::rc::Rc;
 
+use nextflow_evaluator::csv::{self, CsvOptions};
 use nextflow_evaluator::interpreter::Error;
 use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{ChannelId, Closure, PathValue, Value};
@@ -219,28 +220,14 @@ impl Split {
         else {
             return Vec::new();
         };
-        let mut rows = text
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .skip(*skip)
-            .map(|line| fields(line, *separator, *quote, *strip));
-        let names: Option<Vec<Value>> = match header {
-            Some(None) => rows
-                .next()
-                .map(|names| names.into_iter().map(Value::string).collect()),
-            Some(Some(names)) => Some(names.clone()),
-            None => None,
+        let options = CsvOptions {
+            separator: *separator,
+            quote: *quote,
+            header: header.clone(),
+            skip: *skip,
+            strip: *strip,
         };
-        rows.map(|row| match &names {
-            Some(names) => Value::map(names.iter().enumerate().map(|(index, name)| {
-                let field = row
-                    .get(index)
-                    .map_or(Value::Null, |f| Value::string(f.as_str()));
-                (name.clone(), field)
-            })),
-            None => Value::list(row.into_iter().map(Value::string).collect()),
-        })
-        .collect()
+        csv::records(text, &options)
     }
 }
 
@@ -271,30 +258,6 @@ fn records(text: &str, starts: impl Fn(&str, usize) -> bool) -> Vec<Value> {
         }
     }
     records.into_iter().map(Value::string).collect()
-}
-
-/// The fields of a CSV line; quotes group text with separators and `""` is a quote.
-fn fields(line: &str, separator: char, quote: char, strip: bool) -> Vec<String> {
-    let mut fields = vec![String::new()];
-    let mut quoted = false;
-    let mut characters = line.chars().peekable();
-    while let Some(character) = characters.next() {
-        match character {
-            c if c == quote && quoted && characters.peek() == Some(&quote) => {
-                characters.next();
-                fields.last_mut().expect("a field").push(quote);
-            }
-            c if c == quote => quoted = !quoted,
-            c if c == separator && !quoted => fields.push(String::new()),
-            other => fields.last_mut().expect("a field").push(other),
-        }
-    }
-    if strip {
-        fields
-            .iter_mut()
-            .for_each(|field| *field = field.trim().to_owned());
-    }
-    fields
 }
 
 /// `subscribe`: calls a closure for each value, and another at the end.

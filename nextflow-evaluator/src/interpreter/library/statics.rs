@@ -54,6 +54,10 @@ impl Interpreter<'_> {
                 }
                 Err(error) => return Err(error.or_at(span)),
             },
+            ("Files", "newInputStream", [Value::Path(path)]) => {
+                let bytes = self.host.read(path).map_err(|error| error.or_at(span))?;
+                super::stream(bytes)
+            }
             ("FilesEx", "copyTo", [source @ Value::Path(_), target]) => {
                 let copied = self.call_method(source, "copyTo", vec![target.clone()], span)?;
                 return Ok(Some(copied));

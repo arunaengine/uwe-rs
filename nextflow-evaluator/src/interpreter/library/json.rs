@@ -243,6 +243,14 @@ impl Interpreter<'_> {
             object.borrow_mut().state = State::Stream(bytes.clone(), position);
         };
         Ok(Some(match (name, arguments) {
+            // The next byte, or -1 at the end.
+            ("read", []) => match bytes.get(position) {
+                Some(byte) => {
+                    finish(object, position + 1);
+                    Value::integer(i32::from(*byte))
+                }
+                None => Value::integer(-1),
+            },
             ("readLine", []) => {
                 if rest.is_empty() {
                     return Ok(Some(Value::Null));

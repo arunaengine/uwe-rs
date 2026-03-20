@@ -4,9 +4,9 @@
 abotyper ok
 airrflow ok
 alleleexpression 1 main.nf:35:9: AbortOperationException: Input samplesheet not specified!
-ampliseq 33 workflows/ampliseq.nf:1232:119: Not supported yet: the operator `countLines`
+ampliseq 1 workflows/../subworkflows/local/cutadapt_workflow.nf:54:86: NoSuchFileException: tmp
 atacseq 1 nextflow.config:122:1: Try-catch blocks cannot be mixed with config statements
-bacass 1 workflows/../subworkflows/nf-core/fastq_trim_fastp_fastqc/main.nf:17:16: JsonException: Invalid JSON: unexpected end
+bacass ok
 bacmodel ok
 bactmap 1 nextflow.config:278:31: `manifest` is not defined
 bamtofastq ok
@@ -18,54 +18,54 @@ circdna 1 nextflow.config:108:1: Try-catch blocks cannot be mixed with config st
 circrna ok
 clipseq 1 nextflow.config:87:1: Try-catch blocks cannot be mixed with config statements
 coproid 1 workflows/../subworkflows/local/prepare_genome_indices/main.nf:48:51: `igenome` is not defined
-createpanelrefs 33 subworkflows/local/utils_nfcore_createpanelrefs_pipeline/main.nf:11:11: Plugins are not supported yet: plugin/nf-core-utils
-createtaxdb 1 workflows/createtaxdb.nf:53:39: IndexOutOfBoundsException: index is out of range -1..0 (index = 1)
+createpanelrefs ok
+createtaxdb 33 workflows/../modules/nf-core/metacache/build/main.nf:49:54: Not supported yet: the property `fileName` of XPath
 crisprseq 1 nextflow.config:256:1: Variable declarations cannot be mixed with config statements
 cutandrun 1 nextflow.config:162:1: Try-catch blocks cannot be mixed with config statements
-daamicrobiome 1 subworkflows/local/utils_nfcore_daamicrobiome_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
-dartseq ok
+daamicrobiome 1 main.nf:40:5: Incorrect number of call arguments, expected 0 but received 2
+dartseq 1 subworkflows/local/utils_nfcore_dartseq_pipeline/main.nf:104:19: SchemaValidationException: The following errors have been detected in assets/samplesheet_4samples_local.csv:
 datasync 33 workflows/datasync.nf:48:38: Not supported yet: reading remote files like gs://deepvariant/GIAB_v5q0/HG002_GRCh38_v5.0q_smvar.benchmark.bed
 deepmodeloptim 1 nextflow.config:211:1: If statements cannot be mixed with config statements
-deepmutscan 33 workflows/deepmutscan.nf:522:17: Not supported yet: the property `bytes` of String
+deepmutscan ok
 demo ok
-demultiplex 1 workflows/../subworkflows/nf-core/bcl_demultiplex/main.nf:64:27: IOException: <cache>/iunctus/scratch/mock/<run>/1/220422_M11111_0222_000000000-K9H97/InterOp: Not a directory (os error 20)
+demultiplex 1 workflows/../subworkflows/nf-core/bcl_demultiplex/main.nf:65:23: NoSuchFileException: No files match pattern `<cache>/iunctus/scratch/mock/<run>/1/220422_M11111_0222_000000000-K9H97/*.xml`
 denovotranscript 1 nextflow.config:318:40: `manifest` is not defined
 detaxizer 1 workflows/detaxizer.nf:46:1: Statements cannot be mixed with script declarations -- move statements into a process, workflow, or function
 diaproteomics 1 nextflow.config:107:1: Try-catch blocks cannot be mixed with config statements
-differentialabundance 1 workflows/../subworkflows/local/utils_nfcore_differentialabundance_pipeline/main.nf:13:11: `validate` is not a function of the plugin `nf-schema`
+differentialabundance 1 workflows/differentialabundance.nf:847:17: NoSuchFileException: No such file or directory: docs/images/nf-core-differentialabundance_logo_light.png
 diseasemodulediscovery 1 workflows/diseasemodulediscovery.nf:519:21: IllegalArgumentException: Invalid algorithm: [trustrank]. Must be one of: trustrank, closeness, degree
-drop 33 subworkflows/local/utils_nfcore_drop_pipeline/main.nf:104:11: Not supported yet: samplesheets like assets/gene_annotation.yaml that are not CSV, TSV or JSON
+drop 1 workflows/../subworkflows/local/aberrantexpression/../bam_stats_idxstats_merge/main.nf:27:29: NullPointerException: Cannot invoke method getAt() on null object
 drugresponseeval 1 nextflow.config:65:1: Try-catch blocks cannot be mixed with config statements
 dualrnaseq 1 nextflow.config:195:1: If statements cannot be mixed with config statements
 eager 1 nextflow.config:298:1: Try-catch blocks cannot be mixed with config statements
 epigenomesegmentation ok
 epitopeprediction 1 workflows/../subworkflows/local/mhc_binding_prediction/../../../modules/local/mhcflurry/main.nf:11:5: Invalid process directive
 evexplorer 1 nextflow.config:66:1: Try-catch blocks cannot be mixed with config statements
-fastqrepair 33 workflows/fastqrepair.nf:78:5: Not supported yet: the operator `minus`
-fastquorum 33 workflows/../subworkflows/local/utils_nfcore_fastquorum_pipeline/main.nf:14:11: Plugins are not supported yet: plugin/nf-fgbio
-fetchngs 33 workflows/fetchngs.nf:22:11: Plugins are not supported yet: plugin/nf-core-utils
+fastqrepair ok
+fastquorum 33 subworkflows/local/utils_nfcore_fastquorum_pipeline/main.nf:116:21: Not supported yet: the method `collectMany` of LinkedHashMap
+fetchngs ok
 funcprofiler ok
 funcscan ok
 genephylomodeler ok
 genomeannotator 1 nextflow.config:119:1: Try-catch blocks cannot be mixed with config statements
-genomeassembler 33 workflows/genomeassembler.nf:190:21: Not supported yet: the operator `toSet`
+genomeassembler 1 workflows/../subworkflows/local/prepare/main.nf:208:39: JsonException: Invalid JSON: unexpected end
 genomeqc ok
 genomeskim 1 nextflow.config:60:1: Try-catch blocks cannot be mixed with config statements
 genomicrelatedness 1 subworkflows/local/utils_nfcore_genomicrelatedness_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
-gwas 1 subworkflows/local/utils_nfcore_gwas_pipeline/main.nf:106:19: IOException: Cannot read https://raw.githubusercontent.com/nf-core/test-datasets/gwas/samplesheets/samplesheet_gwas_test.csv: HTTP status client error (404 Not Found) for url (https://raw.githubusercontent.com/nf-core/test-datasets/gwas/samplesheets/samplesheet_gwas_test.csv)
+gwas 1 subworkflows/local/utils_nfcore_gwas_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
 hadge 1 nextflow.config:278:29: `manifest` is not defined
 hgtseq 1 nextflow.config:74:1: Try-catch blocks cannot be mixed with config statements
 hic 1 nextflow.config:139:1: Try-catch blocks cannot be mixed with config statements
 hicar 1 nextflow.config:121:1: Try-catch blocks cannot be mixed with config statements
 hlatyping 1 workflows/../subworkflows/local/utils_nfcore_hlatyping_pipeline/main.nf:238:13: Expected ')'
 imcyto 1 nextflow.config:51:1: Try-catch blocks cannot be mixed with config statements
-isoseq 1 workflows/isoseq.nf:115:29: IndexOutOfBoundsException: index is out of range 0..-1 (index = 0)
+isoseq 1 workflows/../modules/nf-core/bamtools/convert/main.nf:40:22: IndexOutOfBoundsException: index is out of range 0..-1 (index = 0)
 kmermaid 1 nextflow.config:76:1: Try-catch blocks cannot be mixed with config statements
 lncpipe 1 nextflow.config:378:31: `manifest` is not defined
 longraredisease ok
 lsmquant ok
-mag 1 workflows/../subworkflows/local/catpack/main.nf:43:24: IOException: <cache>/iunctus/scratch/mock/<run>/8/cat_db/db: Not a directory (os error 20)
-magmap 33 conf/modules.config:112:25: The class `java.security.MessageDigest` is not supported yet
+mag 1 workflows/../subworkflows/local/catpack/main.nf:43:24: NoSuchFileException: No such file or directory: <cache>/iunctus/scratch/mock/<run>/8/null/db
+magmap 1 subworkflows/local/utils_nfcore_magmap_pipeline/main.nf:169:26: IllegalArgumentException: Invalid file path type - offending value: [https://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_refseq.txt, https://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_genbank.txt] [[Ljava.lang.String;]
 marsseq 1 nextflow.config:78:1: Try-catch blocks cannot be mixed with config statements
 mcmicro 1 workflows/../subworkflows/local/update_from_ome/../../../modules/local/omevalidation/main.nf:28:53: Unexpected character: '@'
 meerpipe 1 nextflow.config:110:1: Try-catch blocks cannot be mixed with config statements
@@ -73,7 +73,7 @@ metaboigniter 1 nextflow.config:302:1: Try-catch blocks cannot be mixed with con
 metapep 1 nextflow.config:234:1: Variable declarations cannot be mixed with config statements
 metatdenovo ok
 methylarray 1 workflows/../modules/local/remove_sex_chromosomes/main.nf:10:15: `samplesheet_name` is already declared
-methylong ok
+methylong 33 workflows/../subworkflows/local/shared_gunzip_awk/../../../modules/nf-core/gawk/main.nf:59:36: Not supported yet: the method `getExtension` of BlankSeparatedList
 methylseq 1 workflows/methylseq/../../subworkflows/nf-core/bam_taps_conversion/../../../modules/nf-core/rastair/mbiasparser/main.nf:15:26: `trim_OT` is not defined
 mhcquant ok
 mitodetect 1 nextflow.config:270:34: `manifest` is not defined
@@ -96,41 +96,41 @@ pathogenepidemiology ok
 pathogensurveillance 1 workflows/../subworkflows/local/prepare_input/../../../modules/nf-core/sratools/fasterqdump/main.nf:58:9: `prefix` is already declared
 phageannotator 1 nextflow.config:150:1: Try-catch blocks cannot be mixed with config statements
 phaseimpute 1 workflows/phaseimpute/../../subworkflows/local/bam_extract_region_samtools/../../../modules/nf-core/samtools/merge/main.nf:51:9: `index` is already declared
-phyloplace 33 workflows/../subworkflows/nf-core/fasta_newick_epang_gappa/../../../modules/nf-core/gappa/examineassign/main.nf:29:21: Not supported yet: the method `endsWith` of ArrayList
-pixelator 33 subworkflows/local/utils_nfcore_pixelator_pipeline/main.nf:452:26: Not supported yet: `new URI(...)`
+phyloplace ok
+pixelator 33 subworkflows/local/utils_nfcore_pixelator_pipeline/main.nf:385:9: Not supported yet: the method `isAbsolute` of UnixPath
 plasmodiumdrugres ok
 proteinannotator ok
-proteinfamilies 1 workflows/../subworkflows/local/remove_redundancy/main.nf:174:29: ArrayIndexOutOfBoundsException: Index 1 out of bounds for length 1
+proteinfamilies ok
 proteinfold 1 conf/modules_alphafold2.config:94:9: If statements cannot be mixed with config statements
 proteogenomicsdb 1 nextflow.config:117:1: Try-catch blocks cannot be mixed with config statements
-provenancereport 33 workflows/../modules/nf-core/quarto/notebook/main.nf:52:23: Not supported yet: `new YamlBuilder(...)`
+provenancereport ok
 radseq 1 nextflow.config:189:1: Try-catch blocks cannot be mixed with config statements
 rangeland 1 nextflow.config:304:33: `manifest` is not defined
-raredisease 1 workflows/raredisease.nf:945:9: NoSuchFileException: No such file or directory: docs/images/nf-core-raredisease_logo_light.png
+raredisease 33 subworkflows/local/prepare_references/main.nf:170:39: Not supported yet: the method `findIndexValues` of ArrayList
 rarevariantburden ok
 readsimulator 1 nextflow.config:122:1: Try-catch blocks cannot be mixed with config statements
 references 1 nextflow.config:202:1: Variable declarations cannot be mixed with config statements
 reportho 1 conf/test.config:26:14: `pipelines_testdata_base_path` is not defined
 ribomsqc ok
-riboseq 1 workflows/riboseq/../../subworkflows/nf-core/fastq_qc_trim_filter_setstrandedness/../fastq_fastqc_umitools_trimgalore/main.nf:15:5: NoSuchFileException: mockreport.txt
-rnadnavar 33 workflows/rnadnavar/../../subworkflows/local/bam_align/main.nf:98:38: Not supported yet: the method `sort` of UnixPath
-rnafusion 1 workflows/../subworkflows/nf-core/fastq_fastqc_umitools_fastp/main.nf:29:16: JsonException: Invalid JSON: unexpected end
-rnaseq 33 subworkflows/local/utils_nfcore_rnaseq_pipeline/main.nf:768:63: Not supported yet: the method `split` of String
+riboseq ok
+rnadnavar 33 Not supported yet: the method `concat` of String
+rnafusion ok
+rnaseq ok
 rnasplice 1 nextflow.config:180:1: Try-catch blocks cannot be mixed with config statements
-rnastructurome 33 workflows/../subworkflows/local/utils_nfcore_rnastructurome_pipeline/main.nf:910:72: The class `java.util.Locale` is not supported yet
-rnavar 33 workflows/../subworkflows/local/utils_nfcore_rnavar_pipeline/main.nf:11:11: Plugins are not supported yet: plugin/nf-core-utils
+rnastructurome 1 workflows/../subworkflows/local/utils_nfcore_rnastructurome_pipeline/main.nf:495:9: AbortOperationException: Could not parse mapped read count from flagstat file: <cache>/iunctus/scratch/mock/<run>/21/HEK293T_untreated_r1.flagstat
+rnavar 1 IllegalArgumentException: Input tuple does not match tuple declaration in process `SAMTOOLS_SORT` -- offending value: [[:], []]
 sammyseq 1 conf/modules.config:28:5: If statements cannot be mixed with config statements
-sarek 33 workflows/../subworkflows/local/utils_nfcore_sarek_pipeline/../samplesheet_to_channel/main.nf:1:11: Plugins are not supported yet: plugin/nf-fgbio
+sarek 1 workflows/../subworkflows/local/fastq_preprocess_gatk/main.nf:331:42: MissingMethodException: No signature of method: nextflow.extension.GroupKey.plus() is applicable for argument types: (LinkedHashMap) values: [[data_type:bam]]
 scdownstream 33 workflows/../subworkflows/local/quality_control/main.nf:11:11: Plugins are not supported yet: plugin/nf-anndata
 scnanoseq ok
 scrnaseq 1 workflows/scrnaseq.nf:50:23: `Utils` is not defined
-seqinspector 33 workflows/seqinspector.nf:38:11: Plugins are not supported yet: plugin/nf-core-utils
+seqinspector ok
 seqsubmit ok
 slamseq 1 nextflow.config:68:1: Try-catch blocks cannot be mixed with config statements
 smrnaseq 1 workflows/smrnaseq.nf:34:1: Statements cannot be mixed with script declarations -- move statements into a process, workflow, or function
 sopa ok
-spatialaxe 1 workflows/spatialaxe.nf:210:74: IOException: <cache>/iunctus/scratch/mock/<run>/1/test_run/cell_boundaries.csv.gz: Not a directory (os error 20)
-spatialvi 1 workflows/../subworkflows/local/input_check/main.nf:132:23: IOException: <cache>/iunctus/scratch/mock/<run>/2/fastq_dir
+spatialaxe 1 workflows/spatialaxe.nf:212:13: AbortOperationException: ❌ Missing required file(s) in xenium bundle '<cache>/iunctus/scratch/mock/<run>/1/test_run': [cell_boundaries.csv.gz, cell_boundaries.parquet, cell_feature_matrix.h5, cell_feature_matrix.zarr.zip, cells.csv.gz, cells.parquet, cells.zarr.zip, experiment.xenium, gene_panel.json, metrics_summary.csv, morphology.ome.tif, morphology_focus/, nucleus_boundaries.csv.gz, nucleus_boundaries.parquet, transcripts.parquet, transcripts.zarr.zip]
+spatialvi 1 workflows/../subworkflows/local/input_check/main.nf:144:9: AbortOperationException: No `fastq_dir` specified or no samples found in folder.
 spinningjenny 1 nextflow.config:76:1: Try-catch blocks cannot be mixed with config statements
 stableexpression 1 workflows/../subworkflows/local/utils_nfcore_stableexpression_pipeline/main.nf:461:13: AbortOperationException: Could not find any readily usable public dataset...
 taxmarker 1 workflows/../subworkflows/local/ensure_aligned/main.nf:63:17: AbortOperationException: Unaligned input detected, but --hmm was not provided. Supply --hmm (path to an HMM profile database) to align it -- and --hmm_name too, if that database holds more than one profile.
@@ -141,7 +141,7 @@ troughgraph 1 nextflow.config:270:35: `manifest` is not defined
 tumourevo ok
 variantbenchmarking 1 workflows/../subworkflows/local/prepare_vcfs_test/main.nf:164:25: `vcf` is already declared
 variantcatalogue 1 nextflow.config:64:1: Try-catch blocks cannot be mixed with config statements
-variantprioritization 33 Not supported yet: the method `grep` of ArrayList
+variantprioritization ok
 viralintegration 1 nextflow.config:78:1: Try-catch blocks cannot be mixed with config statements
-viralmetagenome 1 workflows/../subworkflows/local/preprocessing_illumina/../../nf-core/fastq_fastqc_umitools_fastp/main.nf:29:16: JsonException: Invalid JSON: unexpected end
+viralmetagenome ok
 viralrecon 1 conf/modules.config:42:1: If statements cannot be mixed with config statements

@@ -179,15 +179,21 @@ impl Interpreter<'_> {
                 Value::map(entries(results))
             }
             ("flatten", []) => Value::list(flatten(items)),
-            ("withIndex", []) => Value::list(
-                items
-                    .iter()
-                    .enumerate()
-                    .map(|(index, item)| {
-                        Value::list(vec![item.clone(), Value::integer(index as i32)])
-                    })
-                    .collect(),
-            ),
+            ("withIndex", rest @ ([] | [Value::Number(_)])) => {
+                let offset = match rest {
+                    [Value::Number(offset)] => offset.to_i64() as i32,
+                    _ => 0,
+                };
+                Value::list(
+                    items
+                        .iter()
+                        .enumerate()
+                        .map(|(index, item)| {
+                            Value::list(vec![item.clone(), Value::integer(index as i32 + offset)])
+                        })
+                        .collect(),
+                )
+            }
             ("toList", []) => Value::list(items.to_vec()),
             // Groovy's `toSet()` is `new HashSet(size())`.
             ("toSet", []) => hash_set(items.len().next_power_of_two(), items),

@@ -41,6 +41,10 @@ fn factories() {
         ["1", "2", "3", "[4, 5]"]
     );
     assert_eq!(lines("channel.fromList([1, 2]).view()"), ["1", "2"]);
+    assert_eq!(
+        lines("channel.of('a,b'.split(',')).view()\nchannel.of(['c', 'd']).view()"),
+        ["a", "b", "[c, d]"]
+    );
     assert_eq!(lines("channel.value(5).view()"), ["5"]);
     assert_eq!(lines("channel.empty().view()"), Vec::<String>::new());
     let error = run("channel.of(channel.of(1))").unwrap_err();

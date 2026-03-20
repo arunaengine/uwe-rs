@@ -132,6 +132,23 @@ fn directories_are_made_and_files_copied_into_them() {
 }
 
 #[test]
+fn csv_files_split_into_records() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let dir = directory.path().display();
+    let body = format!(
+        "file('{dir}/c.txt').text = 'chr1 1\\nchr2 2\\n\\n'\n\
+         file('{dir}/h.csv').text = 'a,b\\n1,\"x,y\"\\n 2 , z\\n'\n\
+         [file('{dir}/c.txt').splitCsv(header: false, sep: ' '), \
+         file('{dir}/h.csv').splitCsv(header: true, strip: true, limit: 1), \
+         file('{dir}/h.csv').splitCsv(skip: 1, quote: '\"')]"
+    );
+    assert_eq!(
+        value(&body),
+        "[[[chr1, 1], [chr2, 2]], [[a:1, b:\"x]], [[1, x,y], [ 2 ,  z]]]"
+    );
+}
+
+#[test]
 fn input_streams_read_bytes() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let dir = directory.path().display();

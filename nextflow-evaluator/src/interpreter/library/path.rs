@@ -165,6 +165,27 @@ impl Interpreter<'_> {
                 }
                 return Ok(Some(Value::Null));
             }
+            // The names of `listFiles()`, and none for a path that is not a directory.
+            ("list", []) => {
+                let metadata = self.host.metadata(path).map_err(host_error)?;
+                let mut names: Vec<String> = match metadata {
+                    Some(metadata) if metadata.directory => self
+                        .host
+                        .list(path)
+                        .map_err(host_error)?
+                        .into_iter()
+                        .map(|(name, _)| name)
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                names.sort();
+                let names = names.into_iter().map(Value::string).collect();
+                let list = Value::list(names);
+                if let Value::List(list) = &list {
+                    list.borrow_mut().kind = crate::value::ListKind::Array;
+                }
+                return Ok(Some(list));
+            }
             // Like `File.listFiles()`, null for a path that is not a directory.
             ("listFiles", []) => {
                 let metadata = self.host.metadata(path).map_err(host_error)?;

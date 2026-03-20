@@ -742,8 +742,7 @@ impl Builder<'_> {
                             .and_then(|sep| sep.to_string().chars().next())
                             .unwrap_or(','),
                         quote: option(&options, "quote")
-                            .and_then(|quote| quote.to_string().chars().next())
-                            .unwrap_or('"'),
+                            .and_then(|quote| quote.to_string().chars().next()),
                         header: match option(&options, "header") {
                             Some(Value::List(names)) => Some(Some(names.borrow().items.clone())),
                             Some(value) if value.truth() => Some(None),

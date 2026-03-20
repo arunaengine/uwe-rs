@@ -7,7 +7,8 @@ use crate::value::Value;
 /// How to read CSV text.
 pub struct CsvOptions {
     pub separator: char,
-    pub quote: char,
+    /// The quote character, which groups text with separators; without one, quotes are text.
+    pub quote: Option<char>,
     /// Column names from the first line (`header: true`) or given as a list.
     pub header: Option<Option<Vec<Value>>>,
     /// Lines to skip at the start.
@@ -44,17 +45,17 @@ pub fn records(text: &str, options: &CsvOptions) -> Vec<Value> {
 }
 
 /// The fields of a CSV line; quotes group text with separators and `""` is a quote.
-fn fields(line: &str, separator: char, quote: char, strip: bool) -> Vec<String> {
+fn fields(line: &str, separator: char, quote: Option<char>, strip: bool) -> Vec<String> {
     let mut fields = vec![String::new()];
     let mut quoted = false;
     let mut characters = line.chars().peekable();
     while let Some(character) = characters.next() {
         match character {
-            c if c == quote && quoted && characters.peek() == Some(&quote) => {
+            c if Some(c) == quote && quoted && characters.peek() == quote.as_ref() => {
                 characters.next();
-                fields.last_mut().expect("a field").push(quote);
+                fields.last_mut().expect("a field").push(c);
             }
-            c if c == quote => quoted = !quoted,
+            c if Some(c) == quote => quoted = !quoted,
             c if c == separator && !quoted => fields.push(String::new()),
             other => fields.last_mut().expect("a field").push(other),
         }

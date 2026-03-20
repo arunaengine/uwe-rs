@@ -16,7 +16,7 @@ use crate::network::{Behaviour, Context, State};
 pub(crate) enum Format {
     Csv {
         separator: char,
-        quote: char,
+        quote: Option<char>,
         /// Column names from the first line (`header: true`) or given as a list.
         header: Option<Option<Vec<Value>>>,
         skip: usize,

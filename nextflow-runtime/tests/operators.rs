@@ -312,6 +312,14 @@ fn collect_file_writes_files_at_the_end() {
 
 #[test]
 fn splitters() {
+    // Quotes group text only with the `quote` option.
+    assert_eq!(
+        lines(
+            "channel.of('1,\"x,y\"').splitCsv().view()\n\
+             channel.of('1,\"x,y\"').splitCsv(quote: '\"').view()"
+        ),
+        ["[1, \"x, y\"]", "[1, x,y]"]
+    );
     assert_eq!(
         lines("channel.of(\"a,b\\n1,2\\n3,4\\n\").splitCsv(header: true).view()"),
         ["[a:1, b:2]", "[a:3, b:4]"]

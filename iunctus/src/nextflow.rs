@@ -415,32 +415,60 @@ const EMPTY_GZIP: &[u8] = &[
     0x00, 0x00, 0x00, 0x00,
 ];
 
-/// The words of a script that may name files it makes, each with whether `mkdir` makes it:
-/// no options, variables, globs or assignments, and no staged inputs.
+/// The files a script makes, each with whether it is a directory: the targets of `>` and
+/// `>>`, the arguments of `touch` and `mkdir`, and the last argument of `mv`, `cp` and `ln`.
+/// Names with variables or globs, and staged inputs, do not count.
 fn script_words(script: &str, staged: &[&str]) -> Vec<(String, bool)> {
     let mut words: Vec<(String, bool)> = Vec::new();
-    let mut after_mkdir = false;
-    for word in script.split(|c: char| c.is_whitespace() || "\"';|&<>()`".contains(c)) {
-        if word.is_empty() {
-            continue;
-        }
-        if word == "mkdir" {
-            after_mkdir = true;
-            continue;
-        }
-        let skip = word.starts_with('-')
+    let mut add = |word: &str, directory: bool| {
+        let word = word.trim_start_matches("./").trim_end_matches('/');
+        let skip = word.is_empty()
+            || word.starts_with(['-', '&'])
             || word.contains(['$', '=', '*', '?', '[', '{', '\\'])
             || staged.contains(&word);
-        if !word.starts_with('-') {
-            let mkdir = std::mem::take(&mut after_mkdir);
-            if skip {
-                continue;
+        if skip {
+            return;
+        }
+        match words.iter_mut().find(|(known, _)| known == word) {
+            Some((_, known)) => *known |= directory,
+            None => words.push((word.to_owned(), directory)),
+        }
+    };
+    let commands = script.replace("&&", "\n").replace("||", "\n");
+    for command in commands.split(['\n', ';', '|']) {
+        let tokens: Vec<&str> = command
+            .split_whitespace()
+            .map(|token| token.trim_matches(['"', '\'']))
+            .collect();
+        for (index, token) in tokens.iter().enumerate() {
+            // `>`, `>>`, `2>` and `&>` with the target in the token or the next one.
+            let redirect = token.trim_start_matches(|c: char| c.is_ascii_digit() || c == '&');
+            if let Some(target) = redirect.strip_prefix('>') {
+                let target = target.trim_start_matches('>');
+                match target {
+                    "" => tokens
+                        .get(index + 1)
+                        .into_iter()
+                        .for_each(|next| add(next, false)),
+                    target => add(target, false),
+                }
             }
-            let word = word.trim_start_matches("./").trim_end_matches('/');
-            match words.iter_mut().find(|(known, _)| known == word) {
-                Some((_, directory)) => *directory |= mkdir,
-                None => words.push((word.to_owned(), mkdir)),
-            }
+        }
+        let arguments: Vec<&str> = tokens
+            .iter()
+            .skip(1)
+            .take_while(|token| !token.contains(['>', '<']))
+            .filter(|token| !token.starts_with('-'))
+            .copied()
+            .collect();
+        match tokens.first().copied() {
+            Some("touch") => arguments.iter().for_each(|argument| add(argument, false)),
+            Some("mkdir") => arguments.iter().for_each(|argument| add(argument, true)),
+            Some("mv" | "cp" | "ln") => arguments
+                .last()
+                .into_iter()
+                .for_each(|last| add(last, false)),
+            _ => {}
         }
     }
     words

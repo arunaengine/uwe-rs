@@ -155,11 +155,13 @@ fn mock_outputs_include_directories() {
 fn mock_outputs_are_the_names_in_the_script() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = "process P {\n    input:\n    val x\n    output:\n    path '*.fq', emit: reads\n    \
-                  path x, emit: db\n    path 'none.txt', emit: none\n    script:\n    'true'\n    \
-                  stub:\n    \"touch ${x}_1.fq ${x}_2.fq\\nmkdir -p ${x}\\ntouch ${x}/a.txt\"\n}\n\
+                  path x, emit: db\n    path 'none.txt', emit: none\n    path '*cluster', emit: c\n    \
+                  script:\n    'true'\n    \
+                  stub:\n    \"touch ${x}_1.fq ${x}_2.fq\\nmkdir -p ${x}\\ntouch ${x}/a.txt\\n\
+                  echo 'cluster' > ${x}.cluster\"\n}\n\
                   workflow {\n    P('s')\n    P.out.reads.view { f -> f*.name }\n    \
                   P.out.db.view { d -> \"${d.name} ${d.isDirectory()} ${d.list()}\" }\n    \
-                  P.out.none.view { f -> f.name }\n}\n";
+                  P.out.none.view { f -> f.name }\n    P.out.c.view { f -> f.name }\n}\n";
     std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
     let arguments = ["run", "main.nf", "-stub-run", "-executor", "mock"];
     let (code, output) = iunctus(directory.path(), &arguments);
@@ -168,6 +170,12 @@ fn mock_outputs_are_the_names_in_the_script() {
     lines.sort_unstable();
     assert_eq!(
         lines,
-        ["[mock] P", "[s_1.fq, s_2.fq]", "none.txt", "s true [a.txt]"]
+        [
+            "[mock] P",
+            "[s_1.fq, s_2.fq]",
+            "none.txt",
+            "s true [a.txt]",
+            "s.cluster"
+        ]
     );
 }

@@ -31,6 +31,16 @@ fn client() -> Result<reqwest::blocking::Client, String> {
         .map_err(|error| error.to_string())
 }
 
+/// A client for downloads, which may take long for large files.
+fn download_client() -> Result<reqwest::blocking::Client, String> {
+    reqwest::blocking::Client::builder()
+        .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(30 * 60))
+        .build()
+        .map_err(|error| error.to_string())
+}
+
 /// A local copy of a remote file, downloaded once into `downloads`.
 pub fn download(url: &str, downloads: &Path) -> Result<PathBuf, String> {
     let digest = Sha256::digest(url.as_bytes());
@@ -39,17 +49,18 @@ pub fn download(url: &str, downloads: &Path) -> Result<PathBuf, String> {
     if local.is_file() {
         return Ok(local);
     }
-    let response = client()?
+    let cannot = |error: &dyn std::fmt::Display| format!("Cannot read {url}: {error}");
+    let mut response = download_client()?
         .get(url)
         .send()
         .and_then(|response| response.error_for_status())
-        .and_then(|response| response.bytes())
-        .map_err(|error| format!("Cannot read {url}: {error}"))?;
+        .map_err(|error| cannot(&error))?;
     std::fs::create_dir_all(downloads).map_err(|error| error.to_string())?;
+    // The body goes to a file as it comes, which is renamed once complete.
     let partial = local.with_extension("partial");
-    std::fs::write(&partial, &response)
-        .and_then(|()| std::fs::rename(&partial, &local))
-        .map_err(|error| error.to_string())?;
+    let mut file = std::fs::File::create(&partial).map_err(|error| error.to_string())?;
+    response.copy_to(&mut file).map_err(|error| cannot(&error))?;
+    std::fs::rename(&partial, &local).map_err(|error| error.to_string())?;
     Ok(local)
 }
 

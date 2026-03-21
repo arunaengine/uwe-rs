@@ -33,6 +33,14 @@ fn value(body: &str) -> String {
 }
 
 #[test]
+fn replacing_values() {
+    assert_eq!(
+        value("def m = [a: '']\n[m.replace('a', 'P'), m.replace('b', 1), m]"),
+        "[, null, [a:P]]"
+    );
+}
+
+#[test]
 fn maps_with_defaults() {
     assert_eq!(
         value(

@@ -30,7 +30,7 @@ impl Interpreter<'_> {
             .map(|(key, value)| (key.0.clone(), value.clone()))
             .collect();
         let kind = map.borrow().kind;
-        let changing = matches!(name, "put" | "putAll" | "remove" | "clear")
+        let changing = matches!(name, "put" | "putAll" | "remove" | "clear" | "replace")
             || (name == "get" && arguments.len() == 2);
         if changing && kind == MapKind::Record {
             return Err(thrown(
@@ -74,6 +74,16 @@ impl Interpreter<'_> {
                     .insert(Key(key.clone()), value.clone());
                 old.unwrap_or(Value::Null)
             }
+            // Java's `replace`: only a key the map has gets the value; the old value comes back.
+            ("replace", [key, value]) => match get(key) {
+                Some(old) => {
+                    map.borrow_mut()
+                        .entries
+                        .insert(Key(key.clone()), value.clone());
+                    old
+                }
+                None => Value::Null,
+            },
             ("putAll", [Value::Map(other)]) => {
                 let other = other.borrow().entries.clone();
                 map.borrow_mut().entries.extend(other);

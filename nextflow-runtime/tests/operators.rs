@@ -467,9 +467,10 @@ fn group_keys_give_the_group_size() {
         lines(
             "channel.of([groupKey([id: 'a'], 2), 1], [groupKey([id: 'b'], 3), 2], [groupKey([id: 'a'], 2), 3])\n\
              .groupTuple().view { key, values -> \"${key} ${key.id} ${key.groupSize} ${values}\" }\n\
-             def k = groupKey('x', 5)\nprintln([k == 'x', k.toUpperCase(), k.getGroupSize(), \"${k}\"])"
+             def k = groupKey('x', 5)\nprintln([k == 'x', k.toUpperCase(), k.getGroupSize(), \"${k}\"])\n\
+             println(groupKey([id: 1], 2) + [x: 1])"
         ),
-        ["[true, X, 5, x]", "[id:a] a 2 [1, 3]"]
+        ["[true, X, 5, x]", "[id:1, x:1]", "[id:a] a 2 [1, 3]"]
     );
 }
 

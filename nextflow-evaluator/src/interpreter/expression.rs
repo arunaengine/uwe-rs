@@ -210,6 +210,12 @@ impl Interpreter<'_> {
                         Value::Channel(_),
                         _,
                     ) => self.operator(&left, operator.method(), vec![right], span)?,
+                    // A group key stands for its key, as its `methodMissing` passes calls on.
+                    (_, Value::Object(object), _)
+                        if matches!(object.borrow().state, crate::value::State::GroupKey(..)) =>
+                    {
+                        self.call_method(&left, operator.method(), vec![right], span)?
+                    }
                     _ => left.apply(*operator, &right).at(span)?,
                 }
             }

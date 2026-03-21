@@ -61,6 +61,11 @@ fn padding() {
 }
 
 #[test]
+fn concatenation() {
+    assert_eq!(value("\"ab\".concat('.').concat('c')"), "ab.c");
+}
+
+#[test]
 fn margins() {
     assert_eq!(
         value("'\\n  |one\\n    |  two\\n  three|\\n\\t|four\\n  |'.stripMargin().inspect()"),

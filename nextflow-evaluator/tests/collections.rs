@@ -33,6 +33,19 @@ fn value(body: &str) -> String {
 }
 
 #[test]
+fn index_values_and_lists_of_indexes() {
+    assert_eq!(
+        value(
+            "def files = ['a.txt', 'b.bed', 'c.bed']\n\
+             def ind = files.findIndexValues { f -> f.endsWith('.bed') }\n\
+             [ind, ind[0].getClass().getSimpleName(), files[ind], [10, 20, 30, 40][[0, -1, 1..2, 7]], \
+             [a: 1, b: 2].collectMany { k, v -> [k, v] }]"
+        ),
+        "[[1, 2], Long, [b.bed, c.bed], [10, 40, 20, 30, null], [a, 1, b, 2]]"
+    );
+}
+
+#[test]
 fn null_iterates_as_nothing() {
     assert_eq!(
         value(

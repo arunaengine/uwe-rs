@@ -19,6 +19,12 @@ pub(super) fn path_method(path: &Rc<PathValue>, name: &str, arguments: &[Value])
     let path_value = |path: PathValue| Some(Value::Path(Rc::new(path)));
     match (name, arguments) {
         ("getName", []) => Some(Value::string(path.name())),
+        // The name as a relative path.
+        ("getFileName", []) => {
+            let mut name = PathValue::parse(path.name(), "/");
+            name.path = path.name().to_owned();
+            Some(Value::Path(Rc::new(name)))
+        }
         ("getBaseName", []) => Some(Value::string(path.base_name())),
         ("getBaseName", [Value::Number(times)]) => {
             let mut name = path.name().to_owned();

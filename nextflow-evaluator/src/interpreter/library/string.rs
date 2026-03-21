@@ -160,6 +160,9 @@ impl Interpreter<'_> {
                 strings(ListKind::ArrayList, tokens(text, &delimiters))
             }
             ("readLines", []) => strings(ListKind::ArrayList, lines(text)),
+            ("concat", [other]) if string(other).is_some() => {
+                Value::string(format!("{text}{}", string(other).unwrap_or_default()))
+            }
             ("getBytes", []) => super::bytes::bytes(text.as_bytes().to_vec()),
             ("stripMargin", rest) if rest.len() <= 1 => {
                 let marker = match rest {

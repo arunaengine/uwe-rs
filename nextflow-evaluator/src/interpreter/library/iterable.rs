@@ -54,7 +54,7 @@ impl Interpreter<'_> {
                 Value::list(items.iter().filter(|item| item.truth()).cloned().collect())
             }
             (
-                "findAll" | "find" | "any" | "every" | "count" | "findIndexOf",
+                "findAll" | "find" | "any" | "every" | "count" | "findIndexOf" | "findIndexValues",
                 [Value::Closure(f)],
             ) => {
                 let mut passed = Vec::new();
@@ -80,6 +80,13 @@ impl Interpreter<'_> {
                     "count" => {
                         Value::integer(passed.iter().filter(|passed| **passed).count() as i32)
                     }
+                    // The indices as `Long` values.
+                    "findIndexValues" => Value::list(
+                        (0..items.len())
+                            .filter(|index| passed[*index])
+                            .map(|index| Value::Number(crate::number::Number::Long(index as i64)))
+                            .collect(),
+                    ),
                     _ => Value::integer(first.map_or(-1, |index| index as i32)),
                 }
             }

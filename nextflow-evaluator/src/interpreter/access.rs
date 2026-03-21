@@ -259,6 +259,21 @@ impl Interpreter<'_> {
                 }
                 Value::list(items)
             }
+            // A list of indexes gives the element at each, with ranges spread.
+            (Value::List(_), Value::List(indexes)) => {
+                let indexes = indexes.borrow().items.clone();
+                let mut items = Vec::new();
+                for index in indexes {
+                    let range =
+                        matches!(&index, Value::List(list) if list.borrow().range.is_some());
+                    let found = self.index(object, &[index], span)?;
+                    match found {
+                        Value::List(found) if range => items.extend(found.borrow().items.clone()),
+                        found => items.push(found),
+                    }
+                }
+                Value::list(items)
+            }
             (Value::String(text) | Value::GString(text), Value::List(indexes))
                 if indexes.borrow().range.is_some() =>
             {

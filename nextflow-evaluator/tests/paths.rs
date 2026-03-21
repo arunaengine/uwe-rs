@@ -132,6 +132,14 @@ fn directories_are_made_and_files_copied_into_them() {
 }
 
 #[test]
+fn file_names_as_paths() {
+    assert_eq!(
+        value("def f = file('/x/y/z.txt').fileName\n[f.name, f, f.getClass().getSimpleName()]"),
+        "[z.txt, z.txt, UnixPath]"
+    );
+}
+
+#[test]
 fn csv_files_split_into_records() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let dir = directory.path().display();

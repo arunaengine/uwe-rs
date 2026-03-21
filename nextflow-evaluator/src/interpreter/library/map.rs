@@ -109,6 +109,10 @@ impl Interpreter<'_> {
                 object
             }
             ("collect", [Value::Closure(f)]) => Value::list(self.map_entries(&entries, f, span)?),
+            ("collectMany", [Value::Closure(f)]) => {
+                let results = self.map_entries(&entries, f, span)?;
+                Value::list(results.iter().flat_map(elements).collect())
+            }
             ("findAll" | "find" | "any" | "every" | "count", [Value::Closure(f)]) => {
                 let passed: Vec<bool> = self
                     .map_entries(&entries, f, span)?

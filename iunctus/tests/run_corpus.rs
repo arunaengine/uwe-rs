@@ -12,9 +12,11 @@ use std::process::Command;
 use fancy_regex::Regex;
 
 /// The outcome of one run: `ok`, or the exit code and the first error line without the
-/// parts that differ between machines and runs.
+/// parts that differ between machines and runs. A run that takes more than five minutes, like
+/// one that reads gigabytes of remote files, is stopped with exit code 124.
 fn outcome(corpus: &Path, pipeline: &str, cache: &Path) -> String {
-    let output = Command::new(env!("CARGO_BIN_EXE_iunctus"))
+    let output = Command::new("timeout")
+        .args(["300", env!("CARGO_BIN_EXE_iunctus")])
         .args(["run", &corpus.join(pipeline).to_string_lossy()])
         .args(["-profile", "test", "-stub-run", "-executor", "mock"])
         .args(["--outdir", &cache.join("out").to_string_lossy()])

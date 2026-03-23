@@ -19,7 +19,7 @@ circrna ok
 clipseq 1 nextflow.config:87:1: Try-catch blocks cannot be mixed with config statements
 coproid 1 workflows/../subworkflows/local/prepare_genome_indices/main.nf:48:51: `igenome` is not defined
 createpanelrefs ok
-createtaxdb 33 workflows/../modules/nf-core/metacache/build/main.nf:49:54: Not supported yet: the property `fileName` of XPath
+createtaxdb ok
 crisprseq 1 nextflow.config:256:1: Variable declarations cannot be mixed with config statements
 cutandrun 1 nextflow.config:162:1: Try-catch blocks cannot be mixed with config statements
 daamicrobiome 1 main.nf:40:5: Incorrect number of call arguments, expected 0 but received 2
@@ -32,8 +32,8 @@ demultiplex 1 workflows/../subworkflows/nf-core/bcl_demultiplex/main.nf:65:23: N
 denovotranscript 1 nextflow.config:318:40: `manifest` is not defined
 detaxizer 1 workflows/detaxizer.nf:46:1: Statements cannot be mixed with script declarations -- move statements into a process, workflow, or function
 diaproteomics 1 nextflow.config:107:1: Try-catch blocks cannot be mixed with config statements
-differentialabundance 1 workflows/differentialabundance.nf:847:17: NoSuchFileException: No such file or directory: docs/images/nf-core-differentialabundance_logo_light.png
-diseasemodulediscovery 1 workflows/diseasemodulediscovery.nf:519:21: IllegalArgumentException: Invalid algorithm: [trustrank]. Must be one of: trustrank, closeness, degree
+differentialabundance ok
+diseasemodulediscovery 1 workflows/../subworkflows/local/utils_nfcore_diseasemodulediscovery_pipeline/main.nf:331:9: IllegalArgumentException: TSV must have at least one header and one data row
 drop 1 workflows/../subworkflows/local/aberrantexpression/../bam_stats_idxstats_merge/main.nf:27:29: NullPointerException: Cannot invoke method getAt() on null object
 drugresponseeval 1 nextflow.config:65:1: Try-catch blocks cannot be mixed with config statements
 dualrnaseq 1 nextflow.config:195:1: If statements cannot be mixed with config statements
@@ -42,7 +42,7 @@ epigenomesegmentation ok
 epitopeprediction 1 workflows/../subworkflows/local/mhc_binding_prediction/../../../modules/local/mhcflurry/main.nf:11:5: Invalid process directive
 evexplorer 1 nextflow.config:66:1: Try-catch blocks cannot be mixed with config statements
 fastqrepair ok
-fastquorum 33 subworkflows/local/utils_nfcore_fastquorum_pipeline/main.nf:116:21: Not supported yet: the method `collectMany` of LinkedHashMap
+fastquorum ok
 fetchngs ok
 funcprofiler ok
 funcscan ok
@@ -65,7 +65,7 @@ lncpipe 1 nextflow.config:378:31: `manifest` is not defined
 longraredisease ok
 lsmquant ok
 mag 1 workflows/../subworkflows/local/catpack/main.nf:43:24: NoSuchFileException: No such file or directory: <cache>/iunctus/scratch/mock/<run>/8/null/db
-magmap 1 subworkflows/local/utils_nfcore_magmap_pipeline/main.nf:169:26: IllegalArgumentException: Invalid file path type - offending value: [https://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_refseq.txt, https://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_genbank.txt] [[Ljava.lang.String;]
+magmap 124 
 marsseq 1 nextflow.config:78:1: Try-catch blocks cannot be mixed with config statements
 mcmicro 1 workflows/../subworkflows/local/update_from_ome/../../../modules/local/omevalidation/main.nf:28:53: Unexpected character: '@'
 meerpipe 1 nextflow.config:110:1: Try-catch blocks cannot be mixed with config statements
@@ -106,21 +106,21 @@ proteogenomicsdb 1 nextflow.config:117:1: Try-catch blocks cannot be mixed with 
 provenancereport ok
 radseq 1 nextflow.config:189:1: Try-catch blocks cannot be mixed with config statements
 rangeland 1 nextflow.config:304:33: `manifest` is not defined
-raredisease 33 subworkflows/local/prepare_references/main.nf:170:39: Not supported yet: the method `findIndexValues` of ArrayList
+raredisease ok
 rarevariantburden ok
 readsimulator 1 nextflow.config:122:1: Try-catch blocks cannot be mixed with config statements
 references 1 nextflow.config:202:1: Variable declarations cannot be mixed with config statements
 reportho 1 conf/test.config:26:14: `pipelines_testdata_base_path` is not defined
 ribomsqc ok
 riboseq ok
-rnadnavar 33 Not supported yet: the method `concat` of String
+rnadnavar ok
 rnafusion ok
 rnaseq ok
 rnasplice 1 nextflow.config:180:1: Try-catch blocks cannot be mixed with config statements
 rnastructurome 1 workflows/../subworkflows/local/utils_nfcore_rnastructurome_pipeline/main.nf:495:9: AbortOperationException: Could not parse mapped read count from flagstat file: <cache>/iunctus/scratch/mock/<run>/21/HEK293T_untreated_r1.flagstat
 rnavar 1 IllegalArgumentException: Input tuple does not match tuple declaration in process `SAMTOOLS_SORT` -- offending value: [[:], []]
 sammyseq 1 conf/modules.config:28:5: If statements cannot be mixed with config statements
-sarek 1 workflows/../subworkflows/local/fastq_preprocess_gatk/main.nf:331:42: MissingMethodException: No signature of method: nextflow.extension.GroupKey.plus() is applicable for argument types: (LinkedHashMap) values: [[data_type:bam]]
+sarek ok
 scdownstream 33 workflows/../subworkflows/local/quality_control/main.nf:11:11: Plugins are not supported yet: plugin/nf-anndata
 scnanoseq ok
 scrnaseq 1 workflows/scrnaseq.nf:50:23: `Utils` is not defined

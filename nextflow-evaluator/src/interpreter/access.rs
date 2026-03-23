@@ -630,6 +630,12 @@ impl Interpreter<'_> {
                     state: State::Yaml,
                 }))))
             }
+            (None, []) if class == "YamlSlurper" => {
+                Ok(Value::Object(Rc::new(std::cell::RefCell::new(Object {
+                    class: "groovy.yaml.YamlSlurper",
+                    state: State::Yaml,
+                }))))
+            }
             (None, []) if class == "SimpleTemplateEngine" => {
                 Ok(Value::Object(Rc::new(std::cell::RefCell::new(Object {
                     class: "groovy.text.SimpleTemplateEngine",

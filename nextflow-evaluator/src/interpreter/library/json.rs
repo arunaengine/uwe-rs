@@ -125,6 +125,7 @@ impl Interpreter<'_> {
             _ => {}
         }
         let builder = object.borrow().class == "groovy.json.JsonGenerator$Options";
+        let slurper = object.borrow().class == "groovy.yaml.YamlSlurper";
         let mut target = object.borrow_mut();
         let value = match (&mut target.state, name, arguments) {
             (State::Json(options), "excludeNulls", []) if builder => {
@@ -169,6 +170,17 @@ impl Interpreter<'_> {
                 }
             }
             (State::Uri(text), "toString", []) => Value::string(text.as_ref()),
+            // Groovy's `YamlSlurper` reads YAML as JSON, where decimals are `BigDecimal`.
+            (State::Yaml, "parse" | "parseText", [source]) if slurper => {
+                let text = match source {
+                    Value::Path(path) => {
+                        let bytes = self.host.read(path).map_err(|error| error.or_at(span))?;
+                        String::from_utf8_lossy(&bytes).into_owned()
+                    }
+                    other => other.to_string(),
+                };
+                decimals(super::yaml::load(&text).at(span)?)
+            }
             (State::Yaml, "load", [source]) => {
                 let text = match source {
                     Value::Path(path) => {
@@ -500,4 +512,26 @@ fn tokens(text: &str) -> Result<Vec<Token>, Exception> {
 
 fn json_error(message: &str) -> Exception {
     Exception::new("JsonException", format!("Invalid JSON: {message}"))
+}
+
+/// A value with its doubles as `BigDecimal`, as JSON reads them.
+fn decimals(value: Value) -> Value {
+    match value {
+        Value::Number(number @ crate::number::Number::Double(_)) => {
+            Value::Number(crate::number::Number::BigDecimal(number.to_big_decimal()))
+        }
+        Value::List(list) => {
+            let items = list.borrow().items.clone();
+            Value::list(items.into_iter().map(decimals).collect())
+        }
+        Value::Map(map) => {
+            let entries = map.borrow().entries.clone();
+            Value::map(
+                entries
+                    .into_iter()
+                    .map(|(key, value)| (key.0, decimals(value))),
+            )
+        }
+        other => other,
+    }
 }

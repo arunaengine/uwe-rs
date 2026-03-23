@@ -59,7 +59,9 @@ pub fn download(url: &str, downloads: &Path) -> Result<PathBuf, String> {
     // The body goes to a file as it comes, which is renamed once complete.
     let partial = local.with_extension("partial");
     let mut file = std::fs::File::create(&partial).map_err(|error| error.to_string())?;
-    response.copy_to(&mut file).map_err(|error| cannot(&error))?;
+    response
+        .copy_to(&mut file)
+        .map_err(|error| cannot(&error))?;
     std::fs::rename(&partial, &local).map_err(|error| error.to_string())?;
     Ok(local)
 }

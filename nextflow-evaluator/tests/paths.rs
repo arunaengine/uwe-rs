@@ -246,6 +246,17 @@ fn yaml_anchors_aliases_and_merge_keys() {
 }
 
 #[test]
+fn yaml_slurper_reads_decimals() {
+    assert_eq!(
+        value(
+            "def y = new groovy.yaml.YamlSlurper().parseText('a: 2.50\\nn: 3\\nl: [x, 1.5]')\n\
+             [y, y.a.getClass().getSimpleName(), y.n.getClass().getSimpleName()]"
+        ),
+        "[[a:2.5, n:3, l:[x, 1.5]], BigDecimal, Integer]"
+    );
+}
+
+#[test]
 fn yaml_load_and_dump() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let file = directory.path().join("v.yml");

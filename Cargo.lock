@@ -1167,6 +1167,7 @@ dependencies = [
  "task-model",
  "task-runner",
  "tempfile",
+ "workflow-graph",
 ]
 
 [[package]]

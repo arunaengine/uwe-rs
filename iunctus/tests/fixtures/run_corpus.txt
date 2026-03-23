@@ -65,7 +65,7 @@ lncpipe 1 nextflow.config:378:31: `manifest` is not defined
 longraredisease ok
 lsmquant ok
 mag 1 workflows/../subworkflows/local/catpack/main.nf:43:24: NoSuchFileException: No such file or directory: <cache>/iunctus/scratch/mock/<run>/8/null/db
-magmap 124 
+magmap 124
 marsseq 1 nextflow.config:78:1: Try-catch blocks cannot be mixed with config statements
 mcmicro 1 workflows/../subworkflows/local/update_from_ome/../../../modules/local/omevalidation/main.nf:28:53: Unexpected character: '@'
 meerpipe 1 nextflow.config:110:1: Try-catch blocks cannot be mixed with config statements

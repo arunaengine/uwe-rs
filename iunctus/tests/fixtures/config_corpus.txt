@@ -1,5 +1,5 @@
 # Pipelines whose `iunctus config -profile test` does not equal the recorded `nextflow config`:
 # pipeline, what differs, why. Every pipeline not listed must give the same output.
-magmap unsupported the class `java.security.MessageDigest` in a closure of conf/modules.config
 pathogensurveillance different `nextflow config` shows missing secrets as text like 'secrets.KEY', a run and iunctus give null
+methylseq accepted `nextflow config` rejects includes of files that the text-only corpus lacks, even in unselected profiles
 seqsubmit accepted `nextflow config` rejects includes of files that the text-only corpus lacks, even in unselected profiles

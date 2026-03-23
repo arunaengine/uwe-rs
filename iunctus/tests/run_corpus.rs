@@ -40,6 +40,9 @@ fn outcome(corpus: &Path, pipeline: &str, cache: &Path) -> String {
     let first = run.replace_all(&first, "<run>");
     let first = address.replace_all(&first, "@<address>");
     let first = time.replace_all(&first, "<time>");
+    if first.is_empty() {
+        return code.to_string();
+    }
     format!("{code} {first}")
 }
 

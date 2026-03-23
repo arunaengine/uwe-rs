@@ -14,7 +14,7 @@ mod graph;
 pub mod mock;
 mod task;
 
-pub use driver::{Driver, DriverError};
+pub use driver::{Driver, DriverError, Launch};
 pub use engine::{ExecuteError, Execution, Executor, execute};
 pub use graph::{Edge, EdgeKind, ExecutionGraph, Node};
 pub use mock::MockTes;

@@ -8,6 +8,10 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod driver;
+mod graph;
 mod task;
 
+pub use driver::{Driver, DriverError};
+pub use graph::{Edge, EdgeKind, ExecutionGraph, Node};
 pub use task::{Input, Language, Outcome, OutputFile, Resources, Task, TaskId};

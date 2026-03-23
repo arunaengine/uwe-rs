@@ -117,7 +117,12 @@ cwl-corpus:
 				for prefix in $prefixes; do case "$prefix" in */) ;; *) echo "/$prefix" ;; esac; done
 				printf '%s\n' "$referenced" | grep -v '^$' | sed 's|^|/|' || true
 			} | git -C "$work" sparse-checkout set --no-cone --stdin
-			git -C "$work" fetch -q --depth 1 --filter=blob:none origin "$commit"
+			# A source the network cannot reach is left out, so the rest still arrives.
+			if ! git -C "$work" fetch -q --depth 1 --filter=blob:none origin "$commit"; then
+				echo "skipped $path: cannot fetch $url" >&2
+				rm -rf "$work"
+				continue
+			fi
 			git -C "$work" checkout -q FETCH_HEAD
 		fi
 		# The corpus leaves out files over 1 MiB, as its first download did.

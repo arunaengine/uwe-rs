@@ -4,7 +4,7 @@
 
 [workspace]
 resolver = "3"
-members = ["argo-parser", "content-store", "cwl-parser", "executor", "iunctus", "nextflow-config", "nextflow-evaluator", "nextflow-parser", "nextflow-plugins", "nextflow-runtime", "snakemake-parser", "task-model", "task-runner"]
+members = ["argo-parser", "content-store", "cwl-parser", "executor", "iunctus", "nextflow-config", "nextflow-evaluator", "nextflow-parser", "nextflow-plugins", "nextflow-runtime", "snakemake-parser", "task-model", "task-runner", "workflow-graph"]
 
 [workspace.package]
 version = "0.1.0"
@@ -24,6 +24,7 @@ nextflow-plugins = { path = "nextflow-plugins" }
 nextflow-runtime = { path = "nextflow-runtime" }
 task-model = { path = "task-model" }
 task-runner = { path = "task-runner" }
+workflow-graph = { path = "workflow-graph" }
 
 # Third-party crates
 bytes = "1.12.1"

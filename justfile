@@ -28,7 +28,7 @@ corpus:
 		git -C "$work" init -q
 		git -C "$work" remote add origin "https://github.com/nf-core/$name.git"
 		git -C "$work" fetch -q --depth 1 --filter=blob:limit=1m origin "$commit"
-		git -C "$work" sparse-checkout set --no-cone '*.nf' '*.config' 'nextflow_schema.json' '/CITATIONS.md'
+		git -C "$work" sparse-checkout set --no-cone '*.nf' '*.config' '*.groovy' 'nextflow_schema.json' '/CITATIONS.md'
 		git -C "$work" checkout -q FETCH_HEAD
 		# The files of assets/, bin/, docs/images/, tests/ and templates/ that runs read; files
 		# over 1 MiB are not downloaded and stay empty, so that they exist.
@@ -100,7 +100,11 @@ cwl-corpus:
 		done || true)"
 		work="$(mktemp -d "$root/.fetch.XXXXXX")"
 		if [[ "$url" == https://workflowhub.eu/* ]]; then
-			curl -sfL --retry 3 -o "$work.zip" "https://workflowhub.eu/workflows/${path##*/}/ro_crate?version=${ref#version-}"
+			if ! curl -sfL --retry 3 -o "$work.zip" "https://workflowhub.eu/workflows/${path##*/}/ro_crate?version=${ref#version-}"; then
+				echo "skipped $path: cannot download it from WorkflowHub" >&2
+				rm -rf "$work" "$work.zip"
+				continue
+			fi
 			{ unzip -Z1 "$work.zip" | grep -iE '\.(cwl|ya?ml|json|js)$' | grep -vx 'ro-crate-metadata.json' || true; printf '%s\n' "$referenced"; } \
 				| grep -v '^$' | xargs -r -d '\n' unzip -qo "$work.zip" -d "$work" || true
 			rm -f "$work.zip"

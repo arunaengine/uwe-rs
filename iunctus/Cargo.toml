@@ -21,6 +21,7 @@ reqwest.workspace = true
 sha2.workspace = true
 task-model.workspace = true
 task-runner.workspace = true
+workflow-graph.workspace = true
 
 [dev-dependencies]
 fancy-regex.workspace = true

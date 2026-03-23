@@ -185,4 +185,5 @@ pub(super) const CLASSES: &[&str] = &[
     "Value",
     "VersionNumber",
     "Yaml",
+    "YamlSlurper",
 ];

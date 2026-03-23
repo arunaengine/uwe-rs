@@ -2,7 +2,34 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::path::PathBuf;
+
 use crate::{Language, Outcome, Task};
+
+/// What a user asks to run, in the terms all languages share. Each language crate exposes
+/// `pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError>`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Launch {
+    /// The workflow file or project directory.
+    pub target: PathBuf,
+    /// Workflow parameters from the command line, like `--outdir results` or
+    /// `--config samples=s.tsv`, as names and text values in the order given.
+    pub params: Vec<(String, String)>,
+    /// A file of inputs or parameters: a CWL job file, a Nextflow params file, a Snakemake
+    /// config file or an Argo parameter file.
+    pub inputs: Option<PathBuf>,
+    /// Nextflow profiles.
+    pub profiles: Vec<String>,
+    /// Extra config files, like Nextflow `-c` or Snakemake `--configfile`.
+    pub configs: Vec<PathBuf>,
+    /// Targets or an entry point: Snakemake target files or rules, the Nextflow `-entry`
+    /// workflow, the Argo entrypoint.
+    pub targets: Vec<String>,
+    /// Where the run keeps files of its own, like downloads.
+    pub scratch: PathBuf,
+    /// Run the stubs of tasks instead of their scripts, where the language has stubs.
+    pub stub: bool,
+}
 
 /// Why a driver cannot go on.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]

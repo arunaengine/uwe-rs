@@ -38,14 +38,15 @@ Crates are named for what they are and sit at the workspace root, like `nextflow
 | `task-model` | The task record, file references, canonical encoding, the cache key. No I/O. | Shared |
 | `content-store` | The cache directory on a file system or in S3, imports from HTTPS | Shared |
 | `executor` | The executor interface, the wrapper script, the result manifest, the TES executor and the local container executor | Shared |
-| `task-runner` | The driver interface, the scheduler, cache lookups, the run database, resume, publishing | Shared |
+| `task-runner` | The scheduler, cache lookups, the run database, resume, publishing | Shared |
+| `workflow-graph` | Language-neutral tasks, the driver interface, the execution graph and the mock executors ([engine](../engine.md)) | Shared |
 | `iunctus` | The binary: command line, settings, wiring | Binary |
 | `nextflow-conformance` | Development harness for oracle runs and snapshot comparison. Never linked into the binary. | Development |
 
 Rules:
 
 - Dependencies point one way. No shared crate depends on a Nextflow crate; a workspace test checks this.
-- Nextflow crates never call an executor or a store directly. They go through the driver interface of `task-runner` (section 5.8).
+- Nextflow crates never call an executor or a store directly. They go through the driver interface of `workflow-graph` (section 5.6).
 - The evaluator defines a small host trait for file access, the environment and the clock. So the evaluator and the config crate can be tested with a fake host.
 - The proposals differ on crate size. This design takes Proposal B's separation of `nextflow-plugins` (it keeps the `jsonschema` dependency out of the evaluator) and Proposal A's single `executor` crate, split into modules, until a second executor family needs its own crate.
 
@@ -208,6 +209,8 @@ The executor interface has the nine operations of the feasibility report: capabi
 **Image preparation** accepts an existing image, builds an image from a locked Conda environment, or uses a workflow-wide image containing the required tools. The [decisions](../../decisions.md), items 12 and 13, define image reuse and environment isolation. Preparation finishes before task submission; the resolved image digest enters the task cache key.
 
 ### 5.6 The driver interface and the host
+
+The first version of this interface is `workflow_graph::Driver`, which the [engine](../engine.md) describes: `start`, `complete` and `finish`, with tasks run one at a time. What follows is the target design.
 
 A driver is a synchronous state machine with `start` and `handle(event)`, each returning task requests, publish requests or the end of the run (B 4.12). It runs on its own thread, so the evaluator can use `Rc`. Host calls block that thread: reading and listing files, importing bytes into the store, asking for facts, reading the environment, logging. The scheduler, executors and storage run on Tokio in `task-runner`.
 

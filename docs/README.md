@@ -4,9 +4,19 @@
 
 # iunctus docs
 
-iunctus is a planned native Rust application. It will read Nextflow, Snakemake, CWL and Argo workflows, turn them into a shared intermediate representation, and send the resulting tasks to executors, starting with GA4GH TES.
+iunctus is a native Rust application. It reads Nextflow, Snakemake, CWL and Argo workflows, turns each into language-neutral container tasks and one execution graph, and sends the tasks to executors, starting with GA4GH TES.
 
-This folder holds the research behind the code. All facts were checked on 2026-09-27.
+This folder holds the research and the design behind the code. The research was checked on 2026-09-27.
+
+## The command
+
+```sh
+iunctus run <workflow file or directory> [-graph graph.json] [-executor mock-tes|mock|local] [--<param> <value>]
+iunctus graph <workflow file or directory> [-format json|dot|summary]
+iunctus config [<Nextflow project>] [-profile <names>]
+```
+
+`iunctus run` finds the language of its target, or takes it from `-lang`. The default executor is the mock TES executor, which writes the TES task document of each task and makes empty outputs, so any workflow runs through without containers. Nextflow runs today; Snakemake, CWL and Argo exit with code 33 until their drivers land. See [the engine](design/engine.md).
 
 ## Start here
 
@@ -15,6 +25,7 @@ This folder holds the research behind the code. All facts were checked on 2026-0
 
 ## Design
 
+- [Engine](design/engine.md): how `iunctus run` finds the language, the driver interface every language implements, the execution graph and the executors.
 - [Nextflow runtime](design/nextflow/runtime.md): the chosen design of the Nextflow evaluator, the dataflow runtime and the shared task layer, with milestones.
 
 ## Research notes

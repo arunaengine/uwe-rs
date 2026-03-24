@@ -1,5 +1,6 @@
-//! Runs `iunctus run` on small scripts with Docker. Needs Docker and the `debian:stable-slim`
-//! image; run with `cargo test -p iunctus --test run -- --ignored`.
+//! Runs `iunctus run` on small scripts with the mock executor, and with Docker in the ignored
+//! test, which needs the `debian:stable-slim` image; run it with
+//! `cargo test -p iunctus --test run -- --ignored`.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -53,7 +54,8 @@ fn runs_and_reuses_tasks() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), SCRIPT).expect("writes the script");
     std::fs::write(directory.path().join("input.txt"), "one\ntwo\n").expect("writes the input");
-    let (code, output) = iunctus(directory.path(), &["run", "main.nf"]);
+    let arguments = ["run", "main.nf", "-executor", "local"];
+    let (code, output) = iunctus(directory.path(), &arguments);
     assert_eq!(code, 0, "{output}");
     // The three `view` operators print in an order that Nextflow does not define either.
     let mut lines: Vec<&str> = output.lines().collect();
@@ -62,7 +64,7 @@ fn runs_and_reuses_tasks() {
         lines,
         ["", "2", "TWO", "[done] UPPER (1)", "a: ONE", "shouted"]
     );
-    let (code, output) = iunctus(directory.path(), &["run", "main.nf"]);
+    let (code, output) = iunctus(directory.path(), &arguments);
     assert_eq!(code, 0, "{output}");
     assert!(output.starts_with("[cached] UPPER (1)\n"), "{output}");
 }

@@ -1,8 +1,9 @@
-//! Runs every nf-core pipeline of the corpus with `-profile test` and the mock executor, and
-//! compares the outcome with `tests/fixtures/run_corpus.txt`: `ok`, or the exit code and the
-//! first line of the error. The runs are stub runs, as pipelines then do not read the content
-//! of the outputs that the mock makes up. Run with `just run-corpus-test`; on a difference the test prints
-//! the lines of the new fixture.
+//! Runs every nf-core pipeline of the corpus with `-profile test` and the mock TES executor,
+//! and compares the outcome with `tests/fixtures/run_corpus.txt`: `ok`, or the exit code and
+//! the first line of the error. The runs are stub runs, as pipelines then do not read the
+//! content of the outputs that the mock makes up. The execution graph of each run that
+//! succeeds must be valid. Run with `just run-corpus-test`; on a difference the test prints the
+//! lines of the new fixture.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -10,15 +11,20 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use fancy_regex::Regex;
+use workflow_graph::ExecutionGraph;
 
 /// The outcome of one run: `ok`, or the exit code and the first error line without the
 /// parts that differ between machines and runs. A run that takes more than five minutes, like
-/// one that reads gigabytes of remote files, is stopped with exit code 124.
+/// one that reads gigabytes of remote files, is stopped with exit code 124. A run that succeeds
+/// with an invalid graph is `graph` and the problem.
 fn outcome(corpus: &Path, pipeline: &str, cache: &Path) -> String {
+    let graph = cache.join("graph.json");
+    let _ = std::fs::remove_file(&graph);
     let output = Command::new("timeout")
         .args(["300", env!("CARGO_BIN_EXE_iunctus")])
         .args(["run", &corpus.join(pipeline).to_string_lossy()])
-        .args(["-profile", "test", "-stub-run", "-executor", "mock"])
+        .args(["-profile", "test", "-stub-run"])
+        .args(["-graph", &graph.to_string_lossy()])
         .args(["--outdir", &cache.join("out").to_string_lossy()])
         .env("XDG_CACHE_HOME", cache)
         .current_dir(cache)
@@ -26,7 +32,14 @@ fn outcome(corpus: &Path, pipeline: &str, cache: &Path) -> String {
         .expect("runs iunctus");
     let code = output.status.code().unwrap_or(-1);
     if code == 0 {
-        return "ok".into();
+        let text = std::fs::read_to_string(&graph).unwrap_or_default();
+        let checked = serde_json::from_str::<ExecutionGraph>(&text)
+            .map_err(|error| error.to_string())
+            .and_then(|graph| graph.check());
+        return match checked {
+            Ok(()) => "ok".into(),
+            Err(problem) => format!("graph {problem}"),
+        };
     }
     let error = String::from_utf8_lossy(&output.stderr);
     let first = error.lines().next().unwrap_or_default();

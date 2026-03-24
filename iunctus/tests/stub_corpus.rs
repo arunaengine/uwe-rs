@@ -1,12 +1,14 @@
-//! Runs nf-core pipelines of the corpus with `-stub` and the mock executor, and compares each
-//! task's script with the one Nextflow wrote, as `tests/fixtures/oracle/stub/record.sh`
-//! recorded them. Run with `just stub-corpus-test`.
+//! Runs nf-core pipelines of the corpus with `-stub` and the mock TES executor, and compares
+//! each task's script in the execution graph with the one Nextflow wrote, as
+//! `tests/fixtures/oracle/stub/record.sh` recorded them. Run with `just stub-corpus-test`.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+use workflow_graph::ExecutionGraph;
 
 /// The name of a task as a file name, as `record.sh` makes it.
 fn file_name(task: &str) -> String {
@@ -26,10 +28,26 @@ fn file_name(task: &str) -> String {
     format!("{}.sh", name.trim_end_matches('_'))
 }
 
-/// The scripts of a directory of recorded or mock tasks, by file name.
+/// The scripts of a directory of recorded tasks, by file name.
 fn read_scripts(files: impl Iterator<Item = (String, PathBuf)>) -> BTreeMap<String, String> {
     files
         .map(|(name, path)| (name, std::fs::read_to_string(path).expect("reads a script")))
+        .collect()
+}
+
+/// The script of each task of a graph, by file name.
+fn graph_scripts(file: &Path) -> BTreeMap<String, String> {
+    let text = std::fs::read_to_string(file).expect("reads the graph");
+    let graph: ExecutionGraph = serde_json::from_str(&text).expect("the graph as JSON");
+    graph
+        .nodes
+        .into_iter()
+        .map(|node| {
+            (
+                file_name(&node.task.name),
+                node.task.script.unwrap_or_default(),
+            )
+        })
         .collect()
 }
 
@@ -53,9 +71,11 @@ fn stub_scripts_equal_the_oracle() {
             .to_string_lossy()
             .into_owned();
         let cache = tempfile::tempdir().expect("a temporary directory");
+        let graph = cache.path().join("graph.json");
         let output = Command::new(env!("CARGO_BIN_EXE_iunctus"))
             .args(["run", &corpus.join(&name).to_string_lossy()])
-            .args(["-profile", "test,docker", "-stub", "-executor", "mock"])
+            .args(["-profile", "test,docker", "-stub"])
+            .args(["-graph", &graph.to_string_lossy()])
             .args(["--outdir", "/tmp/iunctus-stub-out"])
             .env("XDG_CACHE_HOME", cache.path())
             .current_dir(cache.path())
@@ -76,15 +96,7 @@ fn stub_scripts_equal_the_oracle() {
                 path,
             )
         }));
-        let mock = cache.path().join("iunctus/scratch/mock");
-        let runs = std::fs::read_dir(&mock).expect("reads the mock tasks");
-        let tasks =
-            runs.flat_map(|run| std::fs::read_dir(run.expect("a run").path()).expect("reads"));
-        let actual = read_scripts(tasks.map(|task| {
-            let task = task.expect("a task").path();
-            let name = std::fs::read_to_string(task.join(".command.name")).expect("reads a name");
-            (file_name(&name), task.join(".command.sh"))
-        }));
+        let actual = graph_scripts(&graph);
         for (task, script) in &expected {
             match actual.get(task) {
                 None => problems.push(format!("{name}: no task {task}")),

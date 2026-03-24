@@ -145,7 +145,9 @@ impl Driver for Nextflow {
             project_dir: text(&project),
             script_file: text(&script),
             run_name: self.settings.run_name.clone(),
-            config_files: files.iter().map(|file| text(file)).collect(),
+            config_files: (files.iter())
+                .map(|file| file.to_string_lossy().into_owned())
+                .collect(),
             command_line: self.settings.command_line.clone(),
         };
         let (run, requests) = Run::start(&module, &options, host).map_err(error)?;

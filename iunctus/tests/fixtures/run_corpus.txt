@@ -28,7 +28,7 @@ datasync 33 workflows/datasync.nf:48:38: Not supported yet: reading remote files
 deepmodeloptim 1 nextflow.config:211:1: If statements cannot be mixed with config statements
 deepmutscan ok
 demo ok
-demultiplex 1 workflows/../subworkflows/nf-core/bcl_demultiplex/main.nf:65:23: NoSuchFileException: No files match pattern `<cache>/iunctus/scratch/mock/<run>/1/220422_M11111_0222_000000000-K9H97/*.xml`
+demultiplex 1 workflows/../subworkflows/nf-core/bcl_demultiplex/main.nf:65:23: NoSuchFileException: No files match pattern `<cache>/iunctus/scratch/mock-tes/<run>/work/1/220422_M11111_0222_000000000-K9H97/*.xml`
 denovotranscript 1 nextflow.config:318:40: `manifest` is not defined
 detaxizer 1 workflows/detaxizer.nf:46:1: Statements cannot be mixed with script declarations -- move statements into a process, workflow, or function
 diaproteomics 1 nextflow.config:107:1: Try-catch blocks cannot be mixed with config statements
@@ -64,7 +64,7 @@ kmermaid 1 nextflow.config:76:1: Try-catch blocks cannot be mixed with config st
 lncpipe 1 nextflow.config:378:31: `manifest` is not defined
 longraredisease ok
 lsmquant ok
-mag 1 workflows/../subworkflows/local/catpack/main.nf:43:24: NoSuchFileException: No such file or directory: <cache>/iunctus/scratch/mock/<run>/8/null/db
+mag 1 workflows/../subworkflows/local/catpack/main.nf:43:24: NoSuchFileException: No such file or directory: <cache>/iunctus/scratch/mock-tes/<run>/work/8/null/db
 magmap 124
 marsseq 1 nextflow.config:78:1: Try-catch blocks cannot be mixed with config statements
 mcmicro 1 workflows/../subworkflows/local/update_from_ome/../../../modules/local/omevalidation/main.nf:28:53: Unexpected character: '@'
@@ -117,7 +117,7 @@ rnadnavar ok
 rnafusion ok
 rnaseq ok
 rnasplice 1 nextflow.config:180:1: Try-catch blocks cannot be mixed with config statements
-rnastructurome 1 workflows/../subworkflows/local/utils_nfcore_rnastructurome_pipeline/main.nf:495:9: AbortOperationException: Could not parse mapped read count from flagstat file: <cache>/iunctus/scratch/mock/<run>/21/HEK293T_untreated_r1.flagstat
+rnastructurome 1 workflows/../subworkflows/local/utils_nfcore_rnastructurome_pipeline/main.nf:495:9: AbortOperationException: Could not parse mapped read count from flagstat file: <cache>/iunctus/scratch/mock-tes/<run>/work/21/HEK293T_untreated_r1.flagstat
 rnavar 1 IllegalArgumentException: Input tuple does not match tuple declaration in process `SAMTOOLS_SORT` -- offending value: [[:], []]
 sammyseq 1 conf/modules.config:28:5: If statements cannot be mixed with config statements
 sarek ok
@@ -129,7 +129,7 @@ seqsubmit ok
 slamseq 1 nextflow.config:68:1: Try-catch blocks cannot be mixed with config statements
 smrnaseq 1 workflows/smrnaseq.nf:34:1: Statements cannot be mixed with script declarations -- move statements into a process, workflow, or function
 sopa ok
-spatialaxe 1 workflows/spatialaxe.nf:212:13: AbortOperationException: ❌ Missing required file(s) in xenium bundle '<cache>/iunctus/scratch/mock/<run>/1/test_run': [cell_boundaries.csv.gz, cell_boundaries.parquet, cell_feature_matrix.h5, cell_feature_matrix.zarr.zip, cells.csv.gz, cells.parquet, cells.zarr.zip, experiment.xenium, gene_panel.json, metrics_summary.csv, morphology.ome.tif, morphology_focus/, nucleus_boundaries.csv.gz, nucleus_boundaries.parquet, transcripts.parquet, transcripts.zarr.zip]
+spatialaxe 1 workflows/spatialaxe.nf:212:13: AbortOperationException: ❌ Missing required file(s) in xenium bundle '<cache>/iunctus/scratch/mock-tes/<run>/work/1/test_run': [cell_boundaries.csv.gz, cell_boundaries.parquet, cell_feature_matrix.h5, cell_feature_matrix.zarr.zip, cells.csv.gz, cells.parquet, cells.zarr.zip, experiment.xenium, gene_panel.json, metrics_summary.csv, morphology.ome.tif, morphology_focus/, nucleus_boundaries.csv.gz, nucleus_boundaries.parquet, transcripts.parquet, transcripts.zarr.zip]
 spatialvi 1 workflows/../subworkflows/local/input_check/main.nf:144:9: AbortOperationException: No `fastq_dir` specified or no samples found in folder.
 spinningjenny 1 nextflow.config:76:1: Try-catch blocks cannot be mixed with config statements
 stableexpression 1 workflows/../subworkflows/local/utils_nfcore_stableexpression_pipeline/main.nf:461:13: AbortOperationException: Could not find any readily usable public dataset...

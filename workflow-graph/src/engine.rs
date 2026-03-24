@@ -18,13 +18,20 @@ pub enum ExecuteError {
     Driver(#[from] DriverError),
     #[error("task {task}: {message}")]
     Executor { task: String, message: String },
+    /// The executor cannot run the task yet, like a local executor given a remote input.
+    #[error("task {task}: {message}")]
+    Unsupported { task: String, message: String },
     #[error("task id {0} was asked for twice")]
     DuplicateTask(TaskId),
 }
 
 impl ExecuteError {
     pub fn unsupported(&self) -> bool {
-        matches!(self, ExecuteError::Driver(error) if error.unsupported)
+        match self {
+            ExecuteError::Driver(error) => error.unsupported,
+            ExecuteError::Unsupported { .. } => true,
+            _ => false,
+        }
     }
 }
 
@@ -94,7 +101,8 @@ impl Recorder {
             return Err(ExecuteError::DuplicateTask(task.id));
         }
         let mut edges: Vec<Edge> = Vec::new();
-        for input in &task.inputs {
+        // An input with literal content comes from no task.
+        for input in task.inputs.iter().filter(|input| input.content.is_none()) {
             if let Some(from) = self.producer(Path::new(&input.source)) {
                 let edge = Edge {
                     from,

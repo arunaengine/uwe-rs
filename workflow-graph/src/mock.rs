@@ -1,7 +1,7 @@
-//! The mock TES executor: each task becomes the GA4GH TES v1.1 task document that a TES
-//! server would receive, written to disk, and the task "runs" by making an empty file for each
-//! output. So a whole workflow runs through without containers or a server, and the TES
-//! documents can be checked or sent later.
+//! The mock executors: a task does not run, it only makes the files it would make. The mock TES
+//! executor also writes the GA4GH TES v1.1 task document that a TES server would receive. So a
+//! whole workflow runs through without containers or a server, and the TES documents can be
+//! checked or sent later.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 
 use crate::{ExecuteError, Executor, Outcome, OutputFile, Task};
 
+/// The mock TES executor.
 pub struct MockTes {
     /// Holds `tes/<id>.json` and `work/<id>/`, the outputs of each task.
     pub directory: PathBuf,
@@ -48,14 +49,51 @@ impl Executor for MockTes {
         if self.verbose {
             println!("[mock tes] {}", task.name);
         }
-        let files = make_outputs(task, &work).map_err(failed)?;
-        Ok(Outcome {
-            id: task.id,
-            exit_code: 0,
-            files,
-            stdout: String::new(),
-            stderr: String::new(),
-        })
+        let files = pretend(task, &work).map_err(failed)?;
+        Ok(success(task, files))
+    }
+}
+
+/// The mock executor without TES documents: each task only makes its files in
+/// `<directory>/<id>/`.
+pub struct Mock {
+    pub directory: PathBuf,
+    /// Prints one line per task when set.
+    pub verbose: bool,
+}
+
+impl Mock {
+    pub fn new(directory: impl Into<PathBuf>) -> Self {
+        Mock {
+            directory: directory.into(),
+            verbose: false,
+        }
+    }
+}
+
+impl Executor for Mock {
+    fn execute(&mut self, task: &Task) -> Result<Outcome, ExecuteError> {
+        let work = self.directory.join(task.id.to_string());
+        if self.verbose {
+            println!("[mock] {}", task.name);
+        }
+        let files = std::fs::create_dir_all(&work)
+            .and_then(|()| pretend(task, &work))
+            .map_err(|error| ExecuteError::Executor {
+                task: task.name.clone(),
+                message: error.to_string(),
+            })?;
+        Ok(success(task, files))
+    }
+}
+
+fn success(task: &Task, files: Vec<OutputFile>) -> Outcome {
+    Outcome {
+        id: task.id,
+        exit_code: 0,
+        files,
+        stdout: String::new(),
+        stderr: String::new(),
     }
 }
 
@@ -140,49 +178,111 @@ fn url(source: &str) -> String {
     }
 }
 
-/// Makes one empty file (or directory, for a path ending in `/`) for each output, under
-/// `work`. A glob gets one file name that it matches, preferring a name the script writes.
-pub fn make_outputs(task: &Task, work: &Path) -> std::io::Result<Vec<OutputFile>> {
-    let words = task.script.as_deref().map(script_words).unwrap_or_default();
-    let mut files: Vec<OutputFile> = Vec::new();
-    for pattern in &task.outputs {
-        let relative = pattern.trim_start_matches('/');
-        let directory = relative.ends_with('/');
-        let relative = relative.trim_end_matches('/');
-        if relative.is_empty() || relative == "." {
-            continue;
+/// Pretends to run a task in `work` and returns its outputs. Inputs with literal content are
+/// written first, as a TES server places them. An output is each name in the script that its
+/// pattern matches, like the files a stub `touch`es, else one empty file named after the
+/// pattern, or a directory for a pattern that ends with `/`. A `.gz` file is an empty gzip file,
+/// so that it can be read, and a `versions.yml` gets the one entry that nf-core code reads, as
+/// a module's stub writes it.
+pub fn pretend(task: &Task, work: &Path) -> std::io::Result<Vec<OutputFile>> {
+    for input in &task.inputs {
+        if let Some(content) = &input.content
+            && inside(&input.path)
+        {
+            let path = work.join(&input.path);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(path, content)?;
         }
-        let name = if relative.contains(['*', '?', '[', '{']) {
-            words
-                .iter()
-                .find(|word| glob_matches(relative, word))
-                .cloned()
-                .unwrap_or_else(|| file_name(relative))
+    }
+    let inputs: Vec<&str> = task
+        .inputs
+        .iter()
+        .map(|input| input.path.as_str())
+        .collect();
+    // What the script makes. This is the one place where a simulation of the script can take
+    // over from reading the names in it.
+    let made = match &task.script {
+        Some(script) => script_words(script, &inputs),
+        None => Vec::new(),
+    };
+    // Each path to make, with whether it is a directory, and the outputs among them.
+    let mut paths: Vec<(String, bool)> = Vec::new();
+    let mut outputs: Vec<String> = Vec::new();
+    for pattern in &task.outputs {
+        let pattern = pattern.trim_start_matches('/');
+        let base = pattern.trim_end_matches('/');
+        let literal = !base.contains(['*', '?', '[', '{']);
+        let within: Vec<&(String, bool)> = made
+            .iter()
+            .filter(|(word, _)| literal && word.starts_with(&format!("{base}/")))
+            .collect();
+        let matched: Vec<&(String, bool)> = made
+            .iter()
+            .filter(|(word, _)| glob_matches(base, word) && has_literal(base))
+            .collect();
+        if literal && !within.is_empty() {
+            // Files in a directory output, like `touch db/a.txt` for `db`.
+            paths.extend(within.into_iter().cloned());
+            paths.push((base.to_owned(), true));
+            outputs.push(base.to_owned());
+        } else if !matched.is_empty() {
+            for (word, directory) in matched {
+                paths.push((word.clone(), *directory || pattern.ends_with('/')));
+                outputs.push(word.clone());
+            }
         } else {
-            relative.to_owned()
-        };
-        let location = work.join(&name);
-        if let Some(parent) = location.parent() {
+            let name = file_name(pattern);
+            let directory = name.ends_with('/');
+            let name = name.trim_end_matches('/').to_owned();
+            paths.push((name.clone(), directory));
+            outputs.push(name);
+        }
+    }
+    // Deeper paths first, so that a directory that holds other outputs is not made a file.
+    paths.sort_by_key(|(name, _)| std::cmp::Reverse(name.matches('/').count()));
+    for (name, directory) in paths {
+        let path = work.join(&name);
+        if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        if directory {
-            std::fs::create_dir_all(&location)?;
-        } else if !location.exists() {
-            if name.ends_with(".gz") {
-                std::fs::write(&location, EMPTY_GZIP)?;
-            } else {
-                std::fs::write(&location, "")?;
-            }
+        if path.exists() {
+            // Made already, as a directory of a deeper path or as an input.
+        } else if directory {
+            std::fs::create_dir_all(&path)?;
+        } else if name == "versions.yml" {
+            std::fs::write(&path, format!("\"{}\":\n    mock: 1.0.0\n", task.step))?;
+        } else if name.ends_with(".gz") {
+            std::fs::write(&path, EMPTY_GZIP)?;
+        } else {
+            std::fs::write(&path, "")?;
         }
+    }
+    let mut files: Vec<OutputFile> = Vec::new();
+    for name in outputs {
         if !files.iter().any(|file| file.path == name) {
+            let location = work.join(&name);
             files.push(OutputFile {
+                directory: location.is_dir(),
                 path: name,
                 location,
-                directory,
             });
         }
     }
     Ok(files)
+}
+
+/// The same as [`pretend`], by the name of the first version of this module.
+pub fn make_outputs(task: &Task, work: &Path) -> std::io::Result<Vec<OutputFile>> {
+    pretend(task, work)
+}
+
+/// Whether a relative path stays inside the working directory.
+fn inside(path: &str) -> bool {
+    !path.is_empty()
+        && !path.starts_with('/')
+        && !path.split('/').any(|component| component == "..")
 }
 
 /// A gzip file of no data, so that `.gz` outputs can be read.
@@ -191,31 +291,70 @@ pub const EMPTY_GZIP: &[u8] = &[
     0x00, 0x00, 0x00, 0x00,
 ];
 
-/// Words of a script that name files it writes: targets of `>` and arguments of `touch`.
-fn script_words(script: &str) -> Vec<String> {
-    let mut words = Vec::new();
-    for command in script.split(['\n', ';', '|', '&']) {
+/// The files a script makes, each with whether it is a directory: the targets of `>` and
+/// `>>`, the arguments of `touch` and `mkdir`, and the last argument of `mv`, `cp` and `ln`.
+/// Names with variables or globs, and inputs, do not count.
+fn script_words(script: &str, inputs: &[&str]) -> Vec<(String, bool)> {
+    let mut words: Vec<(String, bool)> = Vec::new();
+    let mut add = |word: &str, directory: bool| {
+        let word = word.trim_start_matches("./").trim_end_matches('/');
+        let skip = word.is_empty()
+            || word.starts_with(['-', '&'])
+            || word.contains(['$', '=', '*', '?', '[', '{', '\\'])
+            || inputs.contains(&word);
+        if skip {
+            return;
+        }
+        match words.iter_mut().find(|(known, _)| known == word) {
+            Some((_, known)) => *known |= directory,
+            None => words.push((word.to_owned(), directory)),
+        }
+    };
+    let commands = script.replace("&&", "\n").replace("||", "\n");
+    for command in commands.split(['\n', ';', '|']) {
         let tokens: Vec<&str> = command
             .split_whitespace()
             .map(|token| token.trim_matches(['"', '\'']))
             .collect();
         for (index, token) in tokens.iter().enumerate() {
-            if let Some(target) = token.strip_prefix('>') {
+            // `>`, `>>`, `2>` and `&>` with the target in the token or the next one.
+            let redirect = token.trim_start_matches(|c: char| c.is_ascii_digit() || c == '&');
+            if let Some(target) = redirect.strip_prefix('>') {
                 let target = target.trim_start_matches('>');
-                let target = if target.is_empty() {
-                    tokens.get(index + 1).copied().unwrap_or_default()
-                } else {
-                    target
-                };
-                words.push(target.to_owned());
+                match target {
+                    "" => tokens
+                        .get(index + 1)
+                        .into_iter()
+                        .for_each(|next| add(next, false)),
+                    target => add(target, false),
+                }
             }
         }
-        if tokens.first() == Some(&"touch") {
-            words.extend(tokens[1..].iter().map(|word| word.to_string()));
+        let arguments: Vec<&str> = tokens
+            .iter()
+            .skip(1)
+            .take_while(|token| !token.contains(['>', '<']))
+            .filter(|token| !token.starts_with('-'))
+            .copied()
+            .collect();
+        match tokens.first().copied() {
+            Some("touch") => arguments.iter().for_each(|argument| add(argument, false)),
+            Some("mkdir") => arguments.iter().for_each(|argument| add(argument, true)),
+            Some("mv" | "cp" | "ln") => arguments
+                .last()
+                .into_iter()
+                .for_each(|last| add(last, false)),
+            _ => {}
         }
     }
-    words.retain(|word| !word.is_empty() && !word.contains(['$', '*', '?', '{']));
     words
+}
+
+/// Whether a glob pattern has text besides wildcards, so that not every word matches it.
+fn has_literal(pattern: &str) -> bool {
+    pattern
+        .chars()
+        .any(|c| !matches!(c, '*' | '?' | '[' | ']' | '{' | '}' | ',' | '/'))
 }
 
 /// A file name that a glob matches: `*` becomes `mock`, `?` becomes `x`, and a group like

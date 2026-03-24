@@ -1,11 +1,12 @@
 //! A toy driver runs through the engine and the mock TES executor, and the graph links tasks by
-//! the files they pass.
+//! the files they pass. The mocks make the files that a task's script names.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use workflow_graph::mock::glob_matches;
+use workflow_graph::mock::{EMPTY_GZIP, glob_matches};
 use workflow_graph::{
-    Driver, DriverError, EdgeKind, Input, Language, MockTes, Outcome, Task, TaskId, execute,
+    Driver, DriverError, EdgeKind, Executor, Input, Language, Mock, MockTes, Outcome, Task, TaskId,
+    execute,
 };
 
 /// Two `split` tasks, then one `merge` task that reads both outputs.
@@ -109,4 +110,64 @@ fn globs_match_like_a_shell() {
     assert!(glob_matches("**/*.txt", "d/e/a.txt"));
     assert!(glob_matches("*.{html,zip}", "r.zip"));
     assert!(glob_matches("s[0-9].bam", "s3.bam"));
+}
+
+#[test]
+fn mocks_make_the_files_that_the_script_names() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let script = "touch s_1.fq s_2.fq\nmkdir -p db\ntouch db/x.txt\ncp in.txt copy.txt\n\
+                  echo v > versions.yml";
+    let input = |path: &str, content: Option<&str>| Input {
+        path: path.into(),
+        source: format!("/data/{path}"),
+        directory: false,
+        content: content.map(str::to_owned),
+    };
+    let task = Task {
+        id: TaskId(7),
+        name: "TOOL (s)".into(),
+        step: "NFCORE:TOOL".into(),
+        script: Some(script.into()),
+        inputs: vec![input(".command.sh", Some("true\n")), input("in.txt", None)],
+        outputs: [
+            "*.fq",
+            "db",
+            "copy.txt",
+            "versions.yml",
+            "*.vcf.gz",
+            "report/",
+        ]
+        .map(String::from)
+        .to_vec(),
+        ..Task::default()
+    };
+    let outcome = Mock::new(directory.path())
+        .execute(&task)
+        .expect("an outcome");
+    let paths: Vec<&str> = outcome
+        .files
+        .iter()
+        .map(|file| file.path.as_str())
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            "s_1.fq",
+            "s_2.fq",
+            "db",
+            "copy.txt",
+            "versions.yml",
+            "mock.vcf.gz",
+            "report"
+        ]
+    );
+    let work = directory.path().join("7");
+    assert!(work.join("db/x.txt").is_file());
+    assert!(outcome.files[2].directory && outcome.files[6].directory);
+    let read = |name: &str| std::fs::read(work.join(name)).expect("reads a file");
+    assert_eq!(read("versions.yml"), b"\"NFCORE:TOOL\":\n    mock: 1.0.0\n");
+    assert_eq!(read("mock.vcf.gz"), EMPTY_GZIP);
+    // Inputs with content are written, as a TES server places them.
+    assert_eq!(read(".command.sh"), b"true\n");
+    assert!(!work.join("in.txt").exists());
 }

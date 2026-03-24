@@ -1,40 +1,42 @@
-//! The command line of `iunctus run` and `iunctus config`, with Nextflow's options.
+//! The command line of `iunctus run`, `iunctus graph` and `iunctus config`: Nextflow's options,
+//! and those that the other languages add.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::PathBuf;
-use std::rc::Rc;
 
-use nextflow_config::tree;
-use nextflow_evaluator::value::Value;
+use workflow_graph::Language;
 
 /// The options of a command.
+#[derive(Debug, Default, PartialEq)]
 pub struct Arguments {
-    /// The script, or the project directory.
+    /// The workflow file or project directory.
     pub target: Option<PathBuf>,
+    /// `-lang name`; else the language is found from the target.
+    pub language: Option<Language>,
     pub stub: bool,
     pub store: Option<PathBuf>,
     /// `-profile a,b`
     pub profiles: Option<Vec<String>>,
-    /// `-c file`
+    /// `-c file`, `-configfile file`
     pub configs: Vec<PathBuf>,
-    /// `--name value`, as nested maps of strings.
-    pub params: Value,
-    /// `-executor local` runs tasks in containers; `-executor mock` only pretends to.
-    pub executor: String,
+    /// `--name value` and `--config name=value`, in the order given.
+    pub params: Vec<(String, String)>,
+    /// `-inputs file` or `-params-file file`: a CWL job file or a params file.
+    pub inputs: Option<PathBuf>,
+    /// `-entry name` and the arguments after the target, like Snakemake targets.
+    pub targets: Vec<String>,
+    /// `-executor mock-tes|mock|local`; `None` for the default.
+    pub executor: Option<String>,
+    /// `-graph file`: where to write the execution graph.
+    pub graph: Option<PathBuf>,
+    /// `-format json|dot|summary` of `iunctus graph`.
+    pub format: Option<String>,
 }
 
 /// Reads the options after the command name.
 pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
-    let mut parsed = Arguments {
-        target: None,
-        stub: false,
-        store: None,
-        profiles: None,
-        configs: Vec::new(),
-        params: tree::map(),
-        executor: "local".into(),
-    };
+    let mut parsed = Arguments::default();
     let mut index = 0;
     while index < arguments.len() {
         let argument = &arguments[index];
@@ -62,7 +64,29 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
                 let files = value()?;
                 parsed.configs.extend(files.split(',').map(PathBuf::from));
             }
-            "-executor" => parsed.executor = value()?,
+            "-configfile" | "--configfile" => parsed.configs.push(value()?.into()),
+            "-inputs" | "-params-file" => parsed.inputs = Some(value()?.into()),
+            "-entry" => parsed.targets.push(value()?),
+            "-lang" => {
+                let name = value()?;
+                parsed.language = Some(language(&name).ok_or(format!(
+                    "unknown language `{name}`; use nextflow, snakemake, cwl or argo"
+                ))?);
+            }
+            "-executor" => parsed.executor = Some(value()?),
+            "-graph" => parsed.graph = Some(value()?.into()),
+            "-format" => parsed.format = Some(value()?),
+            // Snakemake's `--config a=1 b=2` sets several params.
+            "--config"
+                if arguments
+                    .get(index)
+                    .is_some_and(|next| setting(next).is_some()) =>
+            {
+                while let Some((name, text)) = arguments.get(index).and_then(|next| setting(next)) {
+                    parsed.params.push((name.to_owned(), text.to_owned()));
+                    index += 1;
+                }
+            }
             param if param.starts_with("--") => {
                 let (name, text) = match param[2..].split_once('=') {
                     Some((name, text)) => (name.to_owned(), text.to_owned()),
@@ -77,15 +101,36 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
                         }
                     }
                 };
-                set_param(&parsed.params, &name, &text)?;
+                match setting(&text).filter(|_| name == "config") {
+                    Some((name, text)) => parsed.params.push((name.to_owned(), text.to_owned())),
+                    None => parsed.params.push((name, text)),
+                }
             }
-            other if parsed.target.is_none() && !other.starts_with('-') => {
-                parsed.target = Some(PathBuf::from(other));
-            }
+            other if !other.starts_with('-') => match parsed.target {
+                None => parsed.target = Some(PathBuf::from(other)),
+                Some(_) => parsed.targets.push(other.to_owned()),
+            },
             other => return Err(format!("unknown option `{other}`")),
         }
     }
     Ok(parsed)
+}
+
+/// A language by its name, as `-lang` takes it.
+fn language(name: &str) -> Option<Language> {
+    Some(match name.to_ascii_lowercase().as_str() {
+        "nextflow" | "nf" => Language::Nextflow,
+        "snakemake" | "smk" => Language::Snakemake,
+        "cwl" => Language::Cwl,
+        "argo" => Language::Argo,
+        _ => return None,
+    })
+}
+
+/// `name=value`, as Snakemake's `--config` takes it.
+fn setting(text: &str) -> Option<(&str, &str)> {
+    text.split_once('=')
+        .filter(|(name, _)| !name.is_empty() && !name.starts_with('-'))
 }
 
 /// Whether the argument after `--name` is its value: it does not start with `-`, or it is a
@@ -98,40 +143,66 @@ fn takes(next: &str) -> bool {
             || next.chars().count() == 1)
 }
 
-/// `--a.b-c value` sets `params.a.bC`: dots nest, `\.` is a literal dot, and the last part
-/// changes from kebab case to camel case.
-fn set_param(params: &Value, name: &str, text: &str) -> Result<(), String> {
-    let mut parts: Vec<String> = vec![String::new()];
-    let mut characters = name.chars().peekable();
-    while let Some(character) = characters.next() {
-        match character {
-            '\\' if characters.peek() == Some(&'.') => {
-                characters.next();
-                parts.last_mut().expect("a part").push('.');
-            }
-            '.' => parts.push(String::new()),
-            other => parts.last_mut().expect("a part").push(other),
-        }
-    }
-    let last = parts.pop().expect("a part");
-    parts.push(camel_case(&last));
-    let path: Vec<Rc<str>> = parts.iter().map(|part| part.as_str().into()).collect();
-    tree::assign(params, &path, Value::string(text))
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// `kebab-case` becomes `kebabCase`.
-fn camel_case(name: &str) -> String {
-    let mut result = String::new();
-    let mut upper = false;
-    for character in name.chars() {
-        match character {
-            '-' => upper = true,
-            other if upper => {
-                result.extend(other.to_uppercase());
-                upper = false;
-            }
-            other => result.push(other),
-        }
+    fn parse_all(arguments: &[&str]) -> Arguments {
+        let arguments: Vec<String> = arguments.iter().map(|text| text.to_string()).collect();
+        parse(&arguments).expect("valid options")
     }
-    result
+
+    #[test]
+    fn params_take_their_values() {
+        let parsed = parse_all(&["main.nf", "--outdir", "out", "--skip", "--n", "-1", "-stub"]);
+        assert_eq!(parsed.target, Some(PathBuf::from("main.nf")));
+        let params = [("outdir", "out"), ("skip", "true"), ("n", "-1")];
+        let params: Vec<(String, String)> = params
+            .iter()
+            .map(|(name, text)| (name.to_string(), text.to_string()))
+            .collect();
+        assert_eq!(parsed.params, params);
+        assert!(parsed.stub);
+    }
+
+    #[test]
+    fn snakemake_options() {
+        let parsed = parse_all(&[
+            "Snakefile",
+            "all",
+            "--config",
+            "samples=s.tsv",
+            "n=2",
+            "-configfile",
+            "config.yaml",
+            "-lang",
+            "snakemake",
+        ]);
+        assert_eq!(parsed.targets, ["all"]);
+        assert_eq!(
+            parsed.params,
+            [
+                ("samples".to_owned(), "s.tsv".to_owned()),
+                ("n".to_owned(), "2".to_owned())
+            ]
+        );
+        assert_eq!(parsed.configs, [PathBuf::from("config.yaml")]);
+        assert_eq!(parsed.language, Some(Language::Snakemake));
+    }
+
+    #[test]
+    fn a_config_param_without_a_setting_is_a_param() {
+        let parsed = parse_all(&["main.nf", "--config", "file.txt"]);
+        assert_eq!(
+            parsed.params,
+            [("config".to_owned(), "file.txt".to_owned())]
+        );
+    }
+
+    #[test]
+    fn unknown_languages_and_options_are_errors() {
+        let arguments = ["-lang".to_owned(), "wdl".to_owned()];
+        assert!(parse(&arguments).is_err());
+        assert!(parse(&["-x".to_owned()]).is_err());
+    }
 }

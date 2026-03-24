@@ -1505,8 +1505,8 @@ dependencies = [
  "nextflow-evaluator",
  "nextflow-parser",
  "nextflow-plugins",
- "task-model",
  "tempfile",
+ "workflow-graph",
 ]
 
 [[package]]

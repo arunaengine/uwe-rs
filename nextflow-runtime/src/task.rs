@@ -1,16 +1,15 @@
-//! A Nextflow task as a task-model request: `.command.sh` with the code that captures `env`
-//! and `eval` outputs, the hashed specification, and the placement from the directives.
+//! The parts of a Nextflow task that its container task takes: `.command.sh` with the code that
+//! captures `env` and `eval` outputs, the shell, the image and the resources from the
+//! directives.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use nextflow_evaluator::interpreter::TaskDirective;
+use nextflow_evaluator::units::{parse_duration, parse_memory};
 use nextflow_evaluator::value::Value;
-use task_model::{
-    Digest, EnvironmentValue, FORMAT, FileKind, Image, InputFile, OutputRule, Placement,
-    ReuseScope, TaskSpec,
-};
+use workflow_graph::Resources;
 
 use crate::process::TaskRequest;
 
@@ -54,82 +53,16 @@ pub fn command_script(request: &TaskRequest) -> String {
     script
 }
 
-/// The task-model request of a task. `image` is the container reference, pinned to a digest if
-/// possible; `script` is the digest of `command_script`, and `inputs` the digest of each staged
-/// file, in the order of `request.staged`.
-pub fn task_request(
-    request: &TaskRequest,
-    image: Option<String>,
-    script: Digest,
-    inputs: &[Digest],
-) -> task_model::TaskRequest {
-    let mut files = vec![InputFile {
-        path: SCRIPT.into(),
-        kind: FileKind::File,
-        digest: script,
-        executable: false,
-        writable: false,
-    }];
-    for ((_, name), digest) in request.staged.iter().zip(inputs) {
-        files.push(InputFile {
-            path: name.clone(),
-            kind: FileKind::File,
-            digest: digest.clone(),
-            executable: false,
-            writable: false,
-        });
-    }
-    let mut outputs: Vec<OutputRule> = request
-        .output_patterns
-        .iter()
-        .map(|pattern| OutputRule {
-            pattern: pattern.clone(),
-        })
-        .collect();
-    if !request.env.is_empty() || !request.eval.is_empty() {
-        outputs.push(OutputRule {
-            pattern: ENVIRONMENT.into(),
-        });
-    }
+/// The program of a task: the shell of its `shell` directive, else Nextflow's default
+/// `/bin/bash -ue`, with `.command.sh` as its argument.
+pub fn command(request: &TaskRequest) -> Vec<String> {
     let mut arguments: Vec<String> = match directive(&request.directives, "shell") {
         Some(Value::List(list)) => list.borrow().items.iter().map(Value::to_string).collect(),
         Some(Value::String(shell)) => vec![shell.to_string()],
         _ => vec!["/bin/bash".into(), "-ue".into()],
     };
     arguments.push(SCRIPT.into());
-    let mut environment = BTreeMap::new();
-    environment.insert(
-        "NXF_TASK_WORKDIR".to_owned(),
-        EnvironmentValue::WorkDirectory,
-    );
-    let spec = TaskSpec {
-        format: FORMAT,
-        namespace: String::new(),
-        image: image.map(|reference| Image {
-            reference,
-            platform: None,
-        }),
-        arguments,
-        environment,
-        inputs: files,
-        outputs,
-        stdin: None,
-        stdout: STDOUT.into(),
-        stderr: STDERR.into(),
-    };
-    let scope = if spec.image_pinned() {
-        ReuseScope::Shared
-    } else {
-        ReuseScope::Lineage
-    };
-    task_model::TaskRequest {
-        identity: request.name.clone(),
-        display: request.name.clone(),
-        scope,
-        attempt: 1,
-        spec,
-        placement: placement(&request.directives),
-    }
+    arguments
 }
 
 /// The container image a task asks for, from its `container` directive.
@@ -140,19 +73,29 @@ pub fn container(request: &TaskRequest) -> Option<String> {
     }
 }
 
-fn placement(directives: &[TaskDirective]) -> Placement {
+/// The resources a task asks for with its `cpus`, `memory`, `disk`, `time` and `accelerator`
+/// directives. Text like `'2 GB'` or `'1h'` counts as Nextflow reads it.
+pub fn resources(request: &TaskRequest) -> Resources {
+    let directives = &request.directives;
     let number = |name: &str| match directive(directives, name) {
         Some(Value::Number(number)) => Some(number.to_i64().max(0) as u64),
         Some(Value::MemoryUnit(bytes)) => Some(bytes.max(0) as u64),
         Some(Value::Duration(millis)) => Some(millis.max(0) as u64 / 1_000),
+        Some(Value::String(text)) => match name {
+            "memory" | "disk" => parse_memory(&text).ok().map(|bytes| bytes.max(0) as u64),
+            "time" => parse_duration(&text)
+                .ok()
+                .map(|millis| millis.max(0) as u64 / 1_000),
+            _ => text.trim().parse().ok(),
+        },
         _ => None,
     };
-    Placement {
-        cpus: number("cpus").unwrap_or(1) as u32,
+    Resources {
+        cpus: number("cpus").map(|cpus| cpus as f64),
         memory_bytes: number("memory"),
         disk_bytes: number("disk"),
         time_seconds: number("time"),
-        ..Placement::default()
+        gpus: number("accelerator").map(|count| count as u32),
     }
 }
 

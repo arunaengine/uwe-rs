@@ -4,6 +4,7 @@
 
 mod build;
 pub mod channel;
+pub mod driver;
 mod files;
 mod keyed;
 mod loader;
@@ -24,6 +25,7 @@ use nextflow_evaluator::interpreter::{Error, Host, Interpreter};
 use nextflow_evaluator::lowered::Module;
 use nextflow_evaluator::value::Value;
 
+pub use driver::driver;
 pub use loader::{LoadError, Loader};
 pub use network::Network;
 pub use process::{TaskId, TaskOutcome, TaskRequest};

@@ -187,9 +187,12 @@ fn tagged_value(text: &str, tag: &Tag, location: &Location) -> Result<Value, Err
         Some("str") => Some(Value::String(text.to_owned())),
         Some("null") => (resolved == Value::Null).then_some(Value::Null),
         Some("bool") => matches!(resolved, Value::Bool(_)).then_some(resolved),
-        Some("int") => matches!(resolved, Value::Integer(_)).then_some(resolved),
+        Some("int") => {
+            matches!(resolved, Value::Integer(_) | Value::BigInteger(_)).then_some(resolved)
+        }
         Some("float") => match resolved {
             Value::Integer(number) => Some(Value::Float(number as f64)),
+            Value::BigInteger(digits) => digits.parse().ok().map(Value::Float),
             Value::Float(_) => Some(resolved),
             _ => None,
         },
@@ -225,7 +228,12 @@ fn integer(text: &str) -> Option<Value> {
     }
     match text.parse::<i64>() {
         Ok(number) => Some(Value::Integer(number)),
-        Err(_) => text.parse::<f64>().ok().map(Value::Float),
+        Err(_) => {
+            // Larger integers keep their digits, as they do in Python and in JSON.
+            let digits = digits.trim_start_matches('0');
+            let sign = if text.starts_with('-') { "-" } else { "" };
+            Some(Value::BigInteger(format!("{sign}{digits}")))
+        }
     }
 }
 

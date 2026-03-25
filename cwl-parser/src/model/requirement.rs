@@ -320,6 +320,7 @@ fn read_resource(record: &mut Record<'_>, context: &Context) -> Result<Resource,
         };
         let amount = match node.value {
             Value::Integer(amount) => Dynamic::Value(amount as f64),
+            Value::BigInteger(ref digits) => Dynamic::Value(digits.parse().unwrap_or(f64::MAX)),
             Value::Float(amount) => {
                 context.require(
                     Version::V1_2,

@@ -53,6 +53,9 @@ pub enum Value {
     Null,
     Bool(bool),
     Integer(i64),
+    /// An integer beyond `i64`, as its decimal digits with an optional `-`, so that values
+    /// like `4200000000000000000000000000000000000000000` keep every digit.
+    BigInteger(String),
     Float(f64),
     String(String),
     List(Vec<Node>),
@@ -106,7 +109,7 @@ impl Node {
         match self.value {
             Value::Null => "null",
             Value::Bool(_) => "a boolean",
-            Value::Integer(_) => "an integer",
+            Value::Integer(_) | Value::BigInteger(_) => "an integer",
             Value::Float(_) => "a number",
             Value::String(_) => "a string",
             Value::List(_) => "a list",

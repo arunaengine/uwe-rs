@@ -9,3 +9,7 @@
 //! are marked unsupported, which gives exit code 33.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
+
+pub mod value;
+
+pub use value::{Map, Value};

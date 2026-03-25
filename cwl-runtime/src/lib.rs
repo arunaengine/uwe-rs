@@ -10,8 +10,11 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+pub mod expression;
 pub mod files;
+mod javascript;
 pub mod types;
 pub mod value;
 
+pub use expression::{Evaluator, Variables};
 pub use value::{Map, Value};

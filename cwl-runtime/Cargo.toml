@@ -1,0 +1,25 @@
+# Manifest of cwl-runtime, which runs CWL documents as a driver of the execution graph.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "cwl-runtime"
+description = "Values, expressions, command lines, workflows and scatter for CWL, as a workflow-graph driver"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+# JavaScript for CWL expressions. Of the pure Rust engines, Boa builds as fast as tsrun and
+# passes the expressions tsrun fails (named function expressions, key order); nova_vm pulls
+# in about 200 crates. Annex B brings `substr` and other legacy methods real documents use.
+boa_engine.workspace = true
+cwl-parser.workspace = true
+indexmap.workspace = true
+sha1.workspace = true
+workflow-graph.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

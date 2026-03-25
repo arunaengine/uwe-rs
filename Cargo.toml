@@ -4,7 +4,7 @@
 
 [workspace]
 resolver = "3"
-members = ["argo-parser", "content-store", "cwl-parser", "executor", "iunctus", "nextflow-config", "nextflow-evaluator", "nextflow-parser", "nextflow-plugins", "nextflow-runtime", "snakemake-parser", "task-model", "task-runner", "workflow-graph"]
+members = ["argo-parser", "content-store", "cwl-parser", "cwl-runtime", "executor", "iunctus", "nextflow-config", "nextflow-evaluator", "nextflow-parser", "nextflow-plugins", "nextflow-runtime", "snakemake-parser", "task-model", "task-runner", "workflow-graph"]
 
 [workspace.package]
 version = "0.1.0"
@@ -16,6 +16,7 @@ publish = false
 [workspace.dependencies]
 # Workspace crates
 content-store = { path = "content-store" }
+cwl-parser = { path = "cwl-parser" }
 executor = { path = "executor" }
 nextflow-config = { path = "nextflow-config" }
 nextflow-evaluator = { path = "nextflow-evaluator" }
@@ -27,6 +28,7 @@ task-runner = { path = "task-runner" }
 workflow-graph = { path = "workflow-graph" }
 
 # Third-party crates
+boa_engine = { version = "0.22.0", default-features = false, features = ["annex-b"] }
 bytes = "1.12.1"
 fancy-regex = "0.19.2"
 flate2 = "1.1.10"
@@ -51,6 +53,7 @@ ruff_text_size = "=0.0.15"
 saphyr-parser = "0.1.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_jcs = "0.2.0"
+sha1 = { version = "0.11.0", default-features = false }
 serde_json = "1.0.151"
 sha2 = "0.11.0"
 thiserror = "2.0.21"

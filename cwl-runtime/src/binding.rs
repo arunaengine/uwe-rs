@@ -303,3 +303,148 @@ impl Binder<'_, '_> {
         Ok(bindings)
     }
 }
+
+/// Puts the binding of a value before the bindings inside it, and adds it after them.
+fn finish(own: Option<Bound>, mut bindings: Vec<Bound>) -> Vec<Bound> {
+    if let Some(own) = own {
+        for binding in &mut bindings {
+            let mut key = own.key.clone();
+            key.append(&mut binding.key);
+            binding.key = key;
+        }
+        bindings.push(own);
+    }
+    bindings
+}
+
+/// The type cwltool gives an `Any` value to bind it.
+fn any_type(datum: &Value) -> Type {
+    match datum {
+        value if value.is_file() => Type::File,
+        value if value.is_directory() => Type::Directory,
+        Value::Map(map) => Type::Record(Box::new(cwl_parser::model::RecordSchema {
+            name: None,
+            fields: map
+                .keys()
+                .map(|name| cwl_parser::model::RecordField {
+                    name: name.clone(),
+                    value_type: Type::Any,
+                    label: None,
+                    doc: Vec::new(),
+                    secondary_files: Vec::new(),
+                    streamable: None,
+                    format: Vec::new(),
+                    load_contents: None,
+                    load_listing: None,
+                    input_binding: None,
+                    output_binding: None,
+                })
+                .collect(),
+            label: None,
+            doc: Vec::new(),
+            binding: None,
+        })),
+        Value::List(_) => Type::Array(Box::new(cwl_parser::model::ArraySchema {
+            items: Type::Any,
+            name: None,
+            label: None,
+            doc: Vec::new(),
+            binding: None,
+        })),
+        _ => Type::Any,
+    }
+}
+
+/// The arguments of a binding, after `value` went through its `valueFrom`. cwltool rejects
+/// `separate: false` without a `prefix`; it changes nothing then, so it is ignored here, as
+/// other runners do.
+pub fn arguments(bound: &Bound, value: &Value) -> Result<Vec<Arg>, String> {
+    let prefix = bound.prefix.as_deref();
+    let quote = bound.shell_quote;
+    let arg = |text: String| Arg { text, quote };
+    let items: Vec<&Value> = match value {
+        Value::List(items) => {
+            if let Some(separator) = &bound.item_separator
+                && !items.is_empty()
+            {
+                let texts: Result<Vec<String>, String> = items.iter().map(text).collect();
+                let joined = texts?.join(separator);
+                return Ok(prefixed(prefix, bound.separate, &joined, quote));
+            } else if bound.value_from.is_some() {
+                let mut args: Vec<Arg> = prefix
+                    .map(|prefix| arg(prefix.to_owned()))
+                    .into_iter()
+                    .collect();
+                for item in items {
+                    args.push(arg(text(item)?));
+                }
+                return Ok(args);
+            } else if let Some(prefix) = prefix
+                && !items.is_empty()
+            {
+                return Ok(vec![arg(prefix.to_owned())]);
+            }
+            return Ok(Vec::new());
+        }
+        value if value.is_file_like() => vec![value],
+        Value::Map(_) => {
+            return Ok(prefix
+                .map(|prefix| arg(prefix.to_owned()))
+                .into_iter()
+                .collect());
+        }
+        Value::Bool(true) => {
+            return Ok(prefix
+                .map(|prefix| arg(prefix.to_owned()))
+                .into_iter()
+                .collect());
+        }
+        Value::Bool(false) | Value::Null => return Ok(Vec::new()),
+        other => vec![other],
+    };
+    let mut args = Vec::new();
+    for item in items {
+        args.extend(prefixed(prefix, bound.separate, &text(item)?, quote));
+    }
+    Ok(args)
+}
+
+fn prefixed(prefix: Option<&str>, separate: bool, text: &str, quote: bool) -> Vec<Arg> {
+    let arg = |text: String| Arg { text, quote };
+    match (prefix, separate) {
+        (Some(prefix), true) => vec![arg(prefix.to_owned()), arg(text.to_owned())],
+        (Some(prefix), false) => vec![arg(format!("{prefix}{text}"))],
+        (None, _) => vec![arg(text.to_owned())],
+    }
+}
+
+/// The text of a value on the command line: the `path` of files, floats in positional form,
+/// and Python's `str` otherwise.
+pub fn text(value: &Value) -> Result<String, String> {
+    if value.is_file_like() {
+        return value
+            .text("path")
+            .map(str::to_owned)
+            .ok_or_else(|| format!("{} object without a path", value.class().unwrap_or("File")));
+    }
+    Ok(match value {
+        Value::Float(number) => plain_float(*number),
+        other => other.to_python_text(),
+    })
+}
+
+/// Quotes an argument for `/bin/sh` as Python's `shlex.quote` does.
+pub fn shell_quote(text: &str) -> String {
+    if text.is_empty() {
+        return "''".into();
+    }
+    let safe = |c: char| c.is_ascii_alphanumeric() || "_@%+=:,./-".contains(c);
+    if text.chars().all(safe) {
+        return text.to_owned();
+    }
+    format!("'{}'", text.replace('\'', "'\"'\"'"))
+}
+
+#[cfg(test)]
+#[path = "binding_tests.rs"]
+mod tests;

@@ -1,0 +1,57 @@
+//! JavaScript for CWL expressions, run in Boa, a JavaScript engine written in Rust, so that no
+//! Node.js is needed.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use boa_engine::{Context, Source};
+
+use crate::value::Value;
+
+/// Loops longer than this end the evaluation, as cwltool's time limit does.
+const LOOP_LIMIT: u64 = 100_000_000;
+
+/// Marks a result of `undefined`, which JSON cannot hold.
+const UNDEFINED: &str = "\u{0}undefined";
+
+/// Runs a function body after the expression library and the global variables, the way
+/// cwltool's sandbox does, and returns its result as JSON data. cwltool adds "use strict";
+/// the spec asks for ECMAScript 5.1 only, and real documents assign to undeclared variables,
+/// which other runners accept, so the code runs in sloppy mode.
+pub fn evaluate(
+    library: &[String],
+    variables: &[(&str, &Value)],
+    body: &str,
+) -> Result<Value, String> {
+    let mut code = String::new();
+    for part in library {
+        code.push_str(part);
+        code.push('\n');
+    }
+    for (name, value) in variables {
+        code.push_str(&format!("var {name} = {};\n", value.to_javascript()));
+    }
+    code.push_str(&format!(
+        "var $iunctus = (function(){{{body}\n}})();\n\
+         $iunctus === undefined ? {UNDEFINED:?} : JSON.stringify($iunctus)"
+    ));
+    let mut context = Context::default();
+    context
+        .runtime_limits_mut()
+        .set_loop_iteration_limit(LOOP_LIMIT);
+    let result = context
+        .eval(Source::from_bytes(code.as_bytes()))
+        .map_err(|error| error.to_string())?;
+    let Some(text) = result.as_string() else {
+        // JSON.stringify gives undefined for functions and symbols.
+        return Ok(Value::Null);
+    };
+    let text = text.to_std_string_escaped();
+    if text == UNDEFINED {
+        return Ok(Value::Null);
+    }
+    Value::parse(&text).map_err(|error| format!("the result is not JSON: {error}"))
+}
+
+#[cfg(test)]
+#[path = "javascript_tests.rs"]
+mod tests;

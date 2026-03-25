@@ -35,6 +35,7 @@ pub(crate) fn render(node: &Node) -> String {
         Value::Null => "null".to_owned(),
         Value::Bool(value) => value.to_string(),
         Value::Integer(value) => value.to_string(),
+        Value::BigInteger(digits) => digits.clone(),
         Value::Float(value) => value.to_string(),
         Value::String(text) => text.replace(URL, ""),
         Value::List(items) => {

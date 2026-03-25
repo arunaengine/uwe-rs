@@ -45,6 +45,11 @@ fn resolves_core_scalars() {
     assert_eq!(scalar(".5"), Value::Float(0.5));
     assert_eq!(scalar("-.inf"), Value::Float(f64::NEG_INFINITY));
     assert_eq!(scalar("4.2e42"), Value::Float(4.2e42));
+    assert_eq!(
+        scalar("-004200000000000000000000000000000000000000000"),
+        Value::BigInteger("-4200000000000000000000000000000000000000000".into())
+    );
+    assert_eq!(scalar("!!float 10000000000000000000"), Value::Float(1e19));
     assert_eq!(scalar("1.2.3"), Value::String("1.2.3".into()));
     assert_eq!(scalar("v1.0"), Value::String("v1.0".into()));
     assert_eq!(scalar("'12'"), Value::String("12".into()));

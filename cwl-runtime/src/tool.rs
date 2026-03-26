@@ -783,3 +783,391 @@ fn adjust(value: &mut Value, paths: &HashMap<String, String>) {
         file.insert("path".into(), Value::String(path));
     });
 }
+
+/// Evaluates `InitialWorkDirRequirement` and stages its entries in the output directory.
+fn initial_workdir(
+    process: &Process,
+    scope: &Scope,
+    evaluator: &Evaluator,
+    inputs: &Value,
+    runtime: &Map,
+    stager: &mut Stager,
+) -> Result<(), String> {
+    let Some((listing, _)) = scope.find(|class| match class {
+        RequirementClass::InitialWorkDir { listing } => Some(listing),
+        _ => None,
+    }) else {
+        return Ok(());
+    };
+    let runtime = Value::Map(runtime.clone());
+    let vars = Variables {
+        inputs,
+        this: &Value::Null,
+        runtime: &runtime,
+    };
+    let mut entries: Vec<Value> = Vec::new();
+    match listing {
+        Listing::Expression(expression) => match evaluator.evaluate(expression, vars)? {
+            Value::List(items) => {
+                for item in items {
+                    match item {
+                        Value::Null => {}
+                        Value::List(nested) => entries.extend(nested),
+                        other => entries.push(other),
+                    }
+                }
+            }
+            Value::Null => {}
+            other => {
+                return Err(format!(
+                    "the InitialWorkDirRequirement listing must give a list, not {}",
+                    other.to_json()
+                ));
+            }
+        },
+        Listing::Entries(items) => {
+            for item in items {
+                match item {
+                    ListingEntry::Dirent(dirent) => {
+                        entries.extend(dirent_entries(dirent, evaluator, vars)?);
+                    }
+                    ListingEntry::Expression(expression) => {
+                        match evaluator.evaluate(expression, vars)? {
+                            Value::Null => {}
+                            Value::List(items) => {
+                                entries.extend(items.into_iter().filter(|item| !item.is_null()))
+                            }
+                            other if !other.is_truthy() => {}
+                            other => entries.push(other),
+                        }
+                    }
+                    ListingEntry::Object(node) => match Value::from_node(node) {
+                        Value::List(items) => entries.extend(items),
+                        other => entries.push(other),
+                    },
+                }
+            }
+        }
+    }
+    for entry in entries {
+        let Value::Map(mut map) = entry else {
+            return Err(format!(
+                "an InitialWorkDirRequirement entry must be a file, a directory or a Dirent, not {}",
+                entry.to_json()
+            ));
+        };
+        // Dirents left by the expressions become files or renamed file objects.
+        if map.contains_key("entry") {
+            let entryname = map
+                .get("entryname")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            let writable = map.get("writable").cloned();
+            let entry = map.shift_remove("entry").unwrap_or(Value::Null);
+            map = match entry {
+                Value::Map(mut object) if object.contains_key("class") => {
+                    if let Some(name) = entryname {
+                        object.insert("basename".into(), Value::String(name));
+                    }
+                    object
+                }
+                Value::Null => continue,
+                other => {
+                    let Some(name) = entryname else {
+                        return Err("an InitialWorkDirRequirement entry has no entryname".into());
+                    };
+                    let contents = match other {
+                        Value::String(text) => text,
+                        other => other.to_python_json(true),
+                    };
+                    let mut file = Map::new();
+                    file.insert("class".into(), Value::string("File"));
+                    file.insert("basename".into(), Value::String(name));
+                    file.insert("contents".into(), Value::String(contents));
+                    file
+                }
+            };
+            if let Some(writable) = writable {
+                map.insert("writable".into(), writable);
+            }
+        }
+        if !matches!(
+            map.get("class").and_then(Value::as_str),
+            Some("File" | "Directory")
+        ) {
+            return Err(format!(
+                "an InitialWorkDirRequirement entry must be a file or a directory, not {}",
+                Value::Map(map).to_json()
+            ));
+        }
+        let mut value = Value::Map(map);
+        files::normalize(&mut value)?;
+        let Value::Map(map) = value else { continue };
+        let basename = map
+            .get("basename")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let mut basename = normalize_path(&basename);
+        // An absolute name inside the output directory, like `$(runtime.outdir)/x`, is `x`.
+        if let Some(inside) = basename.strip_prefix(&format!("{}/", stager.outdir)) {
+            basename = inside.to_owned();
+        }
+        if basename.starts_with("../") || basename == ".." {
+            return Err(format!(
+                "the InitialWorkDir entry `{basename}` leaves the output directory"
+            ));
+        }
+        if basename.starts_with('/') && process.version < Version::V1_2Dev4 {
+            return Err(format!(
+                "the InitialWorkDir entry `{basename}` is absolute, which needs cwlVersion v1.2"
+            ));
+        }
+        let (folder, name) = match basename.rsplit_once('/') {
+            Some(("", name)) => ("/".to_owned(), name.to_owned()),
+            Some((folder, name)) => (folder.to_owned(), name.to_owned()),
+            None => (String::new(), basename.clone()),
+        };
+        let mut map = map;
+        map.insert("basename".into(), Value::String(name));
+        stager.stage(&map, &folder, true);
+        if map.get("writable") == Some(&Value::Bool(true)) {
+            let mut entry = Value::Map(map);
+            files::visit_files(&mut entry, &mut |inner| {
+                if let Some(Value::String(location)) = inner.get("location") {
+                    stager.writable.insert(location.clone());
+                }
+            });
+        }
+    }
+    Ok(())
+}
+
+/// The entries of one Dirent: a file with literal contents, a renamed file object, or the
+/// file objects of a list.
+fn dirent_entries(
+    dirent: &Dirent,
+    evaluator: &Evaluator,
+    vars: Variables<'_>,
+) -> Result<Vec<Value>, String> {
+    let entry = evaluator.evaluate_untrimmed(&dirent.entry, vars)?;
+    let entryname = match &dirent.entryname {
+        Some(expression) => match evaluator.evaluate(expression, vars)? {
+            Value::String(name) => Some(name),
+            other => {
+                return Err(format!(
+                    "`entryname` must be a string, not {}",
+                    other.to_json()
+                ));
+            }
+        },
+        None => None,
+    };
+    let writable = Value::Bool(dirent.writable);
+    match entry {
+        Value::Null => Ok(Vec::new()),
+        Value::List(items) if !items.is_empty() && items.iter().all(Value::is_file_like) => {
+            if entryname.is_some() {
+                return Err("`entryname` cannot name a list of files".into());
+            }
+            Ok(items
+                .into_iter()
+                .map(|mut item| {
+                    if let Value::Map(map) = &mut item {
+                        map.insert("writable".into(), writable.clone());
+                    }
+                    item
+                })
+                .collect())
+        }
+        entry => {
+            let mut dirent_map = Map::new();
+            dirent_map.insert("entry".into(), entry);
+            if let Some(name) = entryname {
+                dirent_map.insert("entryname".into(), Value::String(name));
+            }
+            dirent_map.insert("writable".into(), writable);
+            Ok(vec![Value::Map(dirent_map)])
+        }
+    }
+}
+
+/// A relative path without `.` segments and with `..` folded, as `os.path.normpath` does.
+fn normalize_path(path: &str) -> String {
+    let absolute = path.starts_with('/');
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." if parts.last().is_some_and(|last| *last != "..") => {
+                parts.pop();
+            }
+            ".." if absolute => {}
+            other => parts.push(other),
+        }
+    }
+    let joined = parts.join("/");
+    if absolute {
+        format!("/{joined}")
+    } else if joined.is_empty() {
+        ".".into()
+    } else {
+        joined
+    }
+}
+
+/// The patterns an output asks the executor for: its globs, with `/` for directories, and
+/// the names of its secondary files.
+#[allow(clippy::too_many_arguments)]
+fn patterns(
+    types: &Types,
+    value_type: &Type,
+    binding: Option<&OutputBinding>,
+    secondary: &[SecondaryFile],
+    evaluator: &Evaluator,
+    vars: Variables<'_>,
+    outdir: &str,
+    patterns: &mut Vec<String>,
+) -> Result<(), String> {
+    if let Some(binding) = binding {
+        let directory = directory_type(types, value_type);
+        for glob in globs(binding, evaluator, vars, outdir)? {
+            if glob == "." {
+                continue;
+            }
+            for entry in secondary {
+                if !has_code(&entry.pattern) {
+                    patterns.push(files::substitute(&glob, &entry.pattern.text));
+                }
+            }
+            patterns.push(if directory { format!("{glob}/") } else { glob });
+        }
+    }
+    if let Type::Record(record) = types.resolve(value_type)
+        && binding.is_none()
+    {
+        for field in &record.fields {
+            self::patterns(
+                types,
+                &field.value_type,
+                field.output_binding.as_ref(),
+                &field.secondary_files,
+                evaluator,
+                vars,
+                outdir,
+                patterns,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+/// Whether an output, or a field of its record, has no binding, so that only
+/// `cwl.output.json` can give it.
+fn unbound(types: &Types, value_type: &Type, binding: Option<&OutputBinding>) -> bool {
+    if binding.is_some() {
+        return false;
+    }
+    match types.resolve(value_type) {
+        Type::Record(record) => record
+            .fields
+            .iter()
+            .any(|field| unbound(types, &field.value_type, field.output_binding.as_ref())),
+        Type::Stdout | Type::Stderr => false,
+        _ => true,
+    }
+}
+
+/// Whether the files an output collects are directories.
+fn directory_type(types: &Types, value_type: &Type) -> bool {
+    match types.resolve(value_type) {
+        Type::Directory => true,
+        Type::Array(array) => directory_type(types, &array.items),
+        Type::Union(members) => {
+            let others: Vec<&Type> = members
+                .iter()
+                .filter(|member| !matches!(member, Type::Null))
+                .collect();
+            !others.is_empty() && others.iter().all(|member| directory_type(types, member))
+        }
+        _ => false,
+    }
+}
+
+/// The glob patterns of an output binding, relative to the output directory; `.` stands
+/// for the output directory itself.
+fn globs(
+    binding: &OutputBinding,
+    evaluator: &Evaluator,
+    vars: Variables<'_>,
+    outdir: &str,
+) -> Result<Vec<String>, String> {
+    let mut patterns = Vec::new();
+    for glob in &binding.glob {
+        let value = evaluator.evaluate(glob, vars)?;
+        let values = match value {
+            Value::Null => Vec::new(),
+            Value::String(text) => vec![text],
+            Value::List(items) => {
+                let mut texts = Vec::new();
+                for item in items {
+                    match item {
+                        Value::String(text) => texts.push(text),
+                        other => {
+                            return Err(format!(
+                                "a glob must be a string, not {}",
+                                other.to_json()
+                            ));
+                        }
+                    }
+                }
+                texts
+            }
+            other => return Err(format!("a glob must be a string, not {}", other.to_json())),
+        };
+        for text in values {
+            if text.is_empty() {
+                continue;
+            }
+            let relative = if text == outdir {
+                ".".to_owned()
+            } else if let Some(rest) = text.strip_prefix(&format!("{outdir}/")) {
+                rest.to_owned()
+            } else if text.starts_with('/') {
+                return Err(format!("the glob `{text}` must not start with `/`"));
+            } else {
+                text
+            };
+            let relative = relative
+                .strip_prefix("./")
+                .map(str::to_owned)
+                .unwrap_or(relative);
+            patterns.push(if relative.is_empty() {
+                ".".to_owned()
+            } else {
+                relative
+            });
+        }
+    }
+    Ok(patterns)
+}
+
+/// The file an abstract `Operation` is taken to make for an output, named after it.
+fn operation_output(types: &Types, output: &OutputParameter) -> Option<String> {
+    let name = short_name(&output.id);
+    let mut value_type = types.resolve(&output.value_type);
+    loop {
+        match value_type {
+            Type::Array(array) => value_type = types.resolve(&array.items),
+            Type::Union(members) => {
+                let member = members
+                    .iter()
+                    .find(|member| !matches!(member, Type::Null))?;
+                value_type = types.resolve(member);
+            }
+            Type::File | Type::Stdout | Type::Stderr => return Some(name.to_owned()),
+            Type::Directory => return Some(format!("{name}/")),
+            _ => return None,
+        }
+    }
+}

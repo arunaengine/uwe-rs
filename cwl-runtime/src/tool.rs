@@ -1171,3 +1171,339 @@ fn operation_output(types: &Types, output: &OutputParameter) -> Option<String> {
         }
     }
 }
+
+impl Pending {
+    /// The output object of the task from its outcome.
+    pub fn collect(self, outcome: &Outcome) -> Result<Map, String> {
+        let exit = i64::from(outcome.exit_code);
+        if exit != 0 && !self.success_codes.contains(&exit) {
+            return Err(format!("the command ended with exit code {exit}"));
+        }
+        let mut runtime = self.runtime.clone();
+        runtime.insert("exitCode".into(), Value::Integer(exit));
+        let collector = Collector {
+            pending: &self,
+            outcome,
+            runtime: Value::Map(runtime),
+            access: self.options.access(),
+            workdir: workdir(outcome),
+        };
+        let from_json = match outcome.files.iter().find(|file| file.path == OUTPUT_JSON) {
+            Some(file) => {
+                let text = std::fs::read_to_string(&file.location).unwrap_or_default();
+                match Value::parse(&text) {
+                    Ok(Value::Map(map)) => Some(map),
+                    // The mock makes an empty file, which gives no outputs.
+                    _ if self.options.mock => None,
+                    Ok(_) => return Err(format!("{OUTPUT_JSON} must hold an object")),
+                    Err(error) => return Err(format!("{OUTPUT_JSON}: {error}")),
+                }
+            }
+            None => None,
+        };
+        let is_operation = !matches!(self.process.class, Class::CommandLineTool(_));
+        let mut outputs = Map::new();
+        if let Some(mut map) = from_json {
+            for (_, value) in map.iter_mut() {
+                collector.revmap_all(value)?;
+            }
+            let mut value = Value::Map(map);
+            files::normalize(&mut value)?;
+            let Value::Map(map) = value else {
+                unreachable!("an object stays a map")
+            };
+            outputs = map;
+            for (_, value) in outputs.iter_mut() {
+                collector.checksums(value)?;
+            }
+        } else {
+            for output in &self.process.outputs {
+                let name = short_name(&output.id).to_owned();
+                let collected = if is_operation {
+                    collector.operation(output)
+                } else if output.binding.is_none()
+                    && !matches!(
+                        self.types.resolve(&output.value_type),
+                        Type::Stdout | Type::Stderr | Type::Record(_)
+                    )
+                {
+                    // Only cwl.output.json gives this output; a mock run has none.
+                    Ok(Value::Null)
+                } else {
+                    collector.output(
+                        &output.value_type,
+                        output.binding.as_ref(),
+                        &output.secondary_files,
+                        output.format.as_ref(),
+                    )
+                };
+                let value = collected.map_err(|error| format!("the output `{name}`: {error}"))?;
+                outputs.insert(name, value);
+            }
+        }
+        for output in &self.process.outputs {
+            let name = short_name(&output.id).to_owned();
+            let value = outputs.get(&name).cloned().unwrap_or(Value::Null);
+            if !self.types.matches(&output.value_type, &value) {
+                if self.options.mock {
+                    let placeholder = self.placeholder(&output.value_type, &name, &collector);
+                    outputs.insert(name, placeholder);
+                } else {
+                    return Err(format!(
+                        "the output `{name}` is not a valid {}: {}",
+                        crate::inputs::describe(&output.value_type),
+                        value.to_json()
+                    ));
+                }
+            }
+        }
+        for (_, value) in outputs.iter_mut() {
+            files::visit_files(value, &mut |file| {
+                file.shift_remove("path");
+                file.shift_remove("dirname");
+            });
+        }
+        Ok(outputs)
+    }
+
+    /// A value for an output the executor could not make, with files in its work folder.
+    fn placeholder(&self, value_type: &Type, name: &str, collector: &Collector<'_>) -> Value {
+        let base = match &collector.workdir {
+            Some(folder) => format!("{}/", iri::file_url(Path::new(folder))),
+            None => "_:".to_owned(),
+        };
+        let mut value = self
+            .types
+            .placeholder(value_type, name, &base, false, &Hint::default());
+        // Placeholder files point at the task's JSON output, so the graph keeps the link.
+        if let Some(json) = collector
+            .outcome
+            .files
+            .iter()
+            .find(|file| file.path == OUTPUT_JSON)
+        {
+            let location = iri::file_url(&json.location);
+            files::visit_files(&mut value, &mut |file| {
+                if file.get("class").and_then(Value::as_str) == Some("File") {
+                    let name = file
+                        .get("location")
+                        .and_then(Value::as_str)
+                        .map(files::basename_of)
+                        .unwrap_or_default();
+                    file.insert("basename".into(), Value::String(name));
+                    file.insert("location".into(), Value::String(location.clone()));
+                }
+            });
+        }
+        let _ = files::normalize(&mut value);
+        let access = self.options.access();
+        files::visit_files(&mut value, &mut |file| {
+            if file.get("class").and_then(Value::as_str) == Some("File") {
+                let _ = access.add_checksum(file);
+            } else {
+                access.load_listing(file, false);
+            }
+        });
+        value
+    }
+}
+
+/// The folder the executor put the task's outputs in, from any output file.
+pub fn workdir(outcome: &Outcome) -> Option<String> {
+    outcome.files.iter().find_map(|file| {
+        let location = file.location.to_string_lossy();
+        location
+            .strip_suffix(file.path.trim_end_matches('/'))
+            .map(|folder| folder.trim_end_matches('/').to_owned())
+    })
+}
+
+/// Collects outputs from the files of an outcome.
+struct Collector<'a> {
+    pending: &'a Pending,
+    outcome: &'a Outcome,
+    runtime: Value,
+    access: Access,
+    workdir: Option<String>,
+}
+
+impl Collector<'_> {
+    fn vars<'v>(&'v self, this: &'v Value) -> Variables<'v> {
+        Variables {
+            inputs: &self.pending.inputs,
+            this,
+            runtime: &self.runtime,
+        }
+    }
+
+    fn evaluate(&self, expression: &Expression, this: &Value) -> Result<Value, String> {
+        self.pending.evaluator.evaluate(expression, self.vars(this))
+    }
+
+    /// cwltool's `collect_output` for one output or record field.
+    fn output(
+        &self,
+        value_type: &Type,
+        binding: Option<&OutputBinding>,
+        secondary: &[SecondaryFile],
+        format: Option<&Expression>,
+    ) -> Result<Value, String> {
+        let types = &self.pending.types;
+        let resolved = types.resolve(value_type);
+        let binding = match (binding, resolved) {
+            (Some(binding), _) => Some(binding.clone()),
+            (None, Type::Stdout | Type::Stderr) => {
+                let name = if matches!(resolved, Type::Stdout) {
+                    &self.pending.stdout
+                } else {
+                    &self.pending.stderr
+                };
+                name.as_ref().map(|name| OutputBinding {
+                    glob: vec![Expression {
+                        text: name.clone(),
+                        parts: vec![cwl_parser::model::Part::Text(name.clone())],
+                    }],
+                    load_contents: None,
+                    load_listing: None,
+                    output_eval: None,
+                })
+            }
+            _ => None,
+        };
+        let Some(binding) = binding else {
+            if let Type::Record(record) = resolved {
+                let mut map = Map::new();
+                for field in &record.fields {
+                    let value = self.output(
+                        &field.value_type,
+                        field.output_binding.as_ref(),
+                        &field.secondary_files,
+                        field.format.first(),
+                    )?;
+                    map.insert(field.name.clone(), value);
+                }
+                return Ok(Value::Map(map));
+            }
+            return Ok(Value::Null);
+        };
+        let null = Value::Null;
+        let patterns = globs(
+            &binding,
+            &self.pending.evaluator,
+            self.vars(&null),
+            &self.pending.outdir,
+        )?;
+        let mut found: Vec<Value> = Vec::new();
+        for pattern in &patterns {
+            for file in self.matches(pattern) {
+                found.push(self.file_object(&file, &binding)?);
+            }
+        }
+        let (optional, single) = match resolved {
+            Type::Union(members) => (
+                members.contains(&Type::Null),
+                members
+                    .iter()
+                    .any(|member| matches!(member, Type::File | Type::Directory)),
+            ),
+            Type::File | Type::Directory | Type::Stdout | Type::Stderr => (false, true),
+            _ => (false, false),
+        };
+        let mut result = match &binding.output_eval {
+            Some(expression) => match self.evaluate(expression, &Value::List(found)) {
+                Ok(value) => value,
+                // Expressions that read the files of a mock run read empty files and may
+                // fail; the output then gets a placeholder, as when it does not fit its type.
+                Err(_) if self.access.assume_present && reads_self(expression) => Value::Null,
+                Err(error) => return Err(error),
+            },
+            None => Value::List(found),
+        };
+        if single {
+            match result {
+                Value::List(items) if items.is_empty() => {
+                    if !optional && !self.access.assume_present {
+                        return Err(format!("no output file matches {patterns:?}"));
+                    }
+                    result = Value::Null;
+                }
+                Value::List(mut items) if items.len() == 1 => result = items.remove(0),
+                Value::List(items) if !self.access.assume_present => {
+                    return Err(format!(
+                        "{} files match {patterns:?}, where one is expected",
+                        items.len()
+                    ));
+                }
+                Value::List(mut items) => result = items.remove(0),
+                other => result = other,
+            }
+        }
+        if !secondary.is_empty() {
+            self.secondary_files(&mut result, secondary)?;
+        }
+        if let Some(format) = format {
+            let mut primaries: Vec<&mut Value> = match &mut result {
+                Value::List(items) => items.iter_mut().collect(),
+                other => vec![other],
+            };
+            for primary in primaries.iter_mut() {
+                if !primary.is_file() {
+                    continue;
+                }
+                let value = self.evaluate(format, primary)?;
+                if let (Value::Map(map), Value::String(format)) = (&mut **primary, value) {
+                    map.insert("format".into(), Value::String(format));
+                }
+            }
+        }
+        self.revmap_all(&mut result)?;
+        // cwltool keeps 0 and "" but turns other empty results of optional outputs into null.
+        let kept = matches!(
+            result,
+            Value::Integer(0) | Value::Bool(false) | Value::String(_)
+        ) || matches!(result, Value::Float(number) if number == 0.0);
+        if optional && !result.is_truthy() && !kept {
+            return Ok(Value::Null);
+        }
+        Ok(result)
+    }
+
+    /// The outcome files a glob pattern matches, sorted, with `.` for the work folder.
+    fn matches(&self, pattern: &str) -> Vec<OutputFile> {
+        if pattern == "." {
+            return match &self.workdir {
+                Some(folder) => vec![OutputFile {
+                    path: ".".into(),
+                    location: folder.into(),
+                    directory: true,
+                }],
+                None => Vec::new(),
+            };
+        }
+        let mut found: Vec<OutputFile> = Vec::new();
+        for file in &self.outcome.files {
+            let path = file.path.trim_end_matches('/');
+            if glob_matches(pattern, path) {
+                found.push(OutputFile {
+                    path: path.to_owned(),
+                    location: file.location.clone(),
+                    directory: file.directory || file.location.is_dir(),
+                });
+            } else if file.directory || file.location.is_dir() {
+                // A folder the executor gave back may hold what the pattern names.
+                for (relative, location, directory) in walk(&file.location, path) {
+                    if glob_matches(pattern, &relative) {
+                        found.push(OutputFile {
+                            path: relative,
+                            location,
+                            directory,
+                        });
+                    }
+                }
+            }
+        }
+        found.sort_by(|a, b| a.path.cmp(&b.path));
+        found.dedup_by(|a, b| a.path == b.path);
+        found
+    }
+}

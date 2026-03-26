@@ -1506,4 +1506,326 @@ impl Collector<'_> {
         found.dedup_by(|a, b| a.path == b.path);
         found
     }
+
+    /// The file object of a matched file, with contents, listing and checksum as asked.
+    fn file_object(&self, file: &OutputFile, binding: &OutputBinding) -> Result<Value, String> {
+        let class = if file.directory { "Directory" } else { "File" };
+        let name = Path::new(&file.path)
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| files::basename_of(&file.location.to_string_lossy()));
+        let mut map = Map::new();
+        map.insert("class".into(), Value::string(class));
+        map.insert(
+            "location".into(),
+            Value::String(iri::file_url(&file.location)),
+        );
+        let path = if file.path == "." {
+            self.pending.outdir.clone()
+        } else {
+            format!("{}/{}", self.pending.outdir, file.path)
+        };
+        map.insert("path".into(), Value::String(path));
+        map.insert("basename".into(), Value::String(name.clone()));
+        if file.directory {
+            let listing = binding.load_listing.or(self.pending.load_listing);
+            if let Some(listing) = listing
+                && listing != LoadListing::NoListing
+            {
+                self.access
+                    .load_listing(&mut map, listing == LoadListing::DeepListing);
+                let mut listing_value = map
+                    .shift_remove("listing")
+                    .unwrap_or(Value::List(Vec::new()));
+                self.checksums(&mut listing_value)?;
+                map.insert("listing".into(), listing_value);
+            }
+        } else {
+            let (root, extension) = files::split_extension(&name);
+            map.insert("nameroot".into(), Value::string(root));
+            map.insert("nameext".into(), Value::string(extension));
+            if binding.load_contents == Some(true) {
+                self.access.load_contents(&mut map)?;
+            }
+            self.access.add_checksum(&mut map)?;
+        }
+        Ok(Value::Map(map))
+    }
+
+    /// Adds the secondary files of output files that exist.
+    fn secondary_files(
+        &self,
+        result: &mut Value,
+        secondary: &[SecondaryFile],
+    ) -> Result<(), String> {
+        let mut primaries: Vec<&mut Value> = match result {
+            Value::List(items) => items.iter_mut().collect(),
+            other => vec![other],
+        };
+        for primary in primaries.iter_mut() {
+            let Value::Map(map) = &mut **primary else {
+                continue;
+            };
+            if !map.contains_key("secondaryFiles") {
+                map.insert("secondaryFiles".into(), Value::List(Vec::new()));
+            }
+            let path = map
+                .get("path")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned();
+            let prefix = match path.rfind('/') {
+                Some(slash) => path[..=slash].to_owned(),
+                None => String::new(),
+            };
+            for entry in secondary {
+                let this = Value::Map(map.clone());
+                let required = match &entry.required {
+                    None => false,
+                    Some(Dynamic::Value(required)) => *required,
+                    Some(Dynamic::Expression(expression)) => {
+                        self.evaluate(expression, &this)?.is_truthy()
+                    }
+                };
+                let names = if has_code(&entry.pattern) {
+                    self.evaluate(&entry.pattern, &this)?
+                } else {
+                    let basename = map
+                        .get("basename")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    Value::String(files::substitute(basename, &entry.pattern.text))
+                };
+                let names = match names {
+                    Value::List(items) => items,
+                    Value::Null => Vec::new(),
+                    other => vec![other],
+                };
+                for name in names {
+                    let item = match name {
+                        Value::String(name) if name.is_empty() => continue,
+                        Value::String(name) => {
+                            let mut item = Map::new();
+                            item.insert("path".into(), Value::String(format!("{prefix}{name}")));
+                            item
+                        }
+                        Value::Map(item) => item,
+                        _ => continue,
+                    };
+                    let mut item = Value::Map(item);
+                    self.revmap(&mut item)?;
+                    let location = item.text("location").unwrap_or_default().to_owned();
+                    let on_disk = files::local_path(&location);
+                    let exists = on_disk.as_ref().is_some_and(|path| path.exists());
+                    let is_directory = on_disk.as_ref().is_some_and(|path| path.is_dir());
+                    if !exists && !self.access.assume_present {
+                        if required {
+                            return Err(format!(
+                                "the required secondary file `{location}` is missing"
+                            ));
+                        }
+                        continue;
+                    }
+                    if let Value::Map(item_map) = &mut item {
+                        item_map.shift_remove("path");
+                        let class = if is_directory { "Directory" } else { "File" };
+                        item_map.insert("class".into(), Value::string(class));
+                        if !is_directory {
+                            let _ = self.access.add_checksum(item_map);
+                        }
+                    }
+                    files::normalize(&mut item)?;
+                    if let Some(Value::List(list)) = map.get_mut("secondaryFiles") {
+                        list.push(item);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Gives every file object of a value its host location, as cwltool's `revmap_file`.
+    fn revmap_all(&self, value: &mut Value) -> Result<(), String> {
+        match value {
+            Value::List(items) => {
+                for item in items {
+                    self.revmap_all(item)?;
+                }
+                Ok(())
+            }
+            Value::Map(_) if value.is_file_like() => {
+                self.revmap(value)?;
+                if let Value::Map(map) = value {
+                    for key in ["secondaryFiles", "listing"] {
+                        if let Some(inner) = map.get_mut(key) {
+                            self.revmap_all(inner)?;
+                        }
+                    }
+                }
+                Ok(())
+            }
+            Value::Map(map) => {
+                for (_, item) in map.iter_mut() {
+                    self.revmap_all(item)?;
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn revmap(&self, value: &mut Value) -> Result<(), String> {
+        let Value::Map(map) = value else {
+            return Ok(());
+        };
+        let location = map
+            .get("location")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let path = map.get("path").and_then(Value::as_str).map(str::to_owned);
+        match (location, path) {
+            (Some(location), None) => {
+                if !iri::has_scheme(&location) && !location.starts_with("_:") {
+                    let base = self.workdir.clone().unwrap_or_default();
+                    let joined = iri::file_url(&Path::new(&base).join(&location));
+                    map.insert("location".into(), Value::String(joined));
+                }
+                Ok(())
+            }
+            (_, Some(path)) => {
+                map.shift_remove("dirname");
+                let outdir = &self.pending.outdir;
+                let absolute = if path.starts_with('/') {
+                    path.clone()
+                } else {
+                    format!("{outdir}/{path}")
+                };
+                map.shift_remove("path");
+                if !map.contains_key("basename") {
+                    map.insert(
+                        "basename".into(),
+                        Value::String(files::basename_of(&absolute)),
+                    );
+                }
+                let location = if let Some(original) = self.pending.staged.get(&absolute) {
+                    original.clone()
+                } else if absolute == *outdir || absolute.starts_with(&format!("{outdir}/")) {
+                    let relative = absolute[outdir.len()..].trim_start_matches('/');
+                    let base = self.workdir.clone().unwrap_or_default();
+                    iri::file_url(&Path::new(&base).join(relative))
+                } else if absolute.starts_with(TMPDIR) || absolute.starts_with(STAGING) {
+                    return Err(format!(
+                        "the output `{path}` is outside the output directory"
+                    ));
+                } else {
+                    // A path from the host, such as a file in a mock work folder.
+                    iri::file_url(Path::new(&absolute))
+                };
+                map.insert("location".into(), Value::String(location));
+                // Keep the container path for expressions that come after, like secondaryFiles.
+                map.insert("path".into(), Value::String(absolute));
+                Ok(())
+            }
+            (None, None) => Ok(()),
+        }
+    }
+
+    /// Adds size and checksum to the files of a value that lack them.
+    fn checksums(&self, value: &mut Value) -> Result<(), String> {
+        let access = self.access;
+        let mut error = None;
+        files::visit_files(value, &mut |file| {
+            let is_file = file.get("class").and_then(Value::as_str) == Some("File");
+            if is_file
+                && !file.contains_key("checksum")
+                && let Err(message) = access.add_checksum(file)
+            {
+                error.get_or_insert(message);
+            }
+        });
+        match error {
+            Some(message) => Err(message),
+            None => Ok(()),
+        }
+    }
+
+    /// The value of an output of an `Operation`: the file named after it, or a placeholder.
+    fn operation(&self, output: &OutputParameter) -> Result<Value, String> {
+        let name = short_name(&output.id);
+        let types = &self.pending.types;
+        let found = self.matches(name);
+        let binding = OutputBinding {
+            glob: Vec::new(),
+            load_contents: None,
+            load_listing: None,
+            output_eval: None,
+        };
+        let file = match found.first() {
+            Some(file) => self.file_object(file, &binding)?,
+            None => return Ok(self.pending.placeholder(&output.value_type, name, self)),
+        };
+        let mut value_type = types.resolve(&output.value_type);
+        let mut wrap = 0;
+        loop {
+            match value_type {
+                Type::Array(array) => {
+                    wrap += 1;
+                    value_type = types.resolve(&array.items);
+                }
+                Type::Union(members) => {
+                    match members.iter().find(|member| !matches!(member, Type::Null)) {
+                        Some(member) => value_type = types.resolve(member),
+                        None => break,
+                    }
+                }
+                _ => break,
+            }
+        }
+        let mut value = file;
+        for _ in 0..wrap {
+            value = Value::List(vec![value]);
+        }
+        let mut value = value;
+        files::visit_files(&mut value, &mut |file| {
+            file.shift_remove("path");
+        });
+        Ok(value)
+    }
+}
+
+/// Whether an expression reads `self`, the files an output binding found.
+fn reads_self(expression: &Expression) -> bool {
+    expression.parts.iter().any(|part| match part {
+        cwl_parser::model::Part::Text(_) => false,
+        cwl_parser::model::Part::Reference(code)
+        | cwl_parser::model::Part::Javascript(code)
+        | cwl_parser::model::Part::Function(code) => code.contains("self"),
+    })
+}
+
+/// The files and folders below a folder, relative to `prefix`.
+fn walk(folder: &Path, prefix: &str) -> Vec<(String, std::path::PathBuf, bool)> {
+    let mut found = Vec::new();
+    let Ok(entries) = std::fs::read_dir(folder) else {
+        return found;
+    };
+    let mut paths: Vec<_> = entries.flatten().map(|entry| entry.path()).collect();
+    paths.sort();
+    for path in paths {
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let relative = if prefix.is_empty() || prefix == "." {
+            name
+        } else {
+            format!("{prefix}/{name}")
+        };
+        let directory = path.is_dir();
+        if directory {
+            found.extend(walk(&path, &relative));
+        }
+        found.push((relative, path, directory));
+    }
+    found
 }

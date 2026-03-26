@@ -17,8 +17,10 @@ mod inputs;
 mod javascript;
 mod placeholder;
 mod scope;
+pub mod tool;
 pub mod types;
 pub mod value;
 
 pub use expression::{Evaluator, Variables};
+pub use tool::Options;
 pub use value::{Map, Value};

@@ -449,3 +449,337 @@ fn literal(expression: &Expression) -> String {
 
 /// The `runtime` fields that resources give, by name.
 type Runtime = Vec<(&'static str, Value)>;
+
+/// The resources of a task, and the `runtime` fields they give: `cores`, `ram`,
+/// `outdirSize` and `tmpdirSize`, with cwltool's defaults.
+fn resources(
+    scope: &Scope,
+    evaluator: &Evaluator,
+    job: &Value,
+    runtime: &Map,
+    version: Version,
+) -> Result<(Resources, Runtime), String> {
+    let requirement = scope.find(|class| match class {
+        RequirementClass::Resource(resource) => Some(resource.as_ref()),
+        _ => None,
+    });
+    let runtime = Value::Map(runtime.clone());
+    let vars = Variables {
+        inputs: job,
+        this: &Value::Null,
+        runtime: &runtime,
+    };
+    let amount = |field: &Option<Dynamic<f64>>| -> Result<Option<f64>, String> {
+        match field {
+            None => Ok(None),
+            Some(Dynamic::Value(amount)) => Ok(Some(*amount)),
+            Some(Dynamic::Expression(expression)) => {
+                let value = evaluator.evaluate(expression, vars)?;
+                match value {
+                    Value::Null => Ok(None),
+                    value => value.as_f64().map(Some).ok_or_else(|| {
+                        format!("a resource must be a number, not {}", value.to_json())
+                    }),
+                }
+            }
+        }
+    };
+    let ram_default = if version == Version::V1_0 {
+        1024.0
+    } else {
+        256.0
+    };
+    let mut cores = 1.0;
+    let mut ram = ram_default;
+    let mut tmpdir = 1024.0;
+    let mut outdir = 1024.0;
+    if let Some((resource, _)) = requirement {
+        let pick =
+            |min: Option<f64>, max: Option<f64>, default: f64| min.or(max).unwrap_or(default);
+        cores = pick(
+            amount(&resource.cores_min)?,
+            amount(&resource.cores_max)?,
+            cores,
+        );
+        ram = pick(amount(&resource.ram_min)?, amount(&resource.ram_max)?, ram);
+        tmpdir = pick(
+            amount(&resource.tmpdir_min)?,
+            amount(&resource.tmpdir_max)?,
+            tmpdir,
+        );
+        outdir = pick(
+            amount(&resource.outdir_min)?,
+            amount(&resource.outdir_max)?,
+            outdir,
+        );
+    }
+    let mebibytes = |amount: f64| (amount.ceil().max(0.0) as u64) * 1024 * 1024;
+    let resources = Resources {
+        cpus: Some(cores),
+        memory_bytes: Some(mebibytes(ram)),
+        disk_bytes: Some(mebibytes(tmpdir) + mebibytes(outdir)),
+        time_seconds: None,
+        gpus: None,
+    };
+    let sizes = vec![
+        ("cores", Value::Integer(cores.ceil() as i64)),
+        ("ram", Value::Integer(ram.ceil() as i64)),
+        ("outdirSize", Value::Integer(outdir.ceil() as i64)),
+        ("tmpdirSize", Value::Integer(tmpdir.ceil() as i64)),
+    ];
+    Ok((resources, sizes))
+}
+
+/// The file name of `stdout` or `stderr`: evaluated, or a name made from the tool when an
+/// output of that type needs one.
+fn stream(
+    field: Option<&Expression>,
+    process: &Process,
+    kind: Type,
+    evaluator: &Evaluator,
+    vars: Variables<'_>,
+) -> Result<Option<String>, String> {
+    let label = if kind == Type::Stdout {
+        "stdout"
+    } else {
+        "stderr"
+    };
+    if let Some(expression) = field {
+        let value = evaluator.evaluate(expression, vars)?;
+        let Value::String(path) = value else {
+            return Err(format!(
+                "`{label}` must be a file name, not {}",
+                value.to_json()
+            ));
+        };
+        if path.starts_with('/') || path.split('/').any(|part| part == "..") {
+            return Err(format!("`{label}` must be a relative path, not `{path}`"));
+        }
+        return Ok((!path.is_empty()).then_some(path));
+    }
+    let needed = process
+        .outputs
+        .iter()
+        .any(|output| output.value_type == kind);
+    Ok(needed.then(|| {
+        let digest = files::checksum_of(format!("{}#{label}", process.id).as_bytes());
+        format!("{}.{label}", &digest[5..21])
+    }))
+}
+
+/// Chooses where every input file goes inside the container.
+#[derive(Default)]
+struct Stager {
+    inputs: Vec<Input>,
+    /// Container paths by location.
+    paths: HashMap<String, String>,
+    folders: usize,
+    /// The output directory, where relative task input paths are.
+    outdir: String,
+    /// The locations of the files of the input object.
+    from_job: HashSet<String>,
+    /// The locations that InitialWorkDir copies as writable.
+    writable: HashSet<String>,
+}
+
+impl Stager {
+    /// Stages every file object of an input object, each top-level one in a folder of its own.
+    fn stage_job(&mut self, job: &Value) {
+        match job {
+            Value::List(items) => {
+                for item in items {
+                    self.stage_job(item);
+                }
+            }
+            Value::Map(map) if job.is_file_like() => {
+                let location = map
+                    .get("location")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                if self.paths.contains_key(location) {
+                    return;
+                }
+                let folder = format!("{STAGING}/{}", self.folders);
+                self.folders += 1;
+                self.stage(map, &folder, false);
+                let mut file = job.clone();
+                files::visit_files(&mut file, &mut |inner| {
+                    if let Some(Value::String(location)) = inner.get("location") {
+                        self.from_job.insert(location.clone());
+                    }
+                });
+            }
+            Value::Map(map) => {
+                for (_, value) in map {
+                    self.stage_job(value);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Stages a file object into a folder, with its secondary files beside it and the
+    /// entries of a literal directory inside it. `replace` lets the new path win.
+    fn stage(&mut self, file: &Map, folder: &str, replace: bool) {
+        let location = file
+            .get("location")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let basename = file
+            .get("basename")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .unwrap_or_else(|| files::basename_of(&location));
+        let target = join(folder, &basename);
+        if replace || !self.paths.contains_key(&location) {
+            let inside = self.container_path(&target);
+            self.paths.insert(location.clone(), inside);
+        }
+        let directory = file.get("class").and_then(Value::as_str) == Some("Directory");
+        let literal = location.starts_with("_:");
+        if directory {
+            if literal {
+                self.add(Input {
+                    path: target.clone(),
+                    source: String::new(),
+                    directory: true,
+                    content: None,
+                });
+            } else {
+                self.add(Input {
+                    path: target.clone(),
+                    source: source_of(&location),
+                    directory: true,
+                    content: None,
+                });
+            }
+            if let Some(Value::List(listing)) = file.get("listing") {
+                for entry in listing {
+                    let Value::Map(entry) = entry else { continue };
+                    let child = entry
+                        .get("location")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    match child.strip_prefix(&format!("{location}/")) {
+                        Some(relative) if !literal => {
+                            self.inside(entry, &join(&target, relative), replace);
+                        }
+                        _ => self.stage(entry, &target, replace),
+                    }
+                }
+            }
+        } else if literal {
+            let content = file
+                .get("contents")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            self.add(Input {
+                path: target.clone(),
+                source: String::new(),
+                directory: false,
+                content: Some(content.to_owned()),
+            });
+        } else {
+            self.add(Input {
+                path: target.clone(),
+                source: source_of(&location),
+                directory: false,
+                content: None,
+            });
+        }
+        if let Some(Value::List(secondary)) = file.get("secondaryFiles") {
+            for entry in secondary {
+                if let Value::Map(entry) = entry {
+                    self.stage(entry, folder, replace);
+                }
+            }
+        }
+    }
+
+    /// Records the path of an entry that a staged directory already holds.
+    fn inside(&mut self, entry: &Map, target: &str, replace: bool) {
+        let location = entry
+            .get("location")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if replace || !self.paths.contains_key(location) {
+            let inside = self.container_path(target);
+            self.paths.insert(location.to_owned(), inside);
+        }
+        if let Some(Value::List(listing)) = entry.get("listing") {
+            for child in listing {
+                let Value::Map(child) = child else { continue };
+                let name = child
+                    .get("location")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                if let Some(relative) = name.strip_prefix(&format!("{location}/")) {
+                    self.inside(child, &join(target, relative), replace);
+                }
+            }
+        }
+    }
+
+    /// Task input paths are relative to the workdir, the output directory, or absolute.
+    fn container_path(&self, target: &str) -> String {
+        if target.starts_with('/') {
+            target.to_owned()
+        } else {
+            format!("{}/{target}", self.outdir)
+        }
+    }
+
+    fn add(&mut self, input: Input) {
+        if let Some(existing) = self
+            .inputs
+            .iter_mut()
+            .find(|existing| existing.path == input.path)
+        {
+            *existing = input;
+        } else {
+            self.inputs.push(input);
+        }
+    }
+}
+
+/// A path inside a folder; `.` and `..` of the name are kept as written.
+fn join(folder: &str, name: &str) -> String {
+    if folder.is_empty() || name.starts_with('/') {
+        name.to_owned()
+    } else {
+        format!("{}/{name}", folder.trim_end_matches('/'))
+    }
+}
+
+/// Where a task reads a location from: a local path, or the URL.
+fn source_of(location: &str) -> String {
+    match files::local_path(location) {
+        Some(path) => path.to_string_lossy().into_owned(),
+        None => location.to_owned(),
+    }
+}
+
+/// Sets `path`, `dirname`, `basename`, `nameroot` and `nameext` of every staged file object
+/// to its place inside the container, as cwltool's `check_adjust` does.
+fn adjust(value: &mut Value, paths: &HashMap<String, String>) {
+    files::visit_files(value, &mut |file| {
+        let location = file
+            .get("location")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let Some(path) = paths.get(location) else {
+            return;
+        };
+        let path = path.clone();
+        let (folder, name) = path.rsplit_once('/').unwrap_or(("", &path));
+        file.insert("dirname".into(), Value::string(folder));
+        file.insert("basename".into(), Value::string(name));
+        if file.get("class").and_then(Value::as_str) == Some("File") {
+            let (root, extension) = files::split_extension(name);
+            file.insert("nameroot".into(), Value::string(root));
+            file.insert("nameext".into(), Value::string(extension));
+        }
+        file.insert("path".into(), Value::String(path));
+    });
+}

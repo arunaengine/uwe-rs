@@ -469,4 +469,424 @@ impl Run {
         self.events.push_back(Event::Finished(workflow, outputs));
         Ok(())
     }
+
+    fn start_step(
+        &mut self,
+        workflow: JobId,
+        index: usize,
+        step: &Step,
+        gathered: Map,
+        scope: &Scope,
+        names: Names,
+    ) -> Result<(), String> {
+        let at = |error: String| format!("{}: {error}", names.display);
+        let step_scope = scope.with(&step.requirements, &step.hints);
+        let evaluator = step_scope.evaluator();
+        let process = &step.run.process;
+        if step.scatter.is_empty() {
+            match self.element(step, gathered, &evaluator).map_err(at)? {
+                Some(job) => {
+                    let parent = Parent::Step {
+                        workflow,
+                        step: index,
+                    };
+                    self.launch(process, job, &step_scope, parent, names, false)?;
+                }
+                None => {
+                    let outputs = null_outputs(step);
+                    self.events.push_back(Event::Step {
+                        workflow,
+                        step: index,
+                        outputs,
+                    });
+                }
+            }
+            return Ok(());
+        }
+        // Scatter: one job per element of the scattered inputs.
+        let keys: Vec<String> = step
+            .scatter
+            .iter()
+            .map(|id| short_name(id).to_owned())
+            .collect();
+        let mut lengths = Vec::new();
+        for key in &keys {
+            match gathered.get(key) {
+                Some(Value::List(items)) => lengths.push(items.len()),
+                Some(Value::Null) | None => {
+                    return Err(at(format!(
+                        "the scattered input `{key}` is null, not a list"
+                    )));
+                }
+                Some(other) => {
+                    return Err(at(format!(
+                        "the scattered input `{key}` is not a list: {}",
+                        other.to_json()
+                    )));
+                }
+            }
+        }
+        let method = step.scatter_method.unwrap_or(ScatterMethod::Dotproduct);
+        let combinations: Vec<Vec<usize>> = match method {
+            ScatterMethod::Dotproduct => {
+                if lengths.iter().any(|length| *length != lengths[0]) {
+                    return Err(at("dotproduct scatter needs lists of equal length".into()));
+                }
+                (0..lengths[0])
+                    .map(|index| vec![index; keys.len()])
+                    .collect()
+            }
+            ScatterMethod::NestedCrossproduct | ScatterMethod::FlatCrossproduct => {
+                let mut combinations = vec![Vec::new()];
+                for length in &lengths {
+                    let mut next = Vec::new();
+                    for combination in &combinations {
+                        for index in 0..*length {
+                            let mut extended = combination.clone();
+                            extended.push(index);
+                            next.push(extended);
+                        }
+                    }
+                    combinations = next;
+                }
+                combinations
+            }
+        };
+        let shape = match method {
+            ScatterMethod::NestedCrossproduct => lengths.clone(),
+            _ => vec![combinations.len()],
+        };
+        let scatter = self.jobs.len();
+        self.jobs.push(Job {
+            parent: Parent::Step {
+                workflow,
+                step: index,
+            },
+            state: State::Scatter(ScatterRun {
+                outputs: step
+                    .outputs
+                    .iter()
+                    .map(|id| short_name(id).to_owned())
+                    .collect(),
+                shape,
+                results: vec![None; combinations.len()],
+                remaining: combinations.len(),
+            }),
+        });
+        for (element, combination) in combinations.iter().enumerate() {
+            let mut inputs = gathered.clone();
+            for (key, item) in keys.iter().zip(combination) {
+                let value = match gathered.get(key) {
+                    Some(Value::List(items)) => items[*item].clone(),
+                    _ => Value::Null,
+                };
+                inputs.insert(key.clone(), value);
+            }
+            let shown = if method == ScatterMethod::Dotproduct {
+                vec![element]
+            } else {
+                combination.clone()
+            };
+            let element_names = names.indexed(&shown);
+            let job = self
+                .element(step, inputs, &evaluator)
+                .map_err(|error| format!("{}: {error}", element_names.display))?;
+            match job {
+                Some(job) => {
+                    let parent = Parent::Element {
+                        scatter,
+                        index: element,
+                    };
+                    self.launch(process, job, &step_scope, parent, element_names, false)?;
+                }
+                None => {
+                    let State::Scatter(run) = &mut self.jobs[scatter].state else {
+                        unreachable!("the scatter was just made");
+                    };
+                    run.results[element] = Some(Map::new());
+                    run.remaining -= 1;
+                }
+            }
+        }
+        if let State::Scatter(run) = &mut self.jobs[scatter].state
+            && run.remaining == 0
+        {
+            let assembled = assemble(run);
+            self.events.push_back(Event::Finished(scatter, assembled));
+        }
+        Ok(())
+    }
+
+    /// The input object of one step job: `valueFrom` after the sources, then `when`; `None`
+    /// when `when` skips it. Only inputs of the process it runs are passed on.
+    fn element(
+        &self,
+        step: &Step,
+        gathered: Map,
+        evaluator: &Evaluator,
+    ) -> Result<Option<Map>, String> {
+        let access = self.options.access();
+        let mut sources = gathered;
+        for input in &step.inputs {
+            if input.load_contents != Some(true) {
+                continue;
+            }
+            if let Some(Value::Map(file)) = sources.get_mut(short_name(&input.id))
+                && file.get("class").and_then(Value::as_str) == Some("File")
+            {
+                access.load_contents(file)?;
+            }
+        }
+        let before = Value::Map(sources.clone());
+        let runtime = expression_runtime();
+        let mut job = sources;
+        for input in &step.inputs {
+            let Some(expression) = &input.value_from else {
+                continue;
+            };
+            let name = short_name(&input.id);
+            let mut this = before.get(name).cloned().unwrap_or(Value::Null);
+            access.load_listings(&mut this, true);
+            let value = evaluator.evaluate(
+                expression,
+                Variables {
+                    inputs: &before,
+                    this: &this,
+                    runtime: &runtime,
+                },
+            )?;
+            job.insert(name.to_owned(), value);
+        }
+        if let Some(when) = &step.when {
+            let inputs = Value::Map(job.clone());
+            let value = evaluator.evaluate(
+                when,
+                Variables {
+                    inputs: &inputs,
+                    this: &Value::Null,
+                    runtime: &runtime,
+                },
+            )?;
+            match value {
+                Value::Bool(true) => {}
+                Value::Bool(false) => return Ok(None),
+                other => {
+                    return Err(format!(
+                        "`when` must give true or false, not {}",
+                        other.to_json()
+                    ));
+                }
+            }
+        }
+        let accepted: HashSet<&str> = step
+            .run
+            .process
+            .inputs
+            .iter()
+            .map(|input| short_name(&input.id))
+            .collect();
+        job.retain(|name, _| accepted.contains(name.as_str()));
+        Ok(Some(job))
+    }
 }
+
+/// The `runtime` of expressions outside command line tools.
+fn expression_runtime() -> Value {
+    let mut runtime = Map::new();
+    runtime.insert("outdir".into(), Value::string(OUTDIR));
+    runtime.insert("tmpdir".into(), Value::string(TMPDIR));
+    runtime.insert("cores".into(), Value::Integer(1));
+    runtime.insert("ram".into(), Value::Integer(256));
+    runtime.insert("outdirSize".into(), Value::Integer(1024));
+    runtime.insert("tmpdirSize".into(), Value::Integer(1024));
+    Value::Map(runtime)
+}
+
+/// Fails when a source or output source names nothing in the workflow.
+fn check_sources(process: &Process, workflow: &cwl_parser::model::Workflow) -> Result<(), String> {
+    let mut known: HashSet<&str> = process
+        .inputs
+        .iter()
+        .map(|input| input.id.as_str())
+        .collect();
+    for step in &workflow.steps {
+        known.extend(step.outputs.iter().map(String::as_str));
+    }
+    let sources = workflow
+        .steps
+        .iter()
+        .flat_map(|step| step.inputs.iter().flat_map(|input| &input.source))
+        .chain(
+            process
+                .outputs
+                .iter()
+                .flat_map(|output| &output.output_source),
+        );
+    for source in sources {
+        if !known.contains(source.as_str()) {
+            return Err(format!(
+                "the source `{}` names no input or step output",
+                short_name(source)
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The input object of a step from its sources, as cwltool's `object_from_state`: sources
+/// merge by `linkMerge`, `pickValue` picks, and `default` stands in for null. `None` while a
+/// source has no value yet. `lenient` takes a failed pick as null, for runs on placeholder
+/// inputs, where optional inputs are null and conditions follow placeholder values.
+fn gather(
+    values: &HashMap<String, Value>,
+    step: &Step,
+    lenient: bool,
+) -> Option<Result<Map, String>> {
+    let mut map = Map::new();
+    for input in &step.inputs {
+        let mut sources = Vec::new();
+        for source in &input.source {
+            sources.push(values.get(source)?.clone());
+        }
+        let value =
+            merge(input, sources).and_then(|value| pick(input.pick_value, value, &input.id));
+        let value = match value {
+            Ok(value) => value,
+            Err(_) if lenient => Value::Null,
+            Err(error) => return Some(Err(error)),
+        };
+        let value = match (&value, &input.default) {
+            (Value::Null, Some(default)) => {
+                let mut value = Value::from_node(default);
+                if let Err(error) = files::normalize(&mut value) {
+                    return Some(Err(error));
+                }
+                value
+            }
+            _ => value,
+        };
+        map.insert(short_name(&input.id).to_owned(), value);
+    }
+    Some(Ok(map))
+}
+
+fn merge(input: &StepInput, mut sources: Vec<Value>) -> Result<Value, String> {
+    let link_merge = input
+        .link_merge
+        .or((sources.len() > 1).then_some(LinkMerge::MergeNested));
+    Ok(match link_merge {
+        None => sources.pop().unwrap_or(Value::Null),
+        Some(LinkMerge::MergeNested) => Value::List(sources),
+        Some(LinkMerge::MergeFlattened) => {
+            let mut items = Vec::new();
+            for source in sources {
+                match source {
+                    Value::List(inner) => items.extend(inner),
+                    other => items.push(other),
+                }
+            }
+            Value::List(items)
+        }
+    })
+}
+
+/// Applies `pickValue` to a list of values.
+fn pick(pick: Option<PickValue>, value: Value, id: &str) -> Result<Value, String> {
+    let (Some(pick), Value::List(items)) = (pick, &value) else {
+        return Ok(value);
+    };
+    let present: Vec<&Value> = items.iter().filter(|item| !item.is_null()).collect();
+    let name = short_name(id);
+    match pick {
+        PickValue::FirstNonNull => present
+            .first()
+            .map(|value| (*value).clone())
+            .ok_or_else(|| format!("all sources of `{name}` are null")),
+        PickValue::OnlyNonNull => match present.as_slice() {
+            [only] => Ok((*only).clone()),
+            [] => Err(format!("all sources of `{name}` are null")),
+            _ => Err(format!("more than one source of `{name}` is not null")),
+        },
+        PickValue::AllNonNull => Ok(Value::List(present.into_iter().cloned().collect())),
+    }
+}
+
+/// The outputs of a skipped step: null for every output.
+fn null_outputs(step: &Step) -> Map {
+    step.outputs
+        .iter()
+        .map(|id| (short_name(id).to_owned(), Value::Null))
+        .collect()
+}
+
+/// The output object of a workflow from its output sources.
+fn workflow_outputs(run: &WorkflowRun) -> Result<Map, String> {
+    let mut outputs = Map::new();
+    for output in &run.process.outputs {
+        let sources: Vec<Value> = output
+            .output_source
+            .iter()
+            .map(|source| run.values.get(source).cloned().unwrap_or(Value::Null))
+            .collect();
+        let link_merge = output
+            .link_merge
+            .or((sources.len() > 1).then_some(LinkMerge::MergeNested));
+        let mut sources = sources;
+        let value = match link_merge {
+            None => sources.pop().unwrap_or(Value::Null),
+            Some(LinkMerge::MergeNested) => Value::List(sources),
+            Some(LinkMerge::MergeFlattened) => {
+                let mut items = Vec::new();
+                for source in sources {
+                    match source {
+                        Value::List(inner) => items.extend(inner),
+                        other => items.push(other),
+                    }
+                }
+                Value::List(items)
+            }
+        };
+        let value = pick(output.pick_value, value, &output.id)?;
+        outputs.insert(short_name(&output.id).to_owned(), value);
+    }
+    Ok(outputs)
+}
+
+/// The outputs of a scatter: a list per output, nested for nested_crossproduct; skipped
+/// elements give null.
+fn assemble(run: &ScatterRun) -> Map {
+    let mut outputs = Map::new();
+    for name in &run.outputs {
+        let flat: Vec<Value> = run
+            .results
+            .iter()
+            .map(|result| {
+                result
+                    .as_ref()
+                    .and_then(|map| map.get(name).cloned())
+                    .unwrap_or(Value::Null)
+            })
+            .collect();
+        outputs.insert(name.clone(), nest(&flat, &run.shape));
+    }
+    outputs
+}
+
+/// Folds a flat list into nested lists of the given lengths, the last varying fastest.
+fn nest(flat: &[Value], shape: &[usize]) -> Value {
+    match shape {
+        [] | [_] => Value::List(flat.to_vec()),
+        [first, rest @ ..] => {
+            let size: usize = rest.iter().product();
+            Value::List(
+                (0..*first)
+                    .map(|index| nest(&flat[index * size..(index + 1) * size], rest))
+                    .collect(),
+            )
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "run_tests.rs"]
+mod tests;

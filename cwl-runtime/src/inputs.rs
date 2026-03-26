@@ -199,4 +199,193 @@ impl Walk<'_, '_> {
         }
         Ok(())
     }
+
+    fn file(&mut self, file: &mut Map, asks: Asks<'_>) -> Result<(), String> {
+        if asks.load_contents {
+            self.setting.access.load_contents(file)?;
+        }
+        if asks.secondary.is_empty() {
+            return Ok(());
+        }
+        let trusted = file.contains_key("secondaryFiles") && !self.setting.discover;
+        if trusted {
+            return Ok(());
+        }
+        if !file.contains_key("secondaryFiles") {
+            file.insert("secondaryFiles".into(), Value::List(Vec::new()));
+        }
+        for pattern in asks.secondary {
+            let this = Value::Map(file.clone());
+            let required = match &pattern.required {
+                None => true,
+                Some(cwl_parser::model::Dynamic::Value(required)) => *required,
+                Some(cwl_parser::model::Dynamic::Expression(expression)) => {
+                    self.evaluate(expression, &this)?.is_truthy()
+                }
+            };
+            let names = if has_code(&pattern.pattern) {
+                self.evaluate(&pattern.pattern, &this)?
+            } else {
+                let basename = file
+                    .get("basename")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                Value::String(files::substitute(basename, &pattern.pattern.text))
+            };
+            let names = match names {
+                Value::List(items) => items,
+                Value::Null => Vec::new(),
+                other => vec![other],
+            };
+            for name in names {
+                self.secondary(file, name, required)?;
+            }
+        }
+        let mut list = file
+            .shift_remove("secondaryFiles")
+            .unwrap_or(Value::List(Vec::new()));
+        files::normalize(&mut list)?;
+        file.insert("secondaryFiles".into(), list);
+        Ok(())
+    }
+
+    /// Adds one secondary file, named by a string or given as a file object.
+    fn secondary(&mut self, file: &mut Map, name: Value, required: bool) -> Result<(), String> {
+        let location = file
+            .get("location")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let (entry, basename, given) = match name {
+            Value::String(name) if name.is_empty() => return Ok(()),
+            Value::String(name) => {
+                let folder = match location.rfind('/') {
+                    Some(slash) => &location[..=slash],
+                    None => location.as_str(),
+                };
+                let mut entry = Map::new();
+                entry.insert("location".into(), Value::String(format!("{folder}{name}")));
+                entry.insert("basename".into(), Value::String(name.clone()));
+                entry.insert("class".into(), Value::string("File"));
+                (entry, name, false)
+            }
+            Value::Map(entry) => {
+                let basename = entry
+                    .get("basename")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| {
+                        files::basename_of(
+                            entry.get("location").and_then(Value::as_str).unwrap_or(""),
+                        )
+                    });
+                (entry, basename, true)
+            }
+            other => {
+                return Err(format!(
+                    "a secondaryFiles expression gave {}, not a name or a file",
+                    other.to_json()
+                ));
+            }
+        };
+        let Some(Value::List(list)) = file.get_mut("secondaryFiles") else {
+            return Ok(());
+        };
+        let found = list.iter().any(|existing| {
+            let name = existing
+                .text("basename")
+                .map(str::to_owned)
+                .unwrap_or_else(|| {
+                    files::basename_of(existing.text("location").unwrap_or_default())
+                });
+            name == basename
+        });
+        if found {
+            return Ok(());
+        }
+        let entry_location = entry
+            .get("location")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        if given || (self.setting.discover && self.setting.access.exists(&entry_location)) {
+            add_secondary(list, entry);
+        } else if required {
+            return Err(format!(
+                "the required secondary file `{basename}` of `{location}` is missing"
+            ));
+        }
+        Ok(())
+    }
+
+    fn evaluate(&self, expression: &Expression, this: &Value) -> Result<Value, String> {
+        let runtime = Value::Map(Map::new());
+        self.setting.evaluator.evaluate(
+            expression,
+            Variables {
+                inputs: self.inputs,
+                this,
+                runtime: &runtime,
+            },
+        )
+    }
+}
+
+/// Whether an expression string holds code rather than only text.
+pub fn has_code(expression: &Expression) -> bool {
+    expression
+        .parts
+        .iter()
+        .any(|part| !matches!(part, cwl_parser::model::Part::Text(_)))
+}
+
+/// Adds a secondary file unless one with its location is there; then only its name changes.
+fn add_secondary(list: &mut Vec<Value>, entry: Map) {
+    let location = entry.get("location").cloned();
+    for existing in list.iter_mut() {
+        if let Value::Map(existing) = existing
+            && existing.get("location") == location.as_ref()
+        {
+            if let Some(basename) = entry.get("basename") {
+                existing.insert("basename".into(), basename.clone());
+            }
+            return;
+        }
+    }
+    list.push(Value::Map(entry));
+}
+
+/// A type for messages, like `File[]` or `string?`.
+pub fn describe(value_type: &Type) -> String {
+    match value_type {
+        Type::Null => "null".into(),
+        Type::Boolean => "boolean".into(),
+        Type::Int => "int".into(),
+        Type::Long => "long".into(),
+        Type::Float => "float".into(),
+        Type::Double => "double".into(),
+        Type::String => "string".into(),
+        Type::File | Type::Stdin | Type::Stdout | Type::Stderr => "File".into(),
+        Type::Directory => "Directory".into(),
+        Type::Any => "Any".into(),
+        Type::Array(array) => format!("{}[]", describe(&array.items)),
+        Type::Record(record) => match &record.name {
+            Some(name) => short_name(name).to_owned(),
+            None => "record".into(),
+        },
+        Type::Enum(schema) => match &schema.name {
+            Some(name) => short_name(name).to_owned(),
+            None => "enum".into(),
+        },
+        Type::Union(members) => {
+            let others: Vec<String> = members
+                .iter()
+                .filter(|member| !matches!(member, Type::Null))
+                .map(describe)
+                .collect();
+            let optional = members.contains(&Type::Null);
+            format!("{}{}", others.join(" or "), if optional { "?" } else { "" })
+        }
+        Type::Named(name) => short_name(name).to_owned(),
+    }
 }

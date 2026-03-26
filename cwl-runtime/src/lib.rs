@@ -13,7 +13,9 @@
 pub mod binding;
 pub mod expression;
 pub mod files;
+mod inputs;
 mod javascript;
+mod placeholder;
 mod scope;
 pub mod types;
 pub mod value;

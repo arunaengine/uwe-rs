@@ -1,0 +1,451 @@
+//! Command line tools: a prepared input object becomes a task, with staged files, the
+//! command line, environment, image and resources; the outcome of the task becomes the
+//! output object. This follows cwltool's `CommandLineTool.job` and `collect_output`.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::Path;
+use std::sync::Arc;
+
+use cwl_parser::iri;
+use cwl_parser::model::{
+    Argument, Class, Dirent, Dynamic, Expression, Listing, ListingEntry, LoadListing,
+    OutputBinding, OutputParameter, Process, RequirementClass, SecondaryFile, Type, Version,
+    short_name,
+};
+use workflow_graph::mock::glob_matches;
+use workflow_graph::{Input, Outcome, OutputFile, Resources, Task, TaskId};
+
+use crate::binding::{self, Binder, Bound, Key};
+use crate::expression::{Evaluator, Variables};
+use crate::files::{self, Access};
+use crate::inputs::has_code;
+use crate::scope::Scope;
+use crate::types::{Hint, Types};
+use crate::value::{Map, Value};
+
+/// The output directory inside the container, `runtime.outdir`, and the task's workdir.
+pub const OUTDIR: &str = "/var/spool/cwl";
+/// The temporary directory inside the container, `runtime.tmpdir`.
+pub const TMPDIR: &str = "/tmp";
+/// Where input files are staged inside the container, one folder per file.
+pub const STAGING: &str = "/var/lib/cwl/inputs";
+/// The image of tools without `DockerRequirement`, since every task runs in a container.
+pub const DEFAULT_IMAGE: &str = "debian:stable-slim";
+/// The file a tool may write to give its outputs itself.
+pub const OUTPUT_JSON: &str = "cwl.output.json";
+
+/// How a run treats what executors give back.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Options {
+    /// Take absent files as present and empty, and give outputs that the executor cannot
+    /// make (like the content of `cwl.output.json`) placeholder values of their type. This
+    /// is what the mock executor needs, and the default while it is the only executor.
+    pub mock: bool,
+    /// The image of tools without `DockerRequirement`.
+    pub image: String,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            mock: true,
+            image: DEFAULT_IMAGE.into(),
+        }
+    }
+}
+
+impl Options {
+    pub fn access(&self) -> Access {
+        Access {
+            assume_present: self.mock,
+        }
+    }
+}
+
+/// A task that runs, and what collecting its outputs needs.
+#[derive(Debug)]
+pub struct Pending {
+    process: Arc<Process>,
+    evaluator: Evaluator,
+    types: Types,
+    /// The input object with container paths, `inputs` of output expressions.
+    inputs: Value,
+    runtime: Map,
+    outdir: String,
+    /// The locations of staged files by their container path.
+    staged: HashMap<String, String>,
+    load_listing: Option<LoadListing>,
+    stdout: Option<String>,
+    stderr: Option<String>,
+    success_codes: Vec<i64>,
+    options: Options,
+}
+
+/// Makes the task of a command line tool (or of an abstract `Operation`) for a prepared
+/// input object.
+pub fn task(
+    process: &Arc<Process>,
+    job: Map,
+    scope: &Scope,
+    options: &Options,
+    id: TaskId,
+    names: (&str, &str),
+) -> Result<(Task, Pending), String> {
+    let (name, step) = names;
+    let evaluator = scope.evaluator();
+    let mut types = scope.types();
+    for input in &process.inputs {
+        types.add(&input.value_type);
+    }
+    for output in &process.outputs {
+        types.add(&output.value_type);
+    }
+    let tool = match &process.class {
+        Class::CommandLineTool(tool) => Some(tool.as_ref()),
+        _ => None,
+    };
+    let docker = scope.find(|class| match class {
+        RequirementClass::Docker(docker) => Some(docker),
+        _ => None,
+    });
+    let outdir = docker
+        .and_then(|(docker, _)| docker.docker_output_directory.clone())
+        .unwrap_or_else(|| OUTDIR.to_owned());
+    let image = match docker {
+        Some((docker, required)) => match docker
+            .docker_pull
+            .as_ref()
+            .or(docker.docker_image_id.as_ref())
+        {
+            Some(image) => image.clone(),
+            None if required => {
+                return Err(unsupported(
+                    "DockerRequirement with dockerFile, dockerLoad or dockerImport needs an \
+                     image build, which iunctus does not do yet; give dockerPull",
+                ));
+            }
+            None => options.image.clone(),
+        },
+        None => options.image.clone(),
+    };
+    let job = Value::Map(job);
+    let mut runtime = Map::new();
+    runtime.insert("outdir".into(), Value::string(outdir.as_str()));
+    runtime.insert("tmpdir".into(), Value::string(TMPDIR));
+    let (resources, sizes) = resources(scope, &evaluator, &job, &runtime, process.version)?;
+    for (key, value) in sizes {
+        runtime.insert(key.into(), value);
+    }
+
+    // Stage input files, then InitialWorkDir entries, which win for the same location.
+    let mut stager = Stager {
+        outdir: outdir.clone(),
+        ..Stager::default()
+    };
+    stager.stage_job(&job);
+    let mut inputs = job;
+    adjust(&mut inputs, &stager.paths);
+    if tool.is_some() {
+        initial_workdir(process, scope, &evaluator, &inputs, &runtime, &mut stager)?;
+    }
+    adjust(&mut inputs, &stager.paths);
+    let runtime_value = Value::Map(runtime.clone());
+    let null = Value::Null;
+    let vars = Variables {
+        inputs: &inputs,
+        this: &null,
+        runtime: &runtime_value,
+    };
+
+    // Standard streams.
+    let mut stdin = None;
+    let mut stdout = None;
+    let mut stderr = None;
+    if let Some(tool) = tool {
+        if let Some(expression) = &tool.stdin {
+            match evaluator.evaluate(expression, vars)? {
+                Value::String(path) if !path.is_empty() => stdin = Some(path),
+                Value::Null | Value::String(_) => {}
+                other => return Err(format!("`stdin` must be a path, not {}", other.to_json())),
+            }
+        }
+        for input in &process.inputs {
+            if input.value_type == Type::Stdin
+                && let Some(path) = inputs
+                    .get(short_name(&input.id))
+                    .and_then(|file| file.text("path"))
+            {
+                stdin = Some(path.to_owned());
+            }
+        }
+        stdout = stream(
+            tool.stdout.as_ref(),
+            process,
+            Type::Stdout,
+            &evaluator,
+            vars,
+        )?;
+        stderr = stream(
+            tool.stderr.as_ref(),
+            process,
+            Type::Stderr,
+            &evaluator,
+            vars,
+        )?;
+    }
+
+    // The command line.
+    let mut bindings: Vec<Bound> = Vec::new();
+    if let Some(tool) = tool {
+        for (index, word) in tool.base_command.iter().enumerate() {
+            let key = vec![Key::Number(-1_000_000), Key::Number(index as i64)];
+            bindings.push(Bound::text(key, word));
+        }
+        for (index, argument) in tool.arguments.iter().enumerate() {
+            let index = Key::Number(index as i64);
+            bindings.push(match argument {
+                Argument::Text(expression) if has_code(expression) => Bound {
+                    value_from: Some(expression.clone()),
+                    value: Value::Null,
+                    ..Bound::text(vec![Key::Number(0), index], "")
+                },
+                Argument::Text(expression) => {
+                    Bound::text(vec![Key::Number(0), index], &literal(expression))
+                }
+                Argument::Binding(binding) => {
+                    let position = match &binding.position {
+                        None => 0,
+                        Some(Dynamic::Value(position)) => *position,
+                        Some(Dynamic::Expression(expression)) => {
+                            let value = evaluator.evaluate(expression, vars)?;
+                            match value {
+                                Value::Null => 0,
+                                value => value.as_i64().ok_or_else(|| {
+                                    format!(
+                                        "`position` must be an integer, not {}",
+                                        value.to_json()
+                                    )
+                                })?,
+                            }
+                        }
+                    };
+                    Bound {
+                        key: vec![Key::Number(position), index],
+                        value: Value::Null,
+                        prefix: binding.prefix.clone(),
+                        separate: binding.separate,
+                        item_separator: binding.item_separator.clone(),
+                        value_from: binding.value_from.clone(),
+                        shell_quote: binding.shell_quote,
+                    }
+                }
+            });
+        }
+        let mut positions = |expression: &Expression, this: &Value| {
+            evaluator.evaluate(expression, Variables { this, ..vars })
+        };
+        let mut binder = Binder {
+            types: &types,
+            positions: &mut positions,
+        };
+        for input in &process.inputs {
+            let name = short_name(&input.id);
+            let value = inputs.get(name).cloned().unwrap_or(Value::Null);
+            if value.is_null() {
+                continue;
+            }
+            let bound =
+                binder.bind_input(&input.value_type, input.binding.as_ref(), &value, name)?;
+            bindings.extend(bound);
+        }
+        binding::sort(&mut bindings);
+    }
+    let mut args = Vec::new();
+    for bound in &bindings {
+        let value = match &bound.value_from {
+            Some(expression) => evaluator.evaluate(
+                expression,
+                Variables {
+                    this: &bound.value,
+                    ..vars
+                },
+            )?,
+            None => bound.value.clone(),
+        };
+        args.extend(binding::arguments(bound, &value)?);
+    }
+    let shell = scope.has(|class| matches!(class, RequirementClass::ShellCommand));
+    let redirections = [
+        stdout
+            .as_ref()
+            .map(|path| format!("> {}", binding::shell_quote(path))),
+        stderr
+            .as_ref()
+            .map(|path| format!("2> {}", binding::shell_quote(path))),
+        stdin
+            .as_ref()
+            .map(|path| format!("< {}", binding::shell_quote(path))),
+    ];
+    let redirections: Vec<String> = redirections.into_iter().flatten().collect();
+    let (command, script) = if tool.is_none() {
+        (Vec::new(), None)
+    } else if shell || !redirections.is_empty() {
+        let words: Vec<String> = args
+            .iter()
+            .map(|arg| {
+                if arg.quote || !shell {
+                    binding::shell_quote(&arg.text)
+                } else {
+                    arg.text.clone()
+                }
+            })
+            .collect();
+        let mut script = String::new();
+        if !redirections.is_empty() {
+            script.push_str(&format!("exec {}\n", redirections.join(" ")));
+        }
+        script.push_str(&words.join(" "));
+        let command = vec!["/bin/sh".to_owned(), "-c".to_owned(), script.clone()];
+        (command, Some(script))
+    } else {
+        (args.into_iter().map(|arg| arg.text).collect(), None)
+    };
+
+    // Environment.
+    let mut environment = BTreeMap::new();
+    environment.insert("HOME".to_owned(), outdir.clone());
+    environment.insert("TMPDIR".to_owned(), TMPDIR.to_owned());
+    if let Some((variables, _)) = scope.find(|class| match class {
+        RequirementClass::EnvVar { variables } => Some(variables),
+        _ => None,
+    }) {
+        for variable in variables {
+            let value = evaluator.evaluate(&variable.env_value, vars)?;
+            let text = match value {
+                Value::String(text) => text,
+                other => other.to_python_text(),
+            };
+            environment.insert(variable.env_name.clone(), text);
+        }
+    }
+
+    // Outputs the executor fetches: the standard streams, the globs, and cwl.output.json
+    // when an output can come from nowhere else.
+    let mut outputs: Vec<String> = stdout.iter().chain(&stderr).cloned().collect();
+    let mut needs_json = false;
+    for output in &process.outputs {
+        match types.resolve(&output.value_type) {
+            Type::Stdout | Type::Stderr => {}
+            _ if tool.is_none() => outputs.extend(operation_output(&types, output)),
+            _ => {
+                needs_json |= unbound(&types, &output.value_type, output.binding.as_ref());
+                patterns(
+                    &types,
+                    &output.value_type,
+                    output.binding.as_ref(),
+                    &output.secondary_files,
+                    &evaluator,
+                    vars,
+                    &outdir,
+                    &mut outputs,
+                )?;
+            }
+        }
+    }
+    if needs_json {
+        outputs.push(OUTPUT_JSON.to_owned());
+    }
+    let mut unique = Vec::new();
+    for output in outputs {
+        if !unique.contains(&output) {
+            unique.push(output);
+        }
+    }
+    let resources = Resources {
+        gpus: scope.gpus(),
+        ..resources
+    };
+    let time = scope.find(|class| match class {
+        RequirementClass::ToolTimeLimit { timelimit } => Some(timelimit),
+        _ => None,
+    });
+    let time_seconds = match time {
+        Some((Dynamic::Value(seconds), _)) => u64::try_from(*seconds).ok(),
+        Some((Dynamic::Expression(expression), _)) => evaluator
+            .evaluate(expression, vars)?
+            .as_i64()
+            .and_then(|seconds| u64::try_from(seconds).ok()),
+        None => None,
+    }
+    .filter(|seconds| *seconds > 0);
+    let task = Task {
+        id,
+        name: name.to_owned(),
+        step: step.to_owned(),
+        image: tool.map(|_| image),
+        command,
+        script,
+        workdir: Some(outdir.clone()),
+        environment,
+        inputs: stager.inputs,
+        outputs: unique,
+        stdin: None,
+        resources: Resources {
+            time_seconds,
+            ..resources
+        },
+        after: Vec::new(),
+    };
+    // Outputs at the path of an input file get its location back, as with cwltool's path
+    // mapper, which holds the files of the input object but not literals or writable copies.
+    let staged = stager
+        .paths
+        .iter()
+        .filter(|(location, _)| {
+            stager.from_job.contains(*location) && !stager.writable.contains(*location)
+        })
+        .map(|(location, path)| (path.clone(), location.clone()))
+        .collect();
+    let pending = Pending {
+        process: Arc::clone(process),
+        evaluator,
+        types,
+        inputs,
+        runtime,
+        outdir,
+        staged,
+        load_listing: scope.load_listing(),
+        stdout,
+        stderr,
+        success_codes: tool
+            .map(|tool| tool.success_codes.clone())
+            .unwrap_or_default(),
+        options: options.clone(),
+    };
+    Ok((task, pending))
+}
+
+fn unsupported(message: &str) -> String {
+    format!("{UNSUPPORTED}{message}")
+}
+
+/// Marks error messages of features iunctus does not support, so the driver reports them
+/// with exit code 33.
+pub const UNSUPPORTED: &str = "unsupported: ";
+
+/// The text of an argument without code, with its escapes applied.
+fn literal(expression: &Expression) -> String {
+    expression
+        .parts
+        .iter()
+        .map(|part| match part {
+            cwl_parser::model::Part::Text(text) => text.as_str(),
+            _ => "",
+        })
+        .collect()
+}
+
+/// The `runtime` fields that resources give, by name.
+type Runtime = Vec<(&'static str, Value)>;

@@ -1213,3 +1213,276 @@ realworld/collections/github.com__common-workflow-library__bio-cwl-tools/vdjtool
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/vdjtools/vdjtools-join-samples.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/vdjtools/vdjtools-plot-fancy-spectratype.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/vdjtools/vdjtools-plot-quantile-stats.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_exome.cwl ok 16
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_exome_nonhuman.cwl ok 12
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_umi_duplex.cwl ok 11
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_umi_molecular.cwl ok 14
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_wgs.cwl ok 17
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_wgs_nonhuman.cwl ok 11
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/aml_trio_cle.cwl fail: realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/gatk_haplotypecaller_iterator.cwl:75:17: invalid indentation in multiline quoted scalar
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/aml_trio_cle_gathered.cwl fail: realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/gatk_haplotypecaller_iterator.cwl:75:17: invalid indentation in multiline quoted scalar
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/bisulfite.cwl fail: bisulfite_qc/gather_to_sub_directory: `@:2` is JavaScript, which needs InlineJavascriptRequirement
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/chipseq.cwl ok 16
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/chipseq_alignment_nonhuman.cwl ok 13
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/detect_variants.cwl fail: varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/detect_variants_nonhuman.cwl fail: varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/detect_variants_wgs.cwl fail: varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/detect_variants_wgs_nonhuman.cwl fail: varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/downsample_and_recall.cwl fail: realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/gatk_haplotypecaller_iterator.cwl:75:17: invalid indentation in multiline quoted scalar
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/gathered_downsample_and_recall.cwl fail: realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/gatk_haplotypecaller_iterator.cwl:75:17: invalid indentation in multiline quoted scalar
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_exome.cwl fail: realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/gatk_haplotypecaller_iterator.cwl:75:17: invalid indentation in multiline quoted scalar
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_exome_gvcf.cwl fail: realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/gatk_haplotypecaller_iterator.cwl:75:17: invalid indentation in multiline quoted scalar
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_exome_hla_typing.cwl fail: realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/gatk_haplotypecaller_iterator.cwl:75:17: invalid indentation in multiline quoted scalar
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_wgs.cwl fail: realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/gatk_haplotypecaller_iterator.cwl:75:17: invalid indentation in multiline quoted scalar
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_wgs_gvcf.cwl fail: realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/gatk_haplotypecaller_iterator.cwl:75:17: invalid indentation in multiline quoted scalar
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/immuno.cwl fail: realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/gatk_haplotypecaller_iterator.cwl:75:17: invalid indentation in multiline quoted scalar
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/rnaseq.cwl ok 12
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/rnaseq_star_fusion.cwl fail: realworld/collections/github.com__genome__analysis-workflows/definitions/tools/star_fusion_detect.cwl:31:5: invalid indentation in multiline quoted scalar
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/rnaseq_star_fusion_with_xenosplit.cwl fail: realworld/collections/github.com__genome__analysis-workflows/definitions/tools/star_fusion_detect.cwl:31:5: invalid indentation in multiline quoted scalar
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_exome.cwl fail: cnvkit: `var normal = self[0];
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_exome_cle.cwl fail: detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_exome_cle_gathered.cwl fail: somatic_exome/detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_exome_gathered.cwl fail: somatic_exome/cnvkit: `var normal = self[0];
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_exome_nonhuman.cwl fail: cnvkit: `var normal = self[0];
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_wgs.cwl fail: cnvkit: `var normal = self[0];
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_wgs_nonhuman.cwl fail: cnvkit: `var normal = self[0];
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_detect_variants.cwl fail: bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv";
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_exome.cwl fail: detect_variants/bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv";
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_wgs.cwl fail: detect_variants/bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv";
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/align.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/align_sort_markdup.cwl ok 5
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/bam_readcount.cwl fail: bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv";
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/bam_to_trimmed_fastq_and_biscuit_alignments.cwl ok 5
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/bgzip_and_index.cwl ok 2
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/bisulfite_qc.cwl fail: gather_to_sub_directory: `@:2` is JavaScript, which needs InlineJavascriptRequirement
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/cellranger_mkfastq_and_count.cwl fail: mkfastq: `runtime.ram/1000` is JavaScript, which needs InlineJavascriptRequirement
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/cnvkit_single_sample.cwl fail: cnvkit_main: `var cnn = self[0];
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/cram_to_bam_and_index.cwl ok 2
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/cram_to_cnvkit.cwl fail: run_cnvkit: `var normal = self[0];
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/docm_cle.cwl fail: docm_filter: `if(inputs.filter_docm_variants){
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/docm_germline.cwl ok 7
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/duplex_alignment.cwl ok 10
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/filter_vcf.cwl ok 7
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/filter_vcf_nonhuman.cwl ok 5
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/fp_filter.cwl ok 8
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/gatk_haplotypecaller_iterator.cwl fail: realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/gatk_haplotypecaller_iterator.cwl:75:17: invalid indentation in multiline quoted scalar
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/generate_fda_metrics.cwl ok 31
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/germline_detect_variants.cwl fail: realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/gatk_haplotypecaller_iterator.cwl:75:17: invalid indentation in multiline quoted scalar
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/germline_filter_vcf.cwl ok 6
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/hs_metrics.cwl ok 3
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/joint_genotype.cwl ok 18
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/merge_svs.cwl fail: bcftools_annotate_variants: the input `snps_vcf` is not a valid File[]?: [null]
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/molecular_alignment.cwl ok 11
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/molecular_qc.cwl ok 20
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/mutect.cwl ok 12
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/phase_vcf.cwl ok 11
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/pindel.cwl ok 17
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/pindel_cat.cwl ok 2
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/pindel_region.cwl ok 6
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/pvacseq.cwl fail: tumor_rna_bam_readcount/bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv";
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/qc_exome.cwl ok 9
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/qc_exome_no_verify_bam.cwl ok 7
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/qc_wgs.cwl ok 10
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/qc_wgs_nonhuman.cwl ok 9
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/sequence_align_and_tag_adapter.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/sequence_to_bqsr.cwl ok 7
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/sequence_to_bqsr_nonhuman.cwl ok 5
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/sequence_to_trimmed_fastq.cwl ok 2
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/sequence_to_trimmed_fastq_and_hisat_alignments.cwl ok 3
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/single_cell_rnaseq.cwl fail: count: `runtime.ram/1000` is JavaScript, which needs InlineJavascriptRequirement
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/single_sample_sv_callers.cwl fail: run_cnvkit/cnvkit_main: `var cnn = self[0];
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/strelka_and_post_processing.cwl ok 20
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/strelka_process_vcf.cwl ok 3
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/sv_depth_caller_filter.cwl ok 4
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/sv_paired_read_caller_filter.cwl ok 5
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/umi_alignment.cwl ok 3
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/varscan.cwl fail: somatic: `HOME` is JavaScript, which needs InlineJavascriptRequirement
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/varscan_germline.cwl ok 12
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/varscan_pre_and_post_processing.cwl fail: varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/vcf_eval_cle_gold.cwl fail: normal_bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv";
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/vcf_eval_concordance.cwl fail: base_normal_bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv";
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/vcf_readcount_annotator.cwl ok 2
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/add_strelka_gt.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/add_string_at_line.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/add_string_at_line_bgzipped.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/add_vep_fields_to_table.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/agfusion.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/align_and_tag.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/aligned_seq_fda_stats.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/annotsv.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/annotsv_filter.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/apply_bqsr.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bam_readcount.cwl fail: bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv";
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bam_to_bigwig.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bam_to_cram.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bam_to_fastq.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bam_to_sam.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bcftools_merge.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bedgraph_to_bigwig.cwl fail: bedgraph_to_bigwig: `@:2` is JavaScript, which needs InlineJavascriptRequirement
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bedtools_intersect.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bgzip.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/biscuit_align.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/biscuit_markdup.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/biscuit_pileup.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bisulfite_qc_conversion.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bisulfite_qc_coverage_stats.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bisulfite_qc_cpg_retention_distribution.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bisulfite_qc_mapping_summary.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bisulfite_vcf2bed.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bqsr.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/call_duplex_consensus.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/call_molecular_consensus.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/cat_all.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/cat_out.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/cellmatch_lineage.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/cellranger_atac_count.cwl fail: cellranger_atac_count: `runtime.ram/1000` is JavaScript, which needs InlineJavascriptRequirement
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/cellranger_count.cwl fail: cellranger_count: `runtime.ram/1000` is JavaScript, which needs InlineJavascriptRequirement
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/cellranger_feature_barcoding.cwl fail: cellranger_feature_barcoding: `#ARRAY_ANTIBODY_FASTQS[@]` is JavaScript, which needs InlineJavascriptRequirement
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/cellranger_mkfastq.cwl fail: cellranger_mkfastq: `runtime.ram/1000` is JavaScript, which needs InlineJavascriptRequirement
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/cellranger_vdj.cwl fail: cellranger_vdj: `runtime.ram/1000` is JavaScript, which needs InlineJavascriptRequirement
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/cle_aml_trio_report_alignment_stat.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/cle_aml_trio_report_coverage_stat.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/cle_aml_trio_report_full_variants.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/clip_overlap.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/cnvkit_batch.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/cnvkit_vcf_export.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/cnvnator.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/collect_alignment_summary_metrics.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/collect_gc_bias_metrics.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/collect_hs_metrics.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/collect_insert_size_metrics.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/collect_wgs_metrics.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/combine_gvcfs.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/combine_variants.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/combine_variants_concordance.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/combine_variants_wgs.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/concordance.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/cram_to_bam.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/docm_add_variants.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/docm_gatk_haplotype_caller.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/downsample.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/duphold.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/duplex_seq_metrics.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/eval_cle_gold.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/eval_vaf_report.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/extract_hla_alleles.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/extract_umis.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/fastq_to_bam.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/fastqc.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/filter_consensus.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/filter_known_variants.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/filter_sv_vcf_blocklist_bedpe.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/filter_sv_vcf_depth.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/filter_sv_vcf_read_support.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/filter_sv_vcf_size.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/filter_vcf_cle.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/filter_vcf_coding_variant.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/filter_vcf_custom_allele_freq.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/filter_vcf_depth.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/filter_vcf_docm.cwl fail: filter_vcf_docm: `if(inputs.filter_docm_variants){
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/filter_vcf_mapq0.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/filter_vcf_somatic_llr.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/fix_vcf_header.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/fp_filter.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/gather_to_sub_directory.cwl fail: gather_to_sub_directory: `@:2` is JavaScript, which needs InlineJavascriptRequirement
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/gatherer.cwl fail: the output `gathered_files`: `var file_paths = []; var new_path = inputs.output_dir; if (new_path.slice(-1) != "/") { new_path += "/"; } var arrLen = inputs.all_files.length; for(var i = 0; i < arrLen; i++) { file_paths.push(new_path 
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/gatk_genotypegvcfs.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/gatk_haplotype_caller.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/generate_fda_tables.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/generate_qc_metrics.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/germline_combine_variants.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/grolar.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/group_reads.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/hisat2_align.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/hla_consensus.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/homer_tag_directory.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/index_bam.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/index_cram.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/index_vcf.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/intersect_known_variants.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/interval_list_expand.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/intervals_to_bed.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/kallisto.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/kmer_size_from_index.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/manta_somatic.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/mark_duplicates_and_sort.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/mark_illumina_adapters.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/md5sum.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/merge_bams.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/merge_bams_samtools.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/merge_vcf.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/mutect.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/name_sort.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/normalize_variants.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/optitype_dna.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/picard_merge_vcfs.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/pindel.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/pindel2vcf.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/pindel_somatic_filter.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/pizzly.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/pvacbind.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/pvacfuse.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/pvacseq.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/pvacseq_combine_variants.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/pvacvector.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/read_backed_phasing.cwl fail: read_backed_phasing: `if (self.nameext === ".bam") {return self.basename + ".bai"} else {return self.basename + ".crai"}` is JavaScript, which needs InlineJavascriptRequirement
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/realign.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/remove_end_tags.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/rename.cwl ok 0
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/rename_for_staging.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/replace_vcf_sample_name.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/samtools_flagstat.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/samtools_sort.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/select_variants.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/sequence_align_and_tag.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/sequence_to_bam.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/sequence_to_fastq.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/set_filter_status.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/single_sample_docm_filter.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/smoove.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/somatic_concordance_graph.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/sompy.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/sort_vcf.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/split_interval_list.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/split_interval_list_to_bed.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/staged_rename.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/star_align_fusion.cwl fail: star_align_fusion: the input `chim_junction_overhang_min` is not a valid int: "12"
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/star_fusion_detect.cwl fail: realworld/collections/github.com__genome__analysis-workflows/definitions/tools/star_fusion_detect.cwl:31:5: invalid indentation in multiline quoted scalar
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/strandedness_check.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/strelka.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/stringtie.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/survivor.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/transcript_to_gene.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/trim_fastq.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/umi_align.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/unaligned_seq_fda_stats.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/variants_to_table.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/varscan_germline.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/varscan_process_somatic.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/varscan_somatic.cwl fail: varscan_somatic: `HOME` is JavaScript, which needs InlineJavascriptRequirement
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/vcf_expression_annotator.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/vcf_readcount_annotator.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/vcf_sanitize.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/vep.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/verify_bam_id.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/vt_decompose.cwl ok 1
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/xenosplit.cwl ok 1
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/bulk-pipeline.cwl ok 2
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/pipeline.cwl ok 11
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/bulk-salmon-mouse.cwl ok 1
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/bulk-salmon.cwl ok 1
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/compute-qc-metrics.cwl ok 1
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/deepscence.cwl ok 1
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/expression-matrix.cwl ok 1
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/fastqc.cwl ok 1
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/map_hugo_symbols.cwl ok 1
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/salmon-quantification.cwl ok 5
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/salmon-quantification/adjust-barcodes.cwl ok 1
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/salmon-quantification/alevin-to-anndata.cwl ok 1
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/salmon-quantification/annotate-cells.cwl ok 1
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/salmon-quantification/salmon-mouse.cwl ok 1
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/salmon-quantification/salmon.cwl ok 1
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/salmon-quantification/trim-reads.cwl ok 1
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/scanpy-analysis.cwl ok 1
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/scvelo-analysis.cwl ok 1
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/squidpy-analysis.cwl ok 1

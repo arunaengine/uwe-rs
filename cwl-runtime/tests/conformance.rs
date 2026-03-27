@@ -36,6 +36,88 @@ struct Test {
     output: Value,
     should_fail: bool,
 }
+
+/// The tests of a list, following `$import`; paths are relative to the list that names them.
+fn tests(list: &Path) -> Vec<Test> {
+    let text = std::fs::read_to_string(list).expect("reads the test list");
+    let Value::List(entries) = Value::parse(&text).expect("the test list parses") else {
+        panic!("{} is not a list", list.display());
+    };
+    let folder = list.parent().unwrap_or(Path::new(""));
+    let mut tests = Vec::new();
+    for entry in entries {
+        if let Some(imported) = entry.text("$import") {
+            tests.extend(self::tests(&folder.join(imported)));
+            continue;
+        }
+        let Some(tool) = entry.text("tool") else {
+            continue;
+        };
+        let id = entry
+            .text("id")
+            .or(entry.text("label"))
+            .unwrap_or("unnamed")
+            .to_owned();
+        tests.push(Test {
+            id,
+            tool: folder.join(tool).to_string_lossy().into_owned(),
+            job: entry.text("job").map(|job| folder.join(job)),
+            output: entry.get("output").cloned().unwrap_or(Value::Null),
+            should_fail: entry.get("should_fail") == Some(&Value::Bool(true)),
+        });
+    }
+    tests
+}
+
+/// The outcome of one test, as its fixture line says it.
+fn outcome(test: &Test) -> String {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let launch = Launch {
+        target: PathBuf::from(&test.tool),
+        inputs: test.job.clone(),
+        scratch: directory.path().to_path_buf(),
+        ..Launch::default()
+    };
+    let mut executor = Simulator {
+        mock: MockTes::new(directory.path().join("mock")),
+        unsimulated: 0,
+    };
+    let result = CwlDriver::new(&launch, Options::default()).and_then(|mut driver| {
+        let execution = execute(&test.tool, &mut driver, &mut executor);
+        match execution.error {
+            Some(ExecuteError::Driver(error)) => Err(error),
+            Some(other) => Err(workflow_graph::DriverError::new(other.to_string())),
+            None => Ok(driver.outputs().cloned().unwrap_or_default()),
+        }
+    });
+    let simulated = executor.unsimulated == 0;
+    if std::env::var("CWL_TEST").is_ok() {
+        match &result {
+            Ok(outputs) => println!("outputs: {}", Value::Map(outputs.clone()).to_json()),
+            Err(error) => println!("error: {}", error.message),
+        }
+        println!("simulated: {simulated}");
+    }
+    match (result, test.should_fail) {
+        (Err(_), true) => "pass".into(),
+        (Ok(_), true) if simulated => "fail: runs, but should fail".into(),
+        (Ok(_), true) => "ran".into(),
+        (Err(error), false) => {
+            let kind = if error.unsupported {
+                "unsupported"
+            } else {
+                "fail"
+            };
+            format!("{kind}: {}", clean(&error.message, &test.tool))
+        }
+        (Ok(outputs), false) => match compare(&test.output, &relocate(outputs)) {
+            Ok(()) => "pass".into(),
+            Err(_) if !simulated => "ran".into(),
+            Err(difference) => format!("fail: {}", clean(&difference, &test.tool)),
+        },
+    }
+}
+
 /// Links every file below `from` into the same place below `into`, making folders.
 fn link_tree(from: &Path, into: &Path) {
     let Ok(entries) = std::fs::read_dir(from) else {
@@ -267,6 +349,142 @@ fn compare_file(
     }
     Ok(())
 }
+
+/// The mock TES executor, plus the effect of commands whose effect is known.
+struct Simulator {
+    mock: MockTes,
+    unsimulated: usize,
+}
+
+impl Executor for Simulator {
+    fn execute(&mut self, task: &Task) -> Result<Outcome, ExecuteError> {
+        let mut outcome = self.mock.execute(task)?;
+        let work = self.mock.work_directory(task);
+        // Inputs in the working directory, like InitialWorkDir entries, are there before the
+        // command runs, so outputs that name them hold their content.
+        let mut staged = Vec::new();
+        for input in &task.inputs {
+            if input.path.starts_with('/') {
+                continue;
+            }
+            let target = work.join(&input.path);
+            if let Some(parent) = target.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            staged.push(input.path.clone());
+            let _ = match (&input.content, input.directory) {
+                (Some(content), _) => std::fs::write(&target, content),
+                (None, true) => copy_tree(Path::new(&input.source), &target),
+                (None, false) => std::fs::copy(&input.source, &target).map(|_| ()),
+            };
+        }
+        match simulate(task, &work) {
+            // A known command makes only its own files, not every output the mock made.
+            Some(made) => {
+                outcome.files.retain(|file| {
+                    made.contains(&file.path)
+                        || staged.iter().any(|path| {
+                            file.path == *path || file.path.starts_with(&format!("{path}/"))
+                        })
+                });
+                for path in made {
+                    if !outcome.files.iter().any(|file| file.path == path) {
+                        outcome.files.push(workflow_graph::OutputFile {
+                            location: work.join(&path),
+                            directory: false,
+                            path,
+                        });
+                    }
+                }
+            }
+            None => self.unsimulated += 1,
+        }
+        Ok(outcome)
+    }
+}
+
+/// Writes what a known command would write, and gives the paths it wrote; `None` when the
+/// command is not known.
+fn simulate(task: &Task, work: &Path) -> Option<Vec<String>> {
+    let mut made = Vec::new();
+    let (words, redirects) = command_words(task)?;
+    let read_input = |path: &str| -> Option<String> {
+        let input = task.inputs.iter().find(|input| {
+            let inside = if input.path.starts_with('/') {
+                input.path.clone()
+            } else {
+                format!("{}/{}", task.workdir.as_deref().unwrap_or(""), input.path)
+            };
+            inside == path || input.path == path
+        })?;
+        match &input.content {
+            Some(content) => Some(content.clone()),
+            None => std::fs::read_to_string(&input.source).ok(),
+        }
+    };
+    let stdin = redirects.stdin.as_deref().map(read_input);
+    let output = match words.first().map(String::as_str) {
+        Some("echo") => {
+            let (newline, rest) = match words.get(1).map(String::as_str) {
+                Some("-n") => (false, &words[2..]),
+                _ => (true, &words[1..]),
+            };
+            let mut text = rest.join(" ");
+            if newline {
+                text.push('\n');
+            }
+            Some(text)
+        }
+        Some("cat") => {
+            let mut text = String::new();
+            let files: Vec<&String> = words[1..]
+                .iter()
+                .filter(|word| !word.starts_with('-'))
+                .collect();
+            if files.is_empty() {
+                text.push_str(&stdin.clone().flatten()?);
+            }
+            for file in files {
+                text.push_str(&read_input(file)?);
+            }
+            Some(text)
+        }
+        Some("python" | "python3")
+            if words
+                .get(1)
+                .is_some_and(|script| script.ends_with("args.py")) =>
+        {
+            let args: Vec<Value> = words[2..]
+                .iter()
+                .map(|arg| Value::string(arg.rsplit('/').next().unwrap_or(arg)))
+                .collect();
+            let mut map = cwl_runtime::Map::new();
+            map.insert("args".into(), Value::List(args));
+            std::fs::write(work.join("cwl.output.json"), Value::Map(map).to_json()).ok()?;
+            made.push("cwl.output.json".to_owned());
+            None
+        }
+        Some("true") => None,
+        Some("touch") => {
+            for name in &words[1..] {
+                std::fs::write(work.join(name), "").ok()?;
+                made.push(name.clone());
+            }
+            None
+        }
+        _ => return None,
+    };
+    if let Some(target) = &redirects.stdout {
+        std::fs::write(work.join(target), output.unwrap_or_default()).ok()?;
+        made.push(target.clone());
+    }
+    if let Some(target) = &redirects.stderr {
+        std::fs::write(work.join(target), "").ok()?;
+        made.push(target.clone());
+    }
+    Some(made)
+}
+
 /// Copies a folder with everything in it.
 fn copy_tree(from: &Path, into: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(into)?;
@@ -378,4 +596,94 @@ fn split(line: &str) -> Option<Vec<String>> {
         words.push(word);
     }
     Some(words)
+}
+
+#[test]
+#[ignore = "needs the CWL corpus from `just cwl-corpus`; run it with `just cwl-conformance-test`"]
+fn conformance_tests_run_as_recorded() {
+    let corpus = PathBuf::from(std::env::var("CWL_CORPUS").expect("CWL_CORPUS is set"));
+    // The suites with their data files, from `just cwl-conformance-data`, in one folder.
+    let merged = tempfile::tempdir().expect("a temporary directory");
+    link_tree(
+        &corpus.join("conformance"),
+        &merged.path().join("conformance"),
+    );
+    if let Some(data) = std::env::var_os("CWL_CONFORMANCE_DATA") {
+        link_tree(
+            &PathBuf::from(data).join("conformance"),
+            &merged.path().join("conformance"),
+        );
+    }
+    let root = merged.path();
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/conformance.txt");
+    let expected = std::fs::read_to_string(&fixture).unwrap_or_default();
+    let header: Vec<&str> = expected
+        .lines()
+        .filter(|line| line.starts_with('#'))
+        .collect();
+    let expected: Vec<&str> = expected
+        .lines()
+        .filter(|line| !line.starts_with('#'))
+        .collect();
+    // `CWL_TEST=<id>` runs only that test and shows its outputs.
+    let only = std::env::var("CWL_TEST").ok();
+    let mut actual = Vec::new();
+    for (version, list) in SUITES {
+        for test in tests(&root.join(list)) {
+            if only.as_ref().is_some_and(|only| *only != test.id) {
+                continue;
+            }
+            actual.push(format!("{version} {} {}", test.id, outcome(&test)));
+        }
+    }
+    if only.is_some() {
+        println!("{}", actual.join("\n"));
+        return;
+    }
+    for version in ["v1.0", "v1.1", "v1.2"] {
+        let lines: Vec<&String> = actual
+            .iter()
+            .filter(|line| line.starts_with(&format!("{version} ")))
+            .collect();
+        let count = |kind: &str| {
+            lines
+                .iter()
+                .filter(|line| {
+                    line.split(' ')
+                        .nth(2)
+                        .is_some_and(|word| word.starts_with(kind))
+                })
+                .count()
+        };
+        println!(
+            "{version}: {} tests, {} pass, {} ran, {} fail, {} unsupported",
+            lines.len(),
+            count("pass"),
+            count("ran"),
+            count("fail"),
+            count("unsupported")
+        );
+    }
+    if actual != expected {
+        let changed: Vec<&String> = actual
+            .iter()
+            .filter(|line| !expected.contains(&line.as_str()))
+            .collect();
+        let written = Path::new(env!("CARGO_TARGET_TMPDIR")).join("conformance.txt");
+        let mut text = header.join("\n");
+        text.push('\n');
+        text.push_str(&actual.join("\n"));
+        text.push('\n');
+        std::fs::write(&written, text).expect("writes the new fixture");
+        panic!(
+            "{} tests differ:\n{}\n\nThe new fixture is in {}",
+            changed.len(),
+            changed
+                .iter()
+                .map(|line| line.as_str())
+                .collect::<Vec<_>>()
+                .join("\n"),
+            written.display()
+        );
+    }
 }

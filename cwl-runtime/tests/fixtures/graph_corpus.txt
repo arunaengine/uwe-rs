@@ -2272,3 +2272,462 @@ realworld/collections/github.com__ncbi__pgap/vecscreen/foreign_screening.cwl ok 
 realworld/collections/github.com__ncbi__pgap/vecscreen/vecscreen.cwl ok 16
 realworld/collections/github.com__ncbi__pgap/wf_bacterial_prot_src.cwl ok 1
 realworld/collections/github.com__ncbi__pgap/wf_common.cwl fail: genomic_source/Prepare_Seq_entries: JavaScript error in `if( inputs.seq_submit != null ) { return  inputs.seq_submit.path; } else { return inputs.entries.path;  }`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/FastQC/wrappers/cp.cwl fail: cp: `entryname` must be a string, not null
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/FastQC/wrappers/fastqc.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/FastQC/wrappers/get-raw-files.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/FastQC/wrappers/rename.cwl fail: rename: the input `input_file` is not a valid File?: "null"
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/MultiQC/wrappers/MultiQC.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/Trim_galore/wrappers/get-raw-files.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/Trim_galore/wrappers/split-single-paired_v2.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/Trimmomatic/workflows/Trimmomatic_workflow.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/Trimmomatic/wrappers/Trimmomatic_PE.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/Trimmomatic/wrappers/Trimmomatic_SE.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/Trimmomatic/wrappers/get-raw-files.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/Trimmomatic/wrappers/split-single-paired_v2.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/workflows/ChIP-Seq_workflow.cwl ok 30
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/ChIPQC.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/DiffBind.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/Trimmomatic_PE.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/Trimmomatic_SE.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/append-files.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/awk.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/bamCoverage.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/bed_to_rose_gff.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/bedtools-coverage.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/bedtools-intersect-narrowPeak.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/bedtools-intersect.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/bedtools-merge.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/check_trimming.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/collect-hisat2-sam-files.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/computeMatrix.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/cp.cwl fail: cp: `entryname` must be a string, not null
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/cp_paired.cwl fail: cp_paired: `entryname` must be a string, not null
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/enhancer_bed_processing.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/extract_counts.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/extract_peaks.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/fastqc.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/get-raw-files.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/hisat2_v2.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/macs2-callpeak.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/merge-bed-files.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/multiBamSummary.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/paste.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/picard-markduplicates.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/plotCorrelation.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/plotCoverage.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/plotFingerprint.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/plotHeatmap.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/printf.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/rename.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/rose.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/samtools-fixmate.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/samtools-flagstat.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/samtools-index.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/samtools-markdup.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/samtools-sort.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/samtools-view.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/separate_control_treatment_files.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/sort.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/split-single-paired_v2.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/table_total_peaks.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/workflows/gatk-bqsr-subworkflow_multiple.cwl ok 4
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/workflows/gatk_multi-sample_bqsr_vqsr.cwl ok 38
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/bcftools-norm.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/bcftools-view.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/bwa-mem.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/check_trimming.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/cp.cwl fail: cp: `entryname` must be a string, not null
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/fastq_RG_extraction.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/fastqc.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/gather-bwa-sam-files.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/gatk-ApplyBQSR_v2.cwl fail: gatk-ApplyBQSR_v2: `inputs.OUTPUT + "." + inputs.intervals.basename.split("-")[0] + ".bqsr.bam"` is JavaScript, which needs InlineJavascriptRequirement
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/gatk-ApplyVQSR.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/gatk-BaseRecalibrator.cwl fail: gatk-BaseRecalibrator: JavaScript error in `inputs.OUTPUT + "." + inputs.intervals.basename.split("-")[0] + ".table"`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/gatk-CombineGVCFs.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/gatk-GenotypeGVCFs.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/gatk-HaplotypeCaller_multiple_v1.cwl fail: gatk-HaplotypeCaller_multiple_v1: `inputs.OUTPUT + "." + inputs.intervals.basename.split("-")[0] + ".raw.g.vcf.gz"` is JavaScript, which needs InlineJavascriptRequirement
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/gatk-MakeSitesOnlyVcf.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/gatk-MergeVCFs.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/gatk-MergeVCFs_vqsr.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/gatk-SplitIntervals.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/gatk-VariantRecalibrator.cwl fail: gatk-VariantRecalibrator: JavaScript error in `inputs.output_name + "." + inputs.intervals.basename.split("-")[0] + ".vcf.gz"`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/get-raw-files.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/picard-AddOrReplaceReadGroups.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/picard-MarkDuplicates.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/rename.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/samtools-fixmate.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/samtools-flagstat.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/samtools-index.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/samtools-sort.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/samtools-view.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/split-paired-read1-read2.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/split-single-paired_v2.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/table-annovar.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/trim-galore.cwl fail: trim-galore: `"*" + inputs.trim_suffix` is JavaScript, which needs InlineJavascriptRequirement
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/workflows/gatk-bqsr-subworkflow.cwl ok 2
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/workflows/gatk-haplotypecaller-subworkflow.cwl ok 2
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/workflows/gatk_single-sample_bqsr_cnn_hard-filtering.cwl ok 46
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/bcftools-concat.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/bcftools-norm.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/bcftools-view.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/bgzip.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/bwa-mem.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/check_trimming.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/cp.cwl fail: cp: `entryname` must be a string, not null
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/fastq_RG_extraction.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/fastqc.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/gather-bwa-sam-files_single_v2.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/gatk-ApplyBQSR.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/gatk-BaseRecalibrator.cwl fail: gatk-BaseRecalibrator: JavaScript error in `inputs.OUTPUT + "." + inputs.intervals.basename.split("-")[0] + ".table"`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/gatk-CNNScoreVariants.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/gatk-FilterVariantTranches.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/gatk-GatherBQSRReports.cwl fail: gatk-GatherBQSRReports: `inputs.output_file + ".bqsr.table"` is JavaScript, which needs InlineJavascriptRequirement
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/gatk-HaplotypeCaller_single_v1.cwl fail: gatk-HaplotypeCaller_single_v1: `inputs.OUTPUT + "." + inputs.intervals.basename.split("-")[0] + ".raw.vcf.gz"` is JavaScript, which needs InlineJavascriptRequirement
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/gatk-MergeVCFs.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/gatk-SelectVariants.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/gatk-SplitIntervals.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/gatk-VariantFiltration.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/get-raw-files.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/picard-AddOrReplaceReadGroups.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/picard-MarkDuplicates.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/picard-MergeVcfs.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/rename.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/samtools-fixmate.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/samtools-flagstat.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/samtools-index.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/samtools-sort.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/samtools-view.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/split-paired-read1-read2.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/split-single-paired_v2.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/tabix.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/table-annovar.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/trim-galore.cwl fail: trim-galore: `"*" + inputs.trim_suffix` is JavaScript, which needs InlineJavascriptRequirement
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/workflows/RNA-Seq_workflow.cwl ok 17
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/DESeq2.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/ballgown.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/check-selected-steps.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/collect-hisat2-sam-files.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/cp.cwl fail: cp: `entryname` must be a string, not null
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/fastqc.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/fastx-trimmer.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/featureCounts.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/get-raw-files.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/hisat2.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/rename.cwl fail: rename: the input `input_file` is not a valid File?: "null"
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/samtools-sort.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/samtools-view.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/split-single-paired.cwl ok 0
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/stringtie-for-ballgown.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/stringtie.cwl ok 1
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/trim-galore.cwl fail: trim-galore: `"*" + inputs.trim_suffix` is JavaScript, which needs InlineJavascriptRequirement
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/bedgraph_sort.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/bedtools_bamtobed_pe.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/bedtools_bedtobam.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/bedtools_genomecov.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/bedtools_slop_clip.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/bowtie2.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/deeptools_bamCoverage.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/deeptools_plotCoverage.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/deeptools_plotFingerprint.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/fastqc.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/generate_atac_signal_tags.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/kentutils_bedGraphToBigWig.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/macs2_callpeak_atac.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/multiqc.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/multiqc_hack.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/nucleoatac.cwl fail: nucleoatac: `inputs.output_basename + ".stout"` is JavaScript, which needs InlineJavascriptRequirement
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/phantompeakqualtools.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/picard_markdup.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/plot_frag_size_distr.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/samtools_flagstat.cwl fail: samtools_flagstat: `inputs.bam.nameroot + inputs.output_suffix` is JavaScript, which needs InlineJavascriptRequirement
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/samtools_index_hack.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/samtools_merge.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/samtools_sort.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/samtools_sort_name.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/samtools_view_count_alignments.cwl fail: samtools_view_count_alignments: `inputs.bam.nameroot + "_aln_read_counts.txt"` is JavaScript, which needs InlineJavascriptRequirement
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/samtools_view_filter.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/samtools_view_sam2bam.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/trim_galore.cwl ok 1
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/workflow_modules/bed_to_coverage_track.cwl ok 4
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/workflow_modules/merge_duprem_filter.cwl ok 9
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/workflow_modules/trim_and_map.cwl ok 5
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/workflows/ATACseq.cwl ok 45
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/workflows/ATACseq_aligned.cwl ok 33
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/workflows/packed/ATACseq.cwl ok 45
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/workflows/packed/ATACseq_aligned.cwl ok 33
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/bedgraph_sort.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/bedtools_bamtobed_pe.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/bedtools_bedtobam.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/bedtools_genomecov.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/bedtools_slop_clip.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/bowtie2.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/deeptools_bamCoverage.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/deeptools_plotCoverage.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/deeptools_plotFingerprint.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/fastqc.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/frag_size_decision_maker.cwl ok 0
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/macs2_callpeak.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/multiqc.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/multiqc_hack.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/phantompeakqualtools.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/picard_markdup.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/plot_frag_size_distr.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/samtools_index_hack.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/samtools_merge.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/samtools_sort.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/samtools_sort_name.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/samtools_view_count_alignments.cwl fail: samtools_view_count_alignments: `inputs.bam.nameroot + "_aln_read_counts.txt"` is JavaScript, which needs InlineJavascriptRequirement
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/samtools_view_filter.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/samtools_view_sam2bam.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/tn5_overhang_correction.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/trim_galore.cwl ok 1
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflow_modules/chip_qc.cwl ok 3
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflow_modules/get_spike_in_counts.cwl ok 6
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflow_modules/merge_duprem_filter.cwl ok 7
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflow_modules/merge_filter.cwl ok 6
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflow_modules/trim_and_map.cwl ok 5
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/ACTseq.cwl ok 18
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/ACTseq_spike_in.cwl ok 24
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/CUTnRUN.cwl ok 23
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/ChIPmentation.cwl ok 19
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/ChIPseq.cwl ok 17
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/ChIPseq_spike_in.cwl ok 23
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/packed/ACTseq.cwl ok 18
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/packed/CUTnRUN.cwl ok 22
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/packed/ChIPmentation.cwl ok 19
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/packed/ChIPseq.cwl ok 17
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/packed/ChIPseq_spike_in.cwl ok 23
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/assembly-qc/blast.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/assembly-qc/fasta-trimming.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/bwa/bwa.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/fastp/fastp.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/megahit/megahit_paired.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/megahit/megahit_single.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/metaspades/metaspades.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/stats/base_count.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/stats/bwa-index.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/stats/bwa-mem.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/stats/metabat-jgi-summarise.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/stats/samtools-sort.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/stats/samtools-view.cwl fail: samtools-view: the input `cigar` is not a valid int?: false
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/stats/stats-report.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/utils/cat.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/utils/count_fastq.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/utils/detect_assembler.cwl ok 0
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/utils/fill_reads2.cwl ok 0
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/utils/restore_reads2.cwl fail: restore_reads2: JavaScript error in `if ( inputs.reads2[0] === null ) {
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/utils/return_directory.cwl ok 0
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/coassembly.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metagenome_multiplereads_qc.cwl fail: metagenome_multiplereads_qc: the input `host_genome` is not a valid File?: "hg38.fa"
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metagenome_qc.cwl fail: metagenome_qc: the input `host_genome` is not a valid File?: "hg38.fa"
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/post_assembly.cwl ok 5
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/post_assembly_qc.cwl ok 3
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/stats.cwl ok 2
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_join.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_sorting.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/Diamond-Post-Processing/postprocessing_subwf.cwl ok 2
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/Diamond.blastp-v0.9.21.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/Diamond.blastp-v0.9.21_docker.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/Diamond.blastx-v0.9.21.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/Diamond.makedb-v0.9.21.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/diamond-subwf.cwl ok 3
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/EggNOG/eggNOG/eggnog.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/EggNOG/eggnog-subwf.cwl ok 3
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/GFF/gff_generation.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Genome_properties/genome_properties.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Genome_properties/gp_docker.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/KEGG_analysis/KEGG_pathways/kegg_pathways.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/KEGG_analysis/Modification/modification_table.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/KEGG_analysis/Parsing_hmmscan/parsing_hmmscan.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/antismash/chunking_antismash_with_conditionals/antismash/antismash_v4.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/antismash/chunking_antismash_with_conditionals/antismash_chunking_subwf.cwl ok 14
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/antismash/chunking_antismash_with_conditionals/antismash_subwf.cwl ok 3
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/antismash/chunking_antismash_with_conditionals/check_value/check_value.cwl ok 0
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/antismash/chunking_antismash_with_conditionals/filtering_fasta_for_antismash.cwl ok 3
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/antismash/chunking_antismash_with_conditionals/no_antismash_subwf.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/antismash/chunking_antismash_with_conditionals/post-processing/fix_embl_gbk/change_output.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/antismash/chunking_antismash_with_conditionals/post-processing/fix_geneclusters_txt/change_geneclusters_txt.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/antismash/chunking_antismash_with_conditionals/post-processing/gff_antismash/antismash_to_gff.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/antismash/chunking_antismash_with_conditionals/post-processing/reformat_antismash/reformat_antismash.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/antismash/chunking_antismash_with_conditionals/rename_contigs/rename_contigs.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/antismash/chunking_antismash_with_conditionals/wf_antismash.cwl ok 4
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/antismash/move_antismash_summary/move_antismash_summary.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/index_fasta/fasta_index.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Combined_gene_caller/CGC/combined_gene_caller.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Combined_gene_caller/FGS.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Combined_gene_caller/post-processing.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Combined_gene_caller/predict_proteins_assemblies.cwl ok 3
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Combined_gene_caller/predict_proteins_reads.cwl ok 2
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Combined_gene_caller/prodigal.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/GO-slim/go_summary.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/InterProScan/InterProScan-v5-none_docker.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/InterProScan/InterProScan-v5.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Pfam-Parse/pfam_annotations.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/biom-convert/biom-convert.cwl fail: biom-convert: JavaScript error in `var ext = "";
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/biom-convert/empty_tax.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/cmsearch-deoverlap/cmsearch-deoverlap-v0.02.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/cmsearch/infernal-cmsearch-v1.1.2.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/easel/esl-sfetch-index.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/easel/esl-sfetch-manyseqs.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/extract-coords/extract-coords_awk.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/get_subunits_coords/get_subunits_coords.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/get_subunits_fasta/get_subunits.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/krona/krona.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/mapseq/mapseq.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/mapseq2biom/mapseq2biom.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/pull_ncrnas/pull_ncrnas.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Raw_reads/mOTUs/clean_motus_output.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Raw_reads/mOTUs/mOTUs.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/SeqPrep/seqprep.cwl fail: seqprep: JavaScript error in `return inputs.namefile.nameroot.split('_')[0] + '_MERGED.fastq.gz'`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :5:3)
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Trimmomatic/Trimmomatic-v0.36-PE.cwl fail: Trimmomatic-v0.36-PE: JavaScript error in `inputs.reads2.nameroot`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Trimmomatic/Trimmomatic-v0.36-SE.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/chunks/dna_chunker/fasta_chunker.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/chunks/protein_chunker.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/chunks/remove_headers.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/hmmer/hmmscan/chunking-subwf-hmmscan.cwl ok 4
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/hmmer/hmmscan/hmmscan-subwf.cwl ok 2
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/hmmer/hmmscan/hmmscan.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/hmmer/hmmscan_tab_modification/hmmscan_tab_modification.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/hmmer/hmmsearch.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/mask-for-ITS/bedtools.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/mask-for-ITS/format-bedfile.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/mask-for-ITS/suppress_tax.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/qc-filtering/qc-filtering.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/qc-stats/qc-stats.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/summaries/functional_stats.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/summaries/write_summaries.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/add_header/add_header.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/clean_fasta_headers.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/concatenate.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/count_fasta.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/count_lines/count_fastq_exp.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/count_lines/count_lines.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/count_number_lines.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/empty-fasta/empty_fasta.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/fasta_chunker/fasta_chunker.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/fastp.cwl fail: fastp: JavaScript error in `inputs.fastq2.nameroot`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/fastq_to_fasta/fastq_to_fasta.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/generate_checksum/generate_checksum.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/hmmscan_tab_modification/hmmscan_tab_modification.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/make_csv/make_csv.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/make_tab_sep.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/move.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/multiple-gunzip.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/pigz/gzip.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/qc-flag.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/result-file-chunker/result_chunker.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/return_directory.cwl ok 0
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/touch_file.cwl ok 1
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/amplicon-wf--v.5-cond.cwl fail: before-qc/overlap_reads/filter_paired: JavaScript error in `inputs.fastq2.nameroot`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/assembly-wf--v.5-cond.cwl ok 8
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/amplicon/amplicon-1.cwl fail: overlap_reads/filter_paired: JavaScript error in `inputs.fastq2.nameroot`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/amplicon/amplicon-2.cwl ok 26
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/assembly/assembly-1.cwl ok 8
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/assembly/assembly-2.cwl fail: cgc/combine: dotproduct scatter needs lists of equal length
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/raw-reads/raw-reads-1.cwl fail: overlap_reads/filter_paired: JavaScript error in `inputs.fastq2.nameroot`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/raw-reads/raw-reads-2.cwl fail: cgc/combine: dotproduct scatter needs lists of equal length
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/raw-reads-wf--v.5-cond.cwl fail: before-qc/overlap_reads/filter_paired: JavaScript error in `inputs.fastq2.nameroot`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/amplicon/ITS-wf.cwl ok 6
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/amplicon/trim_and_reformat_reads.cwl ok 6
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/amplicon/trimming-not-empty-subwf.cwl ok 5
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/CGC-subwf.cwl fail: combine: dotproduct scatter needs lists of equal length
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/change_formats_and_names.cwl ok 2
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/cmsearch-multimodel-assembly.cwl ok 3
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/deal_with_functional_annotation.cwl ok 10
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/func_ann_and_post_processing-subwf.cwl ok 32
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/functional_annotation.cwl ok 11
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/kegg_analysis.cwl ok 3
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/chunking-subwf-IPS.cwl ok 3
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/chunking-subwf-hmmsearch.cwl ok 4
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/classify-otu-visualise.cwl ok 5
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/cmsearch-condition.cwl fail: cmsearch_assembly: `inputs.type == 'assembly'` is JavaScript, which needs InlineJavascriptRequirement
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/cmsearch-multimodel-raw-data.cwl ok 6
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/final_chunking.cwl ok 2
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/func_summaries.cwl ok 2
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/other_ncrnas.cwl ok 6
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/raw_reads/CGC-subwf.cwl fail: combine: dotproduct scatter needs lists of equal length
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/raw_reads/func_ann_and_post_proccessing-subwf.cwl ok 14
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/raw_reads/functional_annotation_raw.cwl ok 7
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/raw_reads/mOTUs-workflow.cwl ok 2
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/rna_prediction-sub-wf.cwl fail: find_ribosomal_ncRNAs: all sources of `concatenate_matches` are null
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/seqprep-subwf.cwl fail: filter_paired: JavaScript error in `inputs.fastq2.nameroot`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+realworld/sources/github.com__HDRUK__rquest-omop-worker-workflows/arm/rquest-omop-worker.cwl ok 1
+realworld/sources/github.com__HDRUK__rquest-omop-worker-workflows/arm/workflow-entrypoint.cwl ok 1
+realworld/sources/github.com__HDRUK__rquest-omop-worker-workflows/x86/rquest-omop-worker.cwl ok 1
+realworld/sources/github.com__HDRUK__rquest-omop-worker-workflows/x86/workflow-entrypoint.cwl ok 1
+realworld/sources/github.com__Health-Informatics-UoN__beacon-omop-worker-workflows/beacon-omop-worker-survival.cwl ok 1
+realworld/sources/github.com__Health-Informatics-UoN__beacon-omop-worker-workflows/beacon-omop-worker.cwl ok 1
+realworld/sources/github.com__Health-Informatics-UoN__beacon-omop-worker-workflows/workflow_entrypoint.cwl ok 1
+realworld/sources/github.com__Health-Informatics-UoN__beacon-omop-worker-workflows/workflow_entrypoint_survival.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/check_threshold.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/chop_struct2domains.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/compare_cath_pfam.cwl fail: compare_cath_pfam: JavaScript error in `if (typeof inputs.truedomains_file === 'string') {return inputs.truedomains_file} else {return [ inputs.truedomains_file.basename]}`: TypeError: cannot convert 'null' or 'undefined' to object (u
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/crossmapped_per_unp_dom.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/download_data.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/filter_align_scores.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/gather_lost_resmap.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/get_family_ids.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/list_true_domains.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/merge_df2json.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/move_files.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/separate_pfam.cwl ok 1
+realworld/sources/github.com__PeptidoMexico__peptidomexico-open-science/workflows/cwl/repro-lab-kit-workflow.cwl ok 1
+realworld/sources/github.com__PeptidoMexico__peptidomexico-open-science/workflows/cwl/repro-lab-kit.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/00_fastp.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/01_megahit.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/02_rename.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/03_seqkit_stats.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/04_prodigal.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/05_bwa_mem_index.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/06_bwa_mem.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/07_samtools_sort.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/08_samtools_flagstat.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/09_diamond_index.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/09_makeblastdb_rRNA.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/10_blastn_rRNA_alignment.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/10_blastn_rRNA_filter1.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/10_blastn_rRNA_filter2.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/11_diamond_uniprot_alignment.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/11_diamond_uniprot_filter1.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/11_diamond_uniprot_filter2.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/12_faablast2gtf4tpm.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/13_subread.cwl ok 1
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Workflow/annotation_sw.cwl ok 11
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Workflow/blastn_rRNA_ssw.cwl ok 6
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Workflow/diamond_protein_ssw.cwl ok 4
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Workflow/main_w.cwl ok 22
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Workflow/megahit_prodigal_sw.cwl ok 4
+realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Workflow/metagenomic_contig_mapping_sw.cwl ok 3
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/Tools/01_split_genome_seqs.cwl ok 1
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/Tools/02_trimming_fastp_pe.cwl ok 1
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/Tools/02_trimming_fastp_se.cwl ok 1
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/Tools/03_decompressed_pigz.cwl ok 1
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/Tools/04_make_star_index.cwl ok 1
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/Tools/04_make_star_index_gff.cwl ok 1
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/Tools/05_star4cageseq_analysis_pe.cwl ok 1
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/Tools/05_star4cageseq_analysis_se.cwl ok 1
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/Tools/06_combined_exec_TSSr.cwl ok 1
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/Tools/07_join_all_assignedClusters.cwl ok 1
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/Tools/08_uniq_tss_feature.cwl ok 1
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/Tools/09_update_gtf.cwl ok 1
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/01_trimming_fastq_subworkflow_pe.cwl ok 1
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/01_trimming_fastq_subworkflow_se.cwl ok 1
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/02_star_index_subworkflow.cwl ok 2
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/03_star4cageseq_analysis_subworkflow_pe.cwl ok 1
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/03_star4cageseq_analysis_subworkflow_se.cwl ok 1
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/04_tssr_subworkflow_pe.cwl ok 4
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/cageseq_gtf_update_pe.cwl ok 9
+realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/emep_workflow.cwl fail: realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/emep_workflow.cwl:49:10: cannot read `https://raw.githubusercontent.com/UoMResearchIT/atmos-tools-library/main/cwl/general/create_dir_from_filelist.cw
+realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/era5_workflow.cwl fail: realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/era5_workflow.cwl:62:10: cannot read `https://raw.githubusercontent.com/UoMResearchIT/atmos-tools-library/main/cwl/Met_Downloads/era5_download.cwl`: o
+realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/geogrid_workflow.cwl fail: realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/geogrid_workflow.cwl:35:10: cannot read `https://raw.githubusercontent.com/UoMResearchIT/atmos-tools-library/main/cwl/WPS/geogrid.cwl`: only file URLs
+realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/wps_workflow.cwl fail: realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/wps_workflow.cwl:75:10: cannot read `https://raw.githubusercontent.com/UoMResearchIT/atmos-tools-library/main/cwl/WPS/create_metgrid_dir.cwl`: only fi
+realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/wrf_workflow.cwl fail: realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/wrf_workflow.cwl:49:10: cannot read `https://raw.githubusercontent.com/UoMResearchIT/atmos-tools-library/main/cwl/WRF/create_run_dir.cwl`: only file U
+realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/wrf_emep_full_workflow.cwl fail: realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/era5_workflow.cwl:62:10: cannot read `https://raw.githubusercontent.com/UoMResearchIT/atmos-tools-library/main/cwl/Met_Downloads/era5_download.cwl`: o
+realworld/sources/github.com__aish181095__PSVD-transcriptomics-workflow/workflow/DEG.cwl ok 1
+realworld/sources/github.com__aish181095__PSVD-transcriptomics-workflow/workflow/ME-network.cwl ok 1
+realworld/sources/github.com__aish181095__PSVD-transcriptomics-workflow/workflow/gsea_analysis.cwl ok 1
+realworld/sources/github.com__aish181095__PSVD-transcriptomics-workflow/workflow/module_ora.cwl ok 1
+realworld/sources/github.com__aish181095__PSVD-transcriptomics-workflow/workflow/pre-processing.cwl ok 1
+realworld/sources/github.com__aish181095__PSVD-transcriptomics-workflow/workflow/quality_control.cwl ok 1
+realworld/sources/github.com__aish181095__PSVD-transcriptomics-workflow/workflow/wgcna.cwl ok 1
+realworld/sources/github.com__aish181095__PSVD-transcriptomics-workflow/workflow/workflow.cwl ok 7

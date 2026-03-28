@@ -10,9 +10,50 @@ use granit_parser::{Event, Parser, ScalarStyle, ScanError, Span, Tag, options};
 use crate::error::Error;
 use crate::node::{Entry, Location, Node, Value};
 
+/// The message of the parser for a continuation line of a quoted scalar that is not indented
+/// more than the key of the scalar.
+const QUOTED_INDENTATION: &str = "invalid indentation in multiline quoted scalar";
+
+/// The message of the parser for a lone `-` in a flow collection, like `[cat, -]`.
+const LONE_DASH: &str = "plain scalar cannot start with '-'";
+
 /// Reads the first document of a YAML stream, resolving scalars with the YAML 1.2 core schema.
 /// JSON is read as YAML. Later documents in the stream are not read, as in Schema Salad.
+///
+/// Two forms that the YAML 1.2 grammar rejects but ruamel.yaml (and so cwltool) accepts are
+/// read as ruamel.yaml reads them, by changing the text and reading it again: continuation
+/// lines of quoted scalars that are not indented more than their key get indented further,
+/// which folding drops again, and a lone `-` in a flow collection gets quoted.
 pub fn read(text: &str, file: &Arc<str>) -> Result<Node, Error> {
+    let mut text = std::borrow::Cow::Borrowed(text);
+    for _ in 0..256 {
+        let error = match read_once(&text, file) {
+            Err(error) if error.location.line > 0 => error,
+            result => return result,
+        };
+        let line = error.location.line as usize - 1;
+        let column = error.location.column as usize - 1;
+        let mut lines: Vec<&str> = text.split('\n').collect();
+        let Some(found) = lines.get(line) else {
+            return Err(error);
+        };
+        let changed = if error.message == QUOTED_INDENTATION {
+            format!(" {found}")
+        } else if error.message.starts_with(LONE_DASH)
+            && found.get(column..column + 1) == Some("-")
+            && found[column + 1..].starts_with([',', ']', '}', ' '])
+        {
+            format!("{}\"-\"{}", &found[..column], &found[column + 1..])
+        } else {
+            return Err(error);
+        };
+        lines[line] = &changed;
+        text = std::borrow::Cow::Owned(lines.join("\n"));
+    }
+    read_once(&text, file)
+}
+
+fn read_once(text: &str, file: &Arc<str>) -> Result<Node, Error> {
     let mut parser = Parser::new_from_str_with_options(text, options! { emit_comments: false });
     let mut builder = Builder {
         file,

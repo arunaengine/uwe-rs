@@ -156,3 +156,26 @@ fn rejects_complex_keys() {
     );
     assert_eq!(failure("~: c\n").message, "a map key must not be null");
 }
+
+#[test]
+fn accepts_quoted_scalars_that_end_at_the_indentation_of_their_key() {
+    let text = "steps:\n    a:\n        valueFrom: '${\n            return 1;\n        }'\n";
+    let node = parse(text);
+    let step = node.get("steps").and_then(|steps| steps.get("a"));
+    let value = step
+        .and_then(|step| step.get("valueFrom"))
+        .expect("a value");
+    assert_eq!(value.value, Value::String("${ return 1; }".into()));
+    assert_eq!((value.location.line, value.location.column), (3, 20));
+}
+
+#[test]
+fn accepts_a_lone_dash_in_flow_lists() {
+    let node = parse("arguments: [odgi, build, -o, -, -t]\n");
+    let arguments = node
+        .get("arguments")
+        .and_then(Node::as_list)
+        .expect("a list");
+    let words: Vec<&str> = arguments.iter().filter_map(Node::as_str).collect();
+    assert_eq!(words, ["odgi", "build", "-o", "-", "-t"]);
+}

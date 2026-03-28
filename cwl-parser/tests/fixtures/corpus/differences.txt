@@ -5,32 +5,7 @@ conformance/v1.2/tests/conditionals/cond-wf-005_nojs.cwl types: cwltool's type c
 realworld/collections/github.com__Barski-lab__workflows/devel/mike/peak_intersect.cwl types: cwltool's type checker finds a source that does not fit its sink
 realworld/collections/github.com__Barski-lab__workflows/devel/mulloy/heatmap.cwl types: cwltool's type checker finds a source that does not fit its sink
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/tb-profiler/tb-profiler-profile.cwl requirement: cwltool cannot satisfy SoftwareRequirement as a requirement
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/aml_trio_cle.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/aml_trio_cle_gathered.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/downsample_and_recall.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/gathered_downsample_and_recall.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_exome.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_exome_gvcf.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_exome_hla_typing.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_wgs.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_wgs_gvcf.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/immuno.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/rnaseq_star_fusion.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/rnaseq_star_fusion_with_xenosplit.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/gatk_haplotypecaller_iterator.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/germline_detect_variants.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__genome__analysis-workflows/definitions/tools/star_fusion_detect.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/kfdrc_bwamem_subwf.cwl types: cwltool's type checker finds a source that does not fit its sink
-realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/python_vardict_interval_split.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/expression_tools/group_waltz_files.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/ACCESS_pipeline.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/QC/qc_workflow.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/module-3.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/snps_and_indels.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/standard_bam_to_collapsed_qc.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/vcf_concat.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/waltz/waltz-workflow.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/waltz/waltz_workflow_all_bams.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
 realworld/collections/github.com__ncbi__pgap/progs/unit_tests/test_cluster_blastp_wnode/test.cwl types: cwltool's type checker finds a source that does not fit its sink
 realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_illumina_assembly.cwl types: cwltool's type checker finds a source that does not fit its sink
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/FastQC/workflows/FastQC_workflow_v1.cwl types: cwltool's type checker finds a source that does not fit its sink
@@ -44,13 +19,8 @@ realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workfl
 realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/wrf_emep_full_workflow.cwl remote: a `run` target is a remote URL, and the file source reads only files
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/collect-seqs.cwl requirement: an Arvados requirement class, kept as written
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/from_sparql.cwl requirement: an Arvados requirement class, kept as written
-realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/odgi-build.cwl yaml: the YAML parser rejects a lone `-` in a flow list that ruamel.yaml accepts
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/query-to-gfa.cwl requirement: an Arvados requirement class, kept as written
-realworld/sources/github.com__yonesora56__plant2human/Workflow/10_foldseek_easy_search_swf_permissive.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/sources/github.com__yonesora56__plant2human/Workflow/plant2human_v3_permissive.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
 realworld/sources/gitlab.com__m-unlock__cwl/tools/interproscan/interproscan.cwl requirement: cwltool cannot satisfy SoftwareRequirement as a requirement
-realworld/workflowhub/1206/Workflow/10_foldseek_easy_search_swf_permissive.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
-realworld/workflowhub/1206/Workflow/plant2human_v3_permissive.cwl yaml: the YAML parser rejects a quoted scalar indentation that ruamel.yaml accepts
 realworld/workflowhub/455/workflows/emep_workflow.cwl remote: a `run` target is a remote URL, and the file source reads only files
 realworld/workflowhub/455/workflows/era5_workflow.cwl remote: a `run` target is a remote URL, and the file source reads only files
 realworld/workflowhub/455/workflows/geogrid_workflow.cwl remote: a `run` target is a remote URL, and the file source reads only files

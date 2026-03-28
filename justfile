@@ -140,6 +140,58 @@ cwl-corpus:
 cwl-corpus-test:
 	CWL_CORPUS="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}" cargo test --release --locked -p cwl-parser --test corpus -- --ignored
 
+# Fetches the data files of the CWL conformance tests (inputs like `whale.txt`), which the
+# text-only corpus leaves out, into a folder of their own, so that the corpus stays as
+# `cwltool --validate` saw it. The trees come from the corpus checkouts, the files from
+# raw.githubusercontent.com; files over 1 MiB are left out, as in the corpus.
+cwl-conformance-data:
+	#!/usr/bin/env -S uv run -q --with dulwich python3
+	import os, subprocess, urllib.parse
+	from dulwich.object_store import iter_tree_contents
+	from dulwich.repo import Repo
+	home = os.path.expanduser("~/.cache/iunctus/corpus")
+	corpus = os.environ.get("CWL_CORPUS") or f"{home}/cwl"
+	data = os.environ.get("CWL_CONFORMANCE_DATA") or f"{home}/cwl-conformance-data"
+	for line in open("cwl-parser/tests/fixtures/corpus/revisions.txt"):
+	    if line.startswith("#") or not line.startswith("conformance/"):
+	        continue
+	    path, url, ref, commit, *prefixes = line.split()
+	    folders = [prefix for prefix in prefixes if prefix.endswith("/")]
+	    repo = Repo(os.path.join(corpus, path))
+	    for entry in iter_tree_contents(repo.object_store, repo[commit.encode()].tree):
+	        name = entry.path.decode()
+	        target = os.path.join(data, path, name)
+	        if not any(name.startswith(folder) for folder in folders):
+	            continue
+	        if os.path.lexists(os.path.join(corpus, path, name)) or os.path.lexists(target):
+	            continue
+	        raw = url.replace("https://github.com/", "https://raw.githubusercontent.com/")
+	        body = subprocess.run(["curl", "-sfL", "--retry", "3", f"{raw}/{commit}/{urllib.parse.quote(name)}"],
+	                              capture_output=True, check=True).stdout
+	        if len(body) > 1 << 20:
+	            continue
+	        os.makedirs(os.path.dirname(target), exist_ok=True)
+	        if entry.mode == 0o120000:
+	            os.symlink(body.decode(), target)
+	            continue
+	        with open(target, "wb") as file:
+	            file.write(body)
+	        if entry.mode & 0o111:
+	            os.chmod(target, 0o755)
+	    repo.close()
+
+# Runs every CWL conformance test through the driver and the mock executor and compares the
+# outcomes with the recorded ones; `just cwl-conformance-data` fetches the test data first.
+cwl-conformance-test:
+	CWL_CORPUS="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}" \
+	CWL_CONFORMANCE_DATA="${CWL_CONFORMANCE_DATA:-$HOME/.cache/iunctus/corpus/cwl-conformance-data}" \
+	cargo test --release --locked -p cwl-runtime --test conformance -- --ignored
+
+# Builds the execution graph of every CWL document of the corpus that cwltool validates, with
+# placeholder inputs, and compares the outcomes with the recorded ones.
+cwl-graph-corpus-test:
+	CWL_CORPUS="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}" cargo test --release --locked -p cwl-runtime --test graph_corpus -- --ignored
+
 # Fetches the text-only Snakemake corpus at the commits the corpus test expects.
 snakemake-corpus:
 	#!/usr/bin/env bash

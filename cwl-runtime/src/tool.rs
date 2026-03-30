@@ -318,7 +318,17 @@ pub fn task(
         let command = vec!["/bin/sh".to_owned(), "-c".to_owned(), script.clone()];
         (command, Some(script))
     } else {
-        (args.into_iter().map(|arg| arg.text).collect(), None)
+        let command: Vec<String> = args.into_iter().map(|arg| arg.text).collect();
+        // `bash -c <script>` runs a script too.
+        let script = match command.as_slice() {
+            [shell, flag, script, ..]
+                if flag == "-c" && matches!(files::basename_of(shell).as_str(), "sh" | "bash") =>
+            {
+                Some(script.clone())
+            }
+            _ => None,
+        };
+        (command, script)
     };
 
     // Environment.
@@ -1458,7 +1468,12 @@ impl Collector<'_> {
                 if !primary.is_file() {
                     continue;
                 }
-                let value = self.evaluate(format, primary)?;
+                let value = match self.evaluate(format, primary) {
+                    Ok(value) => value,
+                    // The format is metadata; over the inputs of a mock run it may not exist.
+                    Err(_) if self.access.assume_present => Value::Null,
+                    Err(error) => return Err(error),
+                };
                 if let (Value::Map(map), Value::String(format)) = (&mut **primary, value) {
                     map.insert("format".into(), Value::String(format));
                 }

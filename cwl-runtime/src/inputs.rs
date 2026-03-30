@@ -27,10 +27,14 @@ pub struct Setting<'a> {
     /// In a run on placeholder inputs, the folder URL of placeholder files: a required input
     /// that gets null, as optional inputs are null there, gets a placeholder too.
     pub placeholders: Option<&'a str>,
+    /// Whether the process is the one the run starts with. On placeholder inputs, its defaults
+    /// that do not fit their type give way to placeholders, as a real job has to give them.
+    pub toplevel: bool,
 }
 
 /// Fills in and checks the input object of a process.
 pub fn prepare(process: &Process, mut job: Map, setting: &Setting<'_>) -> Result<Map, String> {
+    let mut defaulted = Vec::new();
     for input in &process.inputs {
         let name = short_name(&input.id).to_owned();
         let present = job.get(&name).is_some_and(|value| !value.is_null());
@@ -38,6 +42,7 @@ pub fn prepare(process: &Process, mut job: Map, setting: &Setting<'_>) -> Result
             continue;
         }
         let value = if let Some(default) = &input.default {
+            defaulted.push(name.clone());
             Value::from_node(default)
         } else if setting.types.optional(&input.value_type) {
             Value::Null
@@ -56,11 +61,14 @@ pub fn prepare(process: &Process, mut job: Map, setting: &Setting<'_>) -> Result
     for input in &process.inputs {
         let name = short_name(&input.id);
         let value = job.get(name).unwrap_or(&Value::Null);
+        let replaceable = holds_null(value)
+            || (setting.toplevel && defaulted.iter().any(|defaulted| defaulted == name));
         if !setting.types.matches(&input.value_type, value)
             && let Some(base) = setting.placeholders
-            && holds_null(value)
+            && replaceable
         {
-            // Nulls of optional inputs of a run on placeholder inputs, merged into a list.
+            // Nulls of optional inputs of a run on placeholder inputs, merged into a list, and
+            // defaults of the wrong type.
             let mut value = placeholder::input(input, setting.types, base, false);
             files::normalize(&mut value)?;
             job.insert(name.to_owned(), value);
@@ -74,8 +82,7 @@ pub fn prepare(process: &Process, mut job: Map, setting: &Setting<'_>) -> Result
             ));
         }
     }
-    let deep = setting.load_listing == Some(LoadListing::DeepListing)
-        || (setting.load_listing.is_none() && process.version == Version::V1_0);
+    let deep = setting.load_listing == Some(LoadListing::DeepListing);
     let shallow = setting.load_listing == Some(LoadListing::ShallowListing);
     if deep || shallow {
         for (_, value) in job.iter_mut() {

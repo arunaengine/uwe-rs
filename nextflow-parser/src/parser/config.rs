@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use super::{Parse, Parser, is_name};
-use crate::Span;
-use crate::ast::{Config, ConfigApply, ConfigStatement, Name, StatementKind};
+use crate::ast::{Config, ConfigApply, ConfigCatch, ConfigStatement, Item, Name, StatementKind};
 use crate::token::TokenKind;
+use crate::{Diagnostic, Span};
 
 impl Parser<'_> {
     /// The `compilationUnit` rule of config files.
@@ -24,11 +24,13 @@ impl Parser<'_> {
                 let span = self.span_from(start);
                 Ok(ConfigStatement::Include { path, span })
             }
-            TokenKind::If | TokenKind::Try | TokenKind::Def => self.invalid_statement(),
+            TokenKind::If => self.legacy_if(nested),
+            TokenKind::Try => self.legacy_try(nested),
+            TokenKind::Def => self.legacy_definition(),
             TokenKind::CapitalizedIdentifier | TokenKind::PrimitiveType
                 if self.at_declaration() =>
             {
-                self.invalid_statement()
+                self.legacy_definition()
             }
             TokenKind::Identifier if nested && self.nth(1) == TokenKind::Colon => self.selector(),
             _ => self.config_path(),
@@ -41,23 +43,10 @@ impl Parser<'_> {
         is_name(self.nth(1)) || self.nth(1) == TokenKind::Less || array
     }
 
-    /// The `invalidStatement` rule: statements that scripts allow but config files do not.
-    fn invalid_statement(&mut self) -> Parse<ConfigStatement> {
-        let statement = self.statement()?;
-        let message = match statement.kind {
-            StatementKind::If { .. } => "If statements cannot be mixed with config statements",
-            StatementKind::Try { .. } => "Try-catch blocks cannot be mixed with config statements",
-            StatementKind::Declaration { .. } => {
-                "Variable declarations cannot be mixed with config statements"
-            }
-            _ => "Invalid config statement",
-        };
-        Err(self.error_at(message, statement.span))
-    }
-
     /// Assignments like `process.cpus = 2`, blocks like `env { ... }` and the incomplete
     /// statements of the `configIncomplete` rule, which all start with a path.
     fn config_path(&mut self) -> Parse<ConfigStatement> {
+        let position = self.position;
         let start = self.current().span;
         let mut path = vec![self.config_primary()?];
         let mut trailing = false;
@@ -86,7 +75,7 @@ impl Parser<'_> {
             {
                 Err(self.error_at("Incomplete statement", self.span_from(start)))
             }
-            _ => Err(self.unexpected()),
+            _ => self.legacy_statement(position),
         }
     }
 
@@ -195,5 +184,133 @@ impl Parser<'_> {
             body,
             span,
         })
+    }
+
+    /// A legacy `if` statement around config statements, with `else if` and `else`.
+    fn legacy_if(&mut self, nested: bool) -> Parse<ConfigStatement> {
+        let start = self.bump().span;
+        self.expect(TokenKind::LeftParen, "'(' after 'if'")?;
+        self.skip_newlines();
+        let condition = self.expression()?;
+        self.skip_newlines();
+        self.expect(TokenKind::RightParen, "')'")?;
+        self.skip_newlines();
+        let then = self.legacy_body(nested)?;
+        let mut otherwise = Vec::new();
+        if self.peek_past_newlines() == TokenKind::Else {
+            self.skip_newlines();
+            self.bump();
+            self.skip_newlines();
+            otherwise = match self.peek() {
+                TokenKind::If => vec![self.legacy_if(nested)?],
+                _ => self.legacy_body(nested)?,
+            };
+        }
+        let span = self.span_from(start);
+        let message = "If statements cannot be mixed with config statements";
+        self.legacy.push(Diagnostic::new(message, span));
+        Ok(ConfigStatement::If {
+            condition,
+            then,
+            otherwise,
+            span,
+        })
+    }
+
+    /// A legacy `try` statement around config statements, with its `catch` clauses.
+    fn legacy_try(&mut self, nested: bool) -> Parse<ConfigStatement> {
+        let start = self.bump().span;
+        self.skip_newlines();
+        let body = self.legacy_body(nested)?;
+        let mut catches = Vec::new();
+        while self.peek_past_newlines() == TokenKind::Catch {
+            self.skip_newlines();
+            self.bump();
+            self.expect(TokenKind::LeftParen, "'(' after 'catch'")?;
+            let (name, types) = if self.at_name() && self.nth(1) == TokenKind::RightParen {
+                (self.variable_name()?, Vec::new())
+            } else {
+                let types = self.catch_types()?;
+                (self.variable_name()?, types)
+            };
+            self.expect(TokenKind::RightParen, "')'")?;
+            self.skip_newlines();
+            let body = self.legacy_body(nested)?;
+            catches.push(ConfigCatch { name, types, body });
+        }
+        let span = self.span_from(start);
+        let message = "Try-catch blocks cannot be mixed with config statements";
+        self.legacy.push(Diagnostic::new(message, span));
+        Ok(ConfigStatement::Try {
+            body,
+            catches,
+            span,
+        })
+    }
+
+    /// The body of a legacy `if`, `else`, `try` or `catch`: config statements in braces, or
+    /// a single one.
+    fn legacy_body(&mut self, nested: bool) -> Parse<Vec<ConfigStatement>> {
+        if !self.eat(TokenKind::LeftBrace) {
+            return Ok(vec![self.config_statement(nested)?]);
+        }
+        let (body, _) = self.item_list(true, |_| false, |parser| parser.config_statement(nested));
+        self.expect(TokenKind::RightBrace, "`}`")?;
+        Ok(body)
+    }
+
+    /// A legacy function like `def check_max(obj, type) { ... }`, or a local variable like
+    /// `def timestamp = new Date().format('yyyy')`.
+    fn legacy_definition(&mut self) -> Parse<ConfigStatement> {
+        let start = self.current().span;
+        if let Some(head) = self.speculate(Self::function_head) {
+            // Strict syntax stops at the parenthesis after the name.
+            let parenthesis = self.tokens[self.position - 1].span;
+            let Item::Function(function) = self.function(start, head)? else {
+                unreachable!("the function rule gives a function")
+            };
+            self.legacy
+                .push(Diagnostic::new("Unexpected input: '('", parenthesis));
+            return Ok(ConfigStatement::Function(function));
+        }
+        let statement = self.statement()?;
+        let span = statement.span;
+        let StatementKind::Declaration {
+            names,
+            initializer,
+            destructure,
+            ..
+        } = statement.kind
+        else {
+            return Err(self.error_at("Invalid config statement", span));
+        };
+        let message = "Variable declarations cannot be mixed with config statements";
+        self.legacy.push(Diagnostic::new(message, span));
+        Ok(ConfigStatement::Declaration {
+            names: names.into_iter().map(|typed| typed.name).collect(),
+            value: initializer,
+            destructure,
+            span,
+        })
+    }
+
+    /// A statement that config syntax does not have, like `System.err.println('...')`, which
+    /// starts at token `position`. Where it does not parse as a script statement either, the
+    /// strict error stands.
+    fn legacy_statement(&mut self, position: usize) -> Parse<ConfigStatement> {
+        let failure = self.position;
+        self.position = position;
+        let statement = self.speculate(Self::statement);
+        let ends = self.at_separator() || self.at_list_end(true);
+        if let Some(statement) = statement.filter(|_| ends) {
+            let (end, errors) = (self.position, self.errors.len());
+            self.position = failure;
+            self.unexpected();
+            self.legacy.extend(self.errors.split_off(errors));
+            self.position = end;
+            return Ok(ConfigStatement::Statement(statement));
+        }
+        self.position = failure;
+        Err(self.unexpected())
     }
 }

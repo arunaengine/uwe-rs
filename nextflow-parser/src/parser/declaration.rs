@@ -426,7 +426,7 @@ impl Parser<'_> {
     }
 
     /// The start of the `functionDef` rule: `def`, a return type or both, then a name and `(`.
-    fn function_head(&mut self) -> Parse<(Option<Type>, Name)> {
+    pub(super) fn function_head(&mut self) -> Parse<(Option<Type>, Name)> {
         let def = self.eat(TokenKind::Def);
         let mut return_type = None;
         if !def || !self.at_name() || self.nth(1) != TokenKind::LeftParen {
@@ -439,7 +439,11 @@ impl Parser<'_> {
 
     /// The rest of the `functionDef` rule, after the opening parenthesis. Only `def name(...)`
     /// may give its return type after an arrow.
-    fn function(&mut self, start: Span, (legacy, name): (Option<Type>, Name)) -> Parse<Item> {
+    pub(super) fn function(
+        &mut self,
+        start: Span,
+        (legacy, name): (Option<Type>, Name),
+    ) -> Parse<Item> {
         self.skip_newlines();
         let mut parameters = Vec::new();
         if !self.at(TokenKind::RightParen) {

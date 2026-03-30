@@ -30,11 +30,16 @@ fn matches_nextflow_lint() {
         let relative = path.strip_prefix(&root).unwrap_or(path);
         let relative = relative.to_string_lossy().replace('\\', "/");
         let source = std::fs::read_to_string(path).expect("corpus files are text");
-        let errors = if relative.ends_with(".config") {
-            parse_config(&source).errors
+        // Legacy syntax that iunctus accepts is still an error of strict syntax.
+        let (mut errors, legacy) = if relative.ends_with(".config") {
+            let parsed = parse_config(&source);
+            (parsed.errors, parsed.legacy)
         } else {
-            parse_script(&source).errors
+            let parsed = parse_script(&source);
+            (parsed.errors, parsed.legacy)
         };
+        errors.extend(legacy);
+        errors.sort_by_key(|error| error.span.start);
         match (rejected.contains(relative.as_str()), errors.first()) {
             (false, Some(error)) => {
                 let located = LineIndex::new(&source).locate(error).to_string();

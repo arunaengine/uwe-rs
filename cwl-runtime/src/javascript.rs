@@ -10,6 +10,10 @@ use crate::value::Value;
 /// Loops longer than this end the evaluation, as cwltool's time limit does.
 const LOOP_LIMIT: u64 = 100_000_000;
 
+/// A console object whose methods do nothing.
+const CONSOLE: &str = "var console = {log: function() {}, info: function() {}, \
+    warn: function() {}, error: function() {}, debug: function() {}};\n";
+
 /// Marks a result of `undefined`, which JSON cannot hold.
 const UNDEFINED: &str = "\u{0}undefined";
 
@@ -22,7 +26,9 @@ pub fn evaluate(
     variables: &[(&str, &Value)],
     body: &str,
 ) -> Result<Value, String> {
-    let mut code = String::new();
+    // Expressions that log for debugging find a console that drops what they write, as
+    // cwltool's does unless `--js-console` shows it.
+    let mut code = String::from(CONSOLE);
     for part in library {
         code.push_str(part);
         code.push('\n');

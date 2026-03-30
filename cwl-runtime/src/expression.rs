@@ -20,9 +20,17 @@ pub struct Variables<'a> {
 }
 
 /// Evaluates the expressions of one process.
+///
+/// Without `InlineJavascriptRequirement` the spec allows parameter references only and says
+/// that nothing else is interpolated; cwltool fails on anything else. Documents written for
+/// other runners use JavaScript without the requirement, and bash variables like `${HOME}` in
+/// scripts. So without it, `$(...)` that is not a parameter reference runs as JavaScript,
+/// since it cannot mean text in a command, and `${...}` that does not run as JavaScript stays
+/// as written.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Evaluator {
-    /// The `expressionLib` when JavaScript is enabled; `None` allows parameter references only.
+    /// The `expressionLib` of `InlineJavascriptRequirement`; `None` when the requirement is
+    /// not in effect.
     pub javascript: Option<Arc<Vec<String>>>,
 }
 
@@ -105,7 +113,10 @@ impl Evaluator {
             Part::Javascript(code) => {
                 self.javascript(&format!("return ({code}\n);"), code, variables)
             }
-            Part::Function(body) => self.javascript(body, body, variables),
+            Part::Function(body) => match self.javascript(body, body, variables) {
+                Err(_) if self.javascript.is_none() => Ok(Value::String(format!("${{{body}}}"))),
+                result => result,
+            },
         }
     }
 
@@ -116,19 +127,30 @@ impl Evaluator {
         code: &str,
         variables: Variables<'_>,
     ) -> Result<Value, String> {
-        let Some(library) = &self.javascript else {
-            return Err(format!(
-                "`{}` is JavaScript, which needs InlineJavascriptRequirement",
-                code.trim()
-            ));
-        };
+        let library = self.javascript.as_deref().map_or(&[][..], Vec::as_slice);
         let globals = [
             ("inputs", variables.inputs),
             ("self", variables.this),
             ("runtime", variables.runtime),
         ];
-        javascript::evaluate(library, &globals, body)
-            .map_err(|error| format!("JavaScript error in `{}`: {error}", code.trim()))
+        javascript::evaluate(library, &globals, body).map_err(|error| {
+            let error = error.lines().next().unwrap_or_default().to_owned();
+            let note = if self.javascript.is_none() {
+                " (without InlineJavascriptRequirement)"
+            } else {
+                ""
+            };
+            format!("JavaScript error in `{}`: {error}{note}", shown(code))
+        })
+    }
+}
+
+/// Code for messages: on one line, and cut after 80 characters.
+fn shown(code: &str) -> String {
+    let line = code.split_whitespace().collect::<Vec<_>>().join(" ");
+    match line.char_indices().nth(80) {
+        Some((cut, _)) => format!("{}...", &line[..cut]),
+        None => line,
     }
 }
 

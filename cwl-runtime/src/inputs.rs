@@ -56,6 +56,16 @@ pub fn prepare(process: &Process, mut job: Map, setting: &Setting<'_>) -> Result
     for input in &process.inputs {
         let name = short_name(&input.id);
         let value = job.get(name).unwrap_or(&Value::Null);
+        if !setting.types.matches(&input.value_type, value)
+            && let Some(base) = setting.placeholders
+            && holds_null(value)
+        {
+            // Nulls of optional inputs of a run on placeholder inputs, merged into a list.
+            let mut value = placeholder::input(input, setting.types, base, false);
+            files::normalize(&mut value)?;
+            job.insert(name.to_owned(), value);
+            continue;
+        }
         if !setting.types.matches(&input.value_type, value) {
             return Err(format!(
                 "the input `{name}` is not a valid {}: {}",
@@ -328,6 +338,16 @@ impl Walk<'_, '_> {
                 runtime: &runtime,
             },
         )
+    }
+}
+
+/// Whether a value is null or holds a null.
+fn holds_null(value: &Value) -> bool {
+    match value {
+        Value::Null => true,
+        Value::List(items) => items.iter().any(holds_null),
+        Value::Map(map) => map.values().any(holds_null),
+        _ => false,
     }
 }
 

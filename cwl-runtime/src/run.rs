@@ -220,6 +220,34 @@ impl Run {
             parent,
             state: State::Finished,
         });
+        let first = self.start_process(id, process, job.clone(), outer, &names, toplevel);
+        let leaf = !matches!(process.class, Class::Workflow(_));
+        match (first, &self.placeholders) {
+            // In a run on placeholder inputs, optional inputs are null, but the expressions
+            // of a tool may need them; it then gets placeholders for them too.
+            (Err(error), Some(base)) if leaf && !error.contains(tool::UNSUPPORTED) => {
+                let base = base.clone();
+                match fill_optional(process, &job, outer, &base) {
+                    Some(filled) => self
+                        .start_process(id, process, filled, outer, &names, toplevel)
+                        .map_err(|_| error),
+                    None => Err(error),
+                }
+            }
+            (result, _) => result,
+        }
+    }
+
+    /// Prepares the input object of a job and starts its process.
+    fn start_process(
+        &mut self,
+        id: JobId,
+        process: &Arc<Process>,
+        job: Map,
+        outer: &Scope,
+        names: &Names,
+        toplevel: bool,
+    ) -> Result<(), String> {
         let at = |error: String| {
             if names.display.is_empty() {
                 error
@@ -334,7 +362,11 @@ impl Run {
                 let run = WorkflowRun {
                     process: Arc::clone(process),
                     scope,
-                    names: if toplevel { Names::default() } else { names },
+                    names: if toplevel {
+                        Names::default()
+                    } else {
+                        names.clone()
+                    },
                     values,
                     started: vec![false; steps],
                     finished: vec![false; steps],
@@ -509,6 +541,26 @@ impl Run {
             .iter()
             .map(|id| short_name(id).to_owned())
             .collect();
+        let mut gathered = gathered;
+        if let Some(base) = &self.placeholders {
+            // Optional inputs are null in a run on placeholder inputs; a scatter over one gets
+            // a list of one placeholder.
+            for key in &keys {
+                if gathered.get(key).is_none_or(Value::is_null) {
+                    let item = process
+                        .inputs
+                        .iter()
+                        .find(|input| short_name(&input.id) == key)
+                        .map(|input| {
+                            let mut types = step_scope.types();
+                            types.add(&input.value_type);
+                            placeholder::input(input, &types, base, false)
+                        })
+                        .unwrap_or_else(|| Value::string(key.as_str()));
+                    gathered.insert(key.clone(), Value::List(vec![item]));
+                }
+            }
+        }
         let mut lengths = Vec::new();
         for key in &keys {
             match gathered.get(key) {
@@ -670,6 +722,8 @@ impl Run {
             match value {
                 Value::Bool(true) => {}
                 Value::Bool(false) => return Ok(None),
+                // Conditions on optional inputs, which are null on placeholder inputs.
+                Value::Null if self.placeholders.is_some() => return Ok(None),
                 other => {
                     return Err(format!(
                         "`when` must give true or false, not {}",
@@ -688,6 +742,28 @@ impl Run {
         job.retain(|name, _| accepted.contains(name.as_str()));
         Ok(Some(job))
     }
+}
+
+/// The input object with placeholders for the optional inputs that are null and have no
+/// default; `None` when there are none.
+fn fill_optional(process: &Process, job: &Map, outer: &Scope, base: &str) -> Option<Map> {
+    let scope = outer.with(&process.requirements, &process.hints);
+    let mut types = scope.types();
+    for input in &process.inputs {
+        types.add(&input.value_type);
+    }
+    let mut filled = job.clone();
+    let mut changed = false;
+    for input in &process.inputs {
+        let name = short_name(&input.id);
+        let missing = filled.get(name).is_none_or(Value::is_null);
+        if missing && input.default.is_none() && types.optional(&input.value_type) {
+            let value = placeholder::input(input, &types, base, false);
+            filled.insert(name.to_owned(), value);
+            changed = true;
+        }
+    }
+    changed.then_some(filled)
 }
 
 /// The `runtime` of expressions outside command line tools.

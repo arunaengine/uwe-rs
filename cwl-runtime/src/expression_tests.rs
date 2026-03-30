@@ -41,7 +41,10 @@ fn evaluates_parameter_references_without_javascript() {
     assert_eq!(eval(&plain, "$(null)"), Ok(Value::Null));
     assert!(eval(&plain, "$(inputs.missing.basename)").is_err());
     assert!(eval(&plain, "$(inputs.nothing)").is_err());
-    assert!(eval(&plain, "$(inputs.list.length + 1)").is_err());
+    assert_eq!(
+        eval(&plain, "$(inputs.list.length + 1)"),
+        Ok(Value::Integer(4))
+    );
 }
 
 #[test]
@@ -88,8 +91,9 @@ fn falls_back_to_javascript_when_it_is_enabled() {
         eval(&javascript, "-t $(runtime.cores * 2)"),
         Ok(Value::string("-t 4"))
     );
-    let error = eval(&Evaluator::default(), "$(f(1))").expect_err("no JavaScript");
+    let error = eval(&Evaluator::default(), "$(f(1))").expect_err("no expression library");
     assert!(error.contains("InlineJavascriptRequirement"), "{error}");
+    assert!(eval(&Evaluator::default(), "$(inputs.nothing)").is_err());
 }
 
 #[test]
@@ -110,4 +114,16 @@ fn keeps_white_space_around_dirent_entries() {
         plain.evaluate(&expression, variables),
         Ok(Value::parse("[1, 2, 3]").expect("a list"))
     );
+}
+
+#[test]
+fn keeps_shell_variables_without_the_javascript_requirement() {
+    let plain = Evaluator::default();
+    assert_eq!(
+        eval(&plain, "OUT=${HOME}/out; echo ${@:2}"),
+        Ok(Value::string("OUT=${HOME}/out; echo ${@:2}"))
+    );
+    assert_eq!(eval(&plain, "$(runtime.cores * 2)"), Ok(Value::Integer(4)));
+    let javascript = Evaluator::with_javascript(Vec::new());
+    assert!(eval(&javascript, "${HOME}").is_err());
 }

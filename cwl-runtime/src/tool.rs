@@ -84,7 +84,8 @@ pub struct Pending {
 }
 
 /// Makes the task of a command line tool (or of an abstract `Operation`) for a prepared
-/// input object.
+/// input object. `fake` says that its files are placeholders or outputs of the mock executor,
+/// whose content is not real.
 pub fn task(
     process: &Arc<Process>,
     job: Map,
@@ -92,6 +93,7 @@ pub fn task(
     options: &Options,
     id: TaskId,
     names: (&str, &str),
+    fake: bool,
 ) -> Result<(Task, Pending), String> {
     let (name, step) = names;
     let evaluator = scope.evaluator();
@@ -265,13 +267,19 @@ pub fn task(
     let mut args = Vec::new();
     for bound in &bindings {
         let value = match &bound.value_from {
-            Some(expression) => evaluator.evaluate(
+            Some(expression) => match evaluator.evaluate(
                 expression,
                 Variables {
                     this: &bound.value,
                     ..vars
                 },
-            )?,
+            ) {
+                Ok(value) => value,
+                // An argument made from the content of files whose content is not real, as in
+                // a mock run, cannot be made; it becomes a marker, so the task still exists.
+                Err(_) if fake && reads_contents(expression) => Value::string(FAKE_ARGUMENT),
+                Err(error) => return Err(error),
+            },
             None => bound.value.clone(),
         };
         args.extend(binding::arguments(bound, &value)?);
@@ -1791,6 +1799,19 @@ impl Collector<'_> {
         });
         Ok(value)
     }
+}
+
+/// The argument in place of one made from the content of files that are not real.
+pub const FAKE_ARGUMENT: &str = "<made from the content of mock files>";
+
+/// Whether an expression reads the `contents` of files.
+fn reads_contents(expression: &Expression) -> bool {
+    expression.parts.iter().any(|part| match part {
+        cwl_parser::model::Part::Text(_) => false,
+        cwl_parser::model::Part::Reference(code)
+        | cwl_parser::model::Part::Javascript(code)
+        | cwl_parser::model::Part::Function(code) => code.contains("contents"),
+    })
 }
 
 /// Whether an expression reads `self`, the files an output binding found.

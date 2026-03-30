@@ -107,7 +107,9 @@ impl Evaluator {
             Part::Text(text) => Ok(Value::String(text.clone())),
             Part::Reference(code) => match reference(code, variables) {
                 Ok(value) => Ok(value),
-                Err(error) if self.javascript.is_none() => Err(error),
+                // Without the requirement only real references fail here; `$(1)` or `$(true)`
+                // are not references and run as JavaScript.
+                Err(error) if self.javascript.is_none() && refers(code) => Err(error),
                 Err(_) => self.javascript(&format!("return ({code}\n);"), code, variables),
             },
             Part::Javascript(code) => {
@@ -143,6 +145,14 @@ impl Evaluator {
             format!("JavaScript error in `{}`: {error}{note}", shown(code))
         })
     }
+}
+
+/// Whether a reference starts with `inputs`, `self` or `runtime`.
+fn refers(code: &str) -> bool {
+    let end = code
+        .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .unwrap_or(code.len());
+    matches!(&code[..end], "inputs" | "self" | "runtime")
 }
 
 /// Code for messages: on one line, and cut after 80 characters.

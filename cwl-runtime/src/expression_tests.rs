@@ -124,6 +124,7 @@ fn keeps_shell_variables_without_the_javascript_requirement() {
         Ok(Value::string("OUT=${HOME}/out; echo ${@:2}"))
     );
     assert_eq!(eval(&plain, "$(runtime.cores * 2)"), Ok(Value::Integer(4)));
+    assert_eq!(eval(&plain, "$(1)"), Ok(Value::Integer(1)));
     let javascript = Evaluator::with_javascript(Vec::new());
     assert!(eval(&javascript, "${HOME}").is_err());
 }

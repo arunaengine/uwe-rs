@@ -64,3 +64,9 @@ fn runs_in_sloppy_mode_and_reports_errors() {
     let error = run(&[], "return null.x;").expect_err("a TypeError");
     assert!(error.contains("TypeError"), "{error}");
 }
+
+#[test]
+fn drops_console_output() {
+    let value = run(&[], "console.log('debug'); return inputs.n;").expect("runs");
+    assert_eq!(value, Value::Integer(3));
+}

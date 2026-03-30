@@ -317,8 +317,8 @@ conformance/v1.1/tests/iwdr_with_nested_dirs.cwl ok 2
 conformance/v1.1/tests/js-expr-req-wf.cwl ok 2
 conformance/v1.1/tests/js-expr-req-wf.cwl#wf ok 1
 conformance/v1.1/tests/linkfile.cwl ok 1
-conformance/v1.1/tests/listing_deep1.cwl fail: the output `out`: JavaScript error in `inputs.d.listing.length === 1 && inputs.d.listing[0].listing.length === 1`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
-conformance/v1.1/tests/listing_deep2.cwl fail: the output `out`: JavaScript error in `inputs.d.listing.length === 1 && inputs.d.listing[0].listing.length === 1`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+conformance/v1.1/tests/listing_deep1.cwl fail: the output `out`: JavaScript error in `inputs.d.listing.length === 1 && inputs.d.listing[0].listing.length === 1`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
+conformance/v1.1/tests/listing_deep2.cwl fail: the output `out`: JavaScript error in `inputs.d.listing.length === 1 && inputs.d.listing[0].listing.length === 1`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
 conformance/v1.1/tests/listing_none1.cwl ok 1
 conformance/v1.1/tests/listing_none2.cwl ok 1
 conformance/v1.1/tests/listing_none3.cwl ok 1
@@ -465,14 +465,14 @@ conformance/v1.2/tests/conditionals/cond-wf-001.cwl ok 0
 conformance/v1.2/tests/conditionals/cond-wf-001_nojs.cwl ok 0
 conformance/v1.2/tests/conditionals/cond-wf-002.cwl ok 0
 conformance/v1.2/tests/conditionals/cond-wf-002_nojs.cwl ok 0
-conformance/v1.2/tests/conditionals/cond-wf-003.1.cwl fail: all sources of `out1` are null
-conformance/v1.2/tests/conditionals/cond-wf-003.1_nojs.cwl fail: all sources of `out1` are null
+conformance/v1.2/tests/conditionals/cond-wf-003.1.cwl ok 0
+conformance/v1.2/tests/conditionals/cond-wf-003.1_nojs.cwl ok 0
 conformance/v1.2/tests/conditionals/cond-wf-003.cwl ok 0
 conformance/v1.2/tests/conditionals/cond-wf-003_nojs.cwl ok 0
 conformance/v1.2/tests/conditionals/cond-wf-004.cwl ok 0
 conformance/v1.2/tests/conditionals/cond-wf-004_nojs.cwl ok 0
 conformance/v1.2/tests/conditionals/cond-wf-006.cwl ok 1
-conformance/v1.2/tests/conditionals/cond-wf-006_nojs.cwl fail: all sources of `out1` are null
+conformance/v1.2/tests/conditionals/cond-wf-006_nojs.cwl ok 0
 conformance/v1.2/tests/conditionals/cond-wf-007.cwl ok 1
 conformance/v1.2/tests/conditionals/cond-wf-007_nojs.cwl ok 0
 conformance/v1.2/tests/conditionals/cond-wf-009.cwl ok 0
@@ -610,8 +610,8 @@ conformance/v1.2/tests/js-expr-req-wf.cwl ok 2
 conformance/v1.2/tests/js-expr-req-wf.cwl#wf ok 1
 conformance/v1.2/tests/js-input-record.cwl ok 1
 conformance/v1.2/tests/linkfile.cwl ok 1
-conformance/v1.2/tests/listing_deep1.cwl fail: the output `out`: JavaScript error in `inputs.d.listing.length === 1 && inputs.d.listing[0].listing.length === 1`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
-conformance/v1.2/tests/listing_deep2.cwl fail: the output `out`: JavaScript error in `inputs.d.listing.length === 1 && inputs.d.listing[0].listing.length === 1`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+conformance/v1.2/tests/listing_deep1.cwl fail: the output `out`: JavaScript error in `inputs.d.listing.length === 1 && inputs.d.listing[0].listing.length === 1`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
+conformance/v1.2/tests/listing_deep2.cwl fail: the output `out`: JavaScript error in `inputs.d.listing.length === 1 && inputs.d.listing[0].listing.length === 1`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
 conformance/v1.2/tests/listing_none1.cwl ok 1
 conformance/v1.2/tests/listing_none2.cwl ok 1
 conformance/v1.2/tests/listing_none3.cwl ok 1
@@ -655,7 +655,7 @@ conformance/v1.2/tests/paramref_arguments_self.cwl ok 1
 conformance/v1.2/tests/params.cwl ok 1
 conformance/v1.2/tests/params2.cwl ok 1
 conformance/v1.2/tests/params_broken_length_of_non_list.cwl fail: the output `output1`: `inputs.bar` is a number, which has no `length`
-conformance/v1.2/tests/params_broken_null.cwl fail: the output `output1`: `null` is not defined
+conformance/v1.2/tests/params_broken_null.cwl fail: the output `output1`: JavaScript error in `null.something`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3) (without InlineJavascriptRequirement)
 conformance/v1.2/tests/params_input_length_non_array.cwl ok 1
 conformance/v1.2/tests/parseInt-tool.cwl ok 0
 conformance/v1.2/tests/pass-unconnected.cwl ok 1
@@ -808,8 +808,8 @@ realworld/collections/github.com__Barski-lab__workflows/devel/mulloy/average.cwl
 realworld/collections/github.com__Barski-lab__workflows/devel/picard/picard-markduplicates.cwl ok 1
 realworld/collections/github.com__Barski-lab__workflows/devel/ucscbuild/SetUpCb.cwl ok 1
 realworld/collections/github.com__Barski-lab__workflows/devel/xenbase/fastq-dump.cwl ok 1
-realworld/collections/github.com__Barski-lab__workflows/devel/xenbase/xenbase-rnaseq-pe.cwl fail: trim_adapters: JavaScript error in `default_output_filename(inputs.fastq_file_upstream, '.trimmed.fastq')`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
-realworld/collections/github.com__Barski-lab__workflows/devel/xenbase/xenbase-rnaseq-se.cwl fail: trim_adapters: JavaScript error in `default_output_filename(inputs.fastq_file_upstream, '.trimmed.fastq')`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
+realworld/collections/github.com__Barski-lab__workflows/devel/xenbase/xenbase-rnaseq-pe.cwl fail: trim_adapters: JavaScript error in `default_output_filename(inputs.fastq_file_upstream, '.trimmed.fastq')`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :8:3)
+realworld/collections/github.com__Barski-lab__workflows/devel/xenbase/xenbase-rnaseq-se.cwl fail: trim_adapters: JavaScript error in `default_output_filename(inputs.fastq_file_upstream, '.trimmed.fastq')`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :8:3)
 realworld/collections/github.com__Barski-lab__workflows/devel/xenbase/xenbase-sra-to-fastq-pe.cwl ok 4
 realworld/collections/github.com__Barski-lab__workflows/devel/xenbase/xenbase-sra-to-fastq-se.cwl ok 3
 realworld/collections/github.com__Barski-lab__workflows/devel/yrina/differential-motif-analysis.cwl ok 9
@@ -998,10 +998,10 @@ realworld/collections/github.com__Barski-lab__workflows/workflows/trim-rnaseq-pe
 realworld/collections/github.com__Barski-lab__workflows/workflows/trim-rnaseq-pe.cwl ok 16
 realworld/collections/github.com__Barski-lab__workflows/workflows/trim-rnaseq-se-dutp.cwl ok 16
 realworld/collections/github.com__Barski-lab__workflows/workflows/trim-rnaseq-se.cwl ok 13
-realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/gdc-dnaseq-aln-cwl/gdc_dnaseq.bamfastq_align.workflow.cwl fail: transform/bwa_pe[0]/bwa_pe: JavaScript error in `function to_rg() { var readgroup_str = "@RG"; var keys = Object.keys(inputs.read...`: SyntaxError: EOF while parsing a value at line 1 column 0 (unknown at :69:3)
+realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/gdc-dnaseq-aln-cwl/gdc_dnaseq.bamfastq_align.workflow.cwl ok 113
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/gdc-dnaseq-prealn-cwl/gdc_dnaseq.aligned_reads.workflow.cwl ok 52
-realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/align/bwa_pe.cwl fail: bwa_pe: JavaScript error in `function to_rg() { var readgroup_str = "@RG"; var keys = Object.keys(inputs.read...`: SyntaxError: EOF while parsing a value at line 1 column 0 (unknown at :69:3)
-realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/align/bwa_se.cwl fail: bwa_se: JavaScript error in `function to_rg() { var readgroup_str = "@RG"; var keys = Object.keys(inputs.read...`: SyntaxError: EOF while parsing a value at line 1 column 0 (unknown at :67:3)
+realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/align/bwa_pe.cwl ok 10
+realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/align/bwa_se.cwl ok 8
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/extract/extract_amplicon_kit.cwl ok 2
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/extract/extract_capture_kit.cwl ok 2
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/extract/extract_readgroup_fastq_pe.cwl ok 2
@@ -1009,7 +1009,7 @@ realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/extract/e
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/extract/extract_readgroups_bam.cwl ok 1
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/extract/stage_data_workflow.cwl ok 23
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/main/gdc_dnaseq_ar_workflow.cwl ok 26
-realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/main/gdc_dnaseq_main_workflow.cwl fail: bwa_pe[0]/bwa_pe: JavaScript error in `function to_rg() { var readgroup_str = "@RG"; var keys = Object.keys(inputs.read...`: SyntaxError: EOF while parsing a value at line 1 column 0 (unknown at :69:3)
+realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/main/gdc_dnaseq_main_workflow.cwl ok 87
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/metrics/amplicon_metrics.cwl ok 2
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/metrics/exome_metrics.cwl ok 2
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/metrics/wgs_metrics.cwl ok 2
@@ -1023,8 +1023,8 @@ realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/tools/bam_readgroup_to
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/tools/bio_client_download.cwl ok 1
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/tools/bio_client_upload_pull_uuid.cwl ok 1
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/tools/biobambam2_bamtofastq.cwl ok 1
-realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/tools/bwa_record_pe.cwl fail: bwa_record_pe: JavaScript error in `function to_rg() { var readgroup_str = "@RG"; var keys = Object.keys(inputs.read...`: SyntaxError: EOF while parsing a value at line 1 column 0 (unknown at :69:3)
-realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/tools/bwa_record_se.cwl fail: bwa_record_se: JavaScript error in `function to_rg() { var readgroup_str = "@RG"; var keys = Object.keys(inputs.read...`: SyntaxError: EOF while parsing a value at line 1 column 0 (unknown at :67:3)
+realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/tools/bwa_record_pe.cwl ok 1
+realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/tools/bwa_record_se.cwl ok 1
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/tools/decider_markdup_input.cwl ok 0
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/tools/decider_markdup_output.cwl ok 0
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/tools/emit_amplicon_kit_file.cwl ok 0
@@ -1157,7 +1157,7 @@ realworld/collections/github.com__common-workflow-library__bio-cwl-tools/mashmap
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/megahit/megahit.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/metfrag/metfrag.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/minimap2/minimap2_paf.cwl ok 1
-realworld/collections/github.com__common-workflow-library__bio-cwl-tools/minimap2/minimap2_sam.cwl fail: minimap2_sam: JavaScript error in `Math.ceil(inputs.readsFA.size/(1024*1024*1024) + 20)`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+realworld/collections/github.com__common-workflow-library__bio-cwl-tools/minimap2/minimap2_sam.cwl fail: minimap2_sam: JavaScript error in `Math.ceil(inputs.readsFA.size/(1024*1024*1024) + 20)`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/multiqc/multiqc.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/nanoplot/nanoplot.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/nextclade/nextclade.cwl ok 1
@@ -1219,15 +1219,15 @@ realworld/collections/github.com__genome__analysis-workflows/definitions/pipelin
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_umi_molecular.cwl ok 14
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_wgs.cwl ok 17
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_wgs_nonhuman.cwl ok 11
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/aml_trio_cle.cwl fail: tumor_detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/aml_trio_cle_gathered.cwl fail: aml_trio/tumor_detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/aml_trio_cle.cwl fail: tumor_detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/aml_trio_cle_gathered.cwl fail: aml_trio/tumor_detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/bisulfite.cwl ok 16
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/chipseq.cwl ok 16
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/chipseq_alignment_nonhuman.cwl ok 13
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/detect_variants.cwl fail: varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/detect_variants_nonhuman.cwl fail: varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/detect_variants_wgs.cwl fail: varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/detect_variants_wgs_nonhuman.cwl fail: varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/detect_variants.cwl fail: varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/detect_variants_nonhuman.cwl fail: varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/detect_variants_wgs.cwl fail: varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/detect_variants_wgs_nonhuman.cwl fail: varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/downsample_and_recall.cwl fail: haplotype_caller[0]: the input `contamination_fraction` is not a valid string?: 1
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/gathered_downsample_and_recall.cwl fail: downsample_and_recall/haplotype_caller[0]: the input `contamination_fraction` is not a valid string?: 1
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_exome.cwl ok 36
@@ -1239,19 +1239,19 @@ realworld/collections/github.com__genome__analysis-workflows/definitions/pipelin
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/rnaseq.cwl ok 12
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/rnaseq_star_fusion.cwl fail: star_align_fusion: the input `chim_junction_overhang_min` is not a valid int: "12"
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/rnaseq_star_fusion_with_xenosplit.cwl fail: graft_star_align_fusion: the input `chim_junction_overhang_min` is not a valid int: "12"
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_exome.cwl fail: detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_exome_cle.cwl fail: detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_exome_cle_gathered.cwl fail: somatic_exome/detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_exome_gathered.cwl fail: somatic_exome/detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_exome_nonhuman.cwl fail: detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_wgs.cwl fail: detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_wgs_nonhuman.cwl fail: detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_detect_variants.cwl fail: bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :14:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_exome.cwl fail: detect_variants/bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :14:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_wgs.cwl fail: detect_variants/bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :14:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_exome.cwl fail: detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_exome_cle.cwl fail: detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_exome_cle_gathered.cwl fail: somatic_exome/detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_exome_gathered.cwl fail: somatic_exome/detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_exome_nonhuman.cwl fail: detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_wgs.cwl fail: detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_wgs_nonhuman.cwl fail: detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_detect_variants.cwl fail: bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :15:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_exome.cwl fail: detect_variants/bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :15:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_wgs.cwl fail: detect_variants/bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :15:3)
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/align.cwl ok 1
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/align_sort_markdup.cwl ok 5
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/bam_readcount.cwl fail: bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :14:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/bam_readcount.cwl fail: bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :15:3)
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/bam_to_trimmed_fastq_and_biscuit_alignments.cwl ok 5
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/bgzip_and_index.cwl ok 2
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/bisulfite_qc.cwl ok 5
@@ -1279,7 +1279,7 @@ realworld/collections/github.com__genome__analysis-workflows/definitions/subwork
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/pindel.cwl ok 17
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/pindel_cat.cwl ok 2
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/pindel_region.cwl ok 6
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/pvacseq.cwl fail: tumor_rna_bam_readcount/bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :14:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/pvacseq.cwl fail: tumor_rna_bam_readcount/bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :15:3)
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/qc_exome.cwl ok 9
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/qc_exome_no_verify_bam.cwl ok 7
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/qc_wgs.cwl ok 10
@@ -1298,9 +1298,9 @@ realworld/collections/github.com__genome__analysis-workflows/definitions/subwork
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/umi_alignment.cwl ok 3
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/varscan.cwl ok 3
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/varscan_germline.cwl ok 12
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/varscan_pre_and_post_processing.cwl fail: varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :5:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/vcf_eval_cle_gold.cwl fail: normal_bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :14:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/vcf_eval_concordance.cwl fail: base_normal_bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :14:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/varscan_pre_and_post_processing.cwl fail: varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/vcf_eval_cle_gold.cwl fail: normal_bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :15:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/vcf_eval_concordance.cwl fail: base_normal_bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :15:3)
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/vcf_readcount_annotator.cwl ok 2
 realworld/collections/github.com__genome__analysis-workflows/definitions/tools/add_strelka_gt.cwl ok 1
 realworld/collections/github.com__genome__analysis-workflows/definitions/tools/add_string_at_line.cwl ok 1
@@ -1312,7 +1312,7 @@ realworld/collections/github.com__genome__analysis-workflows/definitions/tools/a
 realworld/collections/github.com__genome__analysis-workflows/definitions/tools/annotsv.cwl ok 1
 realworld/collections/github.com__genome__analysis-workflows/definitions/tools/annotsv_filter.cwl ok 1
 realworld/collections/github.com__genome__analysis-workflows/definitions/tools/apply_bqsr.cwl ok 1
-realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bam_readcount.cwl fail: bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :14:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bam_readcount.cwl fail: bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :15:3)
 realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bam_to_bigwig.cwl ok 1
 realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bam_to_cram.cwl ok 1
 realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bam_to_fastq.cwl ok 1
@@ -1543,7 +1543,7 @@ realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-ru
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/tools/dev/gatk_haplotypecaller3.6.cwl ok 1
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/tools/dev/gatk_validategvcf_xmx.cwl ok 1
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/tools/dev/picard_intervallisttools_30.cwl ok 1
-realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/tools/dev/picard_markduplicates_optname.cwl fail: picard_markduplicates: JavaScript error in `if(inputs.base_file_name=="default"){ var names = inputs.input_bam.nameroot.spli...`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :13:3)
+realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/tools/dev/picard_markduplicates_optname.cwl fail: picard_markduplicates: JavaScript error in `if(inputs.base_file_name=="default"){ var names = inputs.input_bam.nameroot.spli...`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :14:3)
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/tools/dev/picard_revertsam_inputcram.cwl ok 1
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/tools/dev/picard_revertsam_lowQ.cwl ok 1
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/tools/dev/picard_revertsam_nonScatter.cwl ok 1
@@ -1804,7 +1804,7 @@ realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/de
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/dev/ultra-opt/tools/samtools_split.cwl ok 1
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/dev/ultra-opt/tools/verifybamid.cwl ok 1
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/dev/ultra-opt/workflows/kfdrc_bwamem_subwf.cwl ok 2
-realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/kfdrc-gatk-haplotypecaller-wf.cwl fail: generate_gvcf: `1` is not defined
+realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/kfdrc-gatk-haplotypecaller-wf.cwl ok 9
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/kfdrc_alignment_wf.cwl ok 16
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/kfdrc_qc_wf.cwl ok 2
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/kfdrc_sentieon_alignment_wf.cwl ok 17
@@ -1823,7 +1823,7 @@ realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_manta_sub_wf.cwl ok 3
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_mutect2_filter_support_subwf.cwl ok 6
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_run_theta2_sub_wf.cwl ok 4
-realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/prepare_regions.cwl fail: gatk_bedtointervallist_blacklist: JavaScript error in `inputs.input_bed.basename.replace(/(.bed|.bed.gz)$/,".interval_list")`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/prepare_regions.cwl fail: gatk_bedtointervallist_blacklist: JavaScript error in `inputs.input_bed.basename.replace(/(.bed|.bed.gz)$/,".interval_list")`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
 realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/add_basename.cwl ok 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/ampliconsuite_pipeline.cwl ok 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/annotsv.cwl ok 1
@@ -1916,8 +1916,8 @@ realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/vardictj
 realworld/collections/github.com__kids-first__kf-somatic-workflow/workflow/kfdrc_gatk_create_cnv_pon_wf.cwl ok 4
 realworld/collections/github.com__kids-first__kf-somatic-workflow/workflow/kfdrc_production_amplicon_architect.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/abra/abra.cwl ok 1
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/basicfiltering/basic-filtering_mutect.cwl fail: basic-filtering_mutect: JavaScript error in `if (inputs.inputTxt) return inputs.inputTxt.basename.replace(".txt","_STDfilter....`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :9:3)
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/basicfiltering/basic-filtering_vardict.cwl fail: basic-filtering_vardict: JavaScript error in `if (inputs.inputVcf) return inputs.inputVcf.basename.replace(".vcf","_STDfilter....`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :9:3)
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/basicfiltering/basic-filtering_mutect.cwl fail: basic-filtering_mutect: JavaScript error in `if (inputs.inputTxt) return inputs.inputTxt.basename.replace(".txt","_STDfilter....`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :10:3)
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/basicfiltering/basic-filtering_vardict.cwl fail: basic-filtering_vardict: JavaScript error in `if (inputs.inputVcf) return inputs.inputVcf.basename.replace(".vcf","_STDfilter....`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :10:3)
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/bcftools/bcftools_concat.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/bioinfo_utils/find_hotspots_in_normals.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/bioinfo_utils/plot_hotspots_in_normals.cwl ok 1
@@ -1927,7 +1927,7 @@ realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/cnv/cnv_backu
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/cnv/copynumber.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/cnv/coverage.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/cnv/loess.cwl ok 1
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/concatVCF/annotate_concat.cwl fail: annotate_concat: JavaScript error in `return inputs.combined_vcf.basename.replace('.vcf', '_anno.vcf')`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :5:3)
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/concatVCF/annotate_concat.cwl fail: annotate_concat: JavaScript error in `return inputs.combined_vcf.basename.replace('.vcf', '_anno.vcf')`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/expression_tools/combine_files_from_directories.cwl ok 0
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/expression_tools/consolidate_files.cwl ok 0
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/expression_tools/convert_to_sample_record.cwl ok 0
@@ -1985,7 +1985,7 @@ realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/vcf2maf/vcf2m
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/waltz/CountReads.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/waltz/PileupMetrics.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/ABRA/abra_workflow.cwl ok 3
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/ACCESS_pipeline.cwl fail: standard_bam_to_collapsed_qc/umi_collapsing: dotproduct scatter needs lists of equal length
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/ACCESS_pipeline.cwl fail: standard_bam_to_collapsed_qc/qc_workflow/qc_workflow_wo_waltz/find_hotspots_in_normals/find_hotspots_in_normals: JavaScript error in `"sample_id patient_id sample_class pileup\n" + inputs.sample_ids.map(function(si...`: TypeError: can
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/BQSR/bqsr_workflow.cwl ok 2
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/QC/qc_workflow.cwl ok 54
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/QC/qc_workflow_wo_waltz.cwl ok 29
@@ -2004,7 +2004,7 @@ realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/manta.cwl ok 7
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/msi.cwl ok 2
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/snps_and_indels.cwl ok 11
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/standard_bam_to_collapsed_qc.cwl fail: separate_bams: dotproduct scatter needs lists of equal length
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/standard_bam_to_collapsed_qc.cwl fail: qc_workflow/qc_workflow_wo_waltz/find_hotspots_in_normals/find_hotspots_in_normals: JavaScript error in `"sample_id patient_id sample_class pileup\n" + inputs.sample_ids.map(function(si...`: TypeError: cannot convert 'null' or 'undefi
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/vcf_concat.cwl ok 2
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/waltz/waltz-workflow.cwl ok 2
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/waltz/waltz_workflow_all_bams.cwl ok 24
@@ -2018,7 +2018,7 @@ realworld/collections/github.com__ncbi__pgap/bacterial_annot/wf_bacterial_annot_
 realworld/collections/github.com__ncbi__pgap/bacterial_annot/wf_bacterial_annot_pass2.cwl ok 14
 realworld/collections/github.com__ncbi__pgap/bacterial_annot/wf_bacterial_annot_pass4.cwl ok 15
 realworld/collections/github.com__ncbi__pgap/bacterial_annot/wf_orf_hmms.cwl ok 13
-realworld/collections/github.com__ncbi__pgap/bacterial_kmer/wf_bacterial_kmer.cwl fail: Convert_kmer_files_to_sqlite: JavaScript error in `var blob = ''; for (var i = 0; i < inputs.kmer_dir.listing.length; i++) { var na...`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :5:3)
+realworld/collections/github.com__ncbi__pgap/bacterial_kmer/wf_bacterial_kmer.cwl fail: Convert_kmer_files_to_sqlite: JavaScript error in `var blob = ''; for (var i = 0; i < inputs.kmer_dir.listing.length; i++) { var na...`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
 realworld/collections/github.com__ncbi__pgap/bacterial_mobile_elem/ccf_wnode.cwl ok 1
 realworld/collections/github.com__ncbi__pgap/bacterial_mobile_elem/gpx_qdump.cwl ok 1
 realworld/collections/github.com__ncbi__pgap/bacterial_mobile_elem/gpx_qsubmit.cwl ok 1
@@ -2092,7 +2092,7 @@ realworld/collections/github.com__ncbi__pgap/progs/bact_get_kmer_reference.cwl o
 realworld/collections/github.com__ncbi__pgap/progs/bact_univ_prot_stats.cwl ok 1
 realworld/collections/github.com__ncbi__pgap/progs/bacterial_resolve_conflicts.cwl ok 1
 realworld/collections/github.com__ncbi__pgap/progs/blastn_wnode.cwl fail: blastn_wnode: the input `soft_masking` is not a valid string?: true
-realworld/collections/github.com__ncbi__pgap/progs/cache_kmer.cwl fail: the output `out_kmer_file_list`: JavaScript error in `var fileList = []; var lines = outputs.ofull_file.contents.split('\\n'); var nbl...`: ReferenceError: outputs is not defined (unknown at :13:3)
+realworld/collections/github.com__ncbi__pgap/progs/cache_kmer.cwl fail: the output `out_kmer_file_list`: JavaScript error in `var fileList = []; var lines = outputs.ofull_file.contents.split('\\n'); var nbl...`: ReferenceError: outputs is not defined (unknown at :14:3)
 realworld/collections/github.com__ncbi__pgap/progs/cat.cwl ok 1
 realworld/collections/github.com__ncbi__pgap/progs/catlog.cwl ok 1
 realworld/collections/github.com__ncbi__pgap/progs/checkm_wnode.cwl ok 1
@@ -2257,8 +2257,8 @@ realworld/collections/github.com__ncbi__pgap/task_types/tt_gcaccess_from_list.cw
 realworld/collections/github.com__ncbi__pgap/task_types/tt_hmmsearch_wnode.cwl ok 5
 realworld/collections/github.com__ncbi__pgap/task_types/tt_hmmsearch_wnode_plus_qdump.cwl ok 2
 realworld/collections/github.com__ncbi__pgap/task_types/tt_kmer_build_tree.cwl ok 1
-realworld/collections/github.com__ncbi__pgap/task_types/tt_kmer_cache_retrieve.cwl fail: the output `out_kmer_file_list`: JavaScript error in `var fileList = []; var lines = outputs.ofull_file.contents.split('\\n'); var nbl...`: ReferenceError: outputs is not defined (unknown at :13:3)
-realworld/collections/github.com__ncbi__pgap/task_types/tt_kmer_cache_store.cwl fail: the output `out_kmer_file_list`: JavaScript error in `var fileList = []; var lines = outputs.ofull_file.contents.split('\\n'); var nbl...`: ReferenceError: outputs is not defined (unknown at :13:3)
+realworld/collections/github.com__ncbi__pgap/task_types/tt_kmer_cache_retrieve.cwl fail: the output `out_kmer_file_list`: JavaScript error in `var fileList = []; var lines = outputs.ofull_file.contents.split('\\n'); var nbl...`: ReferenceError: outputs is not defined (unknown at :14:3)
+realworld/collections/github.com__ncbi__pgap/task_types/tt_kmer_cache_store.cwl fail: the output `out_kmer_file_list`: JavaScript error in `var fileList = []; var lines = outputs.ofull_file.contents.split('\\n'); var nbl...`: ReferenceError: outputs is not defined (unknown at :14:3)
 realworld/collections/github.com__ncbi__pgap/task_types/tt_kmer_compare_wnode.cwl ok 3
 realworld/collections/github.com__ncbi__pgap/task_types/tt_kmer_ref_compare_wnode.cwl ok 3
 realworld/collections/github.com__ncbi__pgap/task_types/tt_kmer_seq_entry_extract_wnode.cwl ok 2
@@ -2578,8 +2578,8 @@ realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/pull_ncrnas/pull_ncrnas.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Raw_reads/mOTUs/clean_motus_output.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Raw_reads/mOTUs/mOTUs.cwl ok 1
-realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/SeqPrep/seqprep.cwl ok 1
-realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Trimmomatic/Trimmomatic-v0.36-PE.cwl fail: Trimmomatic-v0.36-PE: JavaScript error in `inputs.reads2.nameroot`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/SeqPrep/seqprep.cwl fail: the output `forward_unmerged_reads`: JavaScript error in `inputs.forward_reads.format`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Trimmomatic/Trimmomatic-v0.36-PE.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Trimmomatic/Trimmomatic-v0.36-SE.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/chunks/dna_chunker/fasta_chunker.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/chunks/protein_chunker.cwl ok 1
@@ -2623,14 +2623,14 @@ realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/assembly-w
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/amplicon/amplicon-1.cwl ok 16
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/amplicon/amplicon-2.cwl ok 26
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/assembly/assembly-1.cwl ok 8
-realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/assembly/assembly-2.cwl fail: cgc/combine: dotproduct scatter needs lists of equal length
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/assembly/assembly-2.cwl ok 35
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/raw-reads/raw-reads-1.cwl ok 13
-realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/raw-reads/raw-reads-2.cwl fail: cgc/combine: dotproduct scatter needs lists of equal length
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/raw-reads/raw-reads-2.cwl ok 34
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/raw-reads-wf--v.5-cond.cwl ok 13
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/amplicon/ITS-wf.cwl ok 6
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/amplicon/trim_and_reformat_reads.cwl ok 6
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/amplicon/trimming-not-empty-subwf.cwl ok 5
-realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/CGC-subwf.cwl fail: combine: dotproduct scatter needs lists of equal length
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/CGC-subwf.cwl ok 7
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/change_formats_and_names.cwl ok 2
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/cmsearch-multimodel-assembly.cwl ok 3
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/deal_with_functional_annotation.cwl ok 10
@@ -2640,16 +2640,16 @@ realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflo
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/chunking-subwf-IPS.cwl ok 3
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/chunking-subwf-hmmsearch.cwl ok 4
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/classify-otu-visualise.cwl ok 5
-realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/cmsearch-condition.cwl fail: all sources of `concatenate_matches` are null
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/cmsearch-condition.cwl ok 0
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/cmsearch-multimodel-raw-data.cwl ok 6
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/final_chunking.cwl ok 2
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/func_summaries.cwl ok 2
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/other_ncrnas.cwl ok 6
-realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/raw_reads/CGC-subwf.cwl fail: combine: dotproduct scatter needs lists of equal length
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/raw_reads/CGC-subwf.cwl ok 6
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/raw_reads/func_ann_and_post_proccessing-subwf.cwl ok 14
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/raw_reads/functional_annotation_raw.cwl ok 7
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/raw_reads/mOTUs-workflow.cwl ok 2
-realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/rna_prediction-sub-wf.cwl fail: find_ribosomal_ncRNAs: all sources of `concatenate_matches` are null
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/rna_prediction-sub-wf.cwl ok 8
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/seqprep-subwf.cwl ok 4
 realworld/sources/github.com__HDRUK__rquest-omop-worker-workflows/arm/rquest-omop-worker.cwl ok 1
 realworld/sources/github.com__HDRUK__rquest-omop-worker-workflows/arm/workflow-entrypoint.cwl ok 1
@@ -2981,7 +2981,7 @@ realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/mafft/m
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/manorm/manorm.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/mashmap/MashMap.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/minimap2/minimap2_paf.cwl ok 1
-realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/minimap2/minimap2_sam.cwl fail: minimap2_sam: JavaScript error in `Math.ceil(inputs.readsFA.size/(1024*1024*1024) + 20)`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/minimap2/minimap2_sam.cwl fail: minimap2_sam: JavaScript error in `Math.ceil(inputs.readsFA.size/(1024*1024*1024) + 20)`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/multiqc/multiqc.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/nanoplot/nanoplot.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/nextclade/nextclade.cwl ok 1
@@ -3598,8 +3598,8 @@ realworld/sources/github.com__emo-bon__MetaGOflow/tools/RNA_prediction/mapseq2bi
 realworld/sources/github.com__emo-bon__MetaGOflow/tools/RNA_prediction/pull_ncrnas/pull_ncrnas.cwl ok 1
 realworld/sources/github.com__emo-bon__MetaGOflow/tools/Raw_reads/mOTUs/clean_motus_output.cwl ok 1
 realworld/sources/github.com__emo-bon__MetaGOflow/tools/Raw_reads/mOTUs/mOTUs.cwl ok 1
-realworld/sources/github.com__emo-bon__MetaGOflow/tools/SeqPrep/seqprep.cwl ok 1
-realworld/sources/github.com__emo-bon__MetaGOflow/tools/Trimmomatic/Trimmomatic-v0.36-PE.cwl fail: Trimmomatic-v0.36-PE: JavaScript error in `inputs.reads2.nameroot`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+realworld/sources/github.com__emo-bon__MetaGOflow/tools/SeqPrep/seqprep.cwl fail: the output `forward_unmerged_reads`: JavaScript error in `inputs.forward_reads.format`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
+realworld/sources/github.com__emo-bon__MetaGOflow/tools/Trimmomatic/Trimmomatic-v0.36-PE.cwl ok 1
 realworld/sources/github.com__emo-bon__MetaGOflow/tools/Trimmomatic/Trimmomatic-v0.36-SE.cwl ok 1
 realworld/sources/github.com__emo-bon__MetaGOflow/tools/chunks/dna_chunker/fasta_chunker.cwl ok 1
 realworld/sources/github.com__emo-bon__MetaGOflow/tools/chunks/protein_chunker.cwl ok 1
@@ -3642,7 +3642,7 @@ realworld/sources/github.com__emo-bon__MetaGOflow/utils/size_file.cwl ok 1
 realworld/sources/github.com__emo-bon__MetaGOflow/utils/touch_file.cwl ok 1
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/conditionals/Func_ann_and_post_proccessing-subwf.cwl ok 29
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/conditionals/megahit.cwl ok 1
-realworld/sources/github.com__emo-bon__MetaGOflow/workflows/conditionals/qc.cwl fail: qc_stats: dotproduct scatter needs lists of equal length
+realworld/sources/github.com__emo-bon__MetaGOflow/workflows/conditionals/qc.cwl ok 23
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/gos_wf.cwl fail: gos_wf: the input `input_for_motus` is not a valid File?: "pseudo_files/pseudo.merged.unfiltered.fasta"
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/assembly/eggnog-subwf.cwl ok 3
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/chunking-subwf-IPS.cwl ok 3
@@ -3745,7 +3745,7 @@ realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/hopach/hopach.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/kraken2/kraken2.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/manorm/manorm.cwl ok 1
-realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/multiqc/multiqc.cwl fail: multiqc: JavaScript error in `// script merges the to input arrays // into one array that fulfills the type //...`: ReferenceError: console is not defined (unknown at :42:3)
+realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/multiqc/multiqc.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/nucleoatac/nucleoatac.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/pca/pca.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/phantompeakqualtools/phantompeakqualtools.cwl ok 1
@@ -3928,7 +3928,7 @@ realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC74/WF7403/WF7403a
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC74/WF7403/WF7403b.cwl ok 3
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC75/WF7501/WF7501.cwl fail: ST750106: `inputs` does not contain the key `Run_User_Model`
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC75/WF7502/ST750207.cwl ok 5
-realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC75/WF7502/WF7502.cwl fail: ST750207: JavaScript error in `self.listing.find(f => f.basename === "DAL_template.json")`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3) (without InlineJavascriptRequirement)
+realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC75/WF7502/WF7502.cwl fail: ST750207: JavaScript error in `self.listing.find(f => f.basename === "DAL_template.json")`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3) (without InlineJavascriptRequirement)
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC76/WF7601/WF7601.cwl fail: ST760103: `inputs` does not contain the key `useMLStep`
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC76/WF7602/WF7602.cwl fail: ST760103: `inputs` does not contain the key `useMLStep`
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC81/WF8101/ST810101.cwl ok 1
@@ -4027,7 +4027,7 @@ realworld/sources/gitlab.com__m-unlock__cwl/tools/bbmap/bbmap_filter-reads.cwl o
 realworld/sources/gitlab.com__m-unlock__cwl/tools/bbmap/prepare_fasta_db.cwl ok 1
 realworld/sources/gitlab.com__m-unlock__cwl/tools/binette/binette.cwl ok 1
 realworld/sources/gitlab.com__m-unlock__cwl/tools/binspreader/binspreader.cwl ok 1
-realworld/sources/gitlab.com__m-unlock__cwl/tools/bowtie2/bowtie2_align.cwl fail: bowtie2_align: JavaScript error in `if (inputs.output_filename == ""){ return ' 2> ' + default_output_filename().spl...`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :12:3)
+realworld/sources/gitlab.com__m-unlock__cwl/tools/bowtie2/bowtie2_align.cwl fail: bowtie2_align: JavaScript error in `if (inputs.output_filename == ""){ return ' 2> ' + default_output_filename().spl...`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :13:3)
 realworld/sources/gitlab.com__m-unlock__cwl/tools/bowtie2/bowtie2_align_simple.cwl ok 1
 realworld/sources/gitlab.com__m-unlock__cwl/tools/bowtie2/bowtie2_index.cwl ok 1
 realworld/sources/gitlab.com__m-unlock__cwl/tools/bracken/bracken.cwl ok 1
@@ -4134,7 +4134,7 @@ realworld/sources/gitlab.com__m-unlock__cwl/tools/sapp/conversion/conversion_pro
 realworld/sources/gitlab.com__m-unlock__cwl/tools/sapp/conversion_rdf2fasta.cwl ok 1
 realworld/sources/gitlab.com__m-unlock__cwl/tools/sapp/conversion_rdf2gtf.cwl ok 1
 realworld/sources/gitlab.com__m-unlock__cwl/tools/sapp/crt.cwl ok 1
-realworld/sources/gitlab.com__m-unlock__cwl/tools/sapp/eggnog.cwl fail: eggnog: JavaScript error in `inputs.inputFile.nameroot`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+realworld/sources/gitlab.com__m-unlock__cwl/tools/sapp/eggnog.cwl fail: eggnog: JavaScript error in `inputs.inputFile.nameroot`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
 realworld/sources/gitlab.com__m-unlock__cwl/tools/sapp/infernal.cwl ok 1
 realworld/sources/gitlab.com__m-unlock__cwl/tools/sapp/interproscan.cwl ok 1
 realworld/sources/gitlab.com__m-unlock__cwl/tools/sapp/kofamscan.cwl ok 1

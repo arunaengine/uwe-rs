@@ -224,10 +224,25 @@ impl Run {
         let leaf = !matches!(process.class, Class::Workflow(_));
         match (first, &self.placeholders) {
             // In a run on placeholder inputs, optional inputs are null, but the expressions
-            // of a tool may need them; it then gets placeholders for them too.
+            // of a tool may need them: the optional inputs that a failing expression names get
+            // placeholders, a few rounds at most.
             (Err(error), Some(base)) if leaf && !error.contains(tool::UNSUPPORTED) => {
                 let base = base.clone();
-                match fill_optional(process, &job, outer, &base) {
+                let mut job = job;
+                let mut last = error.clone();
+                for _ in 0..8 {
+                    let Some(filled) = fill_optional(process, &job, outer, &base, Some(&last))
+                    else {
+                        break;
+                    };
+                    match self.start_process(id, process, filled.clone(), outer, &names, toplevel) {
+                        Ok(()) => return Ok(()),
+                        Err(next) => (job, last) = (filled, next),
+                    }
+                }
+                // Errors that name no input, like a library function that reads one: all
+                // optional inputs get placeholders.
+                match fill_optional(process, &job, outer, &base, None) {
                     Some(filled) => self
                         .start_process(id, process, filled, outer, &names, toplevel)
                         .map_err(|_| error),
@@ -277,6 +292,8 @@ impl Run {
             Class::CommandLineTool(_) | Class::Operation => {
                 let task_id = TaskId(self.next_task);
                 self.next_task += 1;
+                let fake =
+                    self.options.mock && placeholder::is_fake(&Value::Map(job.clone()), &self.fake);
                 let (task, pending) = tool::task(
                     process,
                     job,
@@ -284,6 +301,7 @@ impl Run {
                     &self.options,
                     task_id,
                     (&names.display, &names.step),
+                    fake,
                 )
                 .map_err(at)?;
                 self.ready.push(task);
@@ -491,7 +509,8 @@ impl Run {
             return Ok(());
         }
         run.done = true;
-        let outputs = workflow_outputs(run).map_err(|error| {
+        let lenient = self.placeholders.is_some();
+        let outputs = workflow_outputs(run, lenient).map_err(|error| {
             if run.names.display.is_empty() {
                 error
             } else {
@@ -580,6 +599,16 @@ impl Run {
         }
         let method = step.scatter_method.unwrap_or(ScatterMethod::Dotproduct);
         let combinations: Vec<Vec<usize>> = match method {
+            ScatterMethod::Dotproduct if self.placeholders.is_some() => {
+                // Placeholder lists have one item, where the document may expect as many as
+                // another list has: shorter lists repeat their items.
+                let longest = lengths.iter().copied().max().unwrap_or(0);
+                let shortest = lengths.iter().copied().min().unwrap_or(0);
+                let count = if shortest == 0 { 0 } else { longest };
+                (0..count)
+                    .map(|index| lengths.iter().map(|length| index % length).collect())
+                    .collect()
+            }
             ScatterMethod::Dotproduct => {
                 if lengths.iter().any(|length| *length != lengths[0]) {
                     return Err(at("dotproduct scatter needs lists of equal length".into()));
@@ -744,9 +773,16 @@ impl Run {
     }
 }
 
-/// The input object with placeholders for the optional inputs that are null and have no
-/// default; `None` when there are none.
-fn fill_optional(process: &Process, job: &Map, outer: &Scope, base: &str) -> Option<Map> {
+/// The input object with placeholders for the optional inputs that are null, have no default
+/// and, when an error message is given, are named in it as `inputs.<name>`; `None` when there
+/// are none.
+fn fill_optional(
+    process: &Process,
+    job: &Map,
+    outer: &Scope,
+    base: &str,
+    error: Option<&str>,
+) -> Option<Map> {
     let scope = outer.with(&process.requirements, &process.hints);
     let mut types = scope.types();
     for input in &process.inputs {
@@ -757,7 +793,20 @@ fn fill_optional(process: &Process, job: &Map, outer: &Scope, base: &str) -> Opt
     for input in &process.inputs {
         let name = short_name(&input.id);
         let missing = filled.get(name).is_none_or(Value::is_null);
-        if missing && input.default.is_none() && types.optional(&input.value_type) {
+        let named = error.is_none_or(|error| {
+            let references = [
+                format!("inputs.{name}"),
+                format!("inputs['{name}']"),
+                format!("inputs[\"{name}\"]"),
+            ];
+            references.iter().any(|reference| {
+                error.match_indices(reference.as_str()).any(|(at, _)| {
+                    let after = error[at + reference.len()..].chars().next();
+                    !after.is_some_and(|c| c.is_alphanumeric() || c == '_')
+                })
+            })
+        });
+        if missing && named && input.default.is_none() && types.optional(&input.value_type) {
             let value = placeholder::input(input, &types, base, false);
             filled.insert(name.to_owned(), value);
             changed = true;
@@ -896,7 +945,8 @@ fn null_outputs(step: &Step) -> Map {
 }
 
 /// The output object of a workflow from its output sources.
-fn workflow_outputs(run: &WorkflowRun) -> Result<Map, String> {
+/// `lenient` takes a failed pick as null, as for steps on placeholder inputs.
+fn workflow_outputs(run: &WorkflowRun, lenient: bool) -> Result<Map, String> {
     let mut outputs = Map::new();
     for output in &run.process.outputs {
         let sources: Vec<Value> = output
@@ -922,7 +972,10 @@ fn workflow_outputs(run: &WorkflowRun) -> Result<Map, String> {
                 Value::List(items)
             }
         };
-        let value = pick(output.pick_value, value, &output.id)?;
+        let value = match pick(output.pick_value, value, &output.id) {
+            Err(_) if lenient => Value::Null,
+            result => result?,
+        };
         outputs.insert(short_name(&output.id).to_owned(), value);
     }
     Ok(outputs)

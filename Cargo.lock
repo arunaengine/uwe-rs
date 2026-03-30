@@ -1499,6 +1499,7 @@ name = "iunctus"
 version = "0.1.0"
 dependencies = [
  "content-store",
+ "cwl-runtime",
  "executor",
  "fancy-regex",
  "nextflow-evaluator",

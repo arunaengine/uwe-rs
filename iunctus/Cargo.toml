@@ -13,6 +13,7 @@ publish.workspace = true
 
 [dependencies]
 content-store.workspace = true
+cwl-runtime.workspace = true
 executor.workspace = true
 nextflow-evaluator.workspace = true
 nextflow-runtime.workspace = true

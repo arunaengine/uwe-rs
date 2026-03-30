@@ -167,7 +167,12 @@ impl Types {
                 if null_if_optional && types.contains(&Type::Null) {
                     return Value::Null;
                 }
-                match types.iter().find(|member| !matches!(member, Type::Null)) {
+                // Files, as expressions over such unions mostly look at file fields.
+                let file = types
+                    .iter()
+                    .find(|member| matches!(self.resolve(member), Type::File | Type::Directory));
+                let first = types.iter().find(|member| !matches!(member, Type::Null));
+                match file.or(first) {
                     Some(member) => self.placeholder(member, name, base, null_if_optional, hint),
                     None => Value::Null,
                 }

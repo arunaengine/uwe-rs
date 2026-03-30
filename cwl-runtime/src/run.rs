@@ -270,7 +270,7 @@ impl Run {
                 format!("{}: {error}", names.display)
             }
         };
-        let scope = outer.with(&process.requirements, &process.hints);
+        let scope = outer.enter(process);
         scope
             .check_supported()
             .map_err(|error| format!("{}{}", tool::UNSUPPORTED, error.message))?;
@@ -286,6 +286,7 @@ impl Run {
             load_listing: scope.load_listing(),
             discover: toplevel || self.options.mock,
             placeholders: self.placeholders.as_deref(),
+            toplevel,
         };
         let job = inputs::prepare(process, job, &setting).map_err(at)?;
         match &process.class {
@@ -535,7 +536,10 @@ impl Run {
         let evaluator = step_scope.evaluator();
         let process = &step.run.process;
         if step.scatter.is_empty() {
-            match self.element(step, gathered, &evaluator).map_err(at)? {
+            match self
+                .step_job(step, gathered, &evaluator, &step_scope)
+                .map_err(at)?
+            {
                 Some(job) => {
                     let parent = Parent::Step {
                         workflow,
@@ -573,7 +577,9 @@ impl Run {
                         .map(|input| {
                             let mut types = step_scope.types();
                             types.add(&input.value_type);
-                            placeholder::input(input, &types, base, false)
+                            let mut value = placeholder::input(input, &types, base, false);
+                            let _ = files::normalize(&mut value);
+                            value
                         })
                         .unwrap_or_else(|| Value::string(key.as_str()));
                     gathered.insert(key.clone(), Value::List(vec![item]));
@@ -670,7 +676,7 @@ impl Run {
             };
             let element_names = names.indexed(&shown);
             let job = self
-                .element(step, inputs, &evaluator)
+                .step_job(step, inputs, &evaluator, &step_scope)
                 .map_err(|error| format!("{}: {error}", element_names.display))?;
             match job {
                 Some(job) => {
@@ -696,6 +702,62 @@ impl Run {
             self.events.push_back(Event::Finished(scatter, assembled));
         }
         Ok(())
+    }
+
+    /// [`Run::element`], and on placeholder inputs, with placeholders for the null inputs
+    /// that a failing `valueFrom` or `when` names, a few rounds at most.
+    fn step_job(
+        &self,
+        step: &Step,
+        gathered: Map,
+        evaluator: &Evaluator,
+        scope: &Scope,
+    ) -> Result<Option<Map>, String> {
+        let first = self.element(step, gathered.clone(), evaluator);
+        let (Err(error), Some(base)) = (&first, &self.placeholders) else {
+            return first;
+        };
+        let mut values = gathered;
+        let mut last = error.clone();
+        for _ in 0..8 {
+            let mut changed = false;
+            for input in &step.run.process.inputs {
+                let name = short_name(&input.id);
+                if values.get(name).is_some_and(|value| !value.is_null()) || !names(&last, name) {
+                    continue;
+                }
+                let mut types = scope.types();
+                types.add(&input.value_type);
+                let mut value = placeholder::input(input, &types, base, false);
+                files::normalize(&mut value)?;
+                values.insert(name.to_owned(), value);
+                changed = true;
+            }
+            if !changed {
+                break;
+            }
+            match self.element(step, values.clone(), evaluator) {
+                Ok(job) => return Ok(job),
+                Err(next) => last = next,
+            }
+        }
+        // `valueFrom` runs before `when`, so a `valueFrom` over optional inputs that `when`
+        // guards fails; other runners check `when` first, and so does this fallback.
+        if let Some(when) = &step.when {
+            let inputs = Value::Map(values);
+            let skipped = evaluator.evaluate(
+                when,
+                Variables {
+                    inputs: &inputs,
+                    this: &Value::Null,
+                    runtime: &expression_runtime(),
+                },
+            );
+            if matches!(skipped, Ok(Value::Bool(false) | Value::Null)) {
+                return Ok(None);
+            }
+        }
+        first
     }
 
     /// The input object of one step job: `valueFrom` after the sources, then `when`; `None`
@@ -783,7 +845,7 @@ fn fill_optional(
     base: &str,
     error: Option<&str>,
 ) -> Option<Map> {
-    let scope = outer.with(&process.requirements, &process.hints);
+    let scope = outer.enter(process);
     let mut types = scope.types();
     for input in &process.inputs {
         types.add(&input.value_type);
@@ -793,19 +855,7 @@ fn fill_optional(
     for input in &process.inputs {
         let name = short_name(&input.id);
         let missing = filled.get(name).is_none_or(Value::is_null);
-        let named = error.is_none_or(|error| {
-            let references = [
-                format!("inputs.{name}"),
-                format!("inputs['{name}']"),
-                format!("inputs[\"{name}\"]"),
-            ];
-            references.iter().any(|reference| {
-                error.match_indices(reference.as_str()).any(|(at, _)| {
-                    let after = error[at + reference.len()..].chars().next();
-                    !after.is_some_and(|c| c.is_alphanumeric() || c == '_')
-                })
-            })
-        });
+        let named = error.is_none_or(|error| names(error, name));
         if missing && named && input.default.is_none() && types.optional(&input.value_type) {
             let value = placeholder::input(input, &types, base, false);
             filled.insert(name.to_owned(), value);
@@ -813,6 +863,22 @@ fn fill_optional(
         }
     }
     changed.then_some(filled)
+}
+
+/// Whether a message names an input as `inputs.<name>`, `inputs['<name>']` or
+/// `inputs["<name>"]`.
+fn names(message: &str, name: &str) -> bool {
+    let references = [
+        format!("inputs.{name}"),
+        format!("inputs['{name}']"),
+        format!("inputs[\"{name}\"]"),
+    ];
+    references.iter().any(|reference| {
+        message.match_indices(reference.as_str()).any(|(at, _)| {
+            let after = message[at + reference.len()..].chars().next();
+            !after.is_some_and(|c| c.is_alphanumeric() || c == '_')
+        })
+    })
 }
 
 /// The `runtime` of expressions outside command line tools.

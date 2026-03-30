@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use cwl_parser::model::{LoadListing, Requirement, RequirementClass};
+use cwl_parser::model::{Class, LoadListing, Process, Requirement, RequirementClass, Version};
 use workflow_graph::DriverError;
 
 use crate::expression::Evaluator;
@@ -42,6 +42,26 @@ impl Scope {
             requirements: Arc::new(all_requirements),
             hints: Arc::new(all_hints),
         }
+    }
+
+    /// The scope of a process inside this one. As in cwltool, a v1.0 process has a
+    /// `LoadListingRequirement` hint for deep listings before its own hints, which its steps
+    /// inherit; command line tools have it from the upgrade already.
+    pub fn enter(&self, process: &Process) -> Scope {
+        let upgraded =
+            process.version == Version::V1_0 && !matches!(process.class, Class::CommandLineTool(_));
+        if !upgraded {
+            return self.with(&process.requirements, &process.hints);
+        }
+        let mut hints = vec![Requirement {
+            class: RequirementClass::LoadListing {
+                load_listing: Some(LoadListing::DeepListing),
+            },
+            extensions: Vec::new(),
+            location: process.location.clone(),
+        }];
+        hints.extend(process.hints.iter().cloned());
+        self.with(&process.requirements, &hints)
     }
 
     /// The entry that `pick` accepts, and whether it is a requirement rather than a hint.

@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
-use nextflow_evaluator::value::PathValue;
+use nextflow_evaluator::value::{PathValue, Value};
 use nextflow_runtime::driver::{Nextflow, Settings};
 use workflow_graph::{Driver, DriverError, Launch};
 
@@ -28,6 +28,22 @@ impl Host for Console {
         } else {
             print!("{text}");
         }
+    }
+
+    /// `System.out` and `System.err`, which config files of legacy syntax print warnings to.
+    fn namespace_method(
+        &mut self,
+        namespace: &str,
+        name: &str,
+        arguments: Vec<Value>,
+    ) -> Result<Option<Value>, Error> {
+        let end = if name == "println" { "\n" } else { "" };
+        match (namespace, name, arguments.as_slice()) {
+            ("System.out", "println" | "print", [message]) => print!("{message}{end}"),
+            ("System.err", "println" | "print", [message]) => eprint!("{message}{end}"),
+            _ => return Ok(None),
+        }
+        Ok(Some(Value::Null))
     }
 
     fn download(&mut self, path: &PathValue) -> Result<PathBuf, Error> {

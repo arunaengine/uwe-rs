@@ -153,7 +153,7 @@ fn driver(
     match language {
         Language::Nextflow => nextflow::driver(launch, run, quiet),
         Language::Snakemake => Err(not_yet(language)),
-        Language::Cwl => Err(not_yet(language)),
+        Language::Cwl => cwl_runtime::driver(launch),
         Language::Argo => Err(not_yet(language)),
     }
 }

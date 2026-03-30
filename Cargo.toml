@@ -17,6 +17,7 @@ publish = false
 # Workspace crates
 content-store = { path = "content-store" }
 cwl-parser = { path = "cwl-parser" }
+cwl-runtime = { path = "cwl-runtime" }
 executor = { path = "executor" }
 nextflow-config = { path = "nextflow-config" }
 nextflow-evaluator = { path = "nextflow-evaluator" }

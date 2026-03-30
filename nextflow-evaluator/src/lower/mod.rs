@@ -21,6 +21,7 @@ use crate::lowered::{
     Code, DefinitionKind, Include, Module, Parameter, Statement, StatementKind, TypedParameter,
     Workflow,
 };
+use crate::value::Value;
 use scope::Scopes;
 
 /// Tells lowering what a name that a script includes stands for.
@@ -53,15 +54,78 @@ pub fn lower_config_value(
     source: &str,
     process_scope: bool,
 ) -> Result<Code, Vec<Diagnostic>> {
-    let mut lowering = Lowering::new(source);
-    lowering.config = true;
+    lower_legacy_config_value(value, source, process_scope, &ConfigNames::default())
+}
+
+/// The names that the legacy parser adds to config code (decision 14). It runs a config file
+/// as a Groovy script, so the code may call the functions of the file and of the files that
+/// include it, and read local variables and earlier settings by name.
+#[derive(Default)]
+pub struct ConfigNames<'a> {
+    /// The functions of the file.
+    pub functions: HashSet<Rc<str>>,
+    /// The functions of the files that include this one, which the module links.
+    pub inherited: HashSet<Rc<str>>,
+    /// The value of another name that strict syntax does not know, given whether the code
+    /// reads it inside a closure. The value is fixed when the code is lowered.
+    pub lookup: Option<&'a Lookup<'a>>,
+}
+
+/// Gives the value of a name, given whether the code reads it inside a closure.
+pub type Lookup<'a> = dyn Fn(&str, bool) -> Option<Value> + 'a;
+
+/// Lowers the value of one config setting like `lower_config_value`, with the names of
+/// legacy syntax.
+pub fn lower_legacy_config_value(
+    value: &ast::Expression,
+    source: &str,
+    process_scope: bool,
+    names: &ConfigNames,
+) -> Result<Code, Vec<Diagnostic>> {
+    let mut lowering = Lowering::config(source, names);
     lowering.dynamic_names = process_scope;
     let code = lowering.expression_code("config", value, value.span);
-    if lowering.errors.is_empty() {
-        Ok(code)
-    } else {
-        Err(lowering.errors)
-    }
+    lowering.finish(code)
+}
+
+/// Lowers a statement of legacy config syntax, like `System.err.println('...')`, as code
+/// without parameters.
+pub fn lower_config_statement(
+    statement: &ast::Statement,
+    source: &str,
+    names: &ConfigNames,
+) -> Result<Code, Vec<Diagnostic>> {
+    let mut lowering = Lowering::config(source, names);
+    lowering.scopes.push_frame(false);
+    let body = lowering.statements(std::slice::from_ref(statement));
+    let layout = lowering.scopes.pop_frame();
+    let code = Code {
+        name: "config".into(),
+        parameters: Vec::new(),
+        implicit_parameter: false,
+        slot_count: layout.slot_count,
+        captures: layout.captures,
+        body,
+        span: statement.span,
+    };
+    lowering.finish(code)
+}
+
+/// Lowers a function of legacy config syntax, like `def check_max(obj, type) { ... }`. Like a
+/// Groovy method, it cannot read the local variables of the file.
+pub fn lower_config_function(
+    function: &ast::Function,
+    source: &str,
+    names: &ConfigNames,
+) -> Result<Code, Vec<Diagnostic>> {
+    let names = ConfigNames {
+        functions: names.functions.clone(),
+        inherited: names.inherited.clone(),
+        lookup: None,
+    };
+    let mut lowering = Lowering::config(source, &names);
+    let code = lowering.function(function);
+    lowering.finish(code)
 }
 
 /// Lowers an expression of a template, like `workflow.manifest.name` in `${...}`: every name
@@ -215,6 +279,8 @@ pub(crate) struct Lowering<'a> {
     template: bool,
     /// The calls of processes and workflows, for `Module::definition_calls`.
     definition_calls: Vec<(Rc<str>, usize, Span)>,
+    /// The value of a name of legacy config syntax, from `ConfigNames::lookup`.
+    lookup: Option<&'a Lookup<'a>>,
 }
 
 impl<'a> Lowering<'a> {
@@ -234,6 +300,30 @@ impl<'a> Lowering<'a> {
             dynamic_names: false,
             template: false,
             definition_calls: Vec::new(),
+            lookup: None,
+        }
+    }
+
+    /// For config code, with the names of legacy syntax.
+    fn config(source: &'a str, names: &ConfigNames<'a>) -> Self {
+        let mut lowering = Lowering::new(source);
+        lowering.config = true;
+        lowering.functions = names.functions.clone();
+        for name in &names.inherited {
+            lowering
+                .definitions
+                .insert(name.clone(), DefinitionKind::Function);
+        }
+        lowering.lookup = names.lookup;
+        lowering
+    }
+
+    /// The code, or the errors found while lowering it.
+    fn finish(self, code: Code) -> Result<Code, Vec<Diagnostic>> {
+        if self.errors.is_empty() {
+            Ok(code)
+        } else {
+            Err(self.errors)
         }
     }
 

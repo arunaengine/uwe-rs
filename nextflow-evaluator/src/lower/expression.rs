@@ -230,6 +230,9 @@ impl Lowering<'_> {
         if CONFIG_CONSTANTS.contains(&name) || (in_closure && SCRIPT_CONSTANTS.contains(&name)) {
             return Kind::Builtin(name.into());
         }
+        if let Some(value) = self.lookup.and_then(|lookup| lookup(name, in_closure)) {
+            return Kind::Literal(value);
+        }
         if in_closure && self.dynamic_names {
             return Kind::Dynamic(name.into());
         }

@@ -198,7 +198,7 @@ impl Parser<'_> {
         Ok(StatementKind::Try { body, catches })
     }
 
-    fn catch_types(&mut self) -> Parse<Vec<QualifiedName>> {
+    pub(super) fn catch_types(&mut self) -> Parse<Vec<QualifiedName>> {
         let mut types = vec![self.qualified_class_name()?];
         while self.eat(TokenKind::BitOr) {
             types.push(self.qualified_class_name()?);

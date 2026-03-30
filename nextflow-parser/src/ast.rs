@@ -510,6 +510,42 @@ pub enum ConfigStatement {
         body: Vec<ConfigStatement>,
         span: Span,
     },
+    // The statements below are legacy syntax: strict syntax rejects them, and iunctus runs
+    // them with the meaning of the legacy parser (decision 14).
+    /// `if (condition) { ... } else { ... }` around config statements.
+    If {
+        condition: Expression,
+        then: Vec<ConfigStatement>,
+        otherwise: Vec<ConfigStatement>,
+        span: Span,
+    },
+    /// `try { ... } catch (Exception e) { ... }` around config statements.
+    Try {
+        body: Vec<ConfigStatement>,
+        catches: Vec<ConfigCatch>,
+        span: Span,
+    },
+    /// A local variable, like `def timestamp = new Date().format('yyyy')`.
+    Declaration {
+        names: Vec<Name>,
+        value: Option<Expression>,
+        /// `def (a, b) = pair`
+        destructure: bool,
+        span: Span,
+    },
+    /// A function, like `def check_max(obj, type) { ... }`.
+    Function(Box<Function>),
+    /// Any other statement, like `System.err.println('...')`.
+    Statement(Statement),
+}
+
+/// `catch (Exception e) { ... }` of a legacy `try` in a config file.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConfigCatch {
+    pub name: Name,
+    /// Empty for `catch (e)`, which catches every exception.
+    pub types: Vec<QualifiedName>,
+    pub body: Vec<ConfigStatement>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

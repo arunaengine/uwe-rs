@@ -22,6 +22,9 @@ use crate::{Diagnostic, Span};
 pub struct Parsed<T> {
     pub tree: T,
     pub errors: Vec<Diagnostic>,
+    /// Legacy syntax that strict syntax rejects with these errors, and that the tree holds
+    /// with the meaning of the legacy parser (decision 14).
+    pub legacy: Vec<Diagnostic>,
 }
 
 pub fn parse_script(source: &str) -> Parsed<Script> {
@@ -30,6 +33,7 @@ pub fn parse_script(source: &str) -> Parsed<Script> {
     Parsed {
         tree,
         errors: parser.errors,
+        legacy: parser.legacy,
     }
 }
 
@@ -39,6 +43,7 @@ pub fn parse_config(source: &str) -> Parsed<Config> {
     Parsed {
         tree,
         errors: parser.errors,
+        legacy: parser.legacy,
     }
 }
 
@@ -54,6 +59,7 @@ struct Parser<'a> {
     tokens: Vec<Token>,
     position: usize,
     errors: Vec<Diagnostic>,
+    legacy: Vec<Diagnostic>,
 }
 
 impl<'a> Parser<'a> {
@@ -65,6 +71,7 @@ impl<'a> Parser<'a> {
             tokens: lexed.tokens,
             position: 0,
             errors: lexed.errors,
+            legacy: Vec::new(),
         }
     }
 
@@ -182,12 +189,13 @@ impl<'a> Parser<'a> {
 
     /// Tries a rule and, if it fails, rewinds as if it had never run, dropping its errors.
     fn speculate<T>(&mut self, rule: impl FnOnce(&mut Self) -> Parse<T>) -> Option<T> {
-        let (position, errors) = (self.position, self.errors.len());
+        let (position, errors, legacy) = (self.position, self.errors.len(), self.legacy.len());
         match rule(self) {
             Ok(tree) => Some(tree),
             Err(Failed) => {
                 self.position = position;
                 self.errors.truncate(errors);
+                self.legacy.truncate(legacy);
                 None
             }
         }
@@ -195,10 +203,11 @@ impl<'a> Parser<'a> {
 
     /// Checks whether a rule would succeed here, then rewinds either way.
     fn lookahead<T>(&mut self, rule: impl FnOnce(&mut Self) -> Parse<T>) -> bool {
-        let (position, errors) = (self.position, self.errors.len());
+        let (position, errors, legacy) = (self.position, self.errors.len(), self.legacy.len());
         let matched = rule(self).is_ok();
         self.position = position;
         self.errors.truncate(errors);
+        self.legacy.truncate(legacy);
         matched
     }
 

@@ -40,6 +40,14 @@ fn label(statement: &ConfigStatement) -> String {
         ConfigStatement::Selector { kind, target, .. } => {
             format!("{}: {}", kind.text, target.text)
         }
+        ConfigStatement::If { .. } => "if".to_owned(),
+        ConfigStatement::Try { .. } => "try".to_owned(),
+        ConfigStatement::Declaration { names, .. } => {
+            let names: Vec<_> = names.iter().map(|name| name.text.as_str()).collect();
+            format!("def {}", names.join(", "))
+        }
+        ConfigStatement::Function(function) => format!("{}()", function.name.text),
+        ConfigStatement::Statement(_) => "statement".to_owned(),
     }
 }
 
@@ -189,10 +197,24 @@ includeConfig !params.igenomes_ignore ? 'conf/igenomes.config' : 'conf/igenomes_
     assert_eq!(labels(&statements), ["includeConfig", "includeConfig"]);
 }
 
+/// The messages of the legacy syntax in a file, which strict syntax rejects.
+fn legacy(source: &str) -> Vec<String> {
+    let parsed = parse_config(source);
+    assert!(
+        parsed.errors.is_empty(),
+        "unexpected errors: {:?}",
+        parsed.errors
+    );
+    parsed
+        .legacy
+        .into_iter()
+        .map(|error| error.message)
+        .collect()
+}
+
 #[test]
-fn rejects_script_statements() {
-    let parsed = parse_config(
-        "if (params.gpu) {
+fn legacy_statements() {
+    let source = "if (params.gpu) {
     docker.runOptions = '--gpus all'
 }
 def prefix = 'x'
@@ -201,12 +223,9 @@ try {
     foo = 1
 } catch (Exception e) {
 }
-",
-    );
-    assert!(parsed.tree.statements.is_empty());
-    let messages: Vec<_> = parsed.errors.iter().map(|error| &*error.message).collect();
+";
     assert_eq!(
-        messages,
+        legacy(source),
         [
             "If statements cannot be mixed with config statements",
             "Variable declarations cannot be mixed with config statements",
@@ -214,6 +233,98 @@ try {
             "Try-catch blocks cannot be mixed with config statements"
         ]
     );
+    assert_eq!(
+        labels(&parse(source)),
+        ["if", "def prefix", "def name", "try"]
+    );
+}
+
+#[test]
+fn legacy_if() {
+    let statements = parse(
+        "process {
+    if (params.gpu) {
+        withName: 'FOO' {
+            accelerator = 1
+        }
+    } else if (params.big)
+        cpus = 8
+    else {
+        includeConfig 'x.config'
+    }
+}
+",
+    );
+    let [
+        ConfigStatement::If {
+            then, otherwise, ..
+        },
+    ] = body(&statements[0])
+    else {
+        panic!("expected an if statement: {statements:?}");
+    };
+    assert_eq!(labels(then), ["withName: FOO"]);
+    let [
+        ConfigStatement::If {
+            then, otherwise, ..
+        },
+    ] = otherwise.as_slice()
+    else {
+        panic!("expected else if: {otherwise:?}");
+    };
+    assert_eq!(labels(then), ["cpus"]);
+    assert_eq!(labels(otherwise), ["includeConfig"]);
+}
+
+#[test]
+fn legacy_try() {
+    let statements = parse(
+        "try {
+    includeConfig \"${params.custom_config_base}/nfcore_custom.config\"
+} catch (Exception e) {
+    System.err.println(\"WARNING: Could not load nf-core/config profiles\")
+}
+",
+    );
+    let [ConfigStatement::Try { body, catches, .. }] = statements.as_slice() else {
+        panic!("expected a try statement: {statements:?}");
+    };
+    assert_eq!(labels(body), ["includeConfig"]);
+    assert_eq!(catches.len(), 1);
+    assert_eq!(catches[0].name.text, "e");
+    assert_eq!(catches[0].types[0].parts[0].text, "Exception");
+    assert_eq!(labels(&catches[0].body), ["statement"]);
+}
+
+#[test]
+fn legacy_functions() {
+    let source = "def check_max(obj, type) {
+    if (type == 'cpus') {
+        return Math.min(obj, params.max_cpus as int)
+    }
+}
+String upper(String text) {
+    text.toUpperCase()
+}
+";
+    assert_eq!(
+        legacy(source),
+        ["Unexpected input: '('", "Unexpected input: '('"]
+    );
+    assert_eq!(labels(&parse(source)), ["check_max()", "upper()"]);
+}
+
+#[test]
+fn legacy_script_statements() {
+    let source = "println 'loading'\nlog.info(\"x\")\n";
+    assert_eq!(
+        legacy(source),
+        ["Unexpected input: ''loading''", "Unexpected input: '('"]
+    );
+    assert_eq!(labels(&parse(source)), ["statement", "statement"]);
+    // What is no script statement either keeps the strict error.
+    assert_eq!(messages("foo = )\n"), ["Expected an expression"]);
+    assert_eq!(messages("a.b c )\n"), ["Unexpected input: 'c'"]);
 }
 
 #[test]
@@ -254,7 +365,7 @@ fn rejects_top_selector() {
 
 #[test]
 fn recovers_after_error() {
-    let parsed = parse_config("foo bar\nprocess.cpus = 2\nparams {\n    outdir = 'results'\n}\n");
+    let parsed = parse_config("foo = )\nprocess.cpus = 2\nparams {\n    outdir = 'results'\n}\n");
     assert_eq!(parsed.errors.len(), 1, "errors: {:?}", parsed.errors);
     assert_eq!(labels(&parsed.tree.statements), ["process.cpus", "params"]);
 }

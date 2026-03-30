@@ -1,0 +1,268 @@
+//! Config files of legacy syntax, which strict syntax rejects and iunctus runs with the
+//! meaning of the legacy parser (decision 14).
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::path::Path;
+
+use nextflow_config::{Config, ConfigError, Options, load};
+use nextflow_evaluator::interpreter::{Error, Host, Interpreter};
+use nextflow_evaluator::value::Value;
+
+/// Keeps what config files print to `System.err`, and knows one environment variable.
+#[derive(Default)]
+struct Recorder {
+    errors: String,
+}
+
+impl Host for Recorder {
+    fn print(&mut self, _: &str) {}
+
+    fn environment(&self, name: &str) -> Option<String> {
+        (name == "IUNCTUS_TEST").then(|| "from the environment".into())
+    }
+
+    fn namespace_method(
+        &mut self,
+        namespace: &str,
+        name: &str,
+        arguments: Vec<Value>,
+    ) -> Result<Option<Value>, Error> {
+        if let ("System.err", "println", [message]) = (namespace, name, arguments.as_slice()) {
+            self.errors.push_str(&format!("{message}\n"));
+            return Ok(Some(Value::Null));
+        }
+        Ok(None)
+    }
+}
+
+/// Loads `nextflow.config` from files written into a new directory, with what it printed to
+/// `System.err`.
+fn load_files(files: &[(&str, &str)]) -> (Result<Config, ConfigError>, String) {
+    let directory = tempfile::tempdir().unwrap();
+    for (name, text) in files {
+        std::fs::write(directory.path().join(name), text).unwrap();
+    }
+    let options = Options {
+        profiles: None,
+        params: Value::map([]),
+        project_dir: directory.path().to_string_lossy().into_owned(),
+        launch_dir: directory.path().to_string_lossy().into_owned(),
+    };
+    let mut host = Recorder::default();
+    let files = [Path::new(directory.path()).join("nextflow.config")];
+    let config = load(&files, &options, &mut host);
+    (config, host.errors)
+}
+
+fn load_text(text: &str) -> Config {
+    let (config, _) = load_files(&[("nextflow.config", text)]);
+    config.unwrap()
+}
+
+fn get(config: &Config, path: &[&str]) -> String {
+    match config.get(path) {
+        Some(value) => value.to_string(),
+        None => panic!("no setting {path:?} in:\n{}", config.flat()),
+    }
+}
+
+/// Calls a closure of the config without arguments, with the final params.
+fn call(config: &Config, path: &[&str]) -> String {
+    let Some(Value::Closure(closure)) = config.get(path) else {
+        panic!("{path:?} is no closure");
+    };
+    let mut host = Recorder::default();
+    let mut interpreter = Interpreter::new(&mut host);
+    interpreter.set_global("params", config.params());
+    interpreter
+        .call_closure(&closure, Vec::new())
+        .unwrap()
+        .to_string()
+}
+
+#[test]
+fn try_catches_a_failed_include() {
+    let text = "params.base = 'missing'
+try {
+    includeConfig \"${params.base}/custom.config\"
+} catch (Exception e) {
+    System.err.println(\"WARNING: Could not load ${params.base}/custom.config\")
+}
+try {
+    includeConfig 'missing.config'
+} catch (IOException e) {
+    params.caught = e instanceof java.nio.file.NoSuchFileException
+}
+params.after = 1
+";
+    let (config, errors) = load_files(&[("nextflow.config", text)]);
+    let config = config.unwrap();
+    assert_eq!(errors, "WARNING: Could not load missing/custom.config\n");
+    assert_eq!(get(&config, &["params", "caught"]), "true");
+    assert_eq!(get(&config, &["params", "after"]), "1");
+}
+
+#[test]
+fn try_without_a_matching_catch_fails() {
+    let text =
+        "try {\n    includeConfig 'missing.config'\n} catch (IllegalStateException e) {\n}\n";
+    let (config, _) = load_files(&[("nextflow.config", text)]);
+    let error = config.unwrap_err().to_string();
+    assert!(error.contains("missing.config"), "{error}");
+}
+
+#[test]
+fn try_runs_an_include_that_works() {
+    let text = "try {\n    includeConfig 'custom.config'\n} catch (Exception e) {\n    \
+                params.caught = true\n}\n";
+    let (config, _) = load_files(&[
+        ("nextflow.config", text),
+        ("custom.config", "params.custom = 'yes'\n"),
+    ]);
+    let config = config.unwrap();
+    assert_eq!(get(&config, &["params", "custom"]), "yes");
+    assert!(config.get(&["params", "caught"]).is_none());
+}
+
+#[test]
+fn if_statements_choose_settings() {
+    let config = load_text(
+        "params.gpu = true
+params.genome = null
+if (params.genome == null) {
+    params.genomes = [:]
+} else {
+    includeConfig 'missing.config'
+}
+process {
+    if (params.gpu) {
+        withName: 'FOO' {
+            accelerator = 1
+        }
+    } else if (params.big)
+        cpus = 8
+    if (!params.gpu) {
+        memory = 1.GB
+    } else {
+        time = 1.h
+    }
+}
+",
+    );
+    assert_eq!(get(&config, &["params", "genomes"]), "[:]");
+    assert_eq!(
+        get(&config, &["process", "withName:FOO", "accelerator"]),
+        "1"
+    );
+    assert_eq!(get(&config, &["process", "time"]), "1h");
+    assert!(config.get(&["process", "cpus"]).is_none());
+    assert!(config.get(&["process", "memory"]).is_none());
+}
+
+#[test]
+fn local_variables() {
+    let config = load_text(
+        "def stamp = 'today'
+timeline {
+    file = \"timeline_${stamp}.html\"
+}
+process {
+    def publish = [path: 'out']
+    withName: FOO {
+        publishDir = publish
+        ext.args = { \"--date ${stamp}\" }
+    }
+}
+def (first, second) = ['a', 'b']
+stamp = 'tomorrow'
+params.names = \"${first}${second}_${stamp}\"
+",
+    );
+    assert_eq!(get(&config, &["timeline", "file"]), "timeline_today.html");
+    let publish = get(&config, &["process", "withName:FOO", "publishDir"]);
+    assert_eq!(publish, "[path:out]");
+    assert_eq!(
+        call(&config, &["process", "withName:FOO", "ext", "args"]),
+        "--date today"
+    );
+    assert_eq!(get(&config, &["params", "names"]), "ab_tomorrow");
+    // A variable belongs to its block.
+    let (config, _) = load_files(&[(
+        "nextflow.config",
+        "process {\n    def x = 1\n}\nparams.x = x\n",
+    )]);
+    let error = config.unwrap_err().to_string();
+    assert!(error.ends_with("4:12: `x` is not defined"), "{error}");
+}
+
+#[test]
+fn earlier_settings_by_name() {
+    let (config, _) = load_files(&[
+        (
+            "nextflow.config",
+            "params.base = 'https://example.org/'
+manifest {
+    version = '1.0'
+}
+validation {
+    help {
+        text = \"version ${manifest.version}\"
+    }
+}
+env.FROM = IUNCTUS_TEST
+includeConfig 'test.config'
+",
+        ),
+        (
+            "test.config",
+            "params {\n    input = base + 'samplesheet.csv'\n}\n",
+        ),
+    ]);
+    let config = config.unwrap();
+    assert_eq!(get(&config, &["validation", "help", "text"]), "version 1.0");
+    assert_eq!(get(&config, &["env", "FROM"]), "from the environment");
+    let input = get(&config, &["params", "input"]);
+    assert_eq!(input, "https://example.org/samplesheet.csv");
+    // A name that is neither a setting nor an environment variable stays an error.
+    let (config, _) = load_files(&[("nextflow.config", "params.x = manifest.name\n")]);
+    let error = config.unwrap_err().to_string();
+    assert!(
+        error.ends_with("1:12: `manifest` is not defined"),
+        "{error}"
+    );
+}
+
+#[test]
+fn functions_of_the_file_and_the_including_files() {
+    let (config, _) = load_files(&[
+        (
+            "nextflow.config",
+            "params.max_cpus = 2
+includeConfig 'base.config'
+process.memory = twice(2)
+def check_max(obj, type) {
+    if (type == 'cpus') {
+        try {
+            return Math.min(obj, params.max_cpus as int)
+        } catch (all) {
+            return obj
+        }
+    }
+    return obj
+}
+def twice(value) {
+    value * 2
+}
+",
+        ),
+        (
+            "base.config",
+            "process {\n    cpus = { check_max(4, 'cpus') }\n    time = check_max(8, 'cpus')\n}\n",
+        ),
+    ]);
+    let config = config.unwrap();
+    assert_eq!(get(&config, &["process", "memory"]), "4");
+    assert_eq!(get(&config, &["process", "time"]), "2");
+    assert_eq!(call(&config, &["process", "cpus"]), "2");
+}

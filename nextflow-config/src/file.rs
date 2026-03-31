@@ -295,7 +295,10 @@ impl<'a> Evaluator<'a> {
                     body,
                     span,
                 } => {
-                    if prefix.len() != 1 || &*prefix[0] != "process" {
+                    // Legacy syntax: the legacy parser makes a selector at the top level of a
+                    // file a block like any other, which no process reads.
+                    let top = prefix.is_empty() && !in_profile;
+                    if !top && (prefix.len() != 1 || &*prefix[0] != "process") {
                         let message = "Config selectors are only allowed in the `process` scope";
                         return Err(invalid(file, message, *span));
                     }
@@ -304,7 +307,9 @@ impl<'a> Evaluator<'a> {
                         return Err(invalid(file, &message, kind.span));
                     }
                     let scope: Rc<str> = format!("{}:{}", kind.text, target.text).into();
-                    self.block(file, body, &["process".into(), scope], false)?;
+                    let mut inner = prefix.to_vec();
+                    inner.push(scope);
+                    self.block(file, body, &inner, false)?;
                 }
                 ConfigStatement::If {
                     condition,

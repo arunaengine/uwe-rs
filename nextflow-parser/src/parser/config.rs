@@ -32,7 +32,7 @@ impl Parser<'_> {
             {
                 self.legacy_definition()
             }
-            TokenKind::Identifier if nested && self.nth(1) == TokenKind::Colon => self.selector(),
+            TokenKind::Identifier if self.nth(1) == TokenKind::Colon => self.selector(nested),
             _ => self.config_path(),
         }
     }
@@ -167,11 +167,19 @@ impl Parser<'_> {
     }
 
     /// The `configSelector` rule, like `withLabel: 'process_high' { ... }`.
-    fn selector(&mut self) -> Parse<ConfigStatement> {
-        let start = self.current().span;
+    /// Legacy syntax also has selectors outside blocks, and labeled statements like
+    /// `saveAs: { ... }`.
+    fn selector(&mut self, nested: bool) -> Parse<ConfigStatement> {
+        let (start, position) = (self.current().span, self.position);
         let kind = self.name()?;
-        // The colon.
-        self.bump();
+        let colon = self.bump().span;
+        if !self.at_primary() {
+            return self.legacy_labeled(position);
+        }
+        if !nested {
+            self.legacy
+                .push(Diagnostic::new("Unexpected input: ':'", colon));
+        }
         let target = self.config_primary()?;
         self.skip_newlines();
         self.expect(TokenKind::LeftBrace, "`{`")?;
@@ -184,6 +192,25 @@ impl Parser<'_> {
             body,
             span,
         })
+    }
+
+    /// A labeled statement like `saveAs: { ... }` that starts at token `position`, which
+    /// Groovy runs as the statement after the label.
+    fn legacy_labeled(&mut self, position: usize) -> Parse<ConfigStatement> {
+        let failure = self.position;
+        self.position = position;
+        let statement = self.speculate(Self::labeled_statement);
+        let ends = self.at_separator() || self.at_list_end(true);
+        let end = self.position;
+        self.position = failure;
+        let Some(statement) = statement.filter(|_| ends) else {
+            return Err(self.error_here("Expected a name"));
+        };
+        let errors = self.errors.len();
+        self.error_here("Expected a name");
+        self.legacy.extend(self.errors.split_off(errors));
+        self.position = end;
+        Ok(ConfigStatement::Statement(statement))
     }
 
     /// A legacy `if` statement around config statements, with `else if` and `else`.

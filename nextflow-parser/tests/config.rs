@@ -358,9 +358,19 @@ fn incomplete_statement() {
 }
 
 #[test]
-fn rejects_top_selector() {
+fn legacy_top_selector() {
     let source = "withName: FOO {\n    cpus = 2\n}\n";
-    assert_eq!(messages(source), ["Unexpected input: ':'"]);
+    assert_eq!(legacy(source), ["Unexpected input: ':'"]);
+    assert_eq!(labels(&parse(source)), ["withName: FOO"]);
+}
+
+#[test]
+fn legacy_labeled_statement() {
+    let source = "process {\n    withName: FOO {\n        saveAs: { f -> f }\n    }\n}\n";
+    assert_eq!(legacy(source), ["Expected a name"]);
+    let statements = parse(source);
+    let selector = &body(&statements[0])[0];
+    assert_eq!(labels(body(selector)), ["statement"]);
 }
 
 #[test]

@@ -86,7 +86,7 @@ impl Parser<'_> {
         }
     }
 
-    fn labeled_statement(&mut self) -> Parse<Statement> {
+    pub(super) fn labeled_statement(&mut self) -> Parse<Statement> {
         if !(self.at_name() && self.nth(1) == TokenKind::Colon) {
             return self.statement();
         }

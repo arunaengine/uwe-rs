@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use nextflow_parser::ast::{
-    Agent, BodyKind, ExpressionKind, Function, Item, Literal, Name, NamedOutput, OutputTarget,
-    ParameterDeclaration, Process, ProcessInput, TypedName, Workflow, WorkflowTake,
+    Agent, BodyKind, ExpressionKind, Function, Item, Literal, Member, Name, NamedOutput,
+    OutputTarget, ParameterDeclaration, Process, ProcessInput, TypedName, Workflow, WorkflowTake,
 };
 use nextflow_parser::parse_script;
 
@@ -118,13 +118,138 @@ include {
     assert_eq!(includes[3].names.len(), 2);
 }
 
+/// The messages of the legacy syntax of a script without errors.
+fn legacy(source: &str) -> Vec<String> {
+    let parsed = parse_script(source);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    parsed
+        .legacy
+        .into_iter()
+        .map(|error| error.message)
+        .collect()
+}
+
 #[test]
-fn rejects_import() {
-    let parsed = parse_script("import groovy.json.JsonSlurper\n");
-    assert!(matches!(parsed.tree.items[..], [Item::Import { .. }]));
+fn legacy_imports() {
+    let source = "import groovy.json.JsonSlurper\nimport static groovy.json.JsonOutput.prettyPrint\n\
+                  import java.nio.file.*\nimport a.B as C\n";
     let message =
         "Groovy `import` declarations are not supported -- use fully-qualified name inline instead";
-    assert_eq!(parsed.errors[0].message, message);
+    assert_eq!(legacy(source), [message; 4]);
+    let names: Vec<(String, Option<String>, bool)> = parse(source)
+        .iter()
+        .map(|item| match item {
+            Item::Import {
+                name,
+                alias,
+                member,
+                ..
+            } => (
+                texts(&name.parts).join("."),
+                alias.as_ref().map(|alias| alias.text.clone()),
+                *member,
+            ),
+            other => panic!("expected an import, found {other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        names,
+        [
+            ("groovy.json.JsonSlurper".into(), None, false),
+            ("groovy.json.JsonOutput.prettyPrint".into(), None, true),
+            ("java.nio.file.*".into(), None, false),
+            ("a.B".into(), Some("C".into()), false),
+        ]
+    );
+}
+
+#[test]
+fn legacy_classes() {
+    let source = "class Utils {
+    static List NAMES = ['a', 'b']
+    private static String x, y = 'y'
+
+    public static Map read(Map named_args, ... channels) throws Exception {
+        return [:]
+    }
+
+    static void run(include, log, n = 1) {
+        this.read([:])
+    }
+
+    Utils(value) {
+        count = value
+    }
+
+    def count
+
+    static enum Mode {
+        FAST,
+        SLOW,
+    }
+}
+";
+    let messages = legacy(source);
+    assert_eq!(
+        messages[0],
+        "`class` is not allowed as an identifier because it is a Groovy keyword"
+    );
+    let items = parse(source);
+    let [Item::Class(class)] = items.as_slice() else {
+        panic!("expected a class, found {items:?}")
+    };
+    assert_eq!(class.name.text, "Utils");
+    let members: Vec<String> = class
+        .members
+        .iter()
+        .map(|member| match member {
+            Member::Field {
+                name, is_static, ..
+            } => format!("field {} {is_static}", name.text),
+            Member::Method {
+                function,
+                is_static,
+                varargs,
+            } => format!(
+                "method {} {is_static} {varargs} {}",
+                function.name.text,
+                function.parameters.len()
+            ),
+            Member::Class(nested) => {
+                format!(
+                    "class {} {}",
+                    nested.name.text,
+                    texts(&nested.constants).join(",")
+                )
+            }
+        })
+        .collect();
+    assert_eq!(
+        members,
+        [
+            "field NAMES true",
+            "field x true",
+            "field y true",
+            "method read true true 2",
+            "method run true false 3",
+            "method Utils false false 1",
+            "field count false",
+            "class Mode FAST,SLOW",
+        ]
+    );
+}
+
+#[test]
+fn double_quoted_strings_drop_invalid_escapes() {
+    // As the official lexer's error recovery does, `\|` disappears without an error.
+    let items = parse("x = \"a\\|b\"\ny = \"\"\"c ${x} \\q\"\"\"\n");
+    let texts: Vec<String> = items.iter().map(|item| format!("{item:?}")).collect();
+    assert!(texts[0].contains("String(\"ab\")"), "{}", texts[0]);
+    assert!(texts[1].contains("Text(\" \")"), "{}", texts[1]);
+    assert_eq!(
+        messages("x = 'a\\|b'\n"),
+        ["Invalid escape sequence: '\\|'"]
+    );
 }
 
 #[test]
@@ -439,7 +564,10 @@ fn rejects_single_tuple() {
 
 #[test]
 fn rejects_invalid_directive() {
+    // Legacy syntax: the assignment sets a variable of the script.
     let source = "process HELLO {\n    container = 'ubuntu'\n\n    script:\n    \"\"\n}\n";
+    assert_eq!(legacy(source), ["Invalid process directive"]);
+    let source = "process HELLO {\n    container.x()\n\n    script:\n    \"\"\n}\n";
     assert_eq!(messages(source), ["Invalid process directive"]);
     let topic =
         "process HELLO {\n    topic:\n    versions = stdout()\n\n    script:\n    \"\"\n}\n";

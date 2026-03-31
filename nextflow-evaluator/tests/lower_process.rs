@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use nextflow_evaluator::lower::lower_module;
-use nextflow_evaluator::lowered::{Input, Module, OutputPart};
+use nextflow_evaluator::lowered::{ExpressionKind, Input, Module, OutputPart};
 use nextflow_parser::ast::BodyKind;
 use nextflow_parser::{LineIndex, parse_script};
 
@@ -100,18 +100,9 @@ fn errors() {
         errors("    input:\n    value x\n    script:\n    'x'"),
         ["3:5: Unrecognized process input qualifier `value`"]
     );
-    assert_eq!(
-        errors("    cpus y\n    script:\n    'x'"),
-        ["2:10: `y` is not defined"]
-    );
     // An `env` name must be a string; Nextflow resolves a bare name as a variable.
     let env = "    output:\n    env LINES\n    script:\n    'x'";
     assert_eq!(errors(env), ["3:9: `LINES` is not defined"]);
-    let closure = "    script:\n    [1].each { v -> total = v }\n    'x'";
-    assert_eq!(
-        errors(closure),
-        ["3:21: Variables in a closure should be declared with `def`"]
-    );
     assert_eq!(
         errors("    script:\n    task = 1\n    'x'"),
         ["3:5: Built-in constant or namespace cannot be re-assigned"]
@@ -123,4 +114,43 @@ fn errors() {
         ))
         .is_ok()
     );
+}
+
+/// The errors of strict syntax for the legacy syntax of a script that lowers.
+fn legacy(source: &str) -> Vec<String> {
+    let module = lower(source).expect("lowers");
+    let lines = LineIndex::new(source);
+    module
+        .legacy
+        .iter()
+        .map(|error| lines.locate(error).to_string())
+        .collect()
+}
+
+#[test]
+fn legacy_syntax() {
+    // A directive looks up an unknown name when a task runs.
+    let source = process("    cpus y\n    script:\n    'x'");
+    assert_eq!(legacy(&source), ["2:10: `y` is not defined"]);
+    let source = process("    script:\n    [1].each { v -> total = v }\n    'x'");
+    assert_eq!(
+        legacy(&source),
+        ["3:21: Variables in a closure should be declared with `def`"]
+    );
+    let inputs = "    input:\n    tuple val(meta), path(a)\n    tuple val(meta), path(b)\n    \
+                  script:\n    'x'";
+    assert_eq!(
+        legacy(&process(inputs)),
+        ["4:15: `meta` is already declared"]
+    );
+    // A bare name that is no variable is a file name.
+    let output = "    output:\n    path(bwa), emit: index\n    script:\n    'x'";
+    let source = process(output);
+    assert_eq!(legacy(&source), ["3:10: `bwa` is not defined"]);
+    let module = lower(&source).expect("lowers");
+    assert!(matches!(
+        module.processes[0].outputs[0].parts.as_slice(),
+        [OutputPart::Path { pattern, .. }]
+            if matches!(&pattern.kind, ExpressionKind::Literal(value) if value.to_string() == "bwa")
+    ));
 }

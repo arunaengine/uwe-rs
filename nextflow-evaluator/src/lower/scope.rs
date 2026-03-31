@@ -22,6 +22,8 @@ struct Frame {
 #[derive(Default)]
 pub(super) struct Scopes {
     frames: Vec<Frame>,
+    /// The variables of the script, in the order of `Place::Module`.
+    module: Vec<Rc<str>>,
 }
 
 /// What a finished frame needs at run time.
@@ -97,8 +99,27 @@ impl Scopes {
     }
 
     /// Finds a variable, capturing it into every closure between its frame and the current one.
+    /// A variable of the script needs no capture.
     pub fn resolve(&mut self, name: &str) -> Option<Place> {
-        resolve_in(&mut self.frames, name)
+        resolve_in(&mut self.frames, name).or_else(|| {
+            let index = self
+                .module
+                .iter()
+                .position(|declared| &**declared == name)?;
+            Some(Place::Module(index))
+        })
+    }
+
+    /// Declares a variable of the script, once per name.
+    pub fn declare_module(&mut self, name: &str) {
+        if !self.module.iter().any(|declared| &**declared == name) {
+            self.module.push(name.into());
+        }
+    }
+
+    /// The number of variables of the script.
+    pub fn module_count(&self) -> usize {
+        self.module.len()
     }
 
     fn frame(&mut self) -> &mut Frame {

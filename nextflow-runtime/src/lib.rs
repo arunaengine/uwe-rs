@@ -91,6 +91,7 @@ impl Run {
             let params = options.config.params();
             script_params(&mut interpreter, module, &params, &mut Vec::new())
                 .and_then(|()| typed_params(&mut interpreter, module, &params))
+                .and_then(|()| script_statements(&mut interpreter, module, &mut Vec::new()))
                 .and_then(|()| interpreter.run_entry(module))
                 .map_err(|error| interpreter.locate(error))?;
         }
@@ -220,6 +221,35 @@ fn script_params(
         .collect();
     for module in included {
         script_params(interpreter, &module, params, done)?;
+    }
+    Ok(())
+}
+
+/// Runs the top-level statements of legacy syntax of a script, then those of the scripts it
+/// includes in the order of the includes, each script once.
+fn script_statements(
+    interpreter: &mut Interpreter,
+    module: &Rc<Module>,
+    done: &mut Vec<*const Module>,
+) -> Result<(), Error> {
+    if done.contains(&Rc::as_ptr(module)) {
+        return Ok(());
+    }
+    done.push(Rc::as_ptr(module));
+    if let Some(code) = &module.initializer {
+        interpreter.evaluate(code, module)?;
+    }
+    let included: Vec<Rc<Module>> = {
+        let links = module.links.borrow();
+        module
+            .includes
+            .iter()
+            .filter_map(|include| links.get(&include.alias))
+            .map(|link| link.module.clone())
+            .collect()
+    };
+    for module in included {
+        script_statements(interpreter, &module, done)?;
     }
     Ok(())
 }

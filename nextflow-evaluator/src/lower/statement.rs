@@ -171,12 +171,12 @@ impl Lowering<'_> {
         if self.in_workflow && super::names::OPERATORS.contains(&name) {
             return Some(Place::Local(self.scopes.declare_in_frame(name, span)));
         }
+        // Legacy syntax: Groovy keeps the variable in the binding of the script; here it
+        // belongs to the function or closure.
         if !self.implicit_declarations {
-            self.error(format!("`{name}` was assigned but not declared"), span);
-            return None;
-        }
-        if self.scopes.in_closure() {
-            self.error("Variables in a closure should be declared with `def`", span);
+            self.legacy(format!("`{name}` was assigned but not declared"), span);
+        } else if self.scopes.in_closure() {
+            self.legacy("Variables in a closure should be declared with `def`", span);
         }
         Some(Place::Local(self.scopes.declare_in_frame(name, span)))
     }

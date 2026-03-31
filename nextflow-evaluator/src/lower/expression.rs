@@ -214,6 +214,10 @@ impl Lowering<'_> {
                 format!("Using the class `{name}` as a value is not supported yet"),
                 span,
             );
+        } else if self.in_directive {
+            // Legacy syntax: the name is looked up when a task evaluates the directive.
+            self.legacy(format!("`{name}` is not defined"), span);
+            return Kind::Dynamic(name.into());
         } else {
             self.error(format!("`{name}` is not defined"), span);
         }

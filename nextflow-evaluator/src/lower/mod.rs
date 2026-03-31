@@ -170,6 +170,18 @@ pub fn lower_script(
             Item::Statement(_) | Item::Include(_) | Item::FeatureFlag { .. } | Item::Import { .. }
         )
     });
+    // Legacy syntax: statements next to declarations run when the script loads, and the
+    // variables they declare or assign belong to the whole script.
+    let legacy = declares && !statements.is_empty();
+    if legacy {
+        let mut names = Vec::new();
+        for statement in &statements {
+            script_variables(statement, true, &mut names);
+        }
+        for name in names {
+            lowering.scopes.declare_module(&name);
+        }
+    }
     for item in &script.items {
         match item {
             Item::Function(function) => {
@@ -244,7 +256,14 @@ pub fn lower_script(
         let workflow = lowering.implicit_workflow(&statements);
         module.workflows.push(Rc::new(workflow));
     }
+    if legacy {
+        module.initializer = Some(Rc::new(lowering.initializer(&statements)));
+    }
+    module.variables = (0..lowering.scopes.module_count())
+        .map(|_| Rc::new(std::cell::RefCell::new(Value::Null)))
+        .collect();
     module.definition_calls = std::mem::take(&mut lowering.definition_calls);
+    module.legacy = std::mem::take(&mut lowering.legacy);
     if lowering.errors.is_empty() {
         Ok(module)
     } else {
@@ -281,6 +300,11 @@ pub(crate) struct Lowering<'a> {
     definition_calls: Vec<(Rc<str>, usize, Span)>,
     /// The value of a name of legacy config syntax, from `ConfigNames::lookup`.
     lookup: Option<&'a Lookup<'a>>,
+    /// Legacy syntax that strict syntax rejects with these errors, for `Module::legacy`.
+    legacy: Vec<Diagnostic>,
+    /// Whether the code is a directive of a process, where the legacy parser resolves unknown
+    /// names when a task runs.
+    in_directive: bool,
 }
 
 impl<'a> Lowering<'a> {
@@ -301,6 +325,8 @@ impl<'a> Lowering<'a> {
             template: false,
             definition_calls: Vec::new(),
             lookup: None,
+            legacy: Vec::new(),
+            in_directive: false,
         }
     }
 
@@ -329,6 +355,12 @@ impl<'a> Lowering<'a> {
 
     fn error(&mut self, message: impl Into<String>, span: Span) {
         self.errors.push(Diagnostic::new(message, span));
+    }
+
+    /// Records legacy syntax, which iunctus accepts with the meaning of the legacy parser
+    /// (decision 14), with the error of strict syntax.
+    fn legacy(&mut self, message: impl Into<String>, span: Span) {
+        self.legacy.push(Diagnostic::new(message, span));
     }
 
     fn function(&mut self, function: &ast::Function) -> Code {
@@ -458,6 +490,31 @@ impl<'a> Lowering<'a> {
         }
     }
 
+    /// The statements of a script that also has declarations, as code without parameters. A
+    /// `def` at the top declares a variable of the script.
+    fn initializer(&mut self, statements: &[&ast::Statement]) -> Code {
+        self.scopes.push_frame(false);
+        let statements: Vec<ast::Statement> = statements
+            .iter()
+            .map(|statement| script_assignment(statement))
+            .collect();
+        let body = self.statements(&statements);
+        let layout = self.scopes.pop_frame();
+        let span = match (statements.first(), statements.last()) {
+            (Some(first), Some(last)) => first.span.to(last.span),
+            _ => Span::default(),
+        };
+        Code {
+            name: "script".into(),
+            parameters: Vec::new(),
+            implicit_parameter: false,
+            slot_count: layout.slot_count,
+            captures: layout.captures,
+            body,
+            span,
+        }
+    }
+
     /// Declares a variable in the current block, reporting a name declared before.
     fn declare(&mut self, name: &ast::Name) -> usize {
         let (slot, earlier) = self.scopes.declare(&name.text, name.span);
@@ -465,6 +522,92 @@ impl<'a> Lowering<'a> {
             self.error(format!("`{}` is already declared", name.text), name.span);
         }
         slot
+    }
+}
+
+/// The variables of the script that a top-level statement declares with `def`, or assigns
+/// outside closures, as Groovy's script binding keeps them.
+fn script_variables(statement: &ast::Statement, top: bool, names: &mut Vec<String>) {
+    use ast::StatementKind as Kind;
+    let mut add = |name: &str| {
+        let constant =
+            names::SCRIPT_CONSTANTS.contains(&name) || names::ENTRY_CONSTANTS.contains(&name);
+        if !constant {
+            names.push(name.to_owned());
+        }
+    };
+    match &statement.kind {
+        Kind::Declaration {
+            names: declared, ..
+        } if top => {
+            for typed in declared {
+                add(&typed.name.text);
+            }
+        }
+        Kind::Assign { target, .. } => {
+            if let ast::ExpressionKind::Variable(name) = &target.kind {
+                add(name);
+            }
+        }
+        Kind::MultipleAssign {
+            names: assigned, ..
+        } => {
+            for name in assigned {
+                add(&name.text);
+            }
+        }
+        Kind::If {
+            then, otherwise, ..
+        } => {
+            let blocks = std::iter::once(then).chain(otherwise);
+            for statement in blocks.flat_map(|block| &block.statements) {
+                script_variables(statement, false, names);
+            }
+        }
+        Kind::Try { body, catches } => {
+            let blocks = std::iter::once(body).chain(catches.iter().map(|catch| &catch.body));
+            for statement in blocks.flat_map(|block| &block.statements) {
+                script_variables(statement, false, names);
+            }
+        }
+        Kind::Labeled { statement, .. } => script_variables(statement, top, names),
+        _ => {}
+    }
+}
+
+/// A top-level `def` as an assignment of the script variable it declares.
+fn script_assignment(statement: &ast::Statement) -> ast::Statement {
+    use ast::StatementKind as Kind;
+    let Kind::Declaration {
+        names,
+        initializer,
+        destructure,
+        ..
+    } = &statement.kind
+    else {
+        return statement.clone();
+    };
+    let value = initializer.clone().unwrap_or(ast::Expression {
+        kind: ast::ExpressionKind::Literal(ast::Literal::Null),
+        span: statement.span,
+    });
+    let kind = match (destructure, names.as_slice()) {
+        (false, [typed]) => Kind::Assign {
+            target: ast::Expression {
+                kind: ast::ExpressionKind::Variable(typed.name.text.clone()),
+                span: typed.name.span,
+            },
+            operator: ast::AssignOperator::Assign,
+            value,
+        },
+        _ => Kind::MultipleAssign {
+            names: names.iter().map(|typed| typed.name.clone()).collect(),
+            value,
+        },
+    };
+    ast::Statement {
+        kind,
+        span: statement.span,
     }
 }
 

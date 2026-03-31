@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 pub fn https_url(path: &PathValue) -> Option<String> {
     let uri = path.uri();
     match path.scheme() {
-        "http" | "https" => Some(uri),
+        "http" | "https" => Some(raw_github(&uri).unwrap_or(uri)),
         "s3" => {
             let rest = uri.strip_prefix("s3://")?;
             let (bucket, key) = rest.split_once('/').unwrap_or((rest, ""));
@@ -22,6 +22,18 @@ pub fn https_url(path: &PathValue) -> Option<String> {
         }
         _ => None,
     }
+}
+
+/// The address that GitHub redirects a file of a repository to: `github.com/o/r/raw/ref/path`
+/// is served by `raw.githubusercontent.com/o/r/ref/path`. Going there directly saves the
+/// redirect, and works where only the file host is reachable.
+fn raw_github(uri: &str) -> Option<String> {
+    let rest = uri.strip_prefix("https://github.com/")?;
+    let mut parts = rest.splitn(4, '/');
+    let (owner, repository) = (parts.next()?, parts.next()?);
+    let (raw, file) = (parts.next()?, parts.next()?);
+    (raw == "raw" && !file.is_empty())
+        .then(|| format!("https://raw.githubusercontent.com/{owner}/{repository}/{file}"))
 }
 
 fn client() -> Result<reqwest::blocking::Client, String> {
@@ -125,5 +137,16 @@ mod tests {
             Some("https://zenodo.org/records/1/files/a.csv")
         );
         assert_eq!(url("/local/file.txt"), None);
+        assert_eq!(
+            url("https://github.com/nf-core/test-datasets/raw/methylseq/testdata/a.fastq.gz")
+                .as_deref(),
+            Some(
+                "https://raw.githubusercontent.com/nf-core/test-datasets/methylseq/testdata/a.fastq.gz"
+            )
+        );
+        assert_eq!(
+            url("https://github.com/nf-core/modules/blob/master/README.md").as_deref(),
+            Some("https://github.com/nf-core/modules/blob/master/README.md")
+        );
     }
 }

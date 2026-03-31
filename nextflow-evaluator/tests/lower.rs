@@ -22,12 +22,24 @@ fn errors(source: &str) -> Vec<String> {
     lower(source).expect_err("lowering fails")
 }
 
+/// The legacy syntax that lowering accepted, as located messages.
+fn legacy(source: &str) -> Vec<String> {
+    let module = lower(source).expect("lowers");
+    let lines = LineIndex::new(source);
+    module
+        .legacy
+        .iter()
+        .map(|error| lines.locate(error).to_string())
+        .collect()
+}
+
 #[test]
 fn undefined_names() {
-    assert_eq!(errors("def f() { x }"), ["1:11: `x` is not defined"]);
-    assert_eq!(errors("def f() { g(1) }"), ["1:11: `g` is not defined"]);
-    assert_eq!(errors("def f(c) { c() }"), ["1:12: `c` is not defined"]);
-    assert!(lower("def f() { g() }\ndef g() { 1 }").is_ok());
+    // Legacy syntax: the names are looked up, and the calls made, when the code runs.
+    assert_eq!(legacy("def f() { x }"), ["1:11: `x` is not defined"]);
+    assert_eq!(legacy("def f() { g(1) }"), ["1:11: `g` is not defined"]);
+    assert_eq!(legacy("def f(c) { c() }"), ["1:12: `c` is not defined"]);
+    assert!(legacy("def f() { g() }\ndef g() { 1 }").is_empty());
     assert!(lower("def f() { println(params.x + workflow.runName) }").is_ok());
     assert!(lower("def f() { Math.max(1, 2) + Integer.MAX_VALUE }").is_ok());
 }

@@ -52,10 +52,9 @@ fn dataflow_calls_belong_in_workflows() {
     );
     let source = format!("{PROCESS}workflow {{\n    channel.of(1) | map {{ v -> v }} | P\n}}");
     assert!(lower(&source).is_ok());
-    assert_eq!(
-        lower("def f(c) { map { v -> v } }").unwrap_err(),
-        ["1:12: `map` is not defined"]
-    );
+    // Legacy syntax: an operator outside a workflow is a call that fails when it runs.
+    let module = lower("def f(c) { map { v -> v } }").expect("lowers");
+    assert_eq!(module.legacy[0].message, "`map` is not defined");
     assert_eq!(
         lower(&format!("{PROCESS}{PROCESS}")).unwrap_err(),
         ["7:9: `P` is already declared"]

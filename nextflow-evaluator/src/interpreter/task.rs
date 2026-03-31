@@ -237,7 +237,9 @@ impl Interpreter<'_> {
     /// A name of a config closure, looked up as Nextflow's task context does: the task's
     /// variables, the script's globals like `params`, then the launch environment.
     pub(super) fn dynamic(&mut self, name: &str, span: Span) -> Result<Value, Error> {
-        if let Some((_, cell)) = self.task_variables.iter().find(|(n, _)| **n == *name) {
+        // Of two inputs with one name, which legacy code allows, the later one counts.
+        let variable = self.task_variables.iter().rev().find(|(n, _)| **n == *name);
+        if let Some((_, cell)) = variable {
             return Ok(cell.borrow().clone());
         }
         if let Some(value) = self.globals.get(name) {

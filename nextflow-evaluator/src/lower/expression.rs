@@ -214,14 +214,12 @@ impl Lowering<'_> {
                 format!("Using the class `{name}` as a value is not supported yet"),
                 span,
             );
-        } else if self.in_directive {
-            // Legacy syntax: the name is looked up when a task evaluates the directive.
-            self.legacy(format!("`{name}` is not defined"), span);
-            return Kind::Dynamic(name.into());
-        } else {
-            self.error(format!("`{name}` is not defined"), span);
+            return Kind::Literal(Value::Null);
         }
-        Kind::Literal(Value::Null)
+        // Legacy syntax: the name is looked up when the code runs, in the task, the binding of
+        // the script, then the environment.
+        self.legacy(format!("`{name}` is not defined"), span);
+        Kind::Dynamic(name.into())
     }
 
     /// A name in a config value that is not a local variable of a closure in it.
@@ -310,7 +308,7 @@ impl Lowering<'_> {
                 })
                 .collect(),
             None => {
-                self.scopes.declare("it", span);
+                self.scopes.declare("it", false);
                 Vec::new()
             }
         };
@@ -429,6 +427,18 @@ impl Lowering<'_> {
         } else if self.lookup.is_some() && self.scopes.in_closure() && self.dynamic_names {
             // The legacy parser leaves an unknown function in a config closure to the task that
             // calls it, which then fails.
+            Function::Script(name.into())
+        } else if !self.config {
+            // Legacy syntax: Groovy calls a variable that holds a closure, else the call fails
+            // when it runs, as a script function it lacks.
+            self.legacy(format!("`{name}` is not defined"), span);
+            if let Some(place) = self.scopes.resolve(name) {
+                let kind = Kind::Variable(place);
+                return Kind::CallValue {
+                    callee: Box::new(Expression { kind, span }),
+                    arguments,
+                };
+            }
             Function::Script(name.into())
         } else {
             self.error(format!("`{name}` is not defined"), span);

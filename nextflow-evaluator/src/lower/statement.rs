@@ -169,7 +169,7 @@ impl Lowering<'_> {
         // In a workflow, an operator name resolves, so Nextflow accepts the assignment even in a
         // closure; like Groovy's binding, the name then holds the value.
         if self.in_workflow && super::names::OPERATORS.contains(&name) {
-            return Some(Place::Local(self.scopes.declare_in_frame(name, span)));
+            return Some(Place::Local(self.scopes.declare_in_frame(name)));
         }
         // Legacy syntax: Groovy keeps the variable in the binding of the script; here it
         // belongs to the function or closure.
@@ -178,7 +178,7 @@ impl Lowering<'_> {
         } else if self.scopes.in_closure() {
             self.legacy("Variables in a closure should be declared with `def`", span);
         }
-        Some(Place::Local(self.scopes.declare_in_frame(name, span)))
+        Some(Place::Local(self.scopes.declare_in_frame(name)))
     }
 }
 

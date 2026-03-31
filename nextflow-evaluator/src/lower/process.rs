@@ -46,13 +46,11 @@ impl Lowering<'_> {
             statements
         });
         self.implicit_declarations = false;
-        self.in_directive = true;
         let directives = process
             .directives
             .iter()
             .filter_map(|directive| self.directive(directive))
             .collect();
-        self.in_directive = false;
         let outputs = process
             .outputs
             .iter()
@@ -197,14 +195,14 @@ impl Lowering<'_> {
     }
 
     /// The name of an `env` input or output, which must be a string: Nextflow resolves a bare
-    /// name as a variable.
+    /// name as a variable. The legacy parser turns a bare name into its text.
     fn env_name(&mut self, value: &ast::Expression) -> Option<Rc<str>> {
         let value = unparenthesized(value);
         match &value.kind {
             Syntax::Literal(ast::Literal::String(name)) => Some(name.as_str().into()),
             Syntax::Variable(name) => {
-                self.error(format!("`{name}` is not defined"), value.span);
-                None
+                self.legacy(format!("`{name}` is not defined"), value.span);
+                Some(name.as_str().into())
             }
             _ => {
                 self.error("Invalid environment variable name", value.span);
@@ -218,14 +216,15 @@ impl Lowering<'_> {
         None
     }
 
-    /// Declares an input. Legacy syntax may declare a name twice, as in
-    /// `tuple val(meta), path(a)` and `tuple val(meta), path(b)`; the last input wins.
+    /// Declares an input, which the legacy parser keeps in the task's binding. Legacy syntax
+    /// may declare a name twice, as in `tuple val(meta), path(a)` and `tuple val(meta),
+    /// path(b)`; the last input wins.
     fn declare_name(&mut self, name: &str, span: Span) -> usize {
-        let (slot, earlier) = self.scopes.declare(name, span);
-        if earlier.is_some() {
-            self.legacy(format!("`{name}` is already declared"), span);
-        }
-        slot
+        let name = ast::Name {
+            text: name.to_owned(),
+            span,
+        };
+        self.declare_as(&name, true)
     }
 
     fn output(&mut self, output: &NamedOutput) -> Option<Output> {

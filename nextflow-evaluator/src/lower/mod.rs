@@ -22,7 +22,7 @@ use crate::lowered::{
     Workflow,
 };
 use crate::value::Value;
-use scope::Scopes;
+use scope::{Earlier, Scopes};
 
 /// Tells lowering what a name that a script includes stands for.
 pub trait Imports {
@@ -302,9 +302,6 @@ pub(crate) struct Lowering<'a> {
     lookup: Option<&'a Lookup<'a>>,
     /// Legacy syntax that strict syntax rejects with these errors, for `Module::legacy`.
     legacy: Vec<Diagnostic>,
-    /// Whether the code is a directive of a process, where the legacy parser resolves unknown
-    /// names when a task runs.
-    in_directive: bool,
 }
 
 impl<'a> Lowering<'a> {
@@ -326,7 +323,6 @@ impl<'a> Lowering<'a> {
             definition_calls: Vec::new(),
             lookup: None,
             legacy: Vec::new(),
-            in_directive: false,
         }
     }
 
@@ -517,9 +513,20 @@ impl<'a> Lowering<'a> {
 
     /// Declares a variable in the current block, reporting a name declared before.
     fn declare(&mut self, name: &ast::Name) -> usize {
-        let (slot, earlier) = self.scopes.declare(&name.text, name.span);
-        if earlier.is_some() {
-            self.error(format!("`{}` is already declared", name.text), name.span);
+        self.declare_as(name, false)
+    }
+
+    /// Declares a variable; `binding` marks a name that the legacy parser keeps in a binding,
+    /// like a process input or a take, which legacy code may hide with a local of the same name.
+    fn declare_as(&mut self, name: &ast::Name, binding: bool) -> usize {
+        let (slot, earlier) = self.scopes.declare(&name.text, binding);
+        let message = format!("`{}` is already declared", name.text);
+        match earlier {
+            Some(Earlier::Local) => self.error(message, name.span),
+            // Legacy syntax: the name in the binding stays for the code that the local does
+            // not reach, like a process output.
+            Some(Earlier::Binding) => self.legacy(message, name.span),
+            None => {}
         }
         slot
     }

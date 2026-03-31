@@ -4,15 +4,22 @@
 
 use std::rc::Rc;
 
-use nextflow_parser::Span;
-
 use crate::lowered::{Place, Slot};
+
+/// A declared variable.
+struct Declared {
+    name: Rc<str>,
+    slot: Slot,
+    /// Whether the legacy parser keeps the name in a binding rather than as a Groovy local:
+    /// a process input, a take, or a name that a process or workflow assigns without `def`.
+    binding: bool,
+}
 
 /// The variables of one function or closure being lowered.
 struct Frame {
     closure: bool,
-    /// Block scopes, innermost last, with each name's slot and declaration.
-    blocks: Vec<Vec<(Rc<str>, Slot, Span)>>,
+    /// Block scopes, innermost last.
+    blocks: Vec<Vec<Declared>>,
     slot_count: usize,
     /// The enclosing places this closure captures, in the order of `Place::Captured`.
     captures: Vec<Place>,
@@ -34,6 +41,14 @@ pub(super) struct FrameLayout {
     pub names: Vec<(Rc<str>, Slot)>,
 }
 
+/// The kind of an earlier declaration of a name that is declared again.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Earlier {
+    Local,
+    /// A name that the legacy parser keeps in a binding, which a later `def` hides.
+    Binding,
+}
+
 impl Scopes {
     pub fn push_frame(&mut self, closure: bool) {
         self.frames.push(Frame {
@@ -48,7 +63,7 @@ impl Scopes {
         let frame = self.frames.pop().expect("a frame is open");
         let names = frame.blocks[0]
             .iter()
-            .map(|(name, slot, _)| (name.clone(), *slot))
+            .map(|declared| (declared.name.clone(), declared.slot))
             .collect();
         FrameLayout {
             slot_count: frame.slot_count,
@@ -67,29 +82,43 @@ impl Scopes {
 
     /// Declares a variable in the innermost block. Like Nextflow, a name that any enclosing
     /// block of any enclosing frame declares is an error; the result is then the first
-    /// declaration, and the variable is declared anyway.
-    pub fn declare(&mut self, name: &str, span: Span) -> (Slot, Option<Span>) {
+    /// declaration, and the variable is declared anyway, so that later reads find it.
+    pub fn declare(&mut self, name: &str, binding: bool) -> (Slot, Option<Earlier>) {
         let earlier = self
             .frames
             .iter()
             .flat_map(|frame| frame.blocks.iter().flatten())
-            .find(|(declared, _, _)| &**declared == name)
-            .map(|(_, _, span)| *span);
+            .find(|declared| &*declared.name == name)
+            .map(|declared| {
+                if declared.binding {
+                    Earlier::Binding
+                } else {
+                    Earlier::Local
+                }
+            });
         let frame = self.frame();
         let slot = frame.slot_count;
         frame.slot_count += 1;
         let block = frame.blocks.last_mut().expect("a block is open");
-        block.push((name.into(), slot, span));
+        block.push(Declared {
+            name: name.into(),
+            slot,
+            binding,
+        });
         (slot, earlier)
     }
 
     /// Declares a variable in the outermost block of the current frame, as Nextflow does for a
     /// variable that a process or workflow section assigns without `def`.
-    pub fn declare_in_frame(&mut self, name: &str, span: Span) -> Slot {
+    pub fn declare_in_frame(&mut self, name: &str) -> Slot {
         let frame = self.frame();
         let slot = frame.slot_count;
         frame.slot_count += 1;
-        frame.blocks[0].push((name.into(), slot, span));
+        frame.blocks[0].push(Declared {
+            name: name.into(),
+            slot,
+            binding: true,
+        });
         slot
     }
 
@@ -134,9 +163,9 @@ fn resolve_in(frames: &mut [Frame], name: &str) -> Option<Place> {
         .iter()
         .rev()
         .flat_map(|block| block.iter().rev())
-        .find(|(declared, _, _)| &**declared == name);
-    if let Some((_, slot, _)) = local {
-        return Some(Place::Local(*slot));
+        .find(|declared| &*declared.name == name);
+    if let Some(declared) = local {
+        return Some(Place::Local(declared.slot));
     }
     if !frame.closure {
         return None;

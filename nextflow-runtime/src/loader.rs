@@ -34,6 +34,8 @@ pub struct Loader {
     /// The scripts that port plugin functions, by plugin id.
     plugin_scripts: HashMap<Rc<str>, Rc<Module>>,
     loading: HashSet<PathBuf>,
+    /// The scripts that could not be loaded, whose errors are already reported.
+    failed: HashSet<PathBuf>,
     errors: Vec<String>,
 }
 
@@ -81,6 +83,9 @@ impl Loader {
         if let Some(module) = self.modules.get(&path) {
             return Some(module.clone());
         }
+        if self.failed.contains(&path) {
+            return None;
+        }
         if !self.loading.insert(path.clone()) {
             self.errors
                 .push(format!("{}: the script includes itself", path.display()));
@@ -88,7 +93,12 @@ impl Loader {
         }
         let module = self.read(&path);
         self.loading.remove(&path);
-        let module = Rc::new(module?);
+        let Some(module) = module else {
+            // Another include of the script does not report its errors again.
+            self.failed.insert(path);
+            return None;
+        };
+        let module = Rc::new(module);
         if let Some(directory) = path.parent() {
             *module.directory.borrow_mut() = Some(directory.to_string_lossy().into());
         }

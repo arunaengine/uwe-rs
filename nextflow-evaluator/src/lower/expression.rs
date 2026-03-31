@@ -416,6 +416,16 @@ impl Lowering<'_> {
             Function::Operator(name.into())
         } else if SCRIPT_FUNCTIONS.contains(&name) || (self.in_process && name == "template") {
             Function::Builtin(name.into())
+        } else if let Some(callee) = self.closure_variable(name, span) {
+            // Groovy calls the closure that a variable holds.
+            return Kind::CallValue {
+                callee: Box::new(callee),
+                arguments,
+            };
+        } else if self.lookup.is_some() && self.scopes.in_closure() && self.dynamic_names {
+            // The legacy parser leaves an unknown function in a config closure to the task that
+            // calls it, which then fails.
+            Function::Script(name.into())
         } else {
             self.error(format!("`{name}` is not defined"), span);
             return Kind::Literal(Value::Null);
@@ -423,6 +433,24 @@ impl Lowering<'_> {
         Kind::CallFunction {
             function,
             arguments,
+        }
+    }
+
+    /// In config code of legacy syntax, a variable that may hold a closure, or a closure that
+    /// `ConfigNames::lookup` gives. Strict syntax calls only functions by name.
+    fn closure_variable(&mut self, name: &str, span: Span) -> Option<Expression> {
+        self.lookup?;
+        if let Some(place) = self.scopes.resolve(name) {
+            let kind = Kind::Variable(place);
+            return Some(Expression { kind, span });
+        }
+        let in_closure = self.scopes.in_closure();
+        match self.lookup.and_then(|lookup| lookup(name, in_closure)) {
+            Some(value @ Value::Closure(_)) => Some(Expression {
+                kind: Kind::Literal(value),
+                span,
+            }),
+            _ => None,
         }
     }
 

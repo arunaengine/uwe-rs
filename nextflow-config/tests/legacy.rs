@@ -161,6 +161,29 @@ process {
 }
 
 #[test]
+fn selectors_at_the_top_level() {
+    let config = load_text(
+        "params.align = true
+if (params.align) {
+    withName: 'ALIGN' {
+        cpus = 4
+    }
+}
+process {
+    withName: 'FOO' {
+        saveAs: { filename -> filename }
+        cpus = 2
+    }
+}
+",
+    );
+    assert_eq!(get(&config, &["withName:ALIGN", "cpus"]), "4");
+    assert_eq!(get(&config, &["process", "withName:FOO", "cpus"]), "2");
+    let settings = config.process_settings(&["ALIGN"], &[]).unwrap();
+    assert!(settings.selected.is_empty());
+}
+
+#[test]
 fn local_variables() {
     let config = load_text(
         "def stamp = 'today'
@@ -187,6 +210,26 @@ params.names = \"${first}${second}_${stamp}\"
         "--date today"
     );
     assert_eq!(get(&config, &["params", "names"]), "ab_tomorrow");
+    let config = load_text(
+        "def twice = { value -> value * 2 }
+params.four = twice(2)
+process.ext.args = {
+    def half = { value -> value / 2 }
+    \"${half(8)} ${twice(3)}\"
+}
+process.ext.prefix = { ${meta.id} }
+",
+    );
+    assert_eq!(get(&config, &["params", "four"]), "4");
+    assert_eq!(call(&config, &["process", "ext", "args"]), "4 6");
+    // An unknown function in a config closure fails only when the closure runs.
+    let Some(Value::Closure(prefix)) = config.get(&["process", "ext", "prefix"]) else {
+        panic!("a closure");
+    };
+    let mut host = Recorder::default();
+    let error = Interpreter::new(&mut host).call_closure(&prefix, Vec::new());
+    let error = error.unwrap_err().to_string();
+    assert!(error.starts_with("MissingMethodException"), "{error}");
     // A variable belongs to its block.
     let (config, _) = load_files(&[(
         "nextflow.config",

@@ -52,6 +52,9 @@ impl Interpreter<'_> {
                 }
             }
             Value::Definition(definition) => self.definition_property(definition, name, span)?,
+            Value::Object(object) if super::classes::is_library(object) => {
+                self.library_property(object, name, span)?
+            }
             Value::Object(object) if matches!(object.borrow().state, State::GroupKey(..)) => {
                 let State::GroupKey(target, size) = &object.borrow().state else {
                     unreachable!("a group key")
@@ -151,6 +154,9 @@ impl Interpreter<'_> {
                 ))
             }
             Value::Map(map) if map.borrow().kind == MapKind::Record => Err(rejected(span)),
+            Value::Object(object) if super::classes::is_library(object) => {
+                self.set_library_property(object, name, value, span)
+            }
             Value::Map(map) => {
                 map.borrow_mut()
                     .entries
@@ -454,6 +460,9 @@ impl Interpreter<'_> {
                 ))
             }
             (Value::Closure(closure), "call") => self.call_closure_value(closure, arguments, span),
+            (Value::Object(object), _) if super::classes::is_library(object) => {
+                self.library_call(object, name, arguments, span)
+            }
             (Value::Namespace(namespace), _) => {
                 let namespace = namespace.clone();
                 self.namespace_call(&namespace, name, arguments, span)

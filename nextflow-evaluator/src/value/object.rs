@@ -44,6 +44,19 @@ pub enum State {
     Digest(&'static str),
     /// An object of a plugin class that is known by its text, like fgbio's `ReadStructure`.
     Text(Rc<str>),
+    /// A Groovy class of the library of the pipeline, as its name gives it in code.
+    Class(Rc<crate::lowered::LibraryClass>),
+    /// A constant of an enum of the library; each constant is one object.
+    EnumConstant {
+        class: Rc<crate::lowered::LibraryClass>,
+        name: Rc<str>,
+        ordinal: usize,
+    },
+    /// An object of a class of the library, with its fields.
+    Instance {
+        class: Rc<crate::lowered::LibraryClass>,
+        fields: indexmap::IndexMap<Rc<str>, super::Value>,
+    },
 }
 
 /// The `workflow` of a run: its properties, and the handlers that run when it ends.

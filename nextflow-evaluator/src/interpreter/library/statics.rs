@@ -62,6 +62,16 @@ impl Interpreter<'_> {
                 let copied = self.call_method(source, "copyTo", vec![target.clone()], span)?;
                 return Ok(Some(copied));
             }
+            // The functions of every script are static methods of `nextflow.Nextflow`, which
+            // Groovy classes call by that name.
+            ("Nextflow", "file" | "files" | "error" | "tuple" | "groupKey", _) => {
+                return self.call_builtin(name, arguments.to_vec(), span).map(Some);
+            }
+            ("SplitterEx", "splitCsv", [source, options @ ..]) => {
+                return self
+                    .call_method(source, "splitCsv", options.to_vec(), span)
+                    .map(Some);
+            }
             ("JsonOutput", "toJson", [value]) => {
                 Value::string(self.json_text(value, &JsonOptions::default(), span)?)
             }

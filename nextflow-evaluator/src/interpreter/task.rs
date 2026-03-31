@@ -9,7 +9,6 @@ use std::rc::Rc;
 use nextflow_parser::Span;
 use nextflow_parser::ast::BodyKind;
 
-use super::statement::Completion;
 use super::{Error, Frame, Interpreter, thrown, unsupported};
 use crate::exception::Exception;
 use crate::lowered::{Input, Module, OutputPart, Place, Process};
@@ -295,9 +294,10 @@ impl Interpreter<'_> {
             }
             (_, None) => return Err(unsupported("processes without a script", process.span)),
         };
-        let script = match self.block(&mut task.frame, statements)? {
-            Completion::Normal(value) | Completion::Return(value) => value.to_java_string(),
-        };
+        let script = self
+            .block(&mut task.frame, statements)?
+            .value()
+            .to_java_string();
         let shell = match task_object {
             Value::Map(map) => map
                 .borrow()

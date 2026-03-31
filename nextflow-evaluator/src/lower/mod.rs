@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod class;
 mod criteria;
 mod expression;
 mod names;
@@ -29,6 +30,12 @@ pub trait Imports {
     /// The kind of `name` in the script that `source` names, relative to the including script,
     /// or the error to report.
     fn kind(&mut self, source: &str, name: &str) -> Result<DefinitionKind, String>;
+
+    /// The names of the Groovy classes of the pipeline's `lib/` directory, which every script
+    /// can use. The default has none.
+    fn classes(&mut self) -> Vec<Rc<str>> {
+        Vec::new()
+    }
 }
 
 /// For a script that includes nothing.
@@ -156,6 +163,7 @@ pub fn lower_script(
     let mut lowering = Lowering::new(source);
     let mut module = Module::default();
     lowering.declare_definitions(script, imports, &mut module);
+    lowering.declare_classes(script, imports);
     let statements: Vec<&ast::Statement> = script
         .items
         .iter()
@@ -248,7 +256,12 @@ pub fn lower_script(
                     }
                 }
             }
-            Item::Include(_) | Item::FeatureFlag { .. } | Item::Statement(_) => {}
+            Item::Class(class) => lowering.class(class, None, &mut module.classes),
+            // Legacy syntax: an import names a class; only static members matter here.
+            Item::Include(_)
+            | Item::FeatureFlag { .. }
+            | Item::Statement(_)
+            | Item::Import { .. } => {}
             other => lowering.error("This script item is not supported yet", item_span(other)),
         }
     }
@@ -302,6 +315,12 @@ pub(crate) struct Lowering<'a> {
     lookup: Option<&'a Lookup<'a>>,
     /// Legacy syntax that strict syntax rejects with these errors, for `Module::legacy`.
     legacy: Vec<Diagnostic>,
+    /// The Groovy classes that code can name: those of the `lib/` directory and of the file.
+    library: HashSet<Rc<str>>,
+    /// The class being lowered, whose members its code can name without qualification.
+    class: Option<class::ClassContext>,
+    /// Static members that `import static` brings in, with their class.
+    static_imports: HashMap<Rc<str>, Rc<str>>,
 }
 
 impl<'a> Lowering<'a> {
@@ -323,6 +342,9 @@ impl<'a> Lowering<'a> {
             definition_calls: Vec::new(),
             lookup: None,
             legacy: Vec::new(),
+            library: HashSet::new(),
+            class: None,
+            static_imports: HashMap::new(),
         }
     }
 
@@ -387,6 +409,33 @@ impl<'a> Lowering<'a> {
             captures: layout.captures,
             body,
             span: function.span,
+        }
+    }
+
+    /// Records the Groovy classes that the script can name and its static imports, before
+    /// lowering any code.
+    fn declare_classes(&mut self, script: &ast::Script, imports: &mut dyn Imports) {
+        self.library.extend(imports.classes());
+        for item in &script.items {
+            match item {
+                Item::Class(class) => {
+                    self.library.insert(class.name.text.as_str().into());
+                }
+                Item::Import {
+                    name,
+                    alias,
+                    member: true,
+                    ..
+                } => {
+                    let [.., class, member] = name.parts.as_slice() else {
+                        continue;
+                    };
+                    let local = alias.as_ref().unwrap_or(member);
+                    self.static_imports
+                        .insert(local.text.as_str().into(), class.text.as_str().into());
+                }
+                _ => {}
+            }
         }
     }
 
@@ -632,6 +681,7 @@ fn item_span(item: &Item) -> Span {
         Item::Workflow(workflow) => workflow.span,
         Item::Function(function) => function.span,
         Item::Agent(agent) => agent.span,
+        Item::Class(class) => class.span,
         Item::Statement(statement) => statement.span,
     }
 }

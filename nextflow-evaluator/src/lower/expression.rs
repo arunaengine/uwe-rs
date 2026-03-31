@@ -167,6 +167,33 @@ impl Lowering<'_> {
             // nf-lang reads a primitive type like `char` in an expression as a variable, so
             // `(char) x` loads and fails only when it runs.
             Syntax::PrimitiveType(name) => Kind::Dynamic(name.as_str().into()),
+            Syntax::Postfix { operand, increment } => match self.target(operand) {
+                Some(target) => Kind::Step {
+                    target: Box::new(target),
+                    increment: *increment,
+                },
+                None => Kind::Literal(Value::Null),
+            },
+            Syntax::Assign {
+                target,
+                operator,
+                value,
+            } => {
+                let value = self.expression(value);
+                match self.target(target) {
+                    Some(target) => Kind::Assign {
+                        target: Box::new(target),
+                        update: super::statement::update(*operator),
+                        value: Box::new(value),
+                    },
+                    None => Kind::Literal(Value::Null),
+                }
+            }
+            Syntax::Spread(items) => Kind::Spread(Box::new(self.expression(items))),
+            Syntax::DynamicProperty { target, name } => Kind::DynamicProperty {
+                target: Box::new(self.expression(target)),
+                name: Box::new(self.expression(name)),
+            },
         };
         Expression { kind, span }
     }
@@ -182,6 +209,12 @@ impl Lowering<'_> {
     pub(super) fn variable(&mut self, name: &str, span: Span) -> Kind {
         if let Some(place) = self.scopes.resolve(name) {
             return Kind::Variable(place);
+        }
+        if let Some(member) = self.class_member(name, span) {
+            return member;
+        }
+        if self.library.contains(name) {
+            return Kind::LibraryClass(name.into());
         }
         if self.config {
             return self.config_variable(name, span);
@@ -386,6 +419,17 @@ impl Lowering<'_> {
 
     /// A call without a receiver: a function of the script or a built-in function.
     fn function_call(&mut self, name: &str, span: Span, arguments: Arguments) -> Kind {
+        let arguments = match self.class_call(name, span, arguments) {
+            Ok(call) => return call,
+            Err(arguments) => arguments,
+        };
+        if let Some(class) = self.static_imports.get(name).cloned() {
+            return Kind::CallStatic {
+                class,
+                name: name.into(),
+                arguments,
+            };
+        }
         let function = if self.functions.contains(name) {
             Function::Script(name.into())
         } else if let Some(kind) = self.definitions.get(name).copied() {
@@ -471,6 +515,18 @@ impl Lowering<'_> {
     /// The class a receiver names, unless a variable of that name hides it. A fully qualified
     /// name like `java.util.UUID` names the class by its last part.
     fn class_name(&mut self, target: &ast::Expression) -> Option<Rc<str>> {
+        // A Groovy class of the pipeline, or a member of the class being lowered, hides a
+        // class of Java or Groovy with the same name, like the `FileType` of a class.
+        if let Syntax::Variable(name) = &target.kind {
+            let hidden = self.library.contains(name.as_str())
+                || self.class.as_ref().is_some_and(|class| {
+                    class.nested.contains_key(name.as_str())
+                        || class.static_fields.contains_key(name.as_str())
+                });
+            if hidden {
+                return None;
+            }
+        }
         match &target.kind {
             Syntax::Variable(name)
                 if CLASSES.contains(&name.as_str()) && self.scopes.resolve(name).is_none() =>

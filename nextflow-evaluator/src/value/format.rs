@@ -138,6 +138,11 @@ impl Value {
                 }
                 // `GroupKey.toString()` is Groovy code, so a map key prints as Groovy shows it.
                 super::State::GroupKey(target, _) => out.push_str(&target.to_groovy_string()),
+                // An enum constant prints its name; a class prints `class Name`, as in Java.
+                super::State::EnumConstant { name, .. } => out.push_str(name),
+                super::State::Class(class) => {
+                    out.push_str(&format!("class {}", class.def.name.replace('.', "$")))
+                }
                 _ => {
                     let class = object.borrow().class;
                     out.push_str(&format!("{class}@{:x}", Rc::as_ptr(object) as usize));

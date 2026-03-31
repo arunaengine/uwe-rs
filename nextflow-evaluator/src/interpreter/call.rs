@@ -7,7 +7,6 @@ use std::rc::Rc;
 
 use nextflow_parser::Span;
 
-use super::statement::Completion;
 use super::{Error, Frame, Interpreter, thrown, unsupported};
 use crate::exception::Exception;
 use crate::lowered::{Arguments, Code, Module, Place};
@@ -29,7 +28,20 @@ impl Interpreter<'_> {
             values.push(Value::map(entries));
         }
         for argument in &arguments.positional {
-            values.push(self.expression(frame, argument)?);
+            match &argument.kind {
+                // Legacy syntax: `*items` passes the elements of the list.
+                crate::lowered::ExpressionKind::Spread(items) => {
+                    match self.expression(frame, items)? {
+                        Value::List(list) => values.extend(list.borrow().items.iter().cloned()),
+                        Value::Set(set) => {
+                            values.extend(set.borrow().items.iter().map(|key| key.0.clone()))
+                        }
+                        Value::Null => values.push(Value::Null),
+                        other => values.push(other),
+                    }
+                }
+                _ => values.push(self.expression(frame, argument)?),
+            }
         }
         Ok(values)
     }
@@ -108,9 +120,7 @@ impl Interpreter<'_> {
             };
             frame.set(Place::Local(parameter.slot), value);
         }
-        match self.block(&mut frame, &code.body)? {
-            Completion::Normal(value) | Completion::Return(value) => Ok(value),
-        }
+        Ok(self.block(&mut frame, &code.body)?.value())
     }
 
     /// Built-in functions of every script.

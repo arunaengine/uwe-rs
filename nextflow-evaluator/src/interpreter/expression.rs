@@ -312,7 +312,25 @@ impl Interpreter<'_> {
             }
             Kind::New { class, arguments } => {
                 let arguments = self.arguments(frame, arguments)?;
-                self.new_object(class, arguments, span)?
+                match self.library_new(frame, class, arguments.clone(), span)? {
+                    Some(object) => object,
+                    None => self.new_object(class, arguments, span)?,
+                }
+            }
+            Kind::LibraryClass(name) => self.library_class(frame, name, span)?,
+            Kind::Step { target, increment } => self.step(frame, target, *increment, span)?,
+            Kind::Assign {
+                target,
+                update,
+                value,
+            } => self.assign_value(frame, target, *update, value, span)?,
+            Kind::Spread(_) => {
+                return Err(unsupported("`*` outside of call arguments", span));
+            }
+            Kind::DynamicProperty { target, name } => {
+                let object = self.expression(frame, target)?;
+                let name = self.expression(frame, name)?.to_string();
+                self.property(&object, &name, span)?
             }
         })
     }
@@ -351,6 +369,11 @@ impl Interpreter<'_> {
                 Ok(Value::list(results))
             }
             (Access::Spread, other) => apply(self, other),
+            // `.@name` reads a field or an XML attribute directly.
+            (Access::Attribute, _) => Err(unsupported(
+                "reading a field or an attribute with `.@`",
+                Default::default(),
+            )),
         }
     }
 }

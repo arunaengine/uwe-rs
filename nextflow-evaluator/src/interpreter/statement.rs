@@ -17,6 +17,20 @@ pub(super) enum Completion {
     Normal(Value),
     /// A `return` ended the function or closure.
     Return(Value),
+    /// A `break` of legacy code ended the loop.
+    Break,
+    /// A `continue` of legacy code ended the round of the loop.
+    Continue,
+}
+
+impl Completion {
+    /// The value of a function or closure that ended so.
+    pub(super) fn value(self) -> Value {
+        match self {
+            Completion::Normal(value) | Completion::Return(value) => value,
+            Completion::Break | Completion::Continue => Value::Null,
+        }
+    }
 }
 
 impl Interpreter<'_> {
@@ -39,7 +53,7 @@ impl Interpreter<'_> {
             };
             match completion {
                 Completion::Normal(value) => last = value,
-                done @ Completion::Return(_) => return Ok(done),
+                done => return Ok(done),
             }
         }
         Ok(Completion::Normal(last))
@@ -161,6 +175,40 @@ impl Interpreter<'_> {
                     ),
                 });
             }
+            StatementKind::ForIn { slot, items, body } => {
+                let items = self.expression(frame, items)?;
+                for item in self.loop_items(&items, span)? {
+                    frame.set(Place::Local(*slot), item);
+                    match self.block(frame, body)? {
+                        Completion::Break => break,
+                        done @ Completion::Return(_) => return Ok(done),
+                        Completion::Normal(_) | Completion::Continue => {}
+                    }
+                }
+                Value::Null
+            }
+            StatementKind::Loop {
+                condition,
+                update,
+                body,
+            } => {
+                loop {
+                    if let Some(condition) = condition
+                        && !self.expression(frame, condition)?.truth()
+                    {
+                        break;
+                    }
+                    match self.block(frame, body)? {
+                        Completion::Break => break,
+                        done @ Completion::Return(_) => return Ok(done),
+                        Completion::Normal(_) | Completion::Continue => {}
+                    }
+                    self.block(frame, update)?;
+                }
+                Value::Null
+            }
+            StatementKind::Break => return Ok(Completion::Break),
+            StatementKind::Continue => return Ok(Completion::Continue),
             StatementKind::Assert {
                 condition,
                 message,
@@ -181,6 +229,77 @@ impl Interpreter<'_> {
             }
         };
         Ok(Completion::Normal(value))
+    }
+
+    /// The elements that `for (x in items)` visits, as Groovy's `iterator()` gives them: a
+    /// map gives its entries, a string its characters, `null` nothing.
+    fn loop_items(&mut self, items: &Value, span: Span) -> Result<Vec<Value>, Error> {
+        Ok(match items {
+            Value::Null => Vec::new(),
+            Value::List(list) => list.borrow().items.clone(),
+            Value::Set(set) => set.borrow().items.iter().map(|key| key.0.clone()).collect(),
+            Value::Map(map) => map
+                .borrow()
+                .entries
+                .iter()
+                .map(|(key, value)| Value::MapEntry(Rc::new((key.0.clone(), value.clone()))))
+                .collect(),
+            Value::String(text) | Value::GString(text) => {
+                text.chars().map(|c| Value::string(c.to_string())).collect()
+            }
+            other => {
+                let message = format!("iterating over {} with `for`", other.class_name());
+                return Err(super::unsupported(message, span));
+            }
+        })
+    }
+
+    /// An assignment used as a value in legacy code, like `a = b = c`: the value stored.
+    pub(super) fn assign_value(
+        &mut self,
+        frame: &mut Frame,
+        target: &Target,
+        update: Option<Update>,
+        value: &crate::lowered::Expression,
+        span: Span,
+    ) -> Result<Value, Error> {
+        let target = self.target(frame, target)?;
+        let result = match update {
+            None => self.expression(frame, value)?,
+            Some(update) => {
+                let current = self.load(frame, &target, span)?;
+                match update {
+                    Update::Elvis if current.truth() => current,
+                    Update::Elvis => self.expression(frame, value)?,
+                    Update::Operator(operator) => {
+                        let right = self.expression(frame, value)?;
+                        current.apply(operator, &right).at(span)?
+                    }
+                }
+            }
+        };
+        self.store(frame, &target, result.clone(), span)?;
+        Ok(result)
+    }
+
+    /// `x++` or `x--` of legacy code: adds or subtracts one, and gives the value before.
+    pub(super) fn step(
+        &mut self,
+        frame: &mut Frame,
+        target: &Target,
+        increment: bool,
+        span: Span,
+    ) -> Result<Value, Error> {
+        let target = self.target(frame, target)?;
+        let current = self.load(frame, &target, span)?;
+        let operator = if increment {
+            crate::value::Operator::Add
+        } else {
+            crate::value::Operator::Subtract
+        };
+        let next = current.apply(operator, &Value::integer(1)).at(span)?;
+        self.store(frame, &target, next, span)?;
+        Ok(current)
     }
 
     /// Evaluates the parts of an assignment target that must only run once.

@@ -6,7 +6,7 @@ use nextflow_parser::ast::{self, AssignOperator, ExpressionKind as Syntax, State
 
 use super::Lowering;
 use crate::lowered::{Catch, Place, Statement, StatementKind, Target, Update};
-use crate::value::Operator;
+use crate::value::{Operator, Value};
 
 impl Lowering<'_> {
     /// Lowers a block in its own scope.
@@ -102,6 +102,56 @@ impl Lowering<'_> {
             },
             // Labels only matter in `branch` and `multiMap` criteria, which come later.
             Kind::Labeled { statement, .. } => return self.statement(statement),
+            Kind::ForIn {
+                variable,
+                items,
+                body,
+            } => {
+                let items = self.expression(items);
+                self.scopes.push_block();
+                let slot = self.declare(variable);
+                let body = self.block(body);
+                self.scopes.pop_block();
+                StatementKind::ForIn { slot, items, body }
+            }
+            // The variables of the first part belong to the loop.
+            Kind::For {
+                init,
+                condition,
+                update,
+                body,
+            } => {
+                self.scopes.push_block();
+                let init = init.as_ref().and_then(|init| self.statement(init));
+                let condition = condition.as_ref().map(|value| self.expression(value));
+                let update = self.statements(update);
+                let body = self.block(body);
+                self.scopes.pop_block();
+                let kind = StatementKind::Loop {
+                    condition,
+                    update,
+                    body,
+                };
+                let looped = Statement { kind, span };
+                return Some(Statement {
+                    kind: StatementKind::If {
+                        condition: crate::lowered::Expression {
+                            kind: crate::lowered::ExpressionKind::Literal(Value::Boolean(true)),
+                            span,
+                        },
+                        then: init.into_iter().chain([looped]).collect(),
+                        otherwise: Vec::new(),
+                    },
+                    span,
+                });
+            }
+            Kind::While { condition, body } => StatementKind::Loop {
+                condition: Some(self.expression(condition)),
+                update: Vec::new(),
+                body: self.block(body),
+            },
+            Kind::Break => StatementKind::Break,
+            Kind::Continue => StatementKind::Continue,
             Kind::Empty => return None,
         };
         Some(Statement { kind, span })
@@ -126,8 +176,22 @@ impl Lowering<'_> {
     }
 
     /// The target of an assignment: a variable, a property or an index.
-    fn target(&mut self, target: &ast::Expression) -> Option<Target> {
+    pub(super) fn target(&mut self, target: &ast::Expression) -> Option<Target> {
         match &target.kind {
+            // A field of the class being lowered, which a method sets by its name alone.
+            Syntax::Variable(name)
+                if self.scopes.resolve(name).is_none()
+                    && let Some(crate::lowered::ExpressionKind::Property {
+                        target: object,
+                        name,
+                        ..
+                    }) = self.class_member(name, target.span) =>
+            {
+                Some(Target::Property {
+                    target: *object,
+                    name,
+                })
+            }
             Syntax::Variable(name) => self
                 .assigned_variable(name, target.span)
                 .map(Target::Variable),
@@ -182,7 +246,7 @@ impl Lowering<'_> {
     }
 }
 
-fn update(operator: AssignOperator) -> Option<Update> {
+pub(super) fn update(operator: AssignOperator) -> Option<Update> {
     use AssignOperator as A;
     let operator = match operator {
         A::Assign => return None,

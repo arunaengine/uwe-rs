@@ -4,6 +4,7 @@
 
 mod access;
 mod call;
+mod classes;
 mod dataflow;
 mod expression;
 pub mod glob;

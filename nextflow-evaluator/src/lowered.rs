@@ -66,6 +66,69 @@ pub struct Module {
     /// Legacy syntax that lowering accepts with the meaning of the legacy parser, with the
     /// errors of strict syntax.
     pub legacy: Vec<nextflow_parser::Diagnostic>,
+    /// The Groovy classes of the file, as the `lib/` directory of older pipelines holds them,
+    /// nested classes included.
+    pub classes: Vec<Rc<ClassDef>>,
+    /// The Groovy classes of the pipeline, which every script can use; the loader sets it.
+    pub library: std::cell::RefCell<Option<Rc<Library>>>,
+}
+
+/// A Groovy class or enum, which only the legacy parser accepts.
+#[derive(Debug)]
+pub struct ClassDef {
+    /// The name, after the names of the classes it is nested in, like `Constants.RunMode`.
+    pub name: Rc<str>,
+    pub enumeration: bool,
+    /// The constants of an enum, in order.
+    pub constants: Vec<Rc<str>>,
+    pub fields: Vec<FieldDef>,
+    pub methods: Vec<MethodDef>,
+    pub constructors: Vec<MethodDef>,
+    /// The names of the classes nested in this one, as `name` gives them.
+    pub nested: Vec<Rc<str>>,
+    pub span: Span,
+}
+
+#[derive(Debug)]
+pub struct FieldDef {
+    pub name: Rc<str>,
+    pub is_static: bool,
+    /// The simple name of the declared type, which converts the value; `None` for `def`.
+    pub class: Option<Rc<str>>,
+    /// The initial value, as code without parameters.
+    pub value: Option<Rc<Code>>,
+}
+
+#[derive(Debug)]
+pub struct MethodDef {
+    pub name: Rc<str>,
+    pub is_static: bool,
+    /// Whether the last parameter takes the remaining arguments as a list.
+    pub varargs: bool,
+    /// The simple names of the parameter types, `None` for an untyped parameter, which Groovy
+    /// checks to choose among methods of one name.
+    pub types: Vec<Option<Rc<str>>>,
+    /// The simple name of the return type, which converts the result; `None` for `def`.
+    pub returns: Option<Rc<str>>,
+    /// The code. A method of the objects takes the object, `this`, as its first parameter.
+    pub code: Rc<Code>,
+}
+
+/// The Groovy classes that the scripts of a run can use, by name, with their static state.
+#[derive(Debug, Default)]
+pub struct Library {
+    pub classes: std::cell::RefCell<HashMap<Rc<str>, Rc<LibraryClass>>>,
+}
+
+/// A class of the library with the script it belongs to and its state.
+#[derive(Debug)]
+pub struct LibraryClass {
+    pub def: Rc<ClassDef>,
+    pub module: Rc<Module>,
+    /// The static fields, from the first time the class is used.
+    pub statics: std::cell::RefCell<Option<indexmap::IndexMap<Rc<str>, Value>>>,
+    /// The constants of an enum, and the class itself as a value, made once.
+    pub values: std::cell::RefCell<Option<(Vec<Value>, Value)>>,
 }
 
 /// A param of the typed `params { }` block, like `input: String? = null`.
@@ -266,6 +329,20 @@ pub enum StatementKind {
         /// The source text of the condition, for the message of a failed assert.
         text: Rc<str>,
     },
+    /// `for (x in items)` of legacy code: each element goes to the slot in turn.
+    ForIn {
+        slot: Slot,
+        items: Expression,
+        body: Vec<Statement>,
+    },
+    /// `while` and the classic `for` of legacy code: `update` runs after each round.
+    Loop {
+        condition: Option<Expression>,
+        update: Vec<Statement>,
+        body: Vec<Statement>,
+    },
+    Break,
+    Continue,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -439,6 +516,26 @@ pub enum ExpressionKind {
     New {
         class: Rc<str>,
         arguments: Arguments,
+    },
+    /// A class of the library of the pipeline, by name, as in `Utils.method()`.
+    LibraryClass(Rc<str>),
+    /// `x++` and `x--` of legacy code; the value is the one before.
+    Step {
+        target: Box<Target>,
+        increment: bool,
+    },
+    /// An assignment used as a value in legacy code, like `a = b = c`.
+    Assign {
+        target: Box<Target>,
+        update: Option<Update>,
+        value: Box<Expression>,
+    },
+    /// `*items` as a call argument of legacy code, which passes the elements.
+    Spread(Box<Expression>),
+    /// `target."$name"` of legacy code.
+    DynamicProperty {
+        target: Box<Expression>,
+        name: Box<Expression>,
     },
 }
 

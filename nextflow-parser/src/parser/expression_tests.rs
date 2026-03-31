@@ -173,6 +173,22 @@ pub(in crate::parser) fn render(expression: &Expression) -> String {
         ExpressionKind::Elvis { value, fallback } => {
             format!("(?: {} {})", render(value), render(fallback))
         }
+        ExpressionKind::Postfix { operand, increment } => {
+            format!(
+                "({} {})",
+                if *increment { "++" } else { "--" },
+                render(operand)
+            )
+        }
+        ExpressionKind::Spread(items) => format!("(* {})", render(items)),
+        ExpressionKind::DynamicProperty { target, name } => {
+            format!("(.$ {} {})", render(target), render(name))
+        }
+        ExpressionKind::Assign {
+            target,
+            operator,
+            value,
+        } => format!("(set{:?} {} {})", operator, render(target), render(value)),
     }
 }
 
@@ -263,8 +279,45 @@ pub(in crate::parser) fn render_statement(statement: &Statement) -> String {
         StatementKind::Labeled { label, statement } => {
             format!("{}: {}", label.text, render_statement(statement))
         }
+        StatementKind::ForIn {
+            variable,
+            items,
+            body,
+        } => format!(
+            "(for {} {} {})",
+            variable.text,
+            render(items),
+            render_block(body)
+        ),
+        StatementKind::For {
+            init,
+            condition,
+            update,
+            body,
+        } => {
+            let init = init.as_ref().map(|init| render_statement(init));
+            let condition = condition.as_ref().map(render);
+            let update: Vec<_> = update.iter().map(render_statement).collect();
+            format!(
+                "(for {}; {}; {} {})",
+                init.unwrap_or_default(),
+                condition.unwrap_or_default(),
+                update.join(", "),
+                render_block(body)
+            )
+        }
+        StatementKind::While { condition, body } => {
+            format!("(while {} {})", render(condition), render_block(body))
+        }
+        StatementKind::Break => "(break)".to_owned(),
+        StatementKind::Continue => "(continue)".to_owned(),
         StatementKind::Empty => "(empty)".to_owned(),
     }
+}
+
+fn render_block(block: &crate::ast::Block) -> String {
+    let body: Vec<_> = block.statements.iter().map(render_statement).collect();
+    format!("{{{}}}", body.join("; "))
 }
 
 fn render_arguments(arguments: &[Argument]) -> String {
@@ -307,6 +360,7 @@ fn access_text(access: Access) -> &'static str {
         Access::Normal => ".",
         Access::Safe => "?.",
         Access::Spread => "*.",
+        Access::Attribute => ".@",
     }
 }
 

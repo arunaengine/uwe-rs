@@ -57,10 +57,23 @@ impl Parser<'_> {
         loop {
             let newlines = self.newline_count();
             let Some(operator) = self.operator_at(newlines) else {
+                // Legacy syntax: inside brackets, an assignment is a value, as in `f(x = 1)`.
+                if minimum == 0 && self.brackets > 0 && newlines == 0 {
+                    return self.assignment_chain(left);
+                }
                 break;
             };
-            if (newlines > 0 && !operator.after_newline) || operator.precedence < minimum {
+            if operator.precedence < minimum {
                 break;
+            }
+            if newlines > 0 && !operator.after_newline {
+                // Legacy syntax: inside brackets a line break does not end the expression.
+                if self.brackets == 0 {
+                    break;
+                }
+                let token = self.tokens[self.position + newlines];
+                let text = self.text(token);
+                self.legacy_at(format!("Unexpected input: '{text}'"), token.span);
             }
             // `as` and `instanceof` may name an argument, as in the call `foo as: 1`.
             let named = matches!(operator.infix, Infix::Cast | Infix::InstanceOf { .. });
@@ -224,7 +237,7 @@ impl Parser<'_> {
     }
 
     /// Prefix operators bind their operand at their own level, as ANTLR does for prefix rules.
-    fn unary(&mut self) -> Parse<Expression> {
+    pub(super) fn unary(&mut self) -> Parse<Expression> {
         let start = self.current().span;
         let (operator, precedence) = match self.peek() {
             TokenKind::Not => (UnaryOperator::Not, NEGATION),
@@ -265,10 +278,21 @@ impl Parser<'_> {
                     self.skip_newlines();
                     continue;
                 }
+                TokenKind::Dot if matches!(self.nth(1), TokenKind::GStringBegin { .. }) => {
+                    // Legacy syntax: `target."$name"` computes the name of the property.
+                    self.bump();
+                    let name = self.primary()?;
+                    self.legacy_at("Expected a property name", name.span);
+                    ExpressionKind::DynamicProperty {
+                        target: Box::new(expression),
+                        name: Box::new(name),
+                    }
+                }
                 TokenKind::Dot | TokenKind::SafeDot | TokenKind::SpreadDot => {
                     let access = match self.bump().kind {
                         TokenKind::SafeDot => Access::Safe,
                         TokenKind::SpreadDot => Access::Spread,
+                        _ if self.eat(TokenKind::At) => Access::Attribute,
                         _ => Access::Normal,
                     };
                     ExpressionKind::Property {
@@ -312,6 +336,14 @@ impl Parser<'_> {
                         index,
                     }
                 }
+                TokenKind::Add | TokenKind::Subtract => match self.postfix_step(expression) {
+                    Ok(step) => {
+                        expression = step;
+                        count += 1;
+                        continue;
+                    }
+                    Err(expression) => return Ok((expression, count)),
+                },
                 _ => return Ok((expression, count)),
             };
             expression = Expression {
@@ -326,7 +358,7 @@ impl Parser<'_> {
     /// The `indexPropertyArgs` rule: `[`, expressions, `]`.
     fn index_list(&mut self) -> Parse<Vec<Expression>> {
         self.expect(TokenKind::LeftBracket, "'['")?;
-        let index = self.expression_list()?;
+        let index = self.in_brackets(Self::expression_list)?;
         self.expect(TokenKind::RightBracket, "']'")?;
         Ok(index)
     }
@@ -334,7 +366,7 @@ impl Parser<'_> {
     pub(super) fn primary(&mut self) -> Parse<Expression> {
         let token = self.current();
         let kind = match token.kind {
-            kind if is_name(kind) => {
+            kind if is_name(kind) || (self.groovy && kind == TokenKind::Include) => {
                 self.bump();
                 let text = self.text(token);
                 self.check_name(text, token.span);
@@ -371,11 +403,15 @@ impl Parser<'_> {
                 let arguments = self.arguments()?;
                 ExpressionKind::New { class, arguments }
             }
+            TokenKind::LeftParen if self.at_soft_cast() => return self.soft_cast(),
             TokenKind::LeftParen => {
                 self.bump();
-                self.skip_newlines();
-                let inner = self.expression()?;
-                self.skip_newlines();
+                let inner = self.in_brackets(|parser| {
+                    parser.skip_newlines();
+                    let inner = parser.expression()?;
+                    parser.skip_newlines();
+                    Ok(inner)
+                })?;
                 self.expect(TokenKind::RightParen, "')'")?;
                 ExpressionKind::Parenthesized(Box::new(inner))
             }

@@ -22,14 +22,14 @@ impl Parser<'_> {
         if text.starts_with('/') {
             decode_slashy(content)
         } else {
-            self.decode(content, start)
+            self.decode(content, start, text.starts_with('"'))
         }
     }
 
     /// Decodes the text between the parts of a GString, which has no quotes of its own.
     pub(super) fn gstring_text(&mut self, token: Token) -> String {
         let text = self.text(token);
-        self.decode(text, token.span.start as usize)
+        self.decode(text, token.span.start as usize, true)
     }
 
     /// A string literal used as a name, like an include source or a config selector target.
@@ -42,7 +42,9 @@ impl Parser<'_> {
     }
 
     /// Replaces the escapes of quoted strings; `start` is the byte offset of `text` in the source.
-    fn decode(&mut self, text: &str, start: usize) -> String {
+    /// In a double-quoted string, the official lexer drops an invalid escape like `\|` without
+    /// an error, as its error recovery skips both characters.
+    fn decode(&mut self, text: &str, start: usize, double: bool) -> String {
         let text = text.replace("\r\n", "\n");
         let mut decoded = String::with_capacity(text.len());
         let mut chars = text.char_indices().peekable();
@@ -71,6 +73,7 @@ impl Parser<'_> {
                             chars.next();
                         }
                     }
+                    None if double => {}
                     None => self.invalid_escape(next, start + index, &mut decoded),
                 },
                 '0'..='7' => {
@@ -87,6 +90,7 @@ impl Parser<'_> {
                     }
                     decoded.extend(char::from_u32(value));
                 }
+                _ if double => {}
                 _ => self.invalid_escape(next, start + index, &mut decoded),
             }
         }
@@ -125,7 +129,7 @@ impl Parser<'_> {
                 }
                 TokenKind::InterpolationStart => {
                     self.bump();
-                    let value = self.expression()?;
+                    let value = self.in_braces(Self::expression)?;
                     self.expect(TokenKind::RightBrace, "'}' to close the interpolation")?;
                     parts.push(GStringPart::Value(value));
                 }
@@ -175,13 +179,15 @@ impl Parser<'_> {
             return Ok(ExpressionKind::Map(Vec::new()));
         }
         self.skip_newlines();
-        let kind = if self.at(TokenKind::RightBracket) {
-            ExpressionKind::List(Vec::new())
-        } else if self.at_map_entry() {
-            ExpressionKind::Map(self.map_entries()?)
-        } else {
-            ExpressionKind::List(self.expression_list()?)
-        };
+        let kind = self.in_brackets(|parser| {
+            Ok(if parser.at(TokenKind::RightBracket) {
+                ExpressionKind::List(Vec::new())
+            } else if parser.at_map_entry() {
+                ExpressionKind::Map(parser.map_entries()?)
+            } else {
+                ExpressionKind::List(parser.expression_list()?)
+            })
+        })?;
         if self.at(TokenKind::Comma) {
             self.bump();
         }

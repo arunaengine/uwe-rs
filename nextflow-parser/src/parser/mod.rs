@@ -3,9 +3,11 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod call;
+mod class;
 mod config;
 mod declaration;
 mod expression;
+mod legacy;
 mod literal;
 mod process;
 mod section;
@@ -33,7 +35,7 @@ pub fn parse_script(source: &str) -> Parsed<Script> {
     Parsed {
         tree,
         errors: parser.errors,
-        legacy: parser.legacy,
+        legacy: unique(parser.legacy),
     }
 }
 
@@ -43,8 +45,20 @@ pub fn parse_config(source: &str) -> Parsed<Config> {
     Parsed {
         tree,
         errors: parser.errors,
-        legacy: parser.legacy,
+        legacy: unique(parser.legacy),
     }
+}
+
+/// The diagnostics without repeats, as a statement that is read twice records its legacy
+/// syntax twice.
+fn unique(diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    let mut result: Vec<Diagnostic> = Vec::with_capacity(diagnostics.len());
+    for diagnostic in diagnostics {
+        if !result.contains(&diagnostic) {
+            result.push(diagnostic);
+        }
+    }
+    result
 }
 
 /// Marks a rule that already reported its error and produced no tree.
@@ -60,6 +74,11 @@ struct Parser<'a> {
     position: usize,
     errors: Vec<Diagnostic>,
     legacy: Vec<Diagnostic>,
+    /// How many parentheses and square brackets enclose the expression being parsed, up to the
+    /// nearest brace. The legacy parser ignores line breaks inside them.
+    brackets: usize,
+    /// Whether the code is a Groovy class, where `include` is a plain name.
+    groovy: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -71,7 +90,9 @@ impl<'a> Parser<'a> {
             tokens: lexed.tokens,
             position: 0,
             errors: lexed.errors,
-            legacy: Vec::new(),
+            legacy: lexed.legacy,
+            brackets: 0,
+            groovy: false,
         }
     }
 
@@ -187,6 +208,11 @@ impl<'a> Parser<'a> {
         Failed
     }
 
+    /// Records legacy syntax that strict syntax rejects with `message` but iunctus accepts.
+    fn legacy_at(&mut self, message: impl Into<String>, span: Span) {
+        self.legacy.push(Diagnostic::new(message, span));
+    }
+
     /// Tries a rule and, if it fails, rewinds as if it had never run, dropping its errors.
     fn speculate<T>(&mut self, rule: impl FnOnce(&mut Self) -> Parse<T>) -> Option<T> {
         let (position, errors, legacy) = (self.position, self.errors.len(), self.legacy.len());
@@ -240,7 +266,7 @@ impl<'a> Parser<'a> {
     }
 
     fn at_name(&self) -> bool {
-        is_name(self.peek())
+        is_name(self.peek()) || (self.groovy && self.at(TokenKind::Include))
     }
 
     /// The `identifier` rule: plain identifiers and the keywords that may be used as names.
@@ -258,8 +284,20 @@ impl<'a> Parser<'a> {
             return;
         }
         let message = match text {
+            // Legacy syntax: `_` is a name, like a closure parameter that is not used.
             "_" => {
-                "`_` is not allowed as an identifier because it is reserved for future use".into()
+                let message =
+                    "`_` is not allowed as an identifier because it is reserved for future use";
+                self.legacy_at(message, span);
+                return;
+            }
+            // Legacy syntax: `this` is the class in a static method of a Groovy class, or the
+            // object in the others.
+            "this" => {
+                let message =
+                    "`this` is not allowed as an identifier because it is a Groovy keyword";
+                self.legacy_at(message, span);
+                return;
             }
             "for" | "while" => format!("`{text}` loops are no longer supported"),
             "switch" => "`switch` statements are no longer supported".into(),

@@ -61,7 +61,7 @@ impl Parser<'_> {
             parser.expect(TokenKind::Arrow, "'->'")?;
             Ok(parameters)
         });
-        let statements = self.closure_body(labels)?;
+        let statements = self.in_braces(|parser| parser.closure_body(labels))?;
         self.expect(TokenKind::RightBrace, "'}' to close the closure")?;
         Ok(Closure {
             parameters,
@@ -109,17 +109,20 @@ impl Parser<'_> {
     /// Parenthesized call arguments.
     pub(super) fn arguments(&mut self) -> Parse<Vec<Argument>> {
         self.expect(TokenKind::LeftParen, "'('")?;
-        self.skip_newlines();
-        let mut arguments = Vec::new();
-        if !self.at(TokenKind::RightParen) {
-            arguments.push(self.argument()?);
-            while self.next_list_item() {
-                arguments.push(self.argument()?);
+        let arguments = self.in_brackets(|parser| {
+            parser.skip_newlines();
+            let mut arguments = Vec::new();
+            if !parser.at(TokenKind::RightParen) {
+                arguments.push(parser.argument()?);
+                while parser.next_list_item() {
+                    arguments.push(parser.argument()?);
+                }
+                parser.skip_newlines();
+                parser.eat(TokenKind::Comma);
             }
-            self.skip_newlines();
-            self.eat(TokenKind::Comma);
-        }
-        self.skip_newlines();
+            parser.skip_newlines();
+            Ok(arguments)
+        })?;
         self.expect(TokenKind::RightParen, "')'")?;
         self.check_names(&arguments);
         Ok(arguments)
@@ -151,6 +154,17 @@ impl Parser<'_> {
         } else {
             None
         };
+        // Legacy syntax: `*items` passes the elements of a list as the arguments.
+        if name.is_none() && self.brackets > 0 && self.at(TokenKind::Multiply) {
+            let start = self.bump().span;
+            self.legacy_at("Unexpected input: '*'", start);
+            let items = self.expression()?;
+            let value = Expression {
+                span: self.span_from(start),
+                kind: ExpressionKind::Spread(Box::new(items)),
+            };
+            return Ok(Argument { name, value });
+        }
         Ok(Argument {
             name,
             value: self.expression()?,

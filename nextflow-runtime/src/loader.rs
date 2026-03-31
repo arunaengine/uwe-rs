@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use nextflow_evaluator::lower::{Imports, lower_script};
-use nextflow_evaluator::lowered::{DefinitionKind, Link, Module};
+use nextflow_evaluator::lowered::{DefinitionKind, Library, LibraryClass, Link, Module};
 use nextflow_parser::{LineIndex, parse_script};
 
 /// Why a script could not be loaded: every problem, each with its file and position.
@@ -37,11 +37,19 @@ pub struct Loader {
     /// The scripts that could not be loaded, whose errors are already reported.
     failed: HashSet<PathBuf>,
     errors: Vec<String>,
+    /// The Groovy classes of the `lib/` directory next to the main script, which every script
+    /// can use.
+    library: Rc<Library>,
+    /// The names of the classes of `library` that are not nested in another.
+    library_names: Vec<Rc<str>>,
 }
 
 impl Loader {
     /// Loads a script file with everything it includes.
     pub fn load(&mut self, path: &Path) -> Result<Rc<Module>, LoadError> {
+        if let Some(directory) = path.parent() {
+            self.load_library(&directory.join("lib"));
+        }
         let module = self.load_file(path);
         if self.errors.is_empty() {
             self.check_calls();
@@ -118,6 +126,60 @@ impl Loader {
         self.lower(&source, path)
     }
 
+    /// Loads the Groovy classes of a `lib/` directory, as Nextflow adds the directory to its
+    /// class path. Their names are known before any code is lowered, so that classes and scripts
+    /// can use each other.
+    fn load_library(&mut self, directory: &Path) {
+        let Ok(entries) = std::fs::read_dir(directory) else {
+            return;
+        };
+        let mut files: Vec<PathBuf> = entries
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "groovy")
+            })
+            .collect();
+        files.sort();
+        let mut parsed = Vec::new();
+        for file in files {
+            let source = match std::fs::read_to_string(&file) {
+                Ok(source) => source,
+                Err(error) => {
+                    self.errors.push(format!("{}: {error}", file.display()));
+                    continue;
+                }
+            };
+            let tree = parse_script(&source).tree;
+            for item in &tree.items {
+                if let nextflow_parser::ast::Item::Class(class) = item {
+                    self.library_names.push(class.name.text.as_str().into());
+                }
+            }
+            parsed.push((file, source));
+        }
+        for (file, source) in parsed {
+            let Some(module) = self.lower(&source, &file) else {
+                continue;
+            };
+            let module = Rc::new(module);
+            if let Some(directory) = file.parent() {
+                *module.directory.borrow_mut() = Some(directory.to_string_lossy().into());
+            }
+            let mut classes = self.library.classes.borrow_mut();
+            for def in &module.classes {
+                let class = LibraryClass {
+                    def: def.clone(),
+                    module: module.clone(),
+                    statics: std::cell::RefCell::new(None),
+                    values: std::cell::RefCell::new(None),
+                };
+                classes.insert(def.name.clone(), Rc::new(class));
+            }
+        }
+    }
+
     /// The script that ports functions of a plugin, loaded once.
     fn plugin_script(&mut self, plugin: &str, source: &str) -> Option<Rc<Module>> {
         if let Some(module) = self.plugin_scripts.get(plugin) {
@@ -147,6 +209,7 @@ impl Loader {
             Ok(module) => {
                 *module.source.borrow_mut() = Some(source.into());
                 *module.path.borrow_mut() = Some(path.to_string_lossy().into());
+                *module.library.borrow_mut() = Some(self.library.clone());
                 Some(module)
             }
             Err(errors) => {
@@ -245,6 +308,10 @@ struct Includes<'a> {
 }
 
 impl Imports for Includes<'_> {
+    fn classes(&mut self) -> Vec<Rc<str>> {
+        self.loader.library_names.clone()
+    }
+
     fn kind(&mut self, source: &str, name: &str) -> Result<DefinitionKind, String> {
         if let Some(plugin) = source.strip_prefix("plugin/") {
             if let Some(script) = nextflow_plugins::script(plugin) {

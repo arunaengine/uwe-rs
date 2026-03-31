@@ -1,0 +1,179 @@
+//! Runs Groovy classes like those of the `lib/` directory of older nf-core pipelines, and legacy
+//! loops, against the results of Groovy 4.0.31, which Nextflow 26.04.6 bundles.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use nextflow_evaluator::interpreter::{Host, Interpreter};
+use nextflow_evaluator::lower::lower_module;
+use nextflow_evaluator::lowered::{Library, LibraryClass};
+use nextflow_parser::parse_script;
+
+struct Output;
+
+impl Host for Output {
+    fn print(&mut self, _: &str) {}
+}
+
+/// Runs the function `f` of a script whose classes form the library, as the loader makes it.
+fn run(source: &str) -> Result<String, String> {
+    let parsed = parse_script(source);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let module = Rc::new(lower_module(&parsed.tree, source).expect("lowers"));
+    let library = Rc::new(Library::default());
+    for def in &module.classes {
+        let class = LibraryClass {
+            def: def.clone(),
+            module: module.clone(),
+            statics: RefCell::new(None),
+            values: RefCell::new(None),
+        };
+        library
+            .classes
+            .borrow_mut()
+            .insert(def.name.clone(), Rc::new(class));
+    }
+    *module.library.borrow_mut() = Some(library);
+    let mut output = Output;
+    let mut interpreter = Interpreter::new(&mut output);
+    interpreter
+        .call_function(&module, "f", Vec::new())
+        .map(|value| value.to_string())
+        .map_err(|error| error.to_string())
+}
+
+const CLASSES: &str = "
+class Constants {
+    static List NAMES = ['a', 'b']
+    static List MORE = Constants.NAMES + ['c']
+    static Integer COUNT = 3L
+
+    static enum Mode {
+        FAST,
+        SLOW,
+    }
+
+    static Map INPUT = [
+        key: [Mode.FAST, 'x'],
+    ]
+}
+
+class Utils {
+    public static getMode(text) {
+        try {
+            return Constants.Mode.valueOf(text.toUpperCase())
+        } catch (IllegalArgumentException e) {
+            return null
+        }
+    }
+
+    public static label(Map options, value) {
+        return \"${options.prefix}${value}\"
+    }
+
+    public static label(value) {
+        label([prefix: '-'], value)
+    }
+
+    public static String join(String separator, ... parts) {
+        return parts.join(separator)
+    }
+
+    public static Long total(items) {
+        def sum = 0
+        for (item in items) {
+            if (item == 2) {
+                continue
+            }
+            sum += item
+        }
+        for (int i = 0; i < 3; i++) {
+            sum += i
+        }
+        def n = 0
+        while (true) {
+            n++
+            if (n > 4) break
+        }
+        return sum + n
+    }
+
+    public static names() {
+        this.namesOf(Constants.Mode)
+    }
+
+    public static namesOf(e) {
+        e.values()*.name()*.toLowerCase()
+    }
+}
+
+class Counter {
+    def count = 10
+    def step
+
+    Counter(step) {
+        this.step = step
+    }
+
+    def next() {
+        count += step
+        return count
+    }
+
+    def getDouble() {
+        return count * 2
+    }
+}
+";
+
+#[test]
+fn classes_run_as_groovy_runs_them() {
+    let source = format!(
+        "{CLASSES}
+def f() {{
+    def c = new Counter(5)
+    c.next()
+    [
+        Constants.MORE,
+        Constants.COUNT.getClass().getSimpleName(),
+        Utils.getMode('slow'),
+        Utils.getMode('slow') == Constants.Mode.SLOW,
+        Utils.getMode('other'),
+        Constants.Mode.SLOW.ordinal(),
+        Constants.INPUT.key[0] in [Constants.Mode.FAST],
+        Utils.label(1),
+        Utils.label(2, prefix: '+'),
+        Utils.join('/', 'a', 'b', 'c'),
+        Utils.total([1, 2, 3]),
+        Utils.total([1]).getClass().getSimpleName(),
+        Utils.names(),
+        [(Constants.Mode.FAST): 1].keySet().toList()[0].name(),
+        c.count,
+        c.double,
+    ].toString()
+}}
+"
+    );
+    // Groovy 4.0.31 prints this for the same classes and function.
+    assert_eq!(
+        run(&source).expect("runs"),
+        "[[a, b, c], Integer, SLOW, true, null, 1, true, -1, +2, a/b/c, 12, Long, [fast, slow], FAST, 15, 30]"
+    );
+}
+
+#[test]
+fn missing_members_fail_as_in_groovy() {
+    let source = format!("{CLASSES}\ndef f() {{ Utils.nothing(1) }}\n");
+    assert_eq!(
+        run(&source).unwrap_err(),
+        "MissingMethodException: No signature of method: Utils.nothing() is \
+         applicable for argument types: (Integer) values: [1]"
+    );
+    let source = format!("{CLASSES}\ndef f() {{ Constants.OTHER }}\n");
+    assert_eq!(
+        run(&source).unwrap_err(),
+        "MissingPropertyException: No such property: OTHER for class: Constants"
+    );
+}

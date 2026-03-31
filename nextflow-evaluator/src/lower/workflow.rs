@@ -19,7 +19,7 @@ impl Lowering<'_> {
         for take in &workflow.takes {
             match take {
                 WorkflowTake::Named(typed) => {
-                    let slot = self.declare(&typed.name);
+                    let slot = self.declare_as(&typed.name, true);
                     takes.push((typed.name.text.as_str().into(), slot));
                 }
                 WorkflowTake::Statement(statement) => {

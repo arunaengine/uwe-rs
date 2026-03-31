@@ -100,9 +100,6 @@ fn errors() {
         errors("    input:\n    value x\n    script:\n    'x'"),
         ["3:5: Unrecognized process input qualifier `value`"]
     );
-    // An `env` name must be a string; Nextflow resolves a bare name as a variable.
-    let env = "    output:\n    env LINES\n    script:\n    'x'";
-    assert_eq!(errors(env), ["3:9: `LINES` is not defined"]);
     assert_eq!(
         errors("    script:\n    task = 1\n    'x'"),
         ["3:5: Built-in constant or namespace cannot be re-assigned"]
@@ -132,6 +129,10 @@ fn legacy_syntax() {
     // A directive looks up an unknown name when a task runs.
     let source = process("    cpus y\n    script:\n    'x'");
     assert_eq!(legacy(&source), ["2:10: `y` is not defined"]);
+    // Strict syntax resolves a bare `env` name as a variable; the legacy parser takes it as
+    // the name.
+    let source = process("    output:\n    env LINES\n    script:\n    'x'");
+    assert_eq!(legacy(&source), ["3:9: `LINES` is not defined"]);
     let source = process("    script:\n    [1].each { v -> total = v }\n    'x'");
     assert_eq!(
         legacy(&source),

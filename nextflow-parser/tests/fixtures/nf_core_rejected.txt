@@ -240,5 +240,3 @@ pipelines/viralrecon/subworkflows/local/fastq_trim_fastp_fastqc/main.nf
 pipelines/viralrecon/workflows/viralrecon.nf
 # These two contain the invalid escape `\|`. Lint 26.04.6 accepts them, but Nextflow reports
 # invalid escapes since 2026-09-18 (nextflow-io/nextflow#7608), and so does this parser.
-pipelines/phaseimpute/modules/local/bamchrextract/main.nf
-pipelines/phaseimpute/modules/local/vcfchrextract/main.nf

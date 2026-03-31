@@ -25,9 +25,14 @@ pub enum Item {
         span: Span,
     },
     Include(Include),
-    /// `import a.b.C`, which strict syntax only keeps for error messages.
+    /// `import a.b.C`, `import a.b.C as D` or `import static a.b.C.member`, which only the
+    /// legacy parser accepts.
     Import {
         name: QualifiedName,
+        /// The name the import gives, if `as` gives one.
+        alias: Option<Name>,
+        /// `import static`
+        member: bool,
         span: Span,
     },
     /// `params { ... }`
@@ -60,7 +65,43 @@ pub enum Item {
     },
     Function(Box<Function>),
     Agent(Box<Agent>),
+    /// A Groovy class, as the `lib/` directory of older pipelines holds them; only the legacy
+    /// parser accepts one.
+    Class(Box<Class>),
     Statement(Statement),
+}
+
+/// A Groovy class or enum.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Class {
+    pub name: Name,
+    /// `enum` rather than `class`.
+    pub enumeration: bool,
+    /// The constants of an enum, in order.
+    pub constants: Vec<Name>,
+    pub members: Vec<Member>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Member {
+    /// A field like `static List NAMES = ['a']`; several names may share one declaration.
+    Field {
+        name: Name,
+        is_static: bool,
+        annotation: Option<Type>,
+        value: Option<Expression>,
+        span: Span,
+    },
+    /// A method; a constructor has the name of its class and no return type.
+    Method {
+        function: Function,
+        is_static: bool,
+        /// Whether the last parameter takes the remaining arguments, as in `String... names`.
+        varargs: bool,
+    },
+    /// A nested class or enum.
+    Class(Box<Class>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -254,6 +295,28 @@ pub enum StatementKind {
         label: Name,
         statement: Box<Statement>,
     },
+    /// `for (x in items) body`, which only the legacy parser accepts.
+    ForIn {
+        variable: Name,
+        items: Expression,
+        body: Block,
+    },
+    /// `for (init; condition; update) body`, which only the legacy parser accepts.
+    For {
+        init: Option<Box<Statement>>,
+        condition: Option<Expression>,
+        update: Vec<Statement>,
+        body: Block,
+    },
+    /// `while (condition) body`, which only the legacy parser accepts.
+    While {
+        condition: Expression,
+        body: Block,
+    },
+    /// `break`, which only the legacy parser accepts.
+    Break,
+    /// `continue`, which only the legacy parser accepts.
+    Continue,
     Empty,
 }
 
@@ -355,6 +418,26 @@ pub enum ExpressionKind {
         value: Box<Expression>,
         fallback: Box<Expression>,
     },
+    /// `x++` or `x--`, which only the legacy parser accepts; the value is the one before.
+    Postfix {
+        operand: Box<Expression>,
+        increment: bool,
+    },
+    /// `*items` as a call argument or list element, which only the legacy parser accepts.
+    Spread(Box<Expression>),
+    /// `target."$name"`: a property whose name is computed, which only the legacy parser
+    /// accepts.
+    DynamicProperty {
+        target: Box<Expression>,
+        name: Box<Expression>,
+    },
+    /// An assignment used as a value, like `f(x = 1)` or `a = b = c`, which only the legacy
+    /// parser accepts.
+    Assign {
+        target: Box<Expression>,
+        operator: AssignOperator,
+        value: Box<Expression>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -377,12 +460,14 @@ pub enum GStringPart {
     Value(Expression),
 }
 
-/// How a property or method is reached: `.`, `?.` or `*.`.
+/// How a property or method is reached: `.`, `?.`, `*.`, or the legacy `.@`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Access {
     Normal,
     Safe,
     Spread,
+    /// `.@name`, which reads a field or an XML attribute directly.
+    Attribute,
 }
 
 /// A call argument; named arguments look like `key: value`.

@@ -14,6 +14,7 @@ impl Parser<'_> {
     pub(super) fn statement(&mut self) -> Parse<Statement> {
         let start = self.current().span;
         let kind = match self.peek() {
+            TokenKind::Identifier if self.at_legacy_loop() => self.legacy_loop()?,
             TokenKind::If => self.if_statement()?,
             TokenKind::Try => self.try_statement()?,
             TokenKind::Return => {
@@ -45,7 +46,7 @@ impl Parser<'_> {
     /// A braced block: `{` then statements then `}`.
     pub(super) fn block(&mut self) -> Parse<Block> {
         let start = self.expect(TokenKind::LeftBrace, "'{'")?.span;
-        let statements = self.statement_sequence(|_| false)?;
+        let statements = self.in_braces(|parser| parser.statement_sequence(|_| false))?;
         self.expect(TokenKind::RightBrace, "'}'")?;
         Ok(Block {
             statements,
@@ -137,7 +138,7 @@ impl Parser<'_> {
 
     /// A block, or a single statement treated as a block of one. As in the official parser,
     /// braces only make a block if the branch can end there: `if (a) { b }.c()` has a closure.
-    fn statement_or_block(&mut self) -> Parse<Block> {
+    pub(super) fn statement_or_block(&mut self) -> Parse<Block> {
         if self.at(TokenKind::LeftBrace) {
             let block = self.speculate(|parser| {
                 let block = parser.block()?;
@@ -351,6 +352,7 @@ impl Parser<'_> {
             self.bump();
             self.skip_newlines();
             let value = self.expression()?;
+            let value = self.assignment_chain(value)?;
             return Ok(StatementKind::Assign {
                 target,
                 operator,
@@ -409,7 +411,7 @@ impl Parser<'_> {
     }
 }
 
-fn assign_operator(kind: TokenKind) -> Option<AssignOperator> {
+pub(super) fn assign_operator(kind: TokenKind) -> Option<AssignOperator> {
     use AssignOperator as A;
     use TokenKind::*;
     Some(match kind {

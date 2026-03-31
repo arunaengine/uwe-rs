@@ -169,25 +169,76 @@ fn rejects_missing_separator() {
 
 #[test]
 fn rejects_reserved_names() {
+    let mut parser = Parser::new("def class = 1", Dialect::Script);
+    let _ = parser.statement_sequence(|_| false);
+    let message = "`class` is not allowed as an identifier because it is a Groovy keyword";
+    assert!(
+        parser.errors.iter().any(|error| error.message == message),
+        "{:?}",
+        parser.errors
+    );
+    // Legacy syntax, which strict syntax rejects with these errors.
     let cases = [
         ("def _ = 1", "`_` is not allowed as an identifier"),
         ("for (x in xs) { x }", "`for` loops are no longer supported"),
         ("while (x) { x }", "`while` loops are no longer supported"),
-        (
-            "def class = 1",
-            "`class` is not allowed as an identifier because it is a Groovy keyword",
-        ),
         ("xs.each { _ -> 1 }", "`_` is not allowed as an identifier"),
     ];
     for (source, message) in cases {
         let mut parser = Parser::new(source, Dialect::Script);
         let _ = parser.statement_sequence(|_| false);
+        assert!(parser.errors.is_empty(), "{source}: {:?}", parser.errors);
         let found = parser
-            .errors
+            .legacy
             .iter()
             .any(|error| error.message.starts_with(message));
-        assert!(found, "{source}: {:?}", parser.errors);
+        assert!(found, "{source}: {:?}", parser.legacy);
     }
     let mut parser = Parser::new("{ _ -> null }", Dialect::Config);
     assert!(parser.expression().is_ok() && parser.errors.is_empty());
+}
+
+/// Parses legacy statements, which strict syntax rejects, and renders them.
+fn legacy(source: &str) -> Vec<String> {
+    let mut parser = Parser::new(source, Dialect::Script);
+    let statements = parser.statement_sequence(|_| false);
+    assert!(parser.errors.is_empty(), "{source}: {:?}", parser.errors);
+    assert!(!parser.legacy.is_empty(), "{source}: no legacy syntax");
+    let statements = statements.unwrap_or_else(|_| panic!("{source}: no statements"));
+    assert_eq!(parser.peek(), TokenKind::EndOfFile, "{source}: left over");
+    statements.iter().map(render_statement).collect()
+}
+
+#[test]
+fn legacy_loops() {
+    assert_eq!(
+        legacy("for (group in summary.keySet()) { x += group }"),
+        ["(for group (.keySet summary) {(setAdd x group)})"]
+    );
+    assert_eq!(
+        legacy("for (String p : params) println p"),
+        ["(for p params {(cmd println p)})"]
+    );
+    assert_eq!(
+        legacy("for (int i = 0; i < n - 1; i++) {\n    break\n}"),
+        ["(for (def int i 0); (< i (- n 1)); (++ i) {(break)})"]
+    );
+    assert_eq!(
+        legacy("while (x) {\n    continue\n}"),
+        ["(while x {(continue)})"]
+    );
+    assert_eq!(legacy("i++\nj--"), ["(++ i)", "(-- j)"]);
+    // Two plus signs before an operand stay an addition.
+    assert_eq!(parse("i + +j"), ["(+ i (+ j))"]);
+}
+
+#[test]
+fn legacy_expressions() {
+    assert_eq!(legacy("f(a, *items)"), ["(f a (* items))"]);
+    assert_eq!(legacy("x = node.@SizeX"), ["(setAssign x (.@ node SizeX))"]);
+    assert_eq!(
+        legacy("error(\n    \"a\"\n    + \"b\"\n)"),
+        ["(error (+ 'a' 'b'))"]
+    );
+    assert_eq!(legacy("def y = [1\n    - 2]"), ["(def y [(- 1 2)])"]);
 }

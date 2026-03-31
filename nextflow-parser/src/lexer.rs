@@ -9,6 +9,8 @@ use crate::{Diagnostic, Span};
 pub struct Lexed {
     pub tokens: Vec<Token>,
     pub errors: Vec<Diagnostic>,
+    /// Legacy syntax that strict syntax rejects but iunctus accepts, like `node.@name`.
+    pub legacy: Vec<Diagnostic>,
 }
 
 pub fn tokenize(source: &str, dialect: Dialect) -> Lexed {
@@ -21,11 +23,13 @@ pub fn tokenize(source: &str, dialect: Dialect) -> Lexed {
         last: None,
         tokens: Vec::new(),
         errors: Vec::new(),
+        legacy: Vec::new(),
     };
     lexer.run();
     Lexed {
         tokens: lexer.tokens,
         errors: lexer.errors,
+        legacy: lexer.legacy,
     }
 }
 
@@ -45,6 +49,7 @@ struct Lexer<'a> {
     last: Option<TokenKind>,
     tokens: Vec<Token>,
     errors: Vec<Diagnostic>,
+    legacy: Vec<Diagnostic>,
 }
 
 impl Lexer<'_> {
@@ -328,6 +333,12 @@ impl Lexer<'_> {
             (TokenKind::NotIn, 3)
         } else if let Some((text, kind)) = OPERATORS.iter().find(|(t, _)| rest.starts_with(t)) {
             (*kind, text.len())
+        } else if rest.starts_with('@') && self.last == Some(TokenKind::Dot) {
+            // Legacy syntax: `node.@name` reads an attribute or a field directly.
+            let span = Span::new(start, start + 1);
+            self.legacy
+                .push(Diagnostic::new("Unexpected character: '@'", span));
+            (TokenKind::At, 1)
         } else {
             let len = self.char_at(start).map_or(1, char::len_utf8);
             self.error(

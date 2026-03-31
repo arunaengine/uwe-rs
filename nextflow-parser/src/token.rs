@@ -92,6 +92,9 @@ pub enum TokenKind {
     NotInstanceof,
     NotIn,
 
+    /// `@` after a dot, as in the legacy `node.@name`.
+    At,
+
     // separators
     LeftParen,
     RightParen,

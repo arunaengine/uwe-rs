@@ -237,7 +237,8 @@ impl Parser<'_> {
         match self.peek() {
             TokenKind::Nextflow if self.at_path_assign() => self.feature_flag(),
             TokenKind::Include => self.include(),
-            TokenKind::Import => self.import(),
+            TokenKind::Import => self.legacy_import(),
+            _ if self.at_class() => self.class_item(),
             TokenKind::Params if self.kind_after(1) == TokenKind::LeftBrace => {
                 self.parameter_block()
             }
@@ -318,16 +319,6 @@ impl Parser<'_> {
             source,
             span,
         }))
-    }
-
-    /// The `importDeclaration` rule, which strict syntax keeps only to reject imports clearly.
-    fn import(&mut self) -> Parse<Item> {
-        let start = self.bump().span;
-        let name = self.qualified_class_name()?;
-        let span = self.span_from(start);
-        let message = "Groovy `import` declarations are not supported -- use fully-qualified name inline instead";
-        self.error_at(message, span);
-        Ok(Item::Import { name, span })
     }
 
     /// The `paramsDef` rule: `params { ... }`.

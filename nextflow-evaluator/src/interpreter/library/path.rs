@@ -108,6 +108,16 @@ impl Interpreter<'_> {
                 self.host.write(path, text.as_bytes()).map_err(host_error)?;
                 return Ok(Some(Value::Null));
             }
+            // Groovy's `Path.append(text)`, which makes the file if it is missing.
+            ("append", [text @ (Value::String(_) | Value::GString(_))]) => {
+                let mut bytes = match self.host.metadata(path).map_err(host_error)? {
+                    Some(_) => self.host.read(path).map_err(host_error)?,
+                    None => Vec::new(),
+                };
+                bytes.extend_from_slice(text.to_string().as_bytes());
+                self.host.write(path, &bytes).map_err(host_error)?;
+                return Ok(Some(Value::Null));
+            }
             ("copyTo", [target]) => {
                 let mut target = match target {
                     Value::Path(target) => (**target).clone(),

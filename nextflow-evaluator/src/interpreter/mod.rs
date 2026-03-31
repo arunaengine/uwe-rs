@@ -383,6 +383,7 @@ impl Frame {
         match place {
             Place::Local(slot) => &self.slots[slot],
             Place::Captured(index) => &self.captured[index],
+            Place::Module(index) => &self.module.variables[index],
         }
     }
 

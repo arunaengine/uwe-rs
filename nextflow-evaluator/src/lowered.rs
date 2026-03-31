@@ -20,6 +20,9 @@ pub enum Place {
     Local(Slot),
     /// A variable of an enclosing function or closure, captured when the closure was made.
     Captured(usize),
+    /// A variable of the script that the top-level statements of legacy syntax declare or
+    /// assign, in `Module::variables`.
+    Module(usize),
 }
 
 /// The functions and processes of one script file.
@@ -54,6 +57,15 @@ pub struct Module {
     pub plugin: Option<Rc<str>>,
     /// The file of the script, for error messages; the loader sets it.
     pub path: std::cell::RefCell<Option<Rc<str>>>,
+    /// Legacy syntax: the statements of a script that also declares functions, processes or
+    /// workflows, which run when the script is loaded.
+    pub initializer: Option<Rc<Code>>,
+    /// The variables that the initializer declares or assigns, which all code of the script
+    /// can read, as the legacy parser allows.
+    pub variables: Vec<Rc<std::cell::RefCell<Value>>>,
+    /// Legacy syntax that lowering accepts with the meaning of the legacy parser, with the
+    /// errors of strict syntax.
+    pub legacy: Vec<nextflow_parser::Diagnostic>,
 }
 
 /// A param of the typed `params { }` block, like `input: String? = null`.

@@ -3,12 +3,12 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use super::{Failed, Parse, Parser, is_name};
-use crate::Span;
 use crate::ast::{
     Expression, ExpressionKind, Function, Include, IncludeName, Item, Name, ParameterDeclaration,
     Script, Statement, StatementKind, Type, TypedName,
 };
 use crate::token::TokenKind;
+use crate::{Diagnostic, Span};
 
 impl Parser<'_> {
     /// The `compilationUnit` rule of scripts.
@@ -73,13 +73,14 @@ impl Parser<'_> {
             }
             declarations = true;
         }
+        // Legacy syntax: the legacy parser runs these statements when the script loads.
         for item in items {
             if let Item::Statement(statement) = item
                 && declarations
                 && definition_name(statement).is_none()
             {
                 let message = "Statements cannot be mixed with script declarations -- move statements into a process, workflow, or function";
-                self.error_at(message, statement.span);
+                self.legacy.push(Diagnostic::new(message, statement.span));
             }
         }
         if entry.is_none() {

@@ -46,11 +46,13 @@ impl Lowering<'_> {
             statements
         });
         self.implicit_declarations = false;
+        self.in_directive = true;
         let directives = process
             .directives
             .iter()
             .filter_map(|directive| self.directive(directive))
             .collect();
+        self.in_directive = false;
         let outputs = process
             .outputs
             .iter()
@@ -216,11 +218,14 @@ impl Lowering<'_> {
         None
     }
 
+    /// Declares an input. Legacy syntax may declare a name twice, as in
+    /// `tuple val(meta), path(a)` and `tuple val(meta), path(b)`; the last input wins.
     fn declare_name(&mut self, name: &str, span: Span) -> usize {
-        self.declare(&ast::Name {
-            text: name.to_owned(),
-            span,
-        })
+        let (slot, earlier) = self.scopes.declare(name, span);
+        if earlier.is_some() {
+            self.legacy(format!("`{name}` is already declared"), span);
+        }
+        slot
     }
 
     fn output(&mut self, output: &NamedOutput) -> Option<Output> {
@@ -339,8 +344,22 @@ impl Lowering<'_> {
             .collect();
         Some(match (name, positional.as_slice()) {
             ("val", [value]) => OutputPart::Value(self.expression(value)),
+            // Legacy syntax: a bare name that is no variable, like `path(bwa)`, is the file
+            // name itself.
             ("path" | "file", [pattern]) => OutputPart::Path {
-                pattern: self.expression(pattern),
+                pattern: match &unparenthesized(pattern).kind {
+                    Syntax::Variable(file) if self.scopes.resolve(file).is_none() => {
+                        let span = unparenthesized(pattern).span;
+                        self.legacy(format!("`{file}` is not defined"), span);
+                        crate::lowered::Expression {
+                            kind: crate::lowered::ExpressionKind::Literal(
+                                crate::value::Value::string(file.as_str()),
+                            ),
+                            span,
+                        }
+                    }
+                    _ => self.expression(pattern),
+                },
                 options: self.arguments(&named),
             },
             ("env", [value]) => OutputPart::Env(self.env_name(value)?),

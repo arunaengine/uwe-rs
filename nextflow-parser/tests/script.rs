@@ -666,10 +666,14 @@ fn declaration_statements() {
 }
 
 #[test]
-fn rejects_mixed_statements() {
+fn legacy_mixed_statements() {
+    // Strict syntax rejects the statements; iunctus runs them when the script loads.
     let source = "println 'Hello world!'\n\nworkflow {\n}\n";
+    let parsed = parse_script(source);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let legacy: Vec<&str> = parsed.legacy.iter().map(|error| &*error.message).collect();
     assert_eq!(
-        messages(source),
+        legacy,
         [
             "Statements cannot be mixed with script declarations -- move statements into a process, workflow, or function"
         ]

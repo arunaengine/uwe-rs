@@ -11,6 +11,9 @@ pub struct PathValue {
     pub path: String,
     /// For an input file of a task, the name it is staged under, which is what it prints.
     pub staged: Option<String>,
+    /// For a `new File(text)` with relative text, that text, which it prints; `path` is the
+    /// file in the launch directory, where Java finds a relative file.
+    pub relative: Option<String>,
 }
 
 impl PathValue {
@@ -33,12 +36,14 @@ impl PathValue {
                     prefix: Some(format!("{scheme}://{host}")),
                     path: normalise(&format!("/{path}")),
                     staged: None,
+                    relative: None,
                 };
             }
             return PathValue {
                 prefix: Some(format!("{scheme}:/")),
                 path: normalise(&format!("/{rest}")),
                 staged: None,
+                relative: None,
             };
         }
         PathValue::local(text, base)
@@ -54,6 +59,7 @@ impl PathValue {
             prefix: None,
             path: normalise(&absolute),
             staged: None,
+            relative: None,
         }
     }
 
@@ -70,9 +76,18 @@ impl PathValue {
         format!("{}{}", self.prefix.as_deref().unwrap_or(""), self.path)
     }
 
-    /// The text of the path: the staged name of a task input, else the path.
+    /// The text of the path: the staged name of a task input, the text of a relative file,
+    /// else the path.
     pub fn text(&self) -> &str {
-        self.staged.as_deref().unwrap_or(&self.path)
+        self.staged
+            .as_deref()
+            .or(self.relative.as_deref())
+            .unwrap_or(&self.path)
+    }
+
+    /// `isAbsolute()`: false only for a file made from relative text.
+    pub fn is_absolute(&self) -> bool {
+        self.relative.is_none()
     }
 
     /// The file name; empty for the root. A task input's name is its staged name.
@@ -115,6 +130,7 @@ impl PathValue {
             prefix: self.prefix.clone(),
             path: parent.to_owned(),
             staged: None,
+            relative: None,
         })
     }
 
@@ -132,6 +148,7 @@ impl PathValue {
             prefix: self.prefix.clone(),
             path: normalise(&path),
             staged: None,
+            relative: None,
         }
     }
 
@@ -146,6 +163,7 @@ impl PathValue {
             prefix: self.prefix.clone(),
             path: format!("{}{suffix}", self.path),
             staged: None,
+            relative: None,
         }
     }
 }

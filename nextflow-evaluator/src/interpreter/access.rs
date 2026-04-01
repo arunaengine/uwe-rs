@@ -482,6 +482,11 @@ impl Interpreter<'_> {
                 if let Some(value) = self.library_method(object, name, &arguments, span)? {
                     return Ok(value);
                 }
+                // Groovy has no path methods for lists, like the files of a task input.
+                if matches!(object, Value::List(_)) && PATH_METHODS.contains(&name) {
+                    let class = object.java_class_name();
+                    return Err(super::call::no_signature(class, name, &arguments, span));
+                }
                 let class = object.class_name();
                 Err(unsupported(format!("the method `{name}` of {class}"), span))
             }
@@ -575,12 +580,15 @@ impl Interpreter<'_> {
             (None, [items @ (Value::List(_) | Value::Set(_))]) if class == "ArrayList" => {
                 Ok(Value::list(super::library::elements(items)))
             }
+            // A relative file is in the launch directory but keeps its text.
             (None, [path]) if class == "File" => {
                 let launch = self.host.launch_dir();
-                Ok(Value::Path(Rc::new(PathValue::parse(
-                    &path.to_string(),
-                    &launch,
-                ))))
+                let text = path.to_string();
+                let mut file = PathValue::parse(&text, &launch);
+                if file.prefix.is_none() && !text.starts_with('/') {
+                    file.relative = Some(text);
+                }
+                Ok(Value::Path(Rc::new(file)))
             }
             (None, [parent, child]) if class == "File" => {
                 let launch = self.host.launch_dir();
@@ -669,6 +677,28 @@ impl Interpreter<'_> {
         }
     }
 }
+
+/// Methods of paths, from Nextflow's `FilesEx` and the JDK, that no list has.
+const PATH_METHODS: &[&str] = &[
+    "exists",
+    "getBaseName",
+    "getExtension",
+    "getFileName",
+    "getName",
+    "getParent",
+    "getScheme",
+    "getSimpleName",
+    "getText",
+    "isAbsolute",
+    "isDirectory",
+    "isFile",
+    "readLines",
+    "resolve",
+    "resolveSibling",
+    "toAbsolutePath",
+    "toRealPath",
+    "toUriString",
+];
 
 /// `value instanceof Class`, by the simple class name and its supertypes.
 pub(super) fn instance_of(value: &Value, class: &str) -> bool {

@@ -288,7 +288,7 @@ fn spread(arguments: &[Value]) -> Option<Vec<Value>> {
 }
 
 /// Groovy's `MissingMethodException` for a call whose arguments fit no method.
-fn no_signature(class: &str, method: &str, arguments: &[Value], span: Span) -> Error {
+pub(super) fn no_signature(class: &str, method: &str, arguments: &[Value], span: Span) -> Error {
     let types: Vec<&str> = arguments.iter().map(Value::class_name).collect();
     let values: Vec<String> = arguments.iter().map(Value::to_string).collect();
     let message = format!(

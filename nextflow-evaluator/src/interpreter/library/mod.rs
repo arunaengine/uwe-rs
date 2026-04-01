@@ -274,6 +274,95 @@ pub(in crate::interpreter) fn uri_part(text: &str, part: &str) -> Option<String>
     value.map(str::to_owned)
 }
 
+/// `URI.resolve(reference)`, as `java.net.URI` does it (RFC 2396): a reference with a scheme
+/// stands alone, one with an authority keeps the scheme, an absolute path replaces the path,
+/// and a relative path replaces the last segment of the path, which is then normalised.
+pub(in crate::interpreter) fn resolve_uri(base: &str, reference: &str) -> String {
+    let part = |text: &str, name: &str| uri_part(text, name);
+    let opaque = |text: &str| {
+        part(text, "scheme").is_some()
+            && !part(text, "path").is_some_and(|p| p.starts_with('/'))
+            && part(text, "authority").is_none()
+    };
+    if part(reference, "scheme").is_some() || opaque(base) {
+        return reference.to_owned();
+    }
+    let (query, fragment) = (part(reference, "query"), part(reference, "fragment"));
+    let reference_path = part(reference, "path").unwrap_or_default();
+    // A reference of only a fragment keeps the rest of the base.
+    if reference_path.is_empty()
+        && query.is_none()
+        && fragment.is_some()
+        && !reference.starts_with("//")
+    {
+        let base = base.split('#').next().unwrap_or(base);
+        return format!("{base}#{}", fragment.unwrap_or_default());
+    }
+    let (authority, path) = if reference.starts_with("//") {
+        (part(reference, "authority"), reference_path)
+    } else {
+        let base_path = part(base, "path").unwrap_or_default();
+        let path = if reference_path.starts_with('/') {
+            reference_path
+        } else {
+            let directory = base_path
+                .rfind('/')
+                .map_or("", |slash| &base_path[..=slash]);
+            normalise_uri_path(&format!("{directory}{reference_path}"))
+        };
+        (part(base, "authority"), path)
+    };
+    let mut resolved = String::new();
+    if let Some(scheme) = part(base, "scheme") {
+        resolved.push_str(&scheme);
+        resolved.push(':');
+    }
+    if let Some(authority) = authority {
+        resolved.push_str("//");
+        resolved.push_str(&authority);
+    }
+    resolved.push_str(&path);
+    if let Some(query) = query {
+        resolved.push('?');
+        resolved.push_str(&query);
+    }
+    if let Some(fragment) = fragment {
+        resolved.push('#');
+        resolved.push_str(&fragment);
+    }
+    resolved
+}
+
+/// Removes the `.` segments of a URI path, and each `..` with the segment before it.
+fn normalise_uri_path(path: &str) -> String {
+    let absolute = path.starts_with('/');
+    let mut segments: Vec<&str> = Vec::new();
+    let parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+    for (index, segment) in parts.iter().enumerate() {
+        let last = index + 1 == parts.len();
+        match *segment {
+            "." => {
+                if last {
+                    segments.push("");
+                }
+            }
+            ".." if segments.last().is_some_and(|s| *s != ".." && !s.is_empty()) => {
+                segments.pop();
+                if last {
+                    segments.push("");
+                }
+            }
+            segment => segments.push(segment),
+        }
+    }
+    let joined = segments.join("/");
+    if absolute {
+        format!("/{joined}")
+    } else {
+        joined
+    }
+}
+
 /// A new input stream over bytes.
 pub(in crate::interpreter) fn stream(bytes: Vec<u8>) -> Value {
     Value::Object(std::rc::Rc::new(std::cell::RefCell::new(

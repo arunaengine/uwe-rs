@@ -170,6 +170,9 @@ impl Interpreter<'_> {
                 }
             }
             (State::Uri(text), "toString", []) => Value::string(text.as_ref()),
+            (State::Uri(text), "resolve", [reference]) => {
+                super::uri(&super::resolve_uri(text, &reference.to_string()))
+            }
             // Groovy's `YamlSlurper` reads YAML as JSON, where decimals are `BigDecimal`.
             (State::Yaml, "parse" | "parseText", [source]) if slurper => {
                 let text = match source {

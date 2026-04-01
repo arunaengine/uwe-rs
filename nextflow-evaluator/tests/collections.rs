@@ -221,6 +221,12 @@ fn positions_and_changes() {
         eval("[].pop()").unwrap_err(),
         "NoSuchElementException: Cannot pop() an empty List"
     );
+    // Lists have no path methods; Groovy 4.0.31 says so.
+    assert_eq!(
+        eval("[1, 'a'].getExtension()").unwrap_err(),
+        "MissingMethodException: No signature of method: java.util.ArrayList.getExtension() is \
+         applicable for argument types: () values: []"
+    );
     assert_eq!(
         eval("tuple(1, 2).add(3)").unwrap_err(),
         "UnsupportedOperationException: "

@@ -51,6 +51,33 @@ fn remote_paths_print_without_scheme() {
 }
 
 #[test]
+fn uris_resolve_references() {
+    // Groovy 4.0.31 on Java 17 prints this.
+    let uris = "def u = new URI('https://h/a/b/sheet.csv')\n\
+                [u.resolve('data/x.fq'), u.resolve('../y'), u.resolve('/abs'), u.resolve('s3://b/k'), \
+                u.resolve('//other/p'), u.resolve('?q=1'), u.resolve('#f'), \
+                new URI('file:/d/s.csv').resolve('x'), new URI('/d/s.csv').resolve('./x/./y'), \
+                new URI('a/b').resolve('../../c'), u.resolve('x/..')].collect { it.toString() }";
+    assert_eq!(
+        value(uris),
+        "[https://h/a/b/data/x.fq, https://h/a/y, https://h/abs, s3://b/k, https://other/p, \
+         https://h/a/b/?q=1, https://h/a/b/sheet.csv#f, file:/d/x, /d/x/y, ../c, https://h/a/b/]"
+    );
+}
+
+#[test]
+fn relative_files_keep_their_text() {
+    // Groovy 4.0.31 prints this.
+    let files = "def f = new File('a/b.txt')\n[f, f.isAbsolute(), new File('/x').isAbsolute(), \
+                 f.name, f.toPath().isAbsolute(), new File('/x/y').toPath().fileName.isAbsolute(), \
+                 f.toPath().toAbsolutePath().isAbsolute()]";
+    assert_eq!(
+        value(files),
+        "[a/b.txt, false, true, b.txt, false, false, true]"
+    );
+}
+
+#[test]
 fn local_paths_and_names() {
     let names =
         "def l = file('rel/../x.tar.gz')\n[l, l.baseName, l.simpleName, l.extension, l.name]";

@@ -23,6 +23,7 @@ pub(super) fn path_method(path: &Rc<PathValue>, name: &str, arguments: &[Value])
         ("getFileName", []) => {
             let mut name = PathValue::parse(path.name(), "/");
             name.path = path.name().to_owned();
+            name.relative = Some(path.name().to_owned());
             Some(Value::Path(Rc::new(name)))
         }
         ("getBaseName", []) => Some(Value::string(path.base_name())),
@@ -67,9 +68,16 @@ pub(super) fn path_method(path: &Rc<PathValue>, name: &str, arguments: &[Value])
             };
             Some(super::uri(&text))
         }
+        ("toAbsolutePath" | "toRealPath" | "getAbsoluteFile", []) if path.relative.is_some() => {
+            path_value(PathValue {
+                relative: None,
+                ..(**path).clone()
+            })
+        }
         ("toAbsolutePath" | "normalize" | "toRealPath" | "toPath" | "toFile", []) => {
             Some(Value::Path(path.clone()))
         }
+        ("isAbsolute", []) => Some(Value::Boolean(path.is_absolute())),
         ("resolve", [other]) => path_value(path.resolve(&text(other)?)),
         ("resolveSibling", [other]) => path_value(path.resolve_sibling(&text(other)?)),
         _ => None,

@@ -456,3 +456,344 @@ pub struct Method {
     pub receiver: Value,
     pub function: MethodFunction,
 }
+
+pub enum MethodFunction {
+    /// A function called with the receiver as its first argument.
+    Value(Value),
+    /// A method of a builtin type, found by its name.
+    Builtin(Name),
+}
+
+/// A class written in Python, or a builtin type or exception class.
+pub struct Class {
+    pub name: Name,
+    pub module: Name,
+    pub bases: Vec<Rc<Class>>,
+    /// The class and its ancestors in method resolution order.
+    pub mro: RefCell<Vec<Rc<Class>>>,
+    pub dict: RefCell<IndexMap<Name, Value>>,
+    /// The builtin type this class is, or derives from.
+    pub builtin: Option<crate::types::TypeTag>,
+}
+
+impl Class {
+    pub fn lookup(self: &Rc<Self>, name: &str) -> Option<Value> {
+        if let Some(value) = self.dict.borrow().get(name) {
+            return Some(value.clone());
+        }
+        let mro = self.mro.borrow();
+        mro.iter()
+            .skip(1)
+            .find_map(|class| class.dict.borrow().get(name).cloned())
+    }
+
+    /// Whether this class is `other` or derives from it.
+    pub fn is_subclass(self: &Rc<Self>, other: &Rc<Class>) -> bool {
+        Rc::ptr_eq(self, other)
+            || self
+                .mro
+                .borrow()
+                .iter()
+                .any(|class| Rc::ptr_eq(class, other))
+    }
+
+    pub fn derives_from(self: &Rc<Self>, name: &str) -> bool {
+        self.mro.borrow().iter().any(|class| &*class.name == name)
+    }
+}
+
+/// An object of a Python class.
+pub struct Instance {
+    pub class: Rc<Class>,
+    pub dict: RefCell<IndexMap<Name, Value>>,
+}
+
+/// A module: a native one of the library, or one loaded from a `.py` file.
+pub struct Module {
+    pub name: Name,
+    pub globals: Rc<Scope>,
+}
+
+/// The variables of a module, function, class body or comprehension.
+#[derive(Default)]
+pub struct Scope {
+    pub vars: RefCell<IndexMap<Name, Value>>,
+    /// The scope of the enclosing function, if any.
+    pub parent: Option<Rc<Scope>>,
+}
+
+impl Scope {
+    pub fn new(parent: Option<Rc<Scope>>) -> Rc<Scope> {
+        Rc::new(Scope {
+            vars: RefCell::new(IndexMap::new()),
+            parent,
+        })
+    }
+
+    pub fn get(&self, name: &str) -> Option<Value> {
+        self.vars.borrow().get(name).cloned()
+    }
+
+    pub fn set(&self, name: &str, value: Value) {
+        let mut vars = self.vars.borrow_mut();
+        match vars.get_mut(name) {
+            Some(slot) => *slot = value,
+            None => {
+                vars.insert(name.into(), value);
+            }
+        }
+    }
+}
+
+/// The state of an iterator; items are computed ahead except for counting ones.
+pub enum Iter {
+    Items(VecDeque<Value>),
+    Range {
+        next: i64,
+        stop: i64,
+        step: i64,
+    },
+    /// `itertools.count`, which does not end.
+    Count {
+        next: f64,
+        step: f64,
+        integer: bool,
+    },
+}
+
+impl Iter {
+    pub fn next_value(&mut self) -> Option<Value> {
+        match self {
+            Iter::Items(items) => items.pop_front(),
+            Iter::Range { next, stop, step } => {
+                if (*step > 0 && *next < *stop) || (*step < 0 && *next > *stop) {
+                    let value = *next;
+                    *next += *step;
+                    Some(Value::Int(value))
+                } else {
+                    None
+                }
+            }
+            Iter::Count {
+                next,
+                step,
+                integer,
+            } => {
+                let value = *next;
+                *next += *step;
+                Some(if *integer {
+                    Value::Int(value as i64)
+                } else {
+                    Value::Float(value)
+                })
+            }
+        }
+    }
+}
+
+/// A value with flags; see [`Value::Tagged`].
+pub struct Tagged {
+    pub value: Value,
+    pub tags: IndexMap<Name, Value>,
+}
+
+/// The arguments of a call.
+#[derive(Clone, Default)]
+pub struct Args {
+    pub positional: Vec<Value>,
+    pub keywords: Vec<(Name, Value)>,
+}
+
+impl Args {
+    pub fn new(positional: Vec<Value>) -> Args {
+        Args {
+            positional,
+            keywords: Vec::new(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.positional.is_empty() && self.keywords.is_empty()
+    }
+
+    /// Takes a keyword argument out of the arguments.
+    pub fn take_keyword(&mut self, name: &str) -> Option<Value> {
+        let index = self.keywords.iter().position(|(key, _)| &**key == name)?;
+        Some(self.keywords.remove(index).1)
+    }
+
+    /// The argument at `index`, or the keyword argument `name`.
+    pub fn take(&mut self, index: usize, name: &str) -> Option<Value> {
+        if let Some(value) = self.take_keyword(name) {
+            return Some(value);
+        }
+        self.positional.get(index).cloned()
+    }
+
+    pub fn get(&self, index: usize) -> Option<&Value> {
+        self.positional.get(index)
+    }
+
+    pub fn keyword(&self, name: &str) -> Option<&Value> {
+        self.keywords
+            .iter()
+            .find(|(key, _)| &**key == name)
+            .map(|(_, value)| value)
+    }
+
+    /// Fails unless the call has between `min` and `max` positional arguments.
+    pub fn expect(&self, function: &str, min: usize, max: usize) -> Result<(), Error> {
+        let count = self.positional.len();
+        if count < min || count > max {
+            let expected = if min == max {
+                format!("{min}")
+            } else if max == usize::MAX {
+                format!("at least {min}")
+            } else {
+                format!("from {min} to {max}")
+            };
+            return Err(Error::type_error(format!(
+                "{function}() takes {expected} positional arguments but {count} were given"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Fails when keyword arguments remain that the callee did not take.
+    pub fn no_keywords(&self, function: &str) -> Result<(), Error> {
+        match self.keywords.first() {
+            None => Ok(()),
+            Some((name, _)) => Err(Error::type_error(format!(
+                "{function}() got an unexpected keyword argument '{name}'"
+            ))),
+        }
+    }
+}
+
+/// An object implemented in Rust by the host or by a library stand-in. Every method has a
+/// default that says the object does not support the operation.
+pub trait Native {
+    fn type_name(&self) -> &str;
+
+    fn as_any(&self) -> &dyn Any;
+
+    /// An attribute, or `None` for an unknown one.
+    fn get_attribute(
+        &self,
+        _interpreter: &mut Interpreter,
+        _this: &Value,
+        _name: &str,
+    ) -> Result<Option<Value>, Error> {
+        Ok(None)
+    }
+
+    /// Sets an attribute; `false` when the object has no such attribute to set.
+    fn set_attribute(
+        &self,
+        _interpreter: &mut Interpreter,
+        _name: &str,
+        _value: Value,
+    ) -> Result<bool, Error> {
+        Ok(false)
+    }
+
+    /// Calls the object; `None` when it is not callable.
+    fn call(
+        &self,
+        _interpreter: &mut Interpreter,
+        _this: &Value,
+        _args: Args,
+    ) -> Result<Option<Value>, Error> {
+        Ok(None)
+    }
+
+    fn get_item(
+        &self,
+        _interpreter: &mut Interpreter,
+        _this: &Value,
+        _key: &Value,
+    ) -> Result<Option<Value>, Error> {
+        Ok(None)
+    }
+
+    fn set_item(
+        &self,
+        _interpreter: &mut Interpreter,
+        _key: &Value,
+        _value: Value,
+    ) -> Result<bool, Error> {
+        Ok(false)
+    }
+
+    /// The items of iteration; `None` when the object is not iterable.
+    fn iterate(&self, _interpreter: &mut Interpreter) -> Result<Option<Vec<Value>>, Error> {
+        Ok(None)
+    }
+
+    fn length(&self) -> Option<usize> {
+        None
+    }
+
+    fn contains(
+        &self,
+        _interpreter: &mut Interpreter,
+        _item: &Value,
+    ) -> Result<Option<bool>, Error> {
+        Ok(None)
+    }
+
+    fn truthy(&self) -> Option<bool> {
+        None
+    }
+
+    /// `str()` of the object; `None` for its `repr()`.
+    fn to_str(&self, _interpreter: &mut Interpreter) -> Result<Option<String>, Error> {
+        Ok(None)
+    }
+
+    fn repr(&self, _interpreter: &mut Interpreter) -> Result<String, Error> {
+        Ok(format!("<{} object>", self.type_name()))
+    }
+
+    /// A binary operator or comparison, with the object on the left, or on the right when
+    /// `reflected`; `None` when the object does not support it.
+    fn binary(
+        &self,
+        _interpreter: &mut Interpreter,
+        _operator: crate::interpreter::Operator,
+        _other: &Value,
+        _reflected: bool,
+    ) -> Result<Option<Value>, Error> {
+        Ok(None)
+    }
+
+    fn unary(
+        &self,
+        _interpreter: &mut Interpreter,
+        _operator: &str,
+    ) -> Result<Option<Value>, Error> {
+        Ok(None)
+    }
+
+    fn hashable(&self) -> bool {
+        true
+    }
+
+    fn key_equal(&self, _other: &dyn Native) -> bool {
+        false
+    }
+
+    fn key_hash(&self, state: &mut dyn Hasher) {
+        state.write_usize(self as *const Self as *const u8 as usize);
+    }
+
+    /// The Python class the object claims for `isinstance`, like `str` for a path-like text.
+    fn instance_of(&self, _class: &str) -> bool {
+        false
+    }
+
+    /// For objects that stand for a class: whether a value is an instance of it.
+    fn check_instance(&self, _value: &Value) -> Option<bool> {
+        None
+    }
+}

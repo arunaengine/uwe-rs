@@ -217,6 +217,58 @@ snakemake-corpus:
 		mv "$work" "$target"
 	done
 
+# Adds the files that Snakemake runs read while they plan to the folders of `just snakemake-corpus`:
+# text files up to 1 MiB of each workflow (config files, sample sheets, schemas, helper modules)
+# and every file up to 1 MiB of the Snakemake tests (inputs and expected results). Other files
+# are made empty, so that they exist. A folder is done once it holds `.iunctus-data`.
+snakemake-corpus-data:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	root="${SNAKEMAKE_CORPUS:-$HOME/.cache/iunctus/corpus/snakemake}"
+	grep -v '^#' snakemake-parser/tests/fixtures/corpus_revisions.txt | while read -r repository branch commit; do
+		if [ "$repository" = snakemake/snakemake ]; then
+			target="$root/snakemake-tests"
+			scope='^tests/'
+			text='.'
+		else
+			target="$root/catalog/${repository/\//__}"
+			scope='.'
+			text='\.(ya?ml|json|tsv|csv|txt|py|cfg|ini|toml|tab|list|fai|bed|smk|snakefile)$|(^|/)[Ss]nakefile$'
+		fi
+		[ -d "$target" ] && [ ! -e "$target/.iunctus-data" ] || continue
+		work="$(mktemp -d)"
+		git -C "$work" init -q
+		git -C "$work" config gc.auto 0
+		git -C "$work" remote add origin "https://github.com/$repository.git"
+		# A source the network cannot reach is left out, so the rest still arrives.
+		if ! git -C "$work" fetch -q --depth 1 --filter=blob:none origin "$commit"; then
+			echo "skipped $repository: cannot fetch" >&2
+			rm -rf "$work"
+			continue
+		fi
+		listing="$(mktemp)"
+		git -C "$work" -c core.quotePath=false ls-tree -r -l FETCH_HEAD | grep -E $'^100[67]' | while IFS=$'\t' read -r meta path; do
+			read -r mode type sha size <<< "$meta"
+			if [[ "$path" =~ $scope ]] && [ "$size" -le 1048576 ] && [[ "$path" =~ $text ]]; then
+				printf 'fetch\t%s\n' "$path"
+			elif [[ "$path" =~ $scope ]]; then
+				printf 'empty\t%s\n' "$path"
+			fi
+		done > "$listing" || true
+		# Sparse checkout patterns match like .gitignore, so special characters are escaped.
+		grep $'^fetch\t' "$listing" | cut -f2- | sed -e 's/[][*?\\]/\\&/g' -e 's|^|/|' \
+			| git -C "$work" sparse-checkout set --no-cone --stdin
+		git -C "$work" checkout -q FETCH_HEAD
+		grep $'^empty\t' "$listing" | cut -f2- | while IFS= read -r path; do
+			mkdir -p "$(dirname "$work/$path")"
+			: > "$work/$path"
+		done
+		rm -rf "$work/.git" "$listing"
+		cp -r --update=none "$work/." "$target/"
+		rm -rf "$work"
+		touch "$target/.iunctus-data"
+	done
+
 # Parses the whole Snakemake corpus and compares the result with Snakemake's parser.py.
 snakemake-corpus-test:
 	SNAKEMAKE_CORPUS="${SNAKEMAKE_CORPUS:-$HOME/.cache/iunctus/corpus/snakemake}" cargo test --release --locked -p snakemake-parser --test corpus -- --ignored --nocapture

@@ -178,6 +178,9 @@ pub struct Workflow {
     pub takes: Vec<(Rc<str>, Slot)>,
     pub main: Vec<Statement>,
     pub emits: Vec<(Rc<str>, Expression)>,
+    /// For each emit, whether it only names a variable. After a `return` in the body,
+    /// Nextflow still finds such an emit, but not one with a value of its own.
+    pub bare_emits: Vec<bool>,
     /// The `publish:` assignments of the entry workflow, which run after its body.
     pub publishers: Vec<(Rc<str>, Expression)>,
     pub span: Span,

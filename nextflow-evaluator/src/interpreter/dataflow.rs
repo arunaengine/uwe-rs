@@ -121,9 +121,11 @@ impl Interpreter<'_> {
         for ((_, slot), argument) in workflow.takes.iter().zip(arguments) {
             frame.set(Place::Local(*slot), argument);
         }
-        if let Completion::Return(_) = self.block(&mut frame, &workflow.main)? {
-            return Err(unsupported("`return` in a workflow", span));
-        }
+        // A `return` ends the body early.
+        let returned = matches!(
+            self.block(&mut frame, &workflow.main)?,
+            Completion::Return(_)
+        );
         for (name, expression) in &workflow.publishers {
             let value = match self.expression(&mut frame, expression)? {
                 Value::ChannelOut(out) if out.values.len() == 1 => out.values[0].clone(),
@@ -143,8 +145,23 @@ impl Interpreter<'_> {
         }
         let mut values = Vec::new();
         let mut names = Vec::new();
-        for (emit, expression) in &workflow.emits {
-            let value = match self.expression(&mut frame, expression)? {
+        for (index, (emit, expression)) in workflow.emits.iter().enumerate() {
+            // After a `return`, Nextflow finds only the emits that name a variable the body
+            // has set.
+            let bare = workflow.bare_emits.get(index).copied().unwrap_or(false);
+            let value = if returned && !bare {
+                Value::Null
+            } else {
+                self.expression(&mut frame, expression)?
+            };
+            if returned && matches!(value, Value::Null) {
+                let message = format!("Missing workflow output parameter: {emit}");
+                return Err(thrown(
+                    Exception::new("MissingValueException", message),
+                    span,
+                ));
+            }
+            let value = match value {
                 value @ (Value::Channel(_) | Value::ChannelOut(_)) => value,
                 plain => self.namespace_call("channel", "value", vec![plain], expression.span)?,
             };

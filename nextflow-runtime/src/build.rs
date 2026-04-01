@@ -600,8 +600,9 @@ impl Builder<'_> {
                     by: indexes(&options, "by").unwrap_or(vec![0]),
                     remainder: option(&options, "remainder").is_some_and(|value| value.truth()),
                     pending: Default::default(),
+                    keys: Default::default(),
                     done: [false; 2],
-                    has_values: false,
+                    singleton: [None; 2],
                 };
                 (vec![source, right], Box::new(node), Value::Channel(output))
             }
@@ -727,7 +728,7 @@ impl Builder<'_> {
                 (vec![source], Box::new(node), Value::Channel(output))
             }
             (
-                "splitCsv" | "splitText" | "splitFasta" | "splitFastq" | "countLines"
+                "splitCsv" | "splitText" | "splitFasta" | "splitFastq" | "splitJson" | "countLines"
                 | "countFasta" | "countFastq",
                 [] | [Value::Closure(_)],
             ) => {
@@ -754,6 +755,13 @@ impl Builder<'_> {
                         },
                         skip: number("skip").unwrap_or(0),
                         strip: option(&options, "strip").is_some_and(|value| value.truth()),
+                    },
+                    // There is no `countJson`: Nextflow 26.04.6 fails on it with "Unknown
+                    // argument 'each' for operator 'JsonSplitter'".
+                    "splitJson" => Format::Json {
+                        path: option(&options, "path")
+                            .map(|path| path.to_string())
+                            .unwrap_or_default(),
                     },
                     "splitText" | "countLines" => Format::Text {
                         keep_header: option(&options, "keepHeader")
@@ -819,7 +827,9 @@ impl Builder<'_> {
                     on_next: closure(rest.first().cloned().or_else(|| option(&options, "onNext"))),
                     on_complete: closure(option(&options, "onComplete")),
                 };
-                (vec![source], Box::new(node), Value::Null)
+                // Nextflow 26.04 gives nothing, but up to 25.10 `subscribe` gave its source,
+                // which pipelines written for those releases read further.
+                (vec![source], Box::new(node), Value::Channel(source))
             }
             ("branch" | "multiMap", criteria) => {
                 let (labels, closure) = match criteria {

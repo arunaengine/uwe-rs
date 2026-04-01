@@ -5,7 +5,7 @@
 
 use std::rc::Rc;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::Error;
 use nextflow_evaluator::value::{ChannelId, Closure, Key, Value};
@@ -170,11 +170,14 @@ pub(crate) struct Join {
     pub output: ChannelId,
     pub by: Vec<usize>,
     pub remainder: bool,
-    /// Values waiting for a partner, by key in first-seen order, for the left and right side.
+    /// Values waiting for a partner, by key, for the left and right side.
     pub pending: [IndexMap<Vec<Key>, Vec<Value>>; 2],
+    /// The keys of both sides in first-seen order, which is the order of the remainder.
+    pub keys: IndexSet<Vec<Key>>,
     pub done: [bool; 2],
-    /// Whether any value had elements besides its key.
-    pub has_values: bool,
+    /// For each side, whether a value had no elements besides its key; `None` before the
+    /// first value.
+    pub singleton: [Option<bool>; 2],
 }
 
 impl Behaviour for Join {
@@ -192,19 +195,8 @@ impl Behaviour for Join {
             return Ok(State::Running);
         }
         if self.remainder {
-            let mut keys: Vec<Vec<Key>> = self.pending[0].keys().cloned().collect();
-            keys.extend(
-                self.pending[1]
-                    .keys()
-                    .filter(|key| !self.pending[0].contains_key(*key))
-                    .cloned(),
-            );
-            for key in keys {
-                for side in 0..2 {
-                    for value in self.pending[side].shift_remove(&key).unwrap_or_default() {
-                        context.emit(self.output, self.remainder_value(side, &value));
-                    }
-                }
+            for key in std::mem::take(&mut self.keys) {
+                self.emit_remainder(context, &key);
             }
         }
         context.close(self.output);
@@ -215,7 +207,9 @@ impl Behaviour for Join {
 impl Join {
     fn take(&mut self, context: &mut Context, side: usize, value: Value) -> Result<(), Error> {
         let key = key(&value, &self.by)?;
-        self.has_values |= items(&value).len() > self.by.len();
+        let alone = items(&value).len() <= self.by.len();
+        self.singleton[side] = Some(self.singleton[side].unwrap_or(false) || alone);
+        self.keys.insert(key.clone());
         let other = 1 - side;
         let partner = self.pending[other]
             .get_mut(&key)
@@ -234,20 +228,63 @@ impl Join {
         Ok(())
     }
 
-    /// A value without a partner: the key, the value's other elements and `null` for the
-    /// missing side; just the key when no value ever had other elements.
-    fn remainder_value(&self, side: usize, value: &Value) -> Value {
-        if !self.has_values {
-            return joined(&self.by, &[value]);
+    /// Whether a side gives no elements besides the key, as Nextflow decides it: a side
+    /// without values follows the other side.
+    fn singleton(&self, side: usize) -> bool {
+        self.singleton[side]
+            .or(self.singleton[1 - side])
+            .unwrap_or(false)
+    }
+
+    /// Emits the values of a key without a partner, as Nextflow's `JoinOp.checkRemainder`:
+    /// the key, then for each side its other elements or `null`, unless the side gives no
+    /// elements besides the key. When neither side does, the value is the first key element.
+    fn emit_remainder(&mut self, context: &mut Context, key: &Vec<Key>) {
+        let mut indexes = self.by.clone();
+        indexes.sort_unstable();
+        loop {
+            let mut result: Vec<Value> = Vec::new();
+            let mut parts: Vec<Value> = Vec::new();
+            let mut filled = false;
+            for side in 0..2 {
+                let taken = self.pending[side]
+                    .get_mut(key)
+                    .and_then(|values| (!values.is_empty()).then(|| values.remove(0)));
+                match taken {
+                    Some(value) => {
+                        let elements = items(&value);
+                        if !filled {
+                            result.extend(
+                                indexes
+                                    .iter()
+                                    .filter_map(|index| elements.get(*index).cloned()),
+                            );
+                        }
+                        parts.extend(
+                            elements
+                                .into_iter()
+                                .enumerate()
+                                .filter(|(index, _)| !self.by.contains(index))
+                                .map(|(_, item)| item),
+                        );
+                        filled = true;
+                    }
+                    None if !self.singleton(side) => parts.push(Value::Null),
+                    None => {}
+                }
+            }
+            if !filled {
+                return;
+            }
+            result.extend(parts);
+            let both = self.singleton[0] != Some(false) && self.singleton[1] != Some(false);
+            let value = if both {
+                result.into_iter().next().unwrap_or(Value::Null)
+            } else {
+                Value::list(result)
+            };
+            context.emit(self.output, value);
         }
-        let mut result = items(&joined(&self.by, &[value]));
-        let position = if side == 0 {
-            result.len()
-        } else {
-            self.by.len()
-        };
-        result.insert(position, Value::Null);
-        Value::list(result)
     }
 }
 

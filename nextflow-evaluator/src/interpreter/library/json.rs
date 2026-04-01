@@ -359,16 +359,70 @@ pub(super) fn pretty_print(text: &str) -> Result<String, Exception> {
 /// `JsonSlurper.parseText`: objects become maps and arrays lists. Whole numbers become an
 /// `Integer`, else a `Long` (which wraps, as in Groovy); other numbers a `BigDecimal`.
 pub fn parse(text: &str) -> Result<Value, Exception> {
+    parse_with(text, slurper_number)
+}
+
+/// JSON as Nextflow's `splitJson` reads it: a number of digits with an optional fraction
+/// becomes an `Integer`, a `Long` or a `Double`, whichever holds it first; any other number,
+/// like `-1` or `1e5`, stays text.
+pub fn parse_for_split(text: &str) -> Result<Value, Exception> {
+    parse_with(text, splitter_number)
+}
+
+fn parse_with(
+    text: &str,
+    number: fn(&str) -> Result<Value, Exception>,
+) -> Result<Value, Exception> {
     let tokens = tokens(text)?;
     let mut position = 0;
-    let value = parse_value(&tokens, &mut position)?;
+    let value = parse_value(&tokens, &mut position, number)?;
     if position != tokens.len() {
         return Err(json_error("unexpected text after the value"));
     }
     Ok(value)
 }
 
-fn parse_value(tokens: &[Token], position: &mut usize) -> Result<Value, Exception> {
+fn slurper_number(number: &str) -> Result<Value, Exception> {
+    Ok(if number.contains(['.', 'e', 'E']) {
+        let decimal = BigDecimal::parse(number)
+            .ok_or_else(|| json_error(&format!("invalid number {number}")))?;
+        Value::Number(Number::BigDecimal(decimal))
+    } else {
+        match number.parse::<i32>() {
+            Ok(value) => Value::Number(Number::Integer(value)),
+            Err(_) => {
+                let wide: i128 = number
+                    .parse()
+                    .map_err(|_| json_error(&format!("invalid number {number}")))?;
+                Value::Number(Number::Long(wide as i64))
+            }
+        }
+    })
+}
+
+fn splitter_number(number: &str) -> Result<Value, Exception> {
+    let (whole, fraction) = number.split_once('.').unwrap_or((number, "0"));
+    let digits = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit());
+    if !(digits(whole) && digits(fraction)) {
+        return Ok(Value::string(number));
+    }
+    Ok(if let Ok(value) = number.parse::<i32>() {
+        Value::Number(Number::Integer(value))
+    } else if let Ok(value) = number.parse::<i64>() {
+        Value::Number(Number::Long(value))
+    } else {
+        match number.parse::<f64>() {
+            Ok(value) => Value::Number(Number::Double(value)),
+            Err(_) => Value::string(number),
+        }
+    })
+}
+
+fn parse_value(
+    tokens: &[Token],
+    position: &mut usize,
+    number: fn(&str) -> Result<Value, Exception>,
+) -> Result<Value, Exception> {
     let token = tokens
         .get(*position)
         .ok_or_else(|| json_error("unexpected end"))?;
@@ -389,7 +443,7 @@ fn parse_value(tokens: &[Token], position: &mut usize) -> Result<Value, Exceptio
                     return Err(json_error("expected `:`"));
                 }
                 *position += 1;
-                let value = parse_value(tokens, position)?;
+                let value = parse_value(tokens, position, number)?;
                 entries.push((Value::string(key.as_str()), value));
                 match tokens.get(*position) {
                     Some(Token::Comma) => *position += 1,
@@ -409,7 +463,7 @@ fn parse_value(tokens: &[Token], position: &mut usize) -> Result<Value, Exceptio
                 return Ok(Value::list(items));
             }
             loop {
-                items.push(parse_value(tokens, position)?);
+                items.push(parse_value(tokens, position, number)?);
                 match tokens.get(*position) {
                     Some(Token::Comma) => *position += 1,
                     Some(Token::Close(']')) => {
@@ -426,20 +480,7 @@ fn parse_value(tokens: &[Token], position: &mut usize) -> Result<Value, Exceptio
             "true" => Value::Boolean(true),
             "false" => Value::Boolean(false),
             "null" => Value::Null,
-            number if number.contains(['.', 'e', 'E']) => {
-                let decimal = BigDecimal::parse(number)
-                    .ok_or_else(|| json_error(&format!("invalid number {number}")))?;
-                Value::Number(Number::BigDecimal(decimal))
-            }
-            number => match number.parse::<i32>() {
-                Ok(value) => Value::Number(Number::Integer(value)),
-                Err(_) => {
-                    let wide: i128 = number
-                        .parse()
-                        .map_err(|_| json_error(&format!("invalid number {number}")))?;
-                    Value::Number(Number::Long(wide as i64))
-                }
-            },
+            other => number(other)?,
         },
         _ => return Err(json_error("unexpected token")),
     })

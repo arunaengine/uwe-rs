@@ -39,6 +39,7 @@ drugresponseeval 1 nextflow.config:65:1: Try-catch blocks cannot be mixed with c
 dualrnaseq 1 nextflow.config:195:1: If statements cannot be mixed with config statements
 eager 1 nextflow.config:298:1: Try-catch blocks cannot be mixed with config statements
 epigenomesegmentation ok
+# epitopeprediction: `containerOptions = ...` among the process directives is legacy syntax, which the legacy-config work adds.
 epitopeprediction 1 workflows/../subworkflows/local/mhc_binding_prediction/../../../modules/local/mhcflurry/main.nf:11:5: Invalid process directive
 evexplorer 1 nextflow.config:66:1: Try-catch blocks cannot be mixed with config statements
 fastqrepair ok
@@ -51,30 +52,39 @@ genomeannotator 1 nextflow.config:119:1: Try-catch blocks cannot be mixed with c
 genomeassembler 1 workflows/../subworkflows/local/prepare/main.nf:208:39: JsonException: Invalid JSON: unexpected end
 genomeqc ok
 genomeskim 1 nextflow.config:60:1: Try-catch blocks cannot be mixed with config statements
+# genomicrelatedness: the test profile sets neither --input nor --fasta, which the schema requires; nf-schema fails the same.
 genomicrelatedness 1 subworkflows/local/utils_nfcore_genomicrelatedness_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
+# gwas: the test samplesheet raw.githubusercontent.com/nf-core/test-datasets/gwas/samplesheets/samplesheet_gwas_test.csv is gone (HTTP 404); nf-schema fails the same.
 gwas 1 subworkflows/local/utils_nfcore_gwas_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
 hadge 1 nextflow.config:278:29: `manifest` is not defined
 hgtseq 1 nextflow.config:74:1: Try-catch blocks cannot be mixed with config statements
 hic 1 nextflow.config:139:1: Try-catch blocks cannot be mixed with config statements
 hicar 1 nextflow.config:121:1: Try-catch blocks cannot be mixed with config statements
-hlatyping 1 workflows/../subworkflows/local/utils_nfcore_hlatyping_pipeline/main.nf:238:13: Expected ')'
+# hlatyping: needs the stub simulator: the YARA_INDEX stub makes its files with `touch ${fasta}.lf.{drp,drs,drv,pst}`, whose braces the mock does not expand.
+hlatyping 1 workflows/../modules/nf-core/yara/mapper/main.nf:70:24: StringIndexOutOfBoundsException: begin 0, end -1, length 17
 imcyto 1 nextflow.config:51:1: Try-catch blocks cannot be mixed with config statements
+# isoseq: the BAMTOOLS_CONVERT stub reads `args`, which only its script defines, so it gets the script's command-line args; Nextflow 26.04.6 fails the same (checked).
 isoseq 1 workflows/../modules/nf-core/bamtools/convert/main.nf:40:22: IndexOutOfBoundsException: index is out of range 0..-1 (index = 0)
 kmermaid 1 nextflow.config:76:1: Try-catch blocks cannot be mixed with config statements
 lncpipe 1 nextflow.config:378:31: `manifest` is not defined
 longraredisease ok
 lsmquant ok
-mag 1 workflows/../subworkflows/local/catpack/main.nf:43:24: NoSuchFileException: No such file or directory: <cache>/iunctus/scratch/mock-tes/<run>/work/8/null/db
-magmap 124
+# mag: the proxy of this environment blocks zenodo.org, so --checkm_download_url cannot be checked; with the network, nf-schema checks it and the run goes on.
+mag 1 subworkflows/local/utils_nfcore_mag_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
+# magmap: the proxy blocks ftp.ncbi.nlm.nih.gov; with the network the run reads the NCBI assembly summaries (about 1.5 GB) and passes the five minutes of the test.
+magmap 1 IOException: Cannot read https://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_refseq.txt: error sending request for url (https://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_refseq.txt)
 marsseq 1 nextflow.config:78:1: Try-catch blocks cannot be mixed with config statements
-mcmicro 1 workflows/../subworkflows/local/update_from_ome/../../../modules/local/omevalidation/main.nf:28:53: Unexpected character: '@'
+# mcmicro: UPDATE_FROM_OME returns early under -stub-run, so its emit `samplesheet = ...` is missing; Nextflow 26.04.6 gives the same error (checked with a small workflow).
+mcmicro 1 workflows/mcmicro.nf:46:19: MissingValueException: Missing workflow output parameter: samplesheet
 meerpipe 1 nextflow.config:110:1: Try-catch blocks cannot be mixed with config statements
 metaboigniter 1 nextflow.config:302:1: Try-catch blocks cannot be mixed with config statements
 metapep 1 nextflow.config:234:1: Variable declarations cannot be mixed with config statements
 metatdenovo ok
-methylarray 1 workflows/../modules/local/remove_sex_chromosomes/main.nf:10:15: `samplesheet_name` is already declared
-methylong 33 workflows/../subworkflows/local/shared_gunzip_awk/../../../modules/nf-core/gawk/main.nf:59:36: Not supported yet: the method `getExtension` of BlankSeparatedList
-methylseq 1 workflows/methylseq/../../subworkflows/nf-core/bam_taps_conversion/../../../modules/nf-core/rastair/mbiasparser/main.nf:15:26: `trim_OT` is not defined
+# methylarray: the proxy blocks ftp.ncbi.nlm.nih.gov, where the samplesheet's idat files are; nf-schema checks that they exist.
+methylarray 1 subworkflows/local/utils_nfcore_methylarray_pipeline/main.nf:105:28: SchemaValidationException: The following errors have been detected in https://raw.githubusercontent.com/ajandria/test-datasets/refs/heads/methylarray/testdata/test/GSE43976/test-input.csv:
+# methylong: the GAWK stub calls getExtension() on several input files; Groovy has no such method for a BlankSeparatedList, as with Nextflow 26.04.6.
+methylong 1 workflows/../subworkflows/local/shared_gunzip_awk/../../../modules/nf-core/gawk/main.nf:59:36: MissingMethodException: No signature of method: nextflow.util.BlankSeparatedList.getExtension() is applicable for argument types: () values: []
+methylseq ok
 mhcquant ok
 mitodetect 1 nextflow.config:270:34: `manifest` is not defined
 mnaseseq 1 nextflow.config:96:1: Try-catch blocks cannot be mixed with config statements
@@ -86,18 +96,22 @@ nanostring ok
 nascent 1 nextflow.config:318:31: `manifest` is not defined
 ncrnannotator ok
 omicsgenetraitassociation 1 nextflow.config:70:1: Try-catch blocks cannot be mixed with config statements
-oncoanalyser 1 subworkflows/local/utils_nfcore_oncoanalyser_pipeline/main.nf:281:32: `Utils` is not defined
+# oncoanalyser: the proxy blocks data.oncoanalyser.com, whose reference data nf-schema checks.
+oncoanalyser 1 subworkflows/local/utils_nfcore_oncoanalyser_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
 pacsomatic 1 nextflow.config:350:34: `manifest` is not defined
 pacvar ok
 pairgenomealign ok
 pangenome 1 nextflow.config:396:33: `manifest` is not defined
 panoramaseq 1 nextflow.config:297:35: `manifest` is not defined
 pathogenepidemiology ok
-pathogensurveillance 1 workflows/../subworkflows/local/prepare_input/../../../modules/nf-core/sratools/fasterqdump/main.nf:58:9: `prefix` is already declared
+# pathogensurveillance: SAMPLESHEET_CHECK has no stub, so Nextflow runs its R script, which the mock cannot; with the mock's empty tables, join(remainder: true) gives [null, null, null] as Nextflow 26.04.6 does (checked), and the two-parameter closure fails.
+pathogensurveillance 1 workflows/../subworkflows/local/prepare_input/main.nf:220:14: MissingMethodException: No signature of method: groovy.lang.Closure.doCall() is applicable for argument types: (ArrayList) values: [[null, null, null]]
 phageannotator 1 nextflow.config:150:1: Try-catch blocks cannot be mixed with config statements
-phaseimpute 1 workflows/phaseimpute/../../subworkflows/local/bam_extract_region_samtools/../../../modules/nf-core/samtools/merge/main.nf:51:9: `index` is already declared
+# phaseimpute: the BAMCHREXTRACT stub touches an empty contig list, so the contig check fails as in Nextflow.
+phaseimpute 1 workflows/chrcheck/function.nf:46:13: AbortOperationException: Contig names: [chr21, chr22] absent from file: https://raw.githubusercontent.com/nf-core/test-datasets/phaseimpute/hum_data/individuals/NA12878/NA12878.s.1x.bam and cannot be solved by adding or removing the `chr` prefix.
 phyloplace ok
-pixelator 33 subworkflows/local/utils_nfcore_pixelator_pipeline/main.nf:385:9: Not supported yet: the method `isAbsolute` of UnixPath
+# pixelator: needs the stub simulator: the PIXELATOR_LIST_OPTIONS stub writes the panel names with a heredoc.
+pixelator 1 subworkflows/local/utils_nfcore_pixelator_pipeline/main.nf:406:9: AbortOperationException: Please check input samplesheet -> panel field does not contains a valid key!
 plasmodiumdrugres ok
 proteinannotator ok
 proteinfamilies ok
@@ -118,16 +132,19 @@ rnafusion ok
 rnaseq ok
 rnasplice 1 nextflow.config:180:1: Try-catch blocks cannot be mixed with config statements
 rnastructurome 1 workflows/../subworkflows/local/utils_nfcore_rnastructurome_pipeline/main.nf:495:9: AbortOperationException: Could not parse mapped read count from flagstat file: <cache>/iunctus/scratch/mock-tes/<run>/work/21/HEK293T_untreated_r1.flagstat
-rnavar 1 IllegalArgumentException: Input tuple does not match tuple declaration in process `SAMTOOLS_SORT` -- offending value: [[:], []]
+# rnavar: Nextflow 26.04.6 with strict syntax throws the same ProcessUnrecoverableException (TaskProcessor.resolveTaskInputsV1, checkWarn).
+rnavar 1 ProcessUnrecoverableException: Input tuple does not match tuple declaration in process `NFCORE_RNAVAR:RNAVAR:FASTQ_ALIGN_STAR:BAM_SORT_STATS_SAMTOOLS_TRANSCRIPTOME:SAMTOOLS_SORT` -- offending value: [[:], []]
 sammyseq 1 conf/modules.config:28:5: If statements cannot be mixed with config statements
 sarek ok
-scdownstream 33 workflows/../subworkflows/local/quality_control/main.nf:11:11: Plugins are not supported yet: plugin/nf-anndata
+# scdownstream: hasMultipleObsGroups opens the empty .h5ad that a stub makes with nf-anndata, which cannot read it either (the plugin's own message is unknown here: its registry is blocked).
+scdownstream 1 workflows/../subworkflows/local/per_group/../utils_nfcore_scdownstream_pipeline/main.nf:176:14: IOException: Cannot open <cache>/iunctus/scratch/mock-tes/<run>/work/50/merged_inner.h5ad as AnnData: it is not an HDF5 file
 scnanoseq ok
-scrnaseq 1 workflows/scrnaseq.nf:50:23: `Utils` is not defined
+scrnaseq ok
 seqinspector ok
 seqsubmit ok
 slamseq 1 nextflow.config:68:1: Try-catch blocks cannot be mixed with config statements
-smrnaseq 1 workflows/smrnaseq.nf:34:1: Statements cannot be mixed with script declarations -- move statements into a process, workflow, or function
+# smrnaseq: needs the stub simulator: the UNTAR stub lists the archive with `tar -tf` and touches the names, so the bowtie index files exist.
+smrnaseq 1 subworkflows/local/prepare_genome/main.nf:32:9: Exception: Unable to extract the prefix from the Bowtie index files. No file with the '.1.ebwt' extension was found. Please ensure that the correct files are in the specified path.
 sopa ok
 spatialaxe 1 workflows/spatialaxe.nf:212:13: AbortOperationException: ❌ Missing required file(s) in xenium bundle '<cache>/iunctus/scratch/mock-tes/<run>/work/1/test_run': [cell_boundaries.csv.gz, cell_boundaries.parquet, cell_feature_matrix.h5, cell_feature_matrix.zarr.zip, cells.csv.gz, cells.parquet, cells.zarr.zip, experiment.xenium, gene_panel.json, metrics_summary.csv, morphology.ome.tif, morphology_focus/, nucleus_boundaries.csv.gz, nucleus_boundaries.parquet, transcripts.parquet, transcripts.zarr.zip]
 spatialvi 1 workflows/../subworkflows/local/input_check/main.nf:144:9: AbortOperationException: No `fastq_dir` specified or no samples found in folder.
@@ -139,7 +156,7 @@ tbanalyzer ok
 tfactivity ok
 troughgraph 1 nextflow.config:270:35: `manifest` is not defined
 tumourevo ok
-variantbenchmarking 1 workflows/../subworkflows/local/prepare_vcfs_test/main.nf:164:25: `vcf` is already declared
+variantbenchmarking ok
 variantcatalogue 1 nextflow.config:64:1: Try-catch blocks cannot be mixed with config statements
 variantprioritization ok
 viralintegration 1 nextflow.config:78:1: Try-catch blocks cannot be mixed with config statements

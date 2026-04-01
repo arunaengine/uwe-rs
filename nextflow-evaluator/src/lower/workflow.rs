@@ -31,7 +31,9 @@ impl Lowering<'_> {
         let main = self.statements(&workflow.main.statements);
         self.implicit_declarations = false;
         let mut emits = Vec::new();
+        let mut bare_emits = Vec::new();
         for emit in &workflow.emits {
+            bare_emits.push(matches!(emit, NamedOutput::Named { value: None, .. }));
             match emit {
                 NamedOutput::Named { target, value } => {
                     let name = &target.name;
@@ -86,6 +88,7 @@ impl Lowering<'_> {
             takes,
             main,
             emits,
+            bare_emits,
             publishers,
             span: workflow.span,
         }

@@ -335,3 +335,25 @@ fn missing_outputs_and_failures() {
         "ProcessFailedException: Process `P` terminated with an error exit status (1)"
     );
 }
+
+#[test]
+fn a_return_in_a_workflow_leaves_its_assigned_emits_missing() {
+    let workflow = "workflow W {\n    take:\n    x\n\n    main:\n    if (true) {\n        return\n    \
+                    }\n    y = x.map { v -> v * 2 }\n\n    emit:\n    EMITS\n}\n";
+    // Nextflow 26.04.6 fails so; an emit that names a variable is still found.
+    let source = format!(
+        "{}workflow {{\n    W(channel.of(1))\n    W.out.out.view()\n}}",
+        workflow.replace("EMITS", "out = y\n    x")
+    );
+    let error = run(&source, &Options::default()).unwrap_err();
+    assert!(
+        error.ends_with("MissingValueException: Missing workflow output parameter: out"),
+        "{error}"
+    );
+    let source = format!(
+        "{}workflow {{\n    W(channel.of(1))\n    W.out.x.view()\n}}",
+        workflow.replace("EMITS", "x")
+    );
+    let (_, printed) = run(&source, &Options::default()).expect("runs");
+    assert_eq!(printed, "1\n");
+}

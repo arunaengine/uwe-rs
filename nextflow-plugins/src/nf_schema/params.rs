@@ -19,9 +19,12 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
     let mut instance = serde_json::Map::new();
     let mut unknown = Vec::new();
     for (name, value) in entries(&context.params) {
-        if ignored.contains(&name) || matches!(value, Value::Null) {
+        if ignored.contains(&name) {
             continue;
         }
+        let Some(value) = cleaned(&value) else {
+            continue;
+        };
         let known = groups
             .iter()
             .flat_map(|(_, properties)| properties)
@@ -59,6 +62,24 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
         "The following invalid input values have been detected:\n\n{}\n\n",
         errors.join("\n")
     )))
+}
+
+/// A param as nf-schema's `cleanParameters` leaves it for validation: a value that Groovy
+/// counts as false, like `false`, `''` or `[]`, is left out unless it is zero, and a map is
+/// cleaned inside.
+fn cleaned(value: &Value) -> Option<Value> {
+    let zero = matches!(value, Value::Number(number) if number.is_zero());
+    if !value.truth() && !zero {
+        return None;
+    }
+    Some(match value {
+        Value::Map(_) => Value::map(
+            entries(value)
+                .into_iter()
+                .filter_map(|(key, value)| Some((Value::string(key), cleaned(&value)?))),
+        ),
+        other => other.clone(),
+    })
 }
 
 /// `paramsSummaryMap`: the core options of the run, then for each group of the schema the

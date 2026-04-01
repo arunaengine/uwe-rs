@@ -217,6 +217,25 @@ fn parameters_are_validated_as_nf_schema_does() {
         error.ends_with("* Missing required parameter(s): outdir\n\n"),
         "{error}"
     );
+    // As nf-schema's `cleanParameters`, values that Groovy counts as false are not checked,
+    // so an empty text or list passes for a string and an empty `outdir` is missing.
+    let falsy = |outdir: &str| {
+        Value::map([
+            (Value::string("input"), Value::string("")),
+            (Value::string("outdir"), Value::string(outdir)),
+            (Value::string("n"), Value::integer(0)),
+            (Value::string("flag"), Value::Boolean(false)),
+            (Value::string("mode"), Value::list(Vec::new())),
+        ])
+    };
+    let error = params_call("validateParameters", falsy(""), vec![])
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.ends_with(":\n\n* Missing required parameter(s): outdir\n\n"),
+        "{error}"
+    );
+    assert!(params_call("validateParameters", falsy("res"), vec![]).is_ok());
 }
 
 #[test]

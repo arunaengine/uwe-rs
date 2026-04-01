@@ -530,6 +530,7 @@ impl<'a> Lowering<'a> {
             takes: Vec::new(),
             main,
             emits: Vec::new(),
+            bare_emits: Vec::new(),
             publishers: Vec::new(),
             span,
         }

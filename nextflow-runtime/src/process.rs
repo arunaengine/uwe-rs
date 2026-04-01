@@ -141,7 +141,8 @@ impl ProcessNode {
     fn start_task(&mut self, context: &mut Context, values: Vec<Value>) -> Result<(), Error> {
         let index = self.rounds;
         let interpreter = &mut *context.interpreter;
-        let mut frame = interpreter.bind_task(&self.module, &self.process, &values)?;
+        let mut frame =
+            interpreter.bind_task_as(&self.module, &self.process, &self.name, &values)?;
         let ext = ext_map(&self.settings);
         let base = task_object(&self.name, index, &[], &ext);
         let mut directives = interpreter.directives(&mut frame, &self.process, &base)?;

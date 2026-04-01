@@ -258,10 +258,16 @@ fn one_file_is_a_path_unless_the_arity_allows_more() {
 #[test]
 fn tuples_of_another_size_are_errors() {
     let process = "process P {\n    input:\n    tuple val(a), val(b)\n    script:\n    'true'\n}\n";
-    let source = format!("{process}workflow {{\n    P(channel.of([1, 2, 3]))\n}}");
+    let source = format!(
+        "{process}workflow W {{\n    P(channel.of([1, 2, 3]))\n}}\nworkflow {{\n    W()\n}}"
+    );
     let error = run(&source, &Options::default()).unwrap_err();
+    // The message of Nextflow 26.04.6, which names the process by its fully qualified name.
     assert!(
-        error.ends_with("Input tuple does not match tuple declaration in process `P` -- offending value: [1, 2, 3]"),
+        error.ends_with(
+            "ProcessUnrecoverableException: Input tuple does not match tuple declaration in \
+             process `W:P` -- offending value: [1, 2, 3]"
+        ),
         "{error}"
     );
 }

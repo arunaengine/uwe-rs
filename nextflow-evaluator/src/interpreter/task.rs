@@ -74,6 +74,18 @@ impl Interpreter<'_> {
         process: &Process,
         inputs: &[Value],
     ) -> Result<TaskFrame, Error> {
+        self.bind_task_as(module, process, &process.name, inputs)
+    }
+
+    /// Like `bind_task`, with the name that messages give the process, like its fully
+    /// qualified name `WORKFLOW:PROCESS`.
+    pub fn bind_task_as(
+        &mut self,
+        module: &Rc<Module>,
+        process: &Process,
+        name: &str,
+        inputs: &[Value],
+    ) -> Result<TaskFrame, Error> {
         let slots: Vec<_> = (0..process.slot_count)
             .map(|_| Rc::new(RefCell::new(Value::Null)))
             .collect();
@@ -90,7 +102,7 @@ impl Interpreter<'_> {
             },
             staged: Vec::new(),
             variables,
-            process: process.name.clone(),
+            process: name.into(),
         };
         if inputs.len() != process.inputs.len() {
             let message = format!(
@@ -122,12 +134,14 @@ impl Interpreter<'_> {
                     Value::List(list) => list.borrow().items.clone(),
                     other => vec![other.clone()],
                 };
+                // Nextflow's strict syntax makes this an error; legacy syntax only warns.
                 if items.len() != parts.len() {
                     let message = format!(
                         "Input tuple does not match tuple declaration in process `{}` -- offending value: {value}",
                         task.process
                     );
-                    return Err(thrown(Exception::illegal_argument(message), span));
+                    let exception = Exception::new("ProcessUnrecoverableException", message);
+                    return Err(thrown(exception, span));
                 }
                 for (part, item) in parts.iter().zip(&items) {
                     self.bind_input(task, part, item, span)?;

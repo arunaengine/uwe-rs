@@ -1,0 +1,27 @@
+# Manifest of python-evaluator, which runs the Python subset that workflow languages embed.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "python-evaluator"
+description = "An interpreter for a Python subset over the ruff syntax tree, with stand-ins for library modules"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+fancy-regex.workspace = true
+flate2.workspace = true
+indexmap.workspace = true
+jiff.workspace = true
+num-bigint.workspace = true
+num-traits.workspace = true
+ruff_python_ast.workspace = true
+ruff_python_parser.workspace = true
+ruff_text_size.workspace = true
+saphyr-parser.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

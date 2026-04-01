@@ -2361,6 +2361,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "python-evaluator"
+version = "0.1.0"
+dependencies = [
+ "fancy-regex",
+ "flate2",
+ "indexmap",
+ "jiff",
+ "num-bigint 0.5.1",
+ "num-traits",
+ "ruff_python_ast",
+ "ruff_python_parser",
+ "ruff_text_size",
+ "saphyr-parser",
+ "tempfile",
+]
+
+[[package]]
 name = "quick-xml"
 version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

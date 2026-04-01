@@ -358,7 +358,17 @@ impl<'h> Interpreter<'h> {
         closure: &Rc<Closure>,
         arguments: Vec<Value>,
     ) -> Result<Value, Error> {
-        self.call_closure_value(closure, arguments, Span::default())
+        // An operator calls the closure; an error of the call itself is at the closure.
+        let result = self.call_closure_value(closure, arguments, Span::default());
+        if let Err(error) = &result
+            && !matches!(error, Error::Located { .. })
+            && error.span() == Span::default()
+            && self.error_module.is_none()
+        {
+            self.error_module = Some(closure.module.clone());
+            return result.map_err(|error| error.or_at(closure.code.span));
+        }
+        result
     }
 
     /// Calls a method of a value, as a script does with `value.name(arguments)`.

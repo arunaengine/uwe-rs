@@ -626,6 +626,11 @@ fn script_variables(statement: &ast::Statement, top: bool, names: &mut Vec<Strin
                 script_variables(statement, false, names);
             }
         }
+        Kind::Switch { cases, .. } => {
+            for statement in cases.iter().flat_map(|case| &case.body) {
+                script_variables(statement, false, names);
+            }
+        }
         Kind::Labeled { statement, .. } => script_variables(statement, top, names),
         _ => {}
     }

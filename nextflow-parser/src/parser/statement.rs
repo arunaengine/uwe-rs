@@ -15,6 +15,7 @@ impl Parser<'_> {
         let start = self.current().span;
         let kind = match self.peek() {
             TokenKind::Identifier if self.at_legacy_loop() => self.legacy_loop()?,
+            TokenKind::Identifier if self.at_switch() => self.switch_statement()?,
             TokenKind::If => self.if_statement()?,
             TokenKind::Try => self.try_statement()?,
             TokenKind::Return => {

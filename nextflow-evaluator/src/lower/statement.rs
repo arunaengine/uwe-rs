@@ -5,7 +5,7 @@
 use nextflow_parser::ast::{self, AssignOperator, ExpressionKind as Syntax, StatementKind as Kind};
 
 use super::Lowering;
-use crate::lowered::{Catch, Place, Statement, StatementKind, Target, Update};
+use crate::lowered::{Catch, Place, Statement, StatementKind, SwitchCase, Target, Update};
 use crate::value::{Operator, Value};
 
 impl Lowering<'_> {
@@ -149,6 +149,27 @@ impl Lowering<'_> {
                 condition: Some(self.expression(condition)),
                 update: Vec::new(),
                 body: self.block(body),
+            },
+            Kind::Switch { subject, cases } => StatementKind::Switch {
+                subject: self.expression(subject),
+                cases: cases
+                    .iter()
+                    .map(|case| {
+                        let values = case
+                            .values
+                            .iter()
+                            .map(|value| self.expression(value))
+                            .collect();
+                        self.scopes.push_block();
+                        let body = self.statements(&case.body);
+                        self.scopes.pop_block();
+                        SwitchCase {
+                            values,
+                            default: case.default,
+                            body,
+                        }
+                    })
+                    .collect(),
             },
             Kind::Break => StatementKind::Break,
             Kind::Continue => StatementKind::Continue,

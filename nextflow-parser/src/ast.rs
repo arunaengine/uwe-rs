@@ -313,11 +313,27 @@ pub enum StatementKind {
         condition: Expression,
         body: Block,
     },
+    /// `switch (subject) { case value: ... default: ... }`, which only the legacy parser
+    /// accepts.
+    Switch {
+        subject: Expression,
+        cases: Vec<SwitchCase>,
+    },
     /// `break`, which only the legacy parser accepts.
     Break,
     /// `continue`, which only the legacy parser accepts.
     Continue,
     Empty,
+}
+
+/// The statements after one or more `case value:` or `default:` labels of a `switch`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SwitchCase {
+    pub values: Vec<Expression>,
+    /// Whether one of the labels is `default:`.
+    pub default: bool,
+    pub body: Vec<Statement>,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -177,3 +177,86 @@ fn missing_members_fail_as_in_groovy() {
         "MissingPropertyException: No such property: OTHER for class: Constants"
     );
 }
+
+const SWITCHES: &str = r#"
+def size(text) {
+    def number
+    switch (text[-1]) {
+        case 'k':
+        case 'K':
+            number = 1000
+            break
+        case 'm':
+            number = 1000000; break
+        default:
+            number = 1
+    }
+    number
+}
+
+def kind(value) {
+    switch (value) {
+        case null: 'null'; break
+        case String: 'string'; break
+        case [1, 2]: 'small'; break
+        case { it > 10 }: 'big'; break
+        case ~/x+/: 'never'; break
+        default: 'other'
+    }
+}
+
+def fall(value) {
+    def seen = []
+    switch (value) {
+        case 'a':
+            seen << 'a'
+        case 'b':
+            seen << 'b'
+            break
+        case 'c':
+            seen << 'c'
+        default:
+            seen << 'default'
+    }
+    seen
+}
+
+def script(source) {
+    switch (source) {
+        case 'fastq':
+            """fastq ${source}"""
+            break;
+        case 'bam':
+            "bam"
+            break
+    }
+}
+
+def loop() {
+    def out = []
+    for (i in 1..4) {
+        switch (i) {
+            case 2: continue
+            case 3: out << 'three'; break
+            default: out << i
+        }
+    }
+    out
+}
+
+def f() {
+    [size('2k'), size('3m'), size('4'), kind(null), kind('s'), kind(2), kind(11), kind(5),
+     fall('a'), fall('z'), fall('c'), script('fastq'), script('bam'), script('x'), loop(),
+     "${'k'}" == 'k'].toString()
+}
+"#;
+
+#[test]
+fn switch_runs_as_in_groovy() {
+    // Groovy 4.0.31 prints this for the same functions.
+    assert_eq!(
+        run(SWITCHES).expect("runs"),
+        "[1000, 1000000, 1, null, string, small, big, other, [a, b], [default], [c, default], \
+         fastq fastq, bam, null, [1, three, 4], true]"
+    );
+}

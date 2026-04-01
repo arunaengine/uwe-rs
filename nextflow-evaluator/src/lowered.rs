@@ -341,8 +341,21 @@ pub enum StatementKind {
         update: Vec<Statement>,
         body: Vec<Statement>,
     },
+    /// `switch` of legacy code: runs the statements from the first case that takes the
+    /// subject, or else from the `default:` case, to a `break` or the end.
+    Switch {
+        subject: Expression,
+        cases: Vec<SwitchCase>,
+    },
     Break,
     Continue,
+}
+
+#[derive(Debug)]
+pub struct SwitchCase {
+    pub values: Vec<Expression>,
+    pub default: bool,
+    pub body: Vec<Statement>,
 }
 
 #[derive(Clone, Copy, Debug)]

@@ -39,6 +39,16 @@ impl Interpreter<'_> {
         frame: &mut Frame,
         statements: &[Statement],
     ) -> Result<Completion, Error> {
+        Ok(self.statements(frame, statements)?.0)
+    }
+
+    /// Runs statements to their end or to a `return`, `break` or `continue`; gives also the
+    /// value of the last statement that ended normally.
+    fn statements(
+        &mut self,
+        frame: &mut Frame,
+        statements: &[Statement],
+    ) -> Result<(Completion, Value), Error> {
         let mut last = Value::Null;
         for statement in statements {
             let completion = match self.statement(frame, statement) {
@@ -53,10 +63,10 @@ impl Interpreter<'_> {
             };
             match completion {
                 Completion::Normal(value) => last = value,
-                done => return Ok(done),
+                done => return Ok((done, last)),
             }
         }
-        Ok(Completion::Normal(last))
+        Ok((Completion::Normal(last.clone()), last))
     }
 
     fn statement(&mut self, frame: &mut Frame, statement: &Statement) -> Result<Completion, Error> {
@@ -207,6 +217,33 @@ impl Interpreter<'_> {
                 }
                 Value::Null
             }
+            StatementKind::Switch { subject, cases } => {
+                let subject = self.expression(frame, subject)?;
+                let mut first = None;
+                'cases: for (index, case) in cases.iter().enumerate() {
+                    for value in &case.values {
+                        let value = self.expression(frame, value)?;
+                        if self.is_case(&value, &subject, span)? {
+                            first = Some(index);
+                            break 'cases;
+                        }
+                    }
+                }
+                let first = first.or_else(|| cases.iter().position(|case| case.default));
+                // As Groovy returns it when the switch ends a function: the value of the last
+                // statement before the `break`, or of the last case.
+                let mut value = Value::Null;
+                for case in first.map_or(&[][..], |first| &cases[first..]) {
+                    let (completion, last) = self.statements(frame, &case.body)?;
+                    value = last;
+                    match completion {
+                        Completion::Normal(_) => {}
+                        Completion::Break => break,
+                        done @ (Completion::Return(_) | Completion::Continue) => return Ok(done),
+                    }
+                }
+                value
+            }
             StatementKind::Break => return Ok(Completion::Break),
             StatementKind::Continue => return Ok(Completion::Continue),
             StatementKind::Assert {
@@ -229,6 +266,21 @@ impl Interpreter<'_> {
             }
         };
         Ok(Completion::Normal(value))
+    }
+
+    /// Whether a `case` value takes the subject of a `switch`, as Groovy's `isCase` decides:
+    /// a class by type, a closure by its result, others as `subject in value`.
+    fn is_case(&mut self, value: &Value, subject: &Value, span: Span) -> Result<bool, Error> {
+        match value {
+            Value::Class(class) => Ok(super::access::instance_of(
+                subject,
+                crate::value::simple_class_name(class),
+            )),
+            Value::Closure(closure) => Ok(self
+                .call_closure_value(closure, vec![subject.clone()], span)?
+                .truth()),
+            other => other.is_case(subject).at(span),
+        }
     }
 
     /// The elements that `for (x in items)` visits, as Groovy's `iterator()` gives them: a

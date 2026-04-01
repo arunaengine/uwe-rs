@@ -212,6 +212,15 @@ fn positions_and_changes() {
         value("def l = [1, 2, 3]\nl.removeIf { it > 1 }\nl.addAll([7, 8])\nl"),
         "[1, 7, 8]"
     );
+    // Groovy 4.0.31 prints these.
+    assert_eq!(
+        value("def l = [1, 2]\ndef r = l.push(3)\ndef m = l.toString()\n[l.pop(), l, m, r]"),
+        "[3, [1, 2], [3, 1, 2], true]"
+    );
+    assert_eq!(
+        eval("[].pop()").unwrap_err(),
+        "NoSuchElementException: Cannot pop() an empty List"
+    );
     assert_eq!(
         eval("tuple(1, 2).add(3)").unwrap_err(),
         "UnsupportedOperationException: "

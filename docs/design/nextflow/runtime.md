@@ -271,6 +271,7 @@ The total is about 19 to 28 person-months. That agrees with the feasibility repo
 | time and random values are new on every run | replayed on resume | cache hits on resume |
 | process aliases share an `ext` map; nested command-line params leak between config files | separate copies | the research marks both as quirks not to copy |
 | `cache 'deep'` and `'lenient'` choose how inputs are hashed | inputs are always hashed by content; the options only tune the stat cache | content identity |
+| 26.04.6 has no `org.everit.json.schema` or `org.json`; a `lib/` class that imports them fails to compile ("unable to resolve class org.everit.json.schema.Schema") | stand-ins of the parts that older nf-core `lib/` classes use | these pipelines ran on the older releases that shipped the libraries ([decisions](../../decisions.md), item 14) |
 
 `iunctus run -explain-differences` prints this table, and every difference that a run actually hits is logged once.
 

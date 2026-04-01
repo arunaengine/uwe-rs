@@ -209,9 +209,11 @@ impl Interpreter<'_> {
                     Value::list(unique)
                 }
             }
-            ("add" | "addAll" | "remove" | "removeAll" | "clear" | "set" | "leftShift", _)
-                if fixed =>
-            {
+            (
+                "add" | "addAll" | "remove" | "removeAll" | "clear" | "set" | "leftShift" | "push"
+                | "pop",
+                _,
+            ) if fixed => {
                 if name == "set" && kind == ListKind::Array {
                     return self.set_list_item(list, arguments, span);
                 }
@@ -240,6 +242,21 @@ impl Interpreter<'_> {
                 let changed = !others.is_empty();
                 list.borrow_mut().items.extend(others);
                 Value::Boolean(changed)
+            }
+            // Since Groovy 2.5, `push` and `pop` work at the start of the list.
+            ("push", [item]) => {
+                list.borrow_mut().items.insert(0, item.clone());
+                Value::Boolean(true)
+            }
+            ("pop", []) => {
+                if items.is_empty() {
+                    let message = "Cannot pop() an empty List";
+                    return Err(thrown(
+                        Exception::new("NoSuchElementException", message),
+                        span,
+                    ));
+                }
+                list.borrow_mut().items.remove(0)
             }
             ("remove", [Value::Number(index @ Number::Integer(_))]) => {
                 match usize::try_from(index.to_i64())

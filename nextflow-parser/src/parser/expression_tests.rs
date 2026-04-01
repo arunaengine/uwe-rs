@@ -309,6 +309,20 @@ pub(in crate::parser) fn render_statement(statement: &Statement) -> String {
         StatementKind::While { condition, body } => {
             format!("(while {} {})", render(condition), render_block(body))
         }
+        StatementKind::Switch { subject, cases } => {
+            let cases: Vec<_> = cases
+                .iter()
+                .map(|case| {
+                    let mut labels: Vec<_> = case.values.iter().map(render).collect();
+                    if case.default {
+                        labels.push("default".into());
+                    }
+                    let body: Vec<_> = case.body.iter().map(render_statement).collect();
+                    format!(" ({}: {})", labels.join(" "), body.join("; "))
+                })
+                .collect();
+            format!("(switch {}{})", render(subject), cases.concat())
+        }
         StatementKind::Break => "(break)".to_owned(),
         StatementKind::Continue => "(continue)".to_owned(),
         StatementKind::Empty => "(empty)".to_owned(),

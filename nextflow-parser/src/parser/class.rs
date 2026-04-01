@@ -36,7 +36,7 @@ impl Parser<'_> {
     }
 
     /// The text of the token `n` places ahead.
-    fn word(&self, n: usize) -> &str {
+    pub(super) fn word(&self, n: usize) -> &str {
         match self.tokens.get(self.position + n) {
             Some(token) => self.text(*token),
             None => "",

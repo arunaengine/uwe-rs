@@ -183,6 +183,10 @@ fn rejects_reserved_names() {
         ("for (x in xs) { x }", "`for` loops are no longer supported"),
         ("while (x) { x }", "`while` loops are no longer supported"),
         ("xs.each { _ -> 1 }", "`_` is not allowed as an identifier"),
+        (
+            "switch (x) { default: 1 }",
+            "`switch` statements are no longer supported",
+        ),
     ];
     for (source, message) in cases {
         let mut parser = Parser::new(source, Dialect::Script);
@@ -194,6 +198,11 @@ fn rejects_reserved_names() {
             .any(|error| error.message.starts_with(message));
         assert!(found, "{source}: {:?}", parser.legacy);
     }
+    // Groovy wants `default:` last.
+    let mut parser = Parser::new("switch (x) { default: 1\n case 2: 3 }", Dialect::Script);
+    let _ = parser.statement_sequence(|_| false);
+    let message = "a default branch must only appear as the last branch of a switch";
+    assert_eq!(parser.errors[0].message, message);
     let mut parser = Parser::new("{ _ -> null }", Dialect::Config);
     assert!(parser.expression().is_ok() && parser.errors.is_empty());
 }
@@ -228,6 +237,14 @@ fn legacy_loops() {
         ["(while x {(continue)})"]
     );
     assert_eq!(legacy("i++\nj--"), ["(++ i)", "(-- j)"]);
+    assert_eq!(
+        legacy(
+            "switch ( x ) {\n    // one\n    case 'k':\n    case 'K': n = 1000; break;\n    \
+             case 'm':\n        n = 1\n        break\n    default:\n        n = 0\n}"
+        ),
+        ["(switch x ('k' 'K': (setAssign n 1000); (break)) \
+          ('m': (setAssign n 1); (break)) (default: (setAssign n 0)))"]
+    );
     // Two plus signs before an operand stay an addition.
     assert_eq!(parse("i + +j"), ["(+ i (+ j))"]);
 }

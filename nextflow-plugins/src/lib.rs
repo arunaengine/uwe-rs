@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod nf_anndata;
 mod nf_fgbio;
 mod nf_schema;
 
@@ -62,6 +63,7 @@ const NF_CORE_UTILS: &[&str] = &[
 /// The functions of a plugin, or `None` for a plugin iunctus does not have.
 pub fn functions(plugin: &str) -> Option<&'static [&'static str]> {
     match plugin {
+        "nf-anndata" => Some(&["anndata"]),
         "nf-core-utils" => Some(NF_CORE_UTILS),
         "nf-fgbio" => Some(&["readStructure"]),
         "nf-schema" => Some(NF_SCHEMA),
@@ -96,6 +98,7 @@ pub fn call(
     context: &mut Context,
 ) -> Result<Value, Error> {
     match plugin {
+        "nf-anndata" => nf_anndata::call(name, arguments, context),
         "nf-fgbio" => nf_fgbio::call(name, arguments),
         "nf-schema" => nf_schema::call(name, arguments, context),
         _ => Err(Error::Unsupported {

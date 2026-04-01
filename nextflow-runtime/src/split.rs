@@ -1,5 +1,5 @@
-//! Splitters: `splitCsv`, `splitText`, `splitFasta` and `splitFastq` emit the records of a
-//! file or text, alone or `by` several (channels spec, section 5.33).
+//! Splitters: `splitCsv`, `splitText`, `splitFasta`, `splitFastq` and `splitJson` emit the
+//! records of a file or text, alone or `by` several (channels spec, section 5.33).
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -28,6 +28,11 @@ pub(crate) enum Format {
     /// FASTA and FASTQ records as text, or as maps of the named fields.
     Fasta(Option<Vec<String>>),
     Fastq(Option<Vec<String>>),
+    /// The elements of the array, or the entries of the object, at a path like `a.b[0].c`;
+    /// the empty path is the whole document.
+    Json {
+        path: String,
+    },
 }
 
 /// The fields of FASTA and FASTQ records, in the order Nextflow puts them in a record map.
@@ -128,7 +133,7 @@ impl Behaviour for Split {
                 }
                 other => (other.to_string(), "chunk".to_owned()),
             };
-            let chunks = self.chunks(&text);
+            let chunks = self.chunks(&text)?;
             if let Some(total) = &mut self.total {
                 *total += chunks.len() as i64;
                 continue;
@@ -168,12 +173,13 @@ impl Behaviour for Split {
 impl Split {
     /// The chunks of one text: single records, or lists of `by` records for CSV, or the
     /// joined text of `by` records for the other formats.
-    fn chunks(&self, text: &str) -> Vec<Value> {
+    fn chunks(&self, text: &str) -> Result<Vec<Value>, Error> {
         let mut records = match &self.format {
             Format::Csv { .. } => self.csv(text),
             Format::Text { .. } => text.split_inclusive('\n').map(Value::string).collect(),
             Format::Fasta(_) => records(text, |line, _| line.starts_with('>')),
             Format::Fastq(_) => records(text, |_, index| index % 4 == 0),
+            Format::Json { path } => json_records(text, path)?,
         };
         if let Format::Fasta(Some(fields)) | Format::Fastq(Some(fields)) = &self.format {
             let fastq = matches!(self.format, Format::Fastq(_));
@@ -192,9 +198,9 @@ impl Split {
             _ => None,
         };
         let Some(by) = self.by.filter(|by| *by > 0) else {
-            return records;
+            return Ok(records);
         };
-        records
+        Ok(records
             .chunks(by)
             .map(|chunk| match self.format {
                 Format::Csv { .. } | Format::Fasta(Some(_)) | Format::Fastq(Some(_)) => {
@@ -206,7 +212,7 @@ impl Split {
                     Value::string(text)
                 }
             })
-            .collect()
+            .collect())
     }
 
     fn csv(&self, text: &str) -> Vec<Value> {
@@ -246,6 +252,74 @@ fn decompressed(bytes: &[u8], path: &PathValue) -> Result<Vec<u8>, Error> {
         }
     })?;
     Ok(decoded)
+}
+
+/// The records of a JSON document for `splitJson`: the elements of the array at `path`, or the
+/// entries of the object there as maps `[key: name, value: value]`. Nothing is at a path that
+/// the document lacks.
+fn json_records(text: &str, path: &str) -> Result<Vec<Value>, Error> {
+    let failed = |cause: String| Error::Thrown {
+        exception: Rc::new(nextflow_evaluator::exception::Exception::new(
+            "IllegalStateException",
+            format!("Error while parsing JSON content - cause: {cause}"),
+        )),
+        span: Default::default(),
+    };
+    let document = nextflow_evaluator::interpreter::parse_json_for_split(text)
+        .map_err(|exception| failed(exception.to_string()))?;
+    let Some(found) = json_node(&document, "", path) else {
+        return Ok(Vec::new());
+    };
+    match found {
+        Value::List(list) => Ok(list.borrow().items.clone()),
+        Value::Map(map) => Ok(map
+            .borrow()
+            .entries
+            .iter()
+            .map(|(key, value)| {
+                Value::map([
+                    (Value::string("key"), key.0.clone()),
+                    (Value::string("value"), value.clone()),
+                ])
+            })
+            .collect()),
+        other => {
+            let token = match other {
+                Value::String(_) => "STRING",
+                Value::Number(_) => "NUMBER",
+                Value::Boolean(_) => "BOOLEAN",
+                _ => "NULL",
+            };
+            Err(failed(format!(
+                "Expected JSON to be an object or an array but got {token} for json-path \"{path}\"."
+            )))
+        }
+    }
+}
+
+/// The first node, in document order, whose path is `wanted`: `key` below the root, `a.key`
+/// below an object and `a[0]` below an array.
+fn json_node(node: &Value, current: &str, wanted: &str) -> Option<Value> {
+    if current == wanted {
+        return Some(node.clone());
+    }
+    match node {
+        Value::List(list) => list
+            .borrow()
+            .items
+            .iter()
+            .enumerate()
+            .find_map(|(index, item)| json_node(item, &format!("{current}[{index}]"), wanted)),
+        Value::Map(map) => map.borrow().entries.iter().find_map(|(key, value)| {
+            let separator = if current.is_empty() || current.ends_with('.') {
+                ""
+            } else {
+                "."
+            };
+            json_node(value, &format!("{current}{separator}{}", key.0), wanted)
+        }),
+        _ => None,
+    }
 }
 
 /// The records of a text: a record starts at each line that `starts` accepts.

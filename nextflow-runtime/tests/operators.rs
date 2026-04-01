@@ -184,6 +184,29 @@ fn join_combine_and_cross() {
             "[d, null, w]"
         ]
     );
+    // A side that gave a value of only its key gets no `null` in the remainder; Nextflow
+    // 26.04.6 prints these.
+    assert_eq!(
+        sorted("channel.of(['a'], ['b']).join(channel.of([null, null]), remainder: true).view()"),
+        ["[a, null]", "[b, null]", "[null, null]"]
+    );
+    assert_eq!(
+        sorted(
+            "channel.of(['c', 0], ['a', 1], ['d']).join(channel.of(['b', 9], ['a', 2], \
+             ['e', 5, 6]), remainder: true).view()"
+        ),
+        [
+            "[a, 1, 2]",
+            "[b, 9]",
+            "[c, 0, null]",
+            "[d, null]",
+            "[e, 5, 6]"
+        ]
+    );
+    assert_eq!(
+        sorted("channel.of('a', 'b').join(channel.of('b', 'c'), remainder: true).view()"),
+        ["a", "b", "c"]
+    );
     assert_eq!(
         sorted("channel.of(['a', 1], ['b', 2]).combine(channel.of('x', 'y')).view()"),
         ["[a, 1, x]", "[a, 1, y]", "[b, 2, x]", "[b, 2, y]"]
@@ -349,6 +372,52 @@ fn splitters() {
             "channel.of(1, 2).subscribe(onNext: { v -> println \"n${v}\" }, onComplete: { println 'done' })"
         ),
         ["n1", "n2", "done"]
+    );
+    // Up to Nextflow 25.10, `subscribe` gives its source, which older pipelines use.
+    let mut printed = lines(
+        "def ch = channel.of(1, 2).subscribe { v -> println \"s${v}\" }\n\
+         ch.toList().view()",
+    );
+    printed.sort();
+    assert_eq!(printed, ["[1, 2]", "s1", "s2"]);
+}
+
+#[test]
+fn split_json_emits_elements_and_entries() {
+    // Nextflow 26.04.6 prints these.
+    let document =
+        r#"{"a": {"x": 1, "y": [1, -2, 1.5, 1e3, 12345678901]}, "b": [ {"k": "v"}, 7 ]}"#;
+    assert_eq!(
+        lines(&format!(
+            "channel.of('{document}').splitJson(path: 'a').view {{ v -> v.inspect() }}"
+        )),
+        [
+            "['key':'x', 'value':1]",
+            "['key':'y', 'value':[1, '-2', 1.5, '1e3', 12345678901]]"
+        ]
+    );
+    assert_eq!(
+        lines(&format!(
+            "channel.of('{document}').splitJson(path: 'a.y').view {{ v -> v.inspect() }}"
+        )),
+        ["1", "'-2'", "1.5", "'1e3'", "12345678901"]
+    );
+    assert_eq!(
+        lines(&format!(
+            "channel.of('{document}').splitJson(path: 'b[0]').view()"
+        )),
+        ["[key:k, value:v]"]
+    );
+    assert!(
+        lines(&format!(
+            "channel.of('{document}').splitJson(path: 'c').view()"
+        ))
+        .is_empty()
+    );
+    assert_eq!(
+        run("channel.of('{\"b\": 1}').splitJson(path: 'b').view()").unwrap_err(),
+        "IllegalStateException: Error while parsing JSON content - cause: Expected JSON to be an \
+         object or an array but got NUMBER for json-path \"b\"."
     );
 }
 

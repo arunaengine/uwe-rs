@@ -1212,3 +1212,221 @@ fn set_members(interpreter: &mut Interpreter, value: &Value) -> Result<IndexSet<
         }
     }
 }
+
+fn set_method(
+    interpreter: &mut Interpreter,
+    set_value: &Value,
+    name: &str,
+    args: Args,
+) -> Result<Value, Error> {
+    let members = set_members(interpreter, set_value)?;
+    let frozen = matches!(set_value, Value::FrozenSet(_));
+    let make = |members: IndexSet<Key>| {
+        if frozen {
+            Value::FrozenSet(Rc::new(members))
+        } else {
+            Value::set(members)
+        }
+    };
+    let mutable = || match set_value {
+        Value::Set(set) => Ok(set.clone()),
+        _ => Err(Error::attribute_error(format!(
+            "'frozenset' object has no attribute '{name}'"
+        ))),
+    };
+    let takes_iterables = matches!(
+        name,
+        "update"
+            | "intersection_update"
+            | "difference_update"
+            | "symmetric_difference_update"
+            | "union"
+            | "intersection"
+            | "difference"
+            | "symmetric_difference"
+            | "issubset"
+            | "issuperset"
+            | "isdisjoint"
+    );
+    let others = if takes_iterables {
+        args.positional
+            .iter()
+            .map(|other| set_members(interpreter, other))
+            .collect::<Result<Vec<_>, _>>()?
+    } else {
+        Vec::new()
+    };
+    match name {
+        "add" => {
+            args.expect("add", 1, 1)?;
+            let key = interpreter.key(&args.positional[0])?;
+            mutable()?.borrow_mut().insert(key);
+            Ok(Value::None)
+        }
+        "remove" | "discard" => {
+            args.expect(name, 1, 1)?;
+            let key = interpreter.key(&args.positional[0])?;
+            let removed = mutable()?.borrow_mut().shift_remove(&key);
+            if !removed && name == "remove" {
+                return Err(Error::key_error(args.positional[0].clone()));
+            }
+            Ok(Value::None)
+        }
+        "pop" => {
+            let set = mutable()?;
+            let first = set.borrow().first().cloned();
+            match first {
+                Some(key) => {
+                    set.borrow_mut().shift_remove(&key);
+                    Ok(key.0)
+                }
+                None => Err(Error::key_error(Value::str("pop from an empty set"))),
+            }
+        }
+        "clear" => {
+            mutable()?.borrow_mut().clear();
+            Ok(Value::None)
+        }
+        "update" | "intersection_update" | "difference_update" | "symmetric_difference_update" => {
+            let set = mutable()?;
+            let mut result = members;
+            for other in others {
+                result = match name {
+                    "update" => result.union(&other).cloned().collect(),
+                    "intersection_update" => result.intersection(&other).cloned().collect(),
+                    "difference_update" => result.difference(&other).cloned().collect(),
+                    _ => result.symmetric_difference(&other).cloned().collect(),
+                };
+            }
+            *set.borrow_mut() = result;
+            Ok(Value::None)
+        }
+        "union" | "intersection" | "difference" | "symmetric_difference" => {
+            let mut result = members;
+            for other in others {
+                result = match name {
+                    "union" => result.union(&other).cloned().collect(),
+                    "intersection" => result.intersection(&other).cloned().collect(),
+                    "difference" => result.difference(&other).cloned().collect(),
+                    _ => result.symmetric_difference(&other).cloned().collect(),
+                };
+            }
+            Ok(make(result))
+        }
+        "issubset" => Ok(Value::Bool(
+            others.first().is_some_and(|other| members.is_subset(other)),
+        )),
+        "issuperset" => Ok(Value::Bool(
+            others
+                .first()
+                .is_some_and(|other| members.is_superset(other)),
+        )),
+        "isdisjoint" => Ok(Value::Bool(
+            others
+                .first()
+                .is_some_and(|other| members.is_disjoint(other)),
+        )),
+        "copy" => Ok(make(members)),
+        "__len__" => Ok(Value::Int(members.len() as i64)),
+        "__contains__" => Ok(Value::Bool(
+            interpreter.contains(set_value, &args.positional[0])?,
+        )),
+        "__iter__" => Ok(Value::iterator(members.into_iter().map(|key| key.0))),
+        _ => Err(Error::unsupported(format!("set.{name}"))),
+    }
+}
+
+fn bytes_method(
+    interpreter: &mut Interpreter,
+    bytes: &Rc<[u8]>,
+    name: &str,
+    args: Args,
+) -> Result<Value, Error> {
+    let as_bytes = |value: &Value| -> Result<Vec<u8>, Error> {
+        match value.plain() {
+            Value::Bytes(bytes) => Ok(bytes.to_vec()),
+            other => Err(Error::type_error(format!(
+                "a bytes-like object is required, not '{}'",
+                types::type_name(other)
+            ))),
+        }
+    };
+    Ok(match name {
+        "decode" => Value::str(String::from_utf8_lossy(bytes).into_owned()),
+        "hex" => Value::str(
+            bytes
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>(),
+        ),
+        "startswith" => Value::Bool(bytes.starts_with(&as_bytes(&args.positional[0])?)),
+        "endswith" => Value::Bool(bytes.ends_with(&as_bytes(&args.positional[0])?)),
+        "strip" | "rstrip" | "lstrip" | "split" | "lower" | "upper" | "replace" | "count"
+        | "find" | "join" => {
+            let text = String::from_utf8_lossy(bytes).into_owned();
+            let args = Args {
+                positional: args
+                    .positional
+                    .iter()
+                    .map(|value| match value.plain() {
+                        Value::Bytes(bytes) => {
+                            Value::str(String::from_utf8_lossy(bytes).into_owned())
+                        }
+                        other => other.clone(),
+                    })
+                    .collect(),
+                keywords: args.keywords,
+            };
+            let result = string_method(interpreter, &Rc::from(text.as_str()), name, args)?;
+            to_bytes(result)
+        }
+        _ => return Err(Error::unsupported(format!("bytes.{name}"))),
+    })
+}
+
+fn to_bytes(value: Value) -> Value {
+    match value {
+        Value::Str(text) => Value::Bytes(text.as_bytes().into()),
+        Value::List(items) => Value::list(items.borrow().iter().cloned().map(to_bytes).collect()),
+        other => other,
+    }
+}
+
+fn number_method(
+    interpreter: &mut Interpreter,
+    number: &Value,
+    name: &str,
+    args: Args,
+) -> Result<Value, Error> {
+    let _ = args;
+    Ok(match (number, name) {
+        (Value::Float(value), "is_integer") => {
+            Value::Bool(value.fract() == 0.0 && value.is_finite())
+        }
+        (_, "is_integer") => Value::Bool(true),
+        (Value::Float(value), "as_integer_ratio") => {
+            let (mut numerator, mut denominator) = (*value, 1i64);
+            while numerator.fract() != 0.0 && denominator < (1 << 52) {
+                numerator *= 2.0;
+                denominator *= 2;
+            }
+            Value::tuple(vec![
+                crate::number::float_to_int(numerator)?,
+                Value::Int(denominator),
+            ])
+        }
+        (_, "conjugate") => number.clone(),
+        (_, "bit_length") => {
+            let big = crate::number::to_bigint(number).unwrap_or_default();
+            Value::Int(big.bits() as i64)
+        }
+        (_, "__int__" | "__index__") => crate::builtins::to_int(interpreter, number)?,
+        (_, "__float__") => Value::Float(crate::number::to_f64(number).unwrap_or(0.0)),
+        _ => {
+            return Err(Error::unsupported(format!(
+                "{}.{name}",
+                types::type_name(number)
+            )));
+        }
+    })
+}

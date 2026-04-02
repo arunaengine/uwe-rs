@@ -457,3 +457,434 @@ fn callable(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
     let value = one(&args, "callable")?;
     Ok(Value::Bool(interpreter.callable(&value)))
 }
+
+fn chr(_interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    let value = one(&args, "chr")?;
+    let code = value
+        .as_int()
+        .ok_or_else(|| Error::type_error("an integer is required"))?;
+    char::from_u32(code as u32)
+        .map(|c| Value::str(c.to_string()))
+        .ok_or_else(|| Error::value_error("chr() arg not in range(0x110000)"))
+}
+
+/// `staticmethod`, `classmethod` and `property` objects around a function.
+pub struct Wrapper(pub Value, pub &'static str);
+
+impl Native for Wrapper {
+    fn type_name(&self) -> &str {
+        self.1
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        this: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        Ok(match (self.1, name) {
+            ("property", "setter" | "deleter" | "getter") => {
+                let this = this.clone();
+                Some(Value::builtin("setter", move |_, _| Ok(this.clone())))
+            }
+            (_, "__func__" | "fget") => Some(self.0.clone()),
+            _ => None,
+        })
+    }
+
+    fn call(
+        &self,
+        interpreter: &mut Interpreter,
+        _: &Value,
+        args: Args,
+    ) -> Result<Option<Value>, Error> {
+        if self.1 == "staticmethod" {
+            return interpreter.call(&self.0, args).map(Some);
+        }
+        Ok(None)
+    }
+}
+
+fn wrap(args: Args, kind: &'static str) -> Result<Value, Error> {
+    let function = args.positional.first().cloned().unwrap_or(Value::None);
+    Ok(Value::native(Wrapper(function, kind)))
+}
+
+fn delattr(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    args.expect("delattr", 2, 2)?;
+    let name = args.positional[1].as_str().unwrap_or_default().to_owned();
+    match args.positional[0].plain() {
+        Value::Instance(instance) => {
+            instance.dict.borrow_mut().shift_remove(name.as_str());
+        }
+        Value::Module(module) => {
+            module.globals.vars.borrow_mut().shift_remove(name.as_str());
+        }
+        _ => return Err(Error::unsupported("delattr() on this object")),
+    }
+    let _ = interpreter;
+    Ok(Value::None)
+}
+
+fn divmod(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    args.expect("divmod", 2, 2)?;
+    let (a, b) = (&args.positional[0], &args.positional[1]);
+    let quotient = interpreter.binary(crate::interpreter::Operator::FloorDiv, a, b)?;
+    let remainder = interpreter.binary(crate::interpreter::Operator::Mod, a, b)?;
+    Ok(Value::tuple(vec![quotient, remainder]))
+}
+
+fn enumerate(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
+    let start = args
+        .take(1, "start")
+        .and_then(|start| start.as_int())
+        .unwrap_or(0);
+    let iterable = args
+        .take(0, "iterable")
+        .ok_or_else(|| Error::type_error("enumerate() missing required argument"))?;
+    let items = interpreter.iterate(&iterable)?;
+    Ok(Value::iterator(items.into_iter().enumerate().map(
+        |(index, item)| Value::tuple(vec![Value::Int(start + index as i64), item]),
+    )))
+}
+
+fn exit(_interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    let class = types::exception_class("SystemExit").expect("SystemExit exists");
+    let code = args.positional.first().cloned().unwrap_or(Value::None);
+    Err(Error::from_value(crate::error::exception(
+        &class,
+        vec![code],
+    )))
+}
+
+fn filter(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    args.expect("filter", 2, 2)?;
+    let function = args.positional[0].clone();
+    let mut kept = Vec::new();
+    for item in interpreter.iterate(&args.positional[1])? {
+        let keep = if function.is_none() {
+            interpreter.truthy(&item)?
+        } else {
+            let result = interpreter.call(&function, Args::new(vec![item.clone()]))?;
+            interpreter.truthy(&result)?
+        };
+        if keep {
+            kept.push(item);
+        }
+    }
+    Ok(Value::iterator(kept))
+}
+
+fn format(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    args.expect("format", 1, 2)?;
+    let spec = args
+        .positional
+        .get(1)
+        .and_then(|spec| spec.as_str().map(str::to_owned))
+        .unwrap_or_default();
+    Ok(Value::str(crate::format::format_value(
+        interpreter,
+        &args.positional[0],
+        &spec,
+    )?))
+}
+
+fn getattr(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    args.expect("getattr", 2, 3)?;
+    let name = args.positional[1]
+        .as_str()
+        .ok_or_else(|| Error::type_error("attribute name must be string"))?
+        .to_owned();
+    match interpreter.find_attribute(&args.positional[0], &name)? {
+        Some(value) => Ok(value),
+        None => match args.positional.get(2) {
+            Some(default) => Ok(default.clone()),
+            None => interpreter.get_attribute(&args.positional[0], &name),
+        },
+    }
+}
+
+fn hasattr(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    args.expect("hasattr", 2, 2)?;
+    let name = args.positional[1]
+        .as_str()
+        .ok_or_else(|| Error::type_error("attribute name must be string"))?
+        .to_owned();
+    match interpreter.find_attribute(&args.positional[0], &name) {
+        Ok(found) => Ok(Value::Bool(found.is_some())),
+        Err(error) if error.is("AttributeError") => Ok(Value::Bool(false)),
+        Err(error) => Err(error),
+    }
+}
+
+fn hash(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    use std::hash::{Hash, Hasher};
+    let value = one(&args, "hash")?;
+    let key = interpreter.key(&value)?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    key.hash(&mut hasher);
+    Ok(Value::Int((hasher.finish() >> 2) as i64))
+}
+
+fn id(_interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    let value = one(&args, "id")?;
+    Ok(Value::Int(value.address() as i64))
+}
+
+fn isinstance(_: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    args.expect("isinstance", 2, 2)?;
+    Ok(Value::Bool(instance_check(
+        &args.positional[0],
+        &args.positional[1],
+    )?))
+}
+
+fn instance_check(value: &Value, kind: &Value) -> Result<bool, Error> {
+    match kind.plain() {
+        Value::Class(class) => Ok(types::is_instance(value, class)),
+        Value::Tuple(kinds) => {
+            for kind in kinds.iter() {
+                if instance_check(value, kind)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        Value::Native(object) => match object.check_instance(value) {
+            Some(found) => Ok(found),
+            None => Err(Error::type_error(format!(
+                "isinstance() arg 2 must be a type, a tuple of types, or a union, not {}",
+                object.type_name()
+            ))),
+        },
+        other => Err(Error::type_error(format!(
+            "isinstance() arg 2 must be a type, a tuple of types, or a union, not {}",
+            types::type_name(other)
+        ))),
+    }
+}
+
+fn issubclass(_interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    args.expect("issubclass", 2, 2)?;
+    let Value::Class(class) = args.positional[0].plain() else {
+        return Err(Error::type_error("issubclass() arg 1 must be a class"));
+    };
+    let kinds = match args.positional[1].plain() {
+        Value::Tuple(kinds) => kinds.to_vec(),
+        other => vec![other.clone()],
+    };
+    Ok(Value::Bool(kinds.iter().any(
+        |kind| matches!(kind.plain(), Value::Class(kind) if class.is_subclass(kind)),
+    )))
+}
+
+fn iter(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    if args.positional.len() == 2 {
+        return Err(Error::unsupported("iter() with a sentinel"));
+    }
+    let value = one(&args, "iter")?;
+    interpreter.make_iterator(&value)
+}
+
+fn len(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    let value = one(&args, "len")?;
+    Ok(Value::Int(interpreter.length(&value)? as i64))
+}
+
+fn map(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    args.expect("map", 2, usize::MAX)?;
+    let function = args.positional[0].clone();
+    let lists = args.positional[1..]
+        .iter()
+        .map(|iterable| interpreter.iterate(iterable))
+        .collect::<Result<Vec<_>, _>>()?;
+    let count = lists.iter().map(Vec::len).min().unwrap_or(0);
+    let mut results = Vec::with_capacity(count);
+    for index in 0..count {
+        let call_args: Vec<Value> = lists.iter().map(|list| list[index].clone()).collect();
+        results.push(interpreter.call(&function, Args::new(call_args))?);
+    }
+    Ok(Value::iterator(results))
+}
+
+fn extreme(
+    interpreter: &mut Interpreter,
+    mut args: Args,
+    wanted: Ordering,
+    name: &str,
+) -> Result<Value, Error> {
+    let key = args.take_keyword("key").filter(|key| !key.is_none());
+    let default = args.take_keyword("default");
+    let items = if args.positional.len() == 1 {
+        interpreter.iterate(&args.positional[0])?
+    } else {
+        args.positional.clone()
+    };
+    let mut best: Option<(Value, Value)> = None;
+    for item in items {
+        let measure = match &key {
+            Some(key) => interpreter.call(key, Args::new(vec![item.clone()]))?,
+            None => item.clone(),
+        };
+        let better = match &best {
+            None => true,
+            Some((_, best_measure)) => interpreter.compare(&measure, best_measure)? == wanted,
+        };
+        if better {
+            best = Some((item, measure));
+        }
+    }
+    match best {
+        Some((item, _)) => Ok(item),
+        None => {
+            default.ok_or_else(|| Error::value_error(format!("{name}() arg is an empty sequence")))
+        }
+    }
+}
+
+fn next(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    args.expect("next", 1, 2)?;
+    let iterator = &args.positional[0];
+    let found = match iterator.plain() {
+        Value::Iterator(state) => state.borrow_mut().next_value(),
+        Value::Instance(_) => match interpreter.lookup_special(iterator, "__next__") {
+            Some(method) => match interpreter.call(&method, Args::default()) {
+                Ok(value) => Some(value),
+                Err(error) if error.is("StopIteration") => None,
+                Err(error) => return Err(error),
+            },
+            None => None,
+        },
+        other => {
+            return Err(Error::type_error(format!(
+                "'{}' object is not an iterator",
+                types::type_name(other)
+            )));
+        }
+    };
+    match (found, args.positional.get(1)) {
+        (Some(value), _) => Ok(value),
+        (None, Some(default)) => Ok(default.clone()),
+        (None, None) => Err(Error::stop_iteration()),
+    }
+}
+
+fn ord(_interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    let value = one(&args, "ord")?;
+    let text = value
+        .as_str()
+        .ok_or_else(|| Error::type_error("ord() expected string of length 1"))?;
+    let mut chars = text.chars();
+    match (chars.next(), chars.next()) {
+        (Some(c), None) => Ok(Value::Int(c as i64)),
+        _ => Err(Error::type_error(format!(
+            "ord() expected a character, but string of length {} found",
+            text.chars().count()
+        ))),
+    }
+}
+
+fn pow(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    args.expect("pow", 2, 3)?;
+    let result = interpreter.binary(
+        crate::interpreter::Operator::Pow,
+        &args.positional[0],
+        &args.positional[1],
+    )?;
+    match args.positional.get(2) {
+        Some(modulus) => interpreter.binary(crate::interpreter::Operator::Mod, &result, modulus),
+        None => Ok(result),
+    }
+}
+
+fn print(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
+    let separator = match args.take_keyword("sep") {
+        Some(Value::Str(text)) => text.to_string(),
+        _ => " ".into(),
+    };
+    let end = match args.take_keyword("end") {
+        Some(Value::Str(text)) => text.to_string(),
+        _ => "\n".into(),
+    };
+    let file = args.take_keyword("file");
+    args.take_keyword("flush");
+    let mut parts = Vec::new();
+    for value in &args.positional {
+        parts.push(interpreter.to_str(value)?);
+    }
+    let text = format!("{}{end}", parts.join(&separator));
+    match file {
+        Some(file) if !file.is_none() => {
+            let write = interpreter.get_attribute(&file, "write")?;
+            interpreter.call(&write, Args::new(vec![Value::str(text)]))?;
+        }
+        _ => interpreter.host.print(&text),
+    }
+    Ok(Value::None)
+}
+
+fn reversed(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    let value = one(&args, "reversed")?;
+    if let Some(method) = interpreter.lookup_special(&value, "__reversed__") {
+        return interpreter.call(&method, Args::default());
+    }
+    let mut items = interpreter.iterate(&value)?;
+    items.reverse();
+    Ok(Value::iterator(items))
+}
+
+fn round(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
+    let digits = args.take(1, "ndigits").filter(|digits| !digits.is_none());
+    let value = args
+        .take(0, "number")
+        .ok_or_else(|| Error::type_error("round() missing required argument"))?;
+    match (value.plain(), digits) {
+        (Value::Int(_) | Value::BigInt(_) | Value::Bool(_), None) => to_int(interpreter, &value),
+        (Value::Int(_) | Value::BigInt(_) | Value::Bool(_), Some(digits)) => {
+            let digits = digits.as_int().unwrap_or(0);
+            if digits >= 0 {
+                return to_int(interpreter, &value);
+            }
+            let factor = 10f64.powi((-digits) as i32);
+            let number = to_f64(&value).unwrap_or(0.0);
+            number::float_to_int(number::round_half_even(number / factor) * factor)
+        }
+        (Value::Float(number), None) => number::float_to_int(number::round_half_even(*number)),
+        (Value::Float(number), Some(digits)) => {
+            let digits = digits.as_int().unwrap_or(0);
+            if digits >= 0 {
+                let text = format!("{number:.*}", digits as usize);
+                Ok(Value::Float(text.parse().unwrap_or(*number)))
+            } else {
+                let factor = 10f64.powi((-digits) as i32);
+                Ok(Value::Float(
+                    number::round_half_even(number / factor) * factor,
+                ))
+            }
+        }
+        (other, digits) => match interpreter.lookup_special(other, "__round__") {
+            Some(method) => {
+                let args = digits.map(|digits| vec![digits]).unwrap_or_default();
+                interpreter.call(&method, Args::new(args))
+            }
+            None => Err(Error::type_error(format!(
+                "type {} doesn't define __round__ method",
+                types::type_name(other)
+            ))),
+        },
+    }
+}
+
+fn setattr(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    args.expect("setattr", 3, 3)?;
+    let name = args.positional[1]
+        .as_str()
+        .ok_or_else(|| Error::type_error("attribute name must be string"))?
+        .to_owned();
+    interpreter.set_attribute(&args.positional[0], &name, args.positional[2].clone())?;
+    Ok(Value::None)
+}

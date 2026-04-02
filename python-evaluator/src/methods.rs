@@ -845,3 +845,370 @@ fn string_method(
         _ => return Err(Error::unsupported(format!("str.{name}"))),
     })
 }
+
+/// `str.maketrans(x[, y[, z]])`.
+pub fn maketrans(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    let mut table = Dict::default();
+    match args.positional.len() {
+        1 => {
+            for (key, value) in interpreter.mapping_items(&args.positional[0])? {
+                let key = match key.plain() {
+                    Value::Str(text) => Value::Int(text.chars().next().map_or(0, |c| c as i64)),
+                    other => other.clone(),
+                };
+                table.entries.insert(Key::new(key)?, value);
+            }
+        }
+        2 | 3 => {
+            let from = text_arg(&args, 0, "maketrans")?;
+            let to = text_arg(&args, 1, "maketrans")?;
+            if from.chars().count() != to.chars().count() {
+                return Err(Error::value_error(
+                    "the first two maketrans arguments must have equal length",
+                ));
+            }
+            for (a, b) in from.chars().zip(to.chars()) {
+                table
+                    .entries
+                    .insert(Key(Value::Int(a as i64)), Value::str(b.to_string()));
+            }
+            if let Some(delete) = optional_text(&args, 2) {
+                for c in delete.chars() {
+                    table.entries.insert(Key(Value::Int(c as i64)), Value::None);
+                }
+            }
+        }
+        _ => return Err(Error::type_error("maketrans() takes 1 to 3 arguments")),
+    }
+    Ok(Value::dict(table))
+}
+
+fn sequence_method(
+    interpreter: &mut Interpreter,
+    items: &[Value],
+    name: &str,
+    args: Args,
+    kind: &str,
+) -> Result<Value, Error> {
+    match name {
+        "index" => {
+            args.expect("index", 1, 3)?;
+            let (start, end) = char_range(&args, 1, items.len());
+            for (index, item) in items.iter().enumerate().take(end).skip(start) {
+                if interpreter.equals(item, &args.positional[0])? {
+                    return Ok(Value::Int(index as i64));
+                }
+            }
+            Err(Error::value_error(format!(
+                "{kind}.index(x): x not in {kind}"
+            )))
+        }
+        "count" => {
+            args.expect("count", 1, 1)?;
+            let mut count = 0;
+            for item in items {
+                if interpreter.equals(item, &args.positional[0])? {
+                    count += 1;
+                }
+            }
+            Ok(Value::Int(count))
+        }
+        "__len__" => Ok(Value::Int(items.len() as i64)),
+        "__contains__" => {
+            let container = Value::tuple(items.to_vec());
+            Ok(Value::Bool(
+                interpreter.contains(&container, &args.positional[0])?,
+            ))
+        }
+        "__getitem__" => interpreter.get_item(&Value::tuple(items.to_vec()), &args.positional[0]),
+        "__iter__" => Ok(Value::iterator(items.to_vec())),
+        _ => Err(Error::unsupported(format!("{kind}.{name}"))),
+    }
+}
+
+fn list_method(
+    interpreter: &mut Interpreter,
+    list: &Value,
+    name: &str,
+    mut args: Args,
+) -> Result<Value, Error> {
+    let Value::List(items) = list else {
+        unreachable!("a list");
+    };
+    match name {
+        "append" => {
+            args.expect("append", 1, 1)?;
+            items.borrow_mut().push(args.positional.remove(0));
+            Ok(Value::None)
+        }
+        "extend" => {
+            args.expect("extend", 1, 1)?;
+            let extra = interpreter.iterate(&args.positional[0])?;
+            items.borrow_mut().extend(extra);
+            Ok(Value::None)
+        }
+        "insert" => {
+            args.expect("insert", 2, 2)?;
+            let mut list = items.borrow_mut();
+            let length = list.len() as i64;
+            let index = args.positional[0].as_int().unwrap_or(0);
+            let index = if index < 0 {
+                (index + length).max(0)
+            } else {
+                index.min(length)
+            };
+            list.insert(index as usize, args.positional[1].clone());
+            Ok(Value::None)
+        }
+        "remove" => {
+            args.expect("remove", 1, 1)?;
+            let snapshot = items.borrow().clone();
+            for (index, item) in snapshot.iter().enumerate() {
+                if interpreter.equals(item, &args.positional[0])? {
+                    items.borrow_mut().remove(index);
+                    return Ok(Value::None);
+                }
+            }
+            Err(Error::value_error("list.remove(x): x not in list"))
+        }
+        "pop" => {
+            let mut list = items.borrow_mut();
+            if list.is_empty() {
+                return Err(Error::index_error("pop from empty list"));
+            }
+            let length = list.len() as i64;
+            let index = args
+                .positional
+                .first()
+                .and_then(Value::as_int)
+                .unwrap_or(-1);
+            let index = if index < 0 { index + length } else { index };
+            if index < 0 || index >= length {
+                return Err(Error::index_error("pop index out of range"));
+            }
+            Ok(list.remove(index as usize))
+        }
+        "clear" => {
+            items.borrow_mut().clear();
+            Ok(Value::None)
+        }
+        "copy" => Ok(Value::list(items.borrow().clone())),
+        "reverse" => {
+            items.borrow_mut().reverse();
+            Ok(Value::None)
+        }
+        "sort" => {
+            let key = args.take_keyword("key").filter(|key| !key.is_none());
+            let reverse = match args.take_keyword("reverse") {
+                Some(value) => interpreter.truthy(&value)?,
+                None => false,
+            };
+            let snapshot = items.borrow().clone();
+            let sorted = sort_values(interpreter, snapshot, key.as_ref(), reverse)?;
+            *items.borrow_mut() = sorted;
+            Ok(Value::None)
+        }
+        "__iter__" => Ok(Value::iterator(items.borrow().clone())),
+        "__add__" => {
+            interpreter.binary(crate::interpreter::Operator::Add, list, &args.positional[0])
+        }
+        "__eq__" => Ok(Value::Bool(interpreter.equals(list, &args.positional[0])?)),
+        _ => {
+            let snapshot = items.borrow().clone();
+            sequence_method(interpreter, &snapshot, name, args, "list")
+        }
+    }
+}
+
+fn dict_method(
+    interpreter: &mut Interpreter,
+    dict_value: &Value,
+    name: &str,
+    args: Args,
+) -> Result<Value, Error> {
+    let Value::Dict(dict) = dict_value else {
+        unreachable!("a dict");
+    };
+    match name {
+        "keys" => {
+            let keys: IndexSet<Key> = dict.borrow().entries.keys().cloned().collect();
+            Ok(Value::FrozenSet(Rc::new(keys)))
+        }
+        "values" => Ok(Value::list(
+            dict.borrow().entries.values().cloned().collect(),
+        )),
+        "items" => Ok(Value::list(
+            dict.borrow()
+                .entries
+                .iter()
+                .map(|(key, value)| Value::tuple(vec![key.0.clone(), value.clone()]))
+                .collect(),
+        )),
+        "get" => {
+            args.expect("get", 1, 2)?;
+            let key = interpreter.key(&args.positional[0])?;
+            let found = dict.borrow().entries.get(&key).cloned();
+            Ok(found.unwrap_or_else(|| args.positional.get(1).cloned().unwrap_or(Value::None)))
+        }
+        "pop" => {
+            args.expect("pop", 1, 2)?;
+            let key = interpreter.key(&args.positional[0])?;
+            let removed = dict.borrow_mut().entries.shift_remove(&key);
+            match (removed, args.positional.get(1)) {
+                (Some(value), _) => Ok(value),
+                (None, Some(default)) => Ok(default.clone()),
+                (None, None) => Err(Error::key_error(args.positional[0].clone())),
+            }
+        }
+        "popitem" => {
+            let popped = dict.borrow_mut().entries.pop();
+            match popped {
+                Some((key, value)) => Ok(Value::tuple(vec![key.0, value])),
+                None => Err(Error::key_error(Value::str(
+                    "popitem(): dictionary is empty",
+                ))),
+            }
+        }
+        "setdefault" => {
+            args.expect("setdefault", 1, 2)?;
+            let key = interpreter.key(&args.positional[0])?;
+            let default = args.positional.get(1).cloned().unwrap_or(Value::None);
+            let mut dict = dict.borrow_mut();
+            Ok(dict.entries.entry(key).or_insert(default).clone())
+        }
+        "update" => {
+            let is_counter = matches!(dict.borrow().kind, DictKind::Counter);
+            if let Some(source) = args.positional.first() {
+                if is_counter {
+                    return counter_update(interpreter, dict_value, source, 1);
+                }
+                let mut target = std::mem::take(&mut *dict.borrow_mut());
+                let result = update_dict(interpreter, &mut target, source);
+                *dict.borrow_mut() = target;
+                result?;
+            }
+            for (key, value) in args.keywords {
+                dict.borrow_mut()
+                    .entries
+                    .insert(Key(Value::Str(key)), value);
+            }
+            Ok(Value::None)
+        }
+        "clear" => {
+            dict.borrow_mut().entries.clear();
+            Ok(Value::None)
+        }
+        "copy" => Ok(Value::dict(dict.borrow().clone())),
+        "fromkeys" => {
+            let class = types::builtin_class(types::TypeTag::Dict);
+            let fromkeys = crate::builtins::class_attribute(interpreter, &class, "fromkeys")?
+                .unwrap_or(Value::None);
+            interpreter.call(&fromkeys, args)
+        }
+        "most_common" => {
+            let entries: Vec<(Value, Value)> = dict
+                .borrow()
+                .entries
+                .iter()
+                .map(|(key, value)| (key.0.clone(), value.clone()))
+                .collect();
+            let pairs: Vec<Value> = entries
+                .into_iter()
+                .map(|(key, value)| Value::tuple(vec![key, value]))
+                .collect();
+            let count_key = Value::builtin("count", |interpreter, args| {
+                let count = interpreter.get_item(&args.positional[0], &Value::Int(1))?;
+                interpreter.unary("-", &count)
+            });
+            let mut sorted = sort_values(interpreter, pairs, Some(&count_key), false)?;
+            if let Some(limit) = args.positional.first().and_then(Value::as_int) {
+                sorted.truncate(limit.max(0) as usize);
+            }
+            Ok(Value::list(sorted))
+        }
+        "elements" => {
+            let mut elements = Vec::new();
+            for (key, count) in dict.borrow().entries.iter() {
+                for _ in 0..count.as_int().unwrap_or(0).max(0) {
+                    elements.push(key.0.clone());
+                }
+            }
+            Ok(Value::iterator(elements))
+        }
+        "subtract" => {
+            let source = args.positional.first().cloned().unwrap_or(Value::None);
+            counter_update(interpreter, dict_value, &source, -1)
+        }
+        "total" => {
+            let mut total = Value::Int(0);
+            let values: Vec<Value> = dict.borrow().entries.values().cloned().collect();
+            for value in values {
+                total = interpreter.binary(crate::interpreter::Operator::Add, &total, &value)?;
+            }
+            Ok(total)
+        }
+        "__len__" => Ok(Value::Int(dict.borrow().entries.len() as i64)),
+        "__contains__" => Ok(Value::Bool(
+            interpreter.contains(dict_value, &args.positional[0])?,
+        )),
+        "__getitem__" => interpreter.get_item(dict_value, &args.positional[0]),
+        "__setitem__" => {
+            args.expect("__setitem__", 2, 2)?;
+            interpreter.set_item(dict_value, &args.positional[0], args.positional[1].clone())?;
+            Ok(Value::None)
+        }
+        "__iter__" => interpreter.make_iterator(dict_value),
+        "__eq__" => Ok(Value::Bool(
+            interpreter.equals(dict_value, &args.positional[0])?,
+        )),
+        _ => Err(Error::unsupported(format!("dict.{name}"))),
+    }
+}
+
+fn counter_update(
+    interpreter: &mut Interpreter,
+    counter: &Value,
+    source: &Value,
+    sign: i64,
+) -> Result<Value, Error> {
+    let Value::Dict(dict) = counter else {
+        return Ok(Value::None);
+    };
+    let pairs: Vec<(Value, Value)> = match source.plain() {
+        Value::Dict(_) => interpreter.mapping_items(source)?,
+        Value::None => Vec::new(),
+        other => interpreter
+            .iterate(other)?
+            .into_iter()
+            .map(|item| (item, Value::Int(1)))
+            .collect(),
+    };
+    for (key, count) in pairs {
+        let key = interpreter.key(&key)?;
+        let current = dict
+            .borrow()
+            .entries
+            .get(&key)
+            .cloned()
+            .unwrap_or(Value::Int(0));
+        let change =
+            interpreter.binary(crate::interpreter::Operator::Mul, &count, &Value::Int(sign))?;
+        let updated = interpreter.binary(crate::interpreter::Operator::Add, &current, &change)?;
+        dict.borrow_mut().entries.insert(key, updated);
+    }
+    Ok(Value::None)
+}
+
+fn set_members(interpreter: &mut Interpreter, value: &Value) -> Result<IndexSet<Key>, Error> {
+    match value.plain() {
+        Value::Set(set) => Ok(set.borrow().clone()),
+        Value::FrozenSet(set) => Ok((**set).clone()),
+        other => {
+            let mut members = IndexSet::new();
+            for item in interpreter.iterate(other)? {
+                members.insert(Key::new(item.plain().clone())?);
+            }
+            Ok(members)
+        }
+    }
+}

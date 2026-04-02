@@ -764,3 +764,189 @@ pub fn vformat(
     }
     Ok(output)
 }
+
+/// `template % values`.
+pub fn percent_format(
+    interpreter: &mut Interpreter,
+    template: &str,
+    values: &Value,
+) -> Result<String, Error> {
+    let (items, mapping) = match values.plain() {
+        Value::Tuple(items) => (items.to_vec(), None),
+        Value::Dict(_) => (vec![values.clone()], Some(values.clone())),
+        other => (vec![other.clone()], None),
+    };
+    let chars: Vec<char> = template.chars().collect();
+    let mut output = String::new();
+    let mut next = 0;
+    let mut index = 0;
+    let take = |next: &mut usize| -> Result<Value, Error> {
+        let value = items
+            .get(*next)
+            .cloned()
+            .ok_or_else(|| Error::type_error("not enough arguments for format string"))?;
+        *next += 1;
+        Ok(value)
+    };
+    while index < chars.len() {
+        let c = chars[index];
+        if c != '%' {
+            output.push(c);
+            index += 1;
+            continue;
+        }
+        index += 1;
+        let mut key = None;
+        if chars.get(index) == Some(&'(') {
+            let start = index + 1;
+            let mut depth = 1;
+            index += 1;
+            while index < chars.len() && depth > 0 {
+                match chars[index] {
+                    '(' => depth += 1,
+                    ')' => depth -= 1,
+                    _ => {}
+                }
+                index += 1;
+            }
+            key = Some(chars[start..index - 1].iter().collect::<String>());
+        }
+        let mut spec = Spec::default();
+        while let Some(&flag) = chars.get(index) {
+            match flag {
+                '-' => spec.align = Some('<'),
+                '+' => spec.sign = Some('+'),
+                ' ' => {
+                    if spec.sign.is_none() {
+                        spec.sign = Some(' ');
+                    }
+                }
+                '#' => spec.alternate = true,
+                '0' => spec.zero = true,
+                _ => break,
+            }
+            index += 1;
+        }
+        if chars.get(index) == Some(&'*') {
+            spec.width = take(&mut next)?.as_int().unwrap_or(0).max(0) as usize;
+            index += 1;
+        } else {
+            let start = index;
+            while chars.get(index).is_some_and(char::is_ascii_digit) {
+                index += 1;
+            }
+            if index > start {
+                spec.width = chars[start..index]
+                    .iter()
+                    .collect::<String>()
+                    .parse()
+                    .unwrap_or(0);
+            }
+        }
+        if chars.get(index) == Some(&'.') {
+            index += 1;
+            if chars.get(index) == Some(&'*') {
+                spec.precision = Some(take(&mut next)?.as_int().unwrap_or(0).max(0) as usize);
+                index += 1;
+            } else {
+                let start = index;
+                while chars.get(index).is_some_and(char::is_ascii_digit) {
+                    index += 1;
+                }
+                spec.precision = Some(
+                    chars[start..index]
+                        .iter()
+                        .collect::<String>()
+                        .parse()
+                        .unwrap_or(0),
+                );
+            }
+        }
+        // Length modifiers are accepted and ignored.
+        while matches!(chars.get(index), Some('h' | 'l' | 'L')) {
+            index += 1;
+        }
+        let Some(&kind) = chars.get(index) else {
+            return Err(Error::value_error("incomplete format"));
+        };
+        index += 1;
+        if kind == '%' {
+            output.push('%');
+            continue;
+        }
+        let value = match (&key, &mapping) {
+            (Some(key), Some(mapping)) => {
+                interpreter.get_item(mapping, &Value::str(key.as_str()))?
+            }
+            (Some(_), None) => return Err(Error::type_error("format requires a mapping")),
+            (None, _) => take(&mut next)?,
+        };
+        if spec.align == Some('<') {
+            spec.zero = false;
+        }
+        let text = match kind {
+            's' | 'r' | 'a' => {
+                let mut text = if kind == 's' {
+                    interpreter.to_str(&value)?
+                } else {
+                    interpreter.repr(&value)?
+                };
+                if let Some(precision) = spec.precision {
+                    text = text.chars().take(precision).collect();
+                }
+                spec.zero = false;
+                pad(&text, &spec, '>')
+            }
+            'd' | 'i' | 'u' | 'x' | 'X' | 'o' => {
+                let number = match value.plain() {
+                    Value::Float(number) => crate::number::float_to_int(*number)?,
+                    other if crate::number::is_number(other) => other.clone(),
+                    other => {
+                        return Err(Error::type_error(format!(
+                            "%{kind} format: a real number is required, not {}",
+                            types::type_name(other)
+                        )));
+                    }
+                };
+                spec.kind = Some(if matches!(kind, 'i' | 'u') { 'd' } else { kind });
+                format_int(&number, &spec)?
+            }
+            'e' | 'E' | 'f' | 'F' | 'g' | 'G' => {
+                let number = to_f64(&value).ok_or_else(|| {
+                    Error::type_error(format!(
+                        "must be real number, not {}",
+                        types::type_name(&value)
+                    ))
+                })?;
+                spec.kind = Some(kind);
+                if spec.precision.is_none() {
+                    spec.precision = Some(6);
+                }
+                format_float(number, &spec)?
+            }
+            'c' => {
+                let text = match value.plain() {
+                    Value::Str(text) => text.to_string(),
+                    other => other
+                        .as_int()
+                        .and_then(|code| char::from_u32(code as u32))
+                        .map(String::from)
+                        .unwrap_or_default(),
+                };
+                pad(&text, &spec, '>')
+            }
+            other => {
+                return Err(Error::value_error(format!(
+                    "unsupported format character '{other}'"
+                )));
+            }
+        };
+        output.push_str(&text);
+    }
+    if mapping.is_none() && next < items.len() {
+        return Err(Error::type_error(
+            "not all arguments converted during string formatting",
+        ));
+    }
+    Ok(output)
+}

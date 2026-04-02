@@ -454,3 +454,313 @@ fn strip_zeros(text: &str) -> String {
     };
     format!("{number}{exponent}")
 }
+
+fn format_float(number: f64, spec: &Spec) -> Result<String, Error> {
+    let negative = number.is_sign_negative() && !number.is_nan();
+    let magnitude = number.abs();
+    let upper = spec.kind.is_some_and(|kind| kind.is_ascii_uppercase());
+    let body = if magnitude.is_infinite() {
+        if upper { "INF" } else { "inf" }.to_owned()
+    } else if magnitude.is_nan() {
+        if upper { "NAN" } else { "nan" }.to_owned()
+    } else {
+        match spec.kind {
+            Some('f' | 'F') => format!("{magnitude:.*}", spec.precision.unwrap_or(6)),
+            Some('e' | 'E') => exponent_form(magnitude, spec.precision.unwrap_or(6), upper),
+            Some('g' | 'G' | 'n') => general_form(
+                magnitude,
+                spec.precision.unwrap_or(6),
+                spec.alternate,
+                upper,
+            ),
+            Some('%') => format!("{:.*}%", spec.precision.unwrap_or(6), magnitude * 100.0),
+            None => match spec.precision {
+                Some(precision) => {
+                    let text = general_form(magnitude, precision, spec.alternate, false);
+                    if text.contains(['.', 'e', 'n', 'i']) {
+                        text
+                    } else {
+                        format!("{text}.0")
+                    }
+                }
+                None => float_repr(magnitude),
+            },
+            Some(other) => {
+                return Err(Error::value_error(format!(
+                    "Unknown format code '{other}' for object of type 'float'"
+                )));
+            }
+        }
+    };
+    let body = match spec.grouping {
+        Some(separator) => {
+            let split = body.find(['.', 'e', 'E', '%']).unwrap_or(body.len());
+            let (whole, rest) = body.split_at(split);
+            if whole.chars().all(|c| c.is_ascii_digit()) {
+                format!("{}{rest}", group(whole, separator, 3))
+            } else {
+                body
+            }
+        }
+        None => body,
+    };
+    let text = format!("{}{body}", sign_text(negative, spec));
+    Ok(pad(&text, spec, '>'))
+}
+
+/// One step after the name of a replacement field: `.attribute` or `[key]`.
+#[derive(Clone, Debug)]
+pub enum Accessor {
+    Attribute(String),
+    Index(Value),
+}
+
+/// A parsed replacement field of `str.format`.
+#[derive(Clone, Debug)]
+pub struct Field {
+    /// The argument name or number; empty for automatic numbering.
+    pub name: String,
+    pub accessors: Vec<Accessor>,
+    pub conversion: Option<char>,
+    pub spec: String,
+}
+
+/// Splits `name.attr[key]` into the name and its accessors.
+pub fn parse_field_name(text: &str) -> Result<(String, Vec<Accessor>), Error> {
+    let end = text.find(['.', '[']).unwrap_or(text.len());
+    let name = text[..end].to_owned();
+    let mut accessors = Vec::new();
+    let mut rest = &text[end..];
+    while !rest.is_empty() {
+        if let Some(after) = rest.strip_prefix('.') {
+            let end = after.find(['.', '[']).unwrap_or(after.len());
+            if end == 0 {
+                return Err(Error::value_error("Empty attribute in format string"));
+            }
+            accessors.push(Accessor::Attribute(after[..end].to_owned()));
+            rest = &after[end..];
+        } else if let Some(after) = rest.strip_prefix('[') {
+            let Some(end) = after.find(']') else {
+                return Err(Error::value_error("Missing ']' in format string"));
+            };
+            let key = &after[..end];
+            let key = if !key.is_empty() && key.chars().all(|c| c.is_ascii_digit()) {
+                Value::Int(key.parse().unwrap_or(0))
+            } else {
+                Value::str(key)
+            };
+            accessors.push(Accessor::Index(key));
+            rest = &after[end + 1..];
+        } else {
+            return Err(Error::value_error(
+                "Only '.' or '[' may follow ']' in format field specifier",
+            ));
+        }
+    }
+    Ok((name, accessors))
+}
+
+/// A piece of a format template.
+#[derive(Clone, Debug)]
+pub enum Piece {
+    Text(String),
+    Field(Field),
+}
+
+/// Parses a `str.format` template into text and replacement fields.
+pub fn parse_template(template: &str) -> Result<Vec<Piece>, Error> {
+    let chars: Vec<char> = template.chars().collect();
+    let mut pieces = Vec::new();
+    let mut text = String::new();
+    let mut index = 0;
+    while index < chars.len() {
+        let c = chars[index];
+        if c == '{' {
+            if chars.get(index + 1) == Some(&'{') {
+                text.push('{');
+                index += 2;
+                continue;
+            }
+            // Find the matching close brace, allowing nested fields in the spec.
+            let mut depth = 1;
+            let mut end = index + 1;
+            while end < chars.len() {
+                match chars[end] {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                end += 1;
+            }
+            if end >= chars.len() {
+                return Err(Error::value_error(
+                    "Single '{' encountered in format string",
+                ));
+            }
+            if !text.is_empty() {
+                pieces.push(Piece::Text(std::mem::take(&mut text)));
+            }
+            let inner: String = chars[index + 1..end].iter().collect();
+            pieces.push(Piece::Field(parse_field(&inner)?));
+            index = end + 1;
+        } else if c == '}' {
+            if chars.get(index + 1) == Some(&'}') {
+                text.push('}');
+                index += 2;
+                continue;
+            }
+            return Err(Error::value_error(
+                "Single '}' encountered in format string",
+            ));
+        } else {
+            text.push(c);
+            index += 1;
+        }
+    }
+    if !text.is_empty() {
+        pieces.push(Piece::Text(text));
+    }
+    Ok(pieces)
+}
+
+fn parse_field(inner: &str) -> Result<Field, Error> {
+    // The name ends at the first `!` or `:` outside brackets.
+    let mut end = inner.len();
+    let mut in_brackets = false;
+    for (index, c) in inner.char_indices() {
+        match c {
+            '[' => in_brackets = true,
+            ']' => in_brackets = false,
+            '!' | ':' if !in_brackets => {
+                end = index;
+                break;
+            }
+            _ => {}
+        }
+    }
+    let name_text = &inner[..end];
+    let mut rest = &inner[end..];
+    let mut conversion = None;
+    if let Some(after) = rest.strip_prefix('!') {
+        let mut chars = after.chars();
+        conversion = chars.next();
+        rest = chars.as_str();
+        if !matches!(conversion, Some('r' | 's' | 'a')) {
+            return Err(Error::value_error(
+                "Unknown conversion specifier in format string",
+            ));
+        }
+        if !rest.is_empty() && !rest.starts_with(':') {
+            return Err(Error::value_error(
+                "expected ':' after conversion specifier",
+            ));
+        }
+    }
+    let spec = rest.strip_prefix(':').unwrap_or(rest).to_owned();
+    let (name, accessors) = parse_field_name(name_text)?;
+    Ok(Field {
+        name,
+        accessors,
+        conversion,
+        spec,
+    })
+}
+
+/// Follows the accessors of a field from its value.
+pub fn access(
+    interpreter: &mut Interpreter,
+    mut value: Value,
+    accessors: &[Accessor],
+) -> Result<Value, Error> {
+    for accessor in accessors {
+        value = match accessor {
+            Accessor::Attribute(name) => interpreter.get_attribute(&value, name)?,
+            Accessor::Index(key) => interpreter.get_item(&value, key)?,
+        };
+    }
+    Ok(value)
+}
+
+/// Applies `!r`, `!s` or `!a` to a value.
+pub fn convert(
+    interpreter: &mut Interpreter,
+    value: Value,
+    conversion: Option<char>,
+) -> Result<Value, Error> {
+    Ok(match conversion {
+        Some('r' | 'a') => Value::str(interpreter.repr(&value)?),
+        Some('s') => Value::str(interpreter.to_str(&value)?),
+        _ => value,
+    })
+}
+
+/// `template.format(*args, **kwargs)`.
+pub fn format_method(
+    interpreter: &mut Interpreter,
+    template: &str,
+    args: &Args,
+) -> Result<String, Error> {
+    let mut next = 0;
+    let mut resolve = |interpreter: &mut Interpreter, name: &str| -> Result<Value, Error> {
+        if name.is_empty() {
+            let index = next;
+            next += 1;
+            return args.positional.get(index).cloned().ok_or_else(|| {
+                Error::index_error(format!(
+                    "Replacement index {index} out of range for positional args tuple"
+                ))
+            });
+        }
+        if let Ok(index) = name.parse::<usize>() {
+            return args.positional.get(index).cloned().ok_or_else(|| {
+                Error::index_error(format!(
+                    "Replacement index {index} out of range for positional args tuple"
+                ))
+            });
+        }
+        let _ = interpreter;
+        args.keyword(name)
+            .cloned()
+            .ok_or_else(|| Error::key_error(Value::str(name)))
+    };
+    let mut plain = |interpreter: &mut Interpreter, value: &Value, spec: &str| {
+        format_value(interpreter, value, spec)
+    };
+    vformat(interpreter, template, &mut resolve, &mut plain)
+}
+
+pub type Resolve<'a> = dyn FnMut(&mut Interpreter, &str) -> Result<Value, Error> + 'a;
+pub type FormatField<'a> = dyn FnMut(&mut Interpreter, &Value, &str) -> Result<String, Error> + 'a;
+
+/// The general `string.Formatter.vformat`: `resolve` gives the value of a field name and
+/// `format_field` turns a converted value and its spec into text.
+pub fn vformat(
+    interpreter: &mut Interpreter,
+    template: &str,
+    resolve: &mut Resolve<'_>,
+    format_field: &mut FormatField<'_>,
+) -> Result<String, Error> {
+    let mut output = String::new();
+    for piece in parse_template(template)? {
+        match piece {
+            Piece::Text(text) => output.push_str(&text),
+            Piece::Field(field) => {
+                let value = resolve(interpreter, &field.name)?;
+                let value = access(interpreter, value, &field.accessors)?;
+                let value = convert(interpreter, value, field.conversion)?;
+                let spec = if field.spec.contains('{') {
+                    vformat(interpreter, &field.spec, resolve, format_field)?
+                } else {
+                    field.spec.clone()
+                };
+                output.push_str(&format_field(interpreter, &value, &spec)?);
+            }
+        }
+    }
+    Ok(output)
+}

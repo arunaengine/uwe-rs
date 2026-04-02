@@ -888,3 +888,393 @@ fn setattr(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
     interpreter.set_attribute(&args.positional[0], &name, args.positional[2].clone())?;
     Ok(Value::None)
 }
+
+/// Sorts values stably by an optional key; the first failed comparison is the error.
+pub fn sort_values(
+    interpreter: &mut Interpreter,
+    items: Vec<Value>,
+    key: Option<&Value>,
+    reverse: bool,
+) -> Result<Vec<Value>, Error> {
+    let mut keyed = Vec::with_capacity(items.len());
+    for item in items {
+        let measure = match key {
+            Some(key) => interpreter.call(key, Args::new(vec![item.clone()]))?,
+            None => item.clone(),
+        };
+        keyed.push((measure, item));
+    }
+    let mut failure = None;
+    keyed.sort_by(|(a, _), (b, _)| {
+        if failure.is_some() {
+            return Ordering::Equal;
+        }
+        let ordering = match interpreter.compare(a, b) {
+            Ok(ordering) => ordering,
+            Err(error) => {
+                failure = Some(error);
+                Ordering::Equal
+            }
+        };
+        if reverse {
+            ordering.reverse()
+        } else {
+            ordering
+        }
+    });
+    if let Some(error) = failure {
+        return Err(error);
+    }
+    Ok(keyed.into_iter().map(|(_, item)| item).collect())
+}
+
+fn sorted(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
+    let key = args.take_keyword("key").filter(|key| !key.is_none());
+    let reverse = match args.take_keyword("reverse") {
+        Some(value) => interpreter.truthy(&value)?,
+        None => false,
+    };
+    args.expect("sorted", 1, 1)?;
+    let items = interpreter.iterate(&args.positional[0])?;
+    Ok(Value::list(sort_values(
+        interpreter,
+        items,
+        key.as_ref(),
+        reverse,
+    )?))
+}
+
+fn sum(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
+    let start = args.take(1, "start").unwrap_or(Value::Int(0));
+    let iterable = args
+        .take(0, "iterable")
+        .ok_or_else(|| Error::type_error("sum() missing argument"))?;
+    let mut total = start;
+    for item in interpreter.iterate(&iterable)? {
+        total = interpreter.binary(crate::interpreter::Operator::Add, &total, &item)?;
+    }
+    Ok(total)
+}
+
+fn vars(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    let value = one(&args, "vars")?;
+    interpreter.get_attribute(&value, "__dict__")
+}
+
+fn dir(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    let value = one(&args, "dir")?;
+    let mut names: Vec<String> = match value.plain() {
+        Value::Module(module) => module
+            .globals
+            .vars
+            .borrow()
+            .keys()
+            .map(|name| name.to_string())
+            .collect(),
+        Value::Instance(instance) => {
+            let mut names: Vec<String> = instance
+                .dict
+                .borrow()
+                .keys()
+                .map(|name| name.to_string())
+                .collect();
+            for class in instance.class.mro.borrow().iter() {
+                names.extend(class.dict.borrow().keys().map(|name| name.to_string()));
+            }
+            names
+        }
+        Value::Class(class) => class
+            .dict
+            .borrow()
+            .keys()
+            .map(|name| name.to_string())
+            .collect(),
+        _ => Vec::new(),
+    };
+    let _ = interpreter;
+    names.sort();
+    names.dedup();
+    Ok(Value::list(names.into_iter().map(Value::str).collect()))
+}
+
+fn zip(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
+    let strict = args
+        .take_keyword("strict")
+        .is_some_and(|strict| matches!(strict, Value::Bool(true)));
+    let lists = args
+        .positional
+        .iter()
+        .map(|iterable| interpreter.iterate(iterable))
+        .collect::<Result<Vec<_>, _>>()?;
+    let count = lists.iter().map(Vec::len).min().unwrap_or(0);
+    if strict && lists.iter().any(|list| list.len() != count) {
+        return Err(Error::value_error("zip() arguments have different lengths"));
+    }
+    Ok(Value::iterator((0..count).map(|index| {
+        Value::tuple(lists.iter().map(|list| list[index].clone()).collect())
+    })))
+}
+
+fn super_(_interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    args.expect("super", 2, 2)?;
+    let Value::Class(class) = args.positional[0].plain() else {
+        return Err(Error::type_error("super() argument 1 must be a type"));
+    };
+    Ok(make_super(class.clone(), args.positional[1].clone()))
+}
+
+fn import(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    let name = one(&args, "__import__")?;
+    let name = name
+        .as_str()
+        .ok_or_else(|| Error::type_error("module name must be str"))?
+        .to_owned();
+    interpreter.import_module(&name)
+}
+
+/// `super()`: attributes of the classes after `class` in the receiver's class order.
+pub fn make_super(class: Rc<Class>, receiver: Value) -> Value {
+    Value::native(Super { class, receiver })
+}
+
+struct Super {
+    class: Rc<Class>,
+    receiver: Value,
+}
+
+impl Native for Super {
+    fn type_name(&self) -> &str {
+        "super"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_attribute(
+        &self,
+        interpreter: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let receiver_class = match self.receiver.plain() {
+            Value::Class(class) => class.clone(),
+            other => types::class_of(other),
+        };
+        let mro = receiver_class.mro.borrow().clone();
+        let start = mro
+            .iter()
+            .position(|class| Rc::ptr_eq(class, &self.class))
+            .map_or(mro.len(), |index| index + 1);
+        for class in &mro[start..] {
+            if let Some(found) = class.dict.borrow().get(name) {
+                return Ok(Some(bind_method(&self.receiver, found.clone())));
+            }
+        }
+        // The methods of `object` and of builtin exceptions.
+        let receiver = self.receiver.clone();
+        Ok(match name {
+            "__init__" => Some(Value::builtin("__init__", move |_, args| {
+                if types::is_exception(&receiver)
+                    && let Value::Instance(instance) = receiver.plain()
+                {
+                    instance
+                        .dict
+                        .borrow_mut()
+                        .insert("args".into(), Value::tuple(args.positional));
+                }
+                Ok(Value::None)
+            })),
+            "__str__" | "__repr__" => {
+                let receiver = self.receiver.clone();
+                let repr = name == "__repr__";
+                Some(Value::builtin(name, move |_, _| {
+                    Ok(Value::str(if repr {
+                        crate::format::plain_repr(&receiver)
+                    } else {
+                        crate::format::plain_str(&receiver)
+                    }))
+                }))
+            }
+            "__setattr__" => {
+                let receiver = self.receiver.clone();
+                Some(Value::builtin("__setattr__", move |interpreter, args| {
+                    args.expect("__setattr__", 2, 2)?;
+                    if let Value::Instance(instance) = receiver.plain() {
+                        let name = args.positional[0].as_str().unwrap_or_default();
+                        instance
+                            .dict
+                            .borrow_mut()
+                            .insert(name.into(), args.positional[1].clone());
+                    }
+                    let _ = interpreter;
+                    Ok(Value::None)
+                }))
+            }
+            _ => {
+                let _ = interpreter;
+                None
+            }
+        })
+    }
+}
+
+/// Attributes of builtin classes, like `str.join` or `dict.fromkeys`, and the methods of
+/// `object` and of builtin exceptions that subclasses call.
+pub fn class_attribute(
+    interpreter: &mut Interpreter,
+    class: &Rc<Class>,
+    name: &str,
+) -> Result<Option<Value>, Error> {
+    let _ = interpreter;
+    match (class.builtin, name) {
+        (Some(TypeTag::BaseException), "__init__") | (Some(TypeTag::Object), "__init__") => {
+            return Ok(Some(Value::builtin("__init__", |_, args| {
+                if let Some(receiver) = args.positional.first()
+                    && types::is_exception(receiver)
+                    && let Value::Instance(instance) = receiver.plain()
+                {
+                    instance
+                        .dict
+                        .borrow_mut()
+                        .insert("args".into(), Value::tuple(args.positional[1..].to_vec()));
+                }
+                Ok(Value::None)
+            })));
+        }
+        (_, "__setattr__") => {
+            return Ok(Some(Value::builtin("__setattr__", |interpreter, args| {
+                args.expect("__setattr__", 3, 3)?;
+                if let Value::Instance(instance) = args.positional[0].plain() {
+                    let name = args.positional[1].as_str().unwrap_or_default();
+                    instance
+                        .dict
+                        .borrow_mut()
+                        .insert(name.into(), args.positional[2].clone());
+                    return Ok(Value::None);
+                }
+                let name = args.positional[1].as_str().unwrap_or_default().to_owned();
+                interpreter.set_attribute(
+                    &args.positional[0],
+                    &name,
+                    args.positional[2].clone(),
+                )?;
+                Ok(Value::None)
+            })));
+        }
+        (_, "__new__") => {
+            return Ok(Some(Value::builtin("__new__", |_, args| {
+                let Some(Value::Class(class)) =
+                    args.positional.first().map(|value| value.plain().clone())
+                else {
+                    return Err(Error::type_error(
+                        "object.__new__(X): X is not a type object",
+                    ));
+                };
+                Ok(Value::Instance(Rc::new(crate::value::Instance {
+                    class,
+                    dict: RefCell::new(IndexMap::new()),
+                })))
+            })));
+        }
+        _ => {}
+    }
+    let Some(tag) = class.builtin else {
+        return Ok(None);
+    };
+    if matches!(
+        tag,
+        TypeTag::Dict | TypeTag::OrderedDict | TypeTag::DefaultDict | TypeTag::Counter
+    ) && name == "fromkeys"
+    {
+        return Ok(Some(Value::builtin(
+            "fromkeys",
+            move |interpreter, args| {
+                args.expect("fromkeys", 1, 2)?;
+                let value = args.positional.get(1).cloned().unwrap_or(Value::None);
+                let mut dict = Dict::default();
+                for key in interpreter.iterate(&args.positional[0])? {
+                    dict.entries
+                        .insert(Key::new(key.plain().clone())?, value.clone());
+                }
+                Ok(Value::dict(dict))
+            },
+        )));
+    }
+    if tag == TypeTag::Str && name == "maketrans" {
+        return Ok(Some(Value::builtin("maketrans", crate::methods::maketrans)));
+    }
+    let sample = match tag {
+        TypeTag::Str => Value::str(""),
+        TypeTag::List => Value::list(Vec::new()),
+        TypeTag::Dict => Value::dict(Dict::default()),
+        TypeTag::Set => Value::set(IndexSet::new()),
+        TypeTag::Tuple => Value::tuple(Vec::new()),
+        TypeTag::Int => Value::Int(0),
+        TypeTag::Float => Value::Float(0.0),
+        TypeTag::Bytes => Value::Bytes(Rc::from(Vec::new())),
+        _ => return Ok(None),
+    };
+    if !crate::methods::has_method(&sample, name) {
+        return Ok(None);
+    }
+    let method: Rc<str> = name.into();
+    Ok(Some(Value::builtin(name, move |interpreter, mut args| {
+        if args.positional.is_empty() {
+            return Err(Error::type_error(format!(
+                "unbound method {method}() needs an argument"
+            )));
+        }
+        let receiver = args.positional.remove(0);
+        crate::methods::call(interpreter, &receiver, &method, args)
+    })))
+}
+
+/// `function.__code__`, with the names that introspection asks for.
+pub fn code_object(function: &Rc<Function>) -> Value {
+    let names: Vec<Value> = function
+        .code
+        .parameter_names()
+        .into_iter()
+        .map(Value::str)
+        .collect();
+    let count = function.code.parameters().map_or(0, |parameters| {
+        parameters.posonlyargs.len() + parameters.args.len()
+    });
+    let mut dict = Dict::default();
+    dict.insert("co_varnames", Value::tuple(names));
+    dict.insert("co_argcount", Value::Int(count as i64));
+    dict.insert("co_name", Value::Str(function.name.clone()));
+    dict.insert("co_filename", Value::Str(function.source.path.clone()));
+    Value::native(Record(RefCell::new(dict), "code"))
+}
+
+/// An object whose attributes are the entries of a dict.
+pub struct Record(pub RefCell<Dict>, pub &'static str);
+
+impl Native for Record {
+    fn type_name(&self) -> &str {
+        self.1
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        Ok(self.0.borrow().get(name).cloned())
+    }
+
+    fn set_attribute(&self, _: &mut Interpreter, name: &str, value: Value) -> Result<bool, Error> {
+        self.0.borrow_mut().insert(name, value);
+        Ok(true)
+    }
+}
+
+/// `globals()`: reads and writes the variables of a module.
+pub struct GlobalsDict(pub Rc<Scope>);

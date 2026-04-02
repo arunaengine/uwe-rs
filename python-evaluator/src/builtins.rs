@@ -1278,3 +1278,394 @@ impl Native for Record {
 
 /// `globals()`: reads and writes the variables of a module.
 pub struct GlobalsDict(pub Rc<Scope>);
+
+impl Native for GlobalsDict {
+    fn type_name(&self) -> &str {
+        "dict"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn instance_of(&self, class: &str) -> bool {
+        class == "dict"
+    }
+
+    fn get_item(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        key: &Value,
+    ) -> Result<Option<Value>, Error> {
+        let name = key.as_str().unwrap_or_default();
+        match self.0.get(name) {
+            Some(value) => Ok(Some(value)),
+            None => Err(Error::key_error(key.clone())),
+        }
+    }
+
+    fn set_item(&self, _: &mut Interpreter, key: &Value, value: Value) -> Result<bool, Error> {
+        let name = key
+            .as_str()
+            .ok_or_else(|| Error::type_error("global names must be strings"))?;
+        self.0.set(name, value);
+        Ok(true)
+    }
+
+    fn contains(&self, _: &mut Interpreter, item: &Value) -> Result<Option<bool>, Error> {
+        Ok(Some(item.as_str().is_some_and(|name| {
+            self.0.vars.borrow().contains_key(name)
+        })))
+    }
+
+    fn iterate(&self, _: &mut Interpreter) -> Result<Option<Vec<Value>>, Error> {
+        Ok(Some(
+            self.0
+                .vars
+                .borrow()
+                .keys()
+                .map(|name| Value::Str(name.clone()))
+                .collect(),
+        ))
+    }
+
+    fn length(&self) -> Option<usize> {
+        Some(self.0.vars.borrow().len())
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let scope = self.0.clone();
+        let snapshot = || {
+            let vars = scope.vars.borrow();
+            Value::dict_of(
+                vars.iter()
+                    .map(|(name, value)| (name.to_string(), value.clone())),
+            )
+        };
+        Ok(match name {
+            "get" => {
+                let scope = scope.clone();
+                Some(Value::builtin("get", move |_, args| {
+                    args.expect("get", 1, 2)?;
+                    let name = args.positional[0].as_str().unwrap_or_default();
+                    Ok(scope
+                        .get(name)
+                        .unwrap_or_else(|| args.positional.get(1).cloned().unwrap_or(Value::None)))
+                }))
+            }
+            "update" => {
+                let scope = scope.clone();
+                Some(Value::builtin("update", move |interpreter, args| {
+                    if let Some(mapping) = args.positional.first() {
+                        for (key, value) in interpreter.mapping_items(mapping)? {
+                            if let Some(name) = key.as_str() {
+                                scope.set(name, value);
+                            }
+                        }
+                    }
+                    for (name, value) in args.keywords {
+                        scope.set(&name, value);
+                    }
+                    Ok(Value::None)
+                }))
+            }
+            "setdefault" => {
+                let scope = scope.clone();
+                Some(Value::builtin("setdefault", move |_, args| {
+                    args.expect("setdefault", 1, 2)?;
+                    let name = args.positional[0].as_str().unwrap_or_default();
+                    if let Some(value) = scope.get(name) {
+                        return Ok(value);
+                    }
+                    let value = args.positional.get(1).cloned().unwrap_or(Value::None);
+                    scope.set(name, value.clone());
+                    Ok(value)
+                }))
+            }
+            "keys" | "values" | "items" | "copy" => {
+                let dict = snapshot();
+                let method: Rc<str> = name.into();
+                Some(Value::builtin(name, move |interpreter, args| {
+                    crate::methods::call(interpreter, &dict, &method, args)
+                }))
+            }
+            _ => None,
+        })
+    }
+}
+
+/// An open file: text read at once, or text kept until the file is closed.
+pub struct File {
+    pub path: String,
+    pub mode: String,
+    pub content: RefCell<Vec<u8>>,
+    pub position: RefCell<usize>,
+    pub written: RefCell<Vec<u8>>,
+    pub closed: RefCell<bool>,
+    /// Writes go to the host's output instead of a file, for `sys.stdout` and `sys.stderr`.
+    pub console: bool,
+    pub compressed: bool,
+}
+
+impl File {
+    fn binary(&self) -> bool {
+        self.mode.contains('b')
+    }
+
+    fn writing(&self) -> bool {
+        self.mode.contains(['w', 'a', 'x', '+'])
+    }
+
+    fn text(&self, bytes: &[u8]) -> Value {
+        if self.binary() {
+            Value::Bytes(bytes.into())
+        } else {
+            Value::str(String::from_utf8_lossy(bytes).into_owned())
+        }
+    }
+
+    fn read_line(&self) -> Option<Vec<u8>> {
+        let content = self.content.borrow();
+        let mut position = self.position.borrow_mut();
+        if *position >= content.len() {
+            return None;
+        }
+        let rest = &content[*position..];
+        let end = rest
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map_or(rest.len(), |index| index + 1);
+        *position += end;
+        Some(rest[..end].to_vec())
+    }
+
+    fn flush(&self, interpreter: &mut Interpreter) -> Result<(), Error> {
+        if *self.closed.borrow() || !self.writing() {
+            return Ok(());
+        }
+        let data = std::mem::take(&mut *self.written.borrow_mut());
+        if self.console {
+            interpreter.host.print(&String::from_utf8_lossy(&data));
+            return Ok(());
+        }
+        let append = self.mode.contains('a');
+        let path = interpreter.host.resolve(&self.path);
+        interpreter
+            .host
+            .write(&path, &data, append)
+            .map_err(|error| Error::os_error(&error, &self.path))?;
+        Ok(())
+    }
+}
+
+impl Native for File {
+    fn type_name(&self) -> &str {
+        "TextIOWrapper"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn iterate(&self, _: &mut Interpreter) -> Result<Option<Vec<Value>>, Error> {
+        let mut lines = Vec::new();
+        while let Some(line) = self.read_line() {
+            lines.push(self.text(&line));
+        }
+        Ok(Some(lines))
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        this: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        Ok(match name {
+            "name" => Some(Value::str(self.path.as_str())),
+            "mode" => Some(Value::str(self.mode.as_str())),
+            "closed" => Some(Value::Bool(*self.closed.borrow())),
+            _ => file_method(this, name),
+        })
+    }
+}
+
+/// A method of a file object, bound to the file value.
+pub fn file_method(file_value: &Value, name: &str) -> Option<Value> {
+    let file_value = file_value.clone();
+    let method: Rc<str> = name.into();
+    let known = matches!(
+        name,
+        "read"
+            | "readline"
+            | "readlines"
+            | "write"
+            | "writelines"
+            | "close"
+            | "flush"
+            | "__enter__"
+            | "__exit__"
+            | "__iter__"
+            | "__next__"
+            | "seek"
+            | "tell"
+            | "fileno"
+    );
+    if !known {
+        return None;
+    }
+    Some(Value::builtin(name, move |interpreter, args| {
+        let Some(file) = file_value.as_native::<File>() else {
+            return Err(Error::type_error("not a file"));
+        };
+        match &*method {
+            "read" => {
+                let size = args
+                    .positional
+                    .first()
+                    .and_then(Value::as_int)
+                    .filter(|size| *size >= 0);
+                let content = file.content.borrow();
+                let mut position = file.position.borrow_mut();
+                let end = match size {
+                    Some(size) => (*position + size as usize).min(content.len()),
+                    None => content.len(),
+                };
+                let start = (*position).min(content.len());
+                *position = end;
+                Ok(file.text(&content[start..end]))
+            }
+            "readline" => Ok(file
+                .read_line()
+                .map_or_else(|| file.text(&[]), |line| file.text(&line))),
+            "readlines" => {
+                let mut lines = Vec::new();
+                while let Some(line) = file.read_line() {
+                    lines.push(file.text(&line));
+                }
+                Ok(Value::list(lines))
+            }
+            "__next__" => match file.read_line() {
+                Some(line) => Ok(file.text(&line)),
+                None => Err(Error::stop_iteration()),
+            },
+            "write" => {
+                args.expect("write", 1, 1)?;
+                let data = match args.positional[0].plain() {
+                    Value::Str(text) => text.as_bytes().to_vec(),
+                    Value::Bytes(bytes) => bytes.to_vec(),
+                    other => {
+                        return Err(Error::type_error(format!(
+                            "write() argument must be str, not {}",
+                            types::type_name(other)
+                        )));
+                    }
+                };
+                let length = data.len();
+                file.written.borrow_mut().extend(data);
+                if file.console {
+                    file.flush(interpreter)?;
+                }
+                Ok(Value::Int(length as i64))
+            }
+            "writelines" => {
+                args.expect("writelines", 1, 1)?;
+                for line in interpreter.iterate(&args.positional[0])? {
+                    let text = interpreter.to_str(&line)?;
+                    file.written.borrow_mut().extend(text.as_bytes());
+                }
+                Ok(Value::None)
+            }
+            "close" | "__exit__" => {
+                file.flush(interpreter)?;
+                if !file.console {
+                    *file.closed.borrow_mut() = true;
+                }
+                Ok(if &*method == "__exit__" {
+                    Value::Bool(false)
+                } else {
+                    Value::None
+                })
+            }
+            "flush" => Ok(Value::None),
+            "__enter__" | "__iter__" => Ok(file_value.clone()),
+            "seek" => {
+                let offset = args.positional.first().and_then(Value::as_int).unwrap_or(0);
+                *file.position.borrow_mut() = offset.max(0) as usize;
+                Ok(Value::Int(offset))
+            }
+            "tell" => Ok(Value::Int(*file.position.borrow() as i64)),
+            "fileno" => Err(Error::unsupported("file descriptors")),
+            _ => Ok(Value::None),
+        }
+    }))
+}
+
+/// `open(path, mode)`: reading gets the whole content now; writing keeps the text in the
+/// host's memory when the file is closed.
+fn open(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
+    let path = args
+        .take(0, "file")
+        .ok_or_else(|| Error::type_error("open() missing required argument 'file'"))?;
+    let mode = args
+        .take(1, "mode")
+        .and_then(|mode| mode.as_str().map(str::to_owned))
+        .unwrap_or_else(|| "r".into());
+    let path = crate::modules::path_text(interpreter, &path)?;
+    open_file(interpreter, &path, &mode, false)
+}
+
+pub fn open_file(
+    interpreter: &mut Interpreter,
+    path: &str,
+    mode: &str,
+    compressed: bool,
+) -> Result<Value, Error> {
+    let resolved = interpreter.host.resolve(path);
+    let reading = !mode.contains(['w', 'a', 'x']);
+    let content = if reading {
+        let data = interpreter
+            .host
+            .read(&resolved)
+            .map_err(|error| Error::os_error(&error, path))?;
+        if compressed {
+            use std::io::Read;
+            let mut decoded = Vec::new();
+            flate2::read::MultiGzDecoder::new(&data[..])
+                .read_to_end(&mut decoded)
+                .map_err(|_| Error::new("OSError", format!("Not a gzipped file: '{path}'")))?;
+            decoded
+        } else {
+            data
+        }
+    } else {
+        if mode.contains('x') && interpreter.host.stat(&resolved).is_some() {
+            return Err(Error::os_error(
+                &std::io::ErrorKind::AlreadyExists.into(),
+                path,
+            ));
+        }
+        Vec::new()
+    };
+    let mode = if compressed && !mode.contains('t') && !mode.contains('b') {
+        format!("{mode}b")
+    } else {
+        mode.replace('t', "")
+    };
+    Ok(Value::native(File {
+        path: path.to_owned(),
+        mode,
+        content: RefCell::new(content),
+        position: RefCell::new(0),
+        written: RefCell::new(Vec::new()),
+        closed: RefCell::new(false),
+        console: false,
+        compressed,
+    }))
+}

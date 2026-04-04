@@ -419,4 +419,459 @@ impl Interpreter {
             other => crate::methods::attribute(self, other, name),
         }
     }
+
+    /// `object.name = value`.
+    pub fn set_attribute(&mut self, object: &Value, name: &str, value: Value) -> Result<(), Error> {
+        match object.plain() {
+            Value::Instance(instance) => {
+                if let Some(Value::Native(property)) = instance.class.lookup(name)
+                    && property.type_name() == "property"
+                {
+                    return Err(Error::attribute_error(format!(
+                        "property '{name}' of '{}' object has no setter",
+                        instance.class.name
+                    )));
+                }
+                instance.dict.borrow_mut().insert(name.into(), value);
+                Ok(())
+            }
+            Value::Class(class) => {
+                class.dict.borrow_mut().insert(name.into(), value);
+                Ok(())
+            }
+            Value::Function(function) => {
+                function.attributes.borrow_mut().insert(name.into(), value);
+                Ok(())
+            }
+            Value::Module(module) => {
+                module.globals.set(name, value);
+                Ok(())
+            }
+            Value::Native(native) => {
+                let native = native.clone();
+                if native.set_attribute(self, name, value)? {
+                    Ok(())
+                } else {
+                    Err(Error::unsupported(format!(
+                        "setting the attribute {name} of {}",
+                        native.type_name()
+                    )))
+                }
+            }
+            other => Err(Error::attribute_error(format!(
+                "'{}' object has no attribute '{name}'",
+                types::type_name(other)
+            ))),
+        }
+    }
+
+    /// `value[key]`.
+    pub fn get_item(&mut self, value: &Value, key: &Value) -> Result<Value, Error> {
+        let key = key.plain();
+        match value.plain() {
+            Value::List(items) => {
+                let items = items.borrow();
+                sequence_item(&items, key, |items| Value::list(items.to_vec()), "list")
+            }
+            Value::Tuple(items) => {
+                sequence_item(items, key, |items| Value::tuple(items.to_vec()), "tuple")
+            }
+            Value::Str(text) => {
+                if text.is_ascii() {
+                    let bytes: Vec<Value> = Vec::new();
+                    let _ = bytes;
+                    let length = text.len() as i64;
+                    match key {
+                        Value::Slice(_) => {
+                            let indexes = slice_indexes(key, length)?;
+                            let bytes = text.as_bytes();
+                            let picked: String = indexes
+                                .into_iter()
+                                .map(|index| bytes[index] as char)
+                                .collect();
+                            Ok(Value::str(picked))
+                        }
+                        _ => {
+                            let index = normalize_index(key, length, "string")?;
+                            Ok(Value::str(&text[index..index + 1]))
+                        }
+                    }
+                } else {
+                    let chars: Vec<char> = text.chars().collect();
+                    let length = chars.len() as i64;
+                    match key {
+                        Value::Slice(_) => {
+                            let indexes = slice_indexes(key, length)?;
+                            Ok(Value::str(
+                                indexes
+                                    .into_iter()
+                                    .map(|index| chars[index])
+                                    .collect::<String>(),
+                            ))
+                        }
+                        _ => {
+                            let index = normalize_index(key, length, "string")?;
+                            Ok(Value::str(chars[index].to_string()))
+                        }
+                    }
+                }
+            }
+            Value::Bytes(bytes) => match key {
+                Value::Slice(_) => {
+                    let indexes = slice_indexes(key, bytes.len() as i64)?;
+                    Ok(Value::Bytes(
+                        indexes.into_iter().map(|index| bytes[index]).collect(),
+                    ))
+                }
+                _ => {
+                    let index = normalize_index(key, bytes.len() as i64, "index")?;
+                    Ok(Value::Int(i64::from(bytes[index])))
+                }
+            },
+            Value::Range(range) => match key {
+                Value::Slice(_) => {
+                    let indexes = slice_indexes(key, range.len() as i64)?;
+                    Ok(Value::list(
+                        indexes
+                            .into_iter()
+                            .map(|index| Value::Int(range.get(index)))
+                            .collect(),
+                    ))
+                }
+                _ => {
+                    let index = normalize_index(key, range.len() as i64, "range object")?;
+                    Ok(Value::Int(range.get(index)))
+                }
+            },
+            Value::Dict(dict) => {
+                let lookup = Key::new(key.clone())?;
+                if let Some(found) = dict.borrow().entries.get(&lookup) {
+                    return Ok(found.clone());
+                }
+                let kind = dict.borrow().kind.clone();
+                match kind {
+                    crate::value::DictKind::Default(factory) if !factory.is_none() => {
+                        let made = self.call(&factory, Args::default())?;
+                        dict.borrow_mut().entries.insert(lookup, made.clone());
+                        Ok(made)
+                    }
+                    crate::value::DictKind::Counter => Ok(Value::Int(0)),
+                    _ => Err(Error::key_error(key.clone())),
+                }
+            }
+            Value::Instance(_) => match self.lookup_special(value, "__getitem__") {
+                Some(method) => self.call(&method, Args::new(vec![key.clone()])),
+                None => Err(Error::type_error(format!(
+                    "'{}' object is not subscriptable",
+                    types::type_name(value)
+                ))),
+            },
+            Value::Class(class) => {
+                // Generic aliases like `list[str]` in annotations.
+                let _ = class;
+                Ok(value.plain().clone())
+            }
+            Value::Native(object) => {
+                let object = object.clone();
+                match object.get_item(self, value.plain(), key)? {
+                    Some(found) => Ok(found),
+                    None => Err(Error::type_error(format!(
+                        "'{}' object is not subscriptable",
+                        object.type_name()
+                    ))),
+                }
+            }
+            other => Err(Error::type_error(format!(
+                "'{}' object is not subscriptable",
+                types::type_name(other)
+            ))),
+        }
+    }
+
+    /// `object[key] = value`.
+    pub fn set_item(&mut self, object: &Value, key: &Value, value: Value) -> Result<(), Error> {
+        let key = key.plain();
+        match object.plain() {
+            Value::List(items) => {
+                if let Value::Slice(_) = key {
+                    let replacement = self.iterate(&value)?;
+                    let mut items = items.borrow_mut();
+                    let length = items.len() as i64;
+                    let (start, stop, step) = slice_bounds(key, length)?;
+                    if step != 1 {
+                        let indexes = slice_indexes(key, length)?;
+                        if indexes.len() != replacement.len() {
+                            return Err(Error::value_error(format!(
+                                "attempt to assign sequence of size {} to extended slice of size {}",
+                                replacement.len(),
+                                indexes.len()
+                            )));
+                        }
+                        for (index, item) in indexes.into_iter().zip(replacement) {
+                            items[index] = item;
+                        }
+                        return Ok(());
+                    }
+                    let start = start.clamp(0, length) as usize;
+                    let stop = (stop.clamp(0, length) as usize).max(start);
+                    items.splice(start..stop, replacement);
+                    return Ok(());
+                }
+                let mut items = items.borrow_mut();
+                let length = items.len() as i64;
+                let index = normalize_index(key, length, "list assignment")?;
+                items[index] = value;
+                Ok(())
+            }
+            Value::Dict(dict) => {
+                let key = Key::new(key.clone())?;
+                dict.borrow_mut().entries.insert(key, value);
+                Ok(())
+            }
+            Value::Instance(_) => match self.lookup_special(object, "__setitem__") {
+                Some(method) => {
+                    self.call(&method, Args::new(vec![key.clone(), value]))?;
+                    Ok(())
+                }
+                None => Err(Error::type_error(format!(
+                    "'{}' object does not support item assignment",
+                    types::type_name(object)
+                ))),
+            },
+            Value::Native(native) => {
+                let native = native.clone();
+                if native.set_item(self, key, value)? {
+                    Ok(())
+                } else {
+                    Err(Error::unsupported(format!(
+                        "item assignment on {}",
+                        native.type_name()
+                    )))
+                }
+            }
+            other => Err(Error::type_error(format!(
+                "'{}' object does not support item assignment",
+                types::type_name(other)
+            ))),
+        }
+    }
+
+    /// `del object[key]`.
+    pub fn delete_item(&mut self, object: &Value, key: &Value) -> Result<(), Error> {
+        let key = key.plain();
+        match object.plain() {
+            Value::List(items) => {
+                let mut items = items.borrow_mut();
+                let length = items.len() as i64;
+                if let Value::Slice(_) = key {
+                    let mut indexes = slice_indexes(key, length)?;
+                    indexes.sort_unstable();
+                    for index in indexes.into_iter().rev() {
+                        items.remove(index);
+                    }
+                    return Ok(());
+                }
+                let index = normalize_index(key, length, "list assignment")?;
+                items.remove(index);
+                Ok(())
+            }
+            Value::Dict(dict) => {
+                let lookup = Key::new(key.clone())?;
+                if dict.borrow_mut().entries.shift_remove(&lookup).is_none() {
+                    return Err(Error::key_error(key.clone()));
+                }
+                Ok(())
+            }
+            Value::Instance(_) => match self.lookup_special(object, "__delitem__") {
+                Some(method) => {
+                    self.call(&method, Args::new(vec![key.clone()]))?;
+                    Ok(())
+                }
+                None => Err(Error::type_error("object does not support item deletion")),
+            },
+            other => Err(Error::type_error(format!(
+                "'{}' object does not support item deletion",
+                types::type_name(other)
+            ))),
+        }
+    }
+
+    /// The items of an iterable, all at once.
+    pub fn iterate(&mut self, value: &Value) -> Result<Vec<Value>, Error> {
+        match value.plain() {
+            Value::List(items) => Ok(items.borrow().clone()),
+            Value::Tuple(items) => Ok(items.to_vec()),
+            Value::Str(text) => Ok(text.chars().map(|c| Value::str(c.to_string())).collect()),
+            Value::Bytes(bytes) => Ok(bytes
+                .iter()
+                .map(|byte| Value::Int(i64::from(*byte)))
+                .collect()),
+            Value::Dict(dict) => Ok(dict
+                .borrow()
+                .entries
+                .keys()
+                .map(|key| key.0.clone())
+                .collect()),
+            Value::Set(set) => Ok(set.borrow().iter().map(|key| key.0.clone()).collect()),
+            Value::FrozenSet(set) => Ok(set.iter().map(|key| key.0.clone()).collect()),
+            Value::Range(range) => {
+                if range.len() > 100_000_000 {
+                    return Err(Error::unsupported(
+                        "iterating over more than 100000000 numbers",
+                    ));
+                }
+                Ok((0..range.len())
+                    .map(|index| Value::Int(range.get(index)))
+                    .collect())
+            }
+            Value::Iterator(iterator) => {
+                let mut items = Vec::new();
+                loop {
+                    let next = iterator.borrow_mut().next_value();
+                    match next {
+                        Some(item) => items.push(item),
+                        None => break,
+                    }
+                    if items.len() > 100_000_000 {
+                        return Err(Error::unsupported("an iterator that does not end"));
+                    }
+                }
+                Ok(items)
+            }
+            Value::Instance(_) => {
+                if let Some(method) = self.lookup_special(value, "__iter__") {
+                    let iterator = self.call(&method, Args::default())?;
+                    if iterator.is(value) {
+                        // An object that is its own iterator: call `__next__` until it stops.
+                        let next = self
+                            .lookup_special(value, "__next__")
+                            .ok_or_else(|| Error::type_error("iter() returned non-iterator"))?;
+                        let mut items = Vec::new();
+                        loop {
+                            match self.call(&next, Args::default()) {
+                                Ok(item) => items.push(item),
+                                Err(error) if error.is("StopIteration") => break,
+                                Err(error) => return Err(error),
+                            }
+                        }
+                        return Ok(items);
+                    }
+                    return self.iterate(&iterator);
+                }
+                if let Some(method) = self.lookup_special(value, "__getitem__") {
+                    let mut items = Vec::new();
+                    loop {
+                        match self.call(&method, Args::new(vec![Value::Int(items.len() as i64)])) {
+                            Ok(item) => items.push(item),
+                            Err(error) if error.is("IndexError") || error.is("StopIteration") => {
+                                break;
+                            }
+                            Err(error) => return Err(error),
+                        }
+                    }
+                    return Ok(items);
+                }
+                Err(Error::type_error(format!(
+                    "'{}' object is not iterable",
+                    types::type_name(value)
+                )))
+            }
+            Value::Native(object) => {
+                let object = object.clone();
+                match object.iterate(self)? {
+                    Some(items) => Ok(items),
+                    None => Err(Error::type_error(format!(
+                        "'{}' object is not iterable",
+                        object.type_name()
+                    ))),
+                }
+            }
+            other => Err(Error::type_error(format!(
+                "'{}' object is not iterable",
+                types::type_name(other)
+            ))),
+        }
+    }
+
+    /// `iter(value)`: an iterator that yields items one by one.
+    pub fn make_iterator(&mut self, value: &Value) -> Result<Value, Error> {
+        match value.plain() {
+            Value::Iterator(_) => Ok(value.plain().clone()),
+            Value::Range(range) => Ok(Value::Iterator(Rc::new(RefCell::new(Iter::Range {
+                next: range.start,
+                stop: range.stop,
+                step: range.step,
+            })))),
+            other => {
+                let items = self.iterate(other)?;
+                Ok(Value::iterator(items))
+            }
+        }
+    }
+
+    /// `len(value)`.
+    pub fn length(&mut self, value: &Value) -> Result<usize, Error> {
+        Ok(match value.plain() {
+            Value::Str(text) => {
+                if text.is_ascii() {
+                    text.len()
+                } else {
+                    text.chars().count()
+                }
+            }
+            Value::Bytes(bytes) => bytes.len(),
+            Value::List(items) => items.borrow().len(),
+            Value::Tuple(items) => items.len(),
+            Value::Dict(dict) => dict.borrow().entries.len(),
+            Value::Set(set) => set.borrow().len(),
+            Value::FrozenSet(set) => set.len(),
+            Value::Range(range) => range.len(),
+            Value::Instance(_) => match self.lookup_special(value, "__len__") {
+                Some(method) => {
+                    let length = self.call(&method, Args::default())?;
+                    length.as_int().unwrap_or(0).max(0) as usize
+                }
+                None => {
+                    return Err(Error::type_error(format!(
+                        "object of type '{}' has no len()",
+                        types::type_name(value)
+                    )));
+                }
+            },
+            Value::Native(object) => match object.length() {
+                Some(length) => length,
+                None => {
+                    let object = object.clone();
+                    match object.iterate(self)? {
+                        Some(items) => items.len(),
+                        None => {
+                            return Err(Error::type_error(format!(
+                                "object of type '{}' has no len()",
+                                object.type_name()
+                            )));
+                        }
+                    }
+                }
+            },
+            other => {
+                return Err(Error::type_error(format!(
+                    "object of type '{}' has no len()",
+                    types::type_name(other)
+                )));
+            }
+        })
+    }
+}
+
+/// The class in whose body a method was defined, for `super()`.
+fn defining_class(
+    class: &Rc<crate::value::Class>,
+    function: &Rc<Function>,
+) -> Option<Rc<crate::value::Class>> {
+    class.mro.borrow().iter().find_map(|candidate| {
+        let dict = candidate.dict.borrow();
+        dict.values()
+            .any(|value| matches!(value, Value::Function(defined) if Rc::ptr_eq(defined, function)))
+            .then(|| candidate.clone())
+    })
 }

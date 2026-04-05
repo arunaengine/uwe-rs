@@ -875,3 +875,115 @@ fn defining_class(
             .then(|| candidate.clone())
     })
 }
+
+fn docstring(function: &Function) -> Value {
+    if let Code::Def(def) = &function.code
+        && let Some(ruff_python_ast::Stmt::Expr(expression)) = def.body.first()
+        && let ruff_python_ast::Expr::StringLiteral(text) = &*expression.value
+    {
+        return Value::str(text.value.to_str());
+    }
+    Value::None
+}
+
+/// A list or tuple index as a position, counting negative indexes from the end.
+pub fn normalize_index(key: &Value, length: i64, what: &str) -> Result<usize, Error> {
+    let index = match key.plain() {
+        Value::Int(index) => *index,
+        Value::Bool(value) => i64::from(*value),
+        Value::BigInt(_) => {
+            return Err(Error::index_error(format!("{what} index out of range")));
+        }
+        other => {
+            return Err(Error::type_error(format!(
+                "{what} indices must be integers or slices, not {}",
+                types::type_name(other)
+            )));
+        }
+    };
+    let position = if index < 0 { index + length } else { index };
+    if position < 0 || position >= length {
+        return Err(Error::index_error(format!("{what} index out of range")));
+    }
+    Ok(position as usize)
+}
+
+/// Start, stop and step of a slice for a sequence length, as `slice.indices` gives them.
+pub fn slice_bounds(slice: &Value, length: i64) -> Result<(i64, i64, i64), Error> {
+    let Value::Slice(parts) = slice.plain() else {
+        return Err(Error::type_error("expected a slice"));
+    };
+    let number = |value: &Value| -> Result<Option<i64>, Error> {
+        match value.plain() {
+            Value::None => Ok(None),
+            other => other.as_int().map(Some).ok_or_else(|| {
+                Error::type_error(
+                    "slice indices must be integers or None or have an __index__ method",
+                )
+            }),
+        }
+    };
+    let step = number(&parts[2])?.unwrap_or(1);
+    if step == 0 {
+        return Err(Error::value_error("slice step cannot be zero"));
+    }
+    let clamp = |value: Option<i64>, default: i64| -> i64 {
+        match value {
+            None => default,
+            Some(value) => {
+                let value = if value < 0 { value + length } else { value };
+                if step > 0 {
+                    value.clamp(0, length)
+                } else {
+                    value.clamp(-1, length - 1)
+                }
+            }
+        }
+    };
+    let (start, stop) = if step > 0 {
+        (
+            clamp(number(&parts[0])?, 0),
+            clamp(number(&parts[1])?, length),
+        )
+    } else {
+        (
+            clamp(number(&parts[0])?, length - 1),
+            clamp(number(&parts[1])?, -1),
+        )
+    };
+    Ok((start, stop, step))
+}
+
+/// The positions a slice picks from a sequence of the given length.
+pub fn slice_indexes(slice: &Value, length: i64) -> Result<Vec<usize>, Error> {
+    let (start, stop, step) = slice_bounds(slice, length)?;
+    let mut indexes = Vec::new();
+    let mut index = start;
+    while (step > 0 && index < stop) || (step < 0 && index > stop) {
+        indexes.push(index as usize);
+        index += step;
+    }
+    Ok(indexes)
+}
+
+fn sequence_item(
+    items: &[Value],
+    key: &Value,
+    make: impl Fn(&[Value]) -> Value,
+    what: &str,
+) -> Result<Value, Error> {
+    match key {
+        Value::Slice(_) => {
+            let indexes = slice_indexes(key, items.len() as i64)?;
+            let picked: Vec<Value> = indexes
+                .into_iter()
+                .map(|index| items[index].clone())
+                .collect();
+            Ok(make(&picked))
+        }
+        _ => {
+            let index = normalize_index(key, items.len() as i64, what)?;
+            Ok(items[index].clone())
+        }
+    }
+}

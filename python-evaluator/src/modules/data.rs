@@ -402,3 +402,453 @@ fn read_all(interpreter: &mut Interpreter, stream: &Value) -> Result<String, Err
         other => Ok(crate::format::plain_str(other)),
     }
 }
+
+pub fn json() -> Vec<(&'static str, Value)> {
+    let decode_error = crate::types::library_exception("JSONDecodeError", "json", "ValueError");
+    vec![
+        ("JSONDecodeError", Value::Class(decode_error)),
+        (
+            "loads",
+            function("loads", |interpreter, args| {
+                args.expect("loads", 1, 1)?;
+                let text = match args.positional[0].plain() {
+                    Value::Str(text) => text.to_string(),
+                    Value::Bytes(bytes) => String::from_utf8_lossy(bytes).into_owned(),
+                    other => read_all(interpreter, other)?,
+                };
+                parse_json(&text)
+            }),
+        ),
+        (
+            "load",
+            function("load", |interpreter, args| {
+                args.expect("load", 1, 1)?;
+                let text = read_all(interpreter, &args.positional[0])?;
+                parse_json(&text)
+            }),
+        ),
+        (
+            "dumps",
+            function("dumps", |interpreter, mut args| {
+                let (indent, sort_keys, ensure_ascii) = json_options(interpreter, &mut args)?;
+                args.expect("dumps", 1, 1)?;
+                Ok(Value::str(dump_json(
+                    interpreter,
+                    &args.positional[0],
+                    indent.as_deref(),
+                    sort_keys,
+                    ensure_ascii,
+                    0,
+                )?))
+            }),
+        ),
+        (
+            "dump",
+            function("dump", |interpreter, mut args| {
+                let (indent, sort_keys, ensure_ascii) = json_options(interpreter, &mut args)?;
+                args.expect("dump", 2, 2)?;
+                let text = dump_json(
+                    interpreter,
+                    &args.positional[0],
+                    indent.as_deref(),
+                    sort_keys,
+                    ensure_ascii,
+                    0,
+                )?;
+                let write = interpreter.get_attribute(&args.positional[1], "write")?;
+                interpreter.call(&write, Args::new(vec![Value::str(text)]))?;
+                Ok(Value::None)
+            }),
+        ),
+    ]
+}
+
+/// Reads YAML text as PyYAML's `safe_load` does: YAML 1.1 scalars, anchors and merge keys.
+pub fn load_yaml(text: &str) -> Result<Value, Error> {
+    let documents = load_yaml_all(text, true)?;
+    Ok(documents.into_iter().next().unwrap_or(Value::None))
+}
+
+struct Collection {
+    mapping: bool,
+    anchor: usize,
+    items: Vec<Value>,
+    merges: Vec<usize>,
+}
+
+/// Reads the documents of a YAML stream; with `first`, only the first one.
+pub fn load_yaml_all(text: &str, first: bool) -> Result<Vec<Value>, Error> {
+    let mut documents = Vec::new();
+    let mut stack: Vec<Collection> = Vec::new();
+    let mut anchors: HashMap<usize, Value> = HashMap::new();
+    let mut root: Option<Value> = None;
+    let mut started = false;
+    for event in Parser::new_from_str(text) {
+        let (event, marker) = event.map_err(|error| {
+            crate::types::library_exception("YAMLError", "yaml", "Exception");
+            Error::new(
+                "YAMLError",
+                format!(
+                    "{} at line {} column {}",
+                    error.info(),
+                    error.marker().line(),
+                    error.marker().col() + 1
+                ),
+            )
+        })?;
+        let _ = marker;
+        let (value, anchor) = match event {
+            Event::DocumentStart(_) => {
+                started = true;
+                continue;
+            }
+            Event::DocumentEnd => {
+                if started {
+                    documents.push(root.take().unwrap_or(Value::None));
+                    started = false;
+                    if first {
+                        break;
+                    }
+                }
+                continue;
+            }
+            Event::SequenceStart(anchor, _) => {
+                stack.push(Collection {
+                    mapping: false,
+                    anchor,
+                    items: Vec::new(),
+                    merges: Vec::new(),
+                });
+                continue;
+            }
+            Event::MappingStart(anchor, _) => {
+                stack.push(Collection {
+                    mapping: true,
+                    anchor,
+                    items: Vec::new(),
+                    merges: Vec::new(),
+                });
+                continue;
+            }
+            Event::SequenceEnd | Event::MappingEnd => {
+                let collection = stack.pop().expect("an open collection");
+                let anchor = collection.anchor;
+                (collection_value(collection)?, anchor)
+            }
+            Event::Scalar(text, style, anchor, tag) => {
+                let tagged = tag
+                    .as_ref()
+                    .map(|tag| format!("{}{}", tag.handle, tag.suffix));
+                let value = match (style, tagged.as_deref()) {
+                    (_, Some("!!str" | "tag:yaml.org,2002:str")) => Value::str(text.as_ref()),
+                    (ScalarStyle::Plain, _) => {
+                        if let Some(top) = stack.last_mut()
+                            && top.mapping
+                            && top.items.len() % 2 == 0
+                            && text == "<<"
+                        {
+                            top.merges.push(top.items.len());
+                        }
+                        yaml_scalar(&text)
+                    }
+                    _ => Value::str(text.as_ref()),
+                };
+                (value, anchor)
+            }
+            Event::Alias(anchor) => match anchors.get(&anchor) {
+                Some(value) => (value.clone(), 0),
+                None => return Err(Error::new("YAMLError", "found undefined alias")),
+            },
+            _ => continue,
+        };
+        if anchor > 0 {
+            anchors.insert(anchor, value.clone());
+        }
+        match stack.last_mut() {
+            Some(collection) => collection.items.push(value),
+            None => root = Some(value),
+        }
+    }
+    if started {
+        documents.push(root.take().unwrap_or(Value::None));
+    }
+    Ok(documents)
+}
+
+fn collection_value(collection: Collection) -> Result<Value, Error> {
+    if !collection.mapping {
+        return Ok(Value::list(collection.items));
+    }
+    let mut dict = Dict::default();
+    let mut merged: Vec<(Key, Value)> = Vec::new();
+    for (index, pair) in collection.items.chunks(2).enumerate() {
+        let value = pair.get(1).cloned().unwrap_or(Value::None);
+        if collection.merges.contains(&(index * 2)) {
+            let sources = match value.plain() {
+                Value::List(list) => list.borrow().clone(),
+                other => vec![other.clone()],
+            };
+            for source in sources {
+                if let Value::Dict(source) = source {
+                    for (key, value) in source.borrow().entries.iter() {
+                        merged.push((key.clone(), value.clone()));
+                    }
+                }
+            }
+            continue;
+        }
+        let key = Key::new(pair[0].clone())
+            .map_err(|_| Error::new("YAMLError", "found unhashable key"))?;
+        dict.entries.insert(key, value);
+    }
+    for (key, value) in merged {
+        dict.entries.entry(key).or_insert(value);
+    }
+    Ok(Value::dict(dict))
+}
+
+fn all_digits(text: &str, radix: u32) -> bool {
+    !text.is_empty() && text.chars().all(|c| c == '_' || c.is_digit(radix))
+}
+
+/// A plain scalar as PyYAML's resolver reads it.
+pub fn yaml_scalar(text: &str) -> Value {
+    match text {
+        "" | "~" | "null" | "Null" | "NULL" => return Value::None,
+        "yes" | "Yes" | "YES" | "true" | "True" | "TRUE" | "on" | "On" | "ON" => {
+            return Value::Bool(true);
+        }
+        "no" | "No" | "NO" | "false" | "False" | "FALSE" | "off" | "Off" | "OFF" => {
+            return Value::Bool(false);
+        }
+        ".inf" | ".Inf" | ".INF" | "+.inf" | "+.Inf" | "+.INF" => {
+            return Value::Float(f64::INFINITY);
+        }
+        "-.inf" | "-.Inf" | "-.INF" => return Value::Float(f64::NEG_INFINITY),
+        ".nan" | ".NaN" | ".NAN" => return Value::Float(f64::NAN),
+        _ => {}
+    }
+    let (sign, body) = match text.as_bytes()[0] {
+        b'-' => (-1i64, &text[1..]),
+        b'+' => (1, &text[1..]),
+        _ => (1, text),
+    };
+    let negate = |value: Value| {
+        if sign < 0 {
+            match value {
+                Value::Int(number) => Value::Int(-number),
+                Value::BigInt(number) => Value::from_bigint(-(*number).clone()),
+                Value::Float(number) => Value::Float(-number),
+                other => other,
+            }
+        } else {
+            value
+        }
+    };
+    let clean = |digits: &str| digits.replace('_', "");
+    if let Some(binary) = body.strip_prefix("0b")
+        && all_digits(binary, 2)
+        && let Ok(value) = crate::number::parse_int(&clean(binary), 2)
+    {
+        return negate(value);
+    }
+    if let Some(hex) = body.strip_prefix("0x")
+        && all_digits(hex, 16)
+        && let Ok(value) = crate::number::parse_int(&clean(hex), 16)
+    {
+        return negate(value);
+    }
+    if body.len() > 1
+        && body.starts_with('0')
+        && all_digits(&body[1..], 8)
+        && let Ok(value) = crate::number::parse_int(&clean(&body[1..]), 8)
+    {
+        return negate(value);
+    }
+    if (body == "0"
+        || (body.starts_with(|c: char| c.is_ascii_digit() && c != '0') && all_digits(body, 10)))
+        && let Ok(value) = crate::number::parse_int(&clean(body), 10)
+    {
+        return negate(value);
+    }
+    // Sexagesimal integers like 1:30.
+    if body.contains(':') && !body.contains('.') {
+        let parts: Vec<&str> = body.split(':').collect();
+        if parts[0].starts_with(|c: char| c.is_ascii_digit() && c != '0')
+            && parts.iter().all(|part| all_digits(part, 10))
+            && parts[1..]
+                .iter()
+                .all(|part| part.len() <= 2 && part.parse::<u32>().is_ok_and(|n| n < 60))
+        {
+            let mut total: i64 = 0;
+            for part in parts {
+                total = total * 60 + clean(part).parse::<i64>().unwrap_or(0);
+            }
+            return Value::Int(sign * total);
+        }
+    }
+    // Floats need a point; an exponent needs a sign.
+    if is_yaml_float(body)
+        && let Ok(value) = clean(body).parse::<f64>()
+    {
+        return Value::Float(sign as f64 * value);
+    }
+    Value::str(text)
+}
+
+fn is_yaml_float(body: &str) -> bool {
+    let (mantissa, exponent) = match body.find(['e', 'E']) {
+        Some(index) => (&body[..index], Some(&body[index + 1..])),
+        None => (body, None),
+    };
+    if let Some(exponent) = exponent {
+        let digits = match exponent.strip_prefix(['+', '-']) {
+            Some(digits) => digits,
+            None => return false,
+        };
+        if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) {
+            return false;
+        }
+    }
+    let Some((whole, fraction)) = mantissa.split_once('.') else {
+        return false;
+    };
+    let whole_ok = whole.is_empty()
+        || (whole.starts_with(|c: char| c.is_ascii_digit()) && all_digits(whole, 10));
+    let fraction_ok = fraction.chars().all(|c| c.is_ascii_digit() || c == '_');
+    whole_ok && fraction_ok && !(whole.is_empty() && fraction.is_empty())
+}
+
+/// `yaml.dump` in block style, as PyYAML writes simple data.
+pub fn dump_yaml(
+    interpreter: &mut Interpreter,
+    value: &Value,
+    sort_keys: bool,
+) -> Result<String, Error> {
+    let mut output = String::new();
+    write_yaml(interpreter, value, 0, sort_keys, &mut output, false)?;
+    if !output.ends_with('\n') {
+        output.push('\n');
+    }
+    Ok(output)
+}
+
+fn yaml_text(interpreter: &mut Interpreter, value: &Value) -> Result<String, Error> {
+    Ok(match value.plain() {
+        Value::None => "null".into(),
+        Value::Bool(true) => "true".into(),
+        Value::Bool(false) => "false".into(),
+        Value::Int(_) | Value::BigInt(_) => crate::format::plain_repr(value),
+        Value::Float(number) => {
+            if number.is_nan() {
+                ".nan".into()
+            } else if number.is_infinite() {
+                if *number > 0.0 { ".inf" } else { "-.inf" }.into()
+            } else {
+                float_repr(*number)
+            }
+        }
+        Value::Str(text) => {
+            let plain = yaml_scalar(text);
+            let needs_quotes = !matches!(plain, Value::Str(_))
+                || text.is_empty()
+                || text
+                    .starts_with(|c: char| "!&*-?:,[]{}#|>@`\"'%".contains(c) || c.is_whitespace())
+                || text.ends_with(char::is_whitespace)
+                || text.contains(": ")
+                || text.contains(" #")
+                || text.contains('\n');
+            if needs_quotes {
+                format!("'{}'", text.replace('\'', "''"))
+            } else {
+                text.to_string()
+            }
+        }
+        other => interpreter.to_str(other)?,
+    })
+}
+
+fn write_yaml(
+    interpreter: &mut Interpreter,
+    value: &Value,
+    indent: usize,
+    sort_keys: bool,
+    output: &mut String,
+    inline_start: bool,
+) -> Result<(), Error> {
+    let pad = " ".repeat(indent);
+    match value.plain() {
+        Value::Dict(_) => {
+            let mut entries = interpreter.mapping_items(value)?;
+            if entries.is_empty() {
+                output.push_str("{}\n");
+                return Ok(());
+            }
+            if sort_keys {
+                entries.sort_by(|(a, _), (b, _)| {
+                    crate::format::plain_str(a).cmp(&crate::format::plain_str(b))
+                });
+            }
+            for (index, (key, item)) in entries.into_iter().enumerate() {
+                if index > 0 || !inline_start {
+                    output.push_str(&pad);
+                }
+                output.push_str(&yaml_text(interpreter, &key)?);
+                output.push(':');
+                write_nested(interpreter, &item, indent, sort_keys, output)?;
+            }
+        }
+        Value::List(_) | Value::Tuple(_) => {
+            let items = interpreter.iterate(value)?;
+            if items.is_empty() {
+                output.push_str("[]\n");
+                return Ok(());
+            }
+            for (index, item) in items.into_iter().enumerate() {
+                if index > 0 || !inline_start {
+                    output.push_str(&pad);
+                }
+                output.push_str("- ");
+                match item.plain() {
+                    Value::Dict(_) | Value::List(_) | Value::Tuple(_)
+                        if interpreter.truthy(&item)? =>
+                    {
+                        write_yaml(interpreter, &item, indent + 2, sort_keys, output, true)?;
+                    }
+                    _ => {
+                        output.push_str(&yaml_text(interpreter, &item)?);
+                        output.push('\n');
+                    }
+                }
+            }
+        }
+        other => {
+            output.push_str(&yaml_text(interpreter, other)?);
+            output.push('\n');
+        }
+    }
+    Ok(())
+}
+
+fn write_nested(
+    interpreter: &mut Interpreter,
+    item: &Value,
+    indent: usize,
+    sort_keys: bool,
+    output: &mut String,
+) -> Result<(), Error> {
+    match item.plain() {
+        Value::Dict(_) if interpreter.truthy(item)? => {
+            output.push('\n');
+            write_yaml(interpreter, item, indent + 2, sort_keys, output, false)
+        }
+        Value::List(_) | Value::Tuple(_) if interpreter.truthy(item)? => {
+            output.push('\n');
+            write_yaml(interpreter, item, indent, sort_keys, output, false)
+        }
+        _ => {
+            output.push(' ');
+            write_yaml(interpreter, item, indent, sort_keys, output, true)
+        }
+    }
+}

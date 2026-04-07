@@ -439,4 +439,190 @@ impl Interpreter {
         }
         Ok(())
     }
+
+    /// Evaluates the arguments of a call, spreading `*args` and `**kwargs`.
+    pub fn eval_arguments(
+        &mut self,
+        frame: &Frame,
+        arguments: &ast::Arguments,
+    ) -> Result<Args, Error> {
+        let mut args = Args::default();
+        for argument in arguments.args.iter() {
+            if let Expr::Starred(starred) = argument {
+                let value = self.eval(frame, &starred.value)?;
+                args.positional.extend(self.iterate(&value)?);
+            } else {
+                args.positional.push(self.eval(frame, argument)?);
+            }
+        }
+        for keyword in arguments.keywords.iter() {
+            let value = self.eval(frame, &keyword.value)?;
+            match &keyword.arg {
+                Some(name) => {
+                    let name: Rc<str> = name.id.as_str().into();
+                    if args.keywords.iter().any(|(key, _)| *key == name) {
+                        return Err(Error::type_error(format!(
+                            "keyword argument repeated: {name}"
+                        )));
+                    }
+                    args.keywords.push((name, value));
+                }
+                None => {
+                    for (key, value) in self.mapping_items(&value)? {
+                        let Some(key) = key.as_str() else {
+                            return Err(Error::type_error("keywords must be strings"));
+                        };
+                        args.keywords.push((key.into(), value));
+                    }
+                }
+            }
+        }
+        Ok(args)
+    }
+
+    fn eval_call(&mut self, frame: &Frame, call: &ast::ExprCall) -> Result<Value, Error> {
+        let callee = self.eval(frame, &call.func)?;
+        // Builtins that look at the calling frame.
+        if let Value::Builtin(builtin) = &callee
+            && call.arguments.args.is_empty()
+            && call.arguments.keywords.is_empty()
+        {
+            match &*builtin.name {
+                "locals" | "vars" => return Ok(scope_dict(&frame.locals)),
+                "globals" => return Ok(globals_dict(&frame.globals)),
+                "super" => return self.zero_argument_super(frame),
+                "dir" => {
+                    let mut names: Vec<Value> = frame
+                        .locals
+                        .vars
+                        .borrow()
+                        .keys()
+                        .map(|name| Value::Str(name.clone()))
+                        .collect();
+                    names.sort_by(|a, b| a.as_str().cmp(&b.as_str()));
+                    return Ok(Value::list(names));
+                }
+                _ => {}
+            }
+        }
+        let args = self.eval_arguments(frame, &call.arguments)?;
+        self.count_step()?;
+        self.call(&callee, args)
+    }
+
+    fn zero_argument_super(&mut self, frame: &Frame) -> Result<Value, Error> {
+        let Some((class, receiver)) = &frame.method else {
+            return Err(Error::runtime_error("super(): no arguments"));
+        };
+        Ok(crate::builtins::make_super(class.clone(), receiver.clone()))
+    }
+
+    /// Evaluates the defaults of parameters, by parameter name.
+    pub fn eval_defaults(
+        &mut self,
+        frame: &Frame,
+        parameters: Option<&ast::Parameters>,
+    ) -> Result<HashMap<Rc<str>, Value>, Error> {
+        let mut defaults = HashMap::new();
+        let Some(parameters) = parameters else {
+            return Ok(defaults);
+        };
+        for parameter in parameters
+            .posonlyargs
+            .iter()
+            .chain(parameters.args.iter())
+            .chain(parameters.kwonlyargs.iter())
+        {
+            if let Some(default) = &parameter.default {
+                let value = self.eval(frame, default)?;
+                defaults.insert(parameter.parameter.name.id.as_str().into(), value);
+            }
+        }
+        Ok(defaults)
+    }
+
+    /// Assigns a value to a target: a name, attribute, subscript, or a tuple or list of
+    /// targets to unpack into.
+    pub fn assign(&mut self, frame: &Frame, target: &Expr, value: Value) -> Result<(), Error> {
+        match target {
+            Expr::Name(name) => {
+                self.bind(frame, name.id.as_str(), value);
+                Ok(())
+            }
+            Expr::Attribute(attribute) => {
+                let object = self.eval(frame, &attribute.value)?;
+                self.set_attribute(&object, attribute.attr.as_str(), value)
+            }
+            Expr::Subscript(subscript) => {
+                let object = self.eval(frame, &subscript.value)?;
+                let key = self.eval(frame, &subscript.slice)?;
+                self.set_item(&object, &key, value)
+            }
+            Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
+                let items = self.iterate(&value)?;
+                let starred = elts
+                    .iter()
+                    .position(|element| matches!(element, Expr::Starred(_)));
+                match starred {
+                    None => {
+                        if items.len() != elts.len() {
+                            return Err(Error::value_error(if items.len() > elts.len() {
+                                format!("too many values to unpack (expected {})", elts.len())
+                            } else {
+                                format!(
+                                    "not enough values to unpack (expected {}, got {})",
+                                    elts.len(),
+                                    items.len()
+                                )
+                            }));
+                        }
+                        for (element, item) in elts.iter().zip(items) {
+                            self.assign(frame, element, item)?;
+                        }
+                    }
+                    Some(position) => {
+                        let after = elts.len() - position - 1;
+                        if items.len() < position + after {
+                            return Err(Error::value_error(format!(
+                                "not enough values to unpack (expected at least {}, got {})",
+                                position + after,
+                                items.len()
+                            )));
+                        }
+                        let rest_end = items.len() - after;
+                        for (element, item) in elts[..position].iter().zip(&items[..position]) {
+                            self.assign(frame, element, item.clone())?;
+                        }
+                        if let Expr::Starred(starred) = &elts[position] {
+                            self.assign(
+                                frame,
+                                &starred.value,
+                                Value::list(items[position..rest_end].to_vec()),
+                            )?;
+                        }
+                        for (element, item) in elts[position + 1..].iter().zip(&items[rest_end..]) {
+                            self.assign(frame, element, item.clone())?;
+                        }
+                    }
+                }
+                Ok(())
+            }
+            Expr::Starred(starred) => self.assign(frame, &starred.value, value),
+            _ => Err(Error::new("SyntaxError", "cannot assign to expression")),
+        }
+    }
+}
+
+/// A new dict with a scope's variables, for `locals()`.
+fn scope_dict(scope: &Rc<Scope>) -> Value {
+    let vars = scope.vars.borrow();
+    Value::dict_of(
+        vars.iter()
+            .map(|(name, value)| (name.to_string(), value.clone())),
+    )
+}
+
+/// `globals()`: a dict that writes through to the module's variables.
+fn globals_dict(globals: &Rc<Scope>) -> Value {
+    Value::native(crate::builtins::GlobalsDict(globals.clone()))
 }

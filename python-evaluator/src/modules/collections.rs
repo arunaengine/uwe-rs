@@ -768,3 +768,366 @@ impl Native for NamedTupleClass {
         })
     }
 }
+
+impl Native for NamedTuple {
+    fn type_name(&self) -> &str {
+        &self.class.name
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn instance_of(&self, class: &str) -> bool {
+        class == "tuple"
+    }
+
+    fn iterate(&self, _: &mut Interpreter) -> Result<Option<Vec<Value>>, Error> {
+        Ok(Some(self.values.clone()))
+    }
+
+    fn length(&self) -> Option<usize> {
+        Some(self.values.len())
+    }
+
+    fn get_item(
+        &self,
+        interpreter: &mut Interpreter,
+        _: &Value,
+        key: &Value,
+    ) -> Result<Option<Value>, Error> {
+        interpreter
+            .get_item(&Value::tuple(self.values.clone()), key)
+            .map(Some)
+    }
+
+    fn key_equal(&self, other: &dyn Native) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<NamedTuple>()
+            .is_some_and(|other| {
+                other.values.len() == self.values.len()
+                    && other
+                        .values
+                        .iter()
+                        .zip(&self.values)
+                        .all(|(a, b)| crate::value::key_equal(a, b))
+            })
+    }
+
+    fn key_hash(&self, state: &mut dyn std::hash::Hasher) {
+        state.write_usize(self.values.len());
+    }
+
+    fn binary(
+        &self,
+        interpreter: &mut Interpreter,
+        operator: crate::interpreter::Operator,
+        other: &Value,
+        reflected: bool,
+    ) -> Result<Option<Value>, Error> {
+        let mine = Value::tuple(self.values.clone());
+        let theirs = match other.as_native::<NamedTuple>() {
+            Some(other) => Value::tuple(other.values.clone()),
+            None => other.clone(),
+        };
+        let (a, b) = if reflected {
+            (theirs, mine)
+        } else {
+            (mine, theirs)
+        };
+        interpreter.binary(operator, &a, &b).map(Some)
+    }
+
+    fn repr(&self, interpreter: &mut Interpreter) -> Result<String, Error> {
+        let mut parts = Vec::new();
+        for (field, value) in self.class.fields.iter().zip(&self.values) {
+            parts.push(format!("{field}={}", interpreter.repr(value)?));
+        }
+        Ok(format!("{}({})", self.class.name, parts.join(", ")))
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        if let Some(index) = self.class.fields.iter().position(|field| field == name) {
+            return Ok(Some(self.values[index].clone()));
+        }
+        let class = self.class.clone();
+        let values = self.values.clone();
+        Ok(match name {
+            "_fields" => Some(Value::tuple(
+                class
+                    .fields
+                    .iter()
+                    .map(|field| Value::str(field.as_str()))
+                    .collect(),
+            )),
+            "_asdict" => Some(Value::builtin("_asdict", move |_, _| {
+                Ok(Value::dict_of(
+                    class.fields.iter().cloned().zip(values.iter().cloned()),
+                ))
+            })),
+            "_replace" => Some(Value::builtin("_replace", move |_, args| {
+                let mut values = values.clone();
+                for (name, value) in args.keywords {
+                    if let Some(index) = class.fields.iter().position(|field| **field == *name) {
+                        values[index] = value;
+                    }
+                }
+                Ok(Value::native(NamedTuple {
+                    class: class.clone(),
+                    values,
+                }))
+            })),
+            "count" | "index" => {
+                let method: Rc<str> = name.into();
+                Some(Value::builtin(name, move |interpreter, args| {
+                    crate::methods::call(interpreter, &Value::tuple(values.clone()), &method, args)
+                }))
+            }
+            _ => None,
+        })
+    }
+}
+
+fn namedtuple(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
+    let defaults = args.take_keyword("defaults");
+    args.take_keyword("rename");
+    args.take_keyword("module");
+    let name = args
+        .take(0, "typename")
+        .and_then(|name| name.as_str().map(str::to_owned))
+        .unwrap_or_default();
+    let fields = args
+        .take(1, "field_names")
+        .unwrap_or(Value::list(Vec::new()));
+    let fields: Vec<String> = match fields.plain() {
+        Value::Str(text) => text
+            .replace(',', " ")
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect(),
+        other => interpreter
+            .iterate(other)?
+            .iter()
+            .map(|field| interpreter.to_str(field))
+            .collect::<Result<_, _>>()?,
+    };
+    let defaults = match defaults {
+        Some(defaults) if !defaults.is_none() => interpreter.iterate(&defaults)?,
+        _ => Vec::new(),
+    };
+    Ok(Value::native(NamedTupleClass {
+        name,
+        fields,
+        defaults,
+    }))
+}
+
+/// `collections.deque`, as a list with operations at both ends.
+struct Deque(RefCell<std::collections::VecDeque<Value>>);
+
+impl Native for Deque {
+    fn type_name(&self) -> &str {
+        "collections.deque"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn iterate(&self, _: &mut Interpreter) -> Result<Option<Vec<Value>>, Error> {
+        Ok(Some(self.0.borrow().iter().cloned().collect()))
+    }
+
+    fn length(&self) -> Option<usize> {
+        Some(self.0.borrow().len())
+    }
+
+    fn get_item(
+        &self,
+        interpreter: &mut Interpreter,
+        _: &Value,
+        key: &Value,
+    ) -> Result<Option<Value>, Error> {
+        let items: Vec<Value> = self.0.borrow().iter().cloned().collect();
+        interpreter.get_item(&Value::list(items), key).map(Some)
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        this: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let this = this.clone();
+        let method =
+            |name: &'static str,
+             body: fn(&Deque, &mut Interpreter, Args) -> Result<Value, Error>| {
+                let this = this.clone();
+                Some(Value::builtin(name, move |interpreter, args| {
+                    let deque = this.as_native::<Deque>().expect("a deque");
+                    body(deque, interpreter, args)
+                }))
+            };
+        Ok(match name {
+            "append" => method("append", |deque, _, args| {
+                deque.0.borrow_mut().push_back(args.positional[0].clone());
+                Ok(Value::None)
+            }),
+            "appendleft" => method("appendleft", |deque, _, args| {
+                deque.0.borrow_mut().push_front(args.positional[0].clone());
+                Ok(Value::None)
+            }),
+            "pop" => method("pop", |deque, _, _| {
+                deque
+                    .0
+                    .borrow_mut()
+                    .pop_back()
+                    .ok_or_else(|| Error::index_error("pop from an empty deque"))
+            }),
+            "popleft" => method("popleft", |deque, _, _| {
+                deque
+                    .0
+                    .borrow_mut()
+                    .pop_front()
+                    .ok_or_else(|| Error::index_error("pop from an empty deque"))
+            }),
+            "extend" => method("extend", |deque, interpreter, args| {
+                let items = interpreter.iterate(&args.positional[0])?;
+                deque.0.borrow_mut().extend(items);
+                Ok(Value::None)
+            }),
+            "clear" => method("clear", |deque, _, _| {
+                deque.0.borrow_mut().clear();
+                Ok(Value::None)
+            }),
+            _ => None,
+        })
+    }
+}
+
+/// An abstract base class of `collections.abc`, for `isinstance`.
+struct AbstractClass(&'static str);
+
+impl Native for AbstractClass {
+    fn type_name(&self) -> &str {
+        "ABCMeta"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn check_instance(&self, value: &Value) -> Option<bool> {
+        let plain = value.plain();
+        let mapping = matches!(plain, Value::Dict(_))
+            || matches!(plain, Value::Native(object) if object.instance_of("dict") || object.instance_of("Mapping"));
+        let sequence = matches!(
+            plain,
+            Value::List(_) | Value::Tuple(_) | Value::Str(_) | Value::Range(_) | Value::Bytes(_)
+        ) || matches!(plain, Value::Native(object) if object.instance_of("list") || object.instance_of("tuple"));
+        let set = matches!(plain, Value::Set(_) | Value::FrozenSet(_));
+        let iterable = mapping
+            || sequence
+            || set
+            || matches!(plain, Value::Iterator(_))
+            || matches!(plain, Value::Native(object) if object.length().is_some());
+        Some(match self.0 {
+            "Mapping" | "MutableMapping" => mapping,
+            "Sequence" => sequence,
+            "MutableSequence" => matches!(plain, Value::List(_)),
+            "Set" | "MutableSet" => set,
+            "Iterable" | "Collection" | "Container" | "Sized" | "Reversible" => iterable,
+            "Iterator" | "Generator" => matches!(plain, Value::Iterator(_)),
+            "Hashable" => crate::value::Key::new(plain.clone()).is_ok(),
+            "Callable" => matches!(
+                plain,
+                Value::Function(_) | Value::Builtin(_) | Value::Method(_) | Value::Class(_)
+            ),
+            _ => false,
+        })
+    }
+
+    fn get_item(
+        &self,
+        _: &mut Interpreter,
+        this: &Value,
+        _: &Value,
+    ) -> Result<Option<Value>, Error> {
+        Ok(Some(this.clone()))
+    }
+}
+
+pub fn abc_types() -> Vec<(&'static str, Value)> {
+    [
+        "Mapping",
+        "MutableMapping",
+        "Sequence",
+        "MutableSequence",
+        "Set",
+        "MutableSet",
+        "Iterable",
+        "Iterator",
+        "Generator",
+        "Collection",
+        "Container",
+        "Sized",
+        "Hashable",
+        "Callable",
+        "Reversible",
+    ]
+    .into_iter()
+    .map(|name| (name, Value::native(AbstractClass(name))))
+    .collect()
+}
+
+pub fn collections() -> Vec<(&'static str, Value)> {
+    let mut entries = vec![
+        (
+            "OrderedDict",
+            Value::Class(types::builtin_class(TypeTag::OrderedDict)),
+        ),
+        (
+            "defaultdict",
+            Value::Class(types::builtin_class(TypeTag::DefaultDict)),
+        ),
+        (
+            "Counter",
+            Value::Class(types::builtin_class(TypeTag::Counter)),
+        ),
+        ("namedtuple", function("namedtuple", namedtuple)),
+        (
+            "deque",
+            function("deque", |interpreter, args| {
+                let items = match args.positional.first() {
+                    Some(iterable) => interpreter.iterate(iterable)?,
+                    None => Vec::new(),
+                };
+                Ok(Value::native(Deque(RefCell::new(
+                    items.into_iter().collect(),
+                ))))
+            }),
+        ),
+        (
+            "ChainMap",
+            function("ChainMap", |interpreter, args| {
+                // A merged copy: later maps first, as lookups go through the maps in order.
+                let mut dict = Dict::default();
+                for mapping in args.positional.iter().rev() {
+                    for (key, value) in interpreter.mapping_items(mapping)? {
+                        dict.entries.insert(Key::new(key)?, value);
+                    }
+                }
+                Ok(Value::dict(dict))
+            }),
+        ),
+    ];
+    let abc = super::module("collections.abc", abc_types());
+    entries.push(("abc", abc));
+    entries
+}

@@ -1131,3 +1131,328 @@ pub fn collections() -> Vec<(&'static str, Value)> {
     entries.push(("abc", abc));
     entries
 }
+
+pub fn operator() -> Vec<(&'static str, Value)> {
+    use crate::interpreter::Operator as O;
+    fn binary(operator: O) -> impl Fn(&mut Interpreter, Args) -> Result<Value, Error> {
+        move |interpreter, args| {
+            args.expect("operator", 2, 2)?;
+            interpreter.binary(operator, &args.positional[0], &args.positional[1])
+        }
+    }
+    vec![
+        ("add", Value::builtin("add", binary(O::Add))),
+        ("sub", Value::builtin("sub", binary(O::Sub))),
+        ("mul", Value::builtin("mul", binary(O::Mul))),
+        ("truediv", Value::builtin("truediv", binary(O::TrueDiv))),
+        ("floordiv", Value::builtin("floordiv", binary(O::FloorDiv))),
+        ("mod", Value::builtin("mod", binary(O::Mod))),
+        ("pow", Value::builtin("pow", binary(O::Pow))),
+        ("and_", Value::builtin("and_", binary(O::BitAnd))),
+        ("or_", Value::builtin("or_", binary(O::BitOr))),
+        ("xor", Value::builtin("xor", binary(O::BitXor))),
+        ("concat", Value::builtin("concat", binary(O::Add))),
+        ("eq", Value::builtin("eq", binary(O::Eq))),
+        ("ne", Value::builtin("ne", binary(O::NotEq))),
+        ("lt", Value::builtin("lt", binary(O::Lt))),
+        ("le", Value::builtin("le", binary(O::LtE))),
+        ("gt", Value::builtin("gt", binary(O::Gt))),
+        ("ge", Value::builtin("ge", binary(O::GtE))),
+        (
+            "neg",
+            function("neg", |interpreter, args| {
+                interpreter.unary("-", &args.positional[0])
+            }),
+        ),
+        (
+            "not_",
+            function("not_", |interpreter, args| {
+                interpreter.unary("not", &args.positional[0])
+            }),
+        ),
+        (
+            "truth",
+            function("truth", |interpreter, args| {
+                Ok(Value::Bool(interpreter.truthy(&args.positional[0])?))
+            }),
+        ),
+        (
+            "getitem",
+            function("getitem", |interpreter, args| {
+                interpreter.get_item(&args.positional[0], &args.positional[1])
+            }),
+        ),
+        (
+            "contains",
+            function("contains", |interpreter, args| {
+                Ok(Value::Bool(
+                    interpreter.contains(&args.positional[0], &args.positional[1])?,
+                ))
+            }),
+        ),
+        (
+            "itemgetter",
+            function("itemgetter", |_, args| {
+                let items = args.positional.clone();
+                Ok(Value::builtin("itemgetter", move |interpreter, args| {
+                    let object = &args.positional[0];
+                    if items.len() == 1 {
+                        return interpreter.get_item(object, &items[0]);
+                    }
+                    let values = items
+                        .iter()
+                        .map(|item| interpreter.get_item(object, item))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(Value::tuple(values))
+                }))
+            }),
+        ),
+        (
+            "attrgetter",
+            function("attrgetter", |_, args| {
+                let names: Vec<String> = args
+                    .positional
+                    .iter()
+                    .filter_map(|name| name.as_str().map(str::to_owned))
+                    .collect();
+                Ok(Value::builtin("attrgetter", move |interpreter, args| {
+                    let object = &args.positional[0];
+                    let mut values = Vec::new();
+                    for name in &names {
+                        let mut value = object.clone();
+                        for part in name.split('.') {
+                            value = interpreter.get_attribute(&value, part)?;
+                        }
+                        values.push(value);
+                    }
+                    if values.len() == 1 {
+                        Ok(values.remove(0))
+                    } else {
+                        Ok(Value::tuple(values))
+                    }
+                }))
+            }),
+        ),
+        (
+            "methodcaller",
+            function("methodcaller", |_, mut args| {
+                let name = args
+                    .positional
+                    .remove(0)
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned();
+                let rest = args;
+                Ok(Value::builtin("methodcaller", move |interpreter, args| {
+                    let method = interpreter.get_attribute(&args.positional[0], &name)?;
+                    interpreter.call(&method, rest.clone())
+                }))
+            }),
+        ),
+    ]
+}
+
+/// `copy.copy` and `copy.deepcopy`.
+pub fn copy_value(
+    interpreter: &mut Interpreter,
+    value: &Value,
+    deep: bool,
+) -> Result<Value, Error> {
+    let copy_item = |interpreter: &mut Interpreter, item: &Value| -> Result<Value, Error> {
+        if deep {
+            copy_value(interpreter, item, true)
+        } else {
+            Ok(item.clone())
+        }
+    };
+    Ok(match value.plain() {
+        Value::List(items) => {
+            let items = items.borrow().clone();
+            Value::list(
+                items
+                    .iter()
+                    .map(|item| copy_item(interpreter, item))
+                    .collect::<Result<_, _>>()?,
+            )
+        }
+        Value::Tuple(items) if deep => Value::tuple(
+            items
+                .iter()
+                .map(|item| copy_item(interpreter, item))
+                .collect::<Result<_, _>>()?,
+        ),
+        Value::Dict(dict) => {
+            let original = dict.borrow().clone();
+            let mut copied = Dict {
+                entries: IndexMap::new(),
+                kind: original.kind.clone(),
+            };
+            for (key, item) in original.entries {
+                copied.entries.insert(key, copy_item(interpreter, &item)?);
+            }
+            Value::dict(copied)
+        }
+        Value::Set(set) => Value::set(set.borrow().clone()),
+        Value::Instance(instance) => {
+            let mut dict = IndexMap::new();
+            let entries = instance.dict.borrow().clone();
+            for (key, item) in entries {
+                dict.insert(key, copy_item(interpreter, &item)?);
+            }
+            Value::Instance(Rc::new(Instance {
+                class: instance.class.clone(),
+                dict: RefCell::new(dict),
+            }))
+        }
+        _ => value.clone(),
+    })
+}
+
+pub fn copy() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "copy",
+            function("copy", |interpreter, args| {
+                args.expect("copy", 1, 1)?;
+                copy_value(interpreter, &args.positional[0], false)
+            }),
+        ),
+        (
+            "deepcopy",
+            function("deepcopy", |interpreter, args| {
+                args.expect("deepcopy", 1, 2)?;
+                copy_value(interpreter, &args.positional[0], true)
+            }),
+        ),
+    ]
+}
+
+fn list_of(value: &Value) -> Result<Rc<RefCell<Vec<Value>>>, Error> {
+    match value.plain() {
+        Value::List(items) => Ok(items.clone()),
+        _ => Err(Error::type_error("heap argument must be a list")),
+    }
+}
+
+pub fn heapq() -> Vec<(&'static str, Value)> {
+    fn sorted_insert(
+        interpreter: &mut Interpreter,
+        list: &Rc<RefCell<Vec<Value>>>,
+        item: Value,
+    ) -> Result<(), Error> {
+        let items = list.borrow().clone();
+        let mut position = items.len();
+        for (index, existing) in items.iter().enumerate() {
+            if interpreter.compare(&item, existing)? == std::cmp::Ordering::Less {
+                position = index;
+                break;
+            }
+        }
+        list.borrow_mut().insert(position, item);
+        Ok(())
+    }
+    vec![
+        (
+            "heapify",
+            function("heapify", |interpreter, args| {
+                let list = list_of(&args.positional[0])?;
+                let items = list.borrow().clone();
+                let sorted = sort_values(interpreter, items, None, false)?;
+                *list.borrow_mut() = sorted;
+                Ok(Value::None)
+            }),
+        ),
+        (
+            "heappush",
+            function("heappush", |interpreter, args| {
+                let list = list_of(&args.positional[0])?;
+                sorted_insert(interpreter, &list, args.positional[1].clone())?;
+                Ok(Value::None)
+            }),
+        ),
+        (
+            "heappop",
+            function("heappop", |_, args| {
+                let list = list_of(&args.positional[0])?;
+                let mut items = list.borrow_mut();
+                if items.is_empty() {
+                    return Err(Error::index_error("index out of range"));
+                }
+                Ok(items.remove(0))
+            }),
+        ),
+        (
+            "nlargest",
+            function("nlargest", |interpreter, mut args| {
+                let key = args.take_keyword("key").filter(|key| !key.is_none());
+                let count = args.positional[0].as_int().unwrap_or(0).max(0) as usize;
+                let items = interpreter.iterate(&args.positional[1])?;
+                let mut sorted = sort_values(interpreter, items, key.as_ref(), true)?;
+                sorted.truncate(count);
+                Ok(Value::list(sorted))
+            }),
+        ),
+        (
+            "nsmallest",
+            function("nsmallest", |interpreter, mut args| {
+                let key = args.take_keyword("key").filter(|key| !key.is_none());
+                let count = args.positional[0].as_int().unwrap_or(0).max(0) as usize;
+                let items = interpreter.iterate(&args.positional[1])?;
+                let mut sorted = sort_values(interpreter, items, key.as_ref(), false)?;
+                sorted.truncate(count);
+                Ok(Value::list(sorted))
+            }),
+        ),
+    ]
+}
+
+pub fn bisect() -> Vec<(&'static str, Value)> {
+    fn position(interpreter: &mut Interpreter, args: &Args, right: bool) -> Result<usize, Error> {
+        let items = interpreter.iterate(&args.positional[0])?;
+        let item = &args.positional[1];
+        let mut index = 0;
+        for existing in &items {
+            let ordering = interpreter.compare(existing, item)?;
+            let before = if right {
+                ordering != std::cmp::Ordering::Greater
+            } else {
+                ordering == std::cmp::Ordering::Less
+            };
+            if !before {
+                break;
+            }
+            index += 1;
+        }
+        Ok(index)
+    }
+    vec![
+        (
+            "bisect_left",
+            function("bisect_left", |interpreter, args| {
+                Ok(Value::Int(position(interpreter, &args, false)? as i64))
+            }),
+        ),
+        (
+            "bisect_right",
+            function("bisect_right", |interpreter, args| {
+                Ok(Value::Int(position(interpreter, &args, true)? as i64))
+            }),
+        ),
+        (
+            "bisect",
+            function("bisect", |interpreter, args| {
+                Ok(Value::Int(position(interpreter, &args, true)? as i64))
+            }),
+        ),
+        (
+            "insort",
+            function("insort", |interpreter, args| {
+                let index = position(interpreter, &args, true)?;
+                list_of(&args.positional[0])?
+                    .borrow_mut()
+                    .insert(index, args.positional[1].clone());
+                Ok(Value::None)
+            }),
+        ),
+    ]
+}

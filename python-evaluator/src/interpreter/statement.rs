@@ -420,4 +420,404 @@ impl Interpreter {
             )),
         }
     }
+
+    fn exec_with(
+        &mut self,
+        frame: &Frame,
+        with: &ast::StmtWith,
+        index: usize,
+    ) -> Result<Flow, Error> {
+        let Some(item) = with.items.get(index) else {
+            return self.exec_suite(frame, &with.body);
+        };
+        let manager = self.eval(frame, &item.context_expr)?;
+        let enter = self.find_attribute(&manager, "__enter__")?.ok_or_else(|| {
+            Error::type_error(format!(
+                "'{}' object does not support the context manager protocol",
+                types::type_name(&manager)
+            ))
+        })?;
+        let exit = self.find_attribute(&manager, "__exit__")?;
+        let entered = self.call(&enter, Args::default())?;
+        if let Some(target) = &item.optional_vars {
+            self.assign(frame, target, entered)?;
+        }
+        let result = self.exec_with(frame, with, index + 1);
+        let Some(exit) = exit else {
+            return result;
+        };
+        match result {
+            Ok(flow) => {
+                self.call(
+                    &exit,
+                    Args::new(vec![Value::None, Value::None, Value::None]),
+                )?;
+                Ok(flow)
+            }
+            Err(error) => {
+                if let ErrorKind::Exception(exception) = &error.kind {
+                    let class = Value::Class(types::class_of(exception));
+                    let suppress = self.call(
+                        &exit,
+                        Args::new(vec![class, exception.clone(), Value::None]),
+                    )?;
+                    if self.truthy(&suppress)? {
+                        return Ok(Flow::Next);
+                    }
+                }
+                Err(error)
+            }
+        }
+    }
+
+    fn define_function(&mut self, frame: &Frame, def: &ast::StmtFunctionDef) -> Result<(), Error> {
+        if def.is_async {
+            return Err(Error::unsupported("async functions"));
+        }
+        let decorators = def
+            .decorator_list
+            .iter()
+            .map(|decorator| self.eval(frame, &decorator.expression))
+            .collect::<Result<Vec<_>, _>>()?;
+        let defaults = self.eval_defaults(frame, Some(&def.parameters))?;
+        let name = def.name.id.as_str();
+        let qualname: Name = match frame.kind {
+            FrameKind::Class => match frame.locals.get("__qualname__") {
+                Some(Value::Str(class)) => format!("{class}.{name}").into(),
+                _ => name.into(),
+            },
+            _ => name.into(),
+        };
+        let mut declared = Declared::default();
+        declarations(&def.body, &mut declared);
+        let function = Value::Function(Rc::new(Function {
+            name: name.into(),
+            qualname,
+            code: Code::Def(Rc::new(def.clone())),
+            defaults,
+            globals: frame.globals.clone(),
+            closure: frame.closure(),
+            source: frame.source.clone(),
+            generator: contains_yield(&def.body),
+            declared: Rc::new(declared),
+            attributes: RefCell::new(IndexMap::new()),
+        }));
+        let mut value = function;
+        for decorator in decorators.into_iter().rev() {
+            value = self.call(&decorator, Args::new(vec![value]))?;
+        }
+        self.bind(frame, name, value);
+        Ok(())
+    }
+
+    fn define_class(&mut self, frame: &Frame, class: &ast::StmtClassDef) -> Result<(), Error> {
+        let decorators = class
+            .decorator_list
+            .iter()
+            .map(|decorator| self.eval(frame, &decorator.expression))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut bases = Vec::new();
+        if let Some(arguments) = &class.arguments {
+            let args = self.eval_arguments(frame, arguments)?;
+            for base in args.positional {
+                match base.plain() {
+                    Value::Class(base) => {
+                        let allowed = base.builtin.is_none()
+                            || matches!(
+                                base.builtin,
+                                Some(types::TypeTag::Object | types::TypeTag::BaseException)
+                            )
+                            || base.module.as_ref() != "builtins";
+                        if !allowed {
+                            return Err(Error::unsupported(format!(
+                                "classes that derive from {}",
+                                base.name
+                            )));
+                        }
+                        bases.push(base.clone());
+                    }
+                    Value::Native(object) => {
+                        return Err(Error::unsupported(format!(
+                            "classes that derive from {}",
+                            object.type_name()
+                        )));
+                    }
+                    other => {
+                        return Err(Error::type_error(format!(
+                            "bases must be types, not {}",
+                            types::type_name(other)
+                        )));
+                    }
+                }
+            }
+            if let Some((name, _)) = args.keywords.first() {
+                if &**name != "metaclass" {
+                    return Err(Error::unsupported(format!("class keyword {name}")));
+                }
+                return Err(Error::unsupported("metaclasses"));
+            }
+        }
+        if bases.is_empty() {
+            bases.push(types::builtin_class(types::TypeTag::Object));
+        }
+        let name = class.name.id.as_str();
+        let scope = Scope::new(frame.closure());
+        scope.set("__qualname__", Value::str(name));
+        scope.set(
+            "__module__",
+            frame
+                .globals
+                .get("__name__")
+                .unwrap_or(Value::str("__main__")),
+        );
+        let body_frame = Frame {
+            locals: scope.clone(),
+            globals: frame.globals.clone(),
+            source: frame.source.clone(),
+            kind: FrameKind::Class,
+            declared: Rc::new(Declared::default()),
+            yields: None,
+            method: None,
+        };
+        self.exec_suite(&body_frame, &class.body)?;
+        let module = frame
+            .globals
+            .get("__name__")
+            .and_then(|name| name.as_str().map(str::to_owned))
+            .unwrap_or_else(|| "__main__".into());
+        let new = types::new_class(name, &module, bases, None);
+        {
+            let mut dict = new.dict.borrow_mut();
+            for (key, value) in scope.vars.borrow().iter() {
+                dict.insert(key.clone(), value.clone());
+            }
+        }
+        let mut value = Value::Class(new);
+        for decorator in decorators.into_iter().rev() {
+            value = self.call(&decorator, Args::new(vec![value]))?;
+        }
+        self.bind(frame, name, value);
+        Ok(())
+    }
+
+    fn exec_match(&mut self, frame: &Frame, choice: &ast::StmtMatch) -> Result<Flow, Error> {
+        let subject = self.eval(frame, &choice.subject)?;
+        for case in &choice.cases {
+            if !self.pattern_matches(frame, &case.pattern, &subject)? {
+                continue;
+            }
+            if let Some(guard) = &case.guard {
+                let test = self.eval(frame, guard)?;
+                if !self.truthy(&test)? {
+                    continue;
+                }
+            }
+            return self.exec_suite(frame, &case.body);
+        }
+        Ok(Flow::Next)
+    }
+
+    fn pattern_matches(
+        &mut self,
+        frame: &Frame,
+        pattern: &Pattern,
+        subject: &Value,
+    ) -> Result<bool, Error> {
+        match pattern {
+            Pattern::MatchValue(value) => {
+                let value = self.eval(frame, &value.value)?;
+                self.equals(subject, &value)
+            }
+            Pattern::MatchSingleton(singleton) => Ok(match singleton.value {
+                ast::Singleton::None => subject.is_none(),
+                ast::Singleton::True => matches!(subject.plain(), Value::Bool(true)),
+                ast::Singleton::False => matches!(subject.plain(), Value::Bool(false)),
+            }),
+            Pattern::MatchAs(capture) => {
+                if let Some(inner) = &capture.pattern
+                    && !self.pattern_matches(frame, inner, subject)?
+                {
+                    return Ok(false);
+                }
+                if let Some(name) = &capture.name {
+                    self.bind(frame, name.id.as_str(), subject.clone());
+                }
+                Ok(true)
+            }
+            Pattern::MatchOr(alternatives) => {
+                for alternative in &alternatives.patterns {
+                    if self.pattern_matches(frame, alternative, subject)? {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            }
+            Pattern::MatchSequence(sequence) => {
+                if !matches!(subject.plain(), Value::List(_) | Value::Tuple(_)) {
+                    return Ok(false);
+                }
+                let items = self.iterate(subject)?;
+                let star = sequence
+                    .patterns
+                    .iter()
+                    .position(|pattern| matches!(pattern, Pattern::MatchStar(_)));
+                match star {
+                    None => {
+                        if items.len() != sequence.patterns.len() {
+                            return Ok(false);
+                        }
+                        for (pattern, item) in sequence.patterns.iter().zip(&items) {
+                            if !self.pattern_matches(frame, pattern, item)? {
+                                return Ok(false);
+                            }
+                        }
+                        Ok(true)
+                    }
+                    Some(position) => {
+                        let after = sequence.patterns.len() - position - 1;
+                        if items.len() < position + after {
+                            return Ok(false);
+                        }
+                        let rest_end = items.len() - after;
+                        for (pattern, item) in
+                            sequence.patterns[..position].iter().zip(&items[..position])
+                        {
+                            if !self.pattern_matches(frame, pattern, item)? {
+                                return Ok(false);
+                            }
+                        }
+                        if let Pattern::MatchStar(star) = &sequence.patterns[position]
+                            && let Some(name) = &star.name
+                        {
+                            self.bind(
+                                frame,
+                                name.id.as_str(),
+                                Value::list(items[position..rest_end].to_vec()),
+                            );
+                        }
+                        for (pattern, item) in sequence.patterns[position + 1..]
+                            .iter()
+                            .zip(&items[rest_end..])
+                        {
+                            if !self.pattern_matches(frame, pattern, item)? {
+                                return Ok(false);
+                            }
+                        }
+                        Ok(true)
+                    }
+                }
+            }
+            Pattern::MatchMapping(mapping) => {
+                let Value::Dict(dict) = subject.plain() else {
+                    return Ok(false);
+                };
+                for (key, pattern) in mapping.keys.iter().zip(&mapping.patterns) {
+                    let key = self.eval(frame, key)?;
+                    let found = dict.borrow().entries.get(&self.key(&key)?).cloned();
+                    match found {
+                        Some(value) => {
+                            if !self.pattern_matches(frame, pattern, &value)? {
+                                return Ok(false);
+                            }
+                        }
+                        None => return Ok(false),
+                    }
+                }
+                Ok(true)
+            }
+            Pattern::MatchClass(class) => {
+                let kind = self.eval(frame, &class.cls)?;
+                let Value::Class(kind) = kind.plain() else {
+                    return Err(Error::type_error("called match pattern must be a class"));
+                };
+                if !types::is_instance(subject, kind) {
+                    return Ok(false);
+                }
+                if !class.arguments.patterns.is_empty() || !class.arguments.keywords.is_empty() {
+                    return Err(Error::unsupported("class patterns with arguments"));
+                }
+                Ok(true)
+            }
+            Pattern::MatchStar(_) => Ok(true),
+        }
+    }
+}
+
+/// Keeps the names that a class body annotates, in order, for dataclasses.
+fn record_annotation(frame: &Frame, name: &str, _with_default: Option<()>) {
+    let annotations = frame.locals.get("__annotations__").unwrap_or_else(|| {
+        let dict = Value::dict(Default::default());
+        frame.locals.set("__annotations__", dict.clone());
+        dict
+    });
+    if let Value::Dict(dict) = annotations {
+        dict.borrow_mut().insert(name, Value::None);
+    }
+}
+
+/// Collects `global` and `nonlocal` names of a function body, without nested functions.
+fn declarations(suite: &[Stmt], declared: &mut Declared) {
+    for statement in suite {
+        match statement {
+            Stmt::Global(global) => declared
+                .global
+                .extend(global.names.iter().map(|name| Name::from(name.id.as_str()))),
+            Stmt::Nonlocal(nonlocal) => declared.nonlocal.extend(
+                nonlocal
+                    .names
+                    .iter()
+                    .map(|name| Name::from(name.id.as_str())),
+            ),
+            Stmt::If(branch) => {
+                declarations(&branch.body, declared);
+                for clause in &branch.elif_else_clauses {
+                    declarations(&clause.body, declared);
+                }
+            }
+            Stmt::For(each) => {
+                declarations(&each.body, declared);
+                declarations(&each.orelse, declared);
+            }
+            Stmt::While(each) => {
+                declarations(&each.body, declared);
+                declarations(&each.orelse, declared);
+            }
+            Stmt::With(with) => declarations(&with.body, declared),
+            Stmt::Try(attempt) => {
+                declarations(&attempt.body, declared);
+                for ExceptHandler::ExceptHandler(handler) in &attempt.handlers {
+                    declarations(&handler.body, declared);
+                }
+                declarations(&attempt.orelse, declared);
+                declarations(&attempt.finalbody, declared);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Whether a function body yields, without looking into nested functions and classes.
+fn contains_yield(suite: &[Stmt]) -> bool {
+    use ruff_python_ast::visitor::{Visitor, walk_expr, walk_stmt};
+    struct Finder(bool);
+    impl<'a> Visitor<'a> for Finder {
+        fn visit_stmt(&mut self, statement: &'a Stmt) {
+            match statement {
+                Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {}
+                other => walk_stmt(self, other),
+            }
+        }
+        fn visit_expr(&mut self, expression: &'a Expr) {
+            match expression {
+                Expr::Yield(_) | Expr::YieldFrom(_) => self.0 = true,
+                Expr::Lambda(_) => {}
+                other => walk_expr(self, other),
+            }
+        }
+    }
+    let mut finder = Finder(false);
+    for statement in suite {
+        finder.visit_stmt(statement);
+    }
+    finder.0
 }

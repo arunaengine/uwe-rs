@@ -425,3 +425,346 @@ pub fn itertools() -> Vec<(&'static str, Value)> {
 
 /// `itertools.chain`, with `chain.from_iterable`.
 struct Chain;
+
+impl Native for Chain {
+    fn type_name(&self) -> &str {
+        "type"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn call(
+        &self,
+        interpreter: &mut Interpreter,
+        _: &Value,
+        args: Args,
+    ) -> Result<Option<Value>, Error> {
+        let mut items = Vec::new();
+        for iterable in &args.positional {
+            items.extend(interpreter.iterate(iterable)?);
+        }
+        Ok(Some(Value::iterator(items)))
+    }
+
+    fn instance_of(&self, class: &str) -> bool {
+        class == "callable"
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        Ok(match name {
+            "from_iterable" => Some(function("from_iterable", |interpreter, args| {
+                args.expect("from_iterable", 1, 1)?;
+                let mut items = Vec::new();
+                for iterable in interpreter.iterate(&args.positional[0])? {
+                    items.extend(interpreter.iterate(&iterable)?);
+                }
+                Ok(Value::iterator(items))
+            })),
+            _ => None,
+        })
+    }
+}
+
+/// `functools.partial`.
+pub struct Partial {
+    function: Value,
+    args: Vec<Value>,
+    keywords: Vec<(Rc<str>, Value)>,
+}
+
+impl Native for Partial {
+    fn type_name(&self) -> &str {
+        "functools.partial"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn instance_of(&self, class: &str) -> bool {
+        class == "callable"
+    }
+
+    fn call(
+        &self,
+        interpreter: &mut Interpreter,
+        _: &Value,
+        args: Args,
+    ) -> Result<Option<Value>, Error> {
+        let mut positional = self.args.clone();
+        positional.extend(args.positional);
+        let mut keywords = self.keywords.clone();
+        for (name, value) in args.keywords {
+            keywords.retain(|(existing, _)| *existing != name);
+            keywords.push((name, value));
+        }
+        interpreter
+            .call(
+                &self.function,
+                Args {
+                    positional,
+                    keywords,
+                },
+            )
+            .map(Some)
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        Ok(match name {
+            "func" => Some(self.function.clone()),
+            "args" => Some(Value::tuple(self.args.clone())),
+            "keywords" => Some(Value::dict_of(
+                self.keywords
+                    .iter()
+                    .map(|(key, value)| (key.to_string(), value.clone())),
+            )),
+            _ => None,
+        })
+    }
+}
+
+/// A decorator that may be used bare or with arguments, like `@lru_cache` or `@lru_cache(None)`,
+/// and returns the function unchanged.
+fn transparent_decorator(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    let _ = interpreter;
+    match args.positional.first() {
+        Some(first)
+            if matches!(
+                first.plain(),
+                Value::Function(_) | Value::Builtin(_) | Value::Method(_)
+            ) =>
+        {
+            Ok(first.clone())
+        }
+        _ => Ok(function("decorator", |_, args| {
+            Ok(args.positional.first().cloned().unwrap_or(Value::None))
+        })),
+    }
+}
+
+pub fn functools() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "partial",
+            function("partial", |_, mut args| {
+                if args.positional.is_empty() {
+                    return Err(Error::type_error("partial() missing function"));
+                }
+                let function = args.positional.remove(0);
+                Ok(Value::native(Partial {
+                    function,
+                    args: args.positional,
+                    keywords: args.keywords,
+                }))
+            }),
+        ),
+        (
+            "reduce",
+            function("reduce", |interpreter, args| {
+                args.expect("reduce", 2, 3)?;
+                let mut items = interpreter.iterate(&args.positional[1])?.into_iter();
+                let mut total = match args.positional.get(2) {
+                    Some(initial) => initial.clone(),
+                    None => items.next().ok_or_else(|| {
+                        Error::type_error("reduce() of empty iterable with no initial value")
+                    })?,
+                };
+                for item in items {
+                    total = interpreter.call(&args.positional[0], Args::new(vec![total, item]))?;
+                }
+                Ok(total)
+            }),
+        ),
+        ("lru_cache", function("lru_cache", transparent_decorator)),
+        ("cache", function("cache", transparent_decorator)),
+        (
+            "wraps",
+            function("wraps", |_, _| {
+                Ok(function("wrapper", |_, args| {
+                    Ok(args.positional.first().cloned().unwrap_or(Value::None))
+                }))
+            }),
+        ),
+        (
+            "update_wrapper",
+            function("update_wrapper", |_, args| {
+                Ok(args.positional.first().cloned().unwrap_or(Value::None))
+            }),
+        ),
+        (
+            "total_ordering",
+            function("total_ordering", |_, args| {
+                Ok(args.positional.first().cloned().unwrap_or(Value::None))
+            }),
+        ),
+        (
+            "cached_property",
+            function("cached_property", |_, args| {
+                let getter = args.positional.first().cloned().unwrap_or(Value::None);
+                Ok(Value::native(crate::builtins::Wrapper(getter, "property")))
+            }),
+        ),
+        (
+            "cmp_to_key",
+            function("cmp_to_key", |_, args| {
+                args.expect("cmp_to_key", 1, 1)?;
+                let compare = args.positional[0].clone();
+                Ok(Value::builtin("K", move |_, args| {
+                    Ok(Value::native(CompareKey {
+                        compare: compare.clone(),
+                        value: args.positional.first().cloned().unwrap_or(Value::None),
+                    }))
+                }))
+            }),
+        ),
+    ]
+}
+
+/// The key object of `functools.cmp_to_key`.
+struct CompareKey {
+    compare: Value,
+    value: Value,
+}
+
+impl Native for CompareKey {
+    fn type_name(&self) -> &str {
+        "functools.KeyWrapper"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn binary(
+        &self,
+        interpreter: &mut Interpreter,
+        operator: crate::interpreter::Operator,
+        other: &Value,
+        reflected: bool,
+    ) -> Result<Option<Value>, Error> {
+        let Some(other) = other.as_native::<CompareKey>() else {
+            return Ok(None);
+        };
+        let (a, b) = if reflected {
+            (&other.value, &self.value)
+        } else {
+            (&self.value, &other.value)
+        };
+        let result = interpreter.call(&self.compare, Args::new(vec![a.clone(), b.clone()]))?;
+        let order = result.as_int().unwrap_or(0);
+        use crate::interpreter::Operator as O;
+        Ok(Some(Value::Bool(match operator {
+            O::Lt => order < 0,
+            O::LtE => order <= 0,
+            O::Gt => order > 0,
+            O::GtE => order >= 0,
+            O::Eq => order == 0,
+            O::NotEq => order != 0,
+            _ => return Ok(None),
+        })))
+    }
+}
+
+/// A class made by `collections.namedtuple`.
+pub struct NamedTupleClass {
+    name: String,
+    fields: Vec<String>,
+    defaults: Vec<Value>,
+}
+
+/// An object of a `namedtuple` class.
+pub struct NamedTuple {
+    class: Rc<NamedTupleClass>,
+    values: Vec<Value>,
+}
+
+impl Native for NamedTupleClass {
+    fn type_name(&self) -> &str {
+        "type"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn instance_of(&self, class: &str) -> bool {
+        class == "callable"
+    }
+
+    fn check_instance(&self, value: &Value) -> Option<bool> {
+        Some(
+            value
+                .as_native::<NamedTuple>()
+                .is_some_and(|tuple| tuple.class.name == self.name),
+        )
+    }
+
+    fn call(
+        &self,
+        _: &mut Interpreter,
+        this: &Value,
+        mut args: Args,
+    ) -> Result<Option<Value>, Error> {
+        let class = match this.plain() {
+            Value::Native(object) => object.clone(),
+            _ => return Ok(None),
+        };
+        let class: Rc<NamedTupleClass> = match class.as_any().downcast_ref::<NamedTupleClass>() {
+            Some(found) => Rc::new(NamedTupleClass {
+                name: found.name.clone(),
+                fields: found.fields.clone(),
+                defaults: found.defaults.clone(),
+            }),
+            None => return Ok(None),
+        };
+        let mut values = Vec::with_capacity(class.fields.len());
+        let first_default = class.fields.len() - class.defaults.len();
+        for (index, field) in class.fields.iter().enumerate() {
+            let value = match args.take_keyword(field) {
+                Some(value) => value,
+                None => match args.positional.get(index) {
+                    Some(value) => value.clone(),
+                    None if index >= first_default => class.defaults[index - first_default].clone(),
+                    None => {
+                        return Err(Error::type_error(format!(
+                            "{}() missing required argument: '{field}'",
+                            class.name
+                        )));
+                    }
+                },
+            };
+            values.push(value);
+        }
+        Ok(Some(Value::native(NamedTuple { class, values })))
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        Ok(match name {
+            "_fields" => Some(Value::tuple(
+                self.fields
+                    .iter()
+                    .map(|field| Value::str(field.as_str()))
+                    .collect(),
+            )),
+            "__name__" => Some(Value::str(self.name.as_str())),
+            _ => None,
+        })
+    }
+}

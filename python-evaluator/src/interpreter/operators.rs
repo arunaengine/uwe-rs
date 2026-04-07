@@ -442,4 +442,184 @@ impl Interpreter {
         }
         Ok(Ordering::Equal)
     }
+
+    /// `item in container`.
+    pub fn contains(&mut self, container: &Value, item: &Value) -> Result<bool, Error> {
+        let item = item.plain();
+        match container.plain() {
+            Value::Str(text) => match item {
+                Value::Str(part) => Ok(text.contains(&**part)),
+                other => Err(Error::type_error(format!(
+                    "'in <string>' requires string as left operand, not {}",
+                    types::type_name(other)
+                ))),
+            },
+            Value::Bytes(bytes) => {
+                match item {
+                    Value::Bytes(part) => Ok(part.is_empty()
+                        || bytes.windows(part.len()).any(|window| window == &part[..])),
+                    Value::Int(byte) => Ok(bytes.contains(&(*byte as u8))),
+                    _ => Err(Error::type_error("a bytes-like object is required")),
+                }
+            }
+            Value::Dict(dict) => {
+                let key = Key::new(item.clone())?;
+                Ok(dict.borrow().entries.contains_key(&key))
+            }
+            Value::Set(set) => {
+                let key = Key::new(item.clone())?;
+                Ok(set.borrow().contains(&key))
+            }
+            Value::FrozenSet(set) => {
+                let key = Key::new(item.clone())?;
+                Ok(set.contains(&key))
+            }
+            Value::Range(range) => Ok(match item.as_int() {
+                Some(value) => {
+                    let inside = if range.step > 0 {
+                        value >= range.start && value < range.stop
+                    } else {
+                        value <= range.start && value > range.stop
+                    };
+                    inside && (value - range.start) % range.step == 0
+                }
+                None => false,
+            }),
+            Value::List(items) => {
+                let items = items.borrow().clone();
+                self.any_equal(&items, item)
+            }
+            Value::Tuple(items) => {
+                let items = items.clone();
+                self.any_equal(&items, item)
+            }
+            Value::Native(object) => match object.contains(self, item)? {
+                Some(found) => Ok(found),
+                None => {
+                    let items = self.iterate(container)?;
+                    self.any_equal(&items, item)
+                }
+            },
+            Value::Instance(_) => {
+                if let Some(method) = self.lookup_special(container, "__contains__") {
+                    let result = self.call(&method, Args::new(vec![item.clone()]))?;
+                    return self.truthy(&result);
+                }
+                let items = self.iterate(container)?;
+                self.any_equal(&items, item)
+            }
+            other => {
+                let items = self.iterate(other).map_err(|_| {
+                    Error::type_error(format!(
+                        "argument of type '{}' is not iterable",
+                        types::type_name(other)
+                    ))
+                })?;
+                self.any_equal(&items, item)
+            }
+        }
+    }
+
+    fn any_equal(&mut self, items: &[Value], item: &Value) -> Result<bool, Error> {
+        for candidate in items {
+            if candidate.is(item) || self.equals(candidate, item)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// `bool(value)`.
+    pub fn truthy(&mut self, value: &Value) -> Result<bool, Error> {
+        Ok(match value.plain() {
+            Value::None => false,
+            Value::Bool(value) => *value,
+            Value::Int(value) => *value != 0,
+            Value::BigInt(_) => true,
+            Value::Float(value) => *value != 0.0,
+            Value::Str(text) => !text.is_empty(),
+            Value::Bytes(bytes) => !bytes.is_empty(),
+            Value::List(items) => !items.borrow().is_empty(),
+            Value::Tuple(items) => !items.is_empty(),
+            Value::Dict(dict) => !dict.borrow().entries.is_empty(),
+            Value::Set(set) => !set.borrow().is_empty(),
+            Value::FrozenSet(set) => !set.is_empty(),
+            Value::Range(range) => !range.is_empty(),
+            Value::Instance(_) => {
+                if let Some(method) = self.lookup_special(value, "__bool__") {
+                    let result = self.call(&method, Args::default())?;
+                    return self.truthy(&result);
+                }
+                if let Some(method) = self.lookup_special(value, "__len__") {
+                    let result = self.call(&method, Args::default())?;
+                    return Ok(result.as_int().unwrap_or(0) != 0);
+                }
+                true
+            }
+            Value::Native(object) => match object.truthy() {
+                Some(truth) => truth,
+                None => object.length().is_none_or(|length| length > 0),
+            },
+            _ => true,
+        })
+    }
+
+    /// `not value`, `-value`, `+value` and `~value`.
+    pub fn unary(&mut self, operator: &str, value: &Value) -> Result<Value, Error> {
+        let value = value.plain();
+        match (operator, value) {
+            ("not", _) => Ok(Value::Bool(!self.truthy(value)?)),
+            ("-", Value::Bool(b)) => Ok(Value::Int(-i64::from(*b))),
+            ("-", Value::Int(i)) => Ok(match i.checked_neg() {
+                Some(negated) => Value::Int(negated),
+                None => Value::from_bigint(-num_bigint::BigInt::from(*i)),
+            }),
+            ("-", Value::BigInt(i)) => Ok(Value::from_bigint(-(**i).clone())),
+            ("-", Value::Float(f)) => Ok(Value::Float(-f)),
+            ("+", Value::Bool(b)) => Ok(Value::Int(i64::from(*b))),
+            ("+", Value::Int(_) | Value::BigInt(_) | Value::Float(_)) => Ok(value.clone()),
+            ("~", Value::Bool(b)) => Ok(Value::Int(!i64::from(*b))),
+            ("~", Value::Int(i)) => Ok(Value::Int(!i)),
+            ("~", Value::BigInt(i)) => Ok(Value::from_bigint(-(**i).clone() - 1)),
+            (_, Value::Native(object)) => match object.unary(self, operator)? {
+                Some(result) => Ok(result),
+                None => Err(Error::type_error(format!(
+                    "bad operand type for unary {operator}: '{}'",
+                    object.type_name()
+                ))),
+            },
+            (_, Value::Instance(_)) => {
+                let name = match operator {
+                    "-" => "__neg__",
+                    "+" => "__pos__",
+                    _ => "__invert__",
+                };
+                match self.lookup_special(value, name) {
+                    Some(method) => self.call(&method, Args::default()),
+                    None => Err(Error::type_error(format!(
+                        "bad operand type for unary {operator}: '{}'",
+                        types::type_name(value)
+                    ))),
+                }
+            }
+            _ => Err(Error::type_error(format!(
+                "bad operand type for unary {operator}: '{}'",
+                types::type_name(value)
+            ))),
+        }
+    }
+
+    /// A dict key or set member for a value.
+    pub fn key(&mut self, value: &Value) -> Result<Key, Error> {
+        Key::new(value.plain().clone())
+    }
+}
+
+/// The members of a set or frozenset.
+fn set_items(value: &Value) -> Option<IndexSet<Key>> {
+    match value.plain() {
+        Value::Set(set) => Some(set.borrow().clone()),
+        Value::FrozenSet(set) => Some((**set).clone()),
+        _ => None,
+    }
 }

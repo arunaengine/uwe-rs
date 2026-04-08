@@ -1,0 +1,23 @@
+Hello, Ann! () [] Hi, Bob? (1, 2) [('x', 1)]
+Yo, Cy! () []
+2 3
+11
+[0, 2, 4] [2, 2, 2]
+610
+[0, 1, 4] [0, 1, 'never'] 10
+<HI> wrapper
+rex makes a sound (woof) Rex Animal('cat') dog dog True Dog
+True True a ["Animal('z')"]
+looked up b
+caught missing b NotFound True
+index list index out of range
+invalid literal for int() with base 10: 'x'
+('bad', 2) ValueError('bad', 2)
+lookup "'k'"
+loop 0
+loop 2
+while done 3
+6 (1, 2) ['a', 'b']
+True
+default True True [2]
+go 1 [2]

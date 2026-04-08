@@ -1,0 +1,22 @@
+'Hello, World' 'Hello, World  ' '  Hello, World'   hello, world     HELLO, WORLD  
+['a', 'b', '', 'c'] ['a', 'b', 'c'] ['a', 'b,c'] ['a,b', 'c']
+1x2x3 a-b-c heLLo heLlo
+True True 2 3 -1
+2 Hello World Hello world hEllO
+***abc*** abc...    abc 00042 -0042
+True True True True True True
+('file', '.', 'tar.gz') ('file.tar', '.', 'gz') x x
+['line1', 'line2', 'line3'] a   b cba bcd ef
+sample: 3.14 3.14159   'sample' {literal}    3.142|
+nested sample 1 + 2 = 3    sample    0x2a 1_000_000
+a and b b a 1-2
+p q v     1|2    |  3  |
+Bob is 30 years, 99.50%     a|b    | k-007
+'q' ff 10 1.234568e+04 1.234e-05
+1.0 None [1, 'a', None] "it's" 'say "hi"' {'k': (1, 2)}
+5 é HÉLLO 233 é ß
+a b c d bc
+A/1.bam x5y
+abc| +5 -5  42 A 3
+12345678901234567890 1e+100 nan -inf
+1,234,567.89 0.000000e+00 12.3% 1e+08

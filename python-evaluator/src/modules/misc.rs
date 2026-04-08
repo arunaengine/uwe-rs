@@ -1343,3 +1343,460 @@ pub fn random() -> Vec<(&'static str, Value)> {
 
 /// `io.StringIO`.
 struct StringIo(RefCell<String>);
+
+impl Native for StringIo {
+    fn type_name(&self) -> &str {
+        "_io.StringIO"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn iterate(&self, _: &mut Interpreter) -> Result<Option<Vec<Value>>, Error> {
+        let text = self.0.borrow();
+        Ok(Some(text.split_inclusive('\n').map(Value::str).collect()))
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        this: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let this = this.clone();
+        Ok(match name {
+            "write" => Some(Value::builtin("write", move |interpreter, args| {
+                let text = interpreter.to_str(&args.positional[0])?;
+                let buffer = this.as_native::<StringIo>().expect("a buffer");
+                buffer.0.borrow_mut().push_str(&text);
+                Ok(Value::Int(text.chars().count() as i64))
+            })),
+            "getvalue" | "read" => Some(Value::builtin(name, move |_, _| {
+                let buffer = this.as_native::<StringIo>().expect("a buffer");
+                let text = buffer.0.borrow().clone();
+                Ok(Value::str(text))
+            })),
+            "readlines" => Some(Value::builtin(name, move |_, _| {
+                let buffer = this.as_native::<StringIo>().expect("a buffer");
+                let text = buffer.0.borrow().clone();
+                Ok(Value::list(
+                    text.split_inclusive('\n').map(Value::str).collect(),
+                ))
+            })),
+            "seek" | "close" | "flush" | "truncate" => {
+                Some(Value::builtin(name, |_, _| Ok(Value::None)))
+            }
+            "__enter__" => Some(Value::builtin("__enter__", move |_, _| Ok(this.clone()))),
+            "__exit__" => Some(Value::builtin("__exit__", |_, _| Ok(Value::Bool(false)))),
+            _ => None,
+        })
+    }
+}
+
+pub fn io() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "StringIO",
+            function("StringIO", |interpreter, args| {
+                let initial = match args.positional.first() {
+                    Some(value) => interpreter.to_str(value)?,
+                    None => String::new(),
+                };
+                Ok(Value::native(StringIo(RefCell::new(initial))))
+            }),
+        ),
+        (
+            "TextIOWrapper",
+            Value::Class(types::native_class("TextIOWrapper")),
+        ),
+        (
+            "open",
+            function("open", |interpreter, args| {
+                let open = interpreter.builtins.get("open").unwrap_or(Value::None);
+                interpreter.call(&open, args)
+            }),
+        ),
+    ]
+}
+
+/// `dataclasses.field(...)`.
+struct FieldSpec {
+    default: Option<Value>,
+    factory: Option<Value>,
+}
+
+impl Native for FieldSpec {
+    fn type_name(&self) -> &str {
+        "dataclasses.Field"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+fn dataclass_decorate(interpreter: &mut Interpreter, class: Value) -> Result<Value, Error> {
+    let Value::Class(class_ref) = class.plain() else {
+        return Err(Error::type_error(
+            "dataclass() should be applied to a class",
+        ));
+    };
+    let class_ref = class_ref.clone();
+    // Fields of base dataclasses come first.
+    let mut fields: Vec<(String, Option<Value>, Option<Value>)> = Vec::new();
+    for ancestor in class_ref.mro.borrow().iter().rev() {
+        let dict = ancestor.dict.borrow();
+        let Some(Value::Dict(annotations)) = dict.get("__annotations__") else {
+            continue;
+        };
+        for key in annotations.borrow().entries.keys() {
+            let Some(name) = key.0.as_str() else { continue };
+            let (default, factory) = match dict.get(name) {
+                Some(Value::Native(object)) if object.type_name() == "dataclasses.Field" => {
+                    let spec = object
+                        .as_any()
+                        .downcast_ref::<FieldSpec>()
+                        .expect("a field");
+                    (spec.default.clone(), spec.factory.clone())
+                }
+                Some(value) => (Some(value.clone()), None),
+                None => (None, None),
+            };
+            fields.retain(|(existing, _, _)| existing != name);
+            fields.push((name.to_owned(), default, factory));
+        }
+    }
+    let names: Vec<Value> = fields
+        .iter()
+        .map(|(name, _, _)| Value::str(name.as_str()))
+        .collect();
+    let fields = Rc::new(fields);
+    let init_fields = fields.clone();
+    let init = Value::builtin("__init__", move |interpreter, mut args| {
+        let this = args.positional.remove(0);
+        let Value::Instance(instance) = this.plain() else {
+            return Err(Error::type_error("__init__ needs an object"));
+        };
+        for (index, (name, default, factory)) in init_fields.iter().enumerate() {
+            let value = match args.take_keyword(name) {
+                Some(value) => value,
+                None => match args.positional.get(index) {
+                    Some(value) => value.clone(),
+                    None => match (default, factory) {
+                        (Some(default), _) => default.clone(),
+                        (None, Some(factory)) => interpreter.call(factory, Args::default())?,
+                        (None, None) => {
+                            return Err(Error::type_error(format!(
+                                "__init__() missing 1 required positional argument: '{name}'"
+                            )));
+                        }
+                    },
+                },
+            };
+            instance
+                .dict
+                .borrow_mut()
+                .insert(name.as_str().into(), value);
+        }
+        if let Some(post) = interpreter.lookup_special(&this, "__post_init__") {
+            interpreter.call(&post, Args::default())?;
+        }
+        Ok(Value::None)
+    });
+    let repr_fields = fields.clone();
+    let repr = Value::builtin("__repr__", move |interpreter, args| {
+        let this = &args.positional[0];
+        let mut parts = Vec::new();
+        for (name, _, _) in repr_fields.iter() {
+            let value = interpreter.get_attribute(this, name)?;
+            parts.push(format!("{name}={}", interpreter.repr(&value)?));
+        }
+        Ok(Value::str(format!(
+            "{}({})",
+            types::type_name(this),
+            parts.join(", ")
+        )))
+    });
+    let eq_fields = fields.clone();
+    let eq = Value::builtin("__eq__", move |interpreter, args| {
+        let (a, b) = (&args.positional[0], &args.positional[1]);
+        if !Rc::ptr_eq(&types::class_of(a), &types::class_of(b)) {
+            return Ok(Value::NotImplemented);
+        }
+        for (name, _, _) in eq_fields.iter() {
+            let (x, y) = (
+                interpreter.get_attribute(a, name)?,
+                interpreter.get_attribute(b, name)?,
+            );
+            if !interpreter.equals(&x, &y)? {
+                return Ok(Value::Bool(false));
+            }
+        }
+        Ok(Value::Bool(true))
+    });
+    let mut dict = class_ref.dict.borrow_mut();
+    if !dict.contains_key("__init__") {
+        dict.insert("__init__".into(), init);
+    }
+    if !dict.contains_key("__repr__") {
+        dict.insert("__repr__".into(), repr);
+    }
+    if !dict.contains_key("__eq__") {
+        dict.insert("__eq__".into(), eq);
+    }
+    dict.insert("__dataclass_fields__".into(), Value::list(names));
+    let _ = interpreter;
+    Ok(class)
+}
+
+pub fn dataclasses() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "dataclass",
+            function("dataclass", |interpreter, args| {
+                match args.positional.first() {
+                    Some(class @ Value::Class(_)) => dataclass_decorate(interpreter, class.clone()),
+                    _ => Ok(function("dataclass", |interpreter, args| {
+                        dataclass_decorate(
+                            interpreter,
+                            args.positional.first().cloned().unwrap_or(Value::None),
+                        )
+                    })),
+                }
+            }),
+        ),
+        (
+            "field",
+            function("field", |_, mut args| {
+                Ok(Value::native(FieldSpec {
+                    default: args.take_keyword("default"),
+                    factory: args.take_keyword("default_factory"),
+                }))
+            }),
+        ),
+        (
+            "asdict",
+            function("asdict", |interpreter, args| {
+                let this = &args.positional[0];
+                let class = types::class_of(this);
+                let names = class
+                    .lookup("__dataclass_fields__")
+                    .unwrap_or(Value::list(Vec::new()));
+                let mut dict = Dict::default();
+                for name in interpreter.iterate(&names)? {
+                    let key = name.as_str().unwrap_or_default().to_owned();
+                    let value = interpreter.get_attribute(this, &key)?;
+                    dict.insert(&key, value);
+                }
+                Ok(Value::dict(dict))
+            }),
+        ),
+        (
+            "fields",
+            function("fields", |interpreter, args| {
+                let class = match args.positional[0].plain() {
+                    Value::Class(class) => class.clone(),
+                    other => types::class_of(other),
+                };
+                let names = class
+                    .lookup("__dataclass_fields__")
+                    .unwrap_or(Value::list(Vec::new()));
+                let mut fields = Vec::new();
+                for name in interpreter.iterate(&names)? {
+                    let mut record = Dict::default();
+                    record.insert("name", name);
+                    fields.push(Value::native(Record(RefCell::new(record), "Field")));
+                }
+                Ok(Value::tuple(fields))
+            }),
+        ),
+        (
+            "is_dataclass",
+            function("is_dataclass", |_, args| {
+                let class = match args.positional[0].plain() {
+                    Value::Class(class) => class.clone(),
+                    other => types::class_of(other),
+                };
+                Ok(Value::Bool(class.lookup("__dataclass_fields__").is_some()))
+            }),
+        ),
+    ]
+}
+
+pub fn abc() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "ABC",
+            Value::Class(types::builtin_class(types::TypeTag::Object)),
+        ),
+        (
+            "ABCMeta",
+            Value::Class(types::builtin_class(types::TypeTag::Type)),
+        ),
+        (
+            "abstractmethod",
+            function("abstractmethod", |_, args| {
+                Ok(args.positional.first().cloned().unwrap_or(Value::None))
+            }),
+        ),
+    ]
+}
+
+/// `contextlib.suppress`.
+struct Suppress(Vec<Value>);
+
+impl Native for Suppress {
+    fn type_name(&self) -> &str {
+        "contextlib.suppress"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let kinds = self.0.clone();
+        Ok(match name {
+            "__enter__" => Some(Value::builtin("__enter__", |_, _| Ok(Value::None))),
+            "__exit__" => {
+                Some(Value::builtin("__exit__", move |_, args| {
+                    let Some(Value::Class(raised)) =
+                        args.positional.first().map(|value| value.plain().clone())
+                    else {
+                        return Ok(Value::Bool(false));
+                    };
+                    Ok(Value::Bool(kinds.iter().any(|kind| matches!(kind.plain(), Value::Class(kind) if raised.is_subclass(kind)))))
+                }))
+            }
+            _ => None,
+        })
+    }
+}
+
+pub fn contextlib() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "suppress",
+            function("suppress", |_, args| {
+                Ok(Value::native(Suppress(args.positional)))
+            }),
+        ),
+        (
+            "nullcontext",
+            function("nullcontext", |_, args| {
+                Ok(Value::native(NullContext(
+                    args.positional.first().cloned().unwrap_or(Value::None),
+                )))
+            }),
+        ),
+        (
+            "contextmanager",
+            function("contextmanager", |_, _| {
+                Err(Error::unsupported("contextlib.contextmanager"))
+            }),
+        ),
+        (
+            "redirect_stdout",
+            function("redirect_stdout", |_, _| {
+                Ok(Value::native(NullContext(Value::None)))
+            }),
+        ),
+        (
+            "redirect_stderr",
+            function("redirect_stderr", |_, _| {
+                Ok(Value::native(NullContext(Value::None)))
+            }),
+        ),
+    ]
+}
+
+pub fn fnmatch() -> Vec<(&'static str, Value)> {
+    fn matches(name: &str, pattern: &str) -> Result<bool, Error> {
+        let regex = fancy_regex::Regex::new(&super::os::glob_regex(pattern))
+            .map_err(|error| Error::value_error(error.to_string()))?;
+        Ok(regex.is_match(name).unwrap_or(false))
+    }
+    vec![
+        (
+            "fnmatch",
+            function("fnmatch", |interpreter, args| {
+                let name = interpreter.to_str(&args.positional[0])?;
+                let pattern = interpreter.to_str(&args.positional[1])?;
+                Ok(Value::Bool(matches(&name, &pattern)?))
+            }),
+        ),
+        (
+            "fnmatchcase",
+            function("fnmatchcase", |interpreter, args| {
+                let name = interpreter.to_str(&args.positional[0])?;
+                let pattern = interpreter.to_str(&args.positional[1])?;
+                Ok(Value::Bool(matches(&name, &pattern)?))
+            }),
+        ),
+        (
+            "filter",
+            function("filter", |interpreter, args| {
+                let pattern = interpreter.to_str(&args.positional[1])?;
+                let mut kept = Vec::new();
+                for name in interpreter.iterate(&args.positional[0])? {
+                    let text = interpreter.to_str(&name)?;
+                    if matches(&text, &pattern)? {
+                        kept.push(name);
+                    }
+                }
+                Ok(Value::list(kept))
+            }),
+        ),
+        (
+            "translate",
+            function("translate", |interpreter, args| {
+                let pattern = interpreter.to_str(&args.positional[0])?;
+                Ok(Value::str(super::os::glob_regex(&pattern)))
+            }),
+        ),
+    ]
+}
+
+pub fn errno() -> Vec<(&'static str, Value)> {
+    vec![
+        ("ENOENT", Value::Int(2)),
+        ("EEXIST", Value::Int(17)),
+        ("EACCES", Value::Int(13)),
+        ("EPERM", Value::Int(1)),
+        ("ENOTDIR", Value::Int(20)),
+        ("EISDIR", Value::Int(21)),
+        ("ENOSPC", Value::Int(28)),
+    ]
+}
+
+pub fn traceback() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "format_exc",
+            function("format_exc", |interpreter, _| {
+                Ok(Value::str(
+                    interpreter
+                        .current_exception()
+                        .map(|error| format!("{error}\n"))
+                        .unwrap_or_default(),
+                ))
+            }),
+        ),
+        (
+            "print_exc",
+            function("print_exc", |interpreter, _| {
+                if let Some(error) = interpreter.current_exception() {
+                    let text = format!("{error}\n");
+                    interpreter.host.print(&text);
+                }
+                Ok(Value::None)
+            }),
+        ),
+    ]
+}

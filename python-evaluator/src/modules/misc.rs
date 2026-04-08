@@ -911,3 +911,435 @@ pub fn warnings() -> Vec<(&'static str, Value)> {
 
 /// A context manager that does nothing, like `contextlib.nullcontext`.
 pub struct NullContext(pub Value);
+
+impl Native for NullContext {
+    fn type_name(&self) -> &str {
+        "nullcontext"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let value = self.0.clone();
+        Ok(match name {
+            "__enter__" => Some(Value::builtin("__enter__", move |_, _| Ok(value.clone()))),
+            "__exit__" => Some(Value::builtin("__exit__", |_, _| Ok(Value::Bool(false)))),
+            _ => None,
+        })
+    }
+}
+
+/// A `logging.Logger` that writes to the host's output.
+struct Logger(String);
+
+impl Native for Logger {
+    fn type_name(&self) -> &str {
+        "logging.Logger"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        Ok(match name {
+            "debug" | "info" | "warning" | "warn" | "error" | "critical" | "exception" | "log" => {
+                let level = name.to_uppercase();
+                let skip_level = name == "log";
+                Some(Value::builtin(name, move |interpreter, args| {
+                    let mut positional = args.positional.clone();
+                    if skip_level && !positional.is_empty() {
+                        positional.remove(0);
+                    }
+                    if let Some(message) = positional.first() {
+                        let mut text = interpreter.to_str(message)?;
+                        if positional.len() > 1 {
+                            text = crate::format::percent_format(
+                                interpreter,
+                                &text,
+                                &Value::tuple(positional[1..].to_vec()),
+                            )?;
+                        }
+                        if level != "DEBUG" {
+                            interpreter.host.print(&format!("{text}\n"));
+                        }
+                    }
+                    Ok(Value::None)
+                }))
+            }
+            "name" => Some(Value::str(self.0.as_str())),
+            "handlers" => Some(Value::list(Vec::new())),
+            "level" => Some(Value::Int(20)),
+            "setLevel" | "addHandler" | "removeHandler" | "addFilter" | "propagate"
+            | "disabled" => Some(Value::builtin(name, |_, _| Ok(Value::None))),
+            "isEnabledFor" => Some(Value::builtin(name, |_, _| Ok(Value::Bool(true)))),
+            _ => None,
+        })
+    }
+
+    fn set_attribute(&self, _: &mut Interpreter, _: &str, _: Value) -> Result<bool, Error> {
+        Ok(true)
+    }
+}
+
+pub fn logger(name: &str) -> Value {
+    Value::native(Logger(name.to_owned()))
+}
+
+pub fn logging() -> Vec<(&'static str, Value)> {
+    let root = logger("root");
+    let mut entries = vec![
+        ("DEBUG", Value::Int(10)),
+        ("INFO", Value::Int(20)),
+        ("WARNING", Value::Int(30)),
+        ("WARN", Value::Int(30)),
+        ("ERROR", Value::Int(40)),
+        ("CRITICAL", Value::Int(50)),
+        (
+            "getLogger",
+            function("getLogger", |_, args| {
+                let name = args
+                    .positional
+                    .first()
+                    .and_then(|name| name.as_str().map(str::to_owned))
+                    .unwrap_or_else(|| "root".into());
+                Ok(logger(&name))
+            }),
+        ),
+        (
+            "basicConfig",
+            function("basicConfig", |_, _| Ok(Value::None)),
+        ),
+        (
+            "StreamHandler",
+            function("StreamHandler", |_, _| Ok(logger("handler"))),
+        ),
+        (
+            "FileHandler",
+            function("FileHandler", |_, _| Ok(logger("handler"))),
+        ),
+        (
+            "Formatter",
+            function("Formatter", |_, _| Ok(logger("formatter"))),
+        ),
+        ("Handler", Value::Class(types::native_class("Handler"))),
+    ];
+    for level in ["debug", "info", "warning", "error", "critical", "exception"] {
+        if let Value::Native(object) = &root
+            && let Some(logger) = object.as_any().downcast_ref::<Logger>()
+        {
+            let name = logger.0.clone();
+            let level_name: &'static str = level;
+            entries.push((
+                level_name,
+                Value::builtin(level_name, move |interpreter, args| {
+                    let logger = Value::native(Logger(name.clone()));
+                    let method = interpreter.get_attribute(&logger, level_name)?;
+                    interpreter.call(&method, args)
+                }),
+            ));
+        }
+    }
+    entries
+}
+
+pub fn socket() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "gethostname",
+            function("gethostname", |_, _| Ok(Value::str("localhost"))),
+        ),
+        (
+            "getfqdn",
+            function("getfqdn", |_, _| Ok(Value::str("localhost"))),
+        ),
+    ]
+}
+
+pub fn platform() -> Vec<(&'static str, Value)> {
+    vec![
+        ("system", function("system", |_, _| Ok(Value::str("Linux")))),
+        (
+            "machine",
+            function("machine", |_, _| Ok(Value::str("x86_64"))),
+        ),
+        ("node", function("node", |_, _| Ok(Value::str("localhost")))),
+        (
+            "platform",
+            function("platform", |_, _| Ok(Value::str("Linux-6.0.0-x86_64"))),
+        ),
+        (
+            "python_version",
+            function("python_version", |_, _| Ok(Value::str("3.12.0"))),
+        ),
+        (
+            "release",
+            function("release", |_, _| Ok(Value::str("6.0.0"))),
+        ),
+        (
+            "processor",
+            function("processor", |_, _| Ok(Value::str("x86_64"))),
+        ),
+    ]
+}
+
+pub fn getpass() -> Vec<(&'static str, Value)> {
+    vec![(
+        "getuser",
+        function("getuser", |_, _| {
+            Ok(Value::str(
+                std::env::var("USER").unwrap_or_else(|_| "user".into()),
+            ))
+        }),
+    )]
+}
+
+/// A name of `typing`: subscripting and calling give it back.
+struct TypingName(&'static str);
+
+impl Native for TypingName {
+    fn type_name(&self) -> &str {
+        "typing"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_item(
+        &self,
+        _: &mut Interpreter,
+        this: &Value,
+        _: &Value,
+    ) -> Result<Option<Value>, Error> {
+        Ok(Some(this.clone()))
+    }
+
+    fn binary(
+        &self,
+        _: &mut Interpreter,
+        operator: crate::interpreter::Operator,
+        _: &Value,
+        _: bool,
+    ) -> Result<Option<Value>, Error> {
+        Ok(match operator {
+            crate::interpreter::Operator::BitOr => Some(Value::native(TypingName(self.0))),
+            _ => None,
+        })
+    }
+
+    fn check_instance(&self, value: &Value) -> Option<bool> {
+        let plain = value.plain();
+        Some(match self.0 {
+            "List" => matches!(plain, Value::List(_)),
+            "Dict" | "Mapping" => matches!(plain, Value::Dict(_)),
+            "Tuple" => matches!(plain, Value::Tuple(_)),
+            "Set" => matches!(plain, Value::Set(_)),
+            _ => true,
+        })
+    }
+}
+
+pub fn typing() -> Vec<(&'static str, Value)> {
+    let mut entries: Vec<(&'static str, Value)> = [
+        "Any",
+        "List",
+        "Dict",
+        "Tuple",
+        "Set",
+        "FrozenSet",
+        "Optional",
+        "Union",
+        "Callable",
+        "Iterable",
+        "Iterator",
+        "Sequence",
+        "Mapping",
+        "MutableMapping",
+        "Generator",
+        "Type",
+        "Literal",
+        "Final",
+        "ClassVar",
+        "Annotated",
+        "Collection",
+        "DefaultDict",
+        "OrderedDict",
+        "Counter",
+        "Deque",
+        "Pattern",
+        "Match",
+        "IO",
+        "TextIO",
+        "Hashable",
+        "Sized",
+        "NoReturn",
+        "Never",
+        "Self",
+        "AnyStr",
+        "Protocol",
+        "TypeAlias",
+        "Awaitable",
+        "Coroutine",
+    ]
+    .into_iter()
+    .map(|name| (name, Value::native(TypingName(name))))
+    .collect();
+    entries.extend([
+        ("TYPE_CHECKING", Value::Bool(false)),
+        (
+            "cast",
+            function("cast", |_, args| {
+                Ok(args.positional.get(1).cloned().unwrap_or(Value::None))
+            }),
+        ),
+        (
+            "TypeVar",
+            function("TypeVar", |_, _| Ok(Value::native(TypingName("TypeVar")))),
+        ),
+        (
+            "NewType",
+            function("NewType", |_, args| {
+                Ok(args.positional.get(1).cloned().unwrap_or(Value::None))
+            }),
+        ),
+        (
+            "overload",
+            function("overload", |_, args| {
+                Ok(args.positional.first().cloned().unwrap_or(Value::None))
+            }),
+        ),
+        (
+            "no_type_check",
+            function("no_type_check", |_, args| {
+                Ok(args.positional.first().cloned().unwrap_or(Value::None))
+            }),
+        ),
+        (
+            "get_type_hints",
+            function("get_type_hints", |_, _| Ok(Value::dict(Dict::default()))),
+        ),
+        (
+            "NamedTuple",
+            function("NamedTuple", |_, _| {
+                Err(Error::unsupported("typing.NamedTuple"))
+            }),
+        ),
+        (
+            "TypedDict",
+            function("TypedDict", |_, _| {
+                Err(Error::unsupported("typing.TypedDict"))
+            }),
+        ),
+    ]);
+    entries
+}
+
+thread_local! {
+    static RANDOM: RefCell<u64> = const { RefCell::new(0x2545_f491_4f6c_dd1d) };
+}
+
+fn next_random() -> f64 {
+    RANDOM.with(|state| {
+        let mut value = *state.borrow();
+        value ^= value << 13;
+        value ^= value >> 7;
+        value ^= value << 17;
+        *state.borrow_mut() = value;
+        (value >> 11) as f64 / (1u64 << 53) as f64
+    })
+}
+
+pub fn random() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "seed",
+            function("seed", |_, args| {
+                let seed = args.positional.first().and_then(Value::as_int).unwrap_or(0) as u64;
+                RANDOM.with(|state| {
+                    *state.borrow_mut() = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1
+                });
+                Ok(Value::None)
+            }),
+        ),
+        (
+            "random",
+            function("random", |_, _| Ok(Value::Float(next_random()))),
+        ),
+        (
+            "uniform",
+            function("uniform", |_, args| {
+                let (a, b) = (number(&args, 0, "uniform")?, number(&args, 1, "uniform")?);
+                Ok(Value::Float(a + (b - a) * next_random()))
+            }),
+        ),
+        (
+            "randint",
+            function("randint", |_, args| {
+                let a = args.positional[0].as_int().unwrap_or(0);
+                let b = args.positional[1].as_int().unwrap_or(0);
+                Ok(Value::Int(a + (next_random() * (b - a + 1) as f64) as i64))
+            }),
+        ),
+        (
+            "choice",
+            function("choice", |interpreter, args| {
+                let items = interpreter.iterate(&args.positional[0])?;
+                if items.is_empty() {
+                    return Err(Error::index_error("Cannot choose from an empty sequence"));
+                }
+                Ok(items[(next_random() * items.len() as f64) as usize].clone())
+            }),
+        ),
+        (
+            "shuffle",
+            function("shuffle", |_, args| {
+                if let Value::List(items) = args.positional[0].plain() {
+                    let mut items = items.borrow_mut();
+                    for index in (1..items.len()).rev() {
+                        let other = (next_random() * (index + 1) as f64) as usize;
+                        items.swap(index, other);
+                    }
+                }
+                Ok(Value::None)
+            }),
+        ),
+        (
+            "sample",
+            function("sample", |interpreter, mut args| {
+                let count = args
+                    .take(1, "k")
+                    .and_then(|count| count.as_int())
+                    .unwrap_or(0)
+                    .max(0) as usize;
+                let mut items = interpreter.iterate(&args.positional[0])?;
+                if count > items.len() {
+                    return Err(Error::value_error(
+                        "Sample larger than population or is negative",
+                    ));
+                }
+                let mut picked = Vec::new();
+                for _ in 0..count {
+                    let index = (next_random() * items.len() as f64) as usize;
+                    picked.push(items.remove(index));
+                }
+                Ok(Value::list(picked))
+            }),
+        ),
+    ]
+}
+
+/// `io.StringIO`.
+struct StringIo(RefCell<String>);

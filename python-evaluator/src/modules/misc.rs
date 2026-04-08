@@ -454,3 +454,460 @@ struct DateTime {
     time: jiff::Zoned,
     date_only: bool,
 }
+
+impl Native for DateTime {
+    fn type_name(&self) -> &str {
+        if self.date_only {
+            "datetime.date"
+        } else {
+            "datetime.datetime"
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn to_str(&self, _: &mut Interpreter) -> Result<Option<String>, Error> {
+        Ok(Some(if self.date_only {
+            self.time.strftime("%Y-%m-%d").to_string()
+        } else {
+            self.time.strftime("%Y-%m-%d %H:%M:%S%.6f").to_string()
+        }))
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let this = self.clone();
+        Ok(Some(match name {
+            "year" => Value::Int(i64::from(this.time.year())),
+            "month" => Value::Int(i64::from(this.time.month())),
+            "day" => Value::Int(i64::from(this.time.day())),
+            "hour" => Value::Int(i64::from(this.time.hour())),
+            "minute" => Value::Int(i64::from(this.time.minute())),
+            "second" => Value::Int(i64::from(this.time.second())),
+            "strftime" => Value::builtin("strftime", move |_, args| {
+                let format = args
+                    .positional
+                    .first()
+                    .and_then(|format| format.as_str().map(str::to_owned))
+                    .unwrap_or_default();
+                Ok(Value::str(this.time.strftime(&format).to_string()))
+            }),
+            "isoformat" => Value::builtin("isoformat", move |_, _| {
+                Ok(Value::str(if this.date_only {
+                    this.time.strftime("%Y-%m-%d").to_string()
+                } else {
+                    this.time.strftime("%Y-%m-%dT%H:%M:%S%.6f").to_string()
+                }))
+            }),
+            "date" => Value::builtin("date", move |_, _| {
+                Ok(Value::native(DateTime {
+                    time: this.time.clone(),
+                    date_only: true,
+                }))
+            }),
+            "timestamp" => Value::builtin("timestamp", move |_, _| {
+                Ok(Value::Float(this.time.timestamp().as_second() as f64))
+            }),
+            _ => return Ok(None),
+        }))
+    }
+}
+
+struct DateClass(bool);
+
+impl Native for DateClass {
+    fn type_name(&self) -> &str {
+        "type"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn check_instance(&self, value: &Value) -> Option<bool> {
+        Some(value.as_native::<DateTime>().is_some())
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let date_only = self.0;
+        Ok(match name {
+            "now" | "today" | "utcnow" => Some(Value::builtin(name, move |_, _| {
+                Ok(Value::native(DateTime {
+                    time: jiff::Zoned::now(),
+                    date_only,
+                }))
+            })),
+            "fromtimestamp" => Some(Value::builtin("fromtimestamp", move |_, args| {
+                let seconds = args.positional.first().and_then(to_f64).unwrap_or(0.0) as i64;
+                let timestamp = jiff::Timestamp::from_second(seconds)
+                    .map_err(|error| Error::value_error(error.to_string()))?;
+                Ok(Value::native(DateTime {
+                    time: timestamp.to_zoned(jiff::tz::TimeZone::system()),
+                    date_only,
+                }))
+            })),
+            _ => None,
+        })
+    }
+}
+
+pub fn datetime() -> Vec<(&'static str, Value)> {
+    vec![
+        ("datetime", Value::native(DateClass(false))),
+        ("date", Value::native(DateClass(true))),
+        (
+            "timedelta",
+            function("timedelta", |_, _| {
+                Err(Error::unsupported("datetime.timedelta"))
+            }),
+        ),
+    ]
+}
+
+pub fn time() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "time",
+            function("time", |_, _| {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0.0, |duration| duration.as_secs_f64());
+                Ok(Value::Float(now))
+            }),
+        ),
+        (
+            "perf_counter",
+            function("perf_counter", |_, _| Ok(Value::Float(0.0))),
+        ),
+        (
+            "monotonic",
+            function("monotonic", |_, _| Ok(Value::Float(0.0))),
+        ),
+        ("sleep", function("sleep", |_, _| Ok(Value::None))),
+        (
+            "strftime",
+            function("strftime", |_, args| {
+                let format = args
+                    .positional
+                    .first()
+                    .and_then(|format| format.as_str().map(str::to_owned))
+                    .unwrap_or_default();
+                Ok(Value::str(jiff::Zoned::now().strftime(&format).to_string()))
+            }),
+        ),
+        (
+            "localtime",
+            function("localtime", |_, _| {
+                Ok(Value::native(DateTime {
+                    time: jiff::Zoned::now(),
+                    date_only: false,
+                }))
+            }),
+        ),
+    ]
+}
+
+pub fn string() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "ascii_letters",
+            Value::str("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+        ),
+        ("ascii_lowercase", Value::str("abcdefghijklmnopqrstuvwxyz")),
+        ("ascii_uppercase", Value::str("ABCDEFGHIJKLMNOPQRSTUVWXYZ")),
+        ("digits", Value::str("0123456789")),
+        ("hexdigits", Value::str("0123456789abcdefABCDEF")),
+        ("octdigits", Value::str("01234567")),
+        (
+            "punctuation",
+            Value::str("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"),
+        ),
+        ("whitespace", Value::str(" \t\n\r\x0b\x0c")),
+        (
+            "printable",
+            Value::str(
+                "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ \t\n\r\x0b\x0c",
+            ),
+        ),
+        (
+            "capwords",
+            function("capwords", |interpreter, args| {
+                let text = args
+                    .positional
+                    .first()
+                    .and_then(|text| text.as_str().map(str::to_owned))
+                    .unwrap_or_default();
+                let words: Vec<String> = text
+                    .split_whitespace()
+                    .map(|word| {
+                        let capitalized = crate::methods::call(
+                            interpreter,
+                            &Value::str(word),
+                            "capitalize",
+                            Args::default(),
+                        );
+                        capitalized
+                            .ok()
+                            .and_then(|value| value.as_str().map(str::to_owned))
+                            .unwrap_or_default()
+                    })
+                    .collect();
+                Ok(Value::str(words.join(" ")))
+            }),
+        ),
+        (
+            "Formatter",
+            function("Formatter", |_, _| {
+                Err(Error::unsupported("string.Formatter"))
+            }),
+        ),
+        (
+            "Template",
+            function("Template", |_, _| {
+                Err(Error::unsupported("string.Template"))
+            }),
+        ),
+    ]
+}
+
+/// `textwrap.dedent`.
+pub fn dedent(text: &str) -> String {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let mut margin: Option<String> = None;
+    for line in &lines {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let indent: String = line
+            .chars()
+            .take_while(|c| *c == ' ' || *c == '\t')
+            .collect();
+        margin = Some(match margin {
+            None => indent,
+            Some(current) => current
+                .chars()
+                .zip(indent.chars())
+                .take_while(|(a, b)| a == b)
+                .map(|(a, _)| a)
+                .collect(),
+        });
+    }
+    let margin = margin.unwrap_or_default();
+    lines
+        .iter()
+        .map(|line| {
+            if line.trim().is_empty() {
+                ""
+            } else {
+                line.strip_prefix(margin.as_str()).unwrap_or(line)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn wrap_words(text: &str, width: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    for word in text.split_whitespace() {
+        if !current.is_empty() && current.len() + 1 + word.len() > width {
+            lines.push(std::mem::take(&mut current));
+        }
+        if !current.is_empty() {
+            current.push(' ');
+        }
+        current.push_str(word);
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
+}
+
+pub fn textwrap() -> Vec<(&'static str, Value)> {
+    fn width(args: &mut Args) -> usize {
+        args.take(1, "width")
+            .and_then(|width| width.as_int())
+            .unwrap_or(70)
+            .max(1) as usize
+    }
+    vec![
+        (
+            "dedent",
+            function("dedent", |_, args| {
+                let text = args
+                    .positional
+                    .first()
+                    .and_then(|text| text.as_str().map(str::to_owned))
+                    .unwrap_or_default();
+                Ok(Value::str(dedent(&text)))
+            }),
+        ),
+        (
+            "indent",
+            function("indent", |_, args| {
+                let text = args
+                    .positional
+                    .first()
+                    .and_then(|text| text.as_str().map(str::to_owned))
+                    .unwrap_or_default();
+                let prefix = args
+                    .positional
+                    .get(1)
+                    .and_then(|text| text.as_str().map(str::to_owned))
+                    .unwrap_or_default();
+                let lines: Vec<String> = text
+                    .split_inclusive('\n')
+                    .map(|line| {
+                        if line.trim().is_empty() {
+                            line.to_owned()
+                        } else {
+                            format!("{prefix}{line}")
+                        }
+                    })
+                    .collect();
+                Ok(Value::str(lines.concat()))
+            }),
+        ),
+        (
+            "wrap",
+            function("wrap", |_, mut args| {
+                let width = width(&mut args);
+                let text = args
+                    .positional
+                    .first()
+                    .and_then(|text| text.as_str().map(str::to_owned))
+                    .unwrap_or_default();
+                Ok(Value::list(
+                    wrap_words(&text, width)
+                        .into_iter()
+                        .map(Value::str)
+                        .collect(),
+                ))
+            }),
+        ),
+        (
+            "fill",
+            function("fill", |_, mut args| {
+                let width = width(&mut args);
+                let text = args
+                    .positional
+                    .first()
+                    .and_then(|text| text.as_str().map(str::to_owned))
+                    .unwrap_or_default();
+                Ok(Value::str(wrap_words(&text, width).join("\n")))
+            }),
+        ),
+        (
+            "shorten",
+            function("shorten", |_, mut args| {
+                let width = width(&mut args);
+                let text = args
+                    .positional
+                    .first()
+                    .and_then(|text| text.as_str().map(str::to_owned))
+                    .unwrap_or_default();
+                let joined = text.split_whitespace().collect::<Vec<_>>().join(" ");
+                Ok(Value::str(if joined.len() <= width {
+                    joined
+                } else {
+                    let mut kept = String::new();
+                    for word in joined.split(' ') {
+                        if kept.len() + word.len() + 6 > width {
+                            break;
+                        }
+                        if !kept.is_empty() {
+                            kept.push(' ');
+                        }
+                        kept.push_str(word);
+                    }
+                    format!("{kept} [...]")
+                }))
+            }),
+        ),
+    ]
+}
+
+pub fn subprocess() -> Vec<(&'static str, Value)> {
+    let refuse = |name: &'static str| {
+        (
+            name,
+            Value::builtin(name, move |_, _| {
+                Err(Error::unsupported(format!(
+                    "subprocess.{name}: running commands while the workflow is planned"
+                )))
+            }),
+        )
+    };
+    vec![
+        ("PIPE", Value::Int(-1)),
+        ("STDOUT", Value::Int(-2)),
+        ("DEVNULL", Value::Int(-3)),
+        (
+            "CalledProcessError",
+            Value::Class(types::library_exception(
+                "CalledProcessError",
+                "subprocess",
+                "Exception",
+            )),
+        ),
+        (
+            "SubprocessError",
+            Value::Class(types::library_exception(
+                "SubprocessError",
+                "subprocess",
+                "Exception",
+            )),
+        ),
+        refuse("run"),
+        refuse("check_output"),
+        refuse("check_call"),
+        refuse("call"),
+        refuse("Popen"),
+        refuse("getoutput"),
+        refuse("getstatusoutput"),
+    ]
+}
+
+pub fn warnings() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "warn",
+            function("warn", |interpreter, args| {
+                if let Some(message) = args.positional.first() {
+                    let text = interpreter.to_str(message)?;
+                    interpreter.host.print(&format!("Warning: {text}\n"));
+                }
+                Ok(Value::None)
+            }),
+        ),
+        (
+            "filterwarnings",
+            function("filterwarnings", |_, _| Ok(Value::None)),
+        ),
+        (
+            "simplefilter",
+            function("simplefilter", |_, _| Ok(Value::None)),
+        ),
+        (
+            "catch_warnings",
+            function("catch_warnings", |_, _| {
+                Ok(Value::native(NullContext(Value::None)))
+            }),
+        ),
+    ]
+}
+
+/// A context manager that does nothing, like `contextlib.nullcontext`.
+pub struct NullContext(pub Value);

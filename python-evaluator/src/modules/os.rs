@@ -1226,3 +1226,416 @@ fn path_argument(
         None => Err(Error::type_error("missing path argument")),
     }
 }
+
+impl Native for PathObject {
+    fn type_name(&self) -> &str {
+        "PosixPath"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn instance_of(&self, class: &str) -> bool {
+        matches!(
+            class,
+            "PurePath" | "Path" | "PosixPath" | "PurePosixPath" | "PathLike"
+        )
+    }
+
+    fn to_str(&self, _: &mut Interpreter) -> Result<Option<String>, Error> {
+        Ok(Some(self.path.clone()))
+    }
+
+    fn repr(&self, _: &mut Interpreter) -> Result<String, Error> {
+        Ok(format!("PosixPath({})", crate::format::quote(&self.path)))
+    }
+
+    fn key_equal(&self, other: &dyn Native) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<PathObject>()
+            .is_some_and(|other| other.path == self.path)
+    }
+
+    fn key_hash(&self, state: &mut dyn std::hash::Hasher) {
+        state.write(self.path.as_bytes());
+    }
+
+    fn binary(
+        &self,
+        interpreter: &mut Interpreter,
+        operator: Operator,
+        other: &Value,
+        reflected: bool,
+    ) -> Result<Option<Value>, Error> {
+        let other_text = match other.plain() {
+            Value::Str(text) => Some(text.to_string()),
+            Value::Native(object) => object
+                .as_any()
+                .downcast_ref::<PathObject>()
+                .map(|path| path.path.clone()),
+            _ => None,
+        };
+        let Some(other_text) = other_text else {
+            return Ok(match operator {
+                Operator::Eq => Some(Value::Bool(false)),
+                Operator::NotEq => Some(Value::Bool(true)),
+                _ => None,
+            });
+        };
+        let _ = interpreter;
+        Ok(match operator {
+            Operator::TrueDiv => Some(Value::native(if reflected {
+                PathObject::new(&other_text).join(&self.path)
+            } else {
+                self.join(&other_text)
+            })),
+            Operator::Eq => Some(Value::Bool(
+                matches!(other.plain(), Value::Native(_))
+                    && PathObject::new(&other_text).path == self.path,
+            )),
+            Operator::NotEq => Some(Value::Bool(
+                !(matches!(other.plain(), Value::Native(_))
+                    && PathObject::new(&other_text).path == self.path),
+            )),
+            Operator::Lt => Some(Value::Bool(self.path < other_text)),
+            Operator::Gt => Some(Value::Bool(self.path > other_text)),
+            _ => None,
+        })
+    }
+
+    fn get_attribute(
+        &self,
+        interpreter: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let this = self.clone();
+        Ok(Some(match name {
+            "name" => Value::str(this.name()),
+            "stem" => Value::str(this.stem()),
+            "suffix" => Value::str(this.suffix()),
+            "suffixes" => {
+                let name = this.name();
+                let trimmed = name.trim_start_matches('.');
+                let parts: Vec<&str> = trimmed.split('.').collect();
+                Value::list(
+                    parts[1..]
+                        .iter()
+                        .map(|part| Value::str(format!(".{part}")))
+                        .collect(),
+                )
+            }
+            "parent" => Value::native(this.parent()),
+            "parents" => {
+                let mut parents = Vec::new();
+                let mut current = this.parent();
+                loop {
+                    parents.push(Value::native(current.clone()));
+                    let next = current.parent();
+                    if next.path == current.path {
+                        break;
+                    }
+                    current = next;
+                }
+                if this.path == "." || this.path == "/" {
+                    parents.clear();
+                }
+                Value::tuple(parents)
+            }
+            "parts" => {
+                let mut parts: Vec<Value> = Vec::new();
+                if this.path.starts_with('/') {
+                    parts.push(Value::str("/"));
+                }
+                parts.extend(
+                    this.path
+                        .split('/')
+                        .filter(|part| !part.is_empty() && *part != ".")
+                        .map(Value::str),
+                );
+                Value::tuple(parts)
+            }
+            "anchor" | "root" => Value::str(if this.path.starts_with('/') { "/" } else { "" }),
+            "drive" => Value::str(""),
+            "exists" => Value::builtin("exists", move |interpreter, _| {
+                Ok(Value::Bool(this.kind(interpreter).is_some()))
+            }),
+            "is_file" => Value::builtin("is_file", move |interpreter, _| {
+                Ok(Value::Bool(this.kind(interpreter) == Some(FileKind::File)))
+            }),
+            "is_dir" => Value::builtin("is_dir", move |interpreter, _| {
+                Ok(Value::Bool(
+                    this.kind(interpreter) == Some(FileKind::Directory),
+                ))
+            }),
+            "is_symlink" => Value::builtin("is_symlink", |_, _| Ok(Value::Bool(false))),
+            "is_absolute" => Value::builtin("is_absolute", move |_, _| {
+                Ok(Value::Bool(this.path.starts_with('/')))
+            }),
+            "as_posix" | "__fspath__" | "__str__" => {
+                Value::builtin(name, move |_, _| Ok(Value::str(this.path.as_str())))
+            }
+            "resolve" | "absolute" | "expanduser" => Value::builtin(name, move |interpreter, _| {
+                let expanded = crate::host::expand_home(&this.path);
+                Ok(PathObject::value(&abspath(interpreter, &expanded)))
+            }),
+            "joinpath" => Value::builtin("joinpath", move |interpreter, args| {
+                let mut result = this.clone();
+                for index in 0..args.positional.len() {
+                    let part = path_argument(interpreter, &args, index)?;
+                    result = result.join(&part);
+                }
+                Ok(Value::native(result))
+            }),
+            "with_suffix" => Value::builtin("with_suffix", move |interpreter, args| {
+                let suffix = path_argument(interpreter, &args, 0)?;
+                let stem = this.stem();
+                Ok(Value::native(
+                    this.parent().join(&format!("{stem}{suffix}")),
+                ))
+            }),
+            "with_name" => Value::builtin("with_name", move |interpreter, args| {
+                let name = path_argument(interpreter, &args, 0)?;
+                Ok(Value::native(this.parent().join(&name)))
+            }),
+            "with_stem" => Value::builtin("with_stem", move |interpreter, args| {
+                let stem = path_argument(interpreter, &args, 0)?;
+                let suffix = this.suffix();
+                Ok(Value::native(
+                    this.parent().join(&format!("{stem}{suffix}")),
+                ))
+            }),
+            "relative_to" => Value::builtin("relative_to", move |interpreter, args| {
+                let base = PathObject::new(&path_argument(interpreter, &args, 0)?);
+                let prefix = if base.path == "." {
+                    String::new()
+                } else {
+                    format!("{}/", base.path)
+                };
+                if this.path == base.path {
+                    return Ok(PathObject::value("."));
+                }
+                match this.path.strip_prefix(&prefix) {
+                    Some(rest) if !prefix.is_empty() || !this.path.starts_with('/') => {
+                        Ok(PathObject::value(rest))
+                    }
+                    _ => Err(Error::value_error(format!(
+                        "'{}' is not in the subpath of '{}'",
+                        this.path, base.path
+                    ))),
+                }
+            }),
+            "match" => Value::builtin("match", move |interpreter, args| {
+                let pattern = path_argument(interpreter, &args, 0)?;
+                let pattern_parts: Vec<&str> =
+                    pattern.split('/').filter(|part| !part.is_empty()).collect();
+                let parts: Vec<&str> = this
+                    .path
+                    .split('/')
+                    .filter(|part| !part.is_empty())
+                    .collect();
+                if pattern_parts.len() > parts.len() {
+                    return Ok(Value::Bool(false));
+                }
+                let tail = &parts[parts.len() - pattern_parts.len()..];
+                for (pattern, part) in pattern_parts.iter().zip(tail) {
+                    let regex = fancy_regex::Regex::new(&glob_regex(pattern))
+                        .map_err(|error| Error::value_error(error.to_string()))?;
+                    if !regex.is_match(part).unwrap_or(false) {
+                        return Ok(Value::Bool(false));
+                    }
+                }
+                Ok(Value::Bool(true))
+            }),
+            "glob" | "rglob" => {
+                let recursive = name == "rglob";
+                Value::builtin(name, move |interpreter, args| {
+                    let pattern = path_argument(interpreter, &args, 0)?;
+                    let pattern = if recursive {
+                        format!("**/{pattern}")
+                    } else {
+                        pattern
+                    };
+                    let full = if this.path == "." {
+                        pattern
+                    } else {
+                        join_two(&this.path, &pattern)
+                    };
+                    let found = glob(interpreter, &full, true)?;
+                    Ok(Value::iterator(
+                        found.into_iter().map(|path| PathObject::value(&path)),
+                    ))
+                })
+            }
+            "iterdir" => Value::builtin("iterdir", move |interpreter, _| {
+                let resolved = interpreter.host.resolve(&this.path);
+                let names = interpreter
+                    .host
+                    .list(&resolved)
+                    .map_err(|error| Error::os_error(&error, &this.path))?;
+                Ok(Value::iterator(
+                    names
+                        .into_iter()
+                        .map(|name| Value::native(this.join(&name))),
+                ))
+            }),
+            "read_text" => Value::builtin("read_text", move |interpreter, _| {
+                let resolved = interpreter.host.resolve(&this.path);
+                let data = interpreter
+                    .host
+                    .read(&resolved)
+                    .map_err(|error| Error::os_error(&error, &this.path))?;
+                Ok(Value::str(String::from_utf8_lossy(&data).into_owned()))
+            }),
+            "read_bytes" => Value::builtin("read_bytes", move |interpreter, _| {
+                let resolved = interpreter.host.resolve(&this.path);
+                let data = interpreter
+                    .host
+                    .read(&resolved)
+                    .map_err(|error| Error::os_error(&error, &this.path))?;
+                Ok(Value::Bytes(data.into()))
+            }),
+            "write_text" => Value::builtin("write_text", move |interpreter, args| {
+                let text = args
+                    .positional
+                    .first()
+                    .and_then(|text| text.as_str().map(str::to_owned))
+                    .unwrap_or_default();
+                let resolved = interpreter.host.resolve(&this.path);
+                interpreter
+                    .host
+                    .write(&resolved, text.as_bytes(), false)
+                    .map_err(|error| Error::os_error(&error, &this.path))?;
+                Ok(Value::Int(text.len() as i64))
+            }),
+            "open" => Value::builtin("open", move |interpreter, mut args| {
+                let mode = args
+                    .take(0, "mode")
+                    .and_then(|mode| mode.as_str().map(str::to_owned))
+                    .unwrap_or_else(|| "r".into());
+                crate::builtins::open_file(interpreter, &this.path, &mode, false)
+            }),
+            "mkdir" => Value::builtin("mkdir", move |interpreter, mut args| {
+                let exist_ok = args
+                    .take_keyword("exist_ok")
+                    .is_some_and(|value| matches!(value.plain(), Value::Bool(true)));
+                args.take_keyword("parents");
+                let resolved = interpreter.host.resolve(&this.path);
+                if interpreter.host.stat(&resolved).is_some() {
+                    if exist_ok {
+                        return Ok(Value::None);
+                    }
+                    return Err(Error::os_error(
+                        &std::io::ErrorKind::AlreadyExists.into(),
+                        &this.path,
+                    ));
+                }
+                make_dirs(interpreter, &resolved)?;
+                Ok(Value::None)
+            }),
+            "touch" => Value::builtin("touch", move |interpreter, _| {
+                let resolved = interpreter.host.resolve(&this.path);
+                if interpreter.host.stat(&resolved).is_none() {
+                    interpreter
+                        .host
+                        .write(&resolved, &[], false)
+                        .map_err(|error| Error::os_error(&error, &this.path))?;
+                }
+                Ok(Value::None)
+            }),
+            "unlink" => Value::builtin("unlink", move |interpreter, _| {
+                remove(interpreter, Args::new(vec![Value::str(this.path.as_str())]))
+            }),
+            "stat" => Value::builtin("stat", move |interpreter, _| {
+                stat(interpreter, Args::new(vec![Value::str(this.path.as_str())]))
+            }),
+            _ => {
+                let _ = interpreter;
+                return Ok(None);
+            }
+        }))
+    }
+}
+
+pub fn pathlib() -> Vec<(&'static str, Value)> {
+    fn make(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+        let mut path = PathObject::new(".");
+        for value in &args.positional {
+            let part = path_text(interpreter, value)?;
+            path = path.join(&part);
+        }
+        Ok(Value::native(path))
+    }
+    let class = Value::native(PathClass);
+    vec![
+        ("Path", class.clone()),
+        ("PosixPath", class.clone()),
+        ("PurePath", class.clone()),
+        ("PurePosixPath", class),
+        ("_make", function("_make", make)),
+    ]
+}
+
+/// The `pathlib.Path` class: callable, and usable with `isinstance`.
+struct PathClass;
+
+impl Native for PathClass {
+    fn type_name(&self) -> &str {
+        "type"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn call(
+        &self,
+        interpreter: &mut Interpreter,
+        _: &Value,
+        args: Args,
+    ) -> Result<Option<Value>, Error> {
+        let mut path = PathObject::new(".");
+        for value in &args.positional {
+            let part = path_text(interpreter, value)?;
+            path = path.join(&part);
+        }
+        Ok(Some(Value::native(path)))
+    }
+
+    fn instance_of(&self, class: &str) -> bool {
+        class == "callable"
+    }
+
+    fn check_instance(&self, value: &Value) -> Option<bool> {
+        Some(value.as_native::<PathObject>().is_some())
+    }
+
+    fn get_attribute(
+        &self,
+        interpreter: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        Ok(match name {
+            "cwd" => Some(Value::builtin("cwd", |interpreter, _| {
+                Ok(PathObject::value(&interpreter.host.cwd().to_string_lossy()))
+            })),
+            "home" => Some(Value::builtin("home", |_, _| {
+                Ok(PathObject::value(&crate::host::expand_home("~")))
+            })),
+            "__name__" => Some(Value::str("Path")),
+            _ => {
+                let _ = interpreter;
+                None
+            }
+        })
+    }
+}
+
+impl std::fmt::Display for PathObject {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.path)
+    }
+}

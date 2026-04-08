@@ -5,6 +5,20 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+pub mod builtins;
+pub mod error;
+pub mod format;
 pub mod host;
+pub mod interpreter;
+pub mod methods;
+pub mod modules;
+pub mod number;
+pub mod pandas;
+pub mod types;
+pub mod value;
 
+pub use error::{Error, ErrorKind, Location};
 pub use host::{FileKind, Host, LocalHost, Stat};
+pub use interpreter::{Frame, FrameKind, Interpreter, Source, StatementHook};
+pub use value::{Args, Dict, Key, Name, Native, Scope, Value};
+pub use {ruff_python_ast, ruff_text_size};

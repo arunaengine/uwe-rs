@@ -1800,3 +1800,442 @@ pub fn traceback() -> Vec<(&'static str, Value)> {
         ),
     ]
 }
+
+pub fn pprint() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "pprint",
+            function("pprint", |interpreter, args| {
+                let text = interpreter.repr(&args.positional[0])?;
+                interpreter.host.print(&format!("{text}\n"));
+                Ok(Value::None)
+            }),
+        ),
+        (
+            "pformat",
+            function("pformat", |interpreter, args| {
+                Ok(Value::str(interpreter.repr(&args.positional[0])?))
+            }),
+        ),
+    ]
+}
+
+pub fn statistics() -> Vec<(&'static str, Value)> {
+    fn numbers(interpreter: &mut Interpreter, args: &Args) -> Result<Vec<f64>, Error> {
+        let items = interpreter.iterate(&args.positional[0])?;
+        let numbers: Vec<f64> = items.iter().filter_map(to_f64).collect();
+        if numbers.is_empty() {
+            return Err(Error::new("StatisticsError", "no data points"));
+        }
+        Ok(numbers)
+    }
+    vec![
+        (
+            "mean",
+            function("mean", |interpreter, args| {
+                let numbers = numbers(interpreter, &args)?;
+                Ok(Value::Float(
+                    numbers.iter().sum::<f64>() / numbers.len() as f64,
+                ))
+            }),
+        ),
+        (
+            "median",
+            function("median", |interpreter, args| {
+                let mut numbers = numbers(interpreter, &args)?;
+                numbers.sort_by(|a, b| a.total_cmp(b));
+                let middle = numbers.len() / 2;
+                Ok(Value::Float(if numbers.len() % 2 == 1 {
+                    numbers[middle]
+                } else {
+                    (numbers[middle - 1] + numbers[middle]) / 2.0
+                }))
+            }),
+        ),
+    ]
+}
+
+pub fn uuid() -> Vec<(&'static str, Value)> {
+    vec![(
+        "uuid4",
+        function("uuid4", |_, _| {
+            let high = (next_random() * u32::MAX as f64) as u32;
+            Ok(Value::str(format!(
+                "{high:08x}-0000-4000-8000-000000000000"
+            )))
+        }),
+    )]
+}
+
+/// `shlex.quote`.
+pub fn shell_quote(text: &str) -> String {
+    if text.is_empty() {
+        return "''".into();
+    }
+    let safe = text
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || "@%+=:,./-_".contains(c));
+    if safe {
+        text.to_owned()
+    } else {
+        format!("'{}'", text.replace('\'', "'\"'\"'"))
+    }
+}
+
+pub fn shlex() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "quote",
+            function("quote", |interpreter, args| {
+                let text = interpreter.to_str(&args.positional[0])?;
+                Ok(Value::str(shell_quote(&text)))
+            }),
+        ),
+        (
+            "join",
+            function("join", |interpreter, args| {
+                let mut parts = Vec::new();
+                for item in interpreter.iterate(&args.positional[0])? {
+                    parts.push(shell_quote(&interpreter.to_str(&item)?));
+                }
+                Ok(Value::str(parts.join(" ")))
+            }),
+        ),
+        (
+            "split",
+            function("split", |interpreter, args| {
+                let text = interpreter.to_str(&args.positional[0])?;
+                let mut words = Vec::new();
+                let mut current = String::new();
+                let mut quote: Option<char> = None;
+                let mut started = false;
+                let mut chars = text.chars();
+                while let Some(c) = chars.next() {
+                    match (quote, c) {
+                        (Some(open), c) if c == open => quote = None,
+                        (Some('"'), '\\') => current.extend(chars.next()),
+                        (Some(_), c) => current.push(c),
+                        (None, '\'' | '"') => {
+                            quote = Some(c);
+                            started = true;
+                        }
+                        (None, '\\') => {
+                            current.extend(chars.next());
+                            started = true;
+                        }
+                        (None, c) if c.is_whitespace() => {
+                            if started {
+                                words.push(Value::str(std::mem::take(&mut current)));
+                                started = false;
+                            }
+                        }
+                        (None, c) => {
+                            current.push(c);
+                            started = true;
+                        }
+                    }
+                }
+                if quote.is_some() {
+                    return Err(Error::value_error("No closing quotation"));
+                }
+                if started {
+                    words.push(Value::str(current));
+                }
+                Ok(Value::list(words))
+            }),
+        ),
+    ]
+}
+
+pub fn keyword() -> Vec<(&'static str, Value)> {
+    const KEYWORDS: &[&str] = &[
+        "False", "None", "True", "and", "as", "assert", "async", "await", "break", "class",
+        "continue", "def", "del", "elif", "else", "except", "finally", "for", "from", "global",
+        "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return",
+        "try", "while", "with", "yield",
+    ];
+    vec![
+        (
+            "kwlist",
+            Value::list(KEYWORDS.iter().map(|word| Value::str(*word)).collect()),
+        ),
+        (
+            "iskeyword",
+            function("iskeyword", |_, args| {
+                Ok(Value::Bool(
+                    args.positional
+                        .first()
+                        .and_then(Value::as_str)
+                        .is_some_and(|word| KEYWORDS.contains(&word)),
+                ))
+            }),
+        ),
+    ]
+}
+
+pub fn locale() -> Vec<(&'static str, Value)> {
+    vec![
+        ("LC_ALL", Value::Int(6)),
+        (
+            "setlocale",
+            function("setlocale", |_, _| Ok(Value::str("C.UTF-8"))),
+        ),
+        (
+            "getpreferredencoding",
+            function("getpreferredencoding", |_, _| Ok(Value::str("UTF-8"))),
+        ),
+    ]
+}
+
+pub fn future() -> Vec<(&'static str, Value)> {
+    [
+        "annotations",
+        "print_function",
+        "division",
+        "absolute_import",
+        "unicode_literals",
+        "generator_stop",
+    ]
+    .into_iter()
+    .map(|name| (name, Value::Bool(true)))
+    .collect()
+}
+
+pub fn atexit() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "register",
+            function("register", |_, args| {
+                Ok(args.positional.first().cloned().unwrap_or(Value::None))
+            }),
+        ),
+        ("unregister", function("unregister", |_, _| Ok(Value::None))),
+    ]
+}
+
+pub fn placeholder(_name: &str) -> Vec<(&'static str, Value)> {
+    Vec::new()
+}
+
+/// A version number that compares by its numeric parts, like `packaging.version.Version`.
+struct Version(String, Vec<i64>);
+
+impl Version {
+    fn parse(text: &str) -> Version {
+        let parts = text
+            .trim_start_matches('v')
+            .split(['.', '-', '+'])
+            .map_while(|part| {
+                let digits: String = part.chars().take_while(char::is_ascii_digit).collect();
+                digits.parse().ok()
+            })
+            .collect();
+        Version(text.to_owned(), parts)
+    }
+}
+
+impl Native for Version {
+    fn type_name(&self) -> &str {
+        "Version"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn to_str(&self, _: &mut Interpreter) -> Result<Option<String>, Error> {
+        Ok(Some(self.0.clone()))
+    }
+
+    fn binary(
+        &self,
+        interpreter: &mut Interpreter,
+        operator: crate::interpreter::Operator,
+        other: &Value,
+        reflected: bool,
+    ) -> Result<Option<Value>, Error> {
+        let theirs = match other.plain() {
+            Value::Str(text) => Version::parse(text).1,
+            Value::Native(object) => match object.as_any().downcast_ref::<Version>() {
+                Some(version) => version.1.clone(),
+                None => return Ok(None),
+            },
+            _ => return Ok(None),
+        };
+        let mine = Value::tuple(self.1.iter().map(|part| Value::Int(*part)).collect());
+        let theirs = Value::tuple(theirs.into_iter().map(Value::Int).collect());
+        let (a, b) = if reflected {
+            (theirs, mine)
+        } else {
+            (mine, theirs)
+        };
+        interpreter.binary(operator, &a, &b).map(Some)
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        Ok(match name {
+            "major" => self.1.first().map(|part| Value::Int(*part)),
+            "minor" => self.1.get(1).map(|part| Value::Int(*part)),
+            "micro" => self.1.get(2).map(|part| Value::Int(*part)),
+            "release" => Some(Value::tuple(
+                self.1.iter().map(|part| Value::Int(*part)).collect(),
+            )),
+            "base_version" | "public" => Some(Value::str(self.0.as_str())),
+            _ => None,
+        })
+    }
+}
+
+pub fn version_module() -> Vec<(&'static str, Value)> {
+    fn make(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+        let text = interpreter.to_str(&args.positional[0])?;
+        Ok(Value::native(Version::parse(&text)))
+    }
+    vec![
+        ("Version", function("Version", make)),
+        ("parse", function("parse", make)),
+        ("LooseVersion", function("LooseVersion", make)),
+        ("StrictVersion", function("StrictVersion", make)),
+        ("parse_version", function("parse_version", make)),
+    ]
+}
+
+pub fn importlib_metadata() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "version",
+            function("version", |interpreter, args| {
+                let name = interpreter.to_str(&args.positional[0])?;
+                if name == "snakemake" {
+                    return Ok(Value::str("9.27.0"));
+                }
+                Err(Error::from_value(crate::error::exception(
+                    &types::library_exception(
+                        "PackageNotFoundError",
+                        "importlib.metadata",
+                        "ModuleNotFoundError",
+                    ),
+                    vec![Value::str(name)],
+                )))
+            }),
+        ),
+        (
+            "PackageNotFoundError",
+            Value::Class(types::library_exception(
+                "PackageNotFoundError",
+                "importlib.metadata",
+                "ModuleNotFoundError",
+            )),
+        ),
+    ]
+}
+
+pub fn inspect() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "isfunction",
+            function("isfunction", |_, args| {
+                Ok(Value::Bool(matches!(
+                    args.positional[0].plain(),
+                    Value::Function(_)
+                )))
+            }),
+        ),
+        (
+            "isclass",
+            function("isclass", |_, args| {
+                Ok(Value::Bool(matches!(
+                    args.positional[0].plain(),
+                    Value::Class(_)
+                )))
+            }),
+        ),
+        (
+            "ismodule",
+            function("ismodule", |_, args| {
+                Ok(Value::Bool(matches!(
+                    args.positional[0].plain(),
+                    Value::Module(_)
+                )))
+            }),
+        ),
+        (
+            "signature",
+            function("signature", |_, _| {
+                Err(Error::unsupported("inspect.signature"))
+            }),
+        ),
+        (
+            "getsource",
+            function("getsource", |_, _| {
+                Err(Error::unsupported("inspect.getsource"))
+            }),
+        ),
+        (
+            "currentframe",
+            function("currentframe", |_, _| {
+                Err(Error::unsupported("inspect.currentframe"))
+            }),
+        ),
+        (
+            "stack",
+            function("stack", |_, _| Err(Error::unsupported("inspect.stack"))),
+        ),
+    ]
+}
+
+pub fn types_module() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "SimpleNamespace",
+            function("SimpleNamespace", |_, args| {
+                let mut record = Dict::default();
+                for (name, value) in args.keywords {
+                    record.entries.insert(Key(Value::Str(name)), value);
+                }
+                Ok(Value::native(Record(
+                    RefCell::new(record),
+                    "types.SimpleNamespace",
+                )))
+            }),
+        ),
+        (
+            "FunctionType",
+            Value::Class(types::builtin_class(types::TypeTag::Function)),
+        ),
+        (
+            "LambdaType",
+            Value::Class(types::builtin_class(types::TypeTag::Function)),
+        ),
+        (
+            "ModuleType",
+            Value::Class(types::builtin_class(types::TypeTag::Module)),
+        ),
+        (
+            "GeneratorType",
+            Value::Class(types::builtin_class(types::TypeTag::Iterator)),
+        ),
+        (
+            "MethodType",
+            Value::Class(types::builtin_class(types::TypeTag::Method)),
+        ),
+        (
+            "BuiltinFunctionType",
+            Value::Class(types::builtin_class(types::TypeTag::BuiltinFunction)),
+        ),
+    ]
+}
+
+pub fn unicodedata() -> Vec<(&'static str, Value)> {
+    vec![(
+        "normalize",
+        function("normalize", |_, args| {
+            Ok(args.positional.get(1).cloned().unwrap_or(Value::None))
+        }),
+    )]
+}

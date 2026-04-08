@@ -455,3 +455,327 @@ fn expand_template(template: &str, found: &Match) -> Result<String, Error> {
 
 /// A compiled pattern as a Python object.
 pub struct PatternObject(pub Rc<Pattern>);
+
+fn text_argument(args: &Args, index: usize, name: &str) -> Result<Rc<str>, Error> {
+    match args.positional.get(index).map(Value::plain) {
+        Some(Value::Str(text)) => Ok(text.clone()),
+        Some(Value::Bytes(bytes)) => Ok(String::from_utf8_lossy(bytes).into_owned().into()),
+        Some(other) => Err(Error::type_error(format!(
+            "expected string or bytes-like object, got '{}'",
+            crate::types::type_name(other)
+        ))),
+        None => Err(Error::type_error(format!(
+            "{name}() missing required argument 'string'"
+        ))),
+    }
+}
+
+fn run_match(pattern: &Rc<Pattern>, text: Rc<str>, how: &str) -> Result<Value, Error> {
+    let regex = match how {
+        "match" => &pattern.start,
+        "fullmatch" => &pattern.whole,
+        _ => &pattern.search,
+    };
+    match regex.captures(&*text) {
+        Ok(Some(captures)) => Ok(Value::native(Match::new(
+            pattern.clone(),
+            text.clone(),
+            &captures,
+        ))),
+        Ok(None) => Ok(Value::None),
+        Err(error) => Err(Error::runtime_error(error.to_string())),
+    }
+}
+
+fn all_matches(pattern: &Rc<Pattern>, text: &Rc<str>) -> Result<Vec<Match>, Error> {
+    let mut found = Vec::new();
+    for captures in pattern.search.captures_iter(&**text) {
+        let captures = captures.map_err(|error| Error::runtime_error(error.to_string()))?;
+        found.push(Match::new(pattern.clone(), text.clone(), &captures));
+    }
+    Ok(found)
+}
+
+fn findall(pattern: &Rc<Pattern>, text: &Rc<str>) -> Result<Value, Error> {
+    let groups = pattern.names.len() - 1;
+    let mut results = Vec::new();
+    for found in all_matches(pattern, text)? {
+        let text_of = |index: usize| {
+            let group = found.group(index);
+            if group.is_none() {
+                Value::str("")
+            } else {
+                group
+            }
+        };
+        results.push(match groups {
+            0 => text_of(0),
+            1 => text_of(1),
+            _ => Value::tuple((1..=groups).map(text_of).collect()),
+        });
+    }
+    Ok(Value::list(results))
+}
+
+fn substitute(
+    interpreter: &mut Interpreter,
+    pattern: &Rc<Pattern>,
+    replacement: &Value,
+    text: &Rc<str>,
+    count: usize,
+) -> Result<(String, usize), Error> {
+    let mut output = String::new();
+    let mut last = 0;
+    let mut done = 0;
+    for found in all_matches(pattern, text)? {
+        if count > 0 && done == count {
+            break;
+        }
+        let (start, end) = found.groups[0].unwrap_or((0, 0));
+        output.push_str(&text[last..start]);
+        let piece = match replacement.plain() {
+            Value::Str(template) => expand_template(template, &found)?,
+            callable => {
+                let result = interpreter.call(callable, Args::new(vec![Value::native(found)]))?;
+                interpreter.to_str(&result)?
+            }
+        };
+        output.push_str(&piece);
+        last = end;
+        done += 1;
+    }
+    output.push_str(&text[last..]);
+    Ok((output, done))
+}
+
+fn split(pattern: &Rc<Pattern>, text: &Rc<str>, limit: usize) -> Result<Value, Error> {
+    let mut parts = Vec::new();
+    let mut last = 0;
+    let mut done = 0;
+    for found in all_matches(pattern, text)? {
+        if limit > 0 && done == limit {
+            break;
+        }
+        let (start, end) = found.groups[0].unwrap_or((0, 0));
+        if start == end && start == 0 {
+            continue;
+        }
+        parts.push(Value::str(&text[last..start]));
+        for index in 1..found.groups.len() {
+            parts.push(found.group(index));
+        }
+        last = end;
+        done += 1;
+    }
+    parts.push(Value::str(&text[last..]));
+    Ok(Value::list(parts))
+}
+
+impl Native for PatternObject {
+    fn type_name(&self) -> &str {
+        "re.Pattern"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn repr(&self, _: &mut Interpreter) -> Result<String, Error> {
+        Ok(format!(
+            "re.compile({})",
+            crate::format::quote(&self.0.source)
+        ))
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let pattern = self.0.clone();
+        Ok(Some(match name {
+            "pattern" => Value::str(pattern.source.as_str()),
+            "flags" => Value::Int(pattern.flags),
+            "groups" => Value::Int(pattern.names.len() as i64 - 1),
+            "groupindex" => {
+                let mut dict = Dict::default();
+                for (index, name) in pattern.names.iter().enumerate() {
+                    if let Some(name) = name {
+                        dict.insert(name, Value::Int(index as i64));
+                    }
+                }
+                Value::dict(dict)
+            }
+            "match" | "search" | "fullmatch" => {
+                let how: &'static str = match name {
+                    "match" => "match",
+                    "search" => "search",
+                    _ => "fullmatch",
+                };
+                Value::builtin(how, move |_, args| {
+                    let text = text_argument(&args, 0, how)?;
+                    run_match(&pattern, text, how)
+                })
+            }
+            "findall" => Value::builtin("findall", move |_, args| {
+                let text = text_argument(&args, 0, "findall")?;
+                findall(&pattern, &text)
+            }),
+            "finditer" => Value::builtin("finditer", move |_, args| {
+                let text = text_argument(&args, 0, "finditer")?;
+                Ok(Value::iterator(
+                    all_matches(&pattern, &text)?.into_iter().map(Value::native),
+                ))
+            }),
+            "sub" | "subn" => {
+                let with_count = name == "subn";
+                Value::builtin(name, move |interpreter, mut args| {
+                    let count = args
+                        .take(2, "count")
+                        .and_then(|count| count.as_int())
+                        .unwrap_or(0)
+                        .max(0) as usize;
+                    let replacement = args.positional.first().cloned().unwrap_or(Value::None);
+                    let text = text_argument(&args, 1, "sub")?;
+                    let (result, done) =
+                        substitute(interpreter, &pattern, &replacement, &text, count)?;
+                    Ok(if with_count {
+                        Value::tuple(vec![Value::str(result), Value::Int(done as i64)])
+                    } else {
+                        Value::str(result)
+                    })
+                })
+            }
+            "split" => Value::builtin("split", move |_, mut args| {
+                let limit = args
+                    .take(1, "maxsplit")
+                    .and_then(|limit| limit.as_int())
+                    .unwrap_or(0)
+                    .max(0) as usize;
+                let text = text_argument(&args, 0, "split")?;
+                split(&pattern, &text, limit)
+            }),
+            _ => return Ok(None),
+        }))
+    }
+}
+
+/// The pattern argument of a module function: text or a compiled pattern.
+fn pattern_argument(args: &mut Args, name: &str) -> Result<Rc<Pattern>, Error> {
+    let flags = args
+        .take_keyword("flags")
+        .and_then(|flags| flags.as_int())
+        .unwrap_or(0);
+    let Some(first) = args.positional.first().cloned() else {
+        return Err(Error::type_error(format!(
+            "{name}() missing required argument 'pattern'"
+        )));
+    };
+    args.positional.remove(0);
+    if let Some(compiled) = first.as_native::<PatternObject>() {
+        return Ok(compiled.0.clone());
+    }
+    let text = first
+        .as_str()
+        .ok_or_else(|| Error::type_error("first argument must be string or compiled pattern"))?
+        .to_owned();
+    compile(&text, flags)
+}
+
+fn module_call(interpreter: &mut Interpreter, name: &str, mut args: Args) -> Result<Value, Error> {
+    // Positional flags come last: re.match(p, s, flags), re.sub(p, r, s, count, flags).
+    let flag_position = match name {
+        "match" | "search" | "fullmatch" | "findall" | "finditer" => Some(2),
+        "split" => Some(3),
+        "sub" | "subn" => Some(4),
+        _ => None,
+    };
+    if let Some(position) = flag_position
+        && args.positional.len() > position
+    {
+        let flags = args.positional.remove(position);
+        args.keywords.push(("flags".into(), flags));
+    }
+    let pattern = pattern_argument(&mut args, name)?;
+    let object = PatternObject(pattern);
+    let method = object
+        .get_attribute(interpreter, &Value::None, name)?
+        .ok_or_else(|| Error::unsupported(format!("re.{name}")))?;
+    interpreter.call(&method, args)
+}
+
+pub fn module() -> Vec<(&'static str, Value)> {
+    let mut entries: Vec<(&'static str, Value)> = vec![
+        ("I", Value::Int(IGNORECASE)),
+        ("IGNORECASE", Value::Int(IGNORECASE)),
+        ("M", Value::Int(MULTILINE)),
+        ("MULTILINE", Value::Int(MULTILINE)),
+        ("S", Value::Int(DOTALL)),
+        ("DOTALL", Value::Int(DOTALL)),
+        ("X", Value::Int(VERBOSE)),
+        ("VERBOSE", Value::Int(VERBOSE)),
+        ("A", Value::Int(ASCII)),
+        ("ASCII", Value::Int(ASCII)),
+        ("U", Value::Int(32)),
+        ("UNICODE", Value::Int(32)),
+        (
+            "error",
+            Value::Class(crate::types::library_exception(
+                "re.error",
+                "re",
+                "Exception",
+            )),
+        ),
+        (
+            "compile",
+            function("compile", |_, mut args| {
+                let pattern = pattern_argument(&mut args, "compile")?;
+                if let Some(flags) = args.positional.first().and_then(Value::as_int)
+                    && flags != pattern.flags
+                {
+                    return Ok(Value::native(PatternObject(compile(
+                        &pattern.source,
+                        flags,
+                    )?)));
+                }
+                Ok(Value::native(PatternObject(pattern)))
+            }),
+        ),
+        (
+            "escape",
+            function("escape", |_, args| {
+                args.expect("escape", 1, 1)?;
+                let text = args.positional[0].as_str().unwrap_or_default();
+                let mut escaped = String::new();
+                for c in text.chars() {
+                    if !(c.is_alphanumeric() || c == '_') && c.is_ascii() {
+                        escaped.push('\\');
+                    }
+                    escaped.push(c);
+                }
+                Ok(Value::str(escaped))
+            }),
+        ),
+        ("purge", function("purge", |_, _| Ok(Value::None))),
+    ];
+    for name in [
+        "match",
+        "search",
+        "fullmatch",
+        "findall",
+        "finditer",
+        "sub",
+        "subn",
+        "split",
+    ] {
+        let owned: &'static str = name;
+        entries.push((
+            owned,
+            Value::builtin(owned, move |interpreter, args| {
+                module_call(interpreter, owned, args)
+            }),
+        ));
+    }
+    entries
+}

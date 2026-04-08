@@ -448,3 +448,435 @@ pub fn splitext(path: &str) -> (String, String) {
         None => (path.to_owned(), String::new()),
     }
 }
+
+/// `os.path.normpath` for POSIX paths.
+pub fn normpath(path: &str) -> String {
+    if path.is_empty() {
+        return ".".into();
+    }
+    let initial = if path.starts_with("//") && !path.starts_with("///") {
+        2
+    } else if path.starts_with('/') {
+        1
+    } else {
+        0
+    };
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                if !parts.is_empty() && parts.last() != Some(&"..") {
+                    parts.pop();
+                } else if initial == 0 {
+                    parts.push("..");
+                }
+            }
+            other => parts.push(other),
+        }
+    }
+    let body = parts.join("/");
+    let normal = format!("{}{body}", "/".repeat(initial));
+    if normal.is_empty() {
+        ".".into()
+    } else {
+        normal
+    }
+}
+
+pub fn abspath(interpreter: &Interpreter, path: &str) -> String {
+    let path = crate::host::expand_home(path);
+    if path.starts_with('/') {
+        normpath(&path)
+    } else {
+        normpath(&join_two(&interpreter.host.cwd().to_string_lossy(), &path))
+    }
+}
+
+fn relpath(path: &str, start: &str) -> String {
+    let path_parts: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+    let start_parts: Vec<&str> = start.split('/').filter(|part| !part.is_empty()).collect();
+    let common = path_parts
+        .iter()
+        .zip(&start_parts)
+        .take_while(|(a, b)| a == b)
+        .count();
+    let mut parts: Vec<&str> = vec![".."; start_parts.len() - common];
+    parts.extend(&path_parts[common..]);
+    if parts.is_empty() {
+        ".".into()
+    } else {
+        parts.join("/")
+    }
+}
+
+fn expandvars(interpreter: &mut Interpreter, path: &str) -> String {
+    let environment: std::collections::HashMap<String, String> =
+        interpreter.host.environment().into_iter().collect();
+    let mut result = String::new();
+    let chars: Vec<char> = path.chars().collect();
+    let mut index = 0;
+    while index < chars.len() {
+        if chars[index] == '$' {
+            let (name, end) = if chars.get(index + 1) == Some(&'{') {
+                match chars[index + 2..].iter().position(|c| *c == '}') {
+                    Some(close) => (
+                        chars[index + 2..index + 2 + close]
+                            .iter()
+                            .collect::<String>(),
+                        index + 3 + close,
+                    ),
+                    None => (String::new(), index),
+                }
+            } else {
+                let length = chars[index + 1..]
+                    .iter()
+                    .take_while(|c| c.is_alphanumeric() || **c == '_')
+                    .count();
+                (
+                    chars[index + 1..index + 1 + length].iter().collect(),
+                    index + 1 + length,
+                )
+            };
+            if !name.is_empty()
+                && let Some(value) = environment.get(&name)
+            {
+                result.push_str(value);
+                index = end;
+                continue;
+            }
+        }
+        result.push(chars[index]);
+        index += 1;
+    }
+    result
+}
+
+fn kind_of(
+    interpreter: &mut Interpreter,
+    args: &Args,
+    name: &str,
+) -> Result<Option<FileKind>, Error> {
+    let Some(value) = args.positional.first() else {
+        return Err(Error::type_error(format!(
+            "{name}() missing required argument"
+        )));
+    };
+    if value.is_none() {
+        return Ok(None);
+    }
+    let path = path_text(interpreter, value)?;
+    if path.is_empty() {
+        return Ok(None);
+    }
+    let resolved = interpreter.host.resolve(&path);
+    Ok(interpreter.host.stat(&resolved).map(|stat| stat.kind))
+}
+
+pub fn path() -> Vec<(&'static str, Value)> {
+    vec![
+        ("sep", Value::str("/")),
+        ("curdir", Value::str(".")),
+        ("pardir", Value::str("..")),
+        ("extsep", Value::str(".")),
+        (
+            "join",
+            function("join", |interpreter, args| {
+                args.expect("join", 1, usize::MAX)?;
+                let mut result = path_text(interpreter, &args.positional[0])?;
+                for part in &args.positional[1..] {
+                    let part = path_text(interpreter, part)?;
+                    result = join_two(&result, &part);
+                }
+                Ok(Value::str(result))
+            }),
+        ),
+        (
+            "exists",
+            function("exists", |interpreter, args| {
+                Ok(Value::Bool(
+                    kind_of(interpreter, &args, "exists")?.is_some(),
+                ))
+            }),
+        ),
+        (
+            "lexists",
+            function("lexists", |interpreter, args| {
+                Ok(Value::Bool(
+                    kind_of(interpreter, &args, "lexists")?.is_some(),
+                ))
+            }),
+        ),
+        (
+            "isfile",
+            function("isfile", |interpreter, args| {
+                Ok(Value::Bool(
+                    kind_of(interpreter, &args, "isfile")? == Some(FileKind::File),
+                ))
+            }),
+        ),
+        (
+            "isdir",
+            function("isdir", |interpreter, args| {
+                Ok(Value::Bool(
+                    kind_of(interpreter, &args, "isdir")? == Some(FileKind::Directory),
+                ))
+            }),
+        ),
+        ("islink", function("islink", |_, _| Ok(Value::Bool(false)))),
+        (
+            "ismount",
+            function("ismount", |interpreter, args| {
+                let path = text(interpreter, &args, 0, "ismount")?;
+                Ok(Value::Bool(path == "/"))
+            }),
+        ),
+        (
+            "isabs",
+            function("isabs", |interpreter, args| {
+                let path = text(interpreter, &args, 0, "isabs")?;
+                Ok(Value::Bool(path.starts_with('/')))
+            }),
+        ),
+        (
+            "basename",
+            function("basename", |interpreter, args| {
+                let path = text(interpreter, &args, 0, "basename")?;
+                Ok(Value::str(split(&path).1))
+            }),
+        ),
+        (
+            "dirname",
+            function("dirname", |interpreter, args| {
+                let path = text(interpreter, &args, 0, "dirname")?;
+                Ok(Value::str(split(&path).0))
+            }),
+        ),
+        (
+            "split",
+            function("split", |interpreter, args| {
+                let path = text(interpreter, &args, 0, "split")?;
+                let (head, tail) = split(&path);
+                Ok(Value::tuple(vec![Value::str(head), Value::str(tail)]))
+            }),
+        ),
+        (
+            "splitext",
+            function("splitext", |interpreter, args| {
+                let path = text(interpreter, &args, 0, "splitext")?;
+                let (root, extension) = splitext(&path);
+                Ok(Value::tuple(vec![Value::str(root), Value::str(extension)]))
+            }),
+        ),
+        (
+            "splitdrive",
+            function("splitdrive", |interpreter, args| {
+                let path = text(interpreter, &args, 0, "splitdrive")?;
+                Ok(Value::tuple(vec![Value::str(""), Value::str(path)]))
+            }),
+        ),
+        (
+            "normpath",
+            function("normpath", |interpreter, args| {
+                let path = text(interpreter, &args, 0, "normpath")?;
+                Ok(Value::str(normpath(&path)))
+            }),
+        ),
+        (
+            "abspath",
+            function("abspath", |interpreter, args| {
+                let path = text(interpreter, &args, 0, "abspath")?;
+                Ok(Value::str(abspath(interpreter, &path)))
+            }),
+        ),
+        (
+            "realpath",
+            function("realpath", |interpreter, mut args| {
+                args.take_keyword("strict");
+                let path = text(interpreter, &args, 0, "realpath")?;
+                Ok(Value::str(abspath(interpreter, &path)))
+            }),
+        ),
+        (
+            "relpath",
+            function("relpath", |interpreter, args| {
+                let path = text(interpreter, &args, 0, "relpath")?;
+                let start = match args.positional.get(1) {
+                    Some(start) if !start.is_none() => path_text(interpreter, start)?,
+                    _ => ".".into(),
+                };
+                let path = abspath(interpreter, &path);
+                let start = abspath(interpreter, &start);
+                Ok(Value::str(relpath(&path, &start)))
+            }),
+        ),
+        (
+            "expanduser",
+            function("expanduser", |interpreter, args| {
+                let path = text(interpreter, &args, 0, "expanduser")?;
+                Ok(Value::str(crate::host::expand_home(&path)))
+            }),
+        ),
+        (
+            "expandvars",
+            function("expandvars", |interpreter, args| {
+                let path = text(interpreter, &args, 0, "expandvars")?;
+                Ok(Value::str(expandvars(interpreter, &path)))
+            }),
+        ),
+        (
+            "getsize",
+            function("getsize", |interpreter, args| {
+                let path = text(interpreter, &args, 0, "getsize")?;
+                let resolved = interpreter.host.resolve(&path);
+                let stat = interpreter
+                    .host
+                    .stat(&resolved)
+                    .ok_or_else(|| Error::file_not_found(&path))?;
+                Ok(Value::Int(stat.size as i64))
+            }),
+        ),
+        (
+            "getmtime",
+            function("getmtime", |interpreter, args| {
+                let path = text(interpreter, &args, 0, "getmtime")?;
+                let resolved = interpreter.host.resolve(&path);
+                let stat = interpreter
+                    .host
+                    .stat(&resolved)
+                    .ok_or_else(|| Error::file_not_found(&path))?;
+                Ok(Value::Float(stat.modified))
+            }),
+        ),
+        (
+            "getctime",
+            function("getctime", |interpreter, args| {
+                let path = text(interpreter, &args, 0, "getctime")?;
+                let resolved = interpreter.host.resolve(&path);
+                let stat = interpreter
+                    .host
+                    .stat(&resolved)
+                    .ok_or_else(|| Error::file_not_found(&path))?;
+                Ok(Value::Float(stat.modified))
+            }),
+        ),
+        (
+            "commonprefix",
+            function("commonprefix", |interpreter, args| {
+                args.expect("commonprefix", 1, 1)?;
+                let items = interpreter.iterate(&args.positional[0])?;
+                let texts: Vec<String> = items
+                    .iter()
+                    .map(|item| path_text(interpreter, item))
+                    .collect::<Result<_, _>>()?;
+                let Some(first) = texts.first() else {
+                    return Ok(Value::str(""));
+                };
+                let mut prefix: Vec<char> = first.chars().collect();
+                for other in &texts[1..] {
+                    let common = prefix
+                        .iter()
+                        .zip(other.chars())
+                        .take_while(|(a, b)| **a == *b)
+                        .count();
+                    prefix.truncate(common);
+                }
+                Ok(Value::str(prefix.into_iter().collect::<String>()))
+            }),
+        ),
+        (
+            "commonpath",
+            function("commonpath", |interpreter, args| {
+                args.expect("commonpath", 1, 1)?;
+                let items = interpreter.iterate(&args.positional[0])?;
+                let texts: Vec<String> = items
+                    .iter()
+                    .map(|item| path_text(interpreter, item))
+                    .collect::<Result<_, _>>()?;
+                let Some(first) = texts.first() else {
+                    return Err(Error::value_error("commonpath() arg is an empty sequence"));
+                };
+                let absolute = first.starts_with('/');
+                let mut common: Vec<&str> = first
+                    .split('/')
+                    .filter(|part| !part.is_empty() && *part != ".")
+                    .collect();
+                for other in &texts[1..] {
+                    let parts: Vec<&str> = other
+                        .split('/')
+                        .filter(|part| !part.is_empty() && *part != ".")
+                        .collect();
+                    let shared = common
+                        .iter()
+                        .zip(&parts)
+                        .take_while(|(a, b)| a == b)
+                        .count();
+                    common.truncate(shared);
+                }
+                let joined = common.join("/");
+                Ok(Value::str(if absolute {
+                    format!("/{joined}")
+                } else {
+                    joined
+                }))
+            }),
+        ),
+        (
+            "samefile",
+            function("samefile", |interpreter, args| {
+                let a = text(interpreter, &args, 0, "samefile")?;
+                let b = text(interpreter, &args, 1, "samefile")?;
+                Ok(Value::Bool(
+                    abspath(interpreter, &a) == abspath(interpreter, &b),
+                ))
+            }),
+        ),
+    ]
+}
+
+/// Converts a shell glob part to a regular expression, as `fnmatch.translate` does.
+pub fn glob_regex(pattern: &str) -> String {
+    let mut regex = String::from("(?s:");
+    let chars: Vec<char> = pattern.chars().collect();
+    let mut index = 0;
+    while index < chars.len() {
+        let c = chars[index];
+        index += 1;
+        match c {
+            '*' => regex.push_str(".*"),
+            '?' => regex.push('.'),
+            '[' => {
+                let mut end = index;
+                if end < chars.len() && chars[end] == '!' {
+                    end += 1;
+                }
+                if end < chars.len() && chars[end] == ']' {
+                    end += 1;
+                }
+                while end < chars.len() && chars[end] != ']' {
+                    end += 1;
+                }
+                if end >= chars.len() {
+                    regex.push_str("\\[");
+                } else {
+                    let mut class: String = chars[index..end].iter().collect();
+                    index = end + 1;
+                    class = class.replace('\\', "\\\\");
+                    if let Some(rest) = class.strip_prefix('!') {
+                        class = format!("^{rest}");
+                    }
+                    regex.push('[');
+                    regex.push_str(&class);
+                    regex.push(']');
+                }
+            }
+            other => regex.push_str(&fancy_regex::escape(&other.to_string())),
+        }
+    }
+    regex.push_str(")\\z");
+    regex
+}
+
+fn has_magic(text: &str) -> bool {
+    text.contains(['*', '?', '['])
+}

@@ -880,3 +880,349 @@ pub fn glob_regex(pattern: &str) -> String {
 fn has_magic(text: &str) -> bool {
     text.contains(['*', '?', '['])
 }
+
+/// `glob.glob`: paths that match a pattern, spelled as the pattern is.
+pub fn glob(
+    interpreter: &mut Interpreter,
+    pattern: &str,
+    recursive: bool,
+) -> Result<Vec<String>, Error> {
+    let absolute = pattern.starts_with('/');
+    let parts: Vec<&str> = pattern.split('/').filter(|part| !part.is_empty()).collect();
+    let mut results: Vec<String> = vec![if absolute { "/".into() } else { String::new() }];
+    for (position, part) in parts.iter().enumerate() {
+        let last = position + 1 == parts.len();
+        let mut next = Vec::new();
+        for base in &results {
+            let base_resolved = interpreter
+                .host
+                .resolve(if base.is_empty() { "." } else { base });
+            if recursive && *part == "**" {
+                // Zero or more directories.
+                let mut stack = vec![base.clone()];
+                while let Some(directory) = stack.pop() {
+                    next.push(directory.clone());
+                    let resolved = interpreter.host.resolve(if directory.is_empty() {
+                        "."
+                    } else {
+                        &directory
+                    });
+                    let Ok(names) = interpreter.host.list(&resolved) else {
+                        continue;
+                    };
+                    for name in names.iter().rev() {
+                        if name.starts_with('.') {
+                            continue;
+                        }
+                        if interpreter
+                            .host
+                            .stat(&resolved.join(name))
+                            .is_some_and(|stat| stat.kind == FileKind::Directory)
+                        {
+                            stack.push(join_prefix(&directory, name));
+                        } else if last {
+                            next.push(join_prefix(&directory, name));
+                        }
+                    }
+                }
+                continue;
+            }
+            if !has_magic(part) {
+                let candidate = join_prefix(base, part);
+                let resolved = interpreter.host.resolve(&candidate);
+                let exists = interpreter.host.stat(&resolved);
+                if exists.is_some_and(|stat| last || stat.kind == FileKind::Directory) {
+                    next.push(candidate);
+                }
+                continue;
+            }
+            let Ok(names) = interpreter.host.list(&base_resolved) else {
+                continue;
+            };
+            let regex = fancy_regex::Regex::new(&glob_regex(part))
+                .map_err(|error| Error::value_error(error.to_string()))?;
+            for name in names {
+                if name.starts_with('.') && !part.starts_with('.') {
+                    continue;
+                }
+                if !regex.is_match(&name).unwrap_or(false) {
+                    continue;
+                }
+                let candidate = join_prefix(base, &name);
+                if !last {
+                    let resolved = interpreter.host.resolve(&candidate);
+                    if interpreter
+                        .host
+                        .stat(&resolved)
+                        .is_none_or(|stat| stat.kind != FileKind::Directory)
+                    {
+                        continue;
+                    }
+                }
+                next.push(candidate);
+            }
+        }
+        results = next;
+    }
+    if parts.is_empty() {
+        return Ok(Vec::new());
+    }
+    if pattern.ends_with('/') {
+        results = results
+            .into_iter()
+            .map(|result| format!("{result}/"))
+            .collect();
+    }
+    results.dedup();
+    Ok(results)
+}
+
+fn join_prefix(base: &str, name: &str) -> String {
+    if base.is_empty() {
+        name.to_owned()
+    } else {
+        join_two(base, name)
+    }
+}
+
+pub fn glob_module() -> Vec<(&'static str, Value)> {
+    fn run(interpreter: &mut Interpreter, mut args: Args) -> Result<Vec<Value>, Error> {
+        let recursive = args
+            .take_keyword("recursive")
+            .is_some_and(|value| matches!(value.plain(), Value::Bool(true)));
+        args.take_keyword("root_dir");
+        let pattern = text(interpreter, &args, 0, "glob")?;
+        Ok(glob(interpreter, &pattern, recursive)?
+            .into_iter()
+            .map(Value::str)
+            .collect())
+    }
+    vec![
+        (
+            "glob",
+            function("glob", |interpreter, args| {
+                Ok(Value::list(run(interpreter, args)?))
+            }),
+        ),
+        (
+            "iglob",
+            function("iglob", |interpreter, args| {
+                Ok(Value::iterator(run(interpreter, args)?))
+            }),
+        ),
+        (
+            "escape",
+            function("escape", |interpreter, args| {
+                let path = text(interpreter, &args, 0, "escape")?;
+                let mut escaped = String::new();
+                for c in path.chars() {
+                    if matches!(c, '*' | '?' | '[') {
+                        escaped.push('[');
+                        escaped.push(c);
+                        escaped.push(']');
+                    } else {
+                        escaped.push(c);
+                    }
+                }
+                Ok(Value::str(escaped))
+            }),
+        ),
+        (
+            "has_magic",
+            function("has_magic", |interpreter, args| {
+                let path = text(interpreter, &args, 0, "has_magic")?;
+                Ok(Value::Bool(has_magic(&path)))
+            }),
+        ),
+    ]
+}
+
+pub fn shutil() -> Vec<(&'static str, Value)> {
+    fn copy(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+        let from = text(interpreter, &args, 0, "copy")?;
+        let mut to = text(interpreter, &args, 1, "copy")?;
+        let from_path = interpreter.host.resolve(&from);
+        let mut to_path = interpreter.host.resolve(&to);
+        if interpreter
+            .host
+            .stat(&to_path)
+            .is_some_and(|stat| stat.kind == FileKind::Directory)
+        {
+            let name = split(&from).1;
+            to = join_two(&to, &name);
+            to_path = to_path.join(name);
+        }
+        let data = interpreter
+            .host
+            .read(&from_path)
+            .map_err(|error| Error::os_error(&error, &from))?;
+        interpreter
+            .host
+            .write(&to_path, &data, false)
+            .map_err(|error| Error::os_error(&error, &to))?;
+        Ok(Value::str(to))
+    }
+    vec![
+        ("which", function("which", |_, _| Ok(Value::None))),
+        ("copy", function("copy", copy)),
+        ("copy2", function("copy2", copy)),
+        ("copyfile", function("copyfile", copy)),
+        (
+            "move",
+            function("move", |interpreter, args| {
+                let result = copy(interpreter, args.clone())?;
+                remove(interpreter, Args::new(vec![args.positional[0].clone()]))?;
+                Ok(result)
+            }),
+        ),
+        (
+            "rmtree",
+            function("rmtree", |interpreter, mut args| {
+                let ignore = args
+                    .take(1, "ignore_errors")
+                    .is_some_and(|value| matches!(value.plain(), Value::Bool(true)));
+                match remove(interpreter, args) {
+                    Ok(value) => Ok(value),
+                    Err(_) if ignore => Ok(Value::None),
+                    Err(error) => Err(error),
+                }
+            }),
+        ),
+        (
+            "copytree",
+            function("copytree", |_, _| {
+                Err(Error::unsupported(
+                    "shutil.copytree while the workflow is planned",
+                ))
+            }),
+        ),
+        (
+            "disk_usage",
+            function("disk_usage", |_, _| {
+                Err(Error::unsupported("shutil.disk_usage"))
+            }),
+        ),
+    ]
+}
+
+pub fn tempfile() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "gettempdir",
+            function("gettempdir", |_, _| Ok(Value::str("/tmp"))),
+        ),
+        ("tempdir", Value::None),
+        (
+            "mkdtemp",
+            function("mkdtemp", |interpreter, _| {
+                let path = "/tmp/iunctus-temporary";
+                interpreter
+                    .host
+                    .make_dir(std::path::Path::new(path))
+                    .map_err(|error| Error::os_error(&error, path))?;
+                Ok(Value::str(path))
+            }),
+        ),
+        (
+            "mkstemp",
+            function("mkstemp", |_, _| {
+                Err(Error::unsupported("tempfile.mkstemp"))
+            }),
+        ),
+        (
+            "NamedTemporaryFile",
+            function("NamedTemporaryFile", |_, _| {
+                Err(Error::unsupported("tempfile.NamedTemporaryFile"))
+            }),
+        ),
+        (
+            "TemporaryDirectory",
+            function("TemporaryDirectory", |_, _| {
+                Err(Error::unsupported("tempfile.TemporaryDirectory"))
+            }),
+        ),
+    ]
+}
+
+/// `pathlib.Path`: a path as text in pathlib's normal form.
+#[derive(Clone, Debug)]
+pub struct PathObject {
+    pub path: String,
+}
+
+impl PathObject {
+    /// Normalizes like pathlib: no empty or `.` parts, no trailing slash, `.` for nothing.
+    pub fn new(text: &str) -> PathObject {
+        let absolute = text.starts_with('/');
+        let parts: Vec<&str> = text
+            .split('/')
+            .filter(|part| !part.is_empty() && *part != ".")
+            .collect();
+        let body = parts.join("/");
+        let path = match (absolute, body.is_empty()) {
+            (true, _) => format!("/{body}"),
+            (false, true) => ".".into(),
+            (false, false) => body,
+        };
+        PathObject { path }
+    }
+
+    fn value(text: &str) -> Value {
+        Value::native(PathObject::new(text))
+    }
+
+    fn join(&self, other: &str) -> PathObject {
+        if other.starts_with('/') || self.path == "." {
+            PathObject::new(other)
+        } else {
+            PathObject::new(&format!("{}/{other}", self.path))
+        }
+    }
+
+    fn name(&self) -> String {
+        if self.path == "." || self.path == "/" {
+            return String::new();
+        }
+        split(&self.path).1
+    }
+
+    fn parent(&self) -> PathObject {
+        if self.path == "/" || self.path == "." {
+            return self.clone();
+        }
+        let (head, _) = split(&self.path);
+        PathObject::new(if head.is_empty() { "." } else { &head })
+    }
+
+    fn suffix(&self) -> String {
+        let name = self.name();
+        let (_, extension) = splitext(&name);
+        if extension == "." {
+            String::new()
+        } else {
+            extension
+        }
+    }
+
+    fn stem(&self) -> String {
+        let name = self.name();
+        let suffix = self.suffix();
+        name[..name.len() - suffix.len()].to_owned()
+    }
+
+    fn kind(&self, interpreter: &mut Interpreter) -> Option<FileKind> {
+        let resolved = interpreter.host.resolve(&self.path);
+        interpreter.host.stat(&resolved).map(|stat| stat.kind)
+    }
+}
+
+fn path_argument(
+    interpreter: &mut Interpreter,
+    args: &Args,
+    index: usize,
+) -> Result<String, Error> {
+    match args.positional.get(index) {
+        Some(value) => path_text(interpreter, value),
+        None => Err(Error::type_error("missing path argument")),
+    }
+}

@@ -218,6 +218,9 @@ fn launch(arguments: &Arguments, target: PathBuf) -> Launch {
         targets: arguments.targets.clone(),
         scratch: cache_directory().join("scratch"),
         stub: arguments.stub,
+        // A mock run makes up the outputs of tasks, so it also assumes that the source files
+        // of the workflow exist, as the graph needs them rather than their content.
+        assume_inputs: arguments.executor.as_deref() != Some("local"),
     }
 }
 

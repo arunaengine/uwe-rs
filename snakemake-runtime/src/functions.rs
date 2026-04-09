@@ -437,3 +437,416 @@ fn multiext(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
     }
     Ok(Value::list(files))
 }
+
+/// `glob_wildcards(pattern, files=None)`: the values of wildcards in existing files.
+pub fn glob_wildcards(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    let mut args = args;
+    let files = args.take(1, "files").filter(|files| !files.is_none());
+    args.take_keyword("followlinks");
+    let pattern = args
+        .positional
+        .first()
+        .cloned()
+        .ok_or_else(|| Error::type_error("glob_wildcards() missing pattern"))?;
+    let pattern = python_evaluator::modules::path_text(interpreter, &pattern)?;
+    let pattern = normpath(&pattern);
+    let first = pattern
+        .find('{')
+        .filter(|index| !pattern[index + 1..].starts_with('{'));
+    let before = match first {
+        Some(index) => &pattern[..index],
+        None => &pattern[..],
+    };
+    let directory = match before.rfind('/') {
+        Some(0) => "/".to_owned(),
+        Some(index) => before[..index].to_owned(),
+        None => ".".to_owned(),
+    };
+    let names = pattern::wildcard_names(&pattern);
+    let matcher = pattern::Matcher::of(&pattern);
+    let candidates: Vec<String> = match files {
+        Some(files) => interpreter
+            .iterate(&files)?
+            .iter()
+            .map(|file| interpreter.to_str(file))
+            .collect::<Result<_, _>>()?,
+        None => walk(interpreter, &directory),
+    };
+    let mut columns: Vec<Vec<Value>> = vec![Vec::new(); names.len()];
+    for candidate in candidates {
+        if let Some(values) = matcher.matches(&candidate) {
+            for (index, name) in names.iter().enumerate() {
+                columns[index].push(Value::str(values.get(name).cloned().unwrap_or_default()));
+            }
+        }
+    }
+    let collections = interpreter.import_module("collections")?;
+    let namedtuple = interpreter.get_attribute(&collections, "namedtuple")?;
+    let class = interpreter.call(
+        &namedtuple,
+        Args::new(vec![
+            Value::str("Wildcards"),
+            Value::list(names.iter().map(|name| Value::str(name.as_str())).collect()),
+        ]),
+    )?;
+    interpreter.call(
+        &class,
+        Args::new(columns.into_iter().map(Value::list).collect()),
+    )
+}
+
+/// `os.path.normpath`.
+fn normpath(path: &str) -> String {
+    let absolute = path.starts_with('/');
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." if parts.last().is_some_and(|last| *last != "..") => {
+                parts.pop();
+            }
+            ".." if absolute => {}
+            other => parts.push(other),
+        }
+    }
+    let joined = parts.join("/");
+    match (absolute, joined.is_empty()) {
+        (true, _) => format!("/{joined}"),
+        (false, true) => ".".into(),
+        (false, false) => joined,
+    }
+}
+
+/// Every file and folder below a folder, as `os.walk` finds them, with paths spelled from
+/// the folder given.
+fn walk(interpreter: &mut Interpreter, top: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut pending = vec![top.to_owned()];
+    while let Some(directory) = pending.pop() {
+        let resolved = interpreter.host.resolve(&directory);
+        let Ok(names) = interpreter.host.list(&resolved) else {
+            continue;
+        };
+        for name in names {
+            let path = if directory == "." {
+                name.clone()
+            } else {
+                format!("{}/{name}", directory.trim_end_matches('/'))
+            };
+            let child = resolved.join(&name);
+            if interpreter
+                .host
+                .stat(&child)
+                .is_some_and(|stat| stat.kind == python_evaluator::FileKind::Directory)
+            {
+                pending.push(path.clone());
+            }
+            found.push(normpath(&path));
+        }
+    }
+    found
+}
+
+/// `branch(condition, then=None, otherwise=None, cases=None)`.
+fn branch(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
+    let condition = args.take(0, "condition").unwrap_or(Value::None);
+    let then = args.take(1, "then").unwrap_or(Value::None);
+    let otherwise = args.take(2, "otherwise").unwrap_or(Value::None);
+    let cases = args.take(3, "cases").filter(|cases| !cases.is_none());
+    if cases.is_some() && !then.is_none() {
+        return Err(Error::value_error(
+            "Cannot use 'cases' together with 'then' in 'branch' function.",
+        ));
+    }
+    let any_callable = [&condition, &then, &otherwise]
+        .into_iter()
+        .any(|value| is_callable(interpreter, value));
+    let decide = move |interpreter: &mut Interpreter, wildcards: &Value| -> Result<Value, Error> {
+        let resolve = |interpreter: &mut Interpreter, value: &Value| -> Result<Value, Error> {
+            let value = if is_callable(interpreter, value) {
+                interpreter.call(value, Args::new(vec![wildcards.clone()]))?
+            } else {
+                value.clone()
+            };
+            // `value or []`
+            Ok(if interpreter.truthy(&value)? {
+                value
+            } else {
+                Value::list(Vec::new())
+            })
+        };
+        match &cases {
+            Some(cases) => {
+                let key = resolve(interpreter, &condition)?;
+                match interpreter.get_item(cases, &key) {
+                    Ok(selected) => resolve(interpreter, &selected),
+                    Err(error) if error.is("KeyError") && !otherwise.is_none() => {
+                        resolve(interpreter, &otherwise)
+                    }
+                    Err(error) => Err(error),
+                }
+            }
+            None => {
+                let truth = resolve(interpreter, &condition)?;
+                if interpreter.truthy(&truth)? {
+                    resolve(interpreter, &then)
+                } else {
+                    resolve(interpreter, &otherwise)
+                }
+            }
+        }
+    };
+    if any_callable {
+        return Ok(deferred(&["wildcards"], move |interpreter, args| {
+            let wildcards = args.positional.first().cloned().unwrap_or(Value::None);
+            decide(interpreter, &wildcards)
+        }));
+    }
+    decide(interpreter, &Value::None)
+}
+
+/// `evaluate(expression)`: an input function that evaluates Python text with the wildcards
+/// filled in as reprs.
+fn evaluate(_: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    let expression = args
+        .positional
+        .first()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_default();
+    Ok(deferred(&["wildcards"], move |interpreter, args| {
+        let wildcards = args.positional.first().cloned().unwrap_or(Value::None);
+        let mut values = Vec::new();
+        if let Some(list) = wildcards.as_native::<NamedList>() {
+            for name in list.keys() {
+                let value = list.named(&name).unwrap_or(Value::None);
+                values.push((name.into(), Value::str(interpreter.repr(&value)?)));
+            }
+        }
+        let text = python_evaluator::format::format_method(
+            interpreter,
+            &expression,
+            &Args {
+                positional: Vec::new(),
+                keywords: values,
+            },
+        )?;
+        let globals = interpreter.new_globals("snakemake.ioutils", None);
+        interpreter.eval_text(&text, &globals)
+    }))
+}
+
+/// `subpath(path_or_function, strip_suffix=None, with_suffix=None, basename=False,
+/// parent=False, ancestor=None)`.
+fn subpath(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
+    let value = args.take(0, "path_or_func").unwrap_or(Value::None);
+    let strip_suffix = args
+        .take_keyword("strip_suffix")
+        .and_then(|value| value.as_str().map(str::to_owned));
+    let with_suffix = args
+        .take_keyword("with_suffix")
+        .and_then(|value| value.as_str().map(str::to_owned));
+    let basename = args
+        .take_keyword("basename")
+        .is_some_and(|value| matches!(value.plain(), Value::Bool(true)));
+    let parent = args
+        .take_keyword("parent")
+        .is_some_and(|value| matches!(value.plain(), Value::Bool(true)));
+    let ancestor = args
+        .take_keyword("ancestor")
+        .and_then(|value| value.as_int());
+    let apply = move |interpreter: &mut Interpreter, value: &Value| -> Result<Value, Error> {
+        let mut path = python_evaluator::modules::path_text(interpreter, value)?;
+        if let Some(suffix) = &strip_suffix {
+            path = path
+                .strip_suffix(suffix.as_str())
+                .ok_or_else(|| {
+                    Error::value_error(format!(
+                        "Path {path} does not end with the specified suffix {suffix}"
+                    ))
+                })?
+                .to_owned();
+        }
+        if let Some(suffix) = &with_suffix {
+            path.push_str(suffix);
+        }
+        let dirname = |path: &str| -> String {
+            match path.rfind('/') {
+                Some(0) => "/".into(),
+                Some(index) => path[..index].to_owned(),
+                None => ".".into(),
+            }
+        };
+        if basename {
+            path = path.rsplit('/').next().unwrap_or_default().to_owned();
+        } else if parent {
+            path = dirname(&path);
+        } else if let Some(count) = ancestor {
+            for _ in 0..count {
+                path = dirname(&path);
+                if path == "." {
+                    break;
+                }
+            }
+        }
+        Ok(Value::str(path))
+    };
+    if is_callable(interpreter, &value) {
+        let names = parameters(&value)
+            .map(|(names, _)| names)
+            .unwrap_or_else(|| vec!["wildcards".into()]);
+        let names: Vec<&str> = names.iter().map(String::as_str).collect();
+        return Ok(deferred(&names, move |interpreter, args| {
+            let result = interpreter.call(&value, args)?;
+            apply(interpreter, &result)
+        }));
+    }
+    apply(interpreter, &value)
+}
+
+/// `lookup(query=None, dpath=None, cols=None, is_nrows=None, within=None, default=...)`.
+fn lookup(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
+    let mut query = args.take(0, "query").filter(|value| !value.is_none());
+    let mut dpath = args.take(1, "dpath").filter(|value| !value.is_none());
+    let cols = args.take_keyword("cols").filter(|value| !value.is_none());
+    let is_nrows = args
+        .take_keyword("is_nrows")
+        .filter(|value| !value.is_none());
+    let within = args.take_keyword("within").filter(|value| !value.is_none());
+    let default = args.take_keyword("default");
+    let namespace = args.keywords.clone();
+    let Some(within) = within else {
+        return Err(lookup_error(
+            "Must provide a dataframe, series, or mapping to search within.",
+        ));
+    };
+    let mapping = matches!(within.plain(), Value::Dict(_));
+    if query.is_some() && mapping {
+        dpath = query.take();
+    }
+    let (expression, is_query) = match (query, dpath) {
+        (Some(query), None) => (query, true),
+        (None, Some(dpath)) => (dpath, false),
+        _ => {
+            return Err(lookup_error(
+                "Must provide either a query or dpath parameter.",
+            ));
+        }
+    };
+    let apply = move |interpreter: &mut Interpreter,
+                      expression: &str,
+                      namespace: &[(Rc<str>, Value)]|
+          -> Result<Value, Error> {
+        if is_query {
+            let cols = match &cols {
+                Some(cols) => Some(format_with(interpreter, cols, namespace)?),
+                None => None,
+            };
+            python_evaluator::pandas::lookup_query(
+                interpreter,
+                &within,
+                expression,
+                cols,
+                is_nrows.clone(),
+                default.clone(),
+            )
+        } else {
+            match dpath_get(interpreter, &within, expression) {
+                Ok(value) => Ok(value),
+                Err(_) if default.is_some() => Ok(default.clone().unwrap_or(Value::None)),
+                Err(error) => Err(error),
+            }
+        }
+    };
+    let text = expression.as_str().map(str::to_owned);
+    let needs_wildcards = is_callable(interpreter, &expression)
+        || text.as_ref().is_some_and(|text| {
+            pattern::wildcard_names(text)
+                .iter()
+                .any(|name| !namespace.iter().any(|(key, _)| **key == **name))
+        })
+        || namespace
+            .iter()
+            .any(|(_, value)| matches!(value.plain(), Value::Function(_)));
+    if needs_wildcards {
+        return Ok(deferred(&["wildcards"], move |interpreter, call_args| {
+            let wildcards = call_args.positional.first().cloned().unwrap_or(Value::None);
+            let mut resolved: Vec<(Rc<str>, Value)> = Vec::new();
+            for (name, value) in &namespace {
+                let value = if is_callable(interpreter, value) {
+                    interpreter.call(value, Args::new(vec![wildcards.clone()]))?
+                } else {
+                    value.clone()
+                };
+                resolved.push((name.clone(), value));
+            }
+            if let Some(list) = wildcards.as_native::<NamedList>() {
+                for name in list.keys() {
+                    if !resolved.iter().any(|(key, _)| **key == *name) {
+                        resolved.push((
+                            name.as_str().into(),
+                            list.named(&name).unwrap_or(Value::None),
+                        ));
+                    }
+                }
+            }
+            let expression = if is_callable(interpreter, &expression) {
+                interpreter.call(&expression, Args::new(vec![wildcards.clone()]))?
+            } else {
+                expression.clone()
+            };
+            let formatted = format_with(interpreter, &expression, &resolved)?;
+            let formatted = formatted.as_str().unwrap_or_default().to_owned();
+            apply(interpreter, &formatted, &resolved)
+        }));
+    }
+    let formatted = if namespace.is_empty() {
+        expression.clone()
+    } else {
+        format_with(interpreter, &expression, &namespace)?
+    };
+    let formatted = interpreter.to_str(&formatted)?;
+    apply(interpreter, &formatted, &namespace)
+}
+
+fn lookup_error(message: &str) -> Error {
+    let class = python_evaluator::types::library_exception(
+        "LookupError",
+        "snakemake.exceptions",
+        "WorkflowError",
+    );
+    Error::from_value(python_evaluator::error::exception(
+        &class,
+        vec![Value::str(message)],
+    ))
+}
+
+/// Formats text or each text of a list with names, as `snakemake.utils.format` does.
+fn format_with(
+    interpreter: &mut Interpreter,
+    value: &Value,
+    namespace: &[(Rc<str>, Value)],
+) -> Result<Value, Error> {
+    match value.plain() {
+        Value::Str(text) => {
+            let args = Args {
+                positional: Vec::new(),
+                keywords: namespace.to_vec(),
+            };
+            Ok(Value::str(crate::shell::format_command(
+                interpreter,
+                text,
+                &args,
+                None,
+            )?))
+        }
+        Value::List(items) => {
+            let items = items.borrow().clone();
+            let formatted = items
+                .iter()
+                .map(|item| format_with(interpreter, item, namespace))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Value::list(formatted))
+        }
+        other => Ok(other.clone()),
+    }
+}

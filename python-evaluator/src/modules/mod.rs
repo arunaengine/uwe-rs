@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod collections;
-mod data;
+pub mod data;
 mod misc;
 mod os;
 mod re;
@@ -15,8 +15,9 @@ use crate::error::Error;
 use crate::interpreter::Interpreter;
 use crate::value::{Args, Module, Scope, Value};
 
+pub use misc::{dedent, logger, shell_quote};
 pub use os::PathObject;
-pub use re::{Pattern, compile as compile_regex};
+pub use re::{Pattern, compile as compile_regex, translate as translate_regex};
 
 /// The modules that have a native stand-in.
 const NATIVE: &[&str] = &[

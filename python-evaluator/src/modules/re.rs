@@ -36,7 +36,7 @@ thread_local! {
 
 /// Rewrites Python syntax that fancy-regex reads differently: `\Z`, and braces that are
 /// not repetition counts.
-fn translate(pattern: &str) -> String {
+pub fn translate(pattern: &str) -> String {
     let chars: Vec<char> = pattern.chars().collect();
     let mut output = String::with_capacity(pattern.len());
     let mut index = 0;

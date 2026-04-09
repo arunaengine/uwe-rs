@@ -401,4 +401,387 @@ impl Planner {
             }
         }
     }
+
+    fn plan_job_inner(
+        &mut self,
+        interpreter: &mut Interpreter,
+        rule_index: usize,
+        wildcards: &Wildcards,
+        target: Option<&str>,
+    ) -> Result<Job, Failure> {
+        let rule = self.rules[rule_index].clone();
+        crate::objects::take_consulted();
+        let (input, incomplete) =
+            expand_input(interpreter, &rule, wildcards).map_err(Failure::Error)?;
+        let checkpoints = crate::objects::take_consulted();
+        let fill = |items: &Items, what: &str| -> Result<Items, Failure> {
+            let mut filled = items.clone();
+            filled.values = items
+                .values
+                .iter()
+                .map(|value| match value.as_str() {
+                    Some(text) => pattern::apply(text, wildcards).map(|text| retag(value, Value::str(text))).map_err(|name| {
+                        Failure::Error(crate::workflow::workflow_error(format!(
+                            "Wildcards in {what} files cannot be determined from output files: '{name}'"
+                        )))
+                    }),
+                    None => Ok(value.clone()),
+                })
+                .collect::<Result<_, _>>()?;
+            Ok(filled)
+        };
+        let output = fill(&rule.output, "output")?;
+        let log = fill(&rule.log, "log")?;
+        let benchmark = match &rule.benchmark {
+            Some(benchmark) => match benchmark.as_str() {
+                Some(text) => Some(Value::str(pattern::apply(text, wildcards).map_err(|name| {
+                    Failure::Error(crate::workflow::workflow_error(format!(
+                        "Wildcards in benchmark file cannot be determined from output files: '{name}'"
+                    )))
+                })?)),
+                None => Some(benchmark.clone()),
+            },
+            None => None,
+        };
+        let mut job = Job {
+            rule: rule_index,
+            wildcards: wildcards.clone(),
+            input,
+            output,
+            log,
+            benchmark,
+            dependencies: Vec::new(),
+            incomplete,
+            assumed: false,
+            missing: Vec::new(),
+            checkpoints,
+        };
+        if let Some(target) = target
+            && job.input_files().iter().any(|file| file == target)
+        {
+            return Err(Failure::Cycle(format!(
+                "Rule {} consumes its own output {target}",
+                rule.name
+            )));
+        }
+        let inputs: Vec<(String, Option<String>)> = {
+            let mut seen: Vec<String> = Vec::new();
+            let mut inputs = Vec::new();
+            for value in &job.input.values {
+                let Some(text) = value.as_str() else { continue };
+                if seen.iter().any(|file| file == text) {
+                    continue;
+                }
+                seen.push(text.to_owned());
+                let dependency = value
+                    .tag("rule")
+                    .and_then(|rule| rule.as_str().map(str::to_owned));
+                inputs.push((text.to_owned(), dependency));
+            }
+            inputs
+        };
+        for (file, dependency) in inputs {
+            let planned = match dependency
+                .and_then(|name| self.rules.iter().position(|rule| rule.name == name))
+            {
+                Some(producer) => match self.wildcards_for(producer, &file, Some(wildcards)) {
+                    Some(values) => self
+                        .plan_job(interpreter, producer, values, Some(&file))
+                        .map(Some),
+                    None => self.plan_file(interpreter, &file, Some(wildcards)),
+                },
+                None => self.plan_file(interpreter, &file, Some(wildcards)),
+            };
+            match planned {
+                Ok(Some(producer)) => {
+                    job.assumed |= self.jobs[producer].assumed;
+                    job.dependencies.push((file, producer));
+                }
+                Ok(None) => {
+                    if !self.exists(interpreter, &file) {
+                        if !self.assume_inputs {
+                            return Err(Failure::Error(crate::workflow::workflow_error(format!(
+                                "Missing input files for rule {}:\n    affected files:\n        {file}",
+                                rule.name
+                            ))));
+                        }
+                        job.assumed = true;
+                        job.missing.push(file);
+                    }
+                }
+                Err(failure) => {
+                    if self.exists(interpreter, &file) {
+                        continue;
+                    }
+                    return Err(failure);
+                }
+            }
+        }
+        Ok(job)
+    }
+
+    /// Plans a target rule, whose job has no wildcards.
+    pub fn plan_rule(&mut self, interpreter: &mut Interpreter, name: &str) -> Result<usize, Error> {
+        let Some(rule) = self.rules.iter().position(|rule| rule.name == name) else {
+            return Err(crate::workflow::workflow_error(format!(
+                "Rule {name} is not defined in this workflow."
+            )));
+        };
+        if self.rules[rule].has_wildcards() {
+            return Err(crate::workflow::workflow_error(
+                "Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical \"rule all\" which just collects all results you want to generate in the end).",
+            ));
+        }
+        self.plan_job(interpreter, rule, Wildcards::new(), None)
+            .map_err(Failure::into_error)
+    }
+
+    /// Plans a target file.
+    pub fn plan_target_file(
+        &mut self,
+        interpreter: &mut Interpreter,
+        file: &str,
+    ) -> Result<Option<usize>, Error> {
+        match self
+            .plan_file(interpreter, file, None)
+            .map_err(Failure::into_error)?
+        {
+            Some(job) => Ok(Some(job)),
+            None if self.exists(interpreter, file) => Ok(None),
+            None => Err(crate::workflow::workflow_error(format!(
+                "MissingRuleException: No rule to produce {file}"
+            ))),
+        }
+    }
+
+    /// Whether each job must run: an output is missing, the rule has no output, it waits
+    /// for a checkpoint, or a job it depends on must run.
+    pub fn needrun(&self, interpreter: &Interpreter, roots: &[usize]) -> HashMap<usize, bool> {
+        let mut result: HashMap<usize, bool> = HashMap::new();
+        for root in roots {
+            self.visit_needrun(interpreter, *root, &mut result, &mut HashSet::new());
+        }
+        result
+    }
+
+    fn visit_needrun(
+        &self,
+        interpreter: &Interpreter,
+        job: usize,
+        result: &mut HashMap<usize, bool>,
+        visiting: &mut HashSet<usize>,
+    ) -> bool {
+        if let Some(found) = result.get(&job) {
+            return *found;
+        }
+        if !visiting.insert(job) {
+            return false;
+        }
+        let mut needed = false;
+        for (_, dependency) in &self.jobs[job].dependencies {
+            needed |= self.visit_needrun(interpreter, *dependency, result, visiting);
+        }
+        let outputs = self.jobs[job].output_files();
+        let own_outputs: Vec<String> = self.jobs[job]
+            .output
+            .values
+            .iter()
+            .filter_map(|value| value.as_str().map(str::to_owned))
+            .collect();
+        needed |= own_outputs.is_empty()
+            || self.jobs[job].incomplete
+            || outputs
+                .iter()
+                .filter(|file| own_outputs.contains(file))
+                .any(|file| !self.exists(interpreter, file));
+        result.insert(job, needed);
+        needed
+    }
+}
+
+/// The input files of a job: patterns with wildcards filled in, and what input functions
+/// return. Also whether a function waits for a checkpoint, whose output then stands in.
+pub fn expand_input(
+    interpreter: &mut Interpreter,
+    rule: &Rule,
+    wildcards: &Wildcards,
+) -> Result<(Items, bool), Error> {
+    let wildcards_value = NamedList::wildcards(wildcards);
+    let mut items = Items::default();
+    let mut incomplete = false;
+    for (name, values, many) in rule.input.named_entries() {
+        let start = items.values.len();
+        for value in values {
+            if is_callable(interpreter, &value) {
+                let unpack = value.tag("unpack").is_some();
+                let result =
+                    match call_input_function(interpreter, value.plain(), &wildcards_value, &[]) {
+                        Ok(result) => result,
+                        Err(error) => match incomplete_target(&error) {
+                            Some(target) => {
+                                incomplete = true;
+                                target
+                            }
+                            None => {
+                                return Err(input_function_error(error, rule, wildcards));
+                            }
+                        },
+                    };
+                if unpack && !incomplete {
+                    match result.plain() {
+                        Value::Dict(_) => {
+                            for (key, item) in interpreter.mapping_items(&result)? {
+                                let key = interpreter.to_str(&key)?;
+                                let item_start = items.values.len();
+                                let many = add_function_result(
+                                    interpreter,
+                                    &mut items,
+                                    &item,
+                                    &value,
+                                    wildcards,
+                                )?;
+                                items.set_name(
+                                    &key,
+                                    item_start,
+                                    many.then_some(items.values.len()),
+                                );
+                            }
+                        }
+                        Value::List(_) | Value::Tuple(_) => {
+                            for item in interpreter.iterate(&result)? {
+                                add_function_result(
+                                    interpreter,
+                                    &mut items,
+                                    &item,
+                                    &value,
+                                    wildcards,
+                                )?;
+                            }
+                        }
+                        _ => {
+                            return Err(crate::workflow::workflow_error(format!(
+                                "Can only use unpack() on list and dict, but {} was returned.",
+                                interpreter.repr(&result)?
+                            )));
+                        }
+                    }
+                    continue;
+                }
+                let many =
+                    add_function_result(interpreter, &mut items, &result, &value, wildcards)?;
+                if let Some(name) = &name {
+                    items.set_name(name, start, many.then_some(items.values.len()));
+                }
+            } else {
+                let text = interpreter.to_str(&value)?;
+                let filled = pattern::apply(&text, wildcards).map_err(|missing| {
+                    crate::workflow::workflow_error(format!(
+                        "Wildcards in input files cannot be determined from output files: '{missing}'"
+                    ))
+                })?;
+                items.push(retag(&value, Value::str(filled)));
+            }
+        }
+        if let Some(name) = &name
+            && !items.names.iter().any(|(existing, _, _)| existing == name)
+        {
+            items.set_name(name, start, many.then_some(items.values.len()));
+        }
+    }
+    Ok((items, incomplete))
+}
+
+/// Adds what an input function returned: a file, or a list of files. Returns whether it was
+/// a list.
+fn add_function_result(
+    interpreter: &mut Interpreter,
+    items: &mut Items,
+    result: &Value,
+    function: &Value,
+    wildcards: &Wildcards,
+) -> Result<bool, Error> {
+    let files = match result.plain() {
+        Value::Str(_) => vec![result.clone()],
+        Value::Native(object) if object.type_name() == "PosixPath" => {
+            vec![Value::str(interpreter.to_str(result)?)]
+        }
+        Value::List(_)
+        | Value::Tuple(_)
+        | Value::Set(_)
+        | Value::FrozenSet(_)
+        | Value::Iterator(_)
+        | Value::Native(_) => interpreter.iterate(result)?,
+        other => {
+            return Err(crate::workflow::workflow_error(format!(
+                "Function did not return str or iterable of str. Encountered: {} ({})",
+                interpreter.repr(other)?,
+                python_evaluator::types::type_name(other)
+            )));
+        }
+    };
+    let many = !matches!(result.plain(), Value::Str(_))
+        && result
+            .plain()
+            .as_native::<python_evaluator::modules::PathObject>()
+            .is_none();
+    for file in files {
+        let text = match file.plain() {
+            Value::Str(text) => text.to_string(),
+            Value::Native(object) if object.type_name() == "PosixPath" => {
+                interpreter.to_str(&file)?
+            }
+            other => {
+                return Err(crate::workflow::workflow_error(format!(
+                    "Function did not return str or iterable of str. Encountered: {} ({})",
+                    interpreter.repr(result)?,
+                    python_evaluator::types::type_name(other)
+                )));
+            }
+        };
+        let filled = pattern::apply(&text, wildcards).unwrap_or(text);
+        let mut value = retag(&file, Value::str(filled));
+        if let Some(tags) = function.tags() {
+            for (flag, flag_value) in tags {
+                if &**flag != "unpack" && value.tag(flag).is_none() {
+                    value = value.with_tag(flag, flag_value.clone());
+                }
+            }
+        }
+        items.push(value);
+    }
+    Ok(many)
+}
+
+/// The output file of a checkpoint that an input function waits for.
+pub fn incomplete_target(error: &Error) -> Option<Value> {
+    let ErrorKind::Exception(exception) = &error.kind else {
+        return None;
+    };
+    if !python_evaluator::types::class_of(exception).derives_from("IncompleteCheckpointException") {
+        return None;
+    }
+    let Value::Instance(instance) = exception.plain() else {
+        return None;
+    };
+    instance.dict.borrow().get("targetfile").cloned()
+}
+
+fn input_function_error(error: Error, rule: &Rule, wildcards: &Wildcards) -> Error {
+    if error.is_unsupported() {
+        return error;
+    }
+    let values: Vec<String> = wildcards
+        .iter()
+        .map(|(name, value)| format!("{name}={value}"))
+        .collect();
+    let message = format!(
+        "InputFunctionException in rule {} (wildcards: {}): {}: {}",
+        rule.name,
+        values.join(", "),
+        error.class_name(),
+        error.message()
+    );
+    let mut wrapped = crate::workflow::workflow_error(message);
+    wrapped.location = error.location;
+    wrapped
 }

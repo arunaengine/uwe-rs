@@ -850,3 +850,427 @@ fn format_with(
         other => Ok(other.clone()),
     }
 }
+
+/// `dpath.get` on nested mappings with paths like `a/b/0`; `*` and `**` segments give the
+/// values of all matches, as `dpath.values` does.
+fn dpath_get(interpreter: &mut Interpreter, within: &Value, path: &str) -> Result<Value, Error> {
+    let parts: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+    let mut current = vec![within.clone()];
+    let mut glob = false;
+    for part in parts {
+        let mut next = Vec::new();
+        for value in &current {
+            if part == "*" || part.contains(['*', '?', '[']) {
+                glob = true;
+                let regex = fancy_regex::Regex::new(&format!(
+                    "^{}$",
+                    python_evaluator::modules::translate_regex(&fnmatch_regex(part))
+                ))
+                .map_err(|error| Error::value_error(error.to_string()))?;
+                for (key, item) in interpreter.mapping_items(value).unwrap_or_default() {
+                    let key_text = interpreter.to_str(&key)?;
+                    if regex.is_match(&key_text).unwrap_or(false) {
+                        next.push(item);
+                    }
+                }
+                continue;
+            }
+            let key = match value.plain() {
+                Value::List(_) | Value::Tuple(_) => part
+                    .parse::<i64>()
+                    .map(Value::Int)
+                    .unwrap_or(Value::str(part)),
+                _ => Value::str(part),
+            };
+            match interpreter.get_item(value, &key) {
+                Ok(item) => next.push(item),
+                Err(_) => {
+                    if let Ok(number) = part.parse::<i64>()
+                        && let Ok(item) = interpreter.get_item(value, &Value::Int(number))
+                    {
+                        next.push(item);
+                    }
+                }
+            }
+        }
+        current = next;
+    }
+    if glob {
+        return Ok(Value::list(current));
+    }
+    match current.len() {
+        1 => Ok(current.remove(0)),
+        0 => Err(lookup_error(&format!("Dpath {path} not found."))),
+        _ => Ok(Value::list(current)),
+    }
+}
+
+fn fnmatch_regex(pattern: &str) -> String {
+    let mut regex = String::new();
+    for c in pattern.chars() {
+        match c {
+            '*' => regex.push_str(".*"),
+            '?' => regex.push('.'),
+            other => regex.push_str(&fancy_regex::escape(&other.to_string())),
+        }
+    }
+    regex
+}
+
+/// `input`, `output`, `params` and `resources` used outside of rule bodies: attribute and
+/// item access that is resolved per job, like Snakemake's `RuleItemProxy`.
+struct RuleItemProxy(&'static str);
+
+impl Native for RuleItemProxy {
+    fn type_name(&self) -> &str {
+        "RuleItemProxy"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let kind = self.0;
+        let key = name.to_owned();
+        Ok(Some(deferred(
+            &["wildcards", kind],
+            move |interpreter, mut args| {
+                let item = args.take_keyword(kind).unwrap_or(Value::None);
+                interpreter.get_attribute(&item, &key)
+            },
+        )))
+    }
+
+    fn get_item(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        key: &Value,
+    ) -> Result<Option<Value>, Error> {
+        let kind = self.0;
+        let key = key.clone();
+        Ok(Some(deferred(
+            &["wildcards", kind],
+            move |interpreter, mut args| {
+                let item = args.take_keyword(kind).unwrap_or(Value::None);
+                interpreter.get_item(&item, &key)
+            },
+        )))
+    }
+}
+
+/// The `shell` global: settings work, running a command while planning does not.
+struct Shell(Rc<RefCell<State>>);
+
+impl Native for Shell {
+    fn type_name(&self) -> &str {
+        "shell"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn call(&self, _: &mut Interpreter, _: &Value, _: Args) -> Result<Option<Value>, Error> {
+        Err(Error::unsupported(
+            "shell(): running commands while the workflow is planned",
+        ))
+    }
+
+    fn instance_of(&self, class: &str) -> bool {
+        class == "callable"
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let state = self.0.clone();
+        Ok(Some(match name {
+            "prefix" | "suffix" | "executable" => Value::builtin(name, {
+                let which = name.to_owned();
+                move |interpreter, args| {
+                    let value = match args.positional.first() {
+                        Some(value) if !value.is_none() => Some(interpreter.to_str(value)?),
+                        _ => None,
+                    };
+                    let mut state = state.borrow_mut();
+                    match which.as_str() {
+                        "prefix" => state.shell_prefix = value,
+                        "suffix" => state.shell_suffix = value.unwrap_or_default(),
+                        _ => state.shell_executable = value,
+                    }
+                    Ok(Value::None)
+                }
+            }),
+            "conda_block_conflicting_envvars" => Value::Bool(true),
+            _ => return Ok(None),
+        }))
+    }
+
+    fn set_attribute(&self, _: &mut Interpreter, _: &str, _: Value) -> Result<bool, Error> {
+        Ok(true)
+    }
+}
+
+/// `scatter` and `gather`: `scatter.<name>(pattern)` expands a pattern over the scatter
+/// items of `scattergather:`.
+pub struct ScatterGather(pub Rc<RefCell<State>>);
+
+impl Native for ScatterGather {
+    fn type_name(&self) -> &str {
+        "Scatter"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let Some(count) = self.0.borrow().scatter.get(name).copied() else {
+            return Ok(None);
+        };
+        Ok(Some(Value::builtin(name, move |interpreter, args| {
+            let items: Vec<Value> = (1..=count)
+                .map(|index| Value::str(format!("{index}-of-{count}")))
+                .collect();
+            let mut expand_args = Args::new(args.positional.clone());
+            expand_args.keywords = args.keywords.clone();
+            expand_args
+                .keywords
+                .push(("scatteritem".into(), Value::list(items)));
+            expand(interpreter, expand_args)
+        })))
+    }
+}
+
+/// A module source given by `github(...)`, `gitlab(...)` or `gitfile(...)`.
+pub struct RemoteSource {
+    pub url: String,
+}
+
+impl Native for RemoteSource {
+    fn type_name(&self) -> &str {
+        "HostingProviderFile"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn to_str(&self, _: &mut Interpreter) -> Result<Option<String>, Error> {
+        Ok(Some(self.url.clone()))
+    }
+}
+
+fn hosted(provider: &'static str) -> Value {
+    Value::builtin(provider, move |interpreter, mut args| {
+        let repository = args
+            .take(0, "repo")
+            .map(|value| interpreter.to_str(&value))
+            .transpose()?
+            .unwrap_or_default();
+        let path = args
+            .take(1, "path")
+            .map(|value| interpreter.to_str(&value))
+            .transpose()?
+            .unwrap_or_default();
+        let reference = ["tag", "branch", "commit"]
+            .iter()
+            .find_map(|key| args.take_keyword(key))
+            .map(|value| interpreter.to_str(&value))
+            .transpose()?
+            .unwrap_or_else(|| "main".into());
+        let url = match provider {
+            "github" => {
+                format!("https://raw.githubusercontent.com/{repository}/{reference}/{path}")
+            }
+            "gitlab" => format!("https://gitlab.com/{repository}/-/raw/{reference}/{path}"),
+            _ => format!("git+file://{repository}/{path}@{reference}"),
+        };
+        Ok(Value::native(RemoteSource { url }))
+    })
+}
+
+/// Puts the Snakemake names into the globals of a Snakefile.
+pub fn install(globals: &Rc<Scope>, state: &Rc<RefCell<State>>) {
+    for name in [
+        "temp",
+        "temporary",
+        "protected",
+        "directory",
+        "ancient",
+        "touch",
+        "pipe",
+        "service",
+        "unpack",
+        "local",
+        "update",
+        "before_update",
+        "checkpoint_target",
+    ] {
+        globals.set(name, flag_function(name));
+    }
+    globals.set("expand", Value::builtin("expand", expand));
+    globals.set("collect", Value::builtin("collect", expand));
+    globals.set(
+        "glob_wildcards",
+        Value::builtin("glob_wildcards", glob_wildcards),
+    );
+    globals.set("multiext", Value::builtin("multiext", multiext));
+    globals.set("branch", Value::builtin("branch", branch));
+    globals.set("evaluate", Value::builtin("evaluate", evaluate));
+    globals.set("subpath", Value::builtin("subpath", subpath));
+    globals.set("lookup", Value::builtin("lookup", lookup));
+    globals.set(
+        "ensure",
+        Value::builtin("ensure", |interpreter, mut args| {
+            let value = args.positional.first().cloned().unwrap_or(Value::None);
+            let mut options = Dict::default();
+            for key in ["non_empty", "sha256", "md5", "sha1"] {
+                options.insert(key, args.take_keyword(key).unwrap_or(Value::None));
+            }
+            flag(interpreter, &value, "ensure", Value::dict(options))
+        }),
+    );
+    globals.set(
+        "repeat",
+        Value::builtin("repeat", |interpreter, args| {
+            args.expect("repeat", 2, 2)?;
+            flag(
+                interpreter,
+                &args.positional[0],
+                "repeat",
+                args.positional[1].clone(),
+            )
+        }),
+    );
+    globals.set(
+        "report",
+        Value::builtin("report", |interpreter, args| {
+            let value = args.positional.first().cloned().unwrap_or(Value::None);
+            flag(interpreter, &value, "report", Value::Bool(true))
+        }),
+    );
+    globals.set(
+        "from_queue",
+        Value::builtin("from_queue", |_, _| Err(Error::unsupported("from_queue()"))),
+    );
+    globals.set(
+        "flag",
+        Value::builtin("flag", |interpreter, args| {
+            args.expect("flag", 2, 3)?;
+            let name = args.positional[1].as_str().unwrap_or_default().to_owned();
+            let value = args.positional.get(2).cloned().unwrap_or(Value::Bool(true));
+            flag(interpreter, &args.positional[0], &name, value)
+        }),
+    );
+    globals.set(
+        "exists",
+        Value::builtin("exists", |interpreter, args| {
+            args.expect("exists", 1, 1)?;
+            let path = python_evaluator::modules::path_text(interpreter, &args.positional[0])?;
+            let resolved = interpreter.host.resolve(&path);
+            Ok(Value::Bool(interpreter.host.stat(&resolved).is_some()))
+        }),
+    );
+    globals.set(
+        "flatten",
+        Value::builtin("flatten", |interpreter, args| {
+            fn walk(
+                interpreter: &mut Interpreter,
+                value: &Value,
+                into: &mut Vec<Value>,
+            ) -> Result<(), Error> {
+                match value.plain() {
+                    Value::List(_) | Value::Tuple(_) => {
+                        for item in interpreter.iterate(value)? {
+                            walk(interpreter, &item, into)?;
+                        }
+                    }
+                    _ => into.push(value.clone()),
+                }
+                Ok(())
+            }
+            let mut flat = Vec::new();
+            for value in &args.positional {
+                walk(interpreter, value, &mut flat)?;
+            }
+            Ok(Value::list(flat))
+        }),
+    );
+    globals.set(
+        "parse_input",
+        Value::builtin("parse_input", |_, _| {
+            Err(Error::unsupported("parse_input()"))
+        }),
+    );
+    for (name, kind) in [
+        ("input", "input"),
+        ("output", "output"),
+        ("params", "params"),
+        ("resources", "resources"),
+    ] {
+        globals.set(name, Value::native(RuleItemProxy(kind)));
+    }
+    globals.set(
+        "threads",
+        deferred(&["wildcards", "threads"], |_, mut args| {
+            Ok(args.take_keyword("threads").unwrap_or(Value::Int(1)))
+        }),
+    );
+    globals.set("github", hosted("github"));
+    globals.set("gitlab", hosted("gitlab"));
+    globals.set("gitfile", hosted("gitfile"));
+    globals.set("shell", Value::native(Shell(state.clone())));
+    globals.set("scatter", Value::native(ScatterGather(state.clone())));
+    globals.set("gather", Value::native(ScatterGather(state.clone())));
+    globals.set(
+        "rules",
+        Value::native(crate::objects::RulesObject::new(state.clone())),
+    );
+    globals.set(
+        "checkpoints",
+        Value::native(crate::objects::CheckpointsObject::new(state.clone())),
+    );
+    globals.set(
+        "workflow",
+        Value::native(crate::objects::WorkflowObject(state.clone())),
+    );
+    globals.set(
+        "storage",
+        Value::builtin("storage", |_, _| {
+            Err(Error::unsupported("storage providers"))
+        }),
+    );
+    let mut access = Dict::default();
+    for name in ["random", "sequential", "multi"] {
+        access.insert(
+            name,
+            Value::builtin(name, |_, args| {
+                Ok(args.positional.first().cloned().unwrap_or(Value::None))
+            }),
+        );
+    }
+    globals.set(
+        "access",
+        Value::native(python_evaluator::builtins::Record(
+            RefCell::new(access),
+            "AccessPatternFactory",
+        )),
+    );
+    let _ = Key::str;
+}

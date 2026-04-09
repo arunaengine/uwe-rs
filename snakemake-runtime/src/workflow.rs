@@ -378,4 +378,452 @@ impl Hook {
         }
         result
     }
+
+    fn global(
+        &self,
+        interpreter: &mut Interpreter,
+        frame: &Frame,
+        directive: &Directive<GlobalKeyword>,
+    ) -> Result<(), Error> {
+        let args = match &directive.value {
+            DirectiveValue::Arguments(arguments) => interpreter.eval_arguments(frame, arguments)?,
+            DirectiveValue::Names(names) => Args::new(
+                names
+                    .iter()
+                    .map(|name| Value::str(name.text.as_str()))
+                    .collect(),
+            ),
+            DirectiveValue::Expression(expression) => {
+                Args::new(vec![interpreter.eval(frame, expression)?])
+            }
+            DirectiveValue::Body(_) => Args::default(),
+        };
+        let first = || args.positional.first().cloned().unwrap_or(Value::None);
+        match directive.keyword {
+            GlobalKeyword::Include => {
+                let value = first();
+                if value.as_native::<functions::RemoteSource>().is_some() {
+                    return Err(Error::unsupported(
+                        "including Snakefiles from remote repositories",
+                    ));
+                }
+                let path = python_evaluator::modules::path_text(interpreter, &value)?;
+                let base = self.state.borrow().current_basedir();
+                let full = if Path::new(&path).is_absolute() {
+                    PathBuf::from(&path)
+                } else {
+                    base.join(&path)
+                };
+                let full = python_evaluator::host::normalize(&full);
+                self.include(interpreter, &full, false)?;
+            }
+            GlobalKeyword::WorkingDirectory => {
+                let path = python_evaluator::modules::path_text(interpreter, &first())?;
+                let resolved = interpreter.host.resolve(&path);
+                interpreter.host.set_cwd(&resolved);
+                self.state.borrow_mut().workdir = resolved;
+            }
+            GlobalKeyword::ConfigFile => {
+                let path = python_evaluator::modules::path_text(interpreter, &first())?;
+                self.configfile(interpreter, &path)?;
+            }
+            GlobalKeyword::RuleOrder => {
+                let names: Vec<String> = args
+                    .positional
+                    .iter()
+                    .filter_map(|name| name.as_str().map(str::to_owned))
+                    .collect();
+                let names: Vec<String> = names
+                    .iter()
+                    .map(|name| self.modified_rule_name(name))
+                    .collect();
+                self.state.borrow_mut().ruleorder.push(names);
+            }
+            GlobalKeyword::LocalRules => {
+                let mut state = self.state.borrow_mut();
+                for name in &args.positional {
+                    if let Some(name) = name.as_str() {
+                        state.localrules.push(name.to_owned());
+                    }
+                }
+            }
+            GlobalKeyword::WildcardConstraints => {
+                let mut constraints = IndexMap::new();
+                for (name, value) in &args.keywords {
+                    constraints.insert(name.to_string(), interpreter.to_str(value)?);
+                }
+                let mut state = self.state.borrow_mut();
+                let is_module = state.modifier().is_module;
+                if let Some(modifier) = state.modifiers.last_mut() {
+                    modifier.wildcard_constraints.extend(constraints.clone());
+                }
+                if !is_module {
+                    state.global_constraints.extend(constraints);
+                }
+                let global = state.modifier().wildcard_constraints.clone();
+                for rule in &mut state.rules {
+                    rule.update_constraints(&global);
+                }
+            }
+            GlobalKeyword::Container
+            | GlobalKeyword::Singularity
+            | GlobalKeyword::Containerized => {
+                let mut state = self.state.borrow_mut();
+                if let Some(modifier) = state.modifiers.last_mut() {
+                    modifier.container = Some(first());
+                    modifier.containerized = directive.keyword == GlobalKeyword::Containerized;
+                }
+            }
+            GlobalKeyword::Conda => self.state.borrow_mut().global_conda = Some(first()),
+            GlobalKeyword::ScatterGather => {
+                let mut state = self.state.borrow_mut();
+                for (name, value) in &args.keywords {
+                    state
+                        .scatter
+                        .insert(name.to_string(), value.as_int().unwrap_or(1));
+                }
+                state
+                    .global_constraints
+                    .insert("scatteritem".into(), "\\d+-of-\\d+".into());
+                if let Some(modifier) = state.modifiers.last_mut() {
+                    modifier
+                        .wildcard_constraints
+                        .insert("scatteritem".into(), "\\d+-of-\\d+".into());
+                }
+            }
+            GlobalKeyword::EnvironmentVariables => {
+                let mut state = self.state.borrow_mut();
+                for name in &args.positional {
+                    if let Some(name) = name.as_str() {
+                        state.envvars.push(name.to_owned());
+                    }
+                }
+            }
+            GlobalKeyword::PepFile | GlobalKeyword::PepSchema => {
+                return Err(Error::unsupported("PEP projects (pepfile)"));
+            }
+            GlobalKeyword::PathVariables => return Err(Error::unsupported("pathvars")),
+            GlobalKeyword::Report
+            | GlobalKeyword::OnStart
+            | GlobalKeyword::OnSuccess
+            | GlobalKeyword::OnError
+            | GlobalKeyword::InputFlags
+            | GlobalKeyword::OutputFlags
+            | GlobalKeyword::ResourceScopes => {}
+        }
+        Ok(())
+    }
+
+    /// `configfile:`: merges a config file into the config, then the config from the
+    /// command line again, which wins.
+    pub fn configfile(&self, interpreter: &mut Interpreter, path: &str) -> Result<(), Error> {
+        let (skip, config, overwrite, has_overwrite_files) = {
+            let state = self.state.borrow();
+            (
+                state.modifier().skip_configfile,
+                state
+                    .modifier()
+                    .globals
+                    .get("config")
+                    .unwrap_or(Value::None),
+                state.overwrite_config.clone(),
+                !state.overwrite_configfiles.is_empty(),
+            )
+        };
+        if skip {
+            return Ok(());
+        }
+        let resolved = interpreter.host.resolve(path);
+        if interpreter.host.stat(&resolved).is_some() {
+            let loaded = crate::config::load_config(interpreter, path)?;
+            self.state.borrow_mut().configfiles.push(path.to_owned());
+            crate::config::update(interpreter, &config, &loaded)?;
+            crate::config::update(interpreter, &config, &overwrite)?;
+        } else if !has_overwrite_files {
+            return Err(workflow_error(format!(
+                "Workflow defines configfile {path} but it is not present or accessible (full checked path: {}).",
+                resolved.display()
+            )));
+        } else {
+            crate::config::update(interpreter, &config, &overwrite)?;
+        }
+        Ok(())
+    }
+
+    fn modified_rule_name(&self, name: &str) -> String {
+        let state = self.state.borrow();
+        if let Some(found) = state.modifier().rule_names.borrow().get(name) {
+            return found.clone();
+        }
+        name.to_owned()
+    }
+
+    /// Evaluates the directive values of a rule, in order.
+    fn rule_info(
+        &self,
+        interpreter: &mut Interpreter,
+        frame: &Frame,
+        checkpoint: bool,
+        name: Option<String>,
+        directives: &[Directive<RuleKeyword>],
+        docstrings: &[ast::Expr],
+    ) -> Result<RuleInfo, Error> {
+        let mut info = RuleInfo {
+            name,
+            checkpoint,
+            ..RuleInfo::default()
+        };
+        if let Some(docstring) = docstrings.first() {
+            let value = interpreter.eval(frame, docstring)?;
+            info.docstring = value.as_str().map(|text| text.trim().to_owned());
+        }
+        for directive in directives {
+            match &directive.value {
+                DirectiveValue::Arguments(arguments) => {
+                    let args = interpreter.eval_arguments(frame, arguments)?;
+                    info.directives.push((directive.keyword, args));
+                }
+                DirectiveValue::Body(body) => {
+                    let start = body
+                        .first()
+                        .map_or(directive.range.end(), |statement| statement.start());
+                    let end = body
+                        .last()
+                        .map_or(directive.range.end(), |statement| statement.end());
+                    let line_start = frame.source.text[..start.to_usize()]
+                        .rfind('\n')
+                        .map_or(0, |index| index + 1);
+                    let text = &frame.source.text[line_start..end.to_usize()];
+                    info.run = Some(python_evaluator::modules::dedent(text));
+                    info.directives.push((directive.keyword, Args::default()));
+                }
+                DirectiveValue::Expression(expression) => {
+                    let value = interpreter.eval(frame, expression)?;
+                    info.directives
+                        .push((directive.keyword, Args::new(vec![value])));
+                }
+                DirectiveValue::Names(names) => {
+                    let values = names
+                        .iter()
+                        .map(|name| Value::str(name.text.as_str()))
+                        .collect();
+                    info.directives.push((directive.keyword, Args::new(values)));
+                }
+            }
+        }
+        if let Some((_, args)) = info
+            .directives
+            .iter()
+            .find(|(keyword, _)| *keyword == RuleKeyword::Name)
+        {
+            let value = args.positional.first().cloned().unwrap_or(Value::None);
+            info.name = Some(interpreter.to_str(&value)?);
+        }
+        Ok(info)
+    }
+
+    /// Builds a rule from its directive values and registers it, as `workflow.rule` does.
+    fn define_rule(
+        &self,
+        interpreter: &mut Interpreter,
+        mut info: RuleInfo,
+        line: usize,
+        snakefile: &str,
+    ) -> Result<(), Error> {
+        let original_name = {
+            let state = self.state.borrow();
+            info.name
+                .clone()
+                .unwrap_or_else(|| (state.rules.len() + 1).to_string())
+        };
+        let Some(name) = self.state.borrow().available_name(&original_name) else {
+            return Ok(());
+        };
+        let skips: Vec<String> = {
+            let state = self.state.borrow();
+            let mut skips = Vec::new();
+            if let Some(overwrite) = &state.modifier().overwrite {
+                for (keyword, property) in [
+                    (RuleKeyword::Input, "input"),
+                    (RuleKeyword::Output, "output"),
+                    (RuleKeyword::Log, "log"),
+                    (RuleKeyword::Benchmark, "benchmark"),
+                ] {
+                    if overwrite.has(keyword) {
+                        skips.push(property.to_owned());
+                    }
+                }
+                info.overwrite(overwrite);
+            }
+            skips
+        };
+        let (basedir, globals) = {
+            let state = self.state.borrow();
+            (state.current_basedir(), state.modifier().globals.clone())
+        };
+        let mut rule = Rule::new(name.clone(), basedir, snakefile.to_owned(), line, globals);
+        rule.checkpoint = info.checkpoint;
+        rule.docstring = info.docstring.clone();
+        let mut default_target = false;
+        for (keyword, args) in &info.directives {
+            let first = args.positional.first().cloned().unwrap_or(Value::None);
+            match keyword {
+                RuleKeyword::Name => {}
+                RuleKeyword::Input | RuleKeyword::Output | RuleKeyword::Log => {
+                    let (items, property, output) = match keyword {
+                        RuleKeyword::Input => (&mut rule.input, "input", false),
+                        RuleKeyword::Output => (&mut rule.output, "output", true),
+                        _ => (&mut rule.log, "log", false),
+                    };
+                    for value in &args.positional {
+                        let multiext = self.multiext_names(interpreter, value)?;
+                        match multiext {
+                            Some(names) => {
+                                for (file, file_name) in names {
+                                    self.add_item(
+                                        interpreter,
+                                        items,
+                                        &file,
+                                        file_name.as_deref(),
+                                        property,
+                                        output,
+                                        &skips,
+                                    )?;
+                                }
+                            }
+                            None => self.add_item(
+                                interpreter,
+                                items,
+                                value,
+                                None,
+                                property,
+                                output,
+                                &skips,
+                            )?,
+                        }
+                    }
+                    for (key, value) in &args.keywords {
+                        self.add_item(
+                            interpreter,
+                            items,
+                            value,
+                            Some(key),
+                            property,
+                            output,
+                            &skips,
+                        )?;
+                    }
+                }
+                RuleKeyword::Benchmark => {
+                    let value = match first.plain() {
+                        Value::Native(object) if object.type_name() == "PosixPath" => {
+                            Value::str(interpreter.to_str(&first)?)
+                        }
+                        _ => first.clone(),
+                    };
+                    let state = self.state.borrow();
+                    rule.benchmark = Some(state.modify_path(&value, "benchmark", &skips));
+                }
+                RuleKeyword::Parameters => {
+                    let mut params = Items::default();
+                    for value in &args.positional {
+                        params.push(value.clone());
+                    }
+                    for (key, value) in &args.keywords {
+                        params.push(value.clone());
+                        params.add_name(key);
+                    }
+                    rule.params = params;
+                }
+                RuleKeyword::Threads => rule.threads = Some(first),
+                RuleKeyword::Resources => {
+                    if !args.positional.is_empty() {
+                        return Err(workflow_error("Resources have to be named."));
+                    }
+                    for (key, value) in &args.keywords {
+                        rule.resources.insert(key.to_string(), value.clone());
+                    }
+                }
+                RuleKeyword::Retries => rule.retries = Some(first),
+                RuleKeyword::Priority => rule.priority = Some(first),
+                RuleKeyword::Message => rule.message = Some(first),
+                RuleKeyword::Conda => rule.conda = Some(first).filter(|value| !value.is_none()),
+                RuleKeyword::Container | RuleKeyword::Singularity | RuleKeyword::Containerized => {
+                    rule.container = if matches!(first.plain(), Value::Bool(false)) {
+                        Some(None)
+                    } else if first.is_none() {
+                        None
+                    } else {
+                        Some(Some(first))
+                    };
+                }
+                RuleKeyword::EnvironmentModules => rule.envmodules = args.positional.clone(),
+                RuleKeyword::WildcardConstraints => {
+                    for (key, value) in &args.keywords {
+                        rule.wildcard_constraints
+                            .insert(key.to_string(), interpreter.to_str(value)?);
+                    }
+                }
+                RuleKeyword::Group => rule.group = Some(first),
+                RuleKeyword::LocalRule => rule.localrule = interpreter.truthy(&first)?,
+                RuleKeyword::DefaultTarget => {
+                    if !matches!(first.plain(), Value::Bool(_)) {
+                        return Err(workflow_error(
+                            "Invalid argument for 'default_target:' directive. Only True allowed. Do not use the directive for rules that shall not be the default target. ",
+                        ));
+                    }
+                    default_target = matches!(first.plain(), Value::Bool(true));
+                }
+                RuleKeyword::Shadow | RuleKeyword::Cache | RuleKeyword::Handover => {}
+                RuleKeyword::PathVariables => return Err(Error::unsupported("pathvars")),
+                RuleKeyword::Shell => rule.action = Action::Shell(first),
+                RuleKeyword::Script => rule.action = Action::Script(first),
+                RuleKeyword::Notebook => rule.action = Action::Notebook(first),
+                RuleKeyword::Wrapper => rule.action = Action::Wrapper(first),
+                RuleKeyword::TemplateEngine => rule.action = Action::TemplateEngine(first),
+                RuleKeyword::Cwl => rule.action = Action::Cwl(first),
+                RuleKeyword::Run => rule.action = Action::Run(info.run.clone().unwrap_or_default()),
+            }
+        }
+        {
+            let state = self.state.borrow();
+            if rule.container.is_none()
+                && let Some(container) = &state.modifier().container
+                && !matches!(rule.action, Action::TemplateEngine(_))
+            {
+                rule.container = Some(Some(container.clone()));
+            }
+            let constraints = state.modifier().wildcard_constraints.clone();
+            rule.update_constraints(&constraints);
+        }
+        self.check_wildcards(&rule)?;
+        let mut state = self.state.borrow_mut();
+        let allow_overwrite = state
+            .modifiers
+            .iter()
+            .any(|modifier| modifier.allow_overwrite);
+        if let Some(index) = state.rule_index(&name) {
+            if !allow_overwrite {
+                return Err(workflow_error(format!(
+                    "The name {name} is already used by another rule"
+                )));
+            }
+            state.rules[index] = rule;
+            state.infos[index] = info;
+        } else {
+            state.rules.push(rule);
+            info.name = Some(original_name.clone());
+            state.infos.push(info);
+        }
+        if let Some(modifier) = state.modifiers.last() {
+            modifier
+                .rule_names
+                .borrow_mut()
+                .insert(original_name, name.clone());
+        }
+        if state.default_target.is_none() || default_target {
+            state.default_target = Some(name);
+        }
+        Ok(())
+    }
 }

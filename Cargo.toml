@@ -4,7 +4,7 @@
 
 [workspace]
 resolver = "3"
-members = ["argo-parser", "content-store", "cwl-parser", "cwl-runtime", "executor", "iunctus", "nextflow-config", "nextflow-evaluator", "nextflow-parser", "nextflow-plugins", "nextflow-runtime", "python-evaluator", "snakemake-parser", "task-model", "task-runner", "workflow-graph"]
+members = ["argo-parser", "content-store", "cwl-parser", "cwl-runtime", "executor", "iunctus", "nextflow-config", "nextflow-evaluator", "nextflow-parser", "nextflow-plugins", "nextflow-runtime", "python-evaluator", "snakemake-parser", "snakemake-runtime", "task-model", "task-runner", "workflow-graph"]
 
 [workspace.package]
 version = "0.1.0"

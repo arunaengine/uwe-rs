@@ -826,4 +826,381 @@ impl Hook {
         }
         Ok(())
     }
+
+    /// Output, log and benchmark files of a rule must name the same wildcards.
+    fn check_wildcards(&self, rule: &Rule) -> Result<(), Error> {
+        let mut expected: Option<Vec<String>> = None;
+        let mut products: Vec<String> = Vec::new();
+        for value in rule.output.values.iter().chain(rule.log.values.iter()) {
+            if let Some(text) = value.as_str() {
+                products.push(text.to_owned());
+            }
+        }
+        for product in products {
+            let mut names = crate::pattern::wildcard_names(&product);
+            names.sort();
+            match &expected {
+                None => expected = Some(names),
+                Some(existing) if *existing != names => {
+                    return Err(workflow_error(format!(
+                        "Not all output, log and benchmark files of rule {} contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.",
+                        rule.name
+                    )));
+                }
+                Some(_) => {}
+            }
+        }
+        Ok(())
+    }
+
+    /// The files and names of a `multiext` list, if the value is one.
+    fn multiext_names(
+        &self,
+        interpreter: &mut Interpreter,
+        value: &Value,
+    ) -> Result<Option<NamedFiles>, Error> {
+        let Value::List(items) = value.plain() else {
+            return Ok(None);
+        };
+        let items = items.borrow().clone();
+        if items.is_empty() || !items.iter().all(|item| item.tag("multiext").is_some()) {
+            return Ok(None);
+        }
+        let mut named = Vec::new();
+        for item in items {
+            let flag = item.tag("multiext").cloned().unwrap_or(Value::None);
+            let name = interpreter
+                .get_item(&flag, &Value::str("name"))
+                .ok()
+                .filter(|name| !name.is_none());
+            let name = match name {
+                Some(name) => Some(interpreter.to_str(&name)?),
+                None => None,
+            };
+            named.push((item, name));
+        }
+        Ok(Some(named))
+    }
+
+    /// Adds an input, output or log item as `_set_inoutput_item` does: texts and paths,
+    /// functions for inputs and logs, and the items of lists under one name.
+    #[allow(clippy::too_many_arguments)]
+    fn add_item(
+        &self,
+        interpreter: &mut Interpreter,
+        items: &mut Items,
+        value: &Value,
+        name: Option<&str>,
+        property: &str,
+        output: bool,
+        skips: &[String],
+    ) -> Result<(), Error> {
+        match value.plain() {
+            Value::Str(_) => {
+                let state = self.state.borrow();
+                items.push(state.modify_path(value, property, skips));
+                if let Some(name) = name {
+                    items.add_name(name);
+                }
+            }
+            Value::Native(object) if object.type_name() == "PosixPath" => {
+                let text = retag(value, Value::str(interpreter.to_str(value)?));
+                let state = self.state.borrow();
+                items.push(state.modify_path(&text, property, skips));
+                if let Some(name) = name {
+                    items.add_name(name);
+                }
+            }
+            _ if functions::is_callable(interpreter, value) => {
+                if output {
+                    return Err(workflow_error(
+                        "Only input files can be specified as functions",
+                    ));
+                }
+                items.push(value.clone());
+                if let Some(name) = name {
+                    items.add_name(name);
+                }
+            }
+            Value::List(_)
+            | Value::Tuple(_)
+            | Value::Set(_)
+            | Value::FrozenSet(_)
+            | Value::Iterator(_)
+            | Value::Dict(_)
+            | Value::Native(_) => {
+                let sub = interpreter.iterate(value).map_err(|_| {
+                    workflow_error("Input and output files have to be specified as strings or lists of strings.")
+                })?;
+                let start = items.values.len();
+                for item in sub {
+                    let item = match value.tags() {
+                        Some(tags) => {
+                            let mut item = item;
+                            for (flag, flag_value) in tags {
+                                if item.tag(flag).is_none() {
+                                    item = item.with_tag(flag, flag_value.clone());
+                                }
+                            }
+                            item
+                        }
+                        None => item,
+                    };
+                    self.add_item(interpreter, items, &item, None, property, output, skips)?;
+                }
+                if let Some(name) = name {
+                    items.set_name(name, start, Some(items.values.len()));
+                }
+            }
+            _ => {
+                return Err(workflow_error(
+                    "Input and output files have to be specified as strings or lists of strings.",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn use_rule(
+        &self,
+        interpreter: &mut Interpreter,
+        frame: &Frame,
+        statement: &UseRule,
+    ) -> Result<(), Error> {
+        let with = match &statement.with {
+            Some(directives) => Some(self.rule_info(
+                interpreter,
+                frame,
+                false,
+                None,
+                directives,
+                &statement.docstrings,
+            )?),
+            None => None,
+        };
+        let names: Vec<String> = statement
+            .rules
+            .iter()
+            .map(|name| name.text.clone())
+            .collect();
+        let alias = statement.alias.as_ref().map(|alias| alias.text.clone());
+        let line = frame.source.line(statement.range.start());
+        match &statement.module {
+            None => {
+                // Local inheritance from a rule defined before.
+                if names.len() > 1 {
+                    return Err(workflow_error(
+                        "'use rule' statement from rule in the same module must declare a single rule but multiple rules are declared.",
+                    ));
+                }
+                let original = self.modified_rule_name(&names[0]);
+                let mut info = {
+                    let state = self.state.borrow();
+                    let Some(index) = state.rule_index(&original) else {
+                        return Err(workflow_error(format!(
+                            "Rule {} is not defined in this workflow.",
+                            names[0]
+                        )));
+                    };
+                    state.infos[index].clone()
+                };
+                if let Some(with) = &with {
+                    info.overwrite(with);
+                }
+                info.name = alias.clone().or(Some(names[0].clone()));
+                self.define_rule(interpreter, info, line, &frame.source.path)
+            }
+            Some(module) => self.use_module_rules(
+                interpreter,
+                &module.text,
+                &names,
+                &statement
+                    .exclude
+                    .iter()
+                    .map(|name| name.text.clone())
+                    .collect::<Vec<_>>(),
+                alias,
+                with,
+            ),
+        }
+    }
+
+    fn module(
+        &self,
+        interpreter: &mut Interpreter,
+        frame: &Frame,
+        module: &Module,
+    ) -> Result<(), Error> {
+        let mut spec = ModuleSpec {
+            name: module
+                .name
+                .as_ref()
+                .map(|name| name.text.clone())
+                .unwrap_or_default(),
+            snakefile: None,
+            meta_wrapper: None,
+            config: None,
+            prefix: None,
+            replace_prefix: Vec::new(),
+            skip_validation: false,
+            basedir: self.state.borrow().current_basedir(),
+        };
+        for setting in &module.settings {
+            let value = match &setting.value {
+                DirectiveValue::Expression(expression) => interpreter.eval(frame, expression)?,
+                DirectiveValue::Arguments(arguments) => {
+                    let args = interpreter.eval_arguments(frame, arguments)?;
+                    Value::dict_of(
+                        args.keywords
+                            .into_iter()
+                            .map(|(key, value)| (key.to_string(), value)),
+                    )
+                }
+                _ => Value::None,
+            };
+            match setting.keyword {
+                ModuleKeyword::Name => spec.name = interpreter.to_str(&value)?,
+                ModuleKeyword::Snakefile => spec.snakefile = Some(value),
+                ModuleKeyword::MetaWrapper => spec.meta_wrapper = Some(value),
+                ModuleKeyword::Config => spec.config = Some(value).filter(|value| !value.is_none()),
+                ModuleKeyword::SkipValidation => {
+                    spec.skip_validation = interpreter.truthy(&value)?
+                }
+                ModuleKeyword::Prefix => {
+                    spec.prefix = Some(python_evaluator::modules::path_text(interpreter, &value)?)
+                }
+                ModuleKeyword::ReplacePrefix => {
+                    for (from, to) in interpreter.mapping_items(&value)? {
+                        spec.replace_prefix
+                            .push((interpreter.to_str(&from)?, interpreter.to_str(&to)?));
+                    }
+                }
+                ModuleKeyword::PathVariables => return Err(Error::unsupported("pathvars")),
+            }
+        }
+        let mut state = self.state.borrow_mut();
+        if let Some(modifier) = state.modifiers.last_mut() {
+            modifier.modules.insert(spec.name.clone(), spec);
+        }
+        Ok(())
+    }
+
+    fn use_module_rules(
+        &self,
+        interpreter: &mut Interpreter,
+        module_name: &str,
+        rules: &[String],
+        exclude: &[String],
+        alias: Option<String>,
+        with: Option<RuleInfo>,
+    ) -> Result<(), Error> {
+        let spec = {
+            let state = self.state.borrow();
+            let found = state
+                .modifiers
+                .iter()
+                .rev()
+                .find_map(|modifier| modifier.modules.get(module_name).cloned());
+            found.ok_or_else(|| {
+                workflow_error(format!(
+                    "Module {module_name} has not been registered with 'module' statement before using it in 'use rule' statement."
+                ))
+            })?
+        };
+        if spec.meta_wrapper.is_some() {
+            return Err(Error::unsupported("meta-wrapper modules"));
+        }
+        let Some(snakefile) = spec.snakefile.clone() else {
+            return Err(workflow_error(
+                "Module statement must either define snakefile or meta_wrapper to use.",
+            ));
+        };
+        if snakefile.as_native::<functions::RemoteSource>().is_some() {
+            return Err(Error::unsupported(
+                "modules from remote repositories (github(...))",
+            ));
+        }
+        let path = python_evaluator::modules::path_text(interpreter, &snakefile)?;
+        if path.contains("://") {
+            return Err(Error::unsupported("modules from remote repositories"));
+        }
+        let full = if Path::new(&path).is_absolute() {
+            PathBuf::from(&path)
+        } else {
+            spec.basedir.join(&path)
+        };
+        let full = python_evaluator::host::normalize(&full);
+        let all = rules.iter().any(|rule| rule == "*");
+        if alias.as_ref().is_some_and(|alias| !alias.contains('*')) && (all || rules.len() > 1) {
+            return Err(Error::new(
+                "SyntaxError",
+                "Multiple rules in 'use rule' statement but name modification ('as' statement) does not contain a wildcard '*'.",
+            ));
+        }
+        let globals = interpreter.new_globals(module_name, None);
+        let state_rc = self.state.clone();
+        functions::install(&globals, &state_rc);
+        let config = spec
+            .config
+            .clone()
+            .unwrap_or_else(|| Value::dict(Dict::default()));
+        globals.set("config", config);
+        let rule_names = Rc::new(RefCell::new(IndexMap::new()));
+        globals.set(
+            "rules",
+            Value::native(crate::objects::RulesObject::scoped(
+                self.state.clone(),
+                rule_names.clone(),
+            )),
+        );
+        globals.set(
+            "checkpoints",
+            Value::native(crate::objects::CheckpointsObject::scoped(
+                self.state.clone(),
+                rule_names.clone(),
+            )),
+        );
+        let modifier = Modifier {
+            globals: globals.clone(),
+            rule_names: rule_names.clone(),
+            name_modifier: alias.clone(),
+            whitelist: if all { None } else { Some(rules.to_vec()) },
+            exclude: exclude.to_vec(),
+            prefix: spec.prefix.clone(),
+            replace_prefix: spec.replace_prefix.clone(),
+            overwrite: with,
+            skip_configfile: spec.config.is_some(),
+            skip_validation: spec.skip_validation,
+            wildcard_constraints: IndexMap::new(),
+            container: None,
+            containerized: false,
+            is_module: true,
+            modules: IndexMap::new(),
+            allow_overwrite: !all,
+        };
+        self.state.borrow_mut().modifiers.push(modifier);
+        let result = self.include(interpreter, &full, true);
+        let modifier = self
+            .state
+            .borrow_mut()
+            .modifiers
+            .pop()
+            .expect("the module modifier");
+        result?;
+        // The rules of the module become known to the code that uses it by their new names.
+        let parent_names = self.state.borrow().modifier().rule_names.clone();
+        for (_, global_name) in modifier.rule_names.borrow().iter() {
+            parent_names
+                .borrow_mut()
+                .insert(global_name.clone(), global_name.clone());
+        }
+        // The module's globals are reachable by its name.
+        let module = Value::Module(Rc::new(python_evaluator::value::Module {
+            name: module_name.into(),
+            globals,
+        }));
+        let parent_globals = self.state.borrow().modifier().globals.clone();
+        parent_globals.set(module_name, module);
+        Ok(())
+    }
 }

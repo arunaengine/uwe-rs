@@ -453,3 +453,326 @@ thread_local! {
     /// The first output of each checkpoint that `get` found done, since the last `take`.
     static CONSULTED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
+
+/// The outputs of the done checkpoints that input functions asked for since the last call;
+/// the jobs of those functions run after the checkpoints.
+pub fn take_consulted() -> Vec<String> {
+    CONSULTED.with(|consulted| std::mem::take(&mut *consulted.borrow_mut()))
+}
+
+/// The exception class that `checkpoints.<name>.get` raises before the checkpoint ran.
+pub fn incomplete_checkpoint_class() -> Rc<python_evaluator::value::Class> {
+    python_evaluator::types::library_exception(
+        "IncompleteCheckpointException",
+        "snakemake.exceptions",
+        "Exception",
+    )
+}
+
+/// `checkpoints.<name>`.
+pub struct Checkpoint {
+    state: Rc<RefCell<State>>,
+    name: String,
+}
+
+impl Native for Checkpoint {
+    fn type_name(&self) -> &str {
+        "Checkpoint"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let state = self.state.clone();
+        let rule_name = self.name.clone();
+        Ok(match name {
+            "get" => Some(Value::builtin("get", move |interpreter, args| {
+                if !args.positional.is_empty() {
+                    return Err(Error::type_error("get() takes keyword arguments only"));
+                }
+                checkpoint_get(interpreter, &state, &rule_name, args)
+            })),
+            "rule" => Some(Value::native(RuleProxy {
+                state: self.state.clone(),
+                name: self.name.clone(),
+            })),
+            _ => None,
+        })
+    }
+}
+
+fn checkpoint_get(
+    interpreter: &mut Interpreter,
+    state: &Rc<RefCell<State>>,
+    rule_name: &str,
+    args: Args,
+) -> Result<Value, Error> {
+    let mut wildcards = Wildcards::new();
+    for (name, value) in &args.keywords {
+        wildcards.insert(name.to_string(), interpreter.to_str(value)?);
+    }
+    let (outputs, names) = {
+        let state = state.borrow();
+        let rule = state
+            .rule(rule_name)
+            .ok_or_else(|| Error::runtime_error("unknown checkpoint"))?;
+        let missing: Vec<String> = rule
+            .wildcard_names()
+            .into_iter()
+            .filter(|name| !wildcards.contains_key(name))
+            .collect();
+        if !missing.is_empty() {
+            return Err(crate::workflow::workflow_error(format!(
+                "Missing wildcard values for {}",
+                missing.join(", ")
+            )));
+        }
+        let mut outputs = Vec::new();
+        for value in &rule.output.values {
+            let text = value.as_str().unwrap_or_default();
+            let filled = pattern::apply(text, &wildcards).map_err(|name| {
+                crate::workflow::workflow_error(format!("Missing wildcard value for {name}"))
+            })?;
+            outputs.push(crate::rule::retag(value, Value::str(filled)));
+        }
+        (outputs, rule.output.names.clone())
+    };
+    let created = outputs.iter().all(|output| {
+        let path = interpreter
+            .host
+            .resolve(output.as_str().unwrap_or_default());
+        interpreter.host.stat(&path).is_some()
+    });
+    if created {
+        if let Some(first) = outputs.first().and_then(Value::as_str) {
+            let first = first.to_owned();
+            CONSULTED.with(|consulted| {
+                let mut consulted = consulted.borrow_mut();
+                if !consulted.contains(&first) {
+                    consulted.push(first);
+                }
+            });
+        }
+        let output = NamedList {
+            values: outputs,
+            names,
+            kind: "OutputFiles",
+        };
+        return Ok(Value::native(CheckpointJob {
+            output: output.value(),
+            rule: rule_name.to_owned(),
+        }));
+    }
+    let target = outputs.first().cloned().unwrap_or(Value::None);
+    let class = incomplete_checkpoint_class();
+    let exception =
+        python_evaluator::error::exception(&class, vec![Value::str(rule_name), target.clone()]);
+    if let Value::Instance(instance) = &exception {
+        instance
+            .dict
+            .borrow_mut()
+            .insert("targetfile".into(), target);
+        instance
+            .dict
+            .borrow_mut()
+            .insert("rule".into(), Value::str(rule_name));
+    }
+    Err(Error::from_value(exception))
+}
+
+/// What `checkpoints.<name>.get` gives once the checkpoint ran.
+pub struct CheckpointJob {
+    output: Value,
+    rule: String,
+}
+
+impl Native for CheckpointJob {
+    fn type_name(&self) -> &str {
+        "CheckpointJob"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        Ok(match name {
+            "output" => Some(self.output.clone()),
+            "rule" => Some(Value::str(self.rule.as_str())),
+            _ => None,
+        })
+    }
+}
+
+/// The `workflow` global.
+pub struct WorkflowObject(pub Rc<RefCell<State>>);
+
+impl Native for WorkflowObject {
+    fn type_name(&self) -> &str {
+        "Workflow"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_attribute(
+        &self,
+        interpreter: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let state = self.0.clone();
+        let borrowed = self.0.borrow();
+        let text = |path: &std::path::Path| Value::str(path.to_string_lossy().as_ref());
+        Ok(Some(match name {
+            "basedir" => text(
+                borrowed
+                    .main_snakefile
+                    .parent()
+                    .unwrap_or(std::path::Path::new(".")),
+            ),
+            "current_basedir" => text(&borrowed.current_basedir()),
+            "snakefile" => text(
+                borrowed
+                    .include_stack
+                    .last()
+                    .unwrap_or(&borrowed.main_snakefile),
+            ),
+            "main_snakefile" => text(&borrowed.main_snakefile),
+            "workdir_init" => text(&borrowed.workdir),
+            "config" => borrowed.config.clone(),
+            "globals" => Value::native(python_evaluator::builtins::GlobalsDict(
+                borrowed.globals.clone(),
+            )),
+            "cores" | "_cores" | "nodes" => Value::Int(borrowed.cores),
+            "use_conda" => Value::Bool(true),
+            "use_singularity" | "use_apptainer" | "use_envmodules" => Value::Bool(false),
+            "run_local" | "is_main_process" | "local_exec" | "non_local_exec" => Value::Bool(
+                matches!(name, "run_local" | "is_main_process" | "local_exec"),
+            ),
+            "remote_exec" | "dryrun" | "touch" | "immediate_submit" => Value::Bool(false),
+            "default_remote_prefix"
+            | "default_remote_provider"
+            | "conda_prefix"
+            | "singularity_prefix" => Value::None,
+            "configfiles" | "overwrite_configfiles" => {
+                let files = if name == "configfiles" {
+                    &borrowed.configfiles
+                } else {
+                    &borrowed.overwrite_configfiles
+                };
+                Value::list(files.iter().map(|file| Value::str(file.as_str())).collect())
+            }
+            "config_settings" => {
+                let mut record = python_evaluator::Dict::default();
+                record.insert(
+                    "configfiles",
+                    Value::list(
+                        borrowed
+                            .overwrite_configfiles
+                            .iter()
+                            .map(|file| Value::str(file.as_str()))
+                            .collect(),
+                    ),
+                );
+                record.insert("config", borrowed.overwrite_config.clone());
+                record.insert("overwrite_config", borrowed.overwrite_config.clone());
+                Value::native(python_evaluator::builtins::Record(
+                    RefCell::new(record),
+                    "ConfigSettings",
+                ))
+            }
+            "storage_settings"
+            | "deployment_settings"
+            | "output_settings"
+            | "execution_settings"
+            | "resource_settings"
+            | "workflow_settings"
+            | "dag_settings"
+            | "remote_execution_settings" => {
+                let mut record = python_evaluator::Dict::default();
+                record.insert("default_storage_provider", Value::None);
+                record.insert("default_storage_prefix", Value::str(""));
+                record.insert("deployment_method", Value::set(Default::default()));
+                record.insert("cores", Value::Int(borrowed.cores));
+                record.insert("nodes", Value::Int(1));
+                record.insert("keep_going", Value::Bool(false));
+                record.insert("wrapper_prefix", Value::str(crate::task::WRAPPER_PREFIX));
+                Value::native(python_evaluator::builtins::Record(
+                    RefCell::new(record),
+                    "Settings",
+                ))
+            }
+            "source_path" => {
+                drop(borrowed);
+                Value::builtin("source_path", move |interpreter, args| {
+                    args.expect("source_path", 1, 1)?;
+                    let relative =
+                        python_evaluator::modules::path_text(interpreter, &args.positional[0])?;
+                    let base = state.borrow().current_basedir();
+                    Ok(Value::str(base.join(relative).to_string_lossy().as_ref()))
+                })
+            }
+            "get_rule" => {
+                drop(borrowed);
+                Value::builtin("get_rule", move |_, args| {
+                    args.expect("get_rule", 1, 1)?;
+                    let name = args.positional[0].as_str().unwrap_or_default().to_owned();
+                    if state.borrow().rule(&name).is_none() {
+                        return Err(crate::workflow::workflow_error(format!(
+                            "Rule {name} is not defined in this workflow."
+                        )));
+                    }
+                    Ok(Value::native(RuleProxy {
+                        state: state.clone(),
+                        name,
+                    }))
+                })
+            }
+            "rules" => {
+                let names: Vec<String> = borrowed
+                    .rules
+                    .iter()
+                    .map(|rule| rule.name.clone())
+                    .collect();
+                drop(borrowed);
+                Value::list(
+                    names
+                        .into_iter()
+                        .map(|name| {
+                            Value::native(RuleProxy {
+                                state: state.clone(),
+                                name,
+                            })
+                        })
+                        .collect(),
+                )
+            }
+            "modules" => Value::dict(Default::default()),
+            "included" => Value::list(borrowed.included.iter().map(|path| text(path)).collect()),
+            "wildcard_constraints" => Value::dict_of(
+                borrowed
+                    .global_constraints
+                    .iter()
+                    .map(|(name, value)| (name.clone(), Value::str(value.as_str()))),
+            ),
+            _ => {
+                let _ = interpreter;
+                return Ok(None);
+            }
+        }))
+    }
+}

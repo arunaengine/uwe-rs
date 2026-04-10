@@ -11,4 +11,4 @@ mod tree;
 pub use decode::{DecodeError, UnknownField, decode};
 pub use node::{Entry, Node, Position, Value};
 pub use scalar::resolve_plain;
-pub use tree::{SyntaxError, parse_yaml};
+pub use tree::{SyntaxError, parse_documents, parse_yaml};

@@ -4,7 +4,7 @@
 
 use saphyr_parser::{ScalarStyle, Tag};
 
-use super::{parse_at, resolve};
+use super::{parse_at, parse_documents, resolve};
 use crate::node::{Node, Position, Value};
 
 fn start() -> Position {
@@ -138,6 +138,17 @@ fn reads_first_document() {
     let node = document("a: 1\n...\nb: 2\n");
     assert_eq!(keys(&node), ["a"]);
     assert_eq!(parse_at("# only a comment\n", start()), Ok(None));
+}
+
+#[test]
+fn reads_all_documents() {
+    let documents =
+        parse_documents("a: &x 1\n---\n# empty\n---\nb: 2\n...\n---\n- 3\n").expect("valid YAML");
+    assert_eq!(documents.len(), 3);
+    assert_eq!(keys(&documents[1]), ["b"]);
+    assert_eq!(documents[1].position, Position { line: 5, column: 1 });
+    // Anchors belong to their own document.
+    assert!(parse_documents("a: &x 1\n---\nb: *x\n").is_err());
 }
 
 #[test]

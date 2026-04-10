@@ -20,6 +20,7 @@ nextflow-runtime.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+snakemake-runtime.workspace = true
 task-model.workspace = true
 task-runner.workspace = true
 workflow-graph.workspace = true

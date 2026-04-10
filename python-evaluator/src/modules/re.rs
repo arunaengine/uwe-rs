@@ -171,6 +171,16 @@ impl Pattern {
         &self.search
     }
 
+    /// Whether the pattern matches at the start of a text, as `re.match` does.
+    pub fn starts(&self, text: &str) -> bool {
+        self.start.is_match(text).unwrap_or(false)
+    }
+
+    /// The names of the groups, `None` for unnamed ones, without the whole match.
+    pub fn group_names(&self) -> Vec<Option<String>> {
+        self.names.iter().skip(1).cloned().collect()
+    }
+
     /// Named groups of a full match, or `None` when the text does not match.
     pub fn full_captures(&self, text: &str) -> Option<Vec<(String, String)>> {
         let captures = self.whole.captures(text).ok()??;

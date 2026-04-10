@@ -3,11 +3,11 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-mod collections;
+pub(crate) mod collections;
 pub mod data;
-mod misc;
+pub(crate) mod misc;
 mod os;
-mod re;
+pub(crate) mod re;
 
 use std::rc::Rc;
 

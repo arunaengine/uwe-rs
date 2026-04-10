@@ -464,3 +464,432 @@ catalog/zhuakexi__dna-seq-gatk-variant-calling 33 workflow/rules/common.smk:20: 
 catalog/zifornd__arrays 33 workflow/rules/common.smk:12: Not supported yet: the library function pandas.read_table
 catalog/ziyaipek__snakemake 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
 catalog/zjnolen__PopGLen 1 workflow/rules/common.smk:54: FileNotFoundError: [Errno 2] No such file or directory: 'path/to/ref.fa'
+tests/knapsack ok 10
+tests/profile ok 4001
+tests/test01 1 Snakefile:4: NameError: name 'sys' is not defined
+tests/test02 ok 3
+tests/test03 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
+tests/test04 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
+tests/test05 ok 7
+tests/test06 ok 2
+tests/test07 ok 1
+tests/test08 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
+tests/test09 ok 2
+tests/test10 ok 1
+tests/test11 ok 2
+tests/test12 ok 2
+tests/test13 ok 3
+tests/test15 1 Snakefile:3: WorkflowError: InputFunctionException in rule a (wildcards: ): NameError: name 'os' is not defined
+tests/testHighWorkload ok 23
+tests/test_(with_parenthese's) ok 1
+tests/test_access_patterns ok 12
+tests/test_all_temp ok 3
+tests/test_ambiguousruleexception ok 7
+tests/test_ancient 33 Snakefile:3: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_ancient_cli 33 Snakefile:3: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_ancient_dag ok 24
+tests/test_archive ok 1
+tests/test_azure_batch ok 2
+tests/test_bash ok 1
+tests/test_batch ok 6
+tests/test_batch_final ok 6
+tests/test_benchmark ok 5
+tests/test_benchmark_jsonl ok 5
+tests/test_cache_multioutput ok 1
+tests/test_callable ok 3
+tests/test_censored_path 33 Snakefile:1: Not supported yet: storage directives
+tests/test_checkpoint_allowed_rules ok 1
+tests/test_checkpoint_missing_output 1 Snakefile:16: WorkflowError: InputFunctionException in rule aggregate (wildcards: ): ValueError: invalid literal for int() with base 10: ''
+tests/test_checkpoint_omit_from ok 7
+tests/test_checkpoint_open 1 Snakefile:2: WorkflowError: InputFunctionException in rule b (wildcards: ): AttributeError: 'str' object has no attribute 'open'
+tests/test_checkpoint_rerun ok 3
+tests/test_checkpoint_running_job_storage_race ok 4
+tests/test_checkpoint_until ok 7
+tests/test_checkpoints 1 Snakefile:38: WorkflowError: InputFunctionException in rule aggregate (wildcards: sample=a): AttributeError: 'str' object has no attribute 'open'
+tests/test_checkpoints_dir 1 Snakefile:42: WorkflowError: InputFunctionException in rule aggregate (wildcards: sample=a): NameError: name 'os' is not defined
+tests/test_checkpoints_many ok 4
+tests/test_cloud_checkpoints_issue574 33 Snakefile:5: ModuleNotFoundError: No module named 'snakemake.remote'
+tests/test_conda 1 Snakefile:2: NameError: name 'Path' is not defined
+tests/test_conda_cmd_exe ok 7
+tests/test_conda_custom_prefix ok 4
+tests/test_conda_function 33 Snakefile:3: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_conda_global 33 Snakefile:10: ModuleNotFoundError: No module named 'PIL'
+tests/test_conda_named 33 Snakefile:6: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_conda_pin_file ok 1
+tests/test_conda_python_3_7_script ok 1
+tests/test_conda_python_script ok 1
+tests/test_conda_run ok 1
+tests/test_conditional ok 1
+tests/test_config ok 1
+tests/test_config_merging ok 1
+tests/test_config_replacing ok 2
+tests/test_config_replacing_nocli ok 2
+tests/test_config_yte ok 1
+tests/test_container ok 1
+tests/test_containerize_checkpoint ok 4
+tests/test_containerized ok 1
+tests/test_convert_to_cwl 1 Snakefile:39: SyntaxError: Keyword version is deprecated. Use conda or container directive instead.
+tests/test_converting_path_for_r_script ok 2
+tests/test_core_dependent_threads ok 1
+tests/test_cwl ok 1
+tests/test_cyclic_dependency_single ok 1
+tests/test_cyclic_dependency_split ok 3
+tests/test_default_flags ok 4
+tests/test_default_remote ok 7
+tests/test_default_resources 33 Not supported yet: the attribute disk_mb of Resources
+tests/test_default_storage_local_job ok 4
+tests/test_default_target ok 3
+tests/test_deferred_func_eval ok 1
+tests/test_delete_all_output ok 3
+tests/test_delete_output 33 Snakefile:17: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_delete_temp_fs ok 3
+tests/test_deploy_hashing ok 3
+tests/test_deploy_script ok 2
+tests/test_deploy_sources ok 1
+tests/test_directory ok 2
+tests/test_dryrun_executor_validation ok 2
+tests/test_dup_out_patterns ok 2
+tests/test_dynamic_container ok 6
+tests/test_empty_include ok 0
+tests/test_ensure ok 1
+tests/test_env_modules ok 1
+tests/test_envvars ok 3
+tests/test_exists ok 0
+tests/test_expand_flag 1 Snakefile:3: WorkflowError: Flags (directory) in file pattern '{sample}/dir' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+tests/test_expand_list_of_functions ok 1
+tests/test_failed_intermediate 1 Snakefile:10: KeyError: 'fail'
+tests/test_filegraph ok 6
+tests/test_filesep_windows ok 1
+tests/test_format_params ok 1
+tests/test_format_wildcards ok 2
+tests/test_fstring ok 1
+tests/test_ftp_immediate_close 33 Snakefile:1: ModuleNotFoundError: No module named 'snakemake.remote'
+tests/test_function_f_string ok 0
+tests/test_function_f_string_newline ok 0
+tests/test_generate_unit_tests 1 Snakefile:3: WorkflowError: Workflow defines configfile config/config.json but it is not present or accessible (full checked path: config/config.json).
+tests/test_get_log_both ok 1
+tests/test_get_log_complex ok 1
+tests/test_get_log_none ok 1
+tests/test_get_log_stderr ok 1
+tests/test_get_log_stdout ok 1
+tests/test_github_issue105 ok 3
+tests/test_github_issue1062 33 Snakefile:1: ModuleNotFoundError: No module named 'snakemake.remote'
+tests/test_github_issue1069 ok 1
+tests/test_github_issue1158 ok 1
+tests/test_github_issue1261 ok 3
+tests/test_github_issue1266 ok 1
+tests/test_github_issue1384 ok 3
+tests/test_github_issue1389 ok 3
+tests/test_github_issue1396 ok 2
+tests/test_github_issue1460 ok 3
+tests/test_github_issue1469 ok 3
+tests/test_github_issue1498 ok 4
+tests/test_github_issue1500 ok 3
+tests/test_github_issue1542 ok 2
+tests/test_github_issue1550 ok 2
+tests/test_github_issue1618 ok 2
+tests/test_github_issue1818 ok 1
+tests/test_github_issue1882 ok 1
+tests/test_github_issue2142 ok 2
+tests/test_github_issue2154 ok 2
+tests/test_github_issue2213 ok 3
+tests/test_github_issue2255 ok 3
+tests/test_github_issue261 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
+tests/test_github_issue2732 1 Snakefile:37: WorkflowError: InputFunctionException in rule all (wildcards: ): WorkflowError: Flags (temp, rule) in file pattern '{name}.a1.out' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMP
+tests/test_github_issue2848 ok 1
+tests/test_github_issue3213 ok 3
+tests/test_github_issue3271 ok 1
+tests/test_github_issue3556 ok 8
+tests/test_github_issue3687 ok 3
+tests/test_github_issue3913 ok 4
+tests/test_github_issue4003 1 Snakefile:17: NameError: name 'as_py_module' is not defined
+tests/test_github_issue413 ok 2
+tests/test_github_issue456 ok 1
+tests/test_github_issue52 ok 3
+tests/test_github_issue627 ok 1
+tests/test_github_issue640 33 Snakefile:4: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_github_issue672 1 Snakefile:11: NameError: name 'prepend_param' is not defined
+tests/test_github_issue727 1 Snakefile:4: NameError: name 'Path' is not defined
+tests/test_github_issue78 ok 5
+tests/test_github_issue806 1 Snakefile:5: KeyError: 'src_lang'
+tests/test_github_issue929 ok 1
+tests/test_github_issue988 ok 3
+tests/test_github_issue_14 ok 2
+tests/test_github_issue_3265_respect_dryrun_delete_all ok 3
+tests/test_github_issue_4039_mem_cli ok 1
+tests/test_github_issue_4039_runtime_cli ok 1
+tests/test_github_issue_4039_runtime_no_override ok 1
+tests/test_github_issue_4039_runtime_profile ok 1
+tests/test_globwildcards ok 6
+tests/test_google_lifesciences 33 Snakefile:4: ModuleNotFoundError: No module named 'snakemake.remote'
+tests/test_group_job_fail ok 12
+tests/test_group_jobs ok 12
+tests/test_group_jobs_attempts ok 1
+tests/test_group_jobs_resources ok 17
+tests/test_group_parallel ok 3
+tests/test_group_temp ok 4
+tests/test_group_with_pipe ok 8
+tests/test_groupid_expand 1 WorkflowError: InputFunctionException in rule consumer (wildcards: i=0): TypeError: get_input() missing 1 required positional argument: 'groupid'
+tests/test_groupid_expand_cluster 1 WorkflowError: InputFunctionException in rule consumer (wildcards: i=0): TypeError: get_input() missing 1 required positional argument: 'groupid'
+tests/test_groups_out_of_jobs ok 5
+tests/test_gs_requester_pays 33 Snakefile:1: ModuleNotFoundError: No module named 'snakemake.remote'
+tests/test_handle_storage_multi_consumers ok 3
+tests/test_handover ok 1
+tests/test_immediate_submit 33 Not supported yet: the attribute watch of Params
+tests/test_immediate_submit_without_shared_fs ok 12
+tests/test_incomplete_params 1 Snakefile:7: NameError: name 'os' is not defined
+tests/test_inferred_resources 33 Not supported yet: the attribute mem_mb of Resources
+tests/test_inferred_resources_mib 33 Not supported yet: the attribute mem_mib of Resources
+tests/test_inner_call ok 2
+tests/test_inoutput_is_path ok 0
+tests/test_input_generator ok 4
+tests/test_ioutils 33 Snakefile:3: Not supported yet: the library function pandas.read_csv
+tests/test_issue1037 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
+tests/test_issue1041 ok 3
+tests/test_issue1046 ok 2
+tests/test_issue1083 ok 1
+tests/test_issue1085 ok 1
+tests/test_issue1092 1 Snakefile:23: WorkflowError: InputFunctionException in rule aggregate (wildcards: ): NameError: name 'os' is not defined
+tests/test_issue1093 1 Snakefile:19: WorkflowError: InputFunctionException in rule aggregate (wildcards: ): NameError: name 'os' is not defined
+tests/test_issue1256 1 Snakefile:9: SyntaxError: Expected `:`, found `=`
+tests/test_issue1281 ok 5
+tests/test_issue1284 ok 6
+tests/test_issue1331 ok 19
+tests/test_issue2574 1 Snakefile:4: KeyError: 'unexisting_key'
+tests/test_issue2685 33 Snakefile:4: Not supported yet: the library function pandas.DataFrame
+tests/test_issue2826_failed_binary_logs ok 1
+tests/test_issue3192 1 Snakefile:1: NameError: name 'Path' is not defined
+tests/test_issue3338 ok 6
+tests/test_issue3361_fail ok 2
+tests/test_issue3361_pass ok 2
+tests/test_issue381 ok 2
+tests/test_issue3922 ok 8
+tests/test_issue3958 33 Snakefile:1: Not supported yet: storage directives
+tests/test_issue3970 ok 3
+tests/test_issue471 ok 2
+tests/test_issue584 ok 2
+tests/test_issue612 ok 1
+tests/test_issue635 ok 2
+tests/test_issue805 1 Snakefile:6: SyntaxError: No rule keywords allowed after the execution keyword in rule a.
+tests/test_issue823_1 ok 3
+tests/test_issue823_2 ok 5
+tests/test_issue823_3 ok 2
+tests/test_issue850 ok 9
+tests/test_issue854 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
+tests/test_issue860 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
+tests/test_issue894 ok 1
+tests/test_issue912 ok 3
+tests/test_issue916 ok 2
+tests/test_issue930 ok 7
+tests/test_issue956 ok 5
+tests/test_issue958 ok 2
+tests/test_issue_3202 1 Snakefile:2: NameError: name 'Path' is not defined
+tests/test_job_properties ok 4
+tests/test_jupyter_notebook ok 5
+tests/test_jupyter_notebook_draft ok 4
+tests/test_jupyter_notebook_nbconvert ok 5
+tests/test_keyword_list ok 1
+tests/test_kubernetes 33 Snakefile:3: ModuleNotFoundError: No module named 'snakemake.remote'
+tests/test_lazy_resources ok 3
+tests/test_list_untracked ok 1
+tests/test_load_metawrapper 33 Snakefile:11: Not supported yet: meta-wrapper modules
+tests/test_local_import ok 1
+tests/test_localrule 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
+tests/test_log_input ok 3
+tests/test_long_shell ok 1
+tests/test_many_jobs 124 timeout
+tests/test_match_by_wildcard_names ok 3
+tests/test_metadata_migration ok 1
+tests/test_missing_file_dryrun ok 2
+tests/test_module_checkpoint 1 Snakefile:35: WorkflowError: Flags (path_modified, rule) in file pattern 'a/aggregated/{sample}.txt' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+tests/test_module_complex 33 Snakefile:22: Not supported yet: modules from remote repositories (github(...))
+tests/test_module_complex2 33 Snakefile:23: Not supported yet: modules from remote repositories (github(...))
+tests/test_module_global_container ok 2
+tests/test_module_input_func ok 1
+tests/test_module_local_git 33 Snakefile:17: Not supported yet: modules from remote repositories (github(...))
+tests/test_module_nested 1 module_deep.smk:20: AttributeError: 'Rules' object has no attribute 'ignored'
+tests/test_module_no_prefixing_modified_paths ok 3
+tests/test_module_onerror 1 module1/Snakefile:5: AttributeError: 'builtin_function_or_method' object has no attribute 'http'
+tests/test_module_onstart_not_in_main_snakefile 1 module1/Snakefile:5: AttributeError: 'builtin_function_or_method' object has no attribute 'http'
+tests/test_module_onstart_onsuccess 1 module1/Snakefile:5: AttributeError: 'builtin_function_or_method' object has no attribute 'http'
+tests/test_module_report 33 Snakefile:11: Not supported yet: modules from remote repositories (github(...))
+tests/test_module_wildcard_constraints ok 3
+tests/test_module_with_script 33 Snakefile:13: Not supported yet: modules from remote repositories (github(...))
+tests/test_module_workflow_snakefile_usage 1 module-test/Snakefile:5: NameError: name 'Path' is not defined
+tests/test_modules_all 1 module-test/Snakefile:20: WorkflowError: Flags (temp, path_modified, rule) in file pattern 'results/testmodule/a/{name}.out' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+tests/test_modules_all_exclude 1 WorkflowError: Rules test_b and test_c are ambiguous for the file results/testmodule/test2.out. Consider starting rule output with a unique prefix, constrain your wildcards, or use the ruleorder directive.
+tests/test_modules_dynamic 1 Snakefile:16: WorkflowError: Module module_name has not been registered with 'module' statement before using it in 'use rule' statement.
+tests/test_modules_dynamic_import_rules 1 module2/Snakefile:22: WorkflowError: Flags (path_modified, rule) in file pattern 'results/testmodule/b2/{name}.out' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+tests/test_modules_dynamic_module_as_alias 1 Snakefile:16: WorkflowError: Module module_name has not been registered with 'module' statement before using it in 'use rule' statement.
+tests/test_modules_dynamic_no_as 1 Snakefile:16: WorkflowError: Module module_name has not been registered with 'module' statement before using it in 'use rule' statement.
+tests/test_modules_meta_wrapper 33 Snakefile:8: Not supported yet: meta-wrapper modules
+tests/test_modules_name 1 module-test/Snakefile:17: WorkflowError: Flags (temp, path_modified, rule) in file pattern 'results/testmodule/a/{name}.out' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+tests/test_modules_no_name 1 Snakefile:7: SyntaxError: Missing module name. A module name must be provided either after the module keyword or inside the module definition after the name keyword.
+tests/test_modules_peppy 33 module-test/Snakefile:2: Not supported yet: PEP projects (pepfile)
+tests/test_modules_prefix 1 module-test/Snakefile:10: AttributeError: 'builtin_function_or_method' object has no attribute 'http'
+tests/test_modules_prefix_local ok 2
+tests/test_modules_ruledeps_inheritance ok 5
+tests/test_modules_semi_dynamic 1 module1/Snakefile:17: WorkflowError: Flags (temp, path_modified, rule) in file pattern 'results/testmodule/a1/{name}.out' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+tests/test_modules_specific ok 1
+tests/test_modules_two_names 1 Snakefile:8: SyntaxError: Ambiguous module name. A module name was provided directly after the module keyword. Another module name was provided by the name keyword. The keyword module has a special meaning in Snakemake. If you named a variable or function like this, please rename it to avoid the c
+tests/test_multicomp_group_jobs ok 22
+tests/test_multiext ok 1
+tests/test_multiext_named ok 2
+tests/test_multiple_includes ok 4
+tests/test_name_override ok 3
+tests/test_no_temp ok 3
+tests/test_no_workflow_profile 33 Not supported yet: the attribute foo of Resources
+tests/test_nodelocal ok 4
+tests/test_nonstr_params 33 Snakefile:12: Not supported yet: the library function numpy.int64
+tests/test_omitfrom ok 14
+tests/test_output_file_cache ok 5
+tests/test_output_file_cache_storage ok 5
+tests/test_params ok 2
+tests/test_params_empty_inherit ok 2
+tests/test_params_outdated_code 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
+tests/test_params_pickling 33 Snakefile:3: ModuleNotFoundError: No module named 'polars'
+tests/test_paramspace 33 Snakefile:6: Not supported yet: the library function pandas.read_csv
+tests/test_paramspace_single_wildcard 33 Snakefile:6: Not supported yet: the library function pandas.read_csv
+tests/test_parser ok 0
+tests/test_parsing_terminal_comment_following_statement ok 1
+tests/test_path_with_spaces ok 1
+tests/test_pathlib ok 6
+tests/test_pathlib_missing_file ok 2
+tests/test_pathvars 33 Snakefile:4: Not supported yet: pathvars
+tests/test_pathvars_cycle 33 Snakefile:1: Not supported yet: pathvars
+tests/test_pathvars_modules 33 Snakefile:1: Not supported yet: pathvars
+tests/test_pathvars_storage 33 Snakefile:1: Not supported yet: pathvars
+tests/test_pep_pathlib 33 Snakefile:3: Not supported yet: PEP projects (pepfile)
+tests/test_peppy 33 Snakefile:1: Not supported yet: PEP projects (pepfile)
+tests/test_persistence_backend_db_run_directive_concurrency ok 101
+tests/test_pipe_depend ok 2
+tests/test_pipes ok 5
+tests/test_pipes2 ok 3
+tests/test_pipes_fail ok 5
+tests/test_pipes_multiple 1 Snakefile:23: WorkflowError: Flags (pipe, rule) in file pattern 'testb.{i}.txt' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+tests/test_prebuilt_conda_script ok 2
+tests/test_priority ok 12
+tests/test_priority_invalid ok 3
+tests/test_profile_double_dash ok 2
+tests/test_profile_filename ok 1
+tests/test_profile_multiple ok 1
+tests/test_profile_new ok 1
+tests/test_profile_none ok 1
+tests/test_profile_old ok 1
+tests/test_profile_with_env_var ok 1
+tests/test_protected_symlink_output 33 Snakefile:21: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_python_import_from_github_module 33 Snakefile:18: Not supported yet: modules from remote repositories (github(...))
+tests/test_queue_input 33 Snakefile:1: ModuleNotFoundError: No module named 'queue'
+tests/test_r_wrapper ok 1
+tests/test_remote_auto 33 Snakefile:4: ModuleNotFoundError: No module named 'snakemake.remote'
+tests/test_remote_azure 33 Snakefile:5: ModuleNotFoundError: No module named 'snakemake.remote'
+tests/test_remote_gs 33 Snakefile:1: ModuleNotFoundError: No module named 'snakemake.remote'
+tests/test_remote_irods 33 Snakefile:1: ModuleNotFoundError: No module named 'snakemake.remote'
+tests/test_remote_log 33 Snakefile:4: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_remote_ncbi 33 Snakefile:1: ModuleNotFoundError: No module named 'snakemake.remote'
+tests/test_remote_ncbi_simple 33 Snakefile:1: ModuleNotFoundError: No module named 'snakemake.remote'
+tests/test_remote_sftp 33 Snakefile:1: ModuleNotFoundError: No module named 'snakemake.remote'
+tests/test_remote_zenodo 33 Snakefile:2: ModuleNotFoundError: No module named 'snakemake.remote'
+tests/test_report ok 1
+tests/test_report_after_run ok 15
+tests/test_report_dir ok 0
+tests/test_report_dir_but_file ok 1
+tests/test_report_display_code ok 4
+tests/test_report_href ok 1
+tests/test_report_metadata ok 1
+tests/test_report_zip ok 1
+tests/test_resource_quoting 33 Not supported yet: the attribute test of Resources
+tests/test_resource_string_in_cli_or_profile ok 2
+tests/test_resource_tbdstring ok 2
+tests/test_restartable_job_cmd_exit_1 ok 2
+tests/test_restartable_job_qsub_exit_1 ok 2
+tests/test_retries ok 1
+tests/test_retries_not_overriden ok 1
+tests/test_rule_defined_in_for_loop ok 2
+tests/test_rule_inheritance_globals ok 1
+tests/test_ruledag ok 16
+tests/test_ruledeps ok 4
+tests/test_run_namedlist ok 1
+tests/test_runtime_conversion_from_workflow_profile 33 Not supported yet: the attribute runtime of Resources
+tests/test_same_wildcard ok 2
+tests/test_scatter_gather ok 11
+tests/test_scatter_gather_multiple_processes ok 12
+tests/test_scheduler_sequential_all_cores ok 3
+tests/test_script 33 Snakefile:29: Not supported yet: complex numbers
+tests/test_script_hy ok 2
+tests/test_script_import_snakemake_obj ok 1
+tests/test_script_pre_py39 ok 1
+tests/test_script_py ok 3
+tests/test_script_rs ok 5
+tests/test_script_xsh ok 2
+tests/test_service_jobs ok 4
+tests/test_set_resources ok 1
+tests/test_set_resources_complex ok 1
+tests/test_set_threads ok 1
+tests/test_shadow 1 Snakefile:155: NameError: name 'os' is not defined
+tests/test_shadow_copy 1 Snakefile:74: NameError: name 'os' is not defined
+tests/test_shadow_prefix ok 1
+tests/test_shadowed_log ok 1
+tests/test_shell ok 1
+tests/test_shell_exec ok 1
+tests/test_singularity ok 2
+tests/test_singularity_conda ok 1
+tests/test_singularity_global ok 1
+tests/test_singularity_module ok 2
+tests/test_singularity_none ok 1
+tests/test_singularity_source_cache ok 1
+tests/test_slurm_mpi ok 3
+tests/test_solver ok 3
+tests/test_source_path ok 1
+tests/test_source_path_rerun ok 3
+tests/test_spaces_in_fnames 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
+tests/test_speed ok 301
+tests/test_storage 33 Snakefile:1: Not supported yet: storage directives
+tests/test_storage_call 1 Snakefile:7: KeyError: 's3_prefix'
+tests/test_storage_cleanup_local ok 2
+tests/test_storage_dependency_edge_flags 33 Snakefile:1: Not supported yet: storage directives
+tests/test_storage_localrule ok 2
+tests/test_storage_noretrieve_dryrun 33 Snakefile:2: Not supported yet: storage directives
+tests/test_strict_mode ok 1
+tests/test_string_resources 33 Not supported yet: the attribute gpu_model of Resources
+tests/test_subpath ok 2
+tests/test_subworkflow_config 1 Snakefile:3: SyntaxError: Keyword subworkflow is deprecated. Use module directive instead.
+tests/test_subworkflows 1 Snakefile:3: SyntaxError: Keyword subworkflow is deprecated. Use module directive instead.
+tests/test_symlink_temp ok 9
+tests/test_symlink_time_handling 33 Snakefile:38: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_temp 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
+tests/test_temp_and_all_input ok 2
+tests/test_temp_checkpoint 1 Snakefile:52: WorkflowError: InputFunctionException in rule aggregate (wildcards: sample=a): AttributeError: 'str' object has no attribute 'open'
+tests/test_temp_expand ok 2
+tests/test_template_engine ok 3
+tests/test_tes ok 1
+tests/test_threads ok 1
+tests/test_threads0 ok 1
+tests/test_tibanna 33 Snakefile:11: ModuleNotFoundError: No module named 'snakemake.remote'
+tests/test_tmpdir 1 Snakefile:4: NameError: name 'choose_file' is not defined
+tests/test_toposort 33 Snakefile:1: ModuleNotFoundError: No module named 'snakemake.dag'
+tests/test_touch ok 2
+tests/test_touch_pipeline_with_temp_dir ok 3
+tests/test_touch_with_directories ok 1
+tests/test_uncreatable_checkpoint_input ok 3
+tests/test_unlock ok 1
+tests/test_unpack_dict ok 2
+tests/test_unpack_list ok 2
+tests/test_until ok 14
+tests/test_update_config ok 3
+tests/test_update_flag 33 Snakefile:1: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_update_flag_fail 33 Snakefile:1: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_update_flag_fail_cleanup 33 Snakefile:1: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_url_include 1 Snakefile:3: FileNotFoundError: [Errno 2] No such file or directory: 'https:/github.com/snakemake/snakemake/raw/main/tests/test05/Snakefile'
+tests/test_use_rule_same_module ok 1
+tests/test_validate 33 Snakefile:4: ModuleNotFoundError: No module named 'polars'
+tests/test_wildcard_annotatedstrings 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
+tests/test_wildcard_count_ambiguity ok 2
+tests/test_wildcard_keyword ok 8
+tests/test_workflow_profile 33 Not supported yet: the attribute foo of Resources
+tests/test_workflow_profile_cli_overwrite 33 Not supported yet: the attribute foo of Resources
+tests/test_workflow_profile_relative_filename 33 Not supported yet: the attribute foo of Resources
+tests/test_workflow_profile_relative_path 33 Not supported yet: the attribute foo of Resources
+tests/test_wrapper ok 1
+tests/test_xrootd 33 Snakefile:1: ModuleNotFoundError: No module named 'snakemake.remote'
+tests/test_yaml_config 1 Snakefile:3: WorkflowError: Workflow defines configfile test.yaml but it is not present or accessible (full checked path: test.yaml).

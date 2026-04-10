@@ -30,25 +30,20 @@ pub fn parse_yaml(text: &str) -> Result<Option<Node>, SyntaxError> {
 
 /// Parses like [`parse_yaml`] for text that starts at `origin` in its file.
 pub(crate) fn parse_at(text: &str, origin: Position) -> Result<Option<Node>, SyntaxError> {
-    let mut builder = Builder {
-        origin,
-        stack: Vec::new(),
-        anchors: HashMap::new(),
-        budget: ALIAS_BUDGET,
-        root: None,
-    };
-    for event in Parser::new_from_str(text) {
-        let (event, span) = event.map_err(|error| SyntaxError {
-            message: error.info().to_owned(),
-            position: builder.position(*error.marker()),
-        })?;
-        let position = builder.position(span.start);
-        let done = builder.accept(event, position)?;
-        if done {
-            break;
-        }
-    }
+    let mut builder = Builder::new(origin, None);
+    builder.run(text)?;
     Ok(builder.root)
+}
+
+/// Parses every document of `text`, as `argo lint` and `argo submit` read files that hold
+/// several documents separated by `---`. Empty documents are left out.
+pub fn parse_documents(text: &str) -> Result<Vec<Node>, SyntaxError> {
+    let mut builder = Builder::new(Position { line: 1, column: 1 }, Some(Vec::new()));
+    builder.run(text)?;
+    let mut documents = builder.documents.unwrap_or_default();
+    documents.extend(builder.root);
+    documents.retain(|document| document.value != Value::Null);
+    Ok(documents)
 }
 
 /// An open collection. A mapping holds its pending key until the value is complete.
@@ -77,12 +72,47 @@ struct Builder {
     anchors: HashMap<usize, (Node, usize)>,
     budget: usize,
     root: Option<Node>,
+    /// The finished documents, when all documents are read rather than the first.
+    documents: Option<Vec<Node>>,
 }
 
 impl Builder {
+    fn new(origin: Position, documents: Option<Vec<Node>>) -> Self {
+        Builder {
+            origin,
+            stack: Vec::new(),
+            anchors: HashMap::new(),
+            budget: ALIAS_BUDGET,
+            root: None,
+            documents,
+        }
+    }
+
+    fn run(&mut self, text: &str) -> Result<(), SyntaxError> {
+        for event in Parser::new_from_str(text) {
+            let (event, span) = event.map_err(|error| SyntaxError {
+                message: error.info().to_owned(),
+                position: self.position(*error.marker()),
+            })?;
+            let position = self.position(span.start);
+            if self.accept(event, position)? {
+                break;
+            }
+        }
+        Ok(())
+    }
+
     /// Handles one event and says whether the first document is complete.
     fn accept(&mut self, event: Event<'_>, position: Position) -> Result<bool, SyntaxError> {
         match event {
+            Event::DocumentStart(_) | Event::DocumentEnd if self.documents.is_some() => {
+                // Anchors belong to one document.
+                self.anchors.clear();
+                self.budget = ALIAS_BUDGET;
+                if let (Some(documents), Some(root)) = (&mut self.documents, self.root.take()) {
+                    documents.push(root);
+                }
+            }
             Event::DocumentStart(_) | Event::DocumentEnd => return Ok(self.root.is_some()),
             Event::Scalar(text, style, anchor, tag) => {
                 let value = resolve(&text, style, tag.as_deref())

@@ -273,6 +273,11 @@ snakemake-corpus-data:
 snakemake-corpus-test:
 	SNAKEMAKE_CORPUS="${SNAKEMAKE_CORPUS:-$HOME/.cache/iunctus/corpus/snakemake}" cargo test --release --locked -p snakemake-parser --test corpus -- --ignored --nocapture
 
+# Runs every workflow of the Snakemake corpus with the mock executor and compares the outcomes
+# with snakemake-runtime/tests/fixtures/run_corpus.txt; `UPDATE_FIXTURE=1` rewrites the fixture.
+snakemake-run-corpus-test:
+	SNAKEMAKE_CORPUS="${SNAKEMAKE_CORPUS:-$HOME/.cache/iunctus/corpus/snakemake}" cargo test --release --locked -p snakemake-runtime --test run_corpus -- --ignored --exact workflows_run_as_recorded
+
 # Starts a local RustFS (S3-compatible) with the bucket `iunctus-test` for the S3 tests.
 # `docker stop iunctus-s3` ends it.
 s3-server:

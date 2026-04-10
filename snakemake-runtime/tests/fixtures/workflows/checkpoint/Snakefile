@@ -1,0 +1,39 @@
+import os
+
+
+rule all:
+    input:
+        "aggregated.txt",
+
+
+checkpoint split:
+    input:
+        "input.txt",
+    output:
+        directory("chunks"),
+    shell:
+        "mkdir -p {output} && split -l 1 {input} {output}/chunk_"
+
+
+def processed_chunks(wildcards):
+    folder = checkpoints.split.get().output[0]
+    names = glob_wildcards(os.path.join(folder, "chunk_{name}")).name
+    return expand("processed/{name}.txt", name=sorted(names))
+
+
+rule process:
+    input:
+        "chunks/chunk_{name}",
+    output:
+        "processed/{name}.txt",
+    shell:
+        "tr a-z A-Z < {input} > {output}"
+
+
+rule aggregate:
+    input:
+        processed_chunks,
+    output:
+        "aggregated.txt",
+    shell:
+        "cat {input} > {output}"

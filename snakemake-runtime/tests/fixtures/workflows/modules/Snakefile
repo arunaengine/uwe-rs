@@ -1,0 +1,27 @@
+configfile: "config.yaml"
+
+
+module align:
+    snakefile:
+        "align/Snakefile"
+    config:
+        config["align"]
+    prefix:
+        "align-out"
+
+
+use rule * from align as align_*
+
+
+use rule index from align as index_hg38 with:
+    input:
+        "reference/hg38.fa",
+    output:
+        "align-out/reference/hg38.fa.fai",
+
+
+rule all:
+    default_target: True
+    input:
+        rules.align_all.input,
+        "align-out/reference/hg38.fa.fai",

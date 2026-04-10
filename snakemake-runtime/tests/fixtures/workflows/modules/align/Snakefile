@@ -1,0 +1,27 @@
+REFERENCE = config["reference"]
+
+
+rule all:
+    input:
+        expand("mapped/{sample}.bam", sample=config["samples"]),
+
+
+rule index:
+    input:
+        REFERENCE,
+    output:
+        f"{REFERENCE}.fai",
+    shell:
+        "samtools faidx {input}"
+
+
+rule map:
+    input:
+        reads="reads/{sample}.fq",
+        index=rules.index.output,
+    output:
+        "mapped/{sample}.bam",
+    log:
+        "logs/map/{sample}.log",
+    shell:
+        "bwa mem {REFERENCE} {input.reads} 2> {log} > {output}"

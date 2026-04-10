@@ -1,0 +1,27 @@
+SAMPLES = ["A", "B"]
+
+
+rule all:
+    input:
+        expand("results/{sample}.sorted.bam", sample=SAMPLES),
+
+
+rule map:
+    input:
+        reads="data/{sample}.fastq",
+    output:
+        "results/{sample}.bam",
+    threads: 2
+    shell:
+        "bwa mem -t {threads} ref.fa {input.reads} > {output}"
+
+
+rule sort:
+    input:
+        rules.map.output,
+    output:
+        "results/{sample}.sorted.bam",
+    params:
+        memory=lambda wildcards: "2G" if wildcards.sample == "A" else "1G",
+    shell:
+        "samtools sort -m {params.memory} -o {output:q} {input}"

@@ -1,0 +1,86 @@
+import pandas as pd
+from snakemake.utils import min_version
+
+min_version("8.0")
+
+
+configfile: "config/config.yaml"
+
+
+samples = pd.read_csv(config["samples"], sep="\t", dtype=str).set_index("sample", drop=False)
+SAMPLES = samples.index.tolist()
+
+wildcard_constraints:
+    sample="|".join(SAMPLES),
+
+container: "docker://continuumio/miniconda3:4.4.10"
+
+
+localrules:
+    all,
+
+
+rule all:
+    input:
+        expand("results/{sample}.vcf", sample=SAMPLES),
+        "results/multiqc.html",
+
+
+def fastqs(wildcards):
+    row = samples.loc[wildcards.sample]
+    return {"r1": row["fq1"], "r2": row["fq2"]}
+
+
+rule trim:
+    input:
+        unpack(fastqs),
+    output:
+        r1=temp("trimmed/{sample}.1.fq.gz"),
+        r2=temp("trimmed/{sample}.2.fq.gz"),
+    threads: lambda wildcards, attempt: 2 * attempt
+    resources:
+        mem_mb=4000,
+        runtime="1h",
+    log:
+        "logs/trim/{sample}.log",
+    benchmark:
+        "benchmarks/trim/{sample}.tsv"
+    conda:
+        "envs/trim.yaml"
+    params:
+        extra=config["trim"]["extra"],
+        sample="{sample}",
+    shell:
+        "cutadapt {params.extra} -j {threads} -o {output.r1} -p {output.r2} {input.r1} {input.r2} > {log}"
+
+
+rule call:
+    input:
+        rules.trim.output,
+    output:
+        protected("results/{sample}.vcf"),
+    params:
+        region=lambda wildcards, input: f"{wildcards.sample}:{len(input)}",
+    script:
+        "scripts/call.py"
+
+
+rule stats:
+    input:
+        expand("trimmed/{sample}.1.fq.gz", sample=SAMPLES),
+    output:
+        multiext("results/stats", ".txt", ".json"),
+    wrapper:
+        "v3.0.0/bio/seqkit/stats"
+
+
+rule multiqc:
+    input:
+        rules.stats.output,
+    output:
+        report=touch("results/multiqc.html"),
+        data=directory("results/multiqc_data"),
+    container:
+        None
+    shell:
+        "multiqc {input:q} -o {output.data:q} && echo {wildcards} > {output.report}"

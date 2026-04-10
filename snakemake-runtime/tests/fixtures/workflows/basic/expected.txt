@@ -1,0 +1,26 @@
+5 tasks, 3 steps, 4 edges
+1 map (sample=A) <- []
+2 map (sample=B) <- []
+3 sort (sample=A) <- [1]
+4 sort (sample=B) <- [2]
+5 all <- [3, 4]
+task 1: -
+  command: bash -c set -euo pipefail;  bwa mem -t 2 ref.fa data/A.fastq > results/A.bam
+  inputs: data/A.fastq
+  outputs: results/A.bam
+task 2: -
+  command: bash -c set -euo pipefail;  bwa mem -t 2 ref.fa data/B.fastq > results/B.bam
+  inputs: data/B.fastq
+  outputs: results/B.bam
+task 3: -
+  command: bash -c set -euo pipefail;  samtools sort -m 2G -o results/A.sorted.bam results/A.bam
+  inputs: results/A.bam
+  outputs: results/A.sorted.bam
+task 4: -
+  command: bash -c set -euo pipefail;  samtools sort -m 1G -o results/B.sorted.bam results/B.bam
+  inputs: results/B.bam
+  outputs: results/B.sorted.bam
+task 5: -
+  command: 
+  inputs: results/A.sorted.bam results/B.sorted.bam
+  outputs: 

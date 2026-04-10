@@ -5,8 +5,19 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod config;
+mod driver;
 mod files;
+mod functions;
+mod objects;
 mod pattern;
+mod plan;
 mod rule;
+mod schema;
+mod shell;
+mod task;
+mod utils;
+mod workflow;
 
+pub use driver::{Session, driver, find_snakefile};
 pub use pattern::{Matcher, Wildcards, apply as apply_wildcards, regex_text, wildcard_names};

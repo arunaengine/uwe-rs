@@ -1,0 +1,5 @@
+align:
+  samples:
+    - s1
+    - s2
+  reference: reference/hs1.fa

@@ -1,0 +1,3 @@
+samples: config/samples.tsv
+trim:
+  extra: "-q 20"

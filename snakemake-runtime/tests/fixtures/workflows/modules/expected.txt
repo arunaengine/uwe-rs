@@ -1,0 +1,26 @@
+5 tasks, 4 steps, 5 edges
+1 align_index <- []
+2 index_hg38 <- []
+3 align_map (sample=s1) <- [1]
+4 align_map (sample=s2) <- [1]
+5 all <- [3, 4, 2]
+task 1: -
+  command: bash -c set -euo pipefail;  samtools faidx align-out/reference/hs1.fa
+  inputs: align-out/reference/hs1.fa
+  outputs: align-out/reference/hs1.fa.fai
+task 2: -
+  command: bash -c set -euo pipefail;  samtools faidx reference/hg38.fa
+  inputs: reference/hg38.fa
+  outputs: align-out/reference/hg38.fa.fai
+task 3: -
+  command: bash -c set -euo pipefail;  bwa mem reference/hs1.fa align-out/reads/s1.fq 2> align-out/logs/map/s1.log > align-out/mapped/s1.bam
+  inputs: align-out/reads/s1.fq align-out/reference/hs1.fa.fai
+  outputs: align-out/mapped/s1.bam align-out/logs/map/s1.log
+task 4: -
+  command: bash -c set -euo pipefail;  bwa mem reference/hs1.fa align-out/reads/s2.fq 2> align-out/logs/map/s2.log > align-out/mapped/s2.bam
+  inputs: align-out/reads/s2.fq align-out/reference/hs1.fa.fai
+  outputs: align-out/mapped/s2.bam align-out/logs/map/s2.log
+task 5: -
+  command: 
+  inputs: align-out/mapped/s1.bam align-out/mapped/s2.bam align-out/reference/hg38.fa.fai
+  outputs: 

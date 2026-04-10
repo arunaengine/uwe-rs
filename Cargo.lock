@@ -1507,6 +1507,7 @@ dependencies = [
  "reqwest",
  "serde_json",
  "sha2",
+ "snakemake-runtime",
  "task-model",
  "task-runner",
  "tempfile",

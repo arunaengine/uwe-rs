@@ -26,6 +26,7 @@ nextflow-plugins = { path = "nextflow-plugins" }
 nextflow-runtime = { path = "nextflow-runtime" }
 python-evaluator = { path = "python-evaluator" }
 snakemake-parser = { path = "snakemake-parser" }
+snakemake-runtime = { path = "snakemake-runtime" }
 task-model = { path = "task-model" }
 task-runner = { path = "task-runner" }
 workflow-graph = { path = "workflow-graph" }

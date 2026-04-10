@@ -152,7 +152,7 @@ fn driver(
 ) -> Result<Box<dyn Driver>, DriverError> {
     match language {
         Language::Nextflow => nextflow::driver(launch, run, quiet),
-        Language::Snakemake => Err(not_yet(language)),
+        Language::Snakemake => snakemake_runtime::driver(launch),
         Language::Cwl => cwl_runtime::driver(launch),
         Language::Argo => Err(not_yet(language)),
     }

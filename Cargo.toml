@@ -4,7 +4,7 @@
 
 [workspace]
 resolver = "3"
-members = ["argo-parser", "content-store", "cwl-parser", "cwl-runtime", "executor", "iunctus", "nextflow-config", "nextflow-evaluator", "nextflow-parser", "nextflow-plugins", "nextflow-runtime", "python-evaluator", "snakemake-parser", "snakemake-runtime", "task-model", "task-runner", "workflow-graph"]
+members = ["argo-parser", "argo-runtime", "content-store", "cwl-parser", "cwl-runtime", "executor", "iunctus", "nextflow-config", "nextflow-evaluator", "nextflow-parser", "nextflow-plugins", "nextflow-runtime", "python-evaluator", "snakemake-parser", "snakemake-runtime", "task-model", "task-runner", "workflow-graph"]
 
 [workspace.package]
 version = "0.1.0"
@@ -15,6 +15,7 @@ publish = false
 
 [workspace.dependencies]
 # Workspace crates
+argo-parser = { path = "argo-parser" }
 content-store = { path = "content-store" }
 cwl-parser = { path = "cwl-parser" }
 cwl-runtime = { path = "cwl-runtime" }
@@ -50,6 +51,7 @@ opendal = { version = "0.59.3", default-features = false, features = [
     "services-memory",
     "services-s3",
 ] }
+regex = "1.13.1"
 reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "rustls"] }
 ruff_python_ast = "=0.0.15"
 ruff_python_parser = "=0.0.15"

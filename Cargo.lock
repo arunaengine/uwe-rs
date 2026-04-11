@@ -70,6 +70,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "argo-runtime"
+version = "0.1.0"
+dependencies = [
+ "argo-parser",
+ "jiff",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "workflow-graph",
+]
+
+[[package]]
 name = "arraydeque"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

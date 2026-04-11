@@ -1,0 +1,23 @@
+# Manifest of argo-runtime, which runs Argo Workflows documents as language-neutral tasks.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "argo-runtime"
+description = "Template resolution, substitution, expressions and the node state machine for Argo Workflows"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+argo-parser.workspace = true
+jiff.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+workflow-graph.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -391,3 +391,200 @@ pub struct LifecycleHook {
     pub arguments: Arguments,
     pub expression: String,
 }
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct RetryStrategy {
+    pub limit: Option<AnyString>,
+    pub retry_policy: String,
+    pub backoff: Option<Node>,
+    pub expression: String,
+    pub affinity: Option<Node>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct DagTemplate {
+    pub tasks: Vec<DagTask>,
+    pub target: String,
+    pub fail_fast: Option<bool>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct SuspendTemplate {
+    pub duration: Option<AnyString>,
+}
+
+/// A Kubernetes container, with `source` for script templates and `dependencies` for the
+/// containers of a container set.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Container {
+    pub name: String,
+    pub image: String,
+    pub command: Vec<String>,
+    pub args: Vec<String>,
+    pub working_dir: String,
+    pub env: Vec<EnvVar>,
+    pub resources: Option<Node>,
+    pub volume_mounts: Vec<Node>,
+    pub source: Option<String>,
+    pub dependencies: Vec<String>,
+    pub env_from: Option<Node>,
+    pub image_pull_policy: Option<Node>,
+    pub lifecycle: Option<Node>,
+    pub liveness_probe: Option<Node>,
+    pub ports: Option<Node>,
+    pub readiness_probe: Option<Node>,
+    pub resize_policy: Option<Node>,
+    pub restart_policy: Option<Node>,
+    pub security_context: Option<Node>,
+    pub startup_probe: Option<Node>,
+    pub stdin: Option<Node>,
+    pub stdin_once: Option<Node>,
+    pub termination_message_path: Option<Node>,
+    pub termination_message_policy: Option<Node>,
+    pub tty: Option<Node>,
+    pub volume_devices: Option<Node>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct EnvVar {
+    pub name: String,
+    pub value: Option<String>,
+    pub value_from: Option<Node>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ContainerSet {
+    pub containers: Vec<Container>,
+    pub volume_mounts: Vec<Node>,
+    pub retry_strategy: Option<Node>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ResourceTemplate {
+    pub action: String,
+    pub manifest: String,
+    pub manifest_from: Option<Node>,
+    pub merge_strategy: String,
+    pub set_owner_reference: bool,
+    pub success_condition: String,
+    pub failure_condition: String,
+    pub flags: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct HttpTemplate {
+    pub method: String,
+    pub url: String,
+    pub headers: Vec<Node>,
+    pub body: String,
+    pub body_from: Option<Node>,
+    pub success_condition: String,
+    pub timeout_seconds: Option<Node>,
+    pub insecure_skip_verify: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct DataTemplate {
+    pub source: Option<Node>,
+    pub transformation: Vec<Node>,
+}
+
+/// Rewrites the fields that Argo v4.0 removed into their v4 form, as `argo convert` does:
+/// `schedule` becomes `schedules`, and singular `mutex` and `semaphore` become lists. The
+/// argument is a whole document.
+pub fn normalize(document: &mut Node) {
+    let kind = document.get("kind").and_then(Node::as_str).unwrap_or("");
+    let cron = kind == "CronWorkflow";
+    let Some(spec) = entry_mut(document, "spec") else {
+        return;
+    };
+    if cron {
+        if let Some(position) = spec.get("schedule").map(|node| node.position)
+            && spec.get("schedules").is_none()
+            && let Some(schedule) = remove(spec, "schedule")
+        {
+            push_entry(spec, "schedules", Value::Sequence(vec![schedule]), position);
+        }
+        if let Some(workflow) = entry_mut(spec, "workflowSpec") {
+            normalize_spec(workflow);
+        }
+    } else {
+        normalize_spec(spec);
+    }
+}
+
+fn normalize_spec(spec: &mut Node) {
+    if let Some(synchronization) = entry_mut(spec, "synchronization") {
+        normalize_synchronization(synchronization);
+    }
+    if let Some(Node {
+        value: Value::Sequence(templates),
+        ..
+    }) = entry_mut(spec, "templates")
+    {
+        for template in templates {
+            if let Some(synchronization) = entry_mut(template, "synchronization") {
+                normalize_synchronization(synchronization);
+            }
+        }
+    }
+}
+
+fn normalize_synchronization(synchronization: &mut Node) {
+    for (single, plural) in [("mutex", "mutexes"), ("semaphore", "semaphores")] {
+        if synchronization.get(plural).is_none()
+            && let Some(position) = synchronization.get(single).map(|node| node.position)
+            && let Some(item) = remove(synchronization, single)
+        {
+            push_entry(
+                synchronization,
+                plural,
+                Value::Sequence(vec![item]),
+                position,
+            );
+        }
+    }
+}
+
+fn entry_mut<'a>(node: &'a mut Node, key: &str) -> Option<&'a mut Node> {
+    match &mut node.value {
+        Value::Mapping(entries) => entries
+            .iter_mut()
+            .find(|entry| entry.key == key)
+            .map(|entry| &mut entry.value),
+        _ => None,
+    }
+}
+
+fn remove(node: &mut Node, key: &str) -> Option<Node> {
+    match &mut node.value {
+        Value::Mapping(entries) => {
+            let index = entries.iter().position(|entry| entry.key == key)?;
+            Some(entries.remove(index).value)
+        }
+        _ => None,
+    }
+}
+
+fn push_entry(node: &mut Node, key: &str, value: Value, position: crate::node::Position) {
+    if let Value::Mapping(entries) = &mut node.value {
+        entries.push(Entry {
+            key: key.to_owned(),
+            position,
+            value: Node::new(value, position),
+        });
+    }
+}
+
+#[cfg(test)]
+#[path = "model_tests.rs"]
+mod tests;

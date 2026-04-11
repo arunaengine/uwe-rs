@@ -278,6 +278,38 @@ snakemake-corpus-test:
 snakemake-run-corpus-test:
 	SNAKEMAKE_CORPUS="${SNAKEMAKE_CORPUS:-$HOME/.cache/iunctus/corpus/snakemake}" cargo test --release --locked -p snakemake-runtime --test run_corpus -- --ignored --exact workflows_run_as_recorded
 
+# Fetches the text-only Argo corpus at the commits the Argo corpus test expects. The checkouts
+# keep their `.git`, which marks the repository whose templates a workflow may reference.
+argo-corpus:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	root="${ARGO_CORPUS:-$HOME/.cache/iunctus/corpus/argo}"
+	mkdir -p "$root"
+	grep -v '^#' argo-parser/tests/fixtures/corpus/revisions.txt | while read -r repository branch commit patterns; do
+		target="$root/${repository#*/}"
+		[ -d "$target" ] && continue
+		work="$(mktemp -d "$root/.fetch.XXXXXX")"
+		git -C "$work" init -q
+		git -C "$work" remote add origin "https://github.com/$repository.git"
+		{
+			for extension in yaml yml json YAML YML JSON; do
+				if [ -z "$patterns" ]; then echo "*.$extension"; fi
+				for pattern in $patterns; do
+					case "$pattern" in */) echo "/$pattern**/*.$extension" ;; esac
+				done
+			done
+			for pattern in $patterns; do case "$pattern" in '!'*) echo "$pattern" ;; esac; done
+		} | git -C "$work" sparse-checkout set --no-cone --stdin
+		# A source the network cannot reach is left out, so the rest still arrives.
+		if ! git -C "$work" fetch -q --depth 1 --filter=blob:none origin "$commit"; then
+			echo "skipped $repository: cannot fetch it" >&2
+			rm -rf "$work"
+			continue
+		fi
+		git -C "$work" checkout -q FETCH_HEAD
+		mv "$work" "$target"
+	done
+
 # Starts a local RustFS (S3-compatible) with the bucket `iunctus-test` for the S3 tests.
 # `docker stop iunctus-s3` ends it.
 s3-server:

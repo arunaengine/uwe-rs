@@ -1,0 +1,26 @@
+# Sources of the Argo corpus (docs/research/argo-workflows.md, Q6), looked up on 2026-09-28:
+# GitHub repository, branch or tag, commit, and sparse patterns. A pattern ending in `/` takes
+# the YAML and JSON files below that folder, a pattern starting with `!` leaves files out, and
+# without patterns the YAML and JSON files of the whole repository are taken. `just argo-corpus`
+# fetches exactly these commits into ~/.cache/iunctus/corpus/argo/<repository name>.
+# GenivaInformatics/gennext-workflows has no license file: it is fetched for local research only,
+# and none of its files may be copied into this repository.
+argoproj/argo-workflows v4.1.4 b5b4d665e9be9b87c115f943584c3e0ae96fe073 examples/ test/e2e/
+argoproj-labs/hera main 66f82a8dc8fa9f4a224e5f91106c95fbb6ce9746 examples/ !*.upstream.yaml
+kubeflow/pipelines master 7774d7b0d12dea8306f72c879ca0cf79a921145e test_data/compiled-workflows/
+couler-proj/couler master 5c437c2f1552656b68dec1e4b562b57b027efe25 couler/tests/test_data/
+GenivaInformatics/gennext-workflows main 99159dfa6e1a30feab63a6c488f468c844cdca2c
+Ensembl/regulation-workflows v1.0.1 7cde2b48ec08f24e143c5858baa5c8abacc6bafb
+DataCloud-project/SIM-PIPE main e2f5bf4cf249827819e2ff72bb9152db4b521371
+PGpalt/Hybrid-Argo-Workflows main 869f3cc1e981d835f3958d6198703a714801419a
+wwood/singlem-sra-processing main 135c9229ea56ffccf61144ef248f4cb7381961fe
+DonaldKellett/snakemake-tutorial-argo-workflows main 10fa5151a6b98e8ced86684c9b6872b96ad497c3
+uc-cdis/argo-wrapper master 9365b0eb16b057ace67dac6cc4c2d68ac25a730c
+codefresh-io/argo-hub main b22809f803d13cf4eb0f5e5dcecafc608dde90a7
+argoproj-labs/argo-workflows-catalog master c69f0d992fc0ec5b013d5bdad6bb946047f4c4d7
+pipekit/argo-workflows-ci-example main 4f0e92c4a90d788ba22ca617dae52a547d869b4b
+pipekit/talk-demos main b445ced2d819b0da0ddec722e3f98e0a5183a5b9
+devops-ws/argo-workflows-guide master d2ff171b6ef5457d5b0d5bd82d4b84cdda6e07be
+terrytangyuan/distributed-ml-patterns main 6c83af30a36c1fc10a63a65561abffceedfa23d7
+thoth-station/workflows master 0635d89c412d166329e808e1655c192c65383509
+AliyunContainerService/argo-workflow-examples main 7a506318fde9980363ec95b4c28ddf86bcc41356

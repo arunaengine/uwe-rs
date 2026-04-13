@@ -1160,3 +1160,386 @@ fn compare(left: &Value, right: &Value) -> Result<std::cmp::Ordering> {
         },
     }
 }
+
+fn binary(operator: &str, left: &Value, right: &Value) -> Result<Value> {
+    use std::cmp::Ordering;
+    let mismatch = || {
+        ExprError::new(format!(
+            "invalid operation: {} {operator} {} (mismatched types {} and {})",
+            left.to_go_string(),
+            right.to_go_string(),
+            left.type_name(),
+            right.type_name()
+        ))
+    };
+    Ok(match operator {
+        "==" => Value::Bool(equal(left, right)),
+        "!=" => Value::Bool(!equal(left, right)),
+        "<" => Value::Bool(compare(left, right)? == Ordering::Less),
+        ">" => Value::Bool(compare(left, right)? == Ordering::Greater),
+        "<=" => Value::Bool(compare(left, right)? != Ordering::Greater),
+        ">=" => Value::Bool(compare(left, right)? != Ordering::Less),
+        "+" => match (left, right) {
+            (Value::Int(a), Value::Int(b)) => Value::Int(a.wrapping_add(*b)),
+            (Value::String(a), Value::String(b)) => Value::String(format!("{a}{b}")),
+            (Value::Array(a), Value::Array(b)) => {
+                Value::Array(a.iter().chain(b).cloned().collect())
+            }
+            _ => Value::Float(
+                number(left).ok_or_else(mismatch)? + number(right).ok_or_else(mismatch)?,
+            ),
+        },
+        "-" => match (left, right) {
+            (Value::Int(a), Value::Int(b)) => Value::Int(a.wrapping_sub(*b)),
+            _ => Value::Float(
+                number(left).ok_or_else(mismatch)? - number(right).ok_or_else(mismatch)?,
+            ),
+        },
+        "*" => match (left, right) {
+            (Value::Int(a), Value::Int(b)) => Value::Int(a.wrapping_mul(*b)),
+            _ => Value::Float(
+                number(left).ok_or_else(mismatch)? * number(right).ok_or_else(mismatch)?,
+            ),
+        },
+        "/" => {
+            Value::Float(number(left).ok_or_else(mismatch)? / number(right).ok_or_else(mismatch)?)
+        }
+        "%" => match (left, right) {
+            (Value::Int(_), Value::Int(0)) => {
+                return Err(ExprError::new("integer divide by zero"));
+            }
+            (Value::Int(a), Value::Int(b)) => Value::Int(a.wrapping_rem(*b)),
+            _ => return Err(mismatch()),
+        },
+        "**" | "^" => Value::Float(
+            number(left)
+                .ok_or_else(mismatch)?
+                .powf(number(right).ok_or_else(mismatch)?),
+        ),
+        ".." => match (left, right) {
+            (Value::Int(a), Value::Int(b)) => Value::Array((*a..=*b).map(Value::Int).collect()),
+            _ => return Err(mismatch()),
+        },
+        "in" => match right {
+            Value::Array(items) => Value::Bool(items.iter().any(|item| equal(item, left))),
+            Value::Map(map) => match left {
+                Value::String(key) => Value::Bool(map.contains_key(key)),
+                _ => return Err(mismatch()),
+            },
+            Value::Nil => Value::Bool(false),
+            _ => return Err(mismatch()),
+        },
+        "matches" | "contains" | "startsWith" | "endsWith" => {
+            let (Value::String(text), Value::String(other)) = (left, right) else {
+                return Err(mismatch());
+            };
+            Value::Bool(match operator {
+                "contains" => text.contains(other.as_str()),
+                "startsWith" => text.starts_with(other.as_str()),
+                "endsWith" => text.ends_with(other.as_str()),
+                _ => regex::Regex::new(other)
+                    .map_err(|error| ExprError::new(error.to_string()))?
+                    .is_match(text),
+            })
+        }
+        _ => return Err(ExprError::new(format!("unknown operator {operator}"))),
+    })
+}
+
+/// expr's `int()`, which Argo also offers as `asInt`.
+pub fn to_int(value: &Value) -> Result<Value> {
+    match value {
+        Value::Int(number) => Ok(Value::Int(*number)),
+        Value::Float(number) => Ok(Value::Int(*number as i64)),
+        Value::String(text) => text
+            .trim()
+            .parse::<i64>()
+            .map(Value::Int)
+            .map_err(|_| ExprError::new(format!("invalid operation: int({text})"))),
+        other => Err(ExprError::new(format!(
+            "invalid operation: int({})",
+            other.type_name()
+        ))),
+    }
+}
+
+/// expr's `float()`, which Argo also offers as `asFloat`.
+pub fn to_float(value: &Value) -> Result<Value> {
+    match value {
+        Value::Int(number) => Ok(Value::Float(*number as f64)),
+        Value::Float(number) => Ok(Value::Float(*number)),
+        Value::String(text) => text
+            .trim()
+            .parse::<f64>()
+            .map(Value::Float)
+            .map_err(|_| ExprError::new(format!("invalid operation: float({text})"))),
+        other => Err(ExprError::new(format!(
+            "invalid operation: float({})",
+            other.type_name()
+        ))),
+    }
+}
+
+fn text_argument<'a>(name: &str, values: &'a [Value], index: usize) -> Result<&'a str> {
+    match values.get(index) {
+        Some(Value::String(text)) => Ok(text),
+        Some(other) => Err(ExprError::new(format!(
+            "{name}: argument {} must be a string, not {}",
+            index + 1,
+            other.type_name()
+        ))),
+        None => Err(ExprError::new(format!(
+            "{name}: missing argument {}",
+            index + 1
+        ))),
+    }
+}
+
+/// The builtins of expr and the helpers Argo adds to the environment.
+fn builtin(name: &str, values: Vec<Value>) -> Result<Value> {
+    let first = values.first().cloned().unwrap_or(Value::Nil);
+    let text = |index: usize| text_argument(name, &values, index);
+    Ok(match name {
+        "asInt" | "int" => to_int(&first)?,
+        "asFloat" | "float" => to_float(&first)?,
+        "string" => Value::String(first.to_go_string()),
+        "toJson" => Value::String(first.to_json()),
+        "toJSON" => Value::String(first.to_json_indented()),
+        "fromJSON" => Value::parse_json(text(0)?).map_err(ExprError::new)?,
+        "jsonpath" => {
+            let document = Value::parse_json(text(0)?).map_err(ExprError::new)?;
+            jsonpath::get(text(1)?, &document).map_err(ExprError::new)?
+        }
+        "len" => Value::Int(match &first {
+            Value::String(text) => text.chars().count(),
+            Value::Array(items) => items.len(),
+            Value::Map(map) => map.len(),
+            other => {
+                return Err(ExprError::new(format!(
+                    "invalid argument for len (type {})",
+                    other.type_name()
+                )));
+            }
+        } as i64),
+        "type" => Value::string(first.type_name()),
+        "abs" => match first {
+            Value::Int(number) => Value::Int(number.wrapping_abs()),
+            Value::Float(number) => Value::Float(number.abs()),
+            other => {
+                return Err(ExprError::new(format!(
+                    "invalid argument for abs ({})",
+                    other.type_name()
+                )));
+            }
+        },
+        "ceil" | "floor" | "round" => {
+            let number = number(&first)
+                .ok_or_else(|| ExprError::new(format!("invalid argument for {name}")))?;
+            Value::Float(match name {
+                "ceil" => number.ceil(),
+                "floor" => number.floor(),
+                _ => number.round(),
+            })
+        }
+        "trim" => match values.get(1) {
+            Some(Value::String(cutset)) => {
+                Value::string(text(0)?.trim_matches(|c| cutset.contains(c)))
+            }
+            _ => Value::string(text(0)?.trim()),
+        },
+        "trimPrefix" => {
+            let prefix = match values.get(1) {
+                Some(Value::String(prefix)) => prefix.as_str(),
+                _ => " ",
+            };
+            Value::string(text(0)?.strip_prefix(prefix).unwrap_or(text(0)?))
+        }
+        "trimSuffix" => {
+            let suffix = match values.get(1) {
+                Some(Value::String(suffix)) => suffix.as_str(),
+                _ => " ",
+            };
+            Value::string(text(0)?.strip_suffix(suffix).unwrap_or(text(0)?))
+        }
+        "upper" => Value::string(text(0)?.to_uppercase()),
+        "lower" => Value::string(text(0)?.to_lowercase()),
+        "split" => Value::Array(text(0)?.split(text(1)?).map(Value::string).collect()),
+        "splitAfter" => Value::Array(
+            text(0)?
+                .split_inclusive(text(1)?)
+                .map(Value::string)
+                .collect(),
+        ),
+        "replace" => Value::string(text(0)?.replace(text(1)?, text(2)?)),
+        "repeat" => Value::string(text(0)?.repeat(
+            usize::try_from(integer(values.get(1).unwrap_or(&Value::Int(0)))?).unwrap_or(0),
+        )),
+        "indexOf" => Value::Int(text(0)?.find(text(1)?).map_or(-1, |index| {
+            text(0).unwrap_or_default()[..index].chars().count() as i64
+        })),
+        "lastIndexOf" => Value::Int(text(0)?.rfind(text(1)?).map_or(-1, |index| {
+            text(0).unwrap_or_default()[..index].chars().count() as i64
+        })),
+        "hasPrefix" => Value::Bool(text(0)?.starts_with(text(1)?)),
+        "hasSuffix" => Value::Bool(text(0)?.ends_with(text(1)?)),
+        "join" => {
+            let separator = match values.get(1) {
+                Some(Value::String(separator)) => separator.as_str(),
+                _ => "",
+            };
+            Value::string(
+                array(&first, name)?
+                    .iter()
+                    .map(Value::to_go_string)
+                    .collect::<Vec<_>>()
+                    .join(separator),
+            )
+        }
+        "max" | "min" => {
+            let items: Vec<Value> = match values.as_slice() {
+                [Value::Array(items)] => items.clone(),
+                _ => values.clone(),
+            };
+            let mut best: Option<Value> = None;
+            for item in items {
+                best = Some(match best {
+                    None => item,
+                    Some(current) => {
+                        let order = compare(&item, &current)?;
+                        let better = if name == "max" {
+                            order == std::cmp::Ordering::Greater
+                        } else {
+                            order == std::cmp::Ordering::Less
+                        };
+                        if better { item } else { current }
+                    }
+                });
+            }
+            best.unwrap_or(Value::Nil)
+        }
+        "mean" | "median" => {
+            let mut numbers: Vec<f64> = array(&first, name)?
+                .iter()
+                .map(|item| {
+                    number(item).ok_or_else(|| ExprError::new(format!("{name} needs numbers")))
+                })
+                .collect::<Result<_>>()?;
+            if numbers.is_empty() {
+                Value::Float(0.0)
+            } else if name == "mean" {
+                Value::Float(numbers.iter().sum::<f64>() / numbers.len() as f64)
+            } else {
+                numbers.sort_by(|a, b| a.total_cmp(b));
+                let middle = numbers.len() / 2;
+                Value::Float(if numbers.len().is_multiple_of(2) {
+                    (numbers[middle - 1] + numbers[middle]) / 2.0
+                } else {
+                    numbers[middle]
+                })
+            }
+        }
+        "toBase64" => Value::string(sprig::base64_encode(text(0)?.as_bytes())),
+        "fromBase64" => Value::string(
+            String::from_utf8_lossy(&sprig::base64_decode(text(0)?).map_err(ExprError::new)?)
+                .into_owned(),
+        ),
+        "first" => array(&first, name)?.first().cloned().unwrap_or(Value::Nil),
+        "last" => array(&first, name)?.last().cloned().unwrap_or(Value::Nil),
+        "get" => match (&first, values.get(1)) {
+            (Value::Array(_) | Value::Map(_) | Value::String(_), Some(key)) => {
+                member(&first, key, true).unwrap_or(Value::Nil)
+            }
+            _ => Value::Nil,
+        },
+        "keys" | "values" => match &first {
+            Value::Map(map) if name == "keys" => {
+                Value::Array(map.keys().cloned().map(Value::String).collect())
+            }
+            Value::Map(map) => Value::Array(map.values().cloned().collect()),
+            other => {
+                return Err(ExprError::new(format!(
+                    "{name}: expected a map, got {}",
+                    other.type_name()
+                )));
+            }
+        },
+        "reverse" => Value::Array(array(&first, name)?.iter().rev().cloned().collect()),
+        "uniq" => {
+            let mut unique: Vec<Value> = Vec::new();
+            for item in array(&first, name)? {
+                if !unique.iter().any(|seen| equal(seen, item)) {
+                    unique.push(item.clone());
+                }
+            }
+            Value::Array(unique)
+        }
+        "flatten" => {
+            fn flatten(items: &[Value], out: &mut Vec<Value>) {
+                for item in items {
+                    match item {
+                        Value::Array(inner) => flatten(inner, out),
+                        other => out.push(other.clone()),
+                    }
+                }
+            }
+            let mut out = Vec::new();
+            flatten(array(&first, name)?, &mut out);
+            Value::Array(out)
+        }
+        "concat" => {
+            let mut out = Vec::new();
+            for value in &values {
+                out.extend(array(value, name)?.iter().cloned());
+            }
+            Value::Array(out)
+        }
+        "sort" => {
+            let mut items = array(&first, name)?.to_vec();
+            let mut failure = None;
+            items.sort_by(|a, b| {
+                compare(a, b).unwrap_or_else(|error| {
+                    failure = Some(error);
+                    std::cmp::Ordering::Equal
+                })
+            });
+            if let Some(error) = failure {
+                return Err(error);
+            }
+            if matches!(values.get(1), Some(Value::String(order)) if order == "desc") {
+                items.reverse();
+            }
+            Value::Array(items)
+        }
+        "take" => {
+            let count =
+                usize::try_from(integer(values.get(1).unwrap_or(&Value::Int(0)))?).unwrap_or(0);
+            Value::Array(array(&first, name)?.iter().take(count).cloned().collect())
+        }
+        "toPairs" => match &first {
+            Value::Map(map) => Value::Array(
+                map.iter()
+                    .map(|(key, value)| {
+                        Value::Array(vec![Value::string(key.clone()), value.clone()])
+                    })
+                    .collect(),
+            ),
+            _ => return Err(ExprError::new("toPairs: expected a map")),
+        },
+        "fromPairs" => {
+            let mut map = BTreeMap::new();
+            for pair in array(&first, name)? {
+                if let Value::Array(pair) = pair
+                    && let [key, value] = pair.as_slice()
+                {
+                    map.insert(key.to_go_string(), value.clone());
+                }
+            }
+            Value::Map(map)
+        }
+        _ => return Err(ExprError::new(format!("unknown func {name}"))),
+    })
+}
+
+#[cfg(test)]
+#[path = "expr_tests.rs"]
+mod tests;

@@ -734,4 +734,437 @@ impl Run {
             .collect();
         Value::Array(failures).to_json()
     }
+
+    /// The arguments of a hook, with the tags that refer to the scope substituted.
+    pub fn hook_args(&mut self, hook: &LifecycleHook, scope: &Scope) -> Result<Args> {
+        let variables = self.variables(scope);
+        let mut parameters = hook.arguments.parameters.clone();
+        for parameter in &mut parameters {
+            if let Some(value) = &mut parameter.value {
+                value.0 =
+                    crate::tags::replace(&value.0, &variables, true).map_err(Failure::error)?;
+            }
+        }
+        let mut artifacts = Vec::new();
+        for artifact in &hook.arguments.artifacts {
+            match self.argument_artifact(artifact, scope) {
+                Ok(Some(value)) => artifacts.push(value),
+                Ok(None) => {}
+                Err(error) => return Err(Failure::error(error)),
+            }
+        }
+        Ok(Args {
+            parameters,
+            artifacts,
+        })
+    }
+
+    /// Calls a template: the node exists already and goes on, or it is made now.
+    pub fn execute_template(
+        &mut self,
+        name: &str,
+        holder: &Holder,
+        context: &Rc<Context>,
+        args: &Args,
+        call: &Call,
+    ) -> Result<usize> {
+        if let Some(&index) = self.names.get(name) {
+            if !self.nodes[index].phase.fulfilled() {
+                self.reenter(index)?;
+            }
+            return Ok(index);
+        }
+        if call.depth > MAX_DEPTH {
+            let template = holder
+                .template_ref
+                .as_ref()
+                .map_or(holder.template.as_str(), |reference| {
+                    reference.template.as_str()
+                });
+            return Err(Failure::error(format!(
+                "templates call each other more than {MAX_DEPTH} levels deep, at template {template} of step {}; the recursion does not end",
+                display_name(name)
+            )));
+        }
+        let (context, template) = match self.resolve(holder, context) {
+            Ok(found) => found,
+            Err(message) => return Ok(self.error_node(name, "", call, message)),
+        };
+        let template = match &self.defaults {
+            Some(defaults) => with_defaults(&template, defaults),
+            None => template,
+        };
+        let template_name = template
+            .get("name")
+            .and_then(Node::as_str)
+            .unwrap_or("")
+            .to_owned();
+        let processed = match self.process_args(name, &template, &context, args, None) {
+            Ok(processed) => Rc::new(processed),
+            Err(failure) if failure.unsupported => return Err(failure),
+            Err(failure) => {
+                return Ok(self.error_node(name, &template_name, call, failure.message));
+            }
+        };
+        let strategy = processed
+            .template
+            .retry_strategy
+            .clone()
+            .or_else(|| self.spec.retry_strategy.clone());
+        if let Some(strategy) = strategy {
+            let index = self.new_node(name, NodeKind::Retry, &template_name, call);
+            self.nodes[index].retry = Some(Rc::new(RetryCall {
+                processed,
+                strategy,
+            }));
+            self.continue_retry(index)?;
+            return Ok(index);
+        }
+        let index = self.new_node(name, NodeKind::Pod, &template_name, call);
+        self.start_node(index, processed)?;
+        Ok(index)
+    }
+
+    /// Starts a node for its processed template.
+    fn start_node(&mut self, index: usize, processed: Rc<Processed>) -> Result<()> {
+        let template = &processed.template;
+        let kind = if !template.steps.is_empty() || processed.node.get("steps").is_some() {
+            NodeKind::Steps
+        } else if template.dag.is_some() {
+            NodeKind::Dag
+        } else if template.suspend.is_some() {
+            NodeKind::Suspend
+        } else if template.container.is_some()
+            || template.script.is_some()
+            || template.container_set.is_some()
+            || template.resource.is_some()
+            || template.http.is_some()
+            || template.data.is_some()
+        {
+            NodeKind::Pod
+        } else if template.plugin.is_some() {
+            return Err(Failure::unsupported(format!(
+                "{}: plugin templates are not supported: executor plugins need the Argo agent",
+                self.nodes[index].name
+            )));
+        } else {
+            let message = format!(
+                "template {} has no type: it needs container, script, steps, dag or another",
+                self.nodes[index].template
+            );
+            self.fail(index, Phase::Error, message);
+            return Ok(());
+        };
+        self.nodes[index].kind = kind;
+        self.nodes[index].processed = Some(Rc::clone(&processed));
+        self.nodes[index].daemoned = template.daemon == Some(true);
+        match kind {
+            NodeKind::Steps => self.execute_steps(index),
+            NodeKind::Dag => self.execute_dag(index),
+            NodeKind::Suspend => {
+                self.suspend(index);
+                Ok(())
+            }
+            _ => self.start_pod(index),
+        }
+    }
+
+    /// Goes on with a node that runs.
+    pub fn reenter(&mut self, index: usize) -> Result<()> {
+        match self.nodes[index].kind {
+            NodeKind::Steps => self.execute_steps(index),
+            NodeKind::Dag => self.execute_dag(index),
+            NodeKind::Retry => self.continue_retry(index),
+            NodeKind::TaskGroup => {
+                for child in self.nodes[index].children.clone() {
+                    if !self.nodes[child].phase.fulfilled() {
+                        self.reenter(child)?;
+                    }
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// Makes an attempt of a retry node, or ends the node by its last attempt.
+    fn continue_retry(&mut self, index: usize) -> Result<()> {
+        let Some(call) = self.nodes[index].retry.clone() else {
+            return Ok(());
+        };
+        if let Some(&last) = self.nodes[index].children.last() {
+            if !self.nodes[last].phase.fulfilled() {
+                return self.reenter(last);
+            }
+            let phase = self.nodes[last].phase;
+            let attempts = self.nodes[index].children.len();
+            let limit = call
+                .strategy
+                .limit
+                .as_ref()
+                .and_then(|limit| limit.0.trim().parse::<usize>().ok());
+            let policy = match call.strategy.retry_policy.as_str() {
+                "" if !call.strategy.expression.is_empty() => "Always",
+                "" => "OnFailure",
+                policy => policy,
+            };
+            let retry = match phase {
+                Phase::Failed => matches!(policy, "OnFailure" | "Always"),
+                Phase::Error => matches!(policy, "OnError" | "Always" | "OnTransientError"),
+                _ => false,
+            };
+            let mut retry = retry && limit.is_none_or(|limit| attempts <= limit);
+            if retry && !call.strategy.expression.is_empty() {
+                let mut values = self.globals.clone();
+                let last_node = &self.nodes[last];
+                values.insert("lastRetry.status".into(), phase.name().into());
+                values.insert(
+                    "lastRetry.exitCode".into(),
+                    last_node
+                        .outputs
+                        .exit_code
+                        .clone()
+                        .unwrap_or_else(|| "-1".into()),
+                );
+                values.insert("lastRetry.message".into(), last_node.message.clone());
+                values.insert("lastRetry.duration".into(), "0".into());
+                let variables = Variables::new(values);
+                retry =
+                    crate::expr::evaluate_bool(&call.strategy.expression, variables.environment())
+                        .unwrap_or(false);
+            }
+            if !retry {
+                let outputs = self.nodes[last].outputs.clone();
+                let message = self.nodes[last].message.clone();
+                self.nodes[index].outputs = outputs;
+                let phase = if phase == Phase::Skipped {
+                    Phase::Succeeded
+                } else {
+                    phase
+                };
+                self.set_phase(index, phase, message);
+                return Ok(());
+            }
+        }
+        // A new attempt, which sees its number as `retries`.
+        let attempt = self.nodes[index].children.len();
+        let name = format!("{}({attempt})", self.nodes[index].name);
+        let mut locals = BTreeMap::new();
+        locals.insert("retries".to_owned(), attempt.to_string());
+        let template_name = self.nodes[index].template.clone();
+        locals.insert("pod.name".to_owned(), self.pod_name(&name, &template_name));
+        let mut node = call.processed.node.clone();
+        let variables = Variables::new(locals);
+        replace_node(&mut node, &variables, true).map_err(Failure::error)?;
+        let processed = match decode::<Template>(&node) {
+            Ok((template, _)) => Rc::new(Processed {
+                node,
+                template,
+                context: Rc::clone(&call.processed.context),
+                artifacts: call.processed.artifacts.clone(),
+            }),
+            Err(error) => {
+                let message = format!("{name}: {error}");
+                self.fail(index, Phase::Error, message);
+                return Ok(());
+            }
+        };
+        let inbound = match self.nodes[index].children.last() {
+            Some(&previous) => self.outbound(previous),
+            None => self.nodes[index].inbound.clone(),
+        };
+        let call_info = Call {
+            boundary: self.nodes[index].boundary,
+            inbound,
+            depth: self.nodes[index].depth,
+        };
+        let child = self.new_node(&name, NodeKind::Pod, &template_name, &call_info);
+        self.nodes[index].children.push(child);
+        self.start_node(child, processed)?;
+        if self.nodes[child].phase.fulfilled() {
+            self.changed = true;
+        }
+        Ok(())
+    }
+
+    /// Ends a loop over no items: skipped, with empty lists as its result and output
+    /// parameters, which is what later steps that read the loop's outputs get.
+    pub fn empty_loop(
+        &mut self,
+        name: &str,
+        holder: &Holder,
+        context: &Rc<Context>,
+        call: &Call,
+    ) -> usize {
+        let index = self.end_node(
+            name,
+            Phase::Skipped,
+            call,
+            "Skipped, empty params".to_owned(),
+        );
+        let mut outputs = NodeOutputs {
+            result: Some("[]".to_owned()),
+            ..NodeOutputs::default()
+        };
+        if let Ok((_, template)) = self.resolve(holder, context)
+            && let Ok((typed, _)) = decode::<Template>(&template)
+        {
+            for parameter in typed.outputs.parameters {
+                outputs.parameters.push((parameter.name, "[]".to_owned()));
+            }
+        }
+        self.nodes[index].outputs = outputs;
+        index
+    }
+
+    /// Gives a skipped or omitted node the outputs that Argo's `addSkippedNodeOutputsToScope`
+    /// gives it: the declared `valueFrom.default` of its output parameters, and for steps empty
+    /// placeholders for its output artifacts. Outputs without a default stay absent.
+    pub fn skipped_outputs(
+        &mut self,
+        index: usize,
+        holder: &Holder,
+        context: &Rc<Context>,
+        artifacts: bool,
+    ) {
+        if !matches!(self.nodes[index].phase, Phase::Skipped | Phase::Omitted) {
+            return;
+        }
+        let Ok((_, template)) = self.resolve(holder, context) else {
+            return;
+        };
+        let Ok((typed, _)) = decode::<Template>(&template) else {
+            return;
+        };
+        let mut outputs = NodeOutputs::default();
+        for parameter in &typed.outputs.parameters {
+            if let Some(default) = parameter
+                .value_from
+                .as_ref()
+                .and_then(|from| from.default.as_ref())
+            {
+                outputs
+                    .parameters
+                    .push((parameter.name.clone(), default.0.clone()));
+            }
+        }
+        if artifacts {
+            for artifact in &typed.outputs.artifacts {
+                outputs.artifacts.push(ArtifactValue {
+                    name: artifact.name.clone(),
+                    path: artifact.path.clone(),
+                    location: None,
+                    optional: true,
+                    directory: false,
+                });
+            }
+        }
+        self.nodes[index].outputs = outputs;
+    }
+
+    fn suspend(&mut self, index: usize) {
+        let Some(processed) = self.nodes[index].processed.clone() else {
+            return;
+        };
+        let mut parameters = Vec::new();
+        for parameter in &processed.template.outputs.parameters {
+            let supplied = parameter.value_from.as_ref();
+            let value = parameter
+                .value
+                .clone()
+                .or_else(|| supplied.and_then(|from| from.default.clone()))
+                .or_else(|| parameter.default.clone())
+                .or_else(|| parameter.enumeration.first().cloned());
+            let value = match value {
+                Some(value) => value.0,
+                None => {
+                    self.warn(format!(
+                        "suspend template {}: output parameter {} is supplied on resume; it is empty",
+                        processed.template.name, parameter.name
+                    ));
+                    String::new()
+                }
+            };
+            parameters.push((parameter.name.clone(), value));
+        }
+        if processed
+            .template
+            .suspend
+            .as_ref()
+            .is_some_and(|suspend| suspend.duration.is_none())
+        {
+            self.warn(format!(
+                "suspend template {} resumes at once, as if `argo resume` came",
+                processed.template.name
+            ));
+        }
+        self.nodes[index].outputs.parameters = parameters;
+        self.set_phase(index, Phase::Succeeded, String::new());
+    }
+
+    /// Finds the template a holder names, and where its own references resolve.
+    fn resolve(
+        &mut self,
+        holder: &Holder,
+        context: &Rc<Context>,
+    ) -> std::result::Result<(Rc<Context>, Node), String> {
+        if let Some(inline) = &holder.inline {
+            return Ok((Rc::clone(context), inline.clone()));
+        }
+        if let Some(reference) = &holder.template_ref {
+            let kind = if reference.cluster_scope {
+                DocumentKind::ClusterWorkflowTemplate
+            } else {
+                DocumentKind::WorkflowTemplate
+            };
+            let Some(document) = self.library.find(kind, &reference.name, &context.path) else {
+                return Err(format!(
+                    "templateRef: {} {} not found",
+                    kind.name(),
+                    reference.name
+                ));
+            };
+            let context = self.context_of(&document);
+            let Some(template) = context.template(&reference.template).cloned() else {
+                return Err(format!(
+                    "templateRef: template {} not found in {}",
+                    reference.template,
+                    document.label()
+                ));
+            };
+            return Ok((context, template));
+        }
+        match context.template(&holder.template) {
+            Some(template) => Ok((Rc::clone(context), template.clone())),
+            None if context.label.is_empty() => {
+                Err(format!("template {} not found", holder.template))
+            }
+            None => Err(format!(
+                "template {} not found in {}",
+                holder.template, context.label
+            )),
+        }
+    }
+
+    fn context_of(&mut self, document: &Rc<Document>) -> Rc<Context> {
+        let key = (document.path.clone(), document.index);
+        if let Some(context) = self.contexts.get(&key) {
+            return Rc::clone(context);
+        }
+        let templates = match document
+            .spec()
+            .and_then(|spec| spec.get("templates"))
+            .map(|node| &node.value)
+        {
+            Some(Yaml::Sequence(templates)) => templates.clone(),
+            _ => Vec::new(),
+        };
+        let context = Rc::new(Context {
+            label: document.label(),
+            path: document.path.clone(),
+            templates,
+        });
+        self.contexts.insert(key, Rc::clone(&context));
+        context
+    }
 }

@@ -419,3 +419,93 @@ fn fold(parts: &[String], join: fn(Box<Filter>, Box<Filter>) -> Filter) -> Resul
     }
     Ok(result)
 }
+
+/// Splits at `operator` outside quotes and brackets.
+fn split_operator(text: &str, operator: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut depth = 0;
+    let mut quote = None;
+    let mut start = 0;
+    let bytes = text.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        let character = bytes[index] as char;
+        match quote {
+            Some(open) if character == open => quote = None,
+            Some(_) => {}
+            None => match character {
+                '\'' | '"' => quote = Some(character),
+                '[' | '(' => depth += 1,
+                ']' | ')' => depth -= 1,
+                _ if depth == 0 && text[index..].starts_with(operator) => {
+                    // `<` and `>` must not match the start of `<=` or `>=`, nor `=` of `==`.
+                    let longer = ["<=", ">=", "==", "!=", "=~"]
+                        .iter()
+                        .any(|long| long.len() > operator.len() && text[index..].starts_with(long));
+                    let inside = index > 0
+                        && operator.len() == 1
+                        && matches!(bytes[index - 1] as char, '<' | '>' | '=' | '!');
+                    if !longer && !inside {
+                        parts.push(text[start..index].to_owned());
+                        index += operator.len();
+                        start = index;
+                        continue;
+                    }
+                }
+                _ => {}
+            },
+        }
+        index += 1;
+    }
+    parts.push(text[start..].to_owned());
+    parts
+}
+
+impl Operand {
+    fn parse(text: &str) -> Result<Operand> {
+        let text = text.trim();
+        if let Some(rest) = text.strip_prefix('@') {
+            return Ok(Operand::Current(parse(&format!("${rest}"))?));
+        }
+        if text.starts_with('$') {
+            return Err(format!(
+                "filters that read the document root, like `{text}`, are not supported"
+            ));
+        }
+        if let Some(literal) = unquote(text) {
+            return Ok(Operand::Literal(Value::String(literal)));
+        }
+        if text.starts_with('/') {
+            return Ok(Operand::Literal(Value::String(text.to_owned())));
+        }
+        match text {
+            "true" => Ok(Operand::Literal(Value::Bool(true))),
+            "false" => Ok(Operand::Literal(Value::Bool(false))),
+            "null" => Ok(Operand::Literal(Value::Nil)),
+            _ => text
+                .parse::<f64>()
+                .map(|number| Operand::Literal(Value::Float(number)))
+                .map_err(|_| format!("invalid filter operand `{text}`")),
+        }
+    }
+
+    fn value(&self, current: &Value) -> Option<Value> {
+        let selectors = match self {
+            Operand::Literal(value) => return Some(value.clone()),
+            Operand::Current(selectors) => selectors,
+        };
+        let mut values = vec![current.clone()];
+        for selector in selectors {
+            let mut next = Vec::new();
+            for value in &values {
+                select(selector, value, false, &mut next).ok()?;
+            }
+            values = next;
+        }
+        values.into_iter().next()
+    }
+}
+
+#[cfg(test)]
+#[path = "jsonpath_tests.rs"]
+mod tests;

@@ -468,3 +468,249 @@ pub fn call(name: &str, arguments: Vec<Value>) -> Result<Value> {
         }
     })
 }
+
+fn regex(pattern: &str) -> Result<regex::Regex> {
+    regex::Regex::new(pattern).map_err(|error| ExprError::new(error.to_string()))
+}
+
+fn list(value: &Value) -> Result<&[Value]> {
+    match value {
+        Value::Array(items) => Ok(items),
+        Value::Nil => Ok(&[]),
+        other => Err(ExprError::new(format!(
+            "expected a list, got {}",
+            other.type_name()
+        ))),
+    }
+}
+
+/// Sprig's `strslice`: the texts of a list, or a single text.
+fn strings(value: &Value) -> Vec<String> {
+    match value {
+        Value::Array(items) => items
+            .iter()
+            .filter(|item| **item != Value::Nil)
+            .map(Value::to_go_string)
+            .collect(),
+        Value::Nil => Vec::new(),
+        other => vec![other.to_go_string()],
+    }
+}
+
+/// Sprig's `empty`: nil, zero, false, and empty texts and collections.
+pub fn empty(value: &Value) -> bool {
+    match value {
+        Value::Nil => true,
+        Value::Bool(flag) => !flag,
+        Value::Int(number) => *number == 0,
+        Value::Float(number) => *number == 0.0,
+        Value::String(text) => text.is_empty(),
+        Value::Array(items) => items.is_empty(),
+        Value::Map(map) => map.is_empty(),
+    }
+}
+
+/// `cast.ToInt64`: numbers truncate, texts parse with Go's base prefixes, and anything else
+/// is 0.
+pub fn to_int64(value: &Value) -> i64 {
+    match value {
+        Value::Int(number) => *number,
+        Value::Float(number) => *number as i64,
+        Value::Bool(flag) => i64::from(*flag),
+        Value::String(text) => parse_go_int(text).unwrap_or(0),
+        _ => 0,
+    }
+}
+
+fn to_float64(value: &Value) -> f64 {
+    match value {
+        Value::Int(number) => *number as f64,
+        Value::Float(number) => *number,
+        Value::Bool(flag) => f64::from(u8::from(*flag)),
+        Value::String(text) => text.trim().parse().unwrap_or(0.0),
+        _ => 0.0,
+    }
+}
+
+/// `strconv.ParseInt(text, 0, 64)` after cast's trimming of a zero fraction like `3.0`.
+fn parse_go_int(text: &str) -> Option<i64> {
+    let text = match text.split_once('.') {
+        Some((whole, fraction)) if fraction.chars().all(|c| c == '0') => whole,
+        _ => text,
+    };
+    let (negative, digits) = match text.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, text.strip_prefix('+').unwrap_or(text)),
+    };
+    let digits: String = digits.chars().filter(|c| *c != '_').collect();
+    let (radix, rest) = match digits.get(..2) {
+        Some("0x" | "0X") => (16, &digits[2..]),
+        Some("0o" | "0O") => (8, &digits[2..]),
+        Some("0b" | "0B") => (2, &digits[2..]),
+        _ if digits.len() > 1 && digits.starts_with('0') => (8, &digits[1..]),
+        _ => (10, digits.as_str()),
+    };
+    let magnitude = i64::from_str_radix(rest, radix).ok()?;
+    Some(if negative { -magnitude } else { magnitude })
+}
+
+/// Go's `path.Base`.
+pub fn path_base(path: &str) -> String {
+    if path.is_empty() {
+        return ".".into();
+    }
+    let trimmed = path.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return "/".into();
+    }
+    trimmed.rsplit('/').next().unwrap_or(trimmed).to_owned()
+}
+
+/// Go's `path.Dir`.
+pub fn path_dir(path: &str) -> String {
+    let directory = match path.rfind('/') {
+        Some(index) => &path[..=index],
+        None => "",
+    };
+    path_clean(directory)
+}
+
+/// Go's `path.Ext`.
+pub fn path_ext(path: &str) -> String {
+    for (index, character) in path.char_indices().rev() {
+        match character {
+            '/' => break,
+            '.' => return path[index..].to_owned(),
+            _ => {}
+        }
+    }
+    String::new()
+}
+
+/// Go's `path.Clean`: the shortest equivalent path, by lexical processing.
+pub fn path_clean(path: &str) -> String {
+    if path.is_empty() {
+        return ".".into();
+    }
+    let rooted = path.starts_with('/');
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                if parts.last().is_some_and(|last| *last != "..") {
+                    parts.pop();
+                } else if !rooted {
+                    parts.push("..");
+                }
+            }
+            other => parts.push(other),
+        }
+    }
+    let joined = parts.join("/");
+    match (rooted, joined.is_empty()) {
+        (true, _) => format!("/{joined}"),
+        (false, true) => ".".into(),
+        (false, false) => joined,
+    }
+}
+
+fn title(text: &str) -> String {
+    let mut out = String::new();
+    let mut start = true;
+    for character in text.chars() {
+        if start && character.is_alphabetic() {
+            out.extend(character.to_uppercase());
+        } else {
+            out.push(character);
+        }
+        start = !character.is_alphanumeric();
+    }
+    out
+}
+
+fn case(name: &str, text: &str) -> String {
+    let mut words: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut previous_lower = false;
+    for character in text.chars() {
+        if !character.is_alphanumeric() {
+            if !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
+            previous_lower = false;
+            continue;
+        }
+        if character.is_uppercase() && previous_lower && !current.is_empty() {
+            words.push(std::mem::take(&mut current));
+        }
+        previous_lower = character.is_lowercase() || character.is_ascii_digit();
+        current.push(character);
+    }
+    if !current.is_empty() {
+        words.push(current);
+    }
+    match name {
+        "camelcase" => words
+            .iter()
+            .map(|word| title(&word.to_lowercase()))
+            .collect(),
+        "kebabcase" => words
+            .iter()
+            .map(|word| word.to_lowercase())
+            .collect::<Vec<_>>()
+            .join("-"),
+        _ => words
+            .iter()
+            .map(|word| word.to_lowercase())
+            .collect::<Vec<_>>()
+            .join("_"),
+    }
+}
+
+const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/// Standard base64 with padding, as Go's `base64.StdEncoding`.
+pub fn base64_encode(bytes: &[u8]) -> String {
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let value = (u32::from(chunk[0]) << 16)
+            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
+            | u32::from(*chunk.get(2).unwrap_or(&0));
+        for index in 0..4 {
+            if index <= chunk.len() {
+                out.push(BASE64[((value >> (18 - 6 * index)) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
+/// Decodes standard base64, or explains why the text is not base64.
+pub fn base64_decode(text: &str) -> std::result::Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    let mut buffer = 0u32;
+    let mut bits = 0;
+    for (index, character) in text.bytes().enumerate() {
+        if character == b'=' {
+            break;
+        }
+        let Some(value) = BASE64.iter().position(|c| *c == character) else {
+            return Err(format!("illegal base64 data at input byte {index}"));
+        };
+        buffer = (buffer << 6) | value as u32;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            bytes.push((buffer >> bits) as u8);
+            buffer &= (1 << bits) - 1;
+        }
+    }
+    Ok(bytes)
+}
+
+#[cfg(test)]
+#[path = "sprig_tests.rs"]
+mod tests;

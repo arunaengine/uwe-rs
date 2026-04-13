@@ -5,6 +5,7 @@
 pub mod expr;
 pub mod jsonpath;
 pub mod sprig;
+pub mod tags;
 mod time;
 pub mod value;
 pub mod when;

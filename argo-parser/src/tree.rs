@@ -25,7 +25,8 @@ pub struct SyntaxError {
 /// Parses the first document of `text`. Later documents are ignored, as go-yaml does,
 /// and text without a document gives `None`.
 pub fn parse_yaml(text: &str) -> Result<Option<Node>, SyntaxError> {
-    parse_at(text, Position { line: 1, column: 1 })
+    let start = Position { line: 1, column: 1 };
+    leniently(text, |text| parse_at(text, start))
 }
 
 /// Parses like [`parse_yaml`] for text that starts at `origin` in its file.
@@ -38,12 +39,118 @@ pub(crate) fn parse_at(text: &str, origin: Position) -> Result<Option<Node>, Syn
 /// Parses every document of `text`, as `argo lint` and `argo submit` read files that hold
 /// several documents separated by `---`. Empty documents are left out.
 pub fn parse_documents(text: &str) -> Result<Vec<Node>, SyntaxError> {
-    let mut builder = Builder::new(Position { line: 1, column: 1 }, Some(Vec::new()));
-    builder.run(text)?;
-    let mut documents = builder.documents.unwrap_or_default();
-    documents.extend(builder.root);
-    documents.retain(|document| document.value != Value::Null);
-    Ok(documents)
+    leniently(text, |text| {
+        let mut builder = Builder::new(Position { line: 1, column: 1 }, Some(Vec::new()));
+        builder.run(text)?;
+        let mut documents = builder.documents.unwrap_or_default();
+        documents.extend(builder.root);
+        documents.retain(|document| document.value != Value::Null);
+        Ok(documents)
+    })
+}
+
+/// The message of the parser for continuation lines of a quoted scalar that are not indented
+/// deeper than the block around the scalar.
+const QUOTED_INDENTATION: &str = "invalid indentation in quoted scalar";
+
+/// Parses `text`, and again with the continuation lines of quoted scalars indented, while
+/// the parser rejects their indentation. go-yaml, which Argo uses, accepts such scalars, and
+/// indentation inside a quoted scalar folds away, so the values stay the same.
+fn leniently<T>(
+    text: &str,
+    parse: impl Fn(&str) -> Result<T, SyntaxError>,
+) -> Result<T, SyntaxError> {
+    let mut error = match parse(text) {
+        Ok(parsed) => return Ok(parsed),
+        Err(error) => error,
+    };
+    let mut repaired = text.to_owned();
+    for _ in 0..100 {
+        let next = match error.message.as_str() {
+            QUOTED_INDENTATION => indent_quoted(&repaired, error.position),
+            // The end of a flow collection indented like its key, which go-yaml accepts too.
+            FLOW_INDENTATION => indent_flow_end(&repaired, error.position),
+            _ => None,
+        };
+        let Some(next) = next else {
+            break;
+        };
+        repaired = next;
+        match parse(&repaired) {
+            Ok(parsed) => return Ok(parsed),
+            Err(next) if next.position == error.position => break,
+            Err(next) => error = next,
+        }
+    }
+    // The first error that the repairs did not remove; repairs keep lines where they were.
+    Err(error)
+}
+
+/// The message of the parser for a line of a flow collection that is not indented deeper than
+/// the block around the collection.
+const FLOW_INDENTATION: &str = "invalid indentation";
+
+/// Indents a line that ends a flow collection, like `]`, one column deeper.
+fn indent_flow_end(text: &str, position: Position) -> Option<String> {
+    let index = position.line.checked_sub(1)? as usize;
+    let mut lines: Vec<String> = text.split('\n').map(str::to_owned).collect();
+    let line = lines.get_mut(index)?;
+    if !line.trim_start().starts_with([']', '}']) {
+        return None;
+    }
+    line.insert(0, ' ');
+    Some(lines.join("\n"))
+}
+
+/// Indents the continuation lines of the quoted scalar that starts at `position` one column
+/// deeper than the line where it starts.
+fn indent_quoted(text: &str, position: Position) -> Option<String> {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let first = position.line.checked_sub(1)? as usize;
+    let start_line = lines.get(first)?;
+    let start = start_line
+        .char_indices()
+        .nth(position.column.checked_sub(1)? as usize)
+        .map(|(offset, _)| offset)?;
+    let quote = start_line[start..].chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let indentation = start_line.len() - start_line.trim_start_matches(' ').len() + 1;
+    // Find the line of the closing quote.
+    let mut escaped = false;
+    let mut characters = start_line[start + 1..].chars().peekable();
+    let mut last = first;
+    'scan: loop {
+        while let Some(character) = characters.next() {
+            match (quote, character) {
+                ('"', '\\') if !escaped => {
+                    escaped = true;
+                    continue;
+                }
+                ('"', '"') if !escaped => break 'scan,
+                ('\'', '\'') if characters.peek() == Some(&'\'') => {
+                    characters.next();
+                }
+                ('\'', '\'') => break 'scan,
+                _ => {}
+            }
+            escaped = false;
+        }
+        escaped = false;
+        last += 1;
+        characters = lines.get(last)?.chars().peekable();
+    }
+    let mut out: Vec<String> = Vec::with_capacity(lines.len());
+    for (number, text) in lines.iter().enumerate() {
+        let leading = text.len() - text.trim_start_matches(' ').len();
+        if number > first && number <= last && leading < indentation && !text.trim().is_empty() {
+            out.push(format!("{}{text}", " ".repeat(indentation - leading)));
+        } else {
+            out.push((*text).to_owned());
+        }
+    }
+    Some(out.join("\n"))
 }
 
 /// An open collection. A mapping holds its pending key until the value is complete.
@@ -58,6 +165,8 @@ enum Frame {
         position: Position,
         anchor: usize,
         key: Option<Key>,
+        /// Keys that a `<<` merge key set, which explicit keys may override.
+        merged: Vec<String>,
     },
 }
 
@@ -159,6 +268,7 @@ impl Builder {
                 position,
                 anchor,
                 key: None,
+                merged: Vec::new(),
             }),
             Event::SequenceEnd | Event::MappingEnd => {
                 let node = match self.stack.pop() {
@@ -199,13 +309,24 @@ impl Builder {
         match self.stack.last_mut() {
             None => self.root = Some(node),
             Some(Frame::Sequence { items, .. }) => items.push(node),
-            Some(Frame::Mapping { entries, key, .. }) => match key.take() {
+            Some(Frame::Mapping {
+                entries,
+                key,
+                merged,
+                ..
+            }) => match key.take() {
                 None if merge => *key = Some(Key::Merge(node.position)),
                 None => *key = Some(Key::Named(node)),
-                Some(Key::Merge(position)) => merge_into(entries, node, position)?,
+                Some(Key::Merge(position)) => merge_into(entries, merged, node, position)?,
                 Some(Key::Named(name)) => {
                     let position = name.position;
-                    insert(entries, key_text(name)?, position, node)?;
+                    let text = key_text(name)?;
+                    // An explicit key wins over a merged one, wherever the merge key is.
+                    if let Some(index) = merged.iter().position(|key| *key == text) {
+                        merged.remove(index);
+                        entries.retain(|entry| entry.key != text);
+                    }
+                    insert(entries, text, position, node)?;
                 }
             },
         }
@@ -271,9 +392,12 @@ fn insert(
     Ok(())
 }
 
-/// Applies a `<<` merge key: a mapping, or a sequence of mappings.
+/// Applies a `<<` merge key: a mapping, or a sequence of mappings. As the YAML merge key type
+/// defines, a merged key does not replace a key the mapping has, and earlier mappings of a
+/// sequence win over later ones.
 fn merge_into(
     entries: &mut Vec<Entry>,
+    merged_keys: &mut Vec<String>,
     source: Node,
     position: Position,
 ) -> Result<(), SyntaxError> {
@@ -289,7 +413,15 @@ fn merge_into(
             });
         };
         for entry in merged {
-            insert(entries, entry.key, position, entry.value)?;
+            if entries.iter().any(|existing| existing.key == entry.key) {
+                continue;
+            }
+            merged_keys.push(entry.key.clone());
+            entries.push(Entry {
+                key: entry.key,
+                position,
+                value: entry.value,
+            });
         }
     }
     Ok(())

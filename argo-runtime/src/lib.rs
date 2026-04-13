@@ -4,6 +4,8 @@
 
 pub mod expr;
 pub mod jsonpath;
+pub mod library;
+mod merge;
 pub mod sprig;
 pub mod tags;
 mod time;

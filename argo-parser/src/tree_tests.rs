@@ -4,7 +4,7 @@
 
 use saphyr_parser::{ScalarStyle, Tag};
 
-use super::{parse_at, parse_documents, resolve};
+use super::{parse_at, parse_documents, parse_yaml, resolve};
 use crate::node::{Node, Position, Value};
 
 fn start() -> Position {
@@ -98,14 +98,22 @@ fn expands_aliases() {
 }
 
 #[test]
-fn rejects_merge_conflicts() {
-    let failure =
-        parse_at("base: &b {x: 1}\nmerged:\n  x: 2\n  <<: *b\n", start()).expect_err("conflict");
-    assert!(
-        failure.message.contains("duplicate key `x`"),
-        "{}",
-        failure.message
-    );
+fn explicit_keys_win_over_merged_keys() {
+    let value = |text: &str| {
+        let node = document(text);
+        node.get("merged")
+            .and_then(|merged| merged.get("x"))
+            .map(|x| x.value.clone())
+    };
+    let base = "base: &b {x: 1, y: 3}\n";
+    let before = value(&format!("{base}merged:\n  x: 2\n  <<: *b\n"));
+    let after = value(&format!("{base}merged:\n  <<: *b\n  x: 2\n"));
+    assert_eq!(before, Some(Value::Integer(2)));
+    assert_eq!(after, Some(Value::Integer(2)));
+    let first = value("a: &a {x: 1}\nb: &b {x: 5}\nmerged:\n  <<: [*a, *b]\n");
+    assert_eq!(first, Some(Value::Integer(1)));
+    // Explicit keys still may not repeat.
+    assert!(parse_at("m:\n  <<: {x: 1}\n  x: 2\n  x: 3\n", start()).is_err());
 }
 
 #[test]
@@ -149,6 +157,30 @@ fn reads_all_documents() {
     assert_eq!(documents[1].position, Position { line: 5, column: 1 });
     // Anchors belong to their own document.
     assert!(parse_documents("a: &x 1\n---\nb: *x\n").is_err());
+}
+
+#[test]
+fn reads_quoted_scalars_indented_like_their_key() {
+    let text = "a:\n  args: [\"\n  echo {{x}};\n  echo \\\"done\\\"\n  \"]\n  b: 'x\n  y'\n";
+    let node = parse_yaml(text)
+        .expect("go-yaml reads it")
+        .expect("a document");
+    let a = node.get("a").expect("a");
+    let Value::Sequence(args) = &a.get("args").expect("args").value else {
+        panic!("a list");
+    };
+    assert_eq!(
+        args[0].value,
+        Value::String(" echo {{x}}; echo \"done\" ".to_owned())
+    );
+    assert_eq!(
+        a.get("b").map(|b| &b.value),
+        Some(&Value::String("x y".to_owned()))
+    );
+    let closed = parse_yaml("a:\n  args: [\"\n  x\n  \"\n  ]\n  b: 1\n")
+        .expect("go-yaml reads it")
+        .expect("a document");
+    assert!(closed.get("a").and_then(|a| a.get("b")).is_some());
 }
 
 #[test]

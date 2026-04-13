@@ -757,3 +757,406 @@ struct Evaluator<'a> {
     /// The element and index of each enclosing closure.
     pointers: Vec<(Value, usize)>,
 }
+
+impl Evaluator<'_> {
+    fn eval(&mut self, expression: &Expr) -> Result<Value> {
+        match expression {
+            Expr::Literal(value) => Ok(value.clone()),
+            Expr::Array(items) => Ok(Value::Array(
+                items
+                    .iter()
+                    .map(|item| self.eval(item))
+                    .collect::<Result<_>>()?,
+            )),
+            Expr::Map(entries) => {
+                let mut map = BTreeMap::new();
+                for (key, value) in entries {
+                    let key = match self.eval(key)? {
+                        Value::String(text) => text,
+                        other => other.to_go_string(),
+                    };
+                    map.insert(key, self.eval(value)?);
+                }
+                Ok(Value::Map(map))
+            }
+            Expr::Ident(name) => self.lookup(name),
+            Expr::Pointer(name) => {
+                let Some((element, index)) = self.pointers.last() else {
+                    return Err(ExprError::new("`#` outside of a closure"));
+                };
+                match name.as_deref() {
+                    None => Ok(element.clone()),
+                    Some("index") => Ok(Value::Int(*index as i64)),
+                    Some(other) => Err(ExprError::new(format!("unknown pointer #{other}"))),
+                }
+            }
+            Expr::Member {
+                object,
+                property,
+                optional,
+            } => {
+                let object = self.eval(object)?;
+                let property = self.eval(property)?;
+                member(&object, &property, *optional)
+            }
+            Expr::Slice { object, from, to } => {
+                let object = self.eval(object)?;
+                let from = match from {
+                    Some(from) => Some(self.eval(from)?),
+                    None => None,
+                };
+                let to = match to {
+                    Some(to) => Some(self.eval(to)?),
+                    None => None,
+                };
+                slice(&object, from.as_ref(), to.as_ref())
+            }
+            Expr::Call { callee, arguments } => self.call(callee, arguments),
+            Expr::Closure(_) => Err(ExprError::new("a closure can only be a predicate")),
+            Expr::Unary(operator, operand) => {
+                let value = self.eval(operand)?;
+                match (*operator, value) {
+                    ("!", Value::Bool(flag)) => Ok(Value::Bool(!flag)),
+                    ("-", Value::Int(number)) => Ok(Value::Int(number.wrapping_neg())),
+                    ("-", Value::Float(number)) => Ok(Value::Float(-number)),
+                    ("+", value @ (Value::Int(_) | Value::Float(_))) => Ok(value),
+                    (operator, value) => Err(ExprError::new(format!(
+                        "invalid operation: {operator}({})",
+                        value.type_name()
+                    ))),
+                }
+            }
+            Expr::Binary(operator, left, right) => self.binary(operator, left, right),
+            Expr::Conditional(condition, then, otherwise) => match self.eval(condition)? {
+                Value::Bool(true) => self.eval(then),
+                Value::Bool(false) => self.eval(otherwise),
+                other => Err(ExprError::new(format!(
+                    "non-bool expression (type {}) used as condition",
+                    other.type_name()
+                ))),
+            },
+            Expr::Let(name, value, body) => {
+                let value = self.eval(value)?;
+                self.locals.push((name.clone(), value));
+                let result = self.eval(body);
+                self.locals.pop();
+                result
+            }
+        }
+    }
+
+    fn lookup(&self, name: &str) -> Result<Value> {
+        if let Some((_, value)) = self.locals.iter().rev().find(|(local, _)| local == name) {
+            return Ok(value.clone());
+        }
+        self.env
+            .get(name)
+            .cloned()
+            .ok_or_else(|| ExprError::new(format!("unknown name {name}")))
+    }
+
+    fn binary(&mut self, operator: &str, left: &Expr, right: &Expr) -> Result<Value> {
+        match operator {
+            "or" | "||" | "and" | "&&" => {
+                let or = matches!(operator, "or" | "||");
+                let Value::Bool(first) = self.eval(left)? else {
+                    return Err(ExprError::new(format!(
+                        "invalid operation: {operator} needs booleans"
+                    )));
+                };
+                if first == or {
+                    return Ok(Value::Bool(first));
+                }
+                match self.eval(right)? {
+                    Value::Bool(second) => Ok(Value::Bool(second)),
+                    _ => Err(ExprError::new(format!(
+                        "invalid operation: {operator} needs booleans"
+                    ))),
+                }
+            }
+            "??" => match self.eval(left) {
+                Ok(Value::Nil) | Err(_) => self.eval(right),
+                Ok(value) => Ok(value),
+            },
+            _ => {
+                let left = self.eval(left)?;
+                let right = self.eval(right)?;
+                binary(operator, &left, &right)
+            }
+        }
+    }
+
+    fn call(&mut self, callee: &Callee, arguments: &[Expr]) -> Result<Value> {
+        let name = match callee {
+            Callee::Function(name) => name.as_str(),
+            Callee::Method(object, name) => {
+                if matches!(object.as_ref(), Expr::Ident(base) if base == "sprig")
+                    && !self.env.contains_key("sprig")
+                {
+                    let values = arguments
+                        .iter()
+                        .map(|argument| self.eval(argument))
+                        .collect::<Result<Vec<_>>>()?;
+                    return sprig::call(name, values);
+                }
+                return Err(ExprError::new(format!("method {name} is not supported")));
+            }
+        };
+        if PREDICATES.contains(&name) {
+            return self.predicate(name, arguments);
+        }
+        let values = arguments
+            .iter()
+            .map(|argument| self.eval(argument))
+            .collect::<Result<Vec<_>>>()?;
+        builtin(name, values)
+    }
+
+    fn predicate(&mut self, name: &str, arguments: &[Expr]) -> Result<Value> {
+        let (Some(first), Some(Expr::Closure(body))) = (arguments.first(), arguments.get(1)) else {
+            return match name {
+                "count" | "sum" if arguments.len() == 1 => {
+                    let value = self.eval(&arguments[0])?;
+                    let items = array(&value, name)?;
+                    if name == "count" {
+                        Ok(Value::Int(
+                            items
+                                .iter()
+                                .filter(|item| **item == Value::Bool(true))
+                                .count() as i64,
+                        ))
+                    } else {
+                        items
+                            .iter()
+                            .try_fold(Value::Int(0), |total, item| binary("+", &total, item))
+                    }
+                }
+                _ => Err(ExprError::new(format!(
+                    "{name} needs an array and a closure"
+                ))),
+            };
+        };
+        let collection = self.eval(first)?;
+        let items = array(&collection, name)?.to_vec();
+        let mut results = Vec::with_capacity(items.len());
+        for (index, item) in items.iter().enumerate() {
+            self.pointers.push((item.clone(), index));
+            let result = self.eval(body);
+            self.pointers.pop();
+            results.push(result?);
+        }
+        let flag = |value: &Value| match value {
+            Value::Bool(flag) => Ok(*flag),
+            other => Err(ExprError::new(format!(
+                "{name}: the predicate gave {} instead of a boolean",
+                other.type_name()
+            ))),
+        };
+        let flags = || results.iter().map(flag).collect::<Result<Vec<bool>>>();
+        Ok(match name {
+            "all" => Value::Bool(flags()?.iter().all(|flag| *flag)),
+            "any" => Value::Bool(flags()?.iter().any(|flag| *flag)),
+            "none" => Value::Bool(!flags()?.iter().any(|flag| *flag)),
+            "one" => Value::Bool(flags()?.iter().filter(|flag| **flag).count() == 1),
+            "count" => Value::Int(flags()?.iter().filter(|flag| **flag).count() as i64),
+            "filter" => Value::Array(
+                items
+                    .into_iter()
+                    .zip(flags()?)
+                    .filter(|(_, keep)| *keep)
+                    .map(|(item, _)| item)
+                    .collect(),
+            ),
+            "map" => Value::Array(results),
+            "sum" => results
+                .iter()
+                .try_fold(Value::Int(0), |total, item| binary("+", &total, item))?,
+            "find" | "findLast" | "findIndex" | "findLastIndex" => {
+                let flags = flags()?;
+                let position = if name.starts_with("findLast") {
+                    flags.iter().rposition(|flag| *flag)
+                } else {
+                    flags.iter().position(|flag| *flag)
+                };
+                match (name.ends_with("Index"), position) {
+                    (true, Some(index)) => Value::Int(index as i64),
+                    (true, None) => Value::Int(-1),
+                    (false, Some(index)) => items[index].clone(),
+                    (false, None) => Value::Nil,
+                }
+            }
+            "groupBy" => {
+                let mut groups: BTreeMap<String, Value> = BTreeMap::new();
+                for (item, key) in items.into_iter().zip(results) {
+                    let key = match key {
+                        Value::String(text) => text,
+                        other => other.to_go_string(),
+                    };
+                    if let Value::Array(group) = groups
+                        .entry(key)
+                        .or_insert_with(|| Value::Array(Vec::new()))
+                    {
+                        group.push(item);
+                    }
+                }
+                Value::Map(groups)
+            }
+            "sortBy" => {
+                let mut pairs: Vec<(Value, Value)> = results.into_iter().zip(items).collect();
+                let mut failure = None;
+                pairs.sort_by(|(a, _), (b, _)| {
+                    compare(a, b).unwrap_or_else(|error| {
+                        failure = Some(error);
+                        std::cmp::Ordering::Equal
+                    })
+                });
+                if let Some(error) = failure {
+                    return Err(error);
+                }
+                Value::Array(pairs.into_iter().map(|(_, item)| item).collect())
+            }
+            _ => return Err(ExprError::new(format!("{name} is not supported"))),
+        })
+    }
+}
+
+fn array<'a>(value: &'a Value, name: &str) -> Result<&'a [Value]> {
+    match value {
+        Value::Array(items) => Ok(items),
+        Value::Nil => Ok(&[]),
+        other => Err(ExprError::new(format!(
+            "{name}: expected an array, got {}",
+            other.type_name()
+        ))),
+    }
+}
+
+fn member(object: &Value, property: &Value, optional: bool) -> Result<Value> {
+    match (object, property) {
+        (Value::Nil, _) if optional => Ok(Value::Nil),
+        (Value::Map(map), Value::String(key)) => Ok(map.get(key).cloned().unwrap_or(Value::Nil)),
+        (Value::Map(map), other) => Ok(map
+            .get(&other.to_go_string())
+            .cloned()
+            .unwrap_or(Value::Nil)),
+        (Value::Array(items), index) => {
+            let index = integer(index)?;
+            let position = if index < 0 {
+                items.len() as i64 + index
+            } else {
+                index
+            };
+            items
+                .get(usize::try_from(position).unwrap_or(usize::MAX))
+                .cloned()
+                .ok_or_else(|| {
+                    ExprError::new(format!(
+                        "index out of range: {index} (array length is {})",
+                        items.len()
+                    ))
+                })
+        }
+        (Value::String(text), index) => {
+            let characters: Vec<char> = text.chars().collect();
+            let index = integer(index)?;
+            let position = if index < 0 {
+                characters.len() as i64 + index
+            } else {
+                index
+            };
+            characters
+                .get(usize::try_from(position).unwrap_or(usize::MAX))
+                .map(|character| Value::String(character.to_string()))
+                .ok_or_else(|| ExprError::new(format!("index out of range: {index}")))
+        }
+        (object, property) => Err(ExprError::new(format!(
+            "cannot fetch {} from {}",
+            property.to_go_string(),
+            object.type_name()
+        ))),
+    }
+}
+
+fn integer(value: &Value) -> Result<i64> {
+    match value {
+        Value::Int(number) => Ok(*number),
+        Value::Float(number) if number.fract() == 0.0 => Ok(*number as i64),
+        other => Err(ExprError::new(format!(
+            "cannot use {} as an index",
+            other.type_name()
+        ))),
+    }
+}
+
+fn slice(object: &Value, from: Option<&Value>, to: Option<&Value>) -> Result<Value> {
+    let length = match object {
+        Value::Array(items) => items.len(),
+        Value::String(text) => text.chars().count(),
+        other => {
+            return Err(ExprError::new(format!(
+                "cannot slice {}",
+                other.type_name()
+            )));
+        }
+    } as i64;
+    let bound = |value: Option<&Value>, default: i64| -> Result<usize> {
+        let index = match value {
+            Some(value) => integer(value)?,
+            None => default,
+        };
+        let index = if index < 0 { length + index } else { index };
+        Ok(index.clamp(0, length) as usize)
+    };
+    let start = bound(from, 0)?;
+    let end = bound(to, length)?.max(start);
+    Ok(match object {
+        Value::Array(items) => Value::Array(items[start..end].to_vec()),
+        Value::String(text) => Value::String(text.chars().skip(start).take(end - start).collect()),
+        _ => Value::Nil,
+    })
+}
+
+fn number(value: &Value) -> Option<f64> {
+    match value {
+        Value::Int(number) => Some(*number as f64),
+        Value::Float(number) => Some(*number),
+        _ => None,
+    }
+}
+
+/// Equality as expr's `runtime.Equal`: numbers compare by value across int and float.
+pub fn equal(left: &Value, right: &Value) -> bool {
+    match (left, right) {
+        (Value::Int(a), Value::Int(b)) => a == b,
+        (Value::Int(_) | Value::Float(_), Value::Int(_) | Value::Float(_)) => {
+            number(left) == number(right)
+        }
+        (Value::Array(a), Value::Array(b)) => {
+            a.len() == b.len() && a.iter().zip(b).all(|(a, b)| equal(a, b))
+        }
+        (Value::Map(a), Value::Map(b)) => {
+            a.len() == b.len()
+                && a.iter()
+                    .zip(b)
+                    .all(|((ka, va), (kb, vb))| ka == kb && equal(va, vb))
+        }
+        _ => left == right,
+    }
+}
+
+fn compare(left: &Value, right: &Value) -> Result<std::cmp::Ordering> {
+    match (left, right) {
+        (Value::Int(a), Value::Int(b)) => Ok(a.cmp(b)),
+        (Value::String(a), Value::String(b)) => Ok(a.cmp(b)),
+        _ => match (number(left), number(right)) {
+            (Some(a), Some(b)) => a
+                .partial_cmp(&b)
+                .ok_or_else(|| ExprError::new("cannot compare NaN")),
+            _ => Err(ExprError::new(format!(
+                "invalid operation: cannot compare {} and {}",
+                left.type_name(),
+                right.type_name()
+            ))),
+        },
+    }
+}

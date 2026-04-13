@@ -433,3 +433,327 @@ struct Parser {
     /// How many closures enclose the current position, where `#` and `.name` are allowed.
     depth: usize,
 }
+
+impl Parser {
+    fn peek(&self) -> &Token {
+        &self.tokens[self.position.min(self.tokens.len() - 1)]
+    }
+
+    fn peek_at(&self, offset: usize) -> &Token {
+        &self.tokens[(self.position + offset).min(self.tokens.len() - 1)]
+    }
+
+    fn next(&mut self) -> Token {
+        let token = self.peek().clone();
+        if self.position < self.tokens.len() {
+            self.position += 1;
+        }
+        token
+    }
+
+    fn is_op(&self, operator: &str) -> bool {
+        matches!(self.peek(), Token::Op(op) if *op == operator)
+    }
+
+    fn eat_op(&mut self, operator: &str) -> bool {
+        let found = self.is_op(operator);
+        if found {
+            self.position += 1;
+        }
+        found
+    }
+
+    fn expect_op(&mut self, operator: &str) -> Result<()> {
+        if self.eat_op(operator) {
+            Ok(())
+        } else {
+            Err(ExprError::new(format!(
+                "expected `{operator}`, found {:?}",
+                self.peek()
+            )))
+        }
+    }
+
+    fn expression(&mut self, precedence: u16) -> Result<Expr> {
+        if precedence == 0 && matches!(self.peek(), Token::Ident(word) if word == "let") {
+            return self.let_binding();
+        }
+        let mut left = self.primary()?;
+        loop {
+            let (operator, negate) = match self.peek().clone() {
+                Token::Op(op) if binary_precedence(op).is_some() => (op.to_owned(), false),
+                Token::Ident(word) if WORD_OPERATORS.contains(&word.as_str()) => (word, false),
+                Token::Ident(word) if word == "not" => match self.peek_at(1) {
+                    Token::Ident(next)
+                        if ["in", "matches", "contains", "startsWith", "endsWith"]
+                            .contains(&next.as_str()) =>
+                    {
+                        (next.clone(), true)
+                    }
+                    _ => break,
+                },
+                _ => break,
+            };
+            let Some((operator_precedence, right)) = binary_precedence(&operator) else {
+                break;
+            };
+            if operator_precedence < precedence {
+                break;
+            }
+            self.position += if negate { 2 } else { 1 };
+            if operator == "|" {
+                let Token::Ident(name) = self.next() else {
+                    return Err(ExprError::new("expected a function name after `|`"));
+                };
+                let mut arguments = vec![left];
+                if self.is_op("(") {
+                    arguments.extend(self.arguments(&name, 1)?);
+                }
+                left = Expr::Call {
+                    callee: Callee::Function(name),
+                    arguments,
+                };
+                continue;
+            }
+            let right = if right {
+                self.expression(operator_precedence)?
+            } else {
+                self.expression(operator_precedence + 1)?
+            };
+            left = Expr::Binary(operator, Box::new(left), Box::new(right));
+            if negate {
+                left = Expr::Unary("!", Box::new(left));
+            }
+        }
+        if precedence == 0 {
+            while self.eat_op("?") {
+                let then = self.expression(0)?;
+                self.expect_op(":")?;
+                let otherwise = self.expression(0)?;
+                left = Expr::Conditional(Box::new(left), Box::new(then), Box::new(otherwise));
+            }
+        }
+        Ok(left)
+    }
+
+    fn let_binding(&mut self) -> Result<Expr> {
+        self.next();
+        let Token::Ident(name) = self.next() else {
+            return Err(ExprError::new("expected a name after `let`"));
+        };
+        self.expect_op("=")?;
+        let value = self.expression(0)?;
+        self.expect_op(";")?;
+        let body = self.expression(0)?;
+        Ok(Expr::Let(name, Box::new(value), Box::new(body)))
+    }
+
+    fn primary(&mut self) -> Result<Expr> {
+        match self.peek().clone() {
+            Token::Op("!") => {
+                self.next();
+                let operand = self.expression(50)?;
+                self.postfix(Expr::Unary("!", Box::new(operand)))
+            }
+            Token::Ident(word) if word == "not" => {
+                self.next();
+                let operand = self.expression(50)?;
+                self.postfix(Expr::Unary("!", Box::new(operand)))
+            }
+            Token::Op(op @ ("-" | "+")) => {
+                self.next();
+                let operand = self.expression(90)?;
+                self.postfix(Expr::Unary(op, Box::new(operand)))
+            }
+            Token::Op("(") => {
+                self.next();
+                let inner = self.expression(0)?;
+                self.expect_op(")")?;
+                self.postfix(inner)
+            }
+            Token::Op("#") if self.depth > 0 => {
+                self.next();
+                let name = match self.peek().clone() {
+                    Token::Ident(name) => {
+                        self.next();
+                        Some(name)
+                    }
+                    _ => None,
+                };
+                self.postfix(Expr::Pointer(name))
+            }
+            Token::Op(".") if self.depth > 0 => self.postfix(Expr::Pointer(None)),
+            _ => self.secondary(),
+        }
+    }
+
+    fn secondary(&mut self) -> Result<Expr> {
+        let node = match self.next() {
+            Token::Ident(name) => match name.as_str() {
+                "true" => Expr::Literal(Value::Bool(true)),
+                "false" => Expr::Literal(Value::Bool(false)),
+                "nil" => Expr::Literal(Value::Nil),
+                _ if self.is_op("(") => {
+                    let arguments = self.arguments(&name, 0)?;
+                    Expr::Call {
+                        callee: Callee::Function(name),
+                        arguments,
+                    }
+                }
+                _ => Expr::Ident(name),
+            },
+            Token::Int(number) => Expr::Literal(Value::Int(number)),
+            Token::Float(number) => Expr::Literal(Value::Float(number)),
+            Token::Str(text) => Expr::Literal(Value::String(text)),
+            Token::Op("[") => {
+                let mut items = Vec::new();
+                while !self.is_op("]") {
+                    items.push(self.expression(0)?);
+                    if !self.eat_op(",") {
+                        break;
+                    }
+                }
+                self.expect_op("]")?;
+                Expr::Array(items)
+            }
+            Token::Op("{") => {
+                let mut entries = Vec::new();
+                while !self.is_op("}") {
+                    let key = match self.next() {
+                        Token::Ident(name) => Expr::Literal(Value::String(name)),
+                        Token::Str(text) => Expr::Literal(Value::String(text)),
+                        Token::Int(number) => Expr::Literal(Value::String(number.to_string())),
+                        Token::Op("(") => {
+                            let key = self.expression(0)?;
+                            self.expect_op(")")?;
+                            key
+                        }
+                        other => {
+                            return Err(ExprError::new(format!("unexpected map key {other:?}")));
+                        }
+                    };
+                    self.expect_op(":")?;
+                    entries.push((key, self.expression(0)?));
+                    if !self.eat_op(",") {
+                        break;
+                    }
+                }
+                self.expect_op("}")?;
+                Expr::Map(entries)
+            }
+            other => return Err(ExprError::new(format!("unexpected token {other:?}"))),
+        };
+        self.postfix(node)
+    }
+
+    /// The arguments of a call, from `(` to `)`. `skipped` counts arguments already given,
+    /// like the left side of a pipe.
+    fn arguments(&mut self, name: &str, skipped: usize) -> Result<Vec<Expr>> {
+        self.expect_op("(")?;
+        let mut arguments = Vec::new();
+        while !self.is_op(")") {
+            let index = arguments.len() + skipped;
+            if PREDICATES.contains(&name) && index == 1 {
+                self.depth += 1;
+                let body = if self.eat_op("{") {
+                    let body = self.expression(0)?;
+                    self.expect_op("}")?;
+                    body
+                } else {
+                    self.expression(0)?
+                };
+                self.depth -= 1;
+                arguments.push(Expr::Closure(Box::new(body)));
+            } else {
+                arguments.push(self.expression(0)?);
+            }
+            if !self.eat_op(",") {
+                break;
+            }
+        }
+        self.expect_op(")")?;
+        Ok(arguments)
+    }
+
+    fn postfix(&mut self, mut node: Expr) -> Result<Expr> {
+        loop {
+            if self.is_op(".") || self.is_op("?.") {
+                let optional = self.is_op("?.");
+                self.next();
+                if optional && self.is_op("[") {
+                    node = self.index(node, true)?;
+                    continue;
+                }
+                let name = match self.next() {
+                    Token::Ident(name) => name,
+                    other => {
+                        return Err(ExprError::new(format!(
+                            "expected a name after `.`, found {other:?}"
+                        )));
+                    }
+                };
+                if self.is_op("(") {
+                    let arguments = self.arguments(&name, 0)?;
+                    node = Expr::Call {
+                        callee: Callee::Method(Box::new(node), name),
+                        arguments,
+                    };
+                } else {
+                    node = Expr::Member {
+                        object: Box::new(node),
+                        property: Box::new(Expr::Literal(Value::String(name))),
+                        optional,
+                    };
+                }
+            } else if self.is_op("[") {
+                node = self.index(node, false)?;
+            } else {
+                return Ok(node);
+            }
+        }
+    }
+
+    fn index(&mut self, object: Expr, optional: bool) -> Result<Expr> {
+        self.expect_op("[")?;
+        if self.eat_op(":") {
+            let to = if self.is_op("]") {
+                None
+            } else {
+                Some(Box::new(self.expression(0)?))
+            };
+            self.expect_op("]")?;
+            return Ok(Expr::Slice {
+                object: Box::new(object),
+                from: None,
+                to,
+            });
+        }
+        let index = self.expression(0)?;
+        if self.eat_op(":") {
+            let to = if self.is_op("]") {
+                None
+            } else {
+                Some(Box::new(self.expression(0)?))
+            };
+            self.expect_op("]")?;
+            return Ok(Expr::Slice {
+                object: Box::new(object),
+                from: Some(Box::new(index)),
+                to,
+            });
+        }
+        self.expect_op("]")?;
+        Ok(Expr::Member {
+            object: Box::new(object),
+            property: Box::new(index),
+            optional,
+        })
+    }
+}
+
+struct Evaluator<'a> {
+    env: &'a BTreeMap<String, Value>,
+    locals: Vec<(String, Value)>,
+    /// The element and index of each enclosing closure.
+    pointers: Vec<(Value, usize)>,
+}

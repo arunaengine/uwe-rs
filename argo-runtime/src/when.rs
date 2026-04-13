@@ -390,3 +390,109 @@ fn evaluate(expression: &Expression) -> Result<Operand> {
         Expression::Binary(op, left, right) => binary(op, left, right)?,
     })
 }
+
+fn binary(op: &str, left: &Expression, right: &Expression) -> Result<Operand> {
+    if op == "&&" || op == "||" {
+        let flag = |value: Operand| match value {
+            Operand::Bool(flag) => Ok(flag),
+            other => Err(format!(
+                "value '{}' cannot be used with the logical operator '{op}', it is not a bool",
+                other.text()
+            )),
+        };
+        let first = flag(evaluate(left)?)?;
+        if (op == "&&" && !first) || (op == "||" && first) {
+            return Ok(Operand::Bool(first));
+        }
+        return Ok(Operand::Bool(flag(evaluate(right)?)?));
+    }
+    let left = evaluate(left)?;
+    let right = evaluate(right)?;
+    if op == "??" {
+        return Ok(if left == Operand::Missing {
+            right
+        } else {
+            left
+        });
+    }
+    let plain = |value: &Operand| match value {
+        Operand::Missing => Operand::Str(String::new()),
+        other => other.clone(),
+    };
+    Ok(match op {
+        "==" => Operand::Bool(plain(&left) == plain(&right)),
+        "!=" => Operand::Bool(plain(&left) != plain(&right)),
+        ">" | ">=" | "<" | "<=" => {
+            if left == Operand::Missing || right == Operand::Missing {
+                return Ok(Operand::Bool(false));
+            }
+            let order = match (&left, &right) {
+                (Operand::Number(a), Operand::Number(b)) => a.partial_cmp(b),
+                (Operand::Str(a), Operand::Str(b)) => Some(a.cmp(b)),
+                _ => {
+                    return Err(format!(
+                        "value '{}' cannot be used with the comparator '{op}', it is not a number",
+                        left.text()
+                    ));
+                }
+            };
+            let Some(order) = order else {
+                return Ok(Operand::Bool(false));
+            };
+            Operand::Bool(match op {
+                ">" => order.is_gt(),
+                ">=" => order.is_ge(),
+                "<" => order.is_lt(),
+                _ => order.is_le(),
+            })
+        }
+        "=~" | "!~" => {
+            let (Operand::Str(text), Operand::Str(pattern)) = (plain(&left), plain(&right)) else {
+                return Err(format!(
+                    "value '{}' cannot be used with '{op}'",
+                    left.text()
+                ));
+            };
+            let matched = regex::Regex::new(&pattern)
+                .map_err(|error| error.to_string())?
+                .is_match(&text);
+            Operand::Bool(matched == (op == "=~"))
+        }
+        "in" => match right {
+            Operand::List(items) => Operand::Bool(items.contains(&plain(&left))),
+            other => Operand::Bool(plain(&left) == plain(&other)),
+        },
+        "+" => match (&left, &right) {
+            (Operand::Number(a), Operand::Number(b)) => Operand::Number(a + b),
+            (Operand::Str(_), _) | (_, Operand::Str(_)) => {
+                Operand::Str(format!("{}{}", left.text(), right.text()))
+            }
+            _ => return Err(format!("value '{}' cannot be used with '+'", left.text())),
+        },
+        _ => {
+            let (Operand::Number(a), Operand::Number(b)) = (&left, &right) else {
+                return Err(format!(
+                    "value '{}' cannot be used with the modifier '{op}', it is not a number",
+                    left.text()
+                ));
+            };
+            Operand::Number(match op {
+                "-" => a - b,
+                "*" => a * b,
+                "/" => a / b,
+                "%" => a % b,
+                "**" => a.powf(*b),
+                "&" => ((*a as i64) & (*b as i64)) as f64,
+                "|" => ((*a as i64) | (*b as i64)) as f64,
+                "^" => ((*a as i64) ^ (*b as i64)) as f64,
+                "<<" => (*a as i64).wrapping_shl(*b as u32) as f64,
+                ">>" => (*a as i64).wrapping_shr(*b as u32) as f64,
+                _ => return Err(format!("unknown operator '{op}'")),
+            })
+        }
+    })
+}
+
+#[cfg(test)]
+#[path = "when_tests.rs"]
+mod tests;

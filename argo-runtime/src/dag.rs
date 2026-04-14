@@ -320,4 +320,441 @@ impl Run {
         }
         tasks
     }
+
+    fn execute_dag_task(
+        &mut self,
+        dag: usize,
+        processed: &Rc<Processed>,
+        tasks: &[DagTask],
+        name: &str,
+        visited: &mut HashSet<String>,
+    ) -> Result<()> {
+        if !visited.insert(name.to_owned()) {
+            return Ok(());
+        }
+        let Some(task) = tasks.iter().find(|task| task.name == name).cloned() else {
+            return Ok(());
+        };
+        let dag_name = self.nodes[dag].name.clone();
+        let node_name = format!("{dag_name}.{name}");
+        let context = Rc::clone(&processed.context);
+        let prefix = format!("tasks.{name}");
+        if let Some(&node) = self.names.get(&node_name) {
+            if !self.nodes[node].phase.fulfilled() {
+                self.reenter(node)?;
+                self.update_task_group(node);
+            }
+            if let Some(expanded) = self.nodes[node].expanded.clone() {
+                self.task_hooks(node, &expanded, &context, &prefix, dag, tasks)?;
+            }
+            return Ok(());
+        }
+        let deps = dependencies(&task, tasks);
+        let mut complete = true;
+        for dependency in &deps.names {
+            let done = self
+                .names
+                .get(&format!("{dag_name}.{dependency}"))
+                .is_some_and(|&node| {
+                    let status = &self.nodes[node];
+                    status.phase.fulfilled()
+                        && status
+                            .exit_hook
+                            .is_none_or(|exit| self.nodes[exit].phase.fulfilled())
+                        && status
+                            .hooks
+                            .iter()
+                            .all(|&hook| self.nodes[hook].phase.fulfilled())
+                });
+            if !done {
+                complete = false;
+                self.execute_dag_task(dag, processed, tasks, dependency, visited)?;
+            }
+        }
+        if !complete {
+            return Ok(());
+        }
+        let depth = self.nodes[dag].depth;
+        let mut inbound: Vec<TaskId> = Vec::new();
+        for dependency in &deps.names {
+            if let Some(&node) = self.names.get(&format!("{dag_name}.{dependency}")) {
+                for id in self.outbound(node) {
+                    if !inbound.contains(&id) {
+                        inbound.push(id);
+                    }
+                }
+            }
+        }
+        if deps.names.is_empty() {
+            inbound = self.nodes[dag].inbound.clone();
+        }
+        let call = Call {
+            boundary: Some(dag),
+            inbound,
+            depth: depth + 1,
+        };
+        // Whether the task runs, by the results of its dependencies.
+        match self.evaluate_depends(dag, &deps) {
+            Err(message) => {
+                let node = self.end_node(&node_name, Phase::Error, &call, message);
+                self.add_child(dag, node);
+                return Ok(());
+            }
+            Ok(false) => {
+                let node = self.end_node(
+                    &node_name,
+                    Phase::Omitted,
+                    &call,
+                    "omitted: depends condition not met".to_owned(),
+                );
+                let task_holder = holder(&task.template, task.template_ref.as_ref(), None);
+                self.skipped_outputs(node, &task_holder, &context, false);
+                self.add_child(dag, node);
+                return Ok(());
+            }
+            Ok(true) => {}
+        }
+        // The scope of the task: the DAG's inputs and what its ancestors made.
+        let mut scope = Scope::of_template(processed);
+        let mut ancestors = Vec::new();
+        ancestry(name, tasks, &mut ancestors);
+        for ancestor in ancestors
+            .iter()
+            .filter(|ancestor| ancestor.as_str() != name)
+        {
+            if let Some(&node) = self.names.get(&format!("{dag_name}.{ancestor}")) {
+                self.task_scope(&mut scope, ancestor, node);
+            }
+        }
+        let (expanded, group) = match self.expand_task(processed, &task, &scope) {
+            Expansion::Ended(phase, message) => {
+                let node = self.end_node(&node_name, phase, &call, message);
+                self.add_child(dag, node);
+                return Ok(());
+            }
+            Expansion::Empty(task_holder) => {
+                let node = self.empty_loop(&node_name, &task_holder, &context, &call);
+                self.add_child(dag, node);
+                return Ok(());
+            }
+            Expansion::Single(entry) => (Rc::new(vec![*entry]), None),
+            Expansion::Loop(entries) => {
+                let group = self.new_node(&node_name, NodeKind::TaskGroup, "", &call);
+                self.add_child(dag, group);
+                (Rc::new(entries), Some(group))
+            }
+        };
+        for entry in expanded.iter() {
+            let child_name = format!("{dag_name}.{}", entry.name);
+            let child_call = Call {
+                boundary: Some(dag),
+                inbound: call.inbound.clone(),
+                depth: call.depth,
+            };
+            let child = if let Some(error) = &entry.error {
+                self.end_node(&child_name, Phase::Error, &child_call, error.clone())
+            } else {
+                match self.decide_when(&entry.when, &child_name) {
+                    Err(message) => self.end_node(&child_name, Phase::Error, &child_call, message),
+                    Ok(false) => {
+                        let child = self.end_node(
+                            &child_name,
+                            Phase::Skipped,
+                            &child_call,
+                            format!("when '{}' evaluated false", entry.when),
+                        );
+                        self.skipped_outputs(child, &entry.holder, &context, false);
+                        child
+                    }
+                    Ok(true) => self.execute_template(
+                        &child_name,
+                        &entry.holder,
+                        &context,
+                        &entry.args,
+                        &child_call,
+                    )?,
+                }
+            };
+            match group {
+                Some(group) => self.add_child(group, child),
+                None => self.add_child(dag, child),
+            }
+        }
+        let node = group.unwrap_or_else(|| self.names[&node_name]);
+        self.nodes[node].expanded = Some(Rc::clone(&expanded));
+        if let Some(group) = group {
+            self.update_task_group(group);
+        }
+        self.task_hooks(node, &expanded, &context, &prefix, dag, tasks)?;
+        Ok(())
+    }
+
+    /// Runs the lifecycle and exit hooks of a task.
+    fn task_hooks(
+        &mut self,
+        node: usize,
+        expanded: &Rc<Vec<crate::run::Expanded>>,
+        context: &Rc<crate::run::Context>,
+        prefix: &str,
+        dag: usize,
+        tasks: &[DagTask],
+    ) -> Result<()> {
+        let Some(entry) = expanded.first() else {
+            return Ok(());
+        };
+        if entry.hooks.is_empty() && entry.on_exit.is_empty() {
+            return Ok(());
+        }
+        let processed = self.nodes[dag].processed.clone();
+        let mut scope = processed
+            .as_ref()
+            .map(|processed| Scope::of_template(processed))
+            .unwrap_or_default();
+        let dag_name = self.nodes[dag].name.clone();
+        let mut ancestors = Vec::new();
+        ancestry(base_name(&entry.name), tasks, &mut ancestors);
+        for ancestor in &ancestors {
+            if let Some(&ancestor_node) = self.names.get(&format!("{dag_name}.{ancestor}")) {
+                self.task_scope(&mut scope, ancestor, ancestor_node);
+            }
+        }
+        self.lifecycle_hooks(node, &entry.hooks, &scope, prefix, context)?;
+        if self.nodes[node].phase.fulfilled() {
+            let hook = exit_hook(entry);
+            self.exit_hook(node, hook.as_ref(), &scope, prefix, context)?;
+        }
+        Ok(())
+    }
+
+    /// Ends a task group when its tasks ended: failed when one failed and does not continue.
+    fn update_task_group(&mut self, group: usize) {
+        if self.nodes[group].kind != NodeKind::TaskGroup || self.nodes[group].phase.fulfilled() {
+            return;
+        }
+        let expanded = self.nodes[group].expanded.clone();
+        let mut phase = Phase::Succeeded;
+        for &child in &self.nodes[group].children {
+            let status = &self.nodes[child];
+            if !status.phase.fulfilled() {
+                return;
+            }
+            if status.phase.failed_or_error() {
+                let continue_on = expanded
+                    .as_ref()
+                    .and_then(|expanded| expanded.first())
+                    .map_or((false, false), |entry| entry.continue_on);
+                let continues = match status.phase {
+                    Phase::Failed => continue_on.1,
+                    _ => continue_on.0,
+                };
+                if !continues {
+                    phase = status.phase;
+                }
+            }
+        }
+        self.set_phase(group, phase, String::new());
+    }
+
+    /// Whether a task runs, by its `depends` expression over the results of its dependencies.
+    fn evaluate_depends(
+        &mut self,
+        dag: usize,
+        deps: &Dependencies,
+    ) -> std::result::Result<bool, String> {
+        if deps.names.is_empty() {
+            return Ok(true);
+        }
+        let dag_name = self.nodes[dag].name.clone();
+        let mut env = BTreeMap::new();
+        for name in &deps.names {
+            let Some(&node) = self.names.get(&format!("{dag_name}.{name}")) else {
+                return Err(format!("dependency {name} has not run"));
+            };
+            let status = &self.nodes[node];
+            let (any_succeeded, all_failed) = if status.kind == NodeKind::TaskGroup {
+                let phases: Vec<Phase> = status
+                    .children
+                    .iter()
+                    .map(|&child| self.nodes[child].phase)
+                    .collect();
+                (
+                    phases.contains(&Phase::Succeeded),
+                    !phases.is_empty() && phases.iter().all(|phase| *phase == Phase::Failed),
+                )
+            } else {
+                (false, false)
+            };
+            let results: BTreeMap<String, Value> = [
+                ("Succeeded", status.phase == Phase::Succeeded),
+                ("Failed", status.phase == Phase::Failed),
+                ("Errored", status.phase == Phase::Error),
+                ("Skipped", status.phase == Phase::Skipped),
+                ("Omitted", status.phase == Phase::Omitted),
+                (
+                    "Daemoned",
+                    status.daemoned && status.phase != Phase::Pending,
+                ),
+                ("AnySucceeded", any_succeeded),
+                ("AllFailed", all_failed),
+            ]
+            .into_iter()
+            .map(|(key, flag)| (key.to_owned(), Value::Bool(flag)))
+            .collect();
+            env.insert(name.replace('-', "_"), Value::Map(results));
+        }
+        let logic = deps.logic.replace('-', "_");
+        crate::expr::evaluate_bool(&logic, &env)
+            .map_err(|error| format!("unable to evaluate expression '{logic}': {error}"))
+    }
+
+    /// Substitutes a task with its scope, resolves its artifacts and expands its loop.
+    fn expand_task(
+        &mut self,
+        processed: &Rc<Processed>,
+        task: &DagTask,
+        scope: &Scope,
+    ) -> Expansion {
+        let source = expanded_source(processed, &task.name);
+        let mut node = source.clone();
+        let variables = self.variables(scope);
+        if let Err(message) = replace_node(&mut node, &variables, true) {
+            return Expansion::Ended(Phase::Error, message);
+        }
+        let typed = match decode::<DagTask>(&node) {
+            Ok((typed, _)) => typed,
+            Err(error) => return Expansion::Ended(Phase::Error, error.to_string()),
+        };
+        let proceed = should_execute(&typed.when).unwrap_or(true);
+        let artifacts = if proceed {
+            match self.step_artifacts(&typed.arguments.artifacts, scope) {
+                Ok(artifacts) => artifacts,
+                Err(message) => return Expansion::Ended(Phase::Error, message),
+            }
+        } else {
+            Vec::new()
+        };
+        if !loops(&source) {
+            return Expansion::Single(Box::new(expanded_task(
+                task.name.clone(),
+                node,
+                &typed,
+                artifacts,
+            )));
+        }
+        let mut warnings = Vec::new();
+        let list = items(&node, typed.with_sequence.as_ref(), &mut |warning| {
+            warnings.push(warning)
+        });
+        for warning in warnings {
+            self.warn(warning);
+        }
+        let list = match list {
+            Ok(list) if list.is_empty() => {
+                return Expansion::Empty(Box::new(holder(
+                    &typed.template,
+                    typed.template_ref.as_ref(),
+                    node.get("inline"),
+                )));
+            }
+            Ok(list) => list,
+            Err(message) => return Expansion::Ended(Phase::Error, message),
+        };
+        let strict = !matches!(should_execute(&typed.when), Ok(false));
+        let mut expanded = Vec::new();
+        for (position, item) in list.iter().enumerate() {
+            let (item_variables, item_name) = match item_variables(&task.name, position, item) {
+                Ok(found) => found,
+                Err(message) => return Expansion::Ended(Phase::Error, message),
+            };
+            match substitute_item(&node, &item_variables, strict) {
+                Ok(item_node) => match decode::<DagTask>(&item_node) {
+                    Ok((mut item_task, _)) => {
+                        item_task.template = typed.template.clone();
+                        expanded.push(expanded_task(
+                            item_name,
+                            item_node,
+                            &item_task,
+                            artifacts.clone(),
+                        ));
+                    }
+                    Err(error) => expanded.push(Expanded::error(item_name, error.to_string())),
+                },
+                Err(message) => expanded.push(Expanded::error(item_name, message)),
+            }
+        }
+        Expansion::Loop(expanded)
+    }
 }
+
+/// What a task expands to.
+enum Expansion {
+    /// The task ended at once, with an error.
+    Ended(Phase, String),
+    /// A loop over no items.
+    Empty(Box<crate::run::Holder>),
+    Single(Box<Expanded>),
+    Loop(Vec<Expanded>),
+}
+
+/// A task and all tasks it depends on, dependencies first.
+fn ancestry(name: &str, tasks: &[DagTask], out: &mut Vec<String>) {
+    fn visit(name: &str, tasks: &[DagTask], out: &mut Vec<String>, visiting: &mut Vec<String>) {
+        if out.iter().any(|known| known == name) || visiting.iter().any(|known| known == name) {
+            return;
+        }
+        visiting.push(name.to_owned());
+        if let Some(task) = tasks.iter().find(|task| task.name == name) {
+            for dependency in dependencies(task, tasks).names {
+                visit(&dependency, tasks, out, visiting);
+            }
+        }
+        visiting.pop();
+        out.push(name.to_owned());
+    }
+    visit(name, tasks, out, &mut Vec::new());
+}
+
+/// The task as the processed DAG template holds it.
+fn expanded_source(processed: &Processed, name: &str) -> Node {
+    let tasks = processed.node.get("dag").and_then(|dag| dag.get("tasks"));
+    match tasks.map(|tasks| &tasks.value) {
+        Some(Yaml::Sequence(tasks)) => tasks
+            .iter()
+            .find(|task| task.get("name").and_then(Node::as_str) == Some(name))
+            .cloned()
+            .unwrap_or_else(|| Node::new(Yaml::Null, argo_parser::Position::default())),
+        _ => Node::new(Yaml::Null, argo_parser::Position::default()),
+    }
+}
+
+fn expanded_task(
+    name: String,
+    node: Node,
+    task: &DagTask,
+    artifacts: Vec<crate::run::ArtifactValue>,
+) -> Expanded {
+    let continue_on = task.continue_on.map_or((false, false), |continue_on| {
+        (continue_on.error, continue_on.failed)
+    });
+    Expanded {
+        name,
+        holder: holder(
+            &task.template,
+            task.template_ref.as_ref(),
+            node.get("inline"),
+        ),
+        when: task.when.clone(),
+        args: Args {
+            parameters: task.arguments.parameters.clone(),
+            artifacts,
+        },
+        continue_on,
+        hooks: task.hooks.clone(),
+        on_exit: task.on_exit.clone(),
+        error: None,
+    }
+}
+
+#[cfg(test)]
+#[path = "dag_tests.rs"]
+mod tests;

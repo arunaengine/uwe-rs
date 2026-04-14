@@ -1615,4 +1615,242 @@ impl Run {
         }
         Ok(done)
     }
+
+    /// Takes the outcome of a task.
+    pub fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>> {
+        let Some((index, slot)) = self.tasks.remove(&outcome.id) else {
+            return Err(Failure::error(format!(
+                "the outcome of task {} arrived, which this run did not ask for",
+                outcome.id
+            )));
+        };
+        let node = &mut self.nodes[index];
+        if let Some(entry) = node.outcomes.get_mut(slot) {
+            *entry = Some(outcome);
+        }
+        if node.outcomes.iter().all(Option::is_some) {
+            self.finish_pod(index)?;
+        }
+        self.operate()
+    }
+
+    /// The phase of the whole run and its message, once nothing runs.
+    pub fn result(&self) -> std::result::Result<(), String> {
+        let Some(root) = self.root else {
+            return Err("the workflow did not start".into());
+        };
+        let root = &self.nodes[root];
+        if !root.phase.fulfilled() {
+            let waiting = self.tasks.len();
+            return Err(format!(
+                "the workflow did not finish: {} is {} with {waiting} tasks outstanding",
+                root.name,
+                root.phase.name()
+            ));
+        }
+        let exit = self.exit_node.map(|exit| &self.nodes[exit]);
+        let failed = match root.phase {
+            Phase::Failed | Phase::Error => Some(root.phase),
+            _ => exit
+                .filter(|exit| exit.phase.failed_or_error())
+                .map(|exit| exit.phase),
+        };
+        match failed {
+            None => Ok(()),
+            Some(phase) => {
+                let message = self
+                    .first_failure
+                    .clone()
+                    .unwrap_or_else(|| root.message.clone());
+                Err(format!(
+                    "workflow {}: {message}",
+                    phase.name().to_lowercase()
+                ))
+            }
+        }
+    }
+}
+
+pub(crate) fn is_pod(template: &Template) -> bool {
+    template.container.is_some()
+        || template.script.is_some()
+        || template.container_set.is_some()
+        || template.resource.is_some()
+        || template.http.is_some()
+        || template.data.is_some()
+}
+
+/// The name of a node without the names of its parents, as Argo shows it.
+pub(crate) fn display_name(name: &str) -> String {
+    let mut depth = 0;
+    for (index, character) in name.char_indices().rev() {
+        match character {
+            ')' => depth += 1,
+            '(' => depth -= 1,
+            '.' if depth == 0 => return name[index + 1..].to_owned(),
+            _ => {}
+        }
+    }
+    name.to_owned()
+}
+
+fn template_label(template: &Node) -> String {
+    template
+        .get("name")
+        .and_then(Node::as_str)
+        .unwrap_or("(inline)")
+        .to_owned()
+}
+
+fn set_input_value(node: &mut Node, position: usize, value: &str) {
+    let Some(inputs) = entry_mut(node, "inputs") else {
+        return;
+    };
+    let Some(Node {
+        value: Yaml::Sequence(parameters),
+        ..
+    }) = entry_mut(inputs, "parameters")
+    else {
+        return;
+    };
+    let Some(parameter) = parameters.get_mut(position) else {
+        return;
+    };
+    let text = Node::new(Yaml::String(value.to_owned()), parameter.position);
+    match entry_mut(parameter, "value") {
+        Some(existing) => *existing = text,
+        None => {
+            if let Yaml::Mapping(entries) = &mut parameter.value {
+                entries.push(Entry {
+                    key: "value".into(),
+                    position: parameter.position,
+                    value: text,
+                });
+            }
+        }
+    }
+}
+
+pub(crate) fn entry_mut<'a>(node: &'a mut Node, key: &str) -> Option<&'a mut Node> {
+    match &mut node.value {
+        Yaml::Mapping(entries) => entries
+            .iter_mut()
+            .find(|entry| entry.key == key)
+            .map(|entry| &mut entry.value),
+        _ => None,
+    }
+}
+
+pub(crate) fn remove_key(node: &mut Node, key: &str) {
+    if let Yaml::Mapping(entries) = &mut node.value {
+        entries.retain(|entry| entry.key != key);
+    }
+}
+
+fn empty_mapping() -> Node {
+    Node::new(Yaml::Mapping(Vec::new()), Position::default())
+}
+
+/// A scalar as the text Argo sees after turning YAML into JSON.
+pub(crate) fn scalar_text(node: &Node) -> String {
+    match &node.value {
+        Yaml::Null => String::new(),
+        Yaml::Bool(flag) => flag.to_string(),
+        Yaml::Integer(number) => number.to_string(),
+        Yaml::Unsigned(number) => number.to_string(),
+        Yaml::Float(number) => argo_parser::model::json_float(*number),
+        Yaml::String(text) => text.clone(),
+        _ => crate::pod::node_json(node),
+    }
+}
+
+/// Parameters as Argo marshals them for `workflow.parameters` and `inputs.parameters`.
+pub(crate) fn parameters_json(parameters: &[Parameter]) -> String {
+    let list: Vec<Value> = parameters
+        .iter()
+        .map(|parameter| {
+            let mut map = BTreeMap::new();
+            map.insert("name".to_owned(), Value::string(parameter.name.clone()));
+            if let Some(default) = &parameter.default {
+                map.insert("default".to_owned(), Value::string(default.0.clone()));
+            }
+            if let Some(value) = &parameter.value {
+                map.insert("value".to_owned(), Value::string(value.0.clone()));
+            }
+            if !parameter.enumeration.is_empty() {
+                map.insert(
+                    "enum".to_owned(),
+                    Value::Array(
+                        parameter
+                            .enumeration
+                            .iter()
+                            .map(|item| Value::string(item.0.clone()))
+                            .collect(),
+                    ),
+                );
+            }
+            Value::Map(map)
+        })
+        .collect();
+    Value::Array(list).to_json()
+}
+
+/// The FNV-1a hash of a text, which Argo uses for node IDs and pod names.
+pub(crate) fn fnv32a(text: &str) -> u32 {
+    let mut hash: u32 = 0x811c_9dc5;
+    for byte in text.bytes() {
+        hash ^= u32::from(byte);
+        hash = hash.wrapping_mul(0x0100_0193);
+    }
+    hash
+}
+
+/// The name of the workflow: its `metadata.name`, or its `generateName` with a suffix that
+/// depends on the document, so that runs of the same document get the same names.
+fn workflow_name(document: &Document, metadata: Option<&Node>) -> String {
+    let text = |key: &str| {
+        document
+            .node
+            .get("metadata")
+            .or(metadata)
+            .and_then(|metadata| metadata.get(key))
+            .and_then(Node::as_str)
+            .unwrap_or("")
+            .to_owned()
+    };
+    let seed = format!("{}#{}", document.path.display(), document.index);
+    let suffix: String = format!("{:08x}", fnv32a(&seed))
+        .chars()
+        .map(|c| match c {
+            '0'..='9' => c,
+            _ => char::from(b'a' + (c as u8 - b'a') % 26),
+        })
+        .take(5)
+        .collect();
+    match document.kind {
+        DocumentKind::Workflow => match text("name") {
+            name if name.is_empty() => format!("{}{suffix}", text("generateName")),
+            name => name,
+        },
+        _ => {
+            let name = document.name.trim_end_matches('-');
+            format!("{name}-{suffix}")
+        }
+    }
+}
+
+/// A stable UUID-shaped identifier for `workflow.uid`.
+fn uid(name: &str) -> String {
+    let parts: Vec<u32> = (0..4)
+        .map(|round| fnv32a(&format!("{round}{name}")))
+        .collect();
+    format!(
+        "{:08x}-{:04x}-{:04x}-{:04x}-{:04x}{:08x}",
+        parts[0],
+        parts[1] >> 16,
+        (parts[1] & 0x0fff) | 0x4000,
+        (parts[2] >> 16 & 0x3fff) | 0x8000,
+        parts[2] & 0xffff,
+        parts[3]
+    )
 }

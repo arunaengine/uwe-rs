@@ -454,3 +454,299 @@ fn continue_on_and_retries() {
     ran.succeeded();
     assert_eq!(ran.task("[1].after").command, ["echo", "Failed"]);
 }
+
+#[test]
+fn outputs_pass_parameters_and_artifacts() {
+    let ran = run_with(
+        &workflow(
+            r#"
+  - name: main
+    dag:
+      tasks:
+      - name: make
+        template: make
+      - name: use
+        template: use
+        depends: make
+        arguments:
+          parameters:
+          - name: count
+            value: "{{tasks.make.outputs.parameters.count}}"
+          - name: base
+            value: "{{=sprig.osBase(tasks.make.outputs.parameters.file)}}"
+          artifacts:
+          - name: data
+            from: "{{tasks.make.outputs.artifacts.data}}"
+    outputs:
+      parameters:
+      - name: total
+        valueFrom:
+          expression: "asInt(tasks.make.outputs.parameters.count) * 2"
+  - name: make
+    script:
+      image: python:3.13
+      command: [python]
+      source: |
+        print("hi")
+    outputs:
+      parameters:
+      - name: count
+        valueFrom: {path: /tmp/count}
+      - name: file
+        valueFrom: {path: /tmp/file}
+      artifacts:
+      - name: data
+        path: /tmp/data.txt
+  - name: use
+    inputs:
+      parameters:
+      - name: count
+      - name: base
+      artifacts:
+      - name: data
+        path: /in/data.txt
+    container:
+      image: busybox
+      command: [cat, "{{inputs.artifacts.data.path}}", "{{inputs.parameters.count}}", "{{inputs.parameters.base}}"]
+"#,
+        ),
+        Setup {
+            files: vec![("/tmp/count", "21\n"), ("/tmp/file", "/data/run/x.bam")],
+            ..Setup::default()
+        },
+    );
+    ran.succeeded();
+    let make = ran.task("make");
+    assert_eq!(make.command, ["python", "/argo/staging/script"]);
+    assert_eq!(make.inputs[0].content.as_deref(), Some("print(\"hi\")\n"));
+    let used = ran.task("use");
+    assert_eq!(used.command, ["cat", "/in/data.txt", "21", "x.bam"]);
+    assert_eq!(used.inputs[0].path, "/in/data.txt");
+    let edge = ran
+        .execution
+        .graph
+        .edges
+        .iter()
+        .find(|edge| edge.to == used.id)
+        .expect("an edge into use");
+    assert_eq!(
+        edge.kind,
+        EdgeKind::File {
+            path: "/in/data.txt".to_owned()
+        }
+    );
+}
+
+#[test]
+fn templates_of_other_documents() {
+    let library = r#"
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: lib
+spec:
+  entrypoint: whalesay
+  arguments:
+    parameters: [{name: greeting, value: from-template}]
+  templates:
+  - name: whalesay
+    inputs:
+      parameters: [{name: message, value: "{{workflow.parameters.greeting}}"}]
+    steps:
+    - - name: inner
+        template: say
+        arguments: {parameters: [{name: message, value: "{{inputs.parameters.message}}"}]}
+  - name: say
+    inputs:
+      parameters: [{name: message}]
+    container:
+      image: docker/whalesay
+      command: [cowsay, "{{inputs.parameters.message}}"]
+"#;
+    let referencing = r#"
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: ref-
+spec:
+  entrypoint: main
+  arguments:
+    parameters: [{name: greeting, value: hello}]
+  templates:
+  - name: main
+    steps:
+    - - name: call
+        templateRef: {name: lib, template: whalesay}
+"#;
+    let ran = run_with(
+        referencing,
+        Setup {
+            library: vec![library],
+            ..Setup::default()
+        },
+    );
+    ran.succeeded();
+    assert_eq!(ran.task("[0].call[0].inner").command, ["cowsay", "hello"]);
+    let submitted = r#"
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: submitted-
+spec:
+  workflowTemplateRef: {name: lib}
+"#;
+    let ran = run_with(
+        submitted,
+        Setup {
+            library: vec![library],
+            parameters: vec![("greeting", "from-cli")],
+            ..Setup::default()
+        },
+    );
+    ran.succeeded();
+    assert_eq!(ran.task("[0].inner").command, ["cowsay", "from-cli"]);
+    let missing = run(referencing);
+    assert!(missing.error().contains("WorkflowTemplate lib not found"));
+}
+
+#[test]
+fn exit_handlers_see_the_status() {
+    let ran = run_with(
+        &format!(
+            "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata:\n  name: exits\nspec:\n  entrypoint: main\n  onExit: exit\n  templates:\n{}{PRINT}",
+            r#"
+  - name: main
+    steps:
+    - - name: work
+        template: print
+        arguments: {parameters: [{name: message, value: work}]}
+        hooks:
+          exit:
+            template: print
+            arguments: {parameters: [{name: message, value: "cleanup {{steps.work.status}}"}]}
+  - name: exit
+    steps:
+    - - name: report
+        template: print
+        arguments: {parameters: [{name: message, value: "{{workflow.status}} {{workflow.failures}}"}]}
+"#
+        ),
+        Setup {
+            exit: vec![("print", vec![1, 0])],
+            ..Setup::default()
+        },
+    );
+    assert_eq!(
+        ran.names(),
+        ["[0].work", "[0].work.onExit", "onExit[0].report"]
+    );
+    assert_eq!(
+        ran.task("[0].work.onExit").command,
+        ["echo", "cleanup Failed"]
+    );
+    let report = &ran.task("onExit[0].report").command[1];
+    assert!(
+        report.starts_with("Failed [{\"displayName\":\"work\""),
+        "{report}"
+    );
+    assert_eq!(ran.upstream("onExit[0].report"), ["[0].work.onExit"]);
+    assert!(ran.error().contains("workflow failed"));
+}
+
+#[test]
+fn placeholders_and_unsupported_features() {
+    let ran = run(&workflow(
+        r#"
+  - name: main
+    inputs:
+      parameters: [{name: sample}, {name: kind, enum: [fastq, bam]}]
+    steps:
+    - - name: show
+        template: print
+        arguments: {parameters: [{name: message, value: "{{inputs.parameters.sample}} {{inputs.parameters.kind}}"}]}
+"#,
+    ));
+    ran.succeeded();
+    assert_eq!(
+        ran.task("[0].show").command,
+        ["echo", "placeholder-sample fastq"]
+    );
+    assert!(
+        ran.warnings
+            .iter()
+            .any(|warning| warning.contains("placeholder-sample"))
+    );
+    let ran = run(&workflow(
+        r#"
+  - name: main
+    plugin:
+      hello: {}
+"#,
+    ));
+    assert!(matches!(&ran.execution.error, Some(error) if error.unsupported()));
+}
+
+#[test]
+fn leaf_kinds_become_tasks() {
+    let ran = run(&workflow(
+        r#"
+  - name: main
+    steps:
+    - - name: set
+        template: set
+      - name: resource
+        template: resource
+      - name: http
+        template: http
+      - name: wait
+        template: wait
+  - name: set
+    containerSet:
+      containers:
+      - {name: first, image: alpine, command: [sh, -c, "echo a > /mnt/a"]}
+      - {name: main, image: alpine, command: [cat, /mnt/a], dependencies: [first]}
+  - name: resource
+    resource:
+      action: create
+      manifest: |
+        apiVersion: v1
+        kind: ConfigMap
+  - name: http
+    http:
+      url: https://example.org/{{workflow.name}}
+      method: POST
+      body: data
+  - name: wait
+    suspend: {duration: 10s}
+"#,
+    ));
+    ran.succeeded();
+    assert_eq!(
+        ran.names(),
+        [
+            "[0].set (first)",
+            "[0].set (main)",
+            "[0].resource",
+            "[0].http"
+        ]
+    );
+    assert_eq!(ran.upstream("[0].set (main)"), ["[0].set (first)"]);
+    assert_eq!(
+        ran.task("[0].resource").command[..2],
+        ["argoexec", "resource"]
+    );
+    let http = &ran.task("[0].http").command;
+    assert_eq!(http[..2], ["sh", "-c"]);
+    assert!(http[2].starts_with("curl --silent"), "{}", http[2]);
+    assert!(
+        http[2].contains(" https://example.org/test-"),
+        "{}",
+        http[2]
+    );
+    assert!(http[2].ends_with("> /tmp/response-status"), "{}", http[2]);
+    assert!(
+        ran.warnings
+            .iter()
+            .any(|warning| warning.contains("response status is not known"))
+    );
+}

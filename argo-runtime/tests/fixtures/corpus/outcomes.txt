@@ -1012,3 +1012,342 @@ hera/examples/workflows/use_cases/spark.yaml ok 6
 hera/examples/workflows/use_cases/testing-templates-and-workflows.yaml ok 2
 hera/examples/workflows/use_cases/wandb-ml-monitoring.yaml ok 3
 hera/examples/workflows/use_cases/workflow-of-workflows.yaml ok 2
+pipelines/test_data/compiled-workflows/add_numbers.yaml ok 3
+pipelines/test_data/compiled-workflows/arguments_parameters.yaml ok 3
+pipelines/test_data/compiled-workflows/artifact_cache.yaml ok 7
+pipelines/test_data/compiled-workflows/artifact_crust.yaml ok 7
+pipelines/test_data/compiled-workflows/artifacts_complex.yaml ok 9
+pipelines/test_data/compiled-workflows/artifacts_simple.yaml ok 6
+pipelines/test_data/compiled-workflows/collected_artifacts.yaml ok 9
+pipelines/test_data/compiled-workflows/collected_parameters.yaml ok 9
+pipelines/test_data/compiled-workflows/component_with_env_variable.yaml ok 3
+pipelines/test_data/compiled-workflows/component_with_metadata_fields.yaml ok 3
+pipelines/test_data/compiled-workflows/component_with_optional_inputs.yaml ok 3
+pipelines/test_data/compiled-workflows/component_with_pip_index_urls.yaml ok 3
+pipelines/test_data/compiled-workflows/component_with_pip_install.yaml ok 3
+pipelines/test_data/compiled-workflows/component_with_pip_install_in_venv.yaml ok 3
+pipelines/test_data/compiled-workflows/components_with_optional_artifacts.yaml ok 12
+pipelines/test_data/compiled-workflows/concat_message.yaml ok 3
+pipelines/test_data/compiled-workflows/conditional_producer_and_consumers.yaml ok 5
+pipelines/test_data/compiled-workflows/container_component_with_no_inputs.yaml ok 3
+pipelines/test_data/compiled-workflows/container_io.yaml ok 3
+pipelines/test_data/compiled-workflows/container_no_input.yaml ok 3
+pipelines/test_data/compiled-workflows/container_with_artifact_output.yaml ok 3
+pipelines/test_data/compiled-workflows/container_with_concat_placeholder.yaml ok 3
+pipelines/test_data/compiled-workflows/container_with_if_placeholder.yaml ok 3
+pipelines/test_data/compiled-workflows/container_with_if_placeholder_default.yaml ok 3
+pipelines/test_data/compiled-workflows/container_with_placeholder_in_fstring.yaml ok 3
+pipelines/test_data/compiled-workflows/containerized_python_component.yaml ok 3
+pipelines/test_data/compiled-workflows/create_pod_metadata_complex.yaml ok 7
+pipelines/test_data/compiled-workflows/cross_loop_after_topology.yaml ok 8
+pipelines/test_data/compiled-workflows/dict_input.yaml ok 3
+pipelines/test_data/compiled-workflows/dra_json_input_check.yaml ok 3
+pipelines/test_data/compiled-workflows/dra_passthrough_check.yaml ok 3
+pipelines/test_data/compiled-workflows/dra_static_claim_check.yaml ok 3
+pipelines/test_data/compiled-workflows/embedded_artifact.yaml ok 5
+pipelines/test_data/compiled-workflows/env-var.yaml ok 3
+pipelines/test_data/compiled-workflows/fail_v2.yaml ok 3
+pipelines/test_data/compiled-workflows/flip_coin.yaml ok 21
+pipelines/test_data/compiled-workflows/hello_world.yaml ok 3
+pipelines/test_data/compiled-workflows/identity.yaml ok 3
+pipelines/test_data/compiled-workflows/if_elif_else_complex.yaml ok 4
+pipelines/test_data/compiled-workflows/if_elif_else_with_oneof_parameters.yaml ok 16
+pipelines/test_data/compiled-workflows/if_else_with_oneof_artifacts.yaml ok 15
+pipelines/test_data/compiled-workflows/if_else_with_oneof_parameters.yaml ok 12
+pipelines/test_data/compiled-workflows/input_artifact.yaml ok 3
+pipelines/test_data/compiled-workflows/iris_pipeline_compiled.yaml ok 7
+pipelines/test_data/compiled-workflows/lightweight_python_functions_pipeline.yaml ok 5
+pipelines/test_data/compiled-workflows/lightweight_python_functions_with_outputs.yaml ok 9
+pipelines/test_data/compiled-workflows/local_execution_pipeline_with_exit_handler.yaml ok 6
+pipelines/test_data/compiled-workflows/local_execution_pipeline_with_ignore_upstream_failure.yaml ok 5
+pipelines/test_data/compiled-workflows/local_execution_pipeline_with_k8s_only_methods.yaml ok 3
+pipelines/test_data/compiled-workflows/local_execution_pipeline_with_oneof.yaml ok 10
+pipelines/test_data/compiled-workflows/local_execution_pipeline_with_retry.yaml ok 3
+pipelines/test_data/compiled-workflows/log_streaming_compiled.yaml ok 3
+pipelines/test_data/compiled-workflows/long-running.yaml ok 5
+pipelines/test_data/compiled-workflows/loop_consume_upstream.yaml ok 6
+pipelines/test_data/compiled-workflows/metrics_visualization_v2.yaml ok 11
+pipelines/test_data/compiled-workflows/missing_kubernetes_optional_inputs.yaml ok 3
+pipelines/test_data/compiled-workflows/mixed_parameters.yaml ok 7
+pipelines/test_data/compiled-workflows/modelcar.yaml ok 6
+pipelines/test_data/compiled-workflows/mounted_cabundle_configmap.yaml ok 3
+pipelines/test_data/compiled-workflows/mounted_cabundle_secret.yaml ok 3
+pipelines/test_data/compiled-workflows/multiple_artifacts_namedtuple.yaml ok 7
+pipelines/test_data/compiled-workflows/multiple_parameters_namedtuple.yaml ok 7
+pipelines/test_data/compiled-workflows/nested_parallel_for_secret.yaml ok 4
+pipelines/test_data/compiled-workflows/nested_pipeline_opt_input_child_level_compiled.yaml ok 14
+pipelines/test_data/compiled-workflows/nested_pipeline_opt_inputs_nil_compiled.yaml ok 8
+pipelines/test_data/compiled-workflows/nested_pipeline_opt_inputs_parent_level_compiled.yaml ok 15
+pipelines/test_data/compiled-workflows/nested_return.yaml ok 3
+pipelines/test_data/compiled-workflows/nested_with_parameters.yaml ok 4
+pipelines/test_data/compiled-workflows/notebook_component_mixed.yaml ok 7
+pipelines/test_data/compiled-workflows/notebook_component_simple.yaml ok 3
+pipelines/test_data/compiled-workflows/nvidia_gpu_scheduling_check.yaml ok 3
+pipelines/test_data/compiled-workflows/output_metrics.yaml ok 3
+pipelines/test_data/compiled-workflows/parallel_for_after_dependency.yaml ok 6
+pipelines/test_data/compiled-workflows/parallel_for_mount_pvc.yaml ok 3
+pipelines/test_data/compiled-workflows/parallel_for_secret.yaml ok 2
+pipelines/test_data/compiled-workflows/parameter_cache.yaml ok 7
+pipelines/test_data/compiled-workflows/parameter_oneof.yaml ok 14
+pipelines/test_data/compiled-workflows/parameters_complex.yaml ok 7
+pipelines/test_data/compiled-workflows/parameters_simple.yaml ok 6
+pipelines/test_data/compiled-workflows/pipeline_as_exit_task.yaml ok 12
+pipelines/test_data/compiled-workflows/pipeline_in_pipeline.yaml ok 8
+pipelines/test_data/compiled-workflows/pipeline_in_pipeline_complex.yaml ok 4
+pipelines/test_data/compiled-workflows/pipeline_in_pipeline_loaded_from_yaml.yaml ok 11
+pipelines/test_data/compiled-workflows/pipeline_producer_consumer.yaml ok 8
+pipelines/test_data/compiled-workflows/pipeline_with_after.yaml ok 7
+pipelines/test_data/compiled-workflows/pipeline_with_artifact_custom_path.yaml ok 5
+pipelines/test_data/compiled-workflows/pipeline_with_artifact_upload_download.yaml ok 5
+pipelines/test_data/compiled-workflows/pipeline_with_caching.yaml ok 3
+pipelines/test_data/compiled-workflows/pipeline_with_collected_artifacts.yaml ok 4
+pipelines/test_data/compiled-workflows/pipeline_with_concat_placeholder.yaml ok 3
+pipelines/test_data/compiled-workflows/pipeline_with_condition.yaml ok 12
+pipelines/test_data/compiled-workflows/pipeline_with_condition_dynamic_task_output_custom_training_job.yaml ok 12
+pipelines/test_data/compiled-workflows/pipeline_with_dynamic_importer_metadata.yaml ok 5
+pipelines/test_data/compiled-workflows/pipeline_with_dynamic_task_output_custom_training_job.yaml ok 9
+pipelines/test_data/compiled-workflows/pipeline_with_env.yaml ok 5
+pipelines/test_data/compiled-workflows/pipeline_with_exit_handler.yaml ok 8
+pipelines/test_data/compiled-workflows/pipeline_with_google_artifact_type.yaml ok 6
+pipelines/test_data/compiled-workflows/pipeline_with_importer.yaml ok 8
+pipelines/test_data/compiled-workflows/pipeline_with_importer_and_gcpc_types.yaml ok 4
+pipelines/test_data/compiled-workflows/pipeline_with_importer_workspace.yaml ok 16
+pipelines/test_data/compiled-workflows/pipeline_with_input_status_state.yaml ok 6
+pipelines/test_data/compiled-workflows/pipeline_with_loops.yaml ok 6
+pipelines/test_data/compiled-workflows/pipeline_with_loops_and_conditions.yaml ok 10
+pipelines/test_data/compiled-workflows/pipeline_with_metadata_fields.yaml ok 5
+pipelines/test_data/compiled-workflows/pipeline_with_metrics_outputs.yaml ok 4
+pipelines/test_data/compiled-workflows/pipeline_with_multiple_exit_handlers.yaml ok 18
+pipelines/test_data/compiled-workflows/pipeline_with_nested_conditions.yaml ok 19
+pipelines/test_data/compiled-workflows/pipeline_with_nested_conditions_yaml.yaml ok 21
+pipelines/test_data/compiled-workflows/pipeline_with_nested_loops.yaml ok 3
+pipelines/test_data/compiled-workflows/pipeline_with_only_display_name.yaml ok 3
+pipelines/test_data/compiled-workflows/pipeline_with_outputs.yaml ok 8
+pipelines/test_data/compiled-workflows/pipeline_with_parallelfor_parallelism.yaml ok 19
+pipelines/test_data/compiled-workflows/pipeline_with_parallelfor_pipeline_param.yaml ok 6
+pipelines/test_data/compiled-workflows/pipeline_with_params_containing_format.yaml ok 6
+pipelines/test_data/compiled-workflows/pipeline_with_placeholders.yaml ok 3
+pipelines/test_data/compiled-workflows/pipeline_with_pod_metadata.yaml ok 11
+pipelines/test_data/compiled-workflows/pipeline_with_retry.yaml ok 3
+pipelines/test_data/compiled-workflows/pipeline_with_retry_policy.yaml ok 3
+pipelines/test_data/compiled-workflows/pipeline_with_reused_component.yaml ok 7
+pipelines/test_data/compiled-workflows/pipeline_with_secret_as_env.yaml ok 5
+pipelines/test_data/compiled-workflows/pipeline_with_secret_as_volume.yaml ok 3
+pipelines/test_data/compiled-workflows/pipeline_with_string_machine_fields_pipeline_input.yaml ok 3
+pipelines/test_data/compiled-workflows/pipeline_with_string_machine_fields_task_output.yaml ok 11
+pipelines/test_data/compiled-workflows/pipeline_with_submit_request.yaml ok 5
+pipelines/test_data/compiled-workflows/pipeline_with_task_final_status.yaml ok 8
+pipelines/test_data/compiled-workflows/pipeline_with_task_final_status_yaml.yaml ok 6
+pipelines/test_data/compiled-workflows/pipeline_with_task_using_ignore_upstream_failure.yaml ok 5
+pipelines/test_data/compiled-workflows/pipeline_with_utils.yaml ok 3
+pipelines/test_data/compiled-workflows/pipeline_with_various_io_types.yaml ok 5
+pipelines/test_data/compiled-workflows/pipeline_with_volume.yaml ok 7
+pipelines/test_data/compiled-workflows/pipeline_with_volume_long_name.yaml ok 4
+pipelines/test_data/compiled-workflows/pipeline_with_volume_no_cache.yaml ok 7
+pipelines/test_data/compiled-workflows/pipeline_with_workspace.yaml ok 5
+pipelines/test_data/compiled-workflows/placeholder_with_if_placeholder_none_input_value.yaml ok 3
+pipelines/test_data/compiled-workflows/preprocess.yaml ok 3
+pipelines/test_data/compiled-workflows/producer_consumer_param_pipeline.yaml ok 5
+pipelines/test_data/compiled-workflows/pvc_mount.yaml ok 5
+pipelines/test_data/compiled-workflows/pythonic_artifact_with_single_return.yaml ok 4
+pipelines/test_data/compiled-workflows/pythonic_artifacts_test_pipeline.yaml ok 5
+pipelines/test_data/compiled-workflows/pythonic_artifacts_with_list_of_artifacts.yaml ok 4
+pipelines/test_data/compiled-workflows/pythonic_artifacts_with_multiple_returns.yaml ok 6
+pipelines/test_data/compiled-workflows/ray_integration_compiled.yaml ok 3
+pipelines/test_data/compiled-workflows/ray_job_integration_compiled.yaml ok 3
+pipelines/test_data/compiled-workflows/run_as_user_cache_disabled.yaml ok 3
+pipelines/test_data/compiled-workflows/run_as_user_cache_enabled.yaml ok 3
+pipelines/test_data/compiled-workflows/sequential_container.yaml ok 5
+pipelines/test_data/compiled-workflows/sequential_v2.yaml ok 5
+pipelines/test_data/compiled-workflows/take_nap_compiled.yaml ok 5
+pipelines/test_data/compiled-workflows/take_nap_pipeline_root_compiled.yaml ok 5
+pipelines/test_data/compiled-workflows/two_step_pipeline.yaml ok 5
+pipelines/test_data/compiled-workflows/two_step_pipeline_containerized.yaml ok 5
+pipelines/test_data/compiled-workflows/upload_download_compiled.yaml ok 7
+pipelines/test_data/compiled-workflows/xgboost_sample_pipeline.yaml ok 17
+regulation-workflows/workflow-templates/.deprecated/ad-hoc-tasks/update-old-genrich-values-files.yaml ok 0
+regulation-workflows/workflow-templates/.deprecated/coverage/bam-to-coverage-bedgraph-pvc-callable.yaml ok 6
+regulation-workflows/workflow-templates/.deprecated/coverage/experiment-alignments-to-bigwig.yaml ok 0
+regulation-workflows/workflow-templates/.deprecated/coverage/get-coverage-tasks.yaml ok 6
+regulation-workflows/workflow-templates/alignment/.deprecated/check-integrity.yaml ok 0
+regulation-workflows/workflow-templates/alignment/.deprecated/commit-results-to-rdr.yaml ok 5
+regulation-workflows/workflow-templates/alignment/.deprecated/delete-alignment-task-markers.yaml 1 workflow error: get-rfs-alignments-tasks-url: templateRef: WorkflowTemplate compute-rfs-alignments-tasks-url-v1-submittable not found
+regulation-workflows/workflow-templates/alignment/.deprecated/get-rfs-alignments-tasks.yaml 1 workflow error: get-rfs-alignments-tasks-url: templateRef: WorkflowTemplate compute-rfs-alignments-tasks-url-v1-submittable not found
+regulation-workflows/workflow-templates/alignment/.deprecated/merge-run-alignments.yaml ok 0
+regulation-workflows/workflow-templates/alignment/.deprecated/rfs-alignments.yaml ok 0
+regulation-workflows/workflow-templates/alignment/.experimental/rfs-alignment-v3.yaml 1 workflow error: rfs-alignment-v3-submittable-fc927: inputs.artifacts.task-payload was not supplied
+regulation-workflows/workflow-templates/alignment/alignment-tasks.yaml ok 2
+regulation-workflows/workflow-templates/alignment/compute-get-rfs-alignment-tasks-url-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/alignment/rfs-alignment.yaml 1 workflow error: 2-f33af: inputs.artifacts.task-payload was not supplied
+regulation-workflows/workflow-templates/alignment/run-alignment-pe.yaml 1 workflow error: 1-5fccd: inputs.artifacts.run-payload was not supplied
+regulation-workflows/workflow-templates/alignment/run-alignment-se.yaml 1 workflow error: 1-e574f: inputs.artifacts.run-payload was not supplied
+regulation-workflows/workflow-templates/bowtie2/.deprecated/bowtie2-pe-cmd-pvc-callable.yaml ok 2
+regulation-workflows/workflow-templates/bowtie2/.deprecated/bowtie2-se-cmd-pvc-callable.yaml ok 2
+regulation-workflows/workflow-templates/bowtie2/bowtie2-pe-cmd-pvc-callable-v-0.1.yaml ok 2
+regulation-workflows/workflow-templates/bowtie2/bowtie2-se-cmd-pvc-callable-v-0.1.yaml ok 2
+regulation-workflows/workflow-templates/bowtie2/build/build-index-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/export-peak/bed-to-bigbed-v-0.1.yaml ok 4
+regulation-workflows/workflow-templates/export-peak/export-peak-tasks.yaml 1 templates call each other more than 100 levels deep, at template compute-get-export-peak-tasks-url of step get-export-peak-tasks-url; the recursion does not end
+regulation-workflows/workflow-templates/fastp/.deprecated/fastp-se-cmd-pvc-callable.yaml ok 1
+regulation-workflows/workflow-templates/fastp/fastp-se-cmd-pvc-callable-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/fastqc/.deprecated/fastqc-pe-cmd-pvc-callable.yaml ok 1
+regulation-workflows/workflow-templates/fastqc/.deprecated/fastqc-se-cmd-pvc-callable.yaml ok 1
+regulation-workflows/workflow-templates/fastqc/fastqc-pe-cmd-pvc-callable-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/fastqc/fastqc-se-cmd-pvc-callable-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/analysis-file-post-request-payload.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/check-if-field-present-and-not-empty.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/check-if-s3-objects-exist.yaml 1 workflow error: check-if-s3-objects-exist-v1-submittable-b9c49: unable to resolve: {{tasks.collect-output-params.outputs.parameters.check-response}}
+regulation-workflows/workflow-templates/helpers/.deprecated/check-s3-object-exists.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/compress-tgz-pvc-callable_v1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata-pvc-callable.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata-pvc-callable_v2.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/compute-pvc-size.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name-v2.yaml 1 workflow error: compute-task-marker-name-v2-submittable-6a741: inputs.artifacts.task-payload was not supplied
+regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/copy-from-pvc-to-s3-object.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/copy-s3-object-to-pvc.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/copy-s3-prefix-objects-to-pvc.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/cp-s3-object-to-s3.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/create-pvc-kubectl.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/decompress-tgz-pvc-callable.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/decompress-tgz-pvc-callable_v2.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/delete-file-from-pvc.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/delete-patch-pvc-kubectl.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/expose-payload-fields-as-params.yaml 1 workflow error: expose-payload-fields-as-params-v1-submittable-95609: inputs.artifacts.payload was not supplied
+regulation-workflows/workflow-templates/helpers/.deprecated/get-from-reg-pipelines-api.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api-v1_1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api-v2.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/get-task-payload-by-index.yaml 1 workflow error: get-task-payload-by-index-v1-submittable-933b5: inputs.artifacts.items was not supplied
+regulation-workflows/workflow-templates/helpers/.deprecated/get-wf-task-payload-by-index.yaml 1 workflow error: get-wf-task-payload-by-index-v1-submittable-c9f16: inputs.artifacts.items was not supplied
+regulation-workflows/workflow-templates/helpers/.deprecated/pvc-to-pvc-copy.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/resolve-work-avoidance.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker-v2.yaml 1 workflow error: update-task-marker-v2-submittable-156bd: inputs.artifacts.task-payload was not supplied
+regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/validate-expected-number-of-files-in-dir.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.experimental/commit-rdr-changes.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.experimental/create-nfs-pvc-kubectl.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.experimental/delete-request-from-reg-pipelines-api.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.experimental/delete-s3-object.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.experimental/delete-task-marker.yaml ok 2
+regulation-workflows/workflow-templates/helpers/.experimental/list-objects-under-s3-prefix.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.experimental/post-results-to-reg-pipelines-api.yaml ok 1
+regulation-workflows/workflow-templates/helpers/.experimental/s3-objects-to-pvc.yaml ok 1
+regulation-workflows/workflow-templates/helpers/analysis-file-post-request-payload-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/check-if-field-present-and-not-empty-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/check-if-s3-objects-exist-v-0.1.yaml 1 workflow error: 0-0ee5d: unable to resolve: {{tasks.collect-output-params.outputs.parameters.check-response}}
+regulation-workflows/workflow-templates/helpers/check-s3-object-exists-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/compress-tgz-pvc-callable-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/compute-file-metadata-pvc-callable-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/compute-file-metadata-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/compute-pvc-size-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/compute-task-marker-name-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/compute-task-marker-name-v-0.2.yaml 1 workflow error: 0-86272: inputs.artifacts.task-payload was not supplied
+regulation-workflows/workflow-templates/helpers/copy-from-pvc-to-s3-object-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/copy-pvc-to-pvc-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/copy-s3-object-to-pvc-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/copy-s3-prefix-objects-to-pvc-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/cp-s3-object-to-s3-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/create-pvc-v-0.2.yaml ok 1
+regulation-workflows/workflow-templates/helpers/decompress-tgz-pvc-callable-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/decompress-tgz-pvc-callable-v-0.2.yaml ok 1
+regulation-workflows/workflow-templates/helpers/delete-file-from-pvc-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/delete-pvc-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/expose-payload-fields-as-params-v-0.1.yaml 1 workflow error: 0-fdaba: inputs.artifacts.payload was not supplied
+regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.2.yaml ok 1
+regulation-workflows/workflow-templates/helpers/get-wf-task-payload-by-index-v-0.1.yaml 1 workflow error: 0-df040: inputs.artifacts.items was not supplied
+regulation-workflows/workflow-templates/helpers/resolve-work-avoidance-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.2.yaml 1 workflow error: 0-f9e9c: inputs.artifacts.task-payload was not supplied
+regulation-workflows/workflow-templates/helpers/validate-expected-number-of-files-in-dir-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/masked-regions/masked-regions-identification-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/motif-mapping/motif-mapping-tasks.yaml 1 templates call each other more than 100 levels deep, at template compute-get-motif-mapping-tasks-url of step get-motif-mapping-tasks-url; the recursion does not end
+regulation-workflows/workflow-templates/ngmerge/.deprecated/ngmerge-cmd-pvc-callable.yaml ok 1
+regulation-workflows/workflow-templates/ngmerge/ngmerge-cmd-pvc-callable-v-0.1.yaml ok 1
+regulation-workflows/workflow-templates/peak-calling/.deprecated/atac-seq.yaml ok 0
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-ad-hoc.yaml ok 0
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-pe-with-controls.yaml ok 0
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-se-no-controls.yaml ok 0
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-v2.yaml ok 0
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq.yaml ok 0
+regulation-workflows/workflow-templates/peak-calling/.deprecated/dnase-seq.yaml ok 0
+regulation-workflows/workflow-templates/peak-calling/.deprecated/genrich-controls-pvc-callable.yaml ok 1
+regulation-workflows/workflow-templates/peak-calling/.deprecated/get-genrich-values-tasks.yaml 1 workflow error: submit-genrich-values-tasks: templateRef: WorkflowTemplate genrich-values-v2-submittable not found
+regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks-ad-hoc.yaml ok 2
+regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks.yaml ok 2
+regulation-workflows/workflow-templates/peak-calling/chip-seq-genrich-values-cmd.yaml ok 1
+regulation-workflows/workflow-templates/peak-calling/chip-seq-peaks-v-0.2.yaml ok 0
+regulation-workflows/workflow-templates/peak-calling/controls/.deprecated/controls-peak-calling-for-mask-file-with-pileups.yaml ok 0
+regulation-workflows/workflow-templates/peak-calling/controls/control-peak-calling-for-mask-file.yaml ok 0
+regulation-workflows/workflow-templates/peak-calling/controls/get-control-peak-calling-tasks.yaml 1 workflow error: submit-controls-pc-tasks-for-mask-file: templateRef: WorkflowTemplate control-peak-calling-for-mask-file-v-0.1.0 not found
+regulation-workflows/workflow-templates/peak-calling/delete-task-markers.yaml ok 4
+regulation-workflows/workflow-templates/peak-calling/genrich-tasks.yaml 1 workflow error: check-if-pq-values-and-pileups-already-in-s3-bucket: templateRef: template check-if-s3-objects-exist not found in WorkflowTemplate/check-s3-object-exists-v-0.1.0
+regulation-workflows/workflow-templates/peak-calling/genrich-values-cmd.yaml 1 workflow error: execute-genrich-values-cmd-chip-seq-case: failed to evaluate 'when' result 'placeholder-experiment-type == chip_seq': value 'placeholder' cannot be used with the modifier '-', it is no
+regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.1.yaml ok 0
+regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.2.yaml ok 0
+regulation-workflows/workflow-templates/peak-calling/open-chromatin-genrich-values-cmd.yaml ok 1
+regulation-workflows/workflow-templates/peak-calling/open-chromatin-peaks-v-0.2.yaml ok 0
+regulation-workflows/workflow-templates/peak-calling/peak-calling-tasks.yaml ok 2
+regulation-workflows/workflow-templates/samtools/.deprecated/samtools-quickcheck-cmd-pvc-callable.yaml ok 1
+regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.1.yaml ok 4
+regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.2.yaml ok 3
+regulation-workflows/workflow-templates/signal/.deprecated/genrich-pq-values-to-bigwig-high-mem-pvc-callable.yaml ok 6
+regulation-workflows/workflow-templates/signal/.deprecated/get-signal-task.yaml ok 6
+regulation-workflows/workflow-templates/signal/genrich-pq-values-to-bigwig-pvc-callable-v-0.1.yaml ok 6
+regulation-workflows/workflow-templates/signal/signal-tasks.yaml 1 templates call each other more than 100 levels deep, at template compute-get-signal-tasks-url of step get-signal-tasks-url; the recursion does not end
+singlem-sra-processing/cloud/argo/logan_chunked_workflow_template.yaml ok 1
+singlem-sra-processing/cloud/argo/logan_workflow_template.yaml ok 1
+singlem-sra-processing/cloud/argo/prod_workflow_template1.yaml ok 1
+singlem-sra-processing/cloud/argo/prod_workflow_template2.yaml 1 /singlem-sra-processing/cloud/argo/prod_workflow_template2.yaml:66:9: invalid indentation
+singlem-sra-processing/cloud/argo/prod_workflow_template3.yaml 1 /singlem-sra-processing/cloud/argo/prod_workflow_template3.yaml:68:9: invalid indentation
+singlem-sra-processing/cloud/argo/prod_workflow_template4.yaml 1 /singlem-sra-processing/cloud/argo/prod_workflow_template4.yaml:74:9: invalid indentation
+singlem-sra-processing/cloud/argo/prod_workflow_template_less_than30gbp.yaml 1 /singlem-sra-processing/cloud/argo/prod_workflow_template_less_than30gbp.yaml:66:9: invalid indentation
+singlem-sra-processing/cloud/argo/sra_weebill_workflow_template.yaml ok 1
+singlem-sra-processing/cloud/argo/test3.yaml ok 1
+snakemake-tutorial-argo-workflows/argo-workflows/workflows.yaml ok 7
+snakemake-tutorial-argo-workflows/argo-workflows/workflowtemplates.yaml ok 7
+talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_standard_cluster_workflow_template.yaml ok 4
+talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_template.yaml#1 ok 4
+talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_template.yaml#2 ok 4
+talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/doubler-assertion.yaml ok 2
+talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/doubler-template.yaml ok 1
+talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/git-checkout-template.yaml ok 1
+talk-demos/argocon-demos/2023-artifact-management-at-scale/ci-workflow-s3.yaml 1 workflow error: git-checkout-pr-s3: templateRef: WorkflowTemplate git-checkout-pr-s3 not found
+talk-demos/argocon-demos/2023-artifact-management-at-scale/fan-out-fan-in.yaml ok 2
+talk-demos/argocon-demos/2023-configuring-volumes-for-parallel-workflow-reads-and-writes/tests/nfs-workflow.yml ok 4
+talk-demos/argocon-demos/2023-configuring-volumes-for-parallel-workflow-reads-and-writes/tests/s3-workflow.yml 1 workflow error: parallel-run(0:1): failed to resolve {{tasks.setup.outputs.artifacts.large_file}}
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/code-analysis.yml 1 workflow error: code-analysis: template code-analysis not found
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/container-build.yml 1 workflow error: container-build: inputs.parameters.container_tag was not supplied
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/cpd-certification.yml ok 1
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/deploy-application.yml 1 workflow error: deploy-application: inputs.parameters.app_type was not supplied
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/get-git.yml ok 1
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/git-checkout.yml 1 workflow error: git-checkout-pr: template git-checkout-pr not found
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/run-unit-tests.yml ok 1
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/update-jira.yml 1 workflow error: update-jira: inputs.parameters.jira_ticket_number was not supplied
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/argo-workflow.yaml 1 workflow error: git-checkout-pr: template git-checkout-pr not found in WorkflowTemplate/git-checkout
+talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/create-and-setup-vcluster-workflow/create.yaml ok 2
+talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/demonstrating-argo-workflows-and-vcluster-at-scale/lots-of-hellos-workflow.yaml ok 170
+talk-demos/argocon-demos/2023-streamlining-big-data-workflows-with-memoization-and-work-avoidance/workflow/example.yaml ok 2
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/container.yaml ok 2
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/containerset.yaml ok 3
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/dag-example.yaml 33 dag-1555b.plugin: plugin templates are not supported: executor plugins need the Argo agent
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/http.yaml ok 3
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/inline.yaml ok 1
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/plugin.yaml 33 plugin-1606b: plugin templates are not supported: executor plugins need the Argo agent
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/resource.yaml ok 1
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/script.yaml ok 2
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/steps-example.yaml 33 steps-4f0e0[3].plugin: plugin templates are not supported: executor plugins need the Argo agent
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/suspend.yaml ok 0
+talk-demos/oss-2022/python/cron-workflow-python.yaml ok 3
+talk-demos/oss-2022/scala/workflows/spark-template-jvm.yaml ok 1
+talk-demos/oss-2022/scala/workflows/workflow-scala-with-template.yaml ok 2
+talk-demos/oss-2022/scala/workflows/workflow-scala.yaml ok 2
+workflows/examples/inspection-batch-with-failure.yaml ok 2
+workflows/examples/inspection-batch-with-output-gathering.yaml 1 workflow error: onExit: template collect-outputs has no type: it needs container, script, steps, dag or another
+workflows/examples/inspection-batch.yaml ok 1
+workflows/examples/inspection.yaml 1 workflow error: onExit: template collect-outputs has no type: it needs container, script, steps, dag or another
+workflows/examples/resource-validate.yaml ok 1
+workflows/templates/inspection-build-template.yaml ok 3
+workflows/templates/inspection-run-template.yaml ok 2

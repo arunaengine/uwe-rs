@@ -18,7 +18,7 @@ use crate::value::Value;
 
 /// The variables of one substitution phase: flat names like `inputs.parameters.x` with text
 /// values, and the expression environment built from them on first use.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Variables {
     values: BTreeMap<String, String>,
     /// Values that only expressions see, like artifacts for `fromExpression`.
@@ -38,6 +38,13 @@ impl Variables {
     /// Adds a value that expressions see under a dotted name.
     pub fn with_object(mut self, name: impl Into<String>, value: Value) -> Self {
         self.objects.insert(name.into(), value);
+        self.environment = OnceCell::new();
+        self
+    }
+
+    /// Adds values, which replace values of the same name.
+    pub fn with_values(mut self, values: BTreeMap<String, String>) -> Self {
+        self.values.extend(values);
         self.environment = OnceCell::new();
         self
     }
@@ -158,11 +165,12 @@ fn replace_expression(
 ) -> Result<String, String> {
     let unresolved = || format!("{{{{={expression}}}}}");
     if allow_unresolved {
-        // Variables that only exist later: retry counts and the status in exit handlers.
-        let late = (!variables.contains("retries")
-            && expr::identifiers(expression)
-                .iter()
-                .any(|name| name == "retries"))
+        // Variables that only exist later: loop items, retry counts and the status in exit
+        // handlers.
+        let names = expr::identifiers(expression);
+        let late = ["item", "retries"]
+            .iter()
+            .any(|late| !variables.contains(late) && names.iter().any(|name| name == late))
             || (expression.contains("workflow.status") && !variables.contains("workflow.status"))
             || (expression.contains("workflow.failures")
                 && !variables.contains("workflow.failures"));
@@ -173,7 +181,9 @@ fn replace_expression(
     match expr::evaluate(expression, variables.environment()) {
         Ok(Value::Nil) if allow_unresolved => Ok(unresolved()),
         Ok(Value::Nil) => Err(format!("failed to evaluate expression {expression:?}")),
-        Ok(value) => Ok(value.to_go_string()),
+        // Argo v4 writes the result as JSON, without the quotes of a string.
+        Ok(Value::String(text)) => Ok(text),
+        Ok(value) => Ok(value.to_json()),
         Err(_) if allow_unresolved => Ok(unresolved()),
         Err(error) => Err(format!("failed to evaluate expression: {error}")),
     }

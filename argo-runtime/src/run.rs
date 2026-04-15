@@ -757,33 +757,38 @@ impl Run {
         Ok(())
     }
 
-    /// `workflow.failures`: the nodes that failed, as JSON.
+    /// `workflow.failures`: the nodes that failed, as JSON in a Go quoted string, as Argo sets
+    /// it so that its substitution keeps the escapes.
     fn failures_json(&self) -> String {
-        let failures: Vec<Value> = self
+        let failures: Vec<String> = self
             .nodes
             .iter()
-            .filter(|node| node.phase.failed_or_error() && node.kind == NodeKind::Pod)
+            .filter(|node| node.phase.failed_or_error())
             .map(|node| {
-                let mut map = BTreeMap::new();
-                map.insert(
-                    "displayName".into(),
-                    Value::string(display_name(&node.name)),
-                );
-                map.insert("message".into(), Value::string(node.message.clone()));
-                map.insert("templateName".into(), Value::string(node.template.clone()));
-                map.insert("phase".into(), Value::string(node.phase.name()));
-                map.insert(
-                    "podName".into(),
-                    Value::string(self.pod_name(&node.name, &node.template)),
-                );
-                map.insert(
-                    "finishedAt".into(),
-                    Value::string(time::rfc3339(node.finished.unwrap_or(node.started))),
-                );
-                Value::Map(map)
+                let fields = [
+                    ("displayName", display_name(&node.name).to_owned()),
+                    ("message", node.message.clone()),
+                    ("templateName", node.template.clone()),
+                    ("phase", node.phase.name().to_owned()),
+                    ("podName", self.pod_name(&node.name, &node.template)),
+                    (
+                        "finishedAt",
+                        time::rfc3339(node.finished.unwrap_or(node.started)),
+                    ),
+                ];
+                let fields: Vec<String> = fields
+                    .into_iter()
+                    .map(|(key, value)| format!("\"{key}\":{}", Value::String(value).to_json()))
+                    .collect();
+                format!("{{{}}}", fields.join(","))
             })
             .collect();
-        Value::Array(failures).to_json()
+        let json = if failures.is_empty() {
+            "null".to_owned()
+        } else {
+            format!("[{}]", failures.join(","))
+        };
+        crate::value::go_quote(&json)
     }
 
     /// The arguments of a hook, with the tags that refer to the scope substituted.

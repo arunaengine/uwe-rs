@@ -233,7 +233,7 @@ pub(crate) fn item_variables(
     name: &str,
     index: usize,
     item: &Value,
-) -> Result<(Variables, String), String> {
+) -> Result<(BTreeMap<String, String>, String), String> {
     let mut values = BTreeMap::new();
     let description = match item {
         Value::Map(map) => {
@@ -262,10 +262,19 @@ pub(crate) fn item_variables(
         }
     };
     let description = description.replace(['(', ')'], "");
-    Ok((
-        Variables::new(values),
-        format!("{name}({index}:{description})"),
-    ))
+    Ok((values, format!("{name}({index}:{description})")))
+}
+
+/// The items of a loop whose list is not valid: none when the step or task will not run, as
+/// Argo ignores the list then, or else the error.
+pub(crate) fn items_unless_skipped(
+    when: &str,
+    list: Result<Vec<Value>, String>,
+) -> Result<Vec<Value>, String> {
+    match list {
+        Err(_) if matches!(crate::when::should_execute(when), Ok(false)) => Ok(Vec::new()),
+        list => list,
+    }
 }
 
 /// The step or task of one item: its tags substituted, without the loop fields. With
@@ -369,10 +378,10 @@ mod tests {
         let map = Value::parse_json(r#"{"os": "debian", "version": 9}"#).expect("JSON");
         let (variables, name) = item_variables("print", 1, &map).expect("an item");
         assert_eq!(name, "print(1:os:debian,version:9)");
-        assert_eq!(variables.get("item.version"), Some("9"));
+        assert_eq!(variables.get("item.version").map(String::as_str), Some("9"));
         let (variables, name) = item_variables("print", 0, &Value::Float(2.0)).expect("an item");
         assert_eq!(name, "print(0:2)");
-        assert_eq!(variables.get("item"), Some("2"));
+        assert_eq!(variables.get("item").map(String::as_str), Some("2"));
         let list = Value::parse_json(r#"["a", "b(c)"]"#).expect("JSON");
         let (_, name) = item_variables("x", 2, &list).expect("an item");
         assert_eq!(name, "x(2:[a bc])");

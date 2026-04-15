@@ -68,6 +68,38 @@ fn replaces_expression_tags() {
         Ok("{{=sprig.int(retries)}}".to_owned())
     );
     assert!(replace("{{=nothing}}", &variables, false).is_err());
+    // Results other than strings are JSON, as Argo v4 writes them.
+    assert_eq!(
+        replace(
+            "{{=[1, 2.5]}} {{= {'a': 'x y'} }} {{=3 / 2}} {{=true}}",
+            &variables,
+            false
+        ),
+        Ok(r#"[1,2.5] {"a":"x y"} 1.5 true"#.to_owned())
+    );
+    let without_item = Variables::new(
+        [("inputs.parameters.n".to_owned(), "2".to_owned())]
+            .into_iter()
+            .collect(),
+    );
+    assert_eq!(
+        replace(
+            "{{=asInt(inputs.parameters.n) + item}}",
+            &without_item,
+            true
+        ),
+        Ok("{{=asInt(inputs.parameters.n) + item}}".to_owned())
+    );
+    let with_item =
+        without_item.with_values([("item".to_owned(), "3".to_owned())].into_iter().collect());
+    assert_eq!(
+        replace(
+            "{{=asInt(inputs.parameters.n) + asInt(item)}}",
+            &with_item,
+            false
+        ),
+        Ok("5".to_owned())
+    );
 }
 
 #[test]

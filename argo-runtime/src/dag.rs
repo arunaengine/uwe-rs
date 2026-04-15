@@ -12,7 +12,7 @@ use argo_parser::{Node, Value as Yaml, decode};
 use regex::Regex;
 use workflow_graph::TaskId;
 
-use crate::items::{item_variables, items, loops, substitute_item};
+use crate::items::{item_variables, items, items_unless_skipped, loops, substitute_item};
 use crate::run::{Args, Call, Expanded, NodeKind, Phase, Processed, Result, Run};
 use crate::scope::Scope;
 use crate::steps::{base_name, exit_hook, holder};
@@ -648,7 +648,7 @@ impl Run {
         for warning in warnings {
             self.warn(warning);
         }
-        let list = match list {
+        let list = match items_unless_skipped(&typed.when, list) {
             Ok(list) if list.is_empty() => {
                 return Expansion::Empty(Box::new(holder(
                     &typed.template,
@@ -674,6 +674,7 @@ impl Run {
             } else {
                 strict
             };
+            let item_variables = variables.clone().with_values(item_variables);
             match substitute_item(&node, &item_variables, strict) {
                 Ok(item_node) => match decode::<DagTask>(&item_node) {
                     Ok((mut item_task, _)) => {

@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use super::{Value, go_float};
+use super::{Value, go_float, go_quote};
 
 #[test]
 fn floats_print_like_go() {
@@ -41,6 +41,19 @@ fn json_escapes_like_go() {
         format!("\"a{backslash}u003cb{backslash}u003e{backslash}u0026{backslash}\"{backslash}n\"")
     );
     assert_eq!(Value::Float(1.0).to_json(), "1");
+}
+
+#[test]
+fn quotes_like_go() {
+    let backslash = '\\';
+    assert_eq!(
+        go_quote("[{\"a\":\"b\n\"}]"),
+        format!("\"[{{{backslash}\"a{backslash}\":{backslash}\"b{backslash}n{backslash}\"}}]\"")
+    );
+    assert_eq!(
+        go_quote("\u{1}\u{a0}é"),
+        format!("\"{backslash}x01{backslash}u00a0é\"")
+    );
 }
 
 #[test]

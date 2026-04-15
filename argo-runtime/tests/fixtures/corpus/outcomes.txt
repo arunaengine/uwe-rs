@@ -1198,150 +1198,157 @@ regulation-workflows/workflow-templates/fastqc/fastqc-se-cmd-pvc-callable-v-0.1.
 regulation-workflows/workflow-templates/helpers/.deprecated/analysis-file-post-request-payload.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/.deprecated/check-if-field-present-and-not-empty.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/.deprecated/check-if-s3-objects-exist.yaml	ok 0
-regulation-workflows/workflow-templates/helpers/.deprecated/check-s3-object-exists.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/compress-tgz-pvc-callable_v1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata-pvc-callable.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata-pvc-callable_v2.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/compute-pvc-size.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name-v2.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/copy-from-pvc-to-s3-object.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/copy-s3-object-to-pvc.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/copy-s3-prefix-objects-to-pvc.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/cp-s3-object-to-s3.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/create-pvc-kubectl.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/decompress-tgz-pvc-callable.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/decompress-tgz-pvc-callable_v2.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/delete-file-from-pvc.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/delete-patch-pvc-kubectl.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/expose-payload-fields-as-params.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/get-from-reg-pipelines-api.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api-v1_1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api-v2.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/get-task-payload-by-index.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/get-wf-task-payload-by-index.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/pvc-to-pvc-copy.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/resolve-work-avoidance.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker-v2.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.deprecated/validate-expected-number-of-files-in-dir.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.experimental/commit-rdr-changes.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.experimental/create-nfs-pvc-kubectl.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.experimental/delete-request-from-reg-pipelines-api.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.experimental/delete-s3-object.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.experimental/delete-task-marker.yaml ok 2
-regulation-workflows/workflow-templates/helpers/.experimental/list-objects-under-s3-prefix.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.experimental/post-results-to-reg-pipelines-api.yaml ok 1
-regulation-workflows/workflow-templates/helpers/.experimental/s3-objects-to-pvc.yaml ok 1
-regulation-workflows/workflow-templates/helpers/analysis-file-post-request-payload-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/check-if-field-present-and-not-empty-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/check-if-s3-objects-exist-v-0.1.yaml ok 0
-regulation-workflows/workflow-templates/helpers/check-s3-object-exists-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/compress-tgz-pvc-callable-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/compute-file-metadata-pvc-callable-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/compute-file-metadata-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/compute-pvc-size-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/compute-task-marker-name-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/compute-task-marker-name-v-0.2.yaml ok 1
-regulation-workflows/workflow-templates/helpers/copy-from-pvc-to-s3-object-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/copy-pvc-to-pvc-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/copy-s3-object-to-pvc-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/copy-s3-prefix-objects-to-pvc-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/cp-s3-object-to-s3-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/create-pvc-v-0.2.yaml ok 1
-regulation-workflows/workflow-templates/helpers/decompress-tgz-pvc-callable-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/decompress-tgz-pvc-callable-v-0.2.yaml ok 1
-regulation-workflows/workflow-templates/helpers/delete-file-from-pvc-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/delete-pvc-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/expose-payload-fields-as-params-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.2.yaml ok 1
-regulation-workflows/workflow-templates/helpers/get-wf-task-payload-by-index-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/resolve-work-avoidance-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.2.yaml ok 1
-regulation-workflows/workflow-templates/helpers/validate-expected-number-of-files-in-dir-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/masked-regions/masked-regions-identification-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/motif-mapping/motif-mapping-tasks.yaml 1 templates.motif-mapping-tasks-dag name is not unique
-regulation-workflows/workflow-templates/ngmerge/.deprecated/ngmerge-cmd-pvc-callable.yaml ok 1
-regulation-workflows/workflow-templates/ngmerge/ngmerge-cmd-pvc-callable-v-0.1.yaml ok 1
-regulation-workflows/workflow-templates/peak-calling/.deprecated/atac-seq.yaml ok 0
-regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-ad-hoc.yaml ok 0
-regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-pe-with-controls.yaml ok 0
-regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-se-no-controls.yaml ok 0
-regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-v2.yaml ok 0
-regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq.yaml ok 0
-regulation-workflows/workflow-templates/peak-calling/.deprecated/dnase-seq.yaml ok 0
-regulation-workflows/workflow-templates/peak-calling/.deprecated/genrich-controls-pvc-callable.yaml ok 1
-regulation-workflows/workflow-templates/peak-calling/.deprecated/get-genrich-values-tasks.yaml 1 workflow error: submit-genrich-values-tasks: templateRef: WorkflowTemplate genrich-values-v2-submittable not found
-regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks-ad-hoc.yaml ok 2
-regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks.yaml ok 2
-regulation-workflows/workflow-templates/peak-calling/chip-seq-genrich-values-cmd.yaml ok 1
-regulation-workflows/workflow-templates/peak-calling/chip-seq-peaks-v-0.2.yaml ok 0
-regulation-workflows/workflow-templates/peak-calling/controls/.deprecated/controls-peak-calling-for-mask-file-with-pileups.yaml ok 0
-regulation-workflows/workflow-templates/peak-calling/controls/control-peak-calling-for-mask-file.yaml ok 0
-regulation-workflows/workflow-templates/peak-calling/controls/get-control-peak-calling-tasks.yaml 1 workflow error: submit-controls-pc-tasks-for-mask-file: templateRef: WorkflowTemplate control-peak-calling-for-mask-file-v-0.1.0 not found
-regulation-workflows/workflow-templates/peak-calling/delete-task-markers.yaml ok 4
-regulation-workflows/workflow-templates/peak-calling/genrich-tasks.yaml 1 workflow error: check-if-pq-values-and-pileups-already-in-s3-bucket: templateRef: template check-if-s3-objects-exist not found in WorkflowTemplate/check-s3-object-exists-v-0.1.0
-regulation-workflows/workflow-templates/peak-calling/genrich-values-cmd.yaml ok 0
-regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.1.yaml ok 0
-regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.2.yaml ok 0
-regulation-workflows/workflow-templates/peak-calling/open-chromatin-genrich-values-cmd.yaml ok 1
-regulation-workflows/workflow-templates/peak-calling/open-chromatin-peaks-v-0.2.yaml ok 0
-regulation-workflows/workflow-templates/peak-calling/peak-calling-tasks.yaml ok 2
-regulation-workflows/workflow-templates/samtools/.deprecated/samtools-quickcheck-cmd-pvc-callable.yaml ok 1
-regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.1.yaml ok 4
-regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.2.yaml ok 3
-regulation-workflows/workflow-templates/signal/.deprecated/genrich-pq-values-to-bigwig-high-mem-pvc-callable.yaml ok 6
-regulation-workflows/workflow-templates/signal/.deprecated/get-signal-task.yaml ok 6
-regulation-workflows/workflow-templates/signal/genrich-pq-values-to-bigwig-pvc-callable-v-0.1.yaml ok 6
-regulation-workflows/workflow-templates/signal/signal-tasks.yaml 1 templates.signal-tasks-dag name is not unique
-singlem-sra-processing/cloud/argo/logan_chunked_workflow_template.yaml ok 1
-singlem-sra-processing/cloud/argo/logan_workflow_template.yaml ok 1
-singlem-sra-processing/cloud/argo/prod_workflow_template1.yaml ok 1
-singlem-sra-processing/cloud/argo/prod_workflow_template2.yaml ok 1
-singlem-sra-processing/cloud/argo/prod_workflow_template3.yaml ok 1
-singlem-sra-processing/cloud/argo/prod_workflow_template4.yaml ok 1
-singlem-sra-processing/cloud/argo/prod_workflow_template_less_than30gbp.yaml ok 1
-singlem-sra-processing/cloud/argo/sra_weebill_workflow_template.yaml ok 1
-singlem-sra-processing/cloud/argo/test3.yaml ok 1
-snakemake-tutorial-argo-workflows/argo-workflows/workflows.yaml ok 7
-snakemake-tutorial-argo-workflows/argo-workflows/workflowtemplates.yaml ok 7
-talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_standard_cluster_workflow_template.yaml ok 4
-talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_template.yaml#1 ok 4
-talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_template.yaml#2 ok 4
-talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/doubler-assertion.yaml ok 2
-talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/doubler-template.yaml ok 1
-talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/git-checkout-template.yaml ok 1
-talk-demos/argocon-demos/2023-artifact-management-at-scale/ci-workflow-s3.yaml 1 workflow error: git-checkout-pr-s3: templateRef: WorkflowTemplate git-checkout-pr-s3 not found
-talk-demos/argocon-demos/2023-artifact-management-at-scale/fan-out-fan-in.yaml ok 2
-talk-demos/argocon-demos/2023-configuring-volumes-for-parallel-workflow-reads-and-writes/tests/nfs-workflow.yml ok 4
-talk-demos/argocon-demos/2023-configuring-volumes-for-parallel-workflow-reads-and-writes/tests/s3-workflow.yml ok 4
-talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/update-jira.yml 1 workflow error: update-jira: inputs.parameters.jira_ticket_number was not supplied
-talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/argo-workflow.yaml 1 workflow error: git-checkout-pr: template git-checkout-pr not found in WorkflowTemplate/git-checkout
-talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/create-and-setup-vcluster-workflow/create.yaml ok 2
-talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/demonstrating-argo-workflows-and-vcluster-at-scale/lots-of-hellos-workflow.yaml ok 170
-talk-demos/argocon-demos/2023-streamlining-big-data-workflows-with-memoization-and-work-avoidance/workflow/example.yaml ok 2
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/container.yaml ok 2
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/containerset.yaml ok 3
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/dag-example.yaml 33 dag-1555b.plugin: plugin templates are not supported: executor plugins need the Argo agent
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/http.yaml ok 3
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/inline.yaml ok 1
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/plugin.yaml 33 plugin-1606b: plugin templates are not supported: executor plugins need the Argo agent
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/resource.yaml ok 1
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/script.yaml ok 2
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/steps-example.yaml 33 steps-4f0e0[3].plugin: plugin templates are not supported: executor plugins need the Argo agent
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/suspend.yaml ok 0
-talk-demos/oss-2022/python/cron-workflow-python.yaml ok 3
-talk-demos/oss-2022/scala/workflows/spark-template-jvm.yaml ok 1
-talk-demos/oss-2022/scala/workflows/workflow-scala-with-template.yaml ok 2
-talk-demos/oss-2022/scala/workflows/workflow-scala.yaml ok 2
-workflows/examples/inspection-batch-with-failure.yaml ok 2
-workflows/examples/inspection-batch-with-output-gathering.yaml 1 workflow error: onExit: template collect-outputs has no type: it needs container, script, steps, dag or another
-workflows/examples/inspection-batch.yaml ok 1
-workflows/examples/inspection.yaml 1 workflow error: onExit: template collect-outputs has no type: it needs container, script, steps, dag or another
-workflows/examples/resource-validate.yaml ok 1
-workflows/templates/inspection-build-template.yaml ok 3
-workflows/templates/inspection-run-template.yaml ok 2
+regulation-workflows/workflow-templates/helpers/.deprecated/check-s3-object-exists.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/compress-tgz-pvc-callable_v1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata-pvc-callable.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata-pvc-callable_v2.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/compute-pvc-size.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name-v2.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/copy-from-pvc-to-s3-object.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/copy-s3-object-to-pvc.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/copy-s3-prefix-objects-to-pvc.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/cp-s3-object-to-s3.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/create-pvc-kubectl.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/decompress-tgz-pvc-callable.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/decompress-tgz-pvc-callable_v2.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/delete-file-from-pvc.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/delete-patch-pvc-kubectl.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/expose-payload-fields-as-params.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/get-from-reg-pipelines-api.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api-v1_1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api-v2.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/get-task-payload-by-index.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/get-wf-task-payload-by-index.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/pvc-to-pvc-copy.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/resolve-work-avoidance.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker-v2.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.deprecated/validate-expected-number-of-files-in-dir.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.experimental/commit-rdr-changes.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.experimental/create-nfs-pvc-kubectl.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.experimental/delete-request-from-reg-pipelines-api.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.experimental/delete-s3-object.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.experimental/delete-task-marker.yaml	ok 2
+regulation-workflows/workflow-templates/helpers/.experimental/list-objects-under-s3-prefix.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.experimental/post-results-to-reg-pipelines-api.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/.experimental/s3-objects-to-pvc.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/analysis-file-post-request-payload-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/check-if-field-present-and-not-empty-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/check-if-s3-objects-exist-v-0.1.yaml	ok 0
+regulation-workflows/workflow-templates/helpers/check-s3-object-exists-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/compress-tgz-pvc-callable-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/compute-file-metadata-pvc-callable-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/compute-file-metadata-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/compute-pvc-size-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/compute-task-marker-name-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/compute-task-marker-name-v-0.2.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/copy-from-pvc-to-s3-object-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/copy-pvc-to-pvc-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/copy-s3-object-to-pvc-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/copy-s3-prefix-objects-to-pvc-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/cp-s3-object-to-s3-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/create-pvc-v-0.2.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/decompress-tgz-pvc-callable-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/decompress-tgz-pvc-callable-v-0.2.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/delete-file-from-pvc-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/delete-pvc-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/expose-payload-fields-as-params-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.2.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/get-wf-task-payload-by-index-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/resolve-work-avoidance-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.2.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/validate-expected-number-of-files-in-dir-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/masked-regions/masked-regions-identification-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/motif-mapping/motif-mapping-tasks.yaml	1 templates.motif-mapping-tasks-dag name is not unique
+regulation-workflows/workflow-templates/ngmerge/.deprecated/ngmerge-cmd-pvc-callable.yaml	ok 1
+regulation-workflows/workflow-templates/ngmerge/ngmerge-cmd-pvc-callable-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/peak-calling/.deprecated/atac-seq.yaml	ok 0
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-ad-hoc.yaml	ok 0
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-pe-with-controls.yaml	ok 0
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-se-no-controls.yaml	ok 0
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-v2.yaml	ok 0
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq.yaml	ok 0
+regulation-workflows/workflow-templates/peak-calling/.deprecated/dnase-seq.yaml	ok 0
+regulation-workflows/workflow-templates/peak-calling/.deprecated/genrich-controls-pvc-callable.yaml	ok 1
+regulation-workflows/workflow-templates/peak-calling/.deprecated/get-genrich-values-tasks.yaml	1 workflow error: submit-genrich-values-tasks: templateRef: WorkflowTemplate genrich-values-v2-submittable not found
+regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks-ad-hoc.yaml	ok 2
+regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks.yaml	ok 2
+regulation-workflows/workflow-templates/peak-calling/chip-seq-genrich-values-cmd.yaml	ok 1
+regulation-workflows/workflow-templates/peak-calling/chip-seq-peaks-v-0.2.yaml	ok 0
+regulation-workflows/workflow-templates/peak-calling/controls/.deprecated/controls-peak-calling-for-mask-file-with-pileups.yaml	ok 0
+regulation-workflows/workflow-templates/peak-calling/controls/control-peak-calling-for-mask-file.yaml	ok 0
+regulation-workflows/workflow-templates/peak-calling/controls/get-control-peak-calling-tasks.yaml	1 workflow error: submit-controls-pc-tasks-for-mask-file: templateRef: WorkflowTemplate control-peak-calling-for-mask-file-v-0.1.0 not found
+regulation-workflows/workflow-templates/peak-calling/delete-task-markers.yaml	ok 4
+regulation-workflows/workflow-templates/peak-calling/genrich-tasks.yaml	1 workflow error: check-if-pq-values-and-pileups-already-in-s3-bucket: templateRef: template check-if-s3-objects-exist not found in WorkflowTemplate/check-s3-object-exists-v-0.1.0
+regulation-workflows/workflow-templates/peak-calling/genrich-values-cmd.yaml	ok 0
+regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.1.yaml	ok 0
+regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.2.yaml	ok 0
+regulation-workflows/workflow-templates/peak-calling/open-chromatin-genrich-values-cmd.yaml	ok 1
+regulation-workflows/workflow-templates/peak-calling/open-chromatin-peaks-v-0.2.yaml	ok 0
+regulation-workflows/workflow-templates/peak-calling/peak-calling-tasks.yaml	ok 2
+regulation-workflows/workflow-templates/samtools/.deprecated/samtools-quickcheck-cmd-pvc-callable.yaml	ok 1
+regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.1.yaml	ok 4
+regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.2.yaml	ok 3
+regulation-workflows/workflow-templates/signal/.deprecated/genrich-pq-values-to-bigwig-high-mem-pvc-callable.yaml	ok 6
+regulation-workflows/workflow-templates/signal/.deprecated/get-signal-task.yaml	ok 6
+regulation-workflows/workflow-templates/signal/genrich-pq-values-to-bigwig-pvc-callable-v-0.1.yaml	ok 6
+regulation-workflows/workflow-templates/signal/signal-tasks.yaml	1 templates.signal-tasks-dag name is not unique
+singlem-sra-processing/cloud/argo/logan_chunked_workflow_template.yaml	ok 1
+singlem-sra-processing/cloud/argo/logan_workflow_template.yaml	ok 1
+singlem-sra-processing/cloud/argo/prod_workflow_template1.yaml	ok 1
+singlem-sra-processing/cloud/argo/prod_workflow_template2.yaml	ok 1
+singlem-sra-processing/cloud/argo/prod_workflow_template3.yaml	ok 1
+singlem-sra-processing/cloud/argo/prod_workflow_template4.yaml	ok 1
+singlem-sra-processing/cloud/argo/prod_workflow_template_less_than30gbp.yaml	ok 1
+singlem-sra-processing/cloud/argo/sra_weebill_workflow_template.yaml	ok 1
+singlem-sra-processing/cloud/argo/test3.yaml	ok 1
+snakemake-tutorial-argo-workflows/argo-workflows/workflows.yaml	ok 7
+snakemake-tutorial-argo-workflows/argo-workflows/workflowtemplates.yaml	ok 7
+talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_standard_cluster_workflow_template.yaml	ok 4
+talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_template.yaml#1	ok 4
+talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_template.yaml#2	ok 4
+talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/doubler-assertion.yaml	ok 2
+talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/doubler-template.yaml	ok 1
+talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/git-checkout-template.yaml	ok 1
+talk-demos/argocon-demos/2023-artifact-management-at-scale/ci-workflow-s3.yaml	1 workflow error: git-checkout-pr-s3: templateRef: WorkflowTemplate git-checkout-pr-s3 not found
+talk-demos/argocon-demos/2023-artifact-management-at-scale/fan-out-fan-in.yaml	ok 2
+talk-demos/argocon-demos/2023-configuring-volumes-for-parallel-workflow-reads-and-writes/tests/nfs-workflow.yml	ok 4
+talk-demos/argocon-demos/2023-configuring-volumes-for-parallel-workflow-reads-and-writes/tests/s3-workflow.yml	ok 4
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/code-analysis.yml	1 workflow error: code-analysis: template code-analysis not found
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/container-build.yml	1 workflow error: container-build: inputs.parameters.container_tag was not supplied
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/cpd-certification.yml	ok 1
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/deploy-application.yml	1 workflow error: deploy-application: inputs.parameters.app_type was not supplied
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/get-git.yml	ok 1
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/git-checkout.yml	1 workflow error: git-checkout-pr: template git-checkout-pr not found
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/run-unit-tests.yml	ok 1
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/update-jira.yml	1 workflow error: update-jira: inputs.parameters.jira_ticket_number was not supplied
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/argo-workflow.yaml	1 workflow error: git-checkout-pr: template git-checkout-pr not found in WorkflowTemplate/git-checkout
+talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/create-and-setup-vcluster-workflow/create.yaml	ok 2
+talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/demonstrating-argo-workflows-and-vcluster-at-scale/lots-of-hellos-workflow.yaml	ok 170
+talk-demos/argocon-demos/2023-streamlining-big-data-workflows-with-memoization-and-work-avoidance/workflow/example.yaml	ok 2
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/container.yaml	ok 2
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/containerset.yaml	ok 3
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/dag-example.yaml	33 dag-1555b.plugin: plugin templates are not supported: executor plugins need the Argo agent
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/http.yaml	ok 3
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/inline.yaml	ok 1
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/plugin.yaml	33 plugin-1606b: plugin templates are not supported: executor plugins need the Argo agent
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/resource.yaml	ok 1
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/script.yaml	ok 2
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/steps-example.yaml	33 steps-4f0e0[3].plugin: plugin templates are not supported: executor plugins need the Argo agent
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/suspend.yaml	ok 0
+talk-demos/oss-2022/python/cron-workflow-python.yaml	ok 3
+talk-demos/oss-2022/scala/workflows/spark-template-jvm.yaml	ok 1
+talk-demos/oss-2022/scala/workflows/workflow-scala-with-template.yaml	ok 2
+talk-demos/oss-2022/scala/workflows/workflow-scala.yaml	ok 2
+workflows/examples/inspection-batch-with-failure.yaml	ok 2
+workflows/examples/inspection-batch-with-output-gathering.yaml	1 workflow error: onExit: template collect-outputs has no type: it needs container, script, steps, dag or another
+workflows/examples/inspection-batch.yaml	ok 1
+workflows/examples/inspection.yaml	1 workflow error: onExit: template collect-outputs has no type: it needs container, script, steps, dag or another
+workflows/examples/resource-validate.yaml	ok 1
+workflows/templates/inspection-build-template.yaml	ok 3
+workflows/templates/inspection-run-template.yaml	ok 2

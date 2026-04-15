@@ -38,7 +38,7 @@ fn run_corpus() {
         .unwrap_or_default()
         .lines()
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .filter_map(|line| line.split_once(' '))
+        .filter_map(|line| line.split_once('\t'))
         .map(|(document, outcome)| (document.to_owned(), outcome.to_owned()))
         .collect();
     let mut repositories: Vec<PathBuf> = std::fs::read_dir(&root)
@@ -170,10 +170,10 @@ fn run_corpus() {
             }
         }
         let mut text = String::from(
-            "# Outcomes of the Argo corpus test with the mock TES executor: `ok` and the number of\n# tasks, or the exit code (33 for unsupported features) and the first error.\n",
+            "# Outcomes of the Argo corpus test with the mock TES executor: `ok` and the number of\n# tasks, or the exit code (33 for unsupported features) and the first error. A tab ends the\n# path, which may hold spaces.\n",
         );
         for (document, outcome) in &outcomes {
-            text.push_str(&format!("{document} {outcome}\n"));
+            text.push_str(&format!("{document}\t{outcome}\n"));
         }
         std::fs::create_dir_all(fixture.parent().expect("a directory"))
             .expect("the fixture directory");

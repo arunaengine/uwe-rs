@@ -279,9 +279,22 @@ pub(crate) fn substitute_item(
     let mut node = node.clone();
     if let Yaml::Mapping(entries) = &mut node.value {
         entries.retain(|entry| !LOOP_FIELDS.contains(&entry.key.as_str()));
+        // Artifact arguments were resolved before the loop, as Argo resolves them.
+        for entry in entries.iter_mut() {
+            if entry.key == "arguments"
+                && let Yaml::Mapping(arguments) = &mut entry.value.value
+            {
+                arguments.retain(|argument| argument.key != "artifacts");
+            }
+        }
     }
     substitute(&mut node, variables, strict)?;
     Ok(node)
+}
+
+/// Whether an item is not known, as the empty text of a mock run's output is.
+pub(crate) fn unknown_item(item: &Value) -> bool {
+    matches!(item, Value::String(text) if text.is_empty())
 }
 
 fn substitute(node: &mut Node, variables: &Variables, strict: bool) -> Result<(), String> {

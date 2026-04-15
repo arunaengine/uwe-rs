@@ -68,7 +68,7 @@ fn leniently<T>(
     for _ in 0..100 {
         let next = match error.message.as_str() {
             QUOTED_INDENTATION => indent_quoted(&repaired, error.position),
-            // The end of a flow collection indented like its key, which go-yaml accepts too.
+            // Flow content indented like its key, which go-yaml accepts too.
             FLOW_INDENTATION => indent_flow_end(&repaired, error.position),
             _ => None,
         };
@@ -90,12 +90,13 @@ fn leniently<T>(
 /// the block around the collection.
 const FLOW_INDENTATION: &str = "invalid indentation";
 
-/// Indents a line that ends a flow collection, like `]`, one column deeper.
+/// Indents a line of a flow collection, one that starts with `]`, `}`, `,` or a quote, one
+/// column deeper.
 fn indent_flow_end(text: &str, position: Position) -> Option<String> {
     let index = position.line.checked_sub(1)? as usize;
     let mut lines: Vec<String> = text.split('\n').map(str::to_owned).collect();
     let line = lines.get_mut(index)?;
-    if !line.trim_start().starts_with([']', '}']) {
+    if !line.trim_start().starts_with([']', '}', ',', '"', '\'']) {
         return None;
     }
     line.insert(0, ' ');

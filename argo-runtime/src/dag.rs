@@ -666,6 +666,14 @@ impl Run {
                 Ok(found) => found,
                 Err(message) => return Expansion::Ended(Phase::Error, message),
             };
+            let strict = if crate::items::unknown_item(item) {
+                self.warn(format!(
+                    "an item of the loop {item_name} is empty; tags that read its fields stay"
+                ));
+                false
+            } else {
+                strict
+            };
             match substitute_item(&node, &item_variables, strict) {
                 Ok(item_node) => match decode::<DagTask>(&item_node) {
                     Ok((mut item_task, _)) => {

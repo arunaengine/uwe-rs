@@ -30,7 +30,17 @@ pub(crate) const MAX_DEPTH: usize = 100;
 pub(crate) const MAX_TASKS: u64 = 100_000;
 
 /// The start of the value of a workflow parameter that has none.
-pub(crate) const PLACEHOLDER: &str = "placeholder-";
+pub(crate) const PLACEHOLDER: &str = "placeholder_";
+
+/// The value of a parameter that has none: one word, like `placeholder_run_data`, so that a
+/// `when` condition reads it as a string.
+pub(crate) fn placeholder(name: &str) -> AnyString {
+    let word: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    AnyString(format!("{PLACEHOLDER}{word}"))
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Phase {
@@ -334,6 +344,7 @@ impl Run {
             Some(Yaml::Sequence(templates)) => templates.clone(),
             _ => Vec::new(),
         };
+        unique_names(&templates).map_err(Failure::error)?;
         let root_context = Rc::new(Context {
             label: String::new(),
             path: context_path,
@@ -358,9 +369,36 @@ impl Run {
             }
         }
         // The inputs of the entrypoint are workflow parameters too, supplied with `-p`.
+        let mut entry_artifacts: Vec<String> = Vec::new();
         if let Some(entry) = root_context.template(&entrypoint)
             && let Ok((template, _)) = decode::<Template>(entry)
         {
+            for artifact in &template.inputs.artifacts {
+                let located = [
+                    &artifact.s3,
+                    &artifact.gcs,
+                    &artifact.azure,
+                    &artifact.git,
+                    &artifact.http,
+                    &artifact.artifactory,
+                    &artifact.hdfs,
+                    &artifact.oss,
+                    &artifact.raw,
+                    &artifact.plugin,
+                ]
+                .into_iter()
+                .any(Option::is_some);
+                let supplied = located
+                    || artifact.optional
+                    || spec
+                        .arguments
+                        .artifacts
+                        .iter()
+                        .any(|argument| argument.name == artifact.name);
+                if !supplied {
+                    entry_artifacts.push(artifact.name.clone());
+                }
+            }
             for input in template.inputs.parameters {
                 let supplied = input.value.is_some()
                     || input.default.is_some()
@@ -403,7 +441,7 @@ impl Run {
                 ));
                 first.clone()
             } else {
-                let placeholder = AnyString(format!("{PLACEHOLDER}{}", parameter.name));
+                let placeholder = placeholder(&parameter.name);
                 warnings.push(format!(
                     "parameter {} has no value; using `{placeholder}`",
                     parameter.name
@@ -449,6 +487,19 @@ impl Run {
         let mut artifacts = Vec::new();
         for artifact in run.spec.arguments.artifacts.clone() {
             artifacts.push(run.artifact_value(&artifact)?);
+        }
+        for name in entry_artifacts {
+            let url = format!("placeholder://{name}");
+            run.warn(format!(
+                "input artifact {name} of the entrypoint is not supplied; using `{url}`"
+            ));
+            artifacts.push(ArtifactValue {
+                name,
+                path: String::new(),
+                location: Some(Location::Url(url)),
+                optional: false,
+                directory: false,
+            });
         }
         run.arguments = Args {
             parameters: run.spec.arguments.parameters.clone(),
@@ -1217,7 +1268,7 @@ impl Run {
                     input.name, typed.name
                 ));
                 if value.is_none() {
-                    value = Some(AnyString(format!("{PLACEHOLDER}{}", input.name)));
+                    value = Some(placeholder(&input.name));
                 }
             }
             let Some(value) = value else {
@@ -1669,6 +1720,20 @@ impl Run {
             }
         }
     }
+}
+
+/// Checks that template names are unique, as Argo validates a workflow it submits. Referenced
+/// WorkflowTemplates are not checked: the controller takes the first template of a name.
+fn unique_names(templates: &[Node]) -> std::result::Result<(), String> {
+    let mut names: Vec<&str> = Vec::new();
+    for template in templates {
+        let name = template.get("name").and_then(Node::as_str).unwrap_or("");
+        if names.contains(&name) {
+            return Err(format!("templates.{name} name is not unique"));
+        }
+        names.push(name);
+    }
+    Ok(())
 }
 
 pub(crate) fn is_pod(template: &Template) -> bool {

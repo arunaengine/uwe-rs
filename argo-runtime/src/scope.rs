@@ -224,10 +224,24 @@ impl Run {
             } else {
                 Err(format!("output parameter {} has no source", parameter.name))
             };
+            let source = if from.expression.is_empty() {
+                &from.parameter
+            } else {
+                &from.expression
+            };
             let value = match (resolved, &from.default) {
                 (Ok(value), _) => value,
                 (Err(_), Some(default)) => default.0.clone(),
-                (Err(error), None) => return Err(error),
+                (Err(error), None) => match skipped_reference(scope, source) {
+                    Some(step) => {
+                        self.warn(format!(
+                            "output parameter {} reads {step}, whose outputs are not known; it is empty",
+                            parameter.name
+                        ));
+                        String::new()
+                    }
+                    None => return Err(error),
+                },
             };
             if !parameter.global_name.is_empty() {
                 self.globals.insert(
@@ -251,7 +265,20 @@ impl Run {
                 }
                 Ok(None) => {}
                 Err(_) if artifact.optional => {}
-                Err(error) => return Err(format!("unable to resolve outputs from scope: {error}")),
+                Err(error) => {
+                    let source = if artifact.from_expression.is_empty() {
+                        &artifact.from
+                    } else {
+                        &artifact.from_expression
+                    };
+                    match skipped_reference(scope, source) {
+                        Some(step) => self.warn(format!(
+                            "output artifact {} reads {step}, whose outputs are not known; it is left out",
+                            artifact.name
+                        )),
+                        None => return Err(format!("unable to resolve outputs from scope: {error}")),
+                    }
+                }
             }
         }
         Ok(outputs)
@@ -358,6 +385,36 @@ pub(crate) fn add_outputs(scope: &mut Scope, prefix: &str, outputs: &NodeOutputs
             artifact.clone(),
         );
     }
+}
+
+/// A step or task that a reference or expression reads and whose outputs are not known: it
+/// was skipped or omitted, like both branches of a condition that a run with empty outputs
+/// decides neither way, or it left an output empty, as a mock run does.
+fn skipped_reference(scope: &Scope, source: &str) -> Option<String> {
+    let reads = |kind: &str, step: &str| {
+        [
+            format!("{kind}.{step}."),
+            format!("{kind}['{step}']"),
+            format!("{kind}[\"{step}\"]"),
+        ]
+        .iter()
+        .any(|reference| source.contains(reference.as_str()))
+    };
+    scope.values.iter().find_map(|(key, value)| {
+        let (kind, rest) = key.split_once('.')?;
+        if kind != "steps" && kind != "tasks" {
+            return None;
+        }
+        let (step, field) = match rest.strip_suffix(".status") {
+            Some(step) => (step, "status"),
+            None => rest.split_once(".outputs.")?,
+        };
+        let unknown = match field {
+            "status" => value == "Skipped" || value == "Omitted",
+            _ => value.is_empty(),
+        };
+        (unknown && reads(kind, step)).then(|| format!("{kind}.{step}"))
+    })
 }
 
 /// A value that is JSON as the JSON value, or else as text, as Argo aggregates loop outputs.

@@ -321,6 +321,14 @@ impl Run {
                         break;
                     }
                 };
+                let strict = if crate::items::unknown_item(item) {
+                    self.warn(format!(
+                        "an item of the loop {item_name} is empty; tags that read its fields stay"
+                    ));
+                    false
+                } else {
+                    strict
+                };
                 match substitute_item(&node, &item_variables, strict) {
                     Ok(item_node) => match decode::<WorkflowStep>(&item_node) {
                         Ok((item_step, _)) => {

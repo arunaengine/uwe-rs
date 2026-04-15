@@ -3,9 +3,9 @@
 //! which govaluate reads as an accessor, stays an error, as in Argo.
 //!
 //! One rule is iunctus's own: a missing operand, as a tag that substitution left empty makes
-//! it (` == heads`), reads as an empty string, and ordering comparisons with it are false.
-//! govaluate fails on such conditions; the rule lets runs whose outputs are empty, like mock
-//! runs, decide their conditions instead of failing.
+//! it (` == heads`), is not known, and every comparison with it is false, `!=` too. govaluate
+//! fails on such conditions; the rule lets runs whose outputs are empty, like mock runs,
+//! decide their conditions instead of failing, and ends recursions that wait for an output.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -419,7 +419,9 @@ fn binary(op: &str, left: &Expression, right: &Expression) -> Result<Operand> {
         Operand::Missing => Operand::Str(String::new()),
         other => other.clone(),
     };
+    let missing = left == Operand::Missing || right == Operand::Missing;
     Ok(match op {
+        "==" | "!=" if missing => Operand::Bool(false),
         "==" => Operand::Bool(plain(&left) == plain(&right)),
         "!=" => Operand::Bool(plain(&left) != plain(&right)),
         ">" | ">=" | "<" | "<=" => {

@@ -31,10 +31,11 @@ fn numbers_booleans_and_logic() {
 }
 
 #[test]
-fn empty_operands_read_as_empty_strings() {
+fn missing_operands_compare_false() {
     assert!(!holds(" == heads"));
-    assert!(holds(" != tails"));
+    assert!(!holds(" != tails"));
     assert!(!holds(" < 10"));
+    assert!(!holds(" != 1 && != 2"));
     assert!(holds("'' == ''"));
 }
 

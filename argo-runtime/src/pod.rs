@@ -48,20 +48,7 @@ impl Run {
                 inputs.push(input);
             }
         }
-        let mut outputs: Vec<String> = Vec::new();
-        for artifact in &template.outputs.artifacts {
-            if !artifact.path.is_empty() && !outputs.contains(&artifact.path) {
-                outputs.push(artifact.path.clone());
-            }
-        }
-        for parameter in &template.outputs.parameters {
-            if let Some(from) = &parameter.value_from
-                && !from.path.is_empty()
-                && !outputs.contains(&from.path)
-            {
-                outputs.push(from.path.clone());
-            }
-        }
+        let outputs = output_paths(template);
         let time = template
             .active_deadline_seconds
             .as_ref()
@@ -220,6 +207,7 @@ impl Run {
                 .map(node_json)
                 .unwrap_or_else(|| format!("{data:?}"));
             task.command = vec!["argoexec".into(), "data".into(), description];
+            task.outputs = outputs.clone();
             tasks.push(task);
         }
         if dependencies.len() < tasks.len() {
@@ -471,27 +459,12 @@ impl Run {
         Ok(())
     }
 
-    /// The output paths the main task of a leaf asked for, without repeats.
+    /// The output paths the main task of a leaf asked for.
     fn emitted_outputs(&self, index: usize) -> Vec<String> {
-        let Some(processed) = &self.nodes[index].processed else {
-            return Vec::new();
-        };
-        let template = &processed.template;
-        let mut outputs: Vec<String> = Vec::new();
-        for artifact in &template.outputs.artifacts {
-            if !artifact.path.is_empty() && !outputs.contains(&artifact.path) {
-                outputs.push(artifact.path.clone());
-            }
+        match &self.nodes[index].processed {
+            Some(processed) => output_paths(&processed.template),
+            None => Vec::new(),
         }
-        for parameter in &template.outputs.parameters {
-            if let Some(from) = &parameter.value_from
-                && !from.path.is_empty()
-                && !outputs.contains(&from.path)
-            {
-                outputs.push(from.path.clone());
-            }
-        }
-        outputs
     }
 
     /// Warns once about pod fields that a run without Kubernetes leaves out.
@@ -557,6 +530,28 @@ fn fill_container(task: &mut Task, container: &Container, warn: &mut dyn FnMut(S
     if container.env_from.is_some() {
         warn("envFrom reads Secrets or ConfigMaps, which a run without Kubernetes cannot; it is left out".to_owned());
     }
+}
+
+/// The files of a leaf's outputs: artifact paths and the paths of output parameters, without
+/// repeats, deeper paths first, so that a directory output does not keep a file below it from
+/// being made.
+fn output_paths(template: &Template) -> Vec<String> {
+    let mut outputs: Vec<String> = Vec::new();
+    for artifact in &template.outputs.artifacts {
+        if !artifact.path.is_empty() && !outputs.contains(&artifact.path) {
+            outputs.push(artifact.path.clone());
+        }
+    }
+    for parameter in &template.outputs.parameters {
+        if let Some(from) = &parameter.value_from
+            && !from.path.is_empty()
+            && !outputs.contains(&from.path)
+        {
+            outputs.push(from.path.clone());
+        }
+    }
+    outputs.sort_by_key(|path| std::cmp::Reverse(path.trim_end_matches('/').matches('/').count()));
+    outputs
 }
 
 /// A word quoted for a POSIX shell.

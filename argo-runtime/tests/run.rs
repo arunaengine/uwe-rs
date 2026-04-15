@@ -669,12 +669,12 @@ fn placeholders_and_unsupported_features() {
     ran.succeeded();
     assert_eq!(
         ran.task("[0].show").command,
-        ["echo", "placeholder-sample fastq"]
+        ["echo", "placeholder_sample fastq"]
     );
     assert!(
         ran.warnings
             .iter()
-            .any(|warning| warning.contains("placeholder-sample"))
+            .any(|warning| warning.contains("placeholder_sample"))
     );
     let ran = run(&workflow(
         r#"

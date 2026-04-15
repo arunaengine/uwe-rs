@@ -9,7 +9,7 @@ use argo_parser::model::{Artifact, TemplateRef, WorkflowStep};
 use argo_parser::{Node, Value as Yaml, decode};
 use workflow_graph::TaskId;
 
-use crate::items::{item_variables, items, loops, substitute_item};
+use crate::items::{item_variables, items, items_unless_skipped, loops, substitute_item};
 use crate::run::{Args, Call, Context, Expanded, Holder, NodeKind, Phase, Result, Run};
 use crate::scope::Scope;
 use crate::tags::replace_node;
@@ -280,7 +280,7 @@ impl Run {
             for warning in warnings {
                 self.warn(warning);
             }
-            let list = match list {
+            let list = match items_unless_skipped(&typed.when, list) {
                 Ok(list) => list,
                 Err(message) => {
                     expanded.push(Expanded::error(step_name, message));
@@ -329,6 +329,7 @@ impl Run {
                 } else {
                     strict
                 };
+                let item_variables = variables.clone().with_values(item_variables);
                 match substitute_item(&node, &item_variables, strict) {
                     Ok(item_node) => match decode::<WorkflowStep>(&item_node) {
                         Ok((item_step, _)) => {

@@ -644,9 +644,14 @@ fn exit_handlers_see_the_status() {
         ran.task("[0].work.onExit").command,
         ["echo", "cleanup Failed"]
     );
+    // Argo quotes the JSON of every failed node, the steps and their group too.
     let report = &ran.task("onExit[0].report").command[1];
     assert!(
-        report.starts_with("Failed [{\"displayName\":\"work\""),
+        report.starts_with(r#"Failed "[{\"displayName\":\"exits\""#),
+        "{report}"
+    );
+    assert!(
+        report.contains(r#"{\"displayName\":\"work\",\"message\":\"Error (exit code 1)\","#),
         "{report}"
     );
     assert_eq!(ran.upstream("onExit[0].report"), ["[0].work.onExit"]);

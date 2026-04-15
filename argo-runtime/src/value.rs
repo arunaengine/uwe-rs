@@ -218,6 +218,43 @@ pub fn json_string(text: &str, out: &mut String) {
     out.push('"');
 }
 
+/// Text as Go's `strconv.Quote` writes it, with the quotes.
+pub fn go_quote(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for character in text.chars() {
+        match character {
+            '"' | '\\' => {
+                out.push('\\');
+                out.push(character);
+            }
+            '\u{7}' => out.push_str("\\a"),
+            '\u{8}' => out.push_str("\\b"),
+            '\u{c}' => out.push_str("\\f"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{b}' => out.push_str("\\v"),
+            ' ' => out.push(' '),
+            control if control < ' ' || control == '\u{7f}' => {
+                let _ = write!(out, "\\x{:02x}", control as u32);
+            }
+            // Go prints other characters that are not graphic, like U+00A0, as escapes.
+            other if other.is_control() || other.is_whitespace() => {
+                let code = other as u32;
+                if code < 0x10000 {
+                    let _ = write!(out, "\\u{code:04x}");
+                } else {
+                    let _ = write!(out, "\\U{code:08x}");
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out.push('"');
+    out
+}
+
 /// A float as Go's `%v` prints it, which is `strconv.FormatFloat(f, 'g', -1, 64)`: the
 /// shortest digits that read back the same, with an exponent when it is below -4 or from 6 on,
 /// so a million prints as `1e+06`.

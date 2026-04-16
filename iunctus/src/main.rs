@@ -142,8 +142,7 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<Execution, Failure> {
     ))
 }
 
-/// The driver of a language. The drivers of the other languages plug in here, each as
-/// `<language>_runtime::driver(launch)`.
+/// The driver of a language.
 fn driver(
     language: Language,
     launch: &Launch,
@@ -154,20 +153,8 @@ fn driver(
         Language::Nextflow => nextflow::driver(launch, run, quiet),
         Language::Snakemake => snakemake_runtime::driver(launch),
         Language::Cwl => cwl_runtime::driver(launch),
-        Language::Argo => Err(not_yet(language)),
+        Language::Argo => argo_runtime::driver(launch),
     }
-}
-
-fn not_yet(language: Language) -> DriverError {
-    let name = match language {
-        Language::Nextflow => "Nextflow",
-        Language::Snakemake => "Snakemake",
-        Language::Cwl => "CWL",
-        Language::Argo => "Argo",
-    };
-    DriverError::unsupported(format!(
-        "iunctus: running {name} workflows is not supported yet"
-    ))
 }
 
 /// `iunctus config`: the config of a Nextflow project, by default the launch directory.

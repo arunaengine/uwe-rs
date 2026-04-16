@@ -308,9 +308,10 @@ impl Parser<'_> {
     /// Typed declarations, multiple assignments, assignments and expression statements.
     fn expression_statement(&mut self) -> Parse<StatementKind> {
         let start = self.position;
+        // A declaration type has no `?`, so `a.b ? c = d : e` is a conditional.
         let typed = self.speculate(|parser| {
             let legacy = parser.legacy_type()?;
-            if parser.at_name() {
+            if parser.at_name() && !legacy.nullable {
                 Ok(legacy)
             } else {
                 Err(Failed)

@@ -5,7 +5,8 @@
 use super::call::append_closure;
 use super::{Parse, Parser, is_keyword, is_name};
 use crate::ast::{
-    Access, BinaryOperator, Expression, ExpressionKind, Literal, Name, Type, UnaryOperator,
+    Access, AssignOperator, BinaryOperator, Block, Closure, Expression, ExpressionKind, Literal,
+    Name, Parameter, Statement, StatementKind, Type, UnaryOperator,
 };
 use crate::token::{Dialect, TokenKind};
 
@@ -117,7 +118,22 @@ impl Parser<'_> {
                     negated,
                 },
                 Infix::Ternary => {
-                    let then = self.expression()?;
+                    let mut then = self.expression()?;
+                    // Legacy syntax: Groovy reads `c ? a = b : d` as `c ? (a = b) : d`.
+                    if self.at(TokenKind::Assign) {
+                        let assign = self.bump().span;
+                        let message = "Expected ':' of the conditional expression";
+                        self.legacy.push(crate::Diagnostic::new(message, assign));
+                        let value = self.expression()?;
+                        then = Expression {
+                            span: then.span.to(value.span),
+                            kind: ExpressionKind::Assign {
+                                target: Box::new(then),
+                                operator: AssignOperator::Assign,
+                                value: Box::new(value),
+                            },
+                        };
+                    }
                     self.skip_newlines();
                     self.expect(TokenKind::Colon, "':' of the conditional expression")?;
                     self.skip_newlines();
@@ -295,6 +311,13 @@ impl Parser<'_> {
                         _ if self.eat(TokenKind::At) => Access::Attribute,
                         _ => Access::Normal,
                     };
+                    // Legacy syntax: Groovy allows a line break after the dot.
+                    if self.at(TokenKind::Newline) {
+                        let span = self.current().span;
+                        let message = "Expected a property name";
+                        self.legacy.push(crate::Diagnostic::new(message, span));
+                        self.skip_newlines();
+                    }
                     ExpressionKind::Property {
                         target: Box::new(expression),
                         name: self.property_name()?,
@@ -366,6 +389,7 @@ impl Parser<'_> {
     pub(super) fn primary(&mut self) -> Parse<Expression> {
         let token = self.current();
         let kind = match token.kind {
+            kind if is_name(kind) && self.nth(1) == TokenKind::Arrow => self.lambda()?,
             kind if is_name(kind) || (self.groovy && kind == TokenKind::Include) => {
                 self.bump();
                 let text = self.text(token);
@@ -423,6 +447,38 @@ impl Parser<'_> {
             kind,
             span: self.span_from(token.span),
         })
+    }
+
+    /// Legacy syntax: a Java lambda like `gene -> gene.trim()`, which Groovy reads as a closure
+    /// with one parameter.
+    fn lambda(&mut self) -> Parse<ExpressionKind> {
+        let name = self.variable_name()?;
+        let arrow = self.bump().span;
+        self.legacy
+            .push(crate::Diagnostic::new("Unexpected input: '->'", arrow));
+        self.skip_newlines();
+        let body = if self.at(TokenKind::LeftBrace) {
+            self.block()?
+        } else {
+            let value = self.expression()?;
+            let span = value.span;
+            Block {
+                statements: vec![Statement {
+                    kind: StatementKind::Expression(value),
+                    span,
+                }],
+                span,
+            }
+        };
+        let parameter = Parameter {
+            name,
+            annotation: None,
+            default: None,
+        };
+        Ok(ExpressionKind::Closure(Box::new(Closure {
+            parameters: Some(vec![parameter]),
+            body,
+        })))
     }
 
     /// The `expressionList` rule: expressions separated by commas that may sit between newlines.

@@ -5,9 +5,12 @@
 use super::declaration::is_expression;
 use super::section::{LabelOrder, section_block};
 use super::{Parse, Parser, is_name};
-use crate::Span;
-use crate::ast::{Item, NamedOutput, OutputTarget, TypedName, Workflow, WorkflowTake};
+use crate::ast::{
+    BinaryOperator, ExpressionKind, Item, Literal, Name, NamedOutput, OutputTarget, Statement,
+    StatementKind, TypedName, Workflow, WorkflowTake,
+};
 use crate::token::TokenKind;
+use crate::{Diagnostic, Span};
 
 impl Parser<'_> {
     /// Whether `workflow` starts a definition: an optional name, then `{`.
@@ -41,6 +44,7 @@ impl Parser<'_> {
         let mut order = LabelOrder::new();
         let mut sections = Vec::new();
         let mut implicit = false;
+        let mut empty = false;
         while !self.at_list_end(true) {
             let Some(section) = self.workflow_label() else {
                 valid &= sections.is_empty() && !implicit;
@@ -52,7 +56,7 @@ impl Parser<'_> {
             let label = self.bump().span;
             self.bump();
             self.skip_newlines();
-            valid &= self.workflow_section(section, label, &mut workflow);
+            empty |= !self.workflow_section(section, label, &mut workflow);
             sections.push(section);
             self.skip_separators();
         }
@@ -62,10 +66,13 @@ impl Parser<'_> {
         // Either `main:` or `emit:` is required, and the handlers need `main:`.
         let handlers = has(WorkflowSection::OnComplete) || has(WorkflowSection::OnError);
         let required = has(WorkflowSection::Main) || (has(WorkflowSection::Emit) && !handlers);
+        let message =
+            "Invalid workflow definition -- check for missing or out-of-order section labels";
         if !valid || (!sections.is_empty() && !required) {
-            let message =
-                "Invalid workflow definition -- check for missing or out-of-order section labels";
             self.error_at(message, workflow.span);
+        } else if empty {
+            // Legacy syntax: a section may be empty, like `take:` right before `main:`.
+            self.legacy.push(Diagnostic::new(message, workflow.span));
         }
         Ok(Item::Workflow(Box::new(workflow)))
     }
@@ -107,12 +114,25 @@ impl Parser<'_> {
             }
             WorkflowSection::Publish => {
                 let (publishers, last) = self.item_list(true, is_label, Self::named_output);
-                for publisher in &publishers {
-                    if let NamedOutput::Statement(statement) = publisher {
+                let publishers: Vec<NamedOutput> = publishers
+                    .into_iter()
+                    .map(|publisher| {
+                        let NamedOutput::Statement(statement) = &publisher else {
+                            return publisher;
+                        };
                         let message = "Invalid workflow publish statement -- must be an assignment";
-                        self.error_at(message, statement.span);
-                    }
-                }
+                        match preview_publisher(statement) {
+                            Some(publisher) => {
+                                self.legacy.push(Diagnostic::new(message, statement.span));
+                                publisher
+                            }
+                            None => {
+                                self.error_at(message, statement.span);
+                                publisher
+                            }
+                        }
+                    })
+                    .collect();
                 if !entry {
                     let message = "Named workflow cannot have a publish section";
                     self.error_at(message, start.to(last));
@@ -225,10 +245,53 @@ impl Parser<'_> {
                 body,
             });
         }
+        // Legacy syntax: the preview output block of Nextflow 24.10 names targets with strings.
+        if self.at(TokenKind::StringLiteral) && self.kind_after(1) == TokenKind::LeftBrace {
+            let name = self.string_name()?;
+            self.legacy
+                .push(Diagnostic::new("Invalid output declaration", name.span));
+            self.skip_newlines();
+            let body = self.block()?;
+            return Ok(OutputTarget::Target {
+                name,
+                annotation: None,
+                body,
+            });
+        }
         let statement = self.statement()?;
         self.error_at("Invalid output declaration", statement.span);
         Ok(OutputTarget::Statement(statement))
     }
+}
+
+/// A publish statement of the preview output syntax of Nextflow 24.10, `channel >> 'target'`,
+/// as the assignment `target = channel`.
+fn preview_publisher(statement: &Statement) -> Option<NamedOutput> {
+    let StatementKind::Expression(expression) = &statement.kind else {
+        return None;
+    };
+    let ExpressionKind::Binary {
+        operator: BinaryOperator::RightShift,
+        left,
+        right,
+    } = &expression.kind
+    else {
+        return None;
+    };
+    let ExpressionKind::Literal(Literal::String(target)) = &right.kind else {
+        return None;
+    };
+    let name = Name {
+        text: target.clone(),
+        span: right.span,
+    };
+    Some(NamedOutput::Named {
+        target: TypedName {
+            name,
+            annotation: None,
+        },
+        value: Some((**left).clone()),
+    })
 }
 
 /// A labelled section of a workflow body, in the required order.

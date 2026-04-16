@@ -4,12 +4,12 @@
 
 use super::section::{LabelOrder, section_block, section_end};
 use super::{Parse, Parser};
-use crate::Span;
 use crate::ast::{
     Agent, BinaryOperator, BodyKind, ExpressionKind, Item, NamedOutput, Process, ProcessBody,
     ProcessInput, Statement, StatementKind, TypedName,
 };
 use crate::token::TokenKind;
+use crate::{Diagnostic, Span};
 
 impl Parser<'_> {
     /// The `processInput` rule: a typed name, `record(...)` or `tuple(...)` of typed names, or a
@@ -106,7 +106,10 @@ impl Parser<'_> {
                 }
                 _ => false,
             };
-            if !valid {
+            if !valid && matches!(statement.kind, StatementKind::If { .. }) {
+                // Legacy syntax: an `if` among the directives runs for each task.
+                self.legacy.push(Diagnostic::new(message, statement.span));
+            } else if !valid {
                 self.error_at(message, statement.span);
             }
         }

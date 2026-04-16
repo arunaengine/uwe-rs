@@ -144,6 +144,14 @@ fn legacy_syntax() {
         legacy(&process(inputs)),
         ["4:15: `meta` is already declared"]
     );
+    // An `if` among the directives runs for each task.
+    let setup = "    if (workflow.profile == 'conda') {\n        exit 1, 'no conda'\n    }\n    \
+                 cpus 2\n    script:\n    'x'";
+    let source = process(setup);
+    assert_eq!(legacy(&source), ["2:5: Invalid process directive"]);
+    let module = lower(&source).expect("lowers");
+    assert_eq!(module.processes[0].setup.len(), 1);
+    assert_eq!(module.processes[0].directives.len(), 1);
     // A bare name that is no variable is a file name.
     let output = "    output:\n    path(bwa), emit: index\n    script:\n    'x'";
     let source = process(output);
@@ -154,4 +162,24 @@ fn legacy_syntax() {
         [OutputPart::Path { pattern, .. }]
             if matches!(&pattern.kind, ExpressionKind::Literal(value) if value.to_string() == "bwa")
     ));
+}
+
+#[test]
+fn closures_may_declare_again_what_a_binding_holds() {
+    let source = "workflow W {\n    take:\n    fasta\n    main:\n    \
+                  fasta.map { meta, fasta -> fasta }\n    \
+                  out = fasta\n    out.map { out -> out }\n}\n";
+    assert_eq!(
+        legacy(source),
+        [
+            "5:23: `fasta` is already declared",
+            "7:15: `out` is already declared"
+        ]
+    );
+    // A variable declared with `def` stays an error, as in Groovy.
+    let source = "def f() {\n    def x = 1\n    [1].each { x -> x }\n}\n";
+    assert_eq!(
+        lower(source).expect_err("fails"),
+        ["3:16: `x` is already declared"]
+    );
 }

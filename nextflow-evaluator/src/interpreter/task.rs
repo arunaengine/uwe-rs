@@ -199,6 +199,7 @@ impl Interpreter<'_> {
     ) -> Result<Vec<TaskDirective>, Error> {
         let variables = task.variables.clone();
         self.with_task(variables, task_object, |this| {
+            this.block(&mut task.frame, &process.setup)?;
             let mut directives = Vec::new();
             for directive in &process.directives {
                 let arguments = this.arguments(&mut task.frame, &directive.arguments)?;

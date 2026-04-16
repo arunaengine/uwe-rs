@@ -88,6 +88,13 @@ cwl-corpus:
 	fixtures="$PWD/cwl-parser/tests/fixtures/corpus"
 	paths="$(grep -v '^#' "$fixtures/revisions.txt" | cut -d' ' -f1)"
 	mkdir -p "$root"
+	# The paths of the files below a folder of the git tree of a WorkflowHub entry version.
+	workflowhub_tree() {
+		curl -sfL --retry 3 -H 'Accept: application/json' "$1/tree/$2" | jq -r '.tree[] | .type + " " + .path' \
+			| while read -r type name; do
+				if [ "$type" = tree ]; then workflowhub_tree "$1" "$name"; else printf '%s\n' "$name"; fi
+			done
+	}
 	grep -v '^#' "$fixtures/revisions.txt" | while read -r path url ref commit prefixes; do
 		target="$root/$path"
 		if [ -d "$target/.git" ] || { [[ "$url" == https://workflowhub.eu/* ]] && [ -d "$target" ]; }; then
@@ -100,14 +107,31 @@ cwl-corpus:
 		done || true)"
 		work="$(mktemp -d "$root/.fetch.XXXXXX")"
 		if [[ "$url" == https://workflowhub.eu/* ]]; then
-			if ! curl -sfL --retry 3 -o "$work.zip" "https://workflowhub.eu/workflows/${path##*/}/ro_crate?version=${ref#version-}"; then
+			entry="https://workflowhub.eu/workflows/${path##*/}"
+			if ! curl -sfL --retry 3 -o "$work.zip" "$entry/ro_crate?version=${ref#version-}"; then
 				echo "skipped $path: cannot download it from WorkflowHub" >&2
 				rm -rf "$work" "$work.zip"
 				continue
 			fi
-			{ unzip -Z1 "$work.zip" | grep -iE '\.(cwl|ya?ml|json|js)$' | grep -vx 'ro-crate-metadata.json' || true; printf '%s\n' "$referenced"; } \
-				| grep -v '^$' | xargs -r -d '\n' unzip -qo "$work.zip" -d "$work" || true
+			if unzip -tqq "$work.zip" >/dev/null 2>&1; then
+				{ unzip -Z1 "$work.zip" | grep -iE '\.(cwl|ya?ml|json|js)$' | grep -vx 'ro-crate-metadata.json' || true; printf '%s\n' "$referenced"; } \
+					| grep -v '^$' | xargs -r -d '\n' unzip -qo "$work.zip" -d "$work" || true
+			else
+				# Some entries give their web page instead of an RO-Crate; their git tree holds
+				# the same files.
+				git_tree="$entry/git/${ref#version-}"
+				{ workflowhub_tree "$git_tree" "" | grep -iE '\.(cwl|ya?ml|json|js)$' | grep -vx 'ro-crate-metadata.json' || true; printf '%s\n' "$referenced"; } \
+					| grep -v '^$' | while IFS= read -r file; do
+						mkdir -p "$(dirname "$work/$file")"
+						curl -sfL --retry 3 -o "$work/$file" "$git_tree/raw/${file// /%20}" || rm -f "$work/$file"
+					done || true
+			fi
 			rm -f "$work.zip"
+			if [ -z "$(ls -A "$work")" ]; then
+				echo "skipped $path: WorkflowHub gives none of its files" >&2
+				rm -rf "$work"
+				continue
+			fi
 		else
 			git -C "$work" init -q
 			git -C "$work" remote add origin "$url"

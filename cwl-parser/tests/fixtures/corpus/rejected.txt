@@ -300,4 +300,5 @@ realworld/workflowhub/75/workflow_indexbuilder.cwl
 realworld/workflowhub/77/workflow_RNAseq_NonSpliced.cwl
 realworld/workflowhub/814/workflow.cwl
 realworld/workflowhub/95/workflow_RNAseq_Spliced.cwl
+realworld/workflowhub/98/1_md_list.cwl
 realworld/workflowhub/98/md_list.cwl

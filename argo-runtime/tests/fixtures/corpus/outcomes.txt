@@ -821,10 +821,10 @@ hera/examples/workflows/upstream/buildkit-template.yaml	ok 3
 hera/examples/workflows/upstream/ci-output-artifact.yaml	ok 5
 hera/examples/workflows/upstream/ci-workflowtemplate.yaml	ok 6
 hera/examples/workflows/upstream/ci.yaml	ok 4
-hera/examples/workflows/upstream/cluster-workflow-template--cluster-wftmpl-dag.yaml	1 workflow error: A: templateRef: ClusterWorkflowTemplate cluster-workflow-template-print-message not found
+hera/examples/workflows/upstream/cluster-workflow-template--cluster-wftmpl-dag.yaml	ok 7
 hera/examples/workflows/upstream/cluster-workflow-template--clustertemplates.yaml	ok 1
-hera/examples/workflows/upstream/cluster-workflow-template--mixed-cluster-namespaced-wftmpl-steps.yaml	1 workflow failed: hello1: templateRef: WorkflowTemplate workflow-template-print-message not found
-hera/examples/workflows/upstream/cluster-workflow-template--workflow-template-ref-with-entrypoint-arg-passing.yaml	1 workflowTemplateRef: ClusterWorkflowTemplate cluster-workflow-template-print-message not found
+hera/examples/workflows/upstream/cluster-workflow-template--mixed-cluster-namespaced-wftmpl-steps.yaml	ok 5
+hera/examples/workflows/upstream/cluster-workflow-template--workflow-template-ref-with-entrypoint-arg-passing.yaml	ok 1
 hera/examples/workflows/upstream/cluster-workflow-template--workflow-template-ref.yaml	ok 1
 hera/examples/workflows/upstream/coinflip-recursive.yaml	ok 1
 hera/examples/workflows/upstream/coinflip.yaml	ok 1
@@ -996,13 +996,13 @@ hera/examples/workflows/upstream/withsequence-nested-result.yaml	ok 1
 hera/examples/workflows/upstream/work-avoidance.yaml	ok 5
 hera/examples/workflows/upstream/workflow-event-binding--event-consumer-workflowtemplate.yaml	ok 1
 hera/examples/workflows/upstream/workflow-of-workflows.yaml	ok 2
-hera/examples/workflows/upstream/workflow-template--dag.yaml	1 workflow error: A: templateRef: WorkflowTemplate workflow-template-print-message not found
-hera/examples/workflows/upstream/workflow-template--hello-world.yaml	1 workflow failed: call-print-message: templateRef: WorkflowTemplate workflow-template-print-message not found
-hera/examples/workflows/upstream/workflow-template--retry-with-steps.yaml	1 workflow failed: hello1: templateRef: WorkflowTemplate workflow-template-random-fail-template not found
-hera/examples/workflows/upstream/workflow-template--steps.yaml	1 workflow failed: hello1: templateRef: WorkflowTemplate workflow-template-print-message not found
+hera/examples/workflows/upstream/workflow-template--dag.yaml	ok 7
+hera/examples/workflows/upstream/workflow-template--hello-world.yaml	ok 1
+hera/examples/workflows/upstream/workflow-template--retry-with-steps.yaml	ok 3
+hera/examples/workflows/upstream/workflow-template--steps.yaml	ok 5
 hera/examples/workflows/upstream/workflow-template--workflow-archive-logs.yaml	ok 1
-hera/examples/workflows/upstream/workflow-template--workflow-template-ref-with-entrypoint-arg-passing.yaml	1 workflowTemplateRef: WorkflowTemplate workflow-template-print-message not found
-hera/examples/workflows/upstream/workflow-template--workflow-template-ref.yaml	1 workflowTemplateRef: WorkflowTemplate workflow-template-submittable not found
+hera/examples/workflows/upstream/workflow-template--workflow-template-ref-with-entrypoint-arg-passing.yaml	ok 1
+hera/examples/workflows/upstream/workflow-template--workflow-template-ref.yaml	ok 1
 hera/examples/workflows/use_cases/dask.yaml	ok 1
 hera/examples/workflows/use_cases/fine-tune-llama.yaml	ok 9
 hera/examples/workflows/use_cases/map-reduce.yaml	ok 2

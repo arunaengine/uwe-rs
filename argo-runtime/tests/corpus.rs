@@ -16,6 +16,14 @@ use workflow_graph::{MockTes, execute};
 
 const FIXTURE: &str = "tests/fixtures/corpus/outcomes.txt";
 
+/// Directories of templates that documents under a path get as configs, as `Launch.configs`
+/// gives them. Hera's upstream examples are copies of Argo's examples, but Hera does not copy
+/// the WorkflowTemplates that they refer to in full.
+const CONFIGS: &[(&str, &str)] = &[(
+    "hera/examples/workflows/upstream/",
+    "argo-workflows/examples",
+)];
+
 #[test]
 #[ignore = "needs the Argo corpus from `just argo-corpus`; run it with `just argo-corpus-test`"]
 fn runs_the_corpus() {
@@ -55,6 +63,7 @@ fn run_corpus() {
     let scratch = tempfile::tempdir().expect("a temporary directory");
     let mut outcomes: BTreeMap<String, String> = BTreeMap::new();
     let mut summary: Vec<String> = Vec::new();
+    let mut configs: BTreeMap<&str, Vec<_>> = BTreeMap::new();
     for repository in &repositories {
         let mut files = Vec::new();
         collect_files(repository, &mut files);
@@ -109,6 +118,19 @@ fn run_corpus() {
                 }
                 let library = Library::new();
                 library.add_documents(0, documents.iter().cloned());
+                for (prefix, directory) in CONFIGS {
+                    if relative.starts_with(prefix) {
+                        let config = configs.entry(directory).or_insert_with(|| {
+                            let mut files = Vec::new();
+                            collect_files(&root.join(directory), &mut files);
+                            files
+                                .iter()
+                                .flat_map(|file| load_file(file).unwrap_or_default())
+                                .collect()
+                        });
+                        library.add_documents(1, config.iter().cloned());
+                    }
+                }
                 library.add_documents(2, pool.iter().cloned());
                 let options = Options {
                     scratch: scratch.path().join("scratch"),

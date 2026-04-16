@@ -182,14 +182,14 @@ In the corpus, the most common warnings are volumes that are not mounted (360 te
 
 ## 13. The corpus
 
-`just argo-corpus` fetches the 19 repositories of research question Q6 at the commits in `argo-parser/tests/fixtures/corpus/revisions.txt` into `~/.cache/iunctus/corpus/argo`. gennext-workflows has no license: it is fetched for research only and never copied into this repository. `just argo-corpus-test` runs the ignored test `argo-runtime/tests/corpus.rs`, which runs every document with an entrypoint through `MockTes` and compares the outcome with `argo-runtime/tests/fixtures/corpus/outcomes.txt`: `ok` and the number of tasks, or the exit code and the first error. `ARGO_CORPUS_UPDATE=1` records new outcomes, `ARGO_CORPUS_FILTER` runs only matching paths and `ARGO_CORPUS_VERBOSE=1` prints the warnings.
+`just argo-corpus` fetches the 19 repositories of research question Q6 at the commits in `argo-parser/tests/fixtures/corpus/revisions.txt` into `~/.cache/iunctus/corpus/argo`. gennext-workflows has no license: it is fetched for research only and never copied into this repository. `just argo-corpus-test` runs the ignored test `argo-runtime/tests/corpus.rs`, which runs every document with an entrypoint through `MockTes` and compares the outcome with `argo-runtime/tests/fixtures/corpus/outcomes.txt`: `ok` and the number of tasks, or the exit code and the first error. Hera's copies of Argo's examples get Argo's `examples` directory as configs, because Hera does not copy all the WorkflowTemplates they refer to. `ARGO_CORPUS_UPDATE=1` records new outcomes, `ARGO_CORPUS_FILTER` runs only matching paths and `ARGO_CORPUS_VERBOSE=1` prints the warnings.
 
-Results on 2026-09-28: 1294 of 1351 documents build a full graph.
+Results on 2026-09-28: 1303 of 1351 documents build a full graph.
 
 | Repository | Full graph | Documents |
 |---|---:|---:|
 | argoproj/argo-workflows | 540 | 552 |
-| argoproj-labs/hera | 267 | 278 |
+| argoproj-labs/hera | 276 | 278 |
 | kubeflow/pipelines | 153 | 153 |
 | Ensembl/regulation-workflows | 124 | 132 |
 | GenivaInformatics/gennext-workflows | 67 | 73 |
@@ -208,11 +208,11 @@ Results on 2026-09-28: 1294 of 1351 documents build a full graph.
 | DonaldKellett/snakemake-tutorial-argo-workflows | 2 | 2 |
 | devops-ws/argo-workflows-guide | 1 | 1 |
 
-The 57 documents without a full graph fail in Argo too, or need something that is not in the corpus:
+The 48 documents without a full graph fail in Argo too, or need something that is not in the corpus:
 
 | Reason | Documents |
 |---|---:|
-| A referenced template or WorkflowTemplate is not in the corpus (Hera's copies of upstream examples, deprecated references, talk demos) | 26 |
+| A referenced template or WorkflowTemplate is not in the corpus (deprecated references, templates installed elsewhere) | 17 |
 | A step or task does not supply the inputs of the template it calls, mostly in library WorkflowTemplates | 8 |
 | Executor plugins (exit code 33) | 7 |
 | Deliberately invalid test files (duplicate YAML key, syntax error, malformed spec, misreferenced template, empty parameter) | 8 |

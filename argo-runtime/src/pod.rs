@@ -40,6 +40,7 @@ impl Run {
         };
         let template = &processed.template;
         self.warn_pod_fields(template);
+        let fields = self.pod_fields(index);
         let name = self.nodes[index].name.clone();
         let inbound = self.nodes[index].inbound.clone();
         let mut inputs: Vec<Input> = Vec::new();
@@ -80,12 +81,16 @@ impl Run {
         let mut dependencies: Vec<Vec<usize>> = Vec::new();
         if let Some(container) = &template.container {
             let mut task = base(&container.image, Some(container));
-            fill_container(&mut task, container, &mut |message| self.warn(message));
+            fill_container(&mut task, container, &fields, &mut |message| {
+                self.warn(message)
+            });
             task.outputs = outputs.clone();
             tasks.push(task);
         } else if let Some(script) = &template.script {
             let mut task = base(&script.image, Some(script));
-            fill_container(&mut task, script, &mut |message| self.warn(message));
+            fill_container(&mut task, script, &fields, &mut |message| {
+                self.warn(message)
+            });
             task.command = script.command.iter().chain(&script.args).cloned().collect();
             task.command.push(SCRIPT_PATH.to_owned());
             let source = script.source.clone().unwrap_or_default();
@@ -110,7 +115,9 @@ impl Run {
                 let container = &set.containers[position];
                 let mut task = base(&container.image, Some(container));
                 task.name = format!("{name} ({})", container.name);
-                fill_container(&mut task, container, &mut |message| self.warn(message));
+                fill_container(&mut task, container, &fields, &mut |message| {
+                    self.warn(message)
+                });
                 if position == main {
                     task.outputs = outputs.clone();
                 }
@@ -467,6 +474,27 @@ impl Run {
         }
     }
 
+    /// The fields of a node's pod that environment variables read with `fieldRef`, as the run
+    /// makes them up: the pod's name, namespace and uid, its service account, node and IP.
+    fn pod_fields(&self, index: usize) -> BTreeMap<&'static str, String> {
+        let node = &self.nodes[index];
+        let pod = self.pod_name(&node.name, &node.template);
+        let global = |name: &str| self.globals.get(name).cloned().unwrap_or_default();
+        let account = match global("workflow.serviceAccountName") {
+            account if account.is_empty() => "default".to_owned(),
+            account => account,
+        };
+        BTreeMap::from([
+            ("metadata.uid", crate::run::uid(&pod)),
+            ("metadata.name", pod),
+            ("metadata.namespace", global("workflow.namespace")),
+            ("spec.serviceAccountName", account),
+            ("spec.nodeName", "iunctus".to_owned()),
+            ("status.podIP", crate::run::pod_ip(&node.name)),
+            ("status.hostIP", "127.0.0.1".to_owned()),
+        ])
+    }
+
     /// Warns once about pod fields that a run without Kubernetes leaves out.
     fn warn_pod_fields(&mut self, template: &Template) {
         let mounts = [&template.container, &template.script]
@@ -504,7 +532,13 @@ impl Run {
 }
 
 /// Fills a task from a container: command, arguments, working directory and environment.
-fn fill_container(task: &mut Task, container: &Container, warn: &mut dyn FnMut(String)) {
+/// Variables that read a field of the pod get the run's value of it.
+fn fill_container(
+    task: &mut Task,
+    container: &Container,
+    fields: &BTreeMap<&'static str, String>,
+    warn: &mut dyn FnMut(String),
+) {
     task.command = container
         .command
         .iter()
@@ -516,9 +550,20 @@ fn fill_container(task: &mut Task, container: &Container, warn: &mut dyn FnMut(S
         task.workdir = Some(container.working_dir.clone());
     }
     for variable in &container.env {
+        let field = variable
+            .value_from
+            .as_ref()
+            .and_then(|from| from.get("fieldRef"))
+            .and_then(|reference| reference.get("fieldPath"))
+            .and_then(Node::as_str)
+            .and_then(|path| fields.get(path));
         match (&variable.value, &variable.value_from) {
+            (_, Some(_)) if field.is_some() => {
+                task.environment
+                    .insert(variable.name.clone(), field.cloned().unwrap_or_default());
+            }
             (_, Some(_)) => warn(format!(
-                "environment variable {} reads a Secret, ConfigMap or field of the pod, which a run without Kubernetes cannot; it is left out",
+                "environment variable {} reads a Secret, a ConfigMap or a pod field that a run without Kubernetes does not have; it is left out",
                 variable.name
             )),
             (value, None) => {

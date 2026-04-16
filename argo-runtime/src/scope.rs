@@ -112,11 +112,7 @@ impl Run {
             values.insert(format!("{prefix}.finishedAt"), time::rfc3339(finished));
         }
         if node.kind == NodeKind::Pod {
-            let hash = crate::run::fnv32a(&node.name).to_be_bytes();
-            values.insert(
-                format!("{prefix}.ip"),
-                format!("10.{}.{}.{}", hash[1], hash[2], hash[3]),
-            );
+            values.insert(format!("{prefix}.ip"), crate::run::pod_ip(&node.name));
             values.insert(format!("{prefix}.hostNodeName"), "iunctus".to_owned());
         }
         add_outputs(scope, prefix, &node.outputs);

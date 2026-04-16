@@ -708,7 +708,12 @@ fn leaf_kinds_become_tasks() {
   - name: set
     containerSet:
       containers:
-      - {name: first, image: alpine, command: [sh, -c, "echo a > /mnt/a"]}
+      - name: first
+        image: alpine
+        command: [sh, -c, "echo a > /mnt/a"]
+        env:
+        - {name: POD, valueFrom: {fieldRef: {fieldPath: metadata.name}}}
+        - {name: TOKEN, valueFrom: {secretKeyRef: {name: s, key: k}}}
       - {name: main, image: alpine, command: [cat, /mnt/a], dependencies: [first]}
   - name: resource
     resource:
@@ -736,6 +741,10 @@ fn leaf_kinds_become_tasks() {
         ]
     );
     assert_eq!(ran.upstream("[0].set (main)"), ["[0].set (first)"]);
+    // Pods get made-up fields, while Secrets are left out.
+    let environment = &ran.task("[0].set (first)").environment;
+    assert!(environment["POD"].starts_with("test-"), "{environment:?}");
+    assert!(!environment.contains_key("TOKEN"));
     assert_eq!(
         ran.task("[0].resource").command[..2],
         ["argoexec", "resource"]

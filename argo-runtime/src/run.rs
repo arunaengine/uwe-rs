@@ -1909,8 +1909,14 @@ fn workflow_name(document: &Document, metadata: Option<&Node>) -> String {
     }
 }
 
-/// A stable UUID-shaped identifier for `workflow.uid`.
-fn uid(name: &str) -> String {
+/// The IP address the run gives the pod of a node.
+pub(crate) fn pod_ip(node: &str) -> String {
+    let hash = fnv32a(node).to_be_bytes();
+    format!("10.{}.{}.{}", hash[1], hash[2], hash[3])
+}
+
+/// A stable UUID-shaped identifier for `workflow.uid` and the uid of a pod.
+pub(crate) fn uid(name: &str) -> String {
     let parts: Vec<u32> = (0..4)
         .map(|round| fnv32a(&format!("{round}{name}")))
         .collect();

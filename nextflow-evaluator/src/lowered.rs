@@ -201,6 +201,9 @@ pub struct Process {
     /// The inputs and the variables the sections assign without `def`, by name, for the
     /// names that config closures read when a task runs.
     pub variables: Vec<(Rc<str>, Slot)>,
+    /// Legacy syntax: `if` statements among the directives, like a check that exits for
+    /// some profiles, which run for each task before the directives.
+    pub setup: Vec<Statement>,
     pub span: Span,
 }
 

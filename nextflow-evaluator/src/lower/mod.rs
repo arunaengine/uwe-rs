@@ -561,7 +561,8 @@ impl<'a> Lowering<'a> {
         }
     }
 
-    /// Declares a variable in the current block, reporting a name declared before.
+    /// Declares a variable in the current block, reporting a name declared before. Legacy
+    /// syntax may declare again a name that a binding holds.
     fn declare(&mut self, name: &ast::Name) -> usize {
         self.declare_as(name, false)
     }

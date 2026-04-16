@@ -36,7 +36,11 @@ pub fn tokenize(source: &str, dialect: Dialect) -> Lexed {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Default,
-    GString { triple: bool },
+    GString {
+        triple: bool,
+    },
+    /// A slashy string with interpolations, which strict syntax does not have.
+    Slashy,
 }
 
 struct Lexer<'a> {
@@ -58,9 +62,14 @@ impl Lexer<'_> {
             match *self.modes.last().unwrap() {
                 Mode::Default => self.default_token(),
                 Mode::GString { triple } => self.gstring_token(triple),
+                Mode::Slashy => self.slashy_token(),
             }
         }
-        if self.modes.iter().any(|m| matches!(m, Mode::GString { .. })) {
+        if self
+            .modes
+            .iter()
+            .any(|m| matches!(m, Mode::GString { .. } | Mode::Slashy))
+        {
             let end = self.bytes.len();
             self.error("Unterminated string", end, end);
             self.push(TokenKind::GStringEnd, end, end);
@@ -472,6 +481,36 @@ impl Lexer<'_> {
         }
     }
 
+    /// The next token inside a slashy string with interpolations.
+    fn slashy_token(&mut self) {
+        let start = self.position;
+        match self.peek(0) {
+            b'/' => {
+                self.position += 1;
+                self.end_gstring(start);
+            }
+            b'$' if self.peek(1) == b'{' => {
+                self.position += 2;
+                self.push(TokenKind::InterpolationStart, start, self.position);
+                self.modes.push(Mode::Default);
+            }
+            b'$' if self.starts_interpolation(start + 1) => self.gstring_path(),
+            _ => {
+                let mut i = start;
+                while i < self.bytes.len() {
+                    match self.byte(i) {
+                        b'\\' if self.byte(i + 1) == b'/' => i += 2,
+                        b'$' if i > start && self.starts_interpolation(i + 1) => break,
+                        b'/' => break,
+                        _ => i += 1,
+                    }
+                }
+                self.position = i.max(start + 1).min(self.bytes.len());
+                self.push(TokenKind::GStringText, start, self.position);
+            }
+        }
+    }
+
     fn end_gstring(&mut self, start: usize) {
         self.push(TokenKind::GStringEnd, start, self.position);
         self.modes.pop();
@@ -558,6 +597,14 @@ impl Lexer<'_> {
                 }
                 b'/' if i == start + 1 => return false,
                 b'/' => break Some(i + 1),
+                b'$' if self.starts_interpolation(i + 1) && shorter.is_none() => {
+                    // Legacy syntax: a slashy string with interpolations, which the parser
+                    // reports.
+                    self.position = start + 1;
+                    self.push(TokenKind::GStringBegin { triple: false }, start, start + 1);
+                    self.modes.push(Mode::Slashy);
+                    return true;
+                }
                 b'$' if self.starts_interpolation(i + 1) => break shorter,
                 _ => i += 1,
             }

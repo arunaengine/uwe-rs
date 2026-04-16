@@ -664,8 +664,10 @@ fn implicit_workflow_main() {
 fn rejects_workflow_order() {
     let reordered = "workflow FLOW {\n    main:\n    FOO()\n\n    take:\n    x\n}\n";
     assert_eq!(messages(reordered), [INVALID_WORKFLOW]);
+    // Legacy syntax: the legacy parser accepts an empty section.
     let empty_main = "workflow FLOW {\n    take:\n    x\n\n    main:\n\n    emit:\n    y = x\n}\n";
-    assert_eq!(messages(empty_main), [INVALID_WORKFLOW]);
+    let legacy = parse_script(empty_main).legacy;
+    assert_eq!(legacy[0].message, INVALID_WORKFLOW);
     let one_line = "workflow FLOW { main: FOO() }\n";
     assert_eq!(messages(one_line), [INVALID_WORKFLOW]);
     let take_only = "workflow FLOW {\n    take:\n    x\n}\n";

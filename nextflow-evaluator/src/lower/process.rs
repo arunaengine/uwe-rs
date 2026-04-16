@@ -46,11 +46,16 @@ impl Lowering<'_> {
             statements
         });
         self.implicit_declarations = false;
-        let directives = process
-            .directives
-            .iter()
-            .filter_map(|directive| self.directive(directive))
-            .collect();
+        let mut setup = Vec::new();
+        let mut directives = Vec::new();
+        for directive in &process.directives {
+            if let StatementKind::If { .. } = directive.kind {
+                self.legacy("Invalid process directive", directive.span);
+                setup.extend(self.statements(std::slice::from_ref(directive)));
+                continue;
+            }
+            directives.extend(self.directive(directive));
+        }
         let outputs = process
             .outputs
             .iter()
@@ -68,6 +73,7 @@ impl Lowering<'_> {
             body,
             stub,
             variables: layout.names,
+            setup,
             span: process.span,
         }
     }

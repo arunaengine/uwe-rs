@@ -106,7 +106,13 @@ impl Parser<'_> {
 
 impl Parser<'_> {
     pub(super) fn gstring(&mut self) -> Parse<ExpressionKind> {
-        self.bump();
+        let begin = self.bump();
+        let slashy = self.text(begin).starts_with('/');
+        if slashy {
+            let message = "Slashy strings with interpolations are not supported";
+            self.legacy
+                .push(crate::Diagnostic::new(message, begin.span));
+        }
         let mut parts: Vec<GStringPart> = Vec::new();
         loop {
             let token = self.current();
@@ -117,7 +123,10 @@ impl Parser<'_> {
                 }
                 TokenKind::GStringText => {
                     self.bump();
-                    let text = self.gstring_text(token);
+                    let text = match slashy {
+                        true => decode_slashy(self.text(token)),
+                        false => self.gstring_text(token),
+                    };
                     match parts.last_mut() {
                         Some(GStringPart::Text(previous)) => previous.push_str(&text),
                         _ => parts.push(GStringPart::Text(text)),

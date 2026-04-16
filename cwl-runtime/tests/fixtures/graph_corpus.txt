@@ -1128,7 +1128,7 @@ realworld/collections/github.com__common-workflow-library__bio-cwl-tools/cellran
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/cellranger/cellranger-mkref.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/cellranger/cellranger-reanalyze.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/crossmap/crossmap.cwl ok 1
-realworld/collections/github.com__common-workflow-library__bio-cwl-tools/cutadapt/cutadapt-paired.cwl fail: the output `trimmed_reads_1`: `inputs.reads_1` does not contain the key `format`
+realworld/collections/github.com__common-workflow-library__bio-cwl-tools/cutadapt/cutadapt-paired.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/deeptools/deeptools_alignmentsieve.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/deeptools/deeptools_bamCoverage.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/deeptools/deeptools_plotCoverage.cwl ok 1
@@ -1202,7 +1202,7 @@ realworld/collections/github.com__common-workflow-library__bio-cwl-tools/ucscuse
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/ucscuserapps/ucsc-fa-to-twobit.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/ucscuserapps/ucsc-genepredtogtf.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/ucscuserapps/ucsc-twobit-to-fa.cwl ok 1
-realworld/collections/github.com__common-workflow-library__bio-cwl-tools/unicycler/unicycler.cwl fail: unicycler: the input `fastq2_type` is not a valid enum?: "null"
+realworld/collections/github.com__common-workflow-library__bio-cwl-tools/unicycler/unicycler.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/util/awk.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/util/grep.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/util/rename.cwl ok 0
@@ -1446,7 +1446,7 @@ realworld/collections/github.com__genome__analysis-workflows/definitions/tools/s
 realworld/collections/github.com__genome__analysis-workflows/definitions/tools/split_interval_list.cwl ok 1
 realworld/collections/github.com__genome__analysis-workflows/definitions/tools/split_interval_list_to_bed.cwl ok 1
 realworld/collections/github.com__genome__analysis-workflows/definitions/tools/staged_rename.cwl ok 1
-realworld/collections/github.com__genome__analysis-workflows/definitions/tools/star_align_fusion.cwl fail: star_align_fusion: the input `chim_junction_overhang_min` is not a valid int: "12"
+realworld/collections/github.com__genome__analysis-workflows/definitions/tools/star_align_fusion.cwl ok 1
 realworld/collections/github.com__genome__analysis-workflows/definitions/tools/star_fusion_detect.cwl ok 1
 realworld/collections/github.com__genome__analysis-workflows/definitions/tools/strandedness_check.cwl ok 1
 realworld/collections/github.com__genome__analysis-workflows/definitions/tools/strelka.cwl ok 1
@@ -1816,14 +1816,14 @@ realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-
 realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/tools/echtvar_anno.cwl ok 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/tools/gatk_variant_filter.cwl ok 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/tools/generic_rename_outputs.cwl ok 1
-realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/tools/variant_effect_predictor_105.cwl fail: kfdrc-vep105: the input `failed` is not a valid failed?: 1
+realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/tools/variant_effect_predictor_105.cwl ok 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_cnvkit_sub_wf.cwl ok 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_controlfreec_sub_wf.cwl ok 6
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_gatk_cnv_somatic_pair_wf.cwl ok 19
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_manta_sub_wf.cwl ok 3
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_mutect2_filter_support_subwf.cwl ok 6
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_run_theta2_sub_wf.cwl ok 4
-realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/prepare_regions.cwl fail: gatk_bedtointervallist_blacklist: JavaScript error in `inputs.input_bed.basename.replace(/(.bed|.bed.gz)$/,".interval_list")`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
+realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/prepare_regions.cwl ok 6
 realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/add_basename.cwl ok 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/ampliconsuite_pipeline.cwl ok 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/annotsv.cwl ok 1
@@ -1916,8 +1916,8 @@ realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/vardictj
 realworld/collections/github.com__kids-first__kf-somatic-workflow/workflow/kfdrc_gatk_create_cnv_pon_wf.cwl ok 4
 realworld/collections/github.com__kids-first__kf-somatic-workflow/workflow/kfdrc_production_amplicon_architect.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/abra/abra.cwl ok 1
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/basicfiltering/basic-filtering_mutect.cwl fail: basic-filtering_mutect: JavaScript error in `if (inputs.inputTxt) return inputs.inputTxt.basename.replace(".txt","_STDfilter....`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :10:3)
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/basicfiltering/basic-filtering_vardict.cwl fail: basic-filtering_vardict: JavaScript error in `if (inputs.inputVcf) return inputs.inputVcf.basename.replace(".vcf","_STDfilter....`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :10:3)
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/basicfiltering/basic-filtering_mutect.cwl ok 1
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/basicfiltering/basic-filtering_vardict.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/bcftools/bcftools_concat.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/bioinfo_utils/find_hotspots_in_normals.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/bioinfo_utils/plot_hotspots_in_normals.cwl ok 1
@@ -1927,7 +1927,7 @@ realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/cnv/cnv_backu
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/cnv/copynumber.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/cnv/coverage.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/cnv/loess.cwl ok 1
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/concatVCF/annotate_concat.cwl fail: annotate_concat: JavaScript error in `return inputs.combined_vcf.basename.replace('.vcf', '_anno.vcf')`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :6:3)
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/concatVCF/annotate_concat.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/expression_tools/combine_files_from_directories.cwl ok 0
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/expression_tools/consolidate_files.cwl ok 0
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/expression_tools/convert_to_sample_record.cwl ok 0
@@ -2091,7 +2091,7 @@ realworld/collections/github.com__ncbi__pgap/progs/bact_filter_preserved.cwl ok 
 realworld/collections/github.com__ncbi__pgap/progs/bact_get_kmer_reference.cwl ok 1
 realworld/collections/github.com__ncbi__pgap/progs/bact_univ_prot_stats.cwl ok 1
 realworld/collections/github.com__ncbi__pgap/progs/bacterial_resolve_conflicts.cwl ok 1
-realworld/collections/github.com__ncbi__pgap/progs/blastn_wnode.cwl fail: blastn_wnode: the input `soft_masking` is not a valid string?: true
+realworld/collections/github.com__ncbi__pgap/progs/blastn_wnode.cwl ok 1
 realworld/collections/github.com__ncbi__pgap/progs/cache_kmer.cwl fail: the output `out_kmer_file_list`: JavaScript error in `var fileList = []; var lines = outputs.ofull_file.contents.split('\\n'); var nbl...`: ReferenceError: outputs is not defined (unknown at :14:3)
 realworld/collections/github.com__ncbi__pgap/progs/cat.cwl ok 1
 realworld/collections/github.com__ncbi__pgap/progs/catlog.cwl ok 1
@@ -2272,10 +2272,152 @@ realworld/collections/github.com__ncbi__pgap/vecscreen/foreign_screening.cwl ok 
 realworld/collections/github.com__ncbi__pgap/vecscreen/vecscreen.cwl ok 16
 realworld/collections/github.com__ncbi__pgap/wf_bacterial_prot_src.cwl ok 1
 realworld/collections/github.com__ncbi__pgap/wf_common.cwl ok 179
+realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/flatten_array.cwl ok 0
+realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/mkdir_files.cwl ok 0
+realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/mkdir_models.cwl ok 0
+realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/tango_dynamics_wf.cwl fail: individual_each[0]: the input `freud_sim` is not a valid enum: "freud_sim"
+realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/tango_models.cwl ok 1
+realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/tango_one_plot.cwl ok 1
+realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/tango_optimization_wf.cwl fail: optimize_each[0]: the input `freud_sim` is not a valid enum: "freud_sim"
+realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/tango_plots.cwl ok 1
+realworld/sources/forgemia.inra.fr__tango__tango_models/tango_workflow.cwl fail: optimize/optimize_each[0]: the input `freud_sim` is not a valid enum: "freud_sim"
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/bakta/bakta.cwl ok 1
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/bedtools/bedtools_bamtobed.cwl ok 1
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/clair3/clair3.cwl ok 1
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/deeptools/deeptools_bamcoverage.cwl ok 1
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/expressions/determine_output.cwl ok 0
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/expressions/files_to_folder.cwl ok 0
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/filtlong/filtlong.cwl ok 1
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/flye/flye.cwl ok 1
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/freebayes/freebayes.cwl ok 1
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/gunzip/gunzip.cwl ok 1
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/liftoff/liftoff.cwl ok 1
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/longreadsum/longreadsum.cwl ok 1
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/minimap2/minimap2_to_sorted-bam.cwl ok 1
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/quast/quast.cwl ok 1
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/samtools/samtools_faidx.cwl ok 1
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/samtools/samtools_index.cwl ok 1
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/snpeff/snpeff.cwl ok 1
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/snpeff/snpeff_build.cwl ok 1
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/snpeff/snpeff_download.cwl ok 1
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/strainy/strainy.cwl ok 1
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/workflows/packed/workflow_ada_packed.cwl ok 19
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/workflows/packed/workflow_preprocess_reference_packed.cwl ok 2
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/workflows/workflow_ada.cwl ok 19
+realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/workflows/workflow_preprocess_reference.cwl ok 2
+realworld/sources/git.wur.nl__unlock__cwl/cwl/RNAseq/featurecounts.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/RNAseq/kallisto/kallisto_index.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/RNAseq/kallisto/kallisto_quant.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/RNAseq/star/star_align.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/RNAseq/star/star_index.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/aragorn/aragorn.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/assembly/spades.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/bash/compress.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/bash/compress_directory.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/bash/concatenate.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/bash/decompress.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/bash/grep_count.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/bash/pigz.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/bash/rename.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/bbmap/bbduk_filter.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/bbmap/bbduk_rrna-filter.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/bbmap/bbmap.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/bbmap/bbmap_filter-reads.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/bowtie2/bowtie2_align.cwl fail: bowtie2_align: JavaScript error in `if (inputs.output_filename == ""){ return ' 2> ' + default_output_filename().spl...`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :13:3)
+realworld/sources/git.wur.nl__unlock__cwl/cwl/bowtie2/bowtie2_align_simple.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/bowtie2/bowtie2_index.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/busco/busco.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/clustalo/clustalo.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/diamond/diamond.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/diamond/view.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/ena/ena_wget.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/expressions/files_to_folder.cwl ok 0
+realworld/sources/git.wur.nl__unlock__cwl/cwl/expressions/merge_dir_arrays.cwl ok 0
+realworld/sources/git.wur.nl__unlock__cwl/cwl/expressions/merge_file_arrays.cwl ok 0
+realworld/sources/git.wur.nl__unlock__cwl/cwl/fastp/fastp.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/fastq/fastq_to_fasta.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/fastq/merge.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/fastqc/fastqc.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/flye/flye.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/gtdbtk/gtdbtk_classify_wf.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/guppy/guppy.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/humann/humann.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/irods/irods_hdt.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/irods/irods_manager.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/kraken2/kraken2-build.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/kraken2/kraken2.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/krona/krona.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/longqc/longqc.cwl fail: longqc: a glob must be a string, not {"class":"Directory","location":"file://<tmp>","basename":"output_dir","listing":[{"class":"File","location":"file://<tmp>","basename":"output_dir.txt","nameroot":"output_dir","nameext":".txt","siz
+realworld/sources/git.wur.nl__unlock__cwl/cwl/medaka/medaka.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/medaka/medaka_py.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/merge/merge.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/metagenomics/assembly_bins_readstats.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/metagenomics/bins_summary.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/metagenomics/checkm/checkm_lineagewf.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/metagenomics/get_unbinned_contigs.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/metagenomics/metabat2/aggregateBinDepths.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/metagenomics/metabat2/metabat2.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/metagenomics/metabat2/metabatContigDepths.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/metaquast/metaquast.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/minimap2/minimap2.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/minimap2/minimap2_to_fastq.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/minimap2/minimap2_to_sorted-bam.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/minionqc/minionqc.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/multiqc/multiqc.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/nanoqc/nanoqc.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/ngtax/ngtax.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/ngtax/ngtax_demultiplexing.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/ngtax/ngtax_to_biom.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/ngtax/ngtax_to_tsv-fasta.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/picrust2/picrust2_pipeline.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/picrust2/picrust_to_biom.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/pilon/pilon.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/prodigal/prodigal.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/pycoqc/pycoqc.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/quast/quast.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/resfinder/resfinder.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/samsa2/convert.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/samtools/expression_bam_index.cwl ok 0
+realworld/sources/git.wur.nl__unlock__cwl/cwl/samtools/merge-sorted-bam.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/samtools/sam_to_fastq_PE.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/samtools/sam_to_fastq_SE.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/samtools/sam_to_sorted-bam.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/samtools/sam_to_unmapped_fastq_SE.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/samtools/samtools_flagstat.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/samtools/samtools_idxstats.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/samtools/samtools_index.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/sapp/conversion.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/sapp/conversion_rdf2fasta.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/sapp/conversion_rdf2gtf.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/sapp/crt.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/sapp/infernal.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/sapp/interproscan.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/sapp/kofamscan.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/sapp/prodigal.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/sapp/toHDT.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/stats/seqinfo.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_RNAseq_NonSpliced.cwl ok 12
+realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_RNAseq_Spliced.cwl ok 14
+realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_demultiplexing.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_genomesync.cwl ok 1
+realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_illumina_quality.cwl ok 8
+realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_indexbuilder.cwl ok 4
+realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_metagenomics_assembly.cwl ok 33
+realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_metagenomics_binning.cwl ok 9
+realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_mock_ngtax.cwl ok 2
+realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_nanopore_assembly.cwl ok 15
+realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_nanopore_quality.cwl ok 7
+realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_ngtax.cwl ok 3
+realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_ngtax_picrust2.cwl ok 3
+realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_pilon_mapping.cwl ok 5
+realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_samsa2.cwl ok 8
+realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_sapp_microbes.cwl ok 5
+realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_sapp_others.cwl ok 4
+realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_toHDT_compression.cwl ok 2
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/FastQC/wrappers/cp.cwl ok 1
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/FastQC/wrappers/fastqc.cwl ok 1
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/FastQC/wrappers/get-raw-files.cwl ok 0
-realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/FastQC/wrappers/rename.cwl fail: rename: the input `input_file` is not a valid File?: "null"
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/FastQC/wrappers/rename.cwl ok 1
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/MultiQC/wrappers/MultiQC.cwl ok 1
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/Trim_galore/wrappers/get-raw-files.cwl ok 0
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/Trim_galore/wrappers/split-single-paired_v2.cwl ok 0
@@ -2413,7 +2555,7 @@ realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wr
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/featureCounts.cwl ok 1
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/get-raw-files.cwl ok 0
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/hisat2.cwl ok 1
-realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/rename.cwl fail: rename: the input `input_file` is not a valid File?: "null"
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/rename.cwl ok 1
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/samtools-sort.cwl ok 1
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/samtools-view.cwl ok 1
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/RNA_Seq/wrappers/split-single-paired.cwl ok 0
@@ -2509,7 +2651,7 @@ realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/stats/bwa
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/stats/bwa-mem.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/stats/metabat-jgi-summarise.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/stats/samtools-sort.cwl ok 1
-realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/stats/samtools-view.cwl fail: samtools-view: the input `cigar` is not a valid int?: false
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/stats/samtools-view.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/stats/stats-report.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/utils/cat.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/utils/count_fastq.cwl ok 1
@@ -2518,8 +2660,8 @@ realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/utils/fill_read
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/utils/restore_reads2.cwl ok 0
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/utils/return_directory.cwl ok 0
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/coassembly.cwl ok 1
-realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metagenome_multiplereads_qc.cwl fail: metagenome_multiplereads_qc: the input `host_genome` is not a valid File?: "hg38.fa"
-realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metagenome_qc.cwl fail: metagenome_qc: the input `host_genome` is not a valid File?: "hg38.fa"
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metagenome_multiplereads_qc.cwl ok 6
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metagenome_qc.cwl ok 3
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/post_assembly.cwl ok 5
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/post_assembly_qc.cwl ok 3
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/stats.cwl ok 2
@@ -2578,7 +2720,7 @@ realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/pull_ncrnas/pull_ncrnas.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Raw_reads/mOTUs/clean_motus_output.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Raw_reads/mOTUs/mOTUs.cwl ok 1
-realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/SeqPrep/seqprep.cwl fail: the output `forward_unmerged_reads`: JavaScript error in `inputs.forward_reads.format`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/SeqPrep/seqprep.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Trimmomatic/Trimmomatic-v0.36-PE.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Trimmomatic/Trimmomatic-v0.36-SE.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/chunks/dna_chunker/fasta_chunker.cwl ok 1
@@ -3014,7 +3156,7 @@ realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/sratool
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/sratoolkit/prefetch.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/sratoolkit/prefetch_fastq.cwl ok 2
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/trim_galore/trim_galore.cwl ok 1
-realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/unicycler/unicycler.cwl fail: unicycler: the input `fastq2_type` is not a valid enum?: "null"
+realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/unicycler/unicycler.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/util/awk.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/util/grep.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/util/rename.cwl ok 0
@@ -3598,7 +3740,7 @@ realworld/sources/github.com__emo-bon__MetaGOflow/tools/RNA_prediction/mapseq2bi
 realworld/sources/github.com__emo-bon__MetaGOflow/tools/RNA_prediction/pull_ncrnas/pull_ncrnas.cwl ok 1
 realworld/sources/github.com__emo-bon__MetaGOflow/tools/Raw_reads/mOTUs/clean_motus_output.cwl ok 1
 realworld/sources/github.com__emo-bon__MetaGOflow/tools/Raw_reads/mOTUs/mOTUs.cwl ok 1
-realworld/sources/github.com__emo-bon__MetaGOflow/tools/SeqPrep/seqprep.cwl fail: the output `forward_unmerged_reads`: JavaScript error in `inputs.forward_reads.format`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
+realworld/sources/github.com__emo-bon__MetaGOflow/tools/SeqPrep/seqprep.cwl ok 1
 realworld/sources/github.com__emo-bon__MetaGOflow/tools/Trimmomatic/Trimmomatic-v0.36-PE.cwl ok 1
 realworld/sources/github.com__emo-bon__MetaGOflow/tools/Trimmomatic/Trimmomatic-v0.36-SE.cwl ok 1
 realworld/sources/github.com__emo-bon__MetaGOflow/tools/chunks/dna_chunker/fasta_chunker.cwl ok 1
@@ -3643,7 +3785,7 @@ realworld/sources/github.com__emo-bon__MetaGOflow/utils/touch_file.cwl ok 1
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/conditionals/Func_ann_and_post_proccessing-subwf.cwl ok 29
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/conditionals/megahit.cwl ok 1
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/conditionals/qc.cwl ok 23
-realworld/sources/github.com__emo-bon__MetaGOflow/workflows/gos_wf.cwl fail: gos_wf: the input `input_for_motus` is not a valid File?: "pseudo_files/pseudo.merged.unfiltered.fasta"
+realworld/sources/github.com__emo-bon__MetaGOflow/workflows/gos_wf.cwl ok 57
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/assembly/eggnog-subwf.cwl ok 3
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/chunking-subwf-IPS.cwl ok 3
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/classify-otu-visualise.cwl ok 5
@@ -3659,13 +3801,13 @@ realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/raw_rea
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/raw_reads/cgc/predict_proteins_reads.cwl ok 2
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/raw_reads/mOTUs-workflow.cwl ok 2
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Assembly/spades/spades.cwl ok 1
-realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Assembly/unicycler/assembly_unicycler_only.cwl fail: assembly: the input `fastq2_type` is not a valid enum?: "null"
-realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Assembly/unicycler/unicycler.cwl fail: unicycler: the input `fastq2_type` is not a valid enum?: "null"
-realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Assembly/workflow/assembly-wf-virus.cwl fail: assembly_wf_virus: the input `fastq2_type` is not a valid enum?: "null"
+realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Assembly/unicycler/assembly_unicycler_only.cwl ok 1
+realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Assembly/unicycler/unicycler.cwl ok 1
+realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Assembly/workflow/assembly-wf-virus.cwl ok 6
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Assembly/workflow/tool/bandage-image.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Assembly/workflow/tool/bandage-info.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Assembly/workflow/tool/spades.cwl ok 1
-realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Assembly/workflow/tool/unicycler.cwl fail: unicycler: the input `fastq2_type` is not a valid enum?: "null"
+realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Assembly/workflow/tool/unicycler.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/PreProcessing/tools/unpack_ref_db.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/archive/bowtie2.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/archive/snpeff_build.cwl ok 1
@@ -3687,7 +3829,7 @@ realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tool
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tools/samtools_stats.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tools/samtools_view_filter.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tools/snpEff_build_ann.cwl ok 1
-realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tools/snpSift_extract.cwl fail: snpSift_extract: the input `extractFields` is not a valid string[]?: "CHROM POS ID REF ALT FILTER"
+realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tools/snpSift_extract.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/variation_PE.cwl fail: snpsift_extract[0]: the input `extractFields` is not a valid string[]?: "CHROM POS ID REF ALT FILTER"
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/GATK/GATK-ApplyBQSR.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/GATK/GATK-BaseRecalibrator.cwl ok 1
@@ -3837,7 +3979,7 @@ realworld/sources/github.com__vetscience__Assemblosis/Run/canuAssemble.cwl ok 1
 realworld/sources/github.com__vetscience__Assemblosis/Run/canuCorrect.cwl ok 1
 realworld/sources/github.com__vetscience__Assemblosis/Run/centrifuge.cwl ok 1
 realworld/sources/github.com__vetscience__Assemblosis/Run/combinecats.cwl ok 1
-realworld/sources/github.com__vetscience__Assemblosis/Run/decon.cwl fail: centrifuge: the input `classificationFile` is not a valid File: "classification.txt"
+realworld/sources/github.com__vetscience__Assemblosis/Run/decon.cwl ok 1
 realworld/sources/github.com__vetscience__Assemblosis/Run/expressiontoolbam.cwl ok 0
 realworld/sources/github.com__vetscience__Assemblosis/Run/expressiontoolbowtie.cwl ok 0
 realworld/sources/github.com__vetscience__Assemblosis/Run/expressiontoolrepeats.cwl ok 0
@@ -3881,6 +4023,94 @@ realworld/sources/github.com__zmahnoor14__MAW/cwl/maw_r_old.cwl ok 1
 realworld/sources/github.com__zmahnoor14__MAW/cwl/maw_single.cwl ok 3
 realworld/sources/github.com__zmahnoor14__MAW/cwl/sirius-new.cwl ok 1
 realworld/sources/github.com__zmahnoor14__MAW/provenance/maw-run-1-crate-trunc/packed.cwl ok 3
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/batch_parser.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/bedops_union.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/bgzip.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/bundle_secondaryfiles.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/bwa_index.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/bwa_mem_paired.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/bwa_mem_unpaired.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/codex.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/codex_filter.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/collapse.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/exome_depth.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/exome_depth_filter.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/fastp.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/fastqc.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/gridss.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/gridss_filter.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/gunzip.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/manta.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/manta_filter.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/merge_all.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/picard_markduplicates.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/samtools_faidx.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/samtools_index.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/samtools_merge.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/samtools_sort.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/samtools_view.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/samtools_view_sam2bam.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/structural_variants.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/bam_filtering.cwl ok 2
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/bwa_index.cwl ok 4
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/bwa_mem.cwl ok 3
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/cnv_codex.cwl ok 5
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/cnv_exome_depth.cwl ok 5
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/cnv_gridss.cwl ok 5
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/cnv_manta.cwl ok 5
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/final_filtering.cwl ok 2
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/indexing_bed.cwl ok 2
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/picard_markduplicates.cwl ok 2
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/samtools_sort.cwl ok 3
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/samtools_view_sam2bam.cwl ok 3
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/trimmed_fastq.cwl ok 3
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/svtools.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/tabix.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_workflow/abstract_workflow.cwl ok 24
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/bam_filtering.cwl ok 2
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/bwa_index.cwl ok 4
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/bwa_mem.cwl ok 3
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/cnv_codex.cwl ok 5
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/cnv_exome_depth.cwl ok 5
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/cnv_gridss.cwl ok 5
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/cnv_manta.cwl ok 5
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/final_filtering.cwl fail: union: JavaScript error in `inputs.input[0].basename.split(".")[1]`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/indexing_bed.cwl ok 2
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/picard_markduplicates.cwl ok 2
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/samtools_sort.cwl ok 3
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/samtools_view_sam2bam.cwl ok 3
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/trimmed_fastq.cwl ok 3
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/batch_parser.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/bedops_union.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/bgzip.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/bundle_secondaryfiles.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/bwa_index.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/bwa_mem_paired.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/bwa_mem_unpaired.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/codex.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/codex_filter.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/collapse.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/exome_depth.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/exome_depth_filter.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/fastp.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/fastqc.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/gridss.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/gridss_filter.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/gunzip.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/manta.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/manta_filter.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/merge_all.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/picard_markduplicates.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/samtools_faidx.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/samtools_index.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/samtools_merge.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/samtools_sort.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/samtools_view.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/samtools_view_sam2bam.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/structural_variants.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/svtools.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/tabix.cwl ok 1
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/workflow.cwl fail: final_filtering/union: JavaScript error in `inputs.input[0].basename.split(".")[1]`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510101.cwl ok 1
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510102.cwl ok 1
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510103.cwl ok 1
@@ -4175,3 +4405,213 @@ realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_sapp_conversion.c
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_sylph_profile-tax_illumina.cwl ok 8
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_sylph_profile-tax_longread.cwl ok 5
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_toHDT_compression.cwl ok 2
+realworld/workflowhub/1040/workflow/DEG.cwl ok 1
+realworld/workflowhub/1040/workflow/ME-network.cwl ok 1
+realworld/workflowhub/1040/workflow/gsea_analysis.cwl ok 1
+realworld/workflowhub/1040/workflow/module_ora.cwl ok 1
+realworld/workflowhub/1040/workflow/pre-processing.cwl ok 1
+realworld/workflowhub/1040/workflow/quality_control.cwl ok 1
+realworld/workflowhub/1040/workflow/wgcna.cwl ok 1
+realworld/workflowhub/1040/workflow/workflow.cwl ok 7
+realworld/workflowhub/1170/workflow_microbial_annotation_packed.cwl ok 1
+realworld/workflowhub/1174/workflow_sapp_conversion_packed.cwl ok 2
+realworld/workflowhub/1180/beacon-omop-worker-survival.cwl ok 1
+realworld/workflowhub/1180/beacon-omop-worker.cwl ok 1
+realworld/workflowhub/1180/workflow_entrypoint.cwl ok 1
+realworld/workflowhub/1180/workflow_entrypoint_survival.cwl ok 1
+realworld/workflowhub/1206/Tools/01_uniprot_idmapping.cwl ok 1
+realworld/workflowhub/1206/Tools/02_foldseek_createdb.cwl ok 1
+realworld/workflowhub/1206/Tools/02_foldseek_database.cwl ok 1
+realworld/workflowhub/1206/Tools/03_makeblastdb.cwl ok 1
+realworld/workflowhub/1206/Tools/10_listing.cwl ok 1
+realworld/workflowhub/1206/Tools/11_foldseek_easy_search_permissive.cwl ok 1
+realworld/workflowhub/1206/Tools/11_foldseek_easy_search_stringent.cwl ok 1
+realworld/workflowhub/1206/Tools/12_extract_target_species.cwl ok 1
+realworld/workflowhub/1206/Tools/13_extract_id.cwl ok 1
+realworld/workflowhub/1206/Tools/14_blastdbcmd.cwl ok 1
+realworld/workflowhub/1206/Tools/15_seqretsplit.cwl ok 1
+realworld/workflowhub/1206/Tools/16_needle.cwl ok 1
+realworld/workflowhub/1206/Tools/16_water.cwl ok 1
+realworld/workflowhub/1206/Tools/17_togoid_convert.cwl ok 1
+realworld/workflowhub/1206/Tools/18_papermill.cwl ok 1
+realworld/workflowhub/1206/Workflow/10_foldseek_easy_search_swf_permissive.cwl ok 2
+realworld/workflowhub/1206/Workflow/10_foldseek_easy_search_swf_stringent.cwl ok 2
+realworld/workflowhub/1206/Workflow/11_retrieve_sequence_swf.cwl ok 6
+realworld/workflowhub/1206/Workflow/plant2human_v3_permissive.cwl ok 13
+realworld/workflowhub/1206/Workflow/plant2human_v3_stringent.cwl ok 13
+realworld/workflowhub/122/sparql-query.cwl ok 1
+realworld/workflowhub/1230/DTC52/WF5201/ST520101.cwl ok 15
+realworld/workflowhub/1230/DTC52/WF5201/ST520112.cwl ok 1
+realworld/workflowhub/1230/DTC52/WF5201/ST520113.cwl ok 1
+realworld/workflowhub/1230/DTC52/WF5201/WF5201.cwl ok 29
+realworld/workflowhub/1230/DTC61/WF6101/ST610106.cwl ok 8
+realworld/workflowhub/1230/DTC61/WF6101/ST610109.cwl ok 2
+realworld/workflowhub/1230/DTC61/WF6101/WF6101.cwl ok 19
+realworld/workflowhub/1230/DTC61/WF6101/abstract-mini-ST610106.cwl ok 1
+realworld/workflowhub/1230/DTC61/WF6101/mini-ST610106.cwl ok 1
+realworld/workflowhub/1230/templates/workflow-template.cwl ok 2
+realworld/workflowhub/1231/DTC51/WF5101/ST510101.cwl ok 1
+realworld/workflowhub/1231/DTC51/WF5101/ST510102.cwl ok 1
+realworld/workflowhub/1231/DTC51/WF5101/ST510103.cwl ok 1
+realworld/workflowhub/1231/DTC51/WF5101/ST510105.cwl ok 4
+realworld/workflowhub/1231/DTC51/WF5101/ST510107.cwl ok 1
+realworld/workflowhub/1231/DTC51/WF5101/ST510110.cwl ok 1
+realworld/workflowhub/1231/DTC51/WF5101/ST510112.cwl ok 1
+realworld/workflowhub/1231/DTC52/WF5201/ST520101.cwl ok 15
+realworld/workflowhub/1231/DTC52/WF5201/ST520112.cwl ok 1
+realworld/workflowhub/1231/DTC52/WF5201/ST520113.cwl ok 1
+realworld/workflowhub/1231/DTC52/WF5201/WF5201.cwl ok 29
+realworld/workflowhub/1231/DTC53/WF5301/ST530101.cwl ok 1
+realworld/workflowhub/1231/DTC53/WF5301/ST530103.cwl ok 1
+realworld/workflowhub/1231/DTC53/WF5301/ST530104.cwl ok 3
+realworld/workflowhub/1231/DTC53/WF5301/ST530105.cwl ok 1
+realworld/workflowhub/1231/DTC54/WF5401/ST540101.cwl ok 1
+realworld/workflowhub/1231/DTC54/WF5401/ST540102.cwl ok 1
+realworld/workflowhub/1231/DTC54/WF5401/ST540103.cwl ok 2
+realworld/workflowhub/1231/DTC54/WF5401/ST540104.cwl ok 1
+realworld/workflowhub/1231/DTC54/WF5401/ST540205.cwl ok 1
+realworld/workflowhub/1231/DTC61/WF6101/ST610106.cwl ok 8
+realworld/workflowhub/1231/DTC61/WF6101/ST610109.cwl ok 2
+realworld/workflowhub/1231/DTC61/WF6101/WF6101.cwl ok 19
+realworld/workflowhub/1231/DTC61/WF6101/abstract-mini-ST610106.cwl ok 1
+realworld/workflowhub/1231/DTC61/WF6101/mini-ST610106.cwl ok 1
+realworld/workflowhub/1231/DTC71/WF7101/WF7101.cwl ok 5
+realworld/workflowhub/1231/DTC71/WF7102/WF7102.cwl ok 5
+realworld/workflowhub/1231/DTC71/WF7103/WF7103.cwl ok 3
+realworld/workflowhub/1231/DTC71/WF7104/WF7104.cwl ok 3
+realworld/workflowhub/1231/DTC72/WF7201/WF7201.cwl ok 5
+realworld/workflowhub/1231/DTC72/WF7202/ST720204.cwl ok 3
+realworld/workflowhub/1231/DTC72/WF7202/WF7202.cwl ok 10
+realworld/workflowhub/1231/DTC73/WF7301/WF7301.cwl ok 10
+realworld/workflowhub/1231/DTC74/WF7401/WF7401.cwl ok 3
+realworld/workflowhub/1231/DTC74/WF7402/WF7402.cwl ok 5
+realworld/workflowhub/1231/DTC74/WF7403/WF7403.cwl ok 8
+realworld/workflowhub/1231/DTC75/WF7501/WF7501.cwl fail: ST750106: `inputs` does not contain the key `Run_User_Model`
+realworld/workflowhub/1231/DTC75/WF7502/ST750207.cwl ok 5
+realworld/workflowhub/1231/DTC75/WF7502/WF7502.cwl fail: ST750207: JavaScript error in `self.listing.find(f => f.basename === "DAL_template.json")`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3) (without InlineJavascriptRequirement)
+realworld/workflowhub/1231/DTC76/WF7601/WF7601.cwl fail: ST760103: `inputs` does not contain the key `useMLStep`
+realworld/workflowhub/1231/DTC76/WF7602/WF7602.cwl fail: ST760103: `inputs` does not contain the key `useMLStep`
+realworld/workflowhub/1231/DTC81/WF8101.generated/ST810101.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8101.generated/ST810102.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8101.generated/ST810103.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8101.generated/ST810104.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8101.generated/ST810105.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8101.generated/ST810106.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8101.generated/ST810107.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8101.generated/ST810108.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8101.generated/ST810109.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8101.generated/ST810110.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8101.generated/ST810111.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8101.generated/WF8101.cwl ok 11
+realworld/workflowhub/1231/DTC81/WF8102.generated/ST810201.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8102.generated/ST810202.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8102.generated/ST810203.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8102.generated/ST810204.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8102.generated/ST810205.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8102.generated/ST810206.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8102.generated/ST810207.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8102.generated/ST810208.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8102.generated/ST810209.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8102.generated/ST810210.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8102.generated/ST810211.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8102.generated/WF8102.cwl ok 11
+realworld/workflowhub/1231/DTC81/WF8103.generated/ST810305.cwl ok 2
+realworld/workflowhub/1231/DTC81/WF8103.generated/ST810401.cwl ok 3
+realworld/workflowhub/1231/DTC81/WF8103.generated/ST810402.cwl ok 3
+realworld/workflowhub/1231/DTC81/WF8103.generated/ST810403.cwl ok 3
+realworld/workflowhub/1231/DTC81/WF8103.generated/ST810404.cwl ok 3
+realworld/workflowhub/1231/DTC81/WF8103.generated/WF8103.cwl ok 14
+realworld/workflowhub/1231/DTC81/WF8104.generated/ST810401.cwl ok 3
+realworld/workflowhub/1231/DTC81/WF8104.generated/ST810402.cwl ok 3
+realworld/workflowhub/1231/DTC81/WF8104.generated/ST810403.cwl ok 3
+realworld/workflowhub/1231/DTC81/WF8104.generated/ST810404.cwl ok 3
+realworld/workflowhub/1231/DTC81/WF8104.generated/ST810405.cwl ok 2
+realworld/workflowhub/1231/DTC81/WF8104.generated/ST810406.cwl ok 2
+realworld/workflowhub/1231/DTC81/WF8104.generated/ST810407.cwl ok 3
+realworld/workflowhub/1231/DTC81/WF8104.generated/ST810408.cwl ok 2
+realworld/workflowhub/1231/DTC81/WF8104.generated/ST810409.cwl ok 2
+realworld/workflowhub/1231/DTC81/WF8104.generated/ST810410.cwl ok 2
+realworld/workflowhub/1231/DTC81/WF8104.generated/ST810411.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8104.generated/ST810412.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8104.generated/ST810413.cwl ok 2
+realworld/workflowhub/1231/DTC81/WF8104.generated/ST810414.cwl ok 2
+realworld/workflowhub/1231/DTC81/WF8104.generated/ST810415.cwl ok 2
+realworld/workflowhub/1231/DTC81/WF8104.generated/WF8104.cwl ok 33
+realworld/workflowhub/1231/DTC81/WF8105.generated/ST810416.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8105.generated/ST810417.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8105.generated/ST810418.cwl ok 1
+realworld/workflowhub/1231/DTC81/WF8105.generated/WF8105.cwl ok 3
+realworld/workflowhub/1231/templates/workflow-template.cwl ok 2
+realworld/workflowhub/1328/extract_tissue.cwl ok 1
+realworld/workflowhub/1328/tissue_segmentation_workflow.cwl ok 1
+realworld/workflowhub/1329/classify_tumor.cwl ok 1
+realworld/workflowhub/1329/extract_tissue.cwl ok 1
+realworld/workflowhub/1329/pca_classification_workflow.cwl ok 3
+realworld/workflowhub/1332/ST750207.cwl ok 5
+realworld/workflowhub/1332/WF7502.cwl fail: ST750207: JavaScript error in `self.listing.find(f => f.basename === "DAL_template.json")`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3) (without InlineJavascriptRequirement)
+realworld/workflowhub/1333/WF7501.cwl fail: ST750106: `inputs` does not contain the key `Run_User_Model`
+realworld/workflowhub/1343/Tools/01_split_genome_seqs.cwl ok 1
+realworld/workflowhub/1343/Tools/02_trimming_fastp_pe.cwl ok 1
+realworld/workflowhub/1343/Tools/02_trimming_fastp_se.cwl ok 1
+realworld/workflowhub/1343/Tools/03_decompressed_pigz.cwl ok 1
+realworld/workflowhub/1343/Tools/04_make_star_index.cwl ok 1
+realworld/workflowhub/1343/Tools/04_make_star_index_gff.cwl ok 1
+realworld/workflowhub/1343/Tools/05_star4cageseq_analysis_pe.cwl ok 1
+realworld/workflowhub/1343/Tools/05_star4cageseq_analysis_se.cwl ok 1
+realworld/workflowhub/1343/Tools/06_combined_exec_TSSr.cwl ok 1
+realworld/workflowhub/1343/Tools/07_join_all_assignedClusters.cwl ok 1
+realworld/workflowhub/1343/Tools/08_uniq_tss_feature.cwl ok 1
+realworld/workflowhub/1343/Tools/09_update_gtf.cwl ok 1
+realworld/workflowhub/1343/workflow/01_trimming_fastq_subworkflow_pe.cwl ok 1
+realworld/workflowhub/1343/workflow/01_trimming_fastq_subworkflow_se.cwl ok 1
+realworld/workflowhub/1343/workflow/02_star_index_subworkflow.cwl ok 2
+realworld/workflowhub/1343/workflow/03_star4cageseq_analysis_subworkflow_pe.cwl ok 1
+realworld/workflowhub/1343/workflow/03_star4cageseq_analysis_subworkflow_se.cwl ok 1
+realworld/workflowhub/1343/workflow/04_tssr_subworkflow_pe.cwl ok 4
+realworld/workflowhub/1343/workflow/cageseq_gtf_update_pe.cwl ok 9
+realworld/workflowhub/160/workflow.cwl ok 2
+realworld/workflowhub/1728/DTC51/WF5101/ST510101.cwl ok 1
+realworld/workflowhub/1728/DTC51/WF5101/ST510102.cwl ok 1
+realworld/workflowhub/1728/DTC51/WF5101/ST510103.cwl ok 1
+realworld/workflowhub/1728/DTC51/WF5101/ST510105.cwl ok 4
+realworld/workflowhub/1728/DTC51/WF5101/ST510107.cwl ok 1
+realworld/workflowhub/1728/DTC51/WF5101/ST510110.cwl ok 1
+realworld/workflowhub/1728/DTC51/WF5101/ST510112.cwl ok 1
+realworld/workflowhub/1728/DTC52/WF5201/ST520101.cwl ok 15
+realworld/workflowhub/1728/DTC52/WF5201/ST520112.cwl ok 1
+realworld/workflowhub/1728/DTC52/WF5201/ST520113.cwl ok 1
+realworld/workflowhub/1728/DTC52/WF5201/WF5201.cwl ok 29
+realworld/workflowhub/1728/DTC53/WF5301/ST530101.cwl ok 1
+realworld/workflowhub/1728/DTC53/WF5301/ST530103.cwl ok 1
+realworld/workflowhub/1728/DTC53/WF5301/ST530104.cwl ok 3
+realworld/workflowhub/1728/DTC53/WF5301/ST530105.cwl ok 1
+realworld/workflowhub/1728/DTC54/WF5401.generated/ST540101.cwl ok 1
+realworld/workflowhub/1728/DTC54/WF5401.generated/ST540102.cwl ok 1
+realworld/workflowhub/1728/DTC54/WF5401.generated/ST540103.cwl ok 2
+realworld/workflowhub/1728/DTC54/WF5401.generated/ST540104.cwl ok 1
+realworld/workflowhub/1728/DTC54/WF5401.generated/ST540205.cwl ok 1
+realworld/workflowhub/1728/DTC61/WF6101/ST610106.cwl ok 8
+realworld/workflowhub/1728/DTC61/WF6101/ST610109.cwl ok 2
+realworld/workflowhub/1728/DTC61/WF6101/WF6101.cwl ok 19
+realworld/workflowhub/1728/DTC61/WF6101/abstract-mini-ST610106.cwl ok 1
+realworld/workflowhub/1728/DTC61/WF6101/mini-ST610106.cwl ok 1
+realworld/workflowhub/1728/DTC71/WF7101/WF7101.cwl ok 5
+realworld/workflowhub/1728/DTC71/WF7102/WF7102.cwl ok 5
+realworld/workflowhub/1728/DTC71/WF7103/WF7103.cwl ok 3
+realworld/workflowhub/1728/DTC71/WF7104/WF7104.cwl ok 3
+realworld/workflowhub/1728/DTC72/WF7201/WF7201.cwl ok 5
+realworld/workflowhub/1728/DTC72/WF7202/ST720204.cwl ok 3
+realworld/workflowhub/1728/DTC72/WF7202/WF7202.cwl ok 10
+realworld/workflowhub/1728/DTC73/WF7301/WF7301.cwl ok 10
+realworld/workflowhub/1728/DTC74/WF7401/WF7401.cwl ok 3
+realworld/workflowhub/1728/DTC74/WF7402/WF7402.cwl ok 5
+realworld/workflowhub/1728/DTC74/WF7403/WF7403.cwl ok 8
+realworld/workflowhub/1728/DTC75/WF7501/WF7501.cwl fail: ST750106: `inputs` does not contain the key `Run_User_Model`
+realworld/workflowhub/1728/DTC75/WF7502/ST750207.cwl ok 5
+realworld/workflowhub/1728/DTC75/WF7502/WF7502.cwl fail: ST750207: JavaScript error in `self.listing.find(f => f.basename === "DAL_template.json")`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3) (without InlineJavascriptRequirement)
+realworld/workflowhub/1728/DTC76/WF7601/WF7601.cwl fail: ST760103: `inputs` does not contain the key `useMLStep`
+realworld/workflowhub/1728/DTC76/WF7602/WF7602.cwl fail: ST760103: `inputs` does not contain the key `useMLStep`
+realworld/workflowhub/1728/DTC81/WF8101.generated/ST810101.cwl ok 1
+realworld/workflowhub/1728/DTC81/WF8101.generated/ST810102.cwl ok 1
+realworld/workflowhub/1728/DTC81/WF8101.generated/ST810103.cwl ok 1
+realworld/workflowhub/1728/DTC81/WF8101.generated/ST810104.cwl ok 1

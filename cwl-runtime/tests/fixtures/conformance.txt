@@ -108,7 +108,7 @@ v1.0 dockeroutputdir pass
 v1.0 hints_import ran
 v1.0 default_path_notfound_warning pass
 v1.0 inlinejs_req_expressions pass
-v1.0 input_dir_recurs_copy_writable ran
+v1.0 input_dir_recurs_copy_writable pass
 v1.0 null_missing_params pass
 v1.0 param_notnull_expr pass
 v1.0 wf_compound_doc ran
@@ -306,7 +306,7 @@ v1.1 dockeroutputdir pass
 v1.1 hints_import ran
 v1.1 default_path_notfound_warning pass
 v1.1 inlinejs_req_expressions pass
-v1.1 input_dir_recurs_copy_writable ran
+v1.1 input_dir_recurs_copy_writable pass
 v1.1 null_missing_params pass
 v1.1 param_notnull_expr pass
 v1.1 wf_compound_doc ran
@@ -562,7 +562,7 @@ v1.2 dockeroutputdir pass
 v1.2 hints_import ran
 v1.2 default_path_notfound_warning pass
 v1.2 inlinejs_req_expressions pass
-v1.2 input_dir_recurs_copy_writable ran
+v1.2 input_dir_recurs_copy_writable pass
 v1.2 null_missing_params pass
 v1.2 param_notnull_expr pass
 v1.2 wf_compound_doc ran

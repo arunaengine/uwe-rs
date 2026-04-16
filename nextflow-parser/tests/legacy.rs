@@ -126,3 +126,27 @@ fn preview_output_syntax() {
         ]
     );
 }
+
+#[test]
+fn several_variables_in_one_declaration() {
+    let (items, legacy) = parse("def a = [], b\nprintln(a)\n");
+    let Item::Statement(statement) = &items[0] else {
+        panic!("a statement");
+    };
+    let StatementKind::Declaration {
+        names,
+        initializer,
+        destructure,
+        ..
+    } = &statement.kind
+    else {
+        panic!("a declaration: {statement:?}");
+    };
+    assert_eq!(names.len(), 2);
+    assert!(*destructure);
+    let Some(ExpressionKind::List(values)) = initializer.as_ref().map(|value| &value.kind) else {
+        panic!("a list of values");
+    };
+    assert_eq!(values.len(), 2);
+    assert_eq!(legacy, ["Expected a new line or ';' after the statement"]);
+}

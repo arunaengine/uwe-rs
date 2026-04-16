@@ -206,6 +206,7 @@ impl Lowering<'_> {
         let value = unparenthesized(value);
         match &value.kind {
             Syntax::Literal(ast::Literal::String(name)) => Some(name.as_str().into()),
+            // Legacy syntax: a bare name is the name of the variable.
             Syntax::Variable(name) => {
                 self.legacy(format!("`{name}` is not defined"), value.span);
                 Some(name.as_str().into())

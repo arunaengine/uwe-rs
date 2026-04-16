@@ -258,3 +258,10 @@ fn more_collection_and_path_methods() {
         "[[a:1, c:3], [a:1, b:2], [1, 4, 7, 10], true, true, [10], [3, 1], [3, 1, 3], [1, 2, 3]]"
     );
 }
+
+#[test]
+fn collection_classes() {
+    assert_eq!(value("[1].getClass() == ArrayList"), "true");
+    assert_eq!(value("[a: 1].getClass() == LinkedHashMap"), "true");
+    assert_eq!(value("[a: 1].getClass() == ArrayList"), "false");
+}

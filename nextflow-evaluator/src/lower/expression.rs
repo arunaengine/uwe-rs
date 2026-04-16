@@ -463,14 +463,18 @@ impl Lowering<'_> {
         } else if SCRIPT_FUNCTIONS.contains(&name) || (self.in_process && name == "template") {
             Function::Builtin(name.into())
         } else if let Some(callee) = self.closure_variable(name, span) {
-            // Groovy calls the closure that a variable holds.
+            // Legacy syntax: Groovy calls the closure that a variable holds.
+            self.legacy(format!("`{name}` is not defined"), span);
             return Kind::CallValue {
                 callee: Box::new(callee),
                 arguments,
             };
-        } else if self.lookup.is_some() && self.scopes.in_closure() && self.dynamic_names {
-            // The legacy parser leaves an unknown function in a config closure to the task that
-            // calls it, which then fails.
+        } else if !self.config
+            || (self.lookup.is_some() && self.scopes.in_closure() && self.dynamic_names)
+        {
+            // Legacy syntax: Groovy looks for the function when the call runs, which then
+            // fails. So does a config closure in the `process` scope, when a task calls it.
+            self.legacy(format!("`{name}` is not defined"), span);
             Function::Script(name.into())
         } else if !self.config {
             // Legacy syntax: Groovy calls a variable that holds a closure, else the call fails
@@ -494,10 +498,9 @@ impl Lowering<'_> {
         }
     }
 
-    /// In config code of legacy syntax, a variable that may hold a closure, or a closure that
-    /// `ConfigNames::lookup` gives. Strict syntax calls only functions by name.
+    /// A variable that may hold a closure, or a closure that `ConfigNames::lookup` gives.
+    /// Strict syntax calls only functions by name.
     fn closure_variable(&mut self, name: &str, span: Span) -> Option<Expression> {
-        self.lookup?;
         if let Some(place) = self.scopes.resolve(name) {
             let kind = Kind::Variable(place);
             return Some(Expression { kind, span });

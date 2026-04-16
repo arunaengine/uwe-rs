@@ -5935,3 +5935,13 @@ realworld/workflowhub/776/biobb_adapters/fix_side_chain.cwl ok 1
 realworld/workflowhub/776/biobb_adapters/fix_ssbonds.cwl ok 1
 realworld/workflowhub/776/biobb_adapters/leap_gen_top.cwl ok 1
 realworld/workflowhub/776/biobb_adapters/reduce_remove_hydrogens.cwl ok 1
+realworld/workflowhub/776/biobb_adapters/remove_molecules.cwl ok 1
+realworld/workflowhub/776/biobb_adapters/remove_pdb_water.cwl ok 1
+realworld/workflowhub/776/biobb_adapters/sander_mdrun.cwl ok 1
+realworld/workflowhub/776/biobb_adapters/structure_check.cwl ok 1
+realworld/workflowhub/776/workflow.cwl ok 18
+realworld/workflowhub/873/packed.cwl fail: optimize/optimize_each[0]: the input `freud_sim` is not a valid enum: "freud_sim"
+realworld/workflowhub/882/beacon-omop-worker-survival.cwl ok 1
+realworld/workflowhub/882/beacon-omop-worker.cwl ok 1
+realworld/workflowhub/882/workflow_entrypoint.cwl ok 1
+realworld/workflowhub/882/workflow_entrypoint_survival.cwl ok 1

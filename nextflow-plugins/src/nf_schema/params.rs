@@ -10,8 +10,9 @@ use super::{Schema, entries, errors, get, json, plain, schema, thrown};
 use crate::Context;
 
 /// `validateParameters`: checks the params against the schema. Params that the schema does
-/// not know give a warning. As in nf-schema, text from the command line stays text, so
-/// `--n 7` is not an integer.
+/// not know give a warning, unless the config ignores them; ignored params that the schema
+/// knows are checked like the others. As in nf-schema, text from the command line stays
+/// text, so `--n 7` is not an integer.
 pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result<Value, Error> {
     let schema = parameters_schema(options, context)?;
     let ignored = ignored(context);
@@ -19,9 +20,6 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
     let mut instance = serde_json::Map::new();
     let mut unknown = Vec::new();
     for (name, value) in entries(&context.params) {
-        if ignored.contains(&name) {
-            continue;
-        }
         let Some(value) = cleaned(&value) else {
             continue;
         };
@@ -30,7 +28,9 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
             .flat_map(|(_, properties)| properties)
             .any(|(property, _)| *property == name);
         if !known {
-            unknown.push(format!("* --{name}: {value}"));
+            if !ignored.contains(&name) {
+                unknown.push(format!("* --{name}: {value}"));
+            }
             continue;
         }
         instance.insert(name, json(&value));

@@ -253,11 +253,55 @@ impl Parser<'_> {
         } else {
             None
         };
+        let initializer = self.initializer()?;
+        if self.at(TokenKind::Comma) {
+            let first = (TypedName { name, annotation }, initializer);
+            return self.legacy_declarations(first, legacy_type);
+        }
         Ok(StatementKind::Declaration {
             names: vec![TypedName { name, annotation }],
             legacy_type,
-            initializer: self.initializer()?,
+            initializer,
             destructure: false,
+        })
+    }
+
+    /// Legacy syntax: several variables in one declaration, `def a = [], b = []`, which is
+    /// read as `def (a, b) = [[], []]`.
+    fn legacy_declarations(
+        &mut self,
+        first: (TypedName, Option<Expression>),
+        legacy_type: Option<crate::ast::Type>,
+    ) -> Parse<StatementKind> {
+        let comma = self.current().span;
+        let message = "Expected a new line or ';' after the statement";
+        self.legacy.push(crate::Diagnostic::new(message, comma));
+        let mut declared = vec![first];
+        while self.eat(TokenKind::Comma) {
+            self.skip_newlines();
+            let name = self.variable_name()?;
+            let initializer = self.initializer()?;
+            let annotation = None;
+            declared.push((TypedName { name, annotation }, initializer));
+        }
+        let values = declared
+            .iter()
+            .map(|(typed, value)| {
+                value.clone().unwrap_or(Expression {
+                    kind: ExpressionKind::Literal(crate::ast::Literal::Null),
+                    span: typed.name.span,
+                })
+            })
+            .collect();
+        let span = comma.to(self.span_from(comma));
+        Ok(StatementKind::Declaration {
+            names: declared.into_iter().map(|(typed, _)| typed).collect(),
+            legacy_type,
+            initializer: Some(Expression {
+                kind: ExpressionKind::List(values),
+                span,
+            }),
+            destructure: true,
         })
     }
 

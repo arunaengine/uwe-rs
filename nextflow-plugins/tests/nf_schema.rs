@@ -290,3 +290,31 @@ fn summaries_show_what_differs_from_the_defaults() {
     ];
     assert_eq!(log, expected.join("\n"));
 }
+
+#[test]
+fn ignored_parameters_that_the_schema_knows_are_validated() {
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/params")
+        .to_string_lossy()
+        .into_owned();
+    let config = Config::default();
+    let ignored = Value::list(vec![Value::string("outdir"), Value::string("extra")]);
+    let path = ["validation".into(), "defaultIgnoreParams".into()];
+    nextflow_config::tree::assign(&config.tree, &path, ignored).unwrap();
+    let validate = |params: Value| {
+        let mut host = Fixtures(directory.clone());
+        let mut context = Context {
+            host: &mut host,
+            config: &config,
+            params,
+            project_dir: &directory,
+        };
+        call("nf-schema", "validateParameters", vec![], &mut context).map(|_| ())
+    };
+    assert!(validate(params(&[("outdir", "res"), ("extra", "x")])).is_ok());
+    let error = validate(params(&[("extra", "x")])).unwrap_err().to_string();
+    assert!(
+        error.ends_with("* Missing required parameter(s): outdir\n\n"),
+        "{error}"
+    );
+}

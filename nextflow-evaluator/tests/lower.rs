@@ -51,14 +51,10 @@ fn declarations_and_assignments() {
     let source = "def f() {\n    def x = 1\n    def c = { def x = 2 }\n}";
     assert_eq!(errors(source), ["3:19: `x` is already declared"]);
     // Legacy syntax: the variable belongs to the function.
-    let module = lower("def f() { y = 1 }").expect("lowers");
-    let lines = LineIndex::new("def f() { y = 1 }");
-    let legacy: Vec<String> = module
-        .legacy
-        .iter()
-        .map(|error| lines.locate(error).to_string())
-        .collect();
-    assert_eq!(legacy, ["1:11: `y` was assigned but not declared"]);
+    assert_eq!(
+        legacy("def f() { y = 1 }"),
+        ["1:11: `y` was assigned but not declared"]
+    );
     let source = "def f() { workflow = 1 }";
     assert_eq!(
         errors(source),

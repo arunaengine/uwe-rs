@@ -152,6 +152,9 @@ fn legacy_syntax() {
     let module = lower(&source).expect("lowers");
     assert_eq!(module.processes[0].setup.len(), 1);
     assert_eq!(module.processes[0].directives.len(), 1);
+    // Strict syntax wants a string as an `env` name; the legacy parser takes a bare name.
+    let env = "    output:\n    env LINES\n    script:\n    'x'";
+    assert_eq!(legacy(&process(env)), ["3:9: `LINES` is not defined"]);
     // A bare name that is no variable is a file name.
     let output = "    output:\n    path(bwa), emit: index\n    script:\n    'x'";
     let source = process(output);

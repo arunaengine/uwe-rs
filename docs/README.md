@@ -27,6 +27,7 @@ iunctus config [<Nextflow project>] [-profile <names>]
 
 - [Engine](design/engine.md): how `iunctus run` finds the language, the driver interface every language implements, the execution graph and the executors.
 - [Nextflow runtime](design/nextflow/runtime.md): the chosen design of the Nextflow evaluator, the dataflow runtime and the shared task layer, with milestones.
+- [Argo runtime](design/argo/runtime.md): how `argo-runtime` runs Argo Workflows documents as tasks: the template library, substitution, the expression languages, control flow, leaf templates, mock runs and the corpus results.
 
 ## Research notes
 

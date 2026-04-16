@@ -16,6 +16,7 @@ publish = false
 [workspace.dependencies]
 # Workspace crates
 argo-parser = { path = "argo-parser" }
+argo-runtime = { path = "argo-runtime" }
 content-store = { path = "content-store" }
 cwl-parser = { path = "cwl-parser" }
 cwl-runtime = { path = "cwl-runtime" }

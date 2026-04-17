@@ -103,3 +103,36 @@ fn optional_inputs_of_the_top_process_get_placeholders_when_asked() {
     let job = prepare(&tool, Map::new(), &plain).unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(job.get("extra"), Some(&Value::Null));
 }
+
+#[test]
+fn broken_defaults_of_the_top_process_give_way_to_placeholders() {
+    let tool = process(
+        "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: cat\noutputs: []\n\
+         inputs:\n  given:\n    type: File\n    default: {class: File}\n",
+    );
+    let (types, evaluator) = (Types::default(), Evaluator::default());
+    let setting = Setting {
+        types: &types,
+        evaluator: &evaluator,
+        access: Access {
+            assume_present: true,
+        },
+        load_listing: None,
+        discover: true,
+        placeholders: Some(BASE),
+        toplevel: true,
+        fill_optional: false,
+    };
+    let job = prepare(&tool, Map::new(), &setting).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(
+        job.get("given").and_then(|file| file.text("location")),
+        Some("file:///in/given.txt")
+    );
+    // Inside a workflow such a default is an error, as in cwltool.
+    let inner = Setting {
+        toplevel: false,
+        ..setting
+    };
+    let job = prepare(&tool, Map::new(), &inner);
+    assert!(job.is_err_and(|error| error.contains("File object")));
+}

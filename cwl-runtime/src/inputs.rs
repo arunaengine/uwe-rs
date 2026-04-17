@@ -59,11 +59,24 @@ pub fn prepare(process: &Process, mut job: Map, setting: &Setting<'_>) -> Result
         };
         job.insert(name, value);
     }
-    let mut value = Value::Map(job);
-    files::normalize(&mut value)?;
-    let Value::Map(mut job) = value else {
-        unreachable!("the job stays a map");
-    };
+    for (name, value) in job.iter_mut() {
+        let Err(error) = files::normalize(value) else {
+            continue;
+        };
+        // On placeholder inputs, a default that is not a valid file object gives way to a
+        // placeholder, as a real job has to give that input.
+        let input = process
+            .inputs
+            .iter()
+            .find(|input| short_name(&input.id) == name);
+        match (setting.placeholders, input) {
+            (Some(base), Some(input)) if setting.toplevel && defaulted.contains(name) => {
+                *value = placeholder::input(input, setting.types, base);
+                files::normalize(value)?;
+            }
+            _ => return Err(error),
+        }
+    }
     for input in &process.inputs {
         let name = short_name(&input.id);
         let value = job.get(name).unwrap_or(&Value::Null);

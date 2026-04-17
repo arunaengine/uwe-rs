@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use cwl_parser::source::FileSystem;
+use cwl_parser::source::Web;
 use cwl_parser::{Loader, Node, Value, yaml};
 
 const REJECTED: &str = include_str!("fixtures/corpus/rejected.txt");
@@ -37,7 +37,7 @@ fn matches_cwltool_validate() {
     let mut agreed = 0;
     for document in &documents {
         let path = root.join(document);
-        let loaded = Loader::new(FileSystem).load_entries(&path.to_string_lossy());
+        let loaded = Loader::new(Web).load_entries(&path.to_string_lossy());
         let expected = !rejected.contains_key(document.as_str());
         let agrees = loaded.is_ok() == expected;
         agreed += usize::from(agrees);

@@ -108,7 +108,7 @@ fn extension(input: &InputParameter, format: Option<&str>) -> String {
 }
 
 /// A value of a type for a parameter that nothing sets: a file named after the parameter in
-/// the folder `base` (a URL ending in `/`), one item for arrays, the first symbol of enums.
+/// the folder `base` (a URL ending in `/`), two items for arrays, the first symbol of enums.
 pub fn value(types: &Types, value_type: &Type, name: &str, base: &str, hint: &Hint) -> Value {
     match types.resolve(value_type) {
         Type::Null => Value::Null,
@@ -123,18 +123,12 @@ pub fn value(types: &Types, value_type: &Type, name: &str, base: &str, hint: &Hi
             }
             file
         }
-        Type::Directory => {
-            // One file inside, as expressions often look at the first entry.
-            let mut directory = file_object("Directory", name, base);
-            let folder = format!("{}/", directory.text("location").unwrap_or(base));
-            let inside = file_object("File", &format!("{name}.txt"), &folder);
-            if let Value::Map(map) = &mut directory {
-                map.insert("basename".into(), Value::string(name));
-                map.insert("listing".into(), Value::List(vec![inside]));
-            }
-            directory
-        }
-        Type::Array(array) => Value::List(vec![value(types, &array.items, name, base, hint)]),
+        Type::Directory => directory(name, base, true),
+        // Two items, as expressions often look at the second one too, like paired reads.
+        Type::Array(array) => Value::List(vec![
+            value(types, &array.items, name, base, hint),
+            value(types, &array.items, &format!("{name}_2"), base, hint),
+        ]),
         Type::Record(record) => {
             let mut map = Map::new();
             for field in &record.fields {
@@ -162,6 +156,24 @@ pub fn value(types: &Types, value_type: &Type, name: &str, base: &str, hint: &Hi
             }
         }
     }
+}
+
+/// A placeholder directory: at its top a folder, `<name>_1`, that holds a file, then a file,
+/// since expressions look into the first entry, or take it as a file. `nested` makes the
+/// folder at the top.
+fn directory(name: &str, base: &str, nested: bool) -> Value {
+    let mut directory = file_object("Directory", name, base);
+    let folder = format!("{}/", directory.text("location").unwrap_or(base));
+    let mut listing = Vec::new();
+    if nested {
+        listing.push(self::directory(&format!("{name}_1"), &folder, false));
+    }
+    listing.push(file_object("File", &format!("{name}.txt"), &folder));
+    if let Value::Map(map) = &mut directory {
+        map.insert("basename".into(), Value::string(name));
+        map.insert("listing".into(), Value::List(listing));
+    }
+    directory
 }
 
 /// What a placeholder file looks like: the extension of its name and its format.
@@ -253,3 +265,7 @@ pub fn is_fake(value: &Value, prefixes: &[String]) -> bool {
         _ => false,
     }
 }
+
+#[cfg(test)]
+#[path = "placeholder_tests.rs"]
+mod tests;

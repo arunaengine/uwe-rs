@@ -1,10 +1,12 @@
 //! Runs every workflow of the Snakemake corpus with the mock executor and compares the
 //! outcome with `tests/fixtures/run_corpus.txt`: `ok` and the number of tasks, or the exit
-//! code (33 for unsupported features) and the first line of the error. Input files that no
-//! rule makes are assumed to exist, since the corpus has no data. Each workflow runs in a
-//! child process, so that a crash or a run of more than two minutes (exit code 124) stays
-//! with its workflow. Run with `just snakemake-run-corpus-test`; on a difference the test
-//! prints the lines of the new fixture.
+//! code (33 for unsupported features) and the first line of the error. Each workflow runs
+//! the way `tests/fixtures/run_corpus_launches.txt` says, which `launches.py` next to it
+//! writes: as its CI tests it, or as Snakemake's own tests run it. Input files that no rule
+//! makes are assumed to exist, since the corpus holds no large data files. Each workflow runs
+//! in a child process, so that a crash or a run of more than two minutes (exit code 124)
+//! stays with its workflow. Run with `just snakemake-run-corpus-test`; on a difference the
+//! test prints the lines of the new fixture.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -14,6 +16,77 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use workflow_graph::{Launch, MockTes, execute};
+
+const LAUNCHES: &str = include_str!("fixtures/run_corpus_launches.txt");
+
+/// How a workflow is launched: its working directory and Snakefile relative to its folder,
+/// config files and values, and targets. The default runs the Snakefile of the folder in it.
+#[derive(Default)]
+struct Launching {
+    directory: Option<String>,
+    snakefile: Option<String>,
+    configfiles: Vec<String>,
+    config: Vec<(String, String)>,
+    targets: Vec<String>,
+}
+
+impl Launching {
+    /// The launch of the workflow of that name in the fixture.
+    fn of(name: &str) -> Launching {
+        let mut launching = Launching::default();
+        let Some(line) = LAUNCHES
+            .lines()
+            .filter(|line| !line.starts_with('#'))
+            .find(|line| line.split('\t').next() == Some(name))
+        else {
+            return launching;
+        };
+        for field in line.split('\t').skip(2) {
+            let (key, value) = field.split_once('=').unwrap_or((field, ""));
+            match key {
+                "directory" => launching.directory = Some(value.to_owned()),
+                "snakefile" => launching.snakefile = Some(value.to_owned()),
+                "configfile" => launching.configfiles.push(value.to_owned()),
+                "config" => {
+                    let (name, value) = value.split_once('=').expect("a config value");
+                    launching.config.push((name.to_owned(), value.to_owned()));
+                }
+                "target" => launching.targets.push(value.to_owned()),
+                _ => {}
+            }
+        }
+        launching
+    }
+
+    /// The working directory of the run.
+    fn workdir(&self, folder: &Path) -> PathBuf {
+        match &self.directory {
+            Some(directory) => folder.join(directory),
+            None => folder.to_path_buf(),
+        }
+    }
+
+    /// The launch of the run; the child process runs in the working directory.
+    fn launch(&self, folder: &Path, scratch: &Path) -> Launch {
+        let target = match &self.snakefile {
+            Some(snakefile) => folder.join(snakefile),
+            None => self.workdir(folder),
+        };
+        Launch {
+            target,
+            params: self.config.clone(),
+            configs: self
+                .configfiles
+                .iter()
+                .map(|file| folder.join(file))
+                .collect(),
+            targets: self.targets.clone(),
+            scratch: scratch.to_path_buf(),
+            assume_inputs: true,
+            ..Launch::default()
+        }
+    }
+}
 
 /// The workflow folders of the corpus: the catalog repositories and Snakemake's own tests
 /// that have a Snakefile where Snakemake looks for one.
@@ -43,14 +116,9 @@ fn workflows(corpus: &Path) -> Vec<(String, PathBuf)> {
 }
 
 /// The outcome of one run in this process, as the fixture line records it.
-fn run(folder: &Path) -> String {
+fn run(folder: &Path, launching: &Launching) -> String {
     let scratch = tempfile::tempdir().expect("a temporary directory");
-    let launch = Launch {
-        target: folder.to_path_buf(),
-        scratch: scratch.path().to_path_buf(),
-        assume_inputs: true,
-        ..Launch::default()
-    };
+    let launch = launching.launch(folder, scratch.path());
     let mut driver = match snakemake_runtime::driver(&launch) {
         Ok(driver) => driver,
         Err(error) => return format!("{} {error}", if error.unsupported { 33 } else { 1 }),
@@ -82,7 +150,8 @@ fn clean(outcome: &str, folder: &Path) -> String {
 #[test]
 #[ignore = "a child of the corpus test"]
 fn run_one() {
-    let (Some(folder), Some(outcome)) = (
+    let (Some(name), Some(folder), Some(outcome)) = (
+        std::env::var_os("SNAKEMAKE_RUN_NAME"),
         std::env::var_os("SNAKEMAKE_RUN_ONE"),
         std::env::var_os("SNAKEMAKE_RUN_OUTCOME"),
     ) else {
@@ -91,11 +160,21 @@ fn run_one() {
     // SAFETY: the variable is set before any other thread of this process reads it.
     unsafe { std::env::set_var("IUNCTUS_QUIET", "1") };
     let folder = PathBuf::from(folder);
-    let result = run(&folder);
+    let result = run(&folder, &Launching::of(&name.to_string_lossy()));
     std::fs::write(outcome, clean(&result, &folder)).expect("writes the outcome");
 }
 
-fn child(folder: &Path, outcome: &Path) -> String {
+fn child(name: &str, folder: &Path, outcome: &Path) -> String {
+    let workdir = Launching::of(name).workdir(folder);
+    if !workdir.is_dir() {
+        return clean(
+            &format!(
+                "1 the working directory {} does not exist",
+                workdir.display()
+            ),
+            folder,
+        );
+    }
     let status = Command::new("timeout")
         .args([
             "120",
@@ -111,9 +190,10 @@ fn child(folder: &Path, outcome: &Path) -> String {
             "--test-threads",
             "1",
         ])
+        .env("SNAKEMAKE_RUN_NAME", name)
         .env("SNAKEMAKE_RUN_ONE", folder)
         .env("SNAKEMAKE_RUN_OUTCOME", outcome)
-        .current_dir(folder)
+        .current_dir(workdir)
         .output()
         .expect("runs the test binary");
     if let Ok(text) = std::fs::read_to_string(outcome) {
@@ -158,7 +238,7 @@ fn workflows_run_as_recorded() {
                     let Some((name, folder)) = workflows.get(index) else {
                         break;
                     };
-                    let outcome = child(folder, &outcomes.path().join(index.to_string()));
+                    let outcome = child(name, folder, &outcomes.path().join(index.to_string()));
                     results.lock().expect("the results")[index] = Some(format!("{name} {outcome}"));
                 }
             });

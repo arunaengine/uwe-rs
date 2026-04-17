@@ -989,7 +989,8 @@ fn dirent_entries(
     let writable = Value::Bool(dirent.writable);
     match entry {
         Value::Null => Ok(Vec::new()),
-        Value::List(items) if !items.is_empty() && items.iter().all(Value::is_file_like) => {
+        // A list of files and directories, which may be empty, as in cwltool.
+        Value::List(items) if items.iter().all(Value::is_file_like) => {
             if entryname.is_some() {
                 return Err("`entryname` cannot name a list of files".into());
             }
@@ -1868,3 +1869,7 @@ fn walk(folder: &Path, prefix: &str) -> Vec<(String, std::path::PathBuf, bool)> 
     }
     found
 }
+
+#[cfg(test)]
+#[path = "tool_tests.rs"]
+mod tests;

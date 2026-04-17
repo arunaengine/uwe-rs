@@ -63,8 +63,21 @@ fn outcome(root: &Path, document: &str) -> String {
     format!("ok {tasks}")
 }
 
-/// Builds the graph of one process and gives its task count.
+/// Builds the graph of one process and gives its task count: with the optional inputs of
+/// the process null, or else with placeholders for them too, as either is a valid job; the
+/// error is the one of the first.
 fn graph(reference: &str) -> Result<usize, String> {
+    graph_with(reference, Options::default()).or_else(|error| {
+        let filled = Options {
+            fill_optional: true,
+            ..Options::default()
+        };
+        graph_with(reference, filled).map_err(|_| error)
+    })
+}
+
+/// Builds the graph of one process with some options.
+fn graph_with(reference: &str, options: Options) -> Result<usize, String> {
     let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
     let (target, fragment) = match reference.split_once('#') {
         Some((file, fragment)) => (file, Some(fragment)),
@@ -78,8 +91,7 @@ fn graph(reference: &str) -> Result<usize, String> {
         scratch: directory.path().to_path_buf(),
         ..Launch::default()
     };
-    let mut driver =
-        CwlDriver::new(&launch, Options::default()).map_err(|error| describe(&error))?;
+    let mut driver = CwlDriver::new(&launch, options).map_err(|error| describe(&error))?;
     let mut executor = MockTes::new(directory.path().join("mock"));
     let execution = execute(reference, &mut driver, &mut executor);
     if let Some(error) = execution.error {

@@ -46,6 +46,9 @@ pub struct Options {
     pub mock: bool,
     /// The image of tools without `DockerRequirement`.
     pub image: String,
+    /// On placeholder inputs, give the optional inputs of the process the run starts with
+    /// placeholders too, as a job that sets every input; by default they are null.
+    pub fill_optional: bool,
 }
 
 impl Default for Options {
@@ -53,6 +56,7 @@ impl Default for Options {
         Options {
             mock: true,
             image: DEFAULT_IMAGE.into(),
+            fill_optional: false,
         }
     }
 }

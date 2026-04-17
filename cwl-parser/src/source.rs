@@ -39,6 +39,40 @@ impl Source for FileSystem {
     }
 }
 
+/// Reads `file:` URLs from the local file system and `http:` and `https:` URLs from the web,
+/// as cwltool does for `run` and `$import` targets that are web addresses.
+#[derive(Clone, Debug, Default)]
+pub struct Web;
+
+impl Source for Web {
+    fn read(&self, url: &str) -> Result<String, String> {
+        match iri::Parts::parse(url).scheme {
+            Some("http" | "https") => fetch(url),
+            _ => FileSystem.read(url),
+        }
+    }
+
+    fn exists(&self, url: &str) -> bool {
+        FileSystem.exists(url)
+    }
+}
+
+/// The text at a web address.
+fn fetch(url: &str) -> Result<String, String> {
+    let client = reqwest::blocking::Client::builder()
+        .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|error| error.to_string())?;
+    client
+        .get(url)
+        .send()
+        .and_then(|response| response.error_for_status())
+        .and_then(|response| response.text())
+        .map_err(|error| error.to_string())
+}
+
 /// Documents held in memory by URL, for tests and for callers that read files themselves.
 #[derive(Clone, Debug, Default)]
 pub struct Memory {

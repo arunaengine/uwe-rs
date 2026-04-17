@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use cwl_parser::source::FileSystem;
+use cwl_parser::source::Web;
 use cwl_parser::{Loader, Node, Value, yaml};
 use cwl_runtime::{CwlDriver, Options};
 use workflow_graph::{ExecuteError, Launch, MockTes, execute};
@@ -32,7 +32,7 @@ const LIMIT: Duration = Duration::from_secs(60);
 fn outcome(root: &Path, document: &str) -> String {
     let path = root.join(document).to_string_lossy().into_owned();
     // A packed file without `#main` runs each of its processes.
-    let references: Vec<String> = match Loader::new(FileSystem).load_entries(&path) {
+    let references: Vec<String> = match Loader::new(Web).load_entries(&path) {
         Ok(processes) if processes.len() > 1 => processes
             .iter()
             .map(|process| {

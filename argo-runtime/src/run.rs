@@ -1875,8 +1875,9 @@ pub(crate) fn fnv32a(text: &str) -> u32 {
     hash
 }
 
-/// The name of the workflow: its `metadata.name`, or its `generateName` with a suffix that
-/// depends on the document, so that runs of the same document get the same names.
+/// The name of the workflow: its `metadata.name`, or its `generateName` with a suffix made from
+/// the kind, name and position of the document, so that runs of the same document get the same
+/// names wherever its file is.
 fn workflow_name(document: &Document, metadata: Option<&Node>) -> String {
     let text = |key: &str| {
         document
@@ -1888,7 +1889,7 @@ fn workflow_name(document: &Document, metadata: Option<&Node>) -> String {
             .unwrap_or("")
             .to_owned()
     };
-    let seed = format!("{}#{}", document.path.display(), document.index);
+    let seed = format!("{}#{}", document.label(), document.index);
     let suffix: String = format!("{:08x}", fnv32a(&seed))
         .chars()
         .map(|c| match c {

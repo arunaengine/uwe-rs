@@ -27,7 +27,7 @@ argo-hub/examples/starter-manual-sync/versions/0.0.1/workflowTemplate.yaml	ok 3
 argo-hub/examples/starter-manual-sync/versions/0.0.2/workflowTemplate.yaml	ok 3
 argo-hub/examples/time-of-day/versions/0.0.1/workflowTemplate.yaml	ok 3
 argo-hub/examples/upgrade-cluster/versions/0.0.1/workflowTemplate.yaml	ok 1
-argo-hub/workflows/codefresh-classic/versions/0.0.1/workflowTemplate.mock.yaml	1 workflow error: 1-390f3: template main not found
+argo-hub/workflows/codefresh-classic/versions/0.0.1/workflowTemplate.mock.yaml	1 workflow error: 1-d8d21: template main not found
 argo-workflow-examples/artifacts-files/artifacts-files-wf.yaml	ok 1
 argo-workflow-examples/dag/dag-diamond.yaml	ok 4
 argo-workflow-examples/embodied-eval/workflow.yaml	ok 12
@@ -286,7 +286,7 @@ argo-workflows/examples/withsequence-nested-result.yaml	ok 1
 argo-workflows/examples/work-avoidance.yaml	ok 5
 argo-workflows/examples/workflow-event-binding/event-consumer-workflowtemplate.yaml	ok 1
 argo-workflows/examples/workflow-event-binding/github-path-filter-workflowtemplate.yaml	ok 1
-argo-workflows/examples/workflow-level-executor-plugin.yaml	33 workflow-level-executor-plugin-f6282: plugin templates are not supported: executor plugins need the Argo agent
+argo-workflows/examples/workflow-level-executor-plugin.yaml	33 workflow-level-executor-plugin-6599d: plugin templates are not supported: executor plugins need the Argo agent
 argo-workflows/examples/workflow-of-workflows.yaml	ok 2
 argo-workflows/examples/workflow-template/dag.yaml	ok 7
 argo-workflows/examples/workflow-template/hello-world.yaml	ok 1
@@ -466,7 +466,7 @@ argo-workflows/test/e2e/functional/workflow-exit-handler-sleep.yaml	ok 2
 argo-workflows/test/e2e/functional/workflow_level_host_aliases.yaml	ok 1
 argo-workflows/test/e2e/functional/workflow_template_level_host_aliases.yaml	ok 1
 argo-workflows/test/e2e/lintfail/disallow-unknown.yaml	ok 1
-argo-workflows/test/e2e/lintfail/invalid-spec.yaml	1 workflow error: invalid-spec-f65ee: template doesnotexist not found
+argo-workflows/test/e2e/lintfail/invalid-spec.yaml	1 workflow error: invalid-spec-4be87: template doesnotexist not found
 argo-workflows/test/e2e/smoke/artifact-passing.yaml	ok 2
 argo-workflows/test/e2e/smoke/basic-2.yaml	ok 1
 argo-workflows/test/e2e/smoke/basic-invalid.yaml	1 /argo-workflows/test/e2e/smoke/basic-invalid.yaml:11:45: while parsing a block mapping, did not find expected key
@@ -576,9 +576,9 @@ argo-workflows/test/e2e/testdata/output-on-mount-workflow.yaml	ok 1
 argo-workflows/test/e2e/testdata/output-result-workflow.yaml	ok 2
 argo-workflows/test/e2e/testdata/parameters-workflow.yaml	ok 1
 argo-workflows/test/e2e/testdata/pending-workflow.yaml	ok 1
-argo-workflows/test/e2e/testdata/plugins/executor/massive-executor-workflow.yaml	33 massive-executor-ad0ae[0].fanout(0:0): plugin templates are not supported: executor plugins need the Argo agent
-argo-workflows/test/e2e/testdata/plugins/executor/template-executor-workflow.yaml	33 template-executor-22105: plugin templates are not supported: executor plugins need the Argo agent
-argo-workflows/test/e2e/testdata/plugins/executor/workflow-level-template-executor-workflow.yaml	33 workflow-level-template-executor-712a7: plugin templates are not supported: executor plugins need the Argo agent
+argo-workflows/test/e2e/testdata/plugins/executor/massive-executor-workflow.yaml	33 massive-executor-a3264[0].fanout(0:0): plugin templates are not supported: executor plugins need the Argo agent
+argo-workflows/test/e2e/testdata/plugins/executor/template-executor-workflow.yaml	33 template-executor-f9037: plugin templates are not supported: executor plugins need the Argo agent
+argo-workflows/test/e2e/testdata/plugins/executor/workflow-level-template-executor-workflow.yaml	33 workflow-level-template-executor-a4a28: plugin templates are not supported: executor plugins need the Argo agent
 argo-workflows/test/e2e/testdata/progress-workflow.yaml	ok 1
 argo-workflows/test/e2e/testdata/resource-templates/failed.yaml	ok 1
 argo-workflows/test/e2e/testdata/resource-templates/outputs.yaml	ok 1
@@ -662,7 +662,7 @@ distributed-ml-patterns/code/project/basics/argo-hello-world.yaml	ok 1
 distributed-ml-patterns/code/project/basics/argo-resource-template.yaml	ok 1
 distributed-ml-patterns/code/project/basics/argo-script-template.yaml	ok 1
 distributed-ml-patterns/code/project/code/workflow.yaml	ok 6
-gennext-workflows/chore/update_existing_run_with_exomedepth.yaml	1 workflow error: germline-wes-gpu-workflow-edde5: template main not found
+gennext-workflows/chore/update_existing_run_with_exomedepth.yaml	1 workflow error: germline-wes-gpu-workflow-0429f: template main not found
 gennext-workflows/plans/test-fusion-inspector-acu2.yaml	ok 1
 gennext-workflows/tasks/base_tasks/annotsv.yaml	ok 1
 gennext-workflows/tasks/base_tasks/exomedepth.yaml	ok 1
@@ -674,7 +674,7 @@ gennext-workflows/tasks/base_tasks/split-caller.yaml	ok 0
 gennext-workflows/tasks/bed_split.yaml	ok 2
 gennext-workflows/tasks/bed_split_v1.yaml	ok 2
 gennext-workflows/tasks/check-file-path.yaml	ok 1
-gennext-workflows/tasks/compose-read-group-str.yaml	1 workflow error: compose-read-group-str-6254b: template main not found
+gennext-workflows/tasks/compose-read-group-str.yaml	1 workflow error: compose-read-group-str-93ea9: template main not found
 gennext-workflows/tasks/copy_inputs_to_scratch.yaml	ok 3
 gennext-workflows/tasks/copy_inputs_to_temp.yaml	ok 2
 gennext-workflows/tasks/copy_temp_to_output.yaml	ok 1
@@ -1333,13 +1333,13 @@ talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-us
 talk-demos/argocon-demos/2023-streamlining-big-data-workflows-with-memoization-and-work-avoidance/workflow/example.yaml	ok 2
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/container.yaml	ok 2
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/containerset.yaml	ok 3
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/dag-example.yaml	33 dag-408e2.plugin: plugin templates are not supported: executor plugins need the Argo agent
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/dag-example.yaml	33 dag-f1d15.plugin: plugin templates are not supported: executor plugins need the Argo agent
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/http.yaml	ok 3
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/inline.yaml	ok 1
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/plugin.yaml	33 plugin-0a360: plugin templates are not supported: executor plugins need the Argo agent
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/plugin.yaml	33 plugin-e9c77: plugin templates are not supported: executor plugins need the Argo agent
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/resource.yaml	ok 1
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/script.yaml	ok 2
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/steps-example.yaml	33 steps-8e0fb[3].plugin: plugin templates are not supported: executor plugins need the Argo agent
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/steps-example.yaml	33 steps-18254[3].plugin: plugin templates are not supported: executor plugins need the Argo agent
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/suspend.yaml	ok 0
 talk-demos/oss-2022/python/cron-workflow-python.yaml	ok 3
 talk-demos/oss-2022/scala/workflows/spark-template-jvm.yaml	ok 1

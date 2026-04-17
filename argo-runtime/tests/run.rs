@@ -659,6 +659,24 @@ fn exit_handlers_see_the_status() {
 }
 
 #[test]
+fn generated_names_do_not_depend_on_the_location() {
+    // Each run writes the workflow into a new temporary directory.
+    let names: Vec<String> = (0..2)
+        .map(|_| run(&workflow(PRINT_STEP)).tasks()[0].name.clone())
+        .collect();
+    assert!(names[0].starts_with("test-"), "{names:?}");
+    assert_eq!(names[0], names[1]);
+}
+
+const PRINT_STEP: &str = r#"
+  - name: main
+    steps:
+    - - name: hello
+        template: print
+        arguments: {parameters: [{name: message, value: hello}]}
+"#;
+
+#[test]
 fn placeholders_and_unsupported_features() {
     let ran = run(&workflow(
         r#"

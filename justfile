@@ -264,16 +264,18 @@ snakemake-corpus-data:
 		git -C "$work" init -q
 		git -C "$work" config gc.auto 0
 		git -C "$work" remote add origin "https://github.com/$repository.git"
-		# A source the network cannot reach is left out, so the rest still arrives.
-		if ! git -C "$work" fetch -q --depth 1 --filter=blob:none origin "$commit"; then
+		# One pack brings every file up to 1 MiB; a source the network cannot reach is left
+		# out, so the rest still arrives.
+		if ! git -C "$work" fetch -q --depth 1 --filter=blob:limit=1048577 origin "$commit"; then
 			echo "skipped $repository: cannot fetch" >&2
 			rm -rf "$work"
 			continue
 		fi
 		listing="$(mktemp)"
-		git -C "$work" -c core.quotePath=false ls-tree -r -l FETCH_HEAD | grep -E $'^100[67]' | while IFS=$'\t' read -r meta path; do
+		# Larger files were not fetched, and their size shows as `BAD` instead of a number.
+		git -C "$work" --no-lazy-fetch -c core.quotePath=false ls-tree -r -l FETCH_HEAD | grep -E $'^100[67]' | while IFS=$'\t' read -r meta path; do
 			read -r mode type sha size <<< "$meta"
-			if [[ "$path" =~ $scope ]] && [ "$size" -le 1048576 ] && [[ "$path" =~ $text ]]; then
+			if [[ "$path" =~ $scope ]] && [[ "$size" =~ ^[0-9]+$ ]] && [[ "$path" =~ $text ]]; then
 				printf 'fetch\t%s\n' "$path"
 			elif [[ "$path" =~ $scope ]]; then
 				printf 'empty\t%s\n' "$path"

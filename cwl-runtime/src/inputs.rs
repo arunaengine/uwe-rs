@@ -47,7 +47,7 @@ pub fn prepare(process: &Process, mut job: Map, setting: &Setting<'_>) -> Result
         } else if setting.types.optional(&input.value_type) {
             Value::Null
         } else if let Some(base) = setting.placeholders {
-            placeholder::input(input, setting.types, base, false)
+            placeholder::input(input, setting.types, base)
         } else {
             return Err(format!("the required input `{name}` has no value"));
         };
@@ -69,7 +69,7 @@ pub fn prepare(process: &Process, mut job: Map, setting: &Setting<'_>) -> Result
         {
             // Nulls of optional inputs of a run on placeholder inputs, merged into a list, and
             // defaults of the wrong type.
-            let mut value = placeholder::input(input, setting.types, base, false);
+            let mut value = placeholder::input(input, setting.types, base);
             files::normalize(&mut value)?;
             job.insert(name.to_owned(), value);
             continue;

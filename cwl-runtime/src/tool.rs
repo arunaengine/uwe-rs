@@ -21,8 +21,9 @@ use crate::binding::{self, Binder, Bound, Key};
 use crate::expression::{Evaluator, Variables};
 use crate::files::{self, Access};
 use crate::inputs::has_code;
+use crate::placeholder::{self, Hint};
 use crate::scope::Scope;
-use crate::types::{Hint, Types};
+use crate::types::Types;
 use crate::value::{Map, Value};
 
 /// The output directory inside the container, `runtime.outdir`, and the task's workdir.
@@ -1290,9 +1291,7 @@ impl Pending {
             Some(folder) => format!("{}/", iri::file_url(Path::new(folder))),
             None => "_:".to_owned(),
         };
-        let mut value = self
-            .types
-            .placeholder(value_type, name, &base, false, &Hint::default());
+        let mut value = placeholder::value(&self.types, value_type, name, &base, &Hint::default());
         // Placeholder files point at the task's JSON output, so the graph keeps the link.
         if let Some(json) = collector
             .outcome

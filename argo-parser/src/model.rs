@@ -146,7 +146,7 @@ pub struct WorkflowSpec {
     pub dns_config: Option<Node>,
     pub dns_policy: Option<Node>,
     pub executor: Option<Node>,
-    pub executor_plugins: Option<Node>,
+    pub executor_plugins: Vec<ExecutorPlugin>,
     pub host_aliases: Option<Node>,
     pub host_network: Option<Node>,
     pub image_pull_secrets: Option<Node>,
@@ -189,6 +189,28 @@ pub struct CronWorkflowSpec {
 pub struct WorkflowTemplateRef {
     pub name: String,
     pub cluster_scope: bool,
+}
+
+/// An executor plugin, as `spec.executorPlugins` of a workflow names it: a sidecar container
+/// whose server runs plugin templates through Argo's plugin API.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ExecutorPlugin {
+    pub metadata: ObjectMeta,
+    pub spec: ExecutorPluginSpec,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ExecutorPluginSpec {
+    pub sidecar: Sidecar,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Sidecar {
+    pub container: Container,
+    pub automount_service_account_token: bool,
 }
 
 /// A template: a leaf that does work, a pause, or steps or a DAG that call other templates.

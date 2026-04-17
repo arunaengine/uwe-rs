@@ -70,3 +70,17 @@ fn normalizes_removed_fields() {
     let (document, _) = decode::<Document>(&document).expect("decodes");
     assert_eq!(document.kind, "CronWorkflow");
 }
+
+#[test]
+fn decodes_workflow_level_executor_plugins() {
+    let source = "entrypoint: main\nexecutorPlugins:\n- metadata: {name: hello}\n  spec:\n    sidecar:\n      automountServiceAccountToken: true\n      container:\n        name: hello-executor-plugin\n        image: python:alpine\n        command: [python, -c]\n        args: [serve]\n        ports: [{containerPort: 4355}]\n";
+    let (spec, unknown) = decode::<WorkflowSpec>(&node(source)).expect("decodes");
+    assert!(unknown.is_empty(), "{unknown:?}");
+    let plugin = &spec.executor_plugins[0];
+    assert_eq!(plugin.metadata.name, "hello");
+    assert!(plugin.spec.sidecar.automount_service_account_token);
+    let container = &plugin.spec.sidecar.container;
+    assert_eq!(container.image, "python:alpine");
+    assert_eq!(container.command, ["python", "-c"]);
+    assert!(container.ports.is_some());
+}

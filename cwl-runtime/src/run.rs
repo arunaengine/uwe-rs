@@ -231,7 +231,8 @@ impl Run {
                 let mut job = job;
                 let mut last = error.clone();
                 for _ in 0..8 {
-                    let Some(filled) = fill_optional(process, &job, outer, &base, Some(&last))
+                    let Some(filled) =
+                        placeholder::fill_optional(process, &job, outer, &base, Some(&last))
                     else {
                         break;
                     };
@@ -242,7 +243,7 @@ impl Run {
                 }
                 // Errors that name no input, like a library function that reads one: all
                 // optional inputs get placeholders.
-                match fill_optional(process, &job, outer, &base, None) {
+                match placeholder::fill_optional(process, &job, outer, &base, None) {
                     Some(filled) => self
                         .start_process(id, process, filled, outer, &names, toplevel)
                         .map_err(|_| error),
@@ -355,9 +356,9 @@ impl Run {
                     let name = short_name(&output.id).to_owned();
                     let value = outputs.get(&name).cloned().unwrap_or(Value::Null);
                     let value = if fake && !types.matches(&output.value_type, &value) {
-                        let hint = crate::types::Hint::default();
+                        let hint = placeholder::Hint::default();
                         let mut value =
-                            types.placeholder(&output.value_type, &name, &base, false, &hint);
+                            placeholder::value(&types, &output.value_type, &name, &base, &hint);
                         files::normalize(&mut value).map_err(at)?;
                         value
                     } else {
@@ -577,7 +578,7 @@ impl Run {
                         .map(|input| {
                             let mut types = step_scope.types();
                             types.add(&input.value_type);
-                            let mut value = placeholder::input(input, &types, base, false);
+                            let mut value = placeholder::input(input, &types, base);
                             let _ = files::normalize(&mut value);
                             value
                         })
@@ -723,12 +724,14 @@ impl Run {
             let mut changed = false;
             for input in &step.run.process.inputs {
                 let name = short_name(&input.id);
-                if values.get(name).is_some_and(|value| !value.is_null()) || !names(&last, name) {
+                if values.get(name).is_some_and(|value| !value.is_null())
+                    || !placeholder::names(&last, name)
+                {
                     continue;
                 }
                 let mut types = scope.types();
                 types.add(&input.value_type);
-                let mut value = placeholder::input(input, &types, base, false);
+                let mut value = placeholder::input(input, &types, base);
                 files::normalize(&mut value)?;
                 values.insert(name.to_owned(), value);
                 changed = true;
@@ -833,52 +836,6 @@ impl Run {
         job.retain(|name, _| accepted.contains(name.as_str()));
         Ok(Some(job))
     }
-}
-
-/// The input object with placeholders for the optional inputs that are null, have no default
-/// and, when an error message is given, are named in it as `inputs.<name>`; `None` when there
-/// are none.
-fn fill_optional(
-    process: &Process,
-    job: &Map,
-    outer: &Scope,
-    base: &str,
-    error: Option<&str>,
-) -> Option<Map> {
-    let scope = outer.enter(process);
-    let mut types = scope.types();
-    for input in &process.inputs {
-        types.add(&input.value_type);
-    }
-    let mut filled = job.clone();
-    let mut changed = false;
-    for input in &process.inputs {
-        let name = short_name(&input.id);
-        let missing = filled.get(name).is_none_or(Value::is_null);
-        let named = error.is_none_or(|error| names(error, name));
-        if missing && named && input.default.is_none() && types.optional(&input.value_type) {
-            let value = placeholder::input(input, &types, base, false);
-            filled.insert(name.to_owned(), value);
-            changed = true;
-        }
-    }
-    changed.then_some(filled)
-}
-
-/// Whether a message names an input as `inputs.<name>`, `inputs['<name>']` or
-/// `inputs["<name>"]`.
-fn names(message: &str, name: &str) -> bool {
-    let references = [
-        format!("inputs.{name}"),
-        format!("inputs['{name}']"),
-        format!("inputs[\"{name}\"]"),
-    ];
-    references.iter().any(|reference| {
-        message.match_indices(reference.as_str()).any(|(at, _)| {
-            let after = message[at + reference.len()..].chars().next();
-            !after.is_some_and(|c| c.is_alphanumeric() || c == '_')
-        })
-    })
 }
 
 /// The `runtime` of expressions outside command line tools.

@@ -288,6 +288,7 @@ impl Run {
             discover: toplevel || self.options.mock,
             placeholders: self.placeholders.as_deref(),
             toplevel,
+            fill_optional: self.options.fill_optional,
         };
         let job = inputs::prepare(process, job, &setting).map_err(at)?;
         match &process.class {

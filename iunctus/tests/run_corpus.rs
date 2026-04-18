@@ -9,6 +9,8 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use fancy_regex::Regex;
 use workflow_graph::ExecutionGraph;
@@ -81,20 +83,43 @@ fn pipelines_run_as_recorded() {
         })
         .collect();
     pipelines.sort();
-    // Downloads are shared with the user's cache, so that runs do not fetch them again.
+    // Each run has a cache of its own. Downloads are shared with the user's cache, so that
+    // runs do not fetch them again.
     let cache = tempfile::tempdir().expect("a temporary directory");
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
         .expect("HOME is set");
     let downloads = home.join(".cache/iunctus/downloads");
     std::fs::create_dir_all(&downloads).expect("creates the downloads directory");
-    std::fs::create_dir_all(cache.path().join("iunctus")).expect("creates the cache");
-    std::os::unix::fs::symlink(&downloads, cache.path().join("iunctus/downloads"))
-        .expect("links the downloads");
-    let actual: Vec<String> = pipelines
-        .iter()
-        .map(|pipeline| format!("{pipeline} {}", outcome(&corpus, pipeline, cache.path())))
-        .collect();
+    let run = |pipeline: &String| {
+        let cache = cache.path().join(pipeline);
+        std::fs::create_dir_all(cache.join("iunctus")).expect("creates the cache");
+        std::os::unix::fs::symlink(&downloads, cache.join("iunctus/downloads"))
+            .expect("links the downloads");
+        format!("{pipeline} {}", outcome(&corpus, pipeline, &cache))
+    };
+    // The runs go in parallel, `IUNCTUS_CORPUS_JOBS` at a time (8 by default).
+    let jobs: usize = std::env::var("IUNCTUS_CORPUS_JOBS")
+        .ok()
+        .and_then(|jobs| jobs.parse().ok())
+        .unwrap_or(8);
+    let next = AtomicUsize::new(0);
+    let outcomes = Mutex::new(vec![String::new(); pipelines.len()]);
+    std::thread::scope(|scope| {
+        for _ in 0..jobs.max(1) {
+            scope.spawn(|| {
+                loop {
+                    let index = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(pipeline) = pipelines.get(index) else {
+                        break;
+                    };
+                    let line = run(pipeline);
+                    outcomes.lock().expect("no run panicked")[index] = line;
+                }
+            });
+        }
+    });
+    let actual = outcomes.into_inner().expect("no run panicked");
     if actual != expected {
         let changed: Vec<String> = actual
             .iter()

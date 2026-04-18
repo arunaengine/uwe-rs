@@ -68,8 +68,9 @@ pub fn download(url: &str, downloads: &Path) -> Result<PathBuf, String> {
         .and_then(|response| response.error_for_status())
         .map_err(|error| cannot(&error))?;
     std::fs::create_dir_all(downloads).map_err(|error| error.to_string())?;
-    // The body goes to a file as it comes, which is renamed once complete.
-    let partial = local.with_extension("partial");
+    // The body goes to a file as it comes, which is renamed once complete. The name of the
+    // file has the process id, so that runs that download the same file at once do not mix.
+    let partial = local.with_extension(format!("{}.partial", std::process::id()));
     let mut file = std::fs::File::create(&partial).map_err(|error| error.to_string())?;
     response
         .copy_to(&mut file)

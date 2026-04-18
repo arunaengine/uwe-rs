@@ -10,9 +10,10 @@ use super::{Schema, entries, errors, get, json, plain, schema, thrown};
 use crate::Context;
 
 /// `validateParameters`: checks the params against the schema. Params that the schema does
-/// not know give a warning, unless the config ignores them; ignored params that the schema
-/// knows are checked like the others. As in nf-schema, text from the command line stays
-/// text, so `--n 7` is not an integer.
+/// not know give a warning, unless the config ignores them. Ignored params that the schema
+/// knows are checked like the others, but as in nf-schema, the errors that start with the
+/// name of an ignored param are dropped. Text from the command line stays text, so `--n 7`
+/// is not an integer.
 pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result<Value, Error> {
     let schema = parameters_schema(options, context)?;
     let ignored = ignored(context);
@@ -53,6 +54,11 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
                 Some(value) => format!("* --{name} ({}): {message}", plain(value)),
                 None => format!("* {message}"),
             }
+        })
+        .filter(|error: &String| {
+            !ignored
+                .iter()
+                .any(|name| error.starts_with(&format!("* --{name}")))
         })
         .collect();
     if errors.is_empty() {

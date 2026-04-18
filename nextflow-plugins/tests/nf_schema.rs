@@ -298,7 +298,8 @@ fn ignored_parameters_that_the_schema_knows_are_validated() {
         .to_string_lossy()
         .into_owned();
     let config = Config::default();
-    let ignored = Value::list(vec![Value::string("outdir"), Value::string("extra")]);
+    let ignored = ["outdir", "extra", "mode"].map(Value::string).to_vec();
+    let ignored = Value::list(ignored);
     let path = ["validation".into(), "defaultIgnoreParams".into()];
     nextflow_config::tree::assign(&config.tree, &path, ignored).unwrap();
     let validate = |params: Value| {
@@ -312,6 +313,9 @@ fn ignored_parameters_that_the_schema_knows_are_validated() {
         call("nf-schema", "validateParameters", vec![], &mut context).map(|_| ())
     };
     assert!(validate(params(&[("outdir", "res"), ("extra", "x")])).is_ok());
+    // nf-schema drops the errors that start with `* --<ignored param>`, like sarek's
+    // `freebayes_filter` of the wrong type.
+    assert!(validate(params(&[("outdir", "res"), ("mode", "c")])).is_ok());
     let error = validate(params(&[("extra", "x")])).unwrap_err().to_string();
     assert!(
         error.ends_with("* Missing required parameter(s): outdir\n\n"),

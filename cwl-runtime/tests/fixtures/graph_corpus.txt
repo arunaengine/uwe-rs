@@ -3020,7 +3020,7 @@ realworld/sources/github.com__ambarishK__bio-cwl-tools/varscan/mpileup2snpDocker
 realworld/sources/github.com__ambarishK__bio-cwl-tools/varscanW.cwl ok 9
 realworld/sources/github.com__andreagia__CWL_dem1_NMR_Peak_Picking/brucker_to_script.cwl ok 1
 realworld/sources/github.com__andreagia__CWL_dem1_NMR_Peak_Picking/fid_to_pipe.cwl ok 1
-realworld/sources/github.com__andreagia__CWL_dem1_NMR_Peak_Picking/nmrpipe_workflow.cwl ok 4
+realworld/sources/github.com__andreagia__CWL_dem1_NMR_Peak_Picking/nmrpipe_workflow.cwl ok 8
 realworld/sources/github.com__andreagia__CWL_dem1_NMR_Peak_Picking/pipe_to_pick.cwl ok 1
 realworld/sources/github.com__andreagia__CWL_dem1_NMR_Peak_Picking/script_to_fid.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/fastq2fasta/bam2fasta.cwl ok 7
@@ -3511,7 +3511,7 @@ realworld/sources/github.com__bioexcel__biobb_workflows/biobb_wf_md_setup_mutati
 realworld/sources/github.com__bioexcel__biobb_workflows/biobb_wf_md_setup_mutations/cwl/biobb_adapters/pdb2gmx.cwl ok 1
 realworld/sources/github.com__bioexcel__biobb_workflows/biobb_wf_md_setup_mutations/cwl/biobb_adapters/reduce_remove_hydrogens.cwl ok 1
 realworld/sources/github.com__bioexcel__biobb_workflows/biobb_wf_md_setup_mutations/cwl/biobb_adapters/solvate.cwl ok 1
-realworld/sources/github.com__bioexcel__biobb_workflows/biobb_wf_md_setup_mutations/cwl/workflow.cwl ok 27
+realworld/sources/github.com__bioexcel__biobb_workflows/biobb_wf_md_setup_mutations/cwl/workflow.cwl ok 50
 realworld/sources/github.com__bioexcel__biobb_workflows/biobb_wf_md_setup_mutations/cwl/workflow_gather.cwl ok 0
 realworld/sources/github.com__bioexcel__biobb_workflows/biobb_wf_md_setup_mutations/cwl/workflow_list.cwl ok 22
 realworld/sources/github.com__bioexcel__biobb_workflows/biobb_wf_mem/airflow/biobb_adapters/cpptraj_density.cwl ok 1
@@ -3615,9 +3615,9 @@ realworld/sources/github.com__bioexcel__biobb_workflows/biobb_wf_virtual-screeni
 realworld/sources/github.com__bioexcel__biobb_workflows/biobb_wf_virtual-screening_fpocket/cwl/biobb_adapters/str_check_add_hydrogens.cwl ok 1
 realworld/sources/github.com__bioexcel__biobb_workflows/biobb_wf_virtual-screening_fpocket/cwl/workflow.cwl ok 6
 realworld/sources/github.com__crim-ca__ogc-ospd-phase1/ogc_app_pkg/algae-usecase-workflow-copernicus-process.cwl ok 11
-realworld/sources/github.com__crim-ca__ogc-ospd-phase1/ogc_app_pkg/algae-usecase-workflow-copernicus.cwl ok 12
+realworld/sources/github.com__crim-ca__ogc-ospd-phase1/ogc_app_pkg/algae-usecase-workflow-copernicus.cwl ok 23
 realworld/sources/github.com__crim-ca__ogc-ospd-phase1/ogc_app_pkg/algae-usecase-workflow-earth-search-process.cwl ok 11
-realworld/sources/github.com__crim-ca__ogc-ospd-phase1/ogc_app_pkg/algae-usecase-workflow-earth-search.cwl ok 12
+realworld/sources/github.com__crim-ca__ogc-ospd-phase1/ogc_app_pkg/algae-usecase-workflow-earth-search.cwl ok 23
 realworld/sources/github.com__crim-ca__ogc-ospd-phase1/ogc_app_pkg/calculate-band.cwl ok 1
 realworld/sources/github.com__crim-ca__ogc-ospd-phase1/ogc_app_pkg/download-band-sentinel2-product-safe.cwl ok 1
 realworld/sources/github.com__crim-ca__ogc-ospd-phase1/ogc_app_pkg/download-band-sentinel2-stac-item.cwl ok 1
@@ -3686,9 +3686,9 @@ realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapte
 realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_structure_utils/utils/renumber_structure.cwl ok 1
 realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_structure_utils/utils/sort_gro_residues.cwl ok 1
 realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/md_gather.cwl ok 0
-realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/md_launch.cwl ok 14
-realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/md_launch_mutate.cwl ok 15
-realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/md_launch_mutate_reduced.cwl ok 1
+realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/md_launch.cwl ok 28
+realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/md_launch_mutate.cwl ok 30
+realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/md_launch_mutate_reduced.cwl ok 2
 realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/md_list.cwl ok 14
 realworld/sources/github.com__emo-bon__MetaGOflow/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_join.cwl ok 1
 realworld/sources/github.com__emo-bon__MetaGOflow/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_sorting.cwl ok 1
@@ -3786,10 +3786,10 @@ realworld/sources/github.com__emo-bon__MetaGOflow/workflows/conditionals/Func_an
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/conditionals/megahit.cwl ok 1
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/conditionals/qc.cwl ok 23
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/gos_wf.cwl ok 57
-realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/assembly/eggnog-subwf.cwl ok 3
+realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/assembly/eggnog-subwf.cwl ok 4
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/chunking-subwf-IPS.cwl ok 3
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/classify-otu-visualise.cwl ok 5
-realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/cmsearch/cmsearch-multimodel-assembly.cwl ok 3
+realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/cmsearch/cmsearch-multimodel-assembly.cwl ok 4
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/cmsearch/cmsearch-multimodel-raw-data.cwl ok 6
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/func_summaries.cwl ok 2
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/functional-annotation/functional-annotation.cwl ok 11
@@ -3797,7 +3797,7 @@ realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/functio
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/hmmer/chunking-subwf-hmmscan.cwl ok 4
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/hmmer/chunking-subwf-hmmsearch.cwl ok 4
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/other_ncrnas.cwl ok 6
-realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/raw_reads/cgc/CGC-subwf.cwl fail: combine_ffn: `self` has no index 1
+realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/raw_reads/cgc/CGC-subwf.cwl ok 6
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/raw_reads/cgc/predict_proteins_reads.cwl ok 2
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/raw_reads/mOTUs-workflow.cwl ok 2
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Assembly/spades/spades.cwl ok 1
@@ -3830,7 +3830,7 @@ realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tool
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tools/samtools_view_filter.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tools/snpEff_build_ann.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tools/snpSift_extract.cwl ok 1
-realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/variation_PE.cwl fail: snpsift_extract[0]: the input `extractFields` is not a valid string[]?: "CHROM POS ID REF ALT FILTER"
+realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/variation_PE.cwl ok 32
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/GATK/GATK-ApplyBQSR.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/GATK/GATK-BaseRecalibrator.cwl ok 1
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/GATK/GATK-CNNScoreVariants.cwl ok 1
@@ -3969,10 +3969,10 @@ realworld/sources/github.com__longmanplus__EOSC-Life_demos/Workflow-FAIRness/wor
 realworld/sources/github.com__longmanplus__EOSC-Life_demos/Workflow-FAIRness/workflow-ToBe-FAIRified/sparql-query.cwl ok 1
 realworld/sources/github.com__vetscience__Assemblosis/Metrics/busco.cwl ok 1
 realworld/sources/github.com__vetscience__Assemblosis/Metrics/collect.cwl ok 1
-realworld/sources/github.com__vetscience__Assemblosis/Metrics/metrics.cwl ok 3
+realworld/sources/github.com__vetscience__Assemblosis/Metrics/metrics.cwl ok 5
 realworld/sources/github.com__vetscience__Assemblosis/Metrics/quast.cwl ok 1
 realworld/sources/github.com__vetscience__Assemblosis/Run/arrow.cwl ok 1
-realworld/sources/github.com__vetscience__Assemblosis/Run/assembly.cwl ok 21
+realworld/sources/github.com__vetscience__Assemblosis/Run/assembly.cwl ok 25
 realworld/sources/github.com__vetscience__Assemblosis/Run/bowtie2-build.cwl ok 1
 realworld/sources/github.com__vetscience__Assemblosis/Run/bowtie2.cwl ok 1
 realworld/sources/github.com__vetscience__Assemblosis/Run/canuAssemble.cwl ok 1
@@ -4018,7 +4018,7 @@ realworld/sources/github.com__zmahnoor14__MAW/cwl/maw-metfrag-param.cwl ok 1
 realworld/sources/github.com__zmahnoor14__MAW/cwl/maw-metfrag.cwl ok 1
 realworld/sources/github.com__zmahnoor14__MAW/cwl/maw-py.cwl ok 1
 realworld/sources/github.com__zmahnoor14__MAW/cwl/maw-r.cwl ok 1
-realworld/sources/github.com__zmahnoor14__MAW/cwl/maw.cwl ok 3
+realworld/sources/github.com__zmahnoor14__MAW/cwl/maw.cwl ok 6
 realworld/sources/github.com__zmahnoor14__MAW/cwl/maw_r_old.cwl ok 1
 realworld/sources/github.com__zmahnoor14__MAW/cwl/maw_single.cwl ok 3
 realworld/sources/github.com__zmahnoor14__MAW/cwl/sirius-new.cwl ok 1
@@ -4056,30 +4056,30 @@ realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvari
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/bwa_mem.cwl ok 3
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/cnv_codex.cwl ok 5
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/cnv_exome_depth.cwl ok 5
-realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/cnv_gridss.cwl ok 5
-realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/cnv_manta.cwl ok 5
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/cnv_gridss.cwl ok 8
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/cnv_manta.cwl ok 8
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/final_filtering.cwl ok 2
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/indexing_bed.cwl ok 2
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/picard_markduplicates.cwl ok 2
-realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/samtools_sort.cwl ok 3
-realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/samtools_view_sam2bam.cwl ok 3
-realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/trimmed_fastq.cwl ok 3
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/samtools_sort.cwl ok 6
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/samtools_view_sam2bam.cwl ok 6
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/subworkflows/trimmed_fastq.cwl ok 4
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/svtools.cwl ok 1
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_operations/tabix.cwl ok 1
-realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_workflow/abstract_workflow.cwl ok 24
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/abstract_workflow/abstract_workflow.cwl ok 40
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/bam_filtering.cwl ok 2
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/bwa_index.cwl ok 4
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/bwa_mem.cwl ok 3
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/cnv_codex.cwl ok 5
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/cnv_exome_depth.cwl ok 5
-realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/cnv_gridss.cwl ok 5
-realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/cnv_manta.cwl ok 5
-realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/final_filtering.cwl fail: union: JavaScript error in `inputs.input[0].basename.split(".")[1]`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/cnv_gridss.cwl ok 8
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/cnv_manta.cwl ok 8
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/final_filtering.cwl ok 2
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/indexing_bed.cwl ok 2
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/picard_markduplicates.cwl ok 2
-realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/samtools_sort.cwl ok 3
-realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/samtools_view_sam2bam.cwl ok 3
-realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/trimmed_fastq.cwl ok 3
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/samtools_sort.cwl ok 6
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/samtools_view_sam2bam.cwl ok 6
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/trimmed_fastq.cwl ok 4
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/batch_parser.cwl ok 1
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/bedops_union.cwl ok 1
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/bgzip.cwl ok 1
@@ -4221,7 +4221,7 @@ realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_kraken2-bracken_pack
 realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_longread_quality_packed.cwl ok 3
 realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_merge_pe_reads_packed.cwl ok 2
 realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_merge_se_reads_packed.cwl ok 1
-realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_metagenomics_GEM_packed.cwl ok 7
+realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_metagenomics_GEM_packed.cwl ok 13
 realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_metagenomics_assembly_packed.cwl ok 1
 realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_metagenomics_binning_packed.cwl ok 9
 realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_microbial_annotation_packed.cwl ok 1
@@ -4311,7 +4311,7 @@ realworld/sources/gitlab.com__m-unlock__cwl/tools/kraken2/kraken2_humanfilter.cw
 realworld/sources/gitlab.com__m-unlock__cwl/tools/krakentools/kreport2krona.cwl ok 1
 realworld/sources/gitlab.com__m-unlock__cwl/tools/krona/krona.cwl ok 1
 realworld/sources/gitlab.com__m-unlock__cwl/tools/krona/krona_ktImportText.cwl ok 1
-realworld/sources/gitlab.com__m-unlock__cwl/tools/longqc/longqc.cwl fail: longqc: a glob must be a string, not {"class":"Directory","location":"file://<tmp>","basename":"output_dir","listing":[{"class":"File","location":"file://<tmp>","basename":"output_dir.txt","nameroot":"output_dir","nameext":".txt","siz
+realworld/sources/gitlab.com__m-unlock__cwl/tools/longqc/longqc.cwl fail: longqc: a glob must be a string, not {"class":"Directory","location":"file://<tmp>","basename":"output_dir","listing":[{"class":"Directory","location":"file://<tmp>","basename":"output_dir_1","listing":[{"class":"File","location":"fil
 realworld/sources/gitlab.com__m-unlock__cwl/tools/maxbin2/maxbin2.cwl ok 1
 realworld/sources/gitlab.com__m-unlock__cwl/tools/maxquant/maxquant.cwl ok 1
 realworld/sources/gitlab.com__m-unlock__cwl/tools/medaka/medaka_consensus_py.cwl ok 1
@@ -4393,7 +4393,7 @@ realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_kraken2-bracken.c
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_longread_quality.cwl ok 3
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_merge_pe_reads.cwl ok 2
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_merge_se_reads.cwl ok 1
-realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_metagenomics_GEM.cwl ok 7
+realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_metagenomics_GEM.cwl ok 13
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_metagenomics_assembly.cwl ok 1
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_metagenomics_binning.cwl ok 9
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_microbial_annotation.cwl ok 1
@@ -4562,13 +4562,13 @@ realworld/workflowhub/1343/Tools/06_combined_exec_TSSr.cwl ok 1
 realworld/workflowhub/1343/Tools/07_join_all_assignedClusters.cwl ok 1
 realworld/workflowhub/1343/Tools/08_uniq_tss_feature.cwl ok 1
 realworld/workflowhub/1343/Tools/09_update_gtf.cwl ok 1
-realworld/workflowhub/1343/workflow/01_trimming_fastq_subworkflow_pe.cwl ok 1
-realworld/workflowhub/1343/workflow/01_trimming_fastq_subworkflow_se.cwl ok 1
+realworld/workflowhub/1343/workflow/01_trimming_fastq_subworkflow_pe.cwl ok 2
+realworld/workflowhub/1343/workflow/01_trimming_fastq_subworkflow_se.cwl ok 2
 realworld/workflowhub/1343/workflow/02_star_index_subworkflow.cwl ok 2
-realworld/workflowhub/1343/workflow/03_star4cageseq_analysis_subworkflow_pe.cwl ok 1
-realworld/workflowhub/1343/workflow/03_star4cageseq_analysis_subworkflow_se.cwl ok 1
+realworld/workflowhub/1343/workflow/03_star4cageseq_analysis_subworkflow_pe.cwl ok 2
+realworld/workflowhub/1343/workflow/03_star4cageseq_analysis_subworkflow_se.cwl ok 2
 realworld/workflowhub/1343/workflow/04_tssr_subworkflow_pe.cwl ok 4
-realworld/workflowhub/1343/workflow/cageseq_gtf_update_pe.cwl ok 9
+realworld/workflowhub/1343/workflow/cageseq_gtf_update_pe.cwl ok 11
 realworld/workflowhub/160/workflow.cwl ok 2
 realworld/workflowhub/1728/DTC51/WF5101/ST510101.cwl ok 1
 realworld/workflowhub/1728/DTC51/WF5101/ST510102.cwl ok 1
@@ -4693,9 +4693,9 @@ realworld/workflowhub/1760/CWL/tools/trim_galore.cwl ok 1
 realworld/workflowhub/1760/CWL/workflow_modules/bed_to_coverage_track.cwl ok 4
 realworld/workflowhub/1760/CWL/workflow_modules/merge_duprem_filter.cwl ok 9
 realworld/workflowhub/1760/CWL/workflow_modules/trim_and_map.cwl ok 5
-realworld/workflowhub/1760/CWL/workflows/ATACseq.cwl ok 45
+realworld/workflowhub/1760/CWL/workflows/ATACseq.cwl ok 50
 realworld/workflowhub/1760/CWL/workflows/ATACseq_aligned.cwl ok 33
-realworld/workflowhub/1760/CWL/workflows/packed/ATACseq.cwl ok 45
+realworld/workflowhub/1760/CWL/workflows/packed/ATACseq.cwl ok 50
 realworld/workflowhub/1760/CWL/workflows/packed/ATACseq_aligned.cwl ok 33
 realworld/workflowhub/1761/CWL/tools/bedgraph_sort.cwl ok 1
 realworld/workflowhub/1761/CWL/tools/bedtools_bamtobed_pe.cwl ok 1
@@ -4724,21 +4724,21 @@ realworld/workflowhub/1761/CWL/tools/samtools_view_sam2bam.cwl ok 1
 realworld/workflowhub/1761/CWL/tools/tn5_overhang_correction.cwl ok 1
 realworld/workflowhub/1761/CWL/tools/trim_galore.cwl ok 1
 realworld/workflowhub/1761/CWL/workflow_modules/chip_qc.cwl ok 3
-realworld/workflowhub/1761/CWL/workflow_modules/get_spike_in_counts.cwl ok 6
+realworld/workflowhub/1761/CWL/workflow_modules/get_spike_in_counts.cwl ok 8
 realworld/workflowhub/1761/CWL/workflow_modules/merge_duprem_filter.cwl ok 7
 realworld/workflowhub/1761/CWL/workflow_modules/merge_filter.cwl ok 6
 realworld/workflowhub/1761/CWL/workflow_modules/trim_and_map.cwl ok 5
-realworld/workflowhub/1761/CWL/workflows/ACTseq.cwl ok 18
-realworld/workflowhub/1761/CWL/workflows/ACTseq_spike_in.cwl ok 24
-realworld/workflowhub/1761/CWL/workflows/CUTnRUN.cwl ok 23
-realworld/workflowhub/1761/CWL/workflows/ChIPmentation.cwl ok 19
-realworld/workflowhub/1761/CWL/workflows/ChIPseq.cwl ok 17
-realworld/workflowhub/1761/CWL/workflows/ChIPseq_spike_in.cwl ok 23
-realworld/workflowhub/1761/CWL/workflows/packed/ACTseq.cwl ok 18
-realworld/workflowhub/1761/CWL/workflows/packed/CUTnRUN.cwl ok 22
-realworld/workflowhub/1761/CWL/workflows/packed/ChIPmentation.cwl ok 19
-realworld/workflowhub/1761/CWL/workflows/packed/ChIPseq.cwl ok 17
-realworld/workflowhub/1761/CWL/workflows/packed/ChIPseq_spike_in.cwl ok 23
+realworld/workflowhub/1761/CWL/workflows/ACTseq.cwl ok 23
+realworld/workflowhub/1761/CWL/workflows/ACTseq_spike_in.cwl ok 31
+realworld/workflowhub/1761/CWL/workflows/CUTnRUN.cwl ok 30
+realworld/workflowhub/1761/CWL/workflows/ChIPmentation.cwl ok 24
+realworld/workflowhub/1761/CWL/workflows/ChIPseq.cwl ok 22
+realworld/workflowhub/1761/CWL/workflows/ChIPseq_spike_in.cwl ok 30
+realworld/workflowhub/1761/CWL/workflows/packed/ACTseq.cwl ok 23
+realworld/workflowhub/1761/CWL/workflows/packed/CUTnRUN.cwl ok 29
+realworld/workflowhub/1761/CWL/workflows/packed/ChIPmentation.cwl ok 24
+realworld/workflowhub/1761/CWL/workflows/packed/ChIPseq.cwl ok 22
+realworld/workflowhub/1761/CWL/workflows/packed/ChIPseq_spike_in.cwl ok 30
 realworld/workflowhub/1765/CWL/tools/bedgraph_sort.cwl ok 1
 realworld/workflowhub/1765/CWL/tools/bedtools_bamtobed_pe.cwl ok 1
 realworld/workflowhub/1765/CWL/tools/bedtools_bedtobam.cwl ok 1
@@ -4766,21 +4766,21 @@ realworld/workflowhub/1765/CWL/tools/samtools_view_sam2bam.cwl ok 1
 realworld/workflowhub/1765/CWL/tools/tn5_overhang_correction.cwl ok 1
 realworld/workflowhub/1765/CWL/tools/trim_galore.cwl ok 1
 realworld/workflowhub/1765/CWL/workflow_modules/chip_qc.cwl ok 3
-realworld/workflowhub/1765/CWL/workflow_modules/get_spike_in_counts.cwl ok 6
+realworld/workflowhub/1765/CWL/workflow_modules/get_spike_in_counts.cwl ok 8
 realworld/workflowhub/1765/CWL/workflow_modules/merge_duprem_filter.cwl ok 7
 realworld/workflowhub/1765/CWL/workflow_modules/merge_filter.cwl ok 6
 realworld/workflowhub/1765/CWL/workflow_modules/trim_and_map.cwl ok 5
-realworld/workflowhub/1765/CWL/workflows/ACTseq.cwl ok 18
-realworld/workflowhub/1765/CWL/workflows/ACTseq_spike_in.cwl ok 24
-realworld/workflowhub/1765/CWL/workflows/CUTnRUN.cwl ok 23
-realworld/workflowhub/1765/CWL/workflows/ChIPmentation.cwl ok 19
-realworld/workflowhub/1765/CWL/workflows/ChIPseq.cwl ok 17
-realworld/workflowhub/1765/CWL/workflows/ChIPseq_spike_in.cwl ok 23
-realworld/workflowhub/1765/CWL/workflows/packed/ACTseq.cwl ok 18
-realworld/workflowhub/1765/CWL/workflows/packed/CUTnRUN.cwl ok 22
-realworld/workflowhub/1765/CWL/workflows/packed/ChIPmentation.cwl ok 19
-realworld/workflowhub/1765/CWL/workflows/packed/ChIPseq.cwl ok 17
-realworld/workflowhub/1765/CWL/workflows/packed/ChIPseq_spike_in.cwl ok 23
+realworld/workflowhub/1765/CWL/workflows/ACTseq.cwl ok 23
+realworld/workflowhub/1765/CWL/workflows/ACTseq_spike_in.cwl ok 31
+realworld/workflowhub/1765/CWL/workflows/CUTnRUN.cwl ok 30
+realworld/workflowhub/1765/CWL/workflows/ChIPmentation.cwl ok 24
+realworld/workflowhub/1765/CWL/workflows/ChIPseq.cwl ok 22
+realworld/workflowhub/1765/CWL/workflows/ChIPseq_spike_in.cwl ok 30
+realworld/workflowhub/1765/CWL/workflows/packed/ACTseq.cwl ok 23
+realworld/workflowhub/1765/CWL/workflows/packed/CUTnRUN.cwl ok 29
+realworld/workflowhub/1765/CWL/workflows/packed/ChIPmentation.cwl ok 24
+realworld/workflowhub/1765/CWL/workflows/packed/ChIPseq.cwl ok 22
+realworld/workflowhub/1765/CWL/workflows/packed/ChIPseq_spike_in.cwl ok 30
 realworld/workflowhub/1766/CWL/tools/bedgraph_sort.cwl ok 1
 realworld/workflowhub/1766/CWL/tools/bedtools_bamtobed_pe.cwl ok 1
 realworld/workflowhub/1766/CWL/tools/bedtools_bedtobam.cwl ok 1
@@ -4808,21 +4808,21 @@ realworld/workflowhub/1766/CWL/tools/samtools_view_sam2bam.cwl ok 1
 realworld/workflowhub/1766/CWL/tools/tn5_overhang_correction.cwl ok 1
 realworld/workflowhub/1766/CWL/tools/trim_galore.cwl ok 1
 realworld/workflowhub/1766/CWL/workflow_modules/chip_qc.cwl ok 3
-realworld/workflowhub/1766/CWL/workflow_modules/get_spike_in_counts.cwl ok 6
+realworld/workflowhub/1766/CWL/workflow_modules/get_spike_in_counts.cwl ok 8
 realworld/workflowhub/1766/CWL/workflow_modules/merge_duprem_filter.cwl ok 7
 realworld/workflowhub/1766/CWL/workflow_modules/merge_filter.cwl ok 6
 realworld/workflowhub/1766/CWL/workflow_modules/trim_and_map.cwl ok 5
-realworld/workflowhub/1766/CWL/workflows/ACTseq.cwl ok 18
-realworld/workflowhub/1766/CWL/workflows/ACTseq_spike_in.cwl ok 24
-realworld/workflowhub/1766/CWL/workflows/CUTnRUN.cwl ok 23
-realworld/workflowhub/1766/CWL/workflows/ChIPmentation.cwl ok 19
-realworld/workflowhub/1766/CWL/workflows/ChIPseq.cwl ok 17
-realworld/workflowhub/1766/CWL/workflows/ChIPseq_spike_in.cwl ok 23
-realworld/workflowhub/1766/CWL/workflows/packed/ACTseq.cwl ok 18
-realworld/workflowhub/1766/CWL/workflows/packed/CUTnRUN.cwl ok 22
-realworld/workflowhub/1766/CWL/workflows/packed/ChIPmentation.cwl ok 19
-realworld/workflowhub/1766/CWL/workflows/packed/ChIPseq.cwl ok 17
-realworld/workflowhub/1766/CWL/workflows/packed/ChIPseq_spike_in.cwl ok 23
+realworld/workflowhub/1766/CWL/workflows/ACTseq.cwl ok 23
+realworld/workflowhub/1766/CWL/workflows/ACTseq_spike_in.cwl ok 31
+realworld/workflowhub/1766/CWL/workflows/CUTnRUN.cwl ok 30
+realworld/workflowhub/1766/CWL/workflows/ChIPmentation.cwl ok 24
+realworld/workflowhub/1766/CWL/workflows/ChIPseq.cwl ok 22
+realworld/workflowhub/1766/CWL/workflows/ChIPseq_spike_in.cwl ok 30
+realworld/workflowhub/1766/CWL/workflows/packed/ACTseq.cwl ok 23
+realworld/workflowhub/1766/CWL/workflows/packed/CUTnRUN.cwl ok 29
+realworld/workflowhub/1766/CWL/workflows/packed/ChIPmentation.cwl ok 24
+realworld/workflowhub/1766/CWL/workflows/packed/ChIPseq.cwl ok 22
+realworld/workflowhub/1766/CWL/workflows/packed/ChIPseq_spike_in.cwl ok 30
 realworld/workflowhub/1786/DTC51/WF5101/ST510101.cwl ok 1
 realworld/workflowhub/1786/DTC51/WF5101/ST510102.cwl ok 1
 realworld/workflowhub/1786/DTC51/WF5101/ST510103.cwl ok 1
@@ -4967,9 +4967,9 @@ realworld/workflowhub/1996/WF7403b.cwl ok 3
 realworld/workflowhub/1997/WF7601.cwl fail: ST760103: `inputs` does not contain the key `useMLStep`
 realworld/workflowhub/1998/WF7602.cwl fail: ST760103: `inputs` does not contain the key `useMLStep`
 realworld/workflowhub/2032/ogc_app_pkg/algae-usecase-workflow-copernicus-process.cwl ok 11
-realworld/workflowhub/2032/ogc_app_pkg/algae-usecase-workflow-copernicus.cwl ok 12
+realworld/workflowhub/2032/ogc_app_pkg/algae-usecase-workflow-copernicus.cwl ok 23
 realworld/workflowhub/2032/ogc_app_pkg/algae-usecase-workflow-earth-search-process.cwl ok 11
-realworld/workflowhub/2032/ogc_app_pkg/algae-usecase-workflow-earth-search.cwl ok 12
+realworld/workflowhub/2032/ogc_app_pkg/algae-usecase-workflow-earth-search.cwl ok 23
 realworld/workflowhub/2032/ogc_app_pkg/calculate-band.cwl ok 1
 realworld/workflowhub/2032/ogc_app_pkg/download-band-sentinel2-product-safe.cwl ok 1
 realworld/workflowhub/2032/ogc_app_pkg/download-band-sentinel2-stac-item.cwl ok 1
@@ -5059,7 +5059,7 @@ realworld/workflowhub/2236/workflows/csmWorkflow/csmTools/plot-results.cwl ok 1
 realworld/workflowhub/2236/workflows/csmWorkflow/csmTools/run-simulations.cwl ok 1
 realworld/workflowhub/2236/workflows/csmWorkflow/phenocoverTools/phenology-analyzer.cwl ok 1
 realworld/workflowhub/2236/workflows/csmWorkflow/raster2sensorTools/fetch-ndvi.cwl ok 1
-realworld/workflowhub/2236/workflows/csmWorkflow/workflow.cwl fail: workflow: a File object needs a location, or contents
+realworld/workflowhub/2236/workflows/csmWorkflow/workflow.cwl ok 18
 realworld/workflowhub/2243/workflows/cwl/repro-lab-kit-workflow.cwl ok 1
 realworld/workflowhub/2243/workflows/cwl/repro-lab-kit.cwl ok 1
 realworld/workflowhub/2248/workflows/calculation/calculation.cwl ok 1
@@ -5166,30 +5166,30 @@ realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/subworkflow
 realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/subworkflows/bwa_mem.cwl ok 3
 realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/subworkflows/cnv_codex.cwl ok 5
 realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/subworkflows/cnv_exome_depth.cwl ok 5
-realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/subworkflows/cnv_gridss.cwl ok 5
-realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/subworkflows/cnv_manta.cwl ok 5
+realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/subworkflows/cnv_gridss.cwl ok 8
+realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/subworkflows/cnv_manta.cwl ok 8
 realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/subworkflows/final_filtering.cwl ok 2
 realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/subworkflows/indexing_bed.cwl ok 2
 realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/subworkflows/picard_markduplicates.cwl ok 2
-realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/subworkflows/samtools_sort.cwl ok 3
-realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/subworkflows/samtools_view_sam2bam.cwl ok 3
-realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/subworkflows/trimmed_fastq.cwl ok 3
+realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/subworkflows/samtools_sort.cwl ok 6
+realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/subworkflows/samtools_view_sam2bam.cwl ok 6
+realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/subworkflows/trimmed_fastq.cwl ok 4
 realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/svtools.cwl ok 1
 realworld/workflowhub/278/structuralvariants/cwl/abstract_operations/tabix.cwl ok 1
-realworld/workflowhub/278/structuralvariants/cwl/abstract_workflow/abstract_workflow.cwl ok 24
+realworld/workflowhub/278/structuralvariants/cwl/abstract_workflow/abstract_workflow.cwl ok 40
 realworld/workflowhub/278/structuralvariants/cwl/subworkflows/bam_filtering.cwl ok 2
 realworld/workflowhub/278/structuralvariants/cwl/subworkflows/bwa_index.cwl ok 4
 realworld/workflowhub/278/structuralvariants/cwl/subworkflows/bwa_mem.cwl ok 3
 realworld/workflowhub/278/structuralvariants/cwl/subworkflows/cnv_codex.cwl ok 5
 realworld/workflowhub/278/structuralvariants/cwl/subworkflows/cnv_exome_depth.cwl ok 5
-realworld/workflowhub/278/structuralvariants/cwl/subworkflows/cnv_gridss.cwl ok 5
-realworld/workflowhub/278/structuralvariants/cwl/subworkflows/cnv_manta.cwl ok 5
-realworld/workflowhub/278/structuralvariants/cwl/subworkflows/final_filtering.cwl fail: union: JavaScript error in `inputs.input[0].basename.split(".")[1]`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
+realworld/workflowhub/278/structuralvariants/cwl/subworkflows/cnv_gridss.cwl ok 8
+realworld/workflowhub/278/structuralvariants/cwl/subworkflows/cnv_manta.cwl ok 8
+realworld/workflowhub/278/structuralvariants/cwl/subworkflows/final_filtering.cwl ok 2
 realworld/workflowhub/278/structuralvariants/cwl/subworkflows/indexing_bed.cwl ok 2
 realworld/workflowhub/278/structuralvariants/cwl/subworkflows/picard_markduplicates.cwl ok 2
-realworld/workflowhub/278/structuralvariants/cwl/subworkflows/samtools_sort.cwl ok 3
-realworld/workflowhub/278/structuralvariants/cwl/subworkflows/samtools_view_sam2bam.cwl ok 3
-realworld/workflowhub/278/structuralvariants/cwl/subworkflows/trimmed_fastq.cwl ok 3
+realworld/workflowhub/278/structuralvariants/cwl/subworkflows/samtools_sort.cwl ok 6
+realworld/workflowhub/278/structuralvariants/cwl/subworkflows/samtools_view_sam2bam.cwl ok 6
+realworld/workflowhub/278/structuralvariants/cwl/subworkflows/trimmed_fastq.cwl ok 4
 realworld/workflowhub/278/structuralvariants/cwl/tools/batch_parser.cwl ok 1
 realworld/workflowhub/278/structuralvariants/cwl/tools/bedops_union.cwl ok 1
 realworld/workflowhub/278/structuralvariants/cwl/tools/bgzip.cwl ok 1
@@ -5255,7 +5255,7 @@ realworld/workflowhub/289/biobb_adapters/mutate.cwl ok 1
 realworld/workflowhub/289/biobb_adapters/pdb2gmx.cwl ok 1
 realworld/workflowhub/289/biobb_adapters/reduce_remove_hydrogens.cwl ok 1
 realworld/workflowhub/289/biobb_adapters/solvate.cwl ok 1
-realworld/workflowhub/289/workflow.cwl ok 27
+realworld/workflowhub/289/workflow.cwl ok 50
 realworld/workflowhub/289/workflow_gather.cwl ok 0
 realworld/workflowhub/289/workflow_list.cwl ok 22
 realworld/workflowhub/303/steps.cwl ok 11
@@ -5272,10 +5272,10 @@ realworld/workflowhub/303/tools/8_clusterData.cwl ok 1
 realworld/workflowhub/303/tools/9_runUMAP.cwl ok 1
 realworld/workflowhub/334/Metrics/busco.cwl ok 1
 realworld/workflowhub/334/Metrics/collect.cwl ok 1
-realworld/workflowhub/334/Metrics/metrics.cwl ok 3
+realworld/workflowhub/334/Metrics/metrics.cwl ok 5
 realworld/workflowhub/334/Metrics/quast.cwl ok 1
 realworld/workflowhub/334/Run/arrow.cwl ok 1
-realworld/workflowhub/334/Run/assembly.cwl ok 20
+realworld/workflowhub/334/Run/assembly.cwl ok 24
 realworld/workflowhub/334/Run/bowtie2-build.cwl ok 1
 realworld/workflowhub/334/Run/bowtie2.cwl ok 1
 realworld/workflowhub/334/Run/canuAssemble.cwl ok 1
@@ -5296,7 +5296,7 @@ realworld/workflowhub/334/Run/repeatmodeler.cwl ok 1
 realworld/workflowhub/334/Run/samindex.cwl ok 1
 realworld/workflowhub/334/Run/samsort.cwl ok 1
 realworld/workflowhub/334/Run/trimmomaticpe.cwl ok 1
-realworld/workflowhub/337/workflow_longread_quality_packed.cwl ok 3
+realworld/workflowhub/337/workflow_longread_quality_packed.cwl ok 4
 realworld/workflowhub/360/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_join.cwl ok 1
 realworld/workflowhub/360/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_sorting.cwl ok 1
 realworld/workflowhub/360/tools/Assembly/Diamond/Diamond-Post-Processing/postprocessing_subwf.cwl ok 2
@@ -5306,7 +5306,7 @@ realworld/workflowhub/360/tools/Assembly/Diamond/Diamond.blastx-v0.9.21.cwl ok 1
 realworld/workflowhub/360/tools/Assembly/Diamond/Diamond.makedb-v0.9.21.cwl ok 1
 realworld/workflowhub/360/tools/Assembly/Diamond/diamond-subwf.cwl ok 3
 realworld/workflowhub/360/tools/Assembly/EggNOG/eggNOG/eggnog.cwl ok 1
-realworld/workflowhub/360/tools/Assembly/EggNOG/eggnog-subwf.cwl ok 3
+realworld/workflowhub/360/tools/Assembly/EggNOG/eggnog-subwf.cwl ok 4
 realworld/workflowhub/360/tools/Assembly/GFF/gff_generation.cwl ok 1
 realworld/workflowhub/360/tools/Assembly/Genome_properties/genome_properties.cwl ok 1
 realworld/workflowhub/360/tools/Assembly/Genome_properties/gp_docker.cwl ok 1
@@ -5397,7 +5397,7 @@ realworld/workflowhub/360/workflows/assembly-wf--v.5-cond.cwl ok 8
 realworld/workflowhub/360/workflows/conditionals/amplicon/amplicon-1.cwl ok 16
 realworld/workflowhub/360/workflows/conditionals/amplicon/amplicon-2.cwl ok 26
 realworld/workflowhub/360/workflows/conditionals/assembly/assembly-1.cwl ok 8
-realworld/workflowhub/360/workflows/conditionals/assembly/assembly-2.cwl ok 35
+realworld/workflowhub/360/workflows/conditionals/assembly/assembly-2.cwl ok 36
 realworld/workflowhub/360/workflows/conditionals/raw-reads/raw-reads-1.cwl ok 13
 realworld/workflowhub/360/workflows/conditionals/raw-reads/raw-reads-2.cwl ok 34
 realworld/workflowhub/360/workflows/raw-reads-wf--v.5-cond.cwl ok 13
@@ -5406,7 +5406,7 @@ realworld/workflowhub/360/workflows/subworkflows/amplicon/trim_and_reformat_read
 realworld/workflowhub/360/workflows/subworkflows/amplicon/trimming-not-empty-subwf.cwl ok 5
 realworld/workflowhub/360/workflows/subworkflows/assembly/CGC-subwf.cwl ok 7
 realworld/workflowhub/360/workflows/subworkflows/assembly/change_formats_and_names.cwl ok 2
-realworld/workflowhub/360/workflows/subworkflows/assembly/cmsearch-multimodel-assembly.cwl ok 3
+realworld/workflowhub/360/workflows/subworkflows/assembly/cmsearch-multimodel-assembly.cwl ok 4
 realworld/workflowhub/360/workflows/subworkflows/assembly/deal_with_functional_annotation.cwl ok 10
 realworld/workflowhub/360/workflows/subworkflows/assembly/func_ann_and_post_processing-subwf.cwl ok 32
 realworld/workflowhub/360/workflows/subworkflows/assembly/functional_annotation.cwl ok 11
@@ -5434,7 +5434,7 @@ realworld/workflowhub/361/tools/Assembly/Diamond/Diamond.blastx-v0.9.21.cwl ok 1
 realworld/workflowhub/361/tools/Assembly/Diamond/Diamond.makedb-v0.9.21.cwl ok 1
 realworld/workflowhub/361/tools/Assembly/Diamond/diamond-subwf.cwl ok 3
 realworld/workflowhub/361/tools/Assembly/EggNOG/eggNOG/eggnog.cwl ok 1
-realworld/workflowhub/361/tools/Assembly/EggNOG/eggnog-subwf.cwl ok 3
+realworld/workflowhub/361/tools/Assembly/EggNOG/eggnog-subwf.cwl ok 4
 realworld/workflowhub/361/tools/Assembly/GFF/gff_generation.cwl ok 1
 realworld/workflowhub/361/tools/Assembly/Genome_properties/genome_properties.cwl ok 1
 realworld/workflowhub/361/tools/Assembly/Genome_properties/gp_docker.cwl ok 1
@@ -5525,7 +5525,7 @@ realworld/workflowhub/361/workflows/assembly-wf--v.5-cond.cwl ok 8
 realworld/workflowhub/361/workflows/conditionals/amplicon/amplicon-1.cwl ok 16
 realworld/workflowhub/361/workflows/conditionals/amplicon/amplicon-2.cwl ok 26
 realworld/workflowhub/361/workflows/conditionals/assembly/assembly-1.cwl ok 8
-realworld/workflowhub/361/workflows/conditionals/assembly/assembly-2.cwl ok 35
+realworld/workflowhub/361/workflows/conditionals/assembly/assembly-2.cwl ok 36
 realworld/workflowhub/361/workflows/conditionals/raw-reads/raw-reads-1.cwl ok 13
 realworld/workflowhub/361/workflows/conditionals/raw-reads/raw-reads-2.cwl ok 34
 realworld/workflowhub/361/workflows/raw-reads-wf--v.5-cond.cwl ok 13
@@ -5534,7 +5534,7 @@ realworld/workflowhub/361/workflows/subworkflows/amplicon/trim_and_reformat_read
 realworld/workflowhub/361/workflows/subworkflows/amplicon/trimming-not-empty-subwf.cwl ok 5
 realworld/workflowhub/361/workflows/subworkflows/assembly/CGC-subwf.cwl ok 7
 realworld/workflowhub/361/workflows/subworkflows/assembly/change_formats_and_names.cwl ok 2
-realworld/workflowhub/361/workflows/subworkflows/assembly/cmsearch-multimodel-assembly.cwl ok 3
+realworld/workflowhub/361/workflows/subworkflows/assembly/cmsearch-multimodel-assembly.cwl ok 4
 realworld/workflowhub/361/workflows/subworkflows/assembly/deal_with_functional_annotation.cwl ok 10
 realworld/workflowhub/361/workflows/subworkflows/assembly/func_ann_and_post_processing-subwf.cwl ok 32
 realworld/workflowhub/361/workflows/subworkflows/assembly/functional_annotation.cwl ok 11
@@ -5562,7 +5562,7 @@ realworld/workflowhub/362/tools/Assembly/Diamond/Diamond.blastx-v0.9.21.cwl ok 1
 realworld/workflowhub/362/tools/Assembly/Diamond/Diamond.makedb-v0.9.21.cwl ok 1
 realworld/workflowhub/362/tools/Assembly/Diamond/diamond-subwf.cwl ok 3
 realworld/workflowhub/362/tools/Assembly/EggNOG/eggNOG/eggnog.cwl ok 1
-realworld/workflowhub/362/tools/Assembly/EggNOG/eggnog-subwf.cwl ok 3
+realworld/workflowhub/362/tools/Assembly/EggNOG/eggnog-subwf.cwl ok 4
 realworld/workflowhub/362/tools/Assembly/GFF/gff_generation.cwl ok 1
 realworld/workflowhub/362/tools/Assembly/Genome_properties/genome_properties.cwl ok 1
 realworld/workflowhub/362/tools/Assembly/Genome_properties/gp_docker.cwl ok 1
@@ -5653,7 +5653,7 @@ realworld/workflowhub/362/workflows/assembly-wf--v.5-cond.cwl ok 8
 realworld/workflowhub/362/workflows/conditionals/amplicon/amplicon-1.cwl ok 16
 realworld/workflowhub/362/workflows/conditionals/amplicon/amplicon-2.cwl ok 26
 realworld/workflowhub/362/workflows/conditionals/assembly/assembly-1.cwl ok 8
-realworld/workflowhub/362/workflows/conditionals/assembly/assembly-2.cwl ok 35
+realworld/workflowhub/362/workflows/conditionals/assembly/assembly-2.cwl ok 36
 realworld/workflowhub/362/workflows/conditionals/raw-reads/raw-reads-1.cwl ok 13
 realworld/workflowhub/362/workflows/conditionals/raw-reads/raw-reads-2.cwl ok 34
 realworld/workflowhub/362/workflows/raw-reads-wf--v.5-cond.cwl ok 13
@@ -5662,7 +5662,7 @@ realworld/workflowhub/362/workflows/subworkflows/amplicon/trim_and_reformat_read
 realworld/workflowhub/362/workflows/subworkflows/amplicon/trimming-not-empty-subwf.cwl ok 5
 realworld/workflowhub/362/workflows/subworkflows/assembly/CGC-subwf.cwl ok 7
 realworld/workflowhub/362/workflows/subworkflows/assembly/change_formats_and_names.cwl ok 2
-realworld/workflowhub/362/workflows/subworkflows/assembly/cmsearch-multimodel-assembly.cwl ok 3
+realworld/workflowhub/362/workflows/subworkflows/assembly/cmsearch-multimodel-assembly.cwl ok 4
 realworld/workflowhub/362/workflows/subworkflows/assembly/deal_with_functional_annotation.cwl ok 10
 realworld/workflowhub/362/workflows/subworkflows/assembly/func_ann_and_post_processing-subwf.cwl ok 32
 realworld/workflowhub/362/workflows/subworkflows/assembly/functional_annotation.cwl ok 11
@@ -5778,10 +5778,10 @@ realworld/workflowhub/384/workflows/conditionals/Func_ann_and_post_proccessing-s
 realworld/workflowhub/384/workflows/conditionals/megahit.cwl ok 1
 realworld/workflowhub/384/workflows/conditionals/qc.cwl ok 23
 realworld/workflowhub/384/workflows/gos_wf.cwl ok 57
-realworld/workflowhub/384/workflows/subworkflows/assembly/eggnog-subwf.cwl ok 3
+realworld/workflowhub/384/workflows/subworkflows/assembly/eggnog-subwf.cwl ok 4
 realworld/workflowhub/384/workflows/subworkflows/chunking-subwf-IPS.cwl ok 3
 realworld/workflowhub/384/workflows/subworkflows/classify-otu-visualise.cwl ok 5
-realworld/workflowhub/384/workflows/subworkflows/cmsearch/cmsearch-multimodel-assembly.cwl ok 3
+realworld/workflowhub/384/workflows/subworkflows/cmsearch/cmsearch-multimodel-assembly.cwl ok 4
 realworld/workflowhub/384/workflows/subworkflows/cmsearch/cmsearch-multimodel-raw-data.cwl ok 6
 realworld/workflowhub/384/workflows/subworkflows/func_summaries.cwl ok 2
 realworld/workflowhub/384/workflows/subworkflows/functional-annotation/functional-annotation.cwl ok 11
@@ -5789,7 +5789,7 @@ realworld/workflowhub/384/workflows/subworkflows/functional-annotation/post-proc
 realworld/workflowhub/384/workflows/subworkflows/hmmer/chunking-subwf-hmmscan.cwl ok 4
 realworld/workflowhub/384/workflows/subworkflows/hmmer/chunking-subwf-hmmsearch.cwl ok 4
 realworld/workflowhub/384/workflows/subworkflows/other_ncrnas.cwl ok 6
-realworld/workflowhub/384/workflows/subworkflows/raw_reads/cgc/CGC-subwf.cwl fail: combine_ffn: `self` has no index 1
+realworld/workflowhub/384/workflows/subworkflows/raw_reads/cgc/CGC-subwf.cwl ok 6
 realworld/workflowhub/384/workflows/subworkflows/raw_reads/cgc/predict_proteins_reads.cwl ok 2
 realworld/workflowhub/384/workflows/subworkflows/raw_reads/mOTUs-workflow.cwl ok 2
 realworld/workflowhub/390/CroMaSt.cwl ok 29
@@ -5811,7 +5811,7 @@ realworld/workflowhub/390/Tools/map_unique_struct_cath2pfam.cwl ok 1
 realworld/workflowhub/390/Tools/map_unique_struct_pfam2cath.cwl ok 1
 realworld/workflowhub/390/Tools/merge_df2json.cwl ok 1
 realworld/workflowhub/390/Tools/move_files.cwl ok 1
-realworld/workflowhub/390/Tools/other_avg_subwf.cwl ok 5
+realworld/workflowhub/390/Tools/other_avg_subwf.cwl ok 10
 realworld/workflowhub/390/Tools/pairwise_aligner.cwl ok 1
 realworld/workflowhub/390/Tools/resmapping_cath2up.cwl ok 1
 realworld/workflowhub/390/Tools/resmapping_cath_instances_subwf.cwl ok 4
@@ -5821,12 +5821,12 @@ realworld/workflowhub/390/Tools/separate_cath.cwl ok 1
 realworld/workflowhub/390/Tools/separate_pfam.cwl ok 1
 realworld/workflowhub/390/Tools/unmapped_unp_avg_align.cwl ok 6
 realworld/workflowhub/415/conesearch.cwl ok 1
-realworld/workflowhub/455/workflows/emep_workflow.cwl fail: realworld/workflowhub/455/workflows/emep_workflow.cwl:49:10: cannot read `https://raw.githubusercontent.com/UoMResearchIT/atmos-tools-library/main/cwl/general/create_dir_from_filelist.cwl`: only file URLs can be read
-realworld/workflowhub/455/workflows/era5_workflow.cwl fail: realworld/workflowhub/455/workflows/era5_workflow.cwl:62:10: cannot read `https://raw.githubusercontent.com/UoMResearchIT/atmos-tools-library/main/cwl/Met_Downloads/era5_download.cwl`: only file URLs can be read
-realworld/workflowhub/455/workflows/geogrid_workflow.cwl fail: realworld/workflowhub/455/workflows/geogrid_workflow.cwl:35:10: cannot read `https://raw.githubusercontent.com/UoMResearchIT/atmos-tools-library/main/cwl/WPS/geogrid.cwl`: only file URLs can be read
-realworld/workflowhub/455/workflows/wps_workflow.cwl fail: realworld/workflowhub/455/workflows/wps_workflow.cwl:75:10: cannot read `https://raw.githubusercontent.com/UoMResearchIT/atmos-tools-library/main/cwl/WPS/create_metgrid_dir.cwl`: only file URLs can be read
-realworld/workflowhub/455/workflows/wrf_workflow.cwl fail: realworld/workflowhub/455/workflows/wrf_workflow.cwl:49:10: cannot read `https://raw.githubusercontent.com/UoMResearchIT/atmos-tools-library/main/cwl/WRF/create_run_dir.cwl`: only file URLs can be read
-realworld/workflowhub/455/wrf_emep_full_workflow.cwl fail: realworld/workflowhub/455/workflows/era5_workflow.cwl:62:10: cannot read `https://raw.githubusercontent.com/UoMResearchIT/atmos-tools-library/main/cwl/Met_Downloads/era5_download.cwl`: only file URLs can be read
+realworld/workflowhub/455/workflows/emep_workflow.cwl ok 1
+realworld/workflowhub/455/workflows/era5_workflow.cwl ok 1
+realworld/workflowhub/455/workflows/geogrid_workflow.cwl ok 1
+realworld/workflowhub/455/workflows/wps_workflow.cwl ok 4
+realworld/workflowhub/455/workflows/wrf_workflow.cwl ok 3
+realworld/workflowhub/455/wrf_emep_full_workflow.cwl ok 10
 realworld/workflowhub/471/arm/rquest-omop-worker.cwl ok 1
 realworld/workflowhub/471/arm/workflow-entrypoint.cwl ok 1
 realworld/workflowhub/471/x86/rquest-omop-worker.cwl ok 1
@@ -5854,9 +5854,9 @@ realworld/workflowhub/474/src/utils/return_directory.cwl ok 0
 realworld/workflowhub/474/src/workflows/coassembly.cwl ok 1
 realworld/workflowhub/474/src/workflows/metagenome_multiplereads_qc.cwl ok 6
 realworld/workflowhub/474/src/workflows/metagenome_qc.cwl ok 3
-realworld/workflowhub/474/src/workflows/post_assembly.cwl ok 5
-realworld/workflowhub/474/src/workflows/post_assembly_qc.cwl ok 3
-realworld/workflowhub/474/src/workflows/stats.cwl ok 2
+realworld/workflowhub/474/src/workflows/post_assembly.cwl ok 7
+realworld/workflowhub/474/src/workflows/post_assembly_qc.cwl ok 4
+realworld/workflowhub/474/src/workflows/stats.cwl ok 3
 realworld/workflowhub/488/biobb_adapters/bd_run.cwl ok 1
 realworld/workflowhub/488/biobb_adapters/concoord_disco.cwl ok 1
 realworld/workflowhub/488/biobb_adapters/concoord_dist.cwl ok 1
@@ -5887,7 +5887,7 @@ realworld/workflowhub/510/cwl/maw-metfrag-param.cwl ok 1
 realworld/workflowhub/510/cwl/maw-metfrag.cwl ok 1
 realworld/workflowhub/510/cwl/maw-py.cwl ok 1
 realworld/workflowhub/510/cwl/maw-r.cwl ok 1
-realworld/workflowhub/510/cwl/maw.cwl ok 3
+realworld/workflowhub/510/cwl/maw.cwl ok 6
 realworld/workflowhub/510/cwl/maw_r_old.cwl ok 1
 realworld/workflowhub/510/cwl/maw_single.cwl ok 3
 realworld/workflowhub/510/cwl/sirius-new.cwl ok 1

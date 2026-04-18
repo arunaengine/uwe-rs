@@ -51,9 +51,9 @@ conformance/v1.0/v1.0/v1.0/count-lines14-wf.cwl ok 2
 conformance/v1.0/v1.0/v1.0/count-lines15-wf.cwl ok 1
 conformance/v1.0/v1.0/v1.0/count-lines16-wf.cwl ok 1
 conformance/v1.0/v1.0/v1.0/count-lines17-wf.cwl ok 1
-conformance/v1.0/v1.0/v1.0/count-lines18-wf.cwl ok 1
+conformance/v1.0/v1.0/v1.0/count-lines18-wf.cwl ok 2
 conformance/v1.0/v1.0/v1.0/count-lines2-wf.cwl ok 1
-conformance/v1.0/v1.0/v1.0/count-lines3-wf.cwl ok 1
+conformance/v1.0/v1.0/v1.0/count-lines3-wf.cwl ok 2
 conformance/v1.0/v1.0/v1.0/count-lines4-wf.cwl ok 2
 conformance/v1.0/v1.0/v1.0/count-lines5-wf.cwl ok 1
 conformance/v1.0/v1.0/v1.0/count-lines6-wf.cwl ok 2
@@ -151,21 +151,21 @@ conformance/v1.0/v1.0/v1.0/revsort-packed.cwl#main ok 2
 conformance/v1.0/v1.0/v1.0/revsort.cwl ok 2
 conformance/v1.0/v1.0/v1.0/revtool.cwl ok 1
 conformance/v1.0/v1.0/v1.0/scatter-valueFrom-tool.cwl ok 1
-conformance/v1.0/v1.0/v1.0/scatter-valuefrom-inputs-wf1.cwl ok 1
-conformance/v1.0/v1.0/v1.0/scatter-valuefrom-wf1.cwl ok 1
-conformance/v1.0/v1.0/v1.0/scatter-valuefrom-wf2.cwl ok 1
-conformance/v1.0/v1.0/v1.0/scatter-valuefrom-wf3.cwl ok 1
-conformance/v1.0/v1.0/v1.0/scatter-valuefrom-wf3.cwl#main ok 1
-conformance/v1.0/v1.0/v1.0/scatter-valuefrom-wf4.cwl ok 1
-conformance/v1.0/v1.0/v1.0/scatter-valuefrom-wf4.cwl#main ok 1
-conformance/v1.0/v1.0/v1.0/scatter-valuefrom-wf5.cwl ok 1
-conformance/v1.0/v1.0/v1.0/scatter-valuefrom-wf6.cwl ok 1
-conformance/v1.0/v1.0/v1.0/scatter-wf1.cwl ok 1
-conformance/v1.0/v1.0/v1.0/scatter-wf2.cwl ok 1
-conformance/v1.0/v1.0/v1.0/scatter-wf3.cwl ok 1
-conformance/v1.0/v1.0/v1.0/scatter-wf3.cwl#main ok 1
-conformance/v1.0/v1.0/v1.0/scatter-wf4.cwl ok 1
-conformance/v1.0/v1.0/v1.0/scatter-wf4.cwl#main ok 1
+conformance/v1.0/v1.0/v1.0/scatter-valuefrom-inputs-wf1.cwl ok 2
+conformance/v1.0/v1.0/v1.0/scatter-valuefrom-wf1.cwl ok 2
+conformance/v1.0/v1.0/v1.0/scatter-valuefrom-wf2.cwl ok 4
+conformance/v1.0/v1.0/v1.0/scatter-valuefrom-wf3.cwl ok 4
+conformance/v1.0/v1.0/v1.0/scatter-valuefrom-wf3.cwl#main ok 4
+conformance/v1.0/v1.0/v1.0/scatter-valuefrom-wf4.cwl ok 2
+conformance/v1.0/v1.0/v1.0/scatter-valuefrom-wf4.cwl#main ok 2
+conformance/v1.0/v1.0/v1.0/scatter-valuefrom-wf5.cwl ok 2
+conformance/v1.0/v1.0/v1.0/scatter-valuefrom-wf6.cwl ok 2
+conformance/v1.0/v1.0/v1.0/scatter-wf1.cwl ok 2
+conformance/v1.0/v1.0/v1.0/scatter-wf2.cwl ok 4
+conformance/v1.0/v1.0/v1.0/scatter-wf3.cwl ok 4
+conformance/v1.0/v1.0/v1.0/scatter-wf3.cwl#main ok 4
+conformance/v1.0/v1.0/v1.0/scatter-wf4.cwl ok 2
+conformance/v1.0/v1.0/v1.0/scatter-wf4.cwl#main ok 2
 conformance/v1.0/v1.0/v1.0/schemadef-tool.cwl ok 1
 conformance/v1.0/v1.0/v1.0/schemadef-wf.cwl ok 1
 conformance/v1.0/v1.0/v1.0/search.cwl ok 2
@@ -235,9 +235,9 @@ conformance/v1.1/tests/count-lines14-wf.cwl ok 2
 conformance/v1.1/tests/count-lines15-wf.cwl ok 1
 conformance/v1.1/tests/count-lines16-wf.cwl ok 1
 conformance/v1.1/tests/count-lines17-wf.cwl ok 1
-conformance/v1.1/tests/count-lines18-wf.cwl ok 1
+conformance/v1.1/tests/count-lines18-wf.cwl ok 2
 conformance/v1.1/tests/count-lines2-wf.cwl ok 1
-conformance/v1.1/tests/count-lines3-wf.cwl ok 1
+conformance/v1.1/tests/count-lines3-wf.cwl ok 2
 conformance/v1.1/tests/count-lines4-wf.cwl ok 2
 conformance/v1.1/tests/count-lines5-wf.cwl ok 1
 conformance/v1.1/tests/count-lines6-wf.cwl ok 2
@@ -317,8 +317,8 @@ conformance/v1.1/tests/iwdr_with_nested_dirs.cwl ok 2
 conformance/v1.1/tests/js-expr-req-wf.cwl ok 2
 conformance/v1.1/tests/js-expr-req-wf.cwl#wf ok 1
 conformance/v1.1/tests/linkfile.cwl ok 1
-conformance/v1.1/tests/listing_deep1.cwl fail: the output `out`: JavaScript error in `inputs.d.listing.length === 1 && inputs.d.listing[0].listing.length === 1`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
-conformance/v1.1/tests/listing_deep2.cwl fail: the output `out`: JavaScript error in `inputs.d.listing.length === 1 && inputs.d.listing[0].listing.length === 1`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
+conformance/v1.1/tests/listing_deep1.cwl ok 1
+conformance/v1.1/tests/listing_deep2.cwl ok 1
 conformance/v1.1/tests/listing_none1.cwl ok 1
 conformance/v1.1/tests/listing_none2.cwl ok 1
 conformance/v1.1/tests/listing_none3.cwl ok 1
@@ -348,14 +348,14 @@ conformance/v1.1/tests/params2.cwl ok 1
 conformance/v1.1/tests/parseInt-tool.cwl ok 0
 conformance/v1.1/tests/pass-unconnected.cwl ok 1
 conformance/v1.1/tests/record-in-format.cwl ok 1
-conformance/v1.1/tests/record-in-secondaryFiles-missing-wf.cwl fail: step1: `inputs.record_input.f2` has no index 1
-conformance/v1.1/tests/record-in-secondaryFiles-wf.cwl fail: step1: `inputs.record_input.f2` has no index 1
-conformance/v1.1/tests/record-in-secondaryFiles.cwl fail: record-in-secondaryFiles: `inputs.record_input.f2` has no index 1
+conformance/v1.1/tests/record-in-secondaryFiles-missing-wf.cwl ok 1
+conformance/v1.1/tests/record-in-secondaryFiles-wf.cwl ok 1
+conformance/v1.1/tests/record-in-secondaryFiles.cwl ok 1
 conformance/v1.1/tests/record-out-format.cwl ok 1
 conformance/v1.1/tests/record-out-secondaryFiles.cwl ok 1
 conformance/v1.1/tests/record-output-wf.cwl ok 1
 conformance/v1.1/tests/record-output.cwl ok 1
-conformance/v1.1/tests/record-sd-secondaryFiles.cwl fail: record-sd-secondaryFiles: `inputs.record_input.f2` has no index 1
+conformance/v1.1/tests/record-sd-secondaryFiles.cwl ok 1
 conformance/v1.1/tests/recursive-input-directory.cwl ok 1
 conformance/v1.1/tests/rename.cwl ok 1
 conformance/v1.1/tests/revsort-packed.cwl ok 2
@@ -364,21 +364,21 @@ conformance/v1.1/tests/revsort.cwl ok 2
 conformance/v1.1/tests/revtool.cwl ok 1
 conformance/v1.1/tests/runtime-paths-distinct.cwl ok 1
 conformance/v1.1/tests/scatter-valueFrom-tool.cwl ok 1
-conformance/v1.1/tests/scatter-valuefrom-inputs-wf1.cwl ok 1
-conformance/v1.1/tests/scatter-valuefrom-wf1.cwl ok 1
-conformance/v1.1/tests/scatter-valuefrom-wf2.cwl ok 1
-conformance/v1.1/tests/scatter-valuefrom-wf3.cwl ok 1
-conformance/v1.1/tests/scatter-valuefrom-wf3.cwl#main ok 1
-conformance/v1.1/tests/scatter-valuefrom-wf4.cwl ok 1
-conformance/v1.1/tests/scatter-valuefrom-wf4.cwl#main ok 1
-conformance/v1.1/tests/scatter-valuefrom-wf5.cwl ok 1
-conformance/v1.1/tests/scatter-valuefrom-wf6.cwl ok 1
-conformance/v1.1/tests/scatter-wf1.cwl ok 1
-conformance/v1.1/tests/scatter-wf2.cwl ok 1
-conformance/v1.1/tests/scatter-wf3.cwl ok 1
-conformance/v1.1/tests/scatter-wf3.cwl#main ok 1
-conformance/v1.1/tests/scatter-wf4.cwl ok 1
-conformance/v1.1/tests/scatter-wf4.cwl#main ok 1
+conformance/v1.1/tests/scatter-valuefrom-inputs-wf1.cwl ok 2
+conformance/v1.1/tests/scatter-valuefrom-wf1.cwl ok 2
+conformance/v1.1/tests/scatter-valuefrom-wf2.cwl ok 4
+conformance/v1.1/tests/scatter-valuefrom-wf3.cwl ok 4
+conformance/v1.1/tests/scatter-valuefrom-wf3.cwl#main ok 4
+conformance/v1.1/tests/scatter-valuefrom-wf4.cwl ok 2
+conformance/v1.1/tests/scatter-valuefrom-wf4.cwl#main ok 2
+conformance/v1.1/tests/scatter-valuefrom-wf5.cwl ok 2
+conformance/v1.1/tests/scatter-valuefrom-wf6.cwl ok 2
+conformance/v1.1/tests/scatter-wf1.cwl ok 2
+conformance/v1.1/tests/scatter-wf2.cwl ok 4
+conformance/v1.1/tests/scatter-wf3.cwl ok 4
+conformance/v1.1/tests/scatter-wf3.cwl#main ok 4
+conformance/v1.1/tests/scatter-wf4.cwl ok 2
+conformance/v1.1/tests/scatter-wf4.cwl#main ok 2
 conformance/v1.1/tests/schemadef-tool.cwl ok 1
 conformance/v1.1/tests/schemadef-wf.cwl ok 1
 conformance/v1.1/tests/search.cwl ok 2
@@ -453,7 +453,7 @@ conformance/v1.2/tests/cat3-nodocker.cwl ok 1
 conformance/v1.2/tests/cat3-tool-mediumcut.cwl ok 1
 conformance/v1.2/tests/cat3-tool-shortcut.cwl ok 1
 conformance/v1.2/tests/cat3-tool.cwl ok 1
-conformance/v1.2/tests/cat4-from-dir.cwl fail: cat4-from-dir: `self.listing[0]` does not contain the key `listing`
+conformance/v1.2/tests/cat4-from-dir.cwl ok 1
 conformance/v1.2/tests/cat4-tool.cwl ok 1
 conformance/v1.2/tests/cat5-tool.cwl ok 1
 conformance/v1.2/tests/colon:test.cwl ok 1
@@ -483,7 +483,7 @@ conformance/v1.2/tests/conditionals/cond-wf-011.cwl ok 0
 conformance/v1.2/tests/conditionals/cond-wf-011_nojs.cwl ok 12
 conformance/v1.2/tests/conditionals/cond-wf-012.cwl fail: step1: `when` must give true or false, not 1
 conformance/v1.2/tests/conditionals/cond-wf-012_nojs.cwl fail: step1: `when` must give true or false, not 1
-conformance/v1.2/tests/conditionals/cond-wf-013.cwl ok 1
+conformance/v1.2/tests/conditionals/cond-wf-013.cwl ok 2
 conformance/v1.2/tests/conditionals/cond-wf-013_nojs.cwl ok 6
 conformance/v1.2/tests/conditionals/cond-with-defaults.cwl ok 2
 conformance/v1.2/tests/conditionals/foo.cwl ok 1
@@ -505,10 +505,10 @@ conformance/v1.2/tests/count-lines14-wf.cwl ok 2
 conformance/v1.2/tests/count-lines15-wf.cwl ok 1
 conformance/v1.2/tests/count-lines16-wf.cwl ok 1
 conformance/v1.2/tests/count-lines17-wf.cwl ok 1
-conformance/v1.2/tests/count-lines18-wf.cwl ok 1
+conformance/v1.2/tests/count-lines18-wf.cwl ok 2
 conformance/v1.2/tests/count-lines19-wf.cwl ok 1
 conformance/v1.2/tests/count-lines2-wf.cwl ok 1
-conformance/v1.2/tests/count-lines3-wf.cwl ok 1
+conformance/v1.2/tests/count-lines3-wf.cwl ok 2
 conformance/v1.2/tests/count-lines4-wf.cwl ok 2
 conformance/v1.2/tests/count-lines5-wf.cwl ok 1
 conformance/v1.2/tests/count-lines6-wf.cwl ok 2
@@ -610,8 +610,8 @@ conformance/v1.2/tests/js-expr-req-wf.cwl ok 2
 conformance/v1.2/tests/js-expr-req-wf.cwl#wf ok 1
 conformance/v1.2/tests/js-input-record.cwl ok 1
 conformance/v1.2/tests/linkfile.cwl ok 1
-conformance/v1.2/tests/listing_deep1.cwl fail: the output `out`: JavaScript error in `inputs.d.listing.length === 1 && inputs.d.listing[0].listing.length === 1`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
-conformance/v1.2/tests/listing_deep2.cwl fail: the output `out`: JavaScript error in `inputs.d.listing.length === 1 && inputs.d.listing[0].listing.length === 1`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
+conformance/v1.2/tests/listing_deep1.cwl ok 1
+conformance/v1.2/tests/listing_deep2.cwl ok 1
 conformance/v1.2/tests/listing_none1.cwl ok 1
 conformance/v1.2/tests/listing_none2.cwl ok 1
 conformance/v1.2/tests/listing_none3.cwl ok 1
@@ -660,15 +660,15 @@ conformance/v1.2/tests/params_input_length_non_array.cwl ok 1
 conformance/v1.2/tests/parseInt-tool.cwl ok 0
 conformance/v1.2/tests/pass-unconnected.cwl ok 1
 conformance/v1.2/tests/record-in-format.cwl ok 1
-conformance/v1.2/tests/record-in-secondaryFiles-missing-wf.cwl fail: step1: `inputs.record_input.f2` has no index 1
-conformance/v1.2/tests/record-in-secondaryFiles-wf.cwl fail: step1: `inputs.record_input.f2` has no index 1
-conformance/v1.2/tests/record-in-secondaryFiles.cwl fail: record-in-secondaryFiles: `inputs.record_input.f2` has no index 1
+conformance/v1.2/tests/record-in-secondaryFiles-missing-wf.cwl ok 1
+conformance/v1.2/tests/record-in-secondaryFiles-wf.cwl ok 1
+conformance/v1.2/tests/record-in-secondaryFiles.cwl ok 1
 conformance/v1.2/tests/record-order.cwl ok 1
 conformance/v1.2/tests/record-out-format.cwl ok 1
 conformance/v1.2/tests/record-out-secondaryFiles.cwl ok 1
 conformance/v1.2/tests/record-output-wf.cwl ok 1
 conformance/v1.2/tests/record-output.cwl ok 1
-conformance/v1.2/tests/record-sd-secondaryFiles.cwl fail: record-sd-secondaryFiles: `inputs.record_input.f2` has no index 1
+conformance/v1.2/tests/record-sd-secondaryFiles.cwl ok 1
 conformance/v1.2/tests/record_outputeval.cwl ok 1
 conformance/v1.2/tests/record_outputeval_nojs.cwl ok 1
 conformance/v1.2/tests/recursive-input-directory.cwl ok 1
@@ -680,21 +680,21 @@ conformance/v1.2/tests/revtool.cwl ok 1
 conformance/v1.2/tests/runtime-outdir.cwl ok 1
 conformance/v1.2/tests/runtime-paths-distinct.cwl ok 1
 conformance/v1.2/tests/scatter-valueFrom-tool.cwl ok 1
-conformance/v1.2/tests/scatter-valuefrom-inputs-wf1.cwl ok 1
-conformance/v1.2/tests/scatter-valuefrom-wf1.cwl ok 1
-conformance/v1.2/tests/scatter-valuefrom-wf2.cwl ok 1
-conformance/v1.2/tests/scatter-valuefrom-wf3.cwl ok 1
-conformance/v1.2/tests/scatter-valuefrom-wf3.cwl#main ok 1
-conformance/v1.2/tests/scatter-valuefrom-wf4.cwl ok 1
-conformance/v1.2/tests/scatter-valuefrom-wf4.cwl#main ok 1
-conformance/v1.2/tests/scatter-valuefrom-wf5.cwl ok 1
-conformance/v1.2/tests/scatter-valuefrom-wf6.cwl ok 1
-conformance/v1.2/tests/scatter-wf1.cwl ok 1
-conformance/v1.2/tests/scatter-wf2.cwl ok 1
-conformance/v1.2/tests/scatter-wf3.cwl ok 1
-conformance/v1.2/tests/scatter-wf3.cwl#main ok 1
-conformance/v1.2/tests/scatter-wf4.cwl ok 1
-conformance/v1.2/tests/scatter-wf4.cwl#main ok 1
+conformance/v1.2/tests/scatter-valuefrom-inputs-wf1.cwl ok 2
+conformance/v1.2/tests/scatter-valuefrom-wf1.cwl ok 2
+conformance/v1.2/tests/scatter-valuefrom-wf2.cwl ok 4
+conformance/v1.2/tests/scatter-valuefrom-wf3.cwl ok 4
+conformance/v1.2/tests/scatter-valuefrom-wf3.cwl#main ok 4
+conformance/v1.2/tests/scatter-valuefrom-wf4.cwl ok 2
+conformance/v1.2/tests/scatter-valuefrom-wf4.cwl#main ok 2
+conformance/v1.2/tests/scatter-valuefrom-wf5.cwl ok 2
+conformance/v1.2/tests/scatter-valuefrom-wf6.cwl ok 2
+conformance/v1.2/tests/scatter-wf1.cwl ok 2
+conformance/v1.2/tests/scatter-wf2.cwl ok 4
+conformance/v1.2/tests/scatter-wf3.cwl ok 4
+conformance/v1.2/tests/scatter-wf3.cwl#main ok 4
+conformance/v1.2/tests/scatter-wf4.cwl ok 2
+conformance/v1.2/tests/scatter-wf4.cwl#main ok 2
 conformance/v1.2/tests/scatter/dotproduct-dotproduct-scatter.cwl ok 0
 conformance/v1.2/tests/scatter/dotproduct-simple-scatter.cwl ok 0
 conformance/v1.2/tests/scatter/flat-crossproduct-flat-crossproduct-scatter.cwl ok 0
@@ -885,11 +885,11 @@ realworld/collections/github.com__Barski-lab__workflows/tools/geep.cwl ok 1
 realworld/collections/github.com__Barski-lab__workflows/tools/genome-kallisto-index.cwl ok 2
 realworld/collections/github.com__Barski-lab__workflows/tools/get-file-by-name.cwl ok 0
 realworld/collections/github.com__Barski-lab__workflows/tools/gffread.cwl ok 1
-realworld/collections/github.com__Barski-lab__workflows/tools/group-isoforms-batch.cwl ok 1
+realworld/collections/github.com__Barski-lab__workflows/tools/group-isoforms-batch.cwl ok 2
 realworld/collections/github.com__Barski-lab__workflows/tools/group-isoforms.cwl ok 1
 realworld/collections/github.com__Barski-lab__workflows/tools/gseapy.cwl ok 1
 realworld/collections/github.com__Barski-lab__workflows/tools/halliftover.cwl ok 1
-realworld/collections/github.com__Barski-lab__workflows/tools/heatmap-prepare.cwl ok 1
+realworld/collections/github.com__Barski-lab__workflows/tools/heatmap-prepare.cwl ok 2
 realworld/collections/github.com__Barski-lab__workflows/tools/homer-annotate-peaks-hist.cwl ok 1
 realworld/collections/github.com__Barski-lab__workflows/tools/homer-find-motifs-genome.cwl ok 1
 realworld/collections/github.com__Barski-lab__workflows/tools/homer-find-motifs.cwl ok 1
@@ -998,8 +998,8 @@ realworld/collections/github.com__Barski-lab__workflows/workflows/trim-rnaseq-pe
 realworld/collections/github.com__Barski-lab__workflows/workflows/trim-rnaseq-pe.cwl ok 16
 realworld/collections/github.com__Barski-lab__workflows/workflows/trim-rnaseq-se-dutp.cwl ok 16
 realworld/collections/github.com__Barski-lab__workflows/workflows/trim-rnaseq-se.cwl ok 13
-realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/gdc-dnaseq-aln-cwl/gdc_dnaseq.bamfastq_align.workflow.cwl ok 113
-realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/gdc-dnaseq-prealn-cwl/gdc_dnaseq.aligned_reads.workflow.cwl ok 52
+realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/gdc-dnaseq-aln-cwl/gdc_dnaseq.bamfastq_align.workflow.cwl ok 251
+realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/gdc-dnaseq-prealn-cwl/gdc_dnaseq.aligned_reads.workflow.cwl ok 64
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/align/bwa_pe.cwl ok 10
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/align/bwa_se.cwl ok 8
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/extract/extract_amplicon_kit.cwl ok 2
@@ -1007,9 +1007,9 @@ realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/extract/e
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/extract/extract_readgroup_fastq_pe.cwl ok 2
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/extract/extract_readgroup_fastq_se.cwl ok 1
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/extract/extract_readgroups_bam.cwl ok 1
-realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/extract/stage_data_workflow.cwl ok 23
-realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/main/gdc_dnaseq_ar_workflow.cwl ok 26
-realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/main/gdc_dnaseq_main_workflow.cwl ok 87
+realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/extract/stage_data_workflow.cwl ok 31
+realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/main/gdc_dnaseq_ar_workflow.cwl ok 30
+realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/main/gdc_dnaseq_main_workflow.cwl ok 217
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/metrics/amplicon_metrics.cwl ok 2
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/metrics/exome_metrics.cwl ok 2
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/metrics/wgs_metrics.cwl ok 2
@@ -1213,30 +1213,30 @@ realworld/collections/github.com__common-workflow-library__bio-cwl-tools/vdjtool
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/vdjtools/vdjtools-join-samples.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/vdjtools/vdjtools-plot-fancy-spectratype.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/vdjtools/vdjtools-plot-quantile-stats.cwl ok 1
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_exome.cwl ok 16
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_exome_nonhuman.cwl ok 12
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_umi_duplex.cwl ok 11
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_umi_molecular.cwl ok 14
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_wgs.cwl ok 17
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_wgs_nonhuman.cwl ok 11
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_exome.cwl ok 20
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_exome_nonhuman.cwl ok 16
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_umi_duplex.cwl ok 15
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_umi_molecular.cwl ok 18
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_wgs.cwl ok 21
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/alignment_wgs_nonhuman.cwl ok 12
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/aml_trio_cle.cwl fail: tumor_detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/aml_trio_cle_gathered.cwl fail: aml_trio/tumor_detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/bisulfite.cwl ok 16
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/chipseq.cwl ok 16
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/chipseq_alignment_nonhuman.cwl ok 13
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/bisulfite.cwl ok 21
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/chipseq.cwl ok 17
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/chipseq_alignment_nonhuman.cwl ok 14
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/detect_variants.cwl fail: varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/detect_variants_nonhuman.cwl fail: varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/detect_variants_wgs.cwl fail: varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/detect_variants_wgs_nonhuman.cwl fail: varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/downsample_and_recall.cwl fail: haplotype_caller[0]: the input `contamination_fraction` is not a valid string?: 1
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/gathered_downsample_and_recall.cwl fail: downsample_and_recall/haplotype_caller[0]: the input `contamination_fraction` is not a valid string?: 1
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_exome.cwl ok 36
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_exome_gvcf.cwl ok 19
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_exome_hla_typing.cwl ok 37
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_exome.cwl ok 41
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_exome_gvcf.cwl ok 24
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_exome_hla_typing.cwl ok 42
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_wgs.cwl fail: sv_detect_variants/run_merge/bcftools_annotsv_filter: the input `filtering_frequency` is not a valid double?: "0.05"
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_wgs_gvcf.cwl ok 20
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_wgs_gvcf.cwl ok 25
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/immuno.cwl fail: rnaseq/star_align_fusion: the input `chim_junction_overhang_min` is not a valid int: "12"
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/rnaseq.cwl ok 12
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/rnaseq.cwl ok 15
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/rnaseq_star_fusion.cwl fail: star_align_fusion: the input `chim_junction_overhang_min` is not a valid int: "12"
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/rnaseq_star_fusion_with_xenosplit.cwl fail: graft_star_align_fusion: the input `chim_junction_overhang_min` is not a valid int: "12"
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_exome.cwl fail: detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
@@ -1250,7 +1250,7 @@ realworld/collections/github.com__genome__analysis-workflows/definitions/pipelin
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_exome.cwl fail: detect_variants/bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :15:3)
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_wgs.cwl fail: detect_variants/bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :15:3)
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/align.cwl ok 1
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/align_sort_markdup.cwl ok 5
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/align_sort_markdup.cwl ok 6
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/bam_readcount.cwl fail: bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :15:3)
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/bam_to_trimmed_fastq_and_biscuit_alignments.cwl ok 5
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/bgzip_and_index.cwl ok 2
@@ -1261,32 +1261,32 @@ realworld/collections/github.com__genome__analysis-workflows/definitions/subwork
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/cram_to_cnvkit.cwl ok 3
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/docm_cle.cwl ok 7
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/docm_germline.cwl ok 7
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/duplex_alignment.cwl ok 10
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/duplex_alignment.cwl ok 13
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/filter_vcf.cwl ok 7
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/filter_vcf_nonhuman.cwl ok 5
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/fp_filter.cwl ok 8
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/gatk_haplotypecaller_iterator.cwl ok 1
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/generate_fda_metrics.cwl ok 31
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/germline_detect_variants.cwl ok 17
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/gatk_haplotypecaller_iterator.cwl ok 2
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/generate_fda_metrics.cwl ok 34
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/germline_detect_variants.cwl ok 18
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/germline_filter_vcf.cwl ok 6
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/hs_metrics.cwl ok 3
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/joint_genotype.cwl ok 18
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/hs_metrics.cwl ok 6
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/joint_genotype.cwl ok 19
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/merge_svs.cwl fail: bcftools_annotsv_filter: the input `filtering_frequency` is not a valid double?: "0.05"
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/molecular_alignment.cwl ok 11
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/molecular_qc.cwl ok 20
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/molecular_alignment.cwl ok 14
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/molecular_qc.cwl ok 26
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/mutect.cwl ok 12
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/phase_vcf.cwl ok 11
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/pindel.cwl ok 17
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/pindel_cat.cwl ok 2
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/pindel_region.cwl ok 6
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/pvacseq.cwl fail: tumor_rna_bam_readcount/bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :15:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/qc_exome.cwl ok 9
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/qc_exome_no_verify_bam.cwl ok 7
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/qc_wgs.cwl ok 10
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/qc_wgs_nonhuman.cwl ok 9
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/qc_exome.cwl ok 12
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/qc_exome_no_verify_bam.cwl ok 10
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/qc_wgs.cwl ok 13
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/qc_wgs_nonhuman.cwl ok 12
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/sequence_align_and_tag_adapter.cwl ok 1
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/sequence_to_bqsr.cwl ok 7
-realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/sequence_to_bqsr_nonhuman.cwl ok 5
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/sequence_to_bqsr.cwl ok 8
+realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/sequence_to_bqsr_nonhuman.cwl ok 6
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/sequence_to_trimmed_fastq.cwl ok 2
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/sequence_to_trimmed_fastq_and_hisat_alignments.cwl ok 3
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/single_cell_rnaseq.cwl ok 2
@@ -1468,7 +1468,7 @@ realworld/collections/github.com__genome__analysis-workflows/definitions/tools/v
 realworld/collections/github.com__genome__analysis-workflows/definitions/tools/vt_decompose.cwl ok 1
 realworld/collections/github.com__genome__analysis-workflows/definitions/tools/xenosplit.cwl ok 1
 realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/bulk-pipeline.cwl ok 2
-realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/pipeline.cwl ok 11
+realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/pipeline.cwl ok 12
 realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/bulk-salmon-mouse.cwl ok 1
 realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/bulk-salmon.cwl ok 1
 realworld/collections/github.com__hubmapconsortium__salmon-rnaseq/steps/compute-qc-metrics.cwl ok 1
@@ -1593,10 +1593,10 @@ realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/ultra-op
 realworld/collections/github.com__kids-first__kf-alignment-workflow/subworkflows/bwa_payload_to_realn_bam.cwl ok 1
 realworld/collections/github.com__kids-first__kf-alignment-workflow/subworkflows/kfdrc_bam_to_gvcf.cwl ok 6
 realworld/collections/github.com__kids-first__kf-alignment-workflow/subworkflows/kfdrc_process_bam.cwl ok 3
-realworld/collections/github.com__kids-first__kf-alignment-workflow/subworkflows/kfdrc_process_bamlist.cwl ok 3
-realworld/collections/github.com__kids-first__kf-alignment-workflow/subworkflows/kfdrc_process_pe_readslist2.cwl ok 3
+realworld/collections/github.com__kids-first__kf-alignment-workflow/subworkflows/kfdrc_process_bamlist.cwl ok 6
+realworld/collections/github.com__kids-first__kf-alignment-workflow/subworkflows/kfdrc_process_pe_readslist2.cwl ok 6
 realworld/collections/github.com__kids-first__kf-alignment-workflow/subworkflows/kfdrc_process_pe_set.cwl ok 3
-realworld/collections/github.com__kids-first__kf-alignment-workflow/subworkflows/kfdrc_process_se_readslist2.cwl ok 2
+realworld/collections/github.com__kids-first__kf-alignment-workflow/subworkflows/kfdrc_process_se_readslist2.cwl ok 4
 realworld/collections/github.com__kids-first__kf-alignment-workflow/subworkflows/kfdrc_process_se_set.cwl ok 2
 realworld/collections/github.com__kids-first__kf-alignment-workflow/subworkflows/kfdrc_rgbam_to_realnbam.cwl ok 2
 realworld/collections/github.com__kids-first__kf-alignment-workflow/subworkflows/prepare_reference.cwl ok 4
@@ -1706,12 +1706,12 @@ realworld/collections/github.com__kids-first__kf-alignment-workflow/tools/verify
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-deprecated/kf-cram2gvcf-bam-input.cwl ok 5
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-deprecated/kf-cram2gvcf-custom.cwl ok 4
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-deprecated/kf-cram2gvcf_calc_contam.cwl ok 6
-realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-deprecated/kf_alignment_fq_input_wf.cwl ok 17
-realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-deprecated/kf_alignment_fq_input_wf_wes.cwl ok 17
-realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-deprecated/kf_alignment_fq_input_wf_wes_only_cram.cwl ok 12
+realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-deprecated/kf_alignment_fq_input_wf.cwl ok 18
+realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-deprecated/kf_alignment_fq_input_wf_wes.cwl ok 18
+realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-deprecated/kf_alignment_fq_input_wf_wes_only_cram.cwl ok 13
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-deprecated/kfdrc_alignment_CramOnly_wf.cwl ok 14
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-deprecated/kfdrc_alignment_CramOnly_wf_wes.cwl ok 14
-realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-deprecated/kfdrc_alignment_fqinput_CramOnly_wf.cwl ok 12
+realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-deprecated/kfdrc_alignment_fqinput_CramOnly_wf.cwl ok 13
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-deprecated/kfdrc_alignment_wf.cwl ok 19
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-deprecated/kfdrc_bwamem_subwf.cwl ok 2
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-deprecated/kfdrc_cram_reheader_wf.cwl ok 9
@@ -1805,9 +1805,9 @@ realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/de
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/dev/ultra-opt/tools/verifybamid.cwl ok 1
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/dev/ultra-opt/workflows/kfdrc_bwamem_subwf.cwl ok 2
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/kfdrc-gatk-haplotypecaller-wf.cwl ok 9
-realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/kfdrc_alignment_wf.cwl ok 16
+realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/kfdrc_alignment_wf.cwl ok 17
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/kfdrc_qc_wf.cwl ok 2
-realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/kfdrc_sentieon_alignment_wf.cwl ok 17
+realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/kfdrc_sentieon_alignment_wf.cwl ok 18
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/kfdrc_sentieon_gvcf_wf.cwl ok 5
 realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/tools/add_strelka2_fields.cwl ok 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/tools/bcftools_annotate.cwl ok 1
@@ -1821,7 +1821,7 @@ realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_controlfreec_sub_wf.cwl ok 6
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_gatk_cnv_somatic_pair_wf.cwl ok 19
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_manta_sub_wf.cwl ok 3
-realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_mutect2_filter_support_subwf.cwl ok 6
+realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_mutect2_filter_support_subwf.cwl ok 8
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_run_theta2_sub_wf.cwl ok 4
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/prepare_regions.cwl ok 6
 realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/add_basename.cwl ok 1
@@ -1913,7 +1913,7 @@ realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/ubuntu_r
 realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/ubuntu_rename_outputs.cwl ok 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/untar_gzip.cwl ok 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/vardictjava.cwl ok 1
-realworld/collections/github.com__kids-first__kf-somatic-workflow/workflow/kfdrc_gatk_create_cnv_pon_wf.cwl ok 4
+realworld/collections/github.com__kids-first__kf-somatic-workflow/workflow/kfdrc_gatk_create_cnv_pon_wf.cwl ok 5
 realworld/collections/github.com__kids-first__kf-somatic-workflow/workflow/kfdrc_production_amplicon_architect.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/abra/abra.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/basicfiltering/basic-filtering_mutect.cwl ok 1
@@ -1986,28 +1986,28 @@ realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/waltz/CountRe
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/waltz/PileupMetrics.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/ABRA/abra_workflow.cwl ok 3
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/ACCESS_pipeline.cwl fail: standard_bam_to_collapsed_qc/qc_workflow/qc_workflow_wo_waltz/find_hotspots_in_normals/find_hotspots_in_normals: JavaScript error in `"sample_id patient_id sample_class pileup\n" + inputs.sample_ids.map(function(si...`: TypeError: can
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/BQSR/bqsr_workflow.cwl ok 2
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/QC/qc_workflow.cwl ok 54
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/BQSR/bqsr_workflow.cwl ok 4
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/QC/qc_workflow.cwl ok 79
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/QC/qc_workflow_wo_waltz.cwl ok 29
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/marianas/collapsed_fastq_to_bam.cwl ok 2
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/marianas/marianas_collapsing_workflow.cwl ok 9
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/module-1.cwl ok 4
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/module-2.cwl ok 3
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/module-3.cwl ok 6
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/module-3.cwl ok 12
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/module-4.cwl ok 5
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/module-5.cwl ok 5
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/standard_pipeline.cwl ok 8
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/standard_pipeline.cwl ok 16
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/call_cnv.cwl ok 4
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/call_variants.cwl ok 2
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/filtering.cwl ok 2
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/find_hotspots_in_normals.cwl ok 3
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/manta.cwl ok 7
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/msi.cwl ok 2
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/snps_and_indels.cwl ok 11
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/manta.cwl ok 11
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/msi.cwl ok 3
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/snps_and_indels.cwl ok 22
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/standard_bam_to_collapsed_qc.cwl fail: qc_workflow/qc_workflow_wo_waltz/find_hotspots_in_normals/find_hotspots_in_normals: JavaScript error in `"sample_id patient_id sample_class pileup\n" + inputs.sample_ids.map(function(si...`: TypeError: cannot convert 'null' or 'undefi
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/vcf_concat.cwl ok 2
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/waltz/waltz-workflow.cwl ok 2
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/waltz/waltz_workflow_all_bams.cwl ok 24
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/waltz/waltz_workflow_all_bams.cwl ok 48
 realworld/collections/github.com__ncbi__pgap/assemble.cwl ok 3
 realworld/collections/github.com__ncbi__pgap/bacterial_annot/bacterial_hit_mapping.cwl ok 1
 realworld/collections/github.com__ncbi__pgap/bacterial_annot/get_off_frame_orfs.cwl ok 1
@@ -2279,7 +2279,7 @@ realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/tango_dynamics_
 realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/tango_models.cwl ok 1
 realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/tango_one_plot.cwl ok 1
 realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/tango_optimization_wf.cwl fail: optimize_each[0]: the input `freud_sim` is not a valid enum: "freud_sim"
-realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/tango_plots.cwl ok 1
+realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/tango_plots.cwl ok 2
 realworld/sources/forgemia.inra.fr__tango__tango_models/tango_workflow.cwl fail: optimize/optimize_each[0]: the input `freud_sim` is not a valid enum: "freud_sim"
 realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/bakta/bakta.cwl ok 1
 realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/bedtools/bedtools_bamtobed.cwl ok 1
@@ -2347,7 +2347,7 @@ realworld/sources/git.wur.nl__unlock__cwl/cwl/irods/irods_manager.cwl ok 1
 realworld/sources/git.wur.nl__unlock__cwl/cwl/kraken2/kraken2-build.cwl ok 1
 realworld/sources/git.wur.nl__unlock__cwl/cwl/kraken2/kraken2.cwl ok 1
 realworld/sources/git.wur.nl__unlock__cwl/cwl/krona/krona.cwl ok 1
-realworld/sources/git.wur.nl__unlock__cwl/cwl/longqc/longqc.cwl fail: longqc: a glob must be a string, not {"class":"Directory","location":"file://<tmp>","basename":"output_dir","listing":[{"class":"File","location":"file://<tmp>","basename":"output_dir.txt","nameroot":"output_dir","nameext":".txt","siz
+realworld/sources/git.wur.nl__unlock__cwl/cwl/longqc/longqc.cwl fail: longqc: a glob must be a string, not {"class":"Directory","location":"file://<tmp>","basename":"output_dir","listing":[{"class":"Directory","location":"file://<tmp>","basename":"output_dir_1","listing":[{"class":"File","location":"fil
 realworld/sources/git.wur.nl__unlock__cwl/cwl/medaka/medaka.cwl ok 1
 realworld/sources/git.wur.nl__unlock__cwl/cwl/medaka/medaka_py.cwl ok 1
 realworld/sources/git.wur.nl__unlock__cwl/cwl/merge/merge.cwl ok 1
@@ -2472,7 +2472,7 @@ realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/w
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/sort.cwl ok 1
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/split-single-paired_v2.cwl ok 0
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/ChIP_Seq/wrappers/table_total_peaks.cwl ok 1
-realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/workflows/gatk-bqsr-subworkflow_multiple.cwl ok 4
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/workflows/gatk-bqsr-subworkflow_multiple.cwl ok 7
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/workflows/gatk_multi-sample_bqsr_vqsr.cwl ok 38
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/bcftools-norm.cwl ok 1
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/bcftools-view.cwl ok 1
@@ -2506,8 +2506,8 @@ realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_V
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/split-single-paired_v2.cwl ok 0
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/table-annovar.cwl ok 1
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/multi-sample_analysis/with_BQSR_VQSR/wrappers/trim-galore.cwl ok 1
-realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/workflows/gatk-bqsr-subworkflow.cwl ok 2
-realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/workflows/gatk-haplotypecaller-subworkflow.cwl ok 2
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/workflows/gatk-bqsr-subworkflow.cwl ok 3
+realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/workflows/gatk-haplotypecaller-subworkflow.cwl ok 3
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/workflows/gatk_single-sample_bqsr_cnn_hard-filtering.cwl ok 46
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/bcftools-concat.cwl ok 1
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Germline_Variant_calling/single-sample_analysis/with_BQSR_CNN_&_hard_filtering/wrappers/bcftools-norm.cwl ok 1
@@ -2593,9 +2593,9 @@ realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/trim_galor
 realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/workflow_modules/bed_to_coverage_track.cwl ok 4
 realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/workflow_modules/merge_duprem_filter.cwl ok 9
 realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/workflow_modules/trim_and_map.cwl ok 5
-realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/workflows/ATACseq.cwl ok 45
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/workflows/ATACseq.cwl ok 50
 realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/workflows/ATACseq_aligned.cwl ok 33
-realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/workflows/packed/ATACseq.cwl ok 45
+realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/workflows/packed/ATACseq.cwl ok 50
 realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/workflows/packed/ATACseq_aligned.cwl ok 33
 realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/bedgraph_sort.cwl ok 1
 realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/bedtools_bamtobed_pe.cwl ok 1
@@ -2624,21 +2624,21 @@ realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/samtools_v
 realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/tn5_overhang_correction.cwl ok 1
 realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/trim_galore.cwl ok 1
 realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflow_modules/chip_qc.cwl ok 3
-realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflow_modules/get_spike_in_counts.cwl ok 6
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflow_modules/get_spike_in_counts.cwl ok 8
 realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflow_modules/merge_duprem_filter.cwl ok 7
 realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflow_modules/merge_filter.cwl ok 6
 realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflow_modules/trim_and_map.cwl ok 5
-realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/ACTseq.cwl ok 18
-realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/ACTseq_spike_in.cwl ok 24
-realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/CUTnRUN.cwl ok 23
-realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/ChIPmentation.cwl ok 19
-realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/ChIPseq.cwl ok 17
-realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/ChIPseq_spike_in.cwl ok 23
-realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/packed/ACTseq.cwl ok 18
-realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/packed/CUTnRUN.cwl ok 22
-realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/packed/ChIPmentation.cwl ok 19
-realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/packed/ChIPseq.cwl ok 17
-realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/packed/ChIPseq_spike_in.cwl ok 23
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/ACTseq.cwl ok 23
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/ACTseq_spike_in.cwl ok 31
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/CUTnRUN.cwl ok 30
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/ChIPmentation.cwl ok 24
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/ChIPseq.cwl ok 22
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/ChIPseq_spike_in.cwl ok 30
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/packed/ACTseq.cwl ok 23
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/packed/CUTnRUN.cwl ok 29
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/packed/ChIPmentation.cwl ok 24
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/packed/ChIPseq.cwl ok 22
+realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/workflows/packed/ChIPseq_spike_in.cwl ok 30
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/assembly-qc/blast.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/assembly-qc/fasta-trimming.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/bwa/bwa.cwl ok 1
@@ -2662,9 +2662,9 @@ realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/utils/return_di
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/coassembly.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metagenome_multiplereads_qc.cwl ok 6
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metagenome_qc.cwl ok 3
-realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/post_assembly.cwl ok 5
-realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/post_assembly_qc.cwl ok 3
-realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/stats.cwl ok 2
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/post_assembly.cwl ok 7
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/post_assembly_qc.cwl ok 4
+realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/stats.cwl ok 3
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_join.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_sorting.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/Diamond-Post-Processing/postprocessing_subwf.cwl ok 2
@@ -2674,7 +2674,7 @@ realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamo
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/Diamond.makedb-v0.9.21.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/diamond-subwf.cwl ok 3
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/EggNOG/eggNOG/eggnog.cwl ok 1
-realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/EggNOG/eggnog-subwf.cwl ok 3
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/EggNOG/eggnog-subwf.cwl ok 4
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/GFF/gff_generation.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Genome_properties/genome_properties.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Genome_properties/gp_docker.cwl ok 1
@@ -2765,7 +2765,7 @@ realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/assembly-w
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/amplicon/amplicon-1.cwl ok 16
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/amplicon/amplicon-2.cwl ok 26
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/assembly/assembly-1.cwl ok 8
-realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/assembly/assembly-2.cwl ok 35
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/assembly/assembly-2.cwl ok 36
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/raw-reads/raw-reads-1.cwl ok 13
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/raw-reads/raw-reads-2.cwl ok 34
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/raw-reads-wf--v.5-cond.cwl ok 13
@@ -2774,7 +2774,7 @@ realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflo
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/amplicon/trimming-not-empty-subwf.cwl ok 5
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/CGC-subwf.cwl ok 7
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/change_formats_and_names.cwl ok 2
-realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/cmsearch-multimodel-assembly.cwl ok 3
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/cmsearch-multimodel-assembly.cwl ok 4
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/deal_with_functional_annotation.cwl ok 10
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/func_ann_and_post_processing-subwf.cwl ok 32
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/assembly/functional_annotation.cwl ok 11
@@ -2852,19 +2852,19 @@ realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/Tools/06_combin
 realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/Tools/07_join_all_assignedClusters.cwl ok 1
 realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/Tools/08_uniq_tss_feature.cwl ok 1
 realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/Tools/09_update_gtf.cwl ok 1
-realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/01_trimming_fastq_subworkflow_pe.cwl ok 1
-realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/01_trimming_fastq_subworkflow_se.cwl ok 1
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/01_trimming_fastq_subworkflow_pe.cwl ok 2
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/01_trimming_fastq_subworkflow_se.cwl ok 2
 realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/02_star_index_subworkflow.cwl ok 2
-realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/03_star4cageseq_analysis_subworkflow_pe.cwl ok 1
-realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/03_star4cageseq_analysis_subworkflow_se.cwl ok 1
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/03_star4cageseq_analysis_subworkflow_pe.cwl ok 2
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/03_star4cageseq_analysis_subworkflow_se.cwl ok 2
 realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/04_tssr_subworkflow_pe.cwl ok 4
-realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/cageseq_gtf_update_pe.cwl ok 9
-realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/emep_workflow.cwl fail: realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/emep_workflow.cwl:49:10: cannot read `https://raw.githubusercontent.com/UoMResearchIT/atmos-tools-library/main/cwl/general/create_dir_from_filelist.cw
-realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/era5_workflow.cwl fail: realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/era5_workflow.cwl:62:10: cannot read `https://raw.githubusercontent.com/UoMResearchIT/atmos-tools-library/main/cwl/Met_Downloads/era5_download.cwl`: o
-realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/geogrid_workflow.cwl fail: realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/geogrid_workflow.cwl:35:10: cannot read `https://raw.githubusercontent.com/UoMResearchIT/atmos-tools-library/main/cwl/WPS/geogrid.cwl`: only file URLs
-realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/wps_workflow.cwl fail: realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/wps_workflow.cwl:75:10: cannot read `https://raw.githubusercontent.com/UoMResearchIT/atmos-tools-library/main/cwl/WPS/create_metgrid_dir.cwl`: only fi
-realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/wrf_workflow.cwl fail: realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/wrf_workflow.cwl:49:10: cannot read `https://raw.githubusercontent.com/UoMResearchIT/atmos-tools-library/main/cwl/WRF/create_run_dir.cwl`: only file U
-realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/wrf_emep_full_workflow.cwl fail: realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/era5_workflow.cwl:62:10: cannot read `https://raw.githubusercontent.com/UoMResearchIT/atmos-tools-library/main/cwl/Met_Downloads/era5_download.cwl`: o
+realworld/sources/github.com__RyoNozu__CWL4IncorporateTSSintoGXF/workflow/cageseq_gtf_update_pe.cwl ok 11
+realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/emep_workflow.cwl ok 1
+realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/era5_workflow.cwl ok 1
+realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/geogrid_workflow.cwl ok 1
+realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/wps_workflow.cwl ok 4
+realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/workflows/wrf_workflow.cwl ok 3
+realworld/sources/github.com__UoMResearchIT__wrf_emep_cwl_linear_workflow/wrf_emep_full_workflow.cwl ok 10
 realworld/sources/github.com__aish181095__PSVD-transcriptomics-workflow/workflow/DEG.cwl ok 1
 realworld/sources/github.com__aish181095__PSVD-transcriptomics-workflow/workflow/ME-network.cwl ok 1
 realworld/sources/github.com__aish181095__PSVD-transcriptomics-workflow/workflow/gsea_analysis.cwl ok 1

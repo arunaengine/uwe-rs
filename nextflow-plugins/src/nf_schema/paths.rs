@@ -29,7 +29,7 @@ enum Named {
 type Lookup = Arc<HashMap<String, Named>>;
 
 /// A validator with nf-schema's path keywords. Other formats are not checked, as before.
-pub(super) fn validator(
+pub(crate) fn validator(
     schema: &Json,
     instance: &Json,
     context: &mut Context,

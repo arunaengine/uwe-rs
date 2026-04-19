@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod params;
-mod paths;
+pub(crate) mod paths;
 mod samplesheet;
 
 use std::rc::Rc;
@@ -88,7 +88,7 @@ fn validate(
 }
 
 /// The value of a key of a map, or a property of the `workflow` object.
-fn get(map: &Value, key: &str) -> Option<Value> {
+pub(crate) fn get(map: &Value, key: &str) -> Option<Value> {
     match map {
         Value::Map(map) => map.borrow().entries.get(&Key(Value::string(key))).cloned(),
         Value::Object(object) => match &object.borrow().state {
@@ -100,7 +100,7 @@ fn get(map: &Value, key: &str) -> Option<Value> {
 }
 
 /// The entries of a map, with the keys as text.
-fn entries(map: &Value) -> Vec<(String, Value)> {
+pub(crate) fn entries(map: &Value) -> Vec<(String, Value)> {
     match map {
         Value::Map(map) => map
             .borrow()
@@ -113,7 +113,7 @@ fn entries(map: &Value) -> Vec<(String, Value)> {
 }
 
 /// A path from a path or its text; relative text starts at `base`.
-fn path(value: &Value, base: &str) -> PathValue {
+pub(crate) fn path(value: &Value, base: &str) -> PathValue {
     match value {
         Value::Path(path) => (**path).clone(),
         other => PathValue::parse(&other.to_string(), base),
@@ -121,13 +121,13 @@ fn path(value: &Value, base: &str) -> PathValue {
 }
 
 /// A JSON schema: its text and its tree with keys in file order.
-struct Schema {
-    json: serde_json::Value,
-    tree: Value,
+pub(crate) struct Schema {
+    pub json: serde_json::Value,
+    pub tree: Value,
 }
 
 /// Reads a schema. A relative path starts at the project directory, as nf-schema does.
-fn schema(value: &Value, context: &mut Context) -> Result<Schema, Error> {
+pub(crate) fn schema(value: &Value, context: &mut Context) -> Result<Schema, Error> {
     let path = path(value, context.project_dir);
     let text = read(&path, context)?;
     let tree = parse_json(&text).map_err(|exception| thrown(exception.message))?;
@@ -136,13 +136,13 @@ fn schema(value: &Value, context: &mut Context) -> Result<Schema, Error> {
     Ok(Schema { json, tree })
 }
 
-fn read(path: &PathValue, context: &mut Context) -> Result<String, Error> {
+pub(crate) fn read(path: &PathValue, context: &mut Context) -> Result<String, Error> {
     let bytes = context.host.read(path)?;
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 /// A value as JSON, for validation.
-fn json(value: &Value) -> serde_json::Value {
+pub(crate) fn json(value: &Value) -> serde_json::Value {
     match value {
         Value::Null => serde_json::Value::Null,
         Value::Boolean(value) => serde_json::Value::Bool(*value),
@@ -164,7 +164,7 @@ fn json(value: &Value) -> serde_json::Value {
 /// The errors of an instance, in nf-schema's words, by the path of the value they concern.
 /// Missing required fields become one error of the object, like `Missing required field(s):
 /// a, b`; `what` names the fields, like `field` or `parameter`.
-fn errors(
+pub(crate) fn errors(
     validator: &jsonschema::Validator,
     instance: &serde_json::Value,
     what: &str,
@@ -225,7 +225,7 @@ fn errors(
 }
 
 /// The JSON type of a value, as nf-schema names it.
-fn json_type(value: &serde_json::Value) -> &'static str {
+pub(crate) fn json_type(value: &serde_json::Value) -> &'static str {
     match value {
         serde_json::Value::Null => "null",
         serde_json::Value::Bool(_) => "boolean",
@@ -238,7 +238,7 @@ fn json_type(value: &serde_json::Value) -> &'static str {
 }
 
 /// A JSON value as Groovy prints it: text without quotes.
-fn plain(value: &serde_json::Value) -> String {
+pub(crate) fn plain(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::String(text) => text.clone(),
         other => other.to_string(),
@@ -246,7 +246,7 @@ fn plain(value: &serde_json::Value) -> String {
 }
 
 /// nf-schema's `SchemaValidationException`.
-fn thrown(message: String) -> Error {
+pub(crate) fn thrown(message: String) -> Error {
     Error::Thrown {
         exception: Rc::new(Exception::new("SchemaValidationException", message)),
         span: Default::default(),

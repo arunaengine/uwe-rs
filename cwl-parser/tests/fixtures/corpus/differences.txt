@@ -1,19 +1,7 @@
 # Corpus documents where the loader knowingly differs from `cwltool --validate`, with the
 # reason. The corpus test fails when one of them starts to agree, so this list stays current.
-conformance/v1.2/tests/conditionals/cond-wf-005.cwl types: cwltool's type checker finds a source that does not fit its sink
-conformance/v1.2/tests/conditionals/cond-wf-005_nojs.cwl types: cwltool's type checker finds a source that does not fit its sink
-realworld/collections/github.com__Barski-lab__workflows/devel/mike/peak_intersect.cwl types: cwltool's type checker finds a source that does not fit its sink
-realworld/collections/github.com__Barski-lab__workflows/devel/mulloy/heatmap.cwl types: cwltool's type checker finds a source that does not fit its sink
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/tb-profiler/tb-profiler-profile.cwl requirement: cwltool cannot satisfy SoftwareRequirement as a requirement
-realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/kfdrc_bwamem_subwf.cwl types: cwltool's type checker finds a source that does not fit its sink
-realworld/collections/github.com__ncbi__pgap/progs/unit_tests/test_cluster_blastp_wnode/test.cwl types: cwltool's type checker finds a source that does not fit its sink
-realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_illumina_assembly.cwl types: cwltool's type checker finds a source that does not fit its sink
-realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/FastQC/workflows/FastQC_workflow_v1.cwl types: cwltool's type checker finds a source that does not fit its sink
-realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/assembly.cwl types: cwltool's type checker finds a source that does not fit its sink
-realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metagenome_pipeline.cwl types: cwltool's type checker finds a source that does not fit its sink
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/collect-seqs.cwl requirement: an Arvados requirement class, kept as written
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/from_sparql.cwl requirement: an Arvados requirement class, kept as written
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/query-to-gfa.cwl requirement: an Arvados requirement class, kept as written
 realworld/sources/gitlab.com__m-unlock__cwl/tools/interproscan/interproscan.cwl requirement: cwltool cannot satisfy SoftwareRequirement as a requirement
-realworld/workflowhub/474/src/workflows/assembly.cwl types: cwltool's type checker finds a source that does not fit its sink
-realworld/workflowhub/474/src/workflows/metagenome_pipeline.cwl types: cwltool's type checker finds a source that does not fit its sink

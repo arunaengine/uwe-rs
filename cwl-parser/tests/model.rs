@@ -145,7 +145,7 @@ fn reads_workflow_steps() {
     let workflow = "cwlVersion: v1.2\nclass: Workflow\n\
         requirements: [{class: ScatterFeatureRequirement}, {class: InlineJavascriptRequirement}]\n\
         inputs: {names: 'string[]', flag: boolean}\noutputs:\n  \
-        out: {type: 'string[]', outputSource: [echo/out], pickValue: all_non_null}\n\
+        out: {type: 'string[]', outputSource: echo/out, pickValue: all_non_null}\n\
         steps:\n  echo:\n    run:\n      class: ExpressionTool\n      \
         inputs: {name: string, other: string}\n      outputs: {out: string}\n      \
         expression: '${return {out: inputs.name};}'\n    \

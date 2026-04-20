@@ -10,6 +10,7 @@ mod process;
 pub mod record;
 mod requirement;
 mod schema;
+mod typecheck;
 mod upgrade;
 mod workflow;
 

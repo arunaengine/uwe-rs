@@ -404,9 +404,9 @@ v1.1 secondary_files_in_output_records pass
 v1.1 secondary_files_workflow_propagation pass
 v1.1 secondary_files_missing ran
 v1.1 input_records_file_entry_with_format pass
-v1.1 input_records_file_entry_with_format_and_bad_regular_input_file_format fail: runs, but should fail
-v1.1 input_records_file_entry_with_format_and_bad_entry_file_format fail: runs, but should fail
-v1.1 input_records_file_entry_with_format_and_bad_entry_array_file_format fail: runs, but should fail
+v1.1 input_records_file_entry_with_format_and_bad_regular_input_file_format pass
+v1.1 input_records_file_entry_with_format_and_bad_entry_file_format pass
+v1.1 input_records_file_entry_with_format_and_bad_entry_array_file_format pass
 v1.1 record_output_file_entry_format pass
 v1.1 workflow_input_inputBinding_loadContents pass
 v1.1 workflow_input_loadContents_without_inputBinding pass
@@ -660,9 +660,9 @@ v1.2 secondary_files_in_output_records pass
 v1.2 secondary_files_workflow_propagation pass
 v1.2 secondary_files_missing ran
 v1.2 input_records_file_entry_with_format pass
-v1.2 input_records_file_entry_with_format_and_bad_regular_input_file_format fail: runs, but should fail
-v1.2 input_records_file_entry_with_format_and_bad_entry_file_format fail: runs, but should fail
-v1.2 input_records_file_entry_with_format_and_bad_entry_array_file_format fail: runs, but should fail
+v1.2 input_records_file_entry_with_format_and_bad_regular_input_file_format pass
+v1.2 input_records_file_entry_with_format_and_bad_entry_file_format pass
+v1.2 input_records_file_entry_with_format_and_bad_entry_array_file_format pass
 v1.2 record_output_file_entry_format pass
 v1.2 workflow_input_inputBinding_loadContents pass
 v1.2 workflow_input_loadContents_without_inputBinding pass
@@ -725,7 +725,7 @@ v1.2 first_non_null_all_null pass
 v1.2 first_non_null_second_non_null pass
 v1.2 pass_through_required_the_only_non_null pass
 v1.2 pass_through_required_fail pass
-v1.2 all_non_null_multi_with_non_array_output fail: runs, but should fail
+v1.2 all_non_null_multi_with_non_array_output pass
 v1.2 the_only_non_null_single_true pass
 v1.2 the_only_non_null_multi_true pass
 v1.2 all_non_null_all_null pass
@@ -747,7 +747,7 @@ v1.2 first_non_null_all_null_nojs pass
 v1.2 first_non_null_second_non_null_nojs pass
 v1.2 pass_through_required_the_only_non_null_nojs pass
 v1.2 pass_through_required_fail_nojs pass
-v1.2 all_non_null_multi_with_non_array_output_nojs fail: runs, but should fail
+v1.2 all_non_null_multi_with_non_array_output_nojs pass
 v1.2 the_only_non_null_single_true_nojs pass
 v1.2 the_only_non_null_multi_true_nojs pass
 v1.2 all_non_null_all_null_nojs pass

@@ -5,6 +5,7 @@
 mod nf_anndata;
 mod nf_fgbio;
 mod nf_schema;
+mod nf_validation;
 
 use nextflow_config::Config;
 use nextflow_evaluator::interpreter::{Error, Host};
@@ -67,6 +68,7 @@ pub fn functions(plugin: &str) -> Option<&'static [&'static str]> {
         "nf-core-utils" => Some(NF_CORE_UTILS),
         "nf-fgbio" => Some(&["readStructure"]),
         "nf-schema" => Some(NF_SCHEMA),
+        "nf-validation" => Some(nf_validation::FUNCTIONS),
         _ => None,
     }
 }
@@ -101,6 +103,7 @@ pub fn call(
         "nf-anndata" => nf_anndata::call(name, arguments, context),
         "nf-fgbio" => nf_fgbio::call(name, arguments),
         "nf-schema" => nf_schema::call(name, arguments, context),
+        "nf-validation" => nf_validation::call(name, arguments, context),
         _ => Err(Error::Unsupported {
             message: format!("the function `{name}` of the plugin `{plugin}`"),
             span: Default::default(),

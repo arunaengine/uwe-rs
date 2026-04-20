@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "sample": {"type": "string", "pattern": "^\\S+$", "meta": ["id"]},
+      "fastq_1": {"type": "string", "format": "file-path", "exists": true},
+      "fastq_2": {"type": "string", "format": "file-path"},
+      "reps": {"type": "integer", "meta": ["reps"], "default": 1},
+      "strand": {"type": "string", "default": "auto"},
+      "score": {"type": "number"},
+      "keep": {"type": "boolean"}
+    },
+    "required": ["sample", "fastq_1"]
+  }
+}

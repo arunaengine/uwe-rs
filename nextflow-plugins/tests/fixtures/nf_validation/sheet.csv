@@ -1,0 +1,3 @@
+sample,fastq_1,fastq_2,reps,strand,score,keep,extra
+S1,a_1.fq,a_2.fq,2,,1.5,true,x
+S2,b_1.fq,,,rev,3,false,y

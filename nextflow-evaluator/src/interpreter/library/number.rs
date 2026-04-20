@@ -97,6 +97,11 @@ pub(super) fn unit_method(value: &Value, name: &str, arguments: &[Value]) -> Opt
         (Value::Duration(millis), "toMinutes" | "getMinutes", []) => long(millis / 60_000),
         (Value::Duration(millis), "toHours" | "getHours", []) => long(millis / 3_600_000),
         (Value::Duration(millis), "toDays" | "getDays", []) => long(millis / 86_400_000),
+        // Legacy configs compare units, like `obj.compareTo(params.max_memory as MemoryUnit)`.
+        (Value::MemoryUnit(a), "compareTo", [Value::MemoryUnit(b)])
+        | (Value::Duration(a), "compareTo", [Value::Duration(b)]) => {
+            Some(Value::integer(a.cmp(b) as i32))
+        }
         _ => None,
     }
 }

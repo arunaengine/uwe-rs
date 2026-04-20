@@ -60,6 +60,14 @@ fn unit_properties() {
         value("[2.GB * 1.5, 2 * 1.h, 1.h / 7]"),
         "[3 GB, 2h, 8m 34s]"
     );
+    // Legacy configs compare units with `compareTo`.
+    assert_eq!(
+        value(
+            "[2.GB.compareTo(1.GB), 1.GB.compareTo(1.GB), 1.GB.compareTo(3.GB), \
+             2.h.compareTo(90.min), 2.GB.compareTo('6.GB' as nextflow.util.MemoryUnit)]"
+        ),
+        "[1, 0, -1, 1, -1]"
+    );
 }
 
 #[test]

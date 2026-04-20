@@ -73,6 +73,14 @@ pub fn functions(plugin: &str) -> Option<&'static [&'static str]> {
     }
 }
 
+/// The plugin of a channel factory that a plugin adds, like `Channel.fromSamplesheet`.
+pub fn factory_plugin(name: &str) -> Option<&'static str> {
+    match name {
+        "fromSamplesheet" => Some("nf-validation"),
+        _ => None,
+    }
+}
+
 /// The script that ports functions of a plugin to Nextflow script, if there is one.
 pub fn script(plugin: &str) -> Option<&'static str> {
     match plugin {

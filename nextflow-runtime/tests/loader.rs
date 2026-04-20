@@ -153,7 +153,7 @@ fn plugin_includes_call_the_plugin() {
     write(
         root.path(),
         "other.nf",
-        "include { fromSamplesheet } from 'plugin/nf-validation'\n\
+        "include { fromCatalogue } from 'plugin/nf-unknown'\n\
          include { nothing } from 'plugin/nf-schema'\nworkflow {\n}\n",
     );
     let error = Loader::default()
@@ -167,10 +167,46 @@ fn plugin_includes_call_the_plugin() {
     assert_eq!(
         lines,
         [
-            "1:11: Plugins are not supported yet: plugin/nf-validation",
+            "1:11: Plugins are not supported yet: plugin/nf-unknown",
             "2:11: `nothing` is not a function of the plugin `nf-schema`"
         ]
     );
+}
+
+#[test]
+fn plugin_factories_make_channels() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let dir = root.path().display();
+    write(
+        root.path(),
+        "schema.json",
+        &format!(
+            "{{\"definitions\": {{\"io\": {{\"properties\": {{\"input\": \
+             {{\"type\": \"string\", \"schema\": \"{dir}/sheet.json\"}}}}}}}}}}"
+        ),
+    );
+    write(
+        root.path(),
+        "sheet.json",
+        "{\"items\": {\"properties\": {\"sample\": {\"type\": \"string\", \"meta\": [\"id\"]}, \
+         \"n\": {\"type\": \"integer\"}}}}",
+    );
+    write(root.path(), "sheet.csv", "sample,n\nA,1\nB,2\n");
+    write(
+        root.path(),
+        "main.nf",
+        &format!(
+            "include {{ fromSamplesheet }} from 'plugin/nf-validation'\n\
+             params.input = '{dir}/sheet.csv'\n\
+             workflow {{\n    Channel.fromSamplesheet('input', parameters_schema: '{dir}/schema.json').view()\n}}\n"
+        ),
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let mut output = Output::default();
+    nextflow_runtime::run(&module, &mut output).expect("runs");
+    assert_eq!(output.0, "[[id:A], 1]\n[[id:B], 2]\n");
 }
 
 #[test]

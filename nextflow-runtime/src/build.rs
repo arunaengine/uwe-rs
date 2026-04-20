@@ -161,6 +161,13 @@ impl Host for Builder<'_> {
             let message = format!("Argument of `channel.{name}` cannot be a channel object");
             return Err(thrown(message));
         }
+        // A factory of a plugin, like `Channel.fromSamplesheet`, gives the list of its values.
+        if namespace == "channel"
+            && let Some(plugin) = nextflow_plugins::factory_plugin(name)
+        {
+            let values = self.base.plugin_function(plugin, name, arguments)?;
+            return Ok(Some(self.factory(name, elements(&values), false, true)));
+        }
         let (values, value, close) = match (namespace, name, arguments.as_slice()) {
             ("channel", "topic", [topic]) => {
                 return Ok(Some(Value::Channel(self.network.topic(&topic.to_string()))));
@@ -182,14 +189,7 @@ impl Host for Builder<'_> {
             ("channel", "value", [value]) => (vec![value.clone()], true, true),
             _ => return self.base.namespace_method(namespace, name, arguments),
         };
-        let output = self.network.channel(value);
-        let factory = Factory {
-            values,
-            output,
-            close,
-        };
-        self.network.add(name, &[], Box::new(factory));
-        Ok(Some(Value::Channel(output)))
+        Ok(Some(self.factory(name, values, value, close)))
     }
 
     /// A process call: each input reads its channel; a plain value becomes a bound value
@@ -481,6 +481,19 @@ impl Host for Builder<'_> {
 }
 
 impl Builder<'_> {
+    /// A channel factory node that emits `values`, into a value channel when `value`, and
+    /// closes its channel when `close`.
+    fn factory(&mut self, name: &str, values: Vec<Value>, value: bool, close: bool) -> Value {
+        let output = self.network.channel(value);
+        let factory = Factory {
+            values,
+            output,
+            close,
+        };
+        self.network.add(name, &[], Box::new(factory));
+        Value::Channel(output)
+    }
+
     /// The paths of `channel.fromPath(pattern, [options])`: each pattern in turn, a glob
     /// expanded to the matching files sorted by path.
     fn path_values(&mut self, arguments: &[Value]) -> Result<Vec<Value>, Error> {

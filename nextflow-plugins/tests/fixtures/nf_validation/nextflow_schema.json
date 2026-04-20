@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "type": "object",
+  "definitions": {
+    "io": {"title": "Input/output options", "type": "object", "required": ["input", "outdir"],
+      "properties": {
+        "input": {"type": "string", "format": "file-path", "exists": true, "schema": "assets/schema_input.json"},
+        "outdir": {"type": "string", "format": "directory-path"}
+      }},
+    "generic": {"title": "Generic options", "type": "object",
+      "properties": {
+        "n": {"type": "integer", "default": 5},
+        "mode": {"type": "string", "enum": ["a", "b"], "default": "a"},
+        "flag": {"type": "boolean", "hidden": true}
+      }}
+  },
+  "allOf": [{"$ref": "#/definitions/io"}, {"$ref": "#/definitions/generic"}]
+}

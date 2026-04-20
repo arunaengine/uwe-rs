@@ -6,7 +6,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use cwl_parser::model::{InputParameter, Process, Type, short_name};
+use cwl_parser::model::{Expression, InputParameter, Process, SecondaryFile, Type, short_name};
 
 use crate::inputs::has_code;
 use crate::scope::Scope;
@@ -69,28 +69,33 @@ const WORDS: [(&str, &str); 14] = [
 /// are named in.
 pub fn input(input: &InputParameter, types: &Types, base: &str) -> Value {
     let name = short_name(&input.id);
-    let format = input
-        .format
-        .iter()
-        .find(|format| !has_code(format))
-        .map(|format| format.text.clone());
-    let hint = Hint {
-        extension: extension(input, format.as_deref()),
-        format,
-    };
+    let hint = hint_of(name, &input.format, &input.secondary_files);
     value(types, &input.value_type, name, base, &hint)
 }
 
-/// The extension a placeholder file of an input gets.
-fn extension(input: &InputParameter, format: Option<&str>) -> String {
+/// What a placeholder file of a parameter or record field looks like: its first format that
+/// is no expression, and the extension that format, the secondary files or the name suggest.
+pub fn hint_of(name: &str, formats: &[Expression], secondary: &[SecondaryFile]) -> Hint {
+    let format = formats
+        .iter()
+        .find(|format| !has_code(format))
+        .map(|format| format.text.clone());
+    Hint {
+        extension: extension(name, format.as_deref(), secondary),
+        format,
+    }
+}
+
+/// The extension a placeholder file gets.
+fn extension(name: &str, format: Option<&str>, secondary: &[SecondaryFile]) -> String {
     if let Some(format) = format {
         let term = format.rsplit(['/', '#', ':']).next().unwrap_or(format);
         if let Some((_, extension)) = FORMATS.iter().find(|(known, _)| *known == term) {
             return (*extension).to_owned();
         }
     }
-    for secondary in &input.secondary_files {
-        let pattern = secondary
+    for entry in secondary {
+        let pattern = entry
             .pattern
             .text
             .trim_start_matches('^')
@@ -99,7 +104,7 @@ fn extension(input: &InputParameter, format: Option<&str>) -> String {
             return (*extension).to_owned();
         }
     }
-    let name = short_name(&input.id).to_lowercase();
+    let name = name.to_lowercase();
     WORDS
         .iter()
         .find(|(word, _)| name.contains(word))
@@ -132,13 +137,8 @@ pub fn value(types: &Types, value_type: &Type, name: &str, base: &str, hint: &Hi
         Type::Record(record) => {
             let mut map = Map::new();
             for field in &record.fields {
-                let value = value(
-                    types,
-                    &field.value_type,
-                    &field.name,
-                    base,
-                    &Hint::default(),
-                );
+                let hint = hint_of(&field.name, &field.format, &field.secondary_files);
+                let value = value(types, &field.value_type, &field.name, base, &hint);
                 map.insert(field.name.clone(), value);
             }
             Value::Map(map)

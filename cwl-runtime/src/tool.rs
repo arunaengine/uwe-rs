@@ -21,7 +21,7 @@ use crate::binding::{self, Binder, Bound, Key};
 use crate::expression::{Evaluator, Variables};
 use crate::files::{self, Access};
 use crate::inputs::has_code;
-use crate::placeholder::{self, Hint};
+use crate::placeholder;
 use crate::scope::Scope;
 use crate::types::Types;
 use crate::value::{Map, Value};
@@ -1270,7 +1270,7 @@ impl Pending {
             let value = outputs.get(&name).cloned().unwrap_or(Value::Null);
             if !self.types.matches(&output.value_type, &value) {
                 if self.options.mock {
-                    let placeholder = self.placeholder(&output.value_type, &name, &collector);
+                    let placeholder = self.placeholder(output, &collector);
                     outputs.insert(name, placeholder);
                 } else {
                     return Err(format!(
@@ -1291,12 +1291,14 @@ impl Pending {
     }
 
     /// A value for an output the executor could not make, with files in its work folder.
-    fn placeholder(&self, value_type: &Type, name: &str, collector: &Collector<'_>) -> Value {
+    fn placeholder(&self, output: &OutputParameter, collector: &Collector<'_>) -> Value {
         let base = match &collector.workdir {
             Some(folder) => format!("{}/", iri::file_url(Path::new(folder))),
             None => "_:".to_owned(),
         };
-        let mut value = placeholder::value(&self.types, value_type, name, &base, &Hint::default());
+        let name = short_name(&output.id);
+        let hint = placeholder::hint_of(name, output.format.as_slice(), &output.secondary_files);
+        let mut value = placeholder::value(&self.types, &output.value_type, name, &base, &hint);
         // Placeholder files point at the task's JSON output, so the graph keeps the link.
         if let Some(json) = collector
             .outcome
@@ -1789,7 +1791,7 @@ impl Collector<'_> {
         };
         let file = match found.first() {
             Some(file) => self.file_object(file, &binding)?,
-            None => return Ok(self.pending.placeholder(&output.value_type, name, self)),
+            None => return Ok(self.pending.placeholder(output, self)),
         };
         let mut value_type = types.resolve(&output.value_type);
         let mut wrap = 0;

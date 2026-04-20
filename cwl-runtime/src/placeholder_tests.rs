@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use cwl_parser::model::ArraySchema;
+use cwl_parser::model::{ArraySchema, RecordField, RecordSchema};
 
 use super::*;
 
@@ -55,5 +55,41 @@ fn directories_hold_a_folder_with_a_file_and_a_file() {
     assert_eq!(
         inner_listing.map(locations),
         Some(vec!["file:///in/genome/genome_1/genome_1.txt"])
+    );
+}
+
+#[test]
+fn record_fields_get_the_format_they_declare() {
+    let field = RecordField {
+        name: "reads".into(),
+        value_type: Type::File,
+        label: None,
+        doc: Vec::new(),
+        secondary_files: Vec::new(),
+        streamable: None,
+        format: vec![
+            Expression::parse("http://edamontology.org/format_1930", false).expect("a format"),
+        ],
+        load_contents: None,
+        load_listing: None,
+        input_binding: None,
+        output_binding: None,
+    };
+    let record = Type::Record(Box::new(RecordSchema {
+        name: None,
+        fields: vec![field],
+        label: None,
+        doc: Vec::new(),
+        binding: None,
+    }));
+    let sample = value(&Types::default(), &record, "sample", BASE, &Hint::default());
+    let reads = sample.get("reads");
+    assert_eq!(
+        reads.and_then(|file| file.text("location")),
+        Some("file:///in/reads.fastq")
+    );
+    assert_eq!(
+        reads.and_then(|file| file.text("format")),
+        Some("http://edamontology.org/format_1930")
     );
 }

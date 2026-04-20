@@ -7,6 +7,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod params;
+mod samplesheet;
 
 use nextflow_evaluator::interpreter::Error;
 use nextflow_evaluator::value::Value;
@@ -17,6 +18,7 @@ use crate::nf_schema::{Schema, entries, get, json_type, plain, schema};
 /// The functions of nf-validation that scripts can include; `fromSamplesheet` is a channel
 /// factory, `Channel.fromSamplesheet(...)`.
 pub(crate) const FUNCTIONS: &[&str] = &[
+    "fromSamplesheet",
     "paramsHelp",
     "paramsSummaryLog",
     "paramsSummaryMap",
@@ -42,6 +44,10 @@ pub(crate) fn call(
         }
         ("paramsHelp", [command]) => params::help(None, command, context),
         ("paramsHelp", [options, command]) => params::help(Some(options), command, context),
+        ("fromSamplesheet", [param]) => samplesheet::from_samplesheet(None, param, context),
+        ("fromSamplesheet", [options, param]) => {
+            samplesheet::from_samplesheet(Some(options), param, context)
+        }
         _ => Err(Error::Unsupported {
             message: format!(
                 "the function `{name}` of the plugin `nf-validation` with these arguments"
@@ -83,8 +89,8 @@ fn flag(context: &Context, name: &str) -> bool {
 /// One problem of a validation, in the words of the everit validator that nf-validation
 /// uses.
 enum Problem {
-    /// A required property is missing.
-    Missing { name: String },
+    /// A required property is missing from the object at `path`.
+    Missing { path: String, name: String },
     /// The value at `path` is wrong.
     Value {
         path: String,
@@ -104,7 +110,7 @@ fn problems(validator: &jsonschema::Validator, instance: &serde_json::Value) -> 
         let (message, choices) = match error.kind() {
             Kind::Required { property } => {
                 let name = property.as_str().unwrap_or_default().to_owned();
-                problems.push(Problem::Missing { name });
+                problems.push(Problem::Missing { path, name });
                 continue;
             }
             Kind::Type { kind } => {

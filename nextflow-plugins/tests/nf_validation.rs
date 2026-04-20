@@ -3,11 +3,13 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::cell::RefCell;
 use std::path::Path;
+use std::rc::Rc;
 
 use nextflow_config::Config;
 use nextflow_evaluator::interpreter::{Error, Host};
-use nextflow_evaluator::value::Value;
+use nextflow_evaluator::value::{Object, State, Value, Workflow};
 use nextflow_plugins::{Context, call};
 
 /// A host whose launch directory is the fixture directory.
@@ -85,4 +87,53 @@ fn parameters_are_validated_as_nf_validation_does() {
             "* --outdir: expected type: String, found: Boolean (true)",
         ]
     );
+}
+
+#[test]
+fn summaries_put_the_core_options_first() {
+    let text = |name: &str, value: &str| (Value::string(name), Value::string(value));
+    let properties = Value::map([
+        text("runName", "thirsty_knuth"),
+        text("launchDir", "/tmp/nf-agent/probe-nfv"),
+        text("workDir", "/tmp/nf-agent/probe-nfv/work"),
+        text("projectDir", "/tmp/nf-agent/probe-nfv"),
+        text("userName", "beavis"),
+        text("profile", "standard"),
+        (Value::string("configFiles"), Value::list(Vec::new())),
+    ]);
+    let workflow = Value::Object(Rc::new(RefCell::new(Object {
+        class: "nextflow.script.WorkflowMetadata",
+        state: State::Workflow(Workflow {
+            properties,
+            on_complete: Vec::new(),
+            on_error: Vec::new(),
+        }),
+    })));
+    let map = run("paramsSummaryMap", params(&[]), vec![workflow.clone()]).unwrap();
+    assert_eq!(
+        map,
+        "[Core Nextflow options:[runName:thirsty_knuth, launchDir:/tmp/nf-agent/probe-nfv, \
+         workDir:/tmp/nf-agent/probe-nfv/work, projectDir:/tmp/nf-agent/probe-nfv, \
+         userName:beavis, profile:standard, configFiles:], Input/output options:[input:sheet.csv, \
+         outdir:res], Generic options:[:]]"
+    );
+    let log = run("paramsSummaryLog", params(&[]), vec![workflow]).unwrap();
+    let expected = [
+        "Core Nextflow options",
+        "  runName    : thirsty_knuth",
+        "  launchDir  : /tmp/nf-agent/probe-nfv",
+        "  workDir    : /tmp/nf-agent/probe-nfv/work",
+        "  projectDir : /tmp/nf-agent/probe-nfv",
+        "  userName   : beavis",
+        "  profile    : standard",
+        "  configFiles: ",
+        "",
+        "Input/output options",
+        "  input      : sheet.csv",
+        "  outdir     : res",
+        "",
+        "!! Only displaying parameters that differ from the pipeline defaults !!",
+        "------------------------------------------------------",
+    ];
+    assert_eq!(log, expected.join("\n"));
 }

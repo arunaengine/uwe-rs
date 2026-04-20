@@ -120,6 +120,8 @@ pub struct Run {
     /// Location prefixes of files whose content is not real: the work folders of tasks in a
     /// mock run, and the placeholder folder.
     fake: Vec<String>,
+    /// Whether the documents name ontologies in `$schemas`.
+    ontologies: bool,
 }
 
 impl Run {
@@ -134,7 +136,14 @@ impl Run {
             result: None,
             placeholders: None,
             fake: Vec::new(),
+            ontologies: false,
         }
+    }
+
+    /// Notes that the documents name ontologies in `$schemas`, which iunctus does not read, so
+    /// that a file format may be a subclass of a declared one.
+    pub fn name_ontologies(&mut self, named: bool) {
+        self.ontologies = named;
     }
 
     /// Runs on placeholder inputs, whose files are named in the folder `base`.
@@ -289,6 +298,7 @@ impl Run {
             placeholders: self.placeholders.as_deref(),
             toplevel,
             fill_optional: self.options.fill_optional,
+            ontologies: self.ontologies,
         };
         let job = inputs::prepare(process, job, &setting).map_err(at)?;
         match &process.class {

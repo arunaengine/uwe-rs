@@ -89,7 +89,8 @@ Runtime settings are separate (B 5.9). Executors, the store, the cache namespace
 
 - Includes, module instances, `moduleDir`, templates and the pipeline `bin/` directory follow B 5.10.
 - One global `params` map; command-line params stay strings at run time, as in Nextflow, with a warning when a string replaces a boolean or number default.
-- `include { f } from 'plugin/nf-schema'` binds to a native function in `nextflow-plugins`. Other plugins fail at load time. `nf-validation` is out of scope.
+- `include { f } from 'plugin/nf-schema'` binds to a native function in `nextflow-plugins`. Other plugins fail at load time.
+- nf-validation 1.1.3, which nf-schema replaced, is native too, because older nf-core pipelines use it ([decisions](../../decisions.md), item 14): `validateParameters`, the summaries, `paramsHelp` and the channel factory `fromSamplesheet`, with the error messages of its everit validator.
 - nf-schema is implemented natively: `validateParameters`, `samplesheetToList`, `paramsSummaryMap`, `paramsSummaryLog` and `paramsHelp`, with JSON Schema 2020-12 through the `jsonschema` crate.
 - The nf-core utility subworkflows run as code, with stand-ins for the Java classes they use. Both proposals agree: this is faithful by construction and follows template changes for free.
 

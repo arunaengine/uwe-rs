@@ -435,3 +435,7 @@ pub fn describe(value_type: &Type) -> String {
         Type::Named(name) => short_name(name).to_owned(),
     }
 }
+
+#[cfg(test)]
+#[path = "inputs_tests.rs"]
+mod tests;

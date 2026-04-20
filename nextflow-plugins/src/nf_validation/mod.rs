@@ -16,7 +16,12 @@ use crate::nf_schema::{Schema, entries, get, json_type, plain, schema};
 
 /// The functions of nf-validation that scripts can include; `fromSamplesheet` is a channel
 /// factory, `Channel.fromSamplesheet(...)`.
-pub(crate) const FUNCTIONS: &[&str] = &["validateParameters"];
+pub(crate) const FUNCTIONS: &[&str] = &[
+    "paramsHelp",
+    "paramsSummaryLog",
+    "paramsSummaryMap",
+    "validateParameters",
+];
 
 pub(crate) fn call(
     name: &str,
@@ -27,6 +32,16 @@ pub(crate) fn call(
     match (name, arguments.as_slice()) {
         ("validateParameters", []) => params::validate(None, context),
         ("validateParameters", [options]) => params::validate(Some(options), context),
+        ("paramsSummaryMap", [workflow]) => params::summary(None, workflow, context),
+        ("paramsSummaryMap", [options, workflow]) => {
+            params::summary(Some(options), workflow, context)
+        }
+        ("paramsSummaryLog", [workflow]) => params::summary_log(None, workflow, context),
+        ("paramsSummaryLog", [options, workflow]) => {
+            params::summary_log(Some(options), workflow, context)
+        }
+        ("paramsHelp", [command]) => params::help(None, command, context),
+        ("paramsHelp", [options, command]) => params::help(Some(options), command, context),
         _ => Err(Error::Unsupported {
             message: format!(
                 "the function `{name}` of the plugin `nf-validation` with these arguments"

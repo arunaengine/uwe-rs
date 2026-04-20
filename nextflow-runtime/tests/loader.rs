@@ -100,8 +100,10 @@ fn bad_includes() {
     );
 }
 
+/// Nextflow's strict parser checks the number of arguments of calls when it loads a script;
+/// the legacy parser does not, and a call only fails when it runs (decision 14).
 #[test]
-fn calls_need_as_many_arguments_as_inputs() {
+fn calls_need_as_many_arguments_as_inputs_when_they_run() {
     let root = tempfile::tempdir().expect("a temporary directory");
     write(
         root.path(),
@@ -113,22 +115,17 @@ fn calls_need_as_many_arguments_as_inputs() {
         "main.nf",
         "include { HELLO as SAY } from './lib'\n\
          workflow SUB {\n    take:\n    a\n    b\n    main:\n    println(a)\n}\n\
-         workflow {\n    SAY('a', 'b')\n    SUB('x')\n    SUB(k: 1, 'x')\n}\n",
+         workflow {\n    if (params.say) { SAY('a', 'b') }\n    SUB('x')\n}\n",
     );
-    let error = Loader::default()
+    let module = Loader::default()
         .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let error = nextflow_runtime::run(&module, &mut Output::default())
         .unwrap_err()
         .to_string();
-    let lines: Vec<&str> = error
-        .lines()
-        .map(|line| line.rsplit("main.nf:").next().unwrap_or(line))
-        .collect();
-    assert_eq!(
-        lines,
-        [
-            "10:5: Incorrect number of call arguments, expected 1 but received 2",
-            "11:5: Incorrect number of call arguments, expected 2 but received 1"
-        ]
+    assert!(
+        error.ends_with("main.nf:11:5: IllegalArgumentException: Workflow `SUB` declares 2 input channels but 1 were given"),
+        "{error}"
     );
 }
 

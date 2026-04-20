@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use cwl_parser::iri;
 use cwl_parser::model::{Process, Type, short_name};
+use cwl_parser::salad::context::Namespaces;
 use workflow_graph::{Driver, DriverError, Language, Launch, Outcome, Task};
 
 use crate::files;
@@ -20,6 +21,8 @@ use crate::value::{Map, Value};
 pub struct CwlDriver {
     launch: Launch,
     process: Arc<Process>,
+    /// The `$namespaces` of the document, which expand prefixed formats of the job file.
+    namespaces: Namespaces,
     run: Run,
 }
 
@@ -35,9 +38,12 @@ impl CwlDriver {
         }
         let document = cwl_parser::load_file(&reference)
             .map_err(|error| DriverError::new(error.to_string()))?;
+        let mut run = Run::new(options);
+        run.name_ontologies(!document.schemas.is_empty());
         Ok(CwlDriver {
             launch: launch.clone(),
-            run: Run::new(options),
+            run,
+            namespaces: Namespaces::default().extend(document.namespaces),
             process: document.process,
         })
     }
@@ -55,7 +61,7 @@ impl CwlDriver {
     /// gives required inputs that nothing sets placeholders from their types.
     pub fn input_object(&self) -> Result<Map, String> {
         let mut job = match &self.launch.inputs {
-            Some(path) => read_job(path)?,
+            Some(path) => read_job(path, &self.namespaces)?,
             None => Map::new(),
         };
         let mut types = Types::default();
@@ -157,13 +163,19 @@ pub fn process_name(id: &str) -> String {
     files::split_extension(&name).0.to_owned()
 }
 
-/// Reads a job file, with the locations in it relative to the file.
-fn read_job(path: &Path) -> Result<Map, String> {
+/// Reads a job file, with the locations in it relative to the file, and the namespace
+/// prefixes of file formats expanded.
+fn read_job(path: &Path, namespaces: &Namespaces) -> Result<Map, String> {
     let text = std::fs::read_to_string(path)
         .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
     let mut value = Value::parse(&text).map_err(|error| format!("{}: {error}", path.display()))?;
     let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_owned());
     files::resolve_locations(&mut value, &iri::file_url(&absolute));
+    files::visit_files(&mut value, &mut |file| {
+        if let Some(Value::String(format)) = file.get_mut("format") {
+            *format = namespaces.expand_prefix(format);
+        }
+    });
     match value {
         Value::Map(map) => Ok(map),
         Value::Null => Ok(Map::new()),

@@ -32,6 +32,9 @@ pub struct Setting<'a> {
     pub toplevel: bool,
     /// Whether the optional inputs of the process the run starts with get placeholders too.
     pub fill_optional: bool,
+    /// Whether the documents name ontologies in `$schemas`. iunctus does not read them, so a
+    /// file format that differs from the declared ones may be a subclass of one, and passes.
+    pub ontologies: bool,
 }
 
 /// Fills in and checks the input object of a process.
@@ -147,6 +150,8 @@ struct Asks<'a> {
     /// Whether array items load their contents too, as a binding's `loadContents` does.
     items_load: bool,
     load_listing: Option<LoadListing>,
+    /// The formats a file may have.
+    format: &'a [Expression],
 }
 
 impl Walk<'_, '_> {
@@ -162,6 +167,7 @@ impl Walk<'_, '_> {
             load_contents: binding_loads || schema_loads,
             items_load: binding_loads || (self.legacy && schema_loads),
             load_listing: input.load_listing,
+            format: &input.format,
         };
         self.value(&input.value_type, asks, value)
     }
@@ -211,6 +217,7 @@ impl Walk<'_, '_> {
                             load_contents: loads,
                             items_load: loads,
                             load_listing: field.load_listing,
+                            format: &field.format,
                         };
                         self.value(&field.value_type, field_asks, item)?;
                     }
@@ -240,9 +247,72 @@ impl Walk<'_, '_> {
         if asks.load_contents {
             self.setting.access.load_contents(file)?;
         }
-        if asks.secondary.is_empty() {
+        if !asks.secondary.is_empty() {
+            self.secondary_files(file, asks.secondary)?;
+        }
+        if !asks.format.is_empty() {
+            self.check_format(file, asks.format)?;
+        }
+        Ok(())
+    }
+
+    /// Fails when a file has no format, or one that none of the declared formats is, as
+    /// cwltool's `check_format`. A placeholder file without a format takes the first one, as
+    /// a job that works gives it.
+    fn check_format(&self, file: &mut Map, declared: &[Expression]) -> Result<(), String> {
+        let mut allowed = Vec::new();
+        for expression in declared {
+            match self.evaluate(expression, &Value::Null)? {
+                Value::String(format) => allowed.push(format),
+                Value::List(items) => {
+                    for item in items {
+                        let Value::String(format) = item else {
+                            return Err(format!(
+                                "a format must be a string, not {}",
+                                item.to_json()
+                            ));
+                        };
+                        allowed.push(format);
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "a format must be a string or a list of strings, not {}",
+                        other.to_json()
+                    ));
+                }
+            }
+        }
+        let location = file.get("location").and_then(Value::as_str).unwrap_or("");
+        let placeholder = self
+            .setting
+            .placeholders
+            .is_some_and(|base| location.starts_with(base));
+        if placeholder
+            && !file.contains_key("format")
+            && let Some(first) = allowed.first()
+        {
+            file.insert("format".into(), Value::String(first.clone()));
+        }
+        let name = file.get("basename").and_then(Value::as_str).unwrap_or("");
+        let Some(format) = file.get("format").and_then(Value::as_str) else {
+            return Err(format!("the file `{name}` has no format, but needs one"));
+        };
+        if self.setting.ontologies || allowed.iter().any(|allowed| allowed == format) {
             return Ok(());
         }
+        Err(format!(
+            "the file `{name}` has the format `{format}`, not one of `{}`",
+            allowed.join("`, `")
+        ))
+    }
+
+    /// Adds the secondary files of a file that the patterns name.
+    fn secondary_files(
+        &mut self,
+        file: &mut Map,
+        patterns: &[SecondaryFile],
+    ) -> Result<(), String> {
         let trusted = file.contains_key("secondaryFiles") && !self.setting.discover;
         if trusted {
             return Ok(());
@@ -250,7 +320,7 @@ impl Walk<'_, '_> {
         if !file.contains_key("secondaryFiles") {
             file.insert("secondaryFiles".into(), Value::List(Vec::new()));
         }
-        for pattern in asks.secondary {
+        for pattern in patterns {
             let this = Value::Map(file.clone());
             let required = match &pattern.required {
                 None => true,

@@ -21,7 +21,8 @@ pub struct Document {
     pub process: Arc<Process>,
     /// The `$namespaces` of the file, as prefix and IRI pairs.
     pub namespaces: Vec<(String, String)>,
-    /// The `$schemas` of the file; they are not fetched.
+    /// The `$schemas` of the file and of every document it loads, as cwltool reads them into
+    /// one graph; they are not fetched.
     pub schemas: Vec<String>,
 }
 
@@ -66,10 +67,23 @@ impl Loader {
         let process = self.process(&url, &at)?;
         check_workflows(&process, &[])?;
         let prepared = self.prepare(&file, &at)?;
+        let mut schemas = prepared.schemas.clone();
+        let mut others: Vec<&String> = self
+            .prepared
+            .values()
+            .flatten()
+            .flat_map(|other| &other.schemas)
+            .collect();
+        others.sort();
+        for schema in others {
+            if !schemas.contains(schema) {
+                schemas.push(schema.clone());
+            }
+        }
         Ok(Document {
             process,
             namespaces: prepared.namespaces.clone(),
-            schemas: prepared.schemas.clone(),
+            schemas,
         })
     }
 

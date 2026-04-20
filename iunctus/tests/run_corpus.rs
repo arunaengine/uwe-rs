@@ -98,11 +98,11 @@ fn pipelines_run_as_recorded() {
             .expect("links the downloads");
         format!("{pipeline} {}", outcome(&corpus, pipeline, &cache))
     };
-    // The runs go in parallel, `IUNCTUS_CORPUS_JOBS` at a time (8 by default).
+    // The runs go in parallel, `IUNCTUS_CORPUS_JOBS` at a time (4 by default).
     let jobs: usize = std::env::var("IUNCTUS_CORPUS_JOBS")
         .ok()
         .and_then(|jobs| jobs.parse().ok())
-        .unwrap_or(8);
+        .unwrap_or(4);
     let next = AtomicUsize::new(0);
     let outcomes = Mutex::new(vec![String::new(); pipelines.len()]);
     std::thread::scope(|scope| {

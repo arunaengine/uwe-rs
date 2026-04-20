@@ -137,3 +137,24 @@ fn summaries_put_the_core_options_first() {
     ];
     assert_eq!(log, expected.join("\n"));
 }
+
+#[test]
+fn samplesheets_become_rows_with_meta_maps() {
+    let dir = directory();
+    let rows = run("fromSamplesheet", params(&[]), vec![Value::string("input")]).unwrap();
+    assert_eq!(
+        rows,
+        format!(
+            "[[[id:S1, reps:2], {dir}/a_1.fq, {dir}/a_2.fq, auto, 1.5, true], \
+             [[id:S2, reps:1], {dir}/b_1.fq, [], rev, 3, false]]"
+        )
+    );
+    let missing = params(&[("input", Value::string("missing.csv"))]);
+    let error = run("validateParameters", missing, vec![])
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("* --input: the file or directory 'missing.csv' does not exist."),
+        "{error}"
+    );
+}

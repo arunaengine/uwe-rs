@@ -6,6 +6,7 @@
 use nextflow_evaluator::interpreter::Error;
 use nextflow_evaluator::value::Value;
 
+use super::samplesheet::validate_file;
 use super::{Problem, flag, groups, parameters_schema};
 use crate::Context;
 use crate::nf_schema::{entries, get, json, paths, plain, thrown};
@@ -134,7 +135,7 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
         .map_err(|error| thrown(format!("Invalid parameters schema: {error}")))?;
     for problem in super::problems(&validator, &instance) {
         problems.push(match problem {
-            Problem::Missing { name } => format!("* Missing required parameter: --{name}"),
+            Problem::Missing { name, .. } => format!("* Missing required parameter: --{name}"),
             Problem::Value {
                 path,
                 message,
@@ -160,6 +161,16 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
             "The following invalid input values have been detected:\n\n{}\n\n",
             problems.join("\n")
         )));
+    }
+    for (_, properties) in &groups {
+        for (name, definition) in properties {
+            let Some(sheet) = get(&context.params, name).filter(Value::truth) else {
+                continue;
+            };
+            if let Some(sheet_schema) = get(definition, "schema") {
+                validate_file(name, &sheet, &sheet_schema, context)?;
+            }
+        }
     }
     Ok(Value::Null)
 }

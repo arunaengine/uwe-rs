@@ -56,6 +56,8 @@ pub struct StepInput {
     pub id: String,
     /// The resolved identifiers of the sources.
     pub source: Vec<String>,
+    /// Whether `source` is written as a list, which cwltool's type checker merges.
+    pub source_is_list: bool,
     pub link_merge: Option<LinkMerge>,
     pub pick_value: Option<PickValue>,
     pub load_contents: Option<bool>,
@@ -183,6 +185,9 @@ fn read_input(node: &Node, context: &Context) -> Result<StepInput, Error> {
             .map(record::texts)
             .transpose()?
             .unwrap_or_default(),
+        source_is_list: record
+            .optional("source")
+            .is_some_and(|node| node.as_list().is_some()),
         link_merge: record.optional("linkMerge").map(read_merge).transpose()?,
         pick_value: record
             .since("pickValue", Version::V1_2, context)?

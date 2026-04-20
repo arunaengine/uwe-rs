@@ -8,6 +8,7 @@ use crate::error::Error;
 use crate::model::process::{Class, Kind, Process};
 use crate::model::requirement::{Requirement, RequirementClass};
 use crate::model::schema::{Type, short_name};
+use crate::model::typecheck::check_types;
 use crate::model::workflow::{Step, Workflow};
 
 /// Checks every workflow below a process; `inherited` are the requirements and hints of the
@@ -24,7 +25,8 @@ pub fn check_workflows(process: &Process, inherited: &[&Requirement]) -> Result<
         check_step(step, &step_scope)?;
         check_workflows(&step.run.process, &step_scope)?;
     }
-    check_cycles(workflow)
+    check_cycles(workflow)?;
+    check_types(process, workflow)
 }
 
 fn check_step(step: &Step, scope: &[&Requirement]) -> Result<(), Error> {

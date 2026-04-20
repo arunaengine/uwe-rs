@@ -41,9 +41,6 @@ pub struct Module {
     pub typed_parameters: Vec<TypedParameter>,
     /// The names that the `output { }` block declares.
     pub output_names: Vec<Rc<str>>,
-    /// The calls of processes and workflows by name, with their number of arguments, which
-    /// the loader checks once includes are linked.
-    pub definition_calls: Vec<(Rc<str>, usize, Span)>,
     /// What each include refers to: the included script and the name there. The module loader
     /// fills this in once the included scripts are loaded.
     pub links: std::cell::RefCell<HashMap<Rc<str>, Link>>,

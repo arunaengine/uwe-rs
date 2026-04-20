@@ -275,7 +275,6 @@ pub fn lower_script(
     module.variables = (0..lowering.scopes.module_count())
         .map(|_| Rc::new(std::cell::RefCell::new(Value::Null)))
         .collect();
-    module.definition_calls = std::mem::take(&mut lowering.definition_calls);
     module.legacy = std::mem::take(&mut lowering.legacy);
     if lowering.errors.is_empty() {
         Ok(module)
@@ -309,8 +308,6 @@ pub(crate) struct Lowering<'a> {
     dynamic_names: bool,
     /// Whether the code is a template expression, where every unknown name is resolved late.
     template: bool,
-    /// The calls of processes and workflows, for `Module::definition_calls`.
-    definition_calls: Vec<(Rc<str>, usize, Span)>,
     /// The value of a name of legacy config syntax, from `ConfigNames::lookup`.
     lookup: Option<&'a Lookup<'a>>,
     /// Legacy syntax that strict syntax rejects with these errors, for `Module::legacy`.
@@ -339,7 +336,6 @@ impl<'a> Lowering<'a> {
             config: false,
             dynamic_names: false,
             template: false,
-            definition_calls: Vec::new(),
             lookup: None,
             legacy: Vec::new(),
             library: HashSet::new(),

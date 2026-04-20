@@ -443,9 +443,6 @@ impl Lowering<'_> {
                 DefinitionKind::Process => "Processes",
                 DefinitionKind::Workflow => "Workflows",
             };
-            // Named arguments are one map argument.
-            let count = arguments.positional.len() + usize::from(!arguments.named.is_empty());
-            self.definition_calls.push((name.into(), count, span));
             if !self.in_workflow {
                 self.error(format!("{what} can only be called from a workflow"), span);
             } else if self.scopes.in_closure() {

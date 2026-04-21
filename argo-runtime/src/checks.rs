@@ -1,16 +1,17 @@
 //! The single rules of Argo's checks of a submitted workflow (workflow/validate/validate.go of
-//! v4.1.4): names, arguments, hooks, template types, and the inputs that a call supplies. The
-//! module `validate` applies them while it walks the templates.
+//! v4.1.4): names, arguments, hooks, template types, the inputs a call supplies, and the order of
+//! DAG tasks. The module `validate` applies them while it walks the templates.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{BTreeMap, HashSet};
 use std::sync::OnceLock;
 
-use argo_parser::model::{Arguments, Artifact, LifecycleHook, Template};
+use argo_parser::model::{Arguments, Artifact, DagTask, LifecycleHook, Template};
 use argo_parser::{Node, Value as Yaml};
 use regex::Regex;
 
+use crate::dag::dependencies;
 use crate::validate::Supplied;
 
 /// The keys of a template that give its type.
@@ -200,6 +201,83 @@ pub(crate) fn hooks(hooks: &BTreeMap<String, LifecycleHook>, prefix: &str) -> Re
     Ok(())
 }
 
+pub(crate) fn one_loop(items: &[Node], param: &str, sequence: bool) -> Result<(), String> {
+    let loops = [!items.is_empty(), !param.is_empty(), sequence];
+    if loops.into_iter().filter(|&used| used).count() > 1 {
+        return Err("only one of withItems, withParam, withSequence can be specified".to_owned());
+    }
+    Ok(())
+}
+
+/// A task argument that reads `{{tasks.x...}}` needs `x` among the task's ancestors.
+pub(crate) fn argument_dependencies(
+    arguments: &Arguments,
+    ancestors: &[String],
+) -> Result<(), String> {
+    let task = |text: &str| {
+        text.strip_prefix("{{tasks.")
+            .and_then(|rest| rest.split('.').next())
+            .map(str::to_owned)
+    };
+    for parameter in &arguments.parameters {
+        let value = parameter.value.as_ref().map(|value| value.0.as_str());
+        if let Some(name) = value.and_then(task)
+            && !ancestors.contains(&name)
+        {
+            return Err(format!(
+                "missing dependency '{name}' for parameter '{}'",
+                parameter.name
+            ));
+        }
+    }
+    for artifact in &arguments.artifacts {
+        if let Some(name) = task(&artifact.from)
+            && !ancestors.contains(&name)
+        {
+            return Err(format!(
+                "missing dependency '{name}' for artifact '{}'",
+                artifact.name
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Sorts DAG tasks by their dependencies as Argo's `TopologicalSorting` does, which fails on a
+/// repeated name, a dependency that is not a task, and a cycle.
+pub(crate) fn sort_tasks(tasks: &[DagTask]) -> Result<(), String> {
+    let mut waiting: Vec<(String, Vec<String>)> = Vec::new();
+    for task in tasks {
+        if waiting.iter().any(|(name, _)| name == &task.name) {
+            return Err(format!("duplicated nodeName {}", task.name));
+        }
+        waiting.push((task.name.clone(), dependencies(task, tasks).names));
+    }
+    for (_, needs) in &waiting {
+        if let Some(missing) = needs
+            .iter()
+            .find(|need| !waiting.iter().any(|(name, _)| name == *need))
+        {
+            return Err(format!("invalid dependency {missing}"));
+        }
+    }
+    let mut done: HashSet<String> = HashSet::new();
+    while done.len() < waiting.len() {
+        let ready: Vec<String> = waiting
+            .iter()
+            .filter(|(name, needs)| {
+                !done.contains(name) && needs.iter().all(|need| done.contains(need))
+            })
+            .map(|(name, _)| name.clone())
+            .collect();
+        if ready.is_empty() {
+            return Err("graph with cycle".to_owned());
+        }
+        done.extend(ready);
+    }
+    Ok(())
+}
+
 /// The two rules for names: fields like templates, steps and tasks, and parameters and
 /// artifacts.
 #[derive(Clone, Copy)]
@@ -241,6 +319,15 @@ pub(crate) fn invalid_field_name(name: &str) -> Option<String> {
         errors.push("name must consist of alpha-numeric characters or '-', and must start with an alpha-numeric character (e.g. My-name1-2, 123-NAME)".to_owned());
     }
     (!errors.is_empty()).then(|| errors.join(";"))
+}
+
+/// A name with its tags replaced by `x`: Argo fills tags in step names with placeholders before
+/// it checks them.
+pub(crate) fn without_tags(name: &str) -> String {
+    static TAG: OnceLock<Regex> = OnceLock::new();
+    TAG.get_or_init(|| Regex::new(r"\{\{[^}]*\}\}").unwrap_or_else(|_| unreachable!()))
+        .replace_all(name, "x")
+        .into_owned()
 }
 
 fn field_name() -> &'static Regex {

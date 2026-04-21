@@ -37,6 +37,7 @@ use argo_parser::{Node, Value as Yaml, parse_yaml};
 use workflow_graph::{Driver, DriverError, Language, Launch, Outcome, Task};
 
 pub use library::{Document, Kind, Library, load_file, repository_of};
+pub use validate::validate;
 
 /// How a run behaves, besides its document and library.
 #[derive(Clone, Debug, Default)]

@@ -4,7 +4,8 @@
 # without patterns the YAML and JSON files of the whole repository are taken. `just argo-corpus`
 # fetches exactly these commits into ~/.cache/iunctus/corpus/argo/<repository name>.
 # GenivaInformatics/gennext-workflows has no license file: it is fetched for local research only,
-# and none of its files may be copied into this repository.
+# and none of its files may be copied into this repository. The last repository is not part of
+# the research corpus: it holds the executor plugin that the talk-demos examples install.
 argoproj/argo-workflows v4.1.4 b5b4d665e9be9b87c115f943584c3e0ae96fe073 examples/ test/e2e/
 argoproj-labs/hera main 66f82a8dc8fa9f4a224e5f91106c95fbb6ce9746 examples/ !*.upstream.yaml
 kubeflow/pipelines master 7774d7b0d12dea8306f72c879ca0cf79a921145e test_data/compiled-workflows/
@@ -24,3 +25,4 @@ devops-ws/argo-workflows-guide master d2ff171b6ef5457d5b0d5bd82d4b84cdda6e07be
 terrytangyuan/distributed-ml-patterns main 6c83af30a36c1fc10a63a65561abffceedfa23d7
 thoth-station/workflows master 0635d89c412d166329e808e1655c192c65383509
 AliyunContainerService/argo-workflow-examples main 7a506318fde9980363ec95b4c28ddf86bcc41356
+argoproj-labs/argo-workflows-hello-executor-plugin main 01b72af05ac4d792fb4fb990a6445e49a5cce258

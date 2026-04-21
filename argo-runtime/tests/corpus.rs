@@ -1,7 +1,10 @@
-//! Runs every Argo document of the corpus from `just argo-corpus` that has an entrypoint with
-//! the mock TES executor, and compares the outcomes with tests/fixtures/corpus/outcomes.txt:
-//! `ok` and the number of tasks, or the exit code (33 for unsupported features) and the first
-//! error. `ARGO_CORPUS_UPDATE=1` rewrites the fixture; `ARGO_CORPUS_FILTER` runs only the
+//! Reads every Argo document of the corpus from `just argo-corpus`. Documents with an entrypoint
+//! run with the mock TES executor; the others, like libraries of WorkflowTemplates, get the
+//! checks Argo makes when they are created. The outcomes are compared with
+//! tests/fixtures/corpus/outcomes.txt: `ok` and the number of tasks, `valid`, or the exit code
+//! (33 for unsupported features) and the first error. Each document that does not pass needs a
+//! line in tests/fixtures/corpus/rejected.txt with the evidence that Argo rejects or fails it
+//! too. `ARGO_CORPUS_UPDATE=1` rewrites the outcomes; `ARGO_CORPUS_FILTER` runs only the
 //! documents whose path contains it.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -11,18 +14,33 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use argo_runtime::library::collect_files;
-use argo_runtime::{ArgoDriver, Document, Library, Options, load_file};
+use argo_runtime::{ArgoDriver, Document, Library, Options, load_file, validate};
 use workflow_graph::{MockTes, execute};
 
 const FIXTURE: &str = "tests/fixtures/corpus/outcomes.txt";
 
+/// Why the documents that do not pass fail in Argo too, by document.
+const REJECTED: &str = "tests/fixtures/corpus/rejected.txt";
+
 /// Directories of templates that documents under a path get as configs, as `Launch.configs`
 /// gives them. Hera's upstream examples are copies of Argo's examples, but Hera does not copy
-/// the WorkflowTemplates that they refer to in full.
-const CONFIGS: &[(&str, &str)] = &[(
-    "hera/examples/workflows/upstream/",
-    "argo-workflows/examples",
-)];
+/// the WorkflowTemplates that they refer to in full. The talk-demos examples of plugin templates
+/// install the hello executor plugin from its own repository, and the talk-demos copy of the CI
+/// workflow of pipekit/argo-workflows-ci-example refers to that repository's WorkflowTemplates.
+const CONFIGS: &[(&str, &str)] = &[
+    (
+        "hera/examples/workflows/upstream/",
+        "argo-workflows/examples",
+    ),
+    (
+        "talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/",
+        "argo-workflows-hello-executor-plugin",
+    ),
+    (
+        "talk-demos/argocon-demos/2023-artifact-management-at-scale/",
+        "argo-workflows-ci-example/bootstrap/workflow-templates",
+    ),
+];
 
 #[test]
 #[ignore = "needs the Argo corpus from `just argo-corpus`; run it with `just argo-corpus-test`"]
@@ -106,18 +124,19 @@ impl Corpus {
     }
 }
 
-/// A message on one line of at most 200 characters, without the corpus directory.
+/// A message on one line without the corpus directory. A message of more than 200 characters
+/// keeps its end, where Argo's messages name what failed.
 fn one_line(message: &str, root: &str) -> String {
-    let message: String = message
-        .replace(['\n', '\r'], " ")
-        .chars()
-        .take(200)
-        .collect();
-    if root.is_empty() {
-        message
-    } else {
-        message.replace(root, "")
+    let mut message = message.replace(['\n', '\r'], " ");
+    if !root.is_empty() {
+        message = message.replace(root, "");
     }
+    let characters: Vec<char> = message.chars().collect();
+    if characters.len() <= 200 {
+        return message;
+    }
+    let end: String = characters[characters.len() - 197..].iter().collect();
+    format!("...{end}")
 }
 
 /// The directories of the corpus, one per repository.
@@ -185,9 +204,9 @@ fn run_corpus() {
             let documents = match load_file(&file) {
                 Ok(documents) => documents,
                 Err(error) => {
-                    // A file that does not load counts when it looks like an Argo workflow.
+                    // A file that does not load counts when it looks like it holds Argo documents.
                     let text = std::fs::read_to_string(&file).unwrap_or_default();
-                    if text.contains("argoproj.io/") && text.contains("entrypoint") {
+                    if text.contains("apiVersion: argoproj.io/") {
                         total += 1;
                         let message = one_line(&error, &root.to_string_lossy());
                         if corpus.verbose {
@@ -198,7 +217,7 @@ fn run_corpus() {
                     continue;
                 }
             };
-            for document in documents.iter().filter(|document| document.runnable()) {
+            for document in &documents {
                 let key = if documents.len() > 1 {
                     format!("{relative}#{}", document.index)
                 } else {
@@ -208,9 +227,16 @@ fn run_corpus() {
                     eprintln!("running {key}");
                 }
                 let library = corpus.library(&relative, &documents, &pool);
-                let outcome = corpus.run(&relative, document, library);
+                let outcome = if document.runnable() {
+                    corpus.run(&relative, document, library)
+                } else {
+                    match validate(document, &library) {
+                        Ok(()) => "valid".to_owned(),
+                        Err(error) => format!("1 {}", one_line(&error, "")),
+                    }
+                };
                 total += 1;
-                if outcome.starts_with("ok") {
+                if passed(&outcome) {
                     ok += 1;
                 }
                 outcomes.insert(key, outcome);
@@ -218,16 +244,13 @@ fn run_corpus() {
         }
         let name = repository.file_name().unwrap_or_default().to_string_lossy();
         if total > 0 {
-            summary.push(format!("{name:40} {ok:5} of {total:5} with a full graph"));
+            summary.push(format!("{name:40} {ok:5} of {total:5} run or pass"));
         }
     }
     let total = outcomes.len();
-    let ok = outcomes
-        .values()
-        .filter(|outcome| outcome.starts_with("ok"))
-        .count();
+    let ok = outcomes.values().filter(|outcome| passed(outcome)).count();
     println!("{}", summary.join("\n"));
-    println!("{ok} of {total} documents run through with a full graph");
+    println!("{ok} of {total} documents run through with a full graph or pass Argo's checks");
     if update {
         write_fixture(&fixture, outcomes, &expected, &corpus.filter);
         return;
@@ -256,6 +279,37 @@ fn run_corpus() {
         differences.len(),
         differences.join("\n")
     );
+    if corpus.filter.is_empty() {
+        check_evidence(&outcomes);
+    }
+}
+
+/// Whether a document runs through or passes Argo's checks.
+fn passed(outcome: &str) -> bool {
+    outcome.starts_with("ok") || outcome == "valid"
+}
+
+/// Checks that every document that does not pass has evidence that Argo rejects or fails it
+/// too, and that no evidence is left for a document that passes.
+fn check_evidence(outcomes: &BTreeMap<String, String>) {
+    let evidence = read_fixture(&Path::new(env!("CARGO_MANIFEST_DIR")).join(REJECTED));
+    let mut problems = Vec::new();
+    for (document, outcome) in outcomes {
+        if !passed(outcome) && !evidence.contains_key(document) {
+            problems.push(format!("{document}: {outcome} (no evidence)"));
+        }
+    }
+    for document in evidence.keys() {
+        if outcomes.get(document).is_none_or(|outcome| passed(outcome)) {
+            problems.push(format!("{document}: evidence, but the document passes"));
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "{} documents disagree with {REJECTED}:\n{}",
+        problems.len(),
+        problems.join("\n")
+    );
 }
 
 /// Writes the outcomes; a filtered run updates only the documents it ran.
@@ -273,7 +327,7 @@ fn write_fixture(
         }
     }
     let mut text = String::from(
-        "# Outcomes of the Argo corpus test with the mock TES executor: `ok` and the number of\n# tasks, or the exit code (33 for unsupported features) and the first error. A tab ends the\n# path, which may hold spaces.\n",
+        "# Outcomes of the Argo corpus test: `ok` and the number of tasks of a run with the mock TES\n# executor, `valid` for a document without an entrypoint that passes Argo's checks, or the\n# exit code (33 for unsupported features) and the first error. A tab ends the path, which may\n# hold spaces.\n",
     );
     for (document, outcome) in &outcomes {
         text.push_str(&format!("{document}\t{outcome}\n"));

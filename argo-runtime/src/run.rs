@@ -85,6 +85,7 @@ pub(crate) enum NodeKind {
     Retry,
     Skipped,
     Suspend,
+    Plugin,
 }
 
 /// Where an artifact comes from.
@@ -899,10 +900,7 @@ impl Run {
         {
             NodeKind::Pod
         } else if template.plugin.is_some() {
-            return Err(Failure::unsupported(format!(
-                "{}: plugin templates are not supported: executor plugins need the Argo agent",
-                self.nodes[index].name
-            )));
+            NodeKind::Plugin
         } else {
             let message = format!(
                 "template {} has no type: it needs container, script, steps, dag or another",
@@ -921,6 +919,7 @@ impl Run {
                 self.suspend(index);
                 Ok(())
             }
+            NodeKind::Plugin => self.start_plugin(index),
             _ => self.start_pod(index),
         }
     }
@@ -1566,6 +1565,8 @@ impl Run {
         let node = &self.nodes[index];
         let mut tasks = match node.kind {
             NodeKind::Pod => node.tasks.clone(),
+            // The calls of plugins follow each other; the last one gave the reply.
+            NodeKind::Plugin => node.tasks.last().copied().into_iter().collect(),
             NodeKind::Retry => node
                 .children
                 .last()
@@ -1707,7 +1708,11 @@ impl Run {
             *entry = Some(outcome);
         }
         if node.outcomes.iter().all(Option::is_some) {
-            self.finish_pod(index)?;
+            if node.kind == NodeKind::Plugin {
+                self.finish_plugin(index)?;
+            } else {
+                self.finish_pod(index)?;
+            }
         }
         self.operate()
     }

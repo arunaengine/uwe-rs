@@ -18,6 +18,10 @@ pub enum Kind {
     WorkflowTemplate,
     ClusterWorkflowTemplate,
     CronWorkflow,
+    /// An executor plugin, installed as a ConfigMap with the label
+    /// `workflows.argoproj.io/configmap-type: ExecutorPlugin`, as `argo executor-plugin build`
+    /// makes it.
+    ExecutorPlugin,
 }
 
 impl Kind {
@@ -37,6 +41,7 @@ impl Kind {
             Kind::WorkflowTemplate => "WorkflowTemplate",
             Kind::ClusterWorkflowTemplate => "ClusterWorkflowTemplate",
             Kind::CronWorkflow => "CronWorkflow",
+            Kind::ExecutorPlugin => "ExecutorPlugin",
         }
     }
 }
@@ -100,6 +105,16 @@ pub fn load_file(path: &Path) -> Result<Vec<Rc<Document>>, String> {
         .map_err(|error| format!("{}:{}: {}", path.display(), error.position, error.message))?;
     let mut documents = Vec::new();
     for (index, mut node) in nodes.into_iter().enumerate() {
+        if let Some(name) = plugin_config_map(&node) {
+            documents.push(Rc::new(Document {
+                path: path.to_owned(),
+                index,
+                kind: Kind::ExecutorPlugin,
+                name,
+                node,
+            }));
+            continue;
+        }
         let api = node.get("apiVersion").and_then(Node::as_str).unwrap_or("");
         let Some(kind) = node
             .get("kind")
@@ -133,6 +148,27 @@ pub fn load_file(path: &Path) -> Result<Vec<Rc<Document>>, String> {
         }));
     }
     Ok(documents)
+}
+
+/// The name of the executor plugin that a ConfigMap installs, if it is one: its name without
+/// the suffix `-executor-plugin`, as Argo's `FromConfigMap` reads it.
+fn plugin_config_map(node: &Node) -> Option<String> {
+    fn text(node: Option<&Node>) -> &str {
+        node.and_then(Node::as_str).unwrap_or("")
+    }
+    let metadata = node.get("metadata");
+    let label = metadata
+        .and_then(|metadata| metadata.get("labels"))
+        .and_then(|labels| labels.get("workflows.argoproj.io/configmap-type"));
+    let is_plugin = text(node.get("apiVersion")) == "v1"
+        && text(node.get("kind")) == "ConfigMap"
+        && text(label) == "ExecutorPlugin";
+    let name = text(metadata.and_then(|metadata| metadata.get("name")));
+    is_plugin.then(|| {
+        name.strip_suffix("-executor-plugin")
+            .unwrap_or(name)
+            .to_owned()
+    })
 }
 
 /// Documents by kind and name. Directories are read on the first lookup that the documents
@@ -199,6 +235,24 @@ impl Library {
         self.best(kind, name, near)
     }
 
+    /// Every document of a kind, one per name, as [`Library::find`] picks it, by name.
+    pub fn all(&self, kind: Kind, near: &Path) -> Vec<Rc<Document>> {
+        self.read_directories();
+        let mut names: Vec<String> = self
+            .documents
+            .borrow()
+            .iter()
+            .filter(|(_, document)| document.kind == kind)
+            .map(|(_, document)| document.name.clone())
+            .collect();
+        names.sort();
+        names.dedup();
+        names
+            .iter()
+            .filter_map(|name| self.best(kind, name, near))
+            .collect()
+    }
+
     fn best(&self, kind: Kind, name: &str, near: &Path) -> Option<Rc<Document>> {
         let documents = self.documents.borrow();
         let mut best: Option<(u8, usize, &Rc<Document>)> = None;
@@ -262,4 +316,26 @@ pub fn repository_of(file: &Path) -> PathBuf {
         .find(|ancestor| ancestor.join(".git").exists())
         .map(Path::to_owned)
         .unwrap_or(directory)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_plugin_config_maps() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let file = directory.path().join("plugins.yaml");
+        let text = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: hello-executor-plugin\n  labels: {workflows.argoproj.io/configmap-type: ExecutorPlugin}\ndata:\n  sidecar.container: 'image: python'\n---\napiVersion: v1\nkind: ConfigMap\nmetadata: {name: settings}\n";
+        std::fs::write(&file, text).expect("the file is written");
+        let documents = load_file(&file).expect("the file loads");
+        assert_eq!(documents.len(), 1);
+        assert_eq!(documents[0].kind, Kind::ExecutorPlugin);
+        assert_eq!(documents[0].name, "hello");
+        let library = Library::new();
+        library.add_directory(2, directory.path());
+        let plugins = library.all(Kind::ExecutorPlugin, &file);
+        assert_eq!(plugins.len(), 1);
+        assert!(!plugins[0].runnable());
+    }
 }

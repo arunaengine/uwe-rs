@@ -466,6 +466,7 @@ impl Run {
             String::new(),
             root_context.path.clone(),
             &spec_node,
+            document.kind,
         ));
         Check::new(&library)
             .spec(

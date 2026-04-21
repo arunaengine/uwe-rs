@@ -1,6 +1,6 @@
 //! The single rules of Argo's checks of a submitted workflow (workflow/validate/validate.go of
-//! v4.1.4): names, arguments, hooks, template types, the inputs a call supplies, and the order of
-//! DAG tasks. The module `validate` applies them while it walks the templates.
+//! v4.1.4): names, arguments, the inputs a call supplies, leaf templates, and the order of DAG
+//! tasks. The module `validate` applies them while it walks the templates.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -12,7 +12,7 @@ use argo_parser::{Node, Value as Yaml};
 use regex::Regex;
 
 use crate::dag::dependencies;
-use crate::validate::Supplied;
+use crate::validate::{Base, Supplied};
 
 /// The keys of a template that give its type.
 const TYPES: [&str; 10] = [
@@ -116,6 +116,74 @@ fn has_location(artifact: &Artifact) -> bool {
         || filled(&artifact.http, &["url"])
         || filled(&artifact.artifactory, &["url"])
         || filled(&artifact.plugin, &["key"])
+}
+
+/// The checks of a leaf template: its image, the action and manifest of a resource, and fields
+/// that only steps and DAGs may have.
+pub(crate) fn leaf_checks(template: &Template, base: &Base) -> Result<(), String> {
+    let name = &template.name;
+    let default_image = |kind: &str| {
+        base.defaults
+            .as_ref()
+            .and_then(|defaults| defaults.get(kind))
+            .and_then(|container| container.get("image"))
+            .and_then(Node::as_str)
+            .is_some_and(|image| !image.is_empty())
+    };
+    for (kind, container) in [
+        ("container", &template.container),
+        ("script", &template.script),
+    ] {
+        if let Some(container) = container
+            && container.image.is_empty()
+            && !default_image(kind)
+        {
+            return Err(format!("templates.{name}.{kind}.image may not be empty"));
+        }
+    }
+    if let Some(set) = &template.container_set {
+        let inputs_or_outputs = !template.inputs.artifacts.is_empty()
+            || !template.outputs.parameters.is_empty()
+            || !template.outputs.artifacts.is_empty();
+        if inputs_or_outputs
+            && !set
+                .containers
+                .iter()
+                .any(|container| container.name == "main")
+        {
+            return Err(format!(
+                "templates.{name}.containerSet.containers must have a container named \"main\" for input or output"
+            ));
+        }
+    }
+    if let Some(resource) = &template.resource {
+        let action = resource.action.as_str();
+        let known = matches!(
+            action,
+            "get" | "create" | "apply" | "delete" | "replace" | "patch"
+        );
+        if !known && !action.contains("{{") {
+            return Err(format!(
+                "templates.{name}.resource.action must be one of: get, create, apply, delete, replace, patch"
+            ));
+        }
+        if action != "delete" && action != "get" {
+            if resource.manifest.is_empty() && resource.manifest_from.is_none() {
+                return Err(format!(
+                    "either templates.{name}.resource.manifest or templates.{name}.resource.manifestFrom must be specified"
+                ));
+            }
+            if !resource.manifest.is_empty() && resource.manifest_from.is_some() {
+                return Err("shouldn't have both `manifest` and `manifestFrom` specified in `Manifest` for resource template".to_owned());
+            }
+        }
+    }
+    if template.parallelism.is_some() {
+        return Err(format!(
+            "templates.{name}.parallelism is only valid for steps and dag templates"
+        ));
+    }
+    Ok(())
 }
 
 /// The arguments of a workflow, step or task: valid, unique names, and a value for every

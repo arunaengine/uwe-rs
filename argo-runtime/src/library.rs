@@ -225,14 +225,31 @@ impl Library {
     /// The document of this kind and name that is best for a reference from `near`: the one
     /// with the lowest priority number, then the one whose path shares most with `near`.
     pub fn find(&self, kind: Kind, name: &str, near: &Path) -> Option<Rc<Document>> {
-        if let Some(found) = self.best(kind, name, near) {
+        if let Some(found) = self.best(kind, name, near, |_| true) {
             return Some(found);
         }
         if self.directories.borrow().is_empty() {
             return None;
         }
         self.read_directories();
-        self.best(kind, name, near)
+        self.best(kind, name, near, |_| true)
+    }
+
+    /// The document that a `templateRef` names: like [`Library::find`], but among several
+    /// documents of the kind and name, those that hold the template win. A repository may keep
+    /// several versions of a WorkflowTemplate, while a cluster holds the one that the workflow
+    /// was written for.
+    pub fn find_template(
+        &self,
+        kind: Kind,
+        name: &str,
+        template: &str,
+        near: &Path,
+    ) -> Option<Rc<Document>> {
+        let holds = |document: &Document| document.template(template).is_some();
+        self.read_directories();
+        self.best(kind, name, near, holds)
+            .or_else(|| self.best(kind, name, near, |_| true))
     }
 
     /// Every document of a kind, one per name, as [`Library::find`] picks it, by name.
@@ -249,15 +266,21 @@ impl Library {
         names.dedup();
         names
             .iter()
-            .filter_map(|name| self.best(kind, name, near))
+            .filter_map(|name| self.best(kind, name, near, |_| true))
             .collect()
     }
 
-    fn best(&self, kind: Kind, name: &str, near: &Path) -> Option<Rc<Document>> {
+    fn best(
+        &self,
+        kind: Kind,
+        name: &str,
+        near: &Path,
+        accept: impl Fn(&Document) -> bool,
+    ) -> Option<Rc<Document>> {
         let documents = self.documents.borrow();
         let mut best: Option<(u8, usize, &Rc<Document>)> = None;
         for (priority, document) in documents.iter() {
-            if document.kind != kind || document.name != name {
+            if document.kind != kind || document.name != name || !accept(document) {
                 continue;
             }
             let shared = document
@@ -337,5 +360,28 @@ mod tests {
         let plugins = library.all(Kind::ExecutorPlugin, &file);
         assert_eq!(plugins.len(), 1);
         assert!(!plugins[0].runnable());
+    }
+
+    #[test]
+    fn template_references_pick_the_copy_that_holds_the_template() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        for (file, template) in [("a.yaml", "duo"), ("b.yaml", "solo")] {
+            let text = format!(
+                "apiVersion: argoproj.io/v1alpha1\nkind: WorkflowTemplate\nmetadata: {{name: lib}}\nspec:\n  templates:\n  - {{name: {template}, container: {{image: x}}}}\n"
+            );
+            std::fs::write(directory.path().join(file), text).expect("the file is written");
+        }
+        let library = Library::new();
+        library.add_directory(2, directory.path());
+        let near = directory.path().join("workflow.yaml");
+        let found = |template: &str| {
+            library
+                .find_template(Kind::WorkflowTemplate, "lib", template, &near)
+                .map(|document| document.path.clone())
+        };
+        assert_eq!(found("solo"), Some(directory.path().join("b.yaml")));
+        assert_eq!(found("duo"), Some(directory.path().join("a.yaml")));
+        // Without a copy that holds it, the usual copy is found.
+        assert_eq!(found("trio"), Some(directory.path().join("a.yaml")));
     }
 }

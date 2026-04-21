@@ -16,6 +16,7 @@ use argo_parser::{Entry, Node, Position, Value as Yaml, decode};
 use jiff::Timestamp;
 use workflow_graph::{Outcome, Task, TaskId};
 
+use crate::checks::{Names, arguments, field_names, hooks};
 use crate::library::{Document, Kind as DocumentKind, Library};
 use crate::merge::{merge, with_defaults};
 use crate::scope::Scope;
@@ -345,7 +346,6 @@ impl Run {
             Some(Yaml::Sequence(templates)) => templates.clone(),
             _ => Vec::new(),
         };
-        unique_names(&templates).map_err(Failure::error)?;
         let root_context = Rc::new(Context {
             label: String::new(),
             path: context_path,
@@ -453,6 +453,17 @@ impl Run {
             parameter.value_from = None;
         }
         spec.arguments.parameters = parameters;
+        // The workflow is checked as Argo checks it when it is submitted, with the parameters
+        // it got.
+        let names: Vec<&str> = root_context
+            .templates
+            .iter()
+            .map(|template| template.get("name").and_then(Node::as_str).unwrap_or(""))
+            .collect();
+        field_names(&names, Names::Field)
+            .map_err(|error| Failure::error(format!("spec.templates{error}")))?;
+        arguments("spec.arguments.", &spec.arguments, false).map_err(Failure::error)?;
+        hooks(&spec.hooks, "hooks").map_err(Failure::error)?;
         let mut run = Run {
             workflow_name,
             options,
@@ -1757,20 +1768,6 @@ impl Run {
             }
         }
     }
-}
-
-/// Checks that template names are unique, as Argo validates a workflow it submits. Referenced
-/// WorkflowTemplates are not checked: the controller takes the first template of a name.
-fn unique_names(templates: &[Node]) -> std::result::Result<(), String> {
-    let mut names: Vec<&str> = Vec::new();
-    for template in templates {
-        let name = template.get("name").and_then(Node::as_str).unwrap_or("");
-        if names.contains(&name) {
-            return Err(format!("templates.{name} name is not unique"));
-        }
-        names.push(name);
-    }
-    Ok(())
 }
 
 pub(crate) fn is_pod(template: &Template) -> bool {

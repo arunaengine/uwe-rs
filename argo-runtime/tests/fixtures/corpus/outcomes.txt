@@ -1,6 +1,7 @@
-# Outcomes of the Argo corpus test with the mock TES executor: `ok` and the number of
-# tasks, or the exit code (33 for unsupported features) and the first error. A tab ends the
-# path, which may hold spaces.
+# Outcomes of the Argo corpus test: `ok` and the number of tasks of a run with the mock TES
+# executor, `valid` for a document without an entrypoint that passes Argo's checks, or the
+# exit code (33 for unsupported features) and the first error. A tab ends the path, which may
+# hold spaces.
 Hybrid-Argo-Workflows/Examples/QC-Alignment-WF.yaml	ok 5
 Hybrid-Argo-Workflows/Examples/clean-up-wf.yaml	ok 7
 Hybrid-Argo-Workflows/Examples/katib-workflow.yaml	ok 3
@@ -18,16 +19,112 @@ SIM-PIPE/examples/remote-patient-monitoring/remote-patient-monitoring-error.yaml
 SIM-PIPE/examples/remote-patient-monitoring/remote-patient-monitoring.yaml	ok 3
 SIM-PIPE/examples/sleeper/sleeper.yaml	ok 1
 SIM-PIPE/simulator/config/hello-world.yaml	ok 1
+argo-hub/coming-soon/aqua/workflowTemplate.yaml	valid
+argo-hub/coming-soon/bitbucket/workflowTemplate.yaml	valid
+argo-hub/coming-soon/checkmarx/workflowTemplate.yaml	valid
+argo-hub/coming-soon/datadog/workflowTemplate.yaml	valid
+argo-hub/coming-soon/helm/workflowTemplate.yaml	valid
+argo-hub/coming-soon/heroku/workflowTemplate.yaml	valid
+argo-hub/coming-soon/kubernetes/workflowTemplate.yaml	valid
+argo-hub/coming-soon/monday/workflowTemplate.yaml	valid
+argo-hub/coming-soon/newrelic/workflowTemplate.yaml	valid
+argo-hub/coming-soon/npm/workflowTemplate.yaml	valid
+argo-hub/coming-soon/rollbar/workflowTemplate.yaml	valid
+argo-hub/coming-soon/sendgrid/workflowTemplate.yaml	valid
+argo-hub/coming-soon/snyk/workflowTemplate.yaml	valid
+argo-hub/coming-soon/telegram/workflowTemplate.yaml	valid
+argo-hub/coming-soon/twilio/workflowTemplate.yaml	valid
+argo-hub/coming-soon/webhook/workflowTemplate.yaml	valid
+argo-hub/coming-soon/whitesource/workflowTemplate.yaml	valid
+argo-hub/coming-soon/yarn/workflowTemplate.yaml	valid
 argo-hub/examples/ci-simple/versions/0.0.1/workflowTemplate.yaml	ok 3
 argo-hub/examples/failure-notification/versions/0.0.1/workflowTemplate.yaml	ok 1
-argo-hub/examples/jira-sonar/versions/0.0.1/workflowTemplate.yaml	1 workflow error: build-docker-image: inputs.parameters.REPO was not supplied
+argo-hub/examples/jira-sonar/versions/0.0.1/workflowTemplate.yaml	1 templates.jira-sonar.tasks.build-docker-image templates.build inputs.parameters.REPO was not supplied
 argo-hub/examples/post-promotion-starter/versions/0.0.1/workflowTemplate.yaml	ok 1
 argo-hub/examples/post-promotion-starter/versions/0.0.2/workflowTemplate.yaml	ok 1
 argo-hub/examples/starter-manual-sync/versions/0.0.1/workflowTemplate.yaml	ok 3
 argo-hub/examples/starter-manual-sync/versions/0.0.2/workflowTemplate.yaml	ok 3
 argo-hub/examples/time-of-day/versions/0.0.1/workflowTemplate.yaml	ok 3
 argo-hub/examples/upgrade-cluster/versions/0.0.1/workflowTemplate.yaml	ok 1
-argo-hub/workflows/codefresh-classic/versions/0.0.1/workflowTemplate.mock.yaml	1 workflow error: 1-d8d21: template main not found
+argo-hub/utils/starting-template/versions/0.0.1/workflowTemplate.yaml	valid
+argo-hub/workflows/argo-workflows-utils/versions/0.0.1/workflowTemplate.yaml	valid
+argo-hub/workflows/argo-workflows/versions/0.0.1/workflowTemplate.yaml	valid
+argo-hub/workflows/argo-workflows/versions/0.0.2/workflowTemplate.yaml	valid
+argo-hub/workflows/argo-workflows/versions/0.0.3/workflowTemplate.yaml	valid
+argo-hub/workflows/argo-workflows/versions/0.0.4/workflowTemplate.yaml	valid
+argo-hub/workflows/argocd/versions/0.0.1/workflowTemplate.yaml	valid
+argo-hub/workflows/codecov/versions/0.0.1/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-classic/versions/0.0.1/workflowTemplate.mock.yaml	1 template name 'main' undefined
+argo-hub/workflows/codefresh-classic/versions/0.0.1/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/0.0.1/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/0.0.2/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/0.0.3/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/0.0.4/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/0.0.5/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/0.0.6/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.0.0/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.0.1/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.0/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.1/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.10/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.11/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.12/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.13/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.14/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.15/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.16/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.17/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.18/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.19/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.2/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.20/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.21/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.22/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.23/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.24/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.25/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.26/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.27/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.28/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.29/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.3/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.30/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.31/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.32/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.33/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.34/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.35/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.4/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.5/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.6/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.7/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.8/workflowTemplate.yaml	valid
+argo-hub/workflows/codefresh-csdp/versions/1.1.9/workflowTemplate.yaml	valid
+argo-hub/workflows/cosign/versions/0.0.1/workflowTemplate.yaml	valid
+argo-hub/workflows/datree/versions/0.0.1/workflowTemplate.yaml	valid
+argo-hub/workflows/git/versions/0.0.1/workflowTemplate.yaml	valid
+argo-hub/workflows/git/versions/0.0.2/workflowTemplate.yaml	valid
+argo-hub/workflows/git/versions/0.0.3/workflowTemplate.yaml	valid
+argo-hub/workflows/github/versions/0.0.1/workflowTemplate.yaml	valid
+argo-hub/workflows/github/versions/0.0.2/workflowTemplate.yaml	valid
+argo-hub/workflows/github/versions/0.0.3/workflowTemplate.yaml	valid
+argo-hub/workflows/github/versions/0.0.4/workflowTemplate.yaml	valid
+argo-hub/workflows/github/versions/0.0.5/workflowTemplate.yaml	valid
+argo-hub/workflows/gitlab/versions/0.0.1/workflowTemplate.yaml	valid
+argo-hub/workflows/gitops-promotion/versions/0.0.1/workflowTemplate.yaml	valid
+argo-hub/workflows/jira/versions/0.0.1/workflowTemplate.yaml	valid
+argo-hub/workflows/jira/versions/0.0.2/workflowTemplate.yaml	valid
+argo-hub/workflows/kaniko/versions/0.0.1/workflowTemplate.yaml	valid
+argo-hub/workflows/kics/versions/0.0.1/workflowTemplate.yaml	valid
+argo-hub/workflows/port/versions/1.0.0/workflowTemplate.yaml	valid
+argo-hub/workflows/port/versions/1.1.0/workflowTemplate.yaml	valid
+argo-hub/workflows/servicenow/versions/1.0.0/workflowTemplate.yaml	valid
+argo-hub/workflows/servicenow/versions/1.3.0/workflowTemplate.yaml	valid
+argo-hub/workflows/servicenow/versions/1.3.1/workflowTemplate.yaml	valid
+argo-hub/workflows/servicenow/versions/1.4.0/workflowTemplate.yaml	valid
+argo-hub/workflows/slack/versions/0.0.1/workflowTemplate.yaml	valid
+argo-hub/workflows/slack/versions/0.0.2/workflowTemplate.yaml	valid
+argo-hub/workflows/sonar/versions/0.0.1/workflowTemplate.yaml	valid
 argo-workflow-examples/artifacts-files/artifacts-files-wf.yaml	ok 1
 argo-workflow-examples/dag/dag-diamond.yaml	ok 4
 argo-workflow-examples/embodied-eval/workflow.yaml	ok 12
@@ -49,6 +146,7 @@ argo-workflow-examples/process-data/aggregation-createfile.yaml	ok 1
 argo-workflow-examples/process-data/aggregation-parallel.yaml	ok 311
 argo-workflow-examples/process-data/aggregation-template.yaml	ok 497
 argo-workflows-catalog/templates/argocd-sync-and-wait/manifests.yaml	ok 1
+argo-workflows-catalog/templates/buildkit/manifests.yaml	valid
 argo-workflows-catalog/templates/distro/manifests.yaml	ok 3
 argo-workflows-catalog/templates/distro/tests/run-task.yaml	ok 2
 argo-workflows-catalog/templates/go-build/manifests.yaml	ok 3
@@ -56,18 +154,21 @@ argo-workflows-catalog/templates/hello-world/manifests.yaml	ok 1
 argo-workflows-catalog/templates/hello-world/tests/run-task.yaml	ok 2
 argo-workflows-catalog/templates/jenkins-pipeline/manifests.yaml	ok 1
 argo-workflows-catalog/templates/jenkins-pipeline/tests/run-task.yaml	ok 1
+argo-workflows-catalog/templates/pgdump-s3/manifests.yaml	valid
 argo-workflows-catalog/templates/sendmail/manifests.yaml	ok 1
 argo-workflows-catalog/templates/sendmail/tests/send-email.yaml	ok 5
+argo-workflows-catalog/templates/slack-workflow-notifications/manifests.yaml#0	valid
 argo-workflows-catalog/templates/slack-workflow-notifications/manifests.yaml#1	ok 3
 argo-workflows-catalog/templates/slack-workflow-notifications/tests/run-task.yaml	ok 2
+argo-workflows-catalog/templates/slack/manifests.yaml	valid
 argo-workflows-catalog/templates/terraform-basic/manifests.yaml	ok 2
 argo-workflows-ci-example/bootstrap/workflow-templates/common/deploy-resources.yml	ok 3
 argo-workflows-ci-example/bootstrap/workflow-templates/minio/ci-rollouts-s3.yml	ok 6
 argo-workflows-ci-example/bootstrap/workflow-templates/minio/ci-workflow-s3.yml	ok 4
-argo-workflows-ci-example/bootstrap/workflow-templates/minio/container-build-kaniko-s3 copy.yml	1 workflow error: container-build: inputs.artifacts.modified_git_repo was not supplied
-argo-workflows-ci-example/bootstrap/workflow-templates/minio/container-build-s3.yml	1 templates.container-build name is not unique
+argo-workflows-ci-example/bootstrap/workflow-templates/minio/container-build-kaniko-s3 copy.yml	1 templates.main.tasks.container-build templates.container-build inputs.artifacts.modified_git_repo was not supplied
+argo-workflows-ci-example/bootstrap/workflow-templates/minio/container-build-s3.yml	1 spec.templates[2].name 'container-build' is not unique
 argo-workflows-ci-example/bootstrap/workflow-templates/minio/git-checkout-pr-s3.yml	ok 1
-argo-workflows-ci-example/bootstrap/workflow-templates/minio/html-modifier-s3.yml	1 workflow error: html-modifier: inputs.artifacts.git_repo was not supplied
+argo-workflows-ci-example/bootstrap/workflow-templates/minio/html-modifier-s3.yml	1 templates.main.tasks.html-modifier templates.html-modifier inputs.artifacts.git_repo was not supplied
 argo-workflows-ci-example/bootstrap/workflow-templates/nfs/ci-rollouts-workflow.yml	ok 6
 argo-workflows-ci-example/bootstrap/workflow-templates/nfs/ci-workflow.yml	ok 4
 argo-workflows-ci-example/bootstrap/workflow-templates/nfs/container-build-kaniko.yml	ok 1
@@ -81,7 +182,11 @@ argo-workflows-ci-example/rollouts-workflow-s3.yml	ok 6
 argo-workflows-ci-example/rollouts-workflow.yml	ok 6
 argo-workflows-ci-example/workflow-s3.yml	ok 4
 argo-workflows-ci-example/workflow.yml	ok 4
+argo-workflows-guide/templates/library.yaml	valid
 argo-workflows-guide/templates/script.yaml	ok 2
+argo-workflows-guide/templates/workflow-status.yaml	valid
+argo-workflows-hello-executor-plugin/hello-example-workflow.yaml	ok 1
+argo-workflows-hello-executor-plugin/hello-executor-plugin-configmap.yaml	valid
 argo-workflows/examples/archive-location.yaml	ok 1
 argo-workflows/examples/arguments-artifacts.yaml	ok 1
 argo-workflows/examples/arguments-parameters-from-configmap.yaml	ok 1
@@ -100,6 +205,10 @@ argo-workflows/examples/ci-output-artifact.yaml	ok 5
 argo-workflows/examples/ci-workflowtemplate.yaml	ok 6
 argo-workflows/examples/ci.yaml	ok 4
 argo-workflows/examples/cluster-workflow-template/cluster-wftmpl-dag.yaml	ok 7
+argo-workflows/examples/cluster-workflow-template/clustertemplates.yaml#0	valid
+argo-workflows/examples/cluster-workflow-template/clustertemplates.yaml#1	valid
+argo-workflows/examples/cluster-workflow-template/clustertemplates.yaml#2	valid
+argo-workflows/examples/cluster-workflow-template/clustertemplates.yaml#3	valid
 argo-workflows/examples/cluster-workflow-template/clustertemplates.yaml#4	ok 1
 argo-workflows/examples/cluster-workflow-template/mixed-cluster-namespaced-wftmpl-steps.yaml	ok 5
 argo-workflows/examples/cluster-workflow-template/workflow-template-ref-with-entrypoint-arg-passing.yaml	ok 1
@@ -286,7 +395,7 @@ argo-workflows/examples/withsequence-nested-result.yaml	ok 1
 argo-workflows/examples/work-avoidance.yaml	ok 5
 argo-workflows/examples/workflow-event-binding/event-consumer-workflowtemplate.yaml	ok 1
 argo-workflows/examples/workflow-event-binding/github-path-filter-workflowtemplate.yaml	ok 1
-argo-workflows/examples/workflow-level-executor-plugin.yaml	33 workflow-level-executor-plugin-6599d: plugin templates are not supported: executor plugins need the Argo agent
+argo-workflows/examples/workflow-level-executor-plugin.yaml	ok 1
 argo-workflows/examples/workflow-of-workflows.yaml	ok 2
 argo-workflows/examples/workflow-template/dag.yaml	ok 7
 argo-workflows/examples/workflow-template/hello-world.yaml	ok 1
@@ -294,6 +403,9 @@ argo-workflows/examples/workflow-template/input-artifacts.yaml	ok 1
 argo-workflows/examples/workflow-template/retry-with-steps.yaml	ok 3
 argo-workflows/examples/workflow-template/steps.yaml	ok 5
 argo-workflows/examples/workflow-template/templates.yaml#0	ok 1
+argo-workflows/examples/workflow-template/templates.yaml#1	valid
+argo-workflows/examples/workflow-template/templates.yaml#2	valid
+argo-workflows/examples/workflow-template/templates.yaml#3	valid
 argo-workflows/examples/workflow-template/templates.yaml#4	ok 1
 argo-workflows/examples/workflow-template/workflow-archive-logs.yaml	ok 1
 argo-workflows/examples/workflow-template/workflow-template-ref-with-entrypoint-arg-passing.yaml	ok 1
@@ -305,6 +417,7 @@ argo-workflows/test/e2e/cron/basic-update-template.yaml	ok 1
 argo-workflows/test/e2e/cron/basic-update.yaml	ok 1
 argo-workflows/test/e2e/cron/basic.yaml	ok 1
 argo-workflows/test/e2e/cron/cron-and-malformed-template.yaml#0	ok 1
+argo-workflows/test/e2e/cron/cron-and-malformed-template.yaml#1	1 spec.templates[0].name is required
 argo-workflows/test/e2e/cron/cron-backfill-template.yaml	ok 1
 argo-workflows/test/e2e/cron/cron-daily-job.yaml	ok 1
 argo-workflows/test/e2e/cron/cron-workflow-with-labels.yaml	ok 1
@@ -316,8 +429,8 @@ argo-workflows/test/e2e/expectedfailures/dag-exhausted-retries.yaml	ok 3
 argo-workflows/test/e2e/expectedfailures/dag-fail.yaml	ok 4
 argo-workflows/test/e2e/expectedfailures/dag-failFast-hang.yaml	ok 5
 argo-workflows/test/e2e/expectedfailures/dag-noroot-branch-failed.yaml	ok 5
-argo-workflows/test/e2e/expectedfailures/empty-parameter-dag.yaml	1 workflow error: a: inputs.parameters.message was not supplied
-argo-workflows/test/e2e/expectedfailures/empty-parameter-steps.yaml	1 workflow failed: a: inputs.parameters.message was not supplied
+argo-workflows/test/e2e/expectedfailures/empty-parameter-dag.yaml	1 templates.abc.tasks.a templates.whalesay inputs.parameters.message was not supplied
+argo-workflows/test/e2e/expectedfailures/empty-parameter-steps.yaml	1 templates.abc.steps[0].a templates.whalesay inputs.parameters.message was not supplied
 argo-workflows/test/e2e/expectedfailures/exit-handler-fail-missing-output.yaml	ok 2
 argo-workflows/test/e2e/expectedfailures/exit-handler-failed.yaml	ok 2
 argo-workflows/test/e2e/expectedfailures/exit-handlers.yaml	ok 3
@@ -326,9 +439,9 @@ argo-workflows/test/e2e/expectedfailures/failed-artifact-save.yaml	ok 1
 argo-workflows/test/e2e/expectedfailures/failed-retries.yaml	ok 2
 argo-workflows/test/e2e/expectedfailures/failed-step-event.yaml	ok 1
 argo-workflows/test/e2e/expectedfailures/failed-step.yaml	ok 2
-argo-workflows/test/e2e/expectedfailures/input-artifact-not-optional.yaml	ok 1
+argo-workflows/test/e2e/expectedfailures/input-artifact-not-optional.yaml	1 templates.http-artifact-example inputs.artifacts.kubectl was not supplied
 argo-workflows/test/e2e/expectedfailures/large-workflow.yaml	ok 1
-argo-workflows/test/e2e/expectedfailures/misreference-template-name.yaml	1 workflow failed: hello2: template hell0 not found
+argo-workflows/test/e2e/expectedfailures/misreference-template-name.yaml	1 templates.steps-with-misreference.steps[1].hello2 template name 'hell0' undefined
 argo-workflows/test/e2e/expectedfailures/oom-kill.yaml	ok 1
 argo-workflows/test/e2e/expectedfailures/output-artifact-not-optional.yaml	ok 1
 argo-workflows/test/e2e/expectedfailures/parallelism-dag-fail-fast.yaml	ok 2
@@ -466,7 +579,10 @@ argo-workflows/test/e2e/functional/workflow-exit-handler-sleep.yaml	ok 2
 argo-workflows/test/e2e/functional/workflow_level_host_aliases.yaml	ok 1
 argo-workflows/test/e2e/functional/workflow_template_level_host_aliases.yaml	ok 1
 argo-workflows/test/e2e/lintfail/disallow-unknown.yaml	ok 1
-argo-workflows/test/e2e/lintfail/invalid-spec.yaml	1 workflow error: invalid-spec-4be87: template doesnotexist not found
+argo-workflows/test/e2e/lintfail/invalid-spec.yaml	1 template name 'doesnotexist' undefined
+argo-workflows/test/e2e/lintfail/malformed-spec.yaml	1 spec: entrypoint: invalid type: sequence, expected a string
+argo-workflows/test/e2e/manifests/plugins/hello-executor-plugin-configmap.yaml	valid
+argo-workflows/test/e2e/manifests/plugins/massive-executor-plugin-configmap.yaml	valid
 argo-workflows/test/e2e/smoke/artifact-passing.yaml	ok 2
 argo-workflows/test/e2e/smoke/basic-2.yaml	ok 1
 argo-workflows/test/e2e/smoke/basic-invalid.yaml	1 /argo-workflows/test/e2e/smoke/basic-invalid.yaml:11:45: while parsing a block mapping, did not find expected key
@@ -538,6 +654,7 @@ argo-workflows/test/e2e/testdata/basic-workflow.yaml	ok 1
 argo-workflows/test/e2e/testdata/basic-workflowtemplate-update.yaml	ok 1
 argo-workflows/test/e2e/testdata/basic-workflowtemplate.yaml	ok 1
 argo-workflows/test/e2e/testdata/cannot-start-workflow.yaml	ok 1
+argo-workflows/test/e2e/testdata/cluster-workflow-template-nested-template.yaml	valid
 argo-workflows/test/e2e/testdata/cluster-workflow-template-ref.yaml	ok 1
 argo-workflows/test/e2e/testdata/clustertemplateref-metrics.yaml	ok 1
 argo-workflows/test/e2e/testdata/complex-global-artifact-passing-plugin.yaml	ok 7
@@ -567,6 +684,11 @@ argo-workflows/test/e2e/testdata/json-variables.yaml	ok 1
 argo-workflows/test/e2e/testdata/log-problems.yaml	ok 5
 argo-workflows/test/e2e/testdata/loops-steps-limited-parallelism-pvc.yaml	ok 4
 argo-workflows/test/e2e/testdata/main-log-plugin-workflow.yaml	ok 1
+argo-workflows/test/e2e/testdata/malformed/malformed-clusterworkflowtemplate.yaml	1 spec: arguments.parameters: invalid type: map, expected a sequence
+argo-workflows/test/e2e/testdata/malformed/malformed-cronworkflow.yaml	1 spec: arguments.parameters: invalid type: map, expected a sequence
+argo-workflows/test/e2e/testdata/malformed/malformed-workflow.yaml	1 spec: arguments.parameters: invalid type: map, expected a sequence
+argo-workflows/test/e2e/testdata/malformed/malformed-workflowtemplate-2.yaml	1 spec.templates[0].name is required
+argo-workflows/test/e2e/testdata/malformed/malformed-workflowtemplate.yaml	1 spec: arguments.parameters: invalid type: map, expected a sequence
 argo-workflows/test/e2e/testdata/node-suspend.yaml	ok 1
 argo-workflows/test/e2e/testdata/output-artifact-with-s3-bucket-creation-enabled.yaml	ok 1
 argo-workflows/test/e2e/testdata/output-on-input-plugin-workflow.yaml	ok 1
@@ -576,9 +698,9 @@ argo-workflows/test/e2e/testdata/output-on-mount-workflow.yaml	ok 1
 argo-workflows/test/e2e/testdata/output-result-workflow.yaml	ok 2
 argo-workflows/test/e2e/testdata/parameters-workflow.yaml	ok 1
 argo-workflows/test/e2e/testdata/pending-workflow.yaml	ok 1
-argo-workflows/test/e2e/testdata/plugins/executor/massive-executor-workflow.yaml	33 massive-executor-a3264[0].fanout(0:0): plugin templates are not supported: executor plugins need the Argo agent
-argo-workflows/test/e2e/testdata/plugins/executor/template-executor-workflow.yaml	33 template-executor-f9037: plugin templates are not supported: executor plugins need the Argo agent
-argo-workflows/test/e2e/testdata/plugins/executor/workflow-level-template-executor-workflow.yaml	33 workflow-level-template-executor-a4a28: plugin templates are not supported: executor plugins need the Argo agent
+argo-workflows/test/e2e/testdata/plugins/executor/massive-executor-workflow.yaml	ok 15
+argo-workflows/test/e2e/testdata/plugins/executor/template-executor-workflow.yaml	ok 1
+argo-workflows/test/e2e/testdata/plugins/executor/workflow-level-template-executor-workflow.yaml	ok 1
 argo-workflows/test/e2e/testdata/progress-workflow.yaml	ok 1
 argo-workflows/test/e2e/testdata/resource-templates/failed.yaml	ok 1
 argo-workflows/test/e2e/testdata/resource-templates/outputs.yaml	ok 1
@@ -625,18 +747,20 @@ argo-workflows/test/e2e/testdata/workflow-script-tracing.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-sync-tracing.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-template-invalid-entrypoint.yaml	ok 2
 argo-workflows/test/e2e/testdata/workflow-template-invalid-onexit.yaml	ok 2
+argo-workflows/test/e2e/testdata/workflow-template-nested-template.yaml	valid
 argo-workflows/test/e2e/testdata/workflow-template-ref-exithandler.yaml	ok 2
 argo-workflows/test/e2e/testdata/workflow-template-ref.yaml	ok 2
 argo-workflows/test/e2e/testdata/workflow-template-sub-test.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-template-with-containerset.yaml	ok 3
 argo-workflows/test/e2e/testdata/workflow-template-with-enum-values.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-template-with-resource-expr.yaml	ok 1
+argo-workflows/test/e2e/testdata/workflow-templates/invalid-workflowtemplate.yaml	valid
 argo-workflows/test/e2e/testdata/workflow-templates/success-hook.yaml	ok 3
 argo-workflows/test/e2e/testdata/workflow-templates/workflowtemplate.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-tracing.yaml	ok 2
-argo-wrapper/src/argowrapper/argo_workflows_templates/header.yaml	1 workflowTemplateRef: WorkflowTemplate gwas-template-integration-test not found
+argo-wrapper/src/argowrapper/argo_workflows_templates/header.yaml	1 couldn't find workflow template "gwas-template-integration-test"
 argo-wrapper/workflow_examples/dummy_workflow.yaml	ok 2
-argo-wrapper/workflow_examples/gwas_header.yaml	1 workflowTemplateRef: WorkflowTemplate gwas-template not found
+argo-wrapper/workflow_examples/gwas_header.yaml	1 couldn't find workflow template "gwas-template"
 couler/couler/tests/test_data/artifact_passing_golden.yaml	1 workflow error: B: unable to resolve: {{steps.A.outputs.artifacts.output-oss-1c392c25}}
 couler/couler/tests/test_data/cron_workflow_golden.yaml	ok 1
 couler/couler/tests/test_data/dag_golden_1.yaml	ok 4
@@ -662,22 +786,99 @@ distributed-ml-patterns/code/project/basics/argo-hello-world.yaml	ok 1
 distributed-ml-patterns/code/project/basics/argo-resource-template.yaml	ok 1
 distributed-ml-patterns/code/project/basics/argo-script-template.yaml	ok 1
 distributed-ml-patterns/code/project/code/workflow.yaml	ok 6
-gennext-workflows/chore/update_existing_run_with_exomedepth.yaml	1 workflow error: germline-wes-gpu-workflow-0429f: template main not found
+gennext-workflows/chore/update_existing_run_with_exomedepth.yaml	1 template name 'main' undefined
 gennext-workflows/plans/test-fusion-inspector-acu2.yaml	ok 1
+gennext-workflows/tasks/base_tasks/alter_bam_contig_names.yaml	valid
+gennext-workflows/tasks/base_tasks/annotsv-to-oncokb.yaml	valid
 gennext-workflows/tasks/base_tasks/annotsv.yaml	ok 1
+gennext-workflows/tasks/base_tasks/annovar-to-maf.yaml	valid
+gennext-workflows/tasks/base_tasks/annovar.yaml	valid
+gennext-workflows/tasks/base_tasks/arriba-to-oncokb.yaml	valid
+gennext-workflows/tasks/base_tasks/arriba.yaml	valid
+gennext-workflows/tasks/base_tasks/bcftools.yaml	valid
+gennext-workflows/tasks/base_tasks/bed_validator.yaml	valid
+gennext-workflows/tasks/base_tasks/bgzip-tabix.yaml	valid
+gennext-workflows/tasks/base_tasks/bwa-mem2.yaml	valid
+gennext-workflows/tasks/base_tasks/calc-tmb.yaml	valid
+gennext-workflows/tasks/base_tasks/cancervar.yaml	valid
+gennext-workflows/tasks/base_tasks/cnvpytor.yaml	valid
+gennext-workflows/tasks/base_tasks/dir_cleanup.yaml	valid
+gennext-workflows/tasks/base_tasks/duckdb.yaml	valid
+gennext-workflows/tasks/base_tasks/elprep.yaml	valid
 gennext-workflows/tasks/base_tasks/exomedepth.yaml	ok 1
+gennext-workflows/tasks/base_tasks/extract-reads-for-fusion-inspector.yaml	valid
+gennext-workflows/tasks/base_tasks/fastp.yaml	valid
+gennext-workflows/tasks/base_tasks/fastqc.yaml	valid
+gennext-workflows/tasks/base_tasks/fgbio-mark-duplicates.yaml	valid
+gennext-workflows/tasks/base_tasks/filter-annotsv.yaml	valid
+gennext-workflows/tasks/base_tasks/filter-artifact-fusions.yaml	valid
+gennext-workflows/tasks/base_tasks/filter-chimeric-junction-by-bam.yaml	valid
+gennext-workflows/tasks/base_tasks/filter-indelible.yaml	valid
+gennext-workflows/tasks/base_tasks/filter-manta.yaml	valid
 gennext-workflows/tasks/base_tasks/filter-msisensor-pro.yaml	ok 1
+gennext-workflows/tasks/base_tasks/freebayes.yaml	valid
+gennext-workflows/tasks/base_tasks/fusion-inspector.yaml	valid
+gennext-workflows/tasks/base_tasks/fusion-report.yaml	valid
+gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-bam2fq.yaml	valid
+gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-bamsort.yaml	valid
+gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-bqsr.yaml	valid
+gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-fq2bam.yaml	valid
+gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-germline.yaml	valid
+gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-mutect2.yaml	valid
+gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-rnafq2bam.yaml	valid
+gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-somatic.yaml	valid
+gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-starfusion.yaml	valid
 gennext-workflows/tasks/base_tasks/indelible.yaml	ok 1
+gennext-workflows/tasks/base_tasks/maf-to-db.yaml	valid
 gennext-workflows/tasks/base_tasks/manta.yaml	ok 1
+gennext-workflows/tasks/base_tasks/mosdepth.yaml	valid
 gennext-workflows/tasks/base_tasks/msisensor-pro.yaml	ok 1
-gennext-workflows/tasks/base_tasks/split-caller.yaml	ok 0
+gennext-workflows/tasks/base_tasks/multicaller.yaml	1 templates.multicaller templates.multicaller.tasks[0].name is required
+gennext-workflows/tasks/base_tasks/multiqc.yaml	valid
+gennext-workflows/tasks/base_tasks/mutect2-sharded.yaml	valid
+gennext-workflows/tasks/base_tasks/mutect2.yaml	valid
+gennext-workflows/tasks/base_tasks/oncokb-fusion-annotation.yaml	valid
+gennext-workflows/tasks/base_tasks/oncokb.yaml	valid
+gennext-workflows/tasks/base_tasks/picard-collect-rnaseq-metrics.yaml	valid
+gennext-workflows/tasks/base_tasks/picard-markduplicates.yaml	valid
+gennext-workflows/tasks/base_tasks/propagate-fi-dup-flags.yaml	valid
+gennext-workflows/tasks/base_tasks/qorts.yaml	valid
+gennext-workflows/tasks/base_tasks/remove-temp-fqs.yaml	valid
+gennext-workflows/tasks/base_tasks/rustqc.yaml	valid
+gennext-workflows/tasks/base_tasks/samtools.yaml	valid
+gennext-workflows/tasks/base_tasks/seqkit_bedtools.yaml	valid
+gennext-workflows/tasks/base_tasks/snap.yaml	valid
+gennext-workflows/tasks/base_tasks/sortmerna.yaml	valid
+gennext-workflows/tasks/base_tasks/split-caller.yaml	1 templates.parallel-caller.tasks.split-regions-beds-list template 'split-regions-beds-list' type is unknown
+gennext-workflows/tasks/base_tasks/star-align.yaml	valid
+gennext-workflows/tasks/base_tasks/star-fusion-from-junction.yaml	valid
+gennext-workflows/tasks/base_tasks/star-fusion-to-oncokb.yaml	valid
+gennext-workflows/tasks/base_tasks/star-fusion.yaml	valid
+gennext-workflows/tasks/base_tasks/trim-galore.yaml	valid
+gennext-workflows/tasks/base_tasks/umi-tools-dedup.yaml	valid
+gennext-workflows/tasks/base_tasks/vcf-harmonizer.yaml	valid
+gennext-workflows/tasks/base_tasks/verifybamid.yaml	valid
+gennext-workflows/tasks/base_tasks/vlod.yaml	valid
+gennext-workflows/tasks/base_tasks/zyalign.yaml	1 /gennext-workflows/tasks/base_tasks/zyalign.yaml:98:9: simple key expect ':'
 gennext-workflows/tasks/bed_split.yaml	ok 2
 gennext-workflows/tasks/bed_split_v1.yaml	ok 2
+gennext-workflows/tasks/callers/deepvariant.yaml	valid
+gennext-workflows/tasks/callers/haplotypecaller.yaml	valid
+gennext-workflows/tasks/change_run_state.yaml	valid
+gennext-workflows/tasks/change_sample_state.yaml	valid
 gennext-workflows/tasks/check-file-path.yaml	ok 1
-gennext-workflows/tasks/compose-read-group-str.yaml	1 workflow error: compose-read-group-str-93ea9: template main not found
-gennext-workflows/tasks/copy_inputs_to_scratch.yaml	ok 3
-gennext-workflows/tasks/copy_inputs_to_temp.yaml	ok 2
+gennext-workflows/tasks/collect_qc_data.yaml	valid
+gennext-workflows/tasks/collect_somatic_data.yaml	valid
+gennext-workflows/tasks/collect_tmb_data.yaml	valid
+gennext-workflows/tasks/compose-read-group-str.yaml	1 template name 'main' undefined
+gennext-workflows/tasks/copy_inputs_to_scratch.yaml	1 templates.copy-bam-to-scratch-path-aware templates.copy-bam-to-scratch-path-aware.steps[0].check- failed to get a template
+gennext-workflows/tasks/copy_inputs_to_temp.yaml	1 templates.read-run-data template 'read-run-data' type is unknown
 gennext-workflows/tasks/copy_temp_to_output.yaml	ok 1
+gennext-workflows/tasks/cravat/cravat-duo.yaml	valid
+gennext-workflows/tasks/cravat/cravat-solo.yaml	valid
+gennext-workflows/tasks/cravat/cravat-trio.yaml	valid
+gennext-workflows/tasks/cravat/cravat.yaml	valid
+gennext-workflows/tasks/cravat/cravat_nodeSelector.yaml	valid
 gennext-workflows/tasks/generate_run_info.yaml	ok 1
 gennext-workflows/tasks/get-base-node-config.yaml	ok 1
 gennext-workflows/tasks/get-node-config.yaml	ok 1
@@ -686,18 +887,25 @@ gennext-workflows/tasks/get_node_base_dirs.yaml	ok 1
 gennext-workflows/tasks/get_rel_ref_dirs.yaml	ok 1
 gennext-workflows/tasks/get_run_data.yaml	ok 1
 gennext-workflows/tasks/load_and_prepare.yaml	ok 1
-gennext-workflows/tasks/regenerate_qc_workflow.yaml	1 workflow error: mosdepth: template  not found
+gennext-workflows/tasks/prs/gennext_prs.yaml	valid
+gennext-workflows/tasks/prs/gennext_prs_matcher.yaml	valid
+gennext-workflows/tasks/prs/genotype_conditional_workflow.yaml	valid
+gennext-workflows/tasks/prs/update_genotype_snps.yaml	valid
+gennext-workflows/tasks/regenerate_qc_workflow.yaml	1 templates.main.tasks.mosdepth failed to get a template
 gennext-workflows/tasks/retrieve_base_dirs_2.yaml	ok 2
 gennext-workflows/tasks/test_tasks/cat_json.yaml	ok 1
 gennext-workflows/tasks/test_tasks/gpu_task.yaml	ok 1
 gennext-workflows/tests/wgs-cnv/argo-validation.yaml	ok 1
 gennext-workflows/workflows/caller-dv-workflow.yaml	ok 3
 gennext-workflows/workflows/caller-hc-workflow.yaml	ok 3
-gennext-workflows/workflows/ces-workflow.yaml	1 workflow error: cravat: templateRef: template cravat-solo-template not found in WorkflowTemplate/cravat-templates
+gennext-workflows/workflows/ces-workflow.yaml	ok 16
+gennext-workflows/workflows/cnv_workflow.yaml	valid
+gennext-workflows/workflows/germline/germline-rna-gpu-workflow.yaml	1 templates.germline-rna-gpu-fastq templates.germline-rna-gpu-fastq.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
 gennext-workflows/workflows/germline/germline-tps-gpu-workflow.yaml	ok 0
 gennext-workflows/workflows/germline/germline-wes-gpu-workflow.yaml	ok 0
 gennext-workflows/workflows/germline/germline-wgs-gpu-workflow.yaml	ok 0
 gennext-workflows/workflows/haplotypecaller-wrapper-workflow.yaml	ok 3
+gennext-workflows/workflows/msi_tmb_coverage_workflow.yaml	1 templates.msi-tmb-coverage-workflow templates.msi-tmb-coverage-workflow.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
 gennext-workflows/workflows/per-sample-cnv-analysis.yaml	ok 7
 gennext-workflows/workflows/per-sample-cnv-cohort-analysis.yaml	ok 10
 gennext-workflows/workflows/per-sample-germline.yaml	ok 3
@@ -715,23 +923,34 @@ gennext-workflows/workflows/prototypes/debug-qc-recollect.yaml	ok 5
 gennext-workflows/workflows/prototypes/sample-worker-prototype.yaml	ok 3
 gennext-workflows/workflows/prototypes/test-fusion-inspector.yaml	ok 13
 gennext-workflows/workflows/prs/prs_workflow.yaml	ok 8
+gennext-workflows/workflows/somatic-testing-workflow.yaml	1 templates.somatic-testing-tumor templates.somatic-testing-tumor.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
+gennext-workflows/workflows/somatic/somatic-testing-dna-gpu-workflow.yaml	valid
+gennext-workflows/workflows/somatic/somatic-testing-dna-workflow.yaml	valid
+gennext-workflows/workflows/somatic/somatic-testing-rna-gpu-workflow.yaml	1 templates.somatic-testing-rna-gpu-bam templates.somatic-testing-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
+gennext-workflows/workflows/somatic/v2/somatic-dna-bam.yaml	valid
+gennext-workflows/workflows/somatic/v2/somatic-dna-fastq.yaml	valid
 gennext-workflows/workflows/somatic/v2/somatic-dna-padding-repair.yaml	ok 22
-gennext-workflows/workflows/tps-workflow.yaml	1 workflow error: collect-qc-data: templateRef: WorkflowTemplate collect-qc-data-templates not found
-gennext-workflows/workflows/wes-workflow.yaml	ok 0
-gennext-workflows/workflows/wgs-workflow.yaml	ok 0
+gennext-workflows/workflows/somatic/v2/somatic-dna-vcf.yaml	valid
+gennext-workflows/workflows/somatic/v2/somatic-fusion-fastq-gpu.yaml	valid
+gennext-workflows/workflows/somatic/v2/somatic-fusion-fastq.yaml	valid
+gennext-workflows/workflows/somatic/v2/somatic-rna-bam.yaml	valid
+gennext-workflows/workflows/somatic/v2/somatic-rna-fastq.yaml	valid
+gennext-workflows/workflows/tps-workflow.yaml	1 templates.main.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
+gennext-workflows/workflows/wes-workflow.yaml	1 templates.main.tasks.wes-bam-workflow templates.wes-bam-workflow.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
+gennext-workflows/workflows/wgs-workflow.yaml	1 templates.main.tasks.wgs-fastq-workflow templates.wgs-fastq-workflow.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
 gennext-workflows/workflows/wrapper-annotation.yaml	ok 1
-gennext-workflows/workflows/wrapper-workflow-prs.yaml	1 workflow error: prs-workflow: inputs.parameters.genotype-file-name was not supplied
-gennext-workflows/workflows/wrapper-workflow-somatic.yaml	ok 2
-gennext-workflows/workflows/wrapper-workflow.yaml	ok 2
+gennext-workflows/workflows/wrapper-workflow-prs.yaml	1 templates.wrapper-workflow-prs.tasks.prs-workflow templates.main inputs.parameters.genotype-file-name was not supplied
+gennext-workflows/workflows/wrapper-workflow-somatic.yaml	1 templates.wrapper-workflow-somatic.tasks.somatic-testing-tumor-workflow template reference somatic-testing-workflow.main not found
+gennext-workflows/workflows/wrapper-workflow.yaml	1 ...s.wrapper-workflow.tasks.rna-workflow templates.main.tasks.germline-rna-bam-workflow templates.germline-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
 gennext-workflows/workflows/wrappers/wrapper-batch-somatic-dna-rna.yaml	ok 6
 gennext-workflows/workflows/wrappers/wrapper-batch-somatic-dna.yaml	ok 6
 gennext-workflows/workflows/wrappers/wrapper-batch-somatic-fusion-gpu.yaml	ok 6
 gennext-workflows/workflows/wrappers/wrapper-batch-somatic-fusion.yaml	ok 6
 gennext-workflows/workflows/wrappers/wrapper-batch-somatic-rna.yaml	ok 6
-gennext-workflows/workflows/wrappers/wrapper-rna.yaml	ok 3
-gennext-workflows/workflows/wrappers/wrapper-somatic-dna-rna.yaml	ok 3
+gennext-workflows/workflows/wrappers/wrapper-rna.yaml	1 templates.main.tasks.run-workflow templates.main.tasks.germline-rna-bam-workflow templates.germline-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
+gennext-workflows/workflows/wrappers/wrapper-somatic-dna-rna.yaml	1 ....tasks.som-test-rna-workflow templates.main-rna.tasks.somatic-testing-rna-bam templates.somatic-testing-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
 gennext-workflows/workflows/wrappers/wrapper-somatic-dna.yaml	ok 3
-gennext-workflows/workflows/wrappers/wrapper-somatic-rna.yaml	ok 3
+gennext-workflows/workflows/wrappers/wrapper-somatic-rna.yaml	1 ...ates.main.tasks.run-workflow templates.main-rna.tasks.somatic-testing-rna-bam templates.somatic-testing-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
 gennext-workflows/workflows/wrappers/wrapper-tps.yaml	ok 3
 gennext-workflows/workflows/wrappers/wrapper-wes.yaml	ok 3
 gennext-workflows/workflows/wrappers/wrapper-wgs.yaml	ok 3
@@ -786,10 +1005,10 @@ hera/examples/workflows/misc/map-outputs-to-inputs.yaml	ok 4
 hera/examples/workflows/misc/multi-env.yaml	ok 1
 hera/examples/workflows/misc/resource-flags.yaml	ok 1
 hera/examples/workflows/misc/retry-workflow.yaml	ok 1
-hera/examples/workflows/misc/suspend-input-duration.yaml	1 workflow failed: get-value-step: inputs.parameters.duration was not supplied
+hera/examples/workflows/misc/suspend-input-duration.yaml	1 templates.suspend.steps[0].get-value-step templates.suspend-with-intermediate-param inputs.parameters.duration was not supplied
 hera/examples/workflows/misc/suspend.yaml	ok 0
 hera/examples/workflows/misc/template-level-volume.yaml	ok 3
-hera/examples/workflows/misc/template-refs.yaml	1 workflow failed: hello-template-ref: templateRef: WorkflowTemplate hello-world-workflow-template not found
+hera/examples/workflows/misc/template-refs.yaml	1 templates.steps.steps[0].hello-template-ref couldn't find workflow template "hello-world-workflow-template"
 hera/examples/workflows/misc/user-container.yaml	ok 1
 hera/examples/workflows/misc/volume-mount.yaml	ok 1
 hera/examples/workflows/misc/volume-mounts-nfs.yaml	ok 1
@@ -1172,10 +1391,10 @@ regulation-workflows/workflow-templates/.deprecated/coverage/experiment-alignmen
 regulation-workflows/workflow-templates/.deprecated/coverage/get-coverage-tasks.yaml	ok 6
 regulation-workflows/workflow-templates/alignment/.deprecated/check-integrity.yaml	ok 0
 regulation-workflows/workflow-templates/alignment/.deprecated/commit-results-to-rdr.yaml	ok 5
-regulation-workflows/workflow-templates/alignment/.deprecated/delete-alignment-task-markers.yaml	1 workflow error: get-rfs-alignments-tasks-url: templateRef: WorkflowTemplate compute-rfs-alignments-tasks-url-v1-submittable not found
-regulation-workflows/workflow-templates/alignment/.deprecated/get-rfs-alignments-tasks.yaml	1 workflow error: get-rfs-alignments-tasks-url: templateRef: WorkflowTemplate compute-rfs-alignments-tasks-url-v1-submittable not found
+regulation-workflows/workflow-templates/alignment/.deprecated/delete-alignment-task-markers.yaml	1 templates.delete-alignment-tasks-markers.tasks.get-rfs-alignments-tasks-url couldn't find workflow template "compute-rfs-alignments-tasks-url-v1-submittable"
+regulation-workflows/workflow-templates/alignment/.deprecated/get-rfs-alignments-tasks.yaml	1 templates.get-rfs-alignments-tasks-dag.tasks.get-rfs-alignments-tasks-url couldn't find workflow template "compute-rfs-alignments-tasks-url-v1-submittable"
 regulation-workflows/workflow-templates/alignment/.deprecated/merge-run-alignments.yaml	ok 0
-regulation-workflows/workflow-templates/alignment/.deprecated/rfs-alignments.yaml	ok 0
+regulation-workflows/workflow-templates/alignment/.deprecated/rfs-alignments.yaml	1 ...tasks.execute-rfs-alignment templates.rfs-alignment.tasks.execute-runs-alignment templates.run-alignment.tasks.execute-pe-alignment couldn't find workflow template "run-alignment-pe-v1-submittable"
 regulation-workflows/workflow-templates/alignment/.experimental/rfs-alignment-v3.yaml	ok 1
 regulation-workflows/workflow-templates/alignment/alignment-tasks.yaml	ok 2
 regulation-workflows/workflow-templates/alignment/compute-get-rfs-alignment-tasks-url-v-0.1.yaml	ok 1
@@ -1186,9 +1405,9 @@ regulation-workflows/workflow-templates/bowtie2/.deprecated/bowtie2-pe-cmd-pvc-c
 regulation-workflows/workflow-templates/bowtie2/.deprecated/bowtie2-se-cmd-pvc-callable.yaml	ok 2
 regulation-workflows/workflow-templates/bowtie2/bowtie2-pe-cmd-pvc-callable-v-0.1.yaml	ok 2
 regulation-workflows/workflow-templates/bowtie2/bowtie2-se-cmd-pvc-callable-v-0.1.yaml	ok 2
-regulation-workflows/workflow-templates/bowtie2/build/build-index-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/bowtie2/build/build-index-v-0.1.yaml	1 spec.templates[0].name: 'bt2_build-index' is invalid: name must consist of alpha-numeric characters or '-', and must start with an alpha-numeric character (e.g. My-name1-2, 123-NAME)
 regulation-workflows/workflow-templates/export-peak/bed-to-bigbed-v-0.1.yaml	ok 4
-regulation-workflows/workflow-templates/export-peak/export-peak-tasks.yaml	1 templates.export-peak-tasks-dag name is not unique
+regulation-workflows/workflow-templates/export-peak/export-peak-tasks.yaml	1 spec.templates[2].name 'export-peak-tasks-dag' is not unique
 regulation-workflows/workflow-templates/fastp/.deprecated/fastp-se-cmd-pvc-callable.yaml	ok 1
 regulation-workflows/workflow-templates/fastp/fastp-se-cmd-pvc-callable-v-0.1.yaml	ok 1
 regulation-workflows/workflow-templates/fastqc/.deprecated/fastqc-pe-cmd-pvc-callable.yaml	ok 1
@@ -1264,40 +1483,40 @@ regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.1.yaml	ok
 regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.2.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/validate-expected-number-of-files-in-dir-v-0.1.yaml	ok 1
 regulation-workflows/workflow-templates/masked-regions/masked-regions-identification-v-0.1.yaml	ok 1
-regulation-workflows/workflow-templates/motif-mapping/motif-mapping-tasks.yaml	1 templates.motif-mapping-tasks-dag name is not unique
+regulation-workflows/workflow-templates/motif-mapping/motif-mapping-tasks.yaml	1 spec.templates[2].name 'motif-mapping-tasks-dag' is not unique
 regulation-workflows/workflow-templates/ngmerge/.deprecated/ngmerge-cmd-pvc-callable.yaml	ok 1
 regulation-workflows/workflow-templates/ngmerge/ngmerge-cmd-pvc-callable-v-0.1.yaml	ok 1
-regulation-workflows/workflow-templates/peak-calling/.deprecated/atac-seq.yaml	ok 0
-regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-ad-hoc.yaml	ok 0
-regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-pe-with-controls.yaml	ok 0
-regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-se-no-controls.yaml	ok 0
-regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-v2.yaml	ok 0
-regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq.yaml	ok 0
-regulation-workflows/workflow-templates/peak-calling/.deprecated/dnase-seq.yaml	ok 0
+regulation-workflows/workflow-templates/peak-calling/.deprecated/atac-seq.yaml	1 ...rt-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable"
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-ad-hoc.yaml	1 ...al-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable"
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-pe-with-controls.yaml	1 templates.peak-calling-chip-seq.tasks.execute-peak-calling-task templates.peak-calling-task.inputs.parameters[11].name 'overwrite-results' is not unique
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-se-no-controls.yaml	1 ...al-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable"
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-v2.yaml	1 ...ks templates.dag-samtools-sort-tasks.tasks.create-tasks templates.dag-samtools-sort-task.tasks.samtools-sort-task couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v-0.2.0-"
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq.yaml	1 ...al-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable"
+regulation-workflows/workflow-templates/peak-calling/.deprecated/dnase-seq.yaml	1 ...rt-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable"
 regulation-workflows/workflow-templates/peak-calling/.deprecated/genrich-controls-pvc-callable.yaml	ok 1
-regulation-workflows/workflow-templates/peak-calling/.deprecated/get-genrich-values-tasks.yaml	1 workflow error: submit-genrich-values-tasks: templateRef: WorkflowTemplate genrich-values-v2-submittable not found
-regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks-ad-hoc.yaml	ok 2
-regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks.yaml	ok 2
+regulation-workflows/workflow-templates/peak-calling/.deprecated/get-genrich-values-tasks.yaml	1 templates.get-genrich-values-tasks-dag.tasks.submit-genrich-values-tasks couldn't find workflow template "genrich-values-v2-submittable"
+regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks-ad-hoc.yaml	1 ...rt-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable"
+regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks.yaml	1 ...rt-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable"
 regulation-workflows/workflow-templates/peak-calling/chip-seq-genrich-values-cmd.yaml	ok 1
 regulation-workflows/workflow-templates/peak-calling/chip-seq-peaks-v-0.2.yaml	ok 0
 regulation-workflows/workflow-templates/peak-calling/controls/.deprecated/controls-peak-calling-for-mask-file-with-pileups.yaml	ok 0
-regulation-workflows/workflow-templates/peak-calling/controls/control-peak-calling-for-mask-file.yaml	ok 0
-regulation-workflows/workflow-templates/peak-calling/controls/get-control-peak-calling-tasks.yaml	1 workflow error: submit-controls-pc-tasks-for-mask-file: templateRef: WorkflowTemplate control-peak-calling-for-mask-file-v-0.1.0 not found
+regulation-workflows/workflow-templates/peak-calling/controls/control-peak-calling-for-mask-file.yaml	1 ...k-calling-task templates.peak-calling-task.tasks.execute-sort-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.get-pvc-size couldn't find workflow template "compute-pvc-v-0.1.0"
+regulation-workflows/workflow-templates/peak-calling/controls/get-control-peak-calling-tasks.yaml	1 templates.get-control-peak-calling-tasks-dag.tasks.submit-controls-pc-tasks-for-mask-file couldn't find workflow template "control-peak-calling-for-mask-file-v-0.1.0"
 regulation-workflows/workflow-templates/peak-calling/delete-task-markers.yaml	ok 4
-regulation-workflows/workflow-templates/peak-calling/genrich-tasks.yaml	1 workflow error: check-if-pq-values-and-pileups-already-in-s3-bucket: templateRef: template check-if-s3-objects-exist not found in WorkflowTemplate/check-s3-object-exists-v-0.1.0
+regulation-workflows/workflow-templates/peak-calling/genrich-tasks.yaml	1 ...execute-peak-calling-task templates.peak-calling-task.tasks.check-if-pq-values-and-pileups-already-in-s3-bucket template reference check-s3-object-exists-v-0.1.0.check-if-s3-objects-exist not found
 regulation-workflows/workflow-templates/peak-calling/genrich-values-cmd.yaml	ok 0
-regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.1.yaml	ok 0
-regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.2.yaml	ok 0
+regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.1.yaml	1 ...execute-peak-calling-task templates.peak-calling-task.tasks.check-if-pq-values-and-pileups-already-in-s3-bucket template reference check-s3-object-exists-v-0.1.0.check-if-s3-objects-exist not found
+regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.2.yaml	1 ...execute-peak-calling-task templates.peak-calling-task.tasks.check-if-pq-values-and-pileups-already-in-s3-bucket template reference check-s3-object-exists-v-0.1.0.check-if-s3-objects-exist not found
 regulation-workflows/workflow-templates/peak-calling/open-chromatin-genrich-values-cmd.yaml	ok 1
-regulation-workflows/workflow-templates/peak-calling/open-chromatin-peaks-v-0.2.yaml	ok 0
-regulation-workflows/workflow-templates/peak-calling/peak-calling-tasks.yaml	ok 2
+regulation-workflows/workflow-templates/peak-calling/open-chromatin-peaks-v-0.2.yaml	1 templates.peak-calling-open-chromatin.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.get-peak-calling-pvc-size template reference compute-pvc-size-v-0.1.1.compute-pvc not found
+regulation-workflows/workflow-templates/peak-calling/peak-calling-tasks.yaml	1 ...s templates.peak-calling-open-chromatin.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.get-peak-calling-pvc-size template reference compute-pvc-size-v-0.1.1.compute-pvc not found
 regulation-workflows/workflow-templates/samtools/.deprecated/samtools-quickcheck-cmd-pvc-callable.yaml	ok 1
 regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.1.yaml	ok 4
 regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.2.yaml	ok 3
 regulation-workflows/workflow-templates/signal/.deprecated/genrich-pq-values-to-bigwig-high-mem-pvc-callable.yaml	ok 6
-regulation-workflows/workflow-templates/signal/.deprecated/get-signal-task.yaml	ok 6
+regulation-workflows/workflow-templates/signal/.deprecated/get-signal-task.yaml	1 ...asks.submit-pq-values-to-bigwig templates.genrich-pq-values-to-bigwig-dag.tasks.genrich-pq-values-to-bigwig couldn't find workflow template "genrich-pq-values-to-bigwig-pvc-callable-v1-submittable"
 regulation-workflows/workflow-templates/signal/genrich-pq-values-to-bigwig-pvc-callable-v-0.1.yaml	ok 6
-regulation-workflows/workflow-templates/signal/signal-tasks.yaml	1 templates.signal-tasks-dag name is not unique
+regulation-workflows/workflow-templates/signal/signal-tasks.yaml	1 spec.templates[2].name 'signal-tasks-dag' is not unique
 singlem-sra-processing/cloud/argo/logan_chunked_workflow_template.yaml	ok 1
 singlem-sra-processing/cloud/argo/logan_workflow_template.yaml	ok 1
 singlem-sra-processing/cloud/argo/prod_workflow_template1.yaml	ok 1
@@ -1315,40 +1534,44 @@ talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_templ
 talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/doubler-assertion.yaml	ok 2
 talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/doubler-template.yaml	ok 1
 talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/git-checkout-template.yaml	ok 1
-talk-demos/argocon-demos/2023-artifact-management-at-scale/ci-workflow-s3.yaml	1 workflow error: git-checkout-pr-s3: templateRef: WorkflowTemplate git-checkout-pr-s3 not found
+talk-demos/argocon-demos/2023-artifact-management-at-scale/ci-workflow-s3.yaml	ok 4
 talk-demos/argocon-demos/2023-artifact-management-at-scale/fan-out-fan-in.yaml	ok 2
 talk-demos/argocon-demos/2023-configuring-volumes-for-parallel-workflow-reads-and-writes/tests/nfs-workflow.yml	ok 4
 talk-demos/argocon-demos/2023-configuring-volumes-for-parallel-workflow-reads-and-writes/tests/s3-workflow.yml	ok 4
-talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/code-analysis.yml	1 workflow error: code-analysis: template code-analysis not found
-talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/container-build.yml	1 workflow error: container-build: inputs.parameters.container_tag was not supplied
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/code-analysis.yml	1 templates.main.tasks.code-analysis template name 'code-analysis' undefined
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/container-build.yml	1 templates.main.tasks.container-build templates.container-build inputs.parameters.container_tag was not supplied
 talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/cpd-certification.yml	ok 1
-talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/deploy-application.yml	1 workflow error: deploy-application: inputs.parameters.app_type was not supplied
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/deploy-application.yml	1 templates.main.tasks.deploy-application templates.deploy-application inputs.parameters.app_type was not supplied
 talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/get-git.yml	ok 1
-talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/git-checkout.yml	1 workflow error: git-checkout-pr: template git-checkout-pr not found
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/git-checkout.yml	1 templates.main.tasks.git-checkout-pr template name 'git-checkout-pr' undefined
 talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/run-unit-tests.yml	ok 1
-talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/update-jira.yml	1 workflow error: update-jira: inputs.parameters.jira_ticket_number was not supplied
-talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/argo-workflow.yaml	1 workflow error: git-checkout-pr: template git-checkout-pr not found in WorkflowTemplate/git-checkout
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/update-jira.yml	1 templates.main.tasks.update-jira templates.update-jira inputs.parameters.jira_ticket_number was not supplied
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/argo-workflow.yaml	1 templates.main.tasks.git-checkout templates.main.tasks.git-checkout-pr template name 'git-checkout-pr' undefined
 talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/create-and-setup-vcluster-workflow/create.yaml	ok 2
 talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/demonstrating-argo-workflows-and-vcluster-at-scale/lots-of-hellos-workflow.yaml	ok 170
 talk-demos/argocon-demos/2023-streamlining-big-data-workflows-with-memoization-and-work-avoidance/workflow/example.yaml	ok 2
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/container.yaml	ok 2
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/containerset.yaml	ok 3
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/dag-example.yaml	33 dag-f1d15.plugin: plugin templates are not supported: executor plugins need the Argo agent
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/dag-example.yaml	ok 8
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/http.yaml	ok 3
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/inline.yaml	ok 1
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/plugin.yaml	33 plugin-e9c77: plugin templates are not supported: executor plugins need the Argo agent
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/plugin.yaml	ok 1
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/resource.yaml	ok 1
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/script.yaml	ok 2
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/steps-example.yaml	33 steps-18254[3].plugin: plugin templates are not supported: executor plugins need the Argo agent
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/steps-example.yaml	ok 8
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/suspend.yaml	ok 0
 talk-demos/oss-2022/python/cron-workflow-python.yaml	ok 3
 talk-demos/oss-2022/scala/workflows/spark-template-jvm.yaml	ok 1
 talk-demos/oss-2022/scala/workflows/workflow-scala-with-template.yaml	ok 2
 talk-demos/oss-2022/scala/workflows/workflow-scala.yaml	ok 2
 workflows/examples/inspection-batch-with-failure.yaml	ok 2
-workflows/examples/inspection-batch-with-output-gathering.yaml	1 workflow error: onExit: template collect-outputs has no type: it needs container, script, steps, dag or another
+workflows/examples/inspection-batch-with-output-gathering.yaml	1 template 'collect-outputs' type is unknown
 workflows/examples/inspection-batch.yaml	ok 1
-workflows/examples/inspection.yaml	1 workflow error: onExit: template collect-outputs has no type: it needs container, script, steps, dag or another
+workflows/examples/inspection.yaml	1 template 'collect-outputs' type is unknown
 workflows/examples/resource-validate.yaml	ok 1
 workflows/templates/inspection-build-template.yaml	ok 3
+workflows/templates/inspection-results-template.yaml	valid
 workflows/templates/inspection-run-template.yaml	ok 2
+workflows/templates/solver-rhel-8.0-py36.yaml	valid
+workflows/templates/solver-sync.yaml	valid
+workflows/templates/sync-template.yaml	valid

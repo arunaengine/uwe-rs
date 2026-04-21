@@ -18,9 +18,11 @@ struct Scripted {
     /// Standard output of the calls of a template, in order; the last one repeats.
     stdout: HashMap<&'static str, Vec<&'static str>>,
     exit: HashMap<&'static str, Vec<i32>>,
-    /// Contents of output files by their path.
-    files: HashMap<&'static str, &'static str>,
+    /// Contents of output files by their path, in the order tasks write them; the last one
+    /// repeats.
+    files: HashMap<&'static str, Vec<&'static str>>,
     calls: HashMap<String, usize>,
+    writes: HashMap<String, usize>,
 }
 
 impl Executor for Scripted {
@@ -39,8 +41,10 @@ impl Executor for Scripted {
         *call += 1;
         for file in &outcome.files {
             let path = format!("/{}", file.path.trim_start_matches('/'));
-            if let Some(content) = self.files.get(path.as_str()) {
+            let write = self.writes.entry(path.clone()).or_default();
+            if let Some(content) = pick(self.files.get(path.as_str()), *write) {
                 std::fs::write(&file.location, content).expect("the file is written");
+                *write += 1;
             }
         }
         Ok(outcome)
@@ -53,7 +57,7 @@ struct Setup {
     parameters: Vec<(&'static str, &'static str)>,
     stdout: Vec<(&'static str, Vec<&'static str>)>,
     exit: Vec<(&'static str, Vec<i32>)>,
-    files: Vec<(&'static str, &'static str)>,
+    files: Vec<(&'static str, Vec<&'static str>)>,
 }
 
 struct Ran {
@@ -162,6 +166,7 @@ fn run_with(workflow: &str, setup: Setup) -> Ran {
         exit: setup.exit.into_iter().collect(),
         files: setup.files.into_iter().collect(),
         calls: HashMap::new(),
+        writes: HashMap::new(),
     };
     let execution = execute("workflow.yaml", &mut driver, &mut executor);
     let warnings = driver.warnings().to_vec();
@@ -511,7 +516,10 @@ fn outputs_pass_parameters_and_artifacts() {
 "#,
         ),
         Setup {
-            files: vec![("/tmp/count", "21\n"), ("/tmp/file", "/data/run/x.bam")],
+            files: vec![
+                ("/tmp/count", vec!["21\n"]),
+                ("/tmp/file", vec!["/data/run/x.bam"]),
+            ],
             ..Setup::default()
         },
     );

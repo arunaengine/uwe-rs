@@ -176,3 +176,17 @@ fn dag_tasks() {
         Err("templates.main templates.main.tasks.c.arguments.message.value or templates.main.tasks.c.arguments.message.valueFrom is required".into())
     );
 }
+
+#[test]
+fn leaf_templates() {
+    let imageless = workflow_template("t14", "  - name: main\n    container: {command: [echo]}\n");
+    assert_eq!(
+        check(&imageless, &[]),
+        Err("templates.main templates.main.container.image may not be empty".into())
+    );
+    let defaults = imageless.replace(
+        "spec:\n",
+        "spec:\n  templateDefaults:\n    container: {image: busybox}\n",
+    );
+    assert_eq!(check(&defaults, &[]), Ok(()));
+}

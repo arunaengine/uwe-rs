@@ -21,8 +21,8 @@ use argo_parser::model::{Arguments, DagTask, Template, TemplateRef, WorkflowSpec
 use argo_parser::{Node, Value as Yaml, decode};
 
 use crate::checks::{
-    Names, argument_dependencies, arguments, field_names, hooks, invalid_field_name, node_types,
-    one_loop, process_args, sort_tasks, template_types, without_tags,
+    Names, argument_dependencies, arguments, field_names, hooks, invalid_field_name, leaf_checks,
+    node_types, one_loop, process_args, sort_tasks, template_types, without_tags,
 };
 use crate::dag::ancestry;
 use crate::library::{Document, Kind, Library};
@@ -42,18 +42,26 @@ pub(crate) struct Base {
     pub label: String,
     pub path: PathBuf,
     pub templates: Vec<Node>,
+    /// `templateDefaults`, which may give container and script templates their image.
+    pub defaults: Option<Node>,
 }
 
 impl Base {
-    pub fn new(label: String, path: PathBuf, spec: &Node) -> Base {
+    pub fn new(label: String, path: PathBuf, spec: &Node, kind: Kind) -> Base {
         let templates = match spec.get("templates").map(|node| &node.value) {
             Some(Yaml::Sequence(templates)) => templates.clone(),
             _ => Vec::new(),
         };
+        // Argo applies the defaults of Workflows and WorkflowTemplates only.
+        let defaults = spec
+            .get("templateDefaults")
+            .filter(|_| kind != Kind::ClusterWorkflowTemplate)
+            .cloned();
         Base {
             label,
             path,
             templates,
+            defaults,
         }
     }
 
@@ -109,7 +117,12 @@ pub fn validate(document: &Document, library: &Library) -> Result<(), String> {
     };
     let (spec, _) = decode::<WorkflowSpec>(spec_node).map_err(|error| format!("spec: {error}"))?;
     let mut check = Check::new(library);
-    let base = Rc::new(Base::new(String::new(), document.path.clone(), spec_node));
+    let base = Rc::new(Base::new(
+        String::new(),
+        document.path.clone(),
+        spec_node,
+        document.kind,
+    ));
     let template_kind = matches!(
         document.kind,
         Kind::WorkflowTemplate | Kind::ClusterWorkflowTemplate
@@ -211,7 +224,12 @@ impl<'a> Check<'a> {
         }
         let empty = Node::new(Yaml::Mapping(Vec::new()), Default::default());
         let spec = document.spec().unwrap_or(&empty);
-        let base = Rc::new(Base::new(document.label(), document.path.clone(), spec));
+        let base = Rc::new(Base::new(
+            document.label(),
+            document.path.clone(),
+            spec,
+            document.kind,
+        ));
         self.bases.push((key, Rc::clone(&base)));
         base
     }
@@ -354,7 +372,7 @@ impl<'a> Check<'a> {
         } else if let Some(dag) = &template.dag {
             self.dag(template, &dag.tasks, &dag.target, base)
         } else {
-            Ok(())
+            leaf_checks(template, base)
         }
     }
 

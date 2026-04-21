@@ -810,6 +810,14 @@ spec:
     )
 }
 
+/// A ConfigMap that installs an executor plugin, as `argo executor-plugin build` makes it.
+fn plugin_config_map(name: &'static str, image: &str) -> &'static str {
+    let text = format!(
+        "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: {name}-executor-plugin\n  labels: {{workflows.argoproj.io/configmap-type: ExecutorPlugin}}\ndata:\n  sidecar.container: |\n    name: {name}-executor-plugin\n    image: {image}\n    command: [python, -c]\n    args: [serve]\n    ports: [{{containerPort: 4355}}]\n"
+    );
+    Box::leak(text.into_boxed_str())
+}
+
 #[test]
 fn plugin_templates_call_executor_plugins() {
     // Workflow-level plugins; a mock run does not know the reply.
@@ -843,6 +851,41 @@ fn plugin_templates_call_executor_plugins() {
             .iter()
             .any(|warning| warning.contains("reply is not known"))
     );
+
+    // Installed plugins: the one named like the template's key goes first; one that does not
+    // take the template passes it on.
+    let ran = run_with(
+        &plugin_workflow(""),
+        Setup {
+            library: vec![
+                plugin_config_map("hello", "hello:1"),
+                plugin_config_map("another", "another:1"),
+            ],
+            files: vec![
+                ("/argo/plugin/status", vec!["404", "200", "200"]),
+                (
+                    "/argo/plugin/reply.json",
+                    vec![
+                        "",
+                        r#"{"node": {"phase": "Succeeded", "outputs": {"parameters": [{"name": "greeting", "value": "hi"}]}}}"#,
+                    ],
+                ),
+            ],
+            ..Setup::default()
+        },
+    );
+    ran.succeeded();
+    let images: Vec<Option<&str>> = ran
+        .tasks()
+        .iter()
+        .map(|task| task.image.as_deref())
+        .collect();
+    assert_eq!(
+        images,
+        [Some("hello:1"), Some("another:1"), Some("busybox")]
+    );
+    assert_eq!(ran.upstream("[1].show"), ["[0].ask"]);
+    assert_eq!(ran.task("[1].show").command, ["echo", "hi"]);
 
     // Without plugins no one runs the template, as in Argo.
     let ran = run(&plugin_workflow(""));

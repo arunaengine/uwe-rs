@@ -377,3 +377,24 @@ fn declared_outputs(template: &Template, warn: &mut dyn FnMut(String)) -> NodeOu
     }
     outputs
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn simple_names_match_template_keys() {
+        assert!(
+            simple("workflow-level-hello-executor-plugin").contains(&simple("workflowLevelHello"))
+        );
+        assert!(!simple("massive").contains(&simple("hello")));
+    }
+
+    #[test]
+    fn the_script_calls_the_plugin_api() {
+        let script = call_script();
+        assert!(script.contains("/api/v1/template.execute"));
+        assert!(script.contains(&format!("@{REQUEST_PATH}")));
+        assert!(script.contains(&format!("> {STATUS_PATH}")));
+    }
+}

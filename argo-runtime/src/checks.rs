@@ -1,14 +1,96 @@
 //! The single rules of Argo's checks of a submitted workflow (workflow/validate/validate.go of
-//! v4.1.4): names, arguments and hooks.
+//! v4.1.4): names, arguments, hooks, template types, and the inputs that a call supplies. The
+//! module `validate` applies them while it walks the templates.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{BTreeMap, HashSet};
 use std::sync::OnceLock;
 
-use argo_parser::Node;
-use argo_parser::model::{Arguments, Artifact, LifecycleHook};
+use argo_parser::model::{Arguments, Artifact, LifecycleHook, Template};
+use argo_parser::{Node, Value as Yaml};
 use regex::Regex;
+
+use crate::validate::Supplied;
+
+/// The keys of a template that give its type.
+const TYPES: [&str; 10] = [
+    "container",
+    "containerSet",
+    "steps",
+    "script",
+    "resource",
+    "dag",
+    "suspend",
+    "data",
+    "http",
+    "plugin",
+];
+
+pub(crate) fn node_types(node: &Node) -> usize {
+    TYPES
+        .iter()
+        .filter(|key| node.get(key).is_some_and(|value| value.value != Yaml::Null))
+        .count()
+}
+
+pub(crate) fn template_types(template: &Template) -> usize {
+    [
+        template.container.is_some(),
+        template.container_set.is_some(),
+        !template.steps.is_empty(),
+        template.script.is_some(),
+        template.resource.is_some(),
+        template.dag.is_some(),
+        template.suspend.is_some(),
+        template.data.is_some(),
+        template.http.is_some(),
+        template.plugin.is_some(),
+    ]
+    .into_iter()
+    .filter(|&present| present)
+    .count()
+}
+
+/// Whether a call supplies the inputs of a template, as Argo's `ProcessArgs` checks it: an input
+/// needs a value, a default, a value of the call or a ConfigMap to read, and an input artifact
+/// that is not optional needs a location or an artifact of the call.
+pub(crate) fn process_args(template: &Template, supplied: Supplied) -> Result<(), String> {
+    let Supplied::Arguments(arguments) = supplied else {
+        return Ok(());
+    };
+    for input in &template.inputs.parameters {
+        let mut value = input.value.is_some() || input.default.is_some();
+        let mut from = input.value_from.as_ref();
+        if let Some(argument) = arguments
+            .parameters
+            .iter()
+            .find(|argument| argument.name == input.name)
+        {
+            if argument.value.is_some() {
+                value = true;
+                from = None;
+            } else {
+                value = false;
+                from = argument.value_from.as_ref();
+            }
+        }
+        let config_map = from.is_some_and(|from| from.config_map_key_ref.is_some());
+        if !value && !config_map {
+            return Err(format!("inputs.parameters.{} was not supplied", input.name));
+        }
+    }
+    for input in &template.inputs.artifacts {
+        let given = arguments
+            .artifacts
+            .iter()
+            .any(|argument| argument.name == input.name);
+        if !input.optional && !has_location(input) && !given {
+            return Err(format!("inputs.artifacts.{} was not supplied", input.name));
+        }
+    }
+    Ok(())
+}
 
 /// Whether an artifact says where it is, as Argo's `HasLocationOrKey`: a raw artifact, or a
 /// location whose key field is filled, like the key of an S3 artifact or the URL of an HTTP

@@ -26,6 +26,7 @@ pub mod sprig;
 mod steps;
 pub mod tags;
 mod time;
+mod validate;
 pub mod value;
 pub mod when;
 

@@ -719,6 +719,18 @@ fn placeholders_for_missing_parameters() {
         ran.error(),
         "spec.arguments.kind.value should be present in spec.arguments.kind.enum list"
     );
+    // So do templates that are not there or have no type.
+    let ran = run(&workflow(
+        "  - name: main\n    container: {image: busybox}\n  - name: typeless\n    inputs: {parameters: [{name: x}]}\n",
+    ));
+    assert_eq!(
+        ran.error(),
+        "templates.typeless template 'typeless' type is unknown"
+    );
+    let ran = run(&workflow(
+        "  - name: other\n    container: {image: busybox}\n",
+    ));
+    assert_eq!(ran.error(), "template name 'main' undefined");
 }
 
 #[test]

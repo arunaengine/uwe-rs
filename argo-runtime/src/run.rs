@@ -16,11 +16,11 @@ use argo_parser::{Entry, Node, Position, Value as Yaml, decode};
 use jiff::Timestamp;
 use workflow_graph::{Outcome, Task, TaskId};
 
-use crate::checks::{Names, arguments, field_names, hooks};
 use crate::library::{Document, Kind as DocumentKind, Library};
 use crate::merge::{merge, with_defaults};
 use crate::scope::Scope;
 use crate::tags::{Variables, replace_node};
+use crate::validate::{Base, Check, Supplied};
 use crate::value::Value;
 use crate::{Options, time};
 
@@ -454,16 +454,27 @@ impl Run {
         }
         spec.arguments.parameters = parameters;
         // The workflow is checked as Argo checks it when it is submitted, with the parameters
-        // it got.
-        let names: Vec<&str> = root_context
-            .templates
-            .iter()
-            .map(|template| template.get("name").and_then(Node::as_str).unwrap_or(""))
-            .collect();
-        field_names(&names, Names::Field)
-            .map_err(|error| Failure::error(format!("spec.templates{error}")))?;
-        arguments("spec.arguments.", &spec.arguments, false).map_err(Failure::error)?;
-        hooks(&spec.hooks, "hooks").map_err(Failure::error)?;
+        // and artifacts it got.
+        let mut supplied = spec.arguments.clone();
+        for name in &entry_artifacts {
+            supplied.artifacts.push(Artifact {
+                name: name.clone(),
+                ..Artifact::default()
+            });
+        }
+        let base = Rc::new(Base::new(
+            String::new(),
+            root_context.path.clone(),
+            &spec_node,
+        ));
+        Check::new(&library)
+            .spec(
+                &spec,
+                &base,
+                Some((&entrypoint, Supplied::Arguments(&supplied))),
+                false,
+            )
+            .map_err(Failure::error)?;
         let mut run = Run {
             workflow_name,
             options,

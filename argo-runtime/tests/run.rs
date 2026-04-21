@@ -707,6 +707,18 @@ fn placeholders_for_missing_parameters() {
             .iter()
             .any(|warning| warning.contains("placeholder_sample"))
     );
+    // A value that its enum does not allow stops the run before it starts, as in Argo.
+    let ran = run_with(
+        "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {generateName: test-}\nspec:\n  entrypoint: main\n  arguments:\n    parameters: [{name: kind, enum: [fastq, bam]}]\n  templates:\n  - name: main\n    container: {image: busybox}\n",
+        Setup {
+            parameters: vec![("kind", "cram")],
+            ..Setup::default()
+        },
+    );
+    assert_eq!(
+        ran.error(),
+        "spec.arguments.kind.value should be present in spec.arguments.kind.enum list"
+    );
 }
 
 #[test]

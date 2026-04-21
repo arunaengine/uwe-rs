@@ -1172,7 +1172,12 @@ impl Run {
             } else {
                 DocumentKind::WorkflowTemplate
             };
-            let Some(document) = self.library.find(kind, &reference.name, &context.path) else {
+            let Some(document) = self.library.find_template(
+                kind,
+                &reference.name,
+                &reference.template,
+                &context.path,
+            ) else {
                 return Err(format!(
                     "templateRef: {} {} not found",
                     kind.name(),

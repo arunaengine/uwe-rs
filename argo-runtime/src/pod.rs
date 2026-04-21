@@ -467,7 +467,7 @@ impl Run {
 
     /// The fields of a node's pod that environment variables read with `fieldRef`, as the run
     /// makes them up: the pod's name, namespace and uid, its service account, node and IP.
-    fn pod_fields(&self, index: usize) -> BTreeMap<&'static str, String> {
+    pub(crate) fn pod_fields(&self, index: usize) -> BTreeMap<&'static str, String> {
         let node = &self.nodes[index];
         let pod = self.pod_name(&node.name, &node.template);
         let global = |name: &str| self.globals.get(name).cloned().unwrap_or_default();
@@ -524,7 +524,7 @@ impl Run {
 
 /// Fills a task from a container: command, arguments, working directory and environment.
 /// Variables that read a field of the pod get the run's value of it.
-fn fill_container(
+pub(crate) fn fill_container(
     task: &mut Task,
     container: &Container,
     fields: &BTreeMap<&'static str, String>,
@@ -679,7 +679,7 @@ fn input_of(artifact: &ArtifactValue) -> Option<Input> {
 }
 
 /// Resources from Kubernetes requests, or limits where requests say nothing.
-fn resources_of(node: &Node) -> Resources {
+pub(crate) fn resources_of(node: &Node) -> Resources {
     let mut resources = Resources::default();
     for part in ["limits", "requests"] {
         let Some(values) = node.get(part) else {

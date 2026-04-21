@@ -685,7 +685,7 @@ const PRINT_STEP: &str = r#"
 "#;
 
 #[test]
-fn placeholders_and_unsupported_features() {
+fn placeholders_for_missing_parameters() {
     let ran = run(&workflow(
         r#"
   - name: main
@@ -707,14 +707,6 @@ fn placeholders_and_unsupported_features() {
             .iter()
             .any(|warning| warning.contains("placeholder_sample"))
     );
-    let ran = run(&workflow(
-        r#"
-  - name: main
-    plugin:
-      hello: {}
-"#,
-    ));
-    assert!(matches!(&ran.execution.error, Some(error) if error.unsupported()));
 }
 
 #[test]
@@ -788,5 +780,75 @@ fn leaf_kinds_become_tasks() {
         ran.warnings
             .iter()
             .any(|warning| warning.contains("response status is not known"))
+    );
+}
+
+/// A workflow with a plugin template and a step that prints its output; `plugins` is the text of
+/// `spec.executorPlugins`.
+fn plugin_workflow(plugins: &str) -> String {
+    format!(
+        r#"apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: test-
+spec:
+  entrypoint: main
+{plugins}  templates:
+  - name: main
+    steps:
+    - - name: ask
+        template: ask
+    - - name: show
+        template: print
+        arguments: {{parameters: [{{name: message, value: "{{{{steps.ask.outputs.parameters.greeting}}}}"}}]}}
+  - name: ask
+    plugin:
+      hello: {{name: world}}
+    outputs:
+      parameters: [{{name: greeting, valueFrom: {{default: unknown}}}}]
+{PRINT}"#
+    )
+}
+
+#[test]
+fn plugin_templates_call_executor_plugins() {
+    // Workflow-level plugins; a mock run does not know the reply.
+    let plugins = "  executorPlugins:\n  - metadata: {name: hello}\n    spec:\n      sidecar:\n        container: {name: hello, image: python:alpine, command: [python, -c], args: [serve], ports: [{containerPort: 4356}]}\n";
+    let ran = run(&plugin_workflow(plugins));
+    ran.succeeded();
+    let task = ran.task("[0].ask");
+    assert_eq!(task.image.as_deref(), Some("python:alpine"));
+    assert_eq!(task.command[..2], ["sh", "-c"]);
+    assert_eq!(
+        task.command[3..],
+        ["call-plugin", "4356", "python", "-c", "serve"]
+    );
+    let request = task
+        .inputs
+        .iter()
+        .find(|input| input.path == "/argo/plugin/request.json")
+        .and_then(|input| input.content.clone())
+        .expect("a request");
+    assert!(
+        request.starts_with(r#"{"workflow":{"metadata":{"name":"test-"#),
+        "{request}"
+    );
+    assert!(
+        request.contains(r#""plugin":{"hello":{"name":"world"}}"#),
+        "{request}"
+    );
+    assert_eq!(ran.task("[1].show").command, ["echo", "unknown"]);
+    assert!(
+        ran.warnings
+            .iter()
+            .any(|warning| warning.contains("reply is not known"))
+    );
+
+    // Without plugins no one runs the template, as in Argo.
+    let ran = run(&plugin_workflow(""));
+    assert!(
+        ran.error().contains("no plugin executed the template"),
+        "{}",
+        ran.error()
     );
 }

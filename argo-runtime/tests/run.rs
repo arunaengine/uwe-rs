@@ -613,6 +613,10 @@ spec:
     );
     ran.succeeded();
     assert_eq!(ran.task("[0].inner").command, ["cowsay", "from-cli"]);
+    assert_eq!(
+        run(submitted).error(),
+        "couldn't find workflow template \"lib\""
+    );
     let missing = run(referencing);
     assert!(
         missing

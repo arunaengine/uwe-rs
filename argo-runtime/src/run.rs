@@ -20,7 +20,7 @@ use crate::library::{Document, Kind as DocumentKind, Library};
 use crate::merge::{merge, with_defaults};
 use crate::scope::Scope;
 use crate::tags::{Variables, replace_node};
-use crate::validate::{Base, Check, Supplied};
+use crate::validate::{Base, Check, Supplied, not_found};
 use crate::value::Value;
 use crate::{Options, time};
 
@@ -315,10 +315,7 @@ impl Run {
                 DocumentKind::WorkflowTemplate
             };
             let Some(template) = library.find(kind, name, &document.path) else {
-                return Err(Failure::error(format!(
-                    "workflowTemplateRef: {} {name} not found",
-                    kind.name()
-                )));
+                return Err(Failure::error(not_found(kind, name)));
             };
             let base = template.spec().cloned().unwrap_or_else(empty_mapping);
             remove_key(&mut spec_node, "workflowTemplateRef");

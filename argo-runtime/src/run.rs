@@ -1441,6 +1441,28 @@ impl Run {
         Ok(Some(Location::Url(url)))
     }
 
+    /// The id of a new task. A run asks for at most [`MAX_TASKS`] tasks.
+    pub fn next_task_id(&mut self) -> Result<TaskId> {
+        if self.next_task > MAX_TASKS {
+            return Err(Failure::error(format!(
+                "the run asks for more than {MAX_TASKS} tasks; does a loop not end?"
+            )));
+        }
+        let id = TaskId(self.next_task);
+        self.next_task += 1;
+        Ok(id)
+    }
+
+    /// Asks for a task of a node; its outcome comes back to the node.
+    pub fn ask(&mut self, index: usize, task: Task) {
+        let slot = self.nodes[index].outcomes.len();
+        self.tasks.insert(task.id, (index, slot));
+        self.nodes[index].tasks.push(task.id);
+        self.nodes[index].outcomes.push(None);
+        self.emitted.push(task);
+        self.changed = true;
+    }
+
     pub fn new_node(&mut self, name: &str, kind: NodeKind, template: &str, call: &Call) -> usize {
         let index = self.nodes.len();
         self.nodes.push(NodeStatus {

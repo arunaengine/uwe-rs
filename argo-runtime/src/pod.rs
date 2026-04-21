@@ -16,7 +16,7 @@ use argo_parser::model::{Container, Template};
 use argo_parser::{Node, Value as Yaml};
 use workflow_graph::{Input, Outcome, Resources, Task, TaskId};
 
-use crate::run::{ArtifactValue, Failure, Location, MAX_TASKS, Phase, Result, Run};
+use crate::run::{ArtifactValue, Failure, Location, Phase, Result, Run};
 use crate::value::Value;
 
 /// The image of Argo's executor, which runs resource and data templates.
@@ -222,13 +222,7 @@ impl Run {
         }
         let mut ids: Vec<TaskId> = Vec::new();
         for _ in &tasks {
-            if self.next_task > MAX_TASKS {
-                return Err(Failure::error(format!(
-                    "the run asks for more than {MAX_TASKS} tasks; does a loop not end?"
-                )));
-            }
-            ids.push(TaskId(self.next_task));
-            self.next_task += 1;
+            ids.push(self.next_task_id()?);
         }
         for (slot, mut task) in tasks.into_iter().enumerate() {
             task.id = ids[slot];
@@ -239,10 +233,7 @@ impl Run {
                     task.after.push(id);
                 }
             }
-            self.tasks.insert(task.id, (index, slot));
-            self.nodes[index].tasks.push(task.id);
-            self.nodes[index].outcomes.push(None);
-            self.emitted.push(task);
+            self.ask(index, task);
         }
         self.changed = true;
         if self.nodes[index].tasks.is_empty() {

@@ -391,7 +391,7 @@ fn dag_depends_on_results() {
         arguments: {parameters: [{name: message, value: next}]}
       - name: b
         template: print
-        dependencies: [a]
+        depends: a
         arguments: {parameters: [{name: message, value: b}]}
       - name: d
         template: print
@@ -614,7 +614,13 @@ spec:
     ran.succeeded();
     assert_eq!(ran.task("[0].inner").command, ["cowsay", "from-cli"]);
     let missing = run(referencing);
-    assert!(missing.error().contains("WorkflowTemplate lib not found"));
+    assert!(
+        missing
+            .error()
+            .contains("couldn't find workflow template \"lib\""),
+        "{}",
+        missing.error()
+    );
 }
 
 #[test]

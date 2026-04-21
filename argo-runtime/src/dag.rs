@@ -706,7 +706,7 @@ enum Expansion {
 }
 
 /// A task and all tasks it depends on, dependencies first.
-fn ancestry(name: &str, tasks: &[DagTask], out: &mut Vec<String>) {
+pub(crate) fn ancestry(name: &str, tasks: &[DagTask], out: &mut Vec<String>) {
     fn visit(name: &str, tasks: &[DagTask], out: &mut Vec<String>, visiting: &mut Vec<String>) {
         if out.iter().any(|known| known == name) || visiting.iter().any(|known| known == name) {
             return;

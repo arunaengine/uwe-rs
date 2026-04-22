@@ -1738,7 +1738,16 @@ impl Collector<'_> {
             .get("location")
             .and_then(Value::as_str)
             .map(str::to_owned);
-        let path = map.get("path").and_then(Value::as_str).map(str::to_owned);
+        let mut path = map.get("path").and_then(Value::as_str).map(str::to_owned);
+        // A `file:` location inside the output directory of the container, as
+        // `cwl.output.json` may give one, names a path there.
+        let outdir = &self.pending.outdir;
+        if path.is_none()
+            && let Some(file_path) = location.as_deref().and_then(iri::file_path)
+            && file_path.starts_with(outdir)
+        {
+            path = Some(file_path.to_string_lossy().into_owned());
+        }
         match (location, path) {
             (Some(location), None) => {
                 if !iri::has_scheme(&location) && !location.starts_with("_:") {

@@ -1120,6 +1120,23 @@ fn unbound(types: &Types, value_type: &Type, binding: Option<&OutputBinding>) ->
     }
 }
 
+/// Whether a type takes files and whether it takes directories, in lists and unions too.
+fn classes(types: &Types, value_type: &Type) -> (bool, bool) {
+    match types.resolve(value_type) {
+        Type::File | Type::Stdout | Type::Stderr => (true, false),
+        Type::Directory => (false, true),
+        Type::Any => (true, true),
+        Type::Array(array) => classes(types, &array.items),
+        Type::Union(members) => members
+            .iter()
+            .fold((false, false), |(files, folders), member| {
+                let (file, folder) = classes(types, member);
+                (files || file, folders || folder)
+            }),
+        _ => (false, false),
+    }
+}
+
 /// Whether the files an output collects are directories.
 fn directory_type(types: &Types, value_type: &Type) -> bool {
     match types.resolve(value_type) {
@@ -1444,9 +1461,25 @@ impl Collector<'_> {
             self.vars(&null),
             &self.pending.outdir,
         )?;
+        // Without `outputEval` the matches are the value, so they must be of a class the
+        // output takes, as cwltool's type check of outputs finds.
+        let (files, directories) = classes(types, value_type);
+        let checked = binding.output_eval.is_none() && files != directories;
         let mut found: Vec<Value> = Vec::new();
         for pattern in &patterns {
             for file in self.matches(pattern) {
+                if checked && file.directory != directories {
+                    let (class, taken) = if file.directory {
+                        ("directory", "files")
+                    } else {
+                        ("file", "directories")
+                    };
+                    return Err(format!(
+                        "the glob `{pattern}` matches the {class} `{}`, but the output takes {taken}",
+                        file.path
+                    ));
+                }
+                self.check_link(&file)?;
                 found.push(self.file_object(&file, &binding)?);
             }
         }
@@ -1561,6 +1594,41 @@ impl Collector<'_> {
         found.sort_by(|a, b| a.path.cmp(&b.path));
         found.dedup_by(|a, b| a.path == b.path);
         found
+    }
+
+    /// Fails for a matched file that is a symbolic link to a place outside the output
+    /// directory, which the task cannot give back.
+    fn check_link(&self, file: &OutputFile) -> Result<(), String> {
+        let Ok(target) = std::fs::read_link(&file.location) else {
+            return Ok(());
+        };
+        let outdir = Path::new(&self.pending.outdir);
+        let inside = if target.is_absolute() {
+            target.starts_with(outdir)
+                || self
+                    .workdir
+                    .as_ref()
+                    .is_some_and(|folder| target.starts_with(folder))
+        } else {
+            // A relative target may climb at most to the output directory.
+            let mut depth = Path::new(&file.path).components().count() as isize - 1;
+            target.components().all(|part| {
+                match part {
+                    std::path::Component::ParentDir => depth -= 1,
+                    std::path::Component::Normal(_) => depth += 1,
+                    _ => {}
+                }
+                depth >= 0
+            })
+        };
+        if inside {
+            return Ok(());
+        }
+        Err(format!(
+            "the output `{}` links to `{}`, outside the output directory",
+            file.path,
+            target.display()
+        ))
     }
 
     /// The file object of a matched file, with contents, listing and checksum as asked.

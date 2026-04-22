@@ -61,3 +61,22 @@ fn rejects_negative_time_limits() {
     let error = run(&[("main.cwl", tool)]).expect_err("a negative time limit fails");
     assert!(error.contains("timelimit"), "{error}");
 }
+
+#[test]
+fn absolute_entry_names_need_docker_as_a_requirement() {
+    let tool = |docker: &str| {
+        format!(
+            "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: cat\n{docker}\
+             requirements:\n  InitialWorkDirRequirement:\n    listing:\n      \
+             - {{entryname: /data/x.txt, entry: text}}\ninputs: []\noutputs: []\n"
+        )
+    };
+    let hinted = tool("hints: {DockerRequirement: {dockerPull: alpine}}\n");
+    let error = run(&[("main.cwl", &hinted)]).expect_err("a hint is not enough");
+    assert!(error.contains("DockerRequirement"), "{error}");
+    let required = tool("").replace(
+        "requirements:\n",
+        "requirements:\n  DockerRequirement: {dockerPull: alpine}\n",
+    );
+    assert_eq!(run(&[("main.cwl", &required)]), Ok(1));
+}

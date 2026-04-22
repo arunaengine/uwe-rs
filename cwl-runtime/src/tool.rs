@@ -831,6 +831,9 @@ fn initial_workdir(
     }) else {
         return Ok(());
     };
+    let docker_required = scope
+        .find(|class| matches!(class, RequirementClass::Docker(_)).then_some(()))
+        .is_some_and(|(_, required)| required);
     let runtime = Value::Map(runtime.clone());
     let vars = Variables {
         inputs,
@@ -953,6 +956,12 @@ fn initial_workdir(
         if basename.starts_with('/') && process.version < Version::V1_2Dev4 {
             return Err(format!(
                 "the InitialWorkDir entry `{basename}` is absolute, which needs cwlVersion v1.2"
+            ));
+        }
+        if basename.starts_with('/') && !docker_required {
+            return Err(format!(
+                "the InitialWorkDir entry `{basename}` is absolute, which needs \
+                 DockerRequirement under `requirements`"
             ));
         }
         let (folder, name) = match basename.rsplit_once('/') {

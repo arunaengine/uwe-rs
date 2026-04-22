@@ -22,7 +22,8 @@ pub struct Setting<'a> {
     /// The `LoadListingRequirement` in effect.
     pub load_listing: Option<LoadListing>,
     /// Whether secondary files are looked for next to their primary file, which cwltool does
-    /// for the inputs of the process a run starts with.
+    /// for the inputs of the process a run starts with only; inside a workflow they come with
+    /// the values.
     pub discover: bool,
     /// In a run on placeholder inputs, the folder URL of placeholder files: a required input
     /// that gets null, as optional inputs are null there, gets a placeholder too.
@@ -32,6 +33,9 @@ pub struct Setting<'a> {
     pub toplevel: bool,
     /// Whether the optional inputs of the process the run starts with get placeholders too.
     pub fill_optional: bool,
+    /// Location prefixes of files that have the formats and secondary files asked of them, as
+    /// a job that works gives them: placeholder files, and the outputs of abstract steps.
+    pub assumed: &'a [String],
     /// Whether the documents name ontologies in `$schemas`. iunctus does not read them, so a
     /// file format that differs from the declared ones may be a subclass of one, and passes.
     pub ontologies: bool,
@@ -257,8 +261,8 @@ impl Walk<'_, '_> {
     }
 
     /// Fails when a file has no format, or one that none of the declared formats is, as
-    /// cwltool's `check_format`. A placeholder file without a format takes the first one, as
-    /// a job that works gives it.
+    /// cwltool's `check_format`. An assumed file without a format takes the first one, as a
+    /// job that works gives it.
     fn check_format(&self, file: &mut Map, declared: &[Expression]) -> Result<(), String> {
         let mut allowed = Vec::new();
         for expression in declared {
@@ -286,8 +290,9 @@ impl Walk<'_, '_> {
         let location = file.get("location").and_then(Value::as_str).unwrap_or("");
         let placeholder = self
             .setting
-            .placeholders
-            .is_some_and(|base| location.starts_with(base));
+            .assumed
+            .iter()
+            .any(|prefix| location.starts_with(prefix.as_str()));
         if placeholder
             && !file.contains_key("format")
             && let Some(first) = allowed.first()
@@ -414,7 +419,17 @@ impl Walk<'_, '_> {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_owned();
-        if given || (self.setting.discover && self.setting.access.exists(&entry_location)) {
+        let found = self
+            .setting
+            .access
+            .exists_next_to(&entry_location, &location);
+        // An assumed file has the secondary files asked of it, as a job that works lists them.
+        let placeholder = self
+            .setting
+            .assumed
+            .iter()
+            .any(|prefix| location.starts_with(prefix.as_str()));
+        if given || ((self.setting.discover || placeholder) && found) {
             add_secondary(list, entry);
         } else if required {
             return Err(format!(

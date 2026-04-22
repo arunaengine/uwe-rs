@@ -1215,6 +1215,11 @@ fn operation_output(types: &Types, output: &OutputParameter) -> Option<String> {
 }
 
 impl Pending {
+    /// Whether the task is an abstract `Operation`, which runs no tool.
+    pub fn is_abstract(&self) -> bool {
+        matches!(self.process.class, Class::Operation)
+    }
+
     /// The output object of the task from its outcome.
     pub fn collect(self, outcome: &Outcome) -> Result<Map, String> {
         let exit = i64::from(outcome.exit_code);

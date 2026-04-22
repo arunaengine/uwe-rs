@@ -95,6 +95,7 @@ impl Corpus {
         let options = Options {
             scratch: self.scratch.path().join("scratch"),
             now: Some("2026-09-28T12:00:00Z".parse().expect("a time")),
+            assume_inputs: true,
             ..Options::default()
         };
         let mut driver = ArgoDriver::new(Rc::clone(document), Rc::new(library), options);

@@ -336,8 +336,9 @@ argo-corpus:
 		mv "$work" "$target"
 	done
 
-# Runs every Argo document of the corpus that has an entrypoint with the mock executor and
-# compares the outcomes with argo-runtime/tests/fixtures/corpus/outcomes.txt.
+# Runs every Argo document of the corpus that has an entrypoint with the mock executor, checks
+# the others as Argo does when they are created, and compares the outcomes with
+# argo-runtime/tests/fixtures/corpus/outcomes.txt.
 argo-corpus-test:
 	ARGO_CORPUS="${ARGO_CORPUS:-$HOME/.cache/iunctus/corpus/argo}" cargo test --release --locked -p argo-runtime --test corpus -- --ignored --nocapture
 

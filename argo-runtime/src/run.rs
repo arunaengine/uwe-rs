@@ -393,7 +393,7 @@ impl Run {
                         .artifacts
                         .iter()
                         .any(|argument| argument.name == artifact.name);
-                if !supplied {
+                if !supplied && options.assume_inputs {
                     entry_artifacts.push(artifact.name.clone());
                 }
             }
@@ -432,6 +432,15 @@ impl Run {
                     ));
                 }
                 default
+            } else if !options.assume_inputs {
+                // A real run needs the value, as `argo submit` does; the checks below name it.
+                if from_config_map {
+                    return Err(Failure::error(format!(
+                        "parameter {} reads a ConfigMap, which a run without Kubernetes cannot, and has no default",
+                        parameter.name
+                    )));
+                }
+                continue;
             } else if let Some(first) = parameter.enumeration.first() {
                 warnings.push(format!(
                     "parameter {} has no value; using the first of its enum, `{first}`",

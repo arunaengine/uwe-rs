@@ -58,6 +58,8 @@ struct Setup {
     stdout: Vec<(&'static str, Vec<&'static str>)>,
     exit: Vec<(&'static str, Vec<i32>)>,
     files: Vec<(&'static str, Vec<&'static str>)>,
+    /// Run as a real run, which gives no placeholders for missing inputs.
+    real_inputs: bool,
 }
 
 struct Ran {
@@ -157,6 +159,7 @@ fn run_with(workflow: &str, setup: Setup) -> Ran {
             .collect(),
         scratch: directory.path().join("scratch"),
         now: Some("2026-09-28T12:00:00Z".parse().expect("a time")),
+        assume_inputs: !setup.real_inputs,
         ..Options::default()
     };
     let mut driver = ArgoDriver::new(document, Rc::new(library), options);
@@ -716,6 +719,21 @@ fn placeholders_for_missing_parameters() {
         ran.warnings
             .iter()
             .any(|warning| warning.contains("placeholder_sample"))
+    );
+    // A real run needs the values, as `argo submit` does.
+    let real = Setup {
+        real_inputs: true,
+        ..Setup::default()
+    };
+    let ran = run_with(
+        &workflow(
+            "  - name: main\n    inputs: {parameters: [{name: sample}]}\n    container: {image: busybox}\n",
+        ),
+        real,
+    );
+    assert_eq!(
+        ran.error(),
+        "spec.arguments.sample.value or spec.arguments.sample.valueFrom is required"
     );
     // A value that its enum does not allow stops the run before it starts, as in Argo.
     let ran = run_with(

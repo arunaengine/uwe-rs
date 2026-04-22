@@ -80,3 +80,21 @@ fn absolute_entry_names_need_docker_as_a_requirement() {
     );
     assert_eq!(run(&[("main.cwl", &required)]), Ok(1));
 }
+
+#[test]
+fn outputs_of_abstract_steps_bring_their_secondary_files() {
+    let index = "cwlVersion: v1.2\nclass: Operation\ninputs: []\n\
+        outputs:\n  indexed: {type: File, secondaryFiles: [.fai]}\n";
+    let align = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: align\n\
+        inputs:\n  reference: {type: File, secondaryFiles: [.fai], inputBinding: {}}\n\
+        outputs: []\n";
+    let main = "cwlVersion: v1.2\nclass: Workflow\ninputs: []\noutputs: []\nsteps:\n  \
+        index: {run: index.cwl, in: [], out: [indexed]}\n  \
+        align: {run: align.cwl, in: {reference: index/indexed}, out: []}\n";
+    let files = [
+        ("index.cwl", index),
+        ("align.cwl", align),
+        ("main.cwl", main),
+    ];
+    assert_eq!(run(&files), Ok(2));
+}

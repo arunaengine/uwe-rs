@@ -20,7 +20,7 @@ fn process(text: &str) -> Arc<Process> {
 }
 
 /// The setting of the process a run on placeholder inputs starts with.
-fn setting<'a>(types: &'a Types, evaluator: &'a Evaluator) -> Setting<'a> {
+fn setting<'a>(types: &'a Types, evaluator: &'a Evaluator, assumed: &'a [String]) -> Setting<'a> {
     Setting {
         types,
         evaluator,
@@ -33,6 +33,7 @@ fn setting<'a>(types: &'a Types, evaluator: &'a Evaluator) -> Setting<'a> {
         toplevel: true,
         fill_optional: false,
         ontologies: false,
+        assumed,
     }
 }
 
@@ -43,9 +44,10 @@ fn optional_inputs_of_the_top_process_get_placeholders_when_asked() {
          inputs:\n  extra: File?\n",
     );
     let (types, evaluator) = (Types::default(), Evaluator::default());
+    let assumed = [BASE.to_owned()];
     let setting = Setting {
         fill_optional: true,
-        ..setting(&types, &evaluator)
+        ..setting(&types, &evaluator, &assumed)
     };
     let job = prepare(&tool, Map::new(), &setting).unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(
@@ -67,7 +69,8 @@ fn broken_defaults_of_the_top_process_give_way_to_placeholders() {
          inputs:\n  given:\n    type: File\n    default: {class: File}\n",
     );
     let (types, evaluator) = (Types::default(), Evaluator::default());
-    let setting = setting(&types, &evaluator);
+    let assumed = [BASE.to_owned()];
+    let setting = setting(&types, &evaluator, &assumed);
     let job = prepare(&tool, Map::new(), &setting).unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(
         job.get("given").and_then(|file| file.text("location")),
@@ -108,7 +111,8 @@ fn formats(regular: Option<&str>, item: &str) -> Map {
 fn checks_file_formats_as_cwltool_does_without_an_ontology() {
     let tool = process(FORMATS);
     let (types, evaluator) = (Types::default(), Evaluator::default());
-    let setting = setting(&types, &evaluator);
+    let assumed = [BASE.to_owned()];
+    let setting = setting(&types, &evaluator, &assumed);
     let one = "http://example.com/format1";
     let two = "http://example.com/format2";
     let other = "http://example.com/formatZ";
@@ -135,4 +139,60 @@ fn checks_file_formats_as_cwltool_does_without_an_ontology() {
         ..setting
     };
     assert!(prepare(&tool, formats(Some(other), two), &named).is_ok());
+}
+
+const INDEXED: &str = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: cat\n\
+    outputs: []\ninputs:\n  reference: {type: File, secondaryFiles: [.fai]}\n";
+
+#[test]
+fn a_file_on_disk_needs_its_secondary_files_on_disk() {
+    let tool = process(INDEXED);
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    let fasta = folder.path().join("genome.fa");
+    std::fs::write(&fasta, ">a\n").expect("writes the file");
+    let url = cwl_parser::iri::file_url(&fasta);
+    let job = |url: &str| match Value::parse(&format!(
+        "{{reference: {{class: File, location: '{url}'}}}}"
+    )) {
+        Ok(Value::Map(map)) => map,
+        other => panic!("{other:?}"),
+    };
+    let (types, evaluator) = (Types::default(), Evaluator::default());
+    let assumed = [BASE.to_owned()];
+    let setting = setting(&types, &evaluator, &assumed);
+    let missing = prepare(&tool, job(&url), &setting);
+    assert!(missing.is_err_and(|error| error.contains("genome.fa.fai")));
+    std::fs::write(folder.path().join("genome.fa.fai"), "").expect("writes the index");
+    assert!(prepare(&tool, job(&url), &setting).is_ok());
+    // A file that is not on disk, as in a mock run, counts as present with its neighbours.
+    assert!(prepare(&tool, job("file:///nowhere/genome.fa"), &setting).is_ok());
+}
+
+#[test]
+fn inside_a_workflow_only_assumed_files_get_secondary_files() {
+    let tool = process(INDEXED);
+    let job = |url: &str| match Value::parse(&format!(
+        "{{reference: {{class: File, location: '{url}'}}}}"
+    )) {
+        Ok(Value::Map(map)) => map,
+        other => panic!("{other:?}"),
+    };
+    let (types, evaluator) = (Types::default(), Evaluator::default());
+    let assumed = [BASE.to_owned()];
+    let inner = Setting {
+        toplevel: false,
+        discover: false,
+        ..setting(&types, &evaluator, &assumed)
+    };
+    let given = prepare(&tool, job("file:///in/genome.fa"), &inner);
+    let given = given.unwrap_or_else(|error| panic!("{error}"));
+    let secondary = given
+        .get("reference")
+        .and_then(|file| file.get("secondaryFiles"));
+    assert_eq!(
+        secondary.and_then(Value::as_list).map(<[Value]>::len),
+        Some(1)
+    );
+    let other = prepare(&tool, job("file:///work/3/genome.fa"), &inner);
+    assert!(other.is_err_and(|error| error.contains("genome.fa.fai")));
 }

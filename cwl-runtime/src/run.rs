@@ -122,6 +122,9 @@ pub struct Run {
     fake: Vec<String>,
     /// Whether the documents name ontologies in `$schemas`.
     ontologies: bool,
+    /// Location prefixes of files that have what a parameter asks of them: the placeholder
+    /// folder, and the work folders of abstract `Operation` tasks.
+    assumed: Vec<String>,
 }
 
 impl Run {
@@ -137,6 +140,7 @@ impl Run {
             placeholders: None,
             fake: Vec::new(),
             ontologies: false,
+            assumed: Vec::new(),
         }
     }
 
@@ -150,6 +154,7 @@ impl Run {
     pub fn use_placeholders(&mut self, base: &str) {
         self.placeholders = Some(base.to_owned());
         self.fake.push(base.to_owned());
+        self.assumed.push(base.to_owned());
     }
 
     /// Starts the main process with its input object and returns the first tasks.
@@ -181,6 +186,9 @@ impl Run {
             && let Some(folder) = tool::workdir(outcome)
         {
             let prefix = format!("{}/", iri::file_url(std::path::Path::new(&folder)));
+            if pending.is_abstract() && !self.assumed.contains(&prefix) {
+                self.assumed.push(prefix.clone());
+            }
             if !self.fake.contains(&prefix) {
                 self.fake.push(prefix);
             }
@@ -294,11 +302,12 @@ impl Run {
             evaluator: &evaluator,
             access: self.options.access(),
             load_listing: scope.load_listing(),
-            discover: toplevel || self.options.mock,
+            discover: toplevel,
             placeholders: self.placeholders.as_deref(),
             toplevel,
             fill_optional: self.options.fill_optional,
             ontologies: self.ontologies,
+            assumed: &self.assumed,
         };
         let job = inputs::prepare(process, job, &setting).map_err(at)?;
         match &process.class {

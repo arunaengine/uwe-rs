@@ -379,19 +379,26 @@ impl Executor for Simulator {
             };
         }
         match simulate(task, &work) {
-            // A known command makes only its own files, not every output the mock made.
-            Some(made) => {
+            // Known commands make only their own files, not every output the mock made.
+            Some(Simulated { made, exit_code }) => {
+                outcome.exit_code = exit_code;
                 outcome.files.retain(|file| {
-                    made.contains(&file.path)
+                    let kept = made.contains(&file.path)
                         || staged.iter().any(|path| {
                             file.path == *path || file.path.starts_with(&format!("{path}/"))
-                        })
+                        });
+                    // A file the mock made that no command made is gone from disk too, so
+                    // that a glob into a folder does not find it.
+                    if !kept && file.location.is_file() {
+                        let _ = std::fs::remove_file(&file.location);
+                    }
+                    kept
                 });
                 for path in made {
                     if !outcome.files.iter().any(|file| file.path == path) {
                         outcome.files.push(workflow_graph::OutputFile {
                             location: work.join(&path),
-                            directory: false,
+                            directory: work.join(&path).is_dir(),
                             path,
                         });
                     }
@@ -403,86 +410,213 @@ impl Executor for Simulator {
     }
 }
 
-/// Writes what a known command would write, and gives the paths it wrote; `None` when the
-/// command is not known.
-fn simulate(task: &Task, work: &Path) -> Option<Vec<String>> {
-    let mut made = Vec::new();
-    let (words, redirects) = command_words(task)?;
-    let read_input = |path: &str| -> Option<String> {
-        let input = task.inputs.iter().find(|input| {
+/// What a simulated script did: the paths it made in the work folder, and its exit code.
+struct Simulated {
+    made: Vec<String>,
+    exit_code: i32,
+}
+
+/// The exit code of a command that its time limit stopped, as `timeout` gives it.
+const TIMED_OUT: i32 = 124;
+
+/// Writes what the known commands of a script would write, one after another as `&&` joins
+/// them; `None` when a command is not known. Paths outside the work folder go to a folder of
+/// their own next to it, never to the host.
+fn simulate(task: &Task, work: &Path) -> Option<Simulated> {
+    let (commands, redirects) = command_words(task)?;
+    let workdir = task.workdir.as_deref().unwrap_or("");
+    let root = PathBuf::from(format!("{}.root", work.display()));
+    // The place of a path of the container on the host, and whether it is in the work folder.
+    let host = |path: &str| -> (PathBuf, Option<String>) {
+        if path == workdir {
+            return (work.to_path_buf(), None);
+        }
+        if let Some(rest) = path.strip_prefix(&format!("{workdir}/")) {
+            return (work.join(rest), Some(rest.to_owned()));
+        }
+        if path.starts_with('/') {
+            return (root.join(path.trim_start_matches('/')), None);
+        }
+        (work.join(path), Some(path.to_owned()))
+    };
+    let input = |path: &str| {
+        task.inputs.iter().find(|input| {
             let inside = if input.path.starts_with('/') {
                 input.path.clone()
             } else {
-                format!("{}/{}", task.workdir.as_deref().unwrap_or(""), input.path)
+                format!("{workdir}/{}", input.path)
             };
             inside == path || input.path == path
-        })?;
-        match &input.content {
-            Some(content) => Some(content.clone()),
-            None => std::fs::read_to_string(&input.source).ok(),
+        })
+    };
+    let read = |path: &str| -> Option<String> {
+        match input(path) {
+            Some(input) => match &input.content {
+                Some(content) => Some(content.clone()),
+                None => std::fs::read_to_string(&input.source).ok(),
+            },
+            None => std::fs::read_to_string(host(path).0).ok(),
         }
     };
-    let stdin = redirects.stdin.as_deref().map(read_input);
-    let output = match words.first().map(String::as_str) {
-        Some("echo") => {
-            let (newline, rest) = match words.get(1).map(String::as_str) {
-                Some("-n") => (false, &words[2..]),
-                _ => (true, &words[1..]),
-            };
-            let mut text = rest.join(" ");
-            if newline {
-                text.push('\n');
-            }
-            Some(text)
-        }
-        Some("cat") => {
-            let mut text = String::new();
-            let files: Vec<&String> = words[1..]
-                .iter()
-                .filter(|word| !word.starts_with('-'))
-                .collect();
-            if files.is_empty() {
-                text.push_str(&stdin.clone().flatten()?);
-            }
-            for file in files {
-                text.push_str(&read_input(file)?);
-            }
-            Some(text)
-        }
-        Some("python" | "python3")
-            if words
-                .get(1)
-                .is_some_and(|script| script.ends_with("args.py")) =>
-        {
-            let args: Vec<Value> = words[2..]
-                .iter()
-                .map(|arg| Value::string(arg.rsplit('/').next().unwrap_or(arg)))
-                .collect();
-            let mut map = cwl_runtime::Map::new();
-            map.insert("args".into(), Value::List(args));
-            std::fs::write(work.join("cwl.output.json"), Value::Map(map).to_json()).ok()?;
-            made.push("cwl.output.json".to_owned());
-            None
-        }
-        Some("true") => None,
-        Some("touch") => {
-            for name in &words[1..] {
-                std::fs::write(work.join(name), "").ok()?;
-                made.push(name.clone());
-            }
-            None
-        }
-        _ => return None,
+    // Whether a path is inside a folder staged in the work folder, which may be a copy or,
+    // with InplaceUpdateRequirement, the folder itself: writing there cannot be simulated.
+    let staged = |inside: &Option<String>| {
+        inside.as_ref().is_some_and(|path| {
+            task.inputs.iter().any(|input| {
+                input.directory
+                    && !input.path.starts_with('/')
+                    && path.starts_with(&format!("{}/", input.path))
+            })
+        })
     };
+    let stdin = redirects.stdin.as_deref().map(read);
+    let mut made = Vec::new();
+    let mut stdout = String::new();
+    for command in &commands {
+        let words = &command.words;
+        let output = match words.first().map(String::as_str) {
+            Some("echo") => {
+                let (newline, rest) = match words.get(1).map(String::as_str) {
+                    Some("-n") => (false, &words[2..]),
+                    _ => (true, &words[1..]),
+                };
+                let mut text = rest.join(" ");
+                if newline {
+                    text.push('\n');
+                }
+                Some(text)
+            }
+            Some("cat") => {
+                let mut text = String::new();
+                let files: Vec<&String> = words[1..]
+                    .iter()
+                    .filter(|word| !word.starts_with('-'))
+                    .collect();
+                if files.is_empty() {
+                    text.push_str(&stdin.clone().flatten()?);
+                }
+                for file in files {
+                    text.push_str(&read(file)?);
+                }
+                Some(text)
+            }
+            Some("python" | "python3")
+                if words
+                    .get(1)
+                    .is_some_and(|script| script.ends_with("args.py")) =>
+            {
+                let args: Vec<Value> = words[2..]
+                    .iter()
+                    .map(|arg| Value::string(arg.rsplit('/').next().unwrap_or(arg)))
+                    .collect();
+                let mut map = cwl_runtime::Map::new();
+                map.insert("args".into(), Value::List(args));
+                std::fs::write(work.join("cwl.output.json"), Value::Map(map).to_json()).ok()?;
+                made.push("cwl.output.json".to_owned());
+                None
+            }
+            Some("true") => None,
+            Some("sleep") => {
+                let seconds: u64 = words.get(1)?.parse().ok()?;
+                if task
+                    .resources
+                    .time_seconds
+                    .is_some_and(|limit| seconds > limit)
+                {
+                    return Some(Simulated {
+                        made,
+                        exit_code: TIMED_OUT,
+                    });
+                }
+                None
+            }
+            Some("touch") => {
+                for name in &words[1..] {
+                    let (path, inside) = host(name);
+                    if staged(&inside) {
+                        return None;
+                    }
+                    std::fs::write(path, "").ok()?;
+                    made.extend(inside);
+                }
+                None
+            }
+            Some("mkdir") => {
+                for name in words[1..].iter().filter(|word| !word.starts_with('-')) {
+                    let (path, inside) = host(name);
+                    if staged(&inside) {
+                        return None;
+                    }
+                    std::fs::create_dir_all(path).ok()?;
+                    made.extend(inside);
+                }
+                None
+            }
+            Some("ln") if words.get(1).map(String::as_str) == Some("-s") => {
+                let [target, name] = &words[2..] else {
+                    return None;
+                };
+                let (path, inside) = host(name);
+                let _ = std::fs::remove_file(&path);
+                std::os::unix::fs::symlink(target, &path).ok()?;
+                made.extend(inside);
+                None
+            }
+            Some("cp") => {
+                let paths: Vec<&String> = words[1..]
+                    .iter()
+                    .filter(|word| !word.starts_with('-'))
+                    .collect();
+                let (destination, sources) = paths.split_last()?;
+                let (folder, inside) = host(destination);
+                for source in sources {
+                    let from = input(source).map(|input| PathBuf::from(&input.source))?;
+                    let name = source.rsplit('/').next().unwrap_or(source);
+                    let target = if folder.is_dir() {
+                        folder.join(name)
+                    } else {
+                        folder.clone()
+                    };
+                    if from.is_dir() {
+                        copy_tree(&from, &target).ok()?;
+                    } else {
+                        std::fs::copy(&from, &target).ok()?;
+                    }
+                    if let Ok(relative) = target.strip_prefix(work) {
+                        made.push(relative.to_string_lossy().into_owned());
+                    } else {
+                        made.extend(inside.clone());
+                    }
+                }
+                None
+            }
+            _ => return None,
+        };
+        match (&command.stdout, output) {
+            (Some(target), output) => {
+                let (path, inside) = host(target);
+                if staged(&inside) {
+                    return None;
+                }
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent).ok()?;
+                }
+                std::fs::write(path, output.unwrap_or_default()).ok()?;
+                made.extend(inside);
+            }
+            (None, Some(text)) => stdout.push_str(&text),
+            (None, None) => {}
+        }
+    }
     if let Some(target) = &redirects.stdout {
-        std::fs::write(work.join(target), output.unwrap_or_default()).ok()?;
+        std::fs::write(work.join(target), stdout).ok()?;
         made.push(target.clone());
     }
     if let Some(target) = &redirects.stderr {
         std::fs::write(work.join(target), "").ok()?;
         made.push(target.clone());
     }
-    Some(made)
+    Some(Simulated { made, exit_code: 0 })
 }
 
 /// Copies a folder with everything in it.
@@ -507,14 +641,27 @@ struct Redirects {
     stderr: Option<String>,
 }
 
-/// The words of a simple command, and its redirections; `None` for scripts with pipes,
-/// substitutions or several commands.
-fn command_words(task: &Task) -> Option<(Vec<String>, Redirects)> {
+/// A simple command of a script: its words, and the file its `>` writes.
+struct Command {
+    words: Vec<String>,
+    stdout: Option<String>,
+}
+
+/// The simple commands of a script, which `&&` may join, and the redirections of the whole
+/// script; `None` for scripts with pipes, substitutions or several lines.
+fn command_words(task: &Task) -> Option<(Vec<Command>, Redirects)> {
+    let alone = || {
+        let command = Command {
+            words: task.command.clone(),
+            stdout: None,
+        };
+        Some((vec![command], Redirects::default()))
+    };
     let [shell, flag, script] = task.command.as_slice() else {
-        return Some((task.command.clone(), Redirects::default()));
+        return alone();
     };
     if shell != "/bin/sh" || flag != "-c" {
-        return Some((task.command.clone(), Redirects::default()));
+        return alone();
     }
     let mut redirects = Redirects::default();
     let mut lines = script.lines().collect::<Vec<_>>();
@@ -537,7 +684,26 @@ fn command_words(task: &Task) -> Option<(Vec<String>, Redirects)> {
         return None;
     }
     let words = split(lines[0])?;
-    Some((words, redirects))
+    let mut commands = Vec::new();
+    for part in words.split(|word| word == "&&") {
+        let mut command = Command {
+            words: Vec::new(),
+            stdout: None,
+        };
+        let mut part = part.iter();
+        while let Some(word) = part.next() {
+            match word.strip_prefix('>') {
+                Some("") => command.stdout = Some(part.next()?.clone()),
+                Some(target) => command.stdout = Some(target.to_owned()),
+                None => command.words.push(word.clone()),
+            }
+        }
+        if command.words.is_empty() {
+            return None;
+        }
+        commands.push(command);
+    }
+    Some((commands, redirects))
 }
 
 /// Splits a line into shell words with quotes; `None` for shell syntax beyond words.
@@ -577,6 +743,10 @@ fn split(line: &str) -> Option<Vec<String>> {
                     words.push(std::mem::take(&mut word));
                     in_word = false;
                 }
+            }
+            '&' if !in_word && characters.clone().next() == Some('&') => {
+                characters.next();
+                words.push("&&".to_owned());
             }
             '|' | '&' | ';' | '$' | '`' | '(' | ')' | '*' | '?' | '<' | '>' => {
                 // Redirections of the exec line stand alone as words.

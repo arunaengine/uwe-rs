@@ -395,14 +395,23 @@ pub fn task(
         _ => None,
     });
     let time_seconds = match time {
-        Some((Dynamic::Value(seconds), _)) => u64::try_from(*seconds).ok(),
-        Some((Dynamic::Expression(expression), _)) => evaluator
-            .evaluate(expression, vars)?
-            .as_i64()
-            .and_then(|seconds| u64::try_from(seconds).ok()),
+        Some((Dynamic::Value(seconds), _)) => Some(Value::Integer(*seconds)),
+        Some((Dynamic::Expression(expression), _)) => Some(evaluator.evaluate(expression, vars)?),
         None => None,
-    }
-    .filter(|seconds| *seconds > 0);
+    };
+    // Zero means no limit; as in cwltool, a limit that is no whole number of 0 or more fails.
+    let time_seconds = match time_seconds {
+        None | Some(Value::Null) => None,
+        Some(limit) => match limit.as_i64().map(u64::try_from) {
+            Some(Ok(seconds)) => (seconds > 0).then_some(seconds),
+            _ => {
+                return Err(format!(
+                    "`timelimit` must be a whole number of 0 or more, not {}",
+                    limit.to_json()
+                ));
+            }
+        },
+    };
     let task = Task {
         id,
         name: name.to_owned(),

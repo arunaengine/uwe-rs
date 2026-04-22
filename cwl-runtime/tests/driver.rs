@@ -53,3 +53,11 @@ fn placeholder_files_take_the_format_a_tool_asks_for() {
         steps:\n  take: {run: take.cwl, in: {reads: reads}, out: []}\n";
     assert_eq!(run(&[("take.cwl", take), ("main.cwl", main)]), Ok(1));
 }
+
+#[test]
+fn rejects_negative_time_limits() {
+    let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: [sleep, '1']\n\
+        requirements: {ToolTimeLimit: {timelimit: -1}}\ninputs: []\noutputs: []\n";
+    let error = run(&[("main.cwl", tool)]).expect_err("a negative time limit fails");
+    assert!(error.contains("timelimit"), "{error}");
+}

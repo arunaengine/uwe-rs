@@ -412,7 +412,7 @@ conformance/v1.1/tests/test-cwl-out.cwl ok 1
 conformance/v1.1/tests/test-cwl-out2.cwl ok 1
 conformance/v1.1/tests/timelimit.cwl ok 1
 conformance/v1.1/tests/timelimit2-wf.cwl ok 2
-conformance/v1.1/tests/timelimit2.cwl ok 1
+conformance/v1.1/tests/timelimit2.cwl fail: timelimit2: `timelimit` must be a whole number of 0 or more, not -1
 conformance/v1.1/tests/timelimit3-wf.cwl ok 1
 conformance/v1.1/tests/timelimit3.cwl ok 1
 conformance/v1.1/tests/timelimit4.cwl ok 1
@@ -586,8 +586,8 @@ conformance/v1.2/tests/io-int-optional-wf.cwl ok 0
 conformance/v1.2/tests/io-int-wf.cwl ok 0
 conformance/v1.2/tests/io-union-input-default-wf.cwl ok 0
 conformance/v1.2/tests/iwd/iwd-container-entryname1.cwl ok 1
-conformance/v1.2/tests/iwd/iwd-container-entryname2.cwl ok 1
-conformance/v1.2/tests/iwd/iwd-container-entryname3.cwl ok 1
+conformance/v1.2/tests/iwd/iwd-container-entryname2.cwl fail: iwd-container-entryname2: the InitialWorkDir entry `<tmp>` is absolute, which needs DockerRequirement under `requirements`
+conformance/v1.2/tests/iwd/iwd-container-entryname3.cwl fail: iwd-container-entryname3: the InitialWorkDir entry `<tmp>` is absolute, which needs DockerRequirement under `requirements`
 conformance/v1.2/tests/iwd/iwd-container-entryname4.cwl fail: iwd-container-entryname4: the InitialWorkDir entry `../input/stuff.txt` leaves the output directory
 conformance/v1.2/tests/iwd/iwd-jsondump1-nl.cwl ok 1
 conformance/v1.2/tests/iwd/iwd-jsondump1.cwl ok 1
@@ -755,7 +755,7 @@ conformance/v1.2/tests/test-cwl-out4.cwl ok 1
 conformance/v1.2/tests/timelimit-wf.cwl ok 1
 conformance/v1.2/tests/timelimit.cwl ok 1
 conformance/v1.2/tests/timelimit2-wf.cwl ok 2
-conformance/v1.2/tests/timelimit2.cwl ok 1
+conformance/v1.2/tests/timelimit2.cwl fail: timelimit2: `timelimit` must be a whole number of 0 or more, not -1
 conformance/v1.2/tests/timelimit3-wf.cwl ok 1
 conformance/v1.2/tests/timelimit3.cwl ok 1
 conformance/v1.2/tests/timelimit4-wf.cwl ok 1
@@ -1246,9 +1246,9 @@ realworld/collections/github.com__genome__analysis-workflows/definitions/pipelin
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_exome_nonhuman.cwl fail: detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_wgs.cwl fail: detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_wgs_nonhuman.cwl fail: detect_variants/varscan/varscan[0]/somatic: JavaScript error in `HOME`: ReferenceError: HOME is not defined (unknown at :6:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_detect_variants.cwl fail: bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :15:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_exome.cwl fail: detect_variants/bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :15:3)
-realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_wgs.cwl fail: detect_variants/bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :15:3)
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_detect_variants.cwl fail: decompose: the required secondary file `combined.vcf.gz.tbi` of `file://<tmp>` is missing
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_exome.cwl fail: detect_variants/decompose: the required secondary file `combined.vcf.gz.tbi` of `file://<tmp>` is missing
+realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_wgs.cwl fail: detect_variants/decompose: the required secondary file `combined.vcf.gz.tbi` of `file://<tmp>` is missing
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/align.cwl ok 1
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/align_sort_markdup.cwl ok 6
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/bam_readcount.cwl fail: bam_readcount: JavaScript error in `var name = "_bam_readcount_indel.tsv"; if (inputs.prefix.equals("NOPREFIX")) { n...`: TypeError: not a callable function (unknown at :15:3)

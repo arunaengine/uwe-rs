@@ -1346,6 +1346,10 @@ impl Pending {
                 access.load_listing(file, false);
             }
         });
+        // The secondary files the output declares come with it, as with a real run.
+        if !output.secondary_files.is_empty() {
+            let _ = collector.secondary_files(&mut value, &output.secondary_files);
+        }
         value
     }
 }
@@ -1807,10 +1811,13 @@ impl Collector<'_> {
             load_listing: None,
             output_eval: None,
         };
-        let file = match found.first() {
+        let mut file = match found.first() {
             Some(file) => self.file_object(file, &binding)?,
             None => return Ok(self.pending.placeholder(output, self)),
         };
+        if !output.secondary_files.is_empty() {
+            self.secondary_files(&mut file, &output.secondary_files)?;
+        }
         let mut value_type = types.resolve(&output.value_type);
         let mut wrap = 0;
         loop {

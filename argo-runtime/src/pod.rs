@@ -16,6 +16,7 @@ use argo_parser::model::{Container, Template};
 use argo_parser::{Node, Value as Yaml};
 use workflow_graph::{Input, Outcome, Task, TaskId};
 
+use crate::http::{CURL_IMAGE, RESPONSE_BODY, RESPONSE_STATUS, Verdict, http_script, http_verdict};
 use crate::node::{ArtifactValue, Location, Phase};
 use crate::resources::{duration_seconds, resources_of};
 use crate::run::{Failure, Result, Run};
@@ -24,15 +25,8 @@ use crate::value::Value;
 /// The image of Argo's executor, which runs resource and data templates.
 pub const ARGOEXEC_IMAGE: &str = "quay.io/argoproj/argoexec:v4.1.4";
 
-/// The image that runs HTTP templates.
-pub const CURL_IMAGE: &str = "curlimages/curl:8.16.0";
-
 /// Where Argo's executor puts the source of a script template.
 pub const SCRIPT_PATH: &str = "/argo/staging/script";
-
-/// Where the curl of an HTTP template writes the response body and status code.
-const RESPONSE_BODY: &str = "/tmp/response-body";
-const RESPONSE_STATUS: &str = "/tmp/response-status";
 
 impl Run {
     /// Asks for the tasks of a leaf template.
@@ -155,51 +149,13 @@ impl Run {
             tasks.push(task);
         } else if let Some(http) = &template.http {
             let mut task = base(CURL_IMAGE, None);
-            let mut command: Vec<String> = vec![
-                "curl".into(),
-                "--silent".into(),
-                "--show-error".into(),
-                "--location".into(),
-            ];
-            if http.insecure_skip_verify {
-                command.push("--insecure".into());
+            let (script, secret_headers) = http_script(http);
+            for header in secret_headers {
+                self.warn(format!(
+                    "HTTP template {}: header {header} reads a Secret, which a run without Kubernetes cannot; it is left out",
+                    template.name
+                ));
             }
-            let method = if http.method.is_empty() {
-                "GET"
-            } else {
-                http.method.as_str()
-            };
-            command.extend(["--request".to_owned(), method.to_owned()]);
-            for header in &http.headers {
-                let name = header
-                    .get("name")
-                    .map(crate::run::scalar_text)
-                    .unwrap_or_default();
-                if header.get("valueFrom").is_some() {
-                    self.warn(format!(
-                        "HTTP template {}: header {name} reads a Secret, which a run without Kubernetes cannot; it is left out",
-                        template.name
-                    ));
-                    continue;
-                }
-                let value = header
-                    .get("value")
-                    .map(crate::run::scalar_text)
-                    .unwrap_or_default();
-                command.extend(["--header".to_owned(), format!("{name}: {value}")]);
-            }
-            if !http.body.is_empty() {
-                command.extend(["--data".to_owned(), http.body.clone()]);
-            }
-            command.extend([
-                "--output".to_owned(),
-                RESPONSE_BODY.to_owned(),
-                "--write-out".to_owned(),
-                "%{http_code}".to_owned(),
-                http.url.clone(),
-            ]);
-            let quoted: Vec<String> = command.iter().map(|word| shell_quote(word)).collect();
-            let script = format!("{} > {RESPONSE_STATUS}", quoted.join(" "));
             task.command = vec!["sh".into(), "-c".into(), script.clone()];
             task.script = Some(script);
             task.outputs = vec![RESPONSE_BODY.to_owned(), RESPONSE_STATUS.to_owned()];
@@ -416,41 +372,18 @@ impl Run {
             };
             let body = read(RESPONSE_BODY);
             self.nodes[index].outputs.result = Some(body.clone());
-            let Ok(status) = read(RESPONSE_STATUS).trim().parse::<i64>() else {
-                self.warn(format!(
+            match http_verdict(http, &body, &read(RESPONSE_STATUS)) {
+                Verdict::Unknown => self.warn(format!(
                     "HTTP template {}: the response status is not known, as in a mock run; its success condition is not checked",
                     template.name
-                ));
-                self.set_phase(index, Phase::Succeeded, String::new());
-                return Ok(());
-            };
-            let condition = if http.success_condition.is_empty() {
-                "response.statusCode >= 200 && response.statusCode < 300"
-            } else {
-                http.success_condition.as_str()
-            };
-            let mut response = BTreeMap::new();
-            response.insert("statusCode".to_owned(), Value::Int(status));
-            response.insert("body".to_owned(), Value::string(body));
-            response.insert("headers".to_owned(), Value::Map(BTreeMap::new()));
-            let env: BTreeMap<String, Value> =
-                [("response".to_owned(), Value::Map(response))].into();
-            match crate::expr::evaluate_bool(condition, &env) {
-                Ok(true) => {}
-                Ok(false) => {
-                    self.fail(
-                        index,
-                        Phase::Failed,
-                        format!("successCondition '{condition}' evaluated false"),
-                    );
+                )),
+                Verdict::Succeeded => {}
+                Verdict::Failed(message) => {
+                    self.fail(index, Phase::Failed, message);
                     return Ok(());
                 }
-                Err(error) => {
-                    self.fail(
-                        index,
-                        Phase::Error,
-                        format!("successCondition '{condition}': {error}"),
-                    );
+                Verdict::Error(message) => {
+                    self.fail(index, Phase::Error, message);
                     return Ok(());
                 }
             }
@@ -590,18 +523,6 @@ fn output_paths(template: &Template) -> Vec<String> {
     }
     outputs.sort_by_key(|path| std::cmp::Reverse(path.trim_end_matches('/').matches('/').count()));
     outputs
-}
-
-/// A word quoted for a POSIX shell.
-fn shell_quote(word: &str) -> String {
-    if !word.is_empty()
-        && word
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "-_./:=@,+".contains(c))
-    {
-        return word.to_owned();
-    }
-    format!("'{}'", word.replace('\'', "'\\''"))
 }
 
 /// The script of a command like `sh -c '...'`, which the mock executor reads.

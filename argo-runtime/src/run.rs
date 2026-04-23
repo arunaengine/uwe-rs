@@ -19,7 +19,7 @@ use crate::Options;
 use crate::library::{Document, Kind as DocumentKind, Library};
 use crate::merge::with_defaults;
 use crate::node::{ArtifactValue, Location, NodeKind, NodeOutputs, NodeStatus, Phase, RetryCall};
-use crate::start::{Joined, joined_spec, workflow_name};
+use crate::start::{Given, Joined, joined_spec, workflow_name, workflow_parameters};
 use crate::tags::{Variables, replace_node};
 use crate::validate::{Base, Check, Supplied};
 use crate::value::Value;
@@ -212,116 +212,11 @@ impl Run {
             path: context_path,
             templates,
         });
-        // Parameters of the command line and the parameter file override the spec.
-        let mut parameters = spec.arguments.parameters.clone();
-        for (name, value) in &options.parameters {
-            match parameters
-                .iter_mut()
-                .find(|parameter| &parameter.name == name)
-            {
-                Some(parameter) => {
-                    parameter.value = Some(AnyString(value.clone()));
-                    parameter.value_from = None;
-                }
-                None => parameters.push(Parameter {
-                    name: name.clone(),
-                    value: Some(AnyString(value.clone())),
-                    ..Parameter::default()
-                }),
-            }
-        }
-        // The inputs of the entrypoint are workflow parameters too, supplied with `-p`.
-        let mut entry_artifacts: Vec<String> = Vec::new();
-        if let Some(entry) = root_context.template(&entrypoint)
-            && let Ok((template, _)) = decode::<Template>(entry)
-        {
-            for artifact in &template.inputs.artifacts {
-                let located = [
-                    &artifact.s3,
-                    &artifact.gcs,
-                    &artifact.azure,
-                    &artifact.git,
-                    &artifact.http,
-                    &artifact.artifactory,
-                    &artifact.hdfs,
-                    &artifact.oss,
-                    &artifact.raw,
-                    &artifact.plugin,
-                ]
-                .into_iter()
-                .any(Option::is_some);
-                let supplied = located
-                    || artifact.optional
-                    || spec
-                        .arguments
-                        .artifacts
-                        .iter()
-                        .any(|argument| argument.name == artifact.name);
-                if !supplied && options.assume_inputs {
-                    entry_artifacts.push(artifact.name.clone());
-                }
-            }
-            for input in template.inputs.parameters {
-                let supplied = input.value.is_some()
-                    || input.default.is_some()
-                    || parameters
-                        .iter()
-                        .any(|parameter| parameter.name == input.name);
-                if !supplied {
-                    parameters.push(Parameter {
-                        name: input.name.clone(),
-                        enumeration: input.enumeration.clone(),
-                        ..Parameter::default()
-                    });
-                }
-            }
-        }
-        for parameter in &mut parameters {
-            if parameter.value.is_some() {
-                continue;
-            }
-            let from_config_map = parameter
-                .value_from
-                .as_ref()
-                .is_some_and(|from| from.config_map_key_ref.is_some());
-            let fallback = parameter
-                .value_from
-                .as_ref()
-                .and_then(|from| from.default.clone());
-            let value = if let Some(default) = parameter.default.clone().or(fallback.clone()) {
-                if from_config_map {
-                    warnings.push(format!(
-                        "parameter {} reads a ConfigMap, which a run without Kubernetes cannot; using its default `{default}`",
-                        parameter.name
-                    ));
-                }
-                default
-            } else if !options.assume_inputs {
-                // A real run needs the value, as `argo submit` does; the checks below name it.
-                if from_config_map {
-                    return Err(Failure::error(format!(
-                        "parameter {} reads a ConfigMap, which a run without Kubernetes cannot, and has no default",
-                        parameter.name
-                    )));
-                }
-                continue;
-            } else if let Some(first) = parameter.enumeration.first() {
-                warnings.push(format!(
-                    "parameter {} has no value; using the first of its enum, `{first}`",
-                    parameter.name
-                ));
-                first.clone()
-            } else {
-                let placeholder = placeholder(&parameter.name);
-                warnings.push(format!(
-                    "parameter {} has no value; using `{placeholder}`",
-                    parameter.name
-                ));
-                placeholder
-            };
-            parameter.value = Some(value);
-            parameter.value_from = None;
-        }
+        let entry = root_context.template(&entrypoint);
+        let Given {
+            parameters,
+            entry_artifacts,
+        } = workflow_parameters(&spec, entry, &options, &mut warnings)?;
         spec.arguments.parameters = parameters;
         // The workflow is checked as Argo checks it when it is submitted, with the parameters
         // and artifacts it got.

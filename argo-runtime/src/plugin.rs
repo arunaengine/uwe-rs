@@ -13,7 +13,8 @@ use workflow_graph::{Input, Outcome, Task};
 
 use crate::library::{Document, Kind};
 use crate::node::{NodeOutputs, Phase};
-use crate::pod::{fill_container, resources_of};
+use crate::pod::fill_container;
+use crate::resources::resources_of;
 use crate::run::{Result, Run, scalar_text, uid};
 use crate::value::Value;
 

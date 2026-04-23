@@ -23,6 +23,7 @@ mod merge;
 mod node;
 mod plugin;
 mod pod;
+mod resources;
 mod run;
 mod scope;
 pub mod sprig;

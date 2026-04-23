@@ -25,6 +25,7 @@ mod node;
 mod plugin;
 mod pod;
 mod resources;
+mod retry;
 mod run;
 mod scope;
 pub mod sprig;

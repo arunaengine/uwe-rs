@@ -12,8 +12,9 @@ use argo_parser::{Node, Value as Yaml, decode, parse_yaml};
 use workflow_graph::{Input, Outcome, Task};
 
 use crate::library::{Document, Kind};
+use crate::node::{NodeOutputs, Phase};
 use crate::pod::{fill_container, resources_of};
-use crate::run::{NodeOutputs, Phase, Result, Run, scalar_text, uid};
+use crate::run::{Result, Run, scalar_text, uid};
 use crate::value::Value;
 
 /// Where the task finds the request, the JSON the agent would post.

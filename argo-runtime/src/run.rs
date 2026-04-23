@@ -9,8 +9,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use argo_parser::model::{
-    AnyString, Artifact, LifecycleHook, Parameter, RetryStrategy, Template, TemplateRef,
-    WorkflowSpec,
+    AnyString, Artifact, LifecycleHook, Parameter, Template, TemplateRef, WorkflowSpec,
 };
 use argo_parser::{Entry, Node, Position, Value as Yaml, decode};
 use jiff::Timestamp;
@@ -18,6 +17,7 @@ use workflow_graph::{Outcome, Task, TaskId};
 
 use crate::library::{Document, Kind as DocumentKind, Library};
 use crate::merge::{merge, with_defaults};
+use crate::node::{ArtifactValue, Location, NodeKind, NodeOutputs, NodeStatus, Phase, RetryCall};
 use crate::scope::Scope;
 use crate::tags::{Variables, replace_node};
 use crate::validate::{Base, Check, Supplied, not_found};
@@ -41,82 +41,6 @@ pub(crate) fn placeholder(name: &str) -> AnyString {
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect();
     AnyString(format!("{PLACEHOLDER}{word}"))
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Phase {
-    Pending,
-    Running,
-    Succeeded,
-    Failed,
-    Error,
-    Skipped,
-    Omitted,
-}
-
-impl Phase {
-    pub fn fulfilled(self) -> bool {
-        !matches!(self, Phase::Pending | Phase::Running)
-    }
-
-    pub fn failed_or_error(self) -> bool {
-        matches!(self, Phase::Failed | Phase::Error)
-    }
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Phase::Pending => "Pending",
-            Phase::Running => "Running",
-            Phase::Succeeded => "Succeeded",
-            Phase::Failed => "Failed",
-            Phase::Error => "Error",
-            Phase::Skipped => "Skipped",
-            Phase::Omitted => "Omitted",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum NodeKind {
-    Pod,
-    Steps,
-    StepGroup,
-    Dag,
-    TaskGroup,
-    Retry,
-    Skipped,
-    Suspend,
-    Plugin,
-}
-
-/// Where an artifact comes from.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum Location {
-    /// A local file, like the output of an earlier task.
-    File(PathBuf),
-    /// A URL like `s3://bucket/key`, `https://...` or a git repository.
-    Url(String),
-    /// Text that the workflow holds itself.
-    Raw(String),
-}
-
-/// An artifact as a run passes it on: its name, the path a task sees it at, and its source.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ArtifactValue {
-    pub name: String,
-    pub path: String,
-    pub location: Option<Location>,
-    pub optional: bool,
-    pub directory: bool,
-}
-
-/// What a node made: parameters, artifacts, the standard output and the exit code.
-#[derive(Clone, Debug, Default)]
-pub(crate) struct NodeOutputs {
-    pub parameters: Vec<(String, String)>,
-    pub artifacts: Vec<ArtifactValue>,
-    pub result: Option<String>,
-    pub exit_code: Option<String>,
 }
 
 /// A template after its arguments are applied and its tags substituted.
@@ -190,39 +114,6 @@ pub(crate) struct Expanded {
     pub on_exit: String,
     /// The error of the step or task, which makes its node an error.
     pub error: Option<String>,
-}
-
-#[derive(Debug)]
-pub(crate) struct NodeStatus {
-    pub id: String,
-    pub name: String,
-    pub kind: NodeKind,
-    pub phase: Phase,
-    pub message: String,
-    pub template: String,
-    pub boundary: Option<usize>,
-    pub children: Vec<usize>,
-    pub outputs: NodeOutputs,
-    pub daemoned: bool,
-    /// The tasks this node waits for.
-    pub inbound: Vec<TaskId>,
-    pub tasks: Vec<TaskId>,
-    pub outcomes: Vec<Option<Outcome>>,
-    pub processed: Option<Rc<Processed>>,
-    pub expanded: Option<Rc<Vec<Expanded>>>,
-    pub exit_hook: Option<usize>,
-    pub hooks: Vec<usize>,
-    pub depth: usize,
-    /// For a retry node: the call, to start more attempts.
-    pub retry: Option<Rc<RetryCall>>,
-    pub started: Timestamp,
-    pub finished: Option<Timestamp>,
-}
-
-#[derive(Debug)]
-pub(crate) struct RetryCall {
-    pub processed: Rc<Processed>,
-    pub strategy: RetryStrategy,
 }
 
 /// Why a run cannot go on. Unsupported features stop the run; other failures become nodes

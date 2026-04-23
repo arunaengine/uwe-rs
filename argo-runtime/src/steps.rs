@@ -10,7 +10,8 @@ use argo_parser::{Node, Value as Yaml, decode};
 use workflow_graph::TaskId;
 
 use crate::items::{item_variables, items, items_unless_skipped, loops, substitute_item};
-use crate::run::{Args, Call, Context, Expanded, Holder, NodeKind, Phase, Result, Run};
+use crate::node::{NodeKind, Phase};
+use crate::run::{Args, Call, Context, Expanded, Holder, Result, Run};
 use crate::scope::Scope;
 use crate::tags::replace_node;
 use crate::when::should_execute;
@@ -356,7 +357,7 @@ impl Run {
         &mut self,
         artifacts: &[Artifact],
         scope: &Scope,
-    ) -> std::result::Result<Vec<crate::run::ArtifactValue>, String> {
+    ) -> std::result::Result<Vec<crate::node::ArtifactValue>, String> {
         let mut values = Vec::new();
         for artifact in artifacts {
             if let Some(value) = self.argument_artifact(artifact, scope)? {
@@ -386,7 +387,7 @@ fn expanded_step(
     name: String,
     node: Node,
     step: &WorkflowStep,
-    artifacts: Vec<crate::run::ArtifactValue>,
+    artifacts: Vec<crate::node::ArtifactValue>,
 ) -> Expanded {
     let continue_on = step.continue_on.map_or((false, false), |continue_on| {
         (continue_on.error, continue_on.failed)

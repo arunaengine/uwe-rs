@@ -16,7 +16,8 @@ use argo_parser::model::{Container, Template};
 use argo_parser::{Node, Value as Yaml};
 use workflow_graph::{Input, Outcome, Resources, Task, TaskId};
 
-use crate::run::{ArtifactValue, Failure, Location, Phase, Result, Run};
+use crate::node::{ArtifactValue, Location, Phase};
+use crate::run::{Failure, Result, Run};
 use crate::value::Value;
 
 /// The image of Argo's executor, which runs resource and data templates.
@@ -279,7 +280,7 @@ impl Run {
         if result.ends_with('\n') {
             result.pop();
         }
-        let mut outputs = crate::run::NodeOutputs {
+        let mut outputs = crate::node::NodeOutputs {
             result: Some(result.clone()),
             exit_code: Some(exit_code.to_string()),
             ..Default::default()

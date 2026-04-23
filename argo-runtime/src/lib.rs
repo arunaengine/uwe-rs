@@ -18,6 +18,7 @@ mod items;
 pub mod jsonpath;
 pub mod library;
 mod merge;
+mod node;
 mod plugin;
 mod pod;
 mod run;

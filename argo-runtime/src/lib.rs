@@ -14,6 +14,7 @@
 mod checks;
 mod dag;
 pub mod expr;
+mod hooks;
 mod items;
 pub mod jsonpath;
 pub mod library;

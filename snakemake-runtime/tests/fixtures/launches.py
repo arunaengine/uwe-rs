@@ -3,12 +3,15 @@
 #
 #     uv run -q --with pyyaml --with snakemake==9.27.0 python snakemake-runtime/tests/fixtures/launches.py
 #
-# A catalog workflow runs the way its CI tests it: the first step of its GitHub workflows that
-# runs Snakemake on it, with the snakemake-github-action or a `snakemake` command, other than
-# linting, reports, unit test generation and environment setup. Without such a step, the
-# workflow runs with the config files and values of the mandatory flags in its catalog entry,
-# and without those, plainly in its repository. A test of Snakemake runs the way the first
-# test function of tests.py that uses its folder runs it, preferring runs that should not fail.
+# A catalog workflow runs plainly in its repository, unless real Snakemake cannot evaluate it
+# that way (run_corpus_oracle.txt from oracle.py says so) and it can with another launch: the
+# way its CI tests it, or with the mandatory flags of its catalog entry. The CI launch is the
+# first step of its GitHub workflows that runs Snakemake on it, with the
+# snakemake-github-action or a `snakemake` command, other than linting, reports, unit test
+# generation and environment setup, and whose folders and files exist. The catalog launch
+# takes the config files and values of the mandatory flags. A test of Snakemake runs the way
+# the first test function of tests.py that uses its folder runs it, preferring runs that
+# should not fail.
 #
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
@@ -26,6 +29,7 @@ from snakemake.cli import get_argument_parser
 
 CORPUS = os.environ.get("SNAKEMAKE_CORPUS") or os.path.expanduser("~/.cache/iunctus/corpus/snakemake")
 FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_corpus_launches.txt")
+ORACLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_corpus_oracle.txt")
 
 # The parser of Snakemake's command line, and what its options that do not run the workflow
 # set.
@@ -238,25 +242,59 @@ def tests_launches(tests):
     return launches
 
 
-def main():
-    lines = []
+def snakefile_of(folder):
+    """The Snakefile that Snakemake finds in a folder, or `None`."""
+    for name in ("Snakefile", "snakefile", "workflow/Snakefile", "workflow/snakefile"):
+        if os.path.isfile(os.path.join(folder, name)):
+            return name
+    return None
+
+
+def candidates():
+    """Each workflow of the corpus, as the run corpus test names it, with its folder and the
+    launches that may run it, the preferred one first."""
     catalog = os.path.join(CORPUS, "catalog")
     for name in sorted(os.listdir(catalog)):
         folder = os.path.join(catalog, name)
-        if not os.path.isdir(folder):
+        if not os.path.isdir(folder) or not snakefile_of(folder):
             continue
-        fields = github_launch(folder)
-        via = "ci"
-        if fields is None:
-            fields = catalog_launch(folder)
-            via = "catalog"
-        if fields is None:
-            continue
-        lines.append((f"catalog/{name.replace(' ', '_')}", via, fields))
+        launches = [("plain", [])]
+        for via, fields in (("ci", github_launch(folder)), ("catalog", catalog_launch(folder))):
+            if fields is not None:
+                launches.append((via, fields))
+        yield f"catalog/{name.replace(' ', '_')}", folder, launches
     tests = os.path.join(CORPUS, "snakemake-tests/tests")
-    for folder, fields in sorted(tests_launches(tests).items()):
+    known = tests_launches(tests)
+    for name in sorted(os.listdir(tests)):
+        folder = os.path.join(tests, name)
+        if not os.path.isdir(folder) or not snakefile_of(folder):
+            continue
+        fields = known.get(name)
+        launch = ("tests.py", fields) if fields else ("plain", [])
+        yield f"tests/{name.replace(' ', '_')}", folder, [launch]
+
+
+def read_oracle():
+    """Whether real Snakemake evaluated each workflow with each launch, from the oracle file."""
+    evaluated = {}
+    if not os.path.exists(ORACLE):
+        return evaluated
+    for line in open(ORACLE, encoding="utf-8"):
+        if line.startswith("#"):
+            continue
+        name, via, _, stage, *_ = line.rstrip("\n").split("\t")
+        evaluated[(name, via)] = stage == "evaluated"
+    return evaluated
+
+
+def main():
+    evaluated = read_oracle()
+    lines = []
+    for name, _, launches in candidates():
+        chosen = next((launch for launch in launches if evaluated.get((name, launch[0]))), launches[0])
+        via, fields = chosen
         if fields:
-            lines.append((f"tests/{folder}", "tests.py", fields))
+            lines.append((name, via, fields))
     with open(FIXTURE, "w", encoding="utf-8") as output:
         output.write("# How the run corpus test launches each workflow; written by launches.py, which says\n")
         output.write("# how it chooses. Columns, separated by tabs: the workflow, where the launch comes from\n")
@@ -270,4 +308,5 @@ def main():
     print(f"{len(lines)} launches", file=sys.stderr)
 
 
-main()
+if __name__ == "__main__":
+    main()

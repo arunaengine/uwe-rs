@@ -13,7 +13,8 @@ use regex::Regex;
 use workflow_graph::TaskId;
 
 use crate::items::{item_variables, items, items_unless_skipped, loops, substitute_item};
-use crate::run::{Args, Call, Expanded, NodeKind, Phase, Processed, Result, Run};
+use crate::node::{NodeKind, Phase};
+use crate::run::{Args, Call, Expanded, Processed, Result, Run};
 use crate::scope::Scope;
 use crate::steps::{base_name, exit_hook, holder};
 use crate::tags::replace_node;
@@ -740,7 +741,7 @@ fn expanded_task(
     name: String,
     node: Node,
     task: &DagTask,
-    artifacts: Vec<crate::run::ArtifactValue>,
+    artifacts: Vec<crate::node::ArtifactValue>,
 ) -> Expanded {
     let continue_on = task.continue_on.map_or((false, false), |continue_on| {
         (continue_on.error, continue_on.failed)

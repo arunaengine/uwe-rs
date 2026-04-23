@@ -9,7 +9,8 @@ use std::path::PathBuf;
 
 use argo_parser::model::Artifact;
 
-use crate::run::{ArtifactValue, Location, NodeKind, NodeOutputs, Phase, Processed, Run};
+use crate::node::{ArtifactValue, Location, NodeKind, NodeOutputs, Phase};
+use crate::run::{Processed, Run};
 use crate::tags::Variables;
 use crate::time;
 use crate::value::Value;

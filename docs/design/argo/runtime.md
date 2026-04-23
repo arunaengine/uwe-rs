@@ -39,14 +39,20 @@ The modules of `argo-runtime`:
 
 | Module | What it does |
 |---|---|
-| `library` | Loads documents, finds templates by kind and name |
-| `run` | The operator: nodes, phases, template resolution, arguments, retries, hooks, exit handlers |
+| `library` | Loads documents and executor plugins, finds templates by kind and name |
+| `start` | How a run starts: the joined spec, workflow parameters and placeholders, globals |
+| `run` | The operator: passes over the nodes, template resolution, node bookkeeping |
+| `node` | Node kinds, phases, outputs and the artifacts nodes pass on |
+| `inputs` | Arguments into inputs and the two substitution phases, artifact locations |
 | `steps`, `dag` | Step groups, DAG tasks, `depends`, the assessment of a DAG |
 | `items` | `withItems`, `withParam` and `withSequence` |
+| `retry` | Retry nodes and their attempts |
+| `hooks` | Lifecycle hooks and exit handlers |
 | `scope` | Scopes of steps and tasks, outputs of steps and DAG templates |
 | `pod` | Leaf templates as tasks, and the outcome of a task as outputs |
-| `plugin` | Plugin templates as calls of executor plugins |
-| `validate` | The checks Argo makes when a workflow is submitted |
+| `http`, `plugin` | HTTP templates, and plugin templates as calls of executor plugins |
+| `resources` | Resources of a task from Kubernetes quantities |
+| `validate`, `checks` | The checks Argo makes when a workflow is submitted, and their single rules |
 | `tags` | `{{...}}` substitution |
 | `expr`, `sprig`, `jsonpath`, `when` | The expression languages |
 | `value` | Go's value model and formatting |

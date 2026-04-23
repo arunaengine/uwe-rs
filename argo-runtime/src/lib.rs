@@ -26,6 +26,7 @@ mod pod;
 mod run;
 mod scope;
 pub mod sprig;
+mod start;
 mod steps;
 pub mod tags;
 mod time;

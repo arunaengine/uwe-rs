@@ -69,3 +69,13 @@ fn slurper() {
          [Integer, BigDecimal, String, null, Boolean], [BigDecimal, Long, Integer]]"
     );
 }
+
+#[test]
+fn builder() {
+    let body = "def b = new groovy.json.JsonBuilder([a: 1, b: [2, 'x']])\n\
+                [b.toString(), b.toPrettyString()]";
+    assert_eq!(
+        eval(body).unwrap(),
+        "[{\"a\":1,\"b\":[2,\"x\"]}, {\n    \"a\": 1,\n    \"b\": [\n        2,\n        \"x\"\n    ]\n}]"
+    );
+}

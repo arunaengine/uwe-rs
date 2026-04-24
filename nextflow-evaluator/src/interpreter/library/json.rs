@@ -151,6 +151,9 @@ impl Interpreter<'_> {
                 drop(target);
                 Value::string(self.json_text(value, &options, span)?)
             }
+            (State::Text(text), "toPrettyString", []) if !builder => {
+                Value::string(pretty_print(text).at(span)?)
+            }
             (State::JsonSlurper, "parseText", [text]) => parse(&text.to_string()).at(span)?,
             (State::JsonSlurper, "parse", [Value::Path(path)]) => {
                 let bytes = self.host.read(path).map_err(|error| error.or_at(span))?;

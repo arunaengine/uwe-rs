@@ -255,6 +255,20 @@ pub struct Statement {
     pub span: Span,
 }
 
+impl Statement {
+    /// Whether the statement declares or assigns a plain variable, like `def x = 1` or
+    /// `x = 1`, which legacy processes allow among their sections.
+    pub fn is_variable_statement(&self) -> bool {
+        match &self.kind {
+            StatementKind::Declaration { .. } => true,
+            StatementKind::Assign { target, .. } => {
+                matches!(target.kind, ExpressionKind::Variable(_))
+            }
+            _ => false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum StatementKind {
     Expression(Expression),

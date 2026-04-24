@@ -672,6 +672,14 @@ impl Interpreter<'_> {
                     state,
                 }))))
             }
+            // A `JsonBuilder` of a value is known by its JSON text, which `toString()` gives.
+            (None, [value]) if class == "JsonBuilder" => {
+                let text = self.json_text(value, &Default::default(), span)?;
+                Ok(Value::Object(Rc::new(std::cell::RefCell::new(Object {
+                    class: "groovy.json.JsonBuilder",
+                    state: State::Text(text.into()),
+                }))))
+            }
             (None, [Value::Number(millis)]) if class == "Date" => Ok(Value::Date(millis.to_i64())),
             _ => Err(unsupported(format!("`new {class}(...)`"), span)),
         }

@@ -13,6 +13,9 @@ pub struct Exception {
     pub class: &'static str,
     pub message: String,
     pub cause: Option<Box<Exception>>,
+    /// What some classes carry besides the message, as JSON text, like the violation of an
+    /// everit `ValidationException`, which `toJSON()` gives.
+    pub details: Option<String>,
 }
 
 impl Exception {
@@ -21,6 +24,7 @@ impl Exception {
             class,
             message: message.into(),
             cause: None,
+            details: None,
         }
     }
 
@@ -142,6 +146,16 @@ const CLASSES: &[(&str, &str, &str)] = &[
     (
         "AbortOperationException",
         "nextflow.exception.AbortOperationException",
+        "RuntimeException",
+    ),
+    (
+        "JSONException",
+        "org.json.JSONException",
+        "RuntimeException",
+    ),
+    (
+        "ValidationException",
+        "org.everit.json.schema.ValidationException",
         "RuntimeException",
     ),
 ];

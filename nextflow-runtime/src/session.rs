@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
 use nextflow_evaluator::lowered::{Module, Process};
 use nextflow_evaluator::value::{PathValue, Value};
@@ -108,6 +109,17 @@ impl Host for Session<'_> {
             project_dir: &self.options.project_dir,
         };
         nextflow_plugins::call(plugin, name, arguments, &mut context)
+    }
+
+    /// Validates with the everit validator of `nextflow-plugins`.
+    fn validate_json(&mut self, schema: &str, instance: &str) -> Result<Option<String>, Error> {
+        match nextflow_plugins::everit::violation(schema, instance) {
+            Ok(violation) => Ok(violation.map(|violation| violation.to_string())),
+            Err(message) => Err(Error::Thrown {
+                exception: Rc::new(Exception::new("SchemaException", message)),
+                span: Default::default(),
+            }),
+        }
     }
 
     fn call_process(

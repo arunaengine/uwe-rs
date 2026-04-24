@@ -57,6 +57,8 @@ pub enum State {
     JsonObject(super::Value),
     /// `org.json.JSONArray`: a list.
     JsonArray(super::Value),
+    /// `org.everit.json.schema.Schema`, by the JSON text of the schema.
+    JsonSchema(Rc<str>),
     /// An object of a class of the library, with its fields.
     Instance {
         class: Rc<crate::lowered::LibraryClass>,

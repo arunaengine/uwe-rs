@@ -72,6 +72,7 @@ impl Interpreter<'_> {
                     .call_method(source, "splitCsv", options.to_vec(), span)
                     .map(Some);
             }
+            ("SchemaLoader", "load", [json]) => super::org_json::load_schema(self, json, span)?,
             ("JsonOutput", "toJson", [value]) => {
                 Value::string(self.json_text(value, &JsonOptions::default(), span)?)
             }

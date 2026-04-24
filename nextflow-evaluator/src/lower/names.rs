@@ -137,6 +137,17 @@ pub(super) const DIRECTIVES: &[&str] = &[
     "time",
 ];
 
+/// Classes that scripts may name after they import them: the stand-ins of `org.json` and of
+/// the everit JSON schema validator, which Nextflow releases before 24 shipped.
+pub(super) const IMPORTED_CLASSES: &[&str] = &[
+    "JSONArray",
+    "JSONObject",
+    "JSONTokener",
+    "Schema",
+    "SchemaLoader",
+    "ValidationException",
+];
+
 /// Classes that scripts may name, from the default imports of Groovy and Nextflow.
 pub(super) const CLASSES: &[&str] = &[
     "Arrays",

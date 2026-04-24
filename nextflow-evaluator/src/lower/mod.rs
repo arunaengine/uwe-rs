@@ -318,6 +318,8 @@ pub(crate) struct Lowering<'a> {
     class: Option<class::ClassContext>,
     /// Static members that `import static` brings in, with their class.
     static_imports: HashMap<Rc<str>, Rc<str>>,
+    /// The classes of `IMPORTED_CLASSES` that the script imports.
+    imported_classes: HashSet<Rc<str>>,
 }
 
 impl<'a> Lowering<'a> {
@@ -341,6 +343,7 @@ impl<'a> Lowering<'a> {
             library: HashSet::new(),
             class: None,
             static_imports: HashMap::new(),
+            imported_classes: HashSet::new(),
         }
     }
 
@@ -416,6 +419,17 @@ impl<'a> Lowering<'a> {
             match item {
                 Item::Class(class) => {
                     self.library.insert(class.name.text.as_str().into());
+                }
+                Item::Import {
+                    name,
+                    member: false,
+                    ..
+                } => {
+                    if let Some(class) = name.parts.last()
+                        && names::IMPORTED_CLASSES.contains(&class.text.as_str())
+                    {
+                        self.imported_classes.insert(class.text.as_str().into());
+                    }
                 }
                 Item::Import {
                     name,

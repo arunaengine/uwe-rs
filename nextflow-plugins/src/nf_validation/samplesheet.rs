@@ -12,8 +12,9 @@ use nextflow_evaluator::interpreter::{Error, parse_yaml};
 use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{PathValue, Value};
 
-use super::{Problem, flag, parameters_schema};
+use super::{flag, parameters_schema};
 use crate::Context;
+use crate::everit::{self, Problem};
 use crate::nf_schema::{entries, get, json, path, paths, plain, read, schema, thrown};
 
 /// `fromSamplesheet`: the rows of the samplesheet that a param names, checked and converted
@@ -161,7 +162,7 @@ pub(super) fn validate_file(
     let instance = serde_json::Value::Array(rows);
     let validator = paths::validator(&schema.json, &instance, context)
         .map_err(|error| thrown(format!("Invalid samplesheet schema: {error}")))?;
-    let problems: Vec<String> = super::problems(&validator, &instance)
+    let problems: Vec<String> = everit::problems(&validator, &instance)
         .into_iter()
         .map(|problem| match problem {
             Problem::Missing { path, name } => format!(

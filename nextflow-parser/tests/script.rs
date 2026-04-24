@@ -857,20 +857,16 @@ workflow {
     assert_eq!(kinds, ["process", "workflow"]);
 }
 
+/// Variable declarations among inputs and outputs are errors of strict syntax; the legacy
+/// parser runs them when the process is defined.
 #[test]
 fn rejects_input_declarations() {
     let source = "process P {\n  input:\n  def x = 1\n  output:\n  path 'a', emit: a\n  def y = 2\n  script:\n  \"echo\"\n}\n";
-    let messages = messages(source);
-    assert!(
-        messages
-            .iter()
-            .any(|message| message == "Invalid process input"),
-        "{messages:?}"
+    assert_eq!(
+        legacy(source),
+        ["Invalid process input", "Invalid process output"]
     );
-    assert!(
-        messages
-            .iter()
-            .any(|message| message == "Invalid process output"),
-        "{messages:?}"
-    );
+    let source =
+        "process P {\n  output:\n  path 'a', emit: a\n  if (x) { y }\n  script:\n  \"echo\"\n}\n";
+    assert_eq!(messages(source), ["Invalid process output"]);
 }

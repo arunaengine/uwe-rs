@@ -105,6 +105,8 @@ pub(super) const DIRECTIVES: &[&str] = &[
     "cpus",
     "debug",
     "disk",
+    // Legacy: the old name of `debug`.
+    "echo",
     "errorStrategy",
     "executor",
     "ext",

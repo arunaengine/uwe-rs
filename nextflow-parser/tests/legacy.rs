@@ -150,3 +150,19 @@ fn several_variables_in_one_declaration() {
     assert_eq!(values.len(), 2);
     assert_eq!(legacy, ["Expected a new line or ';' after the statement"]);
 }
+
+/// Legacy syntax: a `when:` section of several lines, whose last line is the condition.
+#[test]
+fn when_sections_of_several_lines() {
+    let source = "process P {\n    input:\n    val x\n    when:\n    x != null\n    x > 1\n    script:\n    \"echo\"\n}\n";
+    let parsed = nextflow_parser::parse_script(source);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    assert_eq!(parsed.legacy.len(), 1, "{:?}", parsed.legacy);
+    let nextflow_parser::ast::Item::Process(process) = &parsed.tree.items[0] else {
+        panic!("a process");
+    };
+    let condition = process.when.as_ref().expect("a condition");
+    let (start, end) = (condition.span.start as usize, condition.span.end as usize);
+    assert_eq!(&source[start..end], "x > 1");
+    assert!(process.body.is_some());
+}

@@ -116,23 +116,28 @@ impl Parser<'_> {
     }
 
     /// Declarations and control flow cannot declare inputs or outputs, in legacy or typed
-    /// processes alike.
+    /// processes alike. Legacy syntax: a variable declaration or assignment there runs when
+    /// the process is defined, and later sections see the variable.
     pub(super) fn check_declarations<'s>(
         &mut self,
         statements: impl Iterator<Item = &'s Statement>,
         message: &str,
     ) {
-        let spans: Vec<Span> = statements
+        let spans: Vec<(Span, bool)> = statements
             .filter(|statement| {
                 !matches!(
                     statement.kind,
                     StatementKind::Expression(_) | StatementKind::Empty
                 )
             })
-            .map(|statement| statement.span)
+            .map(|statement| (statement.span, statement.is_variable_statement()))
             .collect();
-        for span in spans {
-            self.error_at(message, span);
+        for (span, legacy) in spans {
+            if legacy {
+                self.legacy_at(message, span);
+            } else {
+                self.error_at(message, span);
+            }
         }
     }
 
@@ -195,6 +200,23 @@ impl Parser<'_> {
                 last = section_end(&block.statements, start);
                 match previous {
                     None => process.directives.extend(block.statements),
+                    // Legacy syntax: more statements of `when:`, where the last one is the
+                    // condition, when a body label follows.
+                    Some(ProcessSection::When)
+                        if !implicit
+                            && matches!(self.process_label(), Some(ProcessSection::Body(_))) =>
+                    {
+                        let message = "Invalid process definition -- check for missing or \
+                                       out-of-order section labels";
+                        self.legacy_at(message, block.span);
+                        if let Some(Statement {
+                            kind: StatementKind::Expression(condition),
+                            ..
+                        }) = block.statements.last()
+                        {
+                            process.when = Some(condition.clone());
+                        }
+                    }
                     // Only `when:` may come right before a body without a label.
                     Some(ProcessSection::When) if !implicit => {
                         implicit = true;

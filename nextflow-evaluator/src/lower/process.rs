@@ -23,6 +23,9 @@ impl Lowering<'_> {
         let inputs = process
             .inputs
             .iter()
+            .filter(|input| {
+                !matches!(input, ProcessInput::Statement(statement) if statement.is_variable_statement())
+            })
             .filter_map(|input| self.input(input))
             .collect();
         if let Some(first) = process.stage.first().or(process.topics.first()) {
@@ -30,6 +33,24 @@ impl Lowering<'_> {
         }
         let when = process.when.as_ref().map(|when| self.expression(when));
         self.implicit_declarations = true;
+        // Legacy syntax: a variable that is declared or assigned among the directives, the
+        // inputs or the outputs, like `def threshold = params.t`, which later sections read.
+        // It is set for each task before the directives.
+        let variables: Vec<ast::Statement> = process
+            .directives
+            .iter()
+            .chain(process.inputs.iter().filter_map(|input| match input {
+                ProcessInput::Statement(statement) => Some(statement),
+                _ => None,
+            }))
+            .chain(process.outputs.iter().filter_map(|output| match output {
+                NamedOutput::Statement(statement) => Some(statement),
+                NamedOutput::Named { .. } => None,
+            }))
+            .filter(|statement| statement.is_variable_statement())
+            .cloned()
+            .collect();
+        let mut setup = self.statements(&variables);
         let body = process.body.as_ref().map(|body| {
             self.escape_paths = matches!(body.kind, BodyKind::Script | BodyKind::Implicit);
             let statements = self.block(&body.block);
@@ -46,9 +67,11 @@ impl Lowering<'_> {
             statements
         });
         self.implicit_declarations = false;
-        let mut setup = Vec::new();
         let mut directives = Vec::new();
         for directive in &process.directives {
+            if directive.is_variable_statement() {
+                continue;
+            }
             if let StatementKind::If { .. } = directive.kind {
                 self.legacy("Invalid process directive", directive.span);
                 setup.extend(self.statements(std::slice::from_ref(directive)));
@@ -59,6 +82,9 @@ impl Lowering<'_> {
         let outputs = process
             .outputs
             .iter()
+            .filter(|output| {
+                !matches!(output, NamedOutput::Statement(statement) if statement.is_variable_statement())
+            })
             .filter_map(|output| self.output(output))
             .collect();
         self.in_process = false;

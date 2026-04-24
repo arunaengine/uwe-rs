@@ -87,3 +87,30 @@ fn includes_read_the_project_directory() {
     nextflow_runtime::run(&module, &mut output).expect("runs");
     assert_eq!(output.0, "shown\n");
 }
+
+/// Legacy processes may set variables among their sections, which later sections read, and
+/// an assignment among the directives sets a variable, not the directive. Checked with
+/// Nextflow 26.04.6 and `NXF_SYNTAX_PARSER=v1`.
+#[test]
+fn process_sections_set_variables() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    write(
+        root.path(),
+        "main.nf",
+        "process P {\n    errorStrategy = 'ignore'\n    echo true\n\n    input:\n    val x\n\n    \
+         output:\n    path 'out.txt', emit: out\n\n    def y = 7\n    script:\n    \
+         \"echo $x $y $errorStrategy\"\n}\nworkflow {\n    P(channel.of(3))\n}\n",
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let options = nextflow_runtime::Options::default();
+    let (_, requests) =
+        nextflow_runtime::Run::start(&module, &options, &mut Output::default()).expect("starts");
+    assert_eq!(requests[0].script, "#!/bin/bash -ue\necho 3 7 ignore\n");
+    let error_strategy = requests[0]
+        .directives
+        .iter()
+        .find(|directive| &*directive.name == "errorStrategy");
+    assert!(error_strategy.is_none(), "{error_strategy:?}");
+}

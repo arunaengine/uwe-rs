@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use nextflow_parser::Span;
 
+use super::library::org_json;
 use super::{AtSpan, Error, Frame, Interpreter, thrown};
 use crate::exception::Exception;
 use crate::lowered::{Place, Statement, StatementKind, Target, Update};
@@ -298,6 +299,9 @@ impl Interpreter<'_> {
                 .collect(),
             Value::String(text) | Value::GString(text) => {
                 text.chars().map(|c| Value::string(c.to_string())).collect()
+            }
+            Value::Object(object) if org_json::array_items(object).is_some() => {
+                org_json::array_items(object).unwrap_or_default()
             }
             other => {
                 let message = format!("iterating over {} with `for`", other.class_name());

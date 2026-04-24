@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use nextflow_parser::Span;
 
+use super::library::org_json;
 use super::{AtSpan, Error, Interpreter, thrown, unsupported};
 use crate::exception::{self, Exception};
 use crate::number::Number;
@@ -64,6 +65,10 @@ impl Interpreter<'_> {
                     "groupTarget" => target.clone(),
                     _ => self.property(&target.clone(), name, span)?,
                 }
+            }
+            // Groovy reads a property of a `JSONObject` with its `get(name)`.
+            Value::Object(json) if org_json::is_json_object(json) => {
+                self.call_method(object, "get", vec![Value::string(name)], span)?
             }
             Value::Object(object) if matches!(object.borrow().state, State::Workflow(_)) => {
                 let properties = match &object.borrow().state {
@@ -208,6 +213,9 @@ impl Interpreter<'_> {
                     Exception::new("NullPointerException", message),
                     span,
                 ));
+            }
+            (Value::Object(json), key) if org_json::is_json_object(json) => {
+                self.call_method(object, "get", vec![key.clone()], span)?
             }
             (Value::Map(map), key) => {
                 let value = map.borrow().entries.get(&Key(key.clone())).cloned();
@@ -547,6 +555,9 @@ impl Interpreter<'_> {
         arguments: Vec<Value>,
         span: Span,
     ) -> Result<Value, Error> {
+        if let Some(object) = self.org_json_new(class, &arguments, span)? {
+            return Ok(object);
+        }
         match (exception::class_name(class), arguments.as_slice()) {
             (Some(class), []) => Ok(Value::Exception(Rc::new(Exception::new(class, "")))),
             (Some(class), [message]) => {

@@ -529,7 +529,9 @@ impl Lowering<'_> {
         }
         match &target.kind {
             Syntax::Variable(name)
-                if CLASSES.contains(&name.as_str()) && self.scopes.resolve(name).is_none() =>
+                if (CLASSES.contains(&name.as_str())
+                    || self.imported_classes.contains(name.as_str()))
+                    && self.scopes.resolve(name).is_none() =>
             {
                 Some(name.as_str().into())
             }

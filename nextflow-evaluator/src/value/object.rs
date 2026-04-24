@@ -52,6 +52,11 @@ pub enum State {
         name: Rc<str>,
         ordinal: usize,
     },
+    /// `org.json.JSONObject`: a map, whose objects and arrays are `JSONObject` and
+    /// `JSONArray` too.
+    JsonObject(super::Value),
+    /// `org.json.JSONArray`: a list.
+    JsonArray(super::Value),
     /// An object of a class of the library, with its fields.
     Instance {
         class: Rc<crate::lowered::LibraryClass>,

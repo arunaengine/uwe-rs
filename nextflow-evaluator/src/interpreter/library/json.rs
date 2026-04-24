@@ -117,6 +117,9 @@ impl Interpreter<'_> {
         if matches!(object.borrow().state, State::Stream(..)) {
             return self.stream_method(object, name, arguments, span);
         }
+        if let Some(value) = self.org_json_method(object, name, arguments, span)? {
+            return Ok(Some(value));
+        }
         match &object.borrow().state {
             State::Bytes(bytes) => return Ok(super::bytes::bytes_method(bytes, name, arguments)),
             State::Digest(algorithm) => {

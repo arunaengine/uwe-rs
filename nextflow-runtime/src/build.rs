@@ -116,6 +116,10 @@ impl Host for Builder<'_> {
         self.base.delete(path)
     }
 
+    fn validate_json(&mut self, schema: &str, instance: &str) -> Result<Option<String>, Error> {
+        self.base.validate_json(schema, instance)
+    }
+
     fn create_directories(&mut self, path: &PathValue) -> Result<(), Error> {
         self.base.create_directories(path)
     }

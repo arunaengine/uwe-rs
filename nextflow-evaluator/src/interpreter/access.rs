@@ -478,6 +478,12 @@ impl Interpreter<'_> {
             (Value::Channel(_) | Value::ChannelOut(_), _) => {
                 self.operator(object, name, arguments, span)
             }
+            (Value::Exception(exception), "toJSON") if arguments.is_empty() => {
+                match org_json::exception_json(exception, span) {
+                    Some(json) => json,
+                    None => Err(unsupported("the method `toJSON` of this exception", span)),
+                }
+            }
             (Value::Exception(_), "getMessage" | "getCause") if arguments.is_empty() => {
                 let name = if name == "getMessage" {
                     "message"

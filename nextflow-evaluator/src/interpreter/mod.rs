@@ -166,6 +166,13 @@ pub trait Host {
         Err(unsupported(message, Span::default()))
     }
 
+    /// Validates the JSON text of an instance against the JSON text of a schema, as the
+    /// everit validator of older Nextflow releases does: `None` when the instance is valid,
+    /// else the JSON text of the violation, as `ValidationException.toJSON()` gives it.
+    fn validate_json(&mut self, _schema: &str, _instance: &str) -> Result<Option<String>, Error> {
+        Err(unsupported("validating JSON schemas", Span::default()))
+    }
+
     /// Calls a process with its input channels or values, as a workflow does; the result is
     /// the outputs of the call. `name` is the fully qualified name, like `RNASEQ:FASTQC`.
     fn call_process(

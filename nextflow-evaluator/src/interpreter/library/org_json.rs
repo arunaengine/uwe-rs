@@ -1,6 +1,8 @@
-//! Stand-ins for `org.json` (`JSONObject`, `JSONArray`, `JSONTokener`). Nextflow releases
-//! before 24 shipped it, and the `lib/` classes of older nf-core pipelines use it
-//! ([decisions](../../../../docs/decisions.md), item 14).
+//! Stand-ins for `org.json` (`JSONObject`, `JSONArray`, `JSONTokener`) and the everit JSON
+//! schema validator (`SchemaLoader`, `Schema`, `ValidationException`). Nextflow releases
+//! before 24 shipped both, and the `lib/` classes of older nf-core pipelines use them
+//! ([decisions](../../../../docs/decisions.md), item 14). The host validates, as the
+//! evaluator has no JSON schema validator of its own.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -70,11 +72,29 @@ impl Interpreter<'_> {
         let state = match &object.borrow().state {
             State::JsonObject(map) => Json::Object(map.clone()),
             State::JsonArray(list) => Json::Array(list.clone()),
+            State::JsonSchema(schema) => Json::Schema(schema.clone()),
             _ => return Ok(None),
         };
         match state {
             Json::Object(map) => self.json_object_method(&this, &map, name, arguments, span),
             Json::Array(list) => self.json_array_method(&this, &list, name, arguments, span),
+            Json::Schema(schema) => match (name, arguments) {
+                ("validate", [instance]) => {
+                    let text = self.org_json_text(instance, span)?;
+                    let violation = self
+                        .host
+                        .validate_json(&schema, &text)
+                        .map_err(|error| error.or_at(span))?;
+                    match violation {
+                        None => Ok(Some(Value::Null)),
+                        Some(violation) => Err(Error::Thrown {
+                            exception: Rc::new(validation_exception(violation)),
+                            span,
+                        }),
+                    }
+                }
+                _ => Ok(None),
+            },
         }
     }
 
@@ -188,6 +208,29 @@ impl Interpreter<'_> {
 enum Json {
     Object(Value),
     Array(Value),
+    Schema(Rc<str>),
+}
+
+/// `SchemaLoader.load(json)`: the schema of a `JSONObject`.
+pub(in crate::interpreter) fn load_schema(
+    interpreter: &mut Interpreter,
+    json: &Value,
+    span: Span,
+) -> Result<Value, Error> {
+    let text = interpreter.org_json_text(json, span)?;
+    Ok(object(
+        "org.everit.json.schema.ObjectSchema",
+        State::JsonSchema(text.into()),
+    ))
+}
+
+/// `e.toJSON()` of a `ValidationException`: the violation as a `JSONObject`.
+pub(in crate::interpreter) fn exception_json(
+    exception: &Exception,
+    span: Span,
+) -> Option<Result<Value, Error>> {
+    let details = exception.details.as_ref()?;
+    Some(parse(details).at(span).map(|value| wrap(&value)))
 }
 
 /// Whether an object is a `JSONObject`, whose properties, like `schema.definitions`, Groovy
@@ -202,6 +245,25 @@ pub(in crate::interpreter) fn array_items(object: &Rc<RefCell<Object>>) -> Optio
         State::JsonArray(list) => Some(super::elements(list)),
         _ => None,
     }
+}
+
+/// An everit `ValidationException` of a violation, whose message starts with the place of
+/// the violation, like `#: 2 schema violations found`.
+fn validation_exception(violation: String) -> Exception {
+    let parsed = parse(&violation).ok();
+    let field = |name: &str| {
+        parsed
+            .as_ref()
+            .and_then(|value| match value {
+                Value::Map(map) => map.borrow().entries.get(&Key(Value::string(name))).cloned(),
+                _ => None,
+            })
+            .map_or(String::new(), |value| value.to_string())
+    };
+    let message = format!("{}: {}", field("pointerToViolation"), field("message"));
+    let mut exception = Exception::new("ValidationException", message);
+    exception.details = Some(violation);
+    exception
 }
 
 fn object(class: &'static str, state: State) -> Value {

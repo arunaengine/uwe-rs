@@ -342,6 +342,11 @@ impl Interpreter<'_> {
                     }
                 }
             }
+            // Groovy's `getAt(Object, String)` reads a property of any other object, like
+            // `entry['value']` of a map entry.
+            (Value::MapEntry(_) | Value::Object(_), Value::String(name) | Value::GString(name)) => {
+                self.property(object, name, span)?
+            }
             _ => {
                 let class = object.class_name();
                 let index = index.class_name();

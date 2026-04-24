@@ -13,7 +13,7 @@ use nextflow_evaluator::interpreter::Error;
 use nextflow_evaluator::value::Value;
 
 use crate::Context;
-use crate::nf_schema::{Schema, entries, get, json_type, plain, schema};
+use crate::nf_schema::{Schema, entries, get, schema};
 
 /// The functions of nf-validation that scripts can include; `fromSamplesheet` is a channel
 /// factory, `Channel.fromSamplesheet(...)`.
@@ -84,82 +84,4 @@ fn groups(schema: &Value) -> Vec<(String, Vec<(String, Value)>)> {
 /// Whether a param of nf-validation is set, like `params.validationLenientMode`.
 fn flag(context: &Context, name: &str) -> bool {
     get(&context.params, name).is_some_and(|value| value.truth())
-}
-
-/// One problem of a validation, in the words of the everit validator that nf-validation
-/// uses.
-enum Problem {
-    /// A required property is missing from the object at `path`.
-    Missing { path: String, name: String },
-    /// The value at `path` is wrong.
-    Value {
-        path: String,
-        message: String,
-        /// For an enum, the choices, which nf-validation lists itself for params.
-        choices: Option<Vec<String>>,
-    },
-}
-
-/// The problems of an instance, as everit words them.
-fn problems(validator: &jsonschema::Validator, instance: &serde_json::Value) -> Vec<Problem> {
-    use jsonschema::error::{TypeKind, ValidationErrorKind as Kind};
-    let mut problems = Vec::new();
-    for error in validator.iter_errors(instance) {
-        let path = error.instance_path().to_string();
-        let value = error.instance();
-        let (message, choices) = match error.kind() {
-            Kind::Required { property } => {
-                let name = property.as_str().unwrap_or_default().to_owned();
-                problems.push(Problem::Missing { path, name });
-                continue;
-            }
-            Kind::Type { kind } => {
-                let expected = match kind {
-                    TypeKind::Single(kind) => java_class(&kind.to_string()).to_owned(),
-                    TypeKind::Multiple(kinds) => {
-                        let kinds: Vec<&str> = kinds
-                            .iter()
-                            .map(|kind| java_class(&kind.to_string()))
-                            .collect();
-                        kinds.join(", ")
-                    }
-                };
-                let found = java_class(json_type(value));
-                (format!("expected type: {expected}, found: {found}"), None)
-            }
-            Kind::Pattern { pattern } => (
-                format!("string [{}] does not match pattern {pattern}", plain(value)),
-                None,
-            ),
-            Kind::Enum { options } => {
-                let choices = options
-                    .as_array()
-                    .map(|items| items.iter().map(plain).collect());
-                (
-                    format!("{} is not a valid enum value", plain(value)),
-                    choices,
-                )
-            }
-            _ => (error.to_string(), None),
-        };
-        problems.push(Problem::Value {
-            path,
-            message,
-            choices,
-        });
-    }
-    problems
-}
-
-/// The Java class that everit names for a JSON type.
-fn java_class(kind: &str) -> &'static str {
-    match kind {
-        "string" => "String",
-        "integer" => "Integer",
-        "number" => "Number",
-        "boolean" => "Boolean",
-        "object" => "JSONObject",
-        "array" => "JSONArray",
-        _ => "Null",
-    }
 }

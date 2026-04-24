@@ -7,8 +7,9 @@ use nextflow_evaluator::interpreter::Error;
 use nextflow_evaluator::value::Value;
 
 use super::samplesheet::validate_file;
-use super::{Problem, flag, groups, parameters_schema};
+use super::{flag, groups, parameters_schema};
 use crate::Context;
+use crate::everit::{self, Problem};
 use crate::nf_schema::{entries, get, json, paths, plain, thrown};
 
 /// The params that nf-validation itself reads, which are never unexpected.
@@ -133,13 +134,14 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
     );
     let validator = paths::validator(&schema.json, &instance, context)
         .map_err(|error| thrown(format!("Invalid parameters schema: {error}")))?;
-    for problem in super::problems(&validator, &instance) {
+    for problem in everit::problems(&validator, &instance) {
         problems.push(match problem {
             Problem::Missing { name, .. } => format!("* Missing required parameter: --{name}"),
             Problem::Value {
                 path,
                 message,
                 choices,
+                ..
             } => {
                 let name = path.trim_start_matches('/');
                 let value = instance.get(name).map(plain).unwrap_or_default();

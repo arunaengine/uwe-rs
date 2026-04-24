@@ -54,6 +54,24 @@ fn factories() {
     );
 }
 
+/// A missing file of `fromPath` with `checkIfExists` fails when the factory starts, after
+/// the workflow body ran, as in Nextflow 26.04.6.
+#[test]
+fn missing_files_fail_when_the_factory_starts() {
+    let source = "workflow {\n    channel.fromPath('/nonexistent/x.fa', checkIfExists: true)\n    \
+                  println('after')\n}";
+    let parsed = parse_script(source);
+    let module = Rc::new(lower_module(&parsed.tree, source).expect("lowers"));
+    let mut output = Output::default();
+    let error = nextflow_runtime::run(&module, &mut output)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("/nonexistent/x.fa"), "{error}");
+    assert_eq!(output.0, "after\n");
+    let printed = run("channel.fromPath('/nonexistent/x.fa')\nprintln('after')").unwrap();
+    assert_eq!(printed, "after\n");
+}
+
 #[test]
 fn values_one_at_a_time() {
     assert_eq!(

@@ -4,8 +4,8 @@
 
 use super::{Failed, Parse, Parser, is_name};
 use crate::ast::{
-    Expression, ExpressionKind, Function, Include, IncludeName, Item, Name, ParameterDeclaration,
-    Script, Statement, StatementKind, Type, TypedName,
+    Expression, ExpressionKind, Function, GStringPart, Include, IncludeName, Item, Name,
+    ParameterDeclaration, Script, Statement, StatementKind, Type, TypedName,
 };
 use crate::token::TokenKind;
 use crate::{Diagnostic, Span};
@@ -299,6 +299,12 @@ impl Parser<'_> {
         loop {
             let name = self.name()?;
             let mut alias = None;
+            // Legacy syntax: a line break before `as`.
+            if self.at(TokenKind::Newline) && self.kind_after(0) == TokenKind::As {
+                let span = self.current().span;
+                self.legacy_at("Unexpected input: 'as'", span);
+                self.skip_newlines();
+            }
             if self.eat(TokenKind::As) {
                 alias = Some(self.name()?);
             }
@@ -312,13 +318,44 @@ impl Parser<'_> {
             }
         }
         self.expect(TokenKind::From, "`from`")?;
-        let source = self.string_name()?;
+        let source = match self.peek() {
+            TokenKind::GStringBegin { .. } => self.legacy_include_source()?,
+            _ => self.string_name()?,
+        };
         let span = self.span_from(start);
         Ok(Item::Include(Include {
             names,
             source,
             span,
         }))
+    }
+
+    /// Legacy syntax: an include source with the variables of the script's directories, like
+    /// `"${projectDir}/modules/x"`. The text keeps `${name}` for each, which the loader fills.
+    fn legacy_include_source(&mut self) -> Parse<Name> {
+        let start = self.current().span;
+        let expression = self.primary()?;
+        let span = self.span_from(start);
+        let ExpressionKind::GString(parts) = expression.kind else {
+            return Err(self.error_here("Expected a string"));
+        };
+        let mut text = String::new();
+        for part in parts {
+            match part {
+                GStringPart::Text(part) => text.push_str(&part),
+                GStringPart::Value(Expression {
+                    kind: ExpressionKind::Variable(name),
+                    ..
+                }) if INCLUDE_VARIABLES.contains(&name.as_str()) => {
+                    text.push_str(&format!("${{{name}}}"));
+                }
+                GStringPart::Value(value) => {
+                    self.error_at("Expected a string", value.span);
+                }
+            }
+        }
+        self.legacy_at("Expected a string", span);
+        Ok(Name { text, span })
     }
 
     /// The `paramsDef` rule: `params { ... }`.
@@ -498,3 +535,7 @@ fn definition_name(statement: &Statement) -> Option<&str> {
         .contains(&name)
         .then_some(name)
 }
+
+/// The variables that a legacy include source may use: the directories of the run and of the
+/// including script.
+pub const INCLUDE_VARIABLES: &[&str] = &["projectDir", "baseDir", "launchDir", "moduleDir"];

@@ -92,6 +92,14 @@ fn reading_and_changing() {
         "[[a], [1], [a=1]]"
     );
     assert_eq!(value("[b: 1, a: 2].sort()"), "[a:2, b:1]");
+    // Legacy code copies a map through its class.
+    assert_eq!(
+        value(
+            "def m = [a: 1, b: 2]\ndef c = m.getClass().newInstance(m)\nc.remove('a')\n\
+             [m, c, c.getClass().name]"
+        ),
+        "[[a:1, b:2], [b:2], java.util.LinkedHashMap]"
+    );
     assert_eq!(value("[a: 1, b: 2].subMap(['b', 'x'])"), "[b:2]");
     assert_eq!(
         value("def m = [a: 1]\nm.put('b', 2)\nm.remove('a')\nm"),

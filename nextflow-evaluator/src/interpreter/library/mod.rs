@@ -96,6 +96,11 @@ impl Interpreter<'_> {
                     },
                 )),
                 ("getName", []) => Some(Value::String(class.clone())),
+                // Legacy code copies a map with `map.getClass().newInstance(map)`.
+                ("newInstance", _) => {
+                    let simple = crate::value::simple_class_name(class).to_owned();
+                    Some(self.new_object(&simple, arguments.to_vec(), span)?)
+                }
                 _ => None,
             },
             Value::Boolean(value) => match (name, arguments) {

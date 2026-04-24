@@ -16,10 +16,16 @@ pub(crate) struct Factory {
     pub values: Vec<Value>,
     pub output: ChannelId,
     pub close: bool,
+    /// Why the factory cannot give its values, like a missing file of `fromPath` with
+    /// `checkIfExists`, which Nextflow reports when the factory starts, not when it is made.
+    pub failure: Option<Error>,
 }
 
 impl Behaviour for Factory {
     fn ignite(&mut self, context: &mut Context) -> Result<State, Error> {
+        if let Some(failure) = self.failure.take() {
+            return Err(failure);
+        }
         for value in std::mem::take(&mut self.values) {
             context.emit(self.output, value);
         }

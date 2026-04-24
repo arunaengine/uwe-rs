@@ -176,7 +176,15 @@ impl Host for Builder<'_> {
             ("channel", "topic", [topic]) => {
                 return Ok(Some(Value::Channel(self.network.topic(&topic.to_string()))));
             }
-            ("channel", "fromPath", [.., _]) => (self.path_values(&arguments)?, false, true),
+            // A missing file fails the run when the factory starts, as in Nextflow, so that
+            // errors of the workflow body come first.
+            ("channel", "fromPath", [.., _]) => match self.path_values(&arguments) {
+                Ok(values) => (values, false, true),
+                Err(failure @ Error::Thrown { .. }) => {
+                    return Ok(Some(self.failing_factory(name, failure)));
+                }
+                Err(error) => return Err(error),
+            },
             ("channel", "from", [single @ (Value::List(_) | Value::Set(_))]) => {
                 (elements(single), false, true)
             }
@@ -493,6 +501,20 @@ impl Builder<'_> {
             values,
             output,
             close,
+            failure: None,
+        };
+        self.network.add(name, &[], Box::new(factory));
+        Value::Channel(output)
+    }
+
+    /// A channel factory node that fails when it starts.
+    fn failing_factory(&mut self, name: &str, failure: Error) -> Value {
+        let output = self.network.channel(false);
+        let factory = Factory {
+            values: Vec::new(),
+            output,
+            close: true,
+            failure: Some(failure),
         };
         self.network.add(name, &[], Box::new(factory));
         Value::Channel(output)

@@ -42,12 +42,15 @@ pub struct Loader {
     library: Rc<Library>,
     /// The names of the classes of `library` that are not nested in another.
     library_names: Vec<Rc<str>>,
+    /// The directory of the main script, `projectDir`.
+    project: PathBuf,
 }
 
 impl Loader {
     /// Loads a script file with everything it includes.
     pub fn load(&mut self, path: &Path) -> Result<Rc<Module>, LoadError> {
         if let Some(directory) = path.parent() {
+            self.project = std::path::absolute(directory).unwrap_or(directory.to_owned());
             self.load_library(&directory.join("lib"));
         }
         let module = self.load_file(path);
@@ -222,7 +225,7 @@ impl Loader {
                     .insert(include.alias.clone(), link);
                 continue;
             }
-            let Some(target) = include_path(&directory, &include.source) else {
+            let Some(target) = include_path(&self.project, &directory, &include.source) else {
                 continue;
             };
             if let Some(target) = self.modules.get(&target).cloned() {
@@ -240,10 +243,21 @@ impl Loader {
 }
 
 /// The file an include source names: relative to the including script, with `.nf` added, or
-/// `main.nf` for a directory. Plugins have no file.
-fn include_path(directory: &Path, source: &str) -> Option<PathBuf> {
+/// `main.nf` for a directory. Plugins have no file. A legacy source may start with the
+/// directory of the project or of the including script, like `${projectDir}/modules/x`.
+fn include_path(project: &Path, directory: &Path, source: &str) -> Option<PathBuf> {
     if source.starts_with("plugin/") {
         return None;
+    }
+    let launch = std::env::current_dir().unwrap_or_default();
+    let mut source = source.to_owned();
+    for (name, value) in [
+        ("projectDir", project),
+        ("baseDir", project),
+        ("moduleDir", directory),
+        ("launchDir", launch.as_path()),
+    ] {
+        source = source.replace(&format!("${{{name}}}"), &value.to_string_lossy());
     }
     let path = directory.join(source);
     let path = if path.is_dir() {
@@ -280,7 +294,7 @@ impl Imports for Includes<'_> {
                 None => Err(format!("Plugins are not supported yet: {source}")),
             };
         }
-        let Some(path) = include_path(&self.directory, source) else {
+        let Some(path) = include_path(&self.loader.project, &self.directory, source) else {
             return Err(format!("Plugins are not supported yet: {source}"));
         };
         if !path.exists() {

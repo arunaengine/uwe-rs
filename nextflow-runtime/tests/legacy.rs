@@ -63,3 +63,27 @@ workflow SHOW {
         "main: hello\nshow loaded\nHELLO2\nitem a\nitem b\n"
     );
 }
+
+/// Legacy includes may name the project directory in the source and break the line
+/// before `as`.
+#[test]
+fn includes_read_the_project_directory() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    std::fs::create_dir(root.path().join("modules")).expect("creates modules");
+    write(
+        root.path(),
+        "modules/show.nf",
+        "workflow SHOW {\n    main:\n    println('shown')\n}\n",
+    );
+    write(
+        root.path(),
+        "main.nf",
+        "include { SHOW\n    as SHOW_IT } from \"${projectDir}/modules/show\"\nworkflow {\n    SHOW_IT()\n}\n",
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let mut output = Output::default();
+    nextflow_runtime::run(&module, &mut output).expect("runs");
+    assert_eq!(output.0, "shown\n");
+}

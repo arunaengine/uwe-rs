@@ -157,7 +157,14 @@ impl Interpreter<'_> {
             (State::Text(text), "toPrettyString", []) if !builder => {
                 Value::string(pretty_print(text).at(span)?)
             }
-            (State::JsonSlurper, "parseText", [text]) => parse(&text.to_string()).at(span)?,
+            (State::JsonSlurper, "parseText", [text]) => {
+                let text = text.to_string();
+                if text.is_empty() {
+                    let message = "Text must not be null or empty";
+                    return Err(thrown(Exception::illegal_argument(message), span));
+                }
+                parse(&text).at(span)?
+            }
             (State::JsonSlurper, "parse", [Value::Path(path)]) => {
                 let bytes = self.host.read(path).map_err(|error| error.or_at(span))?;
                 parse(&String::from_utf8_lossy(&bytes)).at(span)?
@@ -368,6 +375,11 @@ pub(super) fn pretty_print(text: &str) -> Result<String, Exception> {
 /// `JsonSlurper.parseText`: objects become maps and arrays lists. Whole numbers become an
 /// `Integer`, else a `Long` (which wraps, as in Groovy); other numbers a `BigDecimal`.
 pub fn parse(text: &str) -> Result<Value, Exception> {
+    if text.trim().is_empty() {
+        let message = "Unable to determine the current character, it is not a string, number, \
+                       array, or object";
+        return Err(Exception::new("JsonException", message));
+    }
     parse_with(text, slurper_number)
 }
 

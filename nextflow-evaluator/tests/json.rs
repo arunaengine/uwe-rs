@@ -79,3 +79,17 @@ fn builder() {
         "[{\"a\":1,\"b\":[2,\"x\"]}, {\n    \"a\": 1,\n    \"b\": [\n        2,\n        \"x\"\n    ]\n}]"
     );
 }
+
+/// Empty text, as stubs leave JSON reports, fails as in Groovy.
+#[test]
+fn slurper_of_empty_text() {
+    assert_eq!(
+        eval("new groovy.json.JsonSlurper().parseText('')").unwrap_err(),
+        "IllegalArgumentException: Text must not be null or empty"
+    );
+    assert_eq!(
+        eval("new groovy.json.JsonSlurper().parseText('  ')").unwrap_err(),
+        "JsonException: Unable to determine the current character, it is not a string, \
+         number, array, or object"
+    );
+}

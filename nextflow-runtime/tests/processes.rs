@@ -225,6 +225,20 @@ fn staged_names_expand_wildcards() {
     assert_eq!(staged("*", two), "a.txt b.txt");
 }
 
+/// A staged name may use a `val` input declared after it, as atacseq's IGV process does.
+#[test]
+fn staged_names_read_later_values() {
+    let source = "process P {\n    input:\n    path(\"${dir}/*\")\n    val dir\n    script:\n    \
+                  'true'\n}\nworkflow {\n    P([file('/d/a.txt'), file('/d/b.txt')], 'bigwig')\n}";
+    let (tasks, _) = run(source, &Options::default()).expect("runs");
+    let names: Vec<&str> = tasks[0]
+        .staged
+        .iter()
+        .map(|(_, name)| name.as_str())
+        .collect();
+    assert_eq!(names, ["bigwig/a.txt", "bigwig/b.txt"]);
+}
+
 #[test]
 fn typed_params_take_their_types_and_defaults() {
     let source = "params {\n    input: String? = null\n    n: Integer = 3\n    flag: Boolean\n    outdir: String\n}\n\

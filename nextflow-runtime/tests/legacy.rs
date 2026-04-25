@@ -192,3 +192,22 @@ fn includes_read_the_project_directory() {
     nextflow_runtime::run(&module, &mut output).expect("runs");
     assert_eq!(output.0, "shown\n");
 }
+
+/// A class that a script defines, which closures of the script use, as
+/// multiplesequencealign's `Utils` in a subworkflow script.
+#[test]
+fn script_classes_serve_their_script() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    write(
+        root.path(),
+        "main.nf",
+        "workflow W {\n    main:\n    channel.of([[a: 1]]).map { meta -> Utils.clean(meta[0].a) }.view()\n}\n\
+         workflow {\n    W()\n}\n\nclass Utils {\n    public static clean(x) {\n        return \"clean ${x}\"\n    }\n}\n",
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let mut output = Output::default();
+    nextflow_runtime::run(&module, &mut output).expect("runs");
+    assert_eq!(output.0, "clean 1\n");
+}

@@ -86,9 +86,38 @@ impl Loader {
         if let Some(directory) = path.parent() {
             *module.directory.borrow_mut() = Some(directory.to_string_lossy().into());
         }
+        self.add_classes(&module);
         self.link(&module, &path);
         self.modules.insert(path, module.clone());
         Some(module)
+    }
+
+    /// Gives a script that defines classes a library of its own: the classes of `lib/` and
+    /// its own, which only its code can name, as in Groovy.
+    fn add_classes(&mut self, module: &Rc<Module>) {
+        if module.classes.is_empty() {
+            return;
+        }
+        let library = Library::default();
+        let mut classes = library.classes.borrow_mut();
+        classes.extend(
+            self.library
+                .classes
+                .borrow()
+                .iter()
+                .map(|(name, class)| (name.clone(), class.clone())),
+        );
+        for def in &module.classes {
+            let class = LibraryClass {
+                def: def.clone(),
+                module: module.clone(),
+                statics: std::cell::RefCell::new(None),
+                values: std::cell::RefCell::new(None),
+            };
+            classes.insert(def.name.clone(), Rc::new(class));
+        }
+        drop(classes);
+        *module.library.borrow_mut() = Some(Rc::new(library));
     }
 
     fn read(&mut self, path: &Path) -> Option<Module> {

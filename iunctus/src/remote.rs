@@ -57,26 +57,71 @@ fn download_client() -> Result<reqwest::blocking::Client, String> {
 pub fn download(url: &str, downloads: &Path) -> Result<PathBuf, String> {
     let digest = Sha256::digest(url.as_bytes());
     let name: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
-    let local = downloads.join(name);
+    let local = downloads.join(&name);
     if local.is_file() {
         return Ok(local);
     }
-    let cannot = |error: &dyn std::fmt::Display| format!("Cannot read {url}: {error}");
-    let mut response = download_client()?
-        .get(url)
-        .send()
-        .and_then(|response| response.error_for_status())
-        .map_err(|error| cannot(&error))?;
     std::fs::create_dir_all(downloads).map_err(|error| error.to_string())?;
     // The body goes to a file as it comes, which is renamed once complete. The name of the
     // file has the process id, so that runs that download the same file at once do not mix.
+    // A run that was stopped leaves its part, which the next run takes over and continues.
     let partial = local.with_extension(format!("{}.partial", std::process::id()));
-    let mut file = std::fs::File::create(&partial).map_err(|error| error.to_string())?;
+    let present = take_over(downloads, &name, &partial);
+    let cannot = |error: &dyn std::fmt::Display| format!("Cannot read {url}: {error}");
+    let mut request = download_client()?.get(url);
+    if present > 0 {
+        request = request.header(reqwest::header::RANGE, format!("bytes={present}-"));
+    }
+    let mut response = request
+        .send()
+        .and_then(|response| response.error_for_status())
+        .map_err(|error| cannot(&error))?;
+    let resumed = response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(resumed)
+        .truncate(!resumed)
+        .open(&partial)
+        .map_err(|error| error.to_string())?;
     response
         .copy_to(&mut file)
         .map_err(|error| cannot(&error))?;
     std::fs::rename(&partial, &local).map_err(|error| error.to_string())?;
     Ok(local)
+}
+
+/// Takes over the largest part of `name` that an earlier run left in `downloads` by renaming
+/// it to `partial`, and gives its size; 0 when there is none. A part of a run that still
+/// goes on, `<name>.<process id>.partial`, is left alone. Of two runs that try at once, only
+/// one can rename a part.
+fn take_over(downloads: &Path, name: &str, partial: &Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(downloads) else {
+        return 0;
+    };
+    let left = |file: &str| {
+        let Some(middle) = file
+            .strip_prefix(&format!("{name}."))
+            .and_then(|rest| rest.strip_suffix("partial"))
+        else {
+            return false;
+        };
+        // The part of a stopped run, or of the first version of this function without an id.
+        let owner = middle.trim_end_matches('.');
+        owner.is_empty() || !Path::new("/proc").join(owner).exists()
+    };
+    let mut parts: Vec<(u64, PathBuf)> = entries
+        .flatten()
+        .filter(|entry| left(&entry.file_name().to_string_lossy()))
+        .filter_map(|entry| Some((entry.metadata().ok()?.len(), entry.path())))
+        .collect();
+    parts.sort();
+    while let Some((size, part)) = parts.pop() {
+        if std::fs::rename(&part, partial).is_ok() {
+            return size;
+        }
+    }
+    0
 }
 
 /// Whether a remote file exists, and its size, from a `HEAD` request. A key of an S3 bucket
@@ -125,6 +170,24 @@ pub fn metadata(path: &PathValue, url: &str) -> Result<Option<FileMetadata>, Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stopped_downloads_are_taken_over() {
+        let downloads = tempfile::tempdir().expect("a temporary directory");
+        let part = |name: &str, size: usize| {
+            std::fs::write(downloads.path().join(name), vec![b'x'; size]).expect("writes");
+        };
+        // A part of this process, which runs, and parts of stopped runs.
+        part(&format!("abc.{}.partial", std::process::id()), 9);
+        part("abc.4294967295.partial", 5);
+        part("abc.partial", 3);
+        part("other.4294967295.partial", 7);
+        let own = downloads.path().join("abc.1.partial");
+        assert_eq!(take_over(downloads.path(), "abc", &own), 5);
+        assert!(own.is_file());
+        assert_eq!(take_over(downloads.path(), "abc", &own), 3);
+        assert_eq!(take_over(downloads.path(), "abc", &own), 0);
+    }
 
     #[test]
     fn remote_files_have_https_addresses() {

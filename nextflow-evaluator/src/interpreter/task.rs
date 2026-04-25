@@ -113,22 +113,34 @@ impl Interpreter<'_> {
             );
             return Err(unsupported(message, process.span));
         }
-        for (input, value) in process.inputs.iter().zip(inputs) {
-            self.bind_input(&mut task, input, value, process.span)?;
+        // Values come first, as the names of staged files may use any of them, like
+        // `path("${dir}/*")` with a later `val dir`, which the task's variables give.
+        let outer = std::mem::replace(&mut self.task_variables, task.variables.clone());
+        let mut bound = Ok(());
+        for paths in [false, true] {
+            for (input, value) in process.inputs.iter().zip(inputs) {
+                if bound.is_ok() {
+                    bound = self.bind_input(&mut task, input, value, paths, process.span);
+                }
+            }
         }
-        Ok(task)
+        self.task_variables = outer;
+        bound.map(|()| task)
     }
 
+    /// Binds one input: its values, or with `paths` its files.
     fn bind_input(
         &mut self,
         task: &mut TaskFrame,
         input: &Input,
         value: &Value,
+        paths: bool,
         span: Span,
     ) -> Result<(), Error> {
         match input {
-            Input::Value { slot } => task.frame.set(Place::Local(*slot), value.clone()),
-            Input::Each(inner) => self.bind_input(task, inner, value, span)?,
+            Input::Value { slot } if !paths => task.frame.set(Place::Local(*slot), value.clone()),
+            Input::Value { .. } => {}
+            Input::Each(inner) => self.bind_input(task, inner, value, paths, span)?,
             Input::Tuple(parts) => {
                 let items = match value {
                     Value::List(list) => list.borrow().items.clone(),
@@ -144,9 +156,10 @@ impl Interpreter<'_> {
                     return Err(thrown(exception, span));
                 }
                 for (part, item) in parts.iter().zip(&items) {
-                    self.bind_input(task, part, item, span)?;
+                    self.bind_input(task, part, item, paths, span)?;
                 }
             }
+            Input::Path { .. } if !paths => {}
             Input::Path {
                 slot,
                 pattern,

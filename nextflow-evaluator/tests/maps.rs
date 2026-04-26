@@ -96,6 +96,10 @@ fn reading_and_changing() {
         value("[a: 1, b: 2].collect { entry -> [entry['key'], entry['value']] }"),
         "[[a, 1], [b, 2]]"
     );
+    assert_eq!(
+        value("[a: 1, b: 2, c: 3].findResults { k, v -> v > 1 ? [k, v] : null }"),
+        "[[b, 2], [c, 3]]"
+    );
     // Legacy code copies a map through its class.
     assert_eq!(
         value(

@@ -100,6 +100,10 @@ impl Interpreter<'_> {
                 "" => Value::Null,
                 message => Value::string(message),
             },
+            // A Java array, like the result of `split`, has a `length`.
+            Value::List(list) if name == "length" && list.borrow().kind == ListKind::Array => {
+                Value::integer(list.borrow().items.len() as i32)
+            }
             Value::List(_) | Value::Set(_) => match name {
                 "size" | "first" | "last" => self.call_method(object, name, Vec::new(), span)?,
                 "empty" => self.call_method(object, "isEmpty", Vec::new(), span)?,

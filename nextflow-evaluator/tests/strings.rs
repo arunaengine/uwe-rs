@@ -37,6 +37,7 @@ fn splitting_and_tokens() {
     assert_eq!(value("'a,b,,c'.tokenize(',')"), "[a, b, c]");
     assert_eq!(value("'  a  b '.tokenize()"), "[a, b]");
     assert_eq!(value("'x_y_z'.split('_')"), "[x, y, z]");
+    assert_eq!(value("'a\\tb'.split('\\t').length"), "2");
     assert_eq!(value("'a.b.c'.split('.')"), "[]");
     assert_eq!(value("''.split(',')"), "[]");
     assert_eq!(value("'a,b,,'.split(',', -1)"), "[a, b, , ]");

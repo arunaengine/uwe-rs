@@ -119,6 +119,16 @@ impl Interpreter<'_> {
                 object
             }
             ("collect", [Value::Closure(f)]) => Value::list(self.map_entries(&entries, f, span)?),
+            // The results of the closure that are not null.
+            ("findResults", [Value::Closure(f)]) => {
+                let results = self.map_entries(&entries, f, span)?;
+                Value::list(
+                    results
+                        .into_iter()
+                        .filter(|result| !matches!(result, Value::Null))
+                        .collect(),
+                )
+            }
             ("collectMany", [Value::Closure(f)]) => {
                 let results = self.map_entries(&entries, f, span)?;
                 Value::list(results.iter().flat_map(elements).collect())

@@ -205,7 +205,7 @@ pub fn pretend(task: &Task, work: &Path) -> std::io::Result<Vec<OutputFile>> {
     // over from reading the names in it.
     let made = match &task.script {
         Some(script) => script_words(script, &inputs),
-        None => Vec::new(),
+        None => command_words(&task.command, &inputs),
     };
     // Each path to make, with whether it is a directory, and the outputs among them.
     let mut paths: Vec<(String, bool)> = Vec::new();
@@ -345,6 +345,28 @@ fn script_words(script: &str, inputs: &[&str]) -> Vec<(String, bool)> {
                 .into_iter()
                 .for_each(|last| add(last, false)),
             _ => {}
+        }
+    }
+    words
+}
+
+/// The files a command without a script may make: the parts of its arguments between `,`
+/// and `=`, like `a.bam` of `--out=a.bam` or `--out a.bam,b.bam`. Only patterns with text
+/// besides wildcards choose among them. Flags, absolute paths and inputs do not count.
+fn command_words(command: &[String], inputs: &[&str]) -> Vec<(String, bool)> {
+    let mut words: Vec<(String, bool)> = Vec::new();
+    for part in command
+        .iter()
+        .skip(1)
+        .flat_map(|word| word.split([',', '=']))
+    {
+        let part = part.trim_start_matches("./");
+        let skip = part.is_empty()
+            || part.starts_with(['-', '/'])
+            || part.contains(['$', '*', '?', '[', '{', '\\', ' '])
+            || inputs.contains(&part);
+        if !skip && !words.iter().any(|(known, _)| known == part) {
+            words.push((part.to_owned(), false));
         }
     }
     words

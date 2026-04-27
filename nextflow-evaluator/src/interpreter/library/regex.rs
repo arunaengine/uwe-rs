@@ -44,6 +44,17 @@ pub(super) fn matcher_method(matcher: &Matcher, name: &str, arguments: &[Value])
         ("size", []) => Some(Value::Number(Number::Long(matcher.matches.len() as i64))),
         ("matches", []) => Some(Value::Boolean(matcher.pattern.matches(&matcher.text))),
         ("groupCount", []) => Some(Value::integer(matcher.pattern.group_count() as i32)),
+        // Java's stream of the matches, by the text of each.
+        ("results", []) => {
+            let texts = matcher
+                .matches
+                .iter()
+                .map(|groups| groups[0].as_deref().map_or(Value::Null, Value::string))
+                .collect();
+            Some(Value::List(Rc::new(std::cell::RefCell::new(
+                crate::value::List::new(crate::value::ListKind::Stream, texts),
+            ))))
+        }
         ("find", []) => {
             let next = matcher.current.get().map_or(0, |current| current + 1);
             let found = next < matcher.matches.len();

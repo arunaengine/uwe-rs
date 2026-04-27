@@ -51,6 +51,16 @@ impl Value {
     /// Applies a binary operator as Groovy dispatches it on the classes of both sides.
     pub fn apply(&self, operator: Operator, other: &Value) -> Result<Value, Exception> {
         use Operator::*;
+        // Groovy computes with a character as with its code, an `Integer`.
+        let code = |value: &Value| match value {
+            Value::Character(unit) => Some(Number::Integer(i32::from(*unit))),
+            Value::Number(number) => Some(number.clone()),
+            _ => None,
+        };
+        let character = matches!(self, Value::Character(_)) || matches!(other, Value::Character(_));
+        if character && let (Some(left), Some(right)) = (code(self), code(other)) {
+            return number_operator(operator, &left, &right).map(Value::Number);
+        }
         let result = match (operator, self, other) {
             (_, Value::Number(left), Value::Number(right)) => {
                 return number_operator(operator, left, right).map(Value::Number);

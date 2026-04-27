@@ -232,3 +232,18 @@ fn simple_template_engine() {
         "Hi you, demo v2 $HOME end."
     );
 }
+
+/// Characters from `as char` and legacy casts compute and compare with their codes, as in
+/// Nextflow 26.04.6 with the legacy parser.
+#[test]
+fn characters() {
+    assert_eq!(
+        value(
+            "def w = 'B12'\ndef row = (w[0] as char) - ('A' as char) + 1\n\
+             def c = (char)((int)('A' as char) + 2)\n\
+             [row, row.getClass().simpleName, '' + c, c.getClass().simpleName, \
+             ('A' as char) == ('A' as char), ('A' as char) < ('B' as char), (('C' as char) as int)]"
+        ),
+        "[2, Integer, C, Character, true, true, 67]"
+    );
+}

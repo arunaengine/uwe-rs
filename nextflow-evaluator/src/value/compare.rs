@@ -159,6 +159,7 @@ fn comparable(value: &Value) -> bool {
         value,
         Value::Boolean(_)
             | Value::Number(_)
+            | Value::Character(_)
             | Value::String(_)
             | Value::GString(_)
             | Value::MemoryUnit(_)
@@ -193,6 +194,12 @@ fn compare_values(left: &Value, right: &Value, equality: bool) -> Result<Orderin
         (Value::String(a) | Value::GString(a), Value::String(b) | Value::GString(b)) => {
             Ok(a.encode_utf16().cmp(b.encode_utf16()))
         }
+        (Value::Character(_), _) | (_, Value::Character(_))
+            if character(left).is_some() && character(right).is_some() =>
+        {
+            let code = |value: &Value| character(value).map_or(0, |code| code.to_i64());
+            Ok(code(left).cmp(&code(right)))
+        }
         (Value::Boolean(a), Value::Boolean(b)) => Ok(a.cmp(b)),
         (Value::Path(a), Value::Path(b)) => Ok(a.uri().cmp(&b.uri())),
         (Value::MemoryUnit(a), Value::MemoryUnit(b)) | (Value::Duration(a), Value::Duration(b)) => {
@@ -203,9 +210,11 @@ fn compare_values(left: &Value, right: &Value, equality: bool) -> Result<Orderin
     }
 }
 
-/// The character code of a one-character string, which Groovy compares with numbers.
+/// The character code of a character or a one-character string, which Groovy compares with
+/// numbers.
 fn character(value: &Value) -> Option<Number> {
     match value {
+        Value::Character(unit) => Some(Number::Integer(i32::from(*unit))),
         Value::String(text) | Value::GString(text) => {
             let mut units = text.encode_utf16();
             match (units.next(), units.next()) {

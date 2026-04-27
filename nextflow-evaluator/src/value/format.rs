@@ -79,6 +79,7 @@ impl Value {
             Value::Null => out.push_str("null"),
             Value::Boolean(value) => out.push_str(if *value { "true" } else { "false" }),
             Value::Number(number) => out.push_str(&number.to_string()),
+            Value::Character(unit) => out.push_str(&String::from_utf16_lossy(&[*unit])),
             Value::String(text) | Value::GString(text) => out.push_str(text),
             Value::Date(millis) => out.push_str(&crate::date::text(*millis)),
             Value::Class(name) => out.push_str(&super::class_text(name)),

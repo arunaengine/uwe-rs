@@ -265,25 +265,26 @@ impl Parser<'_> {
     /// Whether a legacy cast like `(Map) value` starts here: a type in parentheses that an
     /// operand follows.
     pub(super) fn at_soft_cast(&mut self) -> bool {
-        let class_like = matches!(
-            self.nth(1),
-            TokenKind::CapitalizedIdentifier | TokenKind::PrimitiveType
-        ) || (self.nth(1) == TokenKind::Identifier
-            && self.nth(2) == TokenKind::Dot);
+        // A primitive type like `(char)` can only start a cast, even of `(x)` or `-1`.
+        let primitive = self.nth(1) == TokenKind::PrimitiveType;
+        let class_like = primitive
+            || self.nth(1) == TokenKind::CapitalizedIdentifier
+            || (self.nth(1) == TokenKind::Identifier && self.nth(2) == TokenKind::Dot);
         class_like
             && self.lookahead(|parser| {
                 parser.bump();
                 parser.legacy_type()?;
                 parser.expect(TokenKind::RightParen, "')'")?;
                 let operand = starts_operand(parser.peek())
-                    && !matches!(
-                        parser.peek(),
-                        TokenKind::Add
-                            | TokenKind::Subtract
-                            | TokenKind::LeftParen
-                            | TokenKind::LeftBracket
-                            | TokenKind::LeftBrace
-                    );
+                    && (primitive
+                        || !matches!(
+                            parser.peek(),
+                            TokenKind::Add
+                                | TokenKind::Subtract
+                                | TokenKind::LeftParen
+                                | TokenKind::LeftBracket
+                                | TokenKind::LeftBrace
+                        ));
                 if operand { Ok(()) } else { Err(Failed) }
             })
     }

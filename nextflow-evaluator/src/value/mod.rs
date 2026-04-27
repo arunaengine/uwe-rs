@@ -35,6 +35,8 @@ pub enum Value {
     Null,
     Boolean(bool),
     Number(Number),
+    /// `java.lang.Character`, a UTF-16 code unit, from `as char`.
+    Character(u16),
     String(Rc<str>),
     /// A GString written inside the `${...}` of another GString, which Nextflow does not turn
     /// into a `String`. It prints like its text, but is never Java-equal to a `String`.
@@ -244,6 +246,7 @@ impl Value {
             Value::Null => "null",
             Value::Boolean(_) => "Boolean",
             Value::Number(number) => number.class_name(),
+            Value::Character(_) => "Character",
             Value::String(_) => "String",
             Value::GString(_) => "GStringImpl",
             Value::List(list) => match list.borrow().kind {
@@ -298,6 +301,7 @@ impl Value {
             Value::Null => "null",
             Value::Boolean(_) => "java.lang.Boolean",
             Value::Number(number) => number.java_class(),
+            Value::Character(_) => "java.lang.Character",
             Value::String(_) => "java.lang.String",
             Value::GString(_) => "org.codehaus.groovy.runtime.GStringImpl",
             Value::List(list) => match list.borrow().kind {
@@ -368,6 +372,8 @@ impl Value {
                 value != 0.0 && !value.is_nan()
             }
             Value::String(text) | Value::GString(text) => !text.is_empty(),
+            // Groovy's `Character.asBoolean()` is false only for the character 0.
+            Value::Character(unit) => *unit != 0,
             Value::List(list) => !list.borrow().items.is_empty(),
             Value::Map(map) => !map.borrow().entries.is_empty(),
             Value::Set(set) => !set.borrow().items.is_empty(),

@@ -15,7 +15,9 @@ use nextflow_evaluator::value::{ChannelId, ChannelOut, ListKind, PathValue, Valu
 use crate::files::CollectFile;
 use crate::keyed::{Combine, Cross, GroupTuple, Join};
 use crate::network::Network;
-use crate::operator::{Collate, Each, Factory, Gather, Gathering, Invoke, Mix, Single};
+use crate::operator::{
+    Buffer, Closing, Collate, Each, Factory, Gather, Gathering, Invoke, Mix, Opening, Single,
+};
 use crate::process::{ProcessNode, singleton};
 use crate::route::{Concat, Merge, Route};
 use crate::split::{Format, Split, Subscribe};
@@ -433,6 +435,47 @@ impl Host for Builder<'_> {
                     remainder,
                     windows: Vec::new(),
                     count: 0,
+                };
+                self.network.add(name, &[source], Box::new(node));
+                return Ok(Some(Value::Channel(output)));
+            }
+            ("buffer", rest) => {
+                let (options, criteria) = match rest {
+                    [options @ Value::Map(_)] => (Some(options.clone()), Vec::new()),
+                    [options @ Value::Map(_), closing] => {
+                        (Some(options.clone()), vec![closing.clone()])
+                    }
+                    criteria => (None, criteria.to_vec()),
+                };
+                let count = |name: &str| match option(&options, name) {
+                    Some(Value::Number(number)) => number.to_i64().max(0) as usize,
+                    _ => 0,
+                };
+                let (size, skip) = (count("size"), count("skip"));
+                let (opening, closing) = match criteria.as_slice() {
+                    [] if size > 0 || skip > 0 => (
+                        Opening::Skip { skip, count: 0 },
+                        Closing::Size {
+                            size,
+                            skip,
+                            count: 0,
+                        },
+                    ),
+                    [closing] => (Opening::Always, Closing::Criteria(closing.clone())),
+                    [opening, closing] => (
+                        Opening::Criteria(opening.clone()),
+                        Closing::Criteria(closing.clone()),
+                    ),
+                    _ => return Err(thrown("Invalid arguments for operator `buffer`".into())),
+                };
+                let output = self.network.channel(false);
+                let node = Buffer {
+                    output,
+                    open: matches!(opening, Opening::Always),
+                    opening,
+                    closing,
+                    remainder: option(&options, "remainder").is_some_and(|value| value.truth()),
+                    buffer: Vec::new(),
                 };
                 self.network.add(name, &[source], Box::new(node));
                 return Ok(Some(Value::Channel(output)));

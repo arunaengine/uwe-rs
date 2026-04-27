@@ -1296,6 +1296,7 @@ impl Pending {
                     Ok(Value::Null)
                 } else {
                     collector.output(
+                        &name,
                         &output.value_type,
                         output.binding.as_ref(),
                         &output.secondary_files,
@@ -1412,6 +1413,7 @@ impl Collector<'_> {
     /// cwltool's `collect_output` for one output or record field.
     fn output(
         &self,
+        name: &str,
         value_type: &Type,
         binding: Option<&OutputBinding>,
         secondary: &[SecondaryFile],
@@ -1444,6 +1446,7 @@ impl Collector<'_> {
                 let mut map = Map::new();
                 for field in &record.fields {
                     let value = self.output(
+                        &field.name,
                         &field.value_type,
                         field.output_binding.as_ref(),
                         &field.secondary_files,
@@ -1481,7 +1484,9 @@ impl Collector<'_> {
                     ));
                 }
                 self.check_link(&file)?;
-                found.push(self.file_object(&file, &binding)?);
+                let mut object = self.file_object(&file, &binding)?;
+                self.mock_extension(&mut object, &file, pattern, name, format, secondary);
+                found.push(object);
             }
         }
         let (optional, single) = match resolved {
@@ -1595,6 +1600,36 @@ impl Collector<'_> {
         found.sort_by(|a, b| a.path.cmp(&b.path));
         found.dedup_by(|a, b| a.path == b.path);
         found
+    }
+
+    /// In a mock run, the file that the mock names after a bare wildcard, like `mock` for `*`,
+    /// has no extension; its name takes the one the output suggests, as the tool's file has.
+    fn mock_extension(
+        &self,
+        object: &mut Value,
+        file: &OutputFile,
+        pattern: &str,
+        name: &str,
+        format: Option<&Expression>,
+        secondary: &[SecondaryFile],
+    ) {
+        let generic = workflow_graph::mock::file_name(pattern);
+        let bare = generic != pattern && files::split_extension(&generic).1.is_empty();
+        if !self.access.assume_present || !bare || file.path != generic {
+            return;
+        }
+        let (Value::Map(map), Some(extension)) = (
+            object,
+            placeholder::suggested_extension(name, format, secondary),
+        ) else {
+            return;
+        };
+        map.insert(
+            "basename".into(),
+            Value::String(format!("{generic}{extension}")),
+        );
+        map.insert("nameroot".into(), Value::String(generic));
+        map.insert("nameext".into(), Value::string(extension));
     }
 
     /// Fails for a matched file that is a symbolic link to a place outside the output

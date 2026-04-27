@@ -54,6 +54,17 @@ fn matchers() {
     );
 }
 
+/// Java's `results()` gives a stream, whose `count()` counts the matches.
+#[test]
+fn matcher_results() {
+    assert_eq!(
+        value(
+            "def r = ('>a\\nAC\\n>b\\nGT\\n' =~ />(.*)/).results()\n[r.count(), r.getClass().simpleName]"
+        ),
+        "[2, Head]"
+    );
+}
+
 #[test]
 fn matchers_iterate_their_matches() {
     assert_eq!(

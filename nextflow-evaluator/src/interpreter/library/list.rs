@@ -43,6 +43,9 @@ impl Interpreter<'_> {
             ))
         };
         Ok(Some(match (name, arguments) {
+            ("count", []) if kind == ListKind::Stream => {
+                Value::Number(crate::number::Number::Long(items.len() as i64))
+            }
             ("get", [Value::Number(index)]) => match usize::try_from(index.to_i64()) {
                 Ok(position) if position < items.len() => items[position].clone(),
                 _ => {

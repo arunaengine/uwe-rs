@@ -141,6 +141,8 @@ pub enum ListKind {
     /// `nextflow.util.BlankSeparatedList`: the files of one task input, which Java's
     /// `toString()` joins with spaces.
     BlankSeparated,
+    /// A `java.util.stream.Stream`, from `Matcher.results()`, whose `count()` is a `Long`.
+    Stream,
 }
 
 #[derive(Clone, Debug)]
@@ -250,6 +252,7 @@ impl Value {
                 ListKind::LinkedList => "LinkedList",
                 ListKind::Array => "String[]",
                 ListKind::BlankSeparated => "BlankSeparatedList",
+                ListKind::Stream => "Head",
                 ListKind::Range => list
                     .borrow()
                     .range
@@ -303,6 +306,7 @@ impl Value {
                 ListKind::LinkedList => "java.util.LinkedList",
                 ListKind::Array => "[Ljava.lang.String;",
                 ListKind::BlankSeparated => "nextflow.util.BlankSeparatedList",
+                ListKind::Stream => "java.util.stream.ReferencePipeline$Head",
                 ListKind::Range => match list.borrow().range.as_ref().map(|range| range.class) {
                     Some(RangeClass::Number) => "groovy.lang.NumberRange",
                     Some(RangeClass::Object) => "groovy.lang.ObjectRange",

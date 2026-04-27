@@ -265,26 +265,25 @@ impl Parser<'_> {
     /// Whether a legacy cast like `(Map) value` starts here: a type in parentheses that an
     /// operand follows.
     pub(super) fn at_soft_cast(&mut self) -> bool {
-        // A primitive type like `(char)` can only start a cast, even of `(x)` or `-1`.
-        let primitive = self.nth(1) == TokenKind::PrimitiveType;
-        let class_like = primitive
-            || self.nth(1) == TokenKind::CapitalizedIdentifier
-            || (self.nth(1) == TokenKind::Identifier && self.nth(2) == TokenKind::Dot);
+        let class_like = matches!(
+            self.nth(1),
+            TokenKind::CapitalizedIdentifier | TokenKind::PrimitiveType
+        ) || (self.nth(1) == TokenKind::Identifier
+            && self.nth(2) == TokenKind::Dot);
         class_like
             && self.lookahead(|parser| {
                 parser.bump();
                 parser.legacy_type()?;
                 parser.expect(TokenKind::RightParen, "')'")?;
                 let operand = starts_operand(parser.peek())
-                    && (primitive
-                        || !matches!(
-                            parser.peek(),
-                            TokenKind::Add
-                                | TokenKind::Subtract
-                                | TokenKind::LeftParen
-                                | TokenKind::LeftBracket
-                                | TokenKind::LeftBrace
-                        ));
+                    && !matches!(
+                        parser.peek(),
+                        TokenKind::Add
+                            | TokenKind::Subtract
+                            | TokenKind::LeftParen
+                            | TokenKind::LeftBracket
+                            | TokenKind::LeftBrace
+                    );
                 if operand { Ok(()) } else { Err(Failed) }
             })
     }
@@ -294,11 +293,7 @@ impl Parser<'_> {
         let start = self.bump().span;
         let target_type = self.legacy_type()?;
         self.expect(TokenKind::RightParen, "')'")?;
-        // Strict syntax reads `(char)(x)` as a call, which fails when it runs; the legacy
-        // parser casts, as the code means.
-        if !self.at(TokenKind::LeftParen) {
-            self.legacy_at("Unexpected input: '('", start);
-        }
+        self.legacy_at("Unexpected input: '('", start);
         let operand = self.unary()?;
         Ok(Expression {
             span: self.span_from(start),

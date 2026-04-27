@@ -6,6 +6,8 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashSet;
+
 use cwl_parser::model::{Expression, InputParameter, Process, SecondaryFile, Type, short_name};
 
 use crate::inputs::has_code;
@@ -174,6 +176,43 @@ fn directory(name: &str, base: &str, nested: bool) -> Value {
         map.insert("listing".into(), Value::List(listing));
     }
     directory
+}
+
+/// The strings that the placeholders of the inputs of a process hold, like the parameter
+/// names; such a string can reach a parameter that it does not fit, like an enum, where a real
+/// job gives a valid value.
+pub fn strings(process: &Process, types: &Types, base: &str) -> HashSet<String> {
+    fn collect(value: &Value, strings: &mut HashSet<String>) {
+        match value {
+            Value::String(text) => {
+                strings.insert(text.clone());
+            }
+            Value::List(items) => items.iter().for_each(|item| collect(item, strings)),
+            Value::Map(map) if !value.is_file_like() => {
+                map.values().for_each(|item| collect(item, strings));
+            }
+            _ => {}
+        }
+    }
+    let mut strings = HashSet::new();
+    for parameter in &process.inputs {
+        collect(&input(parameter, types, base), &mut strings);
+    }
+    strings
+}
+
+/// Whether a value is a string that placeholders hold, or a list of only such strings.
+pub fn is_placeholder_string(value: &Value, strings: &HashSet<String>) -> bool {
+    match value {
+        Value::String(text) => strings.contains(text),
+        Value::List(items) => {
+            !items.is_empty()
+                && items
+                    .iter()
+                    .all(|item| is_placeholder_string(item, strings))
+        }
+        _ => false,
+    }
 }
 
 /// What a placeholder file looks like: the extension of its name and its format.

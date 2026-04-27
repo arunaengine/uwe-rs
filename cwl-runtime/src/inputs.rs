@@ -4,6 +4,8 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashSet;
+
 use cwl_parser::model::{
     Expression, InputParameter, LoadListing, Process, SecondaryFile, Type, Version, short_name,
 };
@@ -33,6 +35,9 @@ pub struct Setting<'a> {
     pub toplevel: bool,
     /// Whether the optional inputs of the process the run starts with get placeholders too.
     pub fill_optional: bool,
+    /// The strings that the placeholders of the top process hold, which give way to
+    /// placeholders where they do not fit.
+    pub placeholder_strings: &'a HashSet<String>,
     /// Location prefixes of files that have the formats and secondary files asked of them, as
     /// a job that works gives them: placeholder files, and the outputs of abstract steps.
     pub assumed: &'a [String],
@@ -88,13 +93,14 @@ pub fn prepare(process: &Process, mut job: Map, setting: &Setting<'_>) -> Result
         let name = short_name(&input.id);
         let value = job.get(name).unwrap_or(&Value::Null);
         let replaceable = holds_null(value)
-            || (setting.toplevel && defaulted.iter().any(|defaulted| defaulted == name));
+            || (setting.toplevel && defaulted.iter().any(|defaulted| defaulted == name))
+            || placeholder::is_placeholder_string(value, setting.placeholder_strings);
         if !setting.types.matches(&input.value_type, value)
             && let Some(base) = setting.placeholders
             && replaceable
         {
-            // Nulls of optional inputs of a run on placeholder inputs, merged into a list, and
-            // defaults of the wrong type.
+            // Nulls of optional inputs of a run on placeholder inputs, merged into a list,
+            // defaults of the wrong type, and placeholder strings that reach an enum.
             let mut value = placeholder::input(input, setting.types, base);
             files::normalize(&mut value)?;
             job.insert(name.to_owned(), value);

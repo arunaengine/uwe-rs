@@ -125,6 +125,8 @@ pub struct Run {
     /// Location prefixes of files that have what a parameter asks of them: the placeholder
     /// folder, and the work folders of abstract `Operation` tasks.
     assumed: Vec<String>,
+    /// The strings that the placeholders of the main process hold.
+    placeholder_strings: HashSet<String>,
 }
 
 impl Run {
@@ -141,6 +143,7 @@ impl Run {
             fake: Vec::new(),
             ontologies: false,
             assumed: Vec::new(),
+            placeholder_strings: HashSet::new(),
         }
     }
 
@@ -168,6 +171,13 @@ impl Run {
             display: name.to_owned(),
             step: name.to_owned(),
         };
+        if let Some(base) = &self.placeholders {
+            let mut types = Scope::default().enter(process).types();
+            for input in &process.inputs {
+                types.add(&input.value_type);
+            }
+            self.placeholder_strings = placeholder::strings(process, &types, base);
+        }
         self.launch(process, job, &Scope::default(), Parent::Root, names, true)?;
         self.settle()?;
         Ok(std::mem::take(&mut self.ready))
@@ -308,6 +318,7 @@ impl Run {
             fill_optional: self.options.fill_optional,
             ontologies: self.ontologies,
             assumed: &self.assumed,
+            placeholder_strings: &self.placeholder_strings,
         };
         let job = inputs::prepare(process, job, &setting).map_err(at)?;
         match &process.class {

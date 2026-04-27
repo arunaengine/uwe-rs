@@ -88,12 +88,24 @@ pub fn hint_of(name: &str, formats: &[Expression], secondary: &[SecondaryFile]) 
     }
 }
 
-/// The extension a placeholder file gets.
+/// The extension a placeholder file gets: the one its format, its secondary files or its name
+/// suggest, else `.txt`.
 fn extension(name: &str, format: Option<&str>, secondary: &[SecondaryFile]) -> String {
+    suggested(name, format, secondary)
+        .unwrap_or(".txt")
+        .to_owned()
+}
+
+/// The extension that the format, the secondary files or the name of a parameter suggest.
+fn suggested(
+    name: &str,
+    format: Option<&str>,
+    secondary: &[SecondaryFile],
+) -> Option<&'static str> {
     if let Some(format) = format {
         let term = format.rsplit(['/', '#', ':']).next().unwrap_or(format);
         if let Some((_, extension)) = FORMATS.iter().find(|(known, _)| *known == term) {
-            return (*extension).to_owned();
+            return Some(extension);
         }
     }
     for entry in secondary {
@@ -103,15 +115,24 @@ fn extension(name: &str, format: Option<&str>, secondary: &[SecondaryFile]) -> S
             .trim_start_matches('^')
             .trim_end_matches('?');
         if let Some((_, extension)) = SECONDARY.iter().find(|(known, _)| *known == pattern) {
-            return (*extension).to_owned();
+            return Some(extension);
         }
     }
     let name = name.to_lowercase();
     WORDS
         .iter()
         .find(|(word, _)| name.contains(word))
-        .map_or(".txt", |(_, extension)| extension)
-        .to_owned()
+        .map(|(_, extension)| *extension)
+}
+
+/// The extension that an output suggests by its format, secondary files or name, if any.
+pub fn suggested_extension(
+    name: &str,
+    format: Option<&Expression>,
+    secondary: &[SecondaryFile],
+) -> Option<&'static str> {
+    let format = format.filter(|format| !has_code(format));
+    suggested(name, format.map(|format| format.text.as_str()), secondary)
 }
 
 /// A value of a type for a parameter that nothing sets: a file named after the parameter in

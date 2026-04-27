@@ -98,3 +98,22 @@ fn outputs_of_abstract_steps_bring_their_secondary_files() {
     ];
     assert_eq!(run(&files), Ok(2));
 }
+
+#[test]
+fn mock_files_of_bare_wildcards_take_the_extension_the_output_suggests() {
+    let extract = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: extract\ninputs: []\n\
+        outputs:\n  fastq_file: {type: File, outputBinding: {glob: '*'}}\n";
+    let check = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: check\n\
+        requirements: {InlineJavascriptRequirement: {}}\ninputs: {reads: File}\noutputs: []\n\
+        arguments: ['${ if (inputs.reads.nameext != \".fastq\") { throw \"no extension\"; } \
+        return inputs.reads.basename; }']\n";
+    let main = "cwlVersion: v1.2\nclass: Workflow\ninputs: []\noutputs: []\nsteps:\n  \
+        extract: {run: extract.cwl, in: [], out: [fastq_file]}\n  \
+        check: {run: check.cwl, in: {reads: extract/fastq_file}, out: []}\n";
+    let files = [
+        ("extract.cwl", extract),
+        ("check.cwl", check),
+        ("main.cwl", main),
+    ];
+    assert_eq!(run(&files), Ok(2));
+}

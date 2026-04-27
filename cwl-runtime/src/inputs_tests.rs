@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use cwl_parser::Loader;
@@ -21,6 +22,7 @@ fn process(text: &str) -> Arc<Process> {
 
 /// The setting of the process a run on placeholder inputs starts with.
 fn setting<'a>(types: &'a Types, evaluator: &'a Evaluator, assumed: &'a [String]) -> Setting<'a> {
+    static NONE: std::sync::LazyLock<HashSet<String>> = std::sync::LazyLock::new(HashSet::new);
     Setting {
         types,
         evaluator,
@@ -34,6 +36,7 @@ fn setting<'a>(types: &'a Types, evaluator: &'a Evaluator, assumed: &'a [String]
         fill_optional: false,
         ontologies: false,
         assumed,
+        placeholder_strings: &NONE,
     }
 }
 
@@ -195,4 +198,28 @@ fn inside_a_workflow_only_assumed_files_get_secondary_files() {
     );
     let other = prepare(&tool, job("file:///work/3/genome.fa"), &inner);
     assert!(other.is_err_and(|error| error.contains("genome.fa.fai")));
+}
+
+#[test]
+fn placeholder_strings_that_reach_an_enum_give_way_to_a_symbol() {
+    let tool = process(
+        "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: run\noutputs: []\n\
+         inputs:\n  mode: {type: {type: enum, symbols: [growth, dosage]}}\n",
+    );
+    let (types, evaluator) = (Types::default(), Evaluator::default());
+    let assumed = [BASE.to_owned()];
+    let strings = HashSet::from(["freud_sim".to_owned()]);
+    let inner = Setting {
+        toplevel: false,
+        placeholder_strings: &strings,
+        ..setting(&types, &evaluator, &assumed)
+    };
+    let job = |mode: &str| match Value::parse(&format!("{{mode: {mode}}}")) {
+        Ok(Value::Map(map)) => map,
+        other => panic!("{other:?}"),
+    };
+    let given = prepare(&tool, job("freud_sim"), &inner).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(given.get("mode"), Some(&Value::string("growth")));
+    // Other strings are real values, which must fit.
+    assert!(prepare(&tool, job("other"), &inner).is_err());
 }

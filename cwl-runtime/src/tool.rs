@@ -47,7 +47,8 @@ pub struct Options {
     /// The image of tools without `DockerRequirement`.
     pub image: String,
     /// On placeholder inputs, give the optional inputs of the process the run starts with
-    /// placeholders too, as a job that sets every input; by default they are null.
+    /// placeholders too, and its flags `true`, as a job that sets every input and turns
+    /// everything on; by default optional inputs are null and flags `false`.
     pub fill_optional: bool,
 }
 

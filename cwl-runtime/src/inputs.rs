@@ -33,7 +33,8 @@ pub struct Setting<'a> {
     /// Whether the process is the one the run starts with. On placeholder inputs, its defaults
     /// that do not fit their type give way to placeholders, as a real job has to give them.
     pub toplevel: bool,
-    /// Whether the optional inputs of the process the run starts with get placeholders too.
+    /// Whether the optional inputs of the process the run starts with get placeholders too,
+    /// and its flags are on.
     pub fill_optional: bool,
     /// The strings that the placeholders of the top process hold, which give way to
     /// placeholders where they do not fit.
@@ -63,7 +64,11 @@ pub fn prepare(process: &Process, mut job: Map, setting: &Setting<'_>) -> Result
             defaulted.push(name.clone());
             Value::from_node(default)
         } else if let Some(base) = placeholders {
-            placeholder::input(input, setting.types, base)
+            // A job that sets every input also switches its flags on.
+            match placeholder::input(input, setting.types, base) {
+                Value::Bool(false) if fill => Value::Bool(true),
+                value => value,
+            }
         } else if setting.types.optional(&input.value_type) {
             Value::Null
         } else {

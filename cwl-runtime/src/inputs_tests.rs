@@ -44,7 +44,7 @@ fn setting<'a>(types: &'a Types, evaluator: &'a Evaluator, assumed: &'a [String]
 fn optional_inputs_of_the_top_process_get_placeholders_when_asked() {
     let tool = process(
         "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: cat\noutputs: []\n\
-         inputs:\n  extra: File?\n",
+         inputs:\n  extra: File?\n  flag: boolean\n",
     );
     let (types, evaluator) = (Types::default(), Evaluator::default());
     let assumed = [BASE.to_owned()];
@@ -57,12 +57,14 @@ fn optional_inputs_of_the_top_process_get_placeholders_when_asked() {
         job.get("extra").and_then(|file| file.text("location")),
         Some("file:///in/extra.txt")
     );
+    assert_eq!(job.get("flag"), Some(&Value::Bool(true)));
     let plain = Setting {
         fill_optional: false,
         ..setting
     };
     let job = prepare(&tool, Map::new(), &plain).unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(job.get("extra"), Some(&Value::Null));
+    assert_eq!(job.get("flag"), Some(&Value::Bool(false)));
 }
 
 #[test]

@@ -171,3 +171,31 @@ fn mocks_make_the_files_that_the_script_names() {
     assert_eq!(read(".command.sh"), b"true\n");
     assert!(!work.join("in.txt").exists());
 }
+
+#[test]
+fn mocks_of_commands_without_a_script_make_the_files_the_arguments_name() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let command = [
+        "abra",
+        "--in",
+        "/in/a.bam",
+        "--out",
+        "a_IR.bam,b_IR.bam",
+        "--log=run.log",
+    ];
+    let task = Task {
+        id: TaskId(3),
+        command: command.map(String::from).to_vec(),
+        outputs: ["*_IR.bam", "*.log", "*.txt"].map(String::from).to_vec(),
+        ..Task::default()
+    };
+    let outcome = Mock::new(directory.path())
+        .execute(&task)
+        .expect("an outcome");
+    let paths: Vec<&str> = outcome
+        .files
+        .iter()
+        .map(|file| file.path.as_str())
+        .collect();
+    assert_eq!(paths, ["a_IR.bam", "b_IR.bam", "run.log", "mock.txt"]);
+}

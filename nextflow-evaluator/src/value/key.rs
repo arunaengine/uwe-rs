@@ -86,6 +86,7 @@ impl Value {
             }
             (Value::MemoryUnit(left), Value::MemoryUnit(right)) => left == right,
             (Value::Duration(left), Value::Duration(right)) => left == right,
+            (Value::Character(left), Value::Character(right)) => left == right,
             (Value::Closure(left), Value::Closure(right)) => Rc::ptr_eq(left, right),
             (Value::Object(left), Value::Object(right)) => Rc::ptr_eq(left, right),
             (Value::Exception(left), Value::Exception(right)) => Rc::ptr_eq(left, right),
@@ -119,6 +120,7 @@ impl Value {
                 }
             }
             Value::Number(number) => number_hash(number),
+            Value::Character(unit) => i32::from(*unit),
             Value::String(text) => string_hash(text),
             Value::GString(text) => 37i32.wrapping_add(string_hash(text)),
             Value::List(shared) => {

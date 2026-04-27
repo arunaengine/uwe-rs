@@ -525,6 +525,7 @@ impl Interpreter<'_> {
             "boolean" => "Boolean",
             "double" => "Double",
             "float" => "Float",
+            "char" => "Character",
             other => other,
         };
         if matches!(value, Value::Null) || instance_of(&value, class) && class != "String" {
@@ -534,6 +535,24 @@ impl Interpreter<'_> {
             return converted.at(span);
         }
         Ok(match (class, &value) {
+            // A character from a one-character text or a code, and a code from a character.
+            ("Character", Value::String(text) | Value::GString(text)) => {
+                let mut units = text.encode_utf16();
+                match (units.next(), units.next()) {
+                    (Some(unit), None) => Value::Character(unit),
+                    _ => {
+                        let message = format!(
+                            "Cannot cast object '{text}' with class 'java.lang.String' to class 'char'"
+                        );
+                        return Err(thrown(Exception::new("ClassCastException", message), span));
+                    }
+                }
+            }
+            ("Character", Value::Number(number)) => Value::Character(number.to_i64() as u16),
+            ("Integer" | "Long", Value::Character(unit)) => {
+                let code = Value::integer(i32::from(*unit));
+                return self.cast(code, class, span);
+            }
             ("String", _) => Value::string(value.to_groovy_string()),
             ("Boolean", _) => Value::Boolean(value.truth()),
             ("Integer", Value::Number(number)) => Value::integer(number.to_i32()),
@@ -741,6 +760,7 @@ pub(super) fn instance_of(value: &Value, class: &str) -> bool {
         Value::Null => return false,
         Value::Boolean(_) => &["Comparable"],
         Value::Number(_) => &["Number", "Comparable"],
+        Value::Character(_) => &["Comparable"],
         Value::String(_) => &["CharSequence", "Comparable"],
         Value::GString(_) => &["GString", "CharSequence", "Comparable"],
         Value::List(list) if list.borrow().kind == ListKind::Array => &[],

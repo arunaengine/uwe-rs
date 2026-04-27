@@ -72,6 +72,27 @@ fn missing_files_fail_when_the_factory_starts() {
     assert_eq!(printed, "after\n");
 }
 
+/// `buffer` with sizes, skips and criteria, as Nextflow 26.04.6 gives them.
+#[test]
+fn buffers() {
+    let buffered = |call: &str| lines(&format!("channel.of(1..7).{call}.view()"));
+    assert_eq!(buffered("buffer(size: 2)"), ["[1, 2]", "[3, 4]", "[5, 6]"]);
+    assert_eq!(
+        buffered("buffer(size: 2, remainder: true)"),
+        ["[1, 2]", "[3, 4]", "[5, 6]", "[7]"]
+    );
+    assert_eq!(buffered("buffer(size: 2, skip: 1)"), ["[2, 3]", "[5, 6]"]);
+    assert_eq!(
+        buffered("buffer { it % 3 == 0 }"),
+        ["[1, 2, 3]", "[4, 5, 6]"]
+    );
+    assert_eq!(buffered("buffer(2, 4)"), ["[2, 3, 4]"]);
+    assert_eq!(
+        lines("channel.of(1..3).buffer(size: Integer.MAX_VALUE, remainder: true).view()"),
+        ["[1, 2, 3]"]
+    );
+}
+
 #[test]
 fn values_one_at_a_time() {
     assert_eq!(

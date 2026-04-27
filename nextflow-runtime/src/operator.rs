@@ -506,6 +506,107 @@ impl Behaviour for Collate {
     }
 }
 
+/// `buffer`: lists of values between an opening and a closing condition, as Nextflow's
+/// `BufferOp` collects them. With `size` and `skip`, the buffer opens after `skip` values
+/// and closes after `size` more; else criteria decide, with `isCase` or a closure.
+pub(crate) struct Buffer {
+    pub output: ChannelId,
+    pub opening: Opening,
+    pub closing: Closing,
+    /// Whether the values of a buffer that never closed are emitted at the end.
+    pub remainder: bool,
+    pub buffer: Vec<Value>,
+    pub open: bool,
+}
+
+pub(crate) enum Opening {
+    /// Always open.
+    Always,
+    /// Opens after `skip` values, counted from the last close.
+    Skip {
+        skip: usize,
+        count: usize,
+    },
+    Criteria(Value),
+}
+
+pub(crate) enum Closing {
+    /// Closes when `size` values after the skipped ones have come.
+    Size {
+        size: usize,
+        skip: usize,
+        count: usize,
+    },
+    Criteria(Value),
+}
+
+impl Buffer {
+    fn opens(&mut self, context: &mut Context, value: &Value) -> Result<bool, Error> {
+        match &mut self.opening {
+            Opening::Always => Ok(true),
+            Opening::Skip { skip, count } => {
+                *count += 1;
+                if *count > *skip {
+                    *count = 0;
+                    return Ok(true);
+                }
+                Ok(false)
+            }
+            Opening::Criteria(criteria) => matches(context, criteria, value),
+        }
+    }
+
+    fn closes(&mut self, context: &mut Context, value: &Value) -> Result<bool, Error> {
+        match &mut self.closing {
+            Closing::Size { size, skip, count } => {
+                *count += 1;
+                if *count == *size + *skip {
+                    *count = 0;
+                    return Ok(true);
+                }
+                Ok(false)
+            }
+            Closing::Criteria(criteria) => matches(context, criteria, value),
+        }
+    }
+}
+
+/// Whether a value meets a condition: the truth of a closure's result, or `isCase`.
+fn matches(context: &mut Context, criteria: &Value, value: &Value) -> Result<bool, Error> {
+    Ok(match criteria {
+        Value::Closure(closure) => context
+            .interpreter
+            .call_closure(closure, vec![value.clone()])?
+            .truth(),
+        other => other.is_case(value).map_err(thrown)?,
+    })
+}
+
+impl Behaviour for Buffer {
+    fn run(&mut self, context: &mut Context) -> Result<State, Error> {
+        while let Some(message) = context.read(0) {
+            let Message::Value(value) = message else {
+                if self.remainder && !self.buffer.is_empty() {
+                    context.emit(self.output, Value::list(std::mem::take(&mut self.buffer)));
+                }
+                context.close(self.output);
+                return Ok(State::Stopped);
+            };
+            if self.open {
+                self.buffer.push(value.clone());
+            } else if self.opens(context, &value)? {
+                self.open = true;
+                self.buffer.push(value.clone());
+            }
+            if self.closes(context, &value)? {
+                context.emit(self.output, Value::list(std::mem::take(&mut self.buffer)));
+                self.open = matches!(self.opening, Opening::Always);
+            }
+        }
+        Ok(State::Running)
+    }
+}
+
 /// `mix`: every value of every input as it comes; closes when all inputs have closed.
 pub(crate) struct Mix {
     pub output: ChannelId,

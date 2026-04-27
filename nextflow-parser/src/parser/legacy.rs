@@ -294,7 +294,11 @@ impl Parser<'_> {
         let start = self.bump().span;
         let target_type = self.legacy_type()?;
         self.expect(TokenKind::RightParen, "')'")?;
-        self.legacy_at("Unexpected input: '('", start);
+        // Strict syntax reads `(char)(x)` as a call, which fails when it runs; the legacy
+        // parser casts, as the code means.
+        if !self.at(TokenKind::LeftParen) {
+            self.legacy_at("Unexpected input: '('", start);
+        }
         let operand = self.unary()?;
         Ok(Expression {
             span: self.span_from(start),

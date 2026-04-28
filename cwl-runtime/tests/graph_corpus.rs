@@ -2,8 +2,10 @@
 //! `cwltool --validate` accepts, with placeholder inputs and the mock TES executor, and
 //! compares the outcome with `tests/fixtures/graph_corpus.txt`: `ok` and the number of
 //! tasks, or the error. Documents of the fixture that the corpus lacks, like those of a host
-//! the network could not reach, are left out. Run with `just cwl-graph-corpus-test`; on a
-//! difference the test writes the new fixture to the target directory and says where.
+//! the network could not reach, are left out. A document may only fail when
+//! `tests/fixtures/graph_evidence.txt` shows that cwltool fails on it too. Run with
+//! `just cwl-graph-corpus-test`; on a difference the test writes the new fixture to the target
+//! directory and says where.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -19,6 +21,8 @@ use cwl_runtime::{CwlDriver, Options};
 use workflow_graph::{ExecuteError, Launch, MockTes, execute};
 
 const REJECTED: &str = include_str!("../../cwl-parser/tests/fixtures/corpus/rejected.txt");
+/// How cwltool fails on the documents that fail here, from `fixtures/graph_evidence.py`.
+const EVIDENCE: &str = include_str!("fixtures/graph_evidence.txt");
 const CLASSES: [&str; 4] = ["CommandLineTool", "ExpressionTool", "Workflow", "Operation"];
 const SUITES: [&str; 3] = [
     "conformance/v1.0/v1.0/conformance_test_v1.0.yaml",
@@ -130,6 +134,14 @@ fn clean(message: &str, root: &Path) -> String {
         text.replace_range(start..end, "<tmp>");
     }
     text.chars().take(240).collect()
+}
+
+/// The documents that graph_evidence.txt gives evidence for: its lines that are no comment,
+/// reason, command or output.
+fn evidenced(text: &str) -> BTreeSet<&str> {
+    text.lines()
+        .filter(|line| !line.is_empty() && !line.starts_with(['#', '=', '$', '>']))
+        .collect()
 }
 
 /// The first word of each line that is not a comment, with the rest of the line.
@@ -291,6 +303,21 @@ fn corpus_documents_build_graphs_as_recorded() {
         actual.len(),
         actual.len() - ok
     );
+    // A document may only fail when cwltool fails on it too, as graph_evidence.txt shows.
+    let evidence = evidenced(EVIDENCE);
+    let unexplained: Vec<&String> = actual
+        .iter()
+        .filter(|line| !line.contains(" ok "))
+        .filter(|line| !evidence.contains(line.split(' ').next().unwrap_or_default()))
+        .collect();
+    let built: Vec<&&str> = evidence
+        .iter()
+        .filter(|document| {
+            actual
+                .iter()
+                .any(|line| line.starts_with(&format!("{document} ok ")))
+        })
+        .collect();
     let changed: Vec<&String> = actual
         .iter()
         .filter(|line| {
@@ -298,6 +325,24 @@ fn corpus_documents_build_graphs_as_recorded() {
             expected.get(document) != Some(&rest)
         })
         .collect();
+    assert!(
+        unexplained.is_empty(),
+        "documents fail without evidence in graph_evidence.txt that cwltool fails on them too:\n{}",
+        unexplained
+            .iter()
+            .map(|line| line.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    assert!(
+        built.is_empty(),
+        "documents of graph_evidence.txt build now:\n{}",
+        built
+            .iter()
+            .map(|document| **document)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
     if !changed.is_empty() {
         let written = Path::new(env!("CARGO_TARGET_TMPDIR")).join("graph_corpus.txt");
         let mut text = header.join("\n");

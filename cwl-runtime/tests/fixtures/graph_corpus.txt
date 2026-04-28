@@ -808,8 +808,8 @@ realworld/collections/github.com__Barski-lab__workflows/devel/mulloy/average.cwl
 realworld/collections/github.com__Barski-lab__workflows/devel/picard/picard-markduplicates.cwl ok 1
 realworld/collections/github.com__Barski-lab__workflows/devel/ucscbuild/SetUpCb.cwl ok 1
 realworld/collections/github.com__Barski-lab__workflows/devel/xenbase/fastq-dump.cwl ok 1
-realworld/collections/github.com__Barski-lab__workflows/devel/xenbase/xenbase-rnaseq-pe.cwl fail: trim_adapters: JavaScript error in `default_output_filename(inputs.fastq_file_upstream, '.trimmed.fastq')`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :8:3)
-realworld/collections/github.com__Barski-lab__workflows/devel/xenbase/xenbase-rnaseq-se.cwl fail: trim_adapters: JavaScript error in `default_output_filename(inputs.fastq_file_upstream, '.trimmed.fastq')`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :8:3)
+realworld/collections/github.com__Barski-lab__workflows/devel/xenbase/xenbase-rnaseq-pe.cwl ok 17
+realworld/collections/github.com__Barski-lab__workflows/devel/xenbase/xenbase-rnaseq-se.cwl ok 14
 realworld/collections/github.com__Barski-lab__workflows/devel/xenbase/xenbase-sra-to-fastq-pe.cwl ok 4
 realworld/collections/github.com__Barski-lab__workflows/devel/xenbase/xenbase-sra-to-fastq-se.cwl ok 3
 realworld/collections/github.com__Barski-lab__workflows/devel/yrina/differential-motif-analysis.cwl ok 9
@@ -1984,19 +1984,19 @@ realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/vardict/vardi
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/vcf2maf/vcf2maf.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/waltz/CountReads.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/waltz/PileupMetrics.cwl ok 1
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/ABRA/abra_workflow.cwl ok 3
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/ACCESS_pipeline.cwl fail: standard_bam_to_collapsed_qc/qc_workflow/qc_workflow_wo_waltz/find_hotspots_in_normals/find_hotspots_in_normals: JavaScript error in `"sample_id patient_id sample_class pileup\n" + inputs.sample_ids.map(function(si...`: TypeError: can
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/ABRA/abra_workflow.cwl ok 5
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/ACCESS_pipeline.cwl ok 133
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/BQSR/bqsr_workflow.cwl ok 4
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/QC/qc_workflow.cwl ok 79
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/QC/qc_workflow_wo_waltz.cwl ok 29
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/marianas/collapsed_fastq_to_bam.cwl ok 2
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/marianas/marianas_collapsing_workflow.cwl ok 9
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/module-1.cwl ok 4
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/module-2.cwl ok 3
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/module-2.cwl ok 9
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/module-3.cwl ok 12
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/module-4.cwl ok 5
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/module-5.cwl ok 5
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/standard_pipeline.cwl ok 16
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/standard_pipeline.cwl ok 22
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/call_cnv.cwl ok 4
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/call_variants.cwl ok 2
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/filtering.cwl ok 2
@@ -2004,7 +2004,7 @@ realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/manta.cwl ok 11
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/msi.cwl ok 3
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/snps_and_indels.cwl ok 22
-realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/standard_bam_to_collapsed_qc.cwl fail: qc_workflow/qc_workflow_wo_waltz/find_hotspots_in_normals/find_hotspots_in_normals: JavaScript error in `"sample_id patient_id sample_class pileup\n" + inputs.sample_ids.map(function(si...`: TypeError: cannot convert 'null' or 'undefi
+realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/standard_bam_to_collapsed_qc.cwl ok 111
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/subworkflows/vcf_concat.cwl ok 2
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/waltz/waltz-workflow.cwl ok 2
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/waltz/waltz_workflow_all_bams.cwl ok 48
@@ -2275,12 +2275,12 @@ realworld/collections/github.com__ncbi__pgap/wf_common.cwl ok 179
 realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/flatten_array.cwl ok 0
 realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/mkdir_files.cwl ok 0
 realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/mkdir_models.cwl ok 0
-realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/tango_dynamics_wf.cwl fail: individual_each[0]: the input `freud_sim` is not a valid enum: "freud_sim"
+realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/tango_dynamics_wf.cwl ok 4
 realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/tango_models.cwl ok 1
 realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/tango_one_plot.cwl ok 1
-realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/tango_optimization_wf.cwl fail: optimize_each[0]: the input `freud_sim` is not a valid enum: "freud_sim"
+realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/tango_optimization_wf.cwl ok 3
 realworld/sources/forgemia.inra.fr__tango__tango_models/pipeline/tango_plots.cwl ok 2
-realworld/sources/forgemia.inra.fr__tango__tango_models/tango_workflow.cwl fail: optimize/optimize_each[0]: the input `freud_sim` is not a valid enum: "freud_sim"
+realworld/sources/forgemia.inra.fr__tango__tango_models/tango_workflow.cwl ok 9
 realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/bakta/bakta.cwl ok 1
 realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/bedtools/bedtools_bamtobed.cwl ok 1
 realworld/sources/git.wur.nl__ssb__automated-data-analysis__cwl/tools/clair3/clair3.cwl ok 1
@@ -2760,15 +2760,15 @@ realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/qc-flag.cwl ok
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/result-file-chunker/result_chunker.cwl ok 1
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/return_directory.cwl ok 0
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/touch_file.cwl ok 1
-realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/amplicon-wf--v.5-cond.cwl ok 16
-realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/assembly-wf--v.5-cond.cwl ok 8
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/amplicon-wf--v.5-cond.cwl ok 17
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/assembly-wf--v.5-cond.cwl ok 9
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/amplicon/amplicon-1.cwl ok 16
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/amplicon/amplicon-2.cwl ok 26
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/assembly/assembly-1.cwl ok 8
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/assembly/assembly-2.cwl ok 36
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/raw-reads/raw-reads-1.cwl ok 13
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/conditionals/raw-reads/raw-reads-2.cwl ok 34
-realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/raw-reads-wf--v.5-cond.cwl ok 13
+realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/raw-reads-wf--v.5-cond.cwl ok 14
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/amplicon/ITS-wf.cwl ok 6
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/amplicon/trim_and_reformat_reads.cwl ok 6
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/amplicon/trimming-not-empty-subwf.cwl ok 5
@@ -4110,7 +4110,7 @@ realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvari
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/structural_variants.cwl ok 1
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/svtools.cwl ok 1
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/tools/tabix.cwl ok 1
-realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/workflow.cwl fail: final_filtering/union: JavaScript error in `inputs.input[0].basename.split(".")[1]`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
+realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/workflow.cwl ok 66
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510101.cwl ok 1
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510102.cwl ok 1
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510103.cwl ok 1
@@ -5220,7 +5220,7 @@ realworld/workflowhub/278/structuralvariants/cwl/tools/samtools_view_sam2bam.cwl
 realworld/workflowhub/278/structuralvariants/cwl/tools/structural_variants.cwl ok 1
 realworld/workflowhub/278/structuralvariants/cwl/tools/svtools.cwl ok 1
 realworld/workflowhub/278/structuralvariants/cwl/tools/tabix.cwl ok 1
-realworld/workflowhub/278/structuralvariants/cwl/workflow.cwl fail: final_filtering/union: JavaScript error in `inputs.input[0].basename.split(".")[1]`: TypeError: cannot convert 'null' or 'undefined' to object (unknown at :7:3)
+realworld/workflowhub/278/structuralvariants/cwl/workflow.cwl ok 66
 realworld/workflowhub/279/biobb_adapters/cat_pdb.cwl ok 1
 realworld/workflowhub/279/biobb_adapters/editconf.cwl ok 1
 realworld/workflowhub/279/biobb_adapters/extract_molecule.cwl ok 1
@@ -5392,15 +5392,15 @@ realworld/workflowhub/360/utils/qc-flag.cwl ok 1
 realworld/workflowhub/360/utils/result-file-chunker/result_chunker.cwl ok 1
 realworld/workflowhub/360/utils/return_directory.cwl ok 0
 realworld/workflowhub/360/utils/touch_file.cwl ok 1
-realworld/workflowhub/360/workflows/amplicon-wf--v.5-cond.cwl ok 16
-realworld/workflowhub/360/workflows/assembly-wf--v.5-cond.cwl ok 8
+realworld/workflowhub/360/workflows/amplicon-wf--v.5-cond.cwl ok 17
+realworld/workflowhub/360/workflows/assembly-wf--v.5-cond.cwl ok 9
 realworld/workflowhub/360/workflows/conditionals/amplicon/amplicon-1.cwl ok 16
 realworld/workflowhub/360/workflows/conditionals/amplicon/amplicon-2.cwl ok 26
 realworld/workflowhub/360/workflows/conditionals/assembly/assembly-1.cwl ok 8
 realworld/workflowhub/360/workflows/conditionals/assembly/assembly-2.cwl ok 36
 realworld/workflowhub/360/workflows/conditionals/raw-reads/raw-reads-1.cwl ok 13
 realworld/workflowhub/360/workflows/conditionals/raw-reads/raw-reads-2.cwl ok 34
-realworld/workflowhub/360/workflows/raw-reads-wf--v.5-cond.cwl ok 13
+realworld/workflowhub/360/workflows/raw-reads-wf--v.5-cond.cwl ok 14
 realworld/workflowhub/360/workflows/subworkflows/amplicon/ITS-wf.cwl ok 6
 realworld/workflowhub/360/workflows/subworkflows/amplicon/trim_and_reformat_reads.cwl ok 6
 realworld/workflowhub/360/workflows/subworkflows/amplicon/trimming-not-empty-subwf.cwl ok 5
@@ -5520,15 +5520,15 @@ realworld/workflowhub/361/utils/qc-flag.cwl ok 1
 realworld/workflowhub/361/utils/result-file-chunker/result_chunker.cwl ok 1
 realworld/workflowhub/361/utils/return_directory.cwl ok 0
 realworld/workflowhub/361/utils/touch_file.cwl ok 1
-realworld/workflowhub/361/workflows/amplicon-wf--v.5-cond.cwl ok 16
-realworld/workflowhub/361/workflows/assembly-wf--v.5-cond.cwl ok 8
+realworld/workflowhub/361/workflows/amplicon-wf--v.5-cond.cwl ok 17
+realworld/workflowhub/361/workflows/assembly-wf--v.5-cond.cwl ok 9
 realworld/workflowhub/361/workflows/conditionals/amplicon/amplicon-1.cwl ok 16
 realworld/workflowhub/361/workflows/conditionals/amplicon/amplicon-2.cwl ok 26
 realworld/workflowhub/361/workflows/conditionals/assembly/assembly-1.cwl ok 8
 realworld/workflowhub/361/workflows/conditionals/assembly/assembly-2.cwl ok 36
 realworld/workflowhub/361/workflows/conditionals/raw-reads/raw-reads-1.cwl ok 13
 realworld/workflowhub/361/workflows/conditionals/raw-reads/raw-reads-2.cwl ok 34
-realworld/workflowhub/361/workflows/raw-reads-wf--v.5-cond.cwl ok 13
+realworld/workflowhub/361/workflows/raw-reads-wf--v.5-cond.cwl ok 14
 realworld/workflowhub/361/workflows/subworkflows/amplicon/ITS-wf.cwl ok 6
 realworld/workflowhub/361/workflows/subworkflows/amplicon/trim_and_reformat_reads.cwl ok 6
 realworld/workflowhub/361/workflows/subworkflows/amplicon/trimming-not-empty-subwf.cwl ok 5
@@ -5648,15 +5648,15 @@ realworld/workflowhub/362/utils/qc-flag.cwl ok 1
 realworld/workflowhub/362/utils/result-file-chunker/result_chunker.cwl ok 1
 realworld/workflowhub/362/utils/return_directory.cwl ok 0
 realworld/workflowhub/362/utils/touch_file.cwl ok 1
-realworld/workflowhub/362/workflows/amplicon-wf--v.5-cond.cwl ok 16
-realworld/workflowhub/362/workflows/assembly-wf--v.5-cond.cwl ok 8
+realworld/workflowhub/362/workflows/amplicon-wf--v.5-cond.cwl ok 17
+realworld/workflowhub/362/workflows/assembly-wf--v.5-cond.cwl ok 9
 realworld/workflowhub/362/workflows/conditionals/amplicon/amplicon-1.cwl ok 16
 realworld/workflowhub/362/workflows/conditionals/amplicon/amplicon-2.cwl ok 26
 realworld/workflowhub/362/workflows/conditionals/assembly/assembly-1.cwl ok 8
 realworld/workflowhub/362/workflows/conditionals/assembly/assembly-2.cwl ok 36
 realworld/workflowhub/362/workflows/conditionals/raw-reads/raw-reads-1.cwl ok 13
 realworld/workflowhub/362/workflows/conditionals/raw-reads/raw-reads-2.cwl ok 34
-realworld/workflowhub/362/workflows/raw-reads-wf--v.5-cond.cwl ok 13
+realworld/workflowhub/362/workflows/raw-reads-wf--v.5-cond.cwl ok 14
 realworld/workflowhub/362/workflows/subworkflows/amplicon/ITS-wf.cwl ok 6
 realworld/workflowhub/362/workflows/subworkflows/amplicon/trim_and_reformat_reads.cwl ok 6
 realworld/workflowhub/362/workflows/subworkflows/amplicon/trimming-not-empty-subwf.cwl ok 5
@@ -5940,7 +5940,7 @@ realworld/workflowhub/776/biobb_adapters/remove_pdb_water.cwl ok 1
 realworld/workflowhub/776/biobb_adapters/sander_mdrun.cwl ok 1
 realworld/workflowhub/776/biobb_adapters/structure_check.cwl ok 1
 realworld/workflowhub/776/workflow.cwl ok 18
-realworld/workflowhub/873/packed.cwl fail: optimize/optimize_each[0]: the input `freud_sim` is not a valid enum: "freud_sim"
+realworld/workflowhub/873/packed.cwl ok 9
 realworld/workflowhub/882/beacon-omop-worker-survival.cwl ok 1
 realworld/workflowhub/882/beacon-omop-worker.cwl ok 1
 realworld/workflowhub/882/workflow_entrypoint.cwl ok 1

@@ -118,8 +118,8 @@ v1.0 wf_scatter_twopar_oneinput_flattenedmerge ran
 v1.0 wf_multiplesources_multipletypes pass
 v1.0 shelldir_notinterpreted ran
 v1.0 shelldir_quoted ran
-v1.0 initial_workdir_empty_writable ran
-v1.0 initial_workdir_empty_writable_docker ran
+v1.0 initial_workdir_empty_writable pass
+v1.0 initial_workdir_empty_writable_docker pass
 v1.0 dynamic_resreq_inputs pass
 v1.0 fileliteral_input_docker pass
 v1.0 outputbinding_glob_sorted pass
@@ -316,8 +316,8 @@ v1.1 wf_scatter_twopar_oneinput_flattenedmerge ran
 v1.1 wf_multiplesources_multipletypes pass
 v1.1 shelldir_notinterpreted ran
 v1.1 shelldir_quoted ran
-v1.1 initial_workdir_empty_writable ran
-v1.1 initial_workdir_empty_writable_docker ran
+v1.1 initial_workdir_empty_writable pass
+v1.1 initial_workdir_empty_writable_docker pass
 v1.1 dynamic_resreq_inputs pass
 v1.1 fileliteral_input_docker pass
 v1.1 outputbinding_glob_sorted pass
@@ -572,8 +572,8 @@ v1.2 wf_scatter_twopar_oneinput_flattenedmerge ran
 v1.2 wf_multiplesources_multipletypes pass
 v1.2 shelldir_notinterpreted ran
 v1.2 shelldir_quoted ran
-v1.2 initial_workdir_empty_writable ran
-v1.2 initial_workdir_empty_writable_docker ran
+v1.2 initial_workdir_empty_writable pass
+v1.2 initial_workdir_empty_writable_docker pass
 v1.2 dynamic_resreq_inputs pass
 v1.2 fileliteral_input_docker pass
 v1.2 outputbinding_glob_sorted pass

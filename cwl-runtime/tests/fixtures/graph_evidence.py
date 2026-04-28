@@ -133,6 +133,260 @@ CASES = [
         "job": "conformance/v1.2/tests/empty.json",
         "documents": ["conformance/v1.2/tests/params_broken_length_of_non_list.cwl"],
     },
+    {
+        "why": "the script that the varscan tool writes holds `${HOME}`, which runs as "
+        "JavaScript under the InlineJavascriptRequirement of the enclosing "
+        "subworkflows/varscan_pre_and_post_processing.cwl",
+        "evaluate": GENOME + "tools/varscan_somatic.cwl",
+        "field": ["requirements", "InitialWorkDirRequirement", "listing", 0, "entry"],
+        "javascript": True,
+        "documents": [
+            GENOME + "pipelines/" + name
+            for name in [
+                "aml_trio_cle.cwl",
+                "aml_trio_cle_gathered.cwl",
+                "detect_variants.cwl",
+                "detect_variants_nonhuman.cwl",
+                "detect_variants_wgs.cwl",
+                "detect_variants_wgs_nonhuman.cwl",
+                "somatic_exome.cwl",
+                "somatic_exome_cle.cwl",
+                "somatic_exome_cle_gathered.cwl",
+                "somatic_exome_gathered.cwl",
+                "somatic_exome_nonhuman.cwl",
+                "somatic_wgs.cwl",
+                "somatic_wgs_nonhuman.cwl",
+            ]
+        ]
+        + [GENOME + "subworkflows/varscan_pre_and_post_processing.cwl"],
+    },
+    {
+        "why": "the output glob calls `inputs.prefix.equals`, which JavaScript strings do not have",
+        "collect": GENOME + "tools/bam_readcount.cwl",
+        "output": "indel_bam_readcount_tsv",
+        "job": {
+            "vcf": file("calls.vcf"),
+            "sample": "S1",
+            "reference_fasta": "reference.fa",
+            "bam": {**file("reads.bam"), "secondaryFiles": [file("reads.bam.bai")]},
+        },
+        "documents": [
+            GENOME + "tools/bam_readcount.cwl",
+            GENOME + "subworkflows/bam_readcount.cwl",
+            GENOME + "subworkflows/pvacseq.cwl",
+            GENOME + "subworkflows/vcf_eval_cle_gold.cwl",
+            GENOME + "subworkflows/vcf_eval_concordance.cwl",
+        ],
+    },
+    {
+        "why": "the step gives a float (`$(self.contamination)` of a float field) to the "
+        "`string?` input `contamination_fraction` of gatk_haplotype_caller.cwl",
+        "run": GENOME + "tools/gatk_haplotype_caller.cwl",
+        "job": {
+            "reference": "reference.fa",
+            "intervals": ["chr1"],
+            "gvcf_gq_bands": ["10"],
+            "emit_reference_confidence": "GVCF",
+            "bam": file("reads.bam"),
+            "contamination_fraction": 0.02,
+        },
+        "documents": [
+            GENOME + "pipelines/downsample_and_recall.cwl",
+            GENOME + "pipelines/gathered_downsample_and_recall.cwl",
+        ],
+    },
+    {
+        "why": "the step default of `filtering_frequency` is the string \"0.05\", but the tool "
+        "takes a double",
+        "run": GENOME + "tools/annotsv_filter.cwl",
+        "job": {"annotsv_tsv": file("annotsv.tsv"), "filtering_frequency": "0.05"},
+        "documents": [
+            GENOME + "pipelines/germline_wgs.cwl",
+            GENOME + "subworkflows/merge_svs.cwl",
+            GENOME + "subworkflows/single_sample_sv_callers.cwl",
+        ],
+    },
+    {
+        "why": "the default of the int input `chim_junction_overhang_min` is the string \"12\", "
+        "and the steps that run the tool do not set it",
+        "run": GENOME + "tools/star_align_fusion.cwl",
+        "job": {
+            "star_genome_dir": "genome",
+            "outsam_attrrg_line": ["ID:1"],
+            "fastq": [file("reads_1.fastq")],
+            "fastq2": [file("reads_2.fastq")],
+        },
+        "documents": [
+            GENOME + "pipelines/immuno.cwl",
+            GENOME + "pipelines/rnaseq_star_fusion.cwl",
+            GENOME + "pipelines/rnaseq_star_fusion_with_xenosplit.cwl",
+        ],
+    },
+    {
+        "why": "vt_decompose.cwl needs the `.tbi` index of its VCF, but the output it gets "
+        "(combined_vcf of germline_combine_variants.cwl) declares none",
+        "run": GENOME + "tools/vt_decompose.cwl",
+        "job": {"vcf": file("combined.vcf.gz")},
+        "documents": [
+            GENOME + "pipelines/tumor_only_detect_variants.cwl",
+            GENOME + "pipelines/tumor_only_exome.cwl",
+            GENOME + "pipelines/tumor_only_wgs.cwl",
+        ],
+    },
+    {
+        "why": "the output reads `outputs.ofull_file`, but there is no `outputs` in CWL "
+        "expressions",
+        "collect": PGAP + "progs/cache_kmer.cwl",
+        "output": "out_kmer_file_list",
+        "job": {"kmer_cache_path": directory("cache")},
+        "documents": [
+            PGAP + "progs/cache_kmer.cwl",
+            PGAP + "task_types/tt_kmer_cache_retrieve.cwl",
+            PGAP + "task_types/tt_kmer_cache_store.cwl",
+        ],
+    },
+    {
+        "why": "the InitialWorkDir script reads `inputs.kmer_dir.listing`, but a CWL v1.2 tool "
+        "without LoadListingRequirement gets no listing",
+        "run": PGAP + "progs/kmer_files2sqlite.cwl",
+        "job": {"kmer_dir": directory("kmers")},
+        "documents": [PGAP + "bacterial_kmer/wf_bacterial_kmer.cwl"],
+    },
+    {
+        "why": "the ResourceRequirement reads `inputs.readsFA`, which the tool does not declare",
+        "run": "realworld/collections/github.com__common-workflow-library__bio-cwl-tools/"
+        "minimap2/minimap2_sam.cwl",
+        "job": {"target": file("target.fa"), "query": file("query.fa")},
+        "documents": [
+            "realworld/collections/github.com__common-workflow-library__bio-cwl-tools/"
+            "minimap2/minimap2_sam.cwl",
+        ],
+    },
+    {
+        "why": "the ResourceRequirement reads `inputs.readsFA`, which the tool does not declare",
+        "run": "realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/"
+        "minimap2/minimap2_sam.cwl",
+        "job": {"target": file("target.fa"), "query": file("query.fa")},
+        "documents": [
+            "realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/"
+            "minimap2/minimap2_sam.cwl",
+        ],
+    },
+    {
+        "why": "an InitialWorkDir entry is the text `inputs.genome_folder` without `$()` and "
+        "without entryname",
+        "run": "realworld/collections/github.com__common-workflow-library__bio-cwl-tools/"
+        "bismark/bismark_prepare_genome.cwl",
+        "job": {"genome_folder": directory("genome")},
+        "documents": [
+            "realworld/collections/github.com__common-workflow-library__bio-cwl-tools/"
+            "bismark/bismark_prepare_genome.cwl",
+        ],
+    },
+    {
+        "why": "with the default `base_file_name`, the arguments read `inputs.input_bam`, which "
+        "the tool does not declare (it declares `input_bams`)",
+        "evaluate": "realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/"
+        "pilot-run/tools/dev/picard_markduplicates_optname.cwl",
+        "field": ["arguments", 0, "valueFrom"],
+        "inputs": {"input_bams": [file("reads.bam")], "base_file_name": "default"},
+        "documents": [
+            "realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/"
+            "pilot-run/tools/dev/picard_markduplicates_optname.cwl",
+        ],
+    },
+    {
+        "why": "the library function `default_output_filename` reads `inputs.filelist`, an "
+        "input that is commented out, so it gives null, which the arguments split",
+        "run": UNLOCK + "bowtie2/bowtie2_align.cwl",
+        "job": {"forward_reads": file("reads_1.fastq")},
+        "documents": [UNLOCK + "bowtie2/bowtie2_align.cwl"],
+    },
+    {
+        "why": "the library function `default_output_filename` reads `inputs.filelist`, an "
+        "input that is commented out, so it gives null, which the arguments split",
+        "run": WUR + "bowtie2/bowtie2_align.cwl",
+        "job": {"forward_reads": file("reads_1.fastq")},
+        "documents": [WUR + "bowtie2/bowtie2_align.cwl"],
+    },
+    {
+        "why": "the arguments read `inputs.inputFile`, which the tool does not declare",
+        "run": UNLOCK + "sapp/eggnog.cwl",
+        "job": {"input_fasta": file("proteins.fasta")},
+        "documents": [UNLOCK + "sapp/eggnog.cwl"],
+    },
+    {
+        "why": "the glob is `$(inputs.output_dir)`, a Directory, not a string",
+        "collect": UNLOCK + "longqc/longqc.cwl",
+        "output": "longqc_out",
+        "job": {"sampleqc": file("reads.fastq"), "output_dir": directory("out")},
+        "documents": [UNLOCK + "longqc/longqc.cwl"],
+    },
+    {
+        "why": "the glob is `$(inputs.output_dir)`, a Directory, not a string",
+        "collect": WUR + "longqc/longqc.cwl",
+        "output": "longqc_out",
+        "job": {"sampleqc": file("reads.fastq"), "output_dir": directory("out")},
+        "documents": [WUR + "longqc/longqc.cwl"],
+    },
+    {
+        "why": "`when` reads `inputs.useMLStep`, which is no input of the step (cwltool runs no "
+        "workflow with an Operation, so this is its evaluator)",
+        "evaluate": DTGEO + "DTC76/WF7601/WF7601.cwl",
+        "field": ["steps", "ST760103", "when"],
+        "inputs": {"PretrainedMLModel": file("model.pt")},
+        "documents": [
+            DTGEO + "DTC76/WF7601/WF7601.cwl",
+            "realworld/workflowhub/1231/DTC76/WF7601/WF7601.cwl",
+            "realworld/workflowhub/1728/DTC76/WF7601/WF7601.cwl",
+            "realworld/workflowhub/1786/DTC76/WF7601/WF7601.cwl",
+            "realworld/workflowhub/1997/WF7601.cwl",
+        ],
+    },
+    {
+        "why": "`when` reads `inputs.useMLStep`, which is no input of the step (cwltool runs no "
+        "workflow with an Operation, so this is its evaluator)",
+        "evaluate": DTGEO + "DTC76/WF7602/WF7602.cwl",
+        "field": ["steps", "ST760103", "when"],
+        "inputs": {"PretrainedMLModel": file("model.pt")},
+        "documents": [
+            DTGEO + "DTC76/WF7602/WF7602.cwl",
+            "realworld/workflowhub/1231/DTC76/WF7602/WF7602.cwl",
+            "realworld/workflowhub/1728/DTC76/WF7602/WF7602.cwl",
+            "realworld/workflowhub/1786/DTC76/WF7602/WF7602.cwl",
+            "realworld/workflowhub/1998/WF7602.cwl",
+        ],
+    },
+    {
+        "why": "`when` reads `inputs.Run_User_Model`, which is no input of the step (cwltool "
+        "runs no workflow with an Operation, so this is its evaluator)",
+        "evaluate": DTGEO + "DTC75/WF7501/WF7501.cwl",
+        "field": ["steps", "ST750106", "when"],
+        "inputs": {"UserModel": file("model.dat")},
+        "documents": [
+            DTGEO + "DTC75/WF7501/WF7501.cwl",
+            "realworld/workflowhub/1231/DTC75/WF7501/WF7501.cwl",
+            "realworld/workflowhub/1333/WF7501.cwl",
+            "realworld/workflowhub/1728/DTC75/WF7501/WF7501.cwl",
+            "realworld/workflowhub/1786/DTC75/WF7501/WF7501.cwl",
+        ],
+    },
+    {
+        "why": "the source of the step is the output SOURCE_PARAMETERS of a subworkflow that "
+        "has no outputSource, so `self` is null, and `valueFrom` is JavaScript without "
+        "InlineJavascriptRequirement (cwltool runs no workflow with an Operation, so this "
+        "is its evaluator)",
+        "evaluate": DTGEO + "DTC75/WF7502/WF7502.cwl",
+        "field": ["steps", "ST750207", "in", "DAL", "valueFrom"],
+        "inputs": {},
+        "documents": [
+            DTGEO + "DTC75/WF7502/WF7502.cwl",
+            "realworld/workflowhub/1231/DTC75/WF7502/WF7502.cwl",
+            "realworld/workflowhub/1332/WF7502.cwl",
+            "realworld/workflowhub/1728/DTC75/WF7502/WF7502.cwl",
+            "realworld/workflowhub/1786/DTC75/WF7502/WF7502.cwl",
+        ],
+    },
 ]
 
 

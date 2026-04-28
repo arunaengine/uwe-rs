@@ -95,15 +95,25 @@ impl Interpreter {
                 result
             }
             Expr::Compare(compare) => {
+                // As in Python, a comparison gives what the operator gives, like a series of
+                // booleans, and a chain stops at the first result that is not true.
                 let mut left = self.eval(frame, &compare.operands[0])?;
-                for (operator, right) in compare.ops.iter().zip(compare.operands[1..].iter()) {
+                let mut result = Value::Bool(true);
+                let count = compare.ops.len();
+                for (position, (operator, right)) in compare
+                    .ops
+                    .iter()
+                    .zip(compare.operands[1..].iter())
+                    .enumerate()
+                {
                     let right = self.eval(frame, right)?;
-                    if !self.compare_op(*operator, &left, &right)? {
-                        return Ok(Value::Bool(false));
+                    result = self.compare_value(*operator, &left, &right)?;
+                    if position + 1 < count && !self.truthy(&result)? {
+                        return Ok(result);
                     }
                     left = right;
                 }
-                Value::Bool(true)
+                result
             }
             Expr::If(conditional) => {
                 let test = self.eval(frame, &conditional.test)?;
@@ -245,6 +255,26 @@ impl Interpreter {
             }
             None => Err(Error::new("SyntaxError", "'yield' outside function")),
         }
+    }
+
+    /// The result of one comparison: what the operator gives for `==` and the orderings,
+    /// a boolean for `is` and `in`.
+    fn compare_value(
+        &mut self,
+        operator: CmpOp,
+        left: &Value,
+        right: &Value,
+    ) -> Result<Value, Error> {
+        let operator = match operator {
+            CmpOp::Eq => Operator::Eq,
+            CmpOp::NotEq => Operator::NotEq,
+            CmpOp::Lt => Operator::Lt,
+            CmpOp::LtE => Operator::LtE,
+            CmpOp::Gt => Operator::Gt,
+            CmpOp::GtE => Operator::GtE,
+            other => return Ok(Value::Bool(self.compare_op(other, left, right)?)),
+        };
+        self.binary(operator, left, right)
     }
 
     fn compare_op(&mut self, operator: CmpOp, left: &Value, right: &Value) -> Result<bool, Error> {

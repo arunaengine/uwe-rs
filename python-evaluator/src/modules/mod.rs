@@ -183,6 +183,7 @@ pub fn native(interpreter: &mut Interpreter, name: &str) -> Result<Option<Value>
             }))));
         }
         "pandas" => crate::pandas::module(),
+        "numpy" => crate::pandas::numpy::module(),
         "urllib" => vec![],
         "concurrent" => vec![],
         "packaging" => vec![],

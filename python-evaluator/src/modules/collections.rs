@@ -677,6 +677,23 @@ impl Native for CompareKey {
     }
 }
 
+/// Named tuples of one new class, one per list of values, as pandas' `itertuples` makes them.
+pub fn named_tuples(name: &str, fields: &[String], rows: Vec<Vec<Value>>) -> Vec<Value> {
+    let class = Rc::new(NamedTupleClass {
+        name: name.to_owned(),
+        fields: fields.to_vec(),
+        defaults: Vec::new(),
+    });
+    rows.into_iter()
+        .map(|values| {
+            Value::native(NamedTuple {
+                class: class.clone(),
+                values,
+            })
+        })
+        .collect()
+}
+
 /// A class made by `collections.namedtuple`.
 pub struct NamedTupleClass {
     name: String,

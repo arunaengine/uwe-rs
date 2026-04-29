@@ -1,0 +1,59 @@
+['sample', 'unit', 'fq1', 'fq2', 'lane', 'condition'] (4, 6) 4
+True
+['A', 'B', 'B', '01'] [1.0, nan, 3.0, 4.0] [True, False, False, False]
+{'sample': 'A', 'unit': 1, 'fq1': 'a.fq', 'fq2': nan, 'lane': 1.0, 'condition': 'treated'}
+['A', 'B', 'B', '01'] ['1', '1', '2', '1'] ['1', nan, '3', '4']
+['A', 'B', 'B', '01'] [1, 1, 2, 1]
+['A', 'B', 'B', '01'] sample ['sample', 'unit', 'fq1', 'fq2', 'lane', 'condition']
+a.fq treated
+['b.fq', 'c.fq'] ['B', 'B']
+['treated', 'treated']
+True False True
+KeyError 'Z'
+['sample_id', 'unit_id'] 2
+c.fq ['c.fq', 'c2.fq']
+['1', '2'] ['b.fq', 'c.fq']
+[['01', 'A', 'B'], ['1', '2']]
+[('A', '1'), ('B', '1'), ('B', '2'), ('01', '1')]
+['A', '1', 'a.fq', nan, '1', 'treated']
+['b.fq', 'c.fq']
+['c.fq']
+['d.fq']
+['B', '01']
+[True, True, True, False] 2
+['c.fq']
+['a.fq', 'd.fq']
+0 A a.fq 1.0
+1 B b.fq nan
+3 d.fq treated
+['1.0', nan, '3.0', '4.0'] ['1', '1', '2', '1']
+['none', 'b2.fq', 'c2.fq', 'd2.fq'] ['', 'b2.fq', 'c2.fq', 'd2.fq']
+['B', '01'] ['A', 'B', '01']
+['a.fastq', 'b.fastq', 'c.fastq', 'd.fastq'] [False, True, False, False]
+['TREATED', 'CONTROL', 'CONTROL', 'TREATED'] ['a', 'b', 'c', 'd']
+[False, False, False, True]
+[1, 1, 1] [False, False, True, False]
+['d.fq', 'c.fq', 'b.fq', 'a.fq'] ['d.fq', 'a.fq', 'b.fq', 'c.fq']
+{'01': 1, 'A': 1, 'B': 2}
+{'01': ['d.fq'], 'A': ['a.fq'], 'B': ['b.fq', 'c.fq']}
+{'control': ['b.fq', 'c.fq'], 'treated': ['a.fq', 'd.fq']}
+['b.fq', 'a.fq']
+{'a': {0: 1, 1: 2, 2: 3}, 'b': {0: 'x', 1: 'y', 2: 'z'}} {'a': [1, 2, 3], 'b': ['x', 'y', 'z']} {0: {'a': 1, 'b': 'x'}, 1: {'a': 2, 'b': 'y'}, 2: {'a': 3, 'b': 'z'}}
+[[1, 'x', 2], [2, 'Y', 4], [3, 'z', 6]] ['1', 'x', '2'] z 6 x
+['x', 'y'] ['p', nan] True
+[1, 2, 3, 1, 2, 3]
+[['k1', 1, 'a'], ['k3', 3, 'c']]
+['a', nan, 'c']
+1 [1, 2, 3] ['a', 'b', 'c'] {'c': 3, 'a': 1, 'b': 2}
+{3: 1, 1: 1, 2: 1} 3 6 2.0
+['x', 'y'] [5, 5]
+True True True True
+['a', 'b'] [1, 2] 7
+2
+[0, 1, 2, 3] ['sample', 'unit', 'read1']
+ValueError cannot insert sample, already exists
+['s']
+['A', 'B', '01'] ['A', 'B', 'B', '01'] False
+['a.fq:1', 'b.fq:1', 'c.fq:2', 'd.fq:1']
+['one', 'one', 'two', 'one'] [10, 10, 20, 10]
+False True default ['sample', 'unit']

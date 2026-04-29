@@ -1,0 +1,6 @@
+sample	unit	fq1	fq2	lane	condition
+# a comment line
+A	1	a.fq		1	treated
+B	1	b.fq	b2.fq		control
+B	2	c.fq	c2.fq	3	control
+01	1	d.fq	d2.fq	4	treated

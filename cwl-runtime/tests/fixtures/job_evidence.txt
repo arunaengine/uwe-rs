@@ -256,3 +256,260 @@ realworld/workflowhub/360/tools/Assembly/KEGG_analysis/KEGG_pathways/kegg_pathwa
 > job check: * the 'graphs' field is not valid because
 > job check: the value is not string
 > job check: * the 'pathways_classes' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/360/tools/Assembly/KEGG_analysis/Modification/modification_table.cwl realworld/workflowhub/360/tools/Assembly/KEGG_analysis/Modification/modification_table.yml
+> job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_3475' but
+> job check: File has no 'format' defined: {
+
+realworld/workflowhub/360/tools/Assembly/antismash/chunking_antismash_with_conditionals/antismash_chunking_subwf.cwl realworld/workflowhub/360/tools/Assembly/antismash/chunking_antismash_with_conditionals/ymls/antismash_chunking_subwf.yml
+> job check: ValidationException: Version 'v1.2.0-dev2' is a development or deprecated version.
+> job check: Update your document to a stable version (v1.0, v1.1, v1.2) or use --enable-dev to enable support for development and deprecated versions.
+
+realworld/workflowhub/360/tools/Assembly/antismash/chunking_antismash_with_conditionals/rename_contigs/rename_contigs.cwl realworld/workflowhub/360/tools/Assembly/antismash/chunking_antismash_with_conditionals/rename_contigs/rename_contigs.yml
+> job check: KeyError: 'location'
+
+realworld/workflowhub/360/tools/GO-slim/go_summary.cwl realworld/workflowhub/360/tools/GO-slim/go_summary.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'config' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/360/tools/RNA_prediction/cmsearch-deoverlap/cmsearch-deoverlap-v0.02.cwl realworld/workflowhub/360/tools/RNA_prediction/cmsearch-deoverlap/cmsearch-deoverlap-v0.02.test.job.yaml
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'clan_information' field is not valid because
+> job check: value is a dict, expected null or string
+
+realworld/workflowhub/360/tools/RNA_prediction/extract-coords/extract-coords_awk.cwl realworld/workflowhub/360/tools/RNA_prediction/extract-coords/extract-coords_awk.yml
+> job check: WorkflowException: Expected value of 'infernal_matches' to have format 'http://edamontology.org/format_3475' but
+> job check: File has no 'format' defined: {
+
+realworld/workflowhub/360/tools/RNA_prediction/mapseq/mapseq.cwl realworld/workflowhub/360/tools/RNA_prediction/mapseq/mapseq-test.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'taxonomy' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/360/tools/RNA_prediction/mapseq2biom/mapseq2biom.cwl realworld/workflowhub/360/tools/RNA_prediction/mapseq2biom/mapseq2biom-test.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'otu_table' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/360/tools/hmmer/hmmscan/hmmscan.cwl realworld/workflowhub/360/tools/hmmer/hmmscan/hmmscan.yml
+> job check: WorkflowException: Expected value of 'seqfile' to have format 'http://edamontology.org/format_1929' but
+> job check: File has no 'format' defined: {
+
+realworld/workflowhub/360/utils/hmmscan_tab_modification/hmmscan_tab_modification.cwl realworld/workflowhub/360/utils/hmmscan_tab_modification/hmmscan_tab_modification.yml
+> job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_3475' but
+> job check: File has no 'format' defined: {
+
+realworld/workflowhub/360/workflows/subworkflows/other_ncrnas.cwl realworld/workflowhub/360/travis/tests/test-input/other_ncrnas.yml
+> job check: KeyError: 'location'
+
+realworld/workflowhub/361/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_sorting.cwl realworld/workflowhub/361/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_sorting.job.yaml
+> job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_2333' but
+> job check: File has no 'format' defined: {
+
+realworld/workflowhub/361/tools/Assembly/Diamond/Diamond.blastp-v0.9.21.cwl realworld/workflowhub/361/tools/Assembly/Diamond/Diamond.blastp-v0.9.21.test.job.yaml
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'databaseFile' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/361/tools/Assembly/Diamond/Diamond.blastx-v0.9.21.cwl realworld/workflowhub/361/tools/Assembly/Diamond/Diamond.blastx-v0.9.21.test.job.yaml
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'databaseFile' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/361/tools/Assembly/Diamond/diamond-subwf.cwl realworld/workflowhub/361/tools/Assembly/Diamond/diamond-subwf.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: * the 'Uniref90_db_txt' field is not valid because
+> job check: the value is not string
+> job check: * the 'databaseFile' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/361/tools/Assembly/EggNOG/eggNOG/eggnog.cwl realworld/workflowhub/361/tools/Assembly/EggNOG/eggNOG/eggnog.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: * the 'db' field is not valid because
+> job check: value is a dict, expected null or string
+> job check: * the 'db_diamond' field is not valid because
+> job check: value is a dict, expected null or string
+
+realworld/workflowhub/361/tools/Assembly/EggNOG/eggnog-subwf.cwl realworld/workflowhub/361/tools/Assembly/EggNOG/eggnog-subwf.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: * the 'db' field is not valid because
+> job check: the value is not string
+> job check: * the 'db_diamond' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/361/tools/Assembly/GFF/gff_generation.cwl realworld/workflowhub/361/tools/Assembly/GFF/gff_generation.yml
+> job check: WorkflowException: Expected value of 'eggnog_results' to have format 'http://edamontology.org/format_3475' but
+> job check: File has no 'format' defined: {
+
+realworld/workflowhub/361/tools/Assembly/Genome_properties/genome_properties.cwl realworld/workflowhub/361/tools/Assembly/Genome_properties/genome_properties.yml
+> job check: WorkflowException: Expected value of 'input_tsv_file' to have format 'http://edamontology.org/format_3475' but
+> job check: File has no 'format' defined: {
+
+realworld/workflowhub/361/tools/Assembly/KEGG_analysis/KEGG_pathways/kegg_pathways.cwl realworld/workflowhub/361/tools/Assembly/KEGG_analysis/KEGG_pathways/kegg_pathways.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: * the 'graphs' field is not valid because
+> job check: the value is not string
+> job check: * the 'pathways_classes' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/361/tools/Assembly/KEGG_analysis/Modification/modification_table.cwl realworld/workflowhub/361/tools/Assembly/KEGG_analysis/Modification/modification_table.yml
+> job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_3475' but
+> job check: File has no 'format' defined: {
+
+realworld/workflowhub/361/tools/Assembly/antismash/chunking_antismash_with_conditionals/antismash_chunking_subwf.cwl realworld/workflowhub/361/tools/Assembly/antismash/chunking_antismash_with_conditionals/ymls/antismash_chunking_subwf.yml
+> job check: ValidationException: Version 'v1.2.0-dev2' is a development or deprecated version.
+> job check: Update your document to a stable version (v1.0, v1.1, v1.2) or use --enable-dev to enable support for development and deprecated versions.
+
+realworld/workflowhub/361/tools/Assembly/antismash/chunking_antismash_with_conditionals/rename_contigs/rename_contigs.cwl realworld/workflowhub/361/tools/Assembly/antismash/chunking_antismash_with_conditionals/rename_contigs/rename_contigs.yml
+> job check: KeyError: 'location'
+
+realworld/workflowhub/361/tools/GO-slim/go_summary.cwl realworld/workflowhub/361/tools/GO-slim/go_summary.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'config' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/361/tools/RNA_prediction/cmsearch-deoverlap/cmsearch-deoverlap-v0.02.cwl realworld/workflowhub/361/tools/RNA_prediction/cmsearch-deoverlap/cmsearch-deoverlap-v0.02.test.job.yaml
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'clan_information' field is not valid because
+> job check: value is a dict, expected null or string
+
+realworld/workflowhub/361/tools/RNA_prediction/extract-coords/extract-coords_awk.cwl realworld/workflowhub/361/tools/RNA_prediction/extract-coords/extract-coords_awk.yml
+> job check: WorkflowException: Expected value of 'infernal_matches' to have format 'http://edamontology.org/format_3475' but
+> job check: File has no 'format' defined: {
+
+realworld/workflowhub/361/tools/RNA_prediction/mapseq/mapseq.cwl realworld/workflowhub/361/tools/RNA_prediction/mapseq/mapseq-test.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'taxonomy' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/361/tools/RNA_prediction/mapseq2biom/mapseq2biom.cwl realworld/workflowhub/361/tools/RNA_prediction/mapseq2biom/mapseq2biom-test.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'otu_table' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/361/tools/hmmer/hmmscan/hmmscan.cwl realworld/workflowhub/361/tools/hmmer/hmmscan/hmmscan.yml
+> job check: WorkflowException: Expected value of 'seqfile' to have format 'http://edamontology.org/format_1929' but
+> job check: File has no 'format' defined: {
+
+realworld/workflowhub/361/utils/hmmscan_tab_modification/hmmscan_tab_modification.cwl realworld/workflowhub/361/utils/hmmscan_tab_modification/hmmscan_tab_modification.yml
+> job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_3475' but
+> job check: File has no 'format' defined: {
+
+realworld/workflowhub/361/workflows/subworkflows/other_ncrnas.cwl realworld/workflowhub/361/travis/tests/test-input/other_ncrnas.yml
+> job check: KeyError: 'location'
+
+realworld/workflowhub/362/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_sorting.cwl realworld/workflowhub/362/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_sorting.job.yaml
+> job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_2333' but
+> job check: File has no 'format' defined: {
+
+realworld/workflowhub/362/tools/Assembly/Diamond/Diamond.blastp-v0.9.21.cwl realworld/workflowhub/362/tools/Assembly/Diamond/Diamond.blastp-v0.9.21.test.job.yaml
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'databaseFile' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/362/tools/Assembly/Diamond/Diamond.blastx-v0.9.21.cwl realworld/workflowhub/362/tools/Assembly/Diamond/Diamond.blastx-v0.9.21.test.job.yaml
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'databaseFile' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/362/tools/Assembly/Diamond/diamond-subwf.cwl realworld/workflowhub/362/tools/Assembly/Diamond/diamond-subwf.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: * the 'Uniref90_db_txt' field is not valid because
+> job check: the value is not string
+> job check: * the 'databaseFile' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/362/tools/Assembly/EggNOG/eggNOG/eggnog.cwl realworld/workflowhub/362/tools/Assembly/EggNOG/eggNOG/eggnog.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: * the 'db' field is not valid because
+> job check: value is a dict, expected null or string
+> job check: * the 'db_diamond' field is not valid because
+> job check: value is a dict, expected null or string
+
+realworld/workflowhub/362/tools/Assembly/EggNOG/eggnog-subwf.cwl realworld/workflowhub/362/tools/Assembly/EggNOG/eggnog-subwf.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: * the 'db' field is not valid because
+> job check: the value is not string
+> job check: * the 'db_diamond' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/362/tools/Assembly/GFF/gff_generation.cwl realworld/workflowhub/362/tools/Assembly/GFF/gff_generation.yml
+> job check: WorkflowException: Expected value of 'eggnog_results' to have format 'http://edamontology.org/format_3475' but
+> job check: File has no 'format' defined: {
+
+realworld/workflowhub/362/tools/Assembly/Genome_properties/genome_properties.cwl realworld/workflowhub/362/tools/Assembly/Genome_properties/genome_properties.yml
+> job check: WorkflowException: Expected value of 'input_tsv_file' to have format 'http://edamontology.org/format_3475' but
+> job check: File has no 'format' defined: {
+
+realworld/workflowhub/362/tools/Assembly/KEGG_analysis/KEGG_pathways/kegg_pathways.cwl realworld/workflowhub/362/tools/Assembly/KEGG_analysis/KEGG_pathways/kegg_pathways.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: * the 'graphs' field is not valid because
+> job check: the value is not string
+> job check: * the 'pathways_classes' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/362/tools/Assembly/KEGG_analysis/Modification/modification_table.cwl realworld/workflowhub/362/tools/Assembly/KEGG_analysis/Modification/modification_table.yml
+> job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_3475' but
+> job check: File has no 'format' defined: {
+
+realworld/workflowhub/362/tools/Assembly/antismash/chunking_antismash_with_conditionals/antismash_chunking_subwf.cwl realworld/workflowhub/362/tools/Assembly/antismash/chunking_antismash_with_conditionals/ymls/antismash_chunking_subwf.yml
+> job check: ValidationException: Version 'v1.2.0-dev2' is a development or deprecated version.
+> job check: Update your document to a stable version (v1.0, v1.1, v1.2) or use --enable-dev to enable support for development and deprecated versions.
+
+realworld/workflowhub/362/tools/Assembly/antismash/chunking_antismash_with_conditionals/rename_contigs/rename_contigs.cwl realworld/workflowhub/362/tools/Assembly/antismash/chunking_antismash_with_conditionals/rename_contigs/rename_contigs.yml
+> job check: KeyError: 'location'
+
+realworld/workflowhub/362/tools/GO-slim/go_summary.cwl realworld/workflowhub/362/tools/GO-slim/go_summary.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'config' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/362/tools/RNA_prediction/cmsearch-deoverlap/cmsearch-deoverlap-v0.02.cwl realworld/workflowhub/362/tools/RNA_prediction/cmsearch-deoverlap/cmsearch-deoverlap-v0.02.test.job.yaml
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'clan_information' field is not valid because
+> job check: value is a dict, expected null or string
+
+realworld/workflowhub/362/tools/RNA_prediction/extract-coords/extract-coords_awk.cwl realworld/workflowhub/362/tools/RNA_prediction/extract-coords/extract-coords_awk.yml
+> job check: WorkflowException: Expected value of 'infernal_matches' to have format 'http://edamontology.org/format_3475' but
+> job check: File has no 'format' defined: {
+
+realworld/workflowhub/362/tools/RNA_prediction/mapseq/mapseq.cwl realworld/workflowhub/362/tools/RNA_prediction/mapseq/mapseq-test.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'taxonomy' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/362/tools/RNA_prediction/mapseq2biom/mapseq2biom.cwl realworld/workflowhub/362/tools/RNA_prediction/mapseq2biom/mapseq2biom-test.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'otu_table' field is not valid because
+> job check: the value is not string
+
+realworld/workflowhub/362/tools/hmmer/hmmscan/hmmscan.cwl realworld/workflowhub/362/tools/hmmer/hmmscan/hmmscan.yml
+> job check: WorkflowException: Expected value of 'seqfile' to have format 'http://edamontology.org/format_1929' but
+> job check: File has no 'format' defined: {
+
+realworld/workflowhub/362/utils/hmmscan_tab_modification/hmmscan_tab_modification.cwl realworld/workflowhub/362/utils/hmmscan_tab_modification/hmmscan_tab_modification.yml
+> job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_3475' but
+> job check: File has no 'format' defined: {
+
+realworld/workflowhub/362/workflows/subworkflows/other_ncrnas.cwl realworld/workflowhub/362/travis/tests/test-input/other_ncrnas.yml
+> job check: KeyError: 'location'
+
+realworld/workflowhub/474/src/tools/megahit/megahit_paired.cwl realworld/workflowhub/474/tests/tools/megahit/megahit_paired.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: * the 'forward_reads' field is not valid because
+> job check: value is a dict, expected array of <File>
+> job check: * the 'reverse_reads' field is not valid because
+> job check: value is a dict, expected array of <File>
+
+realworld/workflowhub/474/src/tools/megahit/megahit_single.cwl realworld/workflowhub/474/tests/tools/megahit/megahit_single.yml
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'reads' field is not valid because
+> job check: value is a dict, expected array of <File>
+
+realworld/workflowhub/510/cwl/maw.cwl realworld/workflowhub/510/cwl/maw-inputs-mutiple_ara.yaml
+= the job fits the document; the step metfrag scatters over `peaks_and_parameters`, an `Any[]?` output that only the `cwl.output.json` of the R tool gives, so the mock executor, which runs no tool, gives null, and a real run is needed
+> run: ERROR Exception on step 'dereplication'
+> run: ERROR [step dereplication] Cannot make job: --no-container, but this CommandLineTool has DockerRequirement under 'requirements'.
+> run: ERROR Workflow cannot make any more progress.

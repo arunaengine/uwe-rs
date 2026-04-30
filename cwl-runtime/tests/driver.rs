@@ -145,3 +145,34 @@ fn only_a_launch_that_assumes_its_inputs_takes_absent_files_as_present() {
     assert_eq!(outcome(true), Ok(()));
     assert!(outcome(false).is_err_and(|error| error.contains("absent.txt")));
 }
+
+#[test]
+fn expression_tools_over_absent_data_give_placeholders_for_null_outputs() {
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    let pick = "cwlVersion: v1.2\nclass: ExpressionTool\n\
+        requirements: {InlineJavascriptRequirement: {}}\n\
+        inputs: {folder: Directory}\noutputs: {picked: File?}\n\
+        expression: '${ return {picked: inputs.folder.listing.length ? inputs.folder.listing[0] : null}; }'\n";
+    let slop = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: slop\n\
+        inputs:\n  lengths: {type: File, inputBinding: {}}\noutputs: []\n";
+    let main = "cwlVersion: v1.2\nclass: Workflow\ninputs: {folder: Directory}\noutputs: []\n\
+        steps:\n  pick: {run: pick.cwl, in: {folder: folder}, out: [picked]}\n  \
+        slop: {run: slop.cwl, in: {lengths: pick/picked}, out: []}\n";
+    for (name, text) in [("pick.cwl", pick), ("slop.cwl", slop), ("main.cwl", main)] {
+        std::fs::write(folder.path().join(name), text).expect("writes a document");
+    }
+    let job = folder.path().join("job.yml");
+    std::fs::write(&job, "folder: {class: Directory, location: absent}\n").expect("writes the job");
+    let launch = Launch {
+        target: folder.path().join("main.cwl"),
+        inputs: Some(job),
+        scratch: folder.path().join("scratch"),
+        assume_inputs: true,
+        ..Launch::default()
+    };
+    let mut driver = cwl_runtime::driver(&launch).expect("a driver");
+    let mut executor = MockTes::new(folder.path().join("mock"));
+    let execution = execute("main", driver.as_mut(), &mut executor);
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    assert_eq!(execution.graph.nodes.len(), 1);
+}

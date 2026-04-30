@@ -386,7 +386,10 @@ impl Run {
                 for output in &process.outputs {
                     let name = short_name(&output.id).to_owned();
                     let value = outputs.get(&name).cloned().unwrap_or(Value::Null);
-                    let value = if fake && !types.matches(&output.value_type, &value) {
+                    // Over files without real content, a null output is what real data
+                    // would fill, so it gets a placeholder too.
+                    let unfit = value.is_null() || !types.matches(&output.value_type, &value);
+                    let value = if fake && unfit {
                         let hint = placeholder::Hint::default();
                         let mut value =
                             placeholder::value(&types, &output.value_type, &name, &base, &hint);

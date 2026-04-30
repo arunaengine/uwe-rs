@@ -93,3 +93,25 @@ fn record_fields_get_the_format_they_declare() {
         Some("http://edamontology.org/format_1930")
     );
 }
+
+#[test]
+fn files_of_mock_tasks_placeholders_and_absent_data_are_fake() {
+    let file = |location: &str| {
+        let mut map = Map::new();
+        map.insert("class".into(), Value::string("File"));
+        map.insert("location".into(), Value::string(location));
+        Value::Map(map)
+    };
+    let prefixes = ["file:///scratch/mock/work/1/".to_owned()];
+    assert!(is_fake(
+        &file("file:///scratch/mock/work/1/out.bam"),
+        &prefixes
+    ));
+    assert!(is_fake(
+        &file("file:///no/such/folder/reads.fastq"),
+        &prefixes
+    ));
+    let real = std::env::current_exe().expect("the test binary");
+    let real = file(&cwl_parser::iri::file_url(&real));
+    assert!(!is_fake(&Value::List(vec![real]), &prefixes));
+}

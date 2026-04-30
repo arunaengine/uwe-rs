@@ -229,7 +229,7 @@ fn workflows_run_as_recorded() {
     let results: Mutex<Vec<Option<String>>> = Mutex::new(vec![None; workflows.len()]);
     let threads = std::thread::available_parallelism()
         .map_or(4, |count| count.get())
-        .min(8);
+        .min(4);
     std::thread::scope(|scope| {
         for _ in 0..threads {
             scope.spawn(|| {

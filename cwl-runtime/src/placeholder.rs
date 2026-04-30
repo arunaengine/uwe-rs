@@ -306,16 +306,20 @@ pub fn names(message: &str, name: &str) -> bool {
     })
 }
 
-/// Whether a value holds a file that a placeholder or a mock task made, whose content is
-/// not real: its location starts with one of `prefixes`.
+/// Whether a value holds a file whose content is not real: one that a placeholder or a mock
+/// task made, as its location starts with one of `prefixes`, or one that is not on disk, as
+/// the data of a job file often is not in a mock run.
 pub fn is_fake(value: &Value, prefixes: &[String]) -> bool {
     match value {
         Value::List(items) => items.iter().any(|item| is_fake(item, prefixes)),
         Value::Map(map) => {
             let location = map.get("location").and_then(Value::as_str);
+            let absent = |location: &str| {
+                crate::files::local_path(location).is_some_and(|path| !path.exists())
+            };
             if value.is_file_like()
                 && location.is_some_and(|location| {
-                    prefixes.iter().any(|prefix| location.starts_with(prefix))
+                    prefixes.iter().any(|prefix| location.starts_with(prefix)) || absent(location)
                 })
             {
                 return true;

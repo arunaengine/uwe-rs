@@ -79,18 +79,28 @@ def run(name, folder, via, fields):
         return f"{name}\t{via}\t{code}\t{stage}\t{message}".rstrip("\t")
 
 
+def failing(lines):
+    """The lines of the workflows whose first launch Snakemake did not evaluate."""
+    first = {}
+    for line in lines:
+        name, _, _, stage, *_ = line.split("\t")
+        first.setdefault(name, stage)
+    return [line for line in lines if first[line.split("\t")[0]] != "evaluated"]
+
+
 def main():
     jobs = [(name, folder, via, fields) for name, folder, launches in candidates()
             for via, fields in launches]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         lines = list(pool.map(lambda job: run(*job), jobs))
     with open(ORACLE, "w", encoding="utf-8") as output:
-        output.write("# What `snakemake --dry-run` of Snakemake 9.27.0 does with each workflow of the corpus\n")
-        output.write("# and each launch launches.py considers; written by oracle.py. Columns, separated by\n")
-        output.write("# tabs: the workflow, the launch (plain, ci, catalog or tests.py), the exit code,\n")
-        output.write("# `evaluated` when Snakemake evaluated the Snakefile and began to plan the jobs, else\n")
-        output.write("# `failed`, and the first error line.\n")
-        for line in lines:
+        output.write("# What `snakemake --dry-run` of Snakemake 9.27.0 does with the workflows of the corpus\n")
+        output.write("# that it cannot evaluate with their preferred launch, for each launch launches.py\n")
+        output.write("# considers; written by oracle.py. Workflows not listed evaluate with their preferred\n")
+        output.write("# launch. Columns, separated by tabs: the workflow, the launch (plain, ci, catalog or\n")
+        output.write("# tests.py), the exit code, `evaluated` when Snakemake evaluated the Snakefile and began\n")
+        output.write("# to plan the jobs, else `failed`, and the first error line.\n")
+        for line in failing(lines):
             output.write(line + "\n")
     print(f"{len(lines)} runs", file=sys.stderr)
 

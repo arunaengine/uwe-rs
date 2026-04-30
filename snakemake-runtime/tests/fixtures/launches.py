@@ -275,7 +275,8 @@ def candidates():
 
 
 def read_oracle():
-    """Whether real Snakemake evaluated each workflow with each launch, from the oracle file."""
+    """Whether real Snakemake evaluated each launch of the workflows in the oracle file, which
+    lists only the workflows whose first launch it could not evaluate."""
     evaluated = {}
     if not os.path.exists(ORACLE):
         return evaluated
@@ -283,7 +284,7 @@ def read_oracle():
         if line.startswith("#"):
             continue
         name, via, _, stage, *_ = line.rstrip("\n").split("\t")
-        evaluated[(name, via)] = stage == "evaluated"
+        evaluated.setdefault(name, {})[via] = stage == "evaluated"
     return evaluated
 
 
@@ -291,7 +292,9 @@ def main():
     evaluated = read_oracle()
     lines = []
     for name, _, launches in candidates():
-        chosen = next((launch for launch in launches if evaluated.get((name, launch[0]))), launches[0])
+        runs = evaluated.get(name)
+        chosen = launches[0] if runs is None else next(
+            (launch for launch in launches if runs.get(launch[0])), launches[0])
         via, fields = chosen
         if fields:
             lines.append((name, via, fields))

@@ -1,43 +1,43 @@
 # The outcome of each workflow of the Snakemake corpus with the mock executor: `ok` and
 # the number of tasks, or the exit code (33 for unsupported features) and the first line
 # of the error.
-catalog/3d-omics__hg_genotype 33 workflow/Snakefile:13: Not supported yet: the library function pandas.read_table
+catalog/3d-omics__hg_genotype 33 workflow/Snakefile:47: Not supported yet: modules from remote repositories (github(...))
 catalog/AToL-Bioinformatics__genome-launcher-workflow 33 workflow/Snakefile:5: ModuleNotFoundError: No module named 'git'
 catalog/Addimator__compare_meth 1 workflow/rules/common.smk:7: FileNotFoundError: [Errno 2] No such file or directory: '/projects/koesterlab/benchmark-methylation/data_analysis_jochen/compare_meth/config/sample.tsv'
 catalog/Addimator__varlociraptor-copy-number-variants ok 9
-catalog/Albinam1__bioinformatics_school 33 workflow/rules/common.smk:20: Not supported yet: the library function pandas.read_table
+catalog/Albinam1__bioinformatics_school 1 workflow/rules/mapping.smk:34: WorkflowError: Not all output, log and benchmark files of rule map_reads_with_minimap contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
 catalog/AllenInstitute__Bulk-RNA-Snakeline ok 10
 catalog/AmberFu__snakemake_BAMmetrics_mosdepth 1 workflow/Snakefile:8: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/corpus/snakemake/catalog/config/config.yaml).
-catalog/ArsenaultResearch__RNAseq_Pipeline 33 workflow/rules/common.smk:9: Not supported yet: the library function pandas.read_csv
-catalog/ArsenaultResearch__windowRAxMLng 33 workflow/rules/common.smk:9: Not supported yet: the library function pandas.read_csv
-catalog/BesenbacherLab__bbq_pipeline 33 workflow/rules/common.smk:20: Not supported yet: the library function pandas.read_table
-catalog/Bioinflows-Bioversity-CIAT__ont-target-dna-variant-calling 33 workflow/rules/common.smk:103: Not supported yet: the library function pandas.read_csv
-catalog/Bioinflows-Bioversity-CIAT__tm-shift_designer 33 workflow/rules/common.smk:23: Not supported yet: the library function pandas.read_csv
+catalog/ArsenaultResearch__RNAseq_Pipeline ok 408
+catalog/ArsenaultResearch__windowRAxMLng ok 8
+catalog/BesenbacherLab__bbq_pipeline ok 10
+catalog/Bioinflows-Bioversity-CIAT__ont-target-dna-variant-calling ok 36
+catalog/Bioinflows-Bioversity-CIAT__tm-shift_designer ok 997
 catalog/CAST-genomics__snakemake-gfa-complexity 1 workflow/Snakefile:18: KeyError: 'trait'
 catalog/CBIbigA__hicstuff_pipeline ok 10
-catalog/CSB-IG__GSE167150_HiC_matrices 33 workflow/rules/common.smk:10: Not supported yet: the library function pandas.read_csv
-catalog/CVUA-RRW__FooDMe 33 workflow/rules/common.smk:18: Not supported yet: the library function pandas.read_csv
+catalog/CSB-IG__GSE167150_HiC_matrices 1 workflow/rules/hicpro_allvalidpairs.smk:4: WorkflowError: Not all output, log and benchmark files of rule hicpro_allvalidpairs contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
+catalog/CVUA-RRW__FooDMe ok 68
 catalog/Cesconlab__ExomeSeq 1 workflow/Snakefile:9: WorkflowError: Workflow defines configfile config/config.yaml but it is not present or accessible (full checked path: /cluster/projects/cesconlab/collaborations/CesconPDX/ExomeSeq/config/config.yaml).
 catalog/ChaissonLab__SegDupAnnotation2 1 workflow/Snakefile:65: NameError: name 'sys' is not defined
 catalog/ClavelLab__genome-assembly 33 workflow/rules/common.smk:5: ModuleNotFoundError: No module named 'snakemake.remote'
 catalog/Crollo95__survhive-workflow 1 workflow/Snakefile:18: WorkflowError: Workflow defines configfile config/config.yaml but it is not present or accessible (full checked path: config/config.yaml).
-catalog/DSiB-G2__G2-CovPipeline 33 workflow/rules/common.smk:10: Not supported yet: the library function pandas.read_csv
-catalog/DavideBrex__SpikeFlow 33 workflow/rules/common.smk:10: Not supported yet: the library function pandas.read_csv
+catalog/DSiB-G2__G2-CovPipeline ok 50
+catalog/DavideBrex__SpikeFlow 1 workflow/rules/common.smk:227: KeyError: 'H3K4me3_EGF'
 catalog/DustinMathia__aradopsis-drive 1 workflow/Snakefile:12: NameError: name 'os' is not defined
-catalog/ETH-NEXUS__gExcite_pipeline 33 workflow/rules/misc_snake.smk:8: Not supported yet: the library function pandas.read_table
+catalog/ETH-NEXUS__gExcite_pipeline 1 workflow/rules/misc_snake.smk:8: EmptyDataError: No columns to parse from file
 catalog/EichlerLab__ONT_pipelines 1 workflow/Snakefile:11: NameError: name 'srcdir' is not defined
-catalog/EloiseEsox__snakemake 33 workflow/rules/common.smk:6: Not supported yet: the library function pandas.read_csv
-catalog/EloiseIsobelPearce__snakemake-example 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
-catalog/FeelLiao__rna-seq-std 33 workflow/rules/common.smk:11: Not supported yet: the library function pandas.read_csv
+catalog/EloiseEsox__snakemake ok 0
+catalog/EloiseIsobelPearce__snakemake-example ok 10
+catalog/FeelLiao__rna-seq-std ok 25
 catalog/FilippoGas__GeneProgramsProfiler ok 42
-catalog/FilippoGas__HapScorer 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
-catalog/GArcho44__snvs-annotation-pipeline 1 workflow/Snakefile:22: WorkflowError: Input and output files have to be specified as strings or lists of strings.
+catalog/FilippoGas__HapScorer ok 10
+catalog/GArcho44__snvs-annotation-pipeline 1 workflow/Snakefile:5: WorkflowError: Workflow defines configfile ../config/config.yml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/corpus/snakemake/catalog/config/config.yml).
 catalog/GaspardR__snakemake-github-module-keyerror ok 4
 catalog/Gmidtg21__bt7-9gmidtg ok 7
 catalog/GooglingTheCancerGenome__sv-callers 33 workflow/validator/__init__.py:6: ModuleNotFoundError: No module named 'ruamel'
 catalog/GooglingTheCancerGenome__sv-gen 33 workflow/helper_functions.py:5: ModuleNotFoundError: No module named 'pyfaidx'
 catalog/GuttmanLab__chipdip-pipeline 1 workflow/Snakefile:225: AttributeError: 'str' object has no attribute 'path'
-catalog/IHGGM-Aachen__CNVand 33 workflow/rules/common.smk:18: Not supported yet: the library function pandas.read_table
+catalog/IHGGM-Aachen__CNVand 1 workflow/Snakefile:13: NameError: name 'os' is not defined
 catalog/IKIM-Essen__QC_pre_NextSeq 33 workflow/Snakefile:10: Not supported yet: PEP projects (pepfile)
 catalog/IKIM-Essen__ResMAG 33 workflow/Snakefile:15: Not supported yet: PEP projects (pepfile)
 catalog/IKIM-Essen__RiboSnake 33 workflow/Snakefile:13: Not supported yet: PEP projects (pepfile)
@@ -45,41 +45,41 @@ catalog/IKIM-Essen__uncovar 33 workflow/Snakefile:15: Not supported yet: PEP pro
 catalog/IMS-Bio2Core-Facility__GTExSnake ok 4
 catalog/IMS-Bio2Core-Facility__polya_liftover ok 19
 catalog/IMS-Bio2Core-Facility__single_snake_sequencing ok 16
-catalog/JAlvarezJarreta__community_gff3_validation 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/JAlvarezJarreta__community_gff3_validation ok 10
 catalog/Jain-Joyce-Labs__snakemake-chipseq ok 77
 catalog/JeremyTournayre__Pipeline-Holoruminant-Meta 1 workflow/Snakefile:22: KeyError: 'params-file'
 catalog/JoseFcoMH__af3_screening 33 workflow/scripts/logging_utils.py:9: Not supported yet: contextlib.contextmanager
 catalog/JoyceS13__BEP_pipeline 1 workflow/Snakefile:101: SyntaxError: unindent does not match any outer indentation level
 catalog/KasperSkytte__snakemake_savont ok 14
-catalog/KasperSkytte__snakemake_usearch ok 15
-catalog/KonstantinBurkin__cbai 33 workflow/rules/common.smk:21: Not supported yet: the library function pandas.read_table
+catalog/KasperSkytte__snakemake_usearch ok 14
+catalog/KonstantinBurkin__cbai 1 workflow/rules/common.smk:44: WorkflowError: InputFunctionException in rule merge_variants (wildcards: ): AttributeError: 'str' object has no attribute 'open'
 catalog/Kratzcomycete__Fungal-Genome-Processing-Snakemake ok 2
 catalog/LET19__snakemake-template ok 0
 catalog/LiaOb21__FSP_assembly_benchmarking ok 1
 catalog/LiaOb21__colora ok 26
 catalog/LinhHo__module_area_potentials ok 1
 catalog/Louis-XIV-bis__NJ_tree_bootstrap ok 0
-catalog/MPUSP__snakemake-assembly-postprocessing 33 workflow/rules/common.smk:11: Not supported yet: the library function pandas.read_csv
-catalog/MPUSP__snakemake-bacterial-riboseq 33 workflow/rules/common.smk:9: Not supported yet: the library function pandas.read_csv
-catalog/MPUSP__snakemake-bacterial-rnaseq-processing 33 workflow/rules/common.smk:9: Not supported yet: the library function pandas.read_csv
+catalog/MPUSP__snakemake-assembly-postprocessing ok 2
+catalog/MPUSP__snakemake-bacterial-riboseq ok 32
+catalog/MPUSP__snakemake-bacterial-rnaseq-processing 33 workflow/rules/common.smk:53: Not supported yet: the attribute absolute of type
 catalog/MPUSP__snakemake-crispr-guides ok 11
-catalog/MPUSP__snakemake-ms-proteomics 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/MPUSP__snakemake-ms-proteomics ok 12
 catalog/MPUSP__snakemake-ont-bacterial-variants 1 workflow/Snakefile:18: NameError: name 'os' is not defined
-catalog/MPUSP__snakemake-ont-basecalling 33 workflow/rules/common.smk:4: Not supported yet: the library function pandas.read_csv
-catalog/MPUSP__snakemake-simple-mapping 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
-catalog/MarieRiisgaard__snakemake_usearch_primertrim_and_subset 1 workflow/Snakefile:19: FileNotFoundError: [Errno 2] No such file or directory: 'nanopore_run_xyz123/fastq_pass'
+catalog/MPUSP__snakemake-ont-basecalling ok 61
+catalog/MPUSP__snakemake-simple-mapping 33 workflow/rules/common.smk:38: Not supported yet: the attribute absolute of type
+catalog/MarieRiisgaard__snakemake_usearch_primertrim_and_subset 1 workflow/Snakefile:19: FileNotFoundError: [Errno 2] No such file or directory: '.test/nanopore_run_xyz123/fastq_pass'
 catalog/Matheusdras__Snakemake-template ok 0
-catalog/MathiasEskildsen__ONT-AmpSeq 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
-catalog/MathiasEskildsen__ONT_RNA-seq_wf 1 workflow/rules/common.smk:43: NameError: name 're' is not defined
-catalog/MethyleneBlues__Snake 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/MathiasEskildsen__ONT-AmpSeq ok 54
+catalog/MathiasEskildsen__ONT_RNA-seq_wf 1 workflow/Snakefile:13: FileNotFoundError: [Errno 2] No such file or directory: '/home/bio.aau.dk/mk20aj/Projects/ONT_RNA-seq_wf/data/samples'
+catalog/MethyleneBlues__Snake ok 10
 catalog/NCI-CGR__TriosCompass_v2 1 workflow/Snakefile:8: NameError: name 'os' is not defined
-catalog/NeuroGranberg__NODDIpipeline 33 workflow/rules/NODDIpipeline.smk:12: Not supported yet: the library function pandas.read_csv
+catalog/NeuroGranberg__NODDIpipeline 33 workflow/rules/NODDIpipeline.smk:25: Not supported yet: the attribute replace of DataFrame
 catalog/Ovewh__ACP-haugvaldstad-et-al-2025 1 workflow/rules/compute_ERF.smk:39: WorkflowError: InputFunctionException in rule calculate_ERF_TOA (wildcards: experiment=piClim-2xdust, vName=ERFtaf, model=MPI-ESM-1-2-HAM, freq=Ayear): WorkflowError: No values given for wildcard 'freq,Aday|Amon|clim|Ayear'.
 catalog/Ovewh__Climaso 1 workflow/rules/plotAerChemMIP.smk:329: WorkflowError: No values given for wildcard 'plevel,low|middle|high'.
 catalog/PathoGenOmics-Lab__VIPERA 33 workflow/rules/common.smk:31: Not supported yet: subprocess.check_output: running commands while the workflow is planned
 catalog/Phlya__C-integration-mapping ok 0
 catalog/Phlya__distill-reorder-C 33 workflow/Snakefile:11: Not supported yet: modules from remote repositories (github(...))
-catalog/Phlya__tagmap 33 workflow/rules/common.smk:152: Not supported yet: the library function pandas.read_table
+catalog/Phlya__tagmap 1 workflow/rules/common.smk:265: WorkflowError: InputFunctionException in rule stats (wildcards: sample=H2): JSONDecodeError: Expecting value: line 1 char 0
 catalog/Princeton-LSI-ResearchComputing__hifi-assembly ok 0
 catalog/PyPSA__grid-builder 33 workflow/scripts/_schema.py:14: ModuleNotFoundError: No module named 'earth_osm'
 catalog/RaphaelAngerbauer__snakemake_template ok 0
@@ -92,21 +92,21 @@ catalog/SchlossLab__mikropml-snakemake-workflow 1 workflow/Snakefile:90: Workflo
 catalog/SchlossLab__mothur-snakemake-workflow ok 13
 catalog/ShaolinXU__snakemake_repo ok 0
 catalog/SichongP__atac-seq 33 workflow/Snakefile:8: Not supported yet: PEP projects (pepfile)
-catalog/Siffreya__MKD_eDNA_biodiversity 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
-catalog/SilasK__Metagenome-Profile 33 workflow/rules/sample_table.smk:12: Not supported yet: the library function pandas.read_csv
+catalog/Siffreya__MKD_eDNA_biodiversity ok 10
+catalog/SilasK__Metagenome-Profile 1 workflow/rules/sample_table.smk:12: FileNotFoundError: [Errno 2] No such file or directory: 'samples.csv'
 catalog/SilasK__Metagenome-QC 1 workflow/Snakefile:18: KeyError: 'database_dir'
-catalog/SilasK__Snakebread 33 workflow/rules/sample_table.smk:11: Not supported yet: the library function pandas.read_csv
-catalog/SilkeAllmannLab__pacbio_snakemake 33 workflow/scripts/common.py:15: Not supported yet: the library function pandas.read_csv
-catalog/SilvanCodes__1001_genomes_analysis 1 workflow/Snakefile:51: LookupError: Dpath all/gene_ids not found.
-catalog/SilvanCodes__ag-wiehe-ndm 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/SilasK__Snakebread 1 workflow/rules/sample_table.smk:16: FileNotFoundError: Sample table not found. Please provide a 'samples.csv' or 'samples.tsv' file.
+catalog/SilkeAllmannLab__pacbio_snakemake ok 16
+catalog/SilvanCodes__1001_genomes_analysis ok 6
+catalog/SilvanCodes__ag-wiehe-ndm ok 10
 catalog/StergachisLab__IsoSeq_smk ok 29
-catalog/SveTho__base 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/SveTho__base ok 10
 catalog/SveTho__bcl2fastq2_workflow ok 0
-catalog/SveTho__merge_fastqs 33 workflow/Snakefile:8: Not supported yet: the library function pandas.read_csv
-catalog/TLenfers__multispecies_mitochondrial_variant_analysis 33 workflow/Snakefile:1: Not supported yet: the library function pandas.read_table
+catalog/SveTho__merge_fastqs ok 3
+catalog/TLenfers__multispecies_mitochondrial_variant_analysis 33 workflow/rules/reference.smk:4: Not supported yet: the attribute joinpath of type
 catalog/TRON-Bioinformatics__neorasp 33 workflow/Snakefile:11: Not supported yet: pathvars
-catalog/TRON-Bioinformatics__oblx 33 workflow/Snakefile:44: Not supported yet: the library function pandas.read_csv
-catalog/TidballLab__SNP-Cas13d-Selector 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/TRON-Bioinformatics__oblx 33 workflow/rules/uniprot_annotations.smk:6: Not supported yet: storage providers
+catalog/TidballLab__SNP-Cas13d-Selector ok 10
 catalog/UpalabdhaD__snakemake_wf_skeleton ok 0
 catalog/WHops__triopull-asm 1 workflow/Snakefile:2: NameError: name 'sys' is not defined
 catalog/WanlinLi2021__demo ok 0
@@ -117,49 +117,49 @@ catalog/Xavster838__downstream_isoseq_process 1 workflow/Snakefile:10: NameError
 catalog/Xavster838__get_and_annotate_locus 1 workflow/Snakefile:8: NameError: name 'srcdir' is not defined
 catalog/Xavster838__run_NucFreq 1 workflow/Snakefile:8: NameError: name 'srcdir' is not defined
 catalog/Yegberink__euro_building_heat_supply 33 workflow/Snakefile:11: Not supported yet: pathvars
-catalog/Yegberink__module_geothermal 33 workflow/scripts/build_scenario_table.py:119: Not supported yet: the library function numpy.nan
+catalog/Yegberink__module_geothermal 1 workflow/scripts/build_scenario_table.py:92: TypeError: isinstance() arg 2 must be a type, a tuple of types, or a union, not builtin_function_or_method
 catalog/Yegberink__module_heat_rasters 33 workflow/Snakefile:11: Not supported yet: pathvars
-catalog/Zilong-Li__array-imputation-workflow 33 workflow/rules/common.smk:7: Not supported yet: the library function pandas.read_csv
-catalog/Zilong-Li__lcWGS-imputation-workflow 33 workflow/rules/common.smk:7: Not supported yet: the library function pandas.read_csv
+catalog/Zilong-Li__array-imputation-workflow 1 workflow/rules/common.smk:31: FileNotFoundError: [Errno 2] No such file or directory: 'data/chip/megaMergedPlus.autosomes.QCedHg38.nonoverlap.bim'
+catalog/Zilong-Li__lcWGS-imputation-workflow 1 workflow/rules/common.smk:211: WorkflowError: Flags (temp, rule) in file pattern 'results/quilt2/refsize{size}/{chrom}/quilt.down{depth}x.mspbwt.{chrom}.bcf' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf"
 catalog/abbyevewilliams__map-pipeline 1 workflow/Snakefile:13: FileNotFoundError: [Errno 2] No such file or directory: '/data/biol-silvereye/ball6625/map-pipeline/config/zborb-samples.txt'
-catalog/abrahanhernandez__scWGA 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/abrahanhernandez__scWGA ok 10
 catalog/adrisede__Isoseq_smk_min 1 workflow/Snakefile:273: WorkflowError: Not all output, log and benchmark files of rule collapse contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
 catalog/aekrylova__scPASU 1 workflow/rules/1_data_preprocessing.smk:1: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/corpus/snakemake/catalog/config/config.yaml).
-catalog/akcorut__kGWASflow 33 workflow/rules/common.smk:29: Not supported yet: the library function pandas.read_csv
+catalog/akcorut__kGWASflow 1 workflow/rules/common.smk:86: NameError: name 'snakemake' is not defined
 catalog/alexhbnr__contig_simulation ok 0
 catalog/alzel__refseq_pipeline 33 workflow/Snakefile:10: Not supported yet: os.popen: running commands while the workflow is planned
 catalog/ammaraziz__voi 1 workflow/Snakefile:6: KeyError: 'output'
-catalog/arwisyah__snakemake_rna_vc_docker_reproduce 33 workflow/rules/common.smk:12: Not supported yet: the library function pandas.read_table
-catalog/aryazand__call_tss 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
-catalog/aryazand__fastq-process-align 33 workflow/rules/common.smk:9: Not supported yet: the library function pandas.read_csv
+catalog/arwisyah__snakemake_rna_vc_docker_reproduce 33 workflow/rules/common.smk:55: Not supported yet: the library function multiprocessing.cpu_count
+catalog/aryazand__call_tss ok 20
+catalog/aryazand__fastq-process-align 33 workflow/rules/common.smk:43: Not supported yet: the attribute absolute of type
 catalog/aryazand__genome_browser_workflow 1 workflow/rules/ucsc_trackhub.smk:13: NameError: name 'os' is not defined
 catalog/aryazand__proseq_workflow 33 workflow/Snakefile:27: Not supported yet: modules from remote repositories (github(...))
 catalog/aryazand__rnaseq_to_genome_annotation 33 workflow/Snakefile:23: Not supported yet: modules from remote repositories (github(...))
-catalog/b-brankovics__bwa-gatk-fasttree-smkwf 33 workflow/rules/common.smk:20: Not supported yet: the library function pandas.read_table
-catalog/b-brankovics__smkwf-STRAf-typing 33 workflow/rules/common.smk:20: Not supported yet: the library function pandas.read_csv
-catalog/b-brankovics__smkwf-oligo-screening 33 workflow/rules/common.smk:20: Not supported yet: the library function pandas.read_csv
-catalog/babasaraki__NSIB 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
-catalog/babasaraki__snakemake-workshop-NBIS 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
-catalog/baerlachlan__smk-rnaseq-counts 33 workflow/rules/common.smk:19: Not supported yet: the library function pandas.read_csv
-catalog/baerlachlan__smk-rnaseq-gatk-variants 33 workflow/rules/common.smk:10: Not supported yet: the library function pandas.read_csv
+catalog/b-brankovics__bwa-gatk-fasttree-smkwf ok 55
+catalog/b-brankovics__smkwf-STRAf-typing 33 workflow/Snakefile:37: Not supported yet: modules from remote repositories (github(...))
+catalog/b-brankovics__smkwf-oligo-screening 1 workflow/Snakefile:95: WorkflowError: InputFunctionException in rule lastdb_transcript (wildcards: ): NameError: name 'os' is not defined
+catalog/babasaraki__NSIB ok 10
+catalog/babasaraki__snakemake-workshop-NBIS ok 10
+catalog/baerlachlan__smk-rnaseq-counts ok 37
+catalog/baerlachlan__smk-rnaseq-gatk-variants ok 64
 catalog/bakerwm__snakemake-rnaseq-star 33 workflow/rules/common.smk:4: ModuleNotFoundError: No module named 'snakemake.remote'
 catalog/belowlab__ukbb-phecode-mapping ok 0
 catalog/bethanyyk__DENV_simulations 1 workflow/rules/create_amplicons.smk:7: NameError: name 'os' is not defined
 catalog/bheimbu__annoSnake ok 114
 catalog/boulardlab__3t-seq 33 workflow/Snakefile:4: Not supported yet: the library function urllib.parse.urlparse
-catalog/broomej__serpent-DEFUNCT 1 workflow/Snakefile:9: WorkflowError: Workflow defines configfile config/config.yaml but it is not present or accessible (full checked path: config/config.yaml).
-catalog/brunosate21-a11y__Metabolic-Modeling-Workflow. 1 workflow/Snakefile:44: ValueError: Nenhum MAG encontrado. Define 'sample_sheet:' ou 'MAGS:' na config, ou coloca ficheiros .faa em 'data/mags'.
+catalog/broomej__serpent-DEFUNCT ok 2
+catalog/brunosate21-a11y__Metabolic-Modeling-Workflow. ok 22
 catalog/brunosate21-a11y__codigo-sem-commit ok 8
 catalog/calliope-project__module_road_transport ok 1
 catalog/cbg-ethz__V-pipe 33 workflow/rules/common.smk:13: Not supported yet: the library function datetime.timezone
-catalog/cbib__SpaceBlocks 33 workflow/Snakefile:103: Not supported yet: the library function pandas.read_csv
+catalog/cbib__SpaceBlocks 1 workflow/Snakefile:316: WorkflowError: Flags (directory, rule) in file pattern 'output/Samples/{sample}/leiden_resolution_{resolution}' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
 catalog/cecivale__snakemake-phylo-beast2 33 workflow/Snakefile:83: Not supported yet: modules from remote repositories (github(...))
 catalog/charleshefer__snakemake-workflow-template ok 0
 catalog/cjgunnar__snake-dreem ok 0
 catalog/clami66__AF_server 33 workflow/rules/common.smk:6: ModuleNotFoundError: No module named 'pickle'
 catalog/clarajegousse__hanoxy 1 helpers.py:6: FileNotFoundError: [Errno 2] No such file or directory: '/hpchome/cat3/project/hanoxy/data/info/samples.txt'
 catalog/cmc-aau__nanopore_16Samp ok 17
-catalog/cmc-aau__snakemake_project_template 1 workflow/rules/map2db.smk:12: KeyError: 'db_path'
+catalog/cmc-aau__snakemake_project_template ok 7
 catalog/cmkobel__smktest ok 0
 catalog/crs4__fair-crcc-get-data 33 workflow/rules/common.smk:5: Not supported yet: the library function threading.Lock
 catalog/daspacio9__pooledpremiumpcrpipeline2 1 workflow/rules/common.smk:47: WorkflowError: InputFunctionException in rule medaka_consensus_from_subreads (wildcards: ): TypeError: 'TextIOWrapper' object is not an iterator
@@ -167,84 +167,84 @@ catalog/davelunt__NemaTree ok 10
 catalog/davelunt__badseqs ok 0
 catalog/davelunt__mmseqs 1 workflow/Snakefile:15: SyntaxError: Expected name or colon after rule or checkpoint keyword. The keyword rule has a special meaning in Snakemake. If you named a variable or function like this, please rename it to avoid the conflict.
 catalog/davidlorenz__snakemake-workflow-template ok 0
-catalog/dawidkrzeciesa__dna-seq-cnv 33 workflow/Snakefile:21: Not supported yet: the library function pandas.read_csv
-catalog/dbespiatykh__RDscan 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
-catalog/dbespiatykh__TBvar 33 workflow/rules/common.smk:17: Not supported yet: the library function pandas.read_csv
-catalog/delpropo__TidballLab-SNP-Cas13d-Selector 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
-catalog/dlaehnemann__create-ecdna-testing-data 33 workflow/rules/common.smk:42: Not supported yet: the library function pandas.read_csv
-catalog/dlaehnemann__create-quant-seq-testing-dataset 33 workflow/Snakefile:9: Not supported yet: the library function pandas.read_csv
-catalog/dlaehnemann__create-sv-ci-testing-dataset 33 workflow/rules/downsampling.smk:39: Not supported yet: the library function pandas.read_csv
+catalog/dawidkrzeciesa__dna-seq-cnv ok 22
+catalog/dbespiatykh__RDscan ok 27
+catalog/dbespiatykh__TBvar ok 22
+catalog/delpropo__TidballLab-SNP-Cas13d-Selector ok 10
+catalog/dlaehnemann__create-ecdna-testing-data 1 workflow/rules/common.smk:42: WorkflowError: InputFunctionException in rule simulate_illumina_reads (wildcards: circle=c03, coverage=60, mean_nuc=300): EmptyDataError: No columns to parse from file
+catalog/dlaehnemann__create-quant-seq-testing-dataset ok 51
+catalog/dlaehnemann__create-sv-ci-testing-dataset 1 workflow/rules/downsampling.smk:39: WorkflowError: InputFunctionException in rule samtools_view_downsample (wildcards: sample=HCC1395, chr=full_genome, depth=9.9): EmptyDataError: No columns to parse from file
 catalog/dlaehnemann__demo-standardized-workflow ok 0
 catalog/dlaehnemann__evaluate_varlociraptor_purity_estimation ok 0
 catalog/dlaehnemann__rna-seq-conservative-fold-change-without-replicates 1 workflow/rules/common.smk:82: NameError: name 'Path' is not defined
-catalog/dlaehnemann__wgs-mosdepth-maftools-copy-numbers 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/dlaehnemann__wgs-mosdepth-maftools-copy-numbers 1 workflow/rules/common.smk:8: KeyError: "None of ['sample_name'] are in the columns"
 catalog/drifter089__pypsa-workflow 1 workflow/Snakefile:19: WorkflowError: Config file config.tutorial.yaml not found.
 catalog/elsamah__ExomeSeq 1 workflow/Snakefile:9: WorkflowError: Workflow defines configfile config/config.yaml but it is not present or accessible (full checked path: /cluster/projects/cesconlab/collaborations/CesconPDX/ExomeSeq/config/config.yaml).
 catalog/elsamah__ExomeSeq_wNorm 1 workflow/Snakefile:7: WorkflowError: Workflow defines configfile config/config.yaml but it is not present or accessible (full checked path: /cluster/projects/cesconlab/Projects/TGL10_Oct2021/ExomeSeq/config/config.yaml).
-catalog/emilymlayton__variant_calling_snakemake 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/emilymlayton__variant_calling_snakemake ok 10
 catalog/emmaewade__pangenome-workflow 1 workflow/Snakefile:6: KeyError: 'outname'
-catalog/epigen__atacseq_pipeline 33 workflow/Snakefile:28: Not supported yet: the library function pandas.read_csv
-catalog/epigen__dea_limma 33 workflow/Snakefile:25: Not supported yet: the library function pandas.read_csv
-catalog/epigen__dea_seurat 33 workflow/Snakefile:25: Not supported yet: the library function pandas.read_csv
-catalog/epigen__enrichment_analysis 33 workflow/Snakefile:32: Not supported yet: the library function pandas.read_csv
+catalog/epigen__atacseq_pipeline 1 workflow/Snakefile:28: FileNotFoundError: [Errno 2] No such file or directory: '/path/to/annotation.csv'
+catalog/epigen__dea_limma 1 workflow/Snakefile:25: FileNotFoundError: [Errno 2] No such file or directory: '/path/to/DataSet_dea_limma_annotation.csv'
+catalog/epigen__dea_seurat 1 workflow/Snakefile:25: FileNotFoundError: [Errno 2] No such file or directory: '/path/to/MyData_dea_seurat_annotation.csv'
+catalog/epigen__enrichment_analysis ok 69
 catalog/epigen__fetch_ngs ok 15
-catalog/epigen__genome_tracks 33 workflow/Snakefile:26: Not supported yet: the library function pandas.read_csv
-catalog/epigen__mixscape_seurat 33 workflow/Snakefile:24: Not supported yet: the library function pandas.read_csv
-catalog/epigen__rnaseq_pipeline 33 workflow/Snakefile:26: Not supported yet: the library function pandas.read_csv
-catalog/epigen__scrnaseq_processing_seurat 33 workflow/Snakefile:24: Not supported yet: the library function pandas.read_csv
-catalog/epigen__spilterlize_integrate 33 workflow/Snakefile:28: Not supported yet: the library function pandas.read_csv
-catalog/epigen__unsupervised_analysis 33 workflow/Snakefile:33: Not supported yet: the library function pandas.read_csv
-catalog/ethan-baldwin__braker3_annotation 33 workflow/rules/common.smk:6: Not supported yet: the library function pandas.read_table
-catalog/ethan-baldwin__hybpiper_astral_pipeline 33 workflow/rules/common.smk:3: Not supported yet: the library function pandas.read_table
+catalog/epigen__genome_tracks 1 workflow/Snakefile:26: FileNotFoundError: [Errno 2] No such file or directory: '/path/to/myData_genome_tracks_annotation.csv'
+catalog/epigen__mixscape_seurat 1 workflow/Snakefile:24: FileNotFoundError: [Errno 2] No such file or directory: '/path/to/mixscape_seurat_annotation.csv'
+catalog/epigen__rnaseq_pipeline 1 workflow/Snakefile:26: FileNotFoundError: [Errno 2] No such file or directory: '/path/to/MyRNAproject_rnaseq_pipeline_annotation.csv'
+catalog/epigen__scrnaseq_processing_seurat 1 workflow/Snakefile:24: FileNotFoundError: [Errno 2] No such file or directory: '/path/to/scrnaseq_processing_annotation.csv'
+catalog/epigen__spilterlize_integrate 1 workflow/Snakefile:28: FileNotFoundError: [Errno 2] No such file or directory: '/path/to/metadata.csv'
+catalog/epigen__unsupervised_analysis ok 61
+catalog/ethan-baldwin__braker3_annotation ok 31
+catalog/ethan-baldwin__hybpiper_astral_pipeline 1 workflow/rules/common.smk:3: FileNotFoundError: [Errno 2] No such file or directory: '/home/eab77806/hybpiper_astral_pipeline/config/samples.tsv'
 catalog/ezherman__example-workflow ok 1
 catalog/fcaretti__SNPs_from_RNA 1 workflow/Snakefile:5: WorkflowError: Workflow defines configfile config/actual_config.yml but it is not present or accessible (full checked path: config/actual_config.yml).
 catalog/fiberseq__fiberseq-smk 1 workflow/Snakefile:108: WorkflowError: Flags (protected, rule) in file pattern 'results/{sm,ccs}/{sm}.fiberseq.bam' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
 catalog/fischuu__Snakebite-Holoruminant-MetaG 1 workflow/Snakefile:53: KeyError: 'params-file'
-catalog/flo-schu__pymob-workflow 33 workflow/rules/common.smk:16: Not supported yet: the library function pandas.read_csv
-catalog/fmi-basel__ggiorget_ms2analysis 33 workflow/Snakefile:22: Not supported yet: the library function pandas.read_table
+catalog/flo-schu__pymob-workflow 33 workflow/rules/common.smk:59: Not supported yet: Paramspace
+catalog/fmi-basel__ggiorget_ms2analysis ok 8
 catalog/franciscozorrilla__metaGEM 1 workflow/Snakefile:1: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/corpus/snakemake/catalog/config/config.yaml).
-catalog/frattalab__QAPA_snakemake 33 workflow/Snakefile:5: Not supported yet: the library function pandas.read_csv
+catalog/frattalab__QAPA_snakemake 1 workflow/Snakefile:5: NameError: name 'os' is not defined
 catalog/friendsofstrandseq__ashleys-qc-pipeline 1 workflow/rules/common.smk:309: FileNotFoundError: [Errno 2] No such file or directory: '.tests/data_CHR17'
 catalog/friendsofstrandseq__mosaicatcher-pipeline 1 workflow/rules/common.smk:583: FileNotFoundError: [Errno 2] No such file or directory: '.tests/data_CHR17'
 catalog/gabora__snakemake_template ok 0
-catalog/gabrielfranco89__fastq_to_ucram 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/gabrielfranco89__fastq_to_ucram ok 19
 catalog/garrison-chen__SR-pipe ok 0
-catalog/geeksville__astrosnake 1 workflow/Snakefile:67: KeyError: 'paths'
+catalog/geeksville__astrosnake ok 2
 catalog/giacatxt__gatk ok 0
 catalog/giacatxt__trimmomatic ok 0
 catalog/gonzarizzo__globe_map ok 4
 catalog/guyer__slurm_conda_glitch ok 6
-catalog/gynecoloji__snakemake_ATACseq 33 workflow/rules/common.smk:19: Not supported yet: the library function pandas.read_csv
+catalog/gynecoloji__snakemake_ATACseq ok 102
 catalog/gynecoloji__snakemake_ATACseq_spikein 1 workflow/Snakefile:48: NameError: name 'WorkflowError' is not defined
-catalog/gynecoloji__snakemake_ChIPseq 33 workflow/rules/common.smk:31: Not supported yet: the library function pandas.read_csv
-catalog/gynecoloji__snakemake_CutandRunseq 33 workflow/scripts/samplesheet.py:14: Not supported yet: the library function pandas.read_csv
-catalog/gynecoloji__snakemake_RNAseq 33 workflow/rules/common.smk:14: Not supported yet: the library function pandas.read_csv
+catalog/gynecoloji__snakemake_ChIPseq ok 113
+catalog/gynecoloji__snakemake_CutandRunseq ok 84
+catalog/gynecoloji__snakemake_RNAseq ok 85
 catalog/gynecoloji__snakemake_debug ok 25
-catalog/gynecoloji__snakemake_scstseq 33 workflow/rules/common.smk:19: Not supported yet: the library function pandas.read_csv
-catalog/harrymatthews50__sankemake-containerisation-test 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/gynecoloji__snakemake_scstseq ok 21
+catalog/harrymatthews50__sankemake-containerisation-test ok 10
 catalog/hreypar__containers_test ok 5
-catalog/hreypar__felicidades 33 workflow/rules/common.smk:11: Not supported yet: the library function pandas.read_csv
-catalog/hzi-bifo__phylogeny-of-single-cells 33 workflow/rules/common.smk:17: Not supported yet: the library function pandas.read_csv
-catalog/hzi-bifo__snakemake-workflow-univec-removal 33 workflow/rules/common.smk:10: Not supported yet: the library function pandas.read_csv
-catalog/isaacvock__PROseq_etal ok 29
+catalog/hreypar__felicidades ok 6
+catalog/hzi-bifo__phylogeny-of-single-cells 1 workflow/rules/common.smk:32: WorkflowError: Error validating row 0 of data frame.
+catalog/hzi-bifo__snakemake-workflow-univec-removal 1 workflow/rules/common.smk:26: NameError: name 'Path' is not defined
+catalog/isaacvock__PROseq_etal 1 workflow/rules/common.smk:66: WorkflowError: InputFunctionException in rule fastp (wildcards: sample=WT_1): ValueError: Could not list FASTQ directory 'data/fastq/WT_1' (configured as 'data/fastq/WT_1'; current working directory: '.'). FileNotFoundError: [Errno 2] No such file or directory: 'data/
 catalog/jackieduckie__methylation-capture 1 workflow/Snakefile:45: SyntaxError: Expected name or colon after rule or checkpoint keyword. The keyword rule has a special meaning in Snakemake. If you named a variable or function like this, please rename it to avoid the conflict.
-catalog/jianhong__pairedtag 33 workflow/rules/common.smk:15: Not supported yet: the library function pandas.read_csv
+catalog/jianhong__pairedtag ok 18
 catalog/jjjermiah__snakemake_template ok 0
-catalog/jjjoelle__learn_rna 33 workflow/Snakefile:3: Not supported yet: the library function pandas.DataFrame
-catalog/jma1991__arrays 33 workflow/rules/common.smk:12: Not supported yet: the library function pandas.read_table
-catalog/jma1991__chromium 33 workflow/Snakefile:14: Not supported yet: the library function pandas.read_csv
+catalog/jjjoelle__learn_rna 1 workflow/Snakefile:95: WorkflowError: Flags (multiext, rule) in file pattern 'outputs/align_{base}/Aligned.sortedByCoord.out.bam' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+catalog/jma1991__arrays ok 33
+catalog/jma1991__chromium 1 workflow/Snakefile:40: KeyError: 'sample'
 catalog/jma1991__rnaseq 1 workflow/Snakefile:10: WorkflowError: Error validating config file.
-catalog/johnne__map_metaT 33 workflow/scripts/common.py:7: Not supported yet: the library function pandas.read_csv
-catalog/johnne__mytestworkflow 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/johnne__map_metaT 1 workflow/scripts/common.py:7: FileNotFoundError: [Errno 2] No such file or directory: 'samples.tsv'
+catalog/johnne__mytestworkflow ok 10
 catalog/joyling93__sc10x_wf ok 31
 catalog/jsquaredosquared__novocraft-sv-benchmarking ok 63
 catalog/juliawiggeshoff__AugusMake 1 workflow/Snakefile:17: SyntaxError: Expected a newline after line continuation character
 catalog/kaminosekai54__snakemakeTest ok 0
 catalog/karltayeb__laplace-bfs 1 workflow/rules/single_causal_glm_simulations.smk:61: FileNotFoundError: [Errno 2] No such file or directory: 'output/single_variable_selection/'
-catalog/kevinrue__snakemake-cellranger-count 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/kevinrue__snakemake-cellranger-count ok 3
 catalog/kevinrue__snakemake-cncb-2024 1 workflow/alevin.smk:11: NameError: name 'os' is not defined
 catalog/kevinrue__snakemake-cncb-3 1 workflow/rules/resources.smk:4: NameError: name 'os' is not defined
-catalog/kevinrue__snakemake-cncb-ensembl-2024 33 workflow/rules/common.smk:3: Not supported yet: the library function pandas.read_csv
+catalog/kevinrue__snakemake-cncb-ensembl-2024 1 workflow/rules/downloads.smk:4: NameError: name 'os' is not defined
 catalog/khanlab__SPIMprep 33 workflow/Snakefile:2: ModuleNotFoundError: No module named 'upath'
 catalog/khersameesh24__snakemake-workflow-template ok 0
 catalog/kircherlab__MPRAsnakeflow 1 workflow/rules/common.smk:58: NameError: name 'snakemake' is not defined
@@ -254,43 +254,43 @@ catalog/koesterlab__rossi-ips-dmr 1 workflow/rules/common.smk:8: TypeError: 'Tex
 catalog/kpalin__ONT_hg_somatic ok 0
 catalog/kreczko__cms-public-tutorial-snakemake ok 0
 catalog/kvntrc__snakemake_template ok 0
-catalog/lacklab__MuSTARRd 33 workflow/rules/common.smk:3: Not supported yet: the library function pandas.read_csv
-catalog/lacklab__epens-snakemake 33 workflow/rules/common.smk:3: Not supported yet: the library function pandas.read_csv
+catalog/lacklab__MuSTARRd ok 56
+catalog/lacklab__epens-snakemake 33 Not supported yet: the attribute mem_mb of Resources
 catalog/lasyaa418__control-of-latent-dynamics 33 workflow/Snakefile:7: ModuleNotFoundError: No module named 'src'
 catalog/liezeltamon__single-cell-preprocess 33 workflow/Snakefile:12: ModuleNotFoundError: No module named 'utils'
-catalog/loganylchen__NanoInsight 33 workflow/rules/common.smk:11: Not supported yet: the library function pandas.read_csv
+catalog/loganylchen__NanoInsight 33 Not supported yet: the attribute fusions of InputFiles
 catalog/loganylchen__NanoRNAMod 33 workflow/Snakefile:230: Not supported yet: the attribute default_resources of Workflow
-catalog/loganylchen__RNA-seq-analysis-pipeline 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
-catalog/loganylchen__prep-bonito-training-data 33 workflow/rules/common.smk:12: Not supported yet: the library function pandas.read_csv
-catalog/loganylchen__prep_mix_data ok 304
-catalog/loganylchen__prep_public_nanoporeDRS_data 33 workflow/rules/common.smk:6: Not supported yet: the library function pandas.read_csv
+catalog/loganylchen__RNA-seq-analysis-pipeline ok 12
+catalog/loganylchen__prep-bonito-training-data 1 workflow/rules/common.smk:12: KeyError: "None of ['SampleName'] are in the columns"
+catalog/loganylchen__prep_mix_data ok 502
+catalog/loganylchen__prep_public_nanoporeDRS_data 1 workflow/rules/common.smk:32: KeyError: 'project'
 catalog/loganylchen__snakeRIP ok 0
-catalog/loganylchen__snakemake-epitranscriptome 33 workflow/rules/common.smk:5: Not supported yet: the library function pandas.read_csv
-catalog/lparsons__pf15-smallrna-rseto 33 workflow/Snakefile:20: Not supported yet: the library function pandas.read_csv
-catalog/ltalignani__evo-shave 33 workflow/rules/common.smk:18: Not supported yet: the library function pandas.read_table
-catalog/lueong1__cfdna_methylation_public 33 workflow/Snakefile:12: Not supported yet: the library function pandas.read_csv
+catalog/loganylchen__snakemake-epitranscriptome ok 15
+catalog/lparsons__pf15-smallrna-rseto 33 workflow/rules/genome.smk:3: Not supported yet: storage providers
+catalog/ltalignani__evo-shave 1 workflow/rules/common.smk:58: FileNotFoundError: [Errno 2] No such file or directory: 'resources/genomes/GCA_018104305.1_AalbF3_genomic.fna.fai'
+catalog/lueong1__cfdna_methylation_public 1 workflow/Snakefile:12: FileNotFoundError: [Errno 2] No such file or directory: 'config/samples.tsv'
 catalog/magwenelab__WeavePop 1 workflow/Snakefile:40: NameError: name 'Path' is not defined
-catalog/manuelphilip__Single-cell-analysis-Snakemake-workflow 33 workflow/rules/common.smk:11: Not supported yet: the library function pandas.read_csv
+catalog/manuelphilip__Single-cell-analysis-Snakemake-workflow ok 49
 catalog/mariaelf97__amplicon_sequencing_simulator 1 workflow/rules/create_amplicons.smk:7: NameError: name 'os' is not defined
 catalog/markschl__uvsnake 1 workflow/Snakefile:11: WorkflowError: Error validating config file.
 catalog/martykardos__asacphus_fire_frogs 33 workflow/rules/initialize.smk:6: ModuleNotFoundError: No module named 'pwd'
-catalog/massiddamt__rna_vc_docker 33 workflow/rules/common.smk:12: Not supported yet: the library function pandas.read_table
-catalog/matinnuhamunada__interproscan_helper 33 workflow/Snakefile:11: Not supported yet: the library function pandas.read_csv
+catalog/massiddamt__rna_vc_docker 33 workflow/rules/common.smk:55: Not supported yet: the library function multiprocessing.cpu_count
+catalog/matinnuhamunada__interproscan_helper ok 711
 catalog/mbquashie__tm ok 0
 catalog/mdondrup__admixture_simulation ok 1044
 catalog/mdondrup__admixture_workflow 33 workflow/Snakefile:56: Not supported yet: the library function os.strerror
 catalog/mdondrup__divergence_time ok 6
-catalog/mdondrup__gromacs_workflow 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
-catalog/mdondrup__mytemplate_wf 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/mdondrup__gromacs_workflow ok 10
+catalog/mdondrup__mytemplate_wf ok 10
 catalog/mdondrup__ras_meta_transcriptomics 1 workflow/Snakefile:46: FileNotFoundError: [Errno 2] No such file or directory: 'input/fastq'
-catalog/mdondrup__sealice_assemblies 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/mdondrup__sealice_assemblies ok 10
 catalog/mdondrup__test ok 0
 catalog/mdondrup__yeast_variantcalling 1 workflow/rules/download.smk:9: FileNotFoundError: [Errno 2] No such file or directory: 'config/chico3.clust'
 catalog/merfre__Adaptive_Sequencing_Analysis_Workflow 33 workflow/Snakefile:12: ModuleNotFoundError: No module named 'fileinput'
 catalog/merfre__Hull_Microbiome_Cluster_Workflow 33 workflow/Snakefile:20: ModuleNotFoundError: No module named 'fileinput'
 catalog/merfre__MMCAW 33 workflow/Snakefile:12: ModuleNotFoundError: No module named 'fileinput'
 catalog/metagenome-atlas__metagenome-assembly 1 workflow/Snakefile:16: NameError: name 'logger' is not defined
-catalog/metagenome-atlas__metagenome_instrain 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/metagenome-atlas__metagenome_instrain ok 10
 catalog/milesroberts-123__poolseq-kmers 1 workflow/Snakefile:11: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/corpus/snakemake/catalog/config/config.yaml).
 catalog/milesroberts-123__slim-sweep-cnn 1 workflow/Snakefile:9: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/corpus/snakemake/catalog/config/config.yaml).
 catalog/mkrg01__genome_assembly_pipeline ok 190
@@ -304,75 +304,75 @@ catalog/modelblocks-org__module_geo_boundaries 33 workflow/Snakefile:11: Not sup
 catalog/modelblocks-org__module_hydropower 33 workflow/Snakefile:11: Not supported yet: pathvars
 catalog/modelblocks-org__module_powerplants 33 workflow/Snakefile:11: Not supported yet: pathvars
 catalog/moiexpositoalonsolab__grenepipe 33 workflow/rules/initialize.smk:6: ModuleNotFoundError: No module named 'pwd'
-catalog/monagrland__MB_Pipeline 33 workflow/Snakefile:12: Not supported yet: the library function pandas.read_table
-catalog/mpitz123__RNA_seq_alignment 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/monagrland__MB_Pipeline 1 workflow/Snakefile:12: KeyError: 'reads_table'
+catalog/mpitz123__RNA_seq_alignment ok 38
 catalog/mrvollger__sd-divergence 1 workflow/Snakefile:10: NameError: name 'srcdir' is not defined
 catalog/mukherjeelab__CLIPs4U 33 workflow/scripts/genomic_files_and_indexes.py:9: ModuleNotFoundError: No module named 'wget'
 catalog/mushu-bytes__scelect ok 3
 catalog/mynameisdidit__UTS_Bioinformatika_SV-Callers 33 workflow/validator/__init__.py:6: ModuleNotFoundError: No module named 'ruamel'
-catalog/nate-d-olson__adotto-smk ok 23
-catalog/nate-d-olson__defrabb 33 rules/common.smk:10: Not supported yet: the library function pandas.read_table
+catalog/nate-d-olson__adotto-smk ok 136
+catalog/nate-d-olson__defrabb 33 rules/common.smk:16: Not supported yet: astype(None)
 catalog/nate-d-olson__giab-stvar-curation-table 1 workflow/Snakefile:17: AttributeError: 'builtin_function_or_method' object has no attribute 'http'
 catalog/nate-d-olson__giab-sv-external-eval ok 0
 catalog/ncbench__ncbench-workflow 33 workflow/Snakefile:27: Not supported yet: modules from remote repositories (github(...))
-catalog/ncherric__Iliad 33 workflow/rules/common.smk:15: Not supported yet: the library function pandas.read_table
-catalog/niekwit__atac-seq 33 workflow/rules/common.smk:16: Not supported yet: the library function pandas.read_csv
-catalog/niekwit__chip-seq 33 workflow/scripts/general_functions.smk:73: Not supported yet: the library function pandas.read_csv
-catalog/niekwit__crispr-screens 33 workflow/Snakefile:32: Not supported yet: the library function pandas.read_csv
-catalog/niekwit__cut_and_run 1 workflow/Snakefile:15: WorkflowError: Error validating config file.
+catalog/ncherric__Iliad 1 workflow/rules/fq.smk:8: WorkflowError: InputFunctionException in rule wget_reads_from_url (wildcards: sample=KPGP-00127/): KeyError: 'KPGP-00127/'
+catalog/niekwit__atac-seq 1 workflow/rules/common.smk:42: NameError: name 'os' is not defined
+catalog/niekwit__chip-seq 1 workflow/scripts/general_functions.smk:319: AssertionError: No fastq files found...
+catalog/niekwit__crispr-screens 1 workflow/scripts/general_functions.smk:194: ValueError: No fastq or cram files found in reads directory
+catalog/niekwit__cut_and_run 1 workflow/scripts/general_functions.smk:435: AssertionError: No fastq files found...
 catalog/niekwit__damid-seq 1 workflow/scripts/general_functions.smk:41: NameError: name 'snakemake' is not defined
 catalog/niekwit__gps-orfeome 33 workflow/scripts/general_functions.smk:30: Not supported yet: the library function platform.version
-catalog/niekwit__methyl-seq 33 workflow/Snakefile:20: Not supported yet: the library function pandas.read_csv
+catalog/niekwit__methyl-seq 1 workflow/rules/common.smk:85: ValueError: No FASTQ (*.fastq.gz) files found in 'reads/' directory.
 catalog/niekwit__partridge-workflow 1 workflow/rules/common.smk:26: NameError: name 'sys' is not defined
 catalog/niekwit__rna-seq-salmon-deseq2 33 workflow/scripts/resources.py:3: ModuleNotFoundError: No module named 'urllib.error'
-catalog/niekwit__rna-seq-star-deseq2 33 workflow/scripts/general_functions.smk:11: Not supported yet: the library function pandas.read_csv
+catalog/niekwit__rna-seq-star-deseq2 ok 32
 catalog/niekwit__rna-seq-star-rmats 1 workflow/Snakefile:7: NameError: name 'logger' is not defined
 catalog/niekwit__rna-seq-star-tetranscripts 1 workflow/Snakefile:18: NameError: name 'logger' is not defined
 catalog/niekwit__smallRNA-seq 1 workflow/rules/common.smk:19: NameError: name 'os' is not defined
-catalog/nikostr__dna-seq-deepvariant-glnexus-variant-calling 33 workflow/rules/common.smk:14: Not supported yet: the library function pandas.read_table
-catalog/nikostr__read-mapping 33 workflow/rules/common.smk:15: Not supported yet: the library function pandas.read_table
+catalog/nikostr__dna-seq-deepvariant-glnexus-variant-calling 33 workflow/rules/common.smk:25: Not supported yet: the attribute sample_id of DataFrameGroupBy
+catalog/nikostr__read-mapping 33 workflow/rules/common.smk:86: Not supported yet: the attribute sample_id of DataFrameGroupBy
 catalog/nismod__open-gira 33 workflow/Snakefile:20: ModuleNotFoundError: No module named 'open_gira'
-catalog/nixonlab__HERV_um_mets 33 workflow/rules/common.smk:6: Not supported yet: the library function pandas.read_csv
+catalog/nixonlab__HERV_um_mets 1 workflow/rules/common.smk:6: FileNotFoundError: [Errno 2] No such file or directory: 'resources/mskruns.txt'
 catalog/nixonlab__snakemake_rule_library 1 workflow/Snakefile:8: FileNotFoundError: [Errno 2] No such file or directory: 'workflow/rules/common.smk'
 catalog/nodrogluap__tamor 33 workflow/rules/fastq_list.smk:5: ModuleNotFoundError: No module named 'filecmp'
-catalog/ntnn19__combflow 1 workflow/rules/common.smk:12: KeyError: 'combfold_container'
+catalog/ntnn19__combflow 1 workflow/rules/run_combfold_assembly.smk:3: NameError: name 'os' is not defined
 catalog/ntnn19__gaptrick-af_unmasked 33 workflow/Snakefile:17: Not supported yet: modules from remote repositories (github(...))
-catalog/odcambc__dumpling 33 workflow/rules/scripts/script_utils.py:117: Not supported yet: the library function pandas.read_csv
+catalog/odcambc__dumpling 1 workflow/rules/common.smk:215: FileNotFoundError: Data directory example/data does not exist
 catalog/omidalam__can_vac 1 workflow/rules/prep_refs.smk:7: KeyError: 'ref'
 catalog/open2c__distiller-sm 33 workflow/Snakefile:3: Not supported yet: the library function urllib.parse.urlparse
-catalog/orthanq__orthanq-hla-quantification 33 workflow/rules/common.smk:25: Not supported yet: the library function pandas.read_csv
+catalog/orthanq__orthanq-hla-quantification ok 1
 catalog/osvaldoreisss__rnaseq_analysis_kallisto_deseq2 ok 0
-catalog/panguangze__trio_call_phase_pipeline 33 workflow/Snakefile:10: Not supported yet: the library function pandas.read_csv
+catalog/panguangze__trio_call_phase_pipeline 1 workflow/Snakefile:10: KeyError: 'joint_calling_groups'
 catalog/panta-123__moller-prompt-workflow 1 workflow/rules/processing.smk:10: WorkflowError: InputFunctionException in rule process_raw_to_root (wildcards: run=6): NameError: name 'os' is not defined
 catalog/percyfal__tswf-smk ok 0
-catalog/petroskilp__clustromics 33 workflow/rules/common.smk:14: Not supported yet: the library function pandas.read_csv
+catalog/petroskilp__clustromics ok 113
 catalog/plycrsk__rna-seq-star-deseq2 33 workflow/rules/common.smk:4: ModuleNotFoundError: No module named 'snakemake.remote'
 catalog/poloarol__snakemake-methylseq 1 workflow/Snakefile:11: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/corpus/snakemake/catalog/config/config.yaml).
-catalog/r1cheu__gnnotator 33 workflow/Snakefile:15: Not supported yet: the library function pandas.read_csv
-catalog/r1cheu__imputation 33 workflow/rules/common.smk:7: Not supported yet: the library function pandas.read_csv
-catalog/rabiafidan__pure-faf 1 workflow/Snakefile:6: WorkflowError: Workflow defines configfile config/config.yaml but it is not present or accessible (full checked path: config/config.yaml).
+catalog/r1cheu__gnnotator ok 30
+catalog/r1cheu__imputation ok 26
+catalog/rabiafidan__pure-faf 33 workflow/rules/common.smk:5: ModuleNotFoundError: No module named 'cyvcf2'
 catalog/rcavalcante__test_snakemake_pipeline ok 0
 catalog/recervictory__rna-seq-test ok 0
 catalog/regevs__tadpoles ok 0
 catalog/regulatory-genomics__hic_sm 1 workflow/Snakefile:3: NameError: name 'os' is not defined
-catalog/rglez__bflow-smk 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
-catalog/richardstoeckl__QCforSeqCode 33 workflow/Snakefile:27: Not supported yet: the library function pandas.read_csv
+catalog/rglez__bflow-smk ok 10
+catalog/richardstoeckl__QCforSeqCode 1 workflow/Snakefile:152: WorkflowError: InputFunctionException in rule infernal (wildcards: sampleID=Pfu): AttributeError: 'str' object has no attribute 'open'
 catalog/richardstoeckl__basecallNanopore 1 workflow/Snakefile:21: WorkflowError: A configuration file is required; use --configfile FILE.yaml
 catalog/rmFlynn__DRAM_testing_pipline ok 0
 catalog/rmFlynn__dram_validataion_pipline ok 0
 catalog/rmFlynn__snakemake_example 33 workflow/Snakefile:6: ModuleNotFoundError: No module named 'workflow'
-catalog/rnsherpa__TLand-predict 33 workflow/Snakefile:17: Not supported yet: the library function pandas.read_csv
+catalog/rnsherpa__TLand-predict 1 workflow/Snakefile:17: FileNotFoundError: [Errno 2] No such file or directory: '/path/to/your/runs_table.tsv'
 catalog/robingarcia__test_snake ok 0
 catalog/rochevin__RNA-seq-from-SRR-single 1 workflow/rules/samtools.smk:34: SyntaxError: Expected `,`, found identifier
-catalog/rodolfobrandao8__Snakemake-Mag-Annotation 33 workflow/rules/common.smk:7: Not supported yet: the library function pandas.read_csv
+catalog/rodolfobrandao8__Snakemake-Mag-Annotation ok 5
 catalog/sandragodinhosilva__melange 1 workflow/rules/join_all.smk:14: NameError: name 'os' is not defined
-catalog/sanjaysgk__WES_RNA_Pipeline 1 workflow/rules/ref.smk:2: KeyError: 'references'
-catalog/schlesnerlab__multiconDEnrich 33 workflow/Snakefile:18: Not supported yet: the library function pandas.read_table
-catalog/scholl-lab__sm-calling 33 workflow/Snakefile:19: Not supported yet: the library function pandas.read_table
-catalog/seankmartin__atn-sub-lfp-workflow 1 workflow/Snakefile:2: WorkflowError: Workflow defines configfile config/config.yaml but it is not present or accessible (full checked path: config/config.yaml).
+catalog/sanjaysgk__WES_RNA_Pipeline ok 2
+catalog/schlesnerlab__multiconDEnrich 33 workflow/Snakefile:19: Not supported yet: the attribute replace of DataFrame
+catalog/scholl-lab__sm-calling 33 workflow/rules/common.smk:159: Not supported yet: the attribute tmpdir of Resources
+catalog/seankmartin__atn-sub-lfp-workflow ok 23
 catalog/semenko__serpent-methylation-pipeline 1 workflow/Snakefile:33: ImportError: cannot import name 'Workflow' from 'snakemake.workflow'
 catalog/seung1yoo__snakemake-s3-prototype ok 0
-catalog/sgallegosperez8__practice 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/sgallegosperez8__practice ok 10
 catalog/shahcompbio__bambu-smk 1 workflow/Snakefile:8: KeyError: 'out_dir'
 catalog/shahcompbio__proteomegenerator-smk 1 workflow/Snakefile:7: KeyError: 'transdecoder_proteome'
 catalog/shahcompbio__transdecoder-smk 1 workflow/Snakefile:7: KeyError: 'transcripts'
@@ -385,38 +385,38 @@ catalog/simonmoulds__subseasonal-flood-prediction 33 workflow/Snakefile:11: Modu
 catalog/simonmoulds__uk-decadal-flood-prediction 33 workflow/Snakefile:16: Not supported yet: the library function pandas.read_parquet
 catalog/simonmoulds__uk-decadal-flood-prediction-lstm ok 16
 catalog/simonmoulds__us-streamflow-prediction ok 4
-catalog/sims-lab__snakemake-cncb-genetic-demultiplexing 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
-catalog/sims-lab__snakemake-cncb-index-ensembl-genome 1 workflow/rules/common.smk:6: WorkflowError: Error validating config file.
-catalog/snakemake-workflows__cellranger-count 33 workflow/rules/common.smk:9: Not supported yet: the library function pandas.read_csv
+catalog/sims-lab__snakemake-cncb-genetic-demultiplexing 1 workflow/rules/process_reads.smk:440: WorkflowError: InputFunctionException in rule simpleaf (wildcards: id=WPP000_018hrs_rep1): NameError: name 'os' is not defined
+catalog/sims-lab__snakemake-cncb-index-ensembl-genome 1 workflow/rules/process_reads.smk:13: NameError: name 'os' is not defined
+catalog/snakemake-workflows__cellranger-count ok 7
 catalog/snakemake-workflows__cellranger-multi 1 workflow/rules/common.smk:11: KeyError: 'CELLRANGER_TARBALL'
-catalog/snakemake-workflows__cyrcular-calling 33 workflow/rules/common.smk:10: Not supported yet: the library function pandas.read_csv
+catalog/snakemake-workflows__cyrcular-calling ok 1
 catalog/snakemake-workflows__dna-seq-benchmark 33 workflow/rules/common.smk:1: Not supported yet: the library function urllib.parse.urlparse
-catalog/snakemake-workflows__dna-seq-gatk-variant-calling 33 workflow/rules/common.smk:20: Not supported yet: the library function pandas.read_table
+catalog/snakemake-workflows__dna-seq-gatk-variant-calling 1 workflow/rules/mapping.smk:42: WorkflowError: InputFunctionException in rule map_reads (wildcards: sample=A, unit=1): NameError: name 'os' is not defined
 catalog/snakemake-workflows__dna-seq-mtb 33 workflow/rules/common.smk:1: ModuleNotFoundError: No module named 'yte'
-catalog/snakemake-workflows__dna-seq-short-read-circle-map 33 workflow/rules/common.smk:10: Not supported yet: the library function pandas.read_csv
-catalog/snakemake-workflows__dna-seq-varlociraptor 33 workflow/rules/common.smk:11: Not supported yet: the library function pandas.read_csv
+catalog/snakemake-workflows__dna-seq-short-read-circle-map ok 1
+catalog/snakemake-workflows__dna-seq-varlociraptor 33 workflow/rules/common.smk:78: Not supported yet: the attribute explode of Series
 catalog/snakemake-workflows__effect-size-estimation ok 11
-catalog/snakemake-workflows__microsatellite-instability-detection-with-msisensor-pro 33 workflow/rules/common.smk:7: Not supported yet: the library function pandas.read_csv
-catalog/snakemake-workflows__read-alignment-pangenome 33 workflow/rules/common.smk:11: Not supported yet: the library function pandas.read_csv
-catalog/snakemake-workflows__rna-longseq-de-isoform 33 workflow/rules/commons.smk:8: ModuleNotFoundError: No module named 'snakemake.remote'
-catalog/snakemake-workflows__rna-seq-kallisto-sleuth 33 workflow/rules/common.smk:11: Not supported yet: the library function pandas.read_csv
-catalog/snakemake-workflows__rna-seq-star-deseq2 33 workflow/rules/common.smk:9: Not supported yet: the library function pandas.read_csv
-catalog/snakemake-workflows__rna-seq-xengsort 33 workflow/rules/common.smk:6: Not supported yet: the library function pandas.read_csv
-catalog/snakemake-workflows__single-cell-counts-preprocessing 33 workflow/rules/common.smk:7: Not supported yet: the library function pandas.read_csv
-catalog/snakemake-workflows__snakemake-workflow-template 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
-catalog/snakemake-workflows__species-quantification 33 workflow/rules/common.smk:4: Not supported yet: the library function pandas.read_csv
-catalog/snakemake-workflows__star-arriba-fusion-calling 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/snakemake-workflows__microsatellite-instability-detection-with-msisensor-pro 1 workflow/rules/common.smk:76: WorkflowError: InputFunctionException in rule all (wildcards: ): KeyError: 'The configfile specifies both `aliases: matched_normal:` and `aliases: baseline:`. You must specify exactly one of these, and comment out the other, to clearly determine the mode the workflow
+catalog/snakemake-workflows__read-alignment-pangenome 1 workflow/rules/mapping.smk:22: WorkflowError: InputFunctionException in rule count_sample_kmers (wildcards: sample=SRR702070): NameError: name 'os' is not defined
+catalog/snakemake-workflows__rna-longseq-de-isoform 1 workflow/Snakefile:11: WorkflowError: Workflow defines configfile config/config.yml but it is not present or accessible (full checked path: config/config.yml).
+catalog/snakemake-workflows__rna-seq-kallisto-sleuth 1 <query>:1: WorkflowError: InputFunctionException in rule fastp_pe (wildcards: sample=A, unit=1): TypeError: unsupported operand type(s) for &: 'str' and 'str'
+catalog/snakemake-workflows__rna-seq-star-deseq2 1 <query>:1: WorkflowError: InputFunctionException in rule fastp_pe (wildcards: sample=A, unit=lane1): TypeError: unsupported operand type(s) for &: 'str' and 'str'
+catalog/snakemake-workflows__rna-seq-xengsort 1 <query>:1: WorkflowError: InputFunctionException in rule fastp_pe (wildcards: sample=A, unit=1): TypeError: unsupported operand type(s) for &: 'str' and 'str'
+catalog/snakemake-workflows__single-cell-counts-preprocessing ok 1
+catalog/snakemake-workflows__snakemake-workflow-template ok 10
+catalog/snakemake-workflows__species-quantification ok 8
+catalog/snakemake-workflows__star-arriba-fusion-calling 1 WorkflowError: Function did not return str or iterable of str. Encountered: nan (float)
 catalog/sneuensc__mapache 33 workflow/scripts/utils.py:1: ModuleNotFoundError: No module named 'tkinter'
-catalog/solida-core__astra 33 workflow/rules/common.smk:13: Not supported yet: the library function pandas.read_csv
-catalog/solida-core__dima 33 workflow/rules/common.smk:16: Not supported yet: the library function pandas.read_table
+catalog/solida-core__astra 1 workflow/rules/common.smk:13: EmptyDataError: No columns to parse from file
+catalog/solida-core__dima 33 workflow/rules/common.smk:73: Not supported yet: the library function multiprocessing.cpu_count
 catalog/solida-core__musta 33 workflow/rules/common.smk:45: Not supported yet: the library function psutil.virtual_memory
 catalog/spjuhel__BoARIO-MRIOT-Tools 33 workflow/Snakefile:6: ModuleNotFoundError: No module named 'boario_tools'
 catalog/spjuhel__BoARIO-Sensitivity 1 workflow/rules/prepare_simspace.smk:3: NameError: name 'Path' is not defined
 catalog/spjuhel__Climada_TC_TCSurge_Generation 1 workflow/Snakefile:27: KeyError: 'start'
-catalog/spraeger__mutational-patterns-analysis 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/spraeger__mutational-patterns-analysis ok 10
 catalog/t-i-r__snakemake-workflow-template ok 0
-catalog/tahiri-lab__aPhyloGeo-pipeline 33 workflow/rules/common.smk:25: Not supported yet: the library function pandas.read_csv
-catalog/tavareshugo__smk-indexer 33 workflow/rules/common.smk:4: Not supported yet: the library function pandas.read_csv
+catalog/tahiri-lab__aPhyloGeo-pipeline 1 workflow/rules/common.smk:74: WorkflowError: InputFunctionException in rule all (wildcards: ): AttributeError: 'str' object has no attribute 'open'
+catalog/tavareshugo__smk-indexer ok 137
 catalog/tbenavi1__RetroDetector ok 66
 catalog/tdayris__fair_bowtie2_mapping 33 workflow/rules/fair_genome_indexer.smk:15: Not supported yet: modules from remote repositories (github(...))
 catalog/tdayris__fair_cnv_facets 33 workflow/rules/common.smk:41: Not supported yet: csv.Sniffer
@@ -426,23 +426,23 @@ catalog/tdayris__fair_genome_indexer 33 workflow/rules/common.smk:41: Not suppor
 catalog/tdayris__fair_macs2_calling 33 workflow/rules/common.smk:42: Not supported yet: csv.Sniffer
 catalog/tdayris__fair_rnaseq_salmon_quant 33 workflow/rules/common.smk:26: Not supported yet: csv.Sniffer
 catalog/thomasbtf__sars-cov-2-wbe 33 workflow/Snakefile:17: Not supported yet: PEP projects (pepfile)
-catalog/thomasmulvaney__snakemake-gromacs-workflow 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/thomasmulvaney__snakemake-gromacs-workflow ok 10
 catalog/tmweiskittel__serpent-methylation-pipeline-cloud 1 workflow/Snakefile:40: ImportError: cannot import name 'Workflow' from 'snakemake.workflow'
-catalog/tmweiskittel__tmw_align_emseq 1 workflow/Snakefile:13: KeyError: 'meta'
-catalog/tmweiskittel__tmw_analysis_emseq 1 workflow/Snakefile:44: KeyError: 'samples_csv'
+catalog/tmweiskittel__tmw_align_emseq 1 1 jobs did not run, like a job of rule all
+catalog/tmweiskittel__tmw_analysis_emseq 33 workflow/Snakefile:31: Not supported yet: setting the attribute fieldnames of DictReader
 catalog/trickovicmatija__kingfisher_workflow 1 workflow/Snakefile:3: WorkflowError: Workflow defines configfile ../config/default_config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/corpus/snakemake/catalog/config/default_config.yaml).
 catalog/tucca-cellag__tucca-rna-seq 1 workflow/Snakefile:16: NameError: name '__file__' is not defined
 catalog/tud-mchen6__module_gh2_prod 33 workflow/Snakefile:11: Not supported yet: pathvars
 catalog/ubercomrade__cut_and_run_analysis ok 0
-catalog/usnistgov__defrabb 33 rules/common.smk:12: Not supported yet: the library function pandas.read_table
-catalog/usnistgov__giab-defrabb 33 rules/common.smk:11: Not supported yet: the library function pandas.read_table
+catalog/usnistgov__defrabb 33 rules/common.smk:18: Not supported yet: astype(None)
+catalog/usnistgov__giab-defrabb 33 rules/common.smk:17: Not supported yet: astype(None)
 catalog/valentynbez__FuncMi ok 0
-catalog/varlociraptor__varlociraptor-methylation-evaluation ok 47
+catalog/varlociraptor__varlociraptor-methylation-evaluation ok 2075
 catalog/vembrane__vembrane-benchmark 33 workflow/rules/common.smk:10: Not supported yet: string.Template
 catalog/vince-fang__basic ok 0
 catalog/vince-fang__test ok 0
 catalog/vivekbibs__pipeline_template ok 0
-catalog/vjcitn__rnaseqSnake 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/vjcitn__rnaseqSnake ok 10
 catalog/vkpat__short-read-mapping-and-QC-snakemake-pipeline 1 workflow/Snakefile:1: WorkflowError: Workflow defines configfile config.yaml but it is not present or accessible (full checked path: config.yaml).
 catalog/vojdam__idat_to_graph ok 4
 catalog/vollgerlab__DSA-phasing 1 workflow/Snakefile:15: WorkflowError: Error validating config file.
@@ -450,19 +450,19 @@ catalog/votti__snakemake-demo ok 0
 catalog/votti__snakemake-renv-quarto ok 7
 catalog/watronfire__Gloucester ok 0
 catalog/weizhu365__snakemake_template_test ok 0
-catalog/westerdijk-wm__smkwf-bwa-gatk-snpeff 33 workflow/rules/common.smk:20: Not supported yet: the library function pandas.read_table
-catalog/westerdijk-wm__snakemake-mlsa-ani 33 workflow/rules/common.smk:14: Not supported yet: the library function pandas.read_csv
+catalog/westerdijk-wm__smkwf-bwa-gatk-snpeff 33 workflow/Snakefile:25: Not supported yet: modules from remote repositories (github(...))
+catalog/westerdijk-wm__snakemake-mlsa-ani 1 workflow/rules/common.smk:165: NameError: name 'sys' is not defined
 catalog/wharvey31__denovo_sv_validation 33 workflow/Snakefile:3: ModuleNotFoundError: No module named 'Bio'
 catalog/xiayh17__benchmark_scomatic ok 0
 catalog/xin-huang__selscape 1 workflow/rules/4.1_positive_selection_selscan.smk:72: WorkflowError: InputFunctionException in rule normalize_selscan_scores (wildcards: species=Human, dataset=ci_test, ppl=YRI, method=ihs, maf=0.05): WorkflowError: Flags (temp, rule) in file pattern 'results/positive_selection/selscan/{species}/{
 catalog/yeyuan98__rna_fish_analysis ok 16
-catalog/ylab-hi__ScanNeo2 33 workflow/Snakefile:19: Not supported yet: the library function pandas.read_csv
+catalog/ylab-hi__ScanNeo2 1 workflow/rules/common.smk:175: SystemExit: 1
 catalog/zavolanlab__mirflowz 1 workflow/Snakefile:23: WorkflowError: Workflow defines configfile workflow/../test/config_lint.yaml but it is not present or accessible (full checked path: test/config_lint.yaml).
-catalog/zavolanlab__zarp 33 workflow/Snakefile:16: Not supported yet: the library function pandas.read_csv
-catalog/zhongmicai__mosaicatcher-pipeline 33 workflow/rules/common.smk:345: Not supported yet: the library function pandas.DataFrame
-catalog/zhuakexi__dna-seq-gatk-variant-calling 33 workflow/rules/common.smk:20: Not supported yet: the library function pandas.read_table
-catalog/zifornd__arrays 33 workflow/rules/common.smk:12: Not supported yet: the library function pandas.read_table
-catalog/ziyaipek__snakemake 33 workflow/rules/common.smk:8: Not supported yet: the library function pandas.read_csv
+catalog/zavolanlab__zarp 1 workflow/Snakefile:45: NameError: name 'logger' is not defined
+catalog/zhongmicai__mosaicatcher-pipeline 33 workflow/rules/external_data.smk:2: ModuleNotFoundError: No module named 'snakemake.remote'
+catalog/zhuakexi__dna-seq-gatk-variant-calling ok 10
+catalog/zifornd__arrays ok 33
+catalog/ziyaipek__snakemake ok 10
 catalog/zjnolen__PopGLen 1 workflow/rules/common.smk:54: FileNotFoundError: [Errno 2] No such file or directory: 'path/to/ref.fa'
 tests/knapsack ok 10
 tests/profile ok 4001
@@ -643,7 +643,7 @@ tests/test_inferred_resources_mib 33 Not supported yet: the attribute mem_mib of
 tests/test_inner_call ok 2
 tests/test_inoutput_is_path ok 0
 tests/test_input_generator ok 4
-tests/test_ioutils 33 Snakefile:3: Not supported yet: the library function pandas.read_csv
+tests/test_ioutils 1 Snakefile:14: NameError: name 'extract_checksum' is not defined
 tests/test_issue1037 ok 2
 tests/test_issue1041 ok 3
 tests/test_issue1046 ok 2
@@ -656,7 +656,7 @@ tests/test_issue1281 ok 5
 tests/test_issue1284 ok 6
 tests/test_issue1331 ok 19
 tests/test_issue2574 1 Snakefile:4: KeyError: 'unexisting_key'
-tests/test_issue2685 33 Snakefile:4: Not supported yet: the library function pandas.DataFrame
+tests/test_issue2685 1 Snakefile:14: AttributeError: 'int' object has no attribute 'sample_id'
 tests/test_issue2826_failed_binary_logs ok 1
 tests/test_issue3192 1 Snakefile:1: NameError: name 'Path' is not defined
 tests/test_issue3338 ok 6
@@ -740,7 +740,7 @@ tests/test_name_override ok 3
 tests/test_no_temp ok 3
 tests/test_no_workflow_profile 33 Not supported yet: the attribute foo of Resources
 tests/test_nodelocal ok 4
-tests/test_nonstr_params 33 Snakefile:12: Not supported yet: the library function numpy.int64
+tests/test_nonstr_params ok 1
 tests/test_omitfrom ok 14
 tests/test_output_file_cache ok 5
 tests/test_output_file_cache_storage ok 5
@@ -748,8 +748,8 @@ tests/test_params ok 2
 tests/test_params_empty_inherit ok 2
 tests/test_params_outdated_code 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
 tests/test_params_pickling 33 Snakefile:3: ModuleNotFoundError: No module named 'polars'
-tests/test_paramspace 33 Snakefile:6: Not supported yet: the library function pandas.read_csv
-tests/test_paramspace_single_wildcard 33 Snakefile:6: Not supported yet: the library function pandas.read_csv
+tests/test_paramspace 33 Snakefile:6: Not supported yet: Paramspace
+tests/test_paramspace_single_wildcard 33 Snakefile:6: Not supported yet: Paramspace
 tests/test_parser ok 0
 tests/test_parsing_terminal_comment_following_statement ok 1
 tests/test_path_with_spaces ok 1

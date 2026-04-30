@@ -216,6 +216,11 @@ cwl-conformance-test:
 cwl-graph-corpus-test:
 	CWL_CORPUS="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}" cargo test --release --locked -p cwl-runtime --test graph_corpus -- --ignored
 
+# Runs the real-world CWL documents of the corpus with their example job files, with the mock
+# TES executor, and compares the outcomes with cwl-runtime/tests/fixtures/job_corpus.txt.
+cwl-job-corpus-test:
+	CWL_CORPUS="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}" cargo test --release --locked -p cwl-runtime --test job_corpus -- --ignored
+
 # Fetches the text-only Snakemake corpus at the commits the corpus test expects.
 snakemake-corpus:
 	#!/usr/bin/env bash

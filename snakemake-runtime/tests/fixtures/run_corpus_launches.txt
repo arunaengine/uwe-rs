@@ -4,188 +4,25 @@
 # workflow folder, configfile= relative to it, config=<key>=<value>, target=, and
 # shouldfail for a test that Snakemake's own tests expect to fail. Workflows not listed
 # run plainly in their folder.
-catalog/3d-omics__hg_genotype	ci	directory=.	snakefile=workflow/Snakefile
 catalog/AllenInstitute__Bulk-RNA-Snakeline	catalog	configfile=config/config.yaml
-catalog/BesenbacherLab__bbq_pipeline	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/Bioinflows-Bioversity-CIAT__ont-target-dna-variant-calling	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/Bioinflows-Bioversity-CIAT__tm-shift_designer	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/CVUA-RRW__FooDMe	ci	directory=.tests	snakefile=workflow/Snakefile	configfile=.tests/config/config.yaml
-catalog/Cesconlab__ExomeSeq	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/DSiB-G2__G2-CovPipeline	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/DavideBrex__SpikeFlow	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/DustinMathia__aradopsis-drive	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/EichlerLab__ONT_pipelines	ci	directory=.	snakefile=workflow/Snakefile	configfile=.test/config.yaml
-catalog/EloiseEsox__snakemake	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/EloiseIsobelPearce__snakemake-example	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/FeelLiao__rna-seq-std	ci	directory=.test	snakefile=workflow/Snakefile	configfile=.test/config/config_sra.yaml	target=sra
-catalog/FilippoGas__GeneProgramsProfiler	ci	directory=.	snakefile=workflow/Snakefile
-catalog/FilippoGas__HapScorer	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/GArcho44__snvs-annotation-pipeline	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/GaspardR__snakemake-github-module-keyerror	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/IKIM-Essen__QC_pre_NextSeq	ci	directory=.tests	snakefile=workflow/Snakefile
-catalog/IKIM-Essen__RiboSnake	ci	directory=.tests	snakefile=workflow/Snakefile	config=Modus=vsearch
-catalog/IKIM-Essen__uncovar	ci	directory=.	snakefile=workflow/Snakefile
-catalog/JAlvarezJarreta__community_gff3_validation	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/KasperSkytte__snakemake_savont	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/KasperSkytte__snakemake_usearch	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/KonstantinBurkin__cbai	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/LiaOb21__FSP_assembly_benchmarking	ci	directory=.tests	snakefile=workflow/Snakefile
 catalog/LiaOb21__colora	ci	directory=.	snakefile=workflow/Snakefile	configfile=config/config_test.yaml
-catalog/MarieRiisgaard__snakemake_usearch_primertrim_and_subset	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/MathiasEskildsen__ONT-AmpSeq	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/MathiasEskildsen__ONT_RNA-seq_wf	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/MethyleneBlues__Snake	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/NCI-CGR__TriosCompass_v2	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/PathoGenOmics-Lab__VIPERA	ci	snakefile=.test/Snakefile	configfile=config/config.yaml	configfile=.test/targets.yaml
-catalog/Phlya__tagmap	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/SchlossLab__mikropml-snakemake-workflow	ci	directory=.	snakefile=workflow/Snakefile	configfile=config/test.yaml	target=make_graph_figures
-catalog/Siffreya__MKD_eDNA_biodiversity	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/SilvanCodes__1001_genomes_analysis	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/SilvanCodes__ag-wiehe-ndm	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/StergachisLab__IsoSeq_smk	ci	snakefile=workflow/Snakefile	configfile=config/github.config.yaml
-catalog/SveTho__base	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/TidballLab__SNP-Cas13d-Selector	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/Xavster838__assembly_validation	ci	directory=.	snakefile=workflow/Snakefile	configfile=.test/config.yaml
-catalog/Xavster838__coreDupGraph	ci	directory=.	snakefile=workflow/Snakefile	configfile=.test/config.yaml
-catalog/Xavster838__downstream_isoseq_process	ci	directory=.	snakefile=workflow/Snakefile	configfile=.test/config.yaml
-catalog/Xavster838__get_and_annotate_locus	ci	directory=.	snakefile=workflow/Snakefile	configfile=.test/config.yaml
-catalog/Xavster838__run_NucFreq	ci	directory=.	snakefile=workflow/Snakefile	configfile=.test/config.yaml
-catalog/abrahanhernandez__scWGA	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/adrisede__Isoseq_smk_min	ci	snakefile=workflow/Snakefile	configfile=config/github.config.yaml
-catalog/akcorut__kGWASflow	ci	directory=.test	snakefile=workflow/Snakefile	configfile=.test/config_ecoli/config.yaml
-catalog/ammaraziz__voi	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/aryazand__call_tss	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/aryazand__fastq-process-align	ci	directory=.	snakefile=workflow/Snakefile
-catalog/aryazand__genome_browser_workflow	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/aryazand__proseq_workflow	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/aryazand__rnaseq_to_genome_annotation	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/b-brankovics__bwa-gatk-fasttree-smkwf	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/b-brankovics__smkwf-STRAf-typing	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/b-brankovics__smkwf-oligo-screening	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/babasaraki__NSIB	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/babasaraki__snakemake-workshop-NBIS	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/bakerwm__snakemake-rnaseq-star	ci	directory=.test	snakefile=workflow/Snakefile	configfile=.test/config_basic/config.yaml
-catalog/bethanyyk__DENV_simulations	ci	directory=.	snakefile=workflow/Snakefile	configfile=.test/config.yaml
 catalog/boulardlab__3t-seq	ci	directory=.tests/integration	snakefile=workflow/Snakefile	configfile=.tests/integration/config.yaml
-catalog/broomej__serpent-DEFUNCT	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/brunosate21-a11y__Metabolic-Modeling-Workflow.	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/brunosate21-a11y__codigo-sem-commit	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/cbib__SpaceBlocks	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/cmc-aau__nanopore_16Samp	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/cmc-aau__snakemake_project_template	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/daspacio9__pooledpremiumpcrpipeline2	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/davelunt__NemaTree	ci	directory=.tests/integration	snakefile=workflow/Snakefile
-catalog/dbespiatykh__RDscan	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/dbespiatykh__TBvar	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/delpropo__TidballLab-SNP-Cas13d-Selector	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/dlaehnemann__create-ecdna-testing-data	ci	directory=.	snakefile=workflow/Snakefile
-catalog/dlaehnemann__rna-seq-conservative-fold-change-without-replicates	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/dlaehnemann__wgs-mosdepth-maftools-copy-numbers	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/elsamah__ExomeSeq	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/elsamah__ExomeSeq_wNorm	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/emilymlayton__variant_calling_snakemake	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/epigen__enrichment_analysis	ci	directory=.	snakefile=workflow/Snakefile
-catalog/epigen__unsupervised_analysis	ci	directory=.	snakefile=workflow/Snakefile
-catalog/fcaretti__SNPs_from_RNA	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/fiberseq__fiberseq-smk	ci	directory=.	snakefile=workflow/Snakefile	configfile=.test/config.yml
-catalog/friendsofstrandseq__ashleys-qc-pipeline	ci	config=list_commands=True
-catalog/friendsofstrandseq__mosaicatcher-pipeline	ci	config=list_commands=True
-catalog/gabrielfranco89__fastq_to_ucram	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/geeksville__astrosnake	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/gonzarizzo__globe_map	ci	directory=.	snakefile=workflow/Snakefile
-catalog/gynecoloji__snakemake_ATACseq	ci	snakefile=workflow/Snakefile
-catalog/gynecoloji__snakemake_ATACseq_spikein	ci	snakefile=workflow/Snakefile
-catalog/gynecoloji__snakemake_ChIPseq	ci	snakefile=workflow/Snakefile
-catalog/gynecoloji__snakemake_CutandRunseq	ci	snakefile=workflow/Snakefile
-catalog/gynecoloji__snakemake_RNAseq	ci	snakefile=workflow/Snakefile
 catalog/gynecoloji__snakemake_debug	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/gynecoloji__snakemake_scstseq	ci	snakefile=workflow/Snakefile
-catalog/harrymatthews50__sankemake-containerisation-test	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/hzi-bifo__snakemake-workflow-univec-removal	ci	directory=.test	snakefile=.test/Snakefile
-catalog/isaacvock__PROseq_etal	ci	directory=.test	snakefile=workflow/Snakefile	configfile=.test/config_ChIP/config.yaml
-catalog/jianhong__pairedtag	ci	directory=.test	snakefile=workflow/Snakefile	configfile=.test/config/config.yaml
 catalog/jma1991__arrays	ci	directory=.tests/integration	snakefile=workflow/Snakefile
-catalog/johnne__mytestworkflow	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/kevinrue__snakemake-cellranger-count	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/liezeltamon__single-cell-preprocess	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/loganylchen__NanoRNAMod	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/loganylchen__RNA-seq-analysis-pipeline	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/loganylchen__prep_mix_data	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/loganylchen__snakemake-epitranscriptome	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/lparsons__pf15-smallrna-rseto	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/mariaelf97__amplicon_sequencing_simulator	ci	directory=.	snakefile=workflow/Snakefile	configfile=.test/config.yaml
-catalog/mdondrup__gromacs_workflow	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/mdondrup__mytemplate_wf	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/mdondrup__sealice_assemblies	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/merfre__MMCAW	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/metagenome-atlas__metagenome-assembly	ci	directory=.test/spades	snakefile=workflow/Snakefile
-catalog/metagenome-atlas__metagenome_instrain	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/mpitz123__RNA_seq_alignment	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/mrvollger__sd-divergence	ci	directory=.	snakefile=workflow/Snakefile	configfile=.test/config.yaml
-catalog/nate-d-olson__adotto-smk	ci	directory=.test	snakefile=workflow/Snakefile	configfile=.test/config.yaml
-catalog/ncbench__ncbench-workflow	ci	directory=.	snakefile=workflow/Snakefile	target=resources/reference/genome.fasta
-catalog/niekwit__atac-seq	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/niekwit__chip-seq	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/niekwit__crispr-screens	ci	directory=.test_mageck_test	snakefile=workflow/Snakefile
-catalog/niekwit__cut_and_run	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/niekwit__gps-orfeome	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/niekwit__methyl-seq	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/niekwit__partridge-workflow	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/niekwit__rna-seq-salmon-deseq2	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/niekwit__rna-seq-star-deseq2	ci	directory=.test_se	snakefile=workflow/Snakefile
-catalog/niekwit__rna-seq-star-rmats	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/niekwit__rna-seq-star-tetranscripts	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/niekwit__smallRNA-seq	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/ntnn19__combflow	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/ntnn19__gaptrick-af_unmasked	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/petroskilp__clustromics	ci	directory=.test	snakefile=workflow/Snakefile	configfile=.test/config_basic/config.yaml
-catalog/plycrsk__rna-seq-star-deseq2	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/rabiafidan__pure-faf	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/rglez__bflow-smk	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/rodolfobrandao8__Snakemake-Mag-Annotation	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/sanjaysgk__WES_RNA_Pipeline	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/schlesnerlab__multiconDEnrich	ci	directory=.	snakefile=workflow/Snakefile	configfile=config/workflow_unit_test.yaml
-catalog/seankmartin__atn-sub-lfp-workflow	ci	directory=test	snakefile=workflow/Snakefile
-catalog/sgallegosperez8__practice	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/sims-lab__snakemake-cncb-genetic-demultiplexing	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/sims-lab__snakemake-cncb-index-ensembl-genome	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/snakemake-workflows__cellranger-count	ci	directory=.test	snakefile=.test/Snakefile
-catalog/snakemake-workflows__cellranger-multi	ci	directory=.test	snakefile=.test/Snakefile	configfile=.test/config/config.gex_vdj_antibody.yaml
-catalog/snakemake-workflows__cyrcular-calling	ci	directory=.test	snakefile=workflow/Snakefile	configfile=.test/config/config.yaml
-catalog/snakemake-workflows__dna-seq-benchmark	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/snakemake-workflows__dna-seq-gatk-variant-calling	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/snakemake-workflows__dna-seq-mtb	ci	directory=.test	snakefile=workflow/Snakefile	configfile=.test/config-tumor_normal/config.yaml
-catalog/snakemake-workflows__dna-seq-short-read-circle-map	ci	directory=.test	snakefile=.test/Snakefile
-catalog/snakemake-workflows__dna-seq-varlociraptor	ci	directory=.test	snakefile=workflow/Snakefile	configfile=.test/config-giab/config.yaml	target=results/final-calls/NA12878.present.fdr-controlled.vcf.gz	target=results/final-calls/NA12878.annotated.bcf
-catalog/snakemake-workflows__rna-longseq-de-isoform	ci	directory=.test	snakefile=workflow/Snakefile	configfile=.test/config-simple/config.yml
-catalog/snakemake-workflows__rna-seq-kallisto-sleuth	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/snakemake-workflows__rna-seq-xengsort	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/snakemake-workflows__single-cell-counts-preprocessing	ci	directory=.test	snakefile=.test/Snakefile
-catalog/snakemake-workflows__snakemake-workflow-template	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/snakemake-workflows__star-arriba-fusion-calling	ci	directory=.test	snakefile=.test/Snakefile	configfile=.test/config/config.yaml
-catalog/spraeger__mutational-patterns-analysis	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/tahiri-lab__aPhyloGeo-pipeline	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/tdayris__fair_bowtie2_mapping	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/tdayris__fair_fastqc_multiqc	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/tdayris__fair_gatk_mutect2	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/tdayris__fair_genome_indexer	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/tdayris__fair_macs2_calling	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/tdayris__fair_rnaseq_salmon_quant	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/thomasmulvaney__snakemake-gromacs-workflow	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/tmweiskittel__tmw_align_emseq	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/tmweiskittel__tmw_analysis_emseq	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/varlociraptor__varlociraptor-methylation-evaluation	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/vjcitn__rnaseqSnake	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/vojdam__idat_to_graph	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/votti__snakemake-renv-quarto	ci	directory=.	snakefile=workflow/Snakefile
 catalog/westerdijk-wm__smkwf-bwa-gatk-snpeff	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/westerdijk-wm__snakemake-mlsa-ani	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/wharvey31__denovo_sv_validation	ci	directory=.	snakefile=workflow/Snakefile	configfile=.test/config.yaml
 catalog/xin-huang__selscape	ci	directory=.	snakefile=workflow/Snakefile	configfile=.tests/ci/config/main.yaml
-catalog/zhongmicai__mosaicatcher-pipeline	ci	directory=.	snakefile=workflow/Snakefile	config=reference=hg19	target=workflow/data/ref_genomes/config/BSgenome_hg19.ok
-catalog/zhuakexi__dna-seq-gatk-variant-calling	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/zifornd__arrays	ci	directory=.tests/integration	snakefile=workflow/Snakefile
-catalog/ziyaipek__snakemake	ci	directory=.test	snakefile=workflow/Snakefile
 tests/test03	tests.py	target=test.out
 tests/test04	tests.py	target=test.out
 tests/test06	tests.py	target=test.bla.out
@@ -250,7 +87,6 @@ tests/test_retries_not_overriden	tests.py	shouldfail
 tests/test_rule_inheritance_globals	tests.py	target=foo.txt
 tests/test_singularity_module	tests.py	target=invalid.txt	shouldfail
 tests/test_source_path	tests.py	snakefile=workflow/Snakefile
-tests/test_source_path_parent	tests.py	snakefile=nest/subdir/Snakefile
 tests/test_spaces_in_fnames	tests.py	target=test bam file realigned.bam
 tests/test_strict_mode	tests.py	shouldfail
 tests/test_symlink_temp	tests.py	shouldfail

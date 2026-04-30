@@ -117,3 +117,31 @@ fn mock_files_of_bare_wildcards_take_the_extension_the_output_suggests() {
     ];
     assert_eq!(run(&files), Ok(2));
 }
+
+#[test]
+fn only_a_launch_that_assumes_its_inputs_takes_absent_files_as_present() {
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: cat\n\
+        inputs:\n  text: {type: File, loadContents: true}\noutputs: []\n";
+    let main = folder.path().join("main.cwl");
+    std::fs::write(&main, tool).expect("writes the tool");
+    let job = folder.path().join("job.yml");
+    std::fs::write(&job, "text: {class: File, location: absent.txt}\n").expect("writes the job");
+    let outcome = |assume_inputs: bool| {
+        let launch = Launch {
+            target: main.clone(),
+            inputs: Some(job.clone()),
+            scratch: folder.path().join("scratch"),
+            assume_inputs,
+            ..Launch::default()
+        };
+        let mut driver = cwl_runtime::driver(&launch).map_err(|error| error.message)?;
+        let mut executor = MockTes::new(folder.path().join("mock"));
+        match execute("main", driver.as_mut(), &mut executor).error {
+            Some(error) => Err(error.to_string()),
+            None => Ok(()),
+        }
+    };
+    assert_eq!(outcome(true), Ok(()));
+    assert!(outcome(false).is_err_and(|error| error.contains("absent.txt")));
+}

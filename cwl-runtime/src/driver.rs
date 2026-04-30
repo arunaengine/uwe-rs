@@ -100,9 +100,14 @@ impl CwlDriver {
     }
 }
 
-/// The driver of a CWL launch, with the options for the mock executor.
+/// The driver of a CWL launch; it takes absent files as present and empty when the launch
+/// assumes its inputs, as for a mock executor.
 pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
-    Ok(Box::new(CwlDriver::new(launch, Options::default())?))
+    let options = Options {
+        mock: launch.assume_inputs,
+        ..Options::default()
+    };
+    Ok(Box::new(CwlDriver::new(launch, options)?))
 }
 
 /// A driver error from a message; messages of unsupported features give exit code 33.

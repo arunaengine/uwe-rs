@@ -27,7 +27,7 @@ iunctus config [<Nextflow project>] [-profile <names>]
 
 - [Engine](design/engine.md): how `iunctus run` finds the language, the driver interface every language implements, the execution graph and the executors.
 - [Nextflow runtime](design/nextflow/runtime.md): the chosen design of the Nextflow evaluator, the dataflow runtime and the shared task layer, with milestones.
-- [Argo runtime](design/argo/runtime.md): how `argo-runtime` runs Argo Workflows documents as tasks: the template library, substitution, the expression languages, control flow, leaf templates, mock runs and the corpus results.
+- [Argo runtime](design/argo/runtime.md): how `argo-runtime` runs Argo Workflows documents as tasks: the template library, substitution, the expression languages, control flow, leaf templates, mock runs and the results on its test workflows.
 
 ## Research notes
 
@@ -45,6 +45,6 @@ Each note answers a set of questions and cites its sources.
 - [Nextflow channels](research/nextflow-channels.md): implementer spec of channels, operators and how processes consume them.
 - [Nextflow Groovy subset](research/nextflow-groovy.md): implementer spec of the Groovy runtime semantics that strict-syntax scripts rely on.
 - [Nextflow config](research/nextflow-config.md): implementer spec of config files, profiles, params and process selectors.
-- [Snakemake corpus](research/snakemake-corpus.md): the Snakemake corpus, an evaluation of Snakefile parsers, and a feature inventory of real workflows.
-- [CWL corpus](research/cwl-corpus.md): the CWL corpus, an evaluation of Rust CWL loaders, and a feature inventory of real workflows.
-- [Argo Workflows](research/argo-workflows.md): the Argo workflow model, its expression languages, running it without Kubernetes, a corpus and a feature inventory.
+- [Snakemake test workflows](research/snakemake-test-workflows.md): the Snakemake test workflows, an evaluation of Snakefile parsers, and a feature inventory of real workflows.
+- [CWL test workflows](research/cwl-test-workflows.md): the CWL test workflows, an evaluation of Rust CWL loaders, and a feature inventory of real workflows.
+- [Argo Workflows](research/argo-workflows.md): the Argo workflow model, its expression languages, running it without Kubernetes, test workflows and a feature inventory.

@@ -87,4 +87,4 @@ Outcomes go back the other way: output files by name, standard output, and the `
 - `workflow-graph/tests/engine.rs`: a toy driver, the file edges, the TES documents, and what the mocks make.
 - `nextflow-runtime/tests/driver.rs`: a two-process pipeline through the engine, the `env` scope, the params file.
 - `iunctus/tests/graph.rs`: `iunctus graph` and `iunctus run -graph` on a two-process pipeline; unit tests in `iunctus/src/detect.rs` cover detection.
-- `just run-corpus-test` runs every nf-core pipeline with the mock TES executor and checks the graph of each run that succeeds.
+- `just run-test-workflows-test` runs every nf-core pipeline with the mock TES executor and checks the graph of each run that succeeds.

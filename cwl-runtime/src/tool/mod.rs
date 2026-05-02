@@ -2016,5 +2016,4 @@ fn walk(folder: &Path, prefix: &str) -> Vec<(String, std::path::PathBuf, bool)> 
 }
 
 #[cfg(test)]
-#[path = "tool_tests.rs"]
 mod tests;

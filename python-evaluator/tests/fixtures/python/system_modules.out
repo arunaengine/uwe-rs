@@ -1,0 +1,13 @@
+https User@Example.org:8443 /data/file.txt v=1 x=1&y=2 top
+example.org 8443 User https://User@Example.org:8443/data/file.txt;v=1?x=1&y=2#top
+('s3', 'bucket', '/key/part', '', '') data/local.txt True
+https://a.org/x/z.html https://a.org/w https://a.org/abs
+a%20b/c%26d a+b%2Fc a b/c q=a+b&n=1
+True
+2 1 False 2 True
+empty
+locked True
+free False
+True True
+True False
+str

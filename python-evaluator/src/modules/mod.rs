@@ -5,9 +5,12 @@
 
 pub(crate) mod collections;
 pub mod data;
+mod files;
 pub(crate) mod misc;
 mod os;
 pub(crate) mod re;
+mod system;
+mod urllib;
 
 use std::rc::Rc;
 
@@ -110,6 +113,13 @@ const NATIVE: &[&str] = &[
     "importlib.metadata",
     "pkg_resources",
     "unicodedata",
+    "pwd",
+    "queue",
+    "pickle",
+    "fileinput",
+    "filecmp",
+    "urllib.error",
+    "tkinter",
 ];
 
 /// Whether a module name has a native stand-in, so that missing names in it are unsupported
@@ -173,8 +183,19 @@ pub fn native(interpreter: &mut Interpreter, name: &str) -> Result<Option<Value>
             "collect",
             Value::builtin("collect", |_, _| Ok(Value::Int(0))),
         )],
-        "signal" | "threading" | "multiprocessing" | "weakref" | "importlib" | "pkgutil"
-        | "numbers" => misc::placeholder(name),
+        "signal" | "weakref" | "importlib" | "pkgutil" | "numbers" | "tkinter" => {
+            misc::placeholder(name)
+        }
+        "threading" => system::threading(),
+        "multiprocessing" => system::multiprocessing(),
+        "pwd" => system::pwd(),
+        "queue" => system::queue(),
+        "pickle" => system::pickle(),
+        "fileinput" => files::fileinput(),
+        "filecmp" => files::filecmp(),
+        "urllib.parse" => urllib::parse(),
+        "urllib.error" => urllib::error(),
+        "urllib.request" => urllib::request(),
         "builtins" => {
             let builtins = interpreter.builtins.clone();
             return Ok(Some(Value::Module(Rc::new(Module {

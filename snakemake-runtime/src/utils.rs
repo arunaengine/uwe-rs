@@ -270,6 +270,22 @@ fn io_module(globals: &Rc<Scope>) -> Value {
     module("snakemake.io", entries)
 }
 
+/// The remote providers of Snakemake 7, whose modules Snakemake 9 still has.
+const REMOTE_PROVIDERS: &[&str] = &[
+    "AzBlob", "dropbox", "EGA", "FTP", "gfal", "gridftp", "GS", "HTTP", "iRODS", "NCBI", "S3",
+    "S3Mocked", "SFTP", "webdav", "XRootD", "zenodo",
+];
+
+/// A remote provider class of Snakemake 7: making one fails as in Snakemake 9.
+fn remote_provider() -> Value {
+    Value::builtin("RemoteProvider", |_, _| {
+        Err(Error::new(
+            "NotImplementedError",
+            "Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).",
+        ))
+    })
+}
+
 /// Registers the `snakemake` modules with an interpreter.
 pub fn register(interpreter: &mut Interpreter, state: &Rc<RefCell<State>>, globals: &Rc<Scope>) {
     let factory = |make: ModuleFactory| make;
@@ -322,6 +338,28 @@ pub fn register(interpreter: &mut Interpreter, state: &Rc<RefCell<State>>, globa
                     .iter()
                     .filter_map(|name| workflow_globals.get(name).map(|value| (*name, value)))
                     .collect(),
+            ))
+        })),
+    );
+    // Snakemake 8 replaced remote providers by storage plugins; the modules remain, and
+    // making a provider fails.
+    for name in REMOTE_PROVIDERS {
+        interpreter.host_modules.insert(
+            format!("snakemake.remote.{name}"),
+            factory(Rc::new(|_| {
+                Ok(module(
+                    "snakemake.remote",
+                    vec![("RemoteProvider", remote_provider())],
+                ))
+            })),
+        );
+    }
+    interpreter.host_modules.insert(
+        "snakemake.remote".into(),
+        factory(Rc::new(|_| {
+            Ok(module(
+                "snakemake.remote",
+                vec![("RemoteProviderBase", remote_provider())],
             ))
         })),
     );

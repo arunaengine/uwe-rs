@@ -92,6 +92,8 @@ impl Session {
         )));
         crate::functions::install(&globals, &state);
         crate::utils::register(&mut interpreter, &state, &globals);
+        crate::namespace::install(&mut interpreter, &globals)
+            .map_err(|error| driver_error(&error, &workdir))?;
         let hook = Rc::new(Hook {
             state: state.clone(),
         });

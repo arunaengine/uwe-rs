@@ -2,7 +2,9 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use super::workdir::dirent_entries;
 use super::*;
+use cwl_parser::model::Dirent;
 
 #[test]
 fn dirents_of_file_lists_stage_each_file_and_empty_lists_nothing() {

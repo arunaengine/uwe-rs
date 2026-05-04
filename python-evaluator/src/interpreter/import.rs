@@ -153,11 +153,11 @@ impl Interpreter {
         }
         if let Some(factory) = self.host_modules.get(name).cloned() {
             let module = factory(self)?;
-            self.modules.insert(name.to_owned(), module.clone());
+            self.register_submodule(name, module.clone());
             return Ok(module);
         }
         if let Some(module) = crate::modules::native(self, name)? {
-            self.modules.insert(name.to_owned(), module.clone());
+            self.register_submodule(name, module.clone());
             return Ok(module);
         }
         // A submodule of a package: import the package first.
@@ -252,6 +252,18 @@ impl Interpreter {
             return Err(error);
         }
         Ok(module)
+    }
+
+    /// Registers a module of the host or a stand-in, which is also an attribute of its
+    /// package, as in Python: after `import urllib.error`, `urllib.error` works.
+    fn register_submodule(&mut self, name: &str, module: Value) {
+        self.modules.insert(name.to_owned(), module.clone());
+        if let Some((parent, leaf)) = name.rsplit_once('.')
+            && let Ok(Value::Module(parent)) = self.import_module(parent)
+            && parent.globals.get(leaf).is_none()
+        {
+            parent.globals.set(leaf, module);
+        }
     }
 
     fn register_module(&mut self, name: &str, module: Value) {

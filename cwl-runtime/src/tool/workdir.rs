@@ -3,10 +3,9 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use cwl_parser::model::{Listing, ListingEntry, Process, RequirementClass, Version};
+use cwl_parser::model::{Dirent, Listing, ListingEntry, Process, RequirementClass, Version};
 
 use super::stage::Stager;
-use super::{dirent_entries, normalize_path};
 use crate::expression::{Evaluator, Variables};
 use crate::files;
 use crate::scope::Scope;
@@ -178,4 +177,78 @@ pub(super) fn initial_workdir(
         }
     }
     Ok(())
+}
+
+/// The entries of one Dirent: a file with literal contents, a renamed file object, or the
+/// file objects of a list.
+pub(super) fn dirent_entries(
+    dirent: &Dirent,
+    evaluator: &Evaluator,
+    vars: Variables<'_>,
+) -> Result<Vec<Value>, String> {
+    let entry = evaluator.evaluate_untrimmed(&dirent.entry, vars)?;
+    let entryname = match &dirent.entryname {
+        Some(expression) => match evaluator.evaluate(expression, vars)? {
+            Value::String(name) => Some(name),
+            other => {
+                return Err(format!(
+                    "`entryname` must be a string, not {}",
+                    other.to_json()
+                ));
+            }
+        },
+        None => None,
+    };
+    let writable = Value::Bool(dirent.writable);
+    match entry {
+        Value::Null => Ok(Vec::new()),
+        // A list of files and directories, which may be empty, as in cwltool.
+        Value::List(items) if items.iter().all(Value::is_file_like) => {
+            if entryname.is_some() {
+                return Err("`entryname` cannot name a list of files".into());
+            }
+            Ok(items
+                .into_iter()
+                .map(|mut item| {
+                    if let Value::Map(map) = &mut item {
+                        map.insert("writable".into(), writable.clone());
+                    }
+                    item
+                })
+                .collect())
+        }
+        entry => {
+            let mut dirent_map = Map::new();
+            dirent_map.insert("entry".into(), entry);
+            if let Some(name) = entryname {
+                dirent_map.insert("entryname".into(), Value::String(name));
+            }
+            dirent_map.insert("writable".into(), writable);
+            Ok(vec![Value::Map(dirent_map)])
+        }
+    }
+}
+
+/// A relative path without `.` segments and with `..` folded, as `os.path.normpath` does.
+fn normalize_path(path: &str) -> String {
+    let absolute = path.starts_with('/');
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." if parts.last().is_some_and(|last| *last != "..") => {
+                parts.pop();
+            }
+            ".." if absolute => {}
+            other => parts.push(other),
+        }
+    }
+    let joined = parts.join("/");
+    if absolute {
+        format!("/{joined}")
+    } else if joined.is_empty() {
+        ".".into()
+    } else {
+        joined
+    }
 }

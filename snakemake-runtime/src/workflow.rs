@@ -1140,6 +1140,7 @@ impl Hook {
         let globals = interpreter.new_globals(module_name, None);
         let state_rc = self.state.clone();
         functions::install(&globals, &state_rc);
+        crate::namespace::install(interpreter, &globals)?;
         let config = spec
             .config
             .clone()

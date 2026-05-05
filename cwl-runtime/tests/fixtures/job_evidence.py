@@ -1,5 +1,5 @@
 #!/usr/bin/env -S uv run -q --with cwltool==3.3.20260925135507 python3
-# Records how cwltool rejects the example job files of job_corpus.txt that fail there, into
+# Records how cwltool rejects the example job files of job_test_workflows.txt that fail there, into
 # job_evidence.txt next to this script. The job corpus test checks that every pair that fails
 # there is listed here.
 #
@@ -132,13 +132,13 @@ def check(document, job):
 def main():
     os.chdir(CORPUS)
     failing = []
-    for line in (FIXTURES / "job_corpus.txt").read_text().splitlines():
+    for line in (FIXTURES / "job_test_workflows.txt").read_text().splitlines():
         words = line.split(" ", 2)
         if line.startswith("#") or len(words) < 3 or words[2].startswith("ok "):
             continue
         failing.append((words[0], words[1]))
     lines = [
-        "# How cwltool rejects each example job file that fails in job_corpus.txt, recorded by",
+        "# How cwltool rejects each example job file that fails in job_test_workflows.txt, recorded by",
         "# job_evidence.py with cwltool 3.3.20260925135507: the document and the job, then the",
         "# first lines of cwltool's error when it checks the job against the document, or, when",
         "# it accepts the job, when it runs it without containers; `=` gives a reason.",

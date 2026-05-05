@@ -85,7 +85,7 @@ cwl-corpus:
 	#!/usr/bin/env bash
 	set -euo pipefail
 	root="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}"
-	fixtures="$PWD/cwl-parser/tests/fixtures/corpus"
+	fixtures="$PWD/cwl-parser/tests/fixtures/test-workflows"
 	paths="$(grep -v '^#' "$fixtures/revisions.txt" | cut -d' ' -f1)"
 	mkdir -p "$root"
 	# The paths of the files below a folder of the git tree of a WorkflowHub entry version.
@@ -162,7 +162,7 @@ cwl-corpus:
 
 # Loads the whole CWL corpus and compares the result with `cwltool --validate`.
 cwl-corpus-test:
-	CWL_CORPUS="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}" cargo test --release --locked -p cwl-parser --test corpus -- --ignored
+	CWL_CORPUS="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}" cargo test --release --locked -p cwl-parser --test test_workflows -- --ignored
 
 # Fetches the data files of the CWL conformance tests (inputs like `whale.txt`), which the
 # text-only corpus leaves out, into a folder of their own, so that the corpus stays as
@@ -176,7 +176,7 @@ cwl-conformance-data:
 	home = os.path.expanduser("~/.cache/iunctus/corpus")
 	corpus = os.environ.get("CWL_CORPUS") or f"{home}/cwl"
 	data = os.environ.get("CWL_CONFORMANCE_DATA") or f"{home}/cwl-conformance-data"
-	for line in open("cwl-parser/tests/fixtures/corpus/revisions.txt"):
+	for line in open("cwl-parser/tests/fixtures/test-workflows/revisions.txt"):
 	    if line.startswith("#") or not line.startswith("conformance/"):
 	        continue
 	    path, url, ref, commit, *prefixes = line.split()
@@ -214,12 +214,12 @@ cwl-conformance-test:
 # Builds the execution graph of every CWL document of the corpus that cwltool validates, with
 # placeholder inputs, and compares the outcomes with the recorded ones.
 cwl-graph-corpus-test:
-	CWL_CORPUS="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}" cargo test --release --locked -p cwl-runtime --test graph_corpus -- --ignored
+	CWL_CORPUS="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}" cargo test --release --locked -p cwl-runtime --test graph_test_workflows -- --ignored
 
 # Runs the real-world CWL documents of the corpus with their example job files, with the mock
-# TES executor, and compares the outcomes with cwl-runtime/tests/fixtures/job_corpus.txt.
+# TES executor, and compares the outcomes with cwl-runtime/tests/fixtures/job_test_workflows.txt.
 cwl-job-corpus-test:
-	CWL_CORPUS="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}" cargo test --release --locked -p cwl-runtime --test job_corpus -- --ignored
+	CWL_CORPUS="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}" cargo test --release --locked -p cwl-runtime --test job_test_workflows -- --ignored
 
 # Fetches the text-only Snakemake test workflows at the commits their test expects.
 snakemake-test-workflows:

@@ -9,8 +9,8 @@ use std::sync::Arc;
 use cwl_parser::source::Web;
 use cwl_parser::{Loader, Node, Value, yaml};
 
-const REJECTED: &str = include_str!("fixtures/corpus/rejected.txt");
-const DIFFERENCES: &str = include_str!("fixtures/corpus/differences.txt");
+const REJECTED: &str = include_str!("fixtures/test-workflows/rejected.txt");
+const DIFFERENCES: &str = include_str!("fixtures/test-workflows/differences.txt");
 const CLASSES: [&str; 4] = ["CommandLineTool", "ExpressionTool", "Workflow", "Operation"];
 const SUITES: [&str; 3] = [
     "conformance/v1.0/v1.0/conformance_test_v1.0.yaml",

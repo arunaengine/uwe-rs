@@ -4,7 +4,7 @@
 # relative to the corpus. A job file pairs with a document of the same repository when the
 # document has every input the job sets, the job sets every required input without default,
 # and the name of the job file holds the name of the document, or the document is the only
-# such one next to it. job_corpus.txt starts from its output.
+# such one next to it. job_test_workflows.txt starts from its output.
 #
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0

@@ -221,12 +221,12 @@ cwl-graph-corpus-test:
 cwl-job-corpus-test:
 	CWL_CORPUS="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}" cargo test --release --locked -p cwl-runtime --test job_corpus -- --ignored
 
-# Fetches the text-only Snakemake corpus at the commits the corpus test expects.
-snakemake-corpus:
+# Fetches the text-only Snakemake test workflows at the commits their test expects.
+snakemake-test-workflows:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	root="${SNAKEMAKE_CORPUS:-$HOME/.cache/iunctus/corpus/snakemake}"
-	grep -v '^#' snakemake-parser/tests/fixtures/corpus_revisions.txt | while read -r repository branch commit; do
+	root="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/snakemake}"
+	grep -v '^#' snakemake-parser/tests/fixtures/test_workflows_revisions.txt | while read -r repository branch commit; do
 		if [ "$repository" = snakemake/snakemake ]; then
 			target="$root/snakemake-tests"
 			patterns=('/tests/**/Snakefile' '/tests/**/snakefile' '/tests/**/*.smk' '/tests/**/*.snakefile')
@@ -246,15 +246,15 @@ snakemake-corpus:
 		mv "$work" "$target"
 	done
 
-# Adds the files that Snakemake runs read while they plan to the folders of `just snakemake-corpus`:
+# Adds the files that Snakemake runs read while they plan to the folders of `just snakemake-test-workflows`:
 # text files up to 1 MiB of each workflow (config files, sample sheets, schemas, helper modules)
 # and every file up to 1 MiB of the Snakemake tests (inputs and expected results). Other files
 # are made empty, so that they exist. A folder is done once it holds `.iunctus-data`.
-snakemake-corpus-data:
+snakemake-test-workflows-data:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	root="${SNAKEMAKE_CORPUS:-$HOME/.cache/iunctus/corpus/snakemake}"
-	grep -v '^#' snakemake-parser/tests/fixtures/corpus_revisions.txt | while read -r repository branch commit; do
+	root="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/snakemake}"
+	grep -v '^#' snakemake-parser/tests/fixtures/test_workflows_revisions.txt | while read -r repository branch commit; do
 		if [ "$repository" = snakemake/snakemake ]; then
 			target="$root/snakemake-tests"
 			scope='^tests/'
@@ -300,14 +300,14 @@ snakemake-corpus-data:
 		touch "$target/.iunctus-data"
 	done
 
-# Parses the whole Snakemake corpus and compares the result with Snakemake's parser.py.
-snakemake-corpus-test:
-	SNAKEMAKE_CORPUS="${SNAKEMAKE_CORPUS:-$HOME/.cache/iunctus/corpus/snakemake}" cargo test --release --locked -p snakemake-parser --test corpus -- --ignored --nocapture
+# Parses all Snakemake test workflows and compares the result with Snakemake's parser.py.
+snakemake-test-workflows-test:
+	SNAKEMAKE_TEST_WORKFLOWS="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/snakemake}" cargo test --release --locked -p snakemake-parser --test test_workflows -- --ignored --nocapture
 
-# Runs every workflow of the Snakemake corpus with the mock executor and compares the outcomes
-# with snakemake-runtime/tests/fixtures/run_corpus.txt; `UPDATE_FIXTURE=1` rewrites the fixture.
-snakemake-run-corpus-test:
-	SNAKEMAKE_CORPUS="${SNAKEMAKE_CORPUS:-$HOME/.cache/iunctus/corpus/snakemake}" cargo test --release --locked -p snakemake-runtime --test run_corpus -- --ignored --exact workflows_run_as_recorded
+# Runs every Snakemake test workflow with the mock executor and compares the outcomes
+# with snakemake-runtime/tests/fixtures/run_test_workflows.txt; `UPDATE_FIXTURE=1` rewrites the fixture.
+snakemake-run-test-workflows-test:
+	SNAKEMAKE_TEST_WORKFLOWS="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/snakemake}" cargo test --release --locked -p snakemake-runtime --test run_test_workflows -- --ignored --exact workflows_run_as_recorded
 
 # Fetches the text-only Argo corpus at the commits the Argo corpus test expects. The checkouts
 # keep their `.git`, which marks the repository whose templates a workflow may reference.

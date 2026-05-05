@@ -1,16 +1,16 @@
-<!-- Snakemake corpus for iunctus: how it was built, a Snakefile parser evaluation, and a feature inventory of real workflows and the Snakemake tests -->
+<!-- Snakemake test workflows for iunctus: how it was built, a Snakefile parser evaluation, and a feature inventory of real workflows and the Snakemake tests -->
 <!-- Copyright (c) 2026 The iunctus Contributors -->
 <!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
 
-# Snakemake corpus: parser evaluation and feature inventory
+# Snakemake test workflows: parser evaluation and feature inventory
 
 Research date: 2026-09-27. This note builds on [snakemake.md](snakemake.md). That note gives the keyword lists and the execution model. This note measures what real workflows use.
 
-All numbers marked "own measurement" come from scripts in `~/.cache/iunctus/corpus/snakemake/tools/`. The raw results are in `~/.cache/iunctus/corpus/snakemake/results/`. Section 5 lists what I could not verify.
+All numbers marked "own measurement" come from scripts in `~/.cache/iunctus/test-workflows/snakemake/tools/`. The raw results are in `~/.cache/iunctus/test-workflows/snakemake/results/`. Section 5 lists what I could not verify.
 
 ## Summary
 
-- The corpus has 464 of the 465 standardized catalog workflows and the `tests/` folder of Snakemake v9.27.0. It is text only: 8,375 text files from the sources (29.2 MB). With the catalog index, the tools and the results it is 38.8 MB.
+- The test workflows are 464 of the 465 standardized catalog workflows and the `tests/` folder of Snakemake v9.27.0. It is text only: 8,375 text files from the sources (29.2 MB). With the catalog index, the tools and the results it is 38.8 MB.
 - 62 of the 464 standardized workflows define no rule. Most are templates. The inventory uses the 399 workflows in which the Snakemake parser found at least one rule. Together they have 10,416 rules and 346,130 lines of Snakemake code.
 - Parsers, measured against Snakemake's own `parser.py` on the files each workflow really loads:
   - tree-sitter-snakemake parses 97.5% of those files without error, and all files of 87.6% of the workflows with rules.
@@ -21,7 +21,7 @@ All numbers marked "own measurement" come from scripts in `~/.cache/iunctus/corp
 - Execution: `shell:` in 91% of workflows, `script:` in 66% (Python 54%, R 28%), `wrapper:` in 42%, `run:` in 18%, `notebook:` in 2%. Software: `conda:` in 86% of workflows, containers in 33%.
 - Snakemake tests: 391 test folders have a Snakefile and `expected-results`. 210 of them need no Python helpers, no scripts, wrappers or notebooks, no checkpoints and no software environment. 109 test folders remain after also removing `run:`, modules, storage, groups, handlers, PEP, rejected files, expected failures and folders that no test function uses.
 
-## 1. Corpus
+## 1. Test workflows
 
 ### 1.1 Workflow catalog
 
@@ -34,7 +34,7 @@ All numbers marked "own measurement" come from scripts in `~/.cache/iunctus/corp
   - `*.yaml`, `*.yml`, `*.tsv` and `*.csv` under any `config/` folder, up to 200 kB;
   - `.snakemake-workflow-catalog.yml`.
   Three config files were larger and were skipped (in `karltayeb/laplace-bfs` and `r1cheu/imputation`).
-- Location: `~/.cache/iunctus/corpus/snakemake/catalog/<owner>__<repo>/`. Each folder has `.iunctus-meta.json` with branch, commit and skipped files. The catalog entries themselves are in `catalog-standardized.json`. All commits are in `revisions.txt`.
+- Location: `~/.cache/iunctus/test-workflows/snakemake/catalog/<owner>__<repo>/`. Each folder has `.iunctus-meta.json` with branch, commit and skipped files. The catalog entries themselves are in `catalog-standardized.json`. All commits are in `revisions.txt`.
 
 | Kind | Files | Bytes | Repositories |
 |---|---:|---:|---:|
@@ -71,7 +71,7 @@ Own measurement. Config rows include config folders inside test folders.
 
 The scripts still use the working folder `/tmp/iunctus-smk`.
 
-### 1.4 Limits of the corpus
+### 1.4 Limits of the test workflows
 
 - The standardized workflows lean toward the recommended layout. Their authors know Snakemake well. The 5,755 non-standardized catalog entries are not included.
 - Heads of default branches are not releases. 177 of the 465 entries name a latest release in `data.json`. I did not fetch those tags.
@@ -121,7 +121,7 @@ The reference is `parser.py` from v9.27.0. It runs unchanged with a small stub f
   - "Accepted" means the tree has no `ERROR` or `MISSING` node.
   - "Correct" also requires the same number of `rule_definition` plus `checkpoint_definition` nodes as the reference rule count.
 - **ruff_python_parser** 0.0.15 from crates.io (2026-09-24, MIT). It is not a Snakefile parser, so I tested it on the Python parts:
-  - all `.py` files in the corpus;
+  - all `.py` files of the test workflows;
   - the Python that `parser.py` generates from each Snakefile;
   - each Snakefile read as plain Python.
 
@@ -224,7 +224,7 @@ There are two ways to shape the output. One is to emit "virtual Python", as `par
 
 ### 2.7 Assessment (inference)
 
-- Use `ruff_python_parser` and its lexer as the base, and port the `parser.py` state machine to Rust. The Python part is solved: ruff parses everything that CPython parses in this corpus. Pin the exact version. The crate says it is "an internal component crate of Ruff". It had 15 releases (0.0.0 to 0.0.15) between 2026-06-23 and 2026-09-24, and it needs Rust 1.96.
+- Use `ruff_python_parser` and its lexer as the base, and port the `parser.py` state machine to Rust. The Python part is solved: ruff parses everything that CPython parses in these test workflows. Pin the exact version. The crate says it is "an internal component crate of Ruff". It had 15 releases (0.0.0 to 0.0.15) between 2026-06-23 and 2026-09-24, and it needs Rust 1.96.
 - snakemake-lang is the closest existing work, but it is not ready. It fails a third of the loaded files. Its fixes are known (use tokens for block ends, add docstrings, local `use rule`, anonymous rules and `singularity`). Iunctus could contribute these fixes upstream or reuse its structure.
 - tree-sitter-snakemake is not a good base for execution, because it has no Python AST. It could still serve editor features later.
 - Keep `parser.py` as an oracle that runs only in CI. In my reading this fits decision 1, because it never runs as part of iunctus.

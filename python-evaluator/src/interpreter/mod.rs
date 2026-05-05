@@ -119,6 +119,18 @@ pub trait StatementHook {
     ) -> Result<bool, Error>;
 }
 
+/// Gives attributes to tagged values beyond those of the value they wrap, like the methods
+/// of the file objects of a workflow language, which are texts with more methods.
+pub trait AttributeHook {
+    /// The attribute `name` of a tagged value, or `None` when the host has none.
+    fn attribute(
+        &self,
+        interpreter: &mut Interpreter,
+        value: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error>;
+}
+
 /// A module the host provides, made when first imported.
 pub type ModuleFactory = Rc<dyn Fn(&mut Interpreter) -> Result<Value, Error>>;
 
@@ -134,6 +146,7 @@ pub struct Interpreter {
     /// Parsed modules, kept while functions defined in them may run.
     pub(crate) retained: Vec<Rc<Suite>>,
     pub hook: Option<Rc<dyn StatementHook>>,
+    pub attribute_hook: Option<Rc<dyn AttributeHook>>,
     /// Statements executed so far, and the most allowed, so that a loop that never ends stops.
     pub steps: u64,
     pub step_limit: u64,
@@ -160,6 +173,7 @@ impl Interpreter {
             sys_path: Value::list(Vec::new()),
             retained: Vec::new(),
             hook: None,
+            attribute_hook: None,
             steps: 0,
             step_limit: 500_000_000,
             depth: 0,

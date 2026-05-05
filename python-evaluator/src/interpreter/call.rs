@@ -298,7 +298,18 @@ impl Interpreter {
 
     /// `value.name`, or `None` when the object has no such attribute.
     pub fn find_attribute(&mut self, value: &Value, name: &str) -> Result<Option<Value>, Error> {
-        let value = value.plain();
+        let found = self.find_plain_attribute(value.plain(), name)?;
+        if found.is_none()
+            && let Value::Tagged(_) = value
+            && let Some(hook) = self.attribute_hook.clone()
+        {
+            return hook.attribute(self, value, name);
+        }
+        Ok(found)
+    }
+
+    /// The attribute of a value without its flags.
+    fn find_plain_attribute(&mut self, value: &Value, name: &str) -> Result<Option<Value>, Error> {
         if name == "__class__" {
             return Ok(Some(Value::Class(types::class_of(value))));
         }

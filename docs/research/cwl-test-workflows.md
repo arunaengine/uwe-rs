@@ -1,35 +1,35 @@
-<!-- CWL corpus of real workflows, evaluation of Rust CWL loaders on it, and an inventory of the CWL features real workflows use. -->
+<!-- CWL test workflows, evaluation of Rust CWL loaders on them, and an inventory of the CWL features real workflows use. -->
 <!-- Copyright (c) 2026 The iunctus Contributors -->
 <!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
 
-# CWL corpus: Rust loader evaluation and feature inventory
+# CWL test workflows: Rust loader evaluation and feature inventory
 
 Research date: 2026-09-27. This note builds on [cwl.md](cwl.md). That note covers the spec and the existing engines. This note measures real CWL files.
 
 Method in short:
 
-1. I built a text-only corpus of CWL files (section 1).
+1. I built a text-only set of CWL test workflows (section 1).
 2. I loaded every CWL document with each Rust CWL loader I could find. A small Rust program did this (section 2).
-3. I counted CWL features over the real-world part of the corpus with Python scripts (section 3). Python and ruamel.yaml were only research tools here. They are not a proposal for iunctus.
+3. I counted CWL features over the real-world part of the test workflows with Python scripts (section 3). Python and ruamel.yaml were only research tools here. They are not a proposal for iunctus.
 
-All numbers are my own counts from the corpus unless a source is given. The scripts are in `~/.cache/iunctus/corpus/cwl/scripts/`. The raw results (JSON and JSON Lines) are in `~/.cache/iunctus/corpus/cwl/results/`.
+All numbers are my own counts from the test workflows unless a source is given. The scripts are in `~/.cache/iunctus/test-workflows/cwl/scripts/`. The raw results (JSON and JSON Lines) are in `~/.cache/iunctus/test-workflows/cwl/results/`.
 
 ## Summary
 
-- **Corpus.** 1,122 conformance test files (v1.0, v1.1, v1.2) and 8,288 real-world text files. The real-world files come from 121 WorkflowHub CWL entries, their 42 source repositories and 9 other well-known collections. After removing byte-identical copies, the real-world part has 3,216 distinct CWL documents.
+- **Test workflows.** 1,122 conformance test files (v1.0, v1.1, v1.2) and 8,288 real-world text files. The real-world files come from 121 WorkflowHub CWL entries, their 42 source repositories and 9 other well-known collections. After removing byte-identical copies, the real-world part has 3,216 distinct CWL documents.
 - **Rust loaders.** Only three Rust CWL loaders exist. Only one is usable: `cwl_core` 0.15.1 from FAIRagro's commonwl (MIT OR Apache-2.0). It loads all 633 valid conformance tool files and 3,190 of 3,216 distinct real-world documents (99.2%). cwl-zen loads 91.1%. cwl-rs loads 51.4%, because it rejects every v1.2 document.
 - **cwl_core is a typed serde model, not a Schema Salad implementation.** It handles local `$import`, map-to-list forms and the two type DSLs. It does not flatten imported arrays. It does not support `$import` of fragments or URLs. It resolves `$include` in three fields only. It keeps `run:` as a path string, does no IRI resolution and does no version upgrade.
 - **cwl_core silently drops a whole `requirements` list when one entry does not fit its model.** This happens in 74 of 2,585 real-world documents that have requirements (2.9%). In 54 of them the lost list contained InlineJavascriptRequirement.
 - **WorkflowHub.** Of 121 CWL entries, 79 main workflows load together with all their `run:` references in cwl_core. 23 entries are abstract workflows built from `Operation` steps. They cannot run. That leaves 95 concrete workflows.
 - **CWL v1.0 is still the most common version.** It covers 61% of distinct real-world documents and 44 of 117 WorkflowHub main workflows. Loading v1.0 with the upgrade rules is required.
 - **JavaScript is common but short.** 56 of 95 concrete WorkflowHub entries use at least one JavaScript expression. The median JavaScript expression has 44 characters, and 90% have fewer than 193. 54% of all expressions are plain parameter references that need no JavaScript engine. 14 WorkflowHub entries use ES2015+ syntax (arrow functions, `let`, `includes`), although the spec says ECMAScript 5.1.
-- **Feature use in the 95 concrete WorkflowHub entries:** DockerRequirement 74 (as a hint in 65), JavaScript 56, Directory type 53, InitialWorkDirRequirement 48, step `valueFrom` 42, subworkflows 41, ExpressionTool 33, scatter 33, `when` 26, `pickValue` 24, secondaryFiles 24, ShellCommandRequirement 22, SoftwareRequirement 22. Rare: `loadContents` 12, `dockerFile` 9, record types 8. Never used anywhere in the corpus: ToolTimeLimit, InplaceUpdateRequirement, `nested_crossproduct`.
+- **Feature use in the 95 concrete WorkflowHub entries:** DockerRequirement 74 (as a hint in 65), JavaScript 56, Directory type 53, InitialWorkDirRequirement 48, step `valueFrom` 42, subworkflows 41, ExpressionTool 33, scatter 33, `when` 26, `pickValue` 24, secondaryFiles 24, ShellCommandRequirement 22, SoftwareRequirement 22. Rare: `loadContents` 12, `dockerFile` 9, record types 8. Never used anywhere in the test workflows: ToolTimeLimit, InplaceUpdateRequirement, `nested_crossproduct`.
 
-## 1. Corpus
+## 1. Test workflows
 
 ### Takeaway
 
-The corpus lives in `~/.cache/iunctus/corpus/cwl/`. It holds about 9,410 text files (31.5 MB), plus 66 MB on disk including the blobless git metadata. Every source and commit is listed in `~/.cache/iunctus/corpus/cwl/revisions.txt`. The real-world part is skewed toward a few large repositories and a few organisations, so section 3 gives counts per document, per repository and per WorkflowHub entry.
+The test workflows live in `~/.cache/iunctus/test-workflows/cwl/`. It holds about 9,410 text files (31.5 MB), plus 66 MB on disk including the blobless git metadata. Every source and commit is listed in `~/.cache/iunctus/test-workflows/cwl/revisions.txt`. The real-world part is skewed toward a few large repositories and a few organisations, so section 3 gives counts per document, per repository and per WorkflowHub entry.
 
 ### Findings
 
@@ -202,12 +202,12 @@ Sources: [load.rs](https://github.com/fairagro/commonwl/blob/044345dcdf36f016d87
 - **`$import`** is handled only in `preprocess_cwl_file`. It replaces `{$import: file}` with the parsed local file and detects cycles. It then serializes the whole tree back to YAML and parses it again ([load.rs line 112](https://github.com/fairagro/commonwl/blob/044345dcdf36f016d8709e5aa5e116164d0b48d5/crates/core/load.rs#L112)). It does not flatten arrays, does not handle fragments and does not load http or https.
 - **`$include`** exists only as a `StringOrInclude` type in `expressionLib`, `Dirent.entry` and `dockerFile`. The file is read later by `pack_cwl` or the engine.
 - **`run:`** is a `StringOrDocument`: a path string or an inline document. It is not resolved on load. `pack_cwl` and the engine join it with the workflow directory ([backend.rs line 653](https://github.com/fairagro/commonwl/blob/044345dcdf36f016d8709e5aa5e116164d0b48d5/crates/engine/backend.rs#L653)). URLs and namespace prefixes are not supported.
-- **`$graph`** is detected when the file text contains the substring `$graph` ([load.rs line 40](https://github.com/fairagro/commonwl/blob/044345dcdf36f016d8709e5aa5e116164d0b48d5/crates/core/load.rs#L40)). No corpus file triggers this check by mistake. `unpack` picks the entry named by the fragment, or `main`, or the only entry. It strips `#main/` prefixes from ids.
+- **`$graph`** is detected when the file text contains the substring `$graph` ([load.rs line 40](https://github.com/fairagro/commonwl/blob/044345dcdf36f016d8709e5aa5e116164d0b48d5/crates/core/load.rs#L40)). No file of the test workflows triggers this check by mistake. `unpack` picks the entry named by the fragment, or `main`, or the only entry. It strips `#main/` prefixes from ids.
 - **IRIs.** Ids are kept as written. There is no general identifier or link resolution. Named types stay plain strings (`CommandInputType::String`). `SchemaDefRequirement.types` is an untyped JSON value.
 - **Salad forms.** Map-to-list works for `inputs`, `outputs`, `steps`, step `in`, `requirements`, `hints`, `envDef` and `packages`. The type DSL (`File[]?`) and the secondaryFiles DSL work too.
 - **`$namespaces` and `$schemas`** are kept as extension fields. Only the engine's format checking uses them.
 - **Unknown fields.** Unknown top-level fields go into `extension_fields`, so typos pass silently. Unknown step fields are ignored.
-- **Silent loss of requirements.** `requirements` and `hints` use `deserialize_map_list_option_class`. It returns `None` when any entry fails ([deserialize.rs line 76](https://github.com/fairagro/commonwl/blob/044345dcdf36f016d8709e5aa5e116164d0b48d5/crates/salad/deserialize.rs#L76)). In the corpus this hit 74 documents:
+- **Silent loss of requirements.** `requirements` and `hints` use `deserialize_map_list_option_class`. It returns `None` when any entry fails ([deserialize.rs line 76](https://github.com/fairagro/commonwl/blob/044345dcdf36f016d8709e5aa5e116164d0b48d5/crates/salad/deserialize.rs#L76)). In the test workflows this hit 74 documents:
   - 68 CommandLineTools list a workflow-only requirement, such as StepInputExpressionRequirement. The v1.2 schema types `requirements` as `ProcessRequirement[]`, so these files are valid ([Process.yml](https://github.com/common-workflow-language/cwl-v1.2/blob/main/Process.yml)).
   - 2 use `LoadListingRequirement` without `loadListing`. That field is optional in v1.2 (`LoadListingEnum?`), but cwl_core requires it.
   - 2 `$import` a list into the requirements list. Salad flattens such lists, but cwl_core does not.
@@ -237,7 +237,7 @@ Sources: [load.rs](https://github.com/fairagro/commonwl/blob/044345dcdf36f016d87
   1. **Silent requirement loss (2.9% of documents).** iunctus must turn this into an error or a warning. Otherwise a tool can run without its container or without JavaScript enabled.
   2. **v1.0 upgrade semantics**, because v1.0 covers 61% of documents. Examples are network access on and deep directory listing ([cwl.md](cwl.md) section 1).
   3. **Loading and validating `Operation` trees** (23 WorkflowHub entries). iunctus must then refuse to run them with a clear error.
-  4. **Salad features seen in the corpus:** `$import` fragments (5 documents), array flattening (2), `$include` in other fields (1, in `dockerPull`), namespace-prefixed or URL `run:` (5 documents, 1 entry) and `cwl:v1.0` (8 documents, 1 entry).
+  4. **Salad features seen in the test workflows:** `$import` fragments (5 documents), array flattening (2), `$include` in other fields (1, in `dockerPull`), namespace-prefixed or URL `run:` (5 documents, 1 entry) and `cwl:v1.0` (8 documents, 1 entry).
   5. **YAML compatibility with ruamel.yaml**, which cwltool uses: 7 documents in analysis-workflows, ACCESS-Pipeline and plant2human. Either the YAML layer must accept these, or the fix must go into saphyr.
   6. **Source spans** for good error messages.
 - Three ways to use cwl_core (inference, not decided):
@@ -246,15 +246,15 @@ Sources: [load.rs](https://github.com/fairagro/commonwl/blob/044345dcdf36f016d87
   3. Write an iunctus model, using cwl_core as reference and oracle.
 
   Option 2 keeps most of the value of its roughly 6,000 lines of types. It also moves the risky part (Salad and IRIs) under iunctus control.
-- This corpus and the harness can serve as the loader regression suite: 687 conformance files, 3,216 real documents and 121 WorkflowHub entries.
+- These test workflows and the harness can serve as the loader regression suite: 687 conformance files, 3,216 real documents and 121 WorkflowHub entries.
 
 ### Gaps
 
-- I did not run cwltool on the corpus. So "valid" means "ruamel.yaml parses it and it is not obviously broken". It does not mean cwltool accepts it. This affects the `cwl:v1.0`, duplicate-requirement and `$import`-fragment cases.
+- I did not run cwltool on the test workflows. So "valid" means "ruamel.yaml parses it and it is not obviously broken". It does not mean cwltool accepts it. This affects the `cwl:v1.0`, duplicate-requirement and `$import`-fragment cases.
 - I measured whether loaders load, not whether their models are right. Apart from the requirement counts, I did not diff the cwl_core model against cwltool's normalized output.
 - I did not evaluate the schema_salad Rust code generator (PR #917).
 
-## 3. Feature inventory (real-world corpus only)
+## 3. Feature inventory (real-world test workflows only)
 
 ### Takeaway
 
@@ -283,7 +283,7 @@ Real CWL uses most of the spec, but in simple ways. The long tail is in files, d
 | Operation | 44 |
 | packed `$graph` | 42 |
 
-Counting inline and packed processes too, the corpus has 2,607 CommandLineTools, 986 Workflows, 188 ExpressionTools and 324 Operations. Workflows are small: the median has 4 steps, 90% have at most 15, and the largest has 58.
+Counting inline and packed processes too, the test workflows have 2,607 CommandLineTools, 986 Workflows, 188 ExpressionTools and 324 Operations. Workflows are small: the median has 4 steps, 90% have at most 15, and the largest has 58.
 
 | cwlVersion | Distinct documents | WorkflowHub main workflows (117) |
 |---|---|---|
@@ -443,7 +443,7 @@ Used in 540 documents (42 origins) and in 48 of 95 WorkflowHub entries. Forms, c
 | absolute `entryname` | 2 |
 | File or Directory literal | 2 |
 
-The `$include` form stages scripts (Python, R) into the working directory. That is why the corpus includes the referenced script files.
+The `$include` form stages scripts (Python, R) into the working directory. That is why the test workflows include the referenced script files.
 
 ### 3.8 Types
 
@@ -509,7 +509,7 @@ Counted in documents:
 - **Parameter references in pure Rust.** They cover 54% of expressions. 704 documents declare InlineJavascriptRequirement but need no engine.
 - **JavaScript.** It is needed for 56 of 95 entries. Real code is short and ES5-style, but 14 entries use ES2015+ syntax. The embedded engine must accept ES2015+. Boa and QuickJS-NG both do ([rust-ecosystem.md](rust-ecosystem.md) section 2). No expression uses Node modules. One uses `console`.
 - **Files and directories are central.** Directory appears in 53 entries, InitialWorkDir in 48 (with `writable: true` in 24) and secondaryFiles in 24. This matches the ranking in [cwl.md](cwl.md) section 8.
-- **Workflow control.** Subworkflows (41 entries), step `valueFrom` (42), scatter (33, almost only dotproduct or a single input), ExpressionTool (33), and `when` with `pickValue` (26). All are needed for broad coverage. `nested_crossproduct` can wait. The corpus never uses it.
+- **Workflow control.** Subworkflows (41 entries), step `valueFrom` (42), scatter (33, almost only dotproduct or a single input), ExpressionTool (33), and `when` with `pickValue` (26). All are needed for broad coverage. `nested_crossproduct` can wait. The test workflows never use it.
 - **Can wait:** ToolTimeLimit and InplaceUpdateRequirement (unused), WorkReuse (2 entries), LoadListingRequirement (5), record types (8), `loadContents` (12).
 - **Features come in bundles.** Adding features one at a time unlocks few extra workflows. 26 entries need none of the 20 advanced features. Most others need 5 or more at once. A CWL milestone should target the whole common set together.
 
@@ -519,15 +519,15 @@ Counted in documents:
 - I did not check which WorkflowHub entries actually run (no data, no cwltool runs). "Uses a feature" means the text contains it.
 - Per-entry counts over-weight groups with many similar entries: DT-GEO 23, BioExcel 18 and UNLOCK 16 of 121.
 - Reachability follows only `run:` file paths. It misses remote `run:` URLs (entry 455) and files that are missing from the repositories (7 entries).
-- I did not add Dockstore CWL entries or `common-workflow-library/legacy` (archived). Both would widen the corpus.
+- I did not add Dockstore CWL entries or `common-workflow-library/legacy` (archived). Both would add to the test workflows.
 
 ## 4. Reproduction
 
-- Corpus: `~/.cache/iunctus/corpus/cwl/` with `revisions.txt` (every source, branch or version, and commit).
-- Build scripts: `~/.cache/iunctus/corpus/cwl/scripts/`
+- Test workflows: `~/.cache/iunctus/test-workflows/cwl/` with `revisions.txt` (every source, branch or version, and commit).
+- Build scripts: `~/.cache/iunctus/test-workflows/cwl/scripts/`
   - `fetch_repo.py` does the sparse, blobless clones. It is driven by `clone_one.sh`, `repos_wfh.txt` and `repos_extra.txt`.
   - `fetch_pinned.sh` fetches the submodules.
   - `fetch_meta.sh` and `fetch_snapshots.py` handle WorkflowHub. `entries.json` holds the entry to repository mapping.
   - `fix_refs.py` and `fix_refs_wfh.py` fetch referenced scripts.
 - Analysis: `classify.py` (index), `conformance_list.py`, `loadeval/` (the Rust harness), `final_stats.py`, `dropped_reqs.py`, `wfh_entries.py`, `inventory.py`, `wfh_reachable.py` and `wfh_per_entry.py`. The Python scripts expect ruamel.yaml. They were run from a working copy in `/tmp/iunctus-cwl/`, so the paths inside them point there.
-- Results: `~/.cache/iunctus/corpus/cwl/results/`, including per-file loader outputs (`res_all_*.jsonl`, `res_conf_*.jsonl`) and all extracted expressions (`expressions.jsonl`).
+- Results: `~/.cache/iunctus/test-workflows/cwl/results/`, including per-file loader outputs (`res_all_*.jsonl`, `res_conf_*.jsonl`) and all extracted expressions (`expressions.jsonl`).

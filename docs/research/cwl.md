@@ -154,7 +154,7 @@ CWL has two expression levels. Parameter references `$(inputs.x.path)` are requi
 - Numbers: CWL values are JSON. Expected outputs include very large integers (for example 4.2e42). A Rust implementation should keep numbers exact through the pipeline, for example with `serde_json` `arbitrary_precision` or its own number type. commonwl loses 2 tests because "serde_json stores all numbers as f64" (their words).
 
 ### Gaps
-- I found no published head-to-head test of Boa vs QuickJS-NG on CWL `expressionLib` code in the wild. Measuring this on a corpus (for example WorkflowHub or Dockstore CWL files) is a good follow-up.
+- I found no published head-to-head test of Boa vs QuickJS-NG on CWL `expressionLib` code in the wild. Measuring this on test workflows (for example WorkflowHub or Dockstore CWL files) is a good follow-up.
 - I did not find current Test262 numbers for QuickJS-NG in a primary source. The rquickjs README text is about QuickJS in general.
 
 ## 4. How does conformance testing work, and who passes how much?
@@ -460,7 +460,7 @@ Workflow engine (shared with the iunctus intermediate representation)
 Testing and tooling
 - [ ] A `cwl-runner`-compatible CLI (`--outdir`, `--quiet`, output object JSON on stdout, exit code 33 for unsupported features).
 - [ ] cwltest in CI for v1.0, v1.1 and v1.2 (and v1.3-dev optionally), per backend, with per-tag badges.
-- [ ] A regression corpus of real-world CWL (for example from WorkflowHub or Dockstore) to test JavaScript fidelity beyond the suite.
+- [ ] Regression test workflows of real-world CWL (for example from WorkflowHub or Dockstore) to test JavaScript fidelity beyond the suite.
 
 **Effort estimate (inference, one experienced Rust developer, from scratch):**
 
@@ -473,7 +473,7 @@ Testing and tooling
 | InitialWorkDir, secondaryFiles, glob and output collection (local) | 6 to 8 |
 | Workflow semantics (scatter, when, pickValue, valueFrom, subworkflows) | 4 to 8 (some shared with the intermediate representation) |
 | TES backend, object storage staging, remote output collection | 6 to 10 |
-| Conformance long tail, v1.0/v1.1 upgrade, real-world corpus fixes | 6 to 10 |
+| Conformance long tail, v1.0/v1.1 upgrade, fixes for the real-world test workflows | 6 to 10 |
 | **Total** | **about 36 to 60 weeks (8 to 13 person-months)** |
 
 - Reaching 100% of `required` (84 tests, no JavaScript) is the first milestone. That is maybe 3 to 4 months. The optional features (JavaScript, InitialWorkDir, and so on) are what make real workflows run.
@@ -482,7 +482,7 @@ Testing and tooling
 **Risk assessment (inference):**
 - Low: spec clarity and test coverage. The spec is stable, v1.2.1 has 378 tests, and cwltool is the oracle.
 - Low to medium: Schema Salad in Rust. The needed subset is small. No official Rust codegen will arrive soon (PR #917 is stalled).
-- Medium: JavaScript fidelity. Boa passes the suite (per commonwl), but real-world `expressionLib` code may hit gaps. Mitigate with an engine trait and corpus tests.
+- Medium: JavaScript fidelity. Boa passes the suite (per commonwl), but real-world `expressionLib` code may hit gaps. Mitigate with an engine trait and test-workflows tests.
 - Medium to high: TES file semantics. There are no writable inputs, no network flag, and no symlinks or empty dirs on S3. Server bugs exist (Funnel stdin truncation, crash under load). Outputs need a second pass on storage. Mitigate with a whole-outdir upload plus a manifest executor, and test on several TES servers.
 - Medium: fitting CWL into a unified intermediate representation shared with Nextflow and Snakemake. CWL needs per-task pre and post hooks in the engine (command building from runtime values, output evaluation). A pure "command plus files" model is not enough.
 - Medium: dependency risk if reusing `commonwl`. It has one main maintainer and a fast-moving 0.x API.

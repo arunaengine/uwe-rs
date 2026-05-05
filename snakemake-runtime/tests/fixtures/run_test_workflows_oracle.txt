@@ -1,4 +1,4 @@
-# What `snakemake --dry-run` of Snakemake 9.27.0 does with the workflows of the corpus
+# What `snakemake --dry-run` of Snakemake 9.27.0 does with the Snakemake test workflows
 # that it cannot evaluate with their preferred launch, for each launch launches.py
 # considers; written by oracle.py. Workflows not listed evaluate with their preferred
 # launch. Columns, separated by tabs: the workflow, the launch (plain, ci, catalog or

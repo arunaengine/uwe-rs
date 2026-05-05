@@ -1,7 +1,7 @@
-# Writes run_corpus_oracle.txt: what real Snakemake 9.27.0 does with each workflow of the
-# Snakemake corpus and each launch that launches.py considers for it. Each run is
+# Writes run_test_workflows_oracle.txt: what real Snakemake 9.27.0 does with each workflow of the
+# Snakemake test workflows and each launch that launches.py considers for it. Each run is
 # `snakemake --dry-run` in a copy of the workflow folder under the temporary directory. Run it
-# from the repository root after `just snakemake-corpus-data`, then run launches.py:
+# from the repository root after `just snakemake-test-workflows-data`, then run launches.py:
 #
 #     uv run -q --with snakemake==9.27.0 --with pyyaml --with pandas --with numpy --with peppy \
 #         --with biopython --with psutil --with requests --with openpyxl --with pyarrow \
@@ -94,7 +94,7 @@ def main():
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         lines = list(pool.map(lambda job: run(*job), jobs))
     with open(ORACLE, "w", encoding="utf-8") as output:
-        output.write("# What `snakemake --dry-run` of Snakemake 9.27.0 does with the workflows of the corpus\n")
+        output.write("# What `snakemake --dry-run` of Snakemake 9.27.0 does with the Snakemake test workflows\n")
         output.write("# that it cannot evaluate with their preferred launch, for each launch launches.py\n")
         output.write("# considers; written by oracle.py. Workflows not listed evaluate with their preferred\n")
         output.write("# launch. Columns, separated by tabs: the workflow, the launch (plain, ci, catalog or\n")

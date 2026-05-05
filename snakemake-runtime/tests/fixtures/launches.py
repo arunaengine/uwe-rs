@@ -1,10 +1,10 @@
-# Writes run_corpus_launches.txt: how the run corpus test launches each workflow of the
-# Snakemake corpus. Run it from the repository root after `just snakemake-corpus-data`:
+# Writes run_test_workflows_launches.txt: how the run test-workflows test launches each workflow of
+# the Snakemake test workflows. Run it from the repository root after `just snakemake-test-workflows-data`:
 #
 #     uv run -q --with pyyaml --with snakemake==9.27.0 python snakemake-runtime/tests/fixtures/launches.py
 #
 # A catalog workflow runs plainly in its repository, unless real Snakemake cannot evaluate it
-# that way (run_corpus_oracle.txt from oracle.py says so) and it can with another launch: the
+# that way (run_test_workflows_oracle.txt from oracle.py says so) and it can with another launch: the
 # way its CI tests it, or with the mandatory flags of its catalog entry. The CI launch is the
 # first step of its GitHub workflows that runs Snakemake on it, with the
 # snakemake-github-action or a `snakemake` command, other than linting, reports, unit test
@@ -27,9 +27,9 @@ import sys
 import yaml
 from snakemake.cli import get_argument_parser
 
-CORPUS = os.environ.get("SNAKEMAKE_CORPUS") or os.path.expanduser("~/.cache/iunctus/corpus/snakemake")
-FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_corpus_launches.txt")
-ORACLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_corpus_oracle.txt")
+TEST_WORKFLOWS = os.environ.get("SNAKEMAKE_TEST_WORKFLOWS") or os.path.expanduser("~/.cache/iunctus/test-workflows/snakemake")
+FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_test_workflows_launches.txt")
+ORACLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_test_workflows_oracle.txt")
 
 # The parser of Snakemake's command line, and what its options that do not run the workflow
 # set.
@@ -251,9 +251,9 @@ def snakefile_of(folder):
 
 
 def candidates():
-    """Each workflow of the corpus, as the run corpus test names it, with its folder and the
+    """Each workflow of the test workflows, as the run test-workflows test names it, with its folder and the
     launches that may run it, the preferred one first."""
-    catalog = os.path.join(CORPUS, "catalog")
+    catalog = os.path.join(TEST_WORKFLOWS, "catalog")
     for name in sorted(os.listdir(catalog)):
         folder = os.path.join(catalog, name)
         if not os.path.isdir(folder) or not snakefile_of(folder):
@@ -263,7 +263,7 @@ def candidates():
             if fields is not None:
                 launches.append((via, fields))
         yield f"catalog/{name.replace(' ', '_')}", folder, launches
-    tests = os.path.join(CORPUS, "snakemake-tests/tests")
+    tests = os.path.join(TEST_WORKFLOWS, "snakemake-tests/tests")
     known = tests_launches(tests)
     for name in sorted(os.listdir(tests)):
         folder = os.path.join(tests, name)
@@ -299,7 +299,7 @@ def main():
         if fields:
             lines.append((name, via, fields))
     with open(FIXTURE, "w", encoding="utf-8") as output:
-        output.write("# How the run corpus test launches each workflow; written by launches.py, which says\n")
+        output.write("# How the run test-workflows test launches each workflow; written by launches.py, which says\n")
         output.write("# how it chooses. Columns, separated by tabs: the workflow, where the launch comes from\n")
         output.write("# (ci, catalog or tests.py), then fields: directory= and snakefile= relative to the\n")
         output.write("# workflow folder, configfile= relative to it, config=<key>=<value>, target=, and\n")

@@ -1,4 +1,4 @@
-//! Checks the parser against Snakemake 9.27.0's parser.py on the corpus from `just snakemake-corpus`.
+//! Checks the parser against Snakemake 9.27.0's parser.py on the test workflows from `just snakemake-test-workflows`.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 
 use snakemake_parser::parse;
 
-const REJECTED: &str = include_str!("fixtures/corpus_rejected.txt");
-const RULES: &str = include_str!("fixtures/corpus_rules.txt");
+const REJECTED: &str = include_str!("fixtures/test_workflows_rejected.txt");
+const RULES: &str = include_str!("fixtures/test_workflows_rules.txt");
 
 /// The Snakemake files of one workflow folder and the rules found in them.
 #[derive(Default)]
@@ -21,9 +21,11 @@ struct Folder {
 }
 
 #[test]
-#[ignore = "needs the Snakemake corpus from `just snakemake-corpus`; run it with `just snakemake-corpus-test`"]
+#[ignore = "needs the Snakemake test workflows from `just snakemake-test-workflows`; run it with `just snakemake-test-workflows-test`"]
 fn matches_parser_py() {
-    let root = PathBuf::from(std::env::var("SNAKEMAKE_CORPUS").expect("SNAKEMAKE_CORPUS is set"));
+    let root = PathBuf::from(
+        std::env::var("SNAKEMAKE_TEST_WORKFLOWS").expect("SNAKEMAKE_TEST_WORKFLOWS is set"),
+    );
     let rejected: BTreeSet<&str> = records(REJECTED).collect();
     let expected: BTreeMap<&str, &str> = records(RULES)
         .filter_map(|line| line.split_once('\t'))
@@ -36,7 +38,7 @@ fn matches_parser_py() {
     // A partial download would otherwise pass with fewer files to check.
     assert!(
         files.len() >= 3_826,
-        "incomplete corpus: {} files",
+        "incomplete test workflows: {} files",
         files.len()
     );
     let mut folders: BTreeMap<String, Folder> = BTreeMap::new();
@@ -101,7 +103,7 @@ fn matches_parser_py() {
         differences.push(message);
     }
     for name in expected.keys().filter(|name| !folders.contains_key(**name)) {
-        differences.push(format!("{name}: missing from the corpus"));
+        differences.push(format!("{name}: missing from the test workflows"));
     }
     println!(
         "{files_alike} of {} files accepted or rejected like parser.py; \
@@ -126,10 +128,10 @@ fn records(fixture: &str) -> impl Iterator<Item = &str> {
 
 /// Snakemake files below `directory` as paths relative to `root`; symbolic links are skipped.
 fn collect(root: &Path, directory: &Path, files: &mut Vec<String>) {
-    let entries = std::fs::read_dir(directory).expect("corpus directory is readable");
+    let entries = std::fs::read_dir(directory).expect("test-workflows directory is readable");
     for entry in entries {
-        let entry = entry.expect("corpus entry is readable");
-        let kind = entry.file_type().expect("corpus entry has a type");
+        let entry = entry.expect("test-workflows entry is readable");
+        let kind = entry.file_type().expect("test-workflows entry has a type");
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().into_owned();
         if kind.is_dir() {

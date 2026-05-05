@@ -1,11 +1,12 @@
-//! Runs the real-world CWL documents of the corpus from `just cwl-corpus` with their example
-//! job files, as `iunctus run <document> -inputs <job>` does with the mock TES executor, and
-//! compares the outcomes with `tests/fixtures/job_test_workflows.txt`: per document and job file, `ok`
-//! and the number of tasks, or the error. `fixtures/job_test_workflows.py` finds the pairs; a pair may
-//! only fail when `fixtures/job_evidence.txt` shows that cwltool rejects it too. Documents
-//! that `cwltool --validate` rejects, and pairs whose files the corpus lacks, are left out. Run
-//! with `just cwl-job-corpus-test`; on a difference the test writes the new fixture to the
-//! target directory and says where.
+//! Runs the real-world CWL documents of the test workflows from `just cwl-test-workflows` with
+//! their example job files, as `iunctus run <document> -inputs <job>` does with the mock TES
+//! executor, and compares the outcomes with `tests/fixtures/job_test_workflows.txt`: per
+//! document and job file, `ok` and the number of tasks, or the error.
+//! `fixtures/job_test_workflows.py` finds the pairs; a pair may only fail when
+//! `fixtures/job_evidence.txt` shows that cwltool rejects it too. Documents that
+//! `cwltool --validate` rejects, and pairs whose files the test workflows lack, are left out.
+//! Run with `just cwl-job-test-workflows-test`; on a difference the test writes the new fixture
+//! to the target directory and says where.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -71,7 +72,7 @@ fn run(target: PathBuf, inputs: PathBuf) -> Result<usize, String> {
     Ok(execution.graph.nodes.len())
 }
 
-/// The first line of a message, with the corpus and temporary folders taken out.
+/// The first line of a message, with the test workflows folder and temporary files taken out.
 fn clean(message: &str, root: &Path) -> String {
     let first = message.lines().next().unwrap_or_default();
     let mut text = first
@@ -88,9 +89,10 @@ fn clean(message: &str, root: &Path) -> String {
 }
 
 #[test]
-#[ignore = "needs the CWL corpus from `just cwl-corpus`; run it with `just cwl-job-corpus-test`"]
+#[ignore = "needs the CWL test workflows from `just cwl-test-workflows`; run it with `just cwl-job-test-workflows-test`"]
 fn documents_run_with_their_job_files_as_recorded() {
-    let root = PathBuf::from(std::env::var("CWL_CORPUS").expect("CWL_CORPUS is set"));
+    let root =
+        PathBuf::from(std::env::var("CWL_TEST_WORKFLOWS").expect("CWL_TEST_WORKFLOWS is set"));
     let fixture =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/job_test_workflows.txt");
     let text = std::fs::read_to_string(&fixture).unwrap_or_default();

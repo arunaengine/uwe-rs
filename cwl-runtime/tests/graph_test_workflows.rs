@@ -1,11 +1,11 @@
-//! Builds the execution graph of every CWL document of the corpus from `just cwl-corpus` that
-//! `cwltool --validate` accepts, with placeholder inputs and the mock TES executor, and
-//! compares the outcome with `tests/fixtures/graph_test_workflows.txt`: `ok` and the number of
-//! tasks, or the error. Documents of the fixture that the corpus lacks, like those of a host
-//! the network could not reach, are left out. A document may only fail when
-//! `tests/fixtures/graph_evidence.txt` shows that cwltool fails on it too. Run with
-//! `just cwl-graph-corpus-test`; on a difference the test writes the new fixture to the target
-//! directory and says where.
+//! Builds the execution graph of every CWL document of the test workflows from
+//! `just cwl-test-workflows` that `cwltool --validate` accepts, with placeholder inputs and the
+//! mock TES executor, and compares the outcome with `tests/fixtures/graph_test_workflows.txt`:
+//! `ok` and the number of tasks, or the error. Documents of the fixture that the test workflows
+//! lack, like those of a host the network could not reach, are left out. A document may only
+//! fail when `tests/fixtures/graph_evidence.txt` shows that cwltool fails on it too. Run with
+//! `just cwl-graph-test-workflows-test`; on a difference the test writes the new fixture to the
+//! target directory and says where.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -120,7 +120,7 @@ fn describe(error: &workflow_graph::DriverError) -> String {
     format!("{kind}: {}", error.message)
 }
 
-/// The first line of a message, with the corpus and temporary folders taken out.
+/// The first line of a message, with the test workflows folder and temporary files taken out.
 fn clean(message: &str, root: &Path) -> String {
     let first = message.lines().next().unwrap_or_default();
     let mut text = first
@@ -155,8 +155,8 @@ fn entries(text: &str) -> BTreeMap<&str, &str> {
 /// CWL documents below a folder: files that hold a process, and `.cwl` files that do not parse.
 fn collect(root: &Path, directory: &Path, documents: &mut BTreeSet<String>) {
     let mut paths: Vec<PathBuf> = std::fs::read_dir(directory)
-        .expect("corpus directory is readable")
-        .map(|entry| entry.expect("corpus entry is readable").path())
+        .expect("test workflows directory is readable")
+        .map(|entry| entry.expect("test workflows entry is readable").path())
         .collect();
     paths.sort();
     for path in paths {
@@ -254,9 +254,10 @@ fn normalize(path: &Path) -> PathBuf {
 }
 
 #[test]
-#[ignore = "needs the CWL corpus from `just cwl-corpus`; run it with `just cwl-graph-corpus-test`"]
-fn corpus_documents_build_graphs_as_recorded() {
-    let root = PathBuf::from(std::env::var("CWL_CORPUS").expect("CWL_CORPUS is set"));
+#[ignore = "needs the CWL test workflows from `just cwl-test-workflows`; run it with `just cwl-graph-test-workflows-test`"]
+fn test_workflows_build_graphs_as_recorded() {
+    let root =
+        PathBuf::from(std::env::var("CWL_TEST_WORKFLOWS").expect("CWL_TEST_WORKFLOWS is set"));
     let fixture =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/graph_test_workflows.txt");
     let text = std::fs::read_to_string(&fixture).unwrap_or_default();
@@ -300,7 +301,7 @@ fn corpus_documents_build_graphs_as_recorded() {
         .filter(|document| !documents.contains(**document))
         .count();
     println!(
-        "{} documents, {ok} build graphs ({tasks} tasks), {} fail; {missing} of the fixture are not in the corpus",
+        "{} documents, {ok} build graphs ({tasks} tasks), {} fail; {missing} of the fixture are not in the test workflows",
         actual.len(),
         actual.len() - ok
     );

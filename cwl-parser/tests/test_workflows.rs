@@ -1,4 +1,5 @@
-//! Checks the loader against `cwltool --validate` on the CWL corpus from `just cwl-corpus`.
+//! Checks the loader against `cwltool --validate` on the CWL test workflows from
+//! `just cwl-test-workflows`.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -19,9 +20,10 @@ const SUITES: [&str; 3] = [
 ];
 
 #[test]
-#[ignore = "needs the CWL corpus from `just cwl-corpus`; run it with `just cwl-corpus-test`"]
+#[ignore = "needs the CWL test workflows from `just cwl-test-workflows`; run it with `just cwl-test-workflows-test`"]
 fn matches_cwltool_validate() {
-    let root = PathBuf::from(std::env::var("CWL_CORPUS").expect("CWL_CORPUS is set"));
+    let root =
+        PathBuf::from(std::env::var("CWL_TEST_WORKFLOWS").expect("CWL_TEST_WORKFLOWS is set"));
     let rejected = entries(REJECTED);
     let differences = entries(DIFFERENCES);
     let mut documents = BTreeSet::new();
@@ -31,7 +33,10 @@ fn matches_cwltool_validate() {
     }
     // A partial download would otherwise pass with fewer documents to check.
     let count = documents.len();
-    assert!(count > 6_200, "incomplete corpus: {count} documents");
+    assert!(
+        count > 6_200,
+        "incomplete test workflows: {count} documents"
+    );
     let mut mismatches = Vec::new();
     let mut stale = Vec::new();
     let mut agreed = 0;
@@ -79,8 +84,8 @@ fn entries(text: &str) -> BTreeMap<&str, &str> {
 /// CWL documents below a folder: files that hold a process, and `.cwl` files that do not parse.
 fn collect(root: &Path, directory: &Path, documents: &mut BTreeSet<String>) {
     let mut paths: Vec<PathBuf> = std::fs::read_dir(directory)
-        .expect("corpus directory is readable")
-        .map(|entry| entry.expect("corpus entry is readable").path())
+        .expect("test workflows directory is readable")
+        .map(|entry| entry.expect("test workflows entry is readable").path())
         .collect();
     paths.sort();
     for path in paths {

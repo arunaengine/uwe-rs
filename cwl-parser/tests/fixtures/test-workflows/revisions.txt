@@ -1,6 +1,6 @@
-# Sources of the CWL corpus of tests/test_workflows.rs, fetched on 2026-09-27: corpus path,
+# Sources of the CWL test workflows of tests/test_workflows.rs, fetched on 2026-09-27: path,
 # source, branch or `pinned` submodule or WorkflowHub version, commit, and path prefixes.
-# `just cwl-corpus` fetches the text files of exactly these commits and versions.
+# `just cwl-test-workflows` fetches the text files of exactly these commits and versions.
 conformance/v1.0 https://github.com/common-workflow-language/common-workflow-language main 98e95c4f90c8fc7eaf0e3ab6a423782ab6b6707c v1.0/
 conformance/v1.1 https://github.com/common-workflow-language/cwl-v1.1 main 3867f2fa4c204bc99dc664bb3f0ba71e360e142e conformance_tests.yaml tests/
 conformance/v1.2 https://github.com/common-workflow-language/cwl-v1.2 main 979083396fee912fca8ef778174216d317338a00 conformance_tests.yaml tests/

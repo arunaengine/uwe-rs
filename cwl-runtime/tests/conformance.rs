@@ -197,8 +197,8 @@ fn clean(message: &str, tool: &str) -> String {
     let mut text = first
         .replace(&format!("file://{folder}/"), "")
         .replace(&format!("{folder}/"), "");
-    if let Some(root) = std::env::var_os("CWL_CORPUS") {
-        text = text.replace(&root.to_string_lossy().into_owned(), "<corpus>");
+    if let Some(root) = std::env::var_os("CWL_TEST_WORKFLOWS") {
+        text = text.replace(&root.to_string_lossy().into_owned(), "<test-workflows>");
     }
     let temporary = std::env::temp_dir().to_string_lossy().into_owned();
     if let Some(start) = text.find(&temporary) {
@@ -769,13 +769,14 @@ fn split(line: &str) -> Option<Vec<String>> {
 }
 
 #[test]
-#[ignore = "needs the CWL corpus from `just cwl-corpus`; run it with `just cwl-conformance-test`"]
+#[ignore = "needs the CWL test workflows from `just cwl-test-workflows`; run it with `just cwl-conformance-test`"]
 fn conformance_tests_run_as_recorded() {
-    let corpus = PathBuf::from(std::env::var("CWL_CORPUS").expect("CWL_CORPUS is set"));
+    let test_workflows =
+        PathBuf::from(std::env::var("CWL_TEST_WORKFLOWS").expect("CWL_TEST_WORKFLOWS is set"));
     // The suites with their data files, from `just cwl-conformance-data`, in one folder.
     let merged = tempfile::tempdir().expect("a temporary directory");
     link_tree(
-        &corpus.join("conformance"),
+        &test_workflows.join("conformance"),
         &merged.path().join("conformance"),
     );
     if let Some(data) = std::env::var_os("CWL_CONFORMANCE_DATA") {

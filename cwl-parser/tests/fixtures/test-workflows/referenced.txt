@@ -1,5 +1,5 @@
-# Files that corpus documents name in `$include`, `$import` or `run` but whose extension
-# the text patterns miss, relative to the corpus root; `just cwl-corpus` fetches them too.
+# Files that test workflows name in `$include`, `$import` or `run` but whose extension
+# the text patterns miss, relative to the root folder; `just cwl-test-workflows` fetches them too.
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/ivar/docker_container.txt
 realworld/collections/github.com__kids-first__kf-alignment-workflow/scripts/create_sequence_groups.py
 realworld/collections/github.com__kids-first__kf-somatic-workflow/scripts/sbg_cveto_util.py

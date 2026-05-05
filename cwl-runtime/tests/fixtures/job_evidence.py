@@ -1,15 +1,15 @@
 #!/usr/bin/env -S uv run -q --with cwltool==3.3.20260925135507 python3
-# Records how cwltool rejects the example job files of job_test_workflows.txt that fail there, into
-# job_evidence.txt next to this script. The job corpus test checks that every pair that fails
-# there is listed here.
+# Records how cwltool rejects the example job files of job_test_workflows.txt that fail there,
+# into job_evidence.txt next to this script. The job test-workflows test checks that every pair
+# that fails there is listed here.
 #
 # For each failing pair, cwltool loads the document and checks the job against its inputs
 # (`Process._init_job`), the check that `cwltool <document> <job>` makes before it runs
 # anything. The files that the job names are replaced by empty files of the same name, since
-# the corpus holds no data, so that cwltool reports what is wrong with the job itself.
+# the test workflows hold no data, so that cwltool reports what is wrong with the job itself.
 #
 # Run it from the repository root: cwl-runtime/tests/fixtures/job_evidence.py
-# It reads the corpus of `just cwl-corpus` (CWL_CORPUS).
+# It reads the test workflows of `just cwl-test-workflows` (CWL_TEST_WORKFLOWS).
 #
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
@@ -23,8 +23,8 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 
-HOME = Path.home() / ".cache/iunctus/corpus"
-CORPUS = Path(os.environ.get("CWL_CORPUS") or HOME / "cwl")
+HOME = Path.home() / ".cache/iunctus/test-workflows"
+TEST_WORKFLOWS = Path(os.environ.get("CWL_TEST_WORKFLOWS") or HOME / "cwl")
 FIXTURES = Path(__file__).parent
 # cwltool wraps its messages to the width of the terminal.
 os.environ["COLUMNS"] = "1000"
@@ -40,7 +40,7 @@ NOTES = {
 def clean(text, work):
     """cwltool's messages without colours, file objects, local paths and places."""
     text = re.sub(r"\x1b\[[0-9;]*m", "", text).replace(str(work), "<tmp>")
-    text = text.replace(str(CORPUS) + "/", "")
+    text = text.replace(str(TEST_WORKFLOWS) + "/", "")
     lines = [re.sub(r"\s+", " ", line.strip()) for line in text.splitlines()]
     lines = [re.sub(r"^\S+\.(cwl|ya?ml|json):\d+:\d+: ", "", line) for line in lines]
     noise = re.compile(
@@ -107,11 +107,11 @@ def check(document, job):
     context.construct_tool_object = default_make_tool
     with tempfile.TemporaryDirectory() as folder:
         work = Path(folder)
-        text = (CORPUS / job).read_text()
+        text = (TEST_WORKFLOWS / job).read_text()
         values = YAML(typ="safe", pure=True).load(text) or {}
         values = stubbed(values, work)
         try:
-            tool = load_tool(str(CORPUS / document), context)
+            tool = load_tool(str(TEST_WORKFLOWS / document), context)
             secondary_stubs(tool, values)
             runtime = RuntimeContext({"outdir": str(work / "out"), "tmpdir": str(work / "tmp")})
             # As for the process the command line runs, secondary files are looked for.
@@ -130,7 +130,7 @@ def check(document, job):
 
 
 def main():
-    os.chdir(CORPUS)
+    os.chdir(TEST_WORKFLOWS)
     failing = []
     for line in (FIXTURES / "job_test_workflows.txt").read_text().splitlines():
         words = line.split(" ", 2)

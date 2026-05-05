@@ -1,11 +1,13 @@
 #!/usr/bin/env -S uv run -q --with cwltool==3.3.20260925135507 python3
 # Records how cwltool fails on the CWL documents that fail in graph_test_workflows.txt, into
-# graph_evidence.txt next to this script. The graph corpus test checks that every document that
-# fails there is listed here, so a document may only fail when cwltool fails on it too.
+# graph_evidence.txt next to this script. The graph test-workflows test checks that every
+# document that fails there is listed here, so a document may only fail when cwltool fails on it
+# too.
 #
 # Run it from the repository root: cwl-runtime/tests/fixtures/graph_evidence.py
-# It reads the corpus of `just cwl-corpus` (CWL_CORPUS) and the data files of
-# `just cwl-conformance-data` (CWL_CONFORMANCE_DATA), and needs Node.js for cwltool's JavaScript.
+# It reads the test workflows of `just cwl-test-workflows` (CWL_TEST_WORKFLOWS) and the data
+# files of `just cwl-conformance-data` (CWL_CONFORMANCE_DATA), and needs Node.js for cwltool's
+# JavaScript.
 #
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
@@ -19,8 +21,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-HOME = Path.home() / ".cache/iunctus/corpus"
-CORPUS = Path(os.environ.get("CWL_CORPUS") or HOME / "cwl")
+HOME = Path.home() / ".cache/iunctus/test-workflows"
+TEST_WORKFLOWS = Path(os.environ.get("CWL_TEST_WORKFLOWS") or HOME / "cwl")
 DATA = Path(os.environ.get("CWL_CONFORMANCE_DATA") or HOME / "cwl-conformance-data")
 OUTPUT = Path(__file__).with_name("graph_evidence.txt")
 # cwltool wraps its messages to the width of the terminal.
@@ -42,7 +44,7 @@ def directory(path):
 
 
 # Each case says why the documents fail, and how cwltool shows it: `run` runs cwltool on a
-# document with a job (a path in the corpus, or values whose files are made empty);
+# document with a job (a path in the test workflows, or values whose files are made empty);
 # `collect` loads a tool with cwltool and collects one output from an empty output directory,
 # as after a run that made nothing; `evaluate` evaluates one expression of a document with
 # cwltool's evaluator, for steps of workflows that cwltool will not run.
@@ -444,7 +446,7 @@ def clean(text, work):
     """cwltool's messages without colours, log lines, traces and local paths, from the first
     error on."""
     text = re.sub(r"\x1b\[[0-9;]*m", "", text)
-    for path, name in [(str(work) + "/merged/", ""), (str(work), "<tmp>"), (str(CORPUS), "<corpus>")]:
+    for path, name in [(str(work) + "/merged/", ""), (str(work), "<tmp>"), (str(TEST_WORKFLOWS), "<test-workflows>")]:
         text = text.replace(path, name)
     text = text.replace("merged/conformance/", "conformance/")
     text = re.sub(r"(\.\./)*\.\.<tmp>", "<tmp>", text)
@@ -457,15 +459,15 @@ def clean(text, work):
 
 
 def document(path, work):
-    """The path cwltool reads a corpus document from: conformance documents from a tree that
-    also holds the data files of their jobs."""
+    """The path cwltool reads a document of the test workflows from: conformance documents from
+    a tree that also holds the data files of their jobs."""
     if path.startswith("conformance/"):
         merged = work / "merged"
         if not merged.exists():
-            link_tree(CORPUS / "conformance", merged / "conformance")
+            link_tree(TEST_WORKFLOWS / "conformance", merged / "conformance")
             link_tree(DATA / "conformance", merged / "conformance")
         return merged / path
-    return CORPUS / path
+    return TEST_WORKFLOWS / path
 
 
 def job_file(case, work):
@@ -483,9 +485,9 @@ def run(case, work):
     command = ["cwltool", "--no-container", "--outdir", str(work / "out")]
     command += [str(document(case["run"], work)), str(job)]
     shown = ["cwltool --no-container", case["run"], "<job>"]
-    # Paths in messages are relative to the working folder: the corpus, or for conformance
-    # documents the folder with their data files.
-    folder = work if case["run"].startswith("conformance/") else CORPUS
+    # Paths in messages are relative to the working folder: the test workflows, or for
+    # conformance documents the folder with their data files.
+    folder = work if case["run"].startswith("conformance/") else TEST_WORKFLOWS
     result = subprocess.run(command, cwd=folder, capture_output=True, text=True, timeout=600)
     return shown, clean(result.stderr + result.stdout, work)
 
@@ -497,7 +499,7 @@ def loaded(path):
 
     context = LoadingContext()
     context.construct_tool_object = default_make_tool
-    return load_tool(str(CORPUS / path), context)
+    return load_tool(str(TEST_WORKFLOWS / path), context)
 
 
 def collect(case, work):
@@ -560,7 +562,7 @@ def evaluate(case, work):
 def main():
     if shutil.which("node") is None and shutil.which("nodejs") is None:
         sys.exit("cwltool needs Node.js for JavaScript")
-    os.chdir(CORPUS)
+    os.chdir(TEST_WORKFLOWS)
     lines = [
         "# How cwltool fails on each CWL document that fails in graph_test_workflows.txt, recorded by",
         "# graph_evidence.py with cwltool 3.3.20260925135507. Each block gives the documents, the",

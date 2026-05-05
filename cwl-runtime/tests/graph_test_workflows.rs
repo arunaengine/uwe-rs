@@ -1,6 +1,6 @@
 //! Builds the execution graph of every CWL document of the corpus from `just cwl-corpus` that
 //! `cwltool --validate` accepts, with placeholder inputs and the mock TES executor, and
-//! compares the outcome with `tests/fixtures/graph_corpus.txt`: `ok` and the number of
+//! compares the outcome with `tests/fixtures/graph_test_workflows.txt`: `ok` and the number of
 //! tasks, or the error. Documents of the fixture that the corpus lacks, like those of a host
 //! the network could not reach, are left out. A document may only fail when
 //! `tests/fixtures/graph_evidence.txt` shows that cwltool fails on it too. Run with
@@ -20,7 +20,7 @@ use cwl_parser::{Loader, Node, Value, yaml};
 use cwl_runtime::{CwlDriver, Options};
 use workflow_graph::{ExecuteError, Launch, MockTes, execute};
 
-const REJECTED: &str = include_str!("../../cwl-parser/tests/fixtures/corpus/rejected.txt");
+const REJECTED: &str = include_str!("../../cwl-parser/tests/fixtures/test-workflows/rejected.txt");
 /// How cwltool fails on the documents that fail here, from `fixtures/graph_evidence.py`.
 const EVIDENCE: &str = include_str!("fixtures/graph_evidence.txt");
 const CLASSES: [&str; 4] = ["CommandLineTool", "ExpressionTool", "Workflow", "Operation"];
@@ -257,7 +257,8 @@ fn normalize(path: &Path) -> PathBuf {
 #[ignore = "needs the CWL corpus from `just cwl-corpus`; run it with `just cwl-graph-corpus-test`"]
 fn corpus_documents_build_graphs_as_recorded() {
     let root = PathBuf::from(std::env::var("CWL_CORPUS").expect("CWL_CORPUS is set"));
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/graph_corpus.txt");
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/graph_test_workflows.txt");
     let text = std::fs::read_to_string(&fixture).unwrap_or_default();
     let header: Vec<&str> = text.lines().filter(|line| line.starts_with('#')).collect();
     let expected = entries(&text);
@@ -344,7 +345,7 @@ fn corpus_documents_build_graphs_as_recorded() {
             .join("\n")
     );
     if !changed.is_empty() {
-        let written = Path::new(env!("CARGO_TARGET_TMPDIR")).join("graph_corpus.txt");
+        let written = Path::new(env!("CARGO_TARGET_TMPDIR")).join("graph_test_workflows.txt");
         let mut text = header.join("\n");
         text.push('\n');
         text.push_str(&actual.join("\n"));

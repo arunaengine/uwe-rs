@@ -1,4 +1,4 @@
-# Real-world CWL documents of the corpus with their example job files, found by job_corpus.py,
+# Real-world CWL documents of the corpus with their example job files, found by job_test_workflows.py,
 # and the outcome of running each pair with the mock TES executor: `ok` and the number of
 # tasks, or `fail:`, `unsupported:` or `timeout` with the first line of the error.
 realworld/collections/github.com__Barski-lab__workflows/devel/miraldi/atacseq-pe-star.cwl realworld/collections/github.com__Barski-lab__workflows/devel/miraldi/atacseq-pe-star.json ok 35

@@ -1,5 +1,5 @@
 #!/usr/bin/env -S uv run -q --with cwltool==3.3.20260925135507 python3
-# Records how cwltool fails on the CWL documents that fail in graph_corpus.txt, into
+# Records how cwltool fails on the CWL documents that fail in graph_test_workflows.txt, into
 # graph_evidence.txt next to this script. The graph corpus test checks that every document that
 # fails there is listed here, so a document may only fail when cwltool fails on it too.
 #
@@ -562,7 +562,7 @@ def main():
         sys.exit("cwltool needs Node.js for JavaScript")
     os.chdir(CORPUS)
     lines = [
-        "# How cwltool fails on each CWL document that fails in graph_corpus.txt, recorded by",
+        "# How cwltool fails on each CWL document that fails in graph_test_workflows.txt, recorded by",
         "# graph_evidence.py with cwltool 3.3.20260925135507. Each block gives the documents, the",
         "# reason in plain words, what cwltool was asked, and the first lines of its error.",
     ]

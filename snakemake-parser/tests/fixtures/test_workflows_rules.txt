@@ -1,5 +1,5 @@
 # Rules and checkpoints per workflow folder, from parser.py of Snakemake 9.27.0 on 2026-09-27.
-# Columns: folder, Snakemake files, rules, FNV-1a 64 of the listing that tests/corpus.rs builds.
+# Columns: folder, Snakemake files, rules, FNV-1a 64 of the listing that tests/test_workflows.rs builds.
 catalog/3d-omics__hg_genotype	30	56	fb9fe323da037f66
 catalog/AToL-Bioinformatics__genome-launcher-workflow	18	42	1cd5863138963796
 catalog/Addimator__compare_meth	7	27	f8f3583ead62fb7a

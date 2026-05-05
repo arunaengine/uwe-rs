@@ -1,6 +1,6 @@
-# Snakemake corpus of tests/corpus.rs, fetched on 2026-09-27: repository, branch or tag, commit.
+# Snakemake test workflows of tests/test_workflows.rs, fetched on 2026-09-27: repository, branch or tag, commit.
 # snakemake/snakemake gives its tests folder; the others are the standardized workflows of the
-# snakemake-workflow-catalog (data.json at caf36c8, 2026-09-21). `just snakemake-corpus` fetches them.
+# snakemake-workflow-catalog (data.json at caf36c8, 2026-09-21). `just snakemake-test-workflows` fetches them.
 snakemake/snakemake v9.27.0 ca4a76228e1c2abed063e07cbe7af7c8ea3269f9
 3d-omics/hg_genotype devel c45000425f08882b74496bd80d1b45fb84426984
 AToL-Bioinformatics/genome-launcher-workflow main e3551fd16bf63f992998e4a02252c1d37b7c4a2b

@@ -1,4 +1,4 @@
-# Corpus files that must fail to parse, relative to the corpus root; all other files must parse.
+# Test-workflow files that must fail to parse, relative to the test-workflows root; all other files must parse.
 # Source: parser.py of Snakemake 9.27.0 followed by compile() of CPython 3.14.7, on 2026-09-27.
 catalog/CSB-IG__GSE167150_HiC_matrices/workflow/rules/merged_hic_pro.smk
 catalog/ETH-NEXUS__gExcite_pipeline/workflow/rules/cohort_adt_analysis.smk

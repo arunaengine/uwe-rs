@@ -1,11 +1,11 @@
-//! Runs every workflow of the Snakemake corpus with the mock executor and compares the
-//! outcome with `tests/fixtures/run_corpus.txt`: `ok` and the number of tasks, or the exit
+//! Runs every workflow of the Snakemake test workflows with the mock executor and compares the
+//! outcome with `tests/fixtures/run_test_workflows.txt`: `ok` and the number of tasks, or the exit
 //! code (33 for unsupported features) and the first line of the error. Each workflow runs
-//! the way `tests/fixtures/run_corpus_launches.txt` says, which `launches.py` next to it
+//! the way `tests/fixtures/run_test_workflows_launches.txt` says, which `launches.py` next to it
 //! writes: as its CI tests it, or as Snakemake's own tests run it. Input files that no rule
-//! makes are assumed to exist, since the corpus holds no large data files. Each workflow runs
+//! makes are assumed to exist, since the test workflows hold no large data files. Each workflow runs
 //! in a child process, so that a crash or a run of more than two minutes (exit code 124)
-//! stays with its workflow. Run with `just snakemake-run-corpus-test`; on a difference the
+//! stays with its workflow. Run with `just snakemake-run-test-workflows-test`; on a difference the
 //! test prints the lines of the new fixture.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use workflow_graph::{Launch, MockTes, execute};
 
-const LAUNCHES: &str = include_str!("fixtures/run_corpus_launches.txt");
+const LAUNCHES: &str = include_str!("fixtures/run_test_workflows_launches.txt");
 
 /// How a workflow is launched: its working directory and Snakefile relative to its folder,
 /// config files and values, and targets. The default runs the Snakefile of the folder in it.
@@ -88,13 +88,13 @@ impl Launching {
     }
 }
 
-/// The workflow folders of the corpus: the catalog repositories and Snakemake's own tests
+/// The workflow folders of the test workflows: the catalog repositories and Snakemake's own tests
 /// that have a Snakefile where Snakemake looks for one.
-fn workflows(corpus: &Path) -> Vec<(String, PathBuf)> {
+fn workflows(test_workflows: &Path) -> Vec<(String, PathBuf)> {
     let mut found = Vec::new();
     for (group, folder) in [
-        ("catalog", corpus.join("catalog")),
-        ("tests", corpus.join("snakemake-tests/tests")),
+        ("catalog", test_workflows.join("catalog")),
+        ("tests", test_workflows.join("snakemake-tests/tests")),
     ] {
         let Ok(entries) = std::fs::read_dir(&folder) else {
             continue;
@@ -148,7 +148,7 @@ fn clean(outcome: &str, folder: &Path) -> String {
 
 /// Runs one workflow when the test binary is started as a child for it.
 #[test]
-#[ignore = "a child of the corpus test"]
+#[ignore = "a child of the test-workflows test"]
 fn run_one() {
     let (Some(name), Some(folder), Some(outcome)) = (
         std::env::var_os("SNAKEMAKE_RUN_NAME"),
@@ -214,16 +214,19 @@ fn child(name: &str, folder: &Path, outcome: &Path) -> String {
 }
 
 #[test]
-#[ignore = "needs the Snakemake corpus; run `just snakemake-run-corpus-test`"]
+#[ignore = "needs the Snakemake test workflows; run `just snakemake-run-test-workflows-test`"]
 fn workflows_run_as_recorded() {
-    let corpus = PathBuf::from(std::env::var("SNAKEMAKE_CORPUS").expect("SNAKEMAKE_CORPUS is set"));
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/run_corpus.txt");
+    let test_workflows = PathBuf::from(
+        std::env::var("SNAKEMAKE_TEST_WORKFLOWS").expect("SNAKEMAKE_TEST_WORKFLOWS is set"),
+    );
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/run_test_workflows.txt");
     let expected = std::fs::read_to_string(&fixture).unwrap_or_default();
     let expected: Vec<&str> = expected
         .lines()
         .filter(|line| !line.starts_with('#'))
         .collect();
-    let workflows = workflows(&corpus);
+    let workflows = workflows(&test_workflows);
     let outcomes = tempfile::tempdir().expect("a temporary directory");
     let next = AtomicUsize::new(0);
     let results: Mutex<Vec<Option<String>>> = Mutex::new(vec![None; workflows.len()]);
@@ -255,7 +258,7 @@ fn workflows_run_as_recorded() {
         .filter(|line| line.split(' ').nth(1) == Some("ok"))
         .count();
     eprintln!("{full} of {} workflows give a full graph", actual.len());
-    let header = "# The outcome of each workflow of the Snakemake corpus with the mock executor: `ok` and\n# the number of tasks, or the exit code (33 for unsupported features) and the first line\n# of the error.";
+    let header = "# The outcome of each workflow of the Snakemake test workflows with the mock executor: `ok` and\n# the number of tasks, or the exit code (33 for unsupported features) and the first line\n# of the error.";
     if std::env::var_os("UPDATE_FIXTURE").is_some() {
         std::fs::write(&fixture, format!("{header}\n{}\n", actual.join("\n")))
             .expect("writes the fixture");

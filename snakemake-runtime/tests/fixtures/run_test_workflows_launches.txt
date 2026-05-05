@@ -1,4 +1,4 @@
-# How the run corpus test launches each workflow; written by launches.py, which says
+# How the run test-workflows test launches each workflow; written by launches.py, which says
 # how it chooses. Columns, separated by tabs: the workflow, where the launch comes from
 # (ci, catalog or tests.py), then fields: directory= and snakefile= relative to the
 # workflow folder, configfile= relative to it, config=<key>=<value>, target=, and

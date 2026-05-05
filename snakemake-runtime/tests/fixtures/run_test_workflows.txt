@@ -1,4 +1,4 @@
-# The outcome of each workflow of the Snakemake corpus with the mock executor: `ok` and
+# The outcome of each workflow of the Snakemake test workflows with the mock executor: `ok` and
 # the number of tasks, or the exit code (33 for unsupported features) and the first line
 # of the error.
 catalog/3d-omics__hg_genotype 33 workflow/Snakefile:47: Not supported yet: modules from remote repositories (github(...))

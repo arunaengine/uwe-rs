@@ -1,4 +1,4 @@
-# The execution graph of every document of the CWL corpus that `cwltool --validate` accepts,
+# The execution graph of every document of the CWL test workflows that `cwltool --validate` accepts,
 # built with placeholder inputs and the mock TES executor: `ok` and the number of tasks, or
 # `fail:`, `unsupported:` or `timeout` with the first line of the error.
 conformance/v1.0/v1.0/examples/1st-tool.cwl ok 1

@@ -1,10 +1,10 @@
 #!/usr/bin/env -S uv run -q --with ruamel.yaml python3
-# Finds the example job files of the real-world CWL documents of the corpus from
-# `just cwl-corpus` (CWL_CORPUS), and prints one line per pair: the document and the job file,
-# relative to the corpus. A job file pairs with a document of the same repository when the
-# document has every input the job sets, the job sets every required input without default,
-# and the name of the job file holds the name of the document, or the document is the only
-# such one next to it. job_test_workflows.txt starts from its output.
+# Finds the example job files of the real-world CWL documents of the test workflows from
+# `just cwl-test-workflows` (CWL_TEST_WORKFLOWS), and prints one line per pair: the document and
+# the job file, relative to the test workflows. A job file pairs with a document of the same
+# repository when the document has every input the job sets, the job sets every required input
+# without default, and the name of the job file holds the name of the document, or the document
+# is the only such one next to it. job_test_workflows.txt starts from its output.
 #
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
@@ -14,8 +14,8 @@ import sys
 from ruamel.yaml import YAML
 
 yaml = YAML(typ='safe', pure=True)
-corpus = os.environ.get('CWL_CORPUS') or os.path.expanduser('~/.cache/iunctus/corpus/cwl')
-root = os.path.join(corpus, 'realworld')
+test_workflows = os.environ.get('CWL_TEST_WORKFLOWS') or os.path.expanduser('~/.cache/iunctus/test-workflows/cwl')
+root = os.path.join(test_workflows, 'realworld')
 docs = {}   # path -> (class, inputs{name: (required)})
 jobs = []
 def load(path):
@@ -71,5 +71,5 @@ for jpath, job in jobs:
     elif len(beside) == 1:
         pairs.append((jpath, beside[0], 1))
 for j, d, n in sorted(pairs, key=lambda pair: (pair[1], pair[0])):
-    print(os.path.relpath(d, corpus), os.path.relpath(j, corpus))
+    print(os.path.relpath(d, test_workflows), os.path.relpath(j, test_workflows))
 print(len(pairs), 'pairs of', len(jobs), 'files that may be jobs', file=sys.stderr)

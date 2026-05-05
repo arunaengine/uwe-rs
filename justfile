@@ -80,11 +80,11 @@ stub-corpus-test:
 	NF_CORE_CORPUS="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}" \
 	cargo test --release --locked -p iunctus --test stub_corpus -- --ignored
 
-# Fetches the text-only CWL corpus at the revisions the CWL corpus test expects.
-cwl-corpus:
+# Fetches the text-only CWL test workflows at the revisions the CWL test-workflows test expects.
+cwl-test-workflows:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	root="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}"
+	root="${CWL_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/cwl}"
 	fixtures="$PWD/cwl-parser/tests/fixtures/test-workflows"
 	paths="$(grep -v '^#' "$fixtures/revisions.txt" | cut -d' ' -f1)"
 	mkdir -p "$root"
@@ -153,41 +153,41 @@ cwl-corpus:
 			fi
 			git -C "$work" checkout -q FETCH_HEAD
 		fi
-		# The corpus leaves out files over 1 MiB, as its first download did.
+		# The test workflows leave out files over 1 MiB, as their first download did.
 		find "$work" -name .git -prune -o -type f -size +1M -print0 | xargs -r -0 rm -f
 		mkdir -p "$(dirname "$target")"
 		rmdir "$target" 2>/dev/null || true
 		mv "$work" "$target"
 	done
 
-# Loads the whole CWL corpus and compares the result with `cwltool --validate`.
-cwl-corpus-test:
-	CWL_CORPUS="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}" cargo test --release --locked -p cwl-parser --test test_workflows -- --ignored
+# Loads all CWL test workflows and compares the result with `cwltool --validate`.
+cwl-test-workflows-test:
+	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/cwl}" cargo test --release --locked -p cwl-parser --test test_workflows -- --ignored
 
 # Fetches the data files of the CWL conformance tests (inputs like `whale.txt`), which the
-# text-only corpus leaves out, into a folder of their own, so that the corpus stays as
-# `cwltool --validate` saw it. The trees come from the corpus checkouts, the files from
-# raw.githubusercontent.com; files over 1 MiB are left out, as in the corpus.
+# text-only test workflows leave out, into a folder of their own, so that the test workflows stay
+# as `cwltool --validate` saw them. The trees come from the checkouts of the test workflows, the
+# files from raw.githubusercontent.com; files over 1 MiB are left out, as in the test workflows.
 cwl-conformance-data:
 	#!/usr/bin/env -S uv run -q --with dulwich python3
 	import os, subprocess, urllib.parse
 	from dulwich.object_store import iter_tree_contents
 	from dulwich.repo import Repo
-	home = os.path.expanduser("~/.cache/iunctus/corpus")
-	corpus = os.environ.get("CWL_CORPUS") or f"{home}/cwl"
+	home = os.path.expanduser("~/.cache/iunctus/test-workflows")
+	test_workflows = os.environ.get("CWL_TEST_WORKFLOWS") or f"{home}/cwl"
 	data = os.environ.get("CWL_CONFORMANCE_DATA") or f"{home}/cwl-conformance-data"
 	for line in open("cwl-parser/tests/fixtures/test-workflows/revisions.txt"):
 	    if line.startswith("#") or not line.startswith("conformance/"):
 	        continue
 	    path, url, ref, commit, *prefixes = line.split()
 	    folders = [prefix for prefix in prefixes if prefix.endswith("/")]
-	    repo = Repo(os.path.join(corpus, path))
+	    repo = Repo(os.path.join(test_workflows, path))
 	    for entry in iter_tree_contents(repo.object_store, repo[commit.encode()].tree):
 	        name = entry.path.decode()
 	        target = os.path.join(data, path, name)
 	        if not any(name.startswith(folder) for folder in folders):
 	            continue
-	        if os.path.lexists(os.path.join(corpus, path, name)) or os.path.lexists(target):
+	        if os.path.lexists(os.path.join(test_workflows, path, name)) or os.path.lexists(target):
 	            continue
 	        raw = url.replace("https://github.com/", "https://raw.githubusercontent.com/")
 	        body = subprocess.run(["curl", "-sfL", "--retry", "3", f"{raw}/{commit}/{urllib.parse.quote(name)}"],
@@ -207,19 +207,19 @@ cwl-conformance-data:
 # Runs every CWL conformance test through the driver and the mock executor and compares the
 # outcomes with the recorded ones; `just cwl-conformance-data` fetches the test data first.
 cwl-conformance-test:
-	CWL_CORPUS="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}" \
-	CWL_CONFORMANCE_DATA="${CWL_CONFORMANCE_DATA:-$HOME/.cache/iunctus/corpus/cwl-conformance-data}" \
+	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/cwl}" \
+	CWL_CONFORMANCE_DATA="${CWL_CONFORMANCE_DATA:-$HOME/.cache/iunctus/test-workflows/cwl-conformance-data}" \
 	cargo test --release --locked -p cwl-runtime --test conformance -- --ignored
 
-# Builds the execution graph of every CWL document of the corpus that cwltool validates, with
+# Builds the execution graph of every CWL test workflow that cwltool validates, with
 # placeholder inputs, and compares the outcomes with the recorded ones.
-cwl-graph-corpus-test:
-	CWL_CORPUS="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}" cargo test --release --locked -p cwl-runtime --test graph_test_workflows -- --ignored
+cwl-graph-test-workflows-test:
+	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test graph_test_workflows -- --ignored
 
-# Runs the real-world CWL documents of the corpus with their example job files, with the mock
+# Runs the real-world CWL test workflows with their example job files, with the mock
 # TES executor, and compares the outcomes with cwl-runtime/tests/fixtures/job_test_workflows.txt.
-cwl-job-corpus-test:
-	CWL_CORPUS="${CWL_CORPUS:-$HOME/.cache/iunctus/corpus/cwl}" cargo test --release --locked -p cwl-runtime --test job_test_workflows -- --ignored
+cwl-job-test-workflows-test:
+	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test job_test_workflows -- --ignored
 
 # Fetches the text-only Snakemake test workflows at the commits their test expects.
 snakemake-test-workflows:

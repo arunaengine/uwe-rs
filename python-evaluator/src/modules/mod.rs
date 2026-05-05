@@ -5,6 +5,7 @@
 
 pub(crate) mod collections;
 pub mod data;
+mod datetime;
 mod files;
 pub(crate) mod misc;
 mod os;
@@ -152,8 +153,8 @@ pub fn native(interpreter: &mut Interpreter, name: &str) -> Result<Option<Value>
         "bisect" => collections::bisect(),
         "sys" => misc::sys(interpreter),
         "math" => misc::math(),
-        "datetime" => misc::datetime(),
-        "time" => misc::time(),
+        "datetime" => datetime::datetime(),
+        "time" => datetime::time(),
         "string" => misc::string(),
         "textwrap" => misc::textwrap(),
         "subprocess" => misc::subprocess(),

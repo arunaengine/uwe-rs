@@ -6,7 +6,8 @@
 //! makes are assumed to exist, since the test workflows hold no large data files. Each workflow runs
 //! in a child process, so that a crash or a run of more than two minutes (exit code 124)
 //! stays with its workflow. Run with `just snakemake-run-test-workflows-test`; on a difference the
-//! test prints the lines of the new fixture.
+//! test prints the lines of the new fixture. `SNAKEMAKE_TEST_WORKFLOWS_FILTER` runs only the
+//! workflows whose name contains it; with `UPDATE_FIXTURE=1` it updates only their lines.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -213,20 +214,85 @@ fn child(name: &str, folder: &Path, outcome: &Path) -> String {
     }
 }
 
+/// The records of the workflows that cannot run: the workflow, the reason (`invalid`,
+/// `missing` or `unsupported (decision N)`) and one sentence why.
+const REJECTED: &str = include_str!("fixtures/run_test_workflows_rejected.txt");
+
+/// What real Snakemake did with the workflows it could not evaluate, from `oracle.py`.
+const ORACLE: &str = include_str!("fixtures/run_test_workflows_oracle.txt");
+
+/// The lines of a fixture without comments, split at tabs.
+fn records(text: &str) -> impl Iterator<Item = Vec<&str>> {
+    text.lines()
+        .filter(|line| !line.starts_with('#') && !line.is_empty())
+        .map(|line| line.split('\t').collect())
+}
+
+/// The problems of the records of workflows that do not run: a failing workflow without a
+/// record, a record of a workflow that runs, a reason that is not one of the three, and an
+/// `invalid` or `missing` workflow that real Snakemake evaluated with the same launch.
+fn check_records(outcomes: &[(String, String)]) -> Vec<String> {
+    let rejected: Vec<Vec<&str>> = records(REJECTED).collect();
+    let launched = |name: &str| {
+        records(LAUNCHES)
+            .find(|fields| fields[0] == name)
+            .map_or("plain", |fields| fields[1])
+            .to_owned()
+    };
+    let snakemake_fails = |name: &str| {
+        let via = launched(name);
+        records(ORACLE).any(|fields| fields[0] == name && fields[1] == via && fields[3] == "failed")
+    };
+    let mut problems = Vec::new();
+    for (name, outcome) in outcomes {
+        let failing = !outcome.starts_with("ok");
+        let record = rejected.iter().find(|fields| fields[0] == name);
+        match (failing, record) {
+            (true, None) => problems.push(format!("{name}: {outcome} (no record)")),
+            (false, Some(_)) => problems.push(format!("{name}: a record, but it runs")),
+            (true, Some(fields)) => {
+                let reason = fields.get(1).copied().unwrap_or_default();
+                let sentence = fields.get(2).copied().unwrap_or_default();
+                let decision = reason
+                    .strip_prefix("unsupported (decision ")
+                    .and_then(|rest| rest.strip_suffix(')'))
+                    .is_some_and(|number| number.parse::<u32>().is_ok());
+                if !(reason == "invalid" || reason == "missing" || decision) {
+                    problems.push(format!("{name}: the reason {reason:?} is none of invalid, missing, unsupported (decision N)"));
+                }
+                if sentence.is_empty() {
+                    problems.push(format!("{name}: the record says nothing about why"));
+                }
+                if (reason == "invalid" || reason == "missing") && !snakemake_fails(name) {
+                    problems.push(format!("{name}: {reason}, but Snakemake evaluates it (no failure in the oracle file)"));
+                }
+            }
+            (false, None) => {}
+        }
+    }
+    problems
+}
+
 #[test]
 #[ignore = "needs the Snakemake test workflows; run `just snakemake-run-test-workflows-test`"]
 fn workflows_run_as_recorded() {
     let test_workflows = PathBuf::from(
         std::env::var("SNAKEMAKE_TEST_WORKFLOWS").expect("SNAKEMAKE_TEST_WORKFLOWS is set"),
     );
+    let filter = std::env::var("SNAKEMAKE_TEST_WORKFLOWS_FILTER").unwrap_or_default();
     let fixture =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/run_test_workflows.txt");
-    let expected = std::fs::read_to_string(&fixture).unwrap_or_default();
-    let expected: Vec<&str> = expected
+    let recorded = std::fs::read_to_string(&fixture).unwrap_or_default();
+    let recorded: Vec<(String, String)> = recorded
         .lines()
         .filter(|line| !line.starts_with('#'))
+        .filter_map(|line| line.split_once(' '))
+        .map(|(name, outcome)| (name.to_owned(), outcome.to_owned()))
         .collect();
-    let workflows = workflows(&test_workflows);
+    let workflows: Vec<(String, PathBuf)> = workflows(&test_workflows)
+        .into_iter()
+        .filter(|(name, _)| name.contains(&filter))
+        .collect();
     let outcomes = tempfile::tempdir().expect("a temporary directory");
     let next = AtomicUsize::new(0);
     let results: Mutex<Vec<Option<String>>> = Mutex::new(vec![None; workflows.len()]);
@@ -242,39 +308,62 @@ fn workflows_run_as_recorded() {
                         break;
                     };
                     let outcome = child(name, folder, &outcomes.path().join(index.to_string()));
-                    results.lock().expect("the results")[index] = Some(format!("{name} {outcome}"));
+                    results.lock().expect("the results")[index] = Some(outcome);
                 }
             });
         }
     });
-    let actual: Vec<String> = results
-        .into_inner()
-        .expect("the results")
-        .into_iter()
-        .flatten()
+    let actual: Vec<(String, String)> = workflows
+        .iter()
+        .map(|(name, _)| name.clone())
+        .zip(
+            results
+                .into_inner()
+                .expect("the results")
+                .into_iter()
+                .flatten(),
+        )
         .collect();
     let full = actual
         .iter()
-        .filter(|line| line.split(' ').nth(1) == Some("ok"))
+        .filter(|(_, outcome)| outcome.starts_with("ok"))
         .count();
     eprintln!("{full} of {} workflows give a full graph", actual.len());
+    // The outcomes of all workflows: the new ones, and the recorded ones of those not run.
+    let mut all: Vec<(String, String)> = recorded
+        .iter()
+        .filter(|(name, _)| !name.contains(&filter))
+        .cloned()
+        .chain(actual.iter().cloned())
+        .collect();
+    all.sort();
+    let lines: Vec<String> = all
+        .iter()
+        .map(|(name, outcome)| format!("{name} {outcome}"))
+        .collect();
     let header = "# The outcome of each workflow of the Snakemake test workflows with the mock executor: `ok` and\n# the number of tasks, or the exit code (33 for unsupported features) and the first line\n# of the error.";
     if std::env::var_os("UPDATE_FIXTURE").is_some() {
-        std::fs::write(&fixture, format!("{header}\n{}\n", actual.join("\n")))
+        std::fs::write(&fixture, format!("{header}\n{}\n", lines.join("\n")))
             .expect("writes the fixture");
-        return;
-    }
-    if actual != expected {
+    } else {
         let changed: Vec<String> = actual
             .iter()
-            .filter(|line| !expected.contains(&line.as_str()))
-            .cloned()
+            .filter(|line| !recorded.contains(line))
+            .map(|(name, outcome)| format!("{name} {outcome}"))
             .collect();
-        panic!(
+        assert!(
+            changed.is_empty(),
             "{} workflows differ:\n{}\n\nThe new fixture:\n{header}\n{}",
             changed.len(),
             changed.join("\n"),
-            actual.join("\n")
+            lines.join("\n")
         );
     }
+    let problems = check_records(&actual);
+    assert!(
+        problems.is_empty(),
+        "{} workflows disagree with tests/fixtures/run_test_workflows_rejected.txt:\n{}",
+        problems.len(),
+        problems.join("\n")
+    );
 }

@@ -43,11 +43,13 @@ def directory(path):
     return {"class": "Directory", "path": path}
 
 
-# Each case says why the documents fail, and how cwltool shows it: `run` runs cwltool on a
-# document with a job (a path in the test workflows, or values whose files are made empty);
-# `collect` loads a tool with cwltool and collects one output from an empty output directory,
-# as after a run that made nothing; `evaluate` evaluates one expression of a document with
-# cwltool's evaluator, for steps of workflows that cwltool will not run.
+# Each case says why the documents cannot run, in one plain sentence, and how cwltool shows it:
+# `run` runs cwltool on a document with a job (a path in the test workflows, or values whose
+# files are made empty); `collect` loads a tool with cwltool and collects one output from an
+# empty output directory, as after a run that made nothing; `evaluate` evaluates one expression
+# of a document with cwltool's evaluator, for steps of workflows that cwltool will not run. The
+# kind of a case is `invalid` (the documents are broken) unless it gives `kind`: `missing` or
+# `unsupported (decision N)`.
 CASES = [
     {
         "why": "the tool names `inputs.in2`, which it does not declare, in its arguments",
@@ -564,9 +566,11 @@ def main():
         sys.exit("cwltool needs Node.js for JavaScript")
     os.chdir(TEST_WORKFLOWS)
     lines = [
-        "# How cwltool fails on each CWL document that fails in graph_test_workflows.txt, recorded by",
-        "# graph_evidence.py with cwltool 3.3.20260925135507. Each block gives the documents, the",
-        "# reason in plain words, what cwltool was asked, and the first lines of its error.",
+        "# Why each CWL document that fails in graph_test_workflows.txt cannot run, and how cwltool",
+        "# fails on it, recorded by graph_evidence.py with cwltool 3.3.20260925135507. Each block",
+        "# gives the documents, then `=`, the kind (`invalid`, `missing` or `unsupported (decision",
+        "# N)`) and why in one plain sentence, then what cwltool was asked (`$`) and the first lines",
+        "# of its error (`>`).",
     ]
     for case in CASES:
         with tempfile.TemporaryDirectory() as folder:
@@ -579,7 +583,7 @@ def main():
                 shown, output = evaluate(case, work)
         lines.append("")
         lines.extend(case["documents"])
-        lines.append(f"= {case['why']}")
+        lines.append(f"= {case.get('kind', 'invalid')}: {case['why']}")
         lines.append("$ " + " ".join(shown))
         lines.extend("> " + line for line in output[:8])
         print(f"{case['documents'][0]}: {output[-1] if output else 'no output'}", file=sys.stderr)

@@ -36,7 +36,7 @@ catalog/GaspardR__snakemake-github-module-keyerror ok 4
 catalog/Gmidtg21__bt7-9gmidtg ok 7
 catalog/GooglingTheCancerGenome__sv-callers 33 workflow/validator/__init__.py:6: ModuleNotFoundError: No module named 'ruamel'
 catalog/GooglingTheCancerGenome__sv-gen 33 workflow/helper_functions.py:5: ModuleNotFoundError: No module named 'pyfaidx'
-catalog/GuttmanLab__chipdip-pipeline 1 workflow/Snakefile:225: AttributeError: 'str' object has no attribute 'path'
+catalog/GuttmanLab__chipdip-pipeline 33 workflow/pipeline_counts.smk:78: Not supported yet: string.Formatter
 catalog/IHGGM-Aachen__CNVand ok 17
 catalog/IKIM-Essen__QC_pre_NextSeq 33 workflow/Snakefile:10: Not supported yet: PEP projects (pepfile)
 catalog/IKIM-Essen__ResMAG 33 workflow/Snakefile:15: Not supported yet: PEP projects (pepfile)
@@ -52,7 +52,7 @@ catalog/JoseFcoMH__af3_screening 33 workflow/scripts/logging_utils.py:9: Not sup
 catalog/JoyceS13__BEP_pipeline 1 workflow/Snakefile:101: SyntaxError: unindent does not match any outer indentation level
 catalog/KasperSkytte__snakemake_savont ok 14
 catalog/KasperSkytte__snakemake_usearch ok 14
-catalog/KonstantinBurkin__cbai 1 workflow/rules/common.smk:44: WorkflowError: InputFunctionException in rule merge_variants (wildcards: ): AttributeError: 'str' object has no attribute 'open'
+catalog/KonstantinBurkin__cbai ok 31
 catalog/Kratzcomycete__Fungal-Genome-Processing-Snakemake ok 2
 catalog/LET19__snakemake-template ok 0
 catalog/LiaOb21__FSP_assembly_benchmarking ok 1
@@ -64,7 +64,7 @@ catalog/MPUSP__snakemake-bacterial-riboseq ok 32
 catalog/MPUSP__snakemake-bacterial-rnaseq-processing 33 workflow/rules/common.smk:53: Not supported yet: the attribute absolute of type
 catalog/MPUSP__snakemake-crispr-guides ok 11
 catalog/MPUSP__snakemake-ms-proteomics ok 12
-catalog/MPUSP__snakemake-ont-bacterial-variants 1 workflow/rules/quality_control.smk:69: ValueError: Only '.' or '[' may follow ']' in format field specifier
+catalog/MPUSP__snakemake-ont-bacterial-variants ok 1
 catalog/MPUSP__snakemake-ont-basecalling ok 61
 catalog/MPUSP__snakemake-simple-mapping 33 workflow/rules/common.smk:38: Not supported yet: the attribute absolute of type
 catalog/MarieRiisgaard__snakemake_usearch_primertrim_and_subset 1 workflow/Snakefile:19: FileNotFoundError: [Errno 2] No such file or directory: '.test/nanopore_run_xyz123/fastq_pass'
@@ -74,8 +74,8 @@ catalog/MathiasEskildsen__ONT_RNA-seq_wf 1 workflow/Snakefile:13: FileNotFoundEr
 catalog/MethyleneBlues__Snake ok 10
 catalog/NCI-CGR__TriosCompass_v2 1 workflow/Snakefile:8: WorkflowError: Workflow defines configfile workflow/../config/config.yaml but it is not present or accessible (full checked path: config/config.yaml).
 catalog/NeuroGranberg__NODDIpipeline 33 workflow/rules/NODDIpipeline.smk:25: Not supported yet: the attribute replace of DataFrame
-catalog/Ovewh__ACP-haugvaldstad-et-al-2025 1 workflow/rules/compute_ERF.smk:39: WorkflowError: InputFunctionException in rule calculate_ERF_TOA (wildcards: experiment=piClim-2xdust, vName=ERFtaf, model=MPI-ESM-1-2-HAM, freq=Ayear): WorkflowError: No values given for wildcard 'freq,Aday|Amon|clim|Ayear'.
-catalog/Ovewh__Climaso 1 workflow/rules/plotAerChemMIP.smk:329: WorkflowError: No values given for wildcard 'plevel,low|middle|high'.
+catalog/Ovewh__ACP-haugvaldstad-et-al-2025 ok 395
+catalog/Ovewh__Climaso 1 workflow/Snakefile:139: WorkflowError: InputFunctionException in rule calculate_SW_ERF (wildcards: experiment=piClim-2xdust, vName=ERFtsw, model=EC-Earth3-AerChem, freq=Ayear): FileNotFoundError: /home/oveh/mnt/Betzy_CMIP/CMIP6/AerChemMIP/EC-Earth-Consortium/EC-Earth3-AerChem/piClim-2xdust/r1i1p1f
 catalog/PathoGenOmics-Lab__VIPERA 33 workflow/rules/common.smk:31: Not supported yet: subprocess.check_output: running commands while the workflow is planned
 catalog/Phlya__C-integration-mapping ok 0
 catalog/Phlya__distill-reorder-C 33 workflow/Snakefile:11: Not supported yet: modules from remote repositories (github(...))
@@ -83,12 +83,12 @@ catalog/Phlya__tagmap 1 workflow/rules/common.smk:265: WorkflowError: InputFunct
 catalog/Princeton-LSI-ResearchComputing__hifi-assembly ok 0
 catalog/PyPSA__grid-builder 33 workflow/scripts/_schema.py:14: ModuleNotFoundError: No module named 'earth_osm'
 catalog/RaphaelAngerbauer__snakemake_template ok 0
-catalog/Sadia12345__Thesis-BMI-Prediction-Snakemake 1 workflow/Snakefile:95: WorkflowError: Flags (report, rule) in file pattern 'figures/{dataset}/performance.png' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+catalog/Sadia12345__Thesis-BMI-Prediction-Snakemake ok 613
 catalog/SamBryce-Smith__LAPA_snakemake 1 workflow/Snakefile:4: KeyError: 'lapa_disable_internal_priming_filter'
 catalog/Sara-Morsy__metaomic-workflow ok 0
 catalog/SarahSaadain__Single_Copy_Gene_Selector 33 workflow/rules/initialize_pipeline.smk:14: ModuleNotFoundError: No module named 'snakemake_interface_executor_plugins'
 catalog/SarahSaadain__pastForward 33 workflow/rules/initialize.smk:27: ModuleNotFoundError: No module named 'snakemake_interface_executor_plugins'
-catalog/SchlossLab__mikropml-snakemake-workflow 1 workflow/Snakefile:90: WorkflowError: Flags (report, rule) in file pattern 'figures/{dataset}/performance.png' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+catalog/SchlossLab__mikropml-snakemake-workflow ok 95
 catalog/SchlossLab__mothur-snakemake-workflow ok 13
 catalog/ShaolinXU__snakemake_repo ok 0
 catalog/SichongP__atac-seq 33 workflow/Snakefile:8: Not supported yet: PEP projects (pepfile)
@@ -104,7 +104,7 @@ catalog/SveTho__base ok 10
 catalog/SveTho__bcl2fastq2_workflow ok 0
 catalog/SveTho__merge_fastqs ok 3
 catalog/TLenfers__multispecies_mitochondrial_variant_analysis 33 workflow/rules/reference.smk:4: Not supported yet: the attribute joinpath of type
-catalog/TRON-Bioinformatics__neorasp 33 workflow/Snakefile:11: Not supported yet: pathvars
+catalog/TRON-Bioinformatics__neorasp 33 workflow/rules/common.smk:2: ModuleNotFoundError: No module named 'magic'
 catalog/TRON-Bioinformatics__oblx 33 workflow/rules/uniprot_annotations.smk:6: Not supported yet: storage providers
 catalog/TidballLab__SNP-Cas13d-Selector ok 10
 catalog/UpalabdhaD__snakemake_wf_skeleton ok 0
@@ -116,11 +116,11 @@ catalog/Xavster838__coreDupGraph 1 workflow/Snakefile:6: NameError: name 'srcdir
 catalog/Xavster838__downstream_isoseq_process 1 workflow/Snakefile:10: NameError: name 'srcdir' is not defined
 catalog/Xavster838__get_and_annotate_locus 1 workflow/Snakefile:8: NameError: name 'srcdir' is not defined
 catalog/Xavster838__run_NucFreq 1 workflow/Snakefile:8: NameError: name 'srcdir' is not defined
-catalog/Yegberink__euro_building_heat_supply 33 workflow/Snakefile:11: Not supported yet: pathvars
-catalog/Yegberink__module_geothermal 1 workflow/scripts/build_scenario_table.py:92: TypeError: isinstance() arg 2 must be a type, a tuple of types, or a union, not builtin_function_or_method
-catalog/Yegberink__module_heat_rasters 33 workflow/Snakefile:11: Not supported yet: pathvars
+catalog/Yegberink__euro_building_heat_supply ok 1
+catalog/Yegberink__module_geothermal 33 workflow/rules/automatic.smk:95: Not supported yet: the attribute replace of DataFrame
+catalog/Yegberink__module_heat_rasters ok 1
 catalog/Zilong-Li__array-imputation-workflow 1 workflow/rules/common.smk:31: FileNotFoundError: [Errno 2] No such file or directory: 'data/chip/megaMergedPlus.autosomes.QCedHg38.nonoverlap.bim'
-catalog/Zilong-Li__lcWGS-imputation-workflow 1 workflow/rules/common.smk:211: WorkflowError: Flags (temp, rule) in file pattern 'results/quilt2/refsize{size}/{chrom}/quilt.down{depth}x.mspbwt.{chrom}.bcf' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf"
+catalog/Zilong-Li__lcWGS-imputation-workflow ok 60
 catalog/abbyevewilliams__map-pipeline 1 workflow/Snakefile:13: FileNotFoundError: [Errno 2] No such file or directory: '/data/biol-silvereye/ball6625/map-pipeline/config/zborb-samples.txt'
 catalog/abrahanhernandez__scWGA ok 10
 catalog/adrisede__Isoseq_smk_min 1 workflow/Snakefile:273: WorkflowError: Not all output, log and benchmark files of rule collapse contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
@@ -151,8 +151,8 @@ catalog/broomej__serpent-DEFUNCT ok 2
 catalog/brunosate21-a11y__Metabolic-Modeling-Workflow. ok 22
 catalog/brunosate21-a11y__codigo-sem-commit ok 8
 catalog/calliope-project__module_road_transport ok 1
-catalog/cbg-ethz__V-pipe 33 workflow/rules/common.smk:13: Not supported yet: the library function datetime.timezone
-catalog/cbib__SpaceBlocks 1 workflow/Snakefile:316: WorkflowError: Flags (directory, rule) in file pattern 'output/Samples/{sample}/leiden_resolution_{resolution}' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+catalog/cbg-ethz__V-pipe 33 workflow/rules/common.smk:16: ModuleNotFoundError: No module named 'configparser'
+catalog/cbib__SpaceBlocks ok 25
 catalog/cecivale__snakemake-phylo-beast2 33 workflow/Snakefile:83: Not supported yet: modules from remote repositories (github(...))
 catalog/charleshefer__snakemake-workflow-template ok 0
 catalog/cjgunnar__snake-dreem ok 0
@@ -198,7 +198,7 @@ catalog/ethan-baldwin__braker3_annotation ok 31
 catalog/ethan-baldwin__hybpiper_astral_pipeline 1 workflow/rules/common.smk:3: FileNotFoundError: [Errno 2] No such file or directory: '/home/eab77806/hybpiper_astral_pipeline/config/samples.tsv'
 catalog/ezherman__example-workflow ok 1
 catalog/fcaretti__SNPs_from_RNA 1 workflow/Snakefile:5: WorkflowError: Workflow defines configfile config/actual_config.yml but it is not present or accessible (full checked path: config/actual_config.yml).
-catalog/fiberseq__fiberseq-smk 1 workflow/Snakefile:108: WorkflowError: Flags (protected, rule) in file pattern 'results/{sm,ccs}/{sm}.fiberseq.bam' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+catalog/fiberseq__fiberseq-smk ok 20
 catalog/fischuu__Snakebite-Holoruminant-MetaG 1 workflow/Snakefile:53: KeyError: 'params-file'
 catalog/flo-schu__pymob-workflow 33 workflow/rules/common.smk:59: Not supported yet: Paramspace
 catalog/fmi-basel__ggiorget_ms2analysis ok 8
@@ -230,7 +230,7 @@ catalog/isaacvock__PROseq_etal 1 workflow/rules/common.smk:66: WorkflowError: In
 catalog/jackieduckie__methylation-capture 1 workflow/Snakefile:45: SyntaxError: Expected name or colon after rule or checkpoint keyword. The keyword rule has a special meaning in Snakemake. If you named a variable or function like this, please rename it to avoid the conflict.
 catalog/jianhong__pairedtag ok 18
 catalog/jjjermiah__snakemake_template ok 0
-catalog/jjjoelle__learn_rna 1 workflow/Snakefile:95: WorkflowError: Flags (multiext, rule) in file pattern 'outputs/align_{base}/Aligned.sortedByCoord.out.bam' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+catalog/jjjoelle__learn_rna ok 15
 catalog/jma1991__arrays ok 33
 catalog/jma1991__chromium 1 workflow/Snakefile:40: KeyError: 'sample'
 catalog/jma1991__rnaseq 1 workflow/Snakefile:10: WorkflowError: Error validating config file.
@@ -294,15 +294,15 @@ catalog/metagenome-atlas__metagenome_instrain ok 10
 catalog/milesroberts-123__poolseq-kmers 1 workflow/Snakefile:11: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
 catalog/milesroberts-123__slim-sweep-cnn 1 workflow/Snakefile:9: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
 catalog/mkrg01__genome_assembly_pipeline ok 190
-catalog/modelblocks-org__geospatial_shapes_test_bench 33 workflow/rules/geo_boundaries.smk:8: Not supported yet: pathvars
-catalog/modelblocks-org__module_area_potentials 33 workflow/Snakefile:11: Not supported yet: pathvars
-catalog/modelblocks-org__module_co2stop_cdr 33 workflow/Snakefile:11: Not supported yet: pathvars
-catalog/modelblocks-org__module_demand_electricity 33 workflow/Snakefile:11: Not supported yet: pathvars
-catalog/modelblocks-org__module_euro_building_heat 33 workflow/Snakefile:11: Not supported yet: pathvars
-catalog/modelblocks-org__module_euro_gas_grid 33 workflow/Snakefile:11: Not supported yet: pathvars
-catalog/modelblocks-org__module_geo_boundaries 33 workflow/Snakefile:11: Not supported yet: pathvars
-catalog/modelblocks-org__module_hydropower 33 workflow/Snakefile:11: Not supported yet: pathvars
-catalog/modelblocks-org__module_powerplants 33 workflow/Snakefile:11: Not supported yet: pathvars
+catalog/modelblocks-org__geospatial_shapes_test_bench 33 workflow/rules/geo_boundaries.smk:24: Not supported yet: modules from remote repositories (github(...))
+catalog/modelblocks-org__module_area_potentials ok 1
+catalog/modelblocks-org__module_co2stop_cdr ok 1
+catalog/modelblocks-org__module_demand_electricity 33 workflow/rules/source_entsoe.smk:7: Not supported yet: the attribute global_resources of Workflow
+catalog/modelblocks-org__module_euro_building_heat ok 1
+catalog/modelblocks-org__module_euro_gas_grid ok 1
+catalog/modelblocks-org__module_geo_boundaries ok 1
+catalog/modelblocks-org__module_hydropower ok 1
+catalog/modelblocks-org__module_powerplants ok 1
 catalog/moiexpositoalonsolab__grenepipe 33 workflow/rules/initialize.smk:13: ModuleNotFoundError: No module named 'snakemake_interface_executor_plugins'
 catalog/monagrland__MB_Pipeline 1 workflow/Snakefile:12: KeyError: 'reads_table'
 catalog/mpitz123__RNA_seq_alignment ok 38
@@ -356,7 +356,7 @@ catalog/recervictory__rna-seq-test ok 0
 catalog/regevs__tadpoles ok 0
 catalog/regulatory-genomics__hic_sm 33 workflow/rules/common.smk:10: ModuleNotFoundError: No module named 'peppy'
 catalog/rglez__bflow-smk ok 10
-catalog/richardstoeckl__QCforSeqCode 1 workflow/Snakefile:152: WorkflowError: InputFunctionException in rule infernal (wildcards: sampleID=Pfu): AttributeError: 'str' object has no attribute 'open'
+catalog/richardstoeckl__QCforSeqCode 1 workflow/Snakefile:153: WorkflowError: InputFunctionException in rule infernal (wildcards: sampleID=Pfu): EmptyDataError: No columns to parse from file
 catalog/richardstoeckl__basecallNanopore 1 workflow/Snakefile:21: WorkflowError: A configuration file is required; use --configfile FILE.yaml
 catalog/rmFlynn__DRAM_testing_pipline ok 0
 catalog/rmFlynn__dram_validataion_pipline ok 0
@@ -390,8 +390,8 @@ catalog/sims-lab__snakemake-cncb-index-ensembl-genome ok 8
 catalog/snakemake-workflows__cellranger-count ok 7
 catalog/snakemake-workflows__cellranger-multi 1 workflow/rules/common.smk:11: KeyError: 'CELLRANGER_TARBALL'
 catalog/snakemake-workflows__cyrcular-calling ok 1
-catalog/snakemake-workflows__dna-seq-benchmark 1 workflow/rules/common.smk:452: WorkflowError: InputFunctionException in rule all (wildcards: ): AttributeError: 'str' object has no attribute 'open'
-catalog/snakemake-workflows__dna-seq-gatk-variant-calling 1 workflow/rules/common.smk:43: WorkflowError: InputFunctionException in rule merge_variants (wildcards: ): AttributeError: 'str' object has no attribute 'open'
+catalog/snakemake-workflows__dna-seq-benchmark 1 workflow/rules/common.smk:456: WorkflowError: InputFunctionException in rule all (wildcards: ): JSONDecodeError: Expecting value: line 1 char 0
+catalog/snakemake-workflows__dna-seq-gatk-variant-calling ok 38
 catalog/snakemake-workflows__dna-seq-mtb 33 workflow/rules/common.smk:1: ModuleNotFoundError: No module named 'yte'
 catalog/snakemake-workflows__dna-seq-short-read-circle-map ok 1
 catalog/snakemake-workflows__dna-seq-varlociraptor 33 workflow/rules/common.smk:78: Not supported yet: the attribute explode of Series
@@ -415,7 +415,7 @@ catalog/spjuhel__BoARIO-Sensitivity 33 workflow/rules/prepare_simspace.smk:37: N
 catalog/spjuhel__Climada_TC_TCSurge_Generation 1 workflow/Snakefile:27: KeyError: 'start'
 catalog/spraeger__mutational-patterns-analysis ok 10
 catalog/t-i-r__snakemake-workflow-template ok 0
-catalog/tahiri-lab__aPhyloGeo-pipeline 1 workflow/rules/common.smk:74: WorkflowError: InputFunctionException in rule all (wildcards: ): AttributeError: 'str' object has no attribute 'open'
+catalog/tahiri-lab__aPhyloGeo-pipeline 1 workflow/rules/common.smk:75: WorkflowError: InputFunctionException in rule all (wildcards: ): EmptyDataError: No columns to parse from file
 catalog/tavareshugo__smk-indexer ok 137
 catalog/tbenavi1__RetroDetector ok 66
 catalog/tdayris__fair_bowtie2_mapping 33 workflow/rules/fair_genome_indexer.smk:15: Not supported yet: modules from remote repositories (github(...))
@@ -432,7 +432,7 @@ catalog/tmweiskittel__tmw_align_emseq 1 1 jobs did not run, like a job of rule a
 catalog/tmweiskittel__tmw_analysis_emseq 33 workflow/Snakefile:31: Not supported yet: setting the attribute fieldnames of DictReader
 catalog/trickovicmatija__kingfisher_workflow 1 workflow/Snakefile:3: WorkflowError: Workflow defines configfile ../config/default_config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/default_config.yaml).
 catalog/tucca-cellag__tucca-rna-seq 1 workflow/Snakefile:16: NameError: name '__file__' is not defined
-catalog/tud-mchen6__module_gh2_prod 33 workflow/Snakefile:11: Not supported yet: pathvars
+catalog/tud-mchen6__module_gh2_prod ok 1
 catalog/ubercomrade__cut_and_run_analysis ok 0
 catalog/usnistgov__defrabb 33 rules/common.smk:18: Not supported yet: astype(None)
 catalog/usnistgov__giab-defrabb 33 rules/common.smk:17: Not supported yet: astype(None)
@@ -454,7 +454,7 @@ catalog/westerdijk-wm__smkwf-bwa-gatk-snpeff 33 workflow/Snakefile:25: Not suppo
 catalog/westerdijk-wm__snakemake-mlsa-ani ok 90
 catalog/wharvey31__denovo_sv_validation 33 workflow/Snakefile:3: ModuleNotFoundError: No module named 'Bio'
 catalog/xiayh17__benchmark_scomatic ok 0
-catalog/xin-huang__selscape 1 workflow/rules/4.1_positive_selection_selscan.smk:72: WorkflowError: InputFunctionException in rule normalize_selscan_scores (wildcards: species=Human, dataset=ci_test, ppl=YRI, method=ihs, maf=0.05): WorkflowError: Flags (temp, rule) in file pattern 'results/positive_selection/selscan/{species}/{
+catalog/xin-huang__selscape ok 258
 catalog/yeyuan98__rna_fish_analysis ok 16
 catalog/ylab-hi__ScanNeo2 1 workflow/rules/common.smk:175: SystemExit: 1
 catalog/zavolanlab__mirflowz 1 workflow/Snakefile:23: WorkflowError: Workflow defines configfile workflow/../test/config_lint.yaml but it is not present or accessible (full checked path: test/config_lint.yaml).
@@ -501,11 +501,11 @@ tests/test_censored_path 33 Snakefile:1: Not supported yet: storage directives
 tests/test_checkpoint_allowed_rules ok 3
 tests/test_checkpoint_missing_output 1 Snakefile:16: WorkflowError: InputFunctionException in rule aggregate (wildcards: ): ValueError: invalid literal for int() with base 10: ''
 tests/test_checkpoint_omit_from ok 7
-tests/test_checkpoint_open 1 Snakefile:2: WorkflowError: InputFunctionException in rule b (wildcards: ): AttributeError: 'str' object has no attribute 'open'
+tests/test_checkpoint_open ok 2
 tests/test_checkpoint_rerun ok 3
 tests/test_checkpoint_running_job_storage_race ok 4
 tests/test_checkpoint_until ok 7
-tests/test_checkpoints 1 Snakefile:38: WorkflowError: InputFunctionException in rule aggregate (wildcards: sample=a): AttributeError: 'str' object has no attribute 'open'
+tests/test_checkpoints ok 7
 tests/test_checkpoints_dir ok 5
 tests/test_checkpoints_many ok 4
 tests/test_cloud_checkpoints_issue574 1 Snakefile:6: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
@@ -594,8 +594,8 @@ tests/test_github_issue2142 ok 2
 tests/test_github_issue2154 ok 2
 tests/test_github_issue2213 ok 3
 tests/test_github_issue2255 ok 3
-tests/test_github_issue261 1 Snakefile:17: WorkflowError: InputFunctionException in rule generate (wildcards: target=target1, config=config1): AttributeError: 'str' object has no attribute 'open'
-tests/test_github_issue2732 1 Snakefile:37: WorkflowError: InputFunctionException in rule all (wildcards: ): WorkflowError: Flags (temp, rule) in file pattern '{name}.a1.out' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMP
+tests/test_github_issue261 ok 2
+tests/test_github_issue2732 ok 4
 tests/test_github_issue2848 ok 4
 tests/test_github_issue3213 ok 3
 tests/test_github_issue3271 ok 1
@@ -701,7 +701,7 @@ tests/test_many_jobs 124 timeout
 tests/test_match_by_wildcard_names ok 3
 tests/test_metadata_migration ok 1
 tests/test_missing_file_dryrun ok 2
-tests/test_module_checkpoint 1 Snakefile:35: WorkflowError: Flags (path_modified, rule) in file pattern 'a/aggregated/{sample}.txt' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+tests/test_module_checkpoint ok 5
 tests/test_module_complex 33 Snakefile:22: Not supported yet: modules from remote repositories (github(...))
 tests/test_module_complex2 33 Snakefile:23: Not supported yet: modules from remote repositories (github(...))
 tests/test_module_global_container ok 2
@@ -716,20 +716,20 @@ tests/test_module_report 33 Snakefile:11: Not supported yet: modules from remote
 tests/test_module_wildcard_constraints ok 3
 tests/test_module_with_script 33 Snakefile:13: Not supported yet: modules from remote repositories (github(...))
 tests/test_module_workflow_snakefile_usage ok 1
-tests/test_modules_all 1 module-test/Snakefile:20: WorkflowError: Flags (temp, path_modified, rule) in file pattern 'results/testmodule/a/{name}.out' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+tests/test_modules_all 1 module-test/Snakefile:29: AttributeError: 'Rules' object has no attribute 'b'
 tests/test_modules_all_exclude ok 3
 tests/test_modules_dynamic 1 Snakefile:16: WorkflowError: Module module_name has not been registered with 'module' statement before using it in 'use rule' statement.
-tests/test_modules_dynamic_import_rules 1 module2/Snakefile:22: WorkflowError: Flags (path_modified, rule) in file pattern 'results/testmodule/b2/{name}.out' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+tests/test_modules_dynamic_import_rules ok 5
 tests/test_modules_dynamic_module_as_alias 1 Snakefile:16: WorkflowError: Module module_name has not been registered with 'module' statement before using it in 'use rule' statement.
 tests/test_modules_dynamic_no_as 1 Snakefile:16: WorkflowError: Module module_name has not been registered with 'module' statement before using it in 'use rule' statement.
 tests/test_modules_meta_wrapper 33 Snakefile:8: Not supported yet: meta-wrapper modules
-tests/test_modules_name 1 module-test/Snakefile:17: WorkflowError: Flags (temp, path_modified, rule) in file pattern 'results/testmodule/a/{name}.out' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+tests/test_modules_name ok 5
 tests/test_modules_no_name 1 Snakefile:7: SyntaxError: Missing module name. A module name must be provided either after the module keyword or inside the module definition after the name keyword.
 tests/test_modules_peppy 33 module-test/Snakefile:2: Not supported yet: PEP projects (pepfile)
 tests/test_modules_prefix 1 module-test/Snakefile:10: AttributeError: 'builtin_function_or_method' object has no attribute 'http'
 tests/test_modules_prefix_local ok 1
 tests/test_modules_ruledeps_inheritance ok 5
-tests/test_modules_semi_dynamic 1 module1/Snakefile:17: WorkflowError: Flags (temp, path_modified, rule) in file pattern 'results/testmodule/a1/{name}.out' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+tests/test_modules_semi_dynamic ok 9
 tests/test_modules_specific ok 1
 tests/test_modules_two_names 1 Snakefile:8: SyntaxError: Ambiguous module name. A module name was provided directly after the module keyword. Another module name was provided by the name keyword. The keyword module has a special meaning in Snakemake. If you named a variable or function like this, please rename it to avoid the c
 tests/test_multicomp_group_jobs ok 22
@@ -755,10 +755,10 @@ tests/test_parsing_terminal_comment_following_statement ok 1
 tests/test_path_with_spaces ok 1
 tests/test_pathlib ok 6
 tests/test_pathlib_missing_file ok 2
-tests/test_pathvars 33 Snakefile:4: Not supported yet: pathvars
-tests/test_pathvars_cycle 33 Snakefile:1: Not supported yet: pathvars
-tests/test_pathvars_modules 33 Snakefile:1: Not supported yet: pathvars
-tests/test_pathvars_storage 33 Snakefile:1: Not supported yet: pathvars
+tests/test_pathvars ok 7
+tests/test_pathvars_cycle 1 Snakefile:1: WorkflowError: Cyclic pathvar reference detected between: foo, bar, foo
+tests/test_pathvars_modules ok 8
+tests/test_pathvars_storage ok 2
 tests/test_pep_pathlib 33 Snakefile:3: Not supported yet: PEP projects (pepfile)
 tests/test_peppy 33 Snakefile:1: Not supported yet: PEP projects (pepfile)
 tests/test_persistence_backend_db_run_directive_concurrency ok 101
@@ -766,7 +766,7 @@ tests/test_pipe_depend ok 2
 tests/test_pipes ok 5
 tests/test_pipes2 ok 3
 tests/test_pipes_fail ok 5
-tests/test_pipes_multiple 1 Snakefile:23: WorkflowError: Flags (pipe, rule) in file pattern 'testb.{i}.txt' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+tests/test_pipes_multiple ok 6
 tests/test_prebuilt_conda_script ok 2
 tests/test_priority ok 12
 tests/test_priority_invalid ok 3
@@ -859,7 +859,7 @@ tests/test_symlink_temp ok 9
 tests/test_symlink_time_handling 33 Snakefile:38: Not supported yet: shell(): running commands while the workflow is planned
 tests/test_temp 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
 tests/test_temp_and_all_input ok 2
-tests/test_temp_checkpoint 1 Snakefile:52: WorkflowError: InputFunctionException in rule aggregate (wildcards: sample=a): AttributeError: 'str' object has no attribute 'open'
+tests/test_temp_checkpoint ok 13
 tests/test_temp_expand ok 2
 tests/test_template_engine ok 3
 tests/test_tes ok 1

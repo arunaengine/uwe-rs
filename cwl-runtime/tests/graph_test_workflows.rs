@@ -3,7 +3,8 @@
 //! mock TES executor, and compares the outcome with `tests/fixtures/graph_test_workflows.txt`:
 //! `ok` and the number of tasks, or the error. Documents of the fixture that the test workflows
 //! lack, like those of a host the network could not reach, are left out. A document may only
-//! fail when `tests/fixtures/graph_evidence.txt` shows that cwltool fails on it too. Run with
+//! fail when `tests/fixtures/graph_evidence.txt` has a record of it: why it cannot run, and
+//! that cwltool fails on it too (see `records`). Run with
 //! `just cwl-graph-test-workflows-test`; on a difference the test writes the new fixture to the
 //! target directory and says where.
 // Copyright (c) 2026 The iunctus Contributors
@@ -20,8 +21,11 @@ use cwl_parser::{Loader, Node, Value, yaml};
 use cwl_runtime::{CwlDriver, Options};
 use workflow_graph::{ExecuteError, Launch, MockTes, execute};
 
+mod records;
+
 const REJECTED: &str = include_str!("../../cwl-parser/tests/fixtures/test-workflows/rejected.txt");
-/// How cwltool fails on the documents that fail here, from `fixtures/graph_evidence.py`.
+/// Why the documents that fail here cannot run, and how cwltool fails on them, from
+/// `fixtures/graph_evidence.py`.
 const EVIDENCE: &str = include_str!("fixtures/graph_evidence.txt");
 const CLASSES: [&str; 4] = ["CommandLineTool", "ExpressionTool", "Workflow", "Operation"];
 const SUITES: [&str; 3] = [
@@ -138,12 +142,6 @@ fn clean(message: &str, root: &Path) -> String {
 
 /// The documents that graph_evidence.txt gives evidence for: its lines that are no comment,
 /// reason, command or output.
-fn evidenced(text: &str) -> BTreeSet<&str> {
-    text.lines()
-        .filter(|line| !line.is_empty() && !line.starts_with(['#', '=', '$', '>']))
-        .collect()
-}
-
 /// The first word of each line that is not a comment, with the rest of the line.
 fn entries(text: &str) -> BTreeMap<&str, &str> {
     text.lines()
@@ -305,15 +303,16 @@ fn test_workflows_build_graphs_as_recorded() {
         actual.len(),
         actual.len() - ok
     );
-    // A document may only fail when cwltool fails on it too, as graph_evidence.txt shows.
-    let evidence = evidenced(EVIDENCE);
+    // A document may only fail with a record in graph_evidence.txt, and a record is only kept
+    // while its document fails.
+    let evidence = records::reasons(EVIDENCE);
     let unexplained: Vec<&String> = actual
         .iter()
         .filter(|line| !line.contains(" ok "))
-        .filter(|line| !evidence.contains(line.split(' ').next().unwrap_or_default()))
+        .filter(|line| !evidence.contains_key(line.split(' ').next().unwrap_or_default()))
         .collect();
     let built: Vec<&&str> = evidence
-        .iter()
+        .keys()
         .filter(|document| {
             actual
                 .iter()
@@ -329,7 +328,7 @@ fn test_workflows_build_graphs_as_recorded() {
         .collect();
     assert!(
         unexplained.is_empty(),
-        "documents fail without evidence in graph_evidence.txt that cwltool fails on them too:\n{}",
+        "documents fail without a record in graph_evidence.txt of why they cannot run:\n{}",
         unexplained
             .iter()
             .map(|line| line.as_str())
@@ -338,7 +337,7 @@ fn test_workflows_build_graphs_as_recorded() {
     );
     assert!(
         built.is_empty(),
-        "documents of graph_evidence.txt build now:\n{}",
+        "documents of graph_evidence.txt build now; remove their records:\n{}",
         built
             .iter()
             .map(|document| **document)
@@ -361,6 +360,25 @@ fn test_workflows_build_graphs_as_recorded() {
                 .collect::<Vec<_>>()
                 .join("\n"),
             written.display()
+        );
+    }
+}
+
+#[test]
+fn every_record_names_its_kind_and_shows_evidence() {
+    let reasons = records::reasons(EVIDENCE);
+    assert!(reasons.len() > 50, "{} records", reasons.len());
+    let block =
+        "a.cwl\nb.cwl\n= unsupported (decision 18): it needs X.\n$ cwltool a.cwl\n> error\n";
+    let parsed = records::reasons(block);
+    assert_eq!(
+        parsed.get("b.cwl"),
+        Some(&"unsupported (decision 18): it needs X.")
+    );
+    for broken in ["a.cwl\n= failing: x\n> error\n", "a.cwl\n= invalid: x\n"] {
+        assert!(
+            std::panic::catch_unwind(|| records::reasons(broken)).is_err(),
+            "{broken}"
         );
     }
 }

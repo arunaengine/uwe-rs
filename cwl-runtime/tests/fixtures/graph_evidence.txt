@@ -1,11 +1,13 @@
-# How cwltool fails on each CWL document that fails in graph_test_workflows.txt, recorded by
-# graph_evidence.py with cwltool 3.3.20260925135507. Each block gives the documents, the
-# reason in plain words, what cwltool was asked, and the first lines of its error.
+# Why each CWL document that fails in graph_test_workflows.txt cannot run, and how cwltool
+# fails on it, recorded by graph_evidence.py with cwltool 3.3.20260925135507. Each block
+# gives the documents, then `=`, the kind (`invalid`, `missing` or `unsupported (decision
+# N)`) and why in one plain sentence, then what cwltool was asked (`$`) and the first lines
+# of its error (`>`).
 
 conformance/v1.0/v1.0/v1.0/fail-unspecified-input.cwl
 conformance/v1.1/tests/fail-unspecified-input.cwl
 conformance/v1.2/tests/fail-unspecified-input.cwl
-= the tool names `inputs.in2`, which it does not declare, in its arguments
+= invalid: the tool names `inputs.in2`, which it does not declare, in its arguments
 $ cwltool --no-container conformance/v1.2/tests/fail-unspecified-input.cwl <job>
 > ERROR Workflow error, try again with --debug for more information:
 > Expression evaluation error:
@@ -14,7 +16,7 @@ $ cwltool --no-container conformance/v1.2/tests/fail-unspecified-input.cwl <job>
 conformance/v1.0/v1.0/v1.0/fail-unconnected.cwl
 conformance/v1.1/tests/fail-unconnected.cwl
 conformance/v1.2/tests/fail-unconnected.cwl
-= a step input that the tool does not declare reaches it as `inputs.in2` (should_fail conformance test fail-unconnected)
+= invalid: a step input that the tool does not declare reaches it as `inputs.in2` (should_fail conformance test fail-unconnected)
 $ cwltool --no-container conformance/v1.2/tests/fail-unconnected.cwl <job>
 > ERROR Exception on step 'step1'
 > ERROR [step step1] Cannot make job: conformance/v1.2/tests/fail-unspecified-input.cwl:13:33: Expression evaluation error:
@@ -22,54 +24,54 @@ $ cwltool --no-container conformance/v1.2/tests/fail-unconnected.cwl <job>
 
 conformance/v1.1/tests/glob-path-error.cwl
 conformance/v1.2/tests/glob-path-error.cwl
-= the glob is an absolute path (should_fail conformance test)
+= invalid: the glob is an absolute path (should_fail conformance test)
 $ cwltool collect_output conformance/v1.2/tests/glob-path-error.cwl output OUTPUT
 > WorkflowException: conformance/v1.2/tests/glob-path-error.cwl:17:7: glob patterns must not start with '/'
 
 conformance/v1.1/tests/timelimit2.cwl
 conformance/v1.2/tests/timelimit2.cwl
-= the time limit is negative (should_fail conformance test timelimit_invalid)
+= invalid: the time limit is negative (should_fail conformance test timelimit_invalid)
 $ cwltool --no-container conformance/v1.2/tests/timelimit2.cwl <job>
 > ERROR Input object failed validation:
 > timelimit must be an integer >= 0, got: -1
 
 conformance/v1.2/tests/conditionals/cond-wf-012.cwl
-= `when` gives a number (should_fail conformance test conditionals_non_boolean_fail)
+= invalid: `when` gives a number (should_fail conformance test conditionals_non_boolean_fail)
 $ cwltool --no-container conformance/v1.2/tests/conditionals/cond-wf-012.cwl <job>
 > ERROR [step step1] Cannot make job: Conditional 'when' must evaluate to 'true' or 'false'
 
 conformance/v1.2/tests/conditionals/cond-wf-012_nojs.cwl
-= `when` gives a number (should_fail conformance test conditionals_non_boolean_fail_nojs)
+= invalid: `when` gives a number (should_fail conformance test conditionals_non_boolean_fail_nojs)
 $ cwltool --no-container conformance/v1.2/tests/conditionals/cond-wf-012_nojs.cwl <job>
 > ERROR [step step1] Cannot make job: Conditional 'when' must evaluate to 'true' or 'false'
 
 conformance/v1.2/tests/iwd/iwd-container-entryname2.cwl
-= an absolute InitialWorkDir name without DockerRequirement (should_fail conformance test)
+= invalid: an absolute InitialWorkDir name without DockerRequirement (should_fail conformance test)
 $ cwltool --no-container conformance/v1.2/tests/iwd/iwd-container-entryname2.cwl <job>
 > ERROR Workflow error, try again with --debug for more information:
 > Name '/tmp2j3y7rpb/input/stuff.txt' at index 0 of listing is invalid, name can only start with '/' when DockerRequirement is in 'requirements'.
 
 conformance/v1.2/tests/iwd/iwd-container-entryname3.cwl
-= an absolute InitialWorkDir name with DockerRequirement only as a hint (should_fail conformance test)
+= invalid: an absolute InitialWorkDir name with DockerRequirement only as a hint (should_fail conformance test)
 $ cwltool --no-container conformance/v1.2/tests/iwd/iwd-container-entryname3.cwl <job>
 > ERROR Workflow error, try again with --debug for more information:
 > Name '/tmp2j3y7rpb/input/stuff.txt' at index 0 of listing is invalid, name can only start with '/' when DockerRequirement is in 'requirements'.
 
 conformance/v1.2/tests/iwd/iwd-container-entryname4.cwl
-= an InitialWorkDir name leaves the output directory (should_fail conformance test)
+= invalid: an InitialWorkDir name leaves the output directory (should_fail conformance test)
 $ cwltool --no-container conformance/v1.2/tests/iwd/iwd-container-entryname4.cwl <job>
 > ERROR Workflow error, try again with --debug for more information:
 > Name '../input/stuff.txt' at index 0 of listing is invalid, cannot start with '../'
 
 conformance/v1.2/tests/params_broken_null.cwl
-= the output reads `null.something` (should_fail conformance test params_broken_null)
+= invalid: the output reads `null.something` (should_fail conformance test params_broken_null)
 $ cwltool --no-container conformance/v1.2/tests/params_broken_null.cwl <job>
 > ERROR [job params_broken_null.cwl] Job error:
 > Error collecting output for parameter 'output1': conformance/v1.2/tests/params_broken_null.cwl:12:7: Expression evaluation error:
 > Syntax error in parameter reference 'null.something': null is unexpected.. This could be due to using Javascript code without specifying InlineJavascriptRequirement.
 
 conformance/v1.2/tests/params_broken_length_of_non_list.cwl
-= the output reads `length` of a number (should_fail conformance test params_broken_length_of_non_list)
+= invalid: the output reads `length` of a number (should_fail conformance test params_broken_length_of_non_list)
 $ cwltool --no-container conformance/v1.2/tests/params_broken_length_of_non_list.cwl <job>
 > ERROR [job params_broken_length_of_non_list.cwl] Job error:
 > Error collecting output for parameter 'output1': conformance/v1.2/tests/params_broken_length_of_non_list.cwl:12:7: Expression evaluation error:
@@ -89,7 +91,7 @@ realworld/collections/github.com__genome__analysis-workflows/definitions/pipelin
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_wgs.cwl
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_wgs_nonhuman.cwl
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/varscan_pre_and_post_processing.cwl
-= the script that the varscan tool writes holds `${HOME}`, which runs as JavaScript under the InlineJavascriptRequirement of the enclosing subworkflows/varscan_pre_and_post_processing.cwl
+= invalid: the script that the varscan tool writes holds `${HOME}`, which runs as JavaScript under the InlineJavascriptRequirement of the enclosing subworkflows/varscan_pre_and_post_processing.cwl
 $ cwltool do_eval realworld/collections/github.com__genome__analysis-workflows/definitions/tools/varscan_somatic.cwl requirements/InitialWorkDirRequirement/listing/0/entry
 > WorkflowException: Expression evaluation error:
 > ReferenceError: HOME is not defined
@@ -99,7 +101,7 @@ realworld/collections/github.com__genome__analysis-workflows/definitions/subwork
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/pvacseq.cwl
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/vcf_eval_cle_gold.cwl
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/vcf_eval_concordance.cwl
-= the output glob calls `inputs.prefix.equals`, which JavaScript strings do not have
+= invalid: the output glob calls `inputs.prefix.equals`, which JavaScript strings do not have
 $ cwltool collect_output realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bam_readcount.cwl output indel_bam_readcount_tsv
 > WorkflowException: realworld/collections/github.com__genome__analysis-workflows/definitions/tools/bam_readcount.cwl:184:13: Expression evaluation error:
 > if (inputs.prefix.equals("NOPREFIX")) {
@@ -108,7 +110,7 @@ $ cwltool collect_output realworld/collections/github.com__genome__analysis-work
 
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/downsample_and_recall.cwl
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/gathered_downsample_and_recall.cwl
-= the step gives a float (`$(self.contamination)` of a float field) to the `string?` input `contamination_fraction` of gatk_haplotype_caller.cwl
+= invalid: the step gives a float (`$(self.contamination)` of a float field) to the `string?` input `contamination_fraction` of gatk_haplotype_caller.cwl
 $ cwltool --no-container realworld/collections/github.com__genome__analysis-workflows/definitions/tools/gatk_haplotype_caller.cwl <job>
 > ERROR Workflow error, try again with --debug for more information:
 > Invalid job input record:
@@ -119,7 +121,7 @@ $ cwltool --no-container realworld/collections/github.com__genome__analysis-work
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/germline_wgs.cwl
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/merge_svs.cwl
 realworld/collections/github.com__genome__analysis-workflows/definitions/subworkflows/single_sample_sv_callers.cwl
-= the step default of `filtering_frequency` is the string "0.05", but the tool takes a double
+= invalid: the step default of `filtering_frequency` is the string "0.05", but the tool takes a double
 $ cwltool --no-container realworld/collections/github.com__genome__analysis-workflows/definitions/tools/annotsv_filter.cwl <job>
 > ERROR Workflow error, try again with --debug for more information:
 > Invalid job input record:
@@ -130,7 +132,7 @@ $ cwltool --no-container realworld/collections/github.com__genome__analysis-work
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/immuno.cwl
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/rnaseq_star_fusion.cwl
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/rnaseq_star_fusion_with_xenosplit.cwl
-= the default of the int input `chim_junction_overhang_min` is the string "12", and the steps that run the tool do not set it
+= invalid: the default of the int input `chim_junction_overhang_min` is the string "12", and the steps that run the tool do not set it
 $ cwltool --no-container realworld/collections/github.com__genome__analysis-workflows/definitions/tools/star_align_fusion.cwl <job>
 > ERROR Workflow error, try again with --debug for more information:
 > Invalid job input record:
@@ -144,7 +146,7 @@ $ cwltool --no-container realworld/collections/github.com__genome__analysis-work
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_detect_variants.cwl
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_exome.cwl
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_wgs.cwl
-= vt_decompose.cwl needs the `.tbi` index of its VCF, but the output it gets (combined_vcf of germline_combine_variants.cwl) declares none
+= invalid: vt_decompose.cwl needs the `.tbi` index of its VCF, but the output it gets (combined_vcf of germline_combine_variants.cwl) declares none
 $ cwltool --no-container realworld/collections/github.com__genome__analysis-workflows/definitions/tools/vt_decompose.cwl <job>
 > ERROR Workflow error, try again with --debug for more information:
 > Missing required secondary file 'combined.vcf.gz.tbi' from file object: {
@@ -152,7 +154,7 @@ $ cwltool --no-container realworld/collections/github.com__genome__analysis-work
 realworld/collections/github.com__ncbi__pgap/progs/cache_kmer.cwl
 realworld/collections/github.com__ncbi__pgap/task_types/tt_kmer_cache_retrieve.cwl
 realworld/collections/github.com__ncbi__pgap/task_types/tt_kmer_cache_store.cwl
-= the output reads `outputs.ofull_file`, but there is no `outputs` in CWL expressions
+= invalid: the output reads `outputs.ofull_file`, but there is no `outputs` in CWL expressions
 $ cwltool collect_output realworld/collections/github.com__ncbi__pgap/progs/cache_kmer.cwl output out_kmer_file_list
 > WorkflowException: realworld/collections/github.com__ncbi__pgap/progs/cache_kmer.cwl:74:13: Expression evaluation error:
 > var lines = outputs.ofull_file.contents.split('\\n');
@@ -160,28 +162,28 @@ $ cwltool collect_output realworld/collections/github.com__ncbi__pgap/progs/cach
 > ReferenceError: outputs is not defined
 
 realworld/collections/github.com__ncbi__pgap/bacterial_kmer/wf_bacterial_kmer.cwl
-= the InitialWorkDir script reads `inputs.kmer_dir.listing`, but a CWL v1.2 tool without LoadListingRequirement gets no listing
+= invalid: the InitialWorkDir script reads `inputs.kmer_dir.listing`, but a CWL v1.2 tool without LoadListingRequirement gets no listing
 $ cwltool --no-container realworld/collections/github.com__ncbi__pgap/progs/kmer_files2sqlite.cwl <job>
 > ERROR Workflow error, try again with --debug for more information:
 > Expression evaluation error:
 > TypeError: Cannot read properties of undefined (reading 'length')
 
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/minimap2/minimap2_sam.cwl
-= the ResourceRequirement reads `inputs.readsFA`, which the tool does not declare
+= invalid: the ResourceRequirement reads `inputs.readsFA`, which the tool does not declare
 $ cwltool --no-container realworld/collections/github.com__common-workflow-library__bio-cwl-tools/minimap2/minimap2_sam.cwl <job>
 > ERROR Workflow error, try again with --debug for more information:
 > Expression evaluation error:
 > TypeError: Cannot read properties of undefined (reading 'size')
 
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/minimap2/minimap2_sam.cwl
-= the ResourceRequirement reads `inputs.readsFA`, which the tool does not declare
+= invalid: the ResourceRequirement reads `inputs.readsFA`, which the tool does not declare
 $ cwltool --no-container realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/minimap2/minimap2_sam.cwl <job>
 > ERROR Workflow error, try again with --debug for more information:
 > Expression evaluation error:
 > TypeError: Cannot read properties of undefined (reading 'size')
 
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/bismark/bismark_prepare_genome.cwl
-= an InitialWorkDir entry is the text `inputs.genome_folder` without `$()` and without entryname
+= invalid: an InitialWorkDir entry is the text `inputs.genome_folder` without `$()` and without entryname
 $ cwltool --no-container realworld/collections/github.com__common-workflow-library__bio-cwl-tools/bismark/bismark_prepare_genome.cwl <job>
 > ERROR Got workflow error
 > for job in jobiter:
@@ -192,14 +194,14 @@ $ cwltool --no-container realworld/collections/github.com__common-workflow-libra
 > 'entryname'
 
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/tools/dev/picard_markduplicates_optname.cwl
-= with the default `base_file_name`, the arguments read `inputs.input_bam`, which the tool does not declare (it declares `input_bams`)
+= invalid: with the default `base_file_name`, the arguments read `inputs.input_bam`, which the tool does not declare (it declares `input_bams`)
 $ cwltool do_eval realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/tools/dev/picard_markduplicates_optname.cwl arguments/0/valueFrom
 > WorkflowException: Expression evaluation error:
 > var names = inputs.input_bam.nameroot.split(".")
 > TypeError: Cannot read properties of undefined (reading 'nameroot')
 
 realworld/sources/gitlab.com__m-unlock__cwl/tools/bowtie2/bowtie2_align.cwl
-= the library function `default_output_filename` reads `inputs.filelist`, an input that is commented out, so it gives null, which the arguments split
+= invalid: the library function `default_output_filename` reads `inputs.filelist`, an input that is commented out, so it gives null, which the arguments split
 $ cwltool --no-container realworld/sources/gitlab.com__m-unlock__cwl/tools/bowtie2/bowtie2_align.cwl <job>
 > ERROR Workflow error, try again with --debug for more information:
 > Expression evaluation error:
@@ -207,7 +209,7 @@ $ cwltool --no-container realworld/sources/gitlab.com__m-unlock__cwl/tools/bowti
 > TypeError: Cannot read properties of null (reading 'split')
 
 realworld/sources/git.wur.nl__unlock__cwl/cwl/bowtie2/bowtie2_align.cwl
-= the library function `default_output_filename` reads `inputs.filelist`, an input that is commented out, so it gives null, which the arguments split
+= invalid: the library function `default_output_filename` reads `inputs.filelist`, an input that is commented out, so it gives null, which the arguments split
 $ cwltool --no-container realworld/sources/git.wur.nl__unlock__cwl/cwl/bowtie2/bowtie2_align.cwl <job>
 > ERROR Workflow error, try again with --debug for more information:
 > Expression evaluation error:
@@ -215,19 +217,19 @@ $ cwltool --no-container realworld/sources/git.wur.nl__unlock__cwl/cwl/bowtie2/b
 > TypeError: Cannot read properties of null (reading 'split')
 
 realworld/sources/gitlab.com__m-unlock__cwl/tools/sapp/eggnog.cwl
-= the arguments read `inputs.inputFile`, which the tool does not declare
+= invalid: the arguments read `inputs.inputFile`, which the tool does not declare
 $ cwltool --no-container realworld/sources/gitlab.com__m-unlock__cwl/tools/sapp/eggnog.cwl <job>
 > ERROR Workflow error, try again with --debug for more information:
 > Expression evaluation error:
 > Syntax error in parameter reference 'inputs.inputFile.nameroot': inputs does not contain key 'inputFile'.. This could be due to using Javascript code without specifying InlineJavascriptRequirement.
 
 realworld/sources/gitlab.com__m-unlock__cwl/tools/longqc/longqc.cwl
-= the glob is `$(inputs.output_dir)`, a Directory, not a string
+= invalid: the glob is `$(inputs.output_dir)`, a Directory, not a string
 $ cwltool collect_output realworld/sources/gitlab.com__m-unlock__cwl/tools/longqc/longqc.cwl output longqc_out
 > WorkflowException: realworld/sources/gitlab.com__m-unlock__cwl/tools/longqc/longqc.cwl:62:7: Resolved glob patterns must be strings or list of strings, not {'class': 'Directory', 'location': 'file://<tmp>/out', 'basename': 'out'} from '$(inputs.output_dir)'
 
 realworld/sources/git.wur.nl__unlock__cwl/cwl/longqc/longqc.cwl
-= the glob is `$(inputs.output_dir)`, a Directory, not a string
+= invalid: the glob is `$(inputs.output_dir)`, a Directory, not a string
 $ cwltool collect_output realworld/sources/git.wur.nl__unlock__cwl/cwl/longqc/longqc.cwl output longqc_out
 > WorkflowException: realworld/sources/git.wur.nl__unlock__cwl/cwl/longqc/longqc.cwl:59:7: Resolved glob patterns must be strings or list of strings, not {'class': 'Directory', 'location': 'file://<tmp>/out', 'basename': 'out'} from '$(inputs.output_dir)'
 
@@ -236,7 +238,7 @@ realworld/workflowhub/1231/DTC76/WF7601/WF7601.cwl
 realworld/workflowhub/1728/DTC76/WF7601/WF7601.cwl
 realworld/workflowhub/1786/DTC76/WF7601/WF7601.cwl
 realworld/workflowhub/1997/WF7601.cwl
-= `when` reads `inputs.useMLStep`, which is no input of the step (cwltool runs no workflow with an Operation, so this is its evaluator)
+= invalid: `when` reads `inputs.useMLStep`, which is no input of the step (cwltool runs no workflow with an Operation, so this is its evaluator)
 $ cwltool do_eval realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC76/WF7601/WF7601.cwl steps/ST760103/when
 > WorkflowException: Expression evaluation error:
 > Syntax error in parameter reference 'inputs.useMLStep': inputs does not contain key 'useMLStep'.. This could be due to using Javascript code without specifying InlineJavascriptRequirement.
@@ -246,7 +248,7 @@ realworld/workflowhub/1231/DTC76/WF7602/WF7602.cwl
 realworld/workflowhub/1728/DTC76/WF7602/WF7602.cwl
 realworld/workflowhub/1786/DTC76/WF7602/WF7602.cwl
 realworld/workflowhub/1998/WF7602.cwl
-= `when` reads `inputs.useMLStep`, which is no input of the step (cwltool runs no workflow with an Operation, so this is its evaluator)
+= invalid: `when` reads `inputs.useMLStep`, which is no input of the step (cwltool runs no workflow with an Operation, so this is its evaluator)
 $ cwltool do_eval realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC76/WF7602/WF7602.cwl steps/ST760103/when
 > WorkflowException: Expression evaluation error:
 > Syntax error in parameter reference 'inputs.useMLStep': inputs does not contain key 'useMLStep'.. This could be due to using Javascript code without specifying InlineJavascriptRequirement.
@@ -256,7 +258,7 @@ realworld/workflowhub/1231/DTC75/WF7501/WF7501.cwl
 realworld/workflowhub/1333/WF7501.cwl
 realworld/workflowhub/1728/DTC75/WF7501/WF7501.cwl
 realworld/workflowhub/1786/DTC75/WF7501/WF7501.cwl
-= `when` reads `inputs.Run_User_Model`, which is no input of the step (cwltool runs no workflow with an Operation, so this is its evaluator)
+= invalid: `when` reads `inputs.Run_User_Model`, which is no input of the step (cwltool runs no workflow with an Operation, so this is its evaluator)
 $ cwltool do_eval realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC75/WF7501/WF7501.cwl steps/ST750106/when
 > WorkflowException: Expression evaluation error:
 > Syntax error in parameter reference 'inputs.Run_User_Model': inputs does not contain key 'Run_User_Model'.. This could be due to using Javascript code without specifying InlineJavascriptRequirement.
@@ -266,7 +268,7 @@ realworld/workflowhub/1231/DTC75/WF7502/WF7502.cwl
 realworld/workflowhub/1332/WF7502.cwl
 realworld/workflowhub/1728/DTC75/WF7502/WF7502.cwl
 realworld/workflowhub/1786/DTC75/WF7502/WF7502.cwl
-= the source of the step is the output SOURCE_PARAMETERS of a subworkflow that has no outputSource, so `self` is null, and `valueFrom` is JavaScript without InlineJavascriptRequirement (cwltool runs no workflow with an Operation, so this is its evaluator)
+= invalid: the source of the step is the output SOURCE_PARAMETERS of a subworkflow that has no outputSource, so `self` is null, and `valueFrom` is JavaScript without InlineJavascriptRequirement (cwltool runs no workflow with an Operation, so this is its evaluator)
 $ cwltool do_eval realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC75/WF7502/WF7502.cwl steps/ST750207/in/DAL/valueFrom
 > WorkflowException: Expression evaluation error:
 > Syntax error in parameter reference '(self.listing.find(f => f.basename === "DAL_template.json"))'. This could be due to using Javascript code without specifying InlineJavascriptRequirement.

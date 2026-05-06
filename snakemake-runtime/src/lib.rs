@@ -9,6 +9,7 @@ mod config;
 mod driver;
 mod files;
 mod functions;
+mod iofile;
 mod namespace;
 mod objects;
 mod pattern;

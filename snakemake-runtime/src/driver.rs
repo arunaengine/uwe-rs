@@ -98,6 +98,7 @@ impl Session {
             state: state.clone(),
         });
         interpreter.hook = Some(hook.clone());
+        interpreter.attribute_hook = Some(Rc::new(crate::iofile::FileAttributes));
         Ok(Session {
             launch: launch.clone(),
             workdir,

@@ -135,14 +135,14 @@ fn normalize_one(file: &mut Map) -> Result<(), String> {
         } else if directory {
             if !file.contains_key("listing") && !file.contains_key("basename") {
                 return Err(
-                    "a Directory object needs a location, or a basename and a listing".into(),
+                    "a Directory needs a location, a path, or a basename and a listing".into(),
                 );
             }
             let location = format!("_:{}", hash_of(&Value::Map(file.clone())));
             file.insert("location".into(), Value::String(location));
         } else {
             if !file.contains_key("contents") {
-                return Err("a File object needs a location, or contents".into());
+                return Err("a File needs a location, a path or contents".into());
             }
             let location = format!("_:{}", hash_of(&Value::Map(file.clone())));
             file.insert("location".into(), Value::String(location));

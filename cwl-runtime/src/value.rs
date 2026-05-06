@@ -188,6 +188,44 @@ impl Value {
             other => python_repr(other),
         }
     }
+
+    /// A short description of the value for messages, like ``a File `reads.fastq` `` or
+    /// `the string "12"`, instead of its whole JSON.
+    pub fn summary(&self) -> String {
+        match self {
+            Value::Null => "null".into(),
+            Value::Bool(value) => format!("the boolean {value}"),
+            Value::Integer(_) | Value::BigInteger(_) | Value::Float(_) => {
+                format!("the number {}", self.to_json())
+            }
+            Value::String(text) => {
+                let shown: String = text.chars().take(40).collect();
+                let cut = if shown.len() < text.len() { "..." } else { "" };
+                format!("the string {}{cut}", Value::String(shown).to_json())
+            }
+            Value::List(items) => match items.first() {
+                None => "an empty list".into(),
+                Some(first) => format!(
+                    "a list of {} items (the first is {})",
+                    items.len(),
+                    first.summary()
+                ),
+            },
+            Value::Map(_) if self.is_file_like() => {
+                let class = self.class().unwrap_or("File");
+                let name = ["basename", "location", "path"]
+                    .iter()
+                    .find_map(|key| self.text(key))
+                    .and_then(|name| name.trim_end_matches('/').rsplit('/').next())
+                    .filter(|name| !name.is_empty());
+                match name {
+                    Some(name) => format!("a {class} `{name}`"),
+                    None => format!("a {class}"),
+                }
+            }
+            Value::Map(_) => "an object".into(),
+        }
+    }
 }
 
 impl From<&str> for Value {

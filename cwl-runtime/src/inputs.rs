@@ -91,7 +91,7 @@ pub fn prepare(process: &Process, mut job: Map, setting: &Setting<'_>) -> Result
                 *value = placeholder::input(input, setting.types, base);
                 files::normalize(value)?;
             }
-            _ => return Err(error),
+            _ => return Err(format!("the input `{name}`: {error}")),
         }
     }
     for input in &process.inputs {
@@ -113,9 +113,9 @@ pub fn prepare(process: &Process, mut job: Map, setting: &Setting<'_>) -> Result
         }
         if !setting.types.matches(&input.value_type, value) {
             return Err(format!(
-                "the input `{name}` is not a valid {}: {}",
+                "the input `{name}` is of type {}, but its value is {}",
                 describe(&input.value_type),
-                value.to_json()
+                value.summary()
             ));
         }
     }

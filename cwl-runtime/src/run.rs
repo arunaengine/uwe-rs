@@ -359,7 +359,7 @@ impl Run {
                     Ok(Value::Map(map)) => Value::Map(map),
                     Ok(Value::Null) => Value::Map(Map::new()),
                     Err(_) if fake => Value::Map(Map::new()),
-                    Err(error) => return Err(at(error)),
+                    Err(error) => return Err(at(format!("the expression: {error}"))),
                     Ok(other) if fake => {
                         let _ = other;
                         Value::Map(Map::new())
@@ -827,26 +827,30 @@ impl Run {
             let name = short_name(&input.id);
             let mut this = before.get(name).cloned().unwrap_or(Value::Null);
             access.load_listings(&mut this, true);
-            let value = evaluator.evaluate(
-                expression,
-                Variables {
-                    inputs: &before,
-                    this: &this,
-                    runtime: &runtime,
-                },
-            )?;
+            let value = evaluator
+                .evaluate(
+                    expression,
+                    Variables {
+                        inputs: &before,
+                        this: &this,
+                        runtime: &runtime,
+                    },
+                )
+                .map_err(|error| format!("the `valueFrom` of the input `{name}`: {error}"))?;
             job.insert(name.to_owned(), value);
         }
         if let Some(when) = &step.when {
             let inputs = Value::Map(job.clone());
-            let value = evaluator.evaluate(
-                when,
-                Variables {
-                    inputs: &inputs,
-                    this: &Value::Null,
-                    runtime: &runtime,
-                },
-            )?;
+            let value = evaluator
+                .evaluate(
+                    when,
+                    Variables {
+                        inputs: &inputs,
+                        this: &Value::Null,
+                        runtime: &runtime,
+                    },
+                )
+                .map_err(|error| format!("`when`: {error}"))?;
             match value {
                 Value::Bool(true) => {}
                 Value::Bool(false) => return Ok(None),

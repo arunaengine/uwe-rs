@@ -10,6 +10,7 @@ use super::{is_missing, seq_values};
 use crate::error::Error;
 use crate::interpreter::Interpreter;
 use crate::modules::function;
+use crate::types::TypeTag;
 use crate::value::{Args, Native, Value};
 
 /// `numpy.ndarray`, for `isinstance`.
@@ -29,18 +30,10 @@ impl Native for ArrayClass {
     }
 }
 
-/// A NumPy scalar type: converts like the Python type it stands for.
-fn scalar_type(name: &'static str, python: &'static str) -> (&'static str, Value) {
-    (
-        name,
-        Value::builtin(name, move |interpreter, args| {
-            let class = interpreter
-                .builtins
-                .get(python)
-                .ok_or_else(|| Error::name_error(python))?;
-            interpreter.call(&class, args)
-        }),
-    )
+/// A NumPy scalar type as the Python type it stands for, since the stand-in keeps numbers as
+/// Python numbers: calls convert, and `isinstance` checks, as with the Python type.
+fn scalar_type(name: &'static str, python: TypeTag) -> (&'static str, Value) {
+    (name, Value::Class(crate::types::builtin_class(python)))
 }
 
 /// A function of one number, applied to each value of a sequence.
@@ -75,15 +68,17 @@ pub fn module() -> Vec<(&'static str, Value)> {
         ("pi", Value::Float(std::f64::consts::PI)),
         ("e", Value::Float(std::f64::consts::E)),
         ("ndarray", Value::native(ArrayClass)),
-        scalar_type("int64", "int"),
-        scalar_type("int32", "int"),
-        scalar_type("int_", "int"),
-        scalar_type("float64", "float"),
-        scalar_type("float32", "float"),
-        scalar_type("float_", "float"),
-        scalar_type("str_", "str"),
-        scalar_type("bool_", "bool"),
-        scalar_type("object_", "object"),
+        scalar_type("int64", TypeTag::Int),
+        scalar_type("int32", TypeTag::Int),
+        scalar_type("int_", TypeTag::Int),
+        scalar_type("integer", TypeTag::Int),
+        scalar_type("float64", TypeTag::Float),
+        scalar_type("float32", TypeTag::Float),
+        scalar_type("float_", TypeTag::Float),
+        scalar_type("floating", TypeTag::Float),
+        scalar_type("str_", TypeTag::Str),
+        scalar_type("bool_", TypeTag::Bool),
+        scalar_type("object_", TypeTag::Object),
         numeric("isnan", |number| Value::Bool(number.is_nan())),
         numeric("isinf", |number| Value::Bool(number.is_infinite())),
         numeric("isfinite", |number| Value::Bool(number.is_finite())),

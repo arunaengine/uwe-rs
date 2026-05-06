@@ -151,8 +151,18 @@ impl Session {
             state.config = config.clone();
             state.overwrite_config = overwrite;
             state.overwrite_configfiles = configfiles;
-            state.globals.set("config", config);
+            state.globals.set("config", config.clone());
         }
+        // Path variables of the config from the command line, as the workflow starts with them.
+        let pathvars = crate::pathvars::Pathvars::from_config(
+            &mut self.interpreter,
+            &config,
+            crate::pathvars::Level::Config,
+        )
+        .map_err(|error| self.error(&error))?;
+        self.hook
+            .update_pathvars(&pathvars)
+            .map_err(|error| self.error(&error))?;
         let snakefile = self.snakefile.clone();
         self.hook
             .include(&mut self.interpreter, &snakefile, true)

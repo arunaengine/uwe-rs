@@ -114,6 +114,8 @@ pub struct Rule {
     pub globals: Rc<Scope>,
     /// Rules that produce named input files, from `rules.<name>.output` references.
     pub docstring: Option<String>,
+    /// The path variables that the rule's files may contain.
+    pub pathvars: Rc<crate::pathvars::Pathvars>,
 }
 
 impl Rule {
@@ -149,6 +151,7 @@ impl Rule {
             line,
             globals,
             docstring: None,
+            pathvars: Rc::new(crate::pathvars::Pathvars::defaults()),
         }
     }
 

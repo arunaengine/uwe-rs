@@ -143,7 +143,14 @@ fn only_a_launch_that_assumes_its_inputs_takes_absent_files_as_present() {
         }
     };
     assert_eq!(outcome(true), Ok(()));
-    assert!(outcome(false).is_err_and(|error| error.contains("absent.txt")));
+    let absent = folder.path().join("absent.txt");
+    assert_eq!(
+        outcome(false),
+        Err(format!(
+            "main: the input `text` names `{}`, which does not exist",
+            absent.display()
+        ))
+    );
 }
 
 #[test]
@@ -184,9 +191,11 @@ fn errors_of_expressions_say_where_the_expression_is() {
         listing: [{entryname: run.sh, entry: 'cd ${HOME}'}]\ninputs: []\noutputs: []\n";
     assert_eq!(
         run(&[("main.cwl", tool)]),
-        Err("main: the InitialWorkDir listing: JavaScript error in `HOME`: ReferenceError: \
+        Err(
+            "main: the InitialWorkDir listing: JavaScript error in `HOME`: ReferenceError: \
              HOME is not defined"
-            .to_owned())
+                .to_owned()
+        )
     );
     let step = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: echo\ninputs: []\n\
         outputs: []\n";
@@ -195,6 +204,44 @@ fn errors_of_expressions_say_where_the_expression_is() {
     let error = run(&[("step.cwl", step), ("main.cwl", main)]).expect_err("fails");
     assert!(
         error.ends_with("`when`: there is no input `useStep`"),
+        "{error}"
+    );
+}
+
+#[test]
+fn a_mock_run_says_when_a_scatter_needs_real_data() {
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    let find = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: find\n\
+        inputs: {data: File}\noutputs: {peaks: 'Any[]?'}\n";
+    let pick = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: pick\n\
+        inputs: {peak: Any, data: File}\noutputs: []\n";
+    let main = "cwlVersion: v1.2\nclass: Workflow\n\
+        requirements: {ScatterFeatureRequirement: {}}\ninputs: {data: File}\noutputs: []\n\
+        steps:\n  find: {run: find.cwl, in: {data: data}, out: [peaks]}\n  \
+        pick: {run: pick.cwl, in: {peak: find/peaks, data: data}, out: [], scatter: peak}\n";
+    for (name, text) in [("find.cwl", find), ("pick.cwl", pick), ("main.cwl", main)] {
+        std::fs::write(folder.path().join(name), text).expect("writes a document");
+    }
+    let job = folder.path().join("job.yml");
+    std::fs::write(&job, "data: {class: File, location: absent.mzML}\n").expect("writes the job");
+    let launch = Launch {
+        target: folder.path().join("main.cwl"),
+        inputs: Some(job),
+        scratch: folder.path().join("scratch"),
+        assume_inputs: true,
+        ..Launch::default()
+    };
+    let mut driver = cwl_runtime::driver(&launch).expect("a driver");
+    let mut executor = MockTes::new(folder.path().join("mock"));
+    let error = execute("main", driver.as_mut(), &mut executor)
+        .error
+        .expect("the scatter fails")
+        .to_string();
+    assert!(
+        error.ends_with(
+            "pick: the scattered input `peak` is null, not a list; the mock run has no real \
+             data to fill it"
+        ),
         "{error}"
     );
 }

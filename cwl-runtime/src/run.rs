@@ -621,10 +621,19 @@ impl Run {
                 }
             }
         }
+        // In a mock run over files without real content, a null is what real data would fill.
+        let mock =
+            self.options.mock && placeholder::is_fake(&Value::Map(gathered.clone()), &self.fake);
         let mut lengths = Vec::new();
         for key in &keys {
             match gathered.get(key) {
                 Some(Value::List(items)) => lengths.push(items.len()),
+                Some(Value::Null) | None if mock => {
+                    return Err(at(format!(
+                        "the scattered input `{key}` is null, not a list; the mock run has no \
+                         real data to fill it"
+                    )));
+                }
                 Some(Value::Null) | None => {
                     return Err(at(format!(
                         "the scattered input `{key}` is null, not a list"
@@ -632,8 +641,8 @@ impl Run {
                 }
                 Some(other) => {
                     return Err(at(format!(
-                        "the scattered input `{key}` is not a list: {}",
-                        other.to_json()
+                        "the scattered input `{key}` is not a list, but {}",
+                        other.summary()
                     )));
                 }
             }

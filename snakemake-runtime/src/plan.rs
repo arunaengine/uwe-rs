@@ -639,6 +639,7 @@ pub fn expand_input(
                                     &item,
                                     &value,
                                     wildcards,
+                                    &rule.pathvars,
                                 )?;
                                 items.set_name(
                                     &key,
@@ -655,6 +656,7 @@ pub fn expand_input(
                                     &item,
                                     &value,
                                     wildcards,
+                                    &rule.pathvars,
                                 )?;
                             }
                         }
@@ -667,8 +669,14 @@ pub fn expand_input(
                     }
                     continue;
                 }
-                let many =
-                    add_function_result(interpreter, &mut items, &result, &value, wildcards)?;
+                let many = add_function_result(
+                    interpreter,
+                    &mut items,
+                    &result,
+                    &value,
+                    wildcards,
+                    &rule.pathvars,
+                )?;
                 if let Some(name) = &name {
                     items.set_name(name, start, many.then_some(items.values.len()));
                 }
@@ -699,6 +707,7 @@ fn add_function_result(
     result: &Value,
     function: &Value,
     wildcards: &Wildcards,
+    pathvars: &crate::pathvars::Pathvars,
 ) -> Result<bool, Error> {
     let files = match result.plain() {
         Value::Str(_) => vec![result.clone()],
@@ -738,6 +747,7 @@ fn add_function_result(
                 )));
             }
         };
+        let text = pathvars.apply(&text)?;
         let filled = pattern::apply(&text, wildcards).unwrap_or(text);
         let mut value = retag(&file, Value::str(filled));
         if let Some(tags) = function.tags() {

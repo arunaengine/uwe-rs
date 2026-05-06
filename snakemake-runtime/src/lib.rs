@@ -12,6 +12,7 @@ mod functions;
 mod iofile;
 mod namespace;
 mod objects;
+mod pathvars;
 mod pattern;
 mod plan;
 mod rule;

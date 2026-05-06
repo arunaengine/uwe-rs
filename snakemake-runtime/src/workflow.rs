@@ -20,6 +20,7 @@ use snakemake_parser::ast::{
 use snakemake_parser::keyword::{GlobalKeyword, ModuleKeyword, RuleKeyword};
 
 use crate::functions;
+use crate::pathvars::{Level, Pathvars};
 use crate::rule::{Action, Items, Rule, retag};
 
 /// A `WorkflowError`, the error Snakemake raises for mistakes in a workflow.
@@ -33,6 +34,14 @@ pub fn workflow_error(message: impl Into<String>) -> Error {
         &class,
         vec![Value::str(message.into())],
     ))
+}
+
+/// A file of a rule with its path variables replaced; other values stay as they are.
+pub fn apply_pathvars(pathvars: &Pathvars, value: &Value) -> Result<Value, Error> {
+    match value.as_str() {
+        Some(text) => Ok(retag(value, Value::str(pathvars.apply(text)?))),
+        None => Ok(value.clone()),
+    }
 }
 
 /// Files with the names that `multiext` gives them.
@@ -93,6 +102,8 @@ pub struct ModuleSpec {
     pub replace_prefix: Vec<(String, String)>,
     pub skip_validation: bool,
     pub basedir: PathBuf,
+    /// The `pathvars:` of the module statement.
+    pub pathvars: Vec<(Value, Value)>,
 }
 
 /// The context of the code that runs: the main workflow, or a module that `use rule`
@@ -115,6 +126,8 @@ pub struct Modifier {
     pub is_module: bool,
     pub modules: IndexMap<String, ModuleSpec>,
     pub allow_overwrite: bool,
+    /// The path variables of the rules that this code defines.
+    pub pathvars: Pathvars,
 }
 
 impl Modifier {
@@ -136,6 +149,7 @@ impl Modifier {
             is_module: false,
             modules: IndexMap::new(),
             allow_overwrite: false,
+            pathvars: Pathvars::defaults(),
         }
     }
 }
@@ -213,7 +227,7 @@ impl State {
         file.parent().map(Path::to_path_buf).unwrap_or_default()
     }
 
-    fn modifier(&self) -> &Modifier {
+    pub fn modifier(&self) -> &Modifier {
         self.modifiers.last().expect("the root modifier")
     }
 
@@ -502,7 +516,15 @@ impl Hook {
             GlobalKeyword::PepFile | GlobalKeyword::PepSchema => {
                 return Err(Error::unsupported("PEP projects (pepfile)"));
             }
-            GlobalKeyword::PathVariables => return Err(Error::unsupported("pathvars")),
+            GlobalKeyword::PathVariables => {
+                let pairs: Vec<(Value, Value)> = args
+                    .keywords
+                    .iter()
+                    .map(|(name, value)| (Value::str(&**name), value.clone()))
+                    .collect();
+                let pathvars = Pathvars::from_pairs(interpreter, &pairs, Level::Workflow)?;
+                self.update_pathvars(&pathvars)?;
+            }
             GlobalKeyword::Report
             | GlobalKeyword::OnStart
             | GlobalKeyword::OnSuccess
@@ -539,6 +561,8 @@ impl Hook {
             self.state.borrow_mut().configfiles.push(path.to_owned());
             crate::config::update(interpreter, &config, &loaded)?;
             crate::config::update(interpreter, &config, &overwrite)?;
+            let pathvars = Pathvars::from_config(interpreter, &config, Level::Config)?;
+            self.update_pathvars(&pathvars)?;
         } else if !has_overwrite_files {
             return Err(workflow_error(format!(
                 "Workflow defines configfile {path} but it is not present or accessible (full checked path: {}).",
@@ -548,6 +572,15 @@ impl Hook {
             crate::config::update(interpreter, &config, &overwrite)?;
         }
         Ok(())
+    }
+
+    /// Takes path variables into those of the code that runs now.
+    pub fn update_pathvars(&self, pathvars: &Pathvars) -> Result<(), Error> {
+        let mut state = self.state.borrow_mut();
+        match state.modifiers.last_mut() {
+            Some(modifier) => modifier.pathvars.update(pathvars),
+            None => Ok(()),
+        }
     }
 
     fn modified_rule_name(&self, name: &str) -> String {
@@ -662,6 +695,27 @@ impl Hook {
             (state.current_basedir(), state.modifier().globals.clone())
         };
         let mut rule = Rule::new(name.clone(), basedir, snakefile.to_owned(), line, globals);
+        // The rule's own path variables win over those of the code around it.
+        let around = self.state.borrow().modifier().pathvars.clone();
+        let pathvars = match info
+            .directives
+            .iter()
+            .find(|(keyword, _)| *keyword == RuleKeyword::PathVariables)
+        {
+            Some((_, args)) => {
+                let pairs: Vec<(Value, Value)> = args
+                    .keywords
+                    .iter()
+                    .map(|(name, value)| (Value::str(&**name), value.clone()))
+                    .collect();
+                let mut own = Pathvars::from_pairs(interpreter, &pairs, Level::Rule)?;
+                own.update(&around)?;
+                own
+            }
+            None => around,
+        };
+        let pathvars = Rc::new(pathvars);
+        rule.pathvars = pathvars.clone();
         rule.checkpoint = info.checkpoint;
         rule.docstring = info.docstring.clone();
         let mut default_target = false;
@@ -688,6 +742,7 @@ impl Hook {
                                         property,
                                         output,
                                         &skips,
+                                        &pathvars,
                                     )?;
                                 }
                             }
@@ -699,6 +754,7 @@ impl Hook {
                                 property,
                                 output,
                                 &skips,
+                                &pathvars,
                             )?,
                         }
                     }
@@ -711,6 +767,7 @@ impl Hook {
                             property,
                             output,
                             &skips,
+                            &pathvars,
                         )?;
                     }
                 }
@@ -721,8 +778,8 @@ impl Hook {
                         }
                         _ => first.clone(),
                     };
-                    let state = self.state.borrow();
-                    rule.benchmark = Some(state.modify_path(&value, "benchmark", &skips));
+                    let modified = self.state.borrow().modify_path(&value, "benchmark", &skips);
+                    rule.benchmark = Some(apply_pathvars(&pathvars, &modified)?);
                 }
                 RuleKeyword::Parameters => {
                     let mut params = Items::default();
@@ -775,7 +832,7 @@ impl Hook {
                     default_target = matches!(first.plain(), Value::Bool(true));
                 }
                 RuleKeyword::Shadow | RuleKeyword::Cache | RuleKeyword::Handover => {}
-                RuleKeyword::PathVariables => return Err(Error::unsupported("pathvars")),
+                RuleKeyword::PathVariables => {}
                 RuleKeyword::Shell => rule.action = Action::Shell(first),
                 RuleKeyword::Script => rule.action = Action::Script(first),
                 RuleKeyword::Notebook => rule.action = Action::Notebook(first),
@@ -894,19 +951,20 @@ impl Hook {
         property: &str,
         output: bool,
         skips: &[String],
+        pathvars: &Pathvars,
     ) -> Result<(), Error> {
         match value.plain() {
             Value::Str(_) => {
-                let state = self.state.borrow();
-                items.push(state.modify_path(value, property, skips));
+                let modified = self.state.borrow().modify_path(value, property, skips);
+                items.push(apply_pathvars(pathvars, &modified)?);
                 if let Some(name) = name {
                     items.add_name(name);
                 }
             }
             Value::Native(object) if object.type_name() == "PosixPath" => {
                 let text = retag(value, Value::str(interpreter.to_str(value)?));
-                let state = self.state.borrow();
-                items.push(state.modify_path(&text, property, skips));
+                let modified = self.state.borrow().modify_path(&text, property, skips);
+                items.push(apply_pathvars(pathvars, &modified)?);
                 if let Some(name) = name {
                     items.add_name(name);
                 }
@@ -946,7 +1004,16 @@ impl Hook {
                         }
                         None => item,
                     };
-                    self.add_item(interpreter, items, &item, None, property, output, skips)?;
+                    self.add_item(
+                        interpreter,
+                        items,
+                        &item,
+                        None,
+                        property,
+                        output,
+                        skips,
+                        pathvars,
+                    )?;
                 }
                 if let Some(name) = name {
                     items.set_name(name, start, Some(items.values.len()));
@@ -1044,6 +1111,7 @@ impl Hook {
             replace_prefix: Vec::new(),
             skip_validation: false,
             basedir: self.state.borrow().current_basedir(),
+            pathvars: Vec::new(),
         };
         for setting in &module.settings {
             let value = match &setting.value {
@@ -1075,7 +1143,9 @@ impl Hook {
                             .push((interpreter.to_str(&from)?, interpreter.to_str(&to)?));
                     }
                 }
-                ModuleKeyword::PathVariables => return Err(Error::unsupported("pathvars")),
+                ModuleKeyword::PathVariables => {
+                    spec.pathvars = interpreter.mapping_items(&value)?;
+                }
             }
         }
         let mut state = self.state.borrow_mut();
@@ -1161,6 +1231,17 @@ impl Hook {
                 rule_names.clone(),
             )),
         );
+        // The module's path variables: those of the code that loads it, then those of the
+        // module statement and of its config.
+        let mut pathvars = self.state.borrow().modifier().pathvars.clone();
+        pathvars.update(&Pathvars::from_pairs(
+            interpreter,
+            &spec.pathvars,
+            Level::Module,
+        )?)?;
+        if let Some(config) = &spec.config {
+            pathvars.update(&Pathvars::from_config(interpreter, config, Level::Module)?)?;
+        }
         let modifier = Modifier {
             globals: globals.clone(),
             rule_names: rule_names.clone(),
@@ -1178,6 +1259,7 @@ impl Hook {
             is_module: true,
             modules: IndexMap::new(),
             allow_overwrite: !all,
+            pathvars,
         };
         self.state.borrow_mut().modifiers.push(modifier);
         let result = self.include(interpreter, &full, true);

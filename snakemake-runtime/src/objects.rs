@@ -664,6 +664,9 @@ impl Native for WorkflowObject {
                     .unwrap_or(&borrowed.main_snakefile),
             ),
             "main_snakefile" => text(&borrowed.main_snakefile),
+            "pathvars" => Value::native(crate::pathvars::PathvarsObject(
+                borrowed.modifier().pathvars.clone(),
+            )),
             "workdir_init" => text(&borrowed.workdir),
             "config" => borrowed.config.clone(),
             "globals" => Value::native(python_evaluator::builtins::GlobalsDict(

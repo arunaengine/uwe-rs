@@ -119,6 +119,9 @@ pub fn prepare(process: &Process, mut job: Map, setting: &Setting<'_>) -> Result
             ));
         }
     }
+    if setting.toplevel {
+        absent(&mut job, setting)?;
+    }
     let deep = setting.load_listing == Some(LoadListing::DeepListing);
     let shallow = setting.load_listing == Some(LoadListing::ShallowListing);
     if deep || shallow {
@@ -147,6 +150,36 @@ pub fn prepare(process: &Process, mut job: Map, setting: &Setting<'_>) -> Result
         });
     }
     Ok(job)
+}
+
+/// Fails on the first file or directory of the input object that does not exist, as a run
+/// needs them and cwltool fails on them when it stages them. A run that assumes its inputs
+/// takes every file as present, and placeholders are never on disk.
+fn absent(job: &mut Map, setting: &Setting<'_>) -> Result<(), String> {
+    for (name, value) in job.iter_mut() {
+        let mut missing = None;
+        files::visit_files(value, &mut |file| {
+            if let Some(location) = file.get("location").and_then(Value::as_str)
+                && missing.is_none()
+                && !setting
+                    .assumed
+                    .iter()
+                    .any(|prefix| location.starts_with(prefix))
+                && !setting.access.exists(location)
+            {
+                missing = Some(
+                    files::local_path(location)
+                        .map_or_else(|| location.to_owned(), |path| path.display().to_string()),
+                );
+            }
+        });
+        if let Some(path) = missing {
+            return Err(format!(
+                "the input `{name}` names `{path}`, which does not exist"
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Walks a value along its type to load contents, listings and secondary files where the

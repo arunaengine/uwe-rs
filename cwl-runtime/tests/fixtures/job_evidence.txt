@@ -1,23 +1,42 @@
-# How cwltool rejects each example job file that fails in job_test_workflows.txt, recorded by
-# job_evidence.py with cwltool 3.3.20260925135507: the document and the job, then the
-# first lines of cwltool's error when it checks the job against the document, or, when
-# it accepts the job, when it runs it without containers; `=` gives a reason.
+# Why each example job file that fails in job_test_workflows.txt cannot run, and how
+# cwltool rejects it, recorded by job_evidence.py with cwltool 3.3.20260925135507: the
+# document and the job, then `=`, the kind (`invalid`, `missing` or `unsupported
+# (decision N)`) and why in one plain sentence, then the first lines of cwltool's error
+# (`>`) when it checks the job against the document, or, when it accepts the job, when it
+# runs it without containers. A document that fails for any job has the record of
+# graph_evidence.txt.
 
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/bismark/bismark_prepare_genome.cwl realworld/collections/github.com__common-workflow-library__bio-cwl-tools/bismark/tests/bismark_prepare_genome_t1.json
-= the document fails for any job, as graph_evidence.txt shows
+= invalid: an InitialWorkDir entry is the text `inputs.genome_folder` without `$()` and without entryname
+$ cwltool --no-container realworld/collections/github.com__common-workflow-library__bio-cwl-tools/bismark/bismark_prepare_genome.cwl <job>
+> ERROR Got workflow error
+> for job in jobiter:
+> self._initialworkdir(j, builder)
+> if not t2["entryname"]:
+> KeyError: 'entryname'
+> ERROR Workflow error, try again with --debug for more information:
+> 'entryname'
 
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/somatic_exome.cwl realworld/collections/github.com__genome__analysis-workflows/example_data/somatic_exome.yaml
-= the document fails for any job, as graph_evidence.txt shows
+= invalid: the script that the varscan tool writes holds `${HOME}`, which runs as JavaScript under the InlineJavascriptRequirement of the enclosing subworkflows/varscan_pre_and_post_processing.cwl
+$ cwltool do_eval realworld/collections/github.com__genome__analysis-workflows/definitions/tools/varscan_somatic.cwl requirements/InitialWorkDirRequirement/listing/0/entry
+> WorkflowException: Expression evaluation error:
+> ReferenceError: HOME is not defined
 
 realworld/collections/github.com__genome__analysis-workflows/definitions/pipelines/tumor_only_wgs.cwl realworld/collections/github.com__genome__analysis-workflows/example_data/tumor_only_wgs.yaml
-= the document fails for any job, as graph_evidence.txt shows
+= invalid: vt_decompose.cwl needs the `.tbi` index of its VCF, but the output it gets (combined_vcf of germline_combine_variants.cwl) declares none
+$ cwltool --no-container realworld/collections/github.com__genome__analysis-workflows/definitions/tools/vt_decompose.cwl <job>
+> ERROR Workflow error, try again with --debug for more information:
+> Missing required secondary file 'combined.vcf.gz.tbi' from file object: {
 
 realworld/collections/github.com__ncbi__pgap/progs/unit_tests/test_kmer_files2sqlite/test.cwl realworld/collections/github.com__ncbi__pgap/progs/unit_tests/test_kmer_files2sqlite/input.yaml
+= invalid: the InitialWorkDir script reads `inputs.kmer_dir.listing`, but a CWL v1.2 tool without LoadListingRequirement gets no listing
 > run: ERROR Exception on step 'step1'
 > run: ERROR [step step1] Cannot make job: Expression evaluation error:
 > run: TypeError: Cannot read properties of undefined (reading 'length')
 
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/megahit/megahit_paired.cwl realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/tests/tools/megahit/megahit_paired.yml
+= invalid: the job gives the inputs `forward_reads` and `reverse_reads` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: * the 'forward_reads' field is not valid because
 > job check: value is a dict, expected array of <File>
@@ -25,25 +44,30 @@ realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/megahit/m
 > job check: value is a dict, expected array of <File>
 
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/tools/megahit/megahit_single.cwl realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/tests/tools/megahit/megahit_single.yml
+= invalid: the job gives the input `reads` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'reads' field is not valid because
 > job check: value is a dict, expected array of <File>
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_sorting.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_sorting.job.yaml
+= invalid: the job gives the input `input_table` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_2333' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/Diamond.blastp-v0.9.21.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/Diamond.blastp-v0.9.21.test.job.yaml
+= invalid: the job gives the input `databaseFile` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'databaseFile' field is not valid because
 > job check: the value is not string
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/Diamond.blastx-v0.9.21.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/Diamond.blastx-v0.9.21.test.job.yaml
+= invalid: the job gives the input `databaseFile` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'databaseFile' field is not valid because
 > job check: the value is not string
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/diamond-subwf.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamond/diamond-subwf.yml
+= invalid: the job gives the inputs `Uniref90_db_txt` and `databaseFile` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: * the 'Uniref90_db_txt' field is not valid because
 > job check: the value is not string
@@ -51,6 +75,7 @@ realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Diamo
 > job check: the value is not string
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/EggNOG/eggNOG/eggnog.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/EggNOG/eggNOG/eggnog.yml
+= invalid: the job gives the inputs `db` and `db_diamond` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: * the 'db' field is not valid because
 > job check: value is a dict, expected null or string
@@ -58,6 +83,7 @@ realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/EggNO
 > job check: value is a dict, expected null or string
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/EggNOG/eggnog-subwf.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/EggNOG/eggnog-subwf.yml
+= invalid: the job gives the inputs `db` and `db_diamond` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: * the 'db' field is not valid because
 > job check: the value is not string
@@ -65,14 +91,17 @@ realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/EggNO
 > job check: the value is not string
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/GFF/gff_generation.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/GFF/gff_generation.yml
+= invalid: the job gives the input `eggnog_results` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'eggnog_results' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Genome_properties/genome_properties.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/Genome_properties/genome_properties.yml
+= invalid: the job gives the input `input_tsv_file` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_tsv_file' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/KEGG_analysis/KEGG_pathways/kegg_pathways.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/KEGG_analysis/KEGG_pathways/kegg_pathways.yml
+= invalid: the job gives the inputs `graphs` and `pathways_classes` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: * the 'graphs' field is not valid because
 > job check: the value is not string
@@ -80,149 +109,185 @@ realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/KEGG_
 > job check: the value is not string
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/KEGG_analysis/Modification/modification_table.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/KEGG_analysis/Modification/modification_table.yml
+= invalid: the job gives the input `input_table` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/antismash/chunking_antismash_with_conditionals/antismash_chunking_subwf.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/antismash/chunking_antismash_with_conditionals/ymls/antismash_chunking_subwf.yml
+= invalid: the job gives the input `clusters_glossary` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'clusters_glossary' field is not valid because
 > job check: the value is not string
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/antismash/chunking_antismash_with_conditionals/rename_contigs/rename_contigs.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/Assembly/antismash/chunking_antismash_with_conditionals/rename_contigs/rename_contigs.yml
+= invalid: the job is a template whose files have no path
 > job check: KeyError: 'location'
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/GO-slim/go_summary.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/GO-slim/go_summary.yml
+= invalid: the job gives the input `config` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'config' field is not valid because
 > job check: the value is not string
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/cmsearch-deoverlap/cmsearch-deoverlap-v0.02.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/cmsearch-deoverlap/cmsearch-deoverlap-v0.02.test.job.yaml
+= invalid: the job gives the input `clan_information` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'clan_information' field is not valid because
 > job check: value is a dict, expected null or string
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/extract-coords/extract-coords_awk.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/extract-coords/extract-coords_awk.yml
+= invalid: the job gives the input `infernal_matches` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'infernal_matches' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/mapseq/mapseq.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/mapseq/mapseq-test.yml
+= invalid: the job gives the input `taxonomy` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'taxonomy' field is not valid because
 > job check: the value is not string
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/mapseq2biom/mapseq2biom.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/RNA_prediction/mapseq2biom/mapseq2biom-test.yml
+= invalid: the job gives the input `otu_table` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'otu_table' field is not valid because
 > job check: the value is not string
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/hmmer/hmmscan/hmmscan.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/tools/hmmer/hmmscan/hmmscan.yml
+= invalid: the job gives the input `seqfile` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'seqfile' to have format 'http://edamontology.org/format_1929' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/hmmscan_tab_modification/hmmscan_tab_modification.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/utils/hmmscan_tab_modification/hmmscan_tab_modification.yml
+= invalid: the job gives the input `input_table` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/workflows/subworkflows/other_ncrnas.cwl realworld/sources/github.com__EBI-Metagenomics__pipeline-v5/travis/tests/test-input/other_ncrnas.yml
+= invalid: the job is a template whose files have no path
 > job check: KeyError: 'location'
 
 realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/gromacs/editconf.cwl realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/test/gromacs/editconf.yml
+= invalid: the job gives the input `input_gro_path` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_gro_path' to have format 'http://edamontology.org/format_GROMACS_GRO' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/gromacs/genion.cwl realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/test/gromacs/genion.yml
+= invalid: the job gives the input `input_top_zip_path` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_top_zip_path' to have format 'http://edamontology.org/format_2333' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/gromacs/grompp.cwl realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/test/gromacs/grompp.yml
+= invalid: the job gives the input `input_gro_path` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_gro_path' to have format 'http://edamontology.org/format_GROMACS_GRO' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/gromacs/mdrun.cwl realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/test/gromacs/mdrun.yml
+= invalid: the job gives the input `input_tpr_path` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_tpr_path' to have format 'http://edamontology.org/format_2333' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/gromacs/pdb2gmx.cwl realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/test/gromacs/pdb2gmx.yml
+= invalid: the job gives the input `input_pdb_path` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_pdb_path' to have format 'http://edamontology.org/format_1476' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/gromacs/solvate.cwl realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/test/gromacs/solvate.yml
+= invalid: the job gives the input `input_solute_gro_path` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_solute_gro_path' to have format 'http://edamontology.org/format_GROMACS_GRO' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_model/model/fix_side_chain.cwl realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_model/test/model/fix_side_chain.yml
+= invalid: the job gives the input `input_pdb_path` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_pdb_path' to have format 'http://edamontology.org/format_1476' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_model/model/mutate.cwl realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_model/test/model/mutate.yml
+= invalid: the job gives the input `input_pdb_path` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_pdb_path' to have format 'http://edamontology.org/format_1476' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_md/gromacs/editconf.cwl realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_md/test/gromacs/editconf.yml
+= invalid: the job gives the input `input_gro_path` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_gro_path' to have format 'http://edamontology.org/format_GROMACS_GRO' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_md/gromacs/genion.cwl realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_md/test/gromacs/genion.yml
+= invalid: the job gives the input `input_top_zip_path` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_top_zip_path' to have format 'http://edamontology.org/format_2333' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_md/gromacs/grompp.cwl realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_md/test/gromacs/grompp.yml
+= invalid: the job gives the input `input_gro_path` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_gro_path' to have format 'http://edamontology.org/format_GROMACS_GRO' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_md/gromacs/make_ndx.cwl realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_md/test/gromacs/make_ndx.yml
+= invalid: the job gives the input `input_structure_path` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_structure_path' to have format 'http://edamontology.org/format_GROMACS_GRO' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_md/gromacs/mdrun.cwl realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_md/test/gromacs/mdrun.yml
+= invalid: the job gives the input `input_tpr_path` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_tpr_path' to have format 'http://edamontology.org/format_2333' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_md/gromacs/pdb2gmx.cwl realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_md/test/gromacs/pdb2gmx.yml
+= invalid: the job gives the input `input_pdb_path` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_pdb_path' to have format 'http://edamontology.org/format_1476' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_md/gromacs/solvate.cwl realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_md/test/gromacs/solvate.yml
+= invalid: the job gives the input `input_solute_gro_path` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_solute_gro_path' to have format 'http://edamontology.org/format_GROMACS_GRO' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_model/model/fix_side_chain.cwl realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_model/test/model/fix_side_chain.yml
+= invalid: the job gives the input `input_pdb_path` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_pdb_path' to have format 'http://edamontology.org/format_1476' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_model/model/mutate.cwl realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_model/test/model/mutate.yml
+= invalid: the job gives the input `input_pdb_path` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_pdb_path' to have format 'http://edamontology.org/format_1476' but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tools/fastp.cwl realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/archive/job-fastpPE.yml
+= invalid: the job gives the input `fastq1` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'fastq1' to have format ['http://edamontology.org/format_1930', 'http://edamontology.org/format_1931'] but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/tools/fastp.cwl realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/archive/job-fastpSE.yml
+= invalid: the job gives the input `fastq1` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'fastq1' to have format ['http://edamontology.org/format_1930', 'http://edamontology.org/format_1931'] but
 > job check: File has no 'format' defined: {
 
 realworld/sources/github.com__zmahnoor14__MAW/cwl/maw.cwl realworld/sources/github.com__zmahnoor14__MAW/cwl/maw-inputs-mutiple_ara.yaml
-= the job fits the document; the step metfrag scatters over `peaks_and_parameters`, an `Any[]?` output that only the `cwl.output.json` of the R tool gives, so the mock executor, which runs no tool, gives null, and a real run is needed
-> run: ERROR Exception on step 'dereplication'
-> run: ERROR [step dereplication] Cannot make job: --no-container, but this CommandLineTool has DockerRequirement under 'requirements'.
+= missing: the job names data files on the author's computer (/Users/mahnoorzulfiqar/...) and the scripts Workflow_Python_Script_all.py and Workflow_R_Script_all.r, which the repository does not have
+> run: ERROR Unexpected exception
+> run: FileNotFoundError: [Errno 2] No such file or directory: '/Users/mahnoorzulfiqar/OneDriveUNI/GitHub-Repos/COCONUT_Jan2022.csv'
+> run: schema_salad.exceptions.ValidationException: realworld/sources/github.com__zmahnoor14__MAW/cwl/maw-inputs-mutiple_ara.yaml:27:3: [Errno 2] No such file or directory: '/Users/mahnoorzulfiqar/OneDriveUNI/GitHub-Repos/COCONUT_Jan2022.csv'
+> run: ERROR [step dereplication] Cannot make job: realworld/sources/github.com__zmahnoor14__MAW/cwl/maw-inputs-mutiple_ara.yaml:27:3: [Errno 2] No such file or directory: '/Users/mahnoorzulfiqar/OneDriveUNI/GitHub-Repos/COCONUT_Jan2022.csv'
 > run: ERROR Workflow cannot make any more progress.
 
 realworld/workflowhub/360/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_sorting.cwl realworld/workflowhub/360/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_sorting.job.yaml
+= invalid: the job gives the input `input_table` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_2333' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/360/tools/Assembly/Diamond/Diamond.blastp-v0.9.21.cwl realworld/workflowhub/360/tools/Assembly/Diamond/Diamond.blastp-v0.9.21.test.job.yaml
+= invalid: the job gives the input `databaseFile` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'databaseFile' field is not valid because
 > job check: the value is not string
 
 realworld/workflowhub/360/tools/Assembly/Diamond/Diamond.blastx-v0.9.21.cwl realworld/workflowhub/360/tools/Assembly/Diamond/Diamond.blastx-v0.9.21.test.job.yaml
+= invalid: the job gives the input `databaseFile` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'databaseFile' field is not valid because
 > job check: the value is not string
 
 realworld/workflowhub/360/tools/Assembly/Diamond/diamond-subwf.cwl realworld/workflowhub/360/tools/Assembly/Diamond/diamond-subwf.yml
+= invalid: the job gives the inputs `Uniref90_db_txt` and `databaseFile` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: * the 'Uniref90_db_txt' field is not valid because
 > job check: the value is not string
@@ -230,6 +295,7 @@ realworld/workflowhub/360/tools/Assembly/Diamond/diamond-subwf.cwl realworld/wor
 > job check: the value is not string
 
 realworld/workflowhub/360/tools/Assembly/EggNOG/eggNOG/eggnog.cwl realworld/workflowhub/360/tools/Assembly/EggNOG/eggNOG/eggnog.yml
+= invalid: the job gives the inputs `db` and `db_diamond` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: * the 'db' field is not valid because
 > job check: value is a dict, expected null or string
@@ -237,6 +303,7 @@ realworld/workflowhub/360/tools/Assembly/EggNOG/eggNOG/eggnog.cwl realworld/work
 > job check: value is a dict, expected null or string
 
 realworld/workflowhub/360/tools/Assembly/EggNOG/eggnog-subwf.cwl realworld/workflowhub/360/tools/Assembly/EggNOG/eggnog-subwf.yml
+= invalid: the job gives the inputs `db` and `db_diamond` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: * the 'db' field is not valid because
 > job check: the value is not string
@@ -244,14 +311,17 @@ realworld/workflowhub/360/tools/Assembly/EggNOG/eggnog-subwf.cwl realworld/workf
 > job check: the value is not string
 
 realworld/workflowhub/360/tools/Assembly/GFF/gff_generation.cwl realworld/workflowhub/360/tools/Assembly/GFF/gff_generation.yml
+= invalid: the job gives the input `eggnog_results` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'eggnog_results' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/360/tools/Assembly/Genome_properties/genome_properties.cwl realworld/workflowhub/360/tools/Assembly/Genome_properties/genome_properties.yml
+= invalid: the job gives the input `input_tsv_file` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_tsv_file' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/360/tools/Assembly/KEGG_analysis/KEGG_pathways/kegg_pathways.cwl realworld/workflowhub/360/tools/Assembly/KEGG_analysis/KEGG_pathways/kegg_pathways.yml
+= invalid: the job gives the inputs `graphs` and `pathways_classes` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: * the 'graphs' field is not valid because
 > job check: the value is not string
@@ -259,66 +329,82 @@ realworld/workflowhub/360/tools/Assembly/KEGG_analysis/KEGG_pathways/kegg_pathwa
 > job check: the value is not string
 
 realworld/workflowhub/360/tools/Assembly/KEGG_analysis/Modification/modification_table.cwl realworld/workflowhub/360/tools/Assembly/KEGG_analysis/Modification/modification_table.yml
+= invalid: the job gives the input `input_table` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/360/tools/Assembly/antismash/chunking_antismash_with_conditionals/antismash_chunking_subwf.cwl realworld/workflowhub/360/tools/Assembly/antismash/chunking_antismash_with_conditionals/ymls/antismash_chunking_subwf.yml
-> job check: ValidationException: Version 'v1.2.0-dev2' is a development or deprecated version.
-> job check: Update your document to a stable version (v1.0, v1.1, v1.2) or use --enable-dev to enable support for development and deprecated versions.
+= invalid: the job gives the input `clusters_glossary` a value of the wrong type
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'clusters_glossary' field is not valid because
+> job check: the value is not string
 
 realworld/workflowhub/360/tools/Assembly/antismash/chunking_antismash_with_conditionals/rename_contigs/rename_contigs.cwl realworld/workflowhub/360/tools/Assembly/antismash/chunking_antismash_with_conditionals/rename_contigs/rename_contigs.yml
+= invalid: the job is a template whose files have no path
 > job check: KeyError: 'location'
 
 realworld/workflowhub/360/tools/GO-slim/go_summary.cwl realworld/workflowhub/360/tools/GO-slim/go_summary.yml
+= invalid: the job gives the input `config` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'config' field is not valid because
 > job check: the value is not string
 
 realworld/workflowhub/360/tools/RNA_prediction/cmsearch-deoverlap/cmsearch-deoverlap-v0.02.cwl realworld/workflowhub/360/tools/RNA_prediction/cmsearch-deoverlap/cmsearch-deoverlap-v0.02.test.job.yaml
+= invalid: the job gives the input `clan_information` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'clan_information' field is not valid because
 > job check: value is a dict, expected null or string
 
 realworld/workflowhub/360/tools/RNA_prediction/extract-coords/extract-coords_awk.cwl realworld/workflowhub/360/tools/RNA_prediction/extract-coords/extract-coords_awk.yml
+= invalid: the job gives the input `infernal_matches` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'infernal_matches' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/360/tools/RNA_prediction/mapseq/mapseq.cwl realworld/workflowhub/360/tools/RNA_prediction/mapseq/mapseq-test.yml
+= invalid: the job gives the input `taxonomy` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'taxonomy' field is not valid because
 > job check: the value is not string
 
 realworld/workflowhub/360/tools/RNA_prediction/mapseq2biom/mapseq2biom.cwl realworld/workflowhub/360/tools/RNA_prediction/mapseq2biom/mapseq2biom-test.yml
+= invalid: the job gives the input `otu_table` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'otu_table' field is not valid because
 > job check: the value is not string
 
 realworld/workflowhub/360/tools/hmmer/hmmscan/hmmscan.cwl realworld/workflowhub/360/tools/hmmer/hmmscan/hmmscan.yml
+= invalid: the job gives the input `seqfile` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'seqfile' to have format 'http://edamontology.org/format_1929' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/360/utils/hmmscan_tab_modification/hmmscan_tab_modification.cwl realworld/workflowhub/360/utils/hmmscan_tab_modification/hmmscan_tab_modification.yml
+= invalid: the job gives the input `input_table` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/360/workflows/subworkflows/other_ncrnas.cwl realworld/workflowhub/360/travis/tests/test-input/other_ncrnas.yml
+= invalid: the job is a template whose files have no path
 > job check: KeyError: 'location'
 
 realworld/workflowhub/361/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_sorting.cwl realworld/workflowhub/361/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_sorting.job.yaml
+= invalid: the job gives the input `input_table` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_2333' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/361/tools/Assembly/Diamond/Diamond.blastp-v0.9.21.cwl realworld/workflowhub/361/tools/Assembly/Diamond/Diamond.blastp-v0.9.21.test.job.yaml
+= invalid: the job gives the input `databaseFile` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'databaseFile' field is not valid because
 > job check: the value is not string
 
 realworld/workflowhub/361/tools/Assembly/Diamond/Diamond.blastx-v0.9.21.cwl realworld/workflowhub/361/tools/Assembly/Diamond/Diamond.blastx-v0.9.21.test.job.yaml
+= invalid: the job gives the input `databaseFile` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'databaseFile' field is not valid because
 > job check: the value is not string
 
 realworld/workflowhub/361/tools/Assembly/Diamond/diamond-subwf.cwl realworld/workflowhub/361/tools/Assembly/Diamond/diamond-subwf.yml
+= invalid: the job gives the inputs `Uniref90_db_txt` and `databaseFile` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: * the 'Uniref90_db_txt' field is not valid because
 > job check: the value is not string
@@ -326,6 +412,7 @@ realworld/workflowhub/361/tools/Assembly/Diamond/diamond-subwf.cwl realworld/wor
 > job check: the value is not string
 
 realworld/workflowhub/361/tools/Assembly/EggNOG/eggNOG/eggnog.cwl realworld/workflowhub/361/tools/Assembly/EggNOG/eggNOG/eggnog.yml
+= invalid: the job gives the inputs `db` and `db_diamond` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: * the 'db' field is not valid because
 > job check: value is a dict, expected null or string
@@ -333,6 +420,7 @@ realworld/workflowhub/361/tools/Assembly/EggNOG/eggNOG/eggnog.cwl realworld/work
 > job check: value is a dict, expected null or string
 
 realworld/workflowhub/361/tools/Assembly/EggNOG/eggnog-subwf.cwl realworld/workflowhub/361/tools/Assembly/EggNOG/eggnog-subwf.yml
+= invalid: the job gives the inputs `db` and `db_diamond` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: * the 'db' field is not valid because
 > job check: the value is not string
@@ -340,14 +428,17 @@ realworld/workflowhub/361/tools/Assembly/EggNOG/eggnog-subwf.cwl realworld/workf
 > job check: the value is not string
 
 realworld/workflowhub/361/tools/Assembly/GFF/gff_generation.cwl realworld/workflowhub/361/tools/Assembly/GFF/gff_generation.yml
+= invalid: the job gives the input `eggnog_results` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'eggnog_results' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/361/tools/Assembly/Genome_properties/genome_properties.cwl realworld/workflowhub/361/tools/Assembly/Genome_properties/genome_properties.yml
+= invalid: the job gives the input `input_tsv_file` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_tsv_file' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/361/tools/Assembly/KEGG_analysis/KEGG_pathways/kegg_pathways.cwl realworld/workflowhub/361/tools/Assembly/KEGG_analysis/KEGG_pathways/kegg_pathways.yml
+= invalid: the job gives the inputs `graphs` and `pathways_classes` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: * the 'graphs' field is not valid because
 > job check: the value is not string
@@ -355,66 +446,82 @@ realworld/workflowhub/361/tools/Assembly/KEGG_analysis/KEGG_pathways/kegg_pathwa
 > job check: the value is not string
 
 realworld/workflowhub/361/tools/Assembly/KEGG_analysis/Modification/modification_table.cwl realworld/workflowhub/361/tools/Assembly/KEGG_analysis/Modification/modification_table.yml
+= invalid: the job gives the input `input_table` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/361/tools/Assembly/antismash/chunking_antismash_with_conditionals/antismash_chunking_subwf.cwl realworld/workflowhub/361/tools/Assembly/antismash/chunking_antismash_with_conditionals/ymls/antismash_chunking_subwf.yml
-> job check: ValidationException: Version 'v1.2.0-dev2' is a development or deprecated version.
-> job check: Update your document to a stable version (v1.0, v1.1, v1.2) or use --enable-dev to enable support for development and deprecated versions.
+= invalid: the job gives the input `clusters_glossary` a value of the wrong type
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'clusters_glossary' field is not valid because
+> job check: the value is not string
 
 realworld/workflowhub/361/tools/Assembly/antismash/chunking_antismash_with_conditionals/rename_contigs/rename_contigs.cwl realworld/workflowhub/361/tools/Assembly/antismash/chunking_antismash_with_conditionals/rename_contigs/rename_contigs.yml
+= invalid: the job is a template whose files have no path
 > job check: KeyError: 'location'
 
 realworld/workflowhub/361/tools/GO-slim/go_summary.cwl realworld/workflowhub/361/tools/GO-slim/go_summary.yml
+= invalid: the job gives the input `config` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'config' field is not valid because
 > job check: the value is not string
 
 realworld/workflowhub/361/tools/RNA_prediction/cmsearch-deoverlap/cmsearch-deoverlap-v0.02.cwl realworld/workflowhub/361/tools/RNA_prediction/cmsearch-deoverlap/cmsearch-deoverlap-v0.02.test.job.yaml
+= invalid: the job gives the input `clan_information` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'clan_information' field is not valid because
 > job check: value is a dict, expected null or string
 
 realworld/workflowhub/361/tools/RNA_prediction/extract-coords/extract-coords_awk.cwl realworld/workflowhub/361/tools/RNA_prediction/extract-coords/extract-coords_awk.yml
+= invalid: the job gives the input `infernal_matches` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'infernal_matches' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/361/tools/RNA_prediction/mapseq/mapseq.cwl realworld/workflowhub/361/tools/RNA_prediction/mapseq/mapseq-test.yml
+= invalid: the job gives the input `taxonomy` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'taxonomy' field is not valid because
 > job check: the value is not string
 
 realworld/workflowhub/361/tools/RNA_prediction/mapseq2biom/mapseq2biom.cwl realworld/workflowhub/361/tools/RNA_prediction/mapseq2biom/mapseq2biom-test.yml
+= invalid: the job gives the input `otu_table` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'otu_table' field is not valid because
 > job check: the value is not string
 
 realworld/workflowhub/361/tools/hmmer/hmmscan/hmmscan.cwl realworld/workflowhub/361/tools/hmmer/hmmscan/hmmscan.yml
+= invalid: the job gives the input `seqfile` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'seqfile' to have format 'http://edamontology.org/format_1929' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/361/utils/hmmscan_tab_modification/hmmscan_tab_modification.cwl realworld/workflowhub/361/utils/hmmscan_tab_modification/hmmscan_tab_modification.yml
+= invalid: the job gives the input `input_table` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/361/workflows/subworkflows/other_ncrnas.cwl realworld/workflowhub/361/travis/tests/test-input/other_ncrnas.yml
+= invalid: the job is a template whose files have no path
 > job check: KeyError: 'location'
 
 realworld/workflowhub/362/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_sorting.cwl realworld/workflowhub/362/tools/Assembly/Diamond/Diamond-Post-Processing/diamond_sorting.job.yaml
+= invalid: the job gives the input `input_table` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_2333' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/362/tools/Assembly/Diamond/Diamond.blastp-v0.9.21.cwl realworld/workflowhub/362/tools/Assembly/Diamond/Diamond.blastp-v0.9.21.test.job.yaml
+= invalid: the job gives the input `databaseFile` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'databaseFile' field is not valid because
 > job check: the value is not string
 
 realworld/workflowhub/362/tools/Assembly/Diamond/Diamond.blastx-v0.9.21.cwl realworld/workflowhub/362/tools/Assembly/Diamond/Diamond.blastx-v0.9.21.test.job.yaml
+= invalid: the job gives the input `databaseFile` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'databaseFile' field is not valid because
 > job check: the value is not string
 
 realworld/workflowhub/362/tools/Assembly/Diamond/diamond-subwf.cwl realworld/workflowhub/362/tools/Assembly/Diamond/diamond-subwf.yml
+= invalid: the job gives the inputs `Uniref90_db_txt` and `databaseFile` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: * the 'Uniref90_db_txt' field is not valid because
 > job check: the value is not string
@@ -422,6 +529,7 @@ realworld/workflowhub/362/tools/Assembly/Diamond/diamond-subwf.cwl realworld/wor
 > job check: the value is not string
 
 realworld/workflowhub/362/tools/Assembly/EggNOG/eggNOG/eggnog.cwl realworld/workflowhub/362/tools/Assembly/EggNOG/eggNOG/eggnog.yml
+= invalid: the job gives the inputs `db` and `db_diamond` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: * the 'db' field is not valid because
 > job check: value is a dict, expected null or string
@@ -429,6 +537,7 @@ realworld/workflowhub/362/tools/Assembly/EggNOG/eggNOG/eggnog.cwl realworld/work
 > job check: value is a dict, expected null or string
 
 realworld/workflowhub/362/tools/Assembly/EggNOG/eggnog-subwf.cwl realworld/workflowhub/362/tools/Assembly/EggNOG/eggnog-subwf.yml
+= invalid: the job gives the inputs `db` and `db_diamond` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: * the 'db' field is not valid because
 > job check: the value is not string
@@ -436,14 +545,17 @@ realworld/workflowhub/362/tools/Assembly/EggNOG/eggnog-subwf.cwl realworld/workf
 > job check: the value is not string
 
 realworld/workflowhub/362/tools/Assembly/GFF/gff_generation.cwl realworld/workflowhub/362/tools/Assembly/GFF/gff_generation.yml
+= invalid: the job gives the input `eggnog_results` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'eggnog_results' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/362/tools/Assembly/Genome_properties/genome_properties.cwl realworld/workflowhub/362/tools/Assembly/Genome_properties/genome_properties.yml
+= invalid: the job gives the input `input_tsv_file` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_tsv_file' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/362/tools/Assembly/KEGG_analysis/KEGG_pathways/kegg_pathways.cwl realworld/workflowhub/362/tools/Assembly/KEGG_analysis/KEGG_pathways/kegg_pathways.yml
+= invalid: the job gives the inputs `graphs` and `pathways_classes` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: * the 'graphs' field is not valid because
 > job check: the value is not string
@@ -451,52 +563,65 @@ realworld/workflowhub/362/tools/Assembly/KEGG_analysis/KEGG_pathways/kegg_pathwa
 > job check: the value is not string
 
 realworld/workflowhub/362/tools/Assembly/KEGG_analysis/Modification/modification_table.cwl realworld/workflowhub/362/tools/Assembly/KEGG_analysis/Modification/modification_table.yml
+= invalid: the job gives the input `input_table` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/362/tools/Assembly/antismash/chunking_antismash_with_conditionals/antismash_chunking_subwf.cwl realworld/workflowhub/362/tools/Assembly/antismash/chunking_antismash_with_conditionals/ymls/antismash_chunking_subwf.yml
-> job check: ValidationException: Version 'v1.2.0-dev2' is a development or deprecated version.
-> job check: Update your document to a stable version (v1.0, v1.1, v1.2) or use --enable-dev to enable support for development and deprecated versions.
+= invalid: the job gives the input `clusters_glossary` a value of the wrong type
+> job check: WorkflowException: Invalid job input record:
+> job check: the 'clusters_glossary' field is not valid because
+> job check: the value is not string
 
 realworld/workflowhub/362/tools/Assembly/antismash/chunking_antismash_with_conditionals/rename_contigs/rename_contigs.cwl realworld/workflowhub/362/tools/Assembly/antismash/chunking_antismash_with_conditionals/rename_contigs/rename_contigs.yml
+= invalid: the job is a template whose files have no path
 > job check: KeyError: 'location'
 
 realworld/workflowhub/362/tools/GO-slim/go_summary.cwl realworld/workflowhub/362/tools/GO-slim/go_summary.yml
+= invalid: the job gives the input `config` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'config' field is not valid because
 > job check: the value is not string
 
 realworld/workflowhub/362/tools/RNA_prediction/cmsearch-deoverlap/cmsearch-deoverlap-v0.02.cwl realworld/workflowhub/362/tools/RNA_prediction/cmsearch-deoverlap/cmsearch-deoverlap-v0.02.test.job.yaml
+= invalid: the job gives the input `clan_information` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'clan_information' field is not valid because
 > job check: value is a dict, expected null or string
 
 realworld/workflowhub/362/tools/RNA_prediction/extract-coords/extract-coords_awk.cwl realworld/workflowhub/362/tools/RNA_prediction/extract-coords/extract-coords_awk.yml
+= invalid: the job gives the input `infernal_matches` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'infernal_matches' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/362/tools/RNA_prediction/mapseq/mapseq.cwl realworld/workflowhub/362/tools/RNA_prediction/mapseq/mapseq-test.yml
+= invalid: the job gives the input `taxonomy` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'taxonomy' field is not valid because
 > job check: the value is not string
 
 realworld/workflowhub/362/tools/RNA_prediction/mapseq2biom/mapseq2biom.cwl realworld/workflowhub/362/tools/RNA_prediction/mapseq2biom/mapseq2biom-test.yml
+= invalid: the job gives the input `otu_table` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'otu_table' field is not valid because
 > job check: the value is not string
 
 realworld/workflowhub/362/tools/hmmer/hmmscan/hmmscan.cwl realworld/workflowhub/362/tools/hmmer/hmmscan/hmmscan.yml
+= invalid: the job gives the input `seqfile` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'seqfile' to have format 'http://edamontology.org/format_1929' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/362/utils/hmmscan_tab_modification/hmmscan_tab_modification.cwl realworld/workflowhub/362/utils/hmmscan_tab_modification/hmmscan_tab_modification.yml
+= invalid: the job gives the input `input_table` a file without a format, but the input asks for a format
 > job check: WorkflowException: Expected value of 'input_table' to have format 'http://edamontology.org/format_3475' but
 > job check: File has no 'format' defined: {
 
 realworld/workflowhub/362/workflows/subworkflows/other_ncrnas.cwl realworld/workflowhub/362/travis/tests/test-input/other_ncrnas.yml
+= invalid: the job is a template whose files have no path
 > job check: KeyError: 'location'
 
 realworld/workflowhub/474/src/tools/megahit/megahit_paired.cwl realworld/workflowhub/474/tests/tools/megahit/megahit_paired.yml
+= invalid: the job gives the inputs `forward_reads` and `reverse_reads` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: * the 'forward_reads' field is not valid because
 > job check: value is a dict, expected array of <File>
@@ -504,12 +629,15 @@ realworld/workflowhub/474/src/tools/megahit/megahit_paired.cwl realworld/workflo
 > job check: value is a dict, expected array of <File>
 
 realworld/workflowhub/474/src/tools/megahit/megahit_single.cwl realworld/workflowhub/474/tests/tools/megahit/megahit_single.yml
+= invalid: the job gives the input `reads` a value of the wrong type
 > job check: WorkflowException: Invalid job input record:
 > job check: the 'reads' field is not valid because
 > job check: value is a dict, expected array of <File>
 
 realworld/workflowhub/510/cwl/maw.cwl realworld/workflowhub/510/cwl/maw-inputs-mutiple_ara.yaml
-= the job fits the document; the step metfrag scatters over `peaks_and_parameters`, an `Any[]?` output that only the `cwl.output.json` of the R tool gives, so the mock executor, which runs no tool, gives null, and a real run is needed
-> run: ERROR Exception on step 'dereplication'
-> run: ERROR [step dereplication] Cannot make job: --no-container, but this CommandLineTool has DockerRequirement under 'requirements'.
+= missing: the job names data files on the author's computer (/Users/mahnoorzulfiqar/...) and the scripts Workflow_Python_Script_all.py and Workflow_R_Script_all.r, which the repository does not have
+> run: ERROR Unexpected exception
+> run: FileNotFoundError: [Errno 2] No such file or directory: '/Users/mahnoorzulfiqar/OneDriveUNI/GitHub-Repos/COCONUT_Jan2022.csv'
+> run: schema_salad.exceptions.ValidationException: realworld/workflowhub/510/cwl/maw-inputs-mutiple_ara.yaml:27:3: [Errno 2] No such file or directory: '/Users/mahnoorzulfiqar/OneDriveUNI/GitHub-Repos/COCONUT_Jan2022.csv'
+> run: ERROR [step dereplication] Cannot make job: realworld/workflowhub/510/cwl/maw-inputs-mutiple_ara.yaml:27:3: [Errno 2] No such file or directory: '/Users/mahnoorzulfiqar/OneDriveUNI/GitHub-Repos/COCONUT_Jan2022.csv'
 > run: ERROR Workflow cannot make any more progress.

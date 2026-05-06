@@ -3,7 +3,8 @@
 //! executor, and compares the outcomes with `tests/fixtures/job_test_workflows.txt`: per
 //! document and job file, `ok` and the number of tasks, or the error.
 //! `fixtures/job_test_workflows.py` finds the pairs; a pair may only fail when
-//! `fixtures/job_evidence.txt` shows that cwltool rejects it too. Documents that
+//! `fixtures/job_evidence.txt` has a record of it: why it cannot run, and that cwltool rejects
+//! it too (see `records`). Documents that
 //! `cwltool --validate` rejects, and pairs whose files the test workflows lack, are left out.
 //! Run with `just cwl-job-test-workflows-test`; on a difference the test writes the new fixture
 //! to the target directory and says where.
@@ -17,8 +18,11 @@ use std::time::Duration;
 
 use workflow_graph::{ExecuteError, Launch, MockTes, execute};
 
+mod records;
+
 const REJECTED: &str = include_str!("../../cwl-parser/tests/fixtures/test-workflows/rejected.txt");
-/// How cwltool rejects the job files that fail here, from `fixtures/job_evidence.py`.
+/// Why the job files that fail here cannot run, and how cwltool rejects them, from
+/// `fixtures/job_evidence.py`.
 const EVIDENCE: &str = include_str!("fixtures/job_evidence.txt");
 /// A run that takes longer than this counts as hanging.
 const LIMIT: Duration = Duration::from_secs(60);
@@ -131,26 +135,41 @@ fn documents_run_with_their_job_files_as_recorded() {
         actual.len(),
         actual.len() - ok
     );
-    // A pair may only fail when job_evidence.txt shows that cwltool rejects it too.
-    let evidence: Vec<&str> = EVIDENCE
-        .lines()
-        .filter(|line| !line.is_empty() && !line.starts_with(['#', '=', '>']))
-        .collect();
+    // A pair may only fail with a record in job_evidence.txt, and a record is only kept while
+    // its pair fails.
+    let evidence = records::reasons(EVIDENCE);
     let unexplained: Vec<&String> = actual
         .iter()
         .filter(|line| !line.contains(" ok "))
         .filter(|line| {
             !evidence
-                .iter()
+                .keys()
                 .any(|pair| line.starts_with(&format!("{pair} ")))
         })
         .collect();
     assert!(
         unexplained.is_empty(),
-        "job files fail without evidence in job_evidence.txt that cwltool rejects them:\n{}",
+        "job files fail without a record in job_evidence.txt of why they cannot run:\n{}",
         unexplained
             .iter()
             .map(|line| line.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    let running: Vec<&&str> = evidence
+        .keys()
+        .filter(|pair| {
+            actual
+                .iter()
+                .any(|line| line.starts_with(&format!("{pair} ok ")))
+        })
+        .collect();
+    assert!(
+        running.is_empty(),
+        "job files of job_evidence.txt run now; remove their records:\n{}",
+        running
+            .iter()
+            .map(|pair| **pair)
             .collect::<Vec<_>>()
             .join("\n")
     );
@@ -184,4 +203,10 @@ fn documents_run_with_their_job_files_as_recorded() {
             written.display()
         );
     }
+}
+
+#[test]
+fn every_record_names_its_kind_and_shows_evidence() {
+    let reasons = records::reasons(EVIDENCE);
+    assert!(reasons.len() > 50, "{} records", reasons.len());
 }

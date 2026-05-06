@@ -540,7 +540,10 @@ fn checkpoint_get(
             let filled = pattern::apply(text, &wildcards).map_err(|name| {
                 crate::workflow::workflow_error(format!("Missing wildcard value for {name}"))
             })?;
-            outputs.push(crate::rule::retag(value, Value::str(filled)));
+            outputs.push(
+                crate::rule::retag(value, Value::str(filled))
+                    .with_tag("rule", Value::str(rule_name)),
+            );
         }
         (outputs, rule.output.names.clone())
     };
@@ -644,7 +647,9 @@ impl Native for WorkflowObject {
                     .parent()
                     .unwrap_or(std::path::Path::new(".")),
             ),
-            "current_basedir" => text(&borrowed.current_basedir()),
+            "current_basedir" => {
+                text(&borrowed.current_basedir()).with_tag("source_file", Value::Bool(true))
+            }
             "snakefile" => text(
                 borrowed
                     .include_stack

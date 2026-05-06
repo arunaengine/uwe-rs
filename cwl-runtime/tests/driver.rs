@@ -176,3 +176,25 @@ fn expression_tools_over_absent_data_give_placeholders_for_null_outputs() {
     assert!(execution.error.is_none(), "{:?}", execution.error);
     assert_eq!(execution.graph.nodes.len(), 1);
 }
+
+#[test]
+fn errors_of_expressions_say_where_the_expression_is() {
+    let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: sh\n\
+        requirements:\n  InlineJavascriptRequirement: {}\n  InitialWorkDirRequirement:\n    \
+        listing: [{entryname: run.sh, entry: 'cd ${HOME}'}]\ninputs: []\noutputs: []\n";
+    assert_eq!(
+        run(&[("main.cwl", tool)]),
+        Err("main: the InitialWorkDir listing: JavaScript error in `HOME`: ReferenceError: \
+             HOME is not defined"
+            .to_owned())
+    );
+    let step = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: echo\ninputs: []\n\
+        outputs: []\n";
+    let main = "cwlVersion: v1.2\nclass: Workflow\ninputs: []\noutputs: []\n\
+        steps:\n  echo: {run: step.cwl, in: [], out: [], when: $(inputs.useStep)}\n";
+    let error = run(&[("step.cwl", step), ("main.cwl", main)]).expect_err("fails");
+    assert!(
+        error.ends_with("`when`: there is no input `useStep`"),
+        "{error}"
+    );
+}

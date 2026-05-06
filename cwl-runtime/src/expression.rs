@@ -138,7 +138,7 @@ impl Evaluator {
         javascript::evaluate(library, &globals, body).map_err(|error| {
             let error = error.lines().next().unwrap_or_default().to_owned();
             let note = if self.javascript.is_none() {
-                " (without InlineJavascriptRequirement)"
+                " (the process has no InlineJavascriptRequirement)"
             } else {
                 ""
             };
@@ -196,9 +196,10 @@ pub fn reference(code: &str, variables: Variables<'_>) -> Result<Value, String> 
                         kind(current)
                     ));
                 };
-                current = map
-                    .get(&key)
-                    .ok_or_else(|| format!("`{path}` does not contain the key `{key}`"))?;
+                current = map.get(&key).ok_or_else(|| match path.as_str() {
+                    "inputs" => format!("there is no input `{key}`"),
+                    _ => format!("`{path}` has no `{key}`"),
+                })?;
                 path.push('.');
                 path.push_str(&key);
             }

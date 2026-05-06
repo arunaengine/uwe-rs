@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use boa_engine::{Context, Source};
+use boa_engine::{Context, JsError, Source};
 
 use crate::value::Value;
 
@@ -46,7 +46,7 @@ pub fn evaluate(
         .set_loop_iteration_limit(LOOP_LIMIT);
     let result = context
         .eval(Source::from_bytes(code.as_bytes()))
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| message(&error, &mut context))?;
     let Some(text) = result.as_string() else {
         // JSON.stringify gives undefined for functions and symbols.
         return Ok(Value::Null);
@@ -56,6 +56,16 @@ pub fn evaluate(
         return Ok(Value::Null);
     }
     Value::parse(&text).map_err(|error| format!("the result is not JSON: {error}"))
+}
+
+/// An error as `TypeError: message`, without Boa's place in the code that wraps the
+/// expression, which means nothing to the author of the expression.
+fn message(error: &JsError, context: &mut Context) -> String {
+    match error.try_native(context) {
+        Ok(native) if native.message().trim().is_empty() => native.kind().to_string(),
+        Ok(native) => format!("{}: {}", native.kind(), native.message().trim()),
+        Err(_) => error.to_string(),
+    }
 }
 
 #[cfg(test)]

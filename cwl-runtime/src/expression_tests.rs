@@ -40,7 +40,14 @@ fn evaluates_parameter_references_without_javascript() {
     assert_eq!(eval(&plain, "$(self)"), Ok(Value::string("me")));
     assert_eq!(eval(&plain, "$(null)"), Ok(Value::Null));
     assert!(eval(&plain, "$(inputs.missing.basename)").is_err());
-    assert!(eval(&plain, "$(inputs.nothing)").is_err());
+    assert_eq!(
+        eval(&plain, "$(inputs.nothing)"),
+        Err("there is no input `nothing`".to_owned())
+    );
+    assert_eq!(
+        eval(&plain, "$(inputs.record.c)"),
+        Err("`inputs.record` has no `c`".to_owned())
+    );
     assert_eq!(
         eval(&plain, "$(inputs.list.length + 1)"),
         Ok(Value::Integer(4))

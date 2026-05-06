@@ -37,24 +37,26 @@ pub(super) fn initial_workdir(
     };
     let mut entries: Vec<Value> = Vec::new();
     match listing {
-        Listing::Expression(expression) => match evaluator.evaluate(expression, vars)? {
-            Value::List(items) => {
-                for item in items {
-                    match item {
-                        Value::Null => {}
-                        Value::List(nested) => entries.extend(nested),
-                        other => entries.push(other),
+        Listing::Expression(expression) => {
+            match evaluator.evaluate(expression, vars).map_err(listed)? {
+                Value::List(items) => {
+                    for item in items {
+                        match item {
+                            Value::Null => {}
+                            Value::List(nested) => entries.extend(nested),
+                            other => entries.push(other),
+                        }
                     }
                 }
+                Value::Null => {}
+                other => {
+                    return Err(format!(
+                        "the InitialWorkDirRequirement listing must give a list, not {}",
+                        other.to_json()
+                    ));
+                }
             }
-            Value::Null => {}
-            other => {
-                return Err(format!(
-                    "the InitialWorkDirRequirement listing must give a list, not {}",
-                    other.to_json()
-                ));
-            }
-        },
+        }
         Listing::Entries(items) => {
             for item in items {
                 match item {
@@ -62,7 +64,7 @@ pub(super) fn initial_workdir(
                         entries.extend(dirent_entries(dirent, evaluator, vars)?);
                     }
                     ListingEntry::Expression(expression) => {
-                        match evaluator.evaluate(expression, vars)? {
+                        match evaluator.evaluate(expression, vars).map_err(listed)? {
                             Value::Null => {}
                             Value::List(items) => {
                                 entries.extend(items.into_iter().filter(|item| !item.is_null()))
@@ -179,6 +181,11 @@ pub(super) fn initial_workdir(
     Ok(())
 }
 
+/// An error of an expression of the listing, with where it is.
+fn listed(error: String) -> String {
+    format!("the InitialWorkDir listing: {error}")
+}
+
 /// The entries of one Dirent: a file with literal contents, a renamed file object, or the
 /// file objects of a list.
 pub(super) fn dirent_entries(
@@ -186,9 +193,11 @@ pub(super) fn dirent_entries(
     evaluator: &Evaluator,
     vars: Variables<'_>,
 ) -> Result<Vec<Value>, String> {
-    let entry = evaluator.evaluate_untrimmed(&dirent.entry, vars)?;
+    let entry = evaluator
+        .evaluate_untrimmed(&dirent.entry, vars)
+        .map_err(listed)?;
     let entryname = match &dirent.entryname {
-        Some(expression) => match evaluator.evaluate(expression, vars)? {
+        Some(expression) => match evaluator.evaluate(expression, vars).map_err(listed)? {
             Value::String(name) => Some(name),
             other => {
                 return Err(format!(

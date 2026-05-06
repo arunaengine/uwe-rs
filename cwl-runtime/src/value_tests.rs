@@ -54,3 +54,27 @@ fn compares_numbers_as_python_does() {
     assert!(python_equal(&Value::Bool(true), &Value::Integer(1)));
     assert!(!python_equal(&Value::string("1"), &Value::Integer(1)));
 }
+
+#[test]
+fn summarizes_values_for_messages() {
+    let summary = |text: &str| Value::parse(text).expect("YAML").summary();
+    assert_eq!(
+        summary("{class: File, location: 'file:///d/a.vcf'}"),
+        "a File `a.vcf`"
+    );
+    assert_eq!(
+        summary("{class: Directory, path: /d/out/}"),
+        "a Directory `out`"
+    );
+    assert_eq!(summary("'12'"), "the string \"12\"");
+    assert_eq!(summary("0.05"), "the number 0.05");
+    assert_eq!(summary("{a: 1}"), "an object");
+    assert_eq!(
+        summary("[x, y]"),
+        "a list of 2 items (the first is the string \"x\")"
+    );
+    assert_eq!(
+        Value::string("x".repeat(50)).summary(),
+        format!("the string \"{}\"...", "x".repeat(40))
+    );
+}

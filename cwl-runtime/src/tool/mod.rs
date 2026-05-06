@@ -147,7 +147,8 @@ pub fn task(
     let mut runtime = Map::new();
     runtime.insert("outdir".into(), Value::string(outdir.as_str()));
     runtime.insert("tmpdir".into(), Value::string(TMPDIR));
-    let (resources, sizes) = resources(scope, &evaluator, &job, &runtime, process.version)?;
+    let (resources, sizes) = resources(scope, &evaluator, &job, &runtime, process.version)
+        .map_err(|error| format!("the ResourceRequirement: {error}"))?;
     for (key, value) in sizes {
         runtime.insert(key.into(), value);
     }
@@ -178,7 +179,10 @@ pub fn task(
     let mut stderr = None;
     if let Some(tool) = tool {
         if let Some(expression) = &tool.stdin {
-            match evaluator.evaluate(expression, vars)? {
+            let value = evaluator
+                .evaluate(expression, vars)
+                .map_err(|error| format!("`stdin`: {error}"))?;
+            match value {
                 Value::String(path) if !path.is_empty() => stdin = Some(path),
                 Value::Null | Value::String(_) => {}
                 other => return Err(format!("`stdin` must be a path, not {}", other.to_json())),
@@ -232,7 +236,9 @@ pub fn task(
                         None => 0,
                         Some(Dynamic::Value(position)) => *position,
                         Some(Dynamic::Expression(expression)) => {
-                            let value = evaluator.evaluate(expression, vars)?;
+                            let value = evaluator
+                                .evaluate(expression, vars)
+                                .map_err(|error| format!("the command line: {error}"))?;
                             match value {
                                 Value::Null => 0,
                                 value => value.as_i64().ok_or_else(|| {
@@ -289,7 +295,7 @@ pub fn task(
                 // An argument made from the content of files whose content is not real, as in
                 // a mock run, cannot be made; it becomes a marker, so the task still exists.
                 Err(_) if fake && reads_contents(expression) => Value::string(FAKE_ARGUMENT),
-                Err(error) => return Err(error),
+                Err(error) => return Err(format!("the command line: {error}")),
             },
             None => bound.value.clone(),
         };
@@ -351,7 +357,9 @@ pub fn task(
         _ => None,
     }) {
         for variable in variables {
-            let value = evaluator.evaluate(&variable.env_value, vars)?;
+            let value = evaluator
+                .evaluate(&variable.env_value, vars)
+                .map_err(|error| format!("the EnvVarRequirement: {error}"))?;
             let text = match value {
                 Value::String(text) => text,
                 other => other.to_python_text(),
@@ -379,7 +387,8 @@ pub fn task(
                     vars,
                     &outdir,
                     &mut outputs,
-                )?;
+                )
+                .map_err(|error| format!("the output `{}`: {error}", short_name(&output.id)))?;
             }
         }
     }
@@ -583,7 +592,9 @@ fn stream(
         "stderr"
     };
     if let Some(expression) = field {
-        let value = evaluator.evaluate(expression, vars)?;
+        let value = evaluator
+            .evaluate(expression, vars)
+            .map_err(|error| format!("`{label}`: {error}"))?;
         let Value::String(path) = value else {
             return Err(format!(
                 "`{label}` must be a file name, not {}",
@@ -722,14 +733,14 @@ fn globs(
                         other => {
                             return Err(format!(
                                 "a glob must be a string, not {}",
-                                other.to_json()
+                                other.summary()
                             ));
                         }
                     }
                 }
                 texts
             }
-            other => return Err(format!("a glob must be a string, not {}", other.to_json())),
+            other => return Err(format!("a glob must be a string, not {}", other.summary())),
         };
         for text in values {
             if text.is_empty() {
@@ -862,9 +873,9 @@ impl Pending {
                     outputs.insert(name, placeholder);
                 } else {
                     return Err(format!(
-                        "the output `{name}` is not a valid {}: {}",
+                        "the output `{name}` is of type {}, but its value is {}",
                         crate::inputs::describe(&output.value_type),
-                        value.to_json()
+                        value.summary()
                     ));
                 }
             }

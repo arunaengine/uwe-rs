@@ -87,7 +87,34 @@ fn broken_defaults_of_the_top_process_give_way_to_placeholders() {
         ..setting
     };
     let job = prepare(&tool, Map::new(), &inner);
-    assert!(job.is_err_and(|error| error.contains("File object")));
+    assert_eq!(
+        job,
+        Err("the input `given`: a File needs a location, a path or contents".to_owned())
+    );
+}
+
+#[test]
+fn values_of_the_wrong_type_are_named_briefly() {
+    let tool = process(
+        "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: cat\noutputs: []\n\
+         inputs:\n  database: string\n",
+    );
+    let (types, evaluator) = (Types::default(), Evaluator::default());
+    let setting = Setting {
+        placeholders: None,
+        ..setting(&types, &evaluator, &[])
+    };
+    let mut job = Map::new();
+    let file = Value::parse("{class: File, location: 'file:///db/uniref90.dmnd'}").expect("YAML");
+    job.insert("database".into(), file);
+    assert_eq!(
+        prepare(&tool, job, &setting),
+        Err(
+            "the input `database` is of type string, but its value is a File \
+             `uniref90.dmnd`"
+                .to_owned()
+        )
+    );
 }
 
 const FORMATS: &str = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: 'true'\n\

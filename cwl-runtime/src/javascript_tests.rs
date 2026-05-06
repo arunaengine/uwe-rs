@@ -62,7 +62,13 @@ fn runs_in_sloppy_mode_and_reports_errors() {
         Value::Integer(1)
     );
     let error = run(&[], "return null.x;").expect_err("a TypeError");
-    assert!(error.contains("TypeError"), "{error}");
+    assert!(error.starts_with("TypeError: "), "{error}");
+    assert!(
+        !error.contains(" at "),
+        "no place in the generated code: {error}"
+    );
+    let error = run(&[], "return HOME;").expect_err("a ReferenceError");
+    assert_eq!(error, "ReferenceError: HOME is not defined");
 }
 
 #[test]

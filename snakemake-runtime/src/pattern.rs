@@ -120,6 +120,22 @@ pub fn wildcard_names(pattern: &str) -> Vec<String> {
     names
 }
 
+/// The pattern without the constraints of its wildcards, as `strip_wildcard_constraints`
+/// gives it: `{sample,[A-Z]+}` becomes `{sample}`.
+pub fn strip_constraints(pattern: &str) -> String {
+    let mut output = String::with_capacity(pattern.len());
+    let mut last = 0;
+    for wildcard in wildcards(pattern) {
+        output.push_str(&pattern[last..wildcard.start]);
+        output.push('{');
+        output.push_str(&wildcard.name);
+        output.push('}');
+        last = wildcard.end;
+    }
+    output.push_str(&pattern[last..]);
+    output
+}
+
 /// Fills in the wildcards of a pattern; the name of a missing wildcard is the error.
 pub fn apply(pattern: &str, values: &Wildcards) -> Result<String, String> {
     let mut output = String::with_capacity(pattern.len());

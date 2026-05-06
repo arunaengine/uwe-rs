@@ -364,22 +364,29 @@ impl Native for RuleProxy {
         let Some(rule) = state.rule(&self.name) else {
             return Ok(None);
         };
-        let tag = |value: &Value| -> Value {
-            match value.as_str() {
-                Some(_) => value.with_tag("rule", Value::str(rule.name.as_str())),
-                None => value.clone(),
+        // Files of the rule as Snakemake's `RuleProxy` gives them: without the constraints of
+        // their wildcards and without flags, except the path modification of a module.
+        let file = |value: &Value| -> Value {
+            let Some(text) = value.as_str() else {
+                return value.clone();
+            };
+            let mut file = Value::str(pattern::strip_constraints(text));
+            if let Some(modified) = value.tag("path_modified") {
+                file = file.with_tag("path_modified", modified.clone());
             }
+            file.with_tag("rule", Value::str(rule.name.as_str()))
+        };
+        let files = |items: &crate::rule::Items, kind: &'static str| {
+            let mut items = items.clone();
+            items.values = items.values.iter().map(file).collect();
+            NamedList::from_items(kind, &items).value()
         };
         Ok(Some(match name {
-            "output" => {
-                let mut items = rule.output.clone();
-                items.values = items.values.iter().map(tag).collect();
-                NamedList::from_items("OutputFiles", &items).value()
-            }
+            "output" => files(&rule.output, "OutputFiles"),
             "input" => NamedList::from_items("InputFiles", &rule.input).value(),
-            "log" => NamedList::from_items("Log", &rule.log).value(),
+            "log" => files(&rule.log, "Log"),
             "params" => NamedList::from_items("Params", &rule.params).value(),
-            "benchmark" => rule.benchmark.clone().unwrap_or(Value::None),
+            "benchmark" => rule.benchmark.as_ref().map_or(Value::None, file),
             "name" => Value::str(rule.name.as_str()),
             "rule" => this.clone(),
             "basedir" => Value::str(rule.basedir.to_string_lossy().as_ref()),

@@ -262,10 +262,16 @@ pub fn expand(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error>
             .collect::<Result<_, _>>()?,
     };
     for pattern in &patterns {
+        // The rule of a file and the path modification of a module are no flags.
+        let flag = |name: &str| name != "rule" && name != "path_modified";
         if let Some(tags) = pattern.tags()
-            && tags.keys().any(|name| &**name != "rule")
+            && tags.keys().any(|name| flag(name))
         {
-            let flags: Vec<&str> = tags.keys().map(|name| &**name).collect();
+            let flags: Vec<&str> = tags
+                .keys()
+                .map(|name| &**name)
+                .filter(|name| flag(name))
+                .collect();
             return Err(workflow_error(format!(
                 "Flags ({}) in file pattern '{}' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand(\"plots/{{sample}}.pdf\", sample=SAMPLES))').",
                 flags.join(", "),

@@ -185,10 +185,10 @@ fn url(source: &str) -> String {
 /// written first, as a TES server places them. A simulation of the script tells which files
 /// it makes and their text, like the files a stub `touch`es or writes with `echo`. An output
 /// is each made file that its pattern matches. When nothing matches, it is one empty file
-/// named after the pattern, or a directory for a pattern that ends with `/`, unless the
-/// simulation understood the whole script and it made other outputs: then the script does not
-/// make this one, like an optional output. A `.gz` file without text is an empty gzip file, so
-/// that it can be read, and a `versions.yml` gets the one entry that nf-core code reads.
+/// named after the pattern, or a directory for a pattern that ends with `/`, so that the run
+/// goes on; a driver that knows an output is optional can check the simulation itself
+/// ([`shell::simulate`]). A `.gz` file without text is an empty gzip file, so that it can be
+/// read, and a `versions.yml` gets the one entry that nf-core code reads.
 pub fn pretend(task: &Task, work: &Path) -> std::io::Result<Vec<OutputFile>> {
     for input in &task.inputs {
         if let Some(content) = &input.content
@@ -249,12 +249,9 @@ pub fn pretend(task: &Task, work: &Path) -> std::io::Result<Vec<OutputFile>> {
         }
         outputs.push(names);
     }
-    // A script that the simulation understood, and that made some outputs, makes only those.
-    // An output that names an input is that input, which the task has anyway.
-    let complete = simulation.complete && outputs.iter().any(|names| !names.is_empty());
+    // Outputs that the script does not tell how it makes are made up, so that a run goes on.
     for (pattern, names) in task.outputs.iter().zip(outputs.iter_mut()) {
-        let input = inputs.contains(&pattern.trim_start_matches('/'));
-        if !names.is_empty() || (complete && !input) {
+        if !names.is_empty() {
             continue;
         }
         let name = file_name(pattern.trim_start_matches('/'));

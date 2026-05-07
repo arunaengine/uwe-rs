@@ -152,10 +152,18 @@ fn mocks_make_the_files_that_the_script_names() {
         .iter()
         .map(|file| file.path.as_str())
         .collect();
-    // The script is understood, so it makes no other outputs, like optional ones.
+    // Outputs that the script does not tell how it makes are made up.
     assert_eq!(
         paths,
-        ["s_1.fq", "s_2.fq", "db", "copy.txt", "versions.yml"]
+        [
+            "s_1.fq",
+            "s_2.fq",
+            "db",
+            "copy.txt",
+            "versions.yml",
+            "mock.vcf.gz",
+            "report"
+        ]
     );
     let work = directory.path().join("7");
     assert!(work.join("db/x.txt").is_file());
@@ -219,7 +227,16 @@ fn mocks_write_the_text_of_stub_scripts() {
         .iter()
         .map(|file| file.path.as_str())
         .collect();
-    assert_eq!(paths, ["s.flagstat", "s.lf.drp", "s.lf.drs", "s.fq.gz"]);
+    assert_eq!(
+        paths,
+        [
+            "s.flagstat",
+            "s.lf.drp",
+            "s.lf.drs",
+            "s.fq.gz",
+            "mock.unaligned.fasta"
+        ]
+    );
     let work = directory.path().join("9");
     let read = |name: &str| std::fs::read(work.join(name)).expect("reads a file");
     assert_eq!(read("s.flagstat"), b"900 + 0 mapped (90.00% : N/A)\n");

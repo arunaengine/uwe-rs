@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 
 use crate::{ExecuteError, Executor, Outcome, OutputFile, Task};
+use shell::Made;
 
 /// The mock TES executor.
 pub struct MockTes {
@@ -181,11 +182,13 @@ fn url(source: &str) -> String {
 }
 
 /// Pretends to run a task in `work` and returns its outputs. Inputs with literal content are
-/// written first, as a TES server places them. An output is each name in the script that its
-/// pattern matches, like the files a stub `touch`es, else one empty file named after the
-/// pattern, or a directory for a pattern that ends with `/`. A `.gz` file is an empty gzip file,
-/// so that it can be read, and a `versions.yml` gets the one entry that nf-core code reads, as
-/// a module's stub writes it.
+/// written first, as a TES server places them. A simulation of the script tells which files
+/// it makes and their text, like the files a stub `touch`es or writes with `echo`. An output
+/// is each made file that its pattern matches. When nothing matches, it is one empty file
+/// named after the pattern, or a directory for a pattern that ends with `/`, unless the
+/// simulation understood the whole script and it made other outputs: then the script does not
+/// make this one, like an optional output. A `.gz` file without text is an empty gzip file, so
+/// that it can be read, and a `versions.yml` gets the one entry that nf-core code reads.
 pub fn pretend(task: &Task, work: &Path) -> std::io::Result<Vec<OutputFile>> {
     for input in &task.inputs {
         if let Some(content) = &input.content
@@ -203,64 +206,73 @@ pub fn pretend(task: &Task, work: &Path) -> std::io::Result<Vec<OutputFile>> {
         .iter()
         .map(|input| input.path.as_str())
         .collect();
-    // What the script makes. This is the one place where a simulation of the script can take
-    // over from reading the names in it.
-    let made = match &task.script {
-        Some(script) => script_words(script, &inputs),
+    let simulation = match &task.script {
+        Some(script) => shell::simulate(script, &inputs),
         None => command_words(&task.command, &inputs),
     };
-    // Each path to make, with whether it is a directory, and the outputs among them.
-    let mut paths: Vec<(String, bool)> = Vec::new();
-    let mut outputs: Vec<String> = Vec::new();
+    let made: Vec<Made> = simulation
+        .made
+        .iter()
+        .map(|made| Made {
+            path: made.path.trim_start_matches('/').to_owned(),
+            ..made.clone()
+        })
+        .collect();
+    // Each path to make, and the outputs of each pattern; none for a pattern nothing matched.
+    let mut paths: Vec<Made> = Vec::new();
+    let mut outputs: Vec<Vec<String>> = Vec::new();
     for pattern in &task.outputs {
         let pattern = pattern.trim_start_matches('/');
         let base = pattern.trim_end_matches('/');
         let literal = !base.contains(['*', '?', '[', '{']);
-        let within: Vec<&(String, bool)> = made
+        let within: Vec<&Made> = made
             .iter()
-            .filter(|(word, _)| literal && word.starts_with(&format!("{base}/")))
+            .filter(|made| literal && made.path.starts_with(&format!("{base}/")))
             .collect();
-        let matched: Vec<&(String, bool)> = made
+        let matched: Vec<&Made> = made
             .iter()
-            .filter(|(word, _)| glob_matches(base, word) && has_literal(base))
+            .filter(|made| glob_matches(base, &made.path) && has_literal(base))
             .collect();
+        let mut names = Vec::new();
         if literal && !within.is_empty() {
             // Files in a directory output, like `touch db/a.txt` for `db`.
             paths.extend(within.into_iter().cloned());
-            paths.push((base.to_owned(), true));
-            outputs.push(base.to_owned());
-        } else if !matched.is_empty() {
-            for (word, directory) in matched {
-                paths.push((word.clone(), *directory || pattern.ends_with('/')));
-                outputs.push(word.clone());
-            }
+            paths.push(directory(base));
+            names.push(base.to_owned());
         } else {
-            let name = file_name(pattern);
-            let directory = name.ends_with('/');
-            let name = name.trim_end_matches('/').to_owned();
-            paths.push((name.clone(), directory));
-            outputs.push(name);
+            for made in matched {
+                let mut made = made.clone();
+                made.directory |= pattern.ends_with('/');
+                names.push(made.path.clone());
+                paths.push(made);
+            }
         }
+        outputs.push(names);
+    }
+    // A script that the simulation understood, and that made some outputs, makes only those.
+    // An output that names an input is that input, which the task has anyway.
+    let complete = simulation.complete && outputs.iter().any(|names| !names.is_empty());
+    for (pattern, names) in task.outputs.iter().zip(outputs.iter_mut()) {
+        let input = inputs.contains(&pattern.trim_start_matches('/'));
+        if !names.is_empty() || (complete && !input) {
+            continue;
+        }
+        let name = file_name(pattern.trim_start_matches('/'));
+        let is_directory = name.ends_with('/');
+        let name = name.trim_end_matches('/').to_owned();
+        paths.push(if is_directory {
+            directory(&name)
+        } else {
+            placeholder(&name)
+        });
+        names.push(name);
     }
     // Deeper paths first, so that a directory that holds other outputs is not made a file.
-    paths.sort_by_key(|(name, _)| std::cmp::Reverse(name.matches('/').count()));
-    for (name, directory) in paths {
-        let path = work.join(&name);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        if path.exists() {
-            // Made already, as a directory of a deeper path or as an input.
-        } else if directory {
-            std::fs::create_dir_all(&path)?;
-        } else if name == "versions.yml" {
-            std::fs::write(&path, format!("\"{}\":\n    mock: 1.0.0\n", task.step))?;
-        } else if name.ends_with(".gz") {
-            std::fs::write(&path, EMPTY_GZIP)?;
-        } else {
-            std::fs::write(&path, "")?;
-        }
+    paths.sort_by_key(|made| std::cmp::Reverse(made.path.matches('/').count()));
+    for made in paths {
+        write_made(task, work, &made)?;
     }
+    let outputs: Vec<String> = outputs.into_iter().flatten().collect();
     let mut files: Vec<OutputFile> = Vec::new();
     for name in outputs {
         if !files.iter().any(|file| file.path == name) {
@@ -273,6 +285,67 @@ pub fn pretend(task: &Task, work: &Path) -> std::io::Result<Vec<OutputFile>> {
         }
     }
     Ok(files)
+}
+
+/// Writes a file or directory that a task makes; one that exists stays, like an input.
+fn write_made(task: &Task, work: &Path, made: &Made) -> std::io::Result<()> {
+    let path = work.join(&made.path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    if path.exists() {
+        // Made already, as a directory of a deeper path or as an input.
+        return Ok(());
+    }
+    if made.directory {
+        return std::fs::create_dir_all(&path);
+    }
+    if made.path == "versions.yml" {
+        return std::fs::write(&path, format!("\"{}\":\n    mock: 1.0.0\n", task.step));
+    }
+    // A copy of a local input file has its bytes.
+    let source = made.copy_of.as_ref().and_then(|copied| {
+        let input = task.inputs.iter().find(|input| input.path == *copied)?;
+        match &input.content {
+            Some(content) => Some(content.clone().into_bytes()),
+            None if !input.source.contains("://") => std::fs::read(&input.source).ok(),
+            None => None,
+        }
+    });
+    if let Some(bytes) = source {
+        return std::fs::write(&path, bytes);
+    }
+    let text = made.content.as_deref().unwrap_or_default();
+    if made.gzip && !text.is_empty() {
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        std::io::Write::write_all(&mut encoder, text.as_bytes())?;
+        return std::fs::write(&path, encoder.finish()?);
+    }
+    if made.path.ends_with(".gz") && text.is_empty() {
+        return std::fs::write(&path, EMPTY_GZIP);
+    }
+    std::fs::write(&path, text)
+}
+
+fn directory(path: &str) -> Made {
+    Made {
+        path: path.to_owned(),
+        directory: true,
+        content: None,
+        gzip: false,
+        copy_of: None,
+    }
+}
+
+/// An empty file for an output that the script does not tell how it makes.
+fn placeholder(path: &str) -> Made {
+    Made {
+        path: path.to_owned(),
+        directory: false,
+        content: None,
+        gzip: false,
+        copy_of: None,
+    }
 }
 
 /// The same as [`pretend`], by the name of the first version of this module.
@@ -293,70 +366,11 @@ pub const EMPTY_GZIP: &[u8] = &[
     0x00, 0x00, 0x00, 0x00,
 ];
 
-/// The files a script makes, each with whether it is a directory: the targets of `>` and
-/// `>>`, the arguments of `touch` and `mkdir`, and the last argument of `mv`, `cp` and `ln`.
-/// Names with variables or globs, and inputs, do not count.
-fn script_words(script: &str, inputs: &[&str]) -> Vec<(String, bool)> {
-    let mut words: Vec<(String, bool)> = Vec::new();
-    let mut add = |word: &str, directory: bool| {
-        let word = word.trim_start_matches("./").trim_end_matches('/');
-        let skip = word.is_empty()
-            || word.starts_with(['-', '&'])
-            || word.contains(['$', '=', '*', '?', '[', '{', '\\'])
-            || inputs.contains(&word);
-        if skip {
-            return;
-        }
-        match words.iter_mut().find(|(known, _)| known == word) {
-            Some((_, known)) => *known |= directory,
-            None => words.push((word.to_owned(), directory)),
-        }
-    };
-    let commands = script.replace("&&", "\n").replace("||", "\n");
-    for command in commands.split(['\n', ';', '|']) {
-        let tokens: Vec<&str> = command
-            .split_whitespace()
-            .map(|token| token.trim_matches(['"', '\'']))
-            .collect();
-        for (index, token) in tokens.iter().enumerate() {
-            // `>`, `>>`, `2>` and `&>` with the target in the token or the next one.
-            let redirect = token.trim_start_matches(|c: char| c.is_ascii_digit() || c == '&');
-            if let Some(target) = redirect.strip_prefix('>') {
-                let target = target.trim_start_matches('>');
-                match target {
-                    "" => tokens
-                        .get(index + 1)
-                        .into_iter()
-                        .for_each(|next| add(next, false)),
-                    target => add(target, false),
-                }
-            }
-        }
-        let arguments: Vec<&str> = tokens
-            .iter()
-            .skip(1)
-            .take_while(|token| !token.contains(['>', '<']))
-            .filter(|token| !token.starts_with('-'))
-            .copied()
-            .collect();
-        match tokens.first().copied() {
-            Some("touch") => arguments.iter().for_each(|argument| add(argument, false)),
-            Some("mkdir") => arguments.iter().for_each(|argument| add(argument, true)),
-            Some("mv" | "cp" | "ln") => arguments
-                .last()
-                .into_iter()
-                .for_each(|last| add(last, false)),
-            _ => {}
-        }
-    }
-    words
-}
-
 /// The files a command without a script may make: the parts of its arguments between `,`
 /// and `=`, like `a.bam` of `--out=a.bam` or `--out a.bam,b.bam`. Only patterns with text
 /// besides wildcards choose among them. Flags, absolute paths and inputs do not count.
-fn command_words(command: &[String], inputs: &[&str]) -> Vec<(String, bool)> {
-    let mut words: Vec<(String, bool)> = Vec::new();
+fn command_words(command: &[String], inputs: &[&str]) -> shell::Simulation {
+    let mut made: Vec<Made> = Vec::new();
     for part in command
         .iter()
         .skip(1)
@@ -367,11 +381,15 @@ fn command_words(command: &[String], inputs: &[&str]) -> Vec<(String, bool)> {
             || part.starts_with(['-', '/'])
             || part.contains(['$', '*', '?', '[', '{', '\\', ' '])
             || inputs.contains(&part);
-        if !skip && !words.iter().any(|(known, _)| known == part) {
-            words.push((part.to_owned(), false));
+        if !skip && !made.iter().any(|known| known.path == part) {
+            made.push(placeholder(part));
         }
     }
-    words
+    // A command may make any file, so the simulation is not complete.
+    shell::Simulation {
+        made,
+        complete: false,
+    }
 }
 
 /// Whether a glob pattern has text besides wildcards, so that not every word matches it.
@@ -382,7 +400,8 @@ fn has_literal(pattern: &str) -> bool {
 }
 
 /// A file name that a glob matches: `*` becomes `mock`, `?` becomes `x`, and a group like
-/// `{html,zip}` or `[ab]` its first choice.
+/// `{html,zip}` or `[ab]` its first choice. `**/` is one directory, `mock/`, as a Java glob
+/// needs one.
 pub fn file_name(pattern: &str) -> String {
     let mut name = String::new();
     let mut characters = pattern.chars().peekable();
@@ -391,6 +410,7 @@ pub fn file_name(pattern: &str) -> String {
             '*' => {
                 let double = characters.next_if_eq(&'*').is_some();
                 if double && characters.next_if_eq(&'/').is_some() {
+                    name.push_str("mock/");
                     continue;
                 }
                 name.push_str("mock");

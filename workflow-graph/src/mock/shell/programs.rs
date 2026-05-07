@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use super::words::{escapes, normal, printf};
-use super::{Output, Shell};
+use super::{Made, Output, Shell};
 
 impl Shell<'_> {
     /// Runs a program with its arguments; `None` stands for an argument the simulation does
@@ -80,7 +80,40 @@ impl Shell<'_> {
                 });
                 Output::Text(String::new())
             }
+            "cp" | "mv" | "ln" => {
+                match known.as_deref() {
+                    Some([sources @ .., target]) if !sources.is_empty() => {
+                        for source in sources {
+                            self.copy(source, target, name == "mv");
+                        }
+                    }
+                    _ => self.complete = false,
+                }
+                Output::Text(String::new())
+            }
             "gzip" | "bgzip" | "pigz" => self.gzip(arguments, input, flag('c'), flag('k')),
+            "tar" | "zip" => {
+                // An archive that the command writes, by `-f file` or as the first operand of
+                // `zip`; the listing of `tar -t` is not known.
+                let file = match name.as_str() {
+                    "tar" => arguments.iter().enumerate().find_map(|(index, argument)| {
+                        let argument = argument.as_deref()?;
+                        let creates = argument.contains('c') && argument.ends_with('f');
+                        creates
+                            .then(|| arguments.get(index + 1).cloned().flatten())
+                            .flatten()
+                    }),
+                    _ => known
+                        .as_ref()
+                        .and_then(|operands| operands.first().cloned()),
+                };
+                match file {
+                    Some(file) => self.make_file(&file, None, false, false),
+                    None if flag('t') || flag('x') => self.complete &= !flag('x'),
+                    None => self.complete = false,
+                }
+                Output::Unknown
+            }
             // Filters, which only read and print.
             "grep" | "sed" | "sort" | "uniq" | "head" | "tail" | "cut" | "tr" | "wc" | "zcat"
             | "basename" | "dirname" | "date" | "ls" | "find" | "awk" | "paste" | "xargs" => {
@@ -157,5 +190,86 @@ impl Shell<'_> {
             }
         }
         Output::Text(String::new())
+    }
+
+    /// `cp`, `mv` or `ln` of `source` to `target`, which may be a directory.
+    fn copy(&mut self, source: &str, target: &str, remove: bool) {
+        let source = normal(source);
+        let target = normal(target);
+        let into_directory =
+            target.is_empty() || self.find(&target).is_some_and(|made| made.directory);
+        let target = if into_directory {
+            let name = source.rsplit('/').next().unwrap_or(&source);
+            normal(&format!("{target}/{name}"))
+        } else {
+            target
+        };
+        let copied = self.find(&source).cloned();
+        match copied {
+            Some(made) => {
+                self.made.retain(|other| other.path != target);
+                if remove {
+                    self.made.retain(|other| other.path != source);
+                }
+                self.made.push(Made {
+                    path: target,
+                    ..made
+                });
+            }
+            None => {
+                let input = self
+                    .inputs
+                    .contains(&source.as_str())
+                    .then(|| source.clone());
+                self.made.retain(|other| other.path != target);
+                self.made.push(Made {
+                    path: target,
+                    directory: false,
+                    content: None,
+                    gzip: false,
+                    copy_of: input,
+                });
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::simulate;
+
+    fn files(simulation: &super::super::Simulation) -> Vec<(&str, Option<&str>)> {
+        simulation
+            .made
+            .iter()
+            .filter(|made| !made.directory)
+            .map(|made| (made.path.as_str(), made.content.as_deref()))
+            .collect()
+    }
+
+    #[test]
+    fn copies_moves_and_compressions() {
+        let script = "echo x > a.txt\ncp a.txt b.txt\nmv b.txt c.txt\ngzip a.txt\ncp in.fa copy.fa";
+        let simulation = simulate(script, &["in.fa"]);
+        assert!(simulation.complete);
+        assert_eq!(
+            files(&simulation),
+            [
+                ("c.txt", Some("x\n")),
+                ("a.txt.gz", Some("x\n")),
+                ("copy.fa", None)
+            ]
+        );
+        let copy = simulation.made.iter().find(|made| made.path == "copy.fa");
+        assert_eq!(copy.and_then(|made| made.copy_of.as_deref()), Some("in.fa"));
+        // Heredocs of versions keep their text; commands in them give nothing.
+        let versions = simulate(
+            "cat <<-END_VERSIONS > versions.yml\n\"P\":\n    tool: $(tool --version)\nEND_VERSIONS",
+            &[],
+        );
+        assert_eq!(
+            files(&versions),
+            [("versions.yml", Some("\"P\":\n    tool: \n"))]
+        );
     }
 }

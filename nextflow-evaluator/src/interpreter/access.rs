@@ -451,6 +451,9 @@ impl Interpreter<'_> {
             (Value::Null, "toString") if arguments.is_empty() => Ok(Value::string("null")),
             (Value::Null, "hashCode") if arguments.is_empty() => Ok(Value::integer(0)),
             (Value::Null, "asBoolean") if arguments.is_empty() => Ok(Value::Boolean(false)),
+            (Value::Null, "getClass") if arguments.is_empty() => Ok(Value::Class(
+                "org.codehaus.groovy.runtime.NullObject".into(),
+            )),
             (Value::Null, _) => {
                 // Groovy iterates null as nothing for these methods of every object.
                 let iterates = matches!(

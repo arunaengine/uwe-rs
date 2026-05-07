@@ -201,8 +201,9 @@ pub fn os(interpreter: &mut Interpreter) -> Result<Vec<(&'static str, Value)>, E
             "access",
             function("access", |interpreter, args| {
                 let path = text(interpreter, &args, 0, "access")?;
+                let mode = args.get(1).and_then(Value::as_int).unwrap_or(0);
                 let resolved = interpreter.host.resolve(&path);
-                Ok(Value::Bool(interpreter.host.stat(&resolved).is_some()))
+                Ok(Value::Bool(interpreter.host.access(&resolved, mode)))
             }),
         ),
         ("stat", function("stat", stat)),

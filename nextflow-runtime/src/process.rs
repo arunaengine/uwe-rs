@@ -33,6 +33,8 @@ pub struct TaskRequest {
     pub staged: Vec<(PathValue, String)>,
     /// The glob patterns of the output files, relative to the task directory.
     pub output_patterns: Vec<String>,
+    /// The patterns of `output_patterns` of optional outputs, which may match nothing.
+    pub optional_patterns: Vec<String>,
     /// The names of the `env` outputs.
     pub env: Vec<Rc<str>>,
     /// The commands of the `eval` outputs, run after the script.
@@ -183,9 +185,17 @@ impl ProcessNode {
             directives,
             staged: frame.staged.clone(),
             output_patterns: Vec::new(),
+            optional_patterns: Vec::new(),
             env: Vec::new(),
             eval: Vec::new(),
         };
+        for output in &rendered.outputs {
+            for part in &output.parts {
+                if let (RenderedPart::Path { pattern, .. }, true) = (part, output.optional) {
+                    request.optional_patterns.push(pattern.clone());
+                }
+            }
+        }
         for part in rendered.outputs.iter().flat_map(|output| &output.parts) {
             match part {
                 RenderedPart::Path { pattern, .. } => request.output_patterns.push(pattern.clone()),

@@ -31,7 +31,7 @@ pub(super) struct Options {
 fn fields(record: &str, options: &Options) -> Vec<String> {
     let mut fields = match &options.separator {
         Separator::Char(separator) => {
-            crate::modules::data::split_csv_line(record, *separator, options.quote)
+            crate::modules::csv::split_csv_line(record, *separator, options.quote)
         }
         Separator::Whitespace => record.split_whitespace().map(str::to_owned).collect(),
         Separator::Pattern(pattern) => {

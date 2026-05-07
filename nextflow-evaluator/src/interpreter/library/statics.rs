@@ -73,6 +73,15 @@ impl Interpreter<'_> {
                     .map(Some);
             }
             ("SchemaLoader", "load", [json]) => super::org_json::load_schema(self, json, span)?,
+            // Java's parsers of numbers, like `Integer.parseInt`, as Groovy's `toInteger()`.
+            (
+                "Integer" | "Long" | "Double" | "Float",
+                "parseInt" | "parseLong" | "parseDouble" | "parseFloat" | "valueOf",
+                [Value::String(text) | Value::GString(text)],
+            ) => {
+                let method = format!("to{class}");
+                super::string::parse_number(&method, text).at(span)?
+            }
             ("JsonOutput", "toJson", [value]) => {
                 Value::string(self.json_text(value, &JsonOptions::default(), span)?)
             }

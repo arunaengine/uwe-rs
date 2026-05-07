@@ -170,6 +170,17 @@ fn class_values() {
 }
 
 #[test]
+fn parsers_and_the_class_of_null() {
+    assert_eq!(
+        value(
+            "def x = null\n[x.getClass(), x.getClass() == nextflow.util.MemoryUnit, \
+             Float.parseFloat('1.5'), Integer.parseInt('42'), Double.valueOf('2')]"
+        ),
+        "[class org.codehaus.groovy.runtime.NullObject, false, 1.5, 42, 2.0]"
+    );
+}
+
+#[test]
 fn primitive_casts_load_but_fail_when_they_run() {
     // Nextflow fails with "Missing process or function call([A])".
     assert_eq!(

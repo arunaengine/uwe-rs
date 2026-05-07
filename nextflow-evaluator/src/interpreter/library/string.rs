@@ -345,7 +345,7 @@ fn compare_to(left: &str, right: &str) -> i32 {
 }
 
 /// `toInteger()` and the other parse methods, with Java's parsers.
-fn parse_number(method: &str, text: &str) -> Result<Value, Exception> {
+pub(super) fn parse_number(method: &str, text: &str) -> Result<Value, Exception> {
     let invalid = || Exception::number_format(text);
     let number = match method {
         "toInteger" => Number::Integer(text.parse().map_err(|_| invalid())?),

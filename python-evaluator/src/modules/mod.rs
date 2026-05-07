@@ -142,7 +142,7 @@ pub fn native(interpreter: &mut Interpreter, name: &str) -> Result<Option<Value>
         "re" => re::module(),
         "json" => data::json(),
         "yaml" => data::yaml(),
-        "csv" => data::csv(),
+        "csv" => csv::csv(),
         "gzip" => data::gzip(),
         "itertools" => collections::itertools(),
         "functools" => collections::functools(),

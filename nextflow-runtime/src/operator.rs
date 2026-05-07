@@ -694,6 +694,8 @@ pub(crate) struct Invoke {
     pub name: Rc<str>,
     /// The arguments; `None` stands for the next input after the receiver.
     pub arguments: Vec<Option<Value>>,
+    /// Whether `name` is a property to read rather than a method to call.
+    pub property: bool,
 }
 
 impl Behaviour for Invoke {
@@ -719,9 +721,13 @@ impl Behaviour for Invoke {
                 None => values.next().unwrap_or(Value::Null),
             })
             .collect();
-        let result = context
-            .interpreter
-            .invoke_method(&object, &self.name, arguments)?;
+        let result = if self.property {
+            context.interpreter.read_property(&object, &self.name)?
+        } else {
+            context
+                .interpreter
+                .invoke_method(&object, &self.name, arguments)?
+        };
         context.emit(self.output, result);
         context.close(self.output);
         Ok(State::Stopped)

@@ -6,5 +6,332 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-pub mod lexer;
-pub mod words;
+mod lexer;
+mod programs;
+mod words;
+
+use std::collections::HashMap;
+
+use lexer::{Command, Line, Piece, Token, assignment, logical_lines, pipelines, tokens};
+use words::{expand, expand_all, expand_text, normal};
+
+/// What a script makes, as far as its text tells.
+#[derive(Debug, Default)]
+pub struct Simulation {
+    /// The files and directories the script makes, by path relative to the working directory.
+    pub made: Vec<Made>,
+    /// Whether every command was understood, so that the script makes no other files.
+    pub complete: bool,
+}
+
+/// A file or directory that a script makes.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Made {
+    pub path: String,
+    pub directory: bool,
+    /// The text the script writes, when it is known.
+    pub content: Option<String>,
+    /// Whether the text is compressed with gzip.
+    pub gzip: bool,
+    /// An input that the file is a copy of, like the source of `cp`.
+    pub copy_of: Option<String>,
+}
+
+/// Simulates a script. `inputs` are the paths of the task's inputs, which the script does not
+/// make.
+pub fn simulate(script: &str, inputs: &[&str]) -> Simulation {
+    let mut shell = Shell {
+        variables: HashMap::new(),
+        made: Vec::new(),
+        complete: true,
+        inputs,
+    };
+    let lines = logical_lines(script);
+    shell.run(&lines);
+    Simulation {
+        made: shell.made,
+        complete: shell.complete,
+    }
+}
+
+struct Shell<'a> {
+    variables: HashMap<String, String>,
+    made: Vec<Made>,
+    complete: bool,
+    inputs: &'a [&'a str],
+}
+
+/// The standard output of a command, as far as it is known.
+#[derive(Clone, Debug)]
+enum Output {
+    Text(String),
+    Gzip(String),
+    Unknown,
+}
+
+impl Shell<'_> {
+    fn run(&mut self, lines: &[Line]) {
+        let mut index = 0;
+        while index < lines.len() {
+            let words = self.words_of(&lines[index]);
+            match words.first().map(String::as_str) {
+                Some("if" | "while" | "until" | "case" | "function" | "select") => {
+                    self.complete = false;
+                    index = skip_block(lines, index);
+                }
+                _ => {
+                    self.line(&lines[index]);
+                    index += 1;
+                }
+            }
+        }
+    }
+
+    /// The plain words of a line, for its keywords.
+    fn words_of(&self, line: &Line) -> Vec<String> {
+        tokens(&line.text)
+            .into_iter()
+            .map_while(|token| match token {
+                Token::Word(pieces) => Some(expand(&pieces, &self.variables).unwrap_or_default()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn line(&mut self, line: &Line) {
+        for pipeline in pipelines(tokens(&line.text)) {
+            self.pipeline(&pipeline, &line.bodies);
+        }
+    }
+
+    fn pipeline(&mut self, pipeline: &[Command], bodies: &[String]) {
+        let mut input = Output::Unknown;
+        for command in pipeline {
+            input = self.command(command, input, bodies);
+        }
+    }
+
+    /// Runs a command with its standard input; gives its standard output.
+    fn command(&mut self, command: &Command, input: Output, bodies: &[String]) -> Output {
+        if command.other {
+            self.complete = false;
+            return Output::Unknown;
+        }
+        if command.words.is_empty() && command.outputs.is_empty() {
+            return input;
+        }
+        // Assignments like `prefix=sample` before any command word.
+        let mut words = command.words.as_slice();
+        while let Some((first, rest)) = words.split_first() {
+            match assignment(first) {
+                Some((name, value)) => {
+                    let value = expand(&value, &self.variables);
+                    match value {
+                        Some(value) if rest.is_empty() => {
+                            self.variables.insert(name, value);
+                        }
+                        None if rest.is_empty() => {
+                            self.variables.remove(&name);
+                        }
+                        _ => {}
+                    }
+                    words = rest;
+                }
+                None => break,
+            }
+        }
+        let input = match command.here_document.and_then(|index| bodies.get(index)) {
+            Some(body) => Output::Text(expand_text(body, &self.variables)),
+            None => input,
+        };
+        let mut arguments = Vec::new();
+        for word in words {
+            match expand_all(word, &self.variables) {
+                Some(expanded) => arguments.extend(expanded.into_iter().map(Some)),
+                None => arguments.push(None),
+            }
+        }
+        let output = if arguments.is_empty() {
+            input
+        } else {
+            self.program(&arguments, input)
+        };
+        let mut result = output.clone();
+        for (target, append) in &command.outputs {
+            match expand(target, &self.variables) {
+                Some(target) => {
+                    let content = match &output {
+                        Output::Text(text) => Some(text.clone()),
+                        Output::Gzip(text) => Some(text.clone()),
+                        Output::Unknown => None,
+                    };
+                    let gzip = matches!(output, Output::Gzip(_));
+                    self.make_file(&target, content, gzip, *append);
+                }
+                None => self.complete = false,
+            }
+            result = Output::Text(String::new());
+        }
+        result
+    }
+
+    /// The joined text of files, when all of them were made with known text.
+    fn contents(&self, files: &[String]) -> Output {
+        let mut text = String::new();
+        for file in files {
+            match self.find(file) {
+                Some(Made {
+                    content: Some(content),
+                    gzip: false,
+                    ..
+                }) => text.push_str(content),
+                _ => return Output::Unknown,
+            }
+        }
+        Output::Text(text)
+    }
+
+    fn find(&self, path: &str) -> Option<&Made> {
+        let path = normal(path);
+        self.made.iter().find(|made| made.path == path)
+    }
+
+    /// Records a file; `append` keeps the text of a file made before and adds to it.
+    fn make_file(&mut self, path: &str, content: Option<String>, gzip: bool, append: bool) {
+        let path = normal(path);
+        if path.is_empty() || path == "/dev/null" || path.starts_with("/dev/") {
+            return;
+        }
+        if self.inputs.contains(&path.as_str()) {
+            return;
+        }
+        if let Some(parent) = path.rsplit_once('/').map(|(parent, _)| parent.to_owned()) {
+            self.make_directory(&parent);
+        }
+        match self.made.iter_mut().find(|made| made.path == path) {
+            Some(made) if append => {
+                made.content = match (made.content.take(), content) {
+                    (Some(mut old), Some(new)) => {
+                        old.push_str(&new);
+                        Some(old)
+                    }
+                    _ => None,
+                };
+            }
+            Some(made) => {
+                made.content = content;
+                made.gzip = gzip;
+            }
+            None => self.made.push(Made {
+                path,
+                directory: false,
+                content,
+                gzip,
+                copy_of: None,
+            }),
+        }
+    }
+
+    /// Records a directory with the directories above it, as `mkdir -p` makes them.
+    fn make_directory(&mut self, path: &str) {
+        let path = normal(path);
+        if path.is_empty() || path == "/" || self.made.iter().any(|made| made.path == path) {
+            return;
+        }
+        if let Some((parent, _)) = path.rsplit_once('/') {
+            self.make_directory(parent);
+        }
+        self.made.push(Made {
+            path,
+            directory: true,
+            content: None,
+            gzip: false,
+            copy_of: None,
+        });
+    }
+}
+
+/// The index of the line after the block that starts at `start`: the line whose `done`,
+/// `fi` or `esac` closes it, counting blocks inside.
+fn skip_block(lines: &[Line], start: usize) -> usize {
+    let mut depth = 0;
+    for (index, line) in lines.iter().enumerate().skip(start) {
+        for token in tokens(&line.text) {
+            if let Token::Word(word) = token {
+                let Some(Piece::Text {
+                    text,
+                    quoted: false,
+                }) = word.first()
+                else {
+                    continue;
+                };
+                match text.as_str() {
+                    "for" | "while" | "until" | "if" | "case" | "select" => depth += 1,
+                    "done" | "fi" | "esac" => depth -= 1,
+                    _ => {}
+                }
+            }
+        }
+        if depth <= 0 {
+            return index + 1;
+        }
+    }
+    lines.len()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn files(simulation: &Simulation) -> Vec<(&str, Option<&str>)> {
+        simulation
+            .made
+            .iter()
+            .filter(|made| !made.directory)
+            .map(|made| (made.path.as_str(), made.content.as_deref()))
+            .collect()
+    }
+
+    #[test]
+    fn stubs_make_their_files() {
+        let script = "touch s.lf.{drp,drs}\nmkdir -p db\ntouch db/x.txt\n\
+                      echo \"\" | gzip > s.fq.gz\nprintf 'a\\tb\\n' > t.tsv\n\
+                      cat <<-END_PANELS > panels.txt\nv1\nv2\nEND_PANELS\n\
+                      prefix=out\necho hi > ${prefix}.txt";
+        let simulation = simulate(script, &[]);
+        assert!(simulation.complete);
+        assert_eq!(
+            files(&simulation),
+            [
+                ("s.lf.drp", Some("")),
+                ("s.lf.drs", Some("")),
+                ("db/x.txt", Some("")),
+                ("s.fq.gz", Some("\n")),
+                ("t.tsv", Some("a\tb\n")),
+                ("panels.txt", Some("v1\nv2\n")),
+                ("out.txt", Some("hi\n")),
+            ]
+        );
+        assert!(
+            simulation
+                .made
+                .iter()
+                .any(|made| made.path == "db" && made.directory)
+        );
+        let nested = simulate("mkdir -p s-busco/g.fa/run_x", &[]);
+        let directories: Vec<&str> = nested.made.iter().map(|made| made.path.as_str()).collect();
+        assert_eq!(
+            directories,
+            ["s-busco", "s-busco/g.fa", "s-busco/g.fa/run_x"]
+        );
+    }
+
+    #[test]
+    fn tools_make_a_simulation_incomplete() {
+        let simulation = simulate("samtools sort -o x.bam in.bam\ntouch done.txt", &["in.bam"]);
+        assert!(!simulation.complete);
+        assert_eq!(files(&simulation), [("done.txt", Some(""))]);
+        assert!(!simulate("touch $(date).txt", &[]).complete);
+        assert!(!simulate("if [ -f a ]; then touch b; fi", &[]).complete);
+    }
+}

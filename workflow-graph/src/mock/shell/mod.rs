@@ -7,3 +7,4 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub mod lexer;
+pub mod words;

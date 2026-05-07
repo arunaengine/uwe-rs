@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use workflow_graph::mock::{EMPTY_GZIP, glob_matches};
+use workflow_graph::mock::{EMPTY_GZIP, file_name, glob_matches};
 use workflow_graph::{
     Driver, DriverError, EdgeKind, Executor, Input, Language, Mock, MockTes, Outcome, Task, TaskId,
     execute,
@@ -110,6 +110,9 @@ fn globs_match_like_a_shell() {
     assert!(glob_matches("**/*.txt", "d/e/a.txt"));
     assert!(glob_matches("*.{html,zip}", "r.zip"));
     assert!(glob_matches("s[0-9].bam", "s3.bam"));
+    // The name of a placeholder file matches its pattern, which for `**/` needs a directory.
+    assert_eq!(file_name("**/*.gz"), "mock/mock.gz");
+    assert!(glob_matches("**/*.gz", &file_name("**/*.gz")));
 }
 
 #[test]
@@ -149,11 +152,37 @@ fn mocks_make_the_files_that_the_script_names() {
         .iter()
         .map(|file| file.path.as_str())
         .collect();
+    // The script is understood, so it makes no other outputs, like optional ones.
+    assert_eq!(
+        paths,
+        ["s_1.fq", "s_2.fq", "db", "copy.txt", "versions.yml"]
+    );
+    let work = directory.path().join("7");
+    assert!(work.join("db/x.txt").is_file());
+    assert!(outcome.files[2].directory);
+    let read = |name: &str| std::fs::read(work.join(name)).expect("reads a file");
+    assert_eq!(read("versions.yml"), b"\"NFCORE:TOOL\":\n    mock: 1.0.0\n");
+    // Inputs with content are written, as a TES server places them.
+    assert_eq!(read(".command.sh"), b"true\n");
+    assert!(!work.join("in.txt").exists());
+    // A tool may make any output, which then is one named after the pattern.
+    let task = Task {
+        id: TaskId(8),
+        script: Some("tool --out result\ntouch s_1.fq".into()),
+        ..task
+    };
+    let outcome = Mock::new(directory.path())
+        .execute(&task)
+        .expect("an outcome");
+    let paths: Vec<&str> = outcome
+        .files
+        .iter()
+        .map(|file| file.path.as_str())
+        .collect();
     assert_eq!(
         paths,
         [
             "s_1.fq",
-            "s_2.fq",
             "db",
             "copy.txt",
             "versions.yml",
@@ -161,15 +190,46 @@ fn mocks_make_the_files_that_the_script_names() {
             "report"
         ]
     );
-    let work = directory.path().join("7");
-    assert!(work.join("db/x.txt").is_file());
-    assert!(outcome.files[2].directory && outcome.files[6].directory);
+    let work = directory.path().join("8");
+    assert_eq!(
+        std::fs::read(work.join("mock.vcf.gz")).expect("reads"),
+        EMPTY_GZIP
+    );
+    assert!(outcome.files[5].directory);
+}
+
+#[test]
+fn mocks_write_the_text_of_stub_scripts() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let script = "cat <<-END > s.flagstat\n900 + 0 mapped (90.00% : N/A)\nEND\n\
+                  touch s.lf.{drp,drs}\necho '' | gzip > s.fq.gz";
+    let task = Task {
+        id: TaskId(9),
+        script: Some(script.into()),
+        outputs: ["*.flagstat", "s.lf.*", "*.fq.gz", "*.unaligned.fasta"]
+            .map(String::from)
+            .to_vec(),
+        ..Task::default()
+    };
+    let outcome = Mock::new(directory.path())
+        .execute(&task)
+        .expect("an outcome");
+    let paths: Vec<&str> = outcome
+        .files
+        .iter()
+        .map(|file| file.path.as_str())
+        .collect();
+    assert_eq!(paths, ["s.flagstat", "s.lf.drp", "s.lf.drs", "s.fq.gz"]);
+    let work = directory.path().join("9");
     let read = |name: &str| std::fs::read(work.join(name)).expect("reads a file");
-    assert_eq!(read("versions.yml"), b"\"NFCORE:TOOL\":\n    mock: 1.0.0\n");
-    assert_eq!(read("mock.vcf.gz"), EMPTY_GZIP);
-    // Inputs with content are written, as a TES server places them.
-    assert_eq!(read(".command.sh"), b"true\n");
-    assert!(!work.join("in.txt").exists());
+    assert_eq!(read("s.flagstat"), b"900 + 0 mapped (90.00% : N/A)\n");
+    let mut text = String::new();
+    std::io::Read::read_to_string(
+        &mut flate2::read::GzDecoder::new(read("s.fq.gz").as_slice()),
+        &mut text,
+    )
+    .expect("a gzip file");
+    assert_eq!(text, "\n");
 }
 
 #[test]

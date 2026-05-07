@@ -75,6 +75,7 @@ impl Shell<'_> {
         while index < lines.len() {
             let words = self.words_of(&lines[index]);
             match words.first().map(String::as_str) {
+                Some("for") => index = self.for_loop(lines, index),
                 Some("if" | "while" | "until" | "case" | "function" | "select") => {
                     self.complete = false;
                     index = skip_block(lines, index);
@@ -96,6 +97,72 @@ impl Shell<'_> {
                 _ => None,
             })
             .collect()
+    }
+
+    /// `for name in words; do commands; done`, on one line or several; gives the index of
+    /// the line after the loop.
+    fn for_loop(&mut self, lines: &[Line], start: usize) -> usize {
+        // The loop as one text: the lines from `for` to the `done` that closes it.
+        let end = skip_block(lines, start);
+        let text: Vec<String> = lines[start..end]
+            .iter()
+            .map(|line| line.text.clone())
+            .collect();
+        let bodies: Vec<String> = lines[start..end]
+            .iter()
+            .flat_map(|line| line.bodies.clone())
+            .collect();
+        let text = text.join("; ");
+        let tokens = tokens(&text);
+        let mut words = tokens.iter();
+        let name = match (words.next(), words.next(), words.next()) {
+            (Some(Token::Word(_)), Some(Token::Word(name)), Some(Token::Word(keyword)))
+                if expand(keyword, &self.variables).as_deref() == Some("in") =>
+            {
+                expand(name, &self.variables)
+            }
+            _ => None,
+        };
+        let mut items = Vec::new();
+        let mut known = name.is_some();
+        let mut rest = Vec::new();
+        let mut in_items = true;
+        for token in words {
+            match token {
+                Token::Word(word) if in_items => match expand_all(word, &self.variables) {
+                    Some(expanded) if expanded == ["do"] => in_items = false,
+                    Some(expanded) => items.extend(expanded),
+                    None => known = false,
+                },
+                Token::End if in_items => {}
+                token => rest.push(token.clone()),
+            }
+        }
+        // The body ends with `done`.
+        let done = rest
+            .iter()
+            .rposition(|token| matches!(token, Token::Word(word) if word == &text_piece("done")));
+        let (Some(name), true, Some(done)) = (name, known, done) else {
+            self.complete = false;
+            return end;
+        };
+        let body = rest[..done].to_vec();
+        let nested = body.iter().any(|token| {
+            matches!(token, Token::Word(word) if ["for", "if", "while", "case"]
+                .iter()
+                .any(|keyword| word == &text_piece(keyword)))
+        });
+        if nested {
+            self.complete = false;
+            return end;
+        }
+        for item in items {
+            self.variables.insert(name.clone(), item);
+            for pipeline in pipelines(body.clone()) {
+                self.pipeline(&pipeline, &bodies);
+            }
+        }
+        end
     }
 
     fn line(&mut self, line: &Line) {
@@ -251,6 +318,13 @@ impl Shell<'_> {
     }
 }
 
+fn text_piece(text: &str) -> Vec<Piece> {
+    vec![Piece::Text {
+        text: text.to_owned(),
+        quoted: false,
+    }]
+}
+
 /// The index of the line after the block that starts at `start`: the line whose `done`,
 /// `fi` or `esac` closes it, counting blocks inside.
 fn skip_block(lines: &[Line], start: usize) -> usize {
@@ -297,7 +371,7 @@ mod tests {
         let script = "touch s.lf.{drp,drs}\nmkdir -p db\ntouch db/x.txt\n\
                       echo \"\" | gzip > s.fq.gz\nprintf 'a\\tb\\n' > t.tsv\n\
                       cat <<-END_PANELS > panels.txt\nv1\nv2\nEND_PANELS\n\
-                      prefix=out\necho hi > ${prefix}.txt";
+                      prefix=out\necho hi > ${prefix}.txt\nfor i in 1 2; do touch part_$i.txt; done";
         let simulation = simulate(script, &[]);
         assert!(simulation.complete);
         assert_eq!(
@@ -310,6 +384,8 @@ mod tests {
                 ("t.tsv", Some("a\tb\n")),
                 ("panels.txt", Some("v1\nv2\n")),
                 ("out.txt", Some("hi\n")),
+                ("part_1.txt", Some("")),
+                ("part_2.txt", Some("")),
             ]
         );
         assert!(

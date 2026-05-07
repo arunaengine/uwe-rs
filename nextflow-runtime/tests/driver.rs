@@ -113,3 +113,54 @@ fn entry_workflows_are_not_supported_yet() {
     let error = nextflow_runtime::driver(&launch).err().expect("an error");
     assert!(error.unsupported);
 }
+
+/// In a mock run, an optional output that a stub surely does not make is left out, as in
+/// Nextflow's stub run, while a required one is made up so that the run goes on.
+#[test]
+fn mock_runs_leave_out_optional_outputs_that_stubs_do_not_make() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let pipeline = r#"
+process SPLIT {
+    output:
+    path "*.aligned.fasta", emit: aligned
+    path "*.unaligned.fasta", emit: unaligned, optional: true
+    path "*.log", emit: log
+    script:
+    "split"
+    stub:
+    "touch s.aligned.fasta"
+}
+
+process USE {
+    input:
+    path fasta
+    output:
+    path 'used.txt'
+    script:
+    "cat ${fasta} > used.txt"
+}
+
+workflow {
+    SPLIT()
+    USE(SPLIT.out.unaligned.mix(SPLIT.out.log))
+}
+"#;
+    std::fs::write(directory.path().join("main.nf"), pipeline).expect("writes the script");
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        stub: true,
+        assume_inputs: true,
+        ..Launch::default()
+    };
+    let graph = run(directory.path(), launch);
+    // USE runs once, for the made-up log, and not for the unaligned sequences.
+    assert_eq!(graph.steps(), ["SPLIT", "USE"]);
+    let use_task = &graph.nodes[1].task;
+    let inputs: Vec<&str> = use_task
+        .inputs
+        .iter()
+        .map(|input| input.path.as_str())
+        .collect();
+    assert!(inputs.contains(&"mock.log"), "{inputs:?}");
+    assert_eq!(graph.nodes.len(), 2);
+}

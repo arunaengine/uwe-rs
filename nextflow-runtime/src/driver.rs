@@ -13,6 +13,7 @@ use nextflow_evaluator::interpreter::{Error, Host, parse_json, parse_yaml};
 use nextflow_evaluator::value::{PathValue, Value};
 use workflow_graph::{Driver, DriverError, Input, Language, Launch, Outcome, Task};
 
+use crate::process::glob_matches;
 use crate::task::{
     ENVIRONMENT, SCRIPT, command, command_script, container, read_environment, resources,
 };
@@ -160,6 +161,10 @@ impl Driver for Nextflow {
         let request = self.requests.remove(&id).ok_or_else(|| {
             DriverError::new(format!("the task {} was not asked for", outcome.id))
         })?;
+        let mut outcome = outcome;
+        if self.launch.assume_inputs {
+            drop_made_up_optional_outputs(&request, &mut outcome);
+        }
         let outcome = task_outcome(&request, outcome)?;
         let run = self.run.as_mut().ok_or_else(not_started)?;
         let requests = run
@@ -171,6 +176,36 @@ impl Driver for Nextflow {
     fn finish(&mut self) -> Result<(), DriverError> {
         let run = self.run.as_mut().ok_or_else(not_started)?;
         run.finish(self.settings.host.as_mut()).map_err(error)
+    }
+}
+
+/// In a mock run, a task only pretends to run, and the mock makes up the outputs that a
+/// script does not tell how it makes. An optional output that a script, like a stub, surely
+/// does not make is left out, as Nextflow's stub run leaves it out; so the run takes the same
+/// path.
+fn drop_made_up_optional_outputs(request: &TaskRequest, outcome: &mut Outcome) {
+    if request.optional_patterns.is_empty() {
+        return;
+    }
+    let inputs: Vec<&str> = request
+        .staged
+        .iter()
+        .map(|(_, name)| name.as_str())
+        .collect();
+    let simulation = workflow_graph::mock::shell::simulate(&request.script, &inputs);
+    if !simulation.complete {
+        return;
+    }
+    for pattern in &request.optional_patterns {
+        let made = simulation
+            .made
+            .iter()
+            .any(|made| glob_matches(pattern, &made.path));
+        if !made {
+            outcome
+                .files
+                .retain(|file| !glob_matches(pattern, &file.path));
+        }
     }
 }
 

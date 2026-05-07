@@ -53,6 +53,11 @@ impl Interpreter<'_> {
                 }
             }
             Value::Definition(definition) => self.definition_property(definition, name, span)?,
+            Value::Channel(_) => match self.host.channel_property(object, name) {
+                Ok(Some(value)) => value,
+                Ok(None) => return self.getter(object, name, span),
+                Err(error) => return Err(error.or_at(span)),
+            },
             Value::Object(object) if super::classes::is_library(object) => {
                 self.library_property(object, name, span)?
             }

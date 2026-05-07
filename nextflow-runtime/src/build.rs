@@ -122,6 +122,26 @@ impl Host for Builder<'_> {
         self.base.validate_json(schema, instance)
     }
 
+    /// A property of the value of a value channel is a value channel of that property, as a
+    /// GPars `DataflowVariable` gives it.
+    fn channel_property(&mut self, channel: &Value, name: &str) -> Result<Option<Value>, Error> {
+        let Value::Channel(source) = channel else {
+            return Ok(None);
+        };
+        if !self.network.is_value(*source) {
+            return Ok(None);
+        }
+        let output = self.network.channel(true);
+        let node = Invoke {
+            output,
+            name: name.into(),
+            arguments: Vec::new(),
+            property: true,
+        };
+        self.network.add(name, &[*source], Box::new(node));
+        Ok(Some(Value::Channel(output)))
+    }
+
     fn create_directories(&mut self, path: &PathValue) -> Result<(), Error> {
         self.base.create_directories(path)
     }
@@ -343,6 +363,7 @@ impl Host for Builder<'_> {
                 output,
                 name: name.into(),
                 arguments,
+                property: false,
             };
             self.network.add(name, &inputs, Box::new(node));
             return Ok(Some(Value::Channel(output)));

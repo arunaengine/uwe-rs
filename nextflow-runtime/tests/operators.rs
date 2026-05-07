@@ -93,6 +93,18 @@ fn buffers() {
     );
 }
 
+/// A property of a value channel is a value channel of the property, as in Nextflow 26.04.6.
+#[test]
+fn properties_of_value_channels() {
+    assert_eq!(
+        lines(
+            "channel.of(file('/a/WARNING_x.txt')).first().baseName.tokenize('_').flatten().first()\
+             .view { \"view: $it\" }"
+        ),
+        ["view: WARNING"]
+    );
+}
+
 #[test]
 fn values_one_at_a_time() {
     assert_eq!(

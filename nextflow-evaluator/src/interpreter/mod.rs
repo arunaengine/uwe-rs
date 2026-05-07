@@ -166,6 +166,12 @@ pub trait Host {
         Err(unsupported(message, Span::default()))
     }
 
+    /// A property of a channel, like `ch.first().baseName`; `None` when the channel has no
+    /// such property.
+    fn channel_property(&mut self, _channel: &Value, _name: &str) -> Result<Option<Value>, Error> {
+        Ok(None)
+    }
+
     /// Validates the JSON text of an instance against the JSON text of a schema, as the
     /// everit validator of older Nextflow releases does: `None` when the instance is valid,
     /// else the JSON text of the violation, as `ValidationException.toJSON()` gives it.
@@ -376,6 +382,11 @@ impl<'h> Interpreter<'h> {
             return result.map_err(|error| error.or_at(closure.code.span));
         }
         result
+    }
+
+    /// Reads a property of a value, as `value.name` does.
+    pub fn read_property(&mut self, object: &Value, name: &str) -> Result<Value, Error> {
+        self.property(object, name, Span::default())
     }
 
     /// Calls a method of a value, as a script does with `value.name(arguments)`.

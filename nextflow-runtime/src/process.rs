@@ -246,12 +246,13 @@ impl ProcessNode {
             };
             parts.push(value);
         }
+        // An optional output is missing when a part of it is, like a pattern without files.
+        let missing = output.optional && parts.iter().any(|part| !part.truth());
         let value = if output.tuple {
-            Value::list(parts.clone())
+            Value::list(parts)
         } else {
             parts.remove(0)
         };
-        let missing = output.optional && parts.iter().any(|part| !part.truth());
         Ok(if missing { None } else { Some(value) })
     }
 

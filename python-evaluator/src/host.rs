@@ -46,6 +46,12 @@ pub trait Host {
 
     fn environment(&self) -> Vec<(String, String)>;
 
+    /// Whether the process may use a path as `os.access` asks: `mode` combines 4 (read),
+    /// 2 (write) and 1 (execute), and 0 only asks whether it exists.
+    fn access(&self, path: &Path, mode: i64) -> bool {
+        self.stat(path).is_some() && (mode == 0 || permitted(path, mode))
+    }
+
     /// An absolute, normalized path for a path relative to the working directory.
     fn resolve(&self, path: &str) -> PathBuf {
         let path = expand_home(path);
@@ -56,6 +62,57 @@ pub trait Host {
         };
         normalize(&joined)
     }
+}
+
+/// The user and group ids of the process, from `/proc/self/status`.
+fn process_ids() -> Option<(u32, Vec<u32>)> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let field = |name: &str| -> Vec<u32> {
+        status
+            .lines()
+            .find_map(|line| line.strip_prefix(name))
+            .map(|rest| {
+                rest.split_whitespace()
+                    .filter_map(|id| id.parse().ok())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let user = *field("Uid:").get(1)?;
+    let mut groups = field("Groups:");
+    groups.extend(field("Gid:").get(1));
+    Some((user, groups))
+}
+
+/// Whether the permission bits of a file on disk give the process the access of `mode`. A
+/// path that is not on disk, like one that code wrote, is accessible.
+#[cfg(unix)]
+fn permitted(path: &Path, mode: i64) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let Ok(metadata) = std::fs::metadata(path) else {
+        return true;
+    };
+    let Some((user, groups)) = process_ids() else {
+        return true;
+    };
+    let bits = metadata.mode();
+    if user == 0 {
+        return mode & 1 == 0 || bits & 0o111 != 0 || metadata.is_dir();
+    }
+    let shift = if metadata.uid() == user {
+        6
+    } else if groups.contains(&metadata.gid()) {
+        3
+    } else {
+        0
+    };
+    let allowed = i64::from((bits >> shift) & 0o7);
+    mode & !allowed & 0o7 == 0
+}
+
+#[cfg(not(unix))]
+fn permitted(_: &Path, _: i64) -> bool {
+    true
 }
 
 /// `~` at the start of a path as the home directory.

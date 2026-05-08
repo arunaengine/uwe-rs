@@ -332,13 +332,15 @@ pub fn register(interpreter: &mut Interpreter, state: &Rc<RefCell<State>>, globa
         "snakemake.workflow".into(),
         factory(Rc::new(move |_| {
             let names = ["workflow", "rules", "checkpoints", "expand", "config"];
-            Ok(module(
-                "snakemake.workflow",
-                names
-                    .iter()
-                    .filter_map(|name| workflow_globals.get(name).map(|value| (*name, value)))
-                    .collect(),
-            ))
+            let mut entries: Vec<(&str, Value)> = names
+                .iter()
+                .filter_map(|name| workflow_globals.get(name).map(|value| (*name, value)))
+                .collect();
+            entries.push((
+                "Workflow",
+                Value::Class(python_evaluator::types::native_class("Workflow")),
+            ));
+            Ok(module("snakemake.workflow", entries))
         })),
     );
     // Snakemake 8 replaced remote providers by storage plugins; the modules remain, and

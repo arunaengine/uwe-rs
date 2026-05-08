@@ -61,5 +61,7 @@ pub fn install(interpreter: &mut Interpreter, globals: &Rc<Scope>) -> Result<(),
         }
     }
     globals.set("ON_WINDOWS", Value::Bool(false));
+    // The file of Snakemake's module `snakemake.workflow`, which is not on disk here.
+    globals.set("__file__", Value::str("/snakemake/workflow.py"));
     Ok(())
 }

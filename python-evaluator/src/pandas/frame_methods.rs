@@ -11,8 +11,12 @@ use crate::interpreter::Interpreter;
 use crate::value::{Args, Dict, Key, Value, key_equal};
 
 /// `astype(dtype)`: one type for all columns, or a dict of types by column.
-pub fn astype(interpreter: &mut Interpreter, data: FrameData, args: Args) -> Result<Value, Error> {
-    let kind = args.get(0).cloned().unwrap_or(Value::None);
+pub fn astype(
+    interpreter: &mut Interpreter,
+    data: FrameData,
+    mut args: Args,
+) -> Result<Value, Error> {
+    let kind = args.take(0, "dtype").unwrap_or(Value::None);
     let mut result = data.copy();
     for position in result.all_columns() {
         let target = match kind.plain() {

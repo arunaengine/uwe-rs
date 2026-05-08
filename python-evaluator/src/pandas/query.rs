@@ -34,6 +34,30 @@ fn replace_backticks(text: &str) -> (String, Vec<(String, String)>) {
     (result, names)
 }
 
+/// The query with `&` and `|` outside of strings written as `and` and `or`, which pandas does
+/// so that they bind like the boolean operators: `a == 1 & b == 2` is `(a == 1) & (b == 2)`.
+fn boolean_operators(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut quote: Option<char> = None;
+    for c in text.chars() {
+        match (quote, c) {
+            (Some(open), _) if c == open => {
+                quote = None;
+                result.push(c);
+            }
+            (Some(_), _) => result.push(c),
+            (None, '\'' | '"') => {
+                quote = Some(c);
+                result.push(c);
+            }
+            (None, '&') => result.push_str(" and "),
+            (None, '|') => result.push_str(" or "),
+            (None, _) => result.push(c),
+        }
+    }
+    result
+}
+
 /// The rows of the table for which the query is true.
 pub fn query(
     interpreter: &mut Interpreter,
@@ -41,6 +65,7 @@ pub fn query(
     text: &str,
 ) -> Result<FrameData, Error> {
     let (text, quoted) = replace_backticks(text);
+    let text = boolean_operators(&text);
     if text.contains('@') {
         return Err(Error::unsupported(
             "DataFrame.query with local variables (@name)",

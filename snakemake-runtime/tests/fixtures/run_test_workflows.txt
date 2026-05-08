@@ -36,7 +36,7 @@ catalog/GaspardR__snakemake-github-module-keyerror ok 4
 catalog/Gmidtg21__bt7-9gmidtg ok 7
 catalog/GooglingTheCancerGenome__sv-callers 33 workflow/validator/__init__.py:6: ModuleNotFoundError: No module named 'ruamel'
 catalog/GooglingTheCancerGenome__sv-gen 33 workflow/helper_functions.py:5: ModuleNotFoundError: No module named 'pyfaidx'
-catalog/GuttmanLab__chipdip-pipeline 33 workflow/pipeline_counts.smk:78: Not supported yet: string.Formatter
+catalog/GuttmanLab__chipdip-pipeline ok 207
 catalog/IHGGM-Aachen__CNVand ok 17
 catalog/IKIM-Essen__QC_pre_NextSeq 33 workflow/Snakefile:10: Not supported yet: PEP projects (pepfile)
 catalog/IKIM-Essen__ResMAG 33 workflow/Snakefile:15: Not supported yet: PEP projects (pepfile)
@@ -61,12 +61,12 @@ catalog/LinhHo__module_area_potentials ok 1
 catalog/Louis-XIV-bis__NJ_tree_bootstrap ok 0
 catalog/MPUSP__snakemake-assembly-postprocessing ok 2
 catalog/MPUSP__snakemake-bacterial-riboseq ok 32
-catalog/MPUSP__snakemake-bacterial-rnaseq-processing 33 workflow/rules/common.smk:53: Not supported yet: the attribute absolute of type
+catalog/MPUSP__snakemake-bacterial-rnaseq-processing ok 62
 catalog/MPUSP__snakemake-crispr-guides ok 11
 catalog/MPUSP__snakemake-ms-proteomics ok 12
 catalog/MPUSP__snakemake-ont-bacterial-variants ok 1
 catalog/MPUSP__snakemake-ont-basecalling ok 61
-catalog/MPUSP__snakemake-simple-mapping 33 workflow/rules/common.smk:38: Not supported yet: the attribute absolute of type
+catalog/MPUSP__snakemake-simple-mapping ok 28
 catalog/MarieRiisgaard__snakemake_usearch_primertrim_and_subset 1 workflow/Snakefile:19: FileNotFoundError: [Errno 2] No such file or directory: '.test/nanopore_run_xyz123/fastq_pass'
 catalog/Matheusdras__Snakemake-template ok 0
 catalog/MathiasEskildsen__ONT-AmpSeq ok 54
@@ -103,7 +103,7 @@ catalog/StergachisLab__IsoSeq_smk ok 29
 catalog/SveTho__base ok 10
 catalog/SveTho__bcl2fastq2_workflow ok 0
 catalog/SveTho__merge_fastqs ok 3
-catalog/TLenfers__multispecies_mitochondrial_variant_analysis 33 workflow/rules/reference.smk:4: Not supported yet: the attribute joinpath of type
+catalog/TLenfers__multispecies_mitochondrial_variant_analysis ok 25
 catalog/TRON-Bioinformatics__neorasp 33 workflow/rules/common.smk:2: ModuleNotFoundError: No module named 'magic'
 catalog/TRON-Bioinformatics__oblx 33 workflow/rules/uniprot_annotations.smk:6: Not supported yet: storage providers
 catalog/TidballLab__SNP-Cas13d-Selector ok 10
@@ -131,7 +131,7 @@ catalog/alzel__refseq_pipeline 33 workflow/Snakefile:10: Not supported yet: os.p
 catalog/ammaraziz__voi 1 workflow/Snakefile:6: KeyError: 'output'
 catalog/arwisyah__snakemake_rna_vc_docker_reproduce ok 12
 catalog/aryazand__call_tss ok 20
-catalog/aryazand__fastq-process-align 33 workflow/rules/common.smk:43: Not supported yet: the attribute absolute of type
+catalog/aryazand__fastq-process-align ok 24
 catalog/aryazand__genome_browser_workflow 1 workflow/rules/common.smk:19: WorkflowError: InputFunctionException in rule ucsc_trackhub (wildcards: ): FileNotFoundError: [Errno 2] No such file or directory: 'data/bigwig/'
 catalog/aryazand__proseq_workflow 33 workflow/Snakefile:27: Not supported yet: modules from remote repositories (github(...))
 catalog/aryazand__rnaseq_to_genome_annotation 33 workflow/Snakefile:23: Not supported yet: modules from remote repositories (github(...))
@@ -274,11 +274,11 @@ catalog/manuelphilip__Single-cell-analysis-Snakemake-workflow ok 49
 catalog/mariaelf97__amplicon_sequencing_simulator ok 3
 catalog/markschl__uvsnake 1 workflow/Snakefile:11: WorkflowError: Error validating config file.
 catalog/martykardos__asacphus_fire_frogs 33 workflow/rules/initialize.smk:13: ModuleNotFoundError: No module named 'snakemake_interface_executor_plugins'
-catalog/massiddamt__rna_vc_docker 33 workflow/rules/common.smk:36: Not supported yet: the library function os.strerror
+catalog/massiddamt__rna_vc_docker 1 workflow/rules/common.smk:34: WorkflowError: InputFunctionException in rule merge_read1_fastq (wildcards: sample=SRR7876818): FileNotFoundError: [Errno 2] No such file or directory (path must be absolute): 'test_data/SRR7876818.L005.R1.fq.gz'
 catalog/matinnuhamunada__interproscan_helper ok 711
 catalog/mbquashie__tm ok 0
 catalog/mdondrup__admixture_simulation ok 1044
-catalog/mdondrup__admixture_workflow 33 workflow/Snakefile:56: Not supported yet: the library function os.strerror
+catalog/mdondrup__admixture_workflow 1 workflow/Snakefile:55: FileNotFoundError: [Errno 2] No such file or directory: 'input/selected-SNPINDEL_Ploidy2.vcf.gz'
 catalog/mdondrup__divergence_time ok 6
 catalog/mdondrup__gromacs_workflow ok 10
 catalog/mdondrup__mytemplate_wf ok 10
@@ -311,7 +311,7 @@ catalog/mukherjeelab__CLIPs4U 33 workflow/scripts/genomic_files_and_indexes.py:9
 catalog/mushu-bytes__scelect ok 3
 catalog/mynameisdidit__UTS_Bioinformatika_SV-Callers 33 workflow/validator/__init__.py:6: ModuleNotFoundError: No module named 'ruamel'
 catalog/nate-d-olson__adotto-smk ok 136
-catalog/nate-d-olson__defrabb 33 rules/common.smk:16: Not supported yet: astype(None)
+catalog/nate-d-olson__defrabb ok 101
 catalog/nate-d-olson__giab-stvar-curation-table 1 workflow/Snakefile:17: AttributeError: 'builtin_function_or_method' object has no attribute 'http'
 catalog/nate-d-olson__giab-sv-external-eval ok 0
 catalog/ncbench__ncbench-workflow 33 workflow/Snakefile:27: Not supported yet: modules from remote repositories (github(...))
@@ -321,7 +321,7 @@ catalog/niekwit__chip-seq 1 workflow/scripts/general_functions.smk:319: Assertio
 catalog/niekwit__crispr-screens 1 workflow/scripts/general_functions.smk:194: ValueError: No fastq or cram files found in reads directory
 catalog/niekwit__cut_and_run 1 workflow/scripts/general_functions.smk:435: AssertionError: No fastq files found...
 catalog/niekwit__damid-seq 1 workflow/scripts/general_functions.smk:430: AssertionError: No fastq files found...
-catalog/niekwit__gps-orfeome 33 workflow/scripts/general_functions.smk:30: Not supported yet: the library function platform.version
+catalog/niekwit__gps-orfeome 33 workflow/scripts/general_functions.smk:33: Not supported yet: the library function platform.linux_distribution
 catalog/niekwit__methyl-seq 1 workflow/rules/common.smk:85: ValueError: No FASTQ (*.fastq.gz) files found in 'reads/' directory.
 catalog/niekwit__partridge-workflow 33 workflow/rules/common.smk:18: Not supported yet: subprocess.run: running commands while the workflow is planned
 catalog/niekwit__rna-seq-salmon-deseq2 1 workflow/Snakefile:28: WorkflowError: Error validating row 0 of data frame.
@@ -370,7 +370,7 @@ catalog/sanjaysgk__WES_RNA_Pipeline ok 2
 catalog/schlesnerlab__multiconDEnrich 33 workflow/Snakefile:19: Not supported yet: the attribute replace of DataFrame
 catalog/scholl-lab__sm-calling 33 workflow/rules/common.smk:159: Not supported yet: the attribute tmpdir of Resources
 catalog/seankmartin__atn-sub-lfp-workflow ok 23
-catalog/semenko__serpent-methylation-pipeline 1 workflow/Snakefile:33: ImportError: cannot import name 'Workflow' from 'snakemake.workflow'
+catalog/semenko__serpent-methylation-pipeline 1 workflow/Snakefile:184: AttributeError: 'builtin_function_or_method' object has no attribute 'http'
 catalog/seung1yoo__snakemake-s3-prototype ok 0
 catalog/sgallegosperez8__practice ok 10
 catalog/shahcompbio__bambu-smk 1 workflow/Snakefile:8: KeyError: 'out_dir'
@@ -394,22 +394,22 @@ catalog/snakemake-workflows__dna-seq-benchmark 1 workflow/rules/common.smk:456: 
 catalog/snakemake-workflows__dna-seq-gatk-variant-calling ok 38
 catalog/snakemake-workflows__dna-seq-mtb 33 workflow/rules/common.smk:1: ModuleNotFoundError: No module named 'yte'
 catalog/snakemake-workflows__dna-seq-short-read-circle-map ok 1
-catalog/snakemake-workflows__dna-seq-varlociraptor 33 workflow/rules/common.smk:78: Not supported yet: the attribute explode of Series
+catalog/snakemake-workflows__dna-seq-varlociraptor 33 workflow/rules/fusion_calling.smk:15: Not supported yet: meta-wrapper modules
 catalog/snakemake-workflows__effect-size-estimation ok 11
 catalog/snakemake-workflows__microsatellite-instability-detection-with-msisensor-pro 1 workflow/rules/common.smk:76: WorkflowError: InputFunctionException in rule all (wildcards: ): KeyError: 'The configfile specifies both `aliases: matched_normal:` and `aliases: baseline:`. You must specify exactly one of these, and comment out the other, to clearly determine the mode the workflow
 catalog/snakemake-workflows__read-alignment-pangenome ok 22
 catalog/snakemake-workflows__rna-longseq-de-isoform 1 workflow/Snakefile:11: WorkflowError: Workflow defines configfile config/config.yml but it is not present or accessible (full checked path: config/config.yml).
-catalog/snakemake-workflows__rna-seq-kallisto-sleuth 1 <query>:1: WorkflowError: InputFunctionException in rule fastp_pe (wildcards: sample=A, unit=1): TypeError: unsupported operand type(s) for &: 'str' and 'str'
-catalog/snakemake-workflows__rna-seq-star-deseq2 1 <query>:1: WorkflowError: InputFunctionException in rule fastp_pe (wildcards: sample=A, unit=lane1): TypeError: unsupported operand type(s) for &: 'str' and 'str'
-catalog/snakemake-workflows__rna-seq-xengsort 1 <query>:1: WorkflowError: InputFunctionException in rule fastp_pe (wildcards: sample=A, unit=1): TypeError: unsupported operand type(s) for &: 'str' and 'str'
+catalog/snakemake-workflows__rna-seq-kallisto-sleuth ok 46
+catalog/snakemake-workflows__rna-seq-star-deseq2 ok 75
+catalog/snakemake-workflows__rna-seq-xengsort ok 19
 catalog/snakemake-workflows__single-cell-counts-preprocessing ok 1
 catalog/snakemake-workflows__snakemake-workflow-template ok 10
 catalog/snakemake-workflows__species-quantification ok 8
 catalog/snakemake-workflows__star-arriba-fusion-calling 1 WorkflowError: Function did not return str or iterable of str. Encountered: nan (float)
 catalog/sneuensc__mapache 33 workflow/scripts/utils.py:1: Not supported yet: the library function tkinter.E
 catalog/solida-core__astra 1 workflow/rules/common.smk:13: EmptyDataError: No columns to parse from file
-catalog/solida-core__dima 33 workflow/rules/common.smk:68: Not supported yet: the library function psutil.virtual_memory
-catalog/solida-core__musta 33 workflow/rules/common.smk:45: Not supported yet: the library function psutil.virtual_memory
+catalog/solida-core__dima 1 workflow/rules/picard.smk:129: AttributeError: 'NoneType' object has no attribute 'get'
+catalog/solida-core__musta ok 0
 catalog/spjuhel__BoARIO-MRIOT-Tools 33 workflow/Snakefile:6: ModuleNotFoundError: No module named 'boario_tools'
 catalog/spjuhel__BoARIO-Sensitivity 33 workflow/rules/prepare_simspace.smk:37: Not supported yet: Paramspace
 catalog/spjuhel__Climada_TC_TCSurge_Generation 1 workflow/Snakefile:27: KeyError: 'start'
@@ -419,26 +419,26 @@ catalog/tahiri-lab__aPhyloGeo-pipeline 1 workflow/rules/common.smk:75: WorkflowE
 catalog/tavareshugo__smk-indexer ok 137
 catalog/tbenavi1__RetroDetector ok 66
 catalog/tdayris__fair_bowtie2_mapping 33 workflow/rules/fair_genome_indexer.smk:15: Not supported yet: modules from remote repositories (github(...))
-catalog/tdayris__fair_cnv_facets 33 workflow/rules/common.smk:41: Not supported yet: csv.Sniffer
-catalog/tdayris__fair_fastqc_multiqc 33 workflow/rules/common.smk:43: Not supported yet: csv.Sniffer
-catalog/tdayris__fair_gatk_mutect2 33 workflow/rules/common.smk:41: Not supported yet: csv.Sniffer
-catalog/tdayris__fair_genome_indexer 33 workflow/rules/common.smk:41: Not supported yet: csv.Sniffer
-catalog/tdayris__fair_macs2_calling 33 workflow/rules/common.smk:42: Not supported yet: csv.Sniffer
-catalog/tdayris__fair_rnaseq_salmon_quant 33 workflow/rules/common.smk:26: Not supported yet: csv.Sniffer
+catalog/tdayris__fair_cnv_facets 33 workflow/rules/common.smk:55: Not supported yet: the attribute where of DataFrame
+catalog/tdayris__fair_fastqc_multiqc 33 workflow/rules/common.smk:57: Not supported yet: the attribute where of DataFrame
+catalog/tdayris__fair_gatk_mutect2 33 workflow/rules/common.smk:55: Not supported yet: the attribute where of DataFrame
+catalog/tdayris__fair_genome_indexer ok 198
+catalog/tdayris__fair_macs2_calling 33 workflow/rules/common.smk:56: Not supported yet: the attribute where of DataFrame
+catalog/tdayris__fair_rnaseq_salmon_quant 33 workflow/rules/common.smk:37: Not supported yet: the attribute where of DataFrame
 catalog/thomasbtf__sars-cov-2-wbe 33 workflow/Snakefile:17: Not supported yet: PEP projects (pepfile)
 catalog/thomasmulvaney__snakemake-gromacs-workflow ok 10
-catalog/tmweiskittel__serpent-methylation-pipeline-cloud 1 workflow/Snakefile:40: ImportError: cannot import name 'Workflow' from 'snakemake.workflow'
+catalog/tmweiskittel__serpent-methylation-pipeline-cloud 1 workflow/Snakefile:196: AttributeError: 'builtin_function_or_method' object has no attribute 'http'
 catalog/tmweiskittel__tmw_align_emseq 1 1 jobs did not run, like a job of rule all
-catalog/tmweiskittel__tmw_analysis_emseq 33 workflow/Snakefile:31: Not supported yet: setting the attribute fieldnames of DictReader
+catalog/tmweiskittel__tmw_analysis_emseq ok 244
 catalog/trickovicmatija__kingfisher_workflow 1 workflow/Snakefile:3: WorkflowError: Workflow defines configfile ../config/default_config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/default_config.yaml).
-catalog/tucca-cellag__tucca-rna-seq 1 workflow/Snakefile:16: NameError: name '__file__' is not defined
+catalog/tucca-cellag__tucca-rna-seq 33 workflow/rules/common.smk:33: Not supported yet: classes that derive from typing
 catalog/tud-mchen6__module_gh2_prod ok 1
 catalog/ubercomrade__cut_and_run_analysis ok 0
-catalog/usnistgov__defrabb 33 rules/common.smk:18: Not supported yet: astype(None)
-catalog/usnistgov__giab-defrabb 33 rules/common.smk:17: Not supported yet: astype(None)
+catalog/usnistgov__defrabb ok 82
+catalog/usnistgov__giab-defrabb ok 96
 catalog/valentynbez__FuncMi ok 0
 catalog/varlociraptor__varlociraptor-methylation-evaluation ok 2075
-catalog/vembrane__vembrane-benchmark 33 workflow/rules/common.smk:10: Not supported yet: string.Template
+catalog/vembrane__vembrane-benchmark ok 2504
 catalog/vince-fang__basic ok 0
 catalog/vince-fang__test ok 0
 catalog/vivekbibs__pipeline_template ok 0
@@ -602,13 +602,13 @@ tests/test_github_issue3271 ok 1
 tests/test_github_issue3556 ok 8
 tests/test_github_issue3687 ok 3
 tests/test_github_issue3913 ok 4
-tests/test_github_issue4003 1 Snakefile:17: NameError: name 'as_py_module' is not defined
+tests/test_github_issue4003 ok 6
 tests/test_github_issue413 ok 2
 tests/test_github_issue456 ok 1
 tests/test_github_issue52 ok 3
 tests/test_github_issue627 ok 1
 tests/test_github_issue640 33 Snakefile:4: Not supported yet: shell(): running commands while the workflow is planned
-tests/test_github_issue672 1 Snakefile:11: NameError: name 'prepend_param' is not defined
+tests/test_github_issue672 ok 5
 tests/test_github_issue727 ok 4
 tests/test_github_issue78 ok 5
 tests/test_github_issue806 1 Snakefile:5: KeyError: 'src_lang'
@@ -643,7 +643,7 @@ tests/test_inferred_resources_mib 33 Not supported yet: the attribute mem_mib of
 tests/test_inner_call ok 2
 tests/test_inoutput_is_path ok 0
 tests/test_input_generator ok 4
-tests/test_ioutils 1 Snakefile:14: NameError: name 'extract_checksum' is not defined
+tests/test_ioutils ok 7
 tests/test_issue1037 ok 2
 tests/test_issue1041 ok 3
 tests/test_issue1046 ok 2
@@ -656,7 +656,7 @@ tests/test_issue1281 ok 5
 tests/test_issue1284 ok 6
 tests/test_issue1331 ok 19
 tests/test_issue2574 1 Snakefile:4: KeyError: 'unexisting_key'
-tests/test_issue2685 1 Snakefile:14: AttributeError: 'int' object has no attribute 'sample_id'
+tests/test_issue2685 ok 2
 tests/test_issue2826_failed_binary_logs ok 1
 tests/test_issue3192 1 Snakefile:1: KeyError: 'CONDA_PREFIX'
 tests/test_issue3338 ok 6
@@ -779,7 +779,7 @@ tests/test_profile_old ok 1
 tests/test_profile_with_env_var ok 1
 tests/test_protected_symlink_output 33 Snakefile:21: Not supported yet: shell(): running commands while the workflow is planned
 tests/test_python_import_from_github_module 33 Snakefile:18: Not supported yet: modules from remote repositories (github(...))
-tests/test_queue_input 33 Snakefile:19: Not supported yet: the library function threading.Thread
+tests/test_queue_input ok 21
 tests/test_r_wrapper ok 1
 tests/test_remote_auto 1 Snakefile:4: ImportError: cannot import name 'AUTO' from 'snakemake.remote'
 tests/test_remote_azure 1 Snakefile:9: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
@@ -866,7 +866,7 @@ tests/test_tes ok 1
 tests/test_threads ok 1
 tests/test_threads0 ok 1
 tests/test_tibanna 1 Snakefile:13: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
-tests/test_tmpdir 1 Snakefile:4: NameError: name 'choose_file' is not defined
+tests/test_tmpdir 33 Not supported yet: the attribute tmpdir of Resources
 tests/test_toposort 33 Snakefile:1: ModuleNotFoundError: No module named 'snakemake.dag'
 tests/test_touch ok 2
 tests/test_touch_pipeline_with_temp_dir ok 3

@@ -15,8 +15,9 @@ use workflow_graph::mock::glob_matches;
 use workflow_graph::{Outcome, OutputFile};
 
 use super::outputs::{classes, globs};
-use super::{Collector, OUTPUT_JSON, Pending};
-use crate::files;
+use super::{OUTPUT_JSON, Pending, STAGING, TMPDIR};
+use crate::expression::Variables;
+use crate::files::{self, Access};
 use crate::inputs::has_code;
 use crate::placeholder;
 use crate::value::{Map, Value};
@@ -177,7 +178,142 @@ pub fn workdir(outcome: &Outcome) -> Option<String> {
     })
 }
 
+/// Collects outputs from the files of an outcome.
+struct Collector<'a> {
+    pending: &'a Pending,
+    outcome: &'a Outcome,
+    runtime: Value,
+    access: Access,
+    workdir: Option<String>,
+}
+
 impl Collector<'_> {
+    fn vars<'v>(&'v self, this: &'v Value) -> Variables<'v> {
+        Variables {
+            inputs: &self.pending.inputs,
+            this,
+            runtime: &self.runtime,
+        }
+    }
+
+    fn evaluate(&self, expression: &Expression, this: &Value) -> Result<Value, String> {
+        self.pending.evaluator.evaluate(expression, self.vars(this))
+    }
+
+    /// Gives every file object of a value its host location, as cwltool's `revmap_file`.
+    fn revmap_all(&self, value: &mut Value) -> Result<(), String> {
+        match value {
+            Value::List(items) => {
+                for item in items {
+                    self.revmap_all(item)?;
+                }
+                Ok(())
+            }
+            Value::Map(_) if value.is_file_like() => {
+                self.revmap(value)?;
+                if let Value::Map(map) = value {
+                    for key in ["secondaryFiles", "listing"] {
+                        if let Some(inner) = map.get_mut(key) {
+                            self.revmap_all(inner)?;
+                        }
+                    }
+                }
+                Ok(())
+            }
+            Value::Map(map) => {
+                for (_, item) in map.iter_mut() {
+                    self.revmap_all(item)?;
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn revmap(&self, value: &mut Value) -> Result<(), String> {
+        let Value::Map(map) = value else {
+            return Ok(());
+        };
+        let location = map
+            .get("location")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let mut path = map.get("path").and_then(Value::as_str).map(str::to_owned);
+        // A `file:` location inside the output directory of the container, as
+        // `cwl.output.json` may give one, names a path there.
+        let outdir = &self.pending.outdir;
+        if path.is_none()
+            && let Some(file_path) = location.as_deref().and_then(iri::file_path)
+            && file_path.starts_with(outdir)
+        {
+            path = Some(file_path.to_string_lossy().into_owned());
+        }
+        match (location, path) {
+            (Some(location), None) => {
+                if !iri::has_scheme(&location) && !location.starts_with("_:") {
+                    let base = self.workdir.clone().unwrap_or_default();
+                    let joined = iri::file_url(&Path::new(&base).join(&location));
+                    map.insert("location".into(), Value::String(joined));
+                }
+                Ok(())
+            }
+            (_, Some(path)) => {
+                map.shift_remove("dirname");
+                let outdir = &self.pending.outdir;
+                let absolute = if path.starts_with('/') {
+                    path.clone()
+                } else {
+                    format!("{outdir}/{path}")
+                };
+                map.shift_remove("path");
+                if !map.contains_key("basename") {
+                    map.insert(
+                        "basename".into(),
+                        Value::String(files::basename_of(&absolute)),
+                    );
+                }
+                let location = if let Some(original) = self.pending.staged.get(&absolute) {
+                    original.clone()
+                } else if absolute == *outdir || absolute.starts_with(&format!("{outdir}/")) {
+                    let relative = absolute[outdir.len()..].trim_start_matches('/');
+                    let base = self.workdir.clone().unwrap_or_default();
+                    iri::file_url(&Path::new(&base).join(relative))
+                } else if absolute.starts_with(TMPDIR) || absolute.starts_with(STAGING) {
+                    return Err(format!(
+                        "the output `{path}` is outside the output directory"
+                    ));
+                } else {
+                    // A path from the host, such as a file in a mock work folder.
+                    iri::file_url(Path::new(&absolute))
+                };
+                map.insert("location".into(), Value::String(location));
+                // Keep the container path for expressions that come after, like secondaryFiles.
+                map.insert("path".into(), Value::String(absolute));
+                Ok(())
+            }
+            (None, None) => Ok(()),
+        }
+    }
+
+    /// Adds size and checksum to the files of a value that lack them.
+    fn checksums(&self, value: &mut Value) -> Result<(), String> {
+        let access = self.access;
+        let mut error = None;
+        files::visit_files(value, &mut |file| {
+            let is_file = file.get("class").and_then(Value::as_str) == Some("File");
+            if is_file
+                && !file.contains_key("checksum")
+                && let Err(message) = access.add_checksum(file)
+            {
+                error.get_or_insert(message);
+            }
+        });
+        match error {
+            Some(message) => Err(message),
+            None => Ok(()),
+        }
+    }
+
     /// The value of an output of an `Operation`: the file named after it, or a placeholder.
     fn operation(&self, output: &OutputParameter) -> Result<Value, String> {
         let name = short_name(&output.id);

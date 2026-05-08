@@ -1175,7 +1175,16 @@ pub fn install(globals: &Rc<Scope>, state: &Rc<RefCell<State>>) {
     );
     globals.set(
         "from_queue",
-        Value::builtin("from_queue", |_, _| Err(Error::unsupported("from_queue()"))),
+        // The inputs from a queue that code fills. Threads that fill it ran when they
+        // started, so the queue already holds all items up to the sentinel.
+        Value::builtin("from_queue", |_, mut args| {
+            let queue = args.take(0, "queue").unwrap_or(Value::None);
+            let sentinel = args.take(1, "finish_sentinel").unwrap_or(Value::None);
+            match python_evaluator::modules::system::drain_queue(&queue, &sentinel) {
+                Some(items) => Ok(Value::list(items)),
+                None => Err(Error::type_error("from_queue() needs a queue.Queue")),
+            }
+        }),
     );
     globals.set(
         "flag",

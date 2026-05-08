@@ -11,7 +11,8 @@ mod files;
 pub(crate) mod misc;
 mod os;
 pub(crate) mod re;
-mod system;
+pub mod system;
+mod template;
 mod urllib;
 
 use std::rc::Rc;

@@ -184,8 +184,8 @@ pub fn attribute(this: &Value, data: SeriesData, name: &str) -> Option<Value> {
                 .collect();
             Ok(Series::from_data(data.with_values(values)))
         }),
-        "astype" => series_method(this, name, |interpreter, data, args| {
-            let kind = args.get(0).cloned().unwrap_or(Value::None);
+        "astype" => series_method(this, name, |interpreter, data, mut args| {
+            let kind = args.take(0, "dtype").unwrap_or(Value::None);
             let values = super::cast_values(interpreter, &data.values, &kind)?;
             Ok(Series::from_data(data.with_values(values)))
         }),
@@ -197,6 +197,28 @@ pub fn attribute(this: &Value, data: SeriesData, name: &str) -> Option<Value> {
         "replace" => series_method(this, name, |interpreter, data, args| {
             let values = super::replace_values(interpreter, &data.values, &args)?;
             Ok(Series::from_data(data.with_values(values)))
+        }),
+        "explode" => series_method(this, name, |interpreter, data, _| {
+            // One row per item of a list; an empty list gives one missing value.
+            let mut values = Vec::new();
+            let mut positions = Vec::new();
+            for (position, value) in data.values.iter().enumerate() {
+                let items = match value.plain() {
+                    Value::List(_) | Value::Tuple(_) => interpreter.iterate(value)?,
+                    _ => vec![value.clone()],
+                };
+                if items.is_empty() {
+                    values.push(nan());
+                    positions.push(position);
+                }
+                for item in items {
+                    values.push(item);
+                    positions.push(position);
+                }
+            }
+            let mut exploded = data.take(&positions);
+            exploded.values = values;
+            Ok(Series::from_data(exploded))
         }),
         "value_counts" => series_method(this, name, value_counts),
         "drop_duplicates" => series_method(this, name, |_, data, _| {

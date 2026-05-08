@@ -504,8 +504,15 @@ pub fn string() -> Vec<(&'static str, Value)> {
         ),
         (
             "Template",
-            function("Template", |_, _| {
-                Err(Error::unsupported("string.Template"))
+            function("Template", |interpreter, args| {
+                let text = interpreter.to_str(&args.get(0).cloned().unwrap_or(Value::None))?;
+                Ok(super::template::Template::value(text))
+            }),
+        ),
+        (
+            "Formatter",
+            function("Formatter", |_, _| {
+                Ok(Value::native(super::template::Formatter))
             }),
         ),
     ]
@@ -906,6 +913,10 @@ pub fn platform() -> Vec<(&'static str, Value)> {
             function("machine", |_, _| Ok(Value::str("x86_64"))),
         ),
         ("node", function("node", |_, _| Ok(Value::str("localhost")))),
+        (
+            "version",
+            function("version", |_, _| Ok(Value::str("#1 SMP"))),
+        ),
         (
             "platform",
             function("platform", |_, _| Ok(Value::str("Linux-6.0.0-x86_64"))),

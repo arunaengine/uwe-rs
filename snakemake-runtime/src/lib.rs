@@ -10,6 +10,7 @@ mod driver;
 mod files;
 mod functions;
 mod iofile;
+mod ioutils;
 mod namespace;
 mod objects;
 mod pathvars;

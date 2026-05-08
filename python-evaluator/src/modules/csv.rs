@@ -3,11 +3,13 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::any::Any;
+use std::cell::RefCell;
+use std::collections::VecDeque;
 
 use super::function;
 use crate::error::Error;
 use crate::interpreter::Interpreter;
-use crate::value::{Args, Dict, Native, Value};
+use crate::value::{Args, Dict, Key, Native, Value};
 
 /// Splits one line of CSV into fields, as `csv.reader` does with the default dialect.
 pub fn split_csv_line(line: &str, delimiter: char, quote: Option<char>) -> Vec<String> {
@@ -86,13 +88,19 @@ fn csv_dialect(
     args: &mut Args,
 ) -> Result<(char, Option<char>), Error> {
     let mut delimiter = ',';
+    let mut dialect_quote = Some('"');
     if let Some(dialect) = args
         .take_keyword("dialect")
         .or_else(|| args.positional.get(1).cloned())
-        && let Some(name) = dialect.as_str()
-        && name == "excel-tab"
     {
-        delimiter = '\t';
+        if dialect.as_str() == Some("excel-tab") {
+            delimiter = '\t';
+        }
+        // A dialect object, like one that `Sniffer.sniff` gives.
+        if let Some(sniffed) = dialect.as_native::<Dialect>() {
+            delimiter = sniffed.delimiter;
+            dialect_quote = sniffed.quote;
+        }
     }
     if let Some(value) = args.take_keyword("delimiter") {
         delimiter = interpreter.to_str(&value)?.chars().next().unwrap_or(',');
@@ -100,7 +108,7 @@ fn csv_dialect(
     let quote = match args.take_keyword("quotechar") {
         Some(value) if value.is_none() => None,
         Some(value) => interpreter.to_str(&value)?.chars().next(),
-        None => Some('"'),
+        None => dialect_quote,
     };
     let quote = match args.take_keyword("quoting") {
         Some(Value::Int(3)) => None,
@@ -244,32 +252,22 @@ pub fn csv() -> Vec<(&'static str, Value)> {
                     .first()
                     .cloned()
                     .ok_or_else(|| Error::type_error("DictReader() missing file"))?;
-                let mut rows = csv_rows(interpreter, &source, delimiter, quote)?.into_iter();
-                let header: Vec<String> = match fieldnames {
-                    Some(names) if !names.is_none() => interpreter
-                        .iterate(&names)?
-                        .iter()
-                        .map(|name| interpreter.to_str(name))
-                        .collect::<Result<_, _>>()?,
-                    _ => rows.next().unwrap_or_default(),
+                let mut rows: VecDeque<Vec<String>> =
+                    csv_rows(interpreter, &source, delimiter, quote)?.into();
+                let header: Vec<Value> = match fieldnames {
+                    Some(names) if !names.is_none() => interpreter.iterate(&names)?,
+                    _ => rows
+                        .pop_front()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(Value::str)
+                        .collect(),
                 };
-                let mut records = Vec::new();
-                for row in rows {
-                    if row.len() == 1 && row[0].is_empty() {
-                        continue;
-                    }
-                    let mut dict = Dict::default();
-                    for (index, name) in header.iter().enumerate() {
-                        let value = row
-                            .get(index)
-                            .map_or_else(|| restval.clone(), |text| Value::str(text.as_str()));
-                        dict.insert(name, value);
-                    }
-                    records.push(Value::dict(dict));
-                }
+                rows.retain(|row| !(row.len() == 1 && row[0].is_empty()));
                 Ok(Value::native(DictReader {
-                    fieldnames: header.into_iter().map(Value::str).collect(),
-                    rows: Value::iterator(records),
+                    fieldnames: RefCell::new(header),
+                    rows: RefCell::new(rows),
+                    restval,
                 }))
             }),
         ),
@@ -314,15 +312,30 @@ pub fn csv() -> Vec<(&'static str, Value)> {
         ),
         (
             "Sniffer",
-            function("Sniffer", |_, _| Err(Error::unsupported("csv.Sniffer"))),
+            function("Sniffer", |_, _| Ok(Value::native(Sniffer))),
         ),
     ]
 }
 
-/// `csv.DictReader`: an iterator of row dicts that knows its field names.
+/// `csv.DictReader`: row dicts by the field names, which code may change before it reads.
 struct DictReader {
-    fieldnames: Vec<Value>,
-    rows: Value,
+    fieldnames: RefCell<Vec<Value>>,
+    rows: RefCell<VecDeque<Vec<String>>>,
+    restval: Value,
+}
+
+impl DictReader {
+    /// A row as a dict of the current field names.
+    fn record(&self, row: Vec<String>) -> Result<Value, Error> {
+        let mut dict = Dict::default();
+        for (index, name) in self.fieldnames.borrow().iter().enumerate() {
+            let value = row
+                .get(index)
+                .map_or_else(|| self.restval.clone(), |text| Value::str(text.as_str()));
+            dict.entries.insert(Key::new(name.clone())?, value);
+        }
+        Ok(Value::dict(dict))
+    }
 }
 
 impl Native for DictReader {
@@ -334,8 +347,64 @@ impl Native for DictReader {
         self
     }
 
-    fn iterate(&self, interpreter: &mut Interpreter) -> Result<Option<Vec<Value>>, Error> {
-        interpreter.iterate(&self.rows).map(Some)
+    fn iterate(&self, _: &mut Interpreter) -> Result<Option<Vec<Value>>, Error> {
+        let rows: Vec<Vec<String>> = self.rows.borrow_mut().drain(..).collect();
+        rows.into_iter()
+            .map(|row| self.record(row))
+            .collect::<Result<Vec<_>, _>>()
+            .map(Some)
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        this: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let this = this.clone();
+        Ok(match name {
+            "fieldnames" => Some(Value::list(self.fieldnames.borrow().clone())),
+            "__next__" => Some(Value::builtin("__next__", move |_, _| {
+                let Some(reader) = this.as_native::<DictReader>() else {
+                    return Err(Error::type_error("not a DictReader"));
+                };
+                let row = reader.rows.borrow_mut().pop_front();
+                match row {
+                    Some(row) => reader.record(row),
+                    None => Err(Error::stop_iteration()),
+                }
+            })),
+            _ => None,
+        })
+    }
+
+    fn set_attribute(
+        &self,
+        interpreter: &mut Interpreter,
+        name: &str,
+        value: Value,
+    ) -> Result<bool, Error> {
+        if name != "fieldnames" {
+            return Ok(false);
+        }
+        *self.fieldnames.borrow_mut() = interpreter.iterate(&value)?;
+        Ok(true)
+    }
+}
+
+/// A dialect that `Sniffer.sniff` found.
+struct Dialect {
+    delimiter: char,
+    quote: Option<char>,
+}
+
+impl Native for Dialect {
+    fn type_name(&self) -> &str {
+        "Dialect"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 
     fn get_attribute(
@@ -344,14 +413,100 @@ impl Native for DictReader {
         _: &Value,
         name: &str,
     ) -> Result<Option<Value>, Error> {
-        let rows = self.rows.clone();
-        Ok(match name {
-            "fieldnames" => Some(Value::list(self.fieldnames.clone())),
-            "__next__" => Some(Value::builtin("__next__", move |interpreter, _| {
-                let next = interpreter.builtins.get("next").unwrap_or(Value::None);
-                interpreter.call(&next, Args::new(vec![rows.clone()]))
-            })),
-            _ => None,
-        })
+        Ok(Some(match name {
+            "delimiter" => Value::str(self.delimiter.to_string()),
+            "quotechar" => self
+                .quote
+                .map_or(Value::None, |quote| Value::str(quote.to_string())),
+            "doublequote" => Value::Bool(true),
+            "skipinitialspace" => Value::Bool(false),
+            "lineterminator" => Value::str("\r\n"),
+            "quoting" => Value::Int(0),
+            _ => return Ok(None),
+        }))
+    }
+}
+
+/// The delimiter of a sample of delimited text: of the candidates, the first that occurs the
+/// same number of times, and at least once, in each of the first lines.
+pub fn sniff_delimiter(sample: &str, candidates: &str) -> Option<char> {
+    let lines: Vec<&str> = sample
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .take(10)
+        .collect();
+    candidates.chars().find(|candidate| {
+        let counts: Vec<usize> = lines
+            .iter()
+            .map(|line| line.matches(*candidate).count())
+            .collect();
+        counts.first().is_some_and(|first| *first > 0)
+            && counts.iter().all(|count| *count == counts[0])
+    })
+}
+
+/// `csv.Sniffer`: finds the delimiter of a sample, and whether it starts with a header.
+struct Sniffer;
+
+impl Native for Sniffer {
+    fn type_name(&self) -> &str {
+        "Sniffer"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        Ok(Some(match name {
+            "sniff" => Value::builtin("sniff", |interpreter, mut args| {
+                let sample = interpreter.to_str(&args.take(0, "sample").unwrap_or(Value::None))?;
+                let candidates = match args.take(1, "delimiters") {
+                    Some(value) if !value.is_none() => interpreter.to_str(&value)?,
+                    _ => "\t,;| :".to_owned(),
+                };
+                let delimiter = sniff_delimiter(&sample, &candidates).ok_or_else(|| {
+                    let class = crate::types::library_exception("Error", "csv", "Exception");
+                    Error::from_value(crate::error::exception(
+                        &class,
+                        vec![Value::str("Could not determine delimiter")],
+                    ))
+                })?;
+                Ok(Value::native(Dialect {
+                    delimiter,
+                    quote: Some('"'),
+                }))
+            }),
+            // The first line is a header when some column holds numbers below it but not in it.
+            "has_header" => Value::builtin("has_header", |interpreter, args| {
+                let sample = interpreter.to_str(&args.get(0).cloned().unwrap_or(Value::None))?;
+                let delimiter = sniff_delimiter(&sample, "\t,;| :").unwrap_or(',');
+                let rows: Vec<Vec<String>> = sample
+                    .lines()
+                    .filter(|line| !line.is_empty())
+                    .map(|line| split_csv_line(line, delimiter, Some('"')))
+                    .collect();
+                let Some((header, body)) = rows.split_first() else {
+                    return Ok(Value::Bool(false));
+                };
+                let numeric = |text: &str| text.trim().parse::<f64>().is_ok();
+                let header_like = (0..header.len()).any(|column| {
+                    !numeric(&header[column])
+                        && !body.is_empty()
+                        && body
+                            .iter()
+                            .all(|row| row.get(column).is_some_and(|text| numeric(text)))
+                });
+                Ok(Value::Bool(
+                    header_like || header.iter().all(|cell| !numeric(cell)),
+                ))
+            }),
+            _ => return Ok(None),
+        }))
     }
 }

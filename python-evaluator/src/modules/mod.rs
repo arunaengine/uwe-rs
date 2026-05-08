@@ -192,6 +192,7 @@ pub fn native(interpreter: &mut Interpreter, name: &str) -> Result<Option<Value>
         "threading" => system::threading(),
         "multiprocessing" => system::multiprocessing(),
         "pwd" => system::pwd(),
+        "psutil" => system::psutil(),
         "queue" => system::queue(),
         "pickle" => system::pickle(),
         "fileinput" => files::fileinput(),

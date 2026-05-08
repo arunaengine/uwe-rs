@@ -230,8 +230,89 @@ fn cpu_count(_: &mut Interpreter, _: Args) -> Result<Value, Error> {
     ))
 }
 
+/// A thread. Planning runs in one thread and `time.sleep` does not wait, so `start` runs the
+/// target at once, and the thread has ended when `start` returns.
+struct Thread {
+    target: Value,
+    args: Value,
+    kwargs: Value,
+}
+
+impl Native for Thread {
+    fn type_name(&self) -> &str {
+        "Thread"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        this: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        let this = this.clone();
+        Ok(Some(match name {
+            "start" | "run" => Value::builtin(name, move |interpreter, _| {
+                let Some(thread) = this.as_native::<Thread>() else {
+                    return Err(Error::type_error("not a thread"));
+                };
+                if thread.target.is_none() {
+                    return Ok(Value::None);
+                }
+                let mut call = Args::new(interpreter.iterate(&thread.args)?);
+                for (key, value) in interpreter.mapping_items(&thread.kwargs)? {
+                    call.keywords
+                        .push((interpreter.to_str(&key)?.into(), value));
+                }
+                interpreter.call(&thread.target, call)?;
+                Ok(Value::None)
+            }),
+            "join" => Value::builtin(name, |_, _| Ok(Value::None)),
+            "is_alive" => Value::builtin(name, |_, _| Ok(Value::Bool(false))),
+            "daemon" => Value::Bool(false),
+            "name" => Value::str("Thread-1"),
+            _ => return Ok(None),
+        }))
+    }
+
+    fn set_attribute(&self, _: &mut Interpreter, name: &str, _: Value) -> Result<bool, Error> {
+        Ok(matches!(name, "daemon" | "name"))
+    }
+}
+
+fn new_thread(_: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
+    args.take(0, "group");
+    Ok(Value::native(Thread {
+        target: args.take(1, "target").unwrap_or(Value::None),
+        args: args.take(3, "args").unwrap_or(Value::tuple(Vec::new())),
+        kwargs: args
+            .take(4, "kwargs")
+            .filter(|value| !value.is_none())
+            .unwrap_or_else(|| Value::dict(Default::default())),
+    }))
+}
+
+/// Takes the items of a queue made by `queue.Queue`, until a sentinel, for Snakemake's
+/// `from_queue`.
+pub fn drain_queue(queue: &Value, sentinel: &Value) -> Option<Vec<Value>> {
+    let queue = queue.as_native::<Queue>()?;
+    let mut items = queue.items.borrow_mut();
+    let mut taken = Vec::new();
+    while let Some(item) = items.pop_front() {
+        if item.is(sentinel) {
+            break;
+        }
+        taken.push(item);
+    }
+    Some(taken)
+}
+
 pub fn threading() -> Vec<(&'static str, Value)> {
     vec![
+        ("Thread", function("Thread", new_thread)),
         ("Lock", function("Lock", new_lock)),
         ("RLock", function("RLock", new_lock)),
         (
@@ -266,5 +347,48 @@ pub fn pickle() -> Vec<(&'static str, Value)> {
         refuse("loads"),
         refuse("dump"),
         refuse("dumps"),
+    ]
+}
+
+/// The memory of the host from `/proc/meminfo`, in bytes: total and available.
+fn host_memory() -> (i64, i64) {
+    let text = std::fs::read_to_string("/proc/meminfo").unwrap_or_default();
+    let field = |name: &str| {
+        text.lines()
+            .find(|line| line.starts_with(name))
+            .and_then(|line| line.split_whitespace().nth(1))
+            .and_then(|kilobytes| kilobytes.parse::<i64>().ok())
+            .map(|kilobytes| kilobytes * 1024)
+    };
+    let total = field("MemTotal:").unwrap_or(16 << 30);
+    (total, field("MemAvailable:").unwrap_or(total))
+}
+
+pub fn psutil() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "virtual_memory",
+            function("virtual_memory", |_, _| {
+                let (total, available) = host_memory();
+                let fields: Vec<String> = ["total", "available", "percent", "used", "free"]
+                    .iter()
+                    .map(|field| (*field).to_owned())
+                    .collect();
+                let used = total - available;
+                let values = vec![
+                    Value::Int(total),
+                    Value::Int(available),
+                    Value::Float((used as f64 / total.max(1) as f64 * 1000.0).round() / 10.0),
+                    Value::Int(used),
+                    Value::Int(available),
+                ];
+                Ok(
+                    super::collections::named_tuples("svmem", &fields, vec![values])
+                        .pop()
+                        .unwrap_or(Value::None),
+                )
+            }),
+        ),
+        ("cpu_count", function("cpu_count", cpu_count)),
     ]
 }

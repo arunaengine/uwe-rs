@@ -927,7 +927,7 @@ fn fnmatch_regex(pattern: &str) -> String {
 
 /// `input`, `output`, `params` and `resources` used outside of rule bodies: attribute and
 /// item access that is resolved per job, like Snakemake's `RuleItemProxy`.
-struct RuleItemProxy(&'static str);
+pub struct RuleItemProxy(pub &'static str);
 
 impl Native for RuleItemProxy {
     fn type_name(&self) -> &str {
@@ -1204,37 +1204,7 @@ pub fn install(globals: &Rc<Scope>, state: &Rc<RefCell<State>>) {
             Ok(Value::Bool(interpreter.host.stat(&resolved).is_some()))
         }),
     );
-    globals.set(
-        "flatten",
-        Value::builtin("flatten", |interpreter, args| {
-            fn walk(
-                interpreter: &mut Interpreter,
-                value: &Value,
-                into: &mut Vec<Value>,
-            ) -> Result<(), Error> {
-                match value.plain() {
-                    Value::List(_) | Value::Tuple(_) => {
-                        for item in interpreter.iterate(value)? {
-                            walk(interpreter, &item, into)?;
-                        }
-                    }
-                    _ => into.push(value.clone()),
-                }
-                Ok(())
-            }
-            let mut flat = Vec::new();
-            for value in &args.positional {
-                walk(interpreter, value, &mut flat)?;
-            }
-            Ok(Value::list(flat))
-        }),
-    );
-    globals.set(
-        "parse_input",
-        Value::builtin("parse_input", |_, _| {
-            Err(Error::unsupported("parse_input()"))
-        }),
-    );
+    crate::ioutils::install(globals);
     for (name, kind) in [
         ("input", "input"),
         ("output", "output"),

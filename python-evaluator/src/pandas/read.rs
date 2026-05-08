@@ -72,26 +72,6 @@ fn text_option(
     }
 }
 
-/// The separator of a sample of the text, as the Python engine sniffs it for `sep=None`.
-fn sniff(text: &str) -> char {
-    let lines: Vec<&str> = text
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .take(10)
-        .collect();
-    ['\t', ',', ';', '|', ' ']
-        .into_iter()
-        .find(|candidate| {
-            let counts: Vec<usize> = lines
-                .iter()
-                .map(|line| line.matches(*candidate).count())
-                .collect();
-            counts.first().is_some_and(|first| *first > 0)
-                && counts.iter().all(|count| *count == counts[0])
-        })
-        .unwrap_or(',')
-}
-
 fn read(
     interpreter: &mut Interpreter,
     mut args: Args,
@@ -105,7 +85,11 @@ fn read(
         .take_keyword("sep")
         .or_else(|| args.take_keyword("delimiter"))
     {
-        Some(value) if value.is_none() => Some(sniff(&text).to_string()),
+        Some(value) if value.is_none() => Some(
+            crate::modules::csv::sniff_delimiter(&text, "\t,;| ")
+                .unwrap_or(',')
+                .to_string(),
+        ),
         Some(value) => Some(interpreter.to_str(&value)?),
         None => None,
     };

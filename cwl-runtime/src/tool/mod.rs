@@ -13,14 +13,12 @@ use cwl_parser::model::{
     Argument, Class, Dynamic, Expression, LoadListing, OutputBinding, Process, RequirementClass,
     SecondaryFile, Type, Version, short_name,
 };
-use workflow_graph::mock::glob_matches;
 use workflow_graph::{Outcome, OutputFile, Resources, Task, TaskId};
 
 use crate::binding::{self, Binder, Bound, Key};
 use crate::expression::{Evaluator, Variables};
 use crate::files::{self, Access};
 use crate::inputs::has_code;
-use crate::placeholder;
 use crate::scope::Scope;
 use crate::types::Types;
 use crate::value::{Map, Value};
@@ -642,110 +640,6 @@ impl Collector<'_> {
         self.pending.evaluator.evaluate(expression, self.vars(this))
     }
 
-    /// The outcome files a glob pattern matches, sorted, with `.` for the work folder.
-    fn matches(&self, pattern: &str) -> Vec<OutputFile> {
-        if pattern == "." {
-            return match &self.workdir {
-                Some(folder) => vec![OutputFile {
-                    path: ".".into(),
-                    location: folder.into(),
-                    directory: true,
-                }],
-                None => Vec::new(),
-            };
-        }
-        let mut found: Vec<OutputFile> = Vec::new();
-        for file in &self.outcome.files {
-            let path = file.path.trim_end_matches('/');
-            if glob_matches(pattern, path) {
-                found.push(OutputFile {
-                    path: path.to_owned(),
-                    location: file.location.clone(),
-                    directory: file.directory || file.location.is_dir(),
-                });
-            } else if file.directory || file.location.is_dir() {
-                // A folder the executor gave back may hold what the pattern names.
-                for (relative, location, directory) in walk(&file.location, path) {
-                    if glob_matches(pattern, &relative) {
-                        found.push(OutputFile {
-                            path: relative,
-                            location,
-                            directory,
-                        });
-                    }
-                }
-            }
-        }
-        found.sort_by(|a, b| a.path.cmp(&b.path));
-        found.dedup_by(|a, b| a.path == b.path);
-        found
-    }
-
-    /// In a mock run, the file that the mock names after a bare wildcard, like `mock` for `*`,
-    /// has no extension; its name takes the one the output suggests, as the tool's file has.
-    fn mock_extension(
-        &self,
-        object: &mut Value,
-        file: &OutputFile,
-        pattern: &str,
-        name: &str,
-        format: Option<&Expression>,
-        secondary: &[SecondaryFile],
-    ) {
-        let generic = workflow_graph::mock::file_name(pattern);
-        let bare = generic != pattern && files::split_extension(&generic).1.is_empty();
-        if !self.access.assume_present || !bare || file.path != generic {
-            return;
-        }
-        let (Value::Map(map), Some(extension)) = (
-            object,
-            placeholder::suggested_extension(name, format, secondary),
-        ) else {
-            return;
-        };
-        map.insert(
-            "basename".into(),
-            Value::String(format!("{generic}{extension}")),
-        );
-        map.insert("nameroot".into(), Value::String(generic));
-        map.insert("nameext".into(), Value::string(extension));
-    }
-
-    /// Fails for a matched file that is a symbolic link to a place outside the output
-    /// directory, which the task cannot give back.
-    fn check_link(&self, file: &OutputFile) -> Result<(), String> {
-        let Ok(target) = std::fs::read_link(&file.location) else {
-            return Ok(());
-        };
-        let outdir = Path::new(&self.pending.outdir);
-        let inside = if target.is_absolute() {
-            target.starts_with(outdir)
-                || self
-                    .workdir
-                    .as_ref()
-                    .is_some_and(|folder| target.starts_with(folder))
-        } else {
-            // A relative target may climb at most to the output directory.
-            let mut depth = Path::new(&file.path).components().count() as isize - 1;
-            target.components().all(|part| {
-                match part {
-                    std::path::Component::ParentDir => depth -= 1,
-                    std::path::Component::Normal(_) => depth += 1,
-                    _ => {}
-                }
-                depth >= 0
-            })
-        };
-        if inside {
-            return Ok(());
-        }
-        Err(format!(
-            "the output `{}` links to `{}`, outside the output directory",
-            file.path,
-            target.display()
-        ))
-    }
-
     /// The file object of a matched file, with contents, listing and checksum as asked.
     fn file_object(&self, file: &OutputFile, binding: &OutputBinding) -> Result<Value, String> {
         let class = if file.directory { "Directory" } else { "File" };
@@ -1009,33 +903,6 @@ fn reads_contents(expression: &Expression) -> bool {
         | cwl_parser::model::Part::Javascript(code)
         | cwl_parser::model::Part::Function(code) => code.contains("contents"),
     })
-}
-
-/// The files and folders below a folder, relative to `prefix`.
-fn walk(folder: &Path, prefix: &str) -> Vec<(String, std::path::PathBuf, bool)> {
-    let mut found = Vec::new();
-    let Ok(entries) = std::fs::read_dir(folder) else {
-        return found;
-    };
-    let mut paths: Vec<_> = entries.flatten().map(|entry| entry.path()).collect();
-    paths.sort();
-    for path in paths {
-        let name = path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let relative = if prefix.is_empty() || prefix == "." {
-            name
-        } else {
-            format!("{prefix}/{name}")
-        };
-        let directory = path.is_dir();
-        if directory {
-            found.extend(walk(&path, &relative));
-        }
-        found.push((relative, path, directory));
-    }
-    found
 }
 
 #[cfg(test)]

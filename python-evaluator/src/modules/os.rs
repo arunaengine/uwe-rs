@@ -244,6 +244,21 @@ pub fn os(interpreter: &mut Interpreter) -> Result<Vec<(&'static str, Value)>, E
             }),
         ),
         (
+            "strerror",
+            function("strerror", |_, args| {
+                let code = args.get(0).and_then(Value::as_int).unwrap_or(0);
+                let error = std::io::Error::from_raw_os_error(code as i32);
+                let text = error.to_string();
+                // The text without Rust's " (os error N)".
+                let text = text
+                    .split(" (os error")
+                    .next()
+                    .unwrap_or_default()
+                    .to_owned();
+                Ok(Value::str(text))
+            }),
+        ),
+        (
             "system",
             function("system", |_, _| {
                 Err(Error::unsupported(
@@ -1168,7 +1183,7 @@ impl PathObject {
         PathObject { path }
     }
 
-    fn value(text: &str) -> Value {
+    pub fn value(text: &str) -> Value {
         Value::native(PathObject::new(text))
     }
 
@@ -1627,9 +1642,31 @@ impl Native for PathClass {
                 Ok(PathObject::value(&crate::host::expand_home("~")))
             })),
             "__name__" => Some(Value::str("Path")),
+            // A method taken from the class, like `Path.absolute(path)`, gets its path as the
+            // first argument.
             _ => {
-                let _ = interpreter;
-                None
+                let probe = Value::native(PathObject::new("."));
+                if PathObject::new(".")
+                    .get_attribute(interpreter, &probe, name)?
+                    .is_none()
+                {
+                    return Ok(None);
+                }
+                let method = name.to_owned();
+                Some(Value::builtin(name, move |interpreter, mut args| {
+                    if args.positional.is_empty() {
+                        return Err(Error::type_error(format!(
+                            "Path.{method}() needs a path as its first argument"
+                        )));
+                    }
+                    let path = args.positional.remove(0);
+                    let path = match path.as_native::<PathObject>() {
+                        Some(_) => path,
+                        None => Value::native(PathObject::new(&path_text(interpreter, &path)?)),
+                    };
+                    let bound = interpreter.get_attribute(&path, &method)?;
+                    interpreter.call(&bound, args)
+                }))
             }
         })
     }

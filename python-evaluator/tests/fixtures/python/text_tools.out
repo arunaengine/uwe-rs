@@ -1,0 +1,10 @@
+A/1_$x B/${unit}_$x $sample/${unit}_$$x
+KeyError 'unit'
+[('', 'a', '', None), ('/', 'b.c', '', None), ('-x', 'd[0]', '>3', None), ('!', None, None, None)]
+1-n
+; True
+[['id', 'value'], ['a', '1'], ['b', '2']]
+['id', 'value'] [{'id': 'x', 'value': '1'}]
+No such file or directory Permission denied
+a/b.txt /x/y r.csv
+3 f0.txt False

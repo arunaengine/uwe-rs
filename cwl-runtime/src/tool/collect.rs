@@ -7,9 +7,12 @@
 use std::path::Path;
 
 use cwl_parser::iri;
-use cwl_parser::model::{Class, OutputBinding, OutputParameter, Type, short_name};
+use cwl_parser::model::{
+    Class, Expression, OutputBinding, OutputParameter, SecondaryFile, Type, short_name,
+};
 use workflow_graph::Outcome;
 
+use super::outputs::{classes, globs};
 use super::{Collector, OUTPUT_JSON, Pending};
 use crate::files;
 use crate::placeholder;
@@ -217,4 +220,167 @@ impl Collector<'_> {
         });
         Ok(value)
     }
+
+    /// cwltool's `collect_output` for one output or record field.
+    fn output(
+        &self,
+        name: &str,
+        value_type: &Type,
+        binding: Option<&OutputBinding>,
+        secondary: &[SecondaryFile],
+        format: Option<&Expression>,
+    ) -> Result<Value, String> {
+        let types = &self.pending.types;
+        let resolved = types.resolve(value_type);
+        let binding = match (binding, resolved) {
+            (Some(binding), _) => Some(binding.clone()),
+            (None, Type::Stdout | Type::Stderr) => {
+                let name = if matches!(resolved, Type::Stdout) {
+                    &self.pending.stdout
+                } else {
+                    &self.pending.stderr
+                };
+                name.as_ref().map(|name| OutputBinding {
+                    glob: vec![Expression {
+                        text: name.clone(),
+                        parts: vec![cwl_parser::model::Part::Text(name.clone())],
+                    }],
+                    load_contents: None,
+                    load_listing: None,
+                    output_eval: None,
+                })
+            }
+            _ => None,
+        };
+        let Some(binding) = binding else {
+            if let Type::Record(record) = resolved {
+                let mut map = Map::new();
+                for field in &record.fields {
+                    let value = self.output(
+                        &field.name,
+                        &field.value_type,
+                        field.output_binding.as_ref(),
+                        &field.secondary_files,
+                        field.format.first(),
+                    )?;
+                    map.insert(field.name.clone(), value);
+                }
+                return Ok(Value::Map(map));
+            }
+            return Ok(Value::Null);
+        };
+        let null = Value::Null;
+        let patterns = globs(
+            &binding,
+            &self.pending.evaluator,
+            self.vars(&null),
+            &self.pending.outdir,
+        )?;
+        // Without `outputEval` the matches are the value, so they must be of a class the
+        // output takes, as cwltool's type check of outputs finds.
+        let (files, directories) = classes(types, value_type);
+        let checked = binding.output_eval.is_none() && files != directories;
+        let mut found: Vec<Value> = Vec::new();
+        for pattern in &patterns {
+            for file in self.matches(pattern) {
+                if checked && file.directory != directories {
+                    let (class, taken) = if file.directory {
+                        ("directory", "files")
+                    } else {
+                        ("file", "directories")
+                    };
+                    return Err(format!(
+                        "the glob `{pattern}` matches the {class} `{}`, but the output takes {taken}",
+                        file.path
+                    ));
+                }
+                self.check_link(&file)?;
+                let mut object = self.file_object(&file, &binding)?;
+                self.mock_extension(&mut object, &file, pattern, name, format, secondary);
+                found.push(object);
+            }
+        }
+        let (optional, single) = match resolved {
+            Type::Union(members) => (
+                members.contains(&Type::Null),
+                members
+                    .iter()
+                    .any(|member| matches!(member, Type::File | Type::Directory)),
+            ),
+            Type::File | Type::Directory | Type::Stdout | Type::Stderr => (false, true),
+            _ => (false, false),
+        };
+        let mut result = match &binding.output_eval {
+            Some(expression) => match self.evaluate(expression, &Value::List(found)) {
+                Ok(value) => value,
+                // Expressions that read the files of a mock run read empty files and may
+                // fail; the output then gets a placeholder, as when it does not fit its type.
+                Err(_) if self.access.assume_present && reads_self(expression) => Value::Null,
+                Err(error) => return Err(error),
+            },
+            None => Value::List(found),
+        };
+        if single {
+            match result {
+                Value::List(items) if items.is_empty() => {
+                    if !optional && !self.access.assume_present {
+                        return Err(format!("no output file matches {patterns:?}"));
+                    }
+                    result = Value::Null;
+                }
+                Value::List(mut items) if items.len() == 1 => result = items.remove(0),
+                Value::List(items) if !self.access.assume_present => {
+                    return Err(format!(
+                        "{} files match {patterns:?}, where one is expected",
+                        items.len()
+                    ));
+                }
+                Value::List(mut items) => result = items.remove(0),
+                other => result = other,
+            }
+        }
+        if !secondary.is_empty() {
+            self.secondary_files(&mut result, secondary)?;
+        }
+        if let Some(format) = format {
+            let mut primaries: Vec<&mut Value> = match &mut result {
+                Value::List(items) => items.iter_mut().collect(),
+                other => vec![other],
+            };
+            for primary in primaries.iter_mut() {
+                if !primary.is_file() {
+                    continue;
+                }
+                let value = match self.evaluate(format, primary) {
+                    Ok(value) => value,
+                    // The format is metadata; over the inputs of a mock run it may not exist.
+                    Err(_) if self.access.assume_present => Value::Null,
+                    Err(error) => return Err(error),
+                };
+                if let (Value::Map(map), Value::String(format)) = (&mut **primary, value) {
+                    map.insert("format".into(), Value::String(format));
+                }
+            }
+        }
+        self.revmap_all(&mut result)?;
+        // cwltool keeps 0 and "" but turns other empty results of optional outputs into null.
+        let kept = matches!(
+            result,
+            Value::Integer(0) | Value::Bool(false) | Value::String(_)
+        ) || matches!(result, Value::Float(number) if number == 0.0);
+        if optional && !result.is_truthy() && !kept {
+            return Ok(Value::Null);
+        }
+        Ok(result)
+    }
+}
+
+/// Whether an expression reads `self`, the files an output binding found.
+fn reads_self(expression: &Expression) -> bool {
+    expression.parts.iter().any(|part| match part {
+        cwl_parser::model::Part::Text(_) => false,
+        cwl_parser::model::Part::Reference(code)
+        | cwl_parser::model::Part::Javascript(code)
+        | cwl_parser::model::Part::Function(code) => code.contains("self"),
+    })
 }

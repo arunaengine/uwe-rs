@@ -677,6 +677,11 @@ impl Native for CompareKey {
     }
 }
 
+/// Whether a value is an object of a `namedtuple` class.
+pub fn is_named_tuple(value: &Value) -> bool {
+    value.as_native::<NamedTuple>().is_some()
+}
+
 /// Named tuples of one new class, one per list of values, as pandas' `itertuples` makes them.
 pub fn named_tuples(name: &str, fields: &[String], rows: Vec<Vec<Value>>) -> Vec<Value> {
     let class = Rc::new(NamedTupleClass {

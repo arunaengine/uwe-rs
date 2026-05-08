@@ -190,6 +190,8 @@ fn flag_function(name: &'static str) -> Value {
 fn expand_values(interpreter: &mut Interpreter, value: &Value) -> Result<Vec<Value>, Error> {
     Ok(match value.plain() {
         Value::Str(_) => vec![value.clone()],
+        // A named tuple, like a row that `lookup` gives, is one value.
+        _ if python_evaluator::modules::collections::is_named_tuple(value) => vec![value.clone()],
         Value::Native(object) if object.type_name() == "PosixPath" => vec![value.clone()],
         Value::Native(object) if object.as_any().is::<NamedList>() => interpreter.iterate(value)?,
         Value::Native(object) if object.length().is_some() && !object.instance_of("tuple") => {

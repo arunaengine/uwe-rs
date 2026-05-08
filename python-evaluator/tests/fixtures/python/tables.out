@@ -57,3 +57,5 @@ ValueError cannot insert sample, already exists
 ['a.fq:1', 'b.fq:1', 'c.fq:2', 'd.fq:1']
 ['one', 'one', 'two', 'one'] [10, 10, 20, 10]
 False True default ['sample', 'unit']
+['c.fq'] ['a.fq', 'c.fq']
+['a', 'b', 'c', ''] ['1', '1', '2', '1']

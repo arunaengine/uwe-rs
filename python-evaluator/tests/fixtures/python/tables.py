@@ -92,3 +92,5 @@ print(indexed.index.unique().tolist(), list(indexed.index), indexed.index.is_uni
 print(samples.apply(lambda row: row["fq1"] + ":" + str(row["unit"]), axis=1).tolist())
 print(samples["unit"].map({1: "one", 2: "two"}).tolist(), samples["unit"].apply(lambda value: value * 10).tolist())
 print(samples.empty, pd.DataFrame().empty, samples.get("missing", "default"), list(samples)[:2])
+print(samples.query("condition == 'control' & unit == 2")["fq1"].tolist(), samples.query("unit == 2 | sample == 'A'")["fq1"].tolist())
+print(pd.Series(["a,b", "c", ""]).str.split(",").explode().tolist(), samples.astype(dtype={"unit": str})["unit"].tolist())

@@ -58,7 +58,7 @@ Loading follows Proposal B, section 5.1: read the manifest, evaluate the config,
 
 Lowering follows Proposal A, sections 3.1 and 3.2. Its passes repeat the Nextflow compiler in order: names and scopes, script structure (legacy inputs and outputs become declarations, directives are marked fixed or per task), type stripping, `LangHelpers` comparisons, `branch` and `multiMap` criteria, GString to String, and the escaping of staged paths in task scripts. Every lowered node keeps its file and span. There is no bytecode; a later compiler can start from the lowered tree if profiling asks for it.
 
-`iunctus check <pipeline>` loads and lowers a pipeline and prints every unsupported feature at once. The corpus report uses it.
+`iunctus check <pipeline>` loads and lowers a pipeline and prints every unsupported feature at once. The test-workflows report uses it.
 
 ### 3.2 Values
 
@@ -232,7 +232,7 @@ Both proposals agree on the approach (A 8, B 6). The tests per layer:
 | Layer | Tests | Reference |
 |---|---|---|
 | Values and formatting | every observed example of the Groovy spec; the high-risk checklist | batches of thousands of expressions run on the oracle, recorded as fixtures |
-| Lowering | every lint-clean nf-core file lowers or fails with a named unsupported feature | the corpus |
+| Lowering | every lint-clean nf-core file lowers or fails with a named unsupported feature | the test workflows |
 | Config | `iunctus config` against `nextflow config` for every pipeline and profile | the oracle |
 | Operators | the experiments of the channels spec; generated small programs | the oracle; order compared exactly only where Nextflow defines it |
 | Processes | `.command.sh` byte for byte up to the capture block; task counts and directives | oracle stub and real runs |
@@ -240,7 +240,7 @@ Both proposals agree on the approach (A 8, B 6). The tests per layer:
 | Resume | kills at random points; edit and resume | none |
 | Modules and pipelines | nf-test snapshots | committed by nf-core |
 
-The harness lives in `nextflow-conformance`. Oracle answers are recorded under `tests/fixtures/oracle/` of each crate with the script that recorded them; a `just` recipe records them again for a new Nextflow release. A nightly corpus report lists pipelines that load, pipelines whose stub runs complete, and the blocking features ranked by pipelines unlocked.
+The harness lives in `nextflow-conformance`. Oracle answers are recorded under `tests/fixtures/oracle/` of each crate with the script that recorded them; a `just` recipe records them again for a new Nextflow release. A nightly test-workflows report lists pipelines that load, pipelines whose stub runs complete, and the blocking features ranked by pipelines unlocked.
 
 ## 7. Milestones
 

@@ -54,12 +54,12 @@ Config files are covered in a separate document (see [Config files](#config-file
 
 ## Method
 
-### Corpus
+### Test workflows
 
-- Pipelines: the text-only nf-core corpus in `~/.cache/iunctus/corpus/nf-core-text/pipelines/<name>/`, 144 pipelines.
+- Pipelines: the text-only nf-core test workflows in `~/.cache/iunctus/test-workflows/nf-core-text/pipelines/<name>/`, 144 pipelines.
   Only `.nf`, `.config` and `nextflow_schema.json` files are present.
   This report reads only the `.nf` files.
-- Modules repo: `~/.cache/iunctus/corpus/nf-core-text/modules` (the nf-core/modules repository, `.nf` and `.config` files only), 2215 `.nf` files.
+- Modules repo: `~/.cache/iunctus/test-workflows/nf-core-text/modules` (the nf-core/modules repository, `.nf` and `.config` files only), 2215 `.nf` files.
 - 10 pipelines are DSL1 code: none of their `.nf` files defines a workflow.
   DSL1 support was removed in Nextflow 22.12.0-edge (`docs/migrations/dsl1.mdx`, line 8), so these pipelines cannot run on any current Nextflow.
   They are left out of every count below.
@@ -68,9 +68,9 @@ Config files are covered in a separate document (see [Config files](#config-file
 - That leaves **134 pipelines** with 6423 `.nf` files.
   Of these files, 3135 are the pipelines' own code and the rest are copies of nf-core modules and subworkflows (`modules/nf-core/` and `subworkflows/nf-core/`).
 
-### Corpus revision note
+### Test workflows revision note
 
-`~/.cache/iunctus/corpus/nf-core-text/revisions.txt` lists, for each pipeline, the branch and the commit that was read.
+`~/.cache/iunctus/test-workflows/nf-core-text/revisions.txt` lists, for each pipeline, the branch and the commit that was read.
 83 pipelines are at `master`, 18 at `main` and 43 at `dev`.
 The file is dated 2026-09-27.
 The commit of the modules repo is not recorded in `revisions.txt` (unverified; its files are dated 2026-09-27).
@@ -92,7 +92,7 @@ No modules repo file has a parse error.
 Section 13 lists the causes.
 
 The tool is the Rust crate `/tmp/iunctus-inventory` (`src/main.rs`).
-Run it as `inventory <corpus-root> <out.json>`.
+Run it as `inventory <test workflows-root> <out.json>`.
 The raw counts are in `/tmp/iunctus-inventory/scripts.json`.
 `report.py` turns them into the tables of this document.
 
@@ -132,7 +132,7 @@ Rows that do not fit a table are given after it as a "long tail" line in the for
 - The same text counts once per copy.
   A module vendored by 100 pipelines counts in 100 pipelines.
   The "Own code" column and the modules repo columns separate the two sources.
-- Groovy classes in a pipeline `lib/` directory are not in the text corpus.
+- Groovy classes in a pipeline `lib/` directory are not in the text test workflows.
   Calls into them (for example `WorkflowMain.initialise(...)`) are counted as class references, but their bodies are not analysed.
 
 ## 1. Definitions, includes and feature flags
@@ -548,7 +548,7 @@ Long tail, as name (pipelines/occurrences/modules repo uses): `Constants` (1/165
 Some long-tail names are not classes.
 `SizeX`, `PhysicalSizeX` and similar come from XML attribute access (`node.@SizeX`) in a file with a parse error.
 `PREPARE_GENOME` comes from an `include` inside an `if` block (also a parse error).
-Names such as `WorkflowMain`, `NfcoreTemplate`, `NfcoreSchema`, `Utils`, `Constants` and `Workflow<Pipeline>` are most likely Groovy classes in the pipeline `lib/` directory, which the text corpus does not contain (unverified).
+Names such as `WorkflowMain`, `NfcoreTemplate`, `NfcoreSchema`, `Utils`, `Constants` and `Workflow<Pipeline>` are most likely Groovy classes in the pipeline `lib/` directory, which the text test workflows does not contain (unverified).
 
 Static members used on classes (method calls end with `()`):
 
@@ -1417,13 +1417,13 @@ See nf-core-config.md.
 ## Unverified points
 
 - The commit of the modules repo copy is not recorded.
-- `WorkflowMain`, `NfcoreTemplate`, `NfcoreSchema`, `Utils`, `Constants` and the `Workflow<Pipeline>` names are assumed to be classes in the pipeline `lib/` directory, which the text corpus does not contain.
+- `WorkflowMain`, `NfcoreTemplate`, `NfcoreSchema`, `Utils`, `Constants` and the `Workflow<Pipeline>` names are assumed to be classes in the pipeline `lib/` directory, which the text test workflows does not contain.
 - The split between channel operators and value methods depends on the channel inference (section 3, the two uncertain groups).
 - The "Documented" column in section 4 matches names only.
   A name can be documented for one type (for example `first` on lists) and be used on another.
 - Getter rows in section 4 can include map keys.
   For example `name (property)` also counts `meta.name`, so it is an upper bound.
-- The strict parser was not run on the corpus.
+- The strict parser was not run on the test workflows.
   Rows marked "Not tested" or "Unverified" in section 13 were judged from the grammar only.
 - The docs show `workflow.onComplete` as a top-level statement or as a section of the entry workflow (`docs/strict-syntax.mdx`, lines 461 to 500; `docs/notifications.mdx`, lines 9 to 35).
   nf-core calls it inside a named workflow.

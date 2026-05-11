@@ -482,7 +482,7 @@ The nf-core FASTQC module ([nf-core script inventory](../../research/nf-core-inv
 6. Evaluate the entry workflow body. This builds the dataflow network (section 5.11).
 7. Apply the `output` block, then ignite the network.
 
-`iunctus check <pipeline> -profile <names>` runs steps 1 to 6 and prints every unsupported feature. With `-stub` and a built-in executor that runs stub scripts without containers, it also reaches the run-time paths. The corpus report in section 6 uses this command.
+`iunctus check <pipeline> -profile <names>` runs steps 1 to 6 and prints every unsupported feature. With `-stub` and a built-in executor that runs stub scripts without containers, it also reaches the run-time paths. The test-workflows report in section 6 uses this command.
 
 ### 5.2 Evaluator representation: a lowered tree
 
@@ -595,7 +595,7 @@ The inventory decides the order, not the documentation.
 1. **The FASTQC module and the module template** (milestone 1): the methods and operators that FASTQC, its test and the module template need, and the twenty high-risk behaviours.
 2. **All module scripts** (milestone 3): whatever `iunctus check` still reports over the 2,215 module files. The module template is uniform, so this set is small.
 3. **The pipeline template** (milestone 4): the three utility subworkflows that about 114 pipelines vendor. They need `Yaml` (load, dump, `dumpAsMap`), `JsonOutput` and `JsonSlurper`, `SimpleTemplateEngine` and `GStringTemplateEngine`, `Date` with `format`, `File`, `FilesEx.copyTo`, and `workflow.toMap()`.
-4. **Breadth** (milestone 6): the 60 value methods that 50 or more pipelines use, then the long tail, ranked by "pipelines unlocked". A pipeline is unlocked when its last missing feature is done. The nightly corpus report computes this ranking.
+4. **Breadth** (milestone 6): the 60 value methods that 50 or more pipelines use, then the long tail, ranked by "pipelines unlocked". A pipeline is unlocked when its last missing feature is done. The nightly test-workflows report computes this ranking.
 
 Some stand-ins need exact output, because their text ends up in task inputs:
 
@@ -640,7 +640,7 @@ Config files use the same evaluator in a config mode, with the names allowed by 
 | `paramsSummaryMap(workflow, parameters_schema:)` | Group non-default params by schema section. | Its YAML becomes a MultiQC input. |
 | `paramsSummaryLog`, `paramsHelp` | Log and help text. | Cosmetic. |
 
-The target is the nf-schema 2.x line that the corpus uses (2.1 to 2.8). The oracle can run the real plugin, if its archive is placed in the oracle's `NXF_HOME` in advance, which gives differential tests for sample sheet parsing. The older `nf-validation` plugin (16 pipelines) is out of scope at first.
+The target is the nf-schema 2.x line that the test workflows use (2.1 to 2.8). The oracle can run the real plugin, if its archive is placed in the oracle's `NXF_HOME` in advance, which gives differential tests for sample sheet parsing. The older `nf-validation` plugin (16 pipelines) is out of scope at first.
 
 ### 5.11 The dataflow runtime
 
@@ -725,8 +725,8 @@ Every layer has its own tests. The oracle is the reference wherever Nextflow beh
 | `content-store` | One conformance suite against a local directory, MinIO and an Aruna node: digests, versions, large files, multipart uploads, missing objects. | none |
 | Executors | One conformance suite of tasks on local processes, Docker, Podman, Funnel with MinIO, and Aruna: file names with spaces, quotes and non-ASCII characters; directories, empty directories and symbolic links; missing and optional outputs; exit codes and signals; time limits; cancellation; reconcile after the engine was killed. | none |
 | Cache and run log | Scope rules; entry validation; two runs writing one key; torn writes at every byte offset of the last record; replay gives the same event order for the same inputs. | none |
-| Evaluator | Unit tests per built-in from the research notes. Differential batches: thousands of expressions in one strict-syntax script, each printing value and class name, run by the oracle and by iunctus; lines must be equal. Generated random expression trees over typed pools of values, nightly. Every corpus file must lower without an internal error. | Batch runs of `nextflow run` on generated scripts. |
-| Config | `iunctus config` versus `nextflow config` for every corpus pipeline and profile combination whose configs pass lint. Per-process directives (cpus, memory, time, container, tag) versus the trace of oracle stub runs. | `nextflow config`, stub runs with a trace file. |
+| Evaluator | Unit tests per built-in from the research notes. Differential batches: thousands of expressions in one strict-syntax script, each printing value and class name, run by the oracle and by iunctus; lines must be equal. Generated random expression trees over typed pools of values, nightly. Every test workflows file must lower without an internal error. | Batch runs of `nextflow run` on generated scripts. |
+| Config | `iunctus config` versus `nextflow config` for every test-workflows pipeline and profile combination whose configs pass lint. Per-process directives (cpus, memory, time, container, tag) versus the trace of oracle stub runs. | `nextflow config`, stub runs with a trace file. |
 | Dataflow | The experiments in [Nextflow channels](../../research/nextflow-channels.md) as tests. The documented snippets of the Nextflow repository with their expected output. Generated small operator programs: sequences compared for ordered operators, multisets for unordered ones. | Batch runs of generated programs. |
 | Process to task | Byte identity of `.command.sh` with the oracle for every task of module and pipeline tests; stage names; output rules on synthetic manifests. | Stub and real runs. |
 | Pipelines | nf-test snapshots (stub, then real); published file lists; MD5 of files that are stable across two oracle runs; the same keys and outputs on local Docker and on TES. | Stub and real runs. |
@@ -737,13 +737,13 @@ Every layer has its own tests. The oracle is the reference wherever Nextflow beh
 
 The `nextflow-conformance` crate drives the oracle.
 
-- **Module tests.** The text-only corpus has no `.nf.test` files, snapshots, `bin/`, `templates/` or `assets/`. The corpus fetch gets a second pattern set for test runs. The harness reads the common shape of nf-core module tests: the `process { """ input[0] = ... """ }` block, the `params` block, and the test config. It writes a strict-syntax harness workflow that calls the process and dumps its outputs as JSON. The same harness runs on the oracle and on iunctus.
+- **Module tests.** The text-only test workflows have no `.nf.test` files, snapshots, `bin/`, `templates/` or `assets/`. The test-workflows fetch gets a second pattern set for test runs. The harness reads the common shape of nf-core module tests: the `process { """ input[0] = ... """ }` block, the `params` block, and the test config. It writes a strict-syntax harness workflow that calls the process and dumps its outputs as JSON. The same harness runs on the oracle and on iunctus.
 - **Script comparison.** Both engines run the harness in stub mode, and in real mode with Docker. The harness maps tasks by process name and tag, and compares `.command.sh` byte for byte. Nextflow writes `.command.sh` in each task directory. iunctus writes rendered scripts with `--dump-scripts <dir>`.
 - **Snapshots.** Output channel contents are compared with the `.snap` JSON of the test: file names, and MD5 sums for files that are stable across two oracle runs.
 - **Pipelines.** The oracle runs `-profile test,docker` with and without `-stub`. The harness compares the task list, every `.command.sh`, the published file tree, and the pipeline's nf-test snapshot.
 - **Test data.** Remote test data is fetched once into `~/.cache/iunctus/test-data`, keyed by URL and digest, and imported into test stores. Runs can then be offline.
 
-### 6.3 Corpus report
+### 6.3 Test-workflows report
 
 A nightly job runs `iunctus check` (and `-stub` with the built-in executor) on all 134 DSL2 pipelines and the modules repository. It writes a table: pipelines that load, pipelines that complete stub runs, and the blocking features ranked by pipelines unlocked. This table drives section 5.8.
 
@@ -822,13 +822,13 @@ Done when:
 
 ### M6: breadth (5 to 8 person-months)
 
-Scope: the remaining common operators and splitters, the `output` block, all error strategies, all publishing modes, the trace file, and the library long tail by the corpus ranking.
+Scope: the remaining common operators and splitters, the `output` block, all error strategies, all publishing modes, the trace file, and the library long tail by the test workflows ranking.
 
 Done when:
 
 1. Stub tests of at least 40 lint-clean pipelines whose configs load under strict syntax match the oracle.
 2. Real test profiles of at least 20 of them pass on local Docker and on TES.
-3. A support table, generated from the corpus report, is published in `docs/`.
+3. A support table, generated from the test-workflows report, is published in `docs/`.
 
 ### M7: typed syntax (2 to 3 person-months)
 
@@ -849,14 +849,14 @@ About 20 to 30 person-months. This agrees with the feasibility report: its 15 to
 | Silent drift in Groovy semantics | A task runs a different command and nothing fails. | Byte identity of every `.command.sh` with the oracle; nightly generated expression tests; the high-risk checklist from the first milestone on. |
 | Nextflow keeps changing | New syntax and behaviour every release; typed syntax becomes mandatory in nf-core by Q2 2027. | Pin the reference to 26.04; move the oracle to each stable release and rerun all differential tests; M7 is planned, not optional. |
 | Exact stand-ins (SnakeYAML output, template engines, JSON formatting, Java date patterns) | Text inside MultiQC inputs differs, so keys and reports differ. | Differential tests on the shapes nf-core produces; implement only those shapes, and reject the rest clearly. |
-| Java regular expression dialect | A pattern matches differently. | `fancy-regex` plus a translation layer; clear errors for unsupported syntax; differential tests on all patterns in the corpus. |
+| Java regular expression dialect | A pattern matches differently. | `fancy-regex` plus a translation layer; clear errors for unsupported syntax; differential tests on all patterns in the test workflows. |
 | One driver thread is too slow for very large runs | Long builds and slow resume. | Measure in M1; resolved names and call-site caches; splitters off the thread with results returned in order. The ordered event stream must stay, because determinism depends on it. |
 | `sha256sum` missing in an image | No digests for TES outputs. | Version identity from Aruna; lazy hashing by the runtime when a digest is really needed; the M0 image survey. |
 | TES servers differ, and Aruna's route is narrow | Tasks fail on some servers. | M0 probes; server profiles with capability flags; the executor conformance suite on every server. |
 | Hashing large local inputs | The first run is slow. | The stat cache; hashing while uploading; an optional metadata identity with `lineage` scope. |
 | A shared cache can hold poisoned entries | Wrong results spread to other users. | Namespaces; shared scope only for trusted stores; entries record their producer; signed entries later. |
 | nf-schema behaviour is only partly known | Sample sheets parse differently. | Differential tests against the real plugin in the oracle. |
-| Small team, three moving languages | Nextflow falls behind. | The corpus report shows the state every night; the feasibility report's standing estimate of 0.3 to 0.5 engineers for Nextflow upkeep. |
+| Small team, three moving languages | Nextflow falls behind. | The test-workflows report shows the state every night; the feasibility report's standing estimate of 0.3 to 0.5 engineers for Nextflow upkeep. |
 
 ### 8.2 Open decisions
 

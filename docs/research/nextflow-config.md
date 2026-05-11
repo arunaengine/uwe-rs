@@ -14,7 +14,7 @@ It resolves an open point of the [Nextflow research note](nextflow.md): "The exa
 - **Nextflow docs.** The `docs/` folder of the same checkout.
 - **Experiments.** Small configs and pipelines were run with the Nextflow 26.04.6 binary on the research machine (build 12646, OpenJDK 21), with `NXF_OFFLINE=true`. Experiments 1 to 18 used an empty `NXF_HOME`. Experiments 19 to 33 were added in a review pass. They used an `NXF_HOME` that held only the framework jar and no `config` file. All are listed in [Appendix A](#appendix-a-experiments). This binary is older than the checkout. Where the two could differ, the text says so.
 - **Groovy library code.** Groovy itself is not in the checkout. Where a rule depends on Groovy library code (`ConfigObject.merge`, `String.isInteger()`, `String.isFloat()`, `String as int`), it was checked by running small Groovy scripts with the Groovy 4.0.31 runtime that ships inside the 26.04.6 jar (experiment 32).
-- **Corpus.** The text-only nf-core corpus: 144 pipelines at the commits in `revisions.txt`, plus the nf-core/modules repository. Counts come from `grep`, a small scanning script and `nextflow lint` (26.04.6).
+- **Test workflows.** The text-only nf-core test workflows: 144 pipelines at the commits in `revisions.txt`, plus the nf-core/modules repository. Counts come from `grep`, a small scanning script and `nextflow lint` (26.04.6).
 - **Strict parser** means the v2 parser. It is the default: `NF.getSyntaxParserVersion()` returns `NXF_SYNTAX_PARSER` or else `v2` (`modules/nextflow/src/main/groovy/nextflow/NF.groovy:31-37`).
 - Anything that was not confirmed in source code or by an experiment is marked **unverified**. Statements marked "derived from code" were read in the source but not run.
 
@@ -210,7 +210,7 @@ Consequences:
 - Only `plugins` may be an apply block. Any other name gives "Config settings must be assigned with an equals sign (`=`)" (`ConfigAstBuilder.java:253-261`; experiment 11).
 - The only method is `id(String)` (nf-lang `PluginsDsl.java`).
 - The result is an ordered set of plugin ids under the top-level key `plugins`. Each top-level `plugins` block replaces the set. It does not add to it (`ConfigDsl.groovy:330-345`).
-- A `plugins` block inside a profile, or inside any other block, is accepted by the parser and by the checker, but it is dropped without a message. `ConfigToGroovyVisitor.transformConfigBlock` only converts assignments, blocks and includes inside a block (`ConfigToGroovyVisitor.java:99-112`). Experiment 20 shows that `profiles { p { plugins { id '...' } } }` with `-profile p` gives no `plugins` entry. No nf-core Nextflow config puts `plugins` inside a block (the only indented `plugins` blocks in the corpus are in `nf-test.config` files, which are not Nextflow configs).
+- A `plugins` block inside a profile, or inside any other block, is accepted by the parser and by the checker, but it is dropped without a message. `ConfigToGroovyVisitor.transformConfigBlock` only converts assignments, blocks and includes inside a block (`ConfigToGroovyVisitor.java:99-112`). Experiment 20 shows that `profiles { p { plugins { id '...' } } }` with `-profile p` gives no `plugins` entry. No nf-core Nextflow config puts `plugins` inside a block (the only indented `plugins` blocks in the test workflows are in `nf-test.config` files, which are not Nextflow configs).
 
 ### 3.5 `includeConfig`
 
@@ -277,7 +277,7 @@ Inside closures, more names are allowed (config `VariableScopeVisitor.java:115-1
 | `if`/`else` outside a closure | "If statements cannot be mixed with config statements" | `ConfigAstBuilder.java:348-359`; experiment 11 |
 | `try`/`catch` outside a closure | "Try-catch blocks cannot be mixed with config statements" | same |
 | `def x = ...` outside a closure | "Variable declarations cannot be mixed with config statements" | same; experiment 11 |
-| Function definitions (`def check_max(obj, type) { ... }`) | Syntax error "Unexpected input: '('" | grammar has no rule; corpus lint (experiment 33) |
+| Function definitions (`def check_max(obj, type) { ... }`) | Syntax error "Unexpected input: '('" | grammar has no rule; test-workflows lint (experiment 33) |
 | `name.path` without `= value` | "Incomplete statement" | `ConfigAstBuilder.java:342-346` |
 | `foo { bar 'x' }` (apply block other than `plugins`) | "Config settings must be assigned with an equals sign (`=`)" | `ConfigAstBuilder.java:253-261`; experiment 11 |
 | `includeConfig` inside any block other than a named profile, including directly in `profiles { }` | "Config includes are only allowed at the top-level or in a profile" (compile time) | config `VariableScopeVisitor.java:199-205`; experiments 9 and 21 |
@@ -486,7 +486,7 @@ The built-in defaults are `debug: false`, `cacheable: true`, `shell: ['/bin/bash
 - A `withName` selector is tested against each distinct name in turn. If it matches more than one, it is applied more than once. Each application can override values set by selectors that ran before it.
 - Within one step, selectors run in map order. That is file order, with one twist from section 2.2: a selector key that was already defined in an earlier file keeps its earlier position. In experiment 18, `withName: '.*'` redefined in a `-c` file still loses to `withName: 'FOO'` from `nextflow.config`, while a new `withName: 'F.*'` in the `-c` file wins.
 
-In the corpus (144 pipelines plus nf-core/modules) there are 12,527 selectors. 1,826 contain `*`. Of these, 1,755 contain `.*`. 254 use `|`. One uses a non-capturing group `(?:...)`. None uses negation, back-references or look-around. 71 selectors use `*` without a dot, in glob style, for example `'BCFTOOLS_NORM*'`, `'UNTAR_*'` and `'BAM_SORT_STATS_SAMTOOLS:*'`. As regular expressions these mean "the last character repeated zero or more times", not "any suffix". So `'UNTAR_*'` does not match `UNTAR_FOO`. iunctus must keep regular-expression meaning here. A Rust `regex` crate pattern anchored as `^(?:pattern)$` covers the syntax used in the corpus.
+In the test workflows (144 pipelines plus nf-core/modules) there are 12,527 selectors. 1,826 contain `*`. Of these, 1,755 contain `.*`. 254 use `|`. One uses a non-capturing group `(?:...)`. None uses negation, back-references or look-around. 71 selectors use `*` without a dot, in glob style, for example `'BCFTOOLS_NORM*'`, `'UNTAR_*'` and `'BAM_SORT_STATS_SAMTOOLS:*'`. As regular expressions these mean "the last character repeated zero or more times", not "any suffix". So `'UNTAR_*'` does not match `UNTAR_FOO`. iunctus must keep regular-expression meaning here. A Rust `regex` crate pattern anchored as `^(?:pattern)$` covers the syntax used in the test workflows.
 
 ### 6.6 Priority summary
 
@@ -513,11 +513,11 @@ The built-in default rule has visible effects:
 
 ### 6.8 Selector name warnings
 
-When the dataflow network starts, every `withName:` pattern that matches no process name gives the warning "There's no process matching config selector: ..." (`Session.groovy:616-617, 1010-1106`). The flag `nextflow.enable.configProcessNamesValidation` (default `true`) switches this off. 120 corpus pipelines set it to `false` (count from a regular-expression search over all `.config` files of each pipeline). It is a warning only.
+When the dataflow network starts, every `withName:` pattern that matches no process name gives the warning "There's no process matching config selector: ..." (`Session.groovy:616-617, 1010-1106`). The flag `nextflow.enable.configProcessNamesValidation` (default `true`) switches this off. 120 test-workflows pipelines set it to `false` (count from a regular-expression search over all `.config` files of each pipeline). It is a warning only.
 
 ### 6.9 A quirk not to copy
 
-If a process definition has an `ext` directive, all aliases of that process share one `ext` map, because the process config is copied shallowly (`ProcessConfig.groovy:95-99`). In experiment 5 an `ext.args` closure set for `SUB:BAR` also showed up for `FOO` and `QUX`. No nf-core process uses the `ext` directive in its definition (0 matches in the corpus), so iunctus should give every clone its own copy.
+If a process definition has an `ext` directive, all aliases of that process share one `ext` map, because the process config is copied shallowly (`ProcessConfig.groovy:95-99`). In experiment 5 an `ext.args` closure set for `SUB:BAR` also showed up for `FOO` and `QUX`. No nf-core process uses the `ext` directive in its definition (0 matches in the test workflows), so iunctus should give every clone its own copy.
 
 ## 7. From config to a task
 
@@ -593,28 +593,28 @@ Pipeline counts are from the scanning script over all 144 pipelines, including o
 | `wave` | `enabled`, `freeze`, `strategy` (113) | Used in the `wave` profile. It is a core plugin scope. | `docs/reference/config/wave.mdx` |
 | `manifest` | `name`, `homePage`, `description`, `mainScript`, `nextflowVersion`, `version` (144); `doi` (130); `author` (135); `defaultBranch` (107); `contributors` (106) | `nextflowVersion` is checked when a run starts: a mismatch gives a warning, or aborts if the value starts with `!`. `contributors` entries are validated. | `CmdRun.groovy:696-724`; `docs/reference/config/manifest.mdx:102-120`; `Manifest.groovy:170-240` |
 | `plugins` | nf-schema (109 top-level configs), nf-validation (18) | A set of plugin ids. Plugins are loaded after the config is built. | `CmdRun.groovy:378-381` |
-| `validation` | `monochromeLogs` (108), `defaultIgnoreParams` (102), `parametersSchema` (100), `help.*` (19) | Belongs to the nf-schema plugin. It is not in the checkout, so its semantics are **unverified**. | corpus |
+| `validation` | `monochromeLogs` (108), `defaultIgnoreParams` (102), `parametersSchema` (100), `help.*` (19) | Belongs to the nf-schema plugin. It is not in the checkout, so its semantics are **unverified**. | test workflows |
 | `timeline`, `report`, `trace`, `dag` | `enabled`, `file` (144 each); `overwrite` (3) | If the file exists and `overwrite` is false, the run aborts. | `TraceHelper.groovy:57-67`; `docs/reference/config/trace.mdx` |
 | `aws` | `client.anonymous` (98, mostly in test profiles) | Anonymous S3 access to test data. | `docs/reference/config/aws.mdx` |
-| `google`, `azure` | rare (0 and 1 top-level configs) | Can wait. | corpus |
-| `workflow` | `output.mode` (62) | Publishing mode of the `output {}` block. The `onComplete`/`onError` handlers in config are deprecated (none in the corpus). | `docs/reference/config/workflow.mdx` |
+| `google`, `azure` | rare (0 and 1 top-level configs) | Can wait. | test workflows |
+| `workflow` | `output.mode` (62) | Publishing mode of the `output {}` block. The `onComplete`/`onError` handlers in config are deprecated (none in the test workflows). | `docs/reference/config/workflow.mdx` |
 | `nextflow` | `enable.configProcessNamesValidation` (120), `enable.moduleBinaries` (5) | `moduleBinaries` is read from the config (`CmdRun.groovy:508-514`). `enable.strict` is ignored under the strict parser (`CmdRun.groovy:516-525`). | `docs/reference/feature-flags.mdx` |
 | unscoped | `cleanup` (127), `outputDir` (62, `outputDir = params.outdir`), `workDir` (3) | `outputDir` is the output directory of the `output {}` block. | `docs/reference/config/unscoped.mdx`; `ConfigMap.groovy` |
 
-Options used by `process` settings in the corpus, counted by pipelines: `cpus`, `memory`, `time`, `errorStrategy`, `maxRetries` (144); `shell`, `maxErrors` (143); `beforeScript` (128); `ext.args` (127); `publishDir` (126); `ext.prefix` (116); `resourceLimits` (108); `accelerator` (92); `arch` (91); `ext.use_gpu` (90); `ext.args2` (66); `cache` (32); `container` (30); `ext.suffix` (27); `ext.when` (21); `tag` (19); `containerOptions` (18); `label` (13); `conda` (11); `maxForks` (9).
+Options used by `process` settings in the test workflows, counted by pipelines: `cpus`, `memory`, `time`, `errorStrategy`, `maxRetries` (144); `shell`, `maxErrors` (143); `beforeScript` (128); `ext.args` (127); `publishDir` (126); `ext.prefix` (116); `resourceLimits` (108); `accelerator` (92); `arch` (91); `ext.use_gpu` (90); `ext.args2` (66); `cache` (32); `container` (30); `ext.suffix` (27); `ext.when` (21); `tag` (19); `containerOptions` (18); `label` (13); `conda` (11); `maxForks` (9).
 
-## 9. Corpus findings
+## 9. Test workflows findings
 
 ### 9.1 Strict-syntax status
 
-`nextflow lint` 26.04.6 was run on all 4,823 `.config` files of the pipeline corpus. It skipped the 110 `nf-test.config` files. The review pass ran it again with `-o json` and got the same numbers (experiment 33). Results:
+`nextflow lint` 26.04.6 was run on all 4,823 `.config` files of the pipeline test workflows. It skipped the 110 `nf-test.config` files. The review pass ran it again with `-o json` and got the same numbers (experiment 33). Results:
 
 - 971 errors in 139 files. 58 of the 144 pipelines have at least one config file with an error.
 - 53 top-level `nextflow.config` files have errors. By cause (one pipeline can be in more than one group):
   - 39 use legacy Groovy constructs: `def check_max`, `if`, `try`/`catch` (the old include of the custom config), or variables;
   - 16 reference config settings as variables, for example `validation.help.beforeText` or `${manifest.version}` inside `validation.help`;
   - 4 reference other undefined names, such as `trace_timestamp`;
-  - 3 fail only because an included file is missing from the text-only corpus: methylseq, seqsubmit, viralrecon. seqsubmit includes `.conf` files, which the corpus does not keep.
+  - 3 fail only because an included file is missing from the text-only test workflows: methylseq, seqsubmit, viralrecon. seqsubmit includes `.conf` files, which the test workflows does not keep.
 - The most common message is "`check_max` is not defined" (641 times).
 - All 1,207 config files of nf-core/modules that lint looked at pass without errors.
 

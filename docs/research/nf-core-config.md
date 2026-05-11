@@ -37,9 +37,9 @@ Each step lists the evidence from the tables below. Pipeline counts refer to loa
 
 Constructs that the strict parser rejects should produce clear errors (see the section on statements that strict syntax rejects). They affect 54 pipelines today.
 
-## Corpus
+## Test workflows
 
-- Location: `~/.cache/iunctus/corpus/nf-core-text`, text-only copy with `.nf`, `.config` and `nextflow_schema.json` files.
+- Location: `~/.cache/iunctus/test-workflows/nf-core-text`, text-only copy with `.nf`, `.config` and `nextflow_schema.json` files.
 - 144 pipelines under `pipelines/<name>/`. The file dates show the copy was made on 2026-09-27.
 - Revisions come from `revisions.txt`. It records one branch and one commit per pipeline: 83 pipelines on `master`, 43 on `dev` and 18 on `main`. Appendix A lists all of them.
 - The nf-core/modules repository copy under `modules/` was scanned too. It is reported separately in the section on the modules repository.
@@ -68,7 +68,7 @@ The "all files" columns include test configs such as `modules/nf-core/*/tests/ne
 
 ### Excluded files
 
-The corpus has 4,823 `.config` files. I excluded 113 files that are not Nextflow config files:
+The test workflows has 4,823 `.config` files. I excluded 113 files that are not Nextflow config files:
 
 - 110 `nf-test.config` files. nf-test reads them, not Nextflow. `nextflow lint` also excludes them by default (`modules/nf-cli-v1/src/main/groovy/nextflow/cli/CmdLint.groovy:69`, `docs/reference/cli/lint.mdx:24`).
 - 3 tool config files under `assets/`: `genomeannotator/assets/pasa/alignAssembly.config`, `genomeannotator/assets/pasa/annotationCompare.config` and `provenancereport/tests/assets/quartonotebook_rds.config`.
@@ -108,7 +108,7 @@ The scanner found one statement it could not classify (`multiplesequencealign/co
 Notes:
 
 - 54 pipelines ship eight generated `conf/containers_*.config` files each. Only `seqsubmit` includes them. In the other pipelines they are not loaded, so they only appear in the "all files" columns.
-- 21 include targets in 10 pipelines are missing from the corpus. 7 are `seqsubmit` `.conf` files, which the text-only corpus does not keep. The other 14 are `.config` files that are not in the corpus, for example the `eager` test profiles `conf/test_bam.config` and others at `eager/nextflow.config:365-369`. The list is in `config.json` under `missing_include_targets`.
+- 21 include targets in 10 pipelines are missing from the test workflows. 7 are `seqsubmit` `.conf` files, which the text-only test workflows does not keep. The other 14 are `.config` files that are not in the test workflows, for example the `eager` test profiles `conf/test_bam.config` and others at `eager/nextflow.config:365-369`. The list is in `config.json` under `missing_include_targets`.
 
 ## Strict syntax status
 
@@ -297,7 +297,7 @@ Notes:
 
 - Every pipeline sets `custom_config_base = "https://raw.githubusercontent.com/nf-core/configs/${params.custom_config_version}"` in `nextflow.config`. So by default every pipeline includes remote files over HTTPS, unless `NXF_OFFLINE` is set. Nextflow opens such a path through its file system layer (`modules/nf-commons/src/main/nextflow/file/FileHelper.groovy:338-354` and the HTTP providers in `modules/nf-httpfs/src/main/nextflow/file/http/`). What happens when the download fails without a `try` block is unverified.
 - The other common ternary include is `includeConfig !params.igenomes_ignore ? 'conf/igenomes.config' : 'conf/igenomes_ignored.config'`.
-- The strict parser allows includes only at the top level or in a profile (`VariableScopeVisitor.java:199-204`, `docs/config.mdx:94`). The corpus follows this rule.
+- The strict parser allows includes only at the top level or in a profile (`VariableScopeVisitor.java:199-204`, `docs/config.mdx:94`). The test workflows follows this rule.
 - The strict way to include conditionally is a closure that is called in place (`docs/strict-syntax.mdx:652-666`). Only `proteinfold/nextflow.config:613` does this in a loaded file.
 
 ## Process selectors
@@ -377,7 +377,7 @@ Settings inside `process` scopes, with selectors removed from the path. Settings
 | `clusterOptions` | 3 | 3 | 3 | 2 | 1 | 0 | 0 |
 
 `maxErrors` and `maxRetries` are never closures. `tag` is always a closure, and `storeDir` almost always. `container` settings come mostly from the unloaded `conf/containers_*.config` files.
-In a process definition, a closure makes a directive dynamic, so it is evaluated for each task (`docs/process.mdx:1183-1204`). The docs list `executor`, `label`, `maxForks` and `secret` as directives that cannot be dynamic (`docs/process.mdx:1206-1211`). The corpus has 3 `label` closures.
+In a process definition, a closure makes a directive dynamic, so it is evaluated for each task (`docs/process.mdx:1183-1204`). The docs list `executor`, `label`, `maxForks` and `secret` as directives that cannot be dynamic (`docs/process.mdx:1206-1211`). The test workflows has 3 `label` closures.
 
 Value kinds over all process settings: 9,097 closures, 7,641 constants, 3,750 lists or maps that contain closures, and 895 other expressions (evaluated once at load time, usually from `params`).
 
@@ -573,7 +573,7 @@ Notes:
 
 - The config constants are `baseDir` (deprecated), `launchDir`, `params`, `projectDir` and `secrets`, and the function is `env()` (`modules/nf-lang/src/main/java/nextflow/config/dsl/ConfigDsl.java:35-70`, `docs/config.mdx:97-123`).
 - In strict syntax only `params` can be referenced as a variable. Other config settings cannot (`docs/strict-syntax.mdx:682-709`). Unknown names outside process closures are errors (`ConfigResolveVisitor.java:89-98`).
-- `System.getenv` is not in the documented config functions. Lint accepts it in the corpus (no errors reported for it). How the strict parser resolves `System` is unverified.
+- `System.getenv` is not in the documented config functions. Lint accepts it in the test workflows (no errors reported for it). How the strict parser resolves `System` is unverified.
 - `env()` is used only in module test configs (for Sentieon licences), never in loaded files.
 
 ### Statements that strict syntax rejects
@@ -629,12 +629,12 @@ Profiles per pipeline, counting profile blocks in loaded files. Remote nf-core/c
 | `test_fasta`, `test_single`, `test_bakta`, `local`, `test_fastq`, `test_umi` | 3 |
 
 All other names appear in 1 or 2 pipelines. Most of them are extra test profiles.
-Profile blocks contain 10,632 settings and 842 includes. Only `profile { ... }` blocks are allowed directly in `profiles` (`ConfigDsl.groovy:368-390`), and the corpus follows this rule.
+Profile blocks contain 10,632 settings and 842 includes. Only `profile { ... }` blocks are allowed directly in `profiles` (`ConfigDsl.groovy:368-390`), and the test workflows follows this rule.
 With the strict parser, profiles are applied in command line order (`docs/config.mdx:321-325`).
 
 ## nf-core/modules repository
 
-The same scanner on the modules repository copy (`modules/` in the corpus, 1,207 config files without `nf-test.config`):
+The same scanner on the modules repository copy (`modules/` in the test workflows, 1,207 config files without `nf-test.config`):
 
 - 2,253 settings, 2,034 of them in `process`. 1,468 `withName` selectors and no `withLabel`.
 - Mostly `ext.args` (1,289) and `ext.prefix` (465).
@@ -646,15 +646,15 @@ The counts are in `config.json` under `modules_repo`.
 ## Limitations and unverified points
 
 - The scanner is not a full parser. It matches `nextflow lint` on the checked constructs, but it does not type-check expressions.
-- "Loaded" follows every static include branch and every profile. A real run loads fewer files. Remote nf-core/configs files are not in the corpus and are not scanned.
+- "Loaded" follows every static include branch and every profile. A real run loads fewer files. Remote nf-core/configs files are not in the test workflows and are not scanned.
 - Lint ran with the local Nextflow 26.04.6 binary, not with a build of the checkout at bbf6ff0. Lint stops at the first parse error per file, so lint counts are lower bounds.
 - `container` and `conda` counts include generated files that runs do not load. Use the loaded columns for these.
 - The value "closure" is decided from the syntax only. Whether Nextflow treats a given setting as dynamic is not checked here.
 - Unverified: the behaviour of a failed HTTPS include without `try`, and how the strict parser resolves `System.getenv`.
 
-## Appendix A: corpus revisions
+## Appendix A: test-workflows revisions
 
-From `~/.cache/iunctus/corpus/nf-core-text/revisions.txt` (pipeline, branch, commit):
+From `~/.cache/iunctus/test-workflows/nf-core-text/revisions.txt` (pipeline, branch, commit):
 
 ```text
 abotyper                     dev    d12dfe3   airrflow                     master 8bc3e56   alleleexpression             dev    88c14b1

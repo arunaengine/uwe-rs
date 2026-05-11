@@ -40,7 +40,7 @@ Nextflow has two implementations of channel operators:
   A typed channel object still falls back to the legacy implementation for every operator name that it does
   not define itself (section 10).
 
-In the nf-core corpus (`~/.cache/iunctus/corpus/nf-core-text`), no file sets `nextflow.enable.types`.
+In the nf-core test workflows (`~/.cache/iunctus/test-workflows/nf-core-text`), no file sets `nextflow.enable.types`.
 So nf-core runs the legacy operators, even for the operators that `docs/reference/stdlib-types/channel.mdx`
 lists as the "core" set. Section 5 specifies the legacy operators. Section 10 specifies the typed core set.
 
@@ -363,7 +363,7 @@ Rules:
 - Hidden files are skipped when the file pattern starts with `*` (glob forms only) (`Channel.groovy:387`, `:398`).
 - The channel only completes when the watcher is terminated, which happens at cleanup (`Channel.groovy:323-324`). In practice it never completes
   by itself. Use `take` or `until` (`docs/reference/stdlib-namespaces/channel.mdx`).
-- Not used in the nf-core corpus.
+- Not used in the nf-core test workflows.
 
 ### 4.11 `channel.interval(duration, [closure])`
 
@@ -1115,7 +1115,7 @@ All other processes have queue channel outputs (`docs/process.mdx`, section "Sin
   (`processor/TaskProcessor.groovy:1371-1391`, `docs/reference/process/directives/fair.mdx`).
 - `fair` quirk: a task that binds no output (for example `when:` false) never fills its slot, so all later outputs
   stay buffered and are lost when the process ends. Experiment: `fair true`, `when: x != 2`, inputs 1 to 4 gave only
-  `[1]`, and the run reported success. `fair true` does not occur in the nf-core corpus.
+  `[1]`, and the run reported success. `fair true` does not occur in the nf-core test workflows.
 - Each output binds one value per task. A tuple output binds a list of its elements. A copy of the list is bound
   (`processor/TaskProcessor.groovy:1462-1474`).
 - A `path` output binds a single path when exactly one file matched and there is no `arity` or its maximum is 1, else a list
@@ -1195,7 +1195,7 @@ Only with `nextflow.enable.types = true` (`docs/process-typed.mdx`). Differences
   because the topic waits for that process to finish (`docs/tutorials/topic-channels.mdx`, section "Guidelines").
 - Topic outputs cannot be used with process recursion (`script/ProcessDef.groovy:193-194`).
 - Experiment: a process called with `of(1,2)` and output `val y, topic: 'vers'` produced `[A1, A2]` on `channel.topic('vers')`.
-- Corpus: `topic: versions` is the dominant form (4 738 matching lines).
+- Test workflows: `topic: versions` is the dominant form (4 738 matching lines).
 
 ### 8.5 `publish:` and the `output` block
 
@@ -1252,7 +1252,7 @@ At completion (`extension/PublishOp.groovy:227-261`):
 - The index file is written in record arrival order. CSV uses `header` and `sep`. An unknown extension is an error.
 - A workflow output event is sent.
 
-Corpus: 12 pipelines have an `output` block and the same 12 have a `publish:` section (grep of `.nf` files).
+Test workflows: 12 pipelines have an `output` block and the same 12 have a `publish:` section (grep of `.nf` files).
 
 ## 9. Hang, error and silent-drop checklist
 
@@ -1348,9 +1348,9 @@ By source, `flatMap` and `map` on an empty value never close or bind their outpu
 Docs describe typed `collect` as having "the same semantics as `toList`" (`docs/tutorials/static-types-operators.mdx:20`).
 The source emits a bag, which is unordered. This document follows the source.
 
-## 11. Usage in the nf-core corpus
+## 11. Usage in the nf-core test workflows
 
-Rough counts of `.<name>` in `.nf` files of `~/.cache/iunctus/corpus/nf-core-text` (pipelines and modules).
+Rough counts of `.<name>` in `.nf` files of `~/.cache/iunctus/test-workflows/nf-core-text` (pipelines and modules).
 They include non-channel uses such as `List.collect` or `Map.each`, so they are only a priority hint.
 
 | Name | Count | Name | Count | Name | Count |
@@ -1372,7 +1372,7 @@ They include non-channel uses such as `List.collect` or `Map.each`, so they are 
 | `buffer` | 7 | `fromFilePairs` | 7 | `randomSample` | 3 |
 | `splitJson` | 3 | `until` | 0 | `watchPath` | 0 |
 
-Other facts from the same corpus: `failOnMismatch` 233 lines, `failOnDuplicate` 219, `remainder: true` 325,
+Other facts from the same test workflows: `failOnMismatch` 233 lines, `failOnDuplicate` 219, `remainder: true` 325,
 `groupKey(` 116, `optional: true` 6124, `.out.` 18158 lines, process `each` inputs 25 lines, `| map` 67 lines,
 `fair true` 0 lines, `nextflow.enable.types` 0 files.
 

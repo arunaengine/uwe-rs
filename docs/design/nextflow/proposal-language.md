@@ -203,7 +203,7 @@ A method call `receiver.name(arguments)` is resolved at run time in this order:
 
 1. **Null receiver.** With `?.` the result is `null`. Otherwise the few methods of Groovy's null object apply (`toString`, `equals`, `+` with a string). Anything else is the error "Cannot invoke method name() on null object".
 2. **Channel or ChannelOut receiver.** The name is looked up in the operator table. The `ChannelOut` rules of [channels spec, section 5.1](../../research/nextflow-channels.md#51-common-rules) apply. Any other name is an error.
-3. **Any other receiver.** The name is looked up along the receiver's class chain, most specific first. For a tuple the chain is tuple, List, Collection, Iterable, Object. For a record it is record, Map, Object. Each library entry is a Rust function `fn(&mut Interpreter, &Value, &[Value]) -> Result<Value, Error>`. It checks the argument count and classes itself. If no form fits, it returns "no match", and the lookup continues with the next class in the chain. The oracle checks that this picks the same overload as Groovy for the shapes the corpus uses.
+3. **Any other receiver.** The name is looked up along the receiver's class chain, most specific first. For a tuple the chain is tuple, List, Collection, Iterable, Object. For a record it is record, Map, Object. Each library entry is a Rust function `fn(&mut Interpreter, &Value, &[Value]) -> Result<Value, Error>`. It checks the argument count and classes itself. If no form fits, it returns "no match", and the lookup continues with the next class in the chain. The oracle checks that this picks the same overload as Groovy for the shapes the test workflows use.
 
 Closures passed to library methods are always called through one helper. It implements Groovy's argument adaptation: list spreading, the optional `it`, and default parameters ([Groovy spec, section 9.2](../../research/nextflow-groovy.md)). It also implements map iteration by parameter count (section 9.3 of the same spec).
 
@@ -256,7 +256,7 @@ pub trait Host {
 
 Tests use a fake host with a fixed clock, a fixed environment and an in-memory file system. The runtime uses a host that reads local files directly and remote files through the content store. A remote read blocks the network thread until the file arrives. That is acceptable, because the network thread only runs evaluator work.
 
-Reading a dataflow value (`getVal()`, `.val`) works when the value is already bound. The common case is the completion handler: 100 pipelines call `getVal()` on the result of `toList` there, when every channel is complete. If the value is not bound yet, the read fails with a clear error: iunctus cannot block inside the network. In the corpus, only spatialaxe reads `.val` inside operator closures. If more pipelines need it, the operator can be suspended until the value is bound.
+Reading a dataflow value (`getVal()`, `.val`) works when the value is already bound. The common case is the completion handler: 100 pipelines call `getVal()` on the result of `toList` there, when every channel is complete. If the value is not bound yet, the read fails with a clear error: iunctus cannot block inside the network. In the test workflows, only spatialaxe reads `.val` inside operator closures. If more pipelines need it, the operator can be suspended until the value is bound.
 
 ### 3.8 How the standard library grows
 
@@ -272,8 +272,8 @@ Raw pipeline counts are a poor order on their own. The vendored utility subworkf
 Rules for every library entry:
 
 - It has a unit test with the documented or observed behaviour, and oracle cases (section 8).
-- A stand-in for a Java class implements only the methods the corpus calls. Any other method of that class is an unsupported-feature error.
-- CI writes a coverage report: names used in the corpus against names implemented, per type, with pipeline counts.
+- A stand-in for a Java class implements only the methods the test workflows call. Any other method of that class is an unsupported-feature error.
+- CI writes a coverage report: names used in the test workflows against names implemented, per type, with pipeline counts.
 
 Templates appear in three places: the process `template` statement (44 pipelines), `GStringTemplateEngine` and `SimpleTemplateEngine`. One template reader serves all three. It turns `$x`, `${...}`, `<% ... %>` and `<%= ... %>` into lowered code, which the same interpreter runs.
 
@@ -624,15 +624,15 @@ Each run writes one JSON lines file into the store. It records: run start (comma
 - Oracle answers are recorded as fixtures, with the script that recorded them, under `tests/fixtures/oracle/` of each crate. A `just` recipe records them again. Upgrading the oracle means recording again and reviewing the difference.
 - The nf-test snapshots in nf-core repositories were produced by real Nextflow in nf-core's CI. They are an oracle that needs no JVM.
 - Every layer also has plain unit tests, taken from the observed examples in the three specifications.
-- Oracle runs use an isolated `NXF_HOME` and `NXF_OFFLINE=true`, as the parser's corpus tooling already does.
+- Oracle runs use an isolated `NXF_HOME` and `NXF_OFFLINE=true`, as the parser's test-workflows tooling already does.
 
 ### 8.2 Tests by layer
 
-| Layer | Unit tests | Oracle or corpus check |
+| Layer | Unit tests | Oracle or test-workflows check |
 |---|---|---|
 | Values and formatting | Every observed example in the Groovy spec; the 20-item checklist | Expression cases run by the oracle in batches and recorded: rendered text, runtime class, error class |
 | Lowering | Name resolution; each rewrite pass | Lower every lint-clean nf-core file. The only allowed failures are named unsupported features. |
-| Standard library | One or more tests per method | Oracle cases generated from the call shapes in the corpus; the coverage report |
+| Standard library | One or more tests per method | Oracle cases generated from the call shapes in the test workflows; the coverage report |
 | Config | Experiments 1 to 33 of the config spec as tests | `nextflow config` output for all 144 pipelines with the default, `test` and `test,docker` profiles; per-task directives from the trace of oracle stub runs |
 | Operators | The experiments of the channels spec; the `docs/snippets` examples of Nextflow with their `.out` files | Random inputs through both. Order is compared exactly for order-preserving operators, and as a multiset for the others. |
 | Processes and rendering | Firing rules, `each`, optional outputs, retries | Oracle stub runs: every `.command.sh` compared byte for byte up to the capture block; task counts and directives from the trace |
@@ -669,7 +669,7 @@ Runs without containers compare everything except the values of `eval` outputs, 
 
 ### 8.6 The support matrix
 
-CI publishes the counts per corpus revision:
+CI publishes the counts per test-workflows revision:
 
 - files that lower;
 - pipelines whose config evaluates;
@@ -686,7 +686,7 @@ Every failure is classified as a named unsupported feature or as a bug.
 | 1. GUNZIP end to end | Program loading, the config the module test needs, one process type, the event loop, local and Docker executors, local store, `https` inputs, cache, resume, the nf-test harness | 2 to 3 person-months |
 | 2. The nf-core modules | The library and operators the modules repository uses, templates, `each`, `env` and `stdout` inputs and outputs, `stageAs`, `arity`, test data cache | 3 to 4 person-months |
 | 3. nf-core/demo | Full pipeline config, utility subworkflows with Java stand-ins, native nf-schema, topics, `collectFile`, `publishDir`, trace, completion handlers | 2 to 3 person-months |
-| 4. Breadth | More operators and library by corpus count, splitters, `exec:`, the output block, pipelines from Git, performance | 4 to 6 person-months |
+| 4. Breadth | More operators and library by test-workflows count, splitters, `exec:`, the output block, pipelines from Git, performance | 4 to 6 person-months |
 | 5. TES and Aruna | S3 content store, TES executor, reconcile, server profiles | 2 to 3 person-months, in parallel with Milestone 4 |
 | 6. Typed syntax | Records, typed processes and workflows, the `params { }` block, typed core operators | 2 to 3 person-months, starting by early 2027 |
 
@@ -749,7 +749,7 @@ GUNZIP is the right first target. It is small, and its tool exists on every mach
 |---|---|---|
 | Silent drift in values | A task runs a different command, and nothing fails | Oracle fixtures for values; byte comparison of `.command.sh`; no silent fallbacks |
 | Java behaviour that is hard to copy: hash set order, the regex dialect, `BigDecimal` division, `Double` text, UTF-16 strings | Wrong order or text in rare cases | One module per behaviour, with dense oracle cases. Regex patterns are translated to `fancy-regex`, and constructs the translator does not know fail with an error. |
-| The long tail of library methods and Java classes | Pipelines fail one method at a time | The load-time method check; the coverage report; stand-ins limited to the methods the corpus calls |
+| The long tail of library methods and Java classes | Pipelines fail one method at a time | The load-time method check; the coverage report; stand-ins limited to the methods the test workflows call |
 | A moving target: monthly edge releases, typed syntax mandatory by Q2 2027, many nf-schema versions | Pipelines change under the design | Pin the oracle; record fixtures again for each stable release; start Milestone 6 by early 2027; pin nf-schema behaviour per version |
 | Test data and containers make CI heavy | Slow or flaky CI | Cache test data and images; run stub cases without containers, except `eval` values; rotate a container sample |
 | Order that differs between Nextflow and iunctus where Nextflow allows any order | Comparisons fail for no reason | Compare as multisets where the channels spec says the order is not defined; keys depend on content, not order |

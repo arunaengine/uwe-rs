@@ -3,10 +3,13 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashSet;
+
 use cwl_parser::model::{ScatterMethod, Step, short_name};
 
 use super::links::{assemble, null_outputs};
-use super::{Event, Job, JobId, Names, Parent, Run, ScatterRun, State};
+use super::{Event, Job, JobId, Names, Parent, Run, ScatterRun, State, expression_runtime};
+use crate::expression::{Evaluator, Variables};
 use crate::files;
 use crate::placeholder;
 use crate::scope::Scope;
@@ -202,5 +205,141 @@ impl Run {
             self.events.push_back(Event::Finished(scatter, assembled));
         }
         Ok(())
+    }
+
+    /// [`Run::element`], and on placeholder inputs, with placeholders for the null inputs
+    /// that a failing `valueFrom` or `when` names, a few rounds at most.
+    fn step_job(
+        &self,
+        step: &Step,
+        gathered: Map,
+        evaluator: &Evaluator,
+        scope: &Scope,
+    ) -> Result<Option<Map>, String> {
+        let first = self.element(step, gathered.clone(), evaluator);
+        let (Err(error), Some(base)) = (&first, &self.placeholders) else {
+            return first;
+        };
+        let mut values = gathered;
+        let mut last = error.clone();
+        for _ in 0..8 {
+            let mut changed = false;
+            for input in &step.run.process.inputs {
+                let name = short_name(&input.id);
+                if values.get(name).is_some_and(|value| !value.is_null())
+                    || !placeholder::names(&last, name)
+                {
+                    continue;
+                }
+                let mut types = scope.types();
+                types.add(&input.value_type);
+                let mut value = placeholder::input(input, &types, base);
+                files::normalize(&mut value)?;
+                values.insert(name.to_owned(), value);
+                changed = true;
+            }
+            if !changed {
+                break;
+            }
+            match self.element(step, values.clone(), evaluator) {
+                Ok(job) => return Ok(job),
+                Err(next) => last = next,
+            }
+        }
+        // `valueFrom` runs before `when`, so a `valueFrom` over optional inputs that `when`
+        // guards fails; other runners check `when` first, and so does this fallback.
+        if let Some(when) = &step.when {
+            let inputs = Value::Map(values);
+            let skipped = evaluator.evaluate(
+                when,
+                Variables {
+                    inputs: &inputs,
+                    this: &Value::Null,
+                    runtime: &expression_runtime(),
+                },
+            );
+            if matches!(skipped, Ok(Value::Bool(false) | Value::Null)) {
+                return Ok(None);
+            }
+        }
+        first
+    }
+
+    /// The input object of one step job: `valueFrom` after the sources, then `when`; `None`
+    /// when `when` skips it. Only inputs of the process it runs are passed on.
+    fn element(
+        &self,
+        step: &Step,
+        gathered: Map,
+        evaluator: &Evaluator,
+    ) -> Result<Option<Map>, String> {
+        let access = self.options.access();
+        let mut sources = gathered;
+        for input in &step.inputs {
+            if input.load_contents != Some(true) {
+                continue;
+            }
+            if let Some(Value::Map(file)) = sources.get_mut(short_name(&input.id))
+                && file.get("class").and_then(Value::as_str) == Some("File")
+            {
+                access.load_contents(file)?;
+            }
+        }
+        let before = Value::Map(sources.clone());
+        let runtime = expression_runtime();
+        let mut job = sources;
+        for input in &step.inputs {
+            let Some(expression) = &input.value_from else {
+                continue;
+            };
+            let name = short_name(&input.id);
+            let mut this = before.get(name).cloned().unwrap_or(Value::Null);
+            access.load_listings(&mut this, true);
+            let value = evaluator
+                .evaluate(
+                    expression,
+                    Variables {
+                        inputs: &before,
+                        this: &this,
+                        runtime: &runtime,
+                    },
+                )
+                .map_err(|error| format!("the `valueFrom` of the input `{name}`: {error}"))?;
+            job.insert(name.to_owned(), value);
+        }
+        if let Some(when) = &step.when {
+            let inputs = Value::Map(job.clone());
+            let value = evaluator
+                .evaluate(
+                    when,
+                    Variables {
+                        inputs: &inputs,
+                        this: &Value::Null,
+                        runtime: &runtime,
+                    },
+                )
+                .map_err(|error| format!("`when`: {error}"))?;
+            match value {
+                Value::Bool(true) => {}
+                Value::Bool(false) => return Ok(None),
+                // Conditions on optional inputs, which are null on placeholder inputs.
+                Value::Null if self.placeholders.is_some() => return Ok(None),
+                other => {
+                    return Err(format!(
+                        "`when` must give true or false, not {}",
+                        other.to_json()
+                    ));
+                }
+            }
+        }
+        let accepted: HashSet<&str> = step
+            .run
+            .process
+            .inputs
+            .iter()
+            .map(|input| short_name(&input.id))
+            .collect();
+        job.retain(|name, _| accepted.contains(name.as_str()));
+        Ok(Some(job))
     }
 }

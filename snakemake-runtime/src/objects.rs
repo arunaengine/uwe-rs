@@ -275,7 +275,12 @@ impl Native for NamedList {
                     "{name}() cannot be used on snakemake input, output, resources etc.; instead it is a valid name for items on those objects. If you want e.g. to sort, convert to a plain list before or directly use sorted() on the object."
                 )));
             }
-            _ => return Ok(None),
+            _ => {
+                return Err(Error::attribute_error(format!(
+                    "'{}' object has no attribute '{name}'",
+                    self.kind
+                )));
+            }
         }))
     }
 }

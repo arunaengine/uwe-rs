@@ -1,6 +1,8 @@
 //! Runs each workflow of `tests/fixtures/workflows` with the mock executor and compares the
 //! graph and the tasks with the folder's `expected.txt`. A folder may have a `targets` file
-//! with one target per line. `UPDATE_EXPECTED=1` rewrites the expected files.
+//! with one target per line, and a `snakemake.txt` with the shell commands that
+//! `snakemake --dry-run --printshellcmds` (Snakemake 9.27.0) prints for it, which the tasks
+//! must run. `UPDATE_EXPECTED=1` rewrites the expected files.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -80,6 +82,15 @@ fn workflows_give_the_expected_graphs() {
         let expected = std::fs::read_to_string(&path).unwrap_or_default();
         if actual != expected {
             failures.push(format!("{}:\n{actual}", folder.display()));
+        }
+        let reference = std::fs::read_to_string(folder.join("snakemake.txt")).unwrap_or_default();
+        for command in reference
+            .lines()
+            .filter_map(|line| line.strip_prefix("Shell command: "))
+        {
+            if command != "None" && !actual.contains(&format!("pipefail;  {command}\n")) {
+                failures.push(format!("{}: no task runs `{command}`", folder.display()));
+            }
         }
     }
     assert!(

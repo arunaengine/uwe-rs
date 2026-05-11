@@ -1,0 +1,24 @@
+# Resources from the rule, the workflow profile and the defaults, in their units.
+rule all:
+    input:
+        "b.txt",
+
+
+rule a:
+    output:
+        "a.txt",
+    threads: 1
+    resources:
+        mem="2G",
+        runtime="1h",
+    shell:
+        "echo {resources.mem_mb} {resources.mem_mib} {resources.mem} {resources.runtime} {threads} > {output}"
+
+
+rule b:
+    input:
+        "a.txt",
+    output:
+        "b.txt",
+    shell:
+        "echo {resources.mem_mb} {resources.disk} {resources.partition} > {output}"

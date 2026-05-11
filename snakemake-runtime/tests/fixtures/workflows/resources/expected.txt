@@ -1,0 +1,16 @@
+3 tasks, 3 steps, 2 edges
+1 a <- []
+2 b <- [1]
+3 all <- [2]
+task 1: -
+  command: bash -c set -euo pipefail;  echo 2000 1908 2 GB 60 2 > a.txt
+  inputs: 
+  outputs: a.txt
+task 2: -
+  command: bash -c set -euo pipefail;  echo 500 1.5 GB fast > b.txt
+  inputs: a.txt
+  outputs: b.txt
+task 3: -
+  command: 
+  inputs: b.txt
+  outputs: 

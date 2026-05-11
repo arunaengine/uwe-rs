@@ -1,4 +1,4 @@
-# Corpus files that must fail to parse, relative to the corpus root; all other scripts and
+# Files of the test workflows that must fail to parse, relative to their root; all other scripts and
 # configs must parse. Source: syntax errors of `nextflow lint` 26.04.6 on 2026-09-27.
 pipelines/atacseq/conf/modules.config
 pipelines/atacseq/main.nf

@@ -1,8 +1,8 @@
-//! Runs every nf-core pipeline of the corpus with `-profile test` and the mock TES executor,
-//! and compares the outcome with `tests/fixtures/run_corpus.txt`: `ok`, or the exit code and
+//! Runs every nf-core pipeline of the test workflows with `-profile test` and the mock TES executor,
+//! and compares the outcome with `tests/fixtures/run_test_workflows.txt`: `ok`, or the exit code and
 //! the first line of the error. The runs are stub runs, as pipelines then do not read the
 //! content of the outputs that the mock makes up. The execution graph of each run that
-//! succeeds must be valid. Run with `just run-corpus-test`; on a difference the test prints the
+//! succeeds must be valid. Run with `just run-test-workflows-test`; on a difference the test prints the
 //! lines of the new fixture.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -19,12 +19,12 @@ use workflow_graph::ExecutionGraph;
 /// parts that differ between machines and runs. A run that takes more than five minutes, like
 /// one that reads gigabytes of remote files, is stopped with exit code 124. A run that succeeds
 /// with an invalid graph is `graph` and the problem.
-fn outcome(corpus: &Path, pipeline: &str, cache: &Path) -> String {
+fn outcome(test_workflows: &Path, pipeline: &str, cache: &Path) -> String {
     let graph = cache.join("graph.json");
     let _ = std::fs::remove_file(&graph);
     let output = Command::new("timeout")
         .args(["300", env!("CARGO_BIN_EXE_iunctus")])
-        .args(["run", &corpus.join(pipeline).to_string_lossy()])
+        .args(["run", &test_workflows.join(pipeline).to_string_lossy()])
         .args(["-profile", "test", "-stub-run"])
         .args(["-graph", &graph.to_string_lossy()])
         .args(["--outdir", &cache.join("out").to_string_lossy()])
@@ -45,7 +45,7 @@ fn outcome(corpus: &Path, pipeline: &str, cache: &Path) -> String {
     }
     let error = String::from_utf8_lossy(&output.stderr);
     let first = error.lines().next().unwrap_or_default();
-    let prefix = format!("{}/", corpus.join(pipeline).display());
+    let prefix = format!("{}/", test_workflows.join(pipeline).display());
     let first = first
         .replace(&prefix, "")
         .replace(&cache.display().to_string(), "<cache>");
@@ -62,18 +62,21 @@ fn outcome(corpus: &Path, pipeline: &str, cache: &Path) -> String {
 }
 
 #[test]
-#[ignore = "needs the nf-core corpus and the network; run `just run-corpus-test`"]
+#[ignore = "needs the nf-core test workflows and the network; run `just run-test-workflows-test`"]
 fn pipelines_run_as_recorded() {
-    let corpus = PathBuf::from(std::env::var("NF_CORE_CORPUS").expect("NF_CORE_CORPUS is set"))
-        .join("pipelines");
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/run_corpus.txt");
+    let test_workflows = PathBuf::from(
+        std::env::var("NF_CORE_TEST_WORKFLOWS").expect("NF_CORE_TEST_WORKFLOWS is set"),
+    )
+    .join("pipelines");
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/run_test_workflows.txt");
     let expected = std::fs::read_to_string(&fixture).expect("reads the fixture");
     let expected: Vec<&str> = expected
         .lines()
         .filter(|line| !line.starts_with('#'))
         .collect();
-    let mut pipelines: Vec<String> = std::fs::read_dir(&corpus)
-        .expect("reads the corpus")
+    let mut pipelines: Vec<String> = std::fs::read_dir(&test_workflows)
+        .expect("reads the test workflows")
         .map(|entry| {
             entry
                 .expect("an entry")
@@ -96,10 +99,10 @@ fn pipelines_run_as_recorded() {
         std::fs::create_dir_all(cache.join("iunctus")).expect("creates the cache");
         std::os::unix::fs::symlink(&downloads, cache.join("iunctus/downloads"))
             .expect("links the downloads");
-        format!("{pipeline} {}", outcome(&corpus, pipeline, &cache))
+        format!("{pipeline} {}", outcome(&test_workflows, pipeline, &cache))
     };
-    // The runs go in parallel, `IUNCTUS_CORPUS_JOBS` at a time (4 by default).
-    let jobs: usize = std::env::var("IUNCTUS_CORPUS_JOBS")
+    // The runs go in parallel, `IUNCTUS_TEST_WORKFLOWS_JOBS` at a time (4 by default).
+    let jobs: usize = std::env::var("IUNCTUS_TEST_WORKFLOWS_JOBS")
         .ok()
         .and_then(|jobs| jobs.parse().ok())
         .unwrap_or(4);

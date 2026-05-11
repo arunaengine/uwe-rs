@@ -1,6 +1,6 @@
 //! Compares `iunctus config -profile test` with `nextflow config -flat -profile test` for every
-//! nf-core pipeline of the corpus. `just config-oracle` records the Nextflow output first;
-//! run with `just config-corpus-test`.
+//! nf-core pipeline of the test workflows. `just config-oracle` records the Nextflow output first;
+//! run with `just config-test-workflows-test`.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -16,7 +16,8 @@ fn directory(variable: &str) -> PathBuf {
 
 /// The pipelines whose results are expected to differ, with the kind of difference.
 fn expected() -> BTreeMap<String, String> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/config_corpus.txt");
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/config_test_workflows.txt");
     std::fs::read_to_string(path)
         .expect("reads the fixture")
         .lines()
@@ -50,13 +51,13 @@ fn normalised(text: &str) -> String {
 }
 
 #[test]
-#[ignore = "needs the nf-core corpus and the recorded oracle; run `just config-corpus-test`"]
+#[ignore = "needs the nf-core test workflows and the recorded oracle; run `just config-test-workflows-test`"]
 fn configs_equal_the_oracle() {
-    let corpus = directory("NF_CORE_CORPUS").join("pipelines");
+    let test_workflows = directory("NF_CORE_TEST_WORKFLOWS").join("pipelines");
     let oracle = directory("IUNCTUS_CONFIG_ORACLE");
     let expected = expected();
-    let mut pipelines: Vec<String> = std::fs::read_dir(&corpus)
-        .expect("reads the corpus")
+    let mut pipelines: Vec<String> = std::fs::read_dir(&test_workflows)
+        .expect("reads the test workflows")
         .map(|entry| {
             entry
                 .expect("an entry")
@@ -76,7 +77,7 @@ fn configs_equal_the_oracle() {
         };
         let output = Command::new(env!("CARGO_BIN_EXE_iunctus"))
             .args(["config", "-profile", "test", "."])
-            .current_dir(corpus.join(name))
+            .current_dir(test_workflows.join(name))
             .output()
             .expect("runs iunctus");
         let mine = String::from_utf8_lossy(&output.stdout);

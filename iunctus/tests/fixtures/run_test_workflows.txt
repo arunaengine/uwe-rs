@@ -1,5 +1,5 @@
 # The outcome of `iunctus run <pipeline> -profile test -stub-run` with the mock TES executor
-# for every pipeline of the corpus: `ok` (with a valid execution graph), or the exit code and the
+# for every pipeline of the test workflows: `ok` (with a valid execution graph), or the exit code and the
 # first line of the error (33 for unsupported features).
 abotyper ok
 airrflow ok

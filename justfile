@@ -16,11 +16,11 @@ test:
 check:
 	cargo check --workspace --all-targets --all-features --locked
 
-# Fetches the text-only nf-core corpus at the commits the corpus tests expect.
-corpus:
+# Fetches the text-only nf-core test workflows at the commits the test-workflows tests expect.
+test-workflows:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	root="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}"
+	root="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}"
 	grep -v '^#' nextflow-parser/tests/fixtures/nf_core_revisions.txt | while read -r name branch commit; do
 		if [ "$name" = modules ]; then target="$root/modules"; else target="$root/pipelines/$name"; fi
 		[ -d "$target" ] && continue
@@ -44,41 +44,43 @@ corpus:
 		mv "$work" "$target"
 	done
 
-# Parses the nf-core corpus, compares the result with `nextflow lint`, and lowers every module.
-corpus-test:
-	NF_CORE_CORPUS="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}" cargo test --release --locked -p nextflow-parser --test corpus -- --ignored
-	NF_CORE_CORPUS="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}" cargo test --release --locked -p nextflow-evaluator --test corpus -- --ignored
+# Parses the nf-core test workflows, compares the result with `nextflow lint`, and lowers every
+# module.
+test-workflows-test:
+	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" cargo test --release --locked -p nextflow-parser --test test_workflows -- --ignored
+	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" cargo test --release --locked -p nextflow-evaluator --test test_workflows -- --ignored
 
 # Records `nextflow config -flat -profile test` of every nf-core pipeline for the config test.
 config-oracle:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	corpus="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}/pipelines"
+	test_workflows="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}/pipelines"
 	oracle="${IUNCTUS_CONFIG_ORACLE:-$HOME/.cache/iunctus/oracle/config}"
 	mkdir -p "$oracle"
-	find "$corpus" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | xargs -P 8 -I{} sh -c \
-		"cd '$corpus/{}' && nextflow config -flat -profile test . > '$oracle/{}.txt' 2> '$oracle/{}.err'; echo \$? > '$oracle/{}.exit'"
+	find "$test_workflows" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | xargs -P 8 -I{} sh -c \
+		"cd '$test_workflows/{}' && nextflow config -flat -profile test . > '$oracle/{}.txt' 2> '$oracle/{}.err'; echo \$? > '$oracle/{}.exit'"
 
 # Compares `iunctus config` with the recorded `nextflow config` of every nf-core pipeline.
-config-corpus-test:
-	NF_CORE_CORPUS="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}" \
+config-test-workflows-test:
+	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" \
 	IUNCTUS_CONFIG_ORACLE="${IUNCTUS_CONFIG_ORACLE:-$HOME/.cache/iunctus/oracle/config}" \
-	cargo test --release --locked -p iunctus --test config_corpus -- --ignored
+	cargo test --release --locked -p iunctus --test config_test_workflows -- --ignored
 
-# Runs every nf-core pipeline of the corpus with the mock executor and compares the outcomes.
-run-corpus-test:
-	NF_CORE_CORPUS="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}" \
-	cargo test --release --locked -p iunctus --test run_corpus -- --ignored
+# Runs every nf-core pipeline of the test workflows with the mock executor and compares the
+# outcomes.
+run-test-workflows-test:
+	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" \
+	cargo test --release --locked -p iunctus --test run_test_workflows -- --ignored
 
 # Records the stub scripts of the pipelines in iunctus/tests/fixtures/oracle/stub with Nextflow
 # and Docker; give the pipelines as arguments, like `just stub-oracle demo`.
 stub-oracle +pipelines:
-	iunctus/tests/fixtures/oracle/stub/record.sh "${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}/pipelines" {{pipelines}}
+	iunctus/tests/fixtures/oracle/stub/record.sh "${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}/pipelines" {{pipelines}}
 
 # Runs the recorded pipelines with -stub and the mock executor and compares the task scripts.
-stub-corpus-test:
-	NF_CORE_CORPUS="${NF_CORE_CORPUS:-$HOME/.cache/iunctus/corpus/nf-core-text}" \
-	cargo test --release --locked -p iunctus --test stub_corpus -- --ignored
+stub-test-workflows-test:
+	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" \
+	cargo test --release --locked -p iunctus --test stub_test_workflows -- --ignored
 
 # Fetches the text-only CWL test workflows at the revisions the CWL test-workflows test expects.
 cwl-test-workflows:
@@ -314,7 +316,7 @@ snakemake-run-test-workflows-test:
 argo-corpus:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	root="${ARGO_CORPUS:-$HOME/.cache/iunctus/corpus/argo}"
+	root="${ARGO_CORPUS:-$HOME/.cache/iunctus/test-workflows/argo}"
 	mkdir -p "$root"
 	grep -v '^#' argo-parser/tests/fixtures/corpus/revisions.txt | while read -r repository branch commit patterns; do
 		target="$root/${repository#*/}"
@@ -345,7 +347,7 @@ argo-corpus:
 # the others as Argo does when they are created, and compares the outcomes with
 # argo-runtime/tests/fixtures/corpus/outcomes.txt.
 argo-corpus-test:
-	ARGO_CORPUS="${ARGO_CORPUS:-$HOME/.cache/iunctus/corpus/argo}" cargo test --release --locked -p argo-runtime --test corpus -- --ignored --nocapture
+	ARGO_CORPUS="${ARGO_CORPUS:-$HOME/.cache/iunctus/test-workflows/argo}" cargo test --release --locked -p argo-runtime --test test_workflows -- --ignored --nocapture
 
 # Starts a local RustFS (S3-compatible) with the bucket `iunctus-test` for the S3 tests.
 # `docker stop iunctus-s3` ends it.

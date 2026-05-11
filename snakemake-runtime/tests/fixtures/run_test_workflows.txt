@@ -247,7 +247,7 @@ catalog/kevinrue__snakemake-cncb-3 ok 3
 catalog/kevinrue__snakemake-cncb-ensembl-2024 1 workflow/rules/r.smk:36: WorkflowError: InputFunctionException in rule simpleaf_lower_umi_per_sample (wildcards: sample=_all): KeyError: '_all'
 catalog/khanlab__SPIMprep 33 workflow/Snakefile:2: ModuleNotFoundError: No module named 'upath'
 catalog/khersameesh24__snakemake-workflow-template ok 0
-catalog/kircherlab__MPRAsnakeflow 1 workflow/rules/common.smk:101: KeyError: 'version'
+catalog/kircherlab__MPRAsnakeflow ok 120
 catalog/knutdrand__bionumpy-benchmarks 33 workflow/Snakefile:5: ModuleNotFoundError: No module named 'bionumpy'
 catalog/koesterlab__ngs-fastq-to-cram ok 0
 catalog/koesterlab__rossi-ips-dmr 1 workflow/rules/common.smk:8: TypeError: 'TextIOWrapper' object is not an iterator
@@ -255,10 +255,10 @@ catalog/kpalin__ONT_hg_somatic ok 0
 catalog/kreczko__cms-public-tutorial-snakemake ok 0
 catalog/kvntrc__snakemake_template ok 0
 catalog/lacklab__MuSTARRd ok 56
-catalog/lacklab__epens-snakemake 33 Not supported yet: the attribute mem_mb of Resources
+catalog/lacklab__epens-snakemake ok 187
 catalog/lasyaa418__control-of-latent-dynamics 33 workflow/Snakefile:7: ModuleNotFoundError: No module named 'src'
 catalog/liezeltamon__single-cell-preprocess 33 workflow/Snakefile:12: ModuleNotFoundError: No module named 'utils'
-catalog/loganylchen__NanoInsight 33 Not supported yet: the attribute fusions of InputFiles
+catalog/loganylchen__NanoInsight 1 WorkflowError: RuleException in rule merge_ref_and_fusions_aeron in file workflow/rules/fusion/aeron.smk, line 195: AttributeError: 'InputFiles' object has no attribute 'fusions', when formatting the shell command
 catalog/loganylchen__NanoRNAMod 33 workflow/Snakefile:230: Not supported yet: the attribute default_resources of Workflow
 catalog/loganylchen__RNA-seq-analysis-pipeline ok 12
 catalog/loganylchen__prep-bonito-training-data 1 workflow/rules/common.smk:12: KeyError: "None of ['SampleName'] are in the columns"
@@ -328,7 +328,7 @@ catalog/niekwit__rna-seq-salmon-deseq2 1 workflow/Snakefile:28: WorkflowError: E
 catalog/niekwit__rna-seq-star-deseq2 ok 32
 catalog/niekwit__rna-seq-star-rmats 1 workflow/Snakefile:29: ValueError: Invalid format specifier
 catalog/niekwit__rna-seq-star-tetranscripts 1 workflow/scripts/general_functions.smk:174: AssertionError: No fastq files found ending with .fastq.gz...
-catalog/niekwit__smallRNA-seq 33 Not supported yet: the attribute tmpdir of Resources
+catalog/niekwit__smallRNA-seq ok 73
 catalog/nikostr__dna-seq-deepvariant-glnexus-variant-calling 33 workflow/rules/common.smk:25: Not supported yet: the attribute sample_id of DataFrameGroupBy
 catalog/nikostr__read-mapping 33 workflow/rules/common.smk:86: Not supported yet: the attribute sample_id of DataFrameGroupBy
 catalog/nismod__open-gira 33 workflow/Snakefile:20: ModuleNotFoundError: No module named 'open_gira'
@@ -368,7 +368,7 @@ catalog/rodolfobrandao8__Snakemake-Mag-Annotation ok 5
 catalog/sandragodinhosilva__melange ok 17
 catalog/sanjaysgk__WES_RNA_Pipeline ok 2
 catalog/schlesnerlab__multiconDEnrich 33 workflow/Snakefile:19: Not supported yet: the attribute replace of DataFrame
-catalog/scholl-lab__sm-calling 33 workflow/rules/common.smk:159: Not supported yet: the attribute tmpdir of Resources
+catalog/scholl-lab__sm-calling ok 67
 catalog/seankmartin__atn-sub-lfp-workflow ok 23
 catalog/semenko__serpent-methylation-pipeline 1 workflow/Snakefile:184: AttributeError: 'builtin_function_or_method' object has no attribute 'http'
 catalog/seung1yoo__snakemake-s3-prototype ok 0
@@ -390,7 +390,7 @@ catalog/sims-lab__snakemake-cncb-index-ensembl-genome ok 8
 catalog/snakemake-workflows__cellranger-count ok 7
 catalog/snakemake-workflows__cellranger-multi 1 workflow/rules/common.smk:11: KeyError: 'CELLRANGER_TARBALL'
 catalog/snakemake-workflows__cyrcular-calling ok 1
-catalog/snakemake-workflows__dna-seq-benchmark 1 workflow/rules/common.smk:456: WorkflowError: InputFunctionException in rule all (wildcards: ): JSONDecodeError: Expecting value: line 1 char 0
+catalog/snakemake-workflows__dna-seq-benchmark 1 workflow/rules/common.smk:540: WorkflowError: InputFunctionException in rule report_precision_recall (wildcards: benchmark=giab-na12878-exome, vartype=snvs): AttributeError: 'Wildcards' object has no attribute 'callset'
 catalog/snakemake-workflows__dna-seq-gatk-variant-calling ok 38
 catalog/snakemake-workflows__dna-seq-mtb 33 workflow/rules/common.smk:1: ModuleNotFoundError: No module named 'yte'
 catalog/snakemake-workflows__dna-seq-short-read-circle-map ok 1
@@ -499,7 +499,7 @@ tests/test_cache_multioutput ok 1
 tests/test_callable ok 3
 tests/test_censored_path 33 Snakefile:1: Not supported yet: storage directives
 tests/test_checkpoint_allowed_rules ok 3
-tests/test_checkpoint_missing_output 1 Snakefile:16: WorkflowError: InputFunctionException in rule aggregate (wildcards: ): ValueError: invalid literal for int() with base 10: ''
+tests/test_checkpoint_missing_output ok 4
 tests/test_checkpoint_omit_from ok 7
 tests/test_checkpoint_open ok 2
 tests/test_checkpoint_rerun ok 3
@@ -526,7 +526,7 @@ tests/test_config_replacing ok 2
 tests/test_config_replacing_nocli ok 2
 tests/test_config_yte ok 1
 tests/test_container ok 1
-tests/test_containerize_checkpoint ok 4
+tests/test_containerize_checkpoint ok 5
 tests/test_containerized ok 1
 tests/test_convert_to_cwl 1 Snakefile:39: SyntaxError: Keyword version is deprecated. Use conda or container directive instead.
 tests/test_converting_path_for_r_script ok 2
@@ -536,7 +536,7 @@ tests/test_cyclic_dependency_single ok 1
 tests/test_cyclic_dependency_split ok 3
 tests/test_default_flags ok 4
 tests/test_default_remote ok 7
-tests/test_default_resources 33 Not supported yet: the attribute disk_mb of Resources
+tests/test_default_resources ok 2
 tests/test_default_storage_local_job ok 4
 tests/test_default_target ok 3
 tests/test_deferred_func_eval ok 1
@@ -595,7 +595,7 @@ tests/test_github_issue2154 ok 2
 tests/test_github_issue2213 ok 3
 tests/test_github_issue2255 ok 3
 tests/test_github_issue261 ok 2
-tests/test_github_issue2732 ok 4
+tests/test_github_issue2732 ok 5
 tests/test_github_issue2848 ok 4
 tests/test_github_issue3213 ok 3
 tests/test_github_issue3271 ok 1
@@ -635,11 +635,11 @@ tests/test_groups_out_of_jobs ok 5
 tests/test_gs_requester_pays 33 Snakefile:2: ModuleNotFoundError: No module named 'google'
 tests/test_handle_storage_multi_consumers ok 3
 tests/test_handover ok 1
-tests/test_immediate_submit 33 Not supported yet: the attribute watch of Params
+tests/test_immediate_submit 1 WorkflowError: RuleException in rule test_array in file Snakefile, line 17: AttributeError: 'Params' object has no attribute 'watch', when formatting the shell command
 tests/test_immediate_submit_without_shared_fs ok 12
 tests/test_incomplete_params ok 2
-tests/test_inferred_resources 33 Not supported yet: the attribute mem_mb of Resources
-tests/test_inferred_resources_mib 33 Not supported yet: the attribute mem_mib of Resources
+tests/test_inferred_resources ok 1
+tests/test_inferred_resources_mib ok 1
 tests/test_inner_call ok 2
 tests/test_inoutput_is_path ok 0
 tests/test_input_generator ok 4
@@ -738,7 +738,7 @@ tests/test_multiext_named ok 2
 tests/test_multiple_includes ok 4
 tests/test_name_override ok 3
 tests/test_no_temp ok 3
-tests/test_no_workflow_profile 33 Not supported yet: the attribute foo of Resources
+tests/test_no_workflow_profile ok 1
 tests/test_nodelocal ok 4
 tests/test_nonstr_params ok 1
 tests/test_omitfrom ok 14
@@ -798,7 +798,7 @@ tests/test_report_display_code ok 4
 tests/test_report_href ok 1
 tests/test_report_metadata ok 1
 tests/test_report_zip ok 1
-tests/test_resource_quoting 33 Not supported yet: the attribute test of Resources
+tests/test_resource_quoting 1 WorkflowError: RuleException in rule a in file Snakefile, line 1: AttributeError: 'Resources' object has no attribute 'test', when formatting the shell command
 tests/test_resource_string_in_cli_or_profile ok 2
 tests/test_resource_tbdstring ok 2
 tests/test_restartable_job_cmd_exit_1 ok 2
@@ -810,7 +810,7 @@ tests/test_rule_inheritance_globals ok 0
 tests/test_ruledag ok 16
 tests/test_ruledeps ok 4
 tests/test_run_namedlist ok 1
-tests/test_runtime_conversion_from_workflow_profile 33 Not supported yet: the attribute runtime of Resources
+tests/test_runtime_conversion_from_workflow_profile ok 1
 tests/test_same_wildcard ok 2
 tests/test_scatter_gather ok 11
 tests/test_scatter_gather_multiple_processes ok 12
@@ -851,7 +851,7 @@ tests/test_storage_dependency_edge_flags 33 Snakefile:1: Not supported yet: stor
 tests/test_storage_localrule ok 2
 tests/test_storage_noretrieve_dryrun 33 Snakefile:2: Not supported yet: storage directives
 tests/test_strict_mode ok 1
-tests/test_string_resources 33 Not supported yet: the attribute gpu_model of Resources
+tests/test_string_resources 1 WorkflowError: RuleException in rule b in file Snakefile, line 1: AttributeError: 'Resources' object has no attribute 'gpu_model', when formatting the shell command
 tests/test_subpath ok 2
 tests/test_subworkflow_config 1 Snakefile:3: SyntaxError: Keyword subworkflow is deprecated. Use module directive instead.
 tests/test_subworkflows 1 Snakefile:3: SyntaxError: Keyword subworkflow is deprecated. Use module directive instead.
@@ -866,7 +866,7 @@ tests/test_tes ok 1
 tests/test_threads ok 1
 tests/test_threads0 ok 1
 tests/test_tibanna 1 Snakefile:13: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
-tests/test_tmpdir 33 Not supported yet: the attribute tmpdir of Resources
+tests/test_tmpdir ok 2
 tests/test_toposort 33 Snakefile:1: ModuleNotFoundError: No module named 'snakemake.dag'
 tests/test_touch ok 2
 tests/test_touch_pipeline_with_temp_dir ok 3
@@ -886,10 +886,10 @@ tests/test_validate 33 Snakefile:4: ModuleNotFoundError: No module named 'polars
 tests/test_wildcard_annotatedstrings 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
 tests/test_wildcard_count_ambiguity ok 2
 tests/test_wildcard_keyword ok 8
-tests/test_workflow_profile 33 Not supported yet: the attribute foo of Resources
-tests/test_workflow_profile_cli_overwrite 33 Not supported yet: the attribute foo of Resources
-tests/test_workflow_profile_relative_filename 33 Not supported yet: the attribute foo of Resources
-tests/test_workflow_profile_relative_path 33 Not supported yet: the attribute foo of Resources
+tests/test_workflow_profile ok 1
+tests/test_workflow_profile_cli_overwrite ok 1
+tests/test_workflow_profile_relative_filename 1 WorkflowError: RuleException in rule a in file workflow/Snakefile, line 1: AttributeError: 'Resources' object has no attribute 'foo', when formatting the shell command
+tests/test_workflow_profile_relative_path 1 WorkflowError: RuleException in rule a in file workflow/Snakefile, line 1: AttributeError: 'Resources' object has no attribute 'foo', when formatting the shell command
 tests/test_wrapper ok 1
 tests/test_xrootd 1 Snakefile:3: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_yaml_config ok 1

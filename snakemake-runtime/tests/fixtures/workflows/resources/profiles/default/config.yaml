@@ -1,0 +1,8 @@
+default-resources:
+  mem_mb: 500
+  disk_mb: 1500
+set-resources:
+  b:
+    partition: fast
+set-threads:
+  a: 2

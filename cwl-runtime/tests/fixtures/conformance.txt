@@ -807,7 +807,7 @@ v1.2 length_for_non_array pass
 v1.2 user_defined_length_in_parameter_reference pass
 v1.2 directory_literal_with_literal_file_in_subdir_nostdin pass
 v1.2 colon_in_paths ran
-v1.2 colon_in_output_path ran
+v1.2 colon_in_output_path pass
 v1.2 record_with_default pass
 v1.2 record_outputeval pass
 v1.2 record_outputeval_nojs pass

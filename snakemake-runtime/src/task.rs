@@ -152,6 +152,18 @@ pub fn build(
         )?,
         None => Value::Int(1),
     };
+    // The workflow profile may set the threads of the rule.
+    let threads_value = match setting
+        .state
+        .profile
+        .set_threads
+        .iter()
+        .rev()
+        .find(|(name, _)| *name == rule.name)
+    {
+        Some((_, value)) => crate::config::parse_value(value),
+        None => threads_value,
+    };
     let threads = match threads_value.plain() {
         Value::Float(value) => *value as i64,
         other => other.as_int().ok_or_else(|| {
@@ -168,7 +180,8 @@ pub fn build(
         threads,
         rulename: &rulename,
     };
-    let resources = crate::resources::evaluate(interpreter, rule, &job_values)?;
+    let resources =
+        crate::resources::evaluate(interpreter, rule, &setting.state.profile, &job_values)?;
     let resource_value = crate::resources::named_list(threads, &resources);
     let mut params = NamedList::new("Params", Vec::new());
     for (name, values, many) in rule.params.named_entries() {

@@ -1,15 +1,33 @@
-//! The resources of a job: the values of the rule's `resources:` for its wildcards, input
-//! and threads, and what the task asks of the executor.
+//! The resources of a job, as Snakemake gives them to jobs that run on a remote executor:
+//! the defaults for memory, disk and the temporary folder, under the `default-resources` of the
+//! workflow profile, under the rule's `resources:`, under the profile's `set-resources`. Memory
+//! and disk are kept in megabytes, and shown also as a human-readable size and in mebibytes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use python_evaluator::{Error, Interpreter, Value};
+use python_evaluator::{Error, Interpreter, Scope, Value};
 use workflow_graph::Resources;
 
 use crate::objects::NamedList;
 use crate::plan::incomplete_target;
+use crate::profile::Profile;
 use crate::rule::Rule;
 use crate::task::evaluate as evaluate_value;
+use crate::workflow::workflow_error;
+
+/// Snakemake's default resources for remote execution (`Resources.DEFAULTS["full"]`). iunctus
+/// sends tasks to executors like TES, so its jobs get them.
+const DEFAULTS: &[(&str, &str)] = &[
+    ("mem", "min(max(2*input.size_mb, 1000), 8000)"),
+    ("disk", "max(2*input.size_mb, 1000) if input else 50000"),
+    ("tmpdir", "system_tmpdir"),
+];
+
+/// Resources with a size, which exist in megabytes, human-readable and in mebibytes.
+const SIZED: &[&str] = &["mem", "disk"];
+
+/// The temporary folder of the machine that runs a task, for `system_tmpdir`.
+const SYSTEM_TMPDIR: &str = "/tmp";
 
 /// The values of a job that resource functions may take.
 pub struct JobValues<'a> {
@@ -20,13 +38,71 @@ pub struct JobValues<'a> {
     pub rulename: &'a Value,
 }
 
-/// The rule's resources for a job, by name, in the order the rule gives them.
+/// The sized resource a name belongs to, like `mem` for `mem_mb`.
+fn family(name: &str) -> Option<&'static str> {
+    SIZED.iter().copied().find(|sized| {
+        name == *sized
+            || name
+                .strip_prefix(sized)
+                .is_some_and(|rest| rest == "_mb" || rest == "_mib")
+    })
+}
+
+/// Sets a resource, replacing any value of the same sized resource in another unit.
+fn set(resources: &mut Vec<(String, Value)>, name: &str, value: Value) {
+    let group = family(name);
+    resources
+        .retain(|(existing, _)| existing != name && (group.is_none() || family(existing) != group));
+    resources.push((name.to_owned(), value));
+}
+
+/// A resource value of the command line or a profile: a number, or a Python expression over
+/// `input`, `threads`, `attempt`, `wildcards` and `system_tmpdir`; a text that is no
+/// expression stays text, as Snakemake's `cli_evaluator` does.
+fn expression(
+    interpreter: &mut Interpreter,
+    text: &str,
+    job: &JobValues<'_>,
+) -> Result<Value, Error> {
+    let text = python_evaluator::host::expand_home(text);
+    if let Ok(number) = text.trim().parse::<i64>() {
+        return Ok(Value::Int(number));
+    }
+    if let Ok(number) = text.trim().parse::<f64>() {
+        return Ok(Value::Float(number));
+    }
+    let scope = Scope::new(None);
+    scope.set("wildcards", job.wildcards.clone());
+    scope.set("input", job.input.clone());
+    scope.set("attempt", job.attempt.clone());
+    scope.set("threads", Value::Int(job.threads));
+    scope.set("system_tmpdir", Value::str(SYSTEM_TMPDIR));
+    match interpreter.eval_text(&text, &scope) {
+        Ok(value) => Ok(value),
+        Err(error) if error.is("NameError") || error.is("SyntaxError") => Ok(Value::str(text)),
+        Err(error) => Err(workflow_error(format!(
+            "Failed to evaluate resources value '{text}'. When interpreted as a python expression, the following error was given: {error}"
+        ))),
+    }
+}
+
+/// The resources of a job, by name: the defaults, the profile's defaults, the rule's, then
+/// the profile's for the rule, with sized resources in all three units.
 pub fn evaluate(
     interpreter: &mut Interpreter,
     rule: &Rule,
+    profile: &Profile,
     job: &JobValues<'_>,
 ) -> Result<Vec<(String, Value)>, Error> {
     let mut resources: Vec<(String, Value)> = Vec::new();
+    for (name, text) in DEFAULTS {
+        let value = expression(interpreter, text, job)?;
+        set(&mut resources, name, value);
+    }
+    for (name, text) in &profile.default_resources {
+        let value = expression(interpreter, text, job)?;
+        set(&mut resources, name, value);
+    }
     for (name, value) in &rule.resources {
         let evaluated = evaluate_value(
             interpreter,
@@ -46,9 +122,98 @@ pub fn evaluate(
                 Err(error)
             }
         })?;
-        resources.push((name.clone(), evaluated));
+        set(&mut resources, name, evaluated);
     }
-    Ok(resources)
+    for (target, name, text) in &profile.set_resources {
+        if *target == rule.name {
+            let value = expression(interpreter, text, job)?;
+            set(&mut resources, name, value);
+        }
+    }
+    expand_sized(interpreter, resources)
+}
+
+/// Megabytes, rounded, of a sized resource given in any unit.
+fn in_megabytes(
+    interpreter: &mut Interpreter,
+    name: &str,
+    value: &Value,
+) -> Result<Option<i64>, Error> {
+    let number = python_evaluator::number::to_f64(value);
+    if name.ends_with("_mib") {
+        return Ok(number.map(|mib| (mib.round() / 0.953_674_316_406_25).floor() as i64));
+    }
+    if name.ends_with("_mb") {
+        return Ok(number.map(|mb| mb.round() as i64));
+    }
+    if let Some(number) = number {
+        return Ok(Some(number.round() as i64));
+    }
+    let Some(text) = value.as_str() else {
+        return Ok(None);
+    };
+    let stripped = text.trim_matches(['\'', '"']);
+    if stripped.chars().all(|c| c.is_ascii_digit()) && !stripped.is_empty() {
+        return Ok(stripped.parse().ok());
+    }
+    match megabytes(stripped) {
+        Some(mb) => Ok(Some((mb.ceil() as i64).max(1))),
+        None => Err(workflow_error(format!(
+            "Resource '{name}' with value {} could not be parsed as size in MB",
+            interpreter.repr(value)?
+        ))),
+    }
+}
+
+/// A size in megabytes as humanfriendly writes it, like `1 GB` or `1.5 GB`.
+pub fn human_size(megabytes: i64) -> String {
+    let bytes = megabytes as f64 * 1e6;
+    for (unit, divider) in [
+        ("PB", 1e15),
+        ("TB", 1e12),
+        ("GB", 1e9),
+        ("MB", 1e6),
+        ("KB", 1e3),
+    ] {
+        if bytes >= divider {
+            let text = format!("{:.2}", bytes / divider);
+            let text = text.trim_end_matches('0').trim_end_matches('.');
+            return format!("{text} {unit}");
+        }
+    }
+    format!("{bytes} bytes")
+}
+
+/// Sized resources as `<name>_mb`, followed by the human-readable `<name>` and `<name>_mib`,
+/// and `runtime` in minutes, as Snakemake's `Resources.expand_items` gives them to jobs.
+fn expand_sized(
+    interpreter: &mut Interpreter,
+    resources: Vec<(String, Value)>,
+) -> Result<Vec<(String, Value)>, Error> {
+    let mut expanded = Vec::with_capacity(resources.len() + 4);
+    for (name, value) in resources {
+        if let Some(sized) = family(&name)
+            && let Some(megabytes) = in_megabytes(interpreter, &name, &value)?
+        {
+            expanded.push((format!("{sized}_mb"), Value::Int(megabytes)));
+            expanded.push((sized.to_owned(), Value::str(human_size(megabytes))));
+            let mebibytes = (megabytes as f64 * 0.953_674_316_406_25).ceil() as i64;
+            expanded.push((format!("{sized}_mib"), Value::Int(mebibytes)));
+            continue;
+        }
+        if name == "runtime"
+            && let Some(text) = value.as_str()
+            && let Some(seconds) = seconds(&Value::str(text.trim_matches(['\'', '"'])))
+        {
+            expanded.push((
+                name,
+                Value::Int(((seconds as f64 / 60.0).round() as i64).max(1)),
+            ));
+            continue;
+        }
+        expanded.push((name, value));
+    }
+    Ok(expanded)
 }
 
 /// The `resources` object of a job: `_cores` and the named resources.
@@ -155,4 +320,59 @@ pub fn task_resources(threads: i64, resources: &[(String, Value)]) -> Resources 
         }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sizes_are_written_as_humanfriendly_writes_them() {
+        assert_eq!(human_size(1000), "1 GB");
+        assert_eq!(human_size(1500), "1.5 GB");
+        assert_eq!(human_size(954), "954 MB");
+        assert_eq!(human_size(16_000), "16 GB");
+    }
+
+    #[test]
+    fn a_sized_resource_replaces_the_same_resource_in_another_unit() {
+        let mut resources = vec![
+            ("mem".to_owned(), Value::Int(1000)),
+            ("tmpdir".to_owned(), Value::str("/tmp")),
+        ];
+        set(&mut resources, "mem_mib", Value::Int(2000));
+        let names: Vec<&str> = resources.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(names, ["tmpdir", "mem_mib"]);
+    }
+
+    #[test]
+    fn sized_resources_come_in_three_units() {
+        let mut interpreter =
+            Interpreter::new(std::rc::Rc::new(python_evaluator::LocalHost::new("/")));
+        let expanded = expand_sized(
+            &mut interpreter,
+            vec![
+                ("mem".to_owned(), Value::str("2G")),
+                ("disk_mib".to_owned(), Value::Int(954)),
+                ("runtime".to_owned(), Value::str("2h")),
+            ],
+        )
+        .expect("sizes parse");
+        let text: Vec<String> = expanded
+            .iter()
+            .map(|(name, value)| format!("{name}={}", python_evaluator::format::plain_str(value)))
+            .collect();
+        assert_eq!(
+            text,
+            [
+                "mem_mb=2000",
+                "mem=2 GB",
+                "mem_mib=1908",
+                "disk_mb=1000",
+                "disk=1 GB",
+                "disk_mib=954",
+                "runtime=120"
+            ]
+        );
+    }
 }

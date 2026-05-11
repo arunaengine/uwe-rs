@@ -65,6 +65,12 @@ pub struct Session {
 
 impl Session {
     pub fn new(launch: &Launch) -> Result<Session, DriverError> {
+        // Config files are relative to where the run starts, as Snakemake takes them.
+        let mut launch = launch.clone();
+        for path in launch.configs.iter_mut().chain(launch.inputs.iter_mut()) {
+            *path = std::path::absolute(&*path).unwrap_or_else(|_| path.clone());
+        }
+        let launch = &launch;
         let target = std::path::absolute(&launch.target).unwrap_or_else(|_| launch.target.clone());
         let (snakefile, workdir) = if target.is_dir() {
             let snakefile = find_snakefile(&target).ok_or_else(|| {

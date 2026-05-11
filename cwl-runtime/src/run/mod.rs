@@ -1087,5 +1087,4 @@ fn nest(flat: &[Value], shape: &[usize]) -> Value {
 }
 
 #[cfg(test)]
-#[path = "run_tests.rs"]
 mod tests;

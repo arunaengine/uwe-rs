@@ -131,9 +131,33 @@ impl Session {
 
     /// Sets the config from the command line and runs the Snakefile.
     pub fn evaluate(&mut self) -> Result<(), DriverError> {
+        // The workflow profile gives config files and values unless the launch does.
+        let profile = match crate::profile::find(&self.workdir, &self.snakefile) {
+            Some(folder) => crate::profile::Profile::load(&mut self.interpreter, &folder)
+                .map_err(|error| self.error(&error))?,
+            None => crate::profile::Profile::default(),
+        };
+        let launch_configs: Vec<PathBuf> = self
+            .launch
+            .configs
+            .iter()
+            .chain(self.launch.inputs.iter())
+            .cloned()
+            .collect();
+        let config_paths = if launch_configs.is_empty() {
+            profile.configfiles.clone()
+        } else {
+            launch_configs
+        };
+        let params = if self.launch.params.is_empty() {
+            profile.config.clone()
+        } else {
+            self.launch.params.clone()
+        };
+        self.state.borrow_mut().profile = profile;
         let overwrite = Value::dict(python_evaluator::Dict::default());
         let mut configfiles = Vec::new();
-        for path in self.launch.configs.iter().chain(self.launch.inputs.iter()) {
+        for path in &config_paths {
             let text = path.to_string_lossy().into_owned();
             let loaded = crate::config::load_config(&mut self.interpreter, &text)
                 .map_err(|error| self.error(&error))?;
@@ -141,7 +165,7 @@ impl Session {
                 .map_err(|error| self.error(&error))?;
             configfiles.push(text);
         }
-        for (name, value) in &self.launch.params {
+        for (name, value) in &params {
             let name = name.trim_start_matches('-').to_owned();
             if let Value::Dict(dict) = overwrite.plain() {
                 dict.borrow_mut()

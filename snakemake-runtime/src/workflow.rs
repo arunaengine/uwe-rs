@@ -179,6 +179,8 @@ pub struct State {
     pub shell_suffix: String,
     pub shell_executable: Option<String>,
     pub modifiers: Vec<Modifier>,
+    /// The workflow profile, which Snakemake reads as default command-line options.
+    pub profile: crate::profile::Profile,
     /// Parsed Snakefiles by path, for the statements their code reaches.
     pub snakefiles: HashMap<Rc<str>, Rc<Snakefile>>,
 }
@@ -209,6 +211,7 @@ impl State {
             shell_suffix: String::new(),
             shell_executable: None,
             modifiers: vec![Modifier::root(globals)],
+            profile: crate::profile::Profile::default(),
             snakefiles: HashMap::new(),
         }
     }

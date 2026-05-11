@@ -1,4 +1,4 @@
-//! Checks the parser against `nextflow lint` on the text-only nf-core corpus from `just corpus`.
+//! Checks the parser against `nextflow lint` on the text-only nf-core test workflows from `just test-workflows`.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -10,9 +10,11 @@ use nextflow_parser::{LineIndex, parse_config, parse_script};
 const REJECTED: &str = include_str!("fixtures/nf_core_rejected.txt");
 
 #[test]
-#[ignore = "needs the nf-core corpus from `just corpus`; run it with `just corpus-test`"]
+#[ignore = "needs the nf-core test workflows from `just test-workflows`; run it with `just test-workflows-test`"]
 fn matches_nextflow_lint() {
-    let root = PathBuf::from(std::env::var("NF_CORE_CORPUS").expect("NF_CORE_CORPUS is set"));
+    let root = PathBuf::from(
+        std::env::var("NF_CORE_TEST_WORKFLOWS").expect("NF_CORE_TEST_WORKFLOWS is set"),
+    );
     let rejected: BTreeSet<&str> = REJECTED
         .lines()
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
@@ -22,14 +24,14 @@ fn matches_nextflow_lint() {
     // A partial download would otherwise pass with fewer files to check.
     assert!(
         files.len() > 14_000,
-        "incomplete corpus: {} files",
+        "incomplete test workflows: {} files",
         files.len()
     );
     let mut mismatches = Vec::new();
     for path in &files {
         let relative = path.strip_prefix(&root).unwrap_or(path);
         let relative = relative.to_string_lossy().replace('\\', "/");
-        let source = std::fs::read_to_string(path).expect("corpus files are text");
+        let source = std::fs::read_to_string(path).expect("test workflows files are text");
         // Legacy syntax that iunctus accepts is still an error of strict syntax.
         let (mut errors, legacy) = if relative.ends_with(".config") {
             let parsed = parse_config(&source);
@@ -59,9 +61,9 @@ fn matches_nextflow_lint() {
 
 /// Scripts and Nextflow configs; `nf-test.config` files belong to nf-test and use another format.
 fn collect(directory: &Path, files: &mut Vec<PathBuf>) {
-    let entries = std::fs::read_dir(directory).expect("corpus directory is readable");
+    let entries = std::fs::read_dir(directory).expect("test workflows directory is readable");
     for entry in entries {
-        let path = entry.expect("corpus entry is readable").path();
+        let path = entry.expect("test workflows entry is readable").path();
         let name = path.file_name().unwrap_or_default().to_string_lossy();
         if path.is_dir() {
             collect(&path, files);

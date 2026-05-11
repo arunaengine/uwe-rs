@@ -1,5 +1,5 @@
-# Text-only nf-core corpus of tests/corpus.rs, fetched on 2026-09-27: repository, branch, commit.
-# `just corpus` fetches exactly these commits; `modules` is nf-core/modules, the rest are pipelines.
+# Text-only nf-core test workflows of tests/test_workflows.rs, fetched on 2026-09-27: repository, branch, commit.
+# `just test-workflows` fetches exactly these commits; `modules` is nf-core/modules, the rest are pipelines.
 modules master 3137cddd6fa5fd47e1673081fa82a12644e91996
 abotyper dev d12dfe354189b820fffc8d741ead1ad1b07c2d3f
 airrflow master 8bc3e567d0bb3a4c47ead15a8f42e764580f76dc

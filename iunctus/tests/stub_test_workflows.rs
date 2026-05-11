@@ -1,6 +1,6 @@
-//! Runs nf-core pipelines of the corpus with `-stub` and the mock TES executor, and compares
+//! Runs nf-core pipelines of the test workflows with `-stub` and the mock TES executor, and compares
 //! each task's script in the execution graph with the one Nextflow wrote, as
-//! `tests/fixtures/oracle/stub/record.sh` recorded them. Run with `just stub-corpus-test`.
+//! `tests/fixtures/oracle/stub/record.sh` recorded them. Run with `just stub-test-workflows-test`.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -52,10 +52,12 @@ fn graph_scripts(file: &Path) -> BTreeMap<String, String> {
 }
 
 #[test]
-#[ignore = "needs the nf-core corpus; run `just stub-corpus-test`"]
+#[ignore = "needs the nf-core test workflows; run `just stub-test-workflows-test`"]
 fn stub_scripts_equal_the_oracle() {
-    let corpus = PathBuf::from(std::env::var("NF_CORE_CORPUS").expect("NF_CORE_CORPUS is set"))
-        .join("pipelines");
+    let test_workflows = PathBuf::from(
+        std::env::var("NF_CORE_TEST_WORKFLOWS").expect("NF_CORE_TEST_WORKFLOWS is set"),
+    )
+    .join("pipelines");
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/oracle/stub");
     let mut pipelines: Vec<PathBuf> = std::fs::read_dir(&fixtures)
         .expect("reads the fixtures")
@@ -73,7 +75,7 @@ fn stub_scripts_equal_the_oracle() {
         let cache = tempfile::tempdir().expect("a temporary directory");
         let graph = cache.path().join("graph.json");
         let output = Command::new(env!("CARGO_BIN_EXE_iunctus"))
-            .args(["run", &corpus.join(&name).to_string_lossy()])
+            .args(["run", &test_workflows.join(&name).to_string_lossy()])
             .args(["-profile", "test,docker", "-stub"])
             .args(["-graph", &graph.to_string_lossy()])
             .args(["--outdir", "/tmp/iunctus-stub-out"])

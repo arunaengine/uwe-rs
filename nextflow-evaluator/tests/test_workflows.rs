@@ -1,4 +1,4 @@
-//! Lowers every nf-core module of the corpus from `just corpus`: all must lower, except the
+//! Lowers every nf-core module of the test workflows from `just test-workflows`: all must lower, except the
 //! files that use features iunctus does not support yet.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -14,10 +14,12 @@ use nextflow_parser::parse_script;
 const UNSUPPORTED: &str = include_str!("fixtures/nf_core_modules_unsupported.txt");
 
 #[test]
-#[ignore = "needs the nf-core corpus from `just corpus`; run it with `just corpus-test`"]
+#[ignore = "needs the nf-core test workflows from `just test-workflows`; run it with `just test-workflows-test`"]
 fn nf_core_modules_lower() {
-    let corpus = PathBuf::from(std::env::var("NF_CORE_CORPUS").expect("NF_CORE_CORPUS is set"));
-    let root = corpus.join("modules");
+    let test_workflows = PathBuf::from(
+        std::env::var("NF_CORE_TEST_WORKFLOWS").expect("NF_CORE_TEST_WORKFLOWS is set"),
+    );
+    let root = test_workflows.join("modules");
     let expected: BTreeMap<&str, &str> = UNSUPPORTED
         .lines()
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
@@ -28,7 +30,7 @@ fn nf_core_modules_lower() {
     // A partial download would otherwise pass with fewer files to check.
     assert!(
         files.len() > 2_000,
-        "incomplete corpus: {} files",
+        "incomplete test workflows: {} files",
         files.len()
     );
     let mut mismatches = Vec::new();
@@ -38,7 +40,7 @@ fn nf_core_modules_lower() {
             .unwrap_or(path)
             .to_string_lossy()
             .into_owned();
-        let source = std::fs::read_to_string(path).expect("corpus files are text");
+        let source = std::fs::read_to_string(path).expect("test workflows files are text");
         let parsed = parse_script(&source);
         assert!(parsed.errors.is_empty(), "{relative} parses");
         let first = lower_module(&parsed.tree, &source)
@@ -62,10 +64,12 @@ fn nf_core_modules_lower() {
 }
 
 #[test]
-#[ignore = "needs the nf-core corpus from `just corpus`; run it with `just corpus-test`"]
+#[ignore = "needs the nf-core test workflows from `just test-workflows`; run it with `just test-workflows-test`"]
 fn nf_core_subworkflows_lower() {
-    let corpus = PathBuf::from(std::env::var("NF_CORE_CORPUS").expect("NF_CORE_CORPUS is set"));
-    let root = corpus.join("modules");
+    let test_workflows = PathBuf::from(
+        std::env::var("NF_CORE_TEST_WORKFLOWS").expect("NF_CORE_TEST_WORKFLOWS is set"),
+    );
+    let root = test_workflows.join("modules");
     let expected: BTreeMap<&str, &str> = UNSUPPORTED
         .lines()
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
@@ -75,7 +79,7 @@ fn nf_core_subworkflows_lower() {
     collect(&root.join("subworkflows/nf-core"), &mut files);
     assert!(
         files.len() > 100,
-        "incomplete corpus: {} files",
+        "incomplete test workflows: {} files",
         files.len()
     );
     let mut mismatches = Vec::new();
@@ -85,7 +89,7 @@ fn nf_core_subworkflows_lower() {
             .unwrap_or(path)
             .to_string_lossy()
             .into_owned();
-        let source = std::fs::read_to_string(path).expect("corpus files are text");
+        let source = std::fs::read_to_string(path).expect("test workflows files are text");
         let parsed = parse_script(&source);
         assert!(parsed.errors.is_empty(), "{relative} parses");
         let mut files = Files {
@@ -153,9 +157,9 @@ impl Imports for Files {
 
 /// The `main.nf` files below a directory.
 fn collect(directory: &Path, files: &mut Vec<PathBuf>) {
-    let entries = std::fs::read_dir(directory).expect("corpus directory is readable");
+    let entries = std::fs::read_dir(directory).expect("test workflows directory is readable");
     for entry in entries {
-        let path = entry.expect("corpus entry is readable").path();
+        let path = entry.expect("test workflows entry is readable").path();
         if path.is_dir() {
             collect(&path, files);
         } else if path.file_name().is_some_and(|name| name == "main.nf") {

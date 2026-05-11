@@ -16,6 +16,7 @@ mod objects;
 mod pathvars;
 mod pattern;
 mod plan;
+mod resources;
 mod rule;
 mod schema;
 mod shell;

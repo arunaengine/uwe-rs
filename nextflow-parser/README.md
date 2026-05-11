@@ -19,8 +19,8 @@ let items = parsed.tree.items;
 ## How it is checked
 
 - Unit tests next to the code cover precedence, line break rules, calls without parentheses, closures, strings and statements. The tests in `tests/` cover script declarations, config files and the lexer.
-- `just corpus` fetches a text-only copy of all 144 nf-core pipelines and the nf-core/modules repository, at the commits listed in `tests/fixtures/nf_core_revisions.txt`.
-- `just corpus-test` parses all 14,624 scripts and configs in it. It passes when the parser rejects exactly the files that `nextflow lint` 26.04.6 rejects with syntax errors, listed in `tests/fixtures/nf_core_rejected.txt`, and accepts all others. `nf-test.config` files are skipped because they belong to nf-test.
+- `just test-workflows` fetches a text-only copy of all 144 nf-core pipelines and the nf-core/modules repository, at the commits listed in `tests/fixtures/nf_core_revisions.txt`.
+- `just test-workflows-test` parses all 14,624 scripts and configs in it. It passes when the parser rejects exactly the files that `nextflow lint` 26.04.6 rejects with syntax errors, listed in `tests/fixtures/nf_core_rejected.txt`, and accepts all others. `nf-test.config` files are skipped because they belong to nf-test.
 
 ## Known differences
 

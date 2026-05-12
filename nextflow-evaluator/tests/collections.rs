@@ -32,6 +32,17 @@ fn value(body: &str) -> String {
     eval(body).expect("evaluates")
 }
 
+/// Groovy's `combinations()`, as Nextflow 26.04.6 gives it.
+#[test]
+fn combinations() {
+    assert_eq!(
+        value(
+            "[[[1, 2], ['a', 'b'], ['x']].combinations(), [[1, 2], 'c'].combinations(), [].combinations()]"
+        ),
+        "[[[1, a, x], [2, a, x], [1, b, x], [2, b, x]], [[1, c], [2, c]], []]"
+    );
+}
+
 #[test]
 fn index_values_and_lists_of_indexes() {
     assert_eq!(

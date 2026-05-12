@@ -260,6 +260,15 @@ impl Error {
         }
     }
 
+    /// The Java exception, if the error is one, also when it has a location.
+    pub fn exception(&self) -> Option<&Rc<Exception>> {
+        match self {
+            Error::Thrown { exception, .. } => Some(exception),
+            Error::Unsupported { .. } => None,
+            Error::Located { error, .. } => error.exception(),
+        }
+    }
+
     /// The error with a position, if it has none yet, as errors from the host have.
     fn or_at(mut self, position: Span) -> Error {
         match &mut self {

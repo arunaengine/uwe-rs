@@ -152,10 +152,8 @@ impl Run {
                 // unless the handler calls `error`.
                 if let Err(error) = interpreter.call_closure(&handler, Vec::new()) {
                     let error = interpreter.locate(error);
-                    match &error {
-                        Error::Thrown { exception, .. }
-                            if exception.class != "AbortOperationException" =>
-                        {
+                    match error.exception() {
+                        Some(exception) if exception.class != "AbortOperationException" => {
                             interpreter.print(&format!(
                                 "ERROR ~ Failed to invoke `workflow.onComplete` event handler: \
                                  {error}\n"

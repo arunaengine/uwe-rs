@@ -382,3 +382,17 @@ fn emits_of_call_outputs_are_their_channel() {
     let (_, printed) = run(source, &Options::default()).expect("runs");
     assert_eq!(printed, "hi\n1\n");
 }
+
+/// An error of a completion handler is logged and the run still succeeds, as in Nextflow
+/// 26.04.6, which prints "Failed to invoke `workflow.onComplete` event handler".
+#[test]
+fn completion_handlers_that_fail_are_logged() {
+    let source = "workflow {\n    workflow.onComplete { println('first'); NfcoreTemplate.summary(workflow) }\n    \
+                  workflow.onComplete { println('second') }\n    channel.of(1).view()\n}";
+    let (_, printed) = run(source, &Options::default()).expect("runs");
+    let lines: Vec<&str> = printed.lines().collect();
+    assert_eq!(lines[0], "1");
+    assert_eq!(lines[1], "first");
+    assert!(lines[2].starts_with("ERROR ~ Failed to invoke `workflow.onComplete` event handler"));
+    assert_eq!(lines[3], "second");
+}

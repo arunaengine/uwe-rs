@@ -145,9 +145,22 @@ impl Run {
             let mut interpreter = Interpreter::new(&mut session);
             set_globals(&mut interpreter, &self.options, &self.workflow);
             for handler in workflow::handlers(&self.workflow, false) {
-                interpreter
-                    .call_closure(&handler, Vec::new())
-                    .map_err(|error| interpreter.locate(error))?;
+                // As Nextflow, an error of a handler is logged and the run still succeeds,
+                // unless the handler calls `error`.
+                if let Err(error) = interpreter.call_closure(&handler, Vec::new()) {
+                    let error = interpreter.locate(error);
+                    match &error {
+                        Error::Thrown { exception, .. }
+                            if exception.class != "AbortOperationException" =>
+                        {
+                            interpreter.print(&format!(
+                                "ERROR ~ Failed to invoke `workflow.onComplete` event handler: \
+                                 {error}\n"
+                            ));
+                        }
+                        _ => return Err(error),
+                    }
+                }
             }
             return Ok(());
         }

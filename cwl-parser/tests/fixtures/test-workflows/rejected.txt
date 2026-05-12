@@ -9,8 +9,6 @@ conformance/v1.1/tests/timelimit4-wf.cwl should_fail
 conformance/v1.2/tests/basename-fields-job.yml
 conformance/v1.2/tests/conditionals/cond-wf-005.cwl should_fail
 conformance/v1.2/tests/conditionals/cond-wf-005_nojs.cwl should_fail
-conformance/v1.2/tests/iwd/iwd-fileobjs1.cwl
-conformance/v1.2/tests/iwd/iwd-fileobjs2.cwl
 conformance/v1.2/tests/mixed-versions/invalid-tool-v10.cwl should_fail
 conformance/v1.2/tests/mixed-versions/invalid-tool-v11.cwl should_fail
 conformance/v1.2/tests/mixed-versions/invalid-wf-v10.cwl should_fail
@@ -26,7 +24,6 @@ realworld/collections/github.com__Barski-lab__workflows/workflows/bismark-methyl
 realworld/collections/github.com__Barski-lab__workflows/workflows/heatmap.cwl
 realworld/collections/github.com__NCI-GDC__gdc-dnaseq-cwl/subworkflows/metrics/metrics.cwl
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/fastx_toolkit/fastx_quality_stats.cwl
-realworld/collections/github.com__common-workflow-library__bio-cwl-tools/graph-genome-segmentation/component_segmentation.cwl
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/hopach/hopach.cwl
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/tb-profiler/tb-profiler-profile.cwl
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/input-agnostic/kfdrc_bwamem_naive.cwl
@@ -67,15 +64,7 @@ realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-de
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/dev/latest-tools/workflows/kfdrc_alignment_wf.cwl
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/dev/latest-tools/workflows/kfdrc_bwamem_subwf.cwl
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/dev/ultra-opt/workflows/kfdrc_alignment_wf.cwl
-realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/tools/hotspots_annotation.cwl
-realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/tools/kf_mskcc_vcf2maf.cwl
-realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/workflows/kfdrc-somatic-snv-annot-workflow.cwl
-realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_lancet_sub_wf.cwl
-realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_mutect2_sub_wf.cwl
-realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_strelka2_sub_wf.cwl
-realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_vardict_sub_wf.cwl
 realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/cnvkit_call.cwl
-realworld/collections/github.com__kids-first__kf-somatic-workflow/workflow/kfdrc-somatic-variant-workflow.cwl
 realworld/collections/github.com__kids-first__kf-somatic-workflow/workflow/kfdrc_consensus_calling.cwl
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/ACCESS_variants.cwl
 realworld/collections/github.com__ncbi__pgap/progs/unit_tests/test_cluster_blastp_wnode/test.cwl
@@ -102,22 +91,6 @@ realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metag
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metatranscriptome_pipeline.cwl
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metatranscriptome_qc.cwl
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/rna-prediction.cwl
-realworld/sources/github.com__HrishiDhondge__CroMaSt/CroMaSt.cwl
-realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/add_crossmapped2resmapped.cwl
-realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/add_domain_num.cwl
-realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/align_compute_avg.cwl
-realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/core_avg_subwf.cwl
-realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/create_param.cwl
-realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/map_unique_struct_cath2pfam.cwl
-realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/map_unique_struct_pfam2cath.cwl
-realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/other_avg_subwf.cwl
-realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/pairwise_aligner.cwl
-realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/resmapping_cath2up.cwl
-realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/resmapping_cath_instances_subwf.cwl
-realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/resmapping_pfam2pdb.cwl
-realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/resmapping_pfam_instances_subwf.cwl
-realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/separate_cath.cwl
-realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/unmapped_unp_avg_align.cwl
 realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcall.cwl
 realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcallDocker.cwl
 realworld/sources/github.com__ambarishK__bio-cwl-tools/gatk4W-copy.cwl
@@ -125,11 +98,8 @@ realworld/sources/github.com__arvados__bh20-seq-resource/workflows/fastq2fasta/f
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/arv-main.cwl
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/collect-seqs.cwl
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/from_sparql.cwl
-realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/pangenome-generate.cwl
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/query-to-gfa.cwl
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/phylogeny/phylogeny.cwl
-realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/graph-genome-segmentation/component_segmentation.cwl
-realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/ivar/ivar_trim.cwl
 realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/gromacs/genrestr.cwl
 realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/gromacs/make_ndx.cwl
 realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/gromacs_extra/ndx2resttop.cwl

@@ -589,6 +589,8 @@ conformance/v1.2/tests/iwd/iwd-container-entryname1.cwl ok 1
 conformance/v1.2/tests/iwd/iwd-container-entryname2.cwl fail: iwd-container-entryname2: the InitialWorkDir entry `<tmp>` is absolute, which needs DockerRequirement under `requirements`
 conformance/v1.2/tests/iwd/iwd-container-entryname3.cwl fail: iwd-container-entryname3: the InitialWorkDir entry `<tmp>` is absolute, which needs DockerRequirement under `requirements`
 conformance/v1.2/tests/iwd/iwd-container-entryname4.cwl fail: iwd-container-entryname4: the InitialWorkDir entry `../input/stuff.txt` leaves the output directory
+conformance/v1.2/tests/iwd/iwd-fileobjs1.cwl ok 1
+conformance/v1.2/tests/iwd/iwd-fileobjs2.cwl ok 1
 conformance/v1.2/tests/iwd/iwd-jsondump1-nl.cwl ok 1
 conformance/v1.2/tests/iwd/iwd-jsondump1.cwl ok 1
 conformance/v1.2/tests/iwd/iwd-jsondump2-nl.cwl ok 1
@@ -1139,6 +1141,7 @@ realworld/collections/github.com__common-workflow-library__bio-cwl-tools/fastqc/
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/fastqc/fastqc_2.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/gat/gat-run.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/gffread/gffread.cwl ok 1
+realworld/collections/github.com__common-workflow-library__bio-cwl-tools/graph-genome-segmentation/component_segmentation.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/gsea/gseapy.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/hal/halliftover.cwl ok 1
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/haltools/halliftover.cwl ok 1
@@ -1816,13 +1819,20 @@ realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-
 realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/tools/echtvar_anno.cwl ok 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/tools/gatk_variant_filter.cwl ok 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/tools/generic_rename_outputs.cwl ok 1
+realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/tools/hotspots_annotation.cwl ok 1
+realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/tools/kf_mskcc_vcf2maf.cwl ok 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/tools/variant_effect_predictor_105.cwl ok 1
+realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/workflows/kfdrc-somatic-snv-annot-workflow.cwl fail: vep_annotate_vcf: the input `failed` is of type failed?, but its value is the number 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_cnvkit_sub_wf.cwl ok 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_controlfreec_sub_wf.cwl ok 6
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_gatk_cnv_somatic_pair_wf.cwl ok 19
+realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_lancet_sub_wf.cwl fail: sort_merge_lancet_vcf: the required secondary file `input_tumor_aligned.bed_invtl_split.vcf.tbi` of `file://<tmp>` is missing
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_manta_sub_wf.cwl ok 3
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_mutect2_filter_support_subwf.cwl ok 8
+realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_mutect2_sub_wf.cwl fail: annotate/vep_annotate_vcf: the input `failed` is of type failed?, but its value is the number 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_run_theta2_sub_wf.cwl ok 4
+realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_strelka2_sub_wf.cwl fail: annotate/vep_annotate_vcf: the input `failed` is of type failed?, but its value is the number 1
+realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_vardict_sub_wf.cwl fail: annotate/vep_annotate_vcf: the input `failed` is of type failed?, but its value is the number 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/prepare_regions.cwl ok 6
 realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/add_basename.cwl ok 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/ampliconsuite_pipeline.cwl ok 1
@@ -1913,6 +1923,7 @@ realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/ubuntu_r
 realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/ubuntu_rename_outputs.cwl ok 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/untar_gzip.cwl ok 1
 realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/vardictjava.cwl ok 1
+realworld/collections/github.com__kids-first__kf-somatic-workflow/workflow/kfdrc-somatic-variant-workflow.cwl fail: the output `run_amplicon_architect`: JavaScript error in `if (!inputs.amplicon_architect || !inputs.is_wgs) { return false; } if (!inputs....`: Error: Amplicon Architect cannot be run without Mosek file!
 realworld/collections/github.com__kids-first__kf-somatic-workflow/workflow/kfdrc_gatk_create_cnv_pon_wf.cwl ok 5
 realworld/collections/github.com__kids-first__kf-somatic-workflow/workflow/kfdrc_production_amplicon_architect.cwl ok 1
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/cwl_tools/abra/abra.cwl ok 1
@@ -2801,18 +2812,34 @@ realworld/sources/github.com__Health-Informatics-UoN__beacon-omop-worker-workflo
 realworld/sources/github.com__Health-Informatics-UoN__beacon-omop-worker-workflows/beacon-omop-worker.cwl ok 1
 realworld/sources/github.com__Health-Informatics-UoN__beacon-omop-worker-workflows/workflow_entrypoint.cwl ok 1
 realworld/sources/github.com__Health-Informatics-UoN__beacon-omop-worker-workflows/workflow_entrypoint_survival.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/CroMaSt.cwl ok 29
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/add_crossmapped2resmapped.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/add_domain_num.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/align_compute_avg.cwl ok 1
 realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/check_threshold.cwl ok 1
 realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/chop_struct2domains.cwl ok 1
 realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/compare_cath_pfam.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/core_avg_subwf.cwl ok 5
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/create_param.cwl ok 1
 realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/crossmapped_per_unp_dom.cwl ok 1
 realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/download_data.cwl ok 1
 realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/filter_align_scores.cwl ok 1
 realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/gather_lost_resmap.cwl ok 1
 realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/get_family_ids.cwl ok 1
 realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/list_true_domains.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/map_unique_struct_cath2pfam.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/map_unique_struct_pfam2cath.cwl ok 1
 realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/merge_df2json.cwl ok 1
 realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/move_files.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/other_avg_subwf.cwl ok 10
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/pairwise_aligner.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/resmapping_cath2up.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/resmapping_cath_instances_subwf.cwl ok 4
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/resmapping_pfam2pdb.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/resmapping_pfam_instances_subwf.cwl ok 4
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/separate_cath.cwl ok 1
 realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/separate_pfam.cwl ok 1
+realworld/sources/github.com__HrishiDhondge__CroMaSt/Tools/unmapped_unp_avg_align.cwl ok 6
 realworld/sources/github.com__PeptidoMexico__peptidomexico-open-science/workflows/cwl/repro-lab-kit-workflow.cwl ok 1
 realworld/sources/github.com__PeptidoMexico__peptidomexico-open-science/workflows/cwl/repro-lab-kit.cwl ok 1
 realworld/sources/github.com__RyoMameda__ComplexMicrobiome_GeneExpression_CWL/Tools/00_fastp.cwl ok 1
@@ -3044,6 +3071,7 @@ realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-gen
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/odgi-build-from-xpoa-gfa.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/odgi-build.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/odgi_to_rdf.cwl ok 1
+realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/pangenome-generate.cwl ok 18
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/pangenome-generate_abpoa.cwl ok 5
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/pangenome-generate_spoa.cwl ok 5
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/relabel-seqs.cwl ok 1
@@ -3111,11 +3139,13 @@ realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/fastp/f
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/fastqc/fastqc_1.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/fastqc/fastqc_2.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/fastx_toolkit/fastx_quality_stats.cwl ok 1
+realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/graph-genome-segmentation/component_segmentation.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/hal/halliftover.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/homer/homer-annotate-peaks-hist.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/homer/homer-make-metagene-profile.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/homer/homer-make-tag-directory.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/hopach/hopach.cwl ok 1
+realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/ivar/ivar_trim.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/kraken2/kraken2.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/lofreq/lofreq_call.cwl ok 1
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/tools/lofreq/lofreq_viterbi.cwl ok 1

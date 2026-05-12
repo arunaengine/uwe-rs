@@ -22,6 +22,23 @@ pub struct Stat {
     pub modified: f64,
 }
 
+/// A command that code asks to run, like with `subprocess.run` or `os.system`.
+#[derive(Clone, Debug)]
+pub struct Command {
+    /// The program and its arguments; a shell command is `/bin/sh -c <text>`.
+    pub argv: Vec<String>,
+    /// The folder the command runs in, absolute.
+    pub cwd: PathBuf,
+}
+
+/// What a command did: its exit code and its output.
+#[derive(Clone, Debug, Default)]
+pub struct CommandOutcome {
+    pub exit_code: i32,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+}
+
 pub trait Host {
     /// The working directory, absolute.
     fn cwd(&self) -> PathBuf;
@@ -45,6 +62,15 @@ pub trait Host {
     fn print(&self, text: &str);
 
     fn environment(&self) -> Vec<(String, String)>;
+
+    /// Runs a command that code asks for. Commands never run on the machine of iunctus
+    /// itself (decision 11); a host that can run them in a container overrides this.
+    fn run_command(&self, command: &Command) -> Result<CommandOutcome, crate::error::Error> {
+        let _ = command;
+        Err(crate::error::Error::unsupported(
+            "running commands while the workflow is planned",
+        ))
+    }
 
     /// Whether the process may use a path as `os.access` asks: `mode` combines 4 (read),
     /// 2 (write) and 1 (execute), and 0 only asks whether it exists.

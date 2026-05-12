@@ -676,47 +676,6 @@ pub fn textwrap() -> Vec<(&'static str, Value)> {
     ]
 }
 
-pub fn subprocess() -> Vec<(&'static str, Value)> {
-    let refuse = |name: &'static str| {
-        (
-            name,
-            Value::builtin(name, move |_, _| {
-                Err(Error::unsupported(format!(
-                    "subprocess.{name}: running commands while the workflow is planned"
-                )))
-            }),
-        )
-    };
-    vec![
-        ("PIPE", Value::Int(-1)),
-        ("STDOUT", Value::Int(-2)),
-        ("DEVNULL", Value::Int(-3)),
-        (
-            "CalledProcessError",
-            Value::Class(types::library_exception(
-                "CalledProcessError",
-                "subprocess",
-                "Exception",
-            )),
-        ),
-        (
-            "SubprocessError",
-            Value::Class(types::library_exception(
-                "SubprocessError",
-                "subprocess",
-                "Exception",
-            )),
-        ),
-        refuse("run"),
-        refuse("check_output"),
-        refuse("check_call"),
-        refuse("call"),
-        refuse("Popen"),
-        refuse("getoutput"),
-        refuse("getstatusoutput"),
-    ]
-}
-
 pub fn warnings() -> Vec<(&'static str, Value)> {
     vec![
         (

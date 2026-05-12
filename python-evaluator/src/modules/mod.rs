@@ -11,6 +11,7 @@ mod files;
 pub(crate) mod misc;
 mod os;
 pub(crate) mod re;
+pub mod subprocess;
 pub mod system;
 mod template;
 mod urllib;
@@ -159,7 +160,7 @@ pub fn native(interpreter: &mut Interpreter, name: &str) -> Result<Option<Value>
         "time" => datetime::time(),
         "string" => misc::string(),
         "textwrap" => misc::textwrap(),
-        "subprocess" => misc::subprocess(),
+        "subprocess" => subprocess::subprocess(),
         "warnings" => misc::warnings(),
         "logging" => misc::logging(),
         "socket" => misc::socket(),

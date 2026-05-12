@@ -18,7 +18,7 @@ pub mod types;
 pub mod value;
 
 pub use error::{Error, ErrorKind, Location};
-pub use host::{FileKind, Host, LocalHost, Stat};
+pub use host::{Command, CommandOutcome, FileKind, Host, LocalHost, Stat};
 pub use interpreter::{AttributeHook, Frame, FrameKind, Interpreter, Source, StatementHook};
 pub use value::{Args, Dict, Key, Name, Native, Scope, Value};
 pub use {ruff_python_ast, ruff_text_size};

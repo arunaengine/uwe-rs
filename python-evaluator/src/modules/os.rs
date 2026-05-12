@@ -258,22 +258,8 @@ pub fn os(interpreter: &mut Interpreter) -> Result<Vec<(&'static str, Value)>, E
                 Ok(Value::str(text))
             }),
         ),
-        (
-            "system",
-            function("system", |_, _| {
-                Err(Error::unsupported(
-                    "os.system: running commands while the workflow is planned",
-                ))
-            }),
-        ),
-        (
-            "popen",
-            function("popen", |_, _| {
-                Err(Error::unsupported(
-                    "os.popen: running commands while the workflow is planned",
-                ))
-            }),
-        ),
+        ("system", function("system", super::subprocess::system)),
+        ("popen", function("popen", super::subprocess::os_popen)),
         (
             "sched_getaffinity",
             function("sched_getaffinity", |_, _| {

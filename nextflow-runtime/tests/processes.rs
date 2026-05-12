@@ -396,3 +396,13 @@ fn completion_handlers_that_fail_are_logged() {
     assert!(lines[2].starts_with("ERROR ~ Failed to invoke `workflow.onComplete` event handler"));
     assert_eq!(lines[3], "second");
 }
+
+/// Completion handlers read the value of a value channel with `getVal()`, as in Nextflow
+/// 26.04.6.
+#[test]
+fn completion_handlers_read_value_channels() {
+    let source = "workflow {\n    def reports = channel.of(1, 2).toList()\n    \
+                  workflow.onComplete { println(\"reports ${reports.getVal()} ${reports.val.size()}\") }\n}";
+    let (_, printed) = run(source, &Options::default()).expect("runs");
+    assert_eq!(printed, "reports [1, 2] 2\n");
+}

@@ -50,6 +50,8 @@ pub(crate) enum Each {
     FlatMap(Option<Rc<Closure>>),
     /// `flatten`: the leaves of nested collections.
     Flatten,
+    /// `toInteger`, `toLong`, `toFloat` and `toDouble`: each value `as` the class.
+    Cast(&'static str),
     /// `view`: prints each value, or the closure's result, and forwards the value.
     View {
         closure: Option<Rc<Closure>>,
@@ -123,6 +125,10 @@ impl Behaviour for Single {
                     for item in elements(result) {
                         context.emit(self.output, item);
                     }
+                }
+                Each::Cast(class) => {
+                    let value = context.interpreter.cast_value(value, class)?;
+                    context.emit(self.output, value);
                 }
                 Each::Flatten => {
                     let mut leaves = Vec::new();

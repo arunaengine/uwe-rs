@@ -272,3 +272,36 @@ realworld/workflowhub/1786/DTC75/WF7502/WF7502.cwl
 $ cwltool do_eval realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC75/WF7502/WF7502.cwl steps/ST750207/in/DAL/valueFrom
 > WorkflowException: Expression evaluation error:
 > Syntax error in parameter reference '(self.listing.find(f => f.basename === "DAL_template.json"))'. This could be due to using Javascript code without specifying InlineJavascriptRequirement.
+
+realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/workflows/kfdrc-somatic-snv-annot-workflow.cwl
+realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_mutect2_sub_wf.cwl
+realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_strelka2_sub_wf.cwl
+realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_vardict_sub_wf.cwl
+= invalid: the VEP tool gives its enum inputs `failed` and `shift_hgvs` the default 1, a number, but their symbols are the strings "0" and "1"
+$ cwltool --no-container realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/tools/variant_effect_predictor_105.cwl <job>
+> ERROR Workflow error, try again with --debug for more information:
+> Invalid job input record:
+> <tmp>/job.json:1:1: * the 'failed' field is not valid because
+> tried failed but
+> value is a int but expected a string
+> * the 'shift_hgvs' field is not valid because
+> tried shift_hgvs but
+> value is a int but expected a string
+
+realworld/collections/github.com__kids-first__kf-somatic-workflow/workflow/kfdrc-somatic-variant-workflow.cwl
+= invalid: the VEP step fails, as the VEP tool gives its enum inputs `failed` and `shift_hgvs` the default 1, a number, but their symbols are strings; without a Mosek license file, the workflow's own check of its inputs stops it first
+$ cwltool --no-container realworld/collections/github.com__kids-first__kf-somatic-workflow/kf-annotation-tools/tools/variant_effect_predictor_105.cwl <job>
+> ERROR Workflow error, try again with --debug for more information:
+> Invalid job input record:
+> <tmp>/job.json:1:1: * the 'failed' field is not valid because
+> tried failed but
+> value is a int but expected a string
+> * the 'shift_hgvs' field is not valid because
+> tried shift_hgvs but
+> value is a int but expected a string
+
+realworld/collections/github.com__kids-first__kf-somatic-workflow/sub_workflows/kfdrc_lancet_sub_wf.cwl
+= invalid: the GATK SortVcf step needs the `.tbi` index of each Lancet VCF, but the output `lancet_vcf` of lancet.cwl declares none
+$ cwltool --no-container realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/gatk_sortvcf.cwl <job>
+> ERROR Workflow error, try again with --debug for more information:
+> Missing required secondary file 'calls.vcf.tbi' from file object: {

@@ -161,8 +161,24 @@ impl Interpreter<'_> {
                     span,
                 ));
             }
+            // The outputs of a call give their one channel, as Nextflow's `collectOutputs`.
             let value = match value {
-                value @ (Value::Channel(_) | Value::ChannelOut(_)) => value,
+                Value::ChannelOut(out) if out.values.len() == 1 => out.values[0].clone(),
+                Value::ChannelOut(out) => {
+                    let (class, message) = if out.values.is_empty() {
+                        (
+                            "MissingValueException",
+                            format!("Cannot emit empty output: {emit}"),
+                        )
+                    } else {
+                        (
+                            "IllegalArgumentException",
+                            format!("Cannot emit a multi-channel output: {emit}"),
+                        )
+                    };
+                    return Err(thrown(Exception::new(class, message), expression.span));
+                }
+                value @ Value::Channel(_) => value,
                 plain => self.namespace_call("channel", "value", vec![plain], expression.span)?,
             };
             values.push(value);

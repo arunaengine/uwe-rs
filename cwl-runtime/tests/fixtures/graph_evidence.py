@@ -29,6 +29,7 @@ OUTPUT = Path(__file__).with_name("graph_evidence.txt")
 os.environ["COLUMNS"] = "1000"
 
 GENOME = "realworld/collections/github.com__genome__analysis-workflows/definitions/"
+SOMATIC = "realworld/collections/github.com__kids-first__kf-somatic-workflow/"
 PGAP = "realworld/collections/github.com__ncbi__pgap/"
 UNLOCK = "realworld/sources/gitlab.com__m-unlock__cwl/tools/"
 WUR = "realworld/sources/git.wur.nl__unlock__cwl/cwl/"
@@ -390,6 +391,46 @@ CASES = [
             "realworld/workflowhub/1728/DTC75/WF7502/WF7502.cwl",
             "realworld/workflowhub/1786/DTC75/WF7502/WF7502.cwl",
         ],
+    },
+    {
+        "why": "the VEP tool gives its enum inputs `failed` and `shift_hgvs` the default 1, a "
+        "number, but their symbols are the strings \"0\" and \"1\"",
+                "run": SOMATIC + "kf-annotation-tools/tools/variant_effect_predictor_105.cwl",
+        "job": {
+            "input_vcf": {**file("calls.vcf.gz"), "secondaryFiles": [file("calls.vcf.gz.tbi")]},
+            "output_basename": "out",
+            "tool_name": "tool",
+        },
+        "documents": [
+            SOMATIC + "kf-annotation-tools/workflows/kfdrc-somatic-snv-annot-workflow.cwl",
+            SOMATIC + "sub_workflows/kfdrc_mutect2_sub_wf.cwl",
+            SOMATIC + "sub_workflows/kfdrc_strelka2_sub_wf.cwl",
+            SOMATIC + "sub_workflows/kfdrc_vardict_sub_wf.cwl",
+        ],
+    },
+    {
+        "why": "the VEP step fails, as the VEP tool gives its enum inputs `failed` and "
+        "`shift_hgvs` the default 1, a number, but their symbols are strings; without a Mosek "
+        "license file, the workflow's own check of its inputs stops it first",
+                "run": SOMATIC + "kf-annotation-tools/tools/variant_effect_predictor_105.cwl",
+        "job": {
+            "input_vcf": {**file("calls.vcf.gz"), "secondaryFiles": [file("calls.vcf.gz.tbi")]},
+            "output_basename": "out",
+            "tool_name": "tool",
+        },
+        "documents": [SOMATIC + "workflow/kfdrc-somatic-variant-workflow.cwl"],
+    },
+    {
+        "why": "the GATK SortVcf step needs the `.tbi` index of each Lancet VCF, but the output "
+        "`lancet_vcf` of lancet.cwl declares none",
+        "run": SOMATIC + "tools/gatk_sortvcf.cwl",
+        "job": {
+            "input_vcfs": [file("calls.vcf")],
+            "reference_dict": file("reference.dict"),
+            "tool_name": "lancet",
+            "output_basename": "out",
+        },
+        "documents": [SOMATIC + "sub_workflows/kfdrc_lancet_sub_wf.cwl"],
     },
 ]
 

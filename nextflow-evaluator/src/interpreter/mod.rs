@@ -87,17 +87,7 @@ pub trait Host {
     /// The entries of a directory: each name and whether it is a directory. The default lists
     /// local directories.
     fn list(&mut self, directory: &PathValue) -> Result<Vec<(String, bool)>, Error> {
-        let local = local_path(directory)?;
-        let entries = std::fs::read_dir(local).map_err(|error| file_error(directory, &error))?;
-        let mut result = Vec::new();
-        for entry in entries.flatten() {
-            let is_directory = std::fs::metadata(entry.path()).is_ok_and(|m| m.is_dir());
-            result.push((
-                entry.file_name().to_string_lossy().into_owned(),
-                is_directory,
-            ));
-        }
-        Ok(result)
+        list_local(directory)
     }
 
     /// Writes a file, creating its directory. The default writes local files.
@@ -198,6 +188,21 @@ pub trait Host {
 pub struct FileMetadata {
     pub directory: bool,
     pub size: u64,
+}
+
+/// The entries of a local directory: each name and whether it is a directory.
+pub fn list_local(directory: &PathValue) -> Result<Vec<(String, bool)>, Error> {
+    let local = local_path(directory)?;
+    let entries = std::fs::read_dir(local).map_err(|error| file_error(directory, &error))?;
+    let mut result = Vec::new();
+    for entry in entries.flatten() {
+        let is_directory = std::fs::metadata(entry.path()).is_ok_and(|m| m.is_dir());
+        result.push((
+            entry.file_name().to_string_lossy().into_owned(),
+            is_directory,
+        ));
+    }
+    Ok(result)
 }
 
 /// The local file of a path; remote files cannot be written yet.

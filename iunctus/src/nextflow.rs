@@ -56,6 +56,14 @@ impl Host for Console {
         remote::download(&url, &self.downloads).map_err(io_error)
     }
 
+    /// Local directories, and directories of public S3 and Google Cloud Storage buckets.
+    fn list(&mut self, directory: &PathValue) -> Result<Vec<(String, bool)>, Error> {
+        if directory.prefix.is_some() {
+            return remote::list(directory).map_err(io_error);
+        }
+        nextflow_evaluator::interpreter::list_local(directory)
+    }
+
     fn metadata(&mut self, path: &PathValue) -> Result<Option<FileMetadata>, Error> {
         if path.prefix.is_none() {
             return match std::fs::metadata(&path.path) {

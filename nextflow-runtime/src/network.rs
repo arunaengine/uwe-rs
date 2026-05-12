@@ -188,6 +188,14 @@ impl Network {
         self.channels[channel.0 as usize].is_value()
     }
 
+    /// The value a value channel is bound to; `None` for a queue or an empty value channel.
+    pub fn bound(&self, channel: ChannelId) -> Option<Value> {
+        match &self.channels[channel.0 as usize] {
+            Channel::Value(Some(Message::Value(value))) => Some(value.clone()),
+            _ => None,
+        }
+    }
+
     /// Adds a node that reads the given channels from now on.
     pub(crate) fn add(&mut self, name: &str, inputs: &[ChannelId], behaviour: Box<dyn Behaviour>) {
         let index = self.nodes.len();

@@ -78,6 +78,7 @@ impl Run {
         let mut session = Session {
             base: host,
             options,
+            network: None,
         };
         {
             let mut builder = build::Builder {
@@ -119,6 +120,7 @@ impl Run {
         let mut session = Session {
             base: host,
             options: &self.options,
+            network: None,
         };
         if outcome.exit_status == 0 {
             self.succeeded += 1;
@@ -141,6 +143,7 @@ impl Run {
             let mut session = Session {
                 base: host,
                 options: &self.options,
+                network: Some(&self.network),
             };
             let mut interpreter = Interpreter::new(&mut session);
             set_globals(&mut interpreter, &self.options, &self.workflow);

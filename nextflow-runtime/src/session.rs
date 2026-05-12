@@ -10,11 +10,13 @@ use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
 use nextflow_evaluator::lowered::{Module, Process};
 use nextflow_evaluator::value::{PathValue, Value};
 
-use crate::Options;
+use crate::{Network, Options};
 
 pub(crate) struct Session<'a> {
     pub base: &'a mut dyn Host,
     pub options: &'a Options,
+    /// The network once it has run, whose value channels completion handlers read.
+    pub network: Option<&'a Network>,
 }
 
 impl Host for Session<'_> {
@@ -87,12 +89,32 @@ impl Host for Session<'_> {
         self.base.namespace_method(namespace, name, arguments)
     }
 
+    /// `.val` of a value channel after the run is its value, as completion handlers read it.
+    fn channel_property(&mut self, channel: &Value, name: &str) -> Result<Option<Value>, Error> {
+        match (self.network, channel, name) {
+            (Some(network), Value::Channel(channel), "val" | "value")
+                if network.is_value(*channel) =>
+            {
+                Ok(Some(network.bound(*channel).unwrap_or(Value::Null)))
+            }
+            _ => self.base.channel_property(channel, name),
+        }
+    }
+
+    /// `getVal()` of a value channel after the run gives its value, as completion handlers
+    /// read it.
     fn operator(
         &mut self,
         source: &Value,
         name: &str,
         arguments: Vec<Value>,
     ) -> Result<Option<Value>, Error> {
+        if let (Some(network), Value::Channel(channel), "getVal" | "getValue" | "val", []) =
+            (self.network, source, name, arguments.as_slice())
+            && network.is_value(*channel)
+        {
+            return Ok(Some(network.bound(*channel).unwrap_or(Value::Null)));
+        }
         self.base.operator(source, name, arguments)
     }
 

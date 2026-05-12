@@ -170,6 +170,15 @@ impl Interpreter<'_> {
             ("error", []) => {
                 return Err(thrown(Exception::new("AbortOperationException", ""), span));
             }
+            // Legacy `exit 1, "message"` ends the run with the message, like `error`.
+            ("exit", [Value::Number(code), rest @ ..]) if code.to_i64() != 0 && rest.len() < 2 => {
+                let message = rest.first().map_or_else(
+                    || format!("the run exits with code {code}"),
+                    Value::to_string,
+                );
+                let exception = Exception::new("AbortOperationException", message);
+                return Err(thrown(exception, span));
+            }
             ("error", [message]) => {
                 let exception = Exception::new("AbortOperationException", message.to_string());
                 return Err(thrown(exception, span));

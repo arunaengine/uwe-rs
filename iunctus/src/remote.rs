@@ -9,19 +9,99 @@ use nextflow_evaluator::interpreter::FileMetadata;
 use nextflow_evaluator::value::PathValue;
 use sha2::{Digest, Sha256};
 
-/// The HTTPS address of a remote file: `http` and `https` as they are, `s3://bucket/key` at
-/// the bucket's public address. `None` for other schemes.
+/// The HTTPS address of a remote file: `http` and `https` as they are, `s3://bucket/key` and
+/// `gs://bucket/key` at the bucket's public address. `None` for other schemes.
 pub fn https_url(path: &PathValue) -> Option<String> {
     let uri = path.uri();
     match path.scheme() {
         "http" | "https" => Some(raw_github(&uri).unwrap_or(uri)),
-        "s3" => {
-            let rest = uri.strip_prefix("s3://")?;
-            let (bucket, key) = rest.split_once('/').unwrap_or((rest, ""));
-            Some(format!("https://{bucket}.s3.amazonaws.com/{key}"))
+        "s3" | "gs" => {
+            let (bucket, key) = bucket_and_key(path)?;
+            Some(format!("{}/{key}", bucket_url(path.scheme(), &bucket)))
         }
         _ => None,
     }
+}
+
+/// The bucket and the key of an `s3://` or `gs://` path.
+fn bucket_and_key(path: &PathValue) -> Option<(String, String)> {
+    let uri = path.uri();
+    let rest = uri.split_once("://")?.1;
+    let (bucket, key) = rest.split_once('/').unwrap_or((rest, ""));
+    Some((bucket.to_owned(), key.to_owned()))
+}
+
+/// The public address of a bucket, which also lists its keys as S3 does.
+fn bucket_url(scheme: &str, bucket: &str) -> String {
+    match scheme {
+        "gs" => format!("https://storage.googleapis.com/{bucket}"),
+        _ => format!("https://{bucket}.s3.amazonaws.com"),
+    }
+}
+
+/// The entries of a directory of a public S3 or Google Cloud Storage bucket: each name and
+/// whether it is a directory, from the S3 listing of the keys below it.
+pub fn list(path: &PathValue) -> Result<Vec<(String, bool)>, String> {
+    let (bucket, key) = bucket_and_key(path)
+        .filter(|_| matches!(path.scheme(), "s3" | "gs"))
+        .ok_or_else(|| format!("Cannot list {}", path.uri()))?;
+    let prefix = match key.trim_end_matches('/') {
+        "" => String::new(),
+        key => format!("{key}/"),
+    };
+    let client = client()?;
+    let mut entries = Vec::new();
+    let mut token: Option<String> = None;
+    loop {
+        let mut listing = format!(
+            "{}?list-type=2&delimiter=/&prefix={prefix}",
+            bucket_url(path.scheme(), &bucket)
+        );
+        if let Some(token) = &token {
+            listing.push_str(&format!("&continuation-token={token}"));
+        }
+        let text = client
+            .get(&listing)
+            .send()
+            .and_then(|response| response.error_for_status())
+            .and_then(|response| response.text())
+            .map_err(|error| format!("Cannot list {listing}: {error}"))?;
+        for (tag, directory) in [("Key", false), ("Prefix", true)] {
+            for name in elements(&text, tag) {
+                let name = name.strip_prefix(&prefix).unwrap_or(&name);
+                let name = name.trim_end_matches('/');
+                if !name.is_empty() {
+                    entries.push((name.to_owned(), directory));
+                }
+            }
+        }
+        token = elements(&text, "NextContinuationToken").into_iter().next();
+        if token.is_none() {
+            return Ok(entries);
+        }
+    }
+}
+
+/// The texts of the XML elements with a tag, with the five entities of XML replaced.
+fn elements(text: &str, tag: &str) -> Vec<String> {
+    let (open, close) = (format!("<{tag}>"), format!("</{tag}>"));
+    let mut found = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find(&open) {
+        let after = &rest[start + open.len()..];
+        let Some(end) = after.find(&close) else {
+            break;
+        };
+        let value = after[..end]
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&apos;", "'")
+            .replace("&amp;", "&");
+        found.push(value);
+        rest = &after[end + close.len()..];
+    }
+    found
 }
 
 /// The address that GitHub redirects a file of a repository to: `github.com/o/r/raw/ref/path`
@@ -144,14 +224,15 @@ pub fn metadata(path: &PathValue, url: &str) -> Result<Option<FileMetadata>, Str
             size,
         }));
     }
-    if path.scheme() == "s3" {
-        let (bucket, key) = url
-            .strip_prefix("https://")
-            .and_then(|rest| rest.split_once(".s3.amazonaws.com/"))
-            .unwrap_or_default();
+    // A key that is a prefix of other keys is a directory.
+    if let Some((bucket, key)) =
+        bucket_and_key(path).filter(|_| matches!(path.scheme(), "s3" | "gs"))
+    {
         let prefix = format!("{}/", key.trim_end_matches('/'));
-        let listing =
-            format!("https://{bucket}.s3.amazonaws.com/?list-type=2&max-keys=1&prefix={prefix}");
+        let listing = format!(
+            "{}?list-type=2&max-keys=1&prefix={prefix}",
+            bucket_url(path.scheme(), &bucket)
+        );
         let text = client
             .get(&listing)
             .send()
@@ -170,6 +251,14 @@ pub fn metadata(path: &PathValue, url: &str) -> Result<Option<FileMetadata>, Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn listings_give_keys_and_prefixes() {
+        let text = "<ListBucketResult><Contents><Key>a/b.csv</Key></Contents>\
+                    <CommonPrefixes><Prefix>a/c&amp;d/</Prefix></CommonPrefixes></ListBucketResult>";
+        assert_eq!(elements(text, "Key"), ["a/b.csv"]);
+        assert_eq!(elements(text, "Prefix"), ["a/c&d/"]);
+    }
 
     #[test]
     fn stopped_downloads_are_taken_over() {
@@ -201,6 +290,10 @@ mod tests {
             Some("https://zenodo.org/records/1/files/a.csv")
         );
         assert_eq!(url("/local/file.txt"), None);
+        assert_eq!(
+            url("gs://deepvariant/GIAB_v5q0/x.bed").as_deref(),
+            Some("https://storage.googleapis.com/deepvariant/GIAB_v5q0/x.bed")
+        );
         assert_eq!(
             url("https://github.com/nf-core/test-datasets/raw/methylseq/testdata/a.fastq.gz")
                 .as_deref(),

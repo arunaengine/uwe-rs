@@ -103,3 +103,77 @@ fn yaml_follows_the_safe_loader() {
         "{'a': True, 'b': '1e3', 'c': 1000.0, 'd': 8, 'e': 90, 'f': None, 'g': [1, 'x'], 'h': {'k': 1}, 'i': {'k': 1}}\n"
     );
 }
+
+/// A host that answers each command with its words, and exit code 3 for `fail`.
+struct CommandHost(LocalHost);
+
+impl python_evaluator::Host for CommandHost {
+    fn cwd(&self) -> std::path::PathBuf {
+        self.0.cwd()
+    }
+    fn set_cwd(&self, path: &Path) {
+        self.0.set_cwd(path)
+    }
+    fn read(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+        self.0.read(path)
+    }
+    fn stat(&self, path: &Path) -> Option<python_evaluator::Stat> {
+        self.0.stat(path)
+    }
+    fn list(&self, path: &Path) -> std::io::Result<Vec<String>> {
+        self.0.list(path)
+    }
+    fn write(&self, path: &Path, data: &[u8], append: bool) -> std::io::Result<()> {
+        self.0.write(path, data, append)
+    }
+    fn make_dir(&self, path: &Path) -> std::io::Result<()> {
+        self.0.make_dir(path)
+    }
+    fn remove(&self, path: &Path) -> std::io::Result<()> {
+        self.0.remove(path)
+    }
+    fn print(&self, text: &str) {
+        self.0.print(text)
+    }
+    fn environment(&self) -> Vec<(String, String)> {
+        self.0.environment()
+    }
+    fn run_command(
+        &self,
+        command: &python_evaluator::Command,
+    ) -> Result<python_evaluator::CommandOutcome, python_evaluator::Error> {
+        let words = command.argv.join(" ");
+        Ok(python_evaluator::CommandOutcome {
+            exit_code: if words.contains("fail") { 3 } else { 0 },
+            stdout: format!("ran {words}\n").into_bytes(),
+            stderr: Vec::new(),
+        })
+    }
+}
+
+#[test]
+fn commands_run_where_the_host_runs_them() {
+    let host = Rc::new(CommandHost(LocalHost::new(std::env::temp_dir())));
+    let mut interpreter = Interpreter::new(host.clone());
+    interpreter
+        .run_text(
+            "<test>",
+            "import os, subprocess\n\
+             r = subprocess.run(['tool', '--version'], capture_output=True, text=True)\n\
+             print(r.returncode, repr(r.stdout), r.stderr)\n\
+             print(subprocess.check_output('tool a', shell=True), subprocess.call(['fail']))\n\
+             try:\n    subprocess.run(['fail'], check=True)\n\
+             except subprocess.CalledProcessError as error:\n    print(error.returncode, error.cmd, error)\n\
+             print(os.system('fail'), os.popen('tool b').read().strip(), subprocess.getoutput('tool c'))\n",
+        )
+        .expect("runs");
+    assert_eq!(
+        *host.0.output.borrow(),
+        "0 'ran tool --version\\n' \n\
+         b'ran /bin/sh -c tool a\\n' 3\n\
+         3 ['fail'] Command '['fail']' returned non-zero exit status 3.\n\
+         768 ran /bin/sh -c tool b ran /bin/sh -c tool c\n"
+    );
+    let error = evaluate("import subprocess\nsubprocess.run(['tool'])\n").expect_err("no commands");
+    assert!(error.is_unsupported(), "{error}");
+}

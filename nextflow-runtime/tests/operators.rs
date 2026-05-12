@@ -105,6 +105,15 @@ fn properties_of_value_channels() {
     );
 }
 
+/// Legacy `exit 1, "message"` ends the run with the message, as Nextflow's `exit` logs it.
+#[test]
+fn exit_ends_the_run() {
+    assert_eq!(
+        run("exit 1, 'bad samplesheet'").unwrap_err(),
+        "AbortOperationException: bad samplesheet"
+    );
+}
+
 #[test]
 fn values_one_at_a_time() {
     assert_eq!(

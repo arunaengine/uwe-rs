@@ -33,6 +33,8 @@ fn run(source: &str, options: &Options) -> Result<(Vec<TaskRequest>, String), St
     assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
     let module = Rc::new(lower_module(&parsed.tree, source).expect("lowers"));
     *module.directory.borrow_mut() = Some("/modules/test".into());
+    *module.path.borrow_mut() = Some("/modules/test/main.nf".into());
+    *module.source.borrow_mut() = Some(source.into());
     let mut output = Output::default();
     let (mut run, mut queue) =
         Run::start(&module, options, &mut output).map_err(|error| error.to_string())?;
@@ -393,7 +395,11 @@ fn completion_handlers_that_fail_are_logged() {
     let lines: Vec<&str> = printed.lines().collect();
     assert_eq!(lines[0], "1");
     assert_eq!(lines[1], "first");
-    assert!(lines[2].starts_with("ERROR ~ Failed to invoke `workflow.onComplete` event handler"));
+    assert_eq!(
+        lines[2],
+        "ERROR ~ Failed to invoke `workflow.onComplete` event handler: /modules/test/main.nf:2:45: \
+         MissingPropertyException: No such variable: NfcoreTemplate"
+    );
     assert_eq!(lines[3], "second");
 }
 

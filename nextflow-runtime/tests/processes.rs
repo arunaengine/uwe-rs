@@ -385,6 +385,15 @@ fn emits_of_call_outputs_are_their_channel() {
     assert_eq!(printed, "hi\n1\n");
 }
 
+/// A `set` at the top of a script assigns a variable of the script, which the workflow reads,
+/// as in Nextflow 26.04.6 with the legacy parser.
+#[test]
+fn a_set_at_the_top_assigns_a_script_variable() {
+    let source = "Channel.of(2).map { it * 2 }.set { ch_b }\nworkflow {\n    ch_b.view()\n}";
+    let (_, printed) = run(source, &Options::default()).expect("runs");
+    assert_eq!(printed, "4\n");
+}
+
 /// An error of a completion handler is logged and the run still succeeds, as in Nextflow
 /// 26.04.6, which prints "Failed to invoke `workflow.onComplete` event handler".
 #[test]

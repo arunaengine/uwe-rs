@@ -371,3 +371,14 @@ fn a_return_in_a_workflow_leaves_its_assigned_emits_missing() {
     let (_, printed) = run(&source, &Options::default()).expect("runs");
     assert_eq!(printed, "1\n");
 }
+
+/// A workflow that emits the outputs of a call emits their one channel, as Nextflow's
+/// `collectOutputs` does, so that operators take it as a channel.
+#[test]
+fn emits_of_call_outputs_are_their_channel() {
+    let source = "process P {\n    output:\n    val 'hi'\n    script:\n    'true'\n}\n\
+                  workflow W {\n    main:\n    P()\n    emit:\n    P.out\n}\n\
+                  workflow {\n    W()\n    W.out.concat(channel.of(1)).view()\n}";
+    let (_, printed) = run(source, &Options::default()).expect("runs");
+    assert_eq!(printed, "hi\n1\n");
+}

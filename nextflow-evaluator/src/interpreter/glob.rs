@@ -5,7 +5,7 @@
 
 use nextflow_parser::Span;
 
-use super::{Error, Host, thrown, unsupported};
+use super::{Error, Host, thrown};
 use crate::exception::Exception;
 use crate::regex::Pattern;
 use crate::value::PathValue;
@@ -50,11 +50,8 @@ pub fn glob(
     pattern: &str,
     options: &GlobOptions,
 ) -> Result<Vec<PathValue>, Error> {
+    // A remote pattern, like one of an S3 bucket, lists the directories of the host.
     let path = PathValue::parse(pattern, &host.launch_dir());
-    if path.prefix.is_some() {
-        let message = format!("glob patterns of remote files like {}", path.uri());
-        return Err(unsupported(message, Span::default()));
-    }
     let text = path.path.clone();
     let first = text.find(['*', '?', '[', '{']).unwrap_or(text.len());
     let split = text[..first].rfind('/').map_or(0, |slash| slash + 1);
@@ -70,7 +67,13 @@ pub fn glob(
     let matcher =
         Pattern::new(&glob_regex(glob)).map_err(|exception| thrown(exception, Span::default()))?;
     let mut found = Vec::new();
-    let mut pending = vec![(PathValue::parse(base, "/"), String::new(), 0usize)];
+    let root = PathValue {
+        path: base.to_owned(),
+        staged: None,
+        relative: None,
+        prefix: path.prefix.clone(),
+    };
+    let mut pending = vec![(root, String::new(), 0usize)];
     while let Some((directory, relative, depth)) = pending.pop() {
         let Ok(entries) = host.list(&directory) else {
             continue;

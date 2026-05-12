@@ -221,6 +221,14 @@ fn rejects_newer_features() {
         error.message,
         "`when` needs cwlVersion v1.2 or later, not v1.0"
     );
+    // cwltool checks v1.0 documents against the v1.0 schema, where secondary files are
+    // patterns and expressions only.
+    let tool = "cwlVersion: v1.0\nclass: CommandLineTool\nbaseCommand: cat\noutputs: []\n\
+                inputs:\n  reads: {type: File, secondaryFiles: [{pattern: .bai, required: false}]}\n";
+    assert_eq!(
+        failure(tool).message,
+        "a secondary file with `pattern` needs cwlVersion v1.1 or later, not v1.0"
+    );
 }
 
 #[test]

@@ -264,6 +264,11 @@ pub fn read_secondary(node: Option<&Node>, context: &Context) -> Result<Vec<Seco
                 required: None,
             },
             _ => {
+                context.require(
+                    Version::V1_1,
+                    "a secondary file with `pattern`",
+                    &item.location,
+                )?;
                 let mut record = Record::new(item, "secondary file")?;
                 let pattern = context.expression(record.required("pattern")?)?;
                 let required = match record.optional("required") {

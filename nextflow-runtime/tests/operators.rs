@@ -105,6 +105,19 @@ fn properties_of_value_channels() {
     );
 }
 
+/// `toInteger` and the other cast operators, as in Nextflow 26.04.6.
+#[test]
+fn casts_of_values() {
+    assert_eq!(
+        lines(
+            "channel.from('1000000,2000000').splitCsv().flatten().toInteger()\
+             .view { \"${it} ${it.getClass().simpleName}\" }"
+        ),
+        ["1000000 Integer", "2000000 Integer"]
+    );
+    assert_eq!(lines("channel.of('2.5').toDouble().view()"), ["2.5"]);
+}
+
 /// Legacy `exit 1, "message"` ends the run with the message, as Nextflow's `exit` logs it.
 #[test]
 fn exit_ends_the_run() {

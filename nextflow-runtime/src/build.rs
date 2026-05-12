@@ -378,6 +378,15 @@ impl Host for Builder<'_> {
                 (Kind::Each(Each::FlatMap(Some(closure.clone()))), false)
             }
             ("flatten", []) => (Kind::Each(Each::Flatten), false),
+            ("toInteger" | "toLong" | "toFloat" | "toDouble", []) => {
+                let class = match name {
+                    "toInteger" => "Integer",
+                    "toLong" => "Long",
+                    "toFloat" => "Float",
+                    _ => "Double",
+                };
+                (Kind::Each(Each::Cast(class)), same_kind)
+            }
             ("view", rest) => {
                 let (options, closure) = options_and_closure(rest);
                 let new_line = option(&options, "newLine").is_none_or(|value| value.truth());

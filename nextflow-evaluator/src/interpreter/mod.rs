@@ -384,6 +384,11 @@ impl<'h> Interpreter<'h> {
         result
     }
 
+    /// A value `as` a class, like `value as Integer`.
+    pub fn cast_value(&mut self, value: Value, class: &str) -> Result<Value, Error> {
+        self.cast(value, class, Span::default())
+    }
+
     /// Reads a property of a value, as `value.name` does.
     pub fn read_property(&mut self, object: &Value, name: &str) -> Result<Value, Error> {
         self.property(object, name, Span::default())

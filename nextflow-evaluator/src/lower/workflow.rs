@@ -97,28 +97,41 @@ impl Lowering<'_> {
     /// `ch.set { x }` or `ch.tap { x }` in a workflow body, which assigns the channel to `x` and
     /// declares it, as Nextflow's `checkSetAssignment` does; `None` for other statements.
     pub(super) fn set_statement(&mut self, statement: &ast::Statement) -> Option<Statement> {
-        if let Kind::Expression(expression) = &statement.kind
-            && let Syntax::MethodCall {
-                target: Some(target),
-                name,
-                arguments,
-                ..
-            } = &expression.kind
-            && matches!(name.text.as_str(), "set" | "tap")
-            && let Some((variable, span)) = set_target(arguments)
-        {
-            let value = self.expression(target);
-            let place = self.assigned_variable(variable, span)?;
-            return Some(Statement {
-                kind: StatementKind::Assign {
-                    target: Target::Variable(place),
-                    value,
-                },
-                span: statement.span,
-            });
-        }
-        None
+        let (target, variable, span) = set_parts(statement)?;
+        let value = self.expression(target);
+        let place = self.assigned_variable(variable, span)?;
+        Some(Statement {
+            kind: StatementKind::Assign {
+                target: Target::Variable(place),
+                value,
+            },
+            span: statement.span,
+        })
     }
+}
+
+/// The parts of the statement `source.set { x }` or `source.tap { x }`: the source, and the
+/// name `x` with its position.
+pub(super) fn set_parts(
+    statement: &ast::Statement,
+) -> Option<(&ast::Expression, &str, nextflow_parser::Span)> {
+    let Kind::Expression(expression) = &statement.kind else {
+        return None;
+    };
+    let Syntax::MethodCall {
+        target: Some(target),
+        name,
+        arguments,
+        ..
+    } = &expression.kind
+    else {
+        return None;
+    };
+    if !matches!(name.text.as_str(), "set" | "tap") {
+        return None;
+    }
+    let (variable, span) = set_target(arguments)?;
+    Some((target, variable, span))
 }
 
 /// The variable of `set { x }`: a closure whose body is that one name.

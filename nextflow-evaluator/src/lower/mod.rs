@@ -594,7 +594,8 @@ impl<'a> Lowering<'a> {
 }
 
 /// The variables of the script that a top-level statement declares with `def`, or assigns
-/// outside closures, as Groovy's script binding keeps them.
+/// outside closures, as Groovy's script binding keeps them. A top-level `ch.set { x }` also
+/// assigns `x`, as Nextflow's `set` sets the variable in the binding.
 fn script_variables(statement: &ast::Statement, top: bool, names: &mut Vec<String>) {
     use ast::StatementKind as Kind;
     let mut add = |name: &str| {
@@ -644,13 +645,33 @@ fn script_variables(statement: &ast::Statement, top: bool, names: &mut Vec<Strin
             }
         }
         Kind::Labeled { statement, .. } => script_variables(statement, top, names),
+        Kind::Expression(_) if top => {
+            if let Some((_, name, _)) = workflow::set_parts(statement) {
+                add(name);
+            }
+        }
         _ => {}
     }
 }
 
-/// A top-level `def` as an assignment of the script variable it declares.
+/// A top-level `def` as an assignment of the script variable it declares, and a top-level
+/// `ch.set { x }` as the assignment `x = ch`.
 fn script_assignment(statement: &ast::Statement) -> ast::Statement {
     use ast::StatementKind as Kind;
+    if let Some((source, name, span)) = workflow::set_parts(statement) {
+        let kind = Kind::Assign {
+            target: ast::Expression {
+                kind: ast::ExpressionKind::Variable(name.to_owned()),
+                span,
+            },
+            operator: ast::AssignOperator::Assign,
+            value: source.clone(),
+        };
+        return ast::Statement {
+            kind,
+            span: statement.span,
+        };
+    }
     let Kind::Declaration {
         names,
         initializer,

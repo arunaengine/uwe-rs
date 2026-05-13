@@ -845,57 +845,424 @@ realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metat
 $ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metatranscriptome_qc.cwl
 > ERROR Tool definition failed validation:
 > Step is missing required parameter 'coassembly'
+
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/rna-prediction.cwl
+= missing: the document names `classify-otu-visualise.cwl`, `../../utils/count_fasta.cwl` and `../../tools/RNA_prediction/extract-coords/extract-coords_awk.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/rna-prediction.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/rna-prediction.cwl#find_ribosomal_ncRNAs'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/cmsearch-condition.cwl'
+> checking object 'realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/rna-prediction.cwl#gzip_files'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/utils/pigz/gzip.cwl'
+> checking object 'realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/rna-prediction.cwl#index_reads'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/tools/RNA_prediction/easel/esl-sfetch-index.cwl'
+
 realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcall.cwl
+= missing: the document names `Alignment.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcall.cwl
+> ERROR Tool definition failed validation:
+> checking field 'outputs'
+> checking object 'realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcall.cwl#GATK4/SelectSNPs/mutantVCF'
+> Field 'source' references unknown identifier 'realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcall.cwl#VariantFilteration/rawVCF', tried realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcall.cwl#GATK4/realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcall.cwl#VariantFilteration/rawVCF realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcall.cwl#realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcall.cwl#VariantFilteration/rawVCF
+> checking object 'realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcall.cwl#GATK4/SelectINDELs'
+> checking field 'in'
+> checking object 'realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcall.cwl#GATK4/SelectINDELs/mutantVCF'
+> Field 'source' references unknown identifier 'realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcall.cwl#VariantFilteration/rawVCF', tried realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcall.cwl#GATK4/realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcall.cwl#VariantFilteration/rawVCF realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcall.cwl#realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcall.cwl#VariantFilteration/rawVCF
+
 realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcallDocker.cwl
+= missing: the document names `AlignmentDocker.cwl` and `AddOrReplaceReadGroupsDocker.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcallDocker.cwl
+> ERROR Tool definition failed validation:
+> checking field 'outputs'
+> checking object 'realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcallDocker.cwl#GATK4Docker/SelectSNPsDocker/mutantVCF'
+> Field 'source' references unknown identifier 'realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcallDocker.cwl#VariantFilterationDocker/rawVCF', tried realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcallDocker.cwl#GATK4Docker/realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcallDocker.cwl#VariantFilterationDocker/rawVCF realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcallDocker.cwl#realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcallDocker.cwl#VariantFilterationDocker/rawVCF
+> checking object 'realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcallDocker.cwl#GATK4Docker/SelectINDELsDocker'
+> checking field 'in'
+> checking object 'realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcallDocker.cwl#GATK4Docker/SelectINDELsDocker/mutantVCF'
+> Field 'source' references unknown identifier 'realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcallDocker.cwl#VariantFilterationDocker/rawVCF', tried realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcallDocker.cwl#GATK4Docker/realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcallDocker.cwl#VariantFilterationDocker/rawVCF realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcallDocker.cwl#realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcallDocker.cwl#VariantFilterationDocker/rawVCF
+
 realworld/sources/github.com__ambarishK__bio-cwl-tools/gatk4W-copy.cwl
+= missing: the document names `/home/ngsap2/tools/bowtie2/bowtie2_align.cwl`, `/home/ngsap2/tools/gatk4/HaplotypeCallerSparkNew.cwl` and `/home/ngsap2/tools/picard/picard_CreateSequenceDictionary.cwl` and more on the author's computer
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__ambarishK__bio-cwl-tools/gatk4W-copy.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/github.com__ambarishK__bio-cwl-tools/gatk4W-copy.cwl#sort_sam'
+> Field 'run' contains undefined reference to 'file:///home/ngsap2/tools/gatk4/SortSamSparkNew.cwl'
+> checking object 'realworld/sources/github.com__ambarishK__bio-cwl-tools/gatk4W-copy.cwl#split_alignments'
+> Field 'run' contains undefined reference to 'file:///home/ngsap2/tools/GATK/GATK-SplitNCigarReads.cwl'
+> checking object 'realworld/sources/github.com__ambarishK__bio-cwl-tools/gatk4W-copy.cwl#update_read_group'
+> Field 'run' contains undefined reference to 'file:///home/ngsap2/tools/picard/picard_AddOrReplaceReadGroups.cwl'
+
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/fastq2fasta/fastq2fasta-create-bwaindex.cwl
+= invalid: a step does not give the required input `sample_id`
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__arvados__bh20-seq-resource/workflows/fastq2fasta/fastq2fasta-create-bwaindex.cwl
+> ERROR Tool definition failed validation:
+> Step is missing required parameter 'sample_id'
+
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/arv-main.cwl
+= invalid: the field `requirements` does not follow the CWL schema: Expected class 'org.w3id.cwl.cwl.StepInputExpressionRequirement' but this is 'http://arvados.org/cwl#APIRequirement'
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/arv-main.cwl
+> ERROR Tool definition failed initialization:
+> Tool definition realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/collect-seqs.cwl failed validation:
+> - tried ScatterFeatureRequirement but
+> Expected class 'org.w3id.cwl.cwl.ScatterFeatureRequirement' but this is 'http://arvados.org/cwl#APIRequirement'
+> - tried MultipleInputFeatureRequirement but
+> Expected class 'org.w3id.cwl.cwl.MultipleInputFeatureRequirement' but this is 'http://arvados.org/cwl#APIRequirement'
+> - tried StepInputExpressionRequirement but
+> Expected class 'org.w3id.cwl.cwl.StepInputExpressionRequirement' but this is 'http://arvados.org/cwl#APIRequirement'
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/collect-seqs.cwl
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/from_sparql.cwl
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/query-to-gfa.cwl
+
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/phylogeny/phylogeny.cwl
+= invalid: the file is not valid YAML: found duplicate key "threads"
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__arvados__bh20-seq-resource/workflows/phylogeny/phylogeny.cwl
+> ERROR Tool definition failed validation:
+> while constructing a mapping
+> found duplicate key "threads" with value "int" (original value: "int")
+
 realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/gromacs/genrestr.cwl
+= invalid: the file is not valid YAML: mapping values are not allowed here
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/gromacs/genrestr.cwl
+> ERROR Tool definition failed validation:
+> mapping values are not allowed here
+
 realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/gromacs/make_ndx.cwl
+= invalid: the file is not valid YAML: mapping values are not allowed here
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/gromacs/make_ndx.cwl
+> ERROR Tool definition failed validation:
+> mapping values are not allowed here
+
 realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/gromacs_extra/ndx2resttop.cwl
+= invalid: the file is not valid YAML: mapping values are not allowed here
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__bioexcel__biobb-wf-md-setup-protein-cwl/biobb/biobb_adapters/cwl/biobb_md/gromacs_extra/ndx2resttop.cwl
+> ERROR Tool definition failed validation:
+> mapping values are not allowed here
+
 realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_md/gromacs/genrestr.cwl
+= invalid: the file is not valid YAML: mapping values are not allowed here
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_md/gromacs/genrestr.cwl
+> ERROR Tool definition failed validation:
+> mapping values are not allowed here
+
 realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_md/gromacs_extra/ndx2resttop.cwl
+= invalid: the file is not valid YAML: mapping values are not allowed here
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/biobb/biobb_adapters/cwl/biobb_md/gromacs_extra/ndx2resttop.cwl
+> ERROR Tool definition failed validation:
+> mapping values are not allowed here
+
 realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/workflows/MD/md_muts_sets.cwl
+= missing: the document names `biobb/biobb_adapters/cwl/biobb_io/mmb_api/pdb.cwl`, `biobb/biobb_adapters/cwl/biobb_md/gromacs/mdrun.cwl` and `biobb/biobb_adapters/cwl/biobb_md/gromacs/grompp.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/workflows/MD/md_muts_sets.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/workflows/MD/md_muts_sets.cwl#step7_grompp_min'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/workflows/MD/biobb/biobb_adapters/cwl/biobb_md/gromacs/grompp.cwl'
+> checking object 'realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/workflows/MD/md_muts_sets.cwl#step8_mdrun_min'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/workflows/MD/biobb/biobb_adapters/cwl/biobb_md/gromacs/mdrun.cwl'
+> checking object 'realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/workflows/MD/md_muts_sets.cwl#step9_grompp_nvt'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__douglowe__biobb_hpc_cwl_md_list/workflows/MD/biobb/biobb_adapters/cwl/biobb_md/gromacs/grompp.cwl'
+
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/conditionals/rna-prediction.cwl
+= invalid: the workflow has an embedded workflow without SubworkflowFeatureRequirement
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__emo-bon__MetaGOflow/workflows/conditionals/rna-prediction.cwl
+> ERROR Tool definition failed initialization:
+> Workflow contains embedded workflow but SubworkflowFeatureRequirement not in requirements
+
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/cmsearch/cmsearch-condition.cwl
+= invalid: the workflow has an embedded workflow without SubworkflowFeatureRequirement
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/cmsearch/cmsearch-condition.cwl
+> ERROR Tool definition failed initialization:
+> Workflow contains embedded workflow but SubworkflowFeatureRequirement not in requirements
+
 realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/rna_prediction-sub-wf.cwl
+= invalid: the workflow has an embedded workflow without SubworkflowFeatureRequirement
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__emo-bon__MetaGOflow/workflows/subworkflows/rna_prediction-sub-wf.cwl
+> ERROR Tool definition failed initialization:
+> Workflow contains embedded workflow but SubworkflowFeatureRequirement not in requirements
+
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Assembly/spades/spades_assembly_wf.cwl
+= missing: the document names `../../bio-cwl-tools/spades/spades.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Assembly/spades/spades_assembly_wf.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Assembly/spades/spades_assembly_wf.cwl#spaces_assembly/spades'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/spades/spades.cwl'
+
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/PreProcessing/batch-preprocess-illumina.cwl
+= missing: the document names `../bio-cwl-tools/samtools/samtools_fastq.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/PreProcessing/batch-preprocess-illumina.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/PreProcessing/batch-preprocess-illumina.cwl#samtools_fastq'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/samtools/samtools_fastq.cwl'
+
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/PreProcessing/batch-preprocess-ont.cwl
+= missing: the document names `../bio-cwl-tools/samtools/samtools_fastq.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/PreProcessing/batch-preprocess-ont.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/PreProcessing/batch-preprocess-ont.cwl#samtools_fastq'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/samtools/samtools_fastq.cwl'
+
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/PreProcessing/preprocess-illumina.cwl
+= missing: the document names `../bio-cwl-tools/util/rename.cwl` and `../bio-cwl-tools/samtools/samtools_fastq.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/PreProcessing/preprocess-illumina.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/PreProcessing/preprocess-illumina.cwl#rename_multiqc_html'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/util/rename.cwl'
+> checking object 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/PreProcessing/preprocess-illumina.cwl#rename_multiqc_zip'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/util/rename.cwl'
+> checking object 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/PreProcessing/preprocess-illumina.cwl#samtools_fastq'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/samtools/samtools_fastq.cwl'
+
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/PreProcessing/preprocess-ont.cwl
+= missing: the document names `../bio-cwl-tools/minimap2/minimap2.cwl`, `../bio-cwl-tools/nanoplot/nanoplot.cwl` and `../bio-cwl-tools/util/rename.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/PreProcessing/preprocess-ont.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/PreProcessing/preprocess-ont.cwl#rename_multiqc_html'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/util/rename.cwl'
+> checking object 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/PreProcessing/preprocess-ont.cwl#rename_multiqc_zip'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/util/rename.cwl'
+> checking object 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/PreProcessing/preprocess-ont.cwl#samtools_fastq'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/bio-cwl-tools/samtools/samtools_fastq.cwl'
+
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/archive/draft2_variation.cwl
+= missing: the document names `../bio-cwl-tools/bowtie2/bowtie2_build.cwl`, `../bio-cwl-tools/fastp/fastp.cwl` and `picard_sortsam.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/archive/draft2_variation.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/archive/draft2_variation.cwl#variation/fastp'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/bio-cwl-tools/fastp/fastp.cwl'
+> checking object 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/archive/draft2_variation.cwl#variation/picard_sortsam'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/archive/picard_sortsam.cwl'
+> checking object 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/archive/draft2_variation.cwl#variation/picard_markduplicates'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/archive/picard_markduplicates.cwl'
+
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/archive/draft_variation.cwl
+= missing: the document names `../bio-cwl-tools/bowtie2/bowtie2_build.cwl` and `../bio-cwl-tools/fastp/fastp.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/archive/draft_variation.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/archive/draft_variation.cwl#variation/bowtie2_build'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/bio-cwl-tools/bowtie2/bowtie2_build.cwl'
+> checking object 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/archive/draft_variation.cwl#variation/fastp'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/bio-cwl-tools/fastp/fastp.cwl'
+
 realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/variation_SE.cwl
+= invalid: the file is not valid YAML: found duplicate key "in"
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__fjrmoreews__cwl-workflow-SARS-CoV-2/Variation/variation_SE.cwl
+> ERROR Tool definition failed validation:
+> while constructing a mapping
+> found duplicate key "in" with value "[{'id': 'report_name', 'valueFrom': 'multiqc_fast'}, {'id': 'qc_files_array', 'source': 'fastp/json_report'}]" (original value: "[{'id': 'base_correction', 'source': 'base_correction'}, {'id': 'disable_trim_poly_g', 'source': 'disable_trim_poly_g'}, {'id': 'fastq1', 'source': 'reads'}, {'id': 'force_polyg_tail_trimming', 'source': 'force_polyg_tail_trimming'}, {'id': 'min_length_required', 'source': 'min_length_required'}, {'id': 'qualified_phred_quality', 'source': 'qualified_phred_quality'}, {'id': 'threads', 'source': 'threads'}, {'id': 'unqualified_phred_quality', 'source': 'unqualified_phred_quality'}]")
+
 realworld/sources/github.com__inab__Wetlab2Variations/cwl-workflows/workflows/workflow_demonstrator.cwl
+= missing: the document names `curl.cwl`, `curl_indels.cwl` and `curl_known_sites.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__inab__Wetlab2Variations/cwl-workflows/workflows/workflow_demonstrator.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/github.com__inab__Wetlab2Variations/cwl-workflows/workflows/workflow_demonstrator.cwl#rd_connect/gatk-base_recalibration'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__inab__Wetlab2Variations/cwl-workflows/workflows/gatk-base_recalibration.cwl'
+> checking object 'realworld/sources/github.com__inab__Wetlab2Variations/cwl-workflows/workflows/workflow_demonstrator.cwl#rd_connect/gatk-base_recalibration_print_reads'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__inab__Wetlab2Variations/cwl-workflows/workflows/gatk-base_recalibration_print_reads.cwl'
+> checking object 'realworld/sources/github.com__inab__Wetlab2Variations/cwl-workflows/workflows/workflow_demonstrator.cwl#rd_connect/gatk_haplotype_caller'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__inab__Wetlab2Variations/cwl-workflows/workflows/gatk-haplotype_caller.cwl'
+
 realworld/sources/github.com__jdwijnbergen__IBM_ASI_workflow/workflows/workflow.cwl
+= invalid: the file is not valid YAML: found duplicate key "format"
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__jdwijnbergen__IBM_ASI_workflow/workflows/workflow.cwl
+> ERROR Tool definition failed validation:
+> while constructing a mapping
+> found duplicate key "format" with value "ino:INO_0000311" (original value: "edam:data_0906")
+
 realworld/sources/github.com__longmanplus__EOSC-Life_demos/Workflow-FAIRness/worflow-Demo-wfFAIRness/jq_loc_url.cwl
+= invalid: the output `locate_wh.json` is not a valid output parameter
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__longmanplus__EOSC-Life_demos/Workflow-FAIRness/worflow-Demo-wfFAIRness/jq_loc_url.cwl
+> ERROR Tool definition failed validation:
+> Output 'locate_wh.json' is not a valid OutputParameter.
+
 realworld/sources/github.com__longmanplus__EOSC-Life_demos/Workflow-FAIRness/worflow-Demo-wfFAIRness/locate_wh.cwl
+= invalid: the output `locate_wh.json` is not a valid output parameter
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__longmanplus__EOSC-Life_demos/Workflow-FAIRness/worflow-Demo-wfFAIRness/locate_wh.cwl
+> ERROR Tool definition failed validation:
+> Output 'locate_wh.json' is not a valid OutputParameter.
+
 realworld/sources/github.com__longmanplus__EOSC-Life_demos/Workflow-FAIRness/worflow-Demo-wfFAIRness/wf_fair_crate.cwl
+= invalid: the `source` `locate/wh_location` names nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__longmanplus__EOSC-Life_demos/Workflow-FAIRness/worflow-Demo-wfFAIRness/wf_fair_crate.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/github.com__longmanplus__EOSC-Life_demos/Workflow-FAIRness/worflow-Demo-wfFAIRness/wf_fair_crate.cwl#retrieve_file'
+> checking field 'in'
+> checking object 'realworld/sources/github.com__longmanplus__EOSC-Life_demos/Workflow-FAIRness/worflow-Demo-wfFAIRness/wf_fair_crate.cwl#retrieve_file/cwl_location'
+> Field 'source' references unknown identifier 'locate/wh_location', tried realworld/sources/github.com__longmanplus__EOSC-Life_demos/Workflow-FAIRness/worflow-Demo-wfFAIRness/wf_fair_crate.cwl#locate/wh_location
+
 realworld/sources/github.com__zmahnoor14__MAW/cwl/maw-sirius.cwl
+= missing: the document names `sirius_isotope.cwl` and `sirius_no_isotope.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__zmahnoor14__MAW/cwl/maw-sirius.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/github.com__zmahnoor14__MAW/cwl/maw-sirius.cwl#isotopefiles'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__zmahnoor14__MAW/cwl/sirius_isotope.cwl'
+> checking object 'realworld/sources/github.com__zmahnoor14__MAW/cwl/maw-sirius.cwl#noisotopefiles'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__zmahnoor14__MAW/cwl/sirius_no_isotope.cwl'
+
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510104.cwl
+= invalid: the `source` `DT5106` and `DT5111` name nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510104.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510104.cwl#SS5104'
+> checking field 'in'
+> checking object 'realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510104.cwl#SS5104/DT5106'
+> Field 'source' references unknown identifier 'DT5106', tried realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510104.cwl#DT5106
+> checking object 'realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510104.cwl#SS5104/DT5111'
+> Field 'source' references unknown identifier 'DT5111', tried realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510104.cwl#DT5111
+
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510106.cwl
+= invalid: the `outputSource` `ST510106/DT5101` names nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510106.cwl
+> ERROR Tool definition failed validation:
+> checking field 'outputs'
+> checking object 'realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510106.cwl#DT5101'
+> Field 'outputSource' references unknown identifier 'ST510106/DT5101', tried realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510106.cwl#DT5101/ST510106/DT5101 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510106.cwl#ST510106/DT5101
+
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510108.cwl
+= invalid: the `outputSource` `ST510108/DT5107` names nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510108.cwl
+> ERROR Tool definition failed validation:
+> checking field 'outputs'
+> checking object 'realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510108.cwl#DT5107'
+> Field 'outputSource' references unknown identifier 'ST510108/DT5107', tried realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510108.cwl#DT5107/ST510108/DT5107 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510108.cwl#ST510108/DT5107
+
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510109.cwl
+= invalid: the `outputSource` `ST510109/DT5111` and `DT5103` name nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510109.cwl
+> ERROR Tool definition failed validation:
+> checking field 'outputs'
+> Field 'outputSource' references unknown identifier 'ST510109/DT5111', tried realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510109.cwl#DT5111/ST510109/DT5111 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510109.cwl#ST510109/DT5111
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510109.cwl#SS5102'
+> checking field 'in'
+> checking object 'realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510109.cwl#SS5102/DT5103'
+> Field 'source' references unknown identifier 'DT5103', tried realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510109.cwl#DT5103
+
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510111.cwl
+= invalid: the `source` `DT5104` and `DT5110` name nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510111.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510111.cwl#SS5103'
+> checking field 'in'
+> checking object 'realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510111.cwl#SS5103/DT5104'
+> Field 'source' references unknown identifier 'DT5104', tried realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510111.cwl#DT5104
+> checking object 'realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510111.cwl#SS5103/DT5110'
+> Field 'source' references unknown identifier 'DT5110', tried realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510111.cwl#DT5110
+
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/WF5101.cwl
+= invalid: the `outputSource` `ST510109/DT5111` and `DT5103` name nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/WF5101.cwl
+> ERROR Tool definition failed initialization:
+> Tool definition realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510109.cwl failed validation:
+> Field 'outputSource' references unknown identifier 'ST510109/DT5111', tried realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510109.cwl#DT5111/ST510109/DT5111 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510109.cwl#ST510109/DT5111
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510109.cwl#SS5102'
+> checking field 'in'
+> checking object 'realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510109.cwl#SS5102/DT5103'
+> Field 'source' references unknown identifier 'DT5103', tried realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC51/WF5101/ST510109.cwl#DT5103
+
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC53/WF5301/ST530102.cwl
+= invalid: the `outputSource` `ST530102/DT5305` names nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC53/WF5301/ST530102.cwl
+> ERROR Tool definition failed validation:
+> checking field 'outputs'
+> checking object 'realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC53/WF5301/ST530102.cwl#DT5305'
+> Field 'outputSource' references unknown identifier 'ST530102/DT5305', tried realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC53/WF5301/ST530102.cwl#DT5305/ST530102/DT5305 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC53/WF5301/ST530102.cwl#ST530102/DT5305
+
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC53/WF5301/WF5301.cwl
+= invalid: the `outputSource` `ST530102/DT5305` names nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC53/WF5301/WF5301.cwl
+> ERROR Tool definition failed initialization:
+> Tool definition realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC53/WF5301/ST530102.cwl failed validation:
+> checking field 'outputs'
+> checking object 'realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC53/WF5301/ST530102.cwl#DT5305'
+> Field 'outputSource' references unknown identifier 'ST530102/DT5305', tried realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC53/WF5301/ST530102.cwl#DT5305/ST530102/DT5305 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC53/WF5301/ST530102.cwl#ST530102/DT5305
+
 realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC54/WF5401/WF5401.cwl
+= invalid: the steps `ST540103` depend on their own outputs
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC54/WF5401/WF5401.cwl
+> ERROR Tool definition failed validation:
+> The following steps have circular dependency:
+> ['realworld/sources/gitlab.com__dtgeo__metadata__cwl-ro-crate/DTC54/WF5401/WF5401.cwl#ST540103']
+
 realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl
+= invalid: the `outputSource` `STAR/STAR`, `bowtie2/bowtie2_index_dir` and `kallisto/kallisto_indexFolder` name nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl
+> ERROR Tool definition failed validation:
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl#main'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl#main/bowtie2'
+> Field 'outputSource' references unknown identifier 'realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl#main/bowtie2/bowtie2_index_dir', tried realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl#main/bowtie2/realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl#main/bowtie2/bowtie2_index_dir realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl#main/realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl#main/bowtie2/bowtie2_index_dir
+> realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl#realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl#main/bowtie2/bowtie2_index_dir
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl#main/kallisto'
+> Field 'outputSource' references unknown identifier 'realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl#main/kallisto/kallisto_indexFolder', tried realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl#main/kallisto/realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl#main/kallisto/kallisto_indexFolder realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl#main/realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl#main/kallisto/kallisto_indexFolder
+> realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl#realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_indexbuilder_packed.cwl#main/kallisto/kallisto_indexFolder
+
 realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_microbes_annotation_packed.cwl
+= invalid: a step does not give the required inputs `interproscan` and `identifier`
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_microbes_annotation_packed.cwl
+> ERROR Tool definition failed validation:
+> Step is missing required parameter 'interproscan'
+> Step is missing required parameter 'identifier'
+
 realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_mock_ngtax_packed.cwl
+= invalid: a step names the output `physeq_met`, which its tool does not have (it has `physeq_asv`, `physeq_seq`, `physeq_tax`, `picrust_fasta` and `picrust_tsv`)
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_mock_ngtax_packed.cwl
+> ERROR Tool definition failed validation:
+> Workflow step output 'physeq_met' does not correspond to
+> tool output (expected 'physeq_asv', 'physeq_seq', 'physeq_tax', 'picrust_fasta', 'picrust_tsv')
+
 realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_sapp_microbes_packed.cwl
+= invalid: a step names the output `output`, which its tool does not have (it has `outfile`)
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_sapp_microbes_packed.cwl
+> ERROR Tool definition failed validation:
+> Workflow step output 'output' does not correspond to
+> tool output (expected 'outfile')
+
 realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_sapp_others_packed.cwl
+= invalid: a step names the output `output`, which its tool does not have (it has `hdt_output`)
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/packed/workflow_sapp_others_packed.cwl
+> ERROR Tool definition failed validation:
+> Workflow step output 'output' does not correspond to
+> tool output (expected 'hdt_output')
+
 realworld/sources/gitlab.com__m-unlock__cwl/tools/gunc/gunc.cwl
+= invalid: cwltool rejects the document: "outputs" section is not valid.
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/tools/gunc/gunc.cwl
+> ERROR Tool definition failed validation:
+> "outputs" section is not valid.
 realworld/sources/gitlab.com__m-unlock__cwl/tools/interproscan/interproscan.cwl
+
 realworld/sources/gitlab.com__m-unlock__cwl/tools/irods/irods_manager.cwl
+= invalid: cwltool rejects the document: invalid field 'irods', expected one of: 'class', 'packages'
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/tools/irods/irods_manager.cwl
+> ERROR Tool definition failed validation:
+> * missing required field 'packages'
+> * invalid field 'irods', expected one of: 'class', 'packages'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_RNAseq_NonSpliced.cwl
+= missing: the document names `../tools/bowtie2/bowtie2_align_simple.cwl`, `../tools/expressions/files_to_folder.cwl` and `../tools/RNAseq/featurecounts.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_RNAseq_NonSpliced.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_RNAseq_NonSpliced.cwl#kallisto_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/tools/expressions/files_to_folder.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_RNAseq_NonSpliced.cwl#sam_to_sorted-bam'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/tools/samtools/sam_to_sorted-bam.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_RNAseq_NonSpliced.cwl#workflow_quality'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_illumina_quality.cwl'
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_RNAseq_Spliced.cwl
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_ena_annotation.cwl
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_illumina_assembly.cwl

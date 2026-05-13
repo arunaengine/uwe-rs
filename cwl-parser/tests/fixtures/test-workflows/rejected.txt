@@ -421,52 +421,430 @@ $ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.co
 > Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/samtools_covert_to_cram.cwl'
 > checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_alignment_inputcram.cwl#kfdrc_alignment_pipeline/verifybamid'
 > Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/verifybamid.cwl'
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_alignment_inputcram_cavatica.cwl
+= missing: the document names `../tools/bwa_mem_noco.cwl`, `../tools/expression_checkcontamination.cwl` and `../tools/python_createsequencegroups.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_alignment_inputcram_cavatica.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_alignment_inputcram_cavatica.cwl#kfdrc_alignment_inputcram_cavatica/picard_sortsam'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/picard_sortsam.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_alignment_inputcram_cavatica.cwl#kfdrc_alignment_inputcram_cavatica/samtools_coverttocram'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/samtools_covert_to_cram.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_alignment_inputcram_cavatica.cwl#kfdrc_alignment_inputcram_cavatica/verifybamid'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/verifybamid.cwl'
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_alignment_pipeline_cavatica.cwl
+= missing: the document names `../tools/bwa_mem.cwl`, `../tools/expression_checkcontamination.cwl` and `../tools/python_createsequencegroups.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_alignment_pipeline_cavatica.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_alignment_pipeline_cavatica.cwl#kfdrc_alignment_pipeline_cavatica/picard_sortsam'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/picard_sortsam.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_alignment_pipeline_cavatica.cwl#kfdrc_alignment_pipeline_cavatica/samtools_coverttocram'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/samtools_covert_to_cram.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_alignment_pipeline_cavatica.cwl#kfdrc_alignment_pipeline_cavatica/verifybamid'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/verifybamid.cwl'
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_haplotypecaller_cavatica.cwl
+= missing: the document names `../../tools/expression_checkcontamination_2.cwl` and `../../tools/gatk_haplotypecaller_35.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_haplotypecaller_cavatica.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_haplotypecaller_cavatica.cwl#scatter_haplotypecaller/checkcontamination'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/tools/expression_checkcontamination_2.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_haplotypecaller_cavatica.cwl#scatter_haplotypecaller/gatk_haplotypecaller'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/tools/gatk_haplotypecaller_35.cwl'
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_postbqsr_cavatica.cwl
+= missing: the document names `../../tools/expression_checkcontamination_2.cwl` and `../../tools/gatk_haplotypecaller_35.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_postbqsr_cavatica.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_postbqsr_cavatica.cwl#kf-postbqsr-cavatica/checkcontamination'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/tools/expression_checkcontamination_2.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/kfdrc_postbqsr_cavatica.cwl#kf-postbqsr-cavatica/gatk_haplotypecaller'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/tools/gatk_haplotypecaller_35.cwl'
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-m2p2-15.cwl
+= missing: the document names `../tools/bwa_mem.cwl`, `../tools/expression_checkcontamination.cwl` and `../tools/expression_createsequencegrouping.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-m2p2-15.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-m2p2-15.cwl#scatter_haplotypecaller/picard_sortsam'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/picard_sortsam.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-m2p2-15.cwl#scatter_haplotypecaller/samtools_coverttocram'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/samtools_covert_to_cram.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-m2p2-15.cwl#scatter_haplotypecaller/verifybamid'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/verifybamid.cwl'
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-origin-bwa32t.cwl
+= missing: the document names `../tools/bwa_mem.cwl`, `../tools/expression_checkcontamination.cwl` and `../tools/expression_createsequencegrouping.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-origin-bwa32t.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-origin-bwa32t.cwl#scatter_haplotypecaller/picard_sortsam'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/picard_sortsam.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-origin-bwa32t.cwl#scatter_haplotypecaller/samtools_coverttocram'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/samtools_covert_to_cram.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-origin-bwa32t.cwl#scatter_haplotypecaller/verifybamid'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/verifybamid.cwl'
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-origin.cwl
+= missing: the document names `../tools/bwa_mem.cwl`, `../tools/expression_checkcontamination.cwl` and `../tools/expression_createsequencegrouping.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-origin.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-origin.cwl#scatter_haplotypecaller/picard_sortsam'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/picard_sortsam.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-origin.cwl#scatter_haplotypecaller/samtools_coverttocram'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/samtools_covert_to_cram.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-origin.cwl#scatter_haplotypecaller/verifybamid'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/verifybamid.cwl'
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-2-bwa32t.cwl
+= missing: the document names `../tools/bwa_mem_32t.cwl`, `../tools/expression_checkcontamination.cwl` and `../tools/expression_createsequencegrouping.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-2-bwa32t.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-2-bwa32t.cwl#scatter_haplotypecaller/picard_sortsam'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/picard_sortsam.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-2-bwa32t.cwl#scatter_haplotypecaller/samtools_coverttocram'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/samtools_covert_to_cram.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-2-bwa32t.cwl#scatter_haplotypecaller/verifybamid'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/verifybamid.cwl'
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-bwa32t-cram.cwl
+= missing: the document names `../tools/bwa_mem_32t.cwl`, `../tools/expression_checkcontamination.cwl` and `../tools/expression_createsequencegrouping.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-bwa32t-cram.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-bwa32t-cram.cwl#scatter_haplotypecaller/picard_sortsam'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/picard_sortsam.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-bwa32t-cram.cwl#scatter_haplotypecaller/samtools_coverttocram'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/samtools_covert_to_cram.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-bwa32t-cram.cwl#scatter_haplotypecaller/verifybamid'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/verifybamid.cwl'
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-bwa32t.cwl
+= missing: the document names `../tools/bwa_mem_32t.cwl`, `../tools/expression_checkcontamination.cwl` and `../tools/expression_createsequencegrouping.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-bwa32t.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-bwa32t.cwl#scatter_haplotypecaller/picard_sortsam'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/picard_sortsam.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-bwa32t.cwl#scatter_haplotypecaller/samtools_coverttocram'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/samtools_covert_to_cram.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-bwa32t.cwl#scatter_haplotypecaller/verifybamid'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/verifybamid.cwl'
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-hc30t.cwl
+= missing: the document names `../tools/bwa_mem.cwl`, `../tools/expression_checkcontamination.cwl` and `../tools/expression_createsequencegrouping.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-hc30t.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-hc30t.cwl#scatter_haplotypecaller/picard_sortsam'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/picard_sortsam.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-hc30t.cwl#scatter_haplotypecaller/samtools_coverttocram'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/samtools_covert_to_cram.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8-hc30t.cwl#scatter_haplotypecaller/verifybamid'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/verifybamid.cwl'
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8.cwl
+= missing: the document names `../tools/bwa_mem.cwl`, `../tools/expression_checkcontamination.cwl` and `../tools/expression_createsequencegrouping.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8.cwl#scatter_haplotypecaller/picard_sortsam'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/picard_sortsam.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8.cwl#scatter_haplotypecaller/samtools_coverttocram'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/samtools_covert_to_cram.cwl'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/dev/workflow-r3p8.cwl#scatter_haplotypecaller/verifybamid'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/tools/verifybamid.cwl'
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/kfdrc_alignment_optimized.cwl
+= invalid: a step does not give the required input `reference`
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/kfdrc_alignment_optimized.cwl
+> ERROR Tool definition failed validation:
+> Step is missing required parameter 'reference'
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/kfdrc_alignment_wf.cwl
+= missing: the document names `../workflows/kfdrc_bwamem_subwf.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/kfdrc_alignment_wf.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/kfdrc_alignment_wf.cwl#kf_alignment_optimized_wf/bwa_mem'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/workflows/kfdrc_bwamem_subwf.cwl'
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/kfdrc_bwamem_subwf.cwl
+= invalid: the source `rg` of type `File` does not fit `rg` of type `string`
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/pilot-run/worklflows/kfdrc_bwamem_subwf.cwl
+> ERROR Tool definition failed validation:
+> Source 'rg' of type "File" is incompatible
+> with sink 'rg' of type "string"
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/tools/tar_list.cwl
+= invalid: cwltool rejects the document: Not allowed to specify outputBinding when using stdout shortcut.
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/tools/tar_list.cwl
+> ERROR Tool definition failed validation:
+> Not allowed to specify outputBinding when using stdout shortcut.
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-deprecated/kfdrc_alignment_wf_3vcf.cwl
+= invalid: a step does not give the required input `knownsites`
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows-deprecated/kfdrc_alignment_wf_3vcf.cwl
+> ERROR Tool definition failed validation:
+> Step is missing required parameter 'knownsites'
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/dev/latest-tools/workflows/kfdrc_alignment_wf.cwl
+= missing: the document names `../tools/samtools_bam_to_cram.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/dev/latest-tools/workflows/kfdrc_alignment_wf.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/dev/latest-tools/workflows/kfdrc_alignment_wf.cwl#kf_alignment_optimized_wf/samtools_bam_to_cram'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/dev/latest-tools/tools/samtools_bam_to_cram.cwl'
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/dev/latest-tools/workflows/kfdrc_bwamem_subwf.cwl
+= invalid: a step does not give the required input `original_bam`
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/dev/latest-tools/workflows/kfdrc_bwamem_subwf.cwl
+> ERROR Tool definition failed validation:
+> Step is missing required parameter 'original_bam'
+
 realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/dev/ultra-opt/workflows/kfdrc_alignment_wf.cwl
+= missing: the document names `../tools/samtools_bam_to_cram.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/dev/ultra-opt/workflows/kfdrc_alignment_wf.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/dev/ultra-opt/workflows/kfdrc_alignment_wf.cwl#kf_alignment_optimized_wf/samtools_bam_to_cram'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__kids-first__kf-alignment-workflow/workflows/dev/ultra-opt/tools/samtools_bam_to_cram.cwl'
+
 realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/cnvkit_call.cwl
+= invalid: the field `outputs` does not follow the CWL schema: invalid field 'glob', expected one of: 'label', 'secondaryFiles', 'streamable', 'doc', 'id', 'outputBinding', 'format', 'type'
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/cnvkit_call.cwl
+> ERROR Tool definition failed validation:
+> Object 'realworld/collections/github.com__kids-first__kf-somatic-workflow/tools/cnvkit_call.cwl#cnvkit-calling-pipeline' is not valid because
+> tried 'CommandLineTool' but
+> the 'outputs' field is not valid because
+> item is invalid because
+> invalid field 'glob', expected one of: 'label', 'secondaryFiles', 'streamable', 'doc', 'id', 'outputBinding', 'format', 'type'
+
 realworld/collections/github.com__kids-first__kf-somatic-workflow/workflow/kfdrc_consensus_calling.cwl
+= invalid: the field `secondaryFiles` does not follow the CWL schema: value is a CommentedMap, expected string or Expression
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__kids-first__kf-somatic-workflow/workflow/kfdrc_consensus_calling.cwl
+> ERROR Tool definition failed validation:
+> Object 'realworld/collections/github.com__kids-first__kf-somatic-workflow/workflow/kfdrc_consensus_calling.cwl#kfdrc_consensus_calling' is not valid because
+> the 'inputs' field is not valid because
+> item is invalid because
+> the 'secondaryFiles' field is not valid because
+> tried array of <string or Expression> but
+> item is invalid because
+> value is a CommentedMap, expected string or Expression
+
 realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/ACCESS_variants.cwl
+= invalid: the file is not valid YAML: found duplicate key "concatenated_vcf"
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__mskcc__ACCESS-Pipeline/workflows/ACCESS_variants.cwl
+> ERROR Tool definition failed validation:
+> while constructing a mapping
+> found duplicate key "concatenated_vcf" with value "{'type': 'File', 'outputSource': 'manta/concatenated_vcf'}" (original value: "{'type': 'File[]', 'outputSource': 'snps_and_indels/concatenated_vcf'}")
+
 realworld/collections/github.com__ncbi__pgap/progs/unit_tests/test_cluster_blastp_wnode/test.cwl
+= invalid: the source `blastdb_dir` of type `Directory[]` does not fit `blastdb_dir` of type `Directory`
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__ncbi__pgap/progs/unit_tests/test_cluster_blastp_wnode/test.cwl
+> ERROR Tool definition failed validation:
+> Source 'blastdb_dir' of type {"type": "array", "items": "Directory"} is incompatible
+> with sink 'blastdb_dir' of type "Directory"
+
 realworld/collections/github.com__ncbi__pgap/progs/unit_tests/test_combine_kmer_sqlite/test.cwl
+= invalid: a step does not give the required input `fast`
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__ncbi__pgap/progs/unit_tests/test_combine_kmer_sqlite/test.cwl
+> ERROR Tool definition failed validation:
+> Step is missing required parameter 'fast'
+
 realworld/collections/github.com__ncbi__pgap/progs/unit_tests/test_kmer_top_identification/test.cwl
+= invalid: a step does not give the required input `minN`
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__ncbi__pgap/progs/unit_tests/test_kmer_top_identification/test.cwl
+> ERROR Tool definition failed validation:
+> Step is missing required parameter 'minN'
+
 realworld/collections/github.com__ncbi__pgap/progs/unit_tests/test_preserve_annot_markup/test.cwl
+= missing: the document names `progs/asn_cleanup.cwl`, `progs/dumb_down_as_required.cwl` and `progs/ent2sqn.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__ncbi__pgap/progs/unit_tests/test_preserve_annot_markup/test.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__ncbi__pgap/progs/unit_tests/test_preserve_annot_markup/progs/xsltproc.cwl'
+> checking field 'in'
+> checking object 'realworld/collections/github.com__ncbi__pgap/progs/unit_tests/test_preserve_annot_markup/test.cwl#Validate_Annotation_xsltproc_asnvalidate/xml'
+> Field 'source' references unknown identifier 'validation_xml', tried realworld/collections/github.com__ncbi__pgap/progs/unit_tests/test_preserve_annot_markup/test.cwl#validation_xml
+> checking object 'realworld/collections/github.com__ncbi__pgap/progs/unit_tests/test_preserve_annot_markup/test.cwl#Validate_Annotation_xsltproc_asnvalidate/xslt'
+> Field 'source' references unknown identifier 'asn2pas_xsl', tried realworld/collections/github.com__ncbi__pgap/progs/unit_tests/test_preserve_annot_markup/test.cwl#asn2pas_xsl
+
 realworld/collections/github.com__ncbi__pgap/task_types/tt_amr_finder_plus.cwl
+= missing: the document names `../progs/amr_plus_adaptor.cwl` and `../progs/amr_finder_plus.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__ncbi__pgap/task_types/tt_amr_finder_plus.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/collections/github.com__ncbi__pgap/task_types/tt_amr_finder_plus.cwl#action_node_equivalent'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__ncbi__pgap/progs/amr_plus_adaptor.cwl'
+> checking object 'realworld/collections/github.com__ncbi__pgap/task_types/tt_amr_finder_plus.cwl#proper_application_step'
+> Field 'run' contains undefined reference to 'realworld/collections/github.com__ncbi__pgap/progs/amr_finder_plus.cwl'
+
 realworld/collections/github.com__ncbi__pgap/task_types/tt_kmer_gc_extract_wnode.cwl
+= invalid: a step does not give the required inputs `input` and `kmer_output_dir`
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__ncbi__pgap/task_types/tt_kmer_gc_extract_wnode.cwl
+> ERROR Tool definition failed validation:
+> Workflow step output 'output_files' does not correspond to
+> tool output (expected 'outdir')
+> Step is missing required parameters 'input', 'kmer_output_dir'
+
 realworld/collections/github.com__ncbi__pgap/wf_pgap_simple.cwl
+= invalid: a step does not give the required inputs `go` and `submol_block_json`
+$ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__ncbi__pgap/wf_pgap_simple.cwl
+> ERROR Tool definition failed validation:
+> Step is missing required parameters 'go', 'submol_block_json'
+
 realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_ena_annotation.cwl
+= missing: the document names `../ena/enabrowsertools.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_ena_annotation.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_ena_annotation.cwl#enaBrowserTools'
+> Field 'run' contains undefined reference to 'realworld/sources/git.wur.nl__unlock__cwl/cwl/ena/enabrowsertools.cwl'
+
 realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_illumina_assembly.cwl
+= invalid: the source `forward_reads` of type `File[]` does not fit `forward_reads` of type `string[]`
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_illumina_assembly.cwl
+> ERROR Tool definition failed validation:
+> Source 'forward_reads' of type {"type": "array", "items": "File"} is incompatible
+> with sink 'forward_reads' of type {"type": "array", "items": "string"}
+> Source 'reverse_reads' of type {"type": "array", "items": "File"} is incompatible
+> with sink 'reverse_reads' of type {"type": "array", "items": "string"}
+
 realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_metagenomics.cwl
+= invalid: a step names the output `rpkm`, which its tool does not have (it has `covstats`, `log`, `sam` and `stats`)
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_metagenomics.cwl
+> ERROR Tool definition failed validation:
+> Workflow step output 'rpkm' does not correspond to
+> tool output (expected 'covstats', 'log', 'sam', 'stats')
+
 realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_metagenomics_read_annotation.cwl
+= invalid: a step names the output `kraken`, which its tool does not have (it has `sample_report` and `standard_report`)
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_metagenomics_read_annotation.cwl
+> ERROR Tool definition failed validation:
+> Workflow step output 'kraken' does not correspond to
+> tool output (expected 'sample_report', 'standard_report')
+> Workflow step output 'report' does not correspond to
+> tool output (expected 'sample_report', 'standard_report')
+> Workflow step output 'reports_to_folder' does not correspond to
+> tool output (expected 'QC_forward_reads', 'QC_reverse_reads', 'destination', 'reports_folder')
+
 realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_microbial.cwl
+= invalid: a step does not give the required input `destination`
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_microbial.cwl
+> ERROR Tool definition failed validation:
+> Step is missing required parameter 'destination'
+> tool output (expected 'assembly_graph', 'contigs', 'contigs_assembly_paths', 'contigs_before_rr', 'internal_config', 'internal_dataset', 'log', 'params', 'scaffolds', 'scaffolds_assembly_paths')
+> Workflow step output 'contigs_assembly_graph' does not correspond to
+> tool output (expected 'assembly_graph', 'contigs', 'contigs_assembly_paths', 'contigs_before_rr', 'internal_config', 'internal_dataset', 'log', 'params', 'scaffolds', 'scaffolds_assembly_paths')
+> Workflow step output 'scaffolds_assembly_graph' does not correspond to
+> tool output (expected 'assembly_graph', 'contigs', 'contigs_assembly_paths', 'contigs_before_rr', 'internal_config', 'internal_dataset', 'log', 'params', 'scaffolds', 'scaffolds_assembly_paths')
+> Step is missing required parameter 'destination'
+
 realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_nanopore.cwl
+= invalid: a step does not give the required input `filter_references`
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/git.wur.nl__unlock__cwl/cwl/workflows/workflow_nanopore.cwl
+> ERROR Tool definition failed validation:
+> Workflow step output 'fastqc_output' does not correspond to
+> tool output (expected 'assembly_output', 'binning_output', 'illumina_quality_stats', 'kraken2_output', 'nanopore_quality_output')
+> Workflow step output 'medaka_output' does not correspond to
+> tool output (expected 'assembly_output', 'binning_output', 'illumina_quality_stats', 'kraken2_output', 'nanopore_quality_output')
+> Workflow step output 'metaquast_output' does not correspond to
+> tool output (expected 'assembly_output', 'binning_output', 'illumina_quality_stats', 'kraken2_output', 'nanopore_quality_output')
+> Step is missing required parameter 'filter_references'
+
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/FastQC/workflows/FastQC_workflow_v1.cwl
+= invalid: the source `raw_files` of type `File[]` does not fit `input_files` of type `File[][]`
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/FastQC/workflows/FastQC_workflow_v1.cwl
+> ERROR Tool definition failed validation:
+> Source 'raw_files' of type {"type": "array", "items": "File"} is incompatible
+> with sink 'input_files' of type {"type": "array", "items": {"type": "array", "items": "File"}}
+> Source 'html_file' of type {"type": "array", "items": [{"type": "array", "items": "File"}]} is incompatible
+> with sink 'input_file' of type {"type": "array", "items": ["null", "File"]}
+> Source 'zipped_file' of type {"type": "array", "items": [{"type": "array", "items": "File"}]} is incompatible
+> with sink 'input_files' of type [{"type": "array", "items": ["null", "File"]}]
+
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/Trim_galore/workflows/Trim_galore_workflow.cwl
+= invalid: the field `inputs` does not follow the CWL schema: invalid field 'position', expected one of: 'label', 'secondaryFiles', 'streamable', 'doc', 'id', 'format', 'inputBinding', 'default', 'type'
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/Trim_galore/workflows/Trim_galore_workflow.cwl
+> ERROR Tool definition failed initialization:
+> Tool definition realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/Trim_galore/wrappers/trim-galore.cwl failed validation:
+> Object 'realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/Trim_galore/wrappers/trim-galore.cwl' is not valid because
+> tried 'CommandLineTool' but
+> the 'inputs' field is not valid because
+> item is invalid because
+> invalid field 'position', expected one of: 'label', 'secondaryFiles', 'streamable', 'doc', 'id', 'format', 'inputBinding', 'default', 'type'
+
 realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/Trim_galore/wrappers/trim-galore.cwl
+= invalid: the field `inputs` does not follow the CWL schema: invalid field 'position', expected one of: 'label', 'secondaryFiles', 'streamable', 'doc', 'id', 'format', 'inputBinding', 'default', 'type'
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/Trim_galore/wrappers/trim-galore.cwl
+> ERROR Tool definition failed validation:
+> Object 'realworld/sources/github.com__BiodataAnalysisGroup__CWL_HTS_pipelines/Additional_workflows/Trim_galore/wrappers/trim-galore.cwl' is not valid because
+> tried 'CommandLineTool' but
+> the 'inputs' field is not valid because
+> item is invalid because
+> invalid field 'position', expected one of: 'label', 'secondaryFiles', 'streamable', 'doc', 'id', 'format', 'inputBinding', 'default', 'type'
+
 realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/samtools_index.cwl
+= invalid: the file is not valid YAML: found duplicate key "requirements"
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__CompEpigen__ATACseq_workflows/CWL/tools/samtools_index.cwl
+> ERROR Tool definition failed validation:
+> while constructing a mapping
+> found duplicate key "requirements" with value "{'InitialWorkDirRequirement': {'listing': ['$(inputs.bam_sorted)']}}" (original value: "{'InlineJavascriptRequirement': {}}")
+
 realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/samtools_index.cwl
+= invalid: the file is not valid YAML: found duplicate key "requirements"
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__CompEpigen__ChIPseq_workflows/CWL/tools/samtools_index.cwl
+> ERROR Tool definition failed validation:
+> while constructing a mapping
+> found duplicate key "requirements" with value "{'InitialWorkDirRequirement': {'listing': ['$(inputs.bam_sorted)']}}" (original value: "{'InlineJavascriptRequirement': {}}")
+
 realworld/sources/github.com__DimitraPanou__scRNAseq-cwl/steps.cwl
+= missing: the document names `tools/8_clusterData.cwl`, `tools/2_filter.cwl` and `tools/11_findMarkers.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__DimitraPanou__scRNAseq-cwl/steps.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/github.com__DimitraPanou__scRNAseq-cwl/steps.cwl#runTSNE'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__DimitraPanou__scRNAseq-cwl/tools/10_runTSNE.cwl'
+> checking object 'realworld/sources/github.com__DimitraPanou__scRNAseq-cwl/steps.cwl#runUMAP'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__DimitraPanou__scRNAseq-cwl/tools/9_runUMAP.cwl'
+> checking object 'realworld/sources/github.com__DimitraPanou__scRNAseq-cwl/steps.cwl#scaleData'
+> Field 'run' contains undefined reference to 'realworld/sources/github.com__DimitraPanou__scRNAseq-cwl/tools/5_Scaling.cwl'
+
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/assembly.cwl
+= invalid: the source `reads2` of type `File?` does not fit `reads2` of type `File[]?`
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/assembly.cwl
+> ERROR Tool definition failed validation:
+> Source 'reads2' of type ["null", "File"] is incompatible
+> with sink 'reads2' of type ["null", {"type": "array", "items": "File"}]
+
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metagenome_pipeline.cwl
+= invalid: the source `reads2` of type `File?` does not fit `reads2` of type `File[]?`
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metagenome_pipeline.cwl
+> ERROR Tool definition failed initialization:
+> Tool definition realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/assembly.cwl failed validation:
+> Source 'reads2' of type ["null", "File"] is incompatible
+> with sink 'reads2' of type ["null", {"type": "array", "items": "File"}]
+
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metatranscriptome_pipeline.cwl
+= invalid: the file is not valid YAML: found duplicate key "cleaned_contigs"
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metatranscriptome_pipeline.cwl
+> ERROR Tool definition failed validation:
+> while constructing a mapping
+> found duplicate key "cleaned_contigs" with value "{'type': 'File', 'label': 'contig file after qc', 'outputSource': 'post_assembly/final_contigs'}" (original value: "{'type': 'File', 'label': 'contig file after qc', 'outputSource': 'post_assembly/final_contigs'}")
+
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metatranscriptome_qc.cwl
+= invalid: a step does not give the required input `coassembly`
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/metatranscriptome_qc.cwl
+> ERROR Tool definition failed validation:
+> Step is missing required parameter 'coassembly'
 realworld/sources/github.com__EBI-Metagenomics__CWL-assembly/src/workflows/rna-prediction.cwl
 realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcall.cwl
 realworld/sources/github.com__ambarishK__bio-cwl-tools/GATK/variantcallDocker.cwl

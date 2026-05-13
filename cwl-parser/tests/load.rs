@@ -206,4 +206,6 @@ fn reads_version_forms() {
         "file:///work/tool.cwl",
     );
     assert_eq!(error.message, "the document has no `cwlVersion`");
+    let error = failure(&[("file:///work/tool.cwl", "")], "file:///work/tool.cwl");
+    assert_eq!(error.message, "the document is empty");
 }

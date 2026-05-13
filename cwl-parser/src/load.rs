@@ -195,7 +195,11 @@ impl Runs for Loader {
 /// The `cwlVersion` of a document, which may carry the `cwl:` prefix.
 fn read_version(root: &Node) -> Result<Version, Error> {
     let Some(node) = root.get("cwlVersion") else {
-        let message = "the document has no `cwlVersion`";
+        let message = if matches!(root.value, Value::Null) {
+            "the document is empty"
+        } else {
+            "the document has no `cwlVersion`"
+        };
         return Err(Error::new(&root.location, message));
     };
     let Value::String(text) = &node.value else {

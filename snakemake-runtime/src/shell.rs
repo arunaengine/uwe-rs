@@ -3,11 +3,37 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::path::Path;
 use std::rc::Rc;
 
 use python_evaluator::{Args, Error, Interpreter, Scope, Value};
 
 use crate::objects::NamedList;
+use crate::workflow::State;
+
+/// The command line that runs a shell command as Snakemake does: the executable (`bash`
+/// unless `shell.executable()` names another) with `-c`, and the command between the prefix
+/// (`set -euo pipefail; ` for bash, unless `shell.prefix()` sets one) and the suffix.
+pub fn command_line(state: &State, command: &str) -> Vec<String> {
+    let executable = state
+        .shell_executable
+        .clone()
+        .unwrap_or_else(|| "bash".into());
+    let bash = Path::new(&executable)
+        .file_name()
+        .is_some_and(|name| name == "bash");
+    let prefix = state.shell_prefix.clone().unwrap_or_else(|| {
+        if bash {
+            "set -euo pipefail; ".into()
+        } else {
+            String::new()
+        }
+    });
+    let full = format!("{prefix} {command} {}", state.shell_suffix)
+        .trim()
+        .to_owned();
+    vec![executable, "-c".into(), full]
+}
 
 /// `shlex.quote`.
 pub fn quote(text: &str) -> String {

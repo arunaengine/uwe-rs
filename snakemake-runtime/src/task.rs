@@ -15,7 +15,7 @@ use crate::objects::NamedList;
 use crate::pattern;
 use crate::plan::{Job, incomplete_target};
 use crate::rule::{Action, Items, Rule};
-use crate::shell::format_command;
+use crate::shell::{command_line, format_command};
 use crate::workflow::{State, workflow_error};
 
 /// Where wrappers come from unless the workflow names a URL.
@@ -304,25 +304,7 @@ pub fn build(
             let template = interpreter.to_str(value)?;
             let formatted = format_command(interpreter, &template, &names, Some(&rule.globals))
                 .map_err(|error| shell_error(error, rule))?;
-            let executable = setting
-                .state
-                .shell_executable
-                .clone()
-                .unwrap_or_else(|| "bash".into());
-            let bash = Path::new(&executable)
-                .file_name()
-                .is_some_and(|name| name == "bash");
-            let prefix = setting.state.shell_prefix.clone().unwrap_or_else(|| {
-                if bash {
-                    "set -euo pipefail; ".into()
-                } else {
-                    String::new()
-                }
-            });
-            let full = format!("{prefix} {formatted} {}", setting.state.shell_suffix)
-                .trim()
-                .to_owned();
-            command = vec![executable, "-c".into(), full];
+            command = command_line(setting.state, &formatted);
             script = Some(formatted);
         }
         Action::Script(value) | Action::Notebook(value) => {

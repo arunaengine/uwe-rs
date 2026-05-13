@@ -537,6 +537,9 @@ impl Interpreter {
         }
         let args = self.eval_arguments(frame, &call.arguments)?;
         self.count_step()?;
+        if let Value::Native(_) = &callee {
+            self.caller_locals = Some(frame.locals.clone());
+        }
         self.call(&callee, args)
     }
 

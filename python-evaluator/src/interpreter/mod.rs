@@ -147,6 +147,9 @@ pub struct Interpreter {
     pub(crate) retained: Vec<Rc<Suite>>,
     pub hook: Option<Rc<dyn StatementHook>>,
     pub attribute_hook: Option<Rc<dyn AttributeHook>>,
+    /// The local names of the code that calls a native object, for natives that read them,
+    /// like Snakemake's `shell()`, which formats its command with them.
+    pub caller_locals: Option<Rc<Scope>>,
     /// Statements executed so far, and the most allowed, so that a loop that never ends stops.
     pub steps: u64,
     pub step_limit: u64,
@@ -174,6 +177,7 @@ impl Interpreter {
             retained: Vec::new(),
             hook: None,
             attribute_hook: None,
+            caller_locals: None,
             steps: 0,
             step_limit: 500_000_000,
             depth: 0,

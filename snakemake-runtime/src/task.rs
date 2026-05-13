@@ -54,7 +54,7 @@ pub fn evaluate(
 }
 
 /// A container image as TES expects it: `docker://` URIs lose their scheme.
-fn image_name(text: &str) -> String {
+pub fn image_name(text: &str) -> String {
     text.strip_prefix("docker://").unwrap_or(text).to_owned()
 }
 

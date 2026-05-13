@@ -4,7 +4,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -14,6 +14,7 @@ use std::thread::JoinHandle;
 use python_evaluator::{Error, Interpreter, Value};
 use workflow_graph::{Driver, DriverError, Language, Launch, Outcome, Task, TaskId};
 
+use crate::commands::{Channel, CommandRunner, Reply, Request};
 use crate::files::{Produced, WorkflowFiles};
 use crate::plan::Planner;
 use crate::workflow::{Hook, State};
@@ -59,7 +60,8 @@ pub struct Session {
     jobs_of_tasks: HashMap<TaskId, usize>,
     done: HashSet<usize>,
     outstanding: usize,
-    next_task: u64,
+    /// The number of the next task, which commands of workflow code share.
+    next_task: Rc<Cell<u64>>,
     replan: bool,
 }
 
@@ -120,7 +122,7 @@ impl Session {
             jobs_of_tasks: HashMap::new(),
             done: HashSet::new(),
             outstanding: 0,
-            next_task: 1,
+            next_task: Rc::new(Cell::new(1)),
             replan: false,
         })
     }
@@ -261,8 +263,8 @@ impl Session {
             if waiting {
                 continue;
             }
-            let id = TaskId(self.next_task);
-            self.next_task += 1;
+            let id = TaskId(self.next_task.get());
+            self.next_task.set(id.0 + 1);
             let rule = planner.rules[entry.rule].clone();
             let entry = entry.clone();
             let task = {
@@ -376,14 +378,6 @@ impl Session {
     }
 }
 
-enum Request {
-    Start,
-    Complete(Box<Outcome>),
-    Finish,
-}
-
-type Reply = Result<Vec<Task>, DriverError>;
-
 /// The driver the engine talks to. The session lives on a thread of its own with a large
 /// stack, since workflow code may recurse deeply.
 struct SnakemakeDriver {
@@ -445,13 +439,14 @@ pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
         .name("snakemake".into())
         .stack_size(512 << 20)
         .spawn(move || {
+            let channel = Rc::new(Channel::new(incoming, outgoing));
             let mut session = match Session::new(&launch) {
                 Ok(session) => Some(session),
                 Err(error) => {
                     // Every request gets the error of the setup.
-                    while let Ok(request) = incoming.recv() {
+                    while let Ok(request) = channel.requests.recv() {
                         let finish = matches!(request, Request::Finish);
-                        let _ = outgoing.send(Err(error.clone()));
+                        let _ = channel.replies.send(Err(error.clone()));
                         if finish {
                             break;
                         }
@@ -462,17 +457,33 @@ pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
             let Some(session) = session.as_mut() else {
                 return;
             };
-            while let Ok(request) = incoming.recv() {
+            session.files.set_commands(Rc::new(CommandRunner {
+                channel: channel.clone(),
+                next_task: session.next_task.clone(),
+                state: session.state.clone(),
+            }));
+            while let Ok(request) = channel.requests.recv() {
                 let reply = match request {
                     Request::Start => session.start(),
                     Request::Complete(outcome) => session.complete(*outcome),
                     Request::Finish => {
                         let result = session.finish().map(|()| Vec::new());
-                        let _ = outgoing.send(result);
+                        let _ = channel.replies.send(result);
                         break;
                     }
                 };
-                if outgoing.send(reply).is_err() {
+                // The outcomes that came while commands of workflow code ran.
+                let reply = reply.and_then(|mut tasks| {
+                    loop {
+                        let parked = channel.parked.borrow_mut().pop_front();
+                        let Some(outcome) = parked else {
+                            break;
+                        };
+                        tasks.extend(session.complete(outcome)?);
+                    }
+                    Ok(tasks)
+                });
+                if channel.replies.send(reply).is_err() {
                     break;
                 }
             }

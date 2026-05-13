@@ -7,8 +7,11 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
+use std::rc::Rc;
 
-use python_evaluator::{FileKind, Host, LocalHost, Stat};
+use python_evaluator::{Command, CommandOutcome, Error, FileKind, Host, LocalHost, Stat};
+
+use crate::commands::CommandRunner;
 
 /// An output of a finished task: where it is now, and whether it is a directory.
 #[derive(Clone, Debug)]
@@ -23,6 +26,8 @@ pub struct WorkflowFiles {
     produced: RefCell<BTreeMap<PathBuf, Produced>>,
     /// Output of `print` and of logging while the workflow is planned.
     pub messages: RefCell<Vec<String>>,
+    /// Runs the commands of workflow code as tasks, once the driver connects it.
+    commands: RefCell<Option<Rc<CommandRunner>>>,
 }
 
 impl WorkflowFiles {
@@ -31,7 +36,13 @@ impl WorkflowFiles {
             local: LocalHost::new(workdir),
             produced: RefCell::new(BTreeMap::new()),
             messages: RefCell::new(Vec::new()),
+            commands: RefCell::new(None),
         }
+    }
+
+    /// Connects the runner of commands of workflow code.
+    pub fn set_commands(&self, runner: Rc<CommandRunner>) {
+        *self.commands.borrow_mut() = Some(runner);
     }
 
     /// Records an output of a finished task.
@@ -147,5 +158,15 @@ impl Host for WorkflowFiles {
 
     fn environment(&self) -> Vec<(String, String)> {
         self.local.environment()
+    }
+
+    fn run_command(&self, command: &Command) -> Result<CommandOutcome, Error> {
+        let runner = self.commands.borrow().clone();
+        match runner {
+            Some(runner) => runner.run(command),
+            None => Err(Error::unsupported(
+                "running commands while the workflow is planned",
+            )),
+        }
     }
 }

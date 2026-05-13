@@ -76,7 +76,7 @@ catalog/NCI-CGR__TriosCompass_v2 1 workflow/Snakefile:8: WorkflowError: Workflow
 catalog/NeuroGranberg__NODDIpipeline 33 workflow/rules/NODDIpipeline.smk:25: Not supported yet: the attribute replace of DataFrame
 catalog/Ovewh__ACP-haugvaldstad-et-al-2025 ok 395
 catalog/Ovewh__Climaso 1 workflow/Snakefile:139: WorkflowError: InputFunctionException in rule calculate_SW_ERF (wildcards: experiment=piClim-2xdust, vName=ERFtsw, model=EC-Earth3-AerChem, freq=Ayear): FileNotFoundError: /home/oveh/mnt/Betzy_CMIP/CMIP6/AerChemMIP/EC-Earth-Consortium/EC-Earth3-AerChem/piClim-2xdust/r1i1p1f
-catalog/PathoGenOmics-Lab__VIPERA 33 workflow/rules/common.smk:31: Not supported yet: subprocess.check_output: running commands while the workflow is planned
+catalog/PathoGenOmics-Lab__VIPERA ok 217
 catalog/Phlya__C-integration-mapping ok 0
 catalog/Phlya__distill-reorder-C 33 workflow/Snakefile:11: Not supported yet: modules from remote repositories (github(...))
 catalog/Phlya__tagmap 1 workflow/rules/common.smk:265: WorkflowError: InputFunctionException in rule stats (wildcards: sample=H2): JSONDecodeError: Expecting value: line 1 char 0
@@ -127,7 +127,7 @@ catalog/adrisede__Isoseq_smk_min 1 workflow/Snakefile:273: WorkflowError: Not al
 catalog/aekrylova__scPASU 1 workflow/rules/1_data_preprocessing.smk:1: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
 catalog/akcorut__kGWASflow 1 workflow/rules/common.smk:255: SystemExit: 1
 catalog/alexhbnr__contig_simulation ok 0
-catalog/alzel__refseq_pipeline 33 workflow/Snakefile:10: Not supported yet: os.popen: running commands while the workflow is planned
+catalog/alzel__refseq_pipeline ok 24
 catalog/ammaraziz__voi 1 workflow/Snakefile:6: KeyError: 'output'
 catalog/arwisyah__snakemake_rna_vc_docker_reproduce ok 12
 catalog/aryazand__call_tss ok 20
@@ -323,7 +323,7 @@ catalog/niekwit__cut_and_run 1 workflow/scripts/general_functions.smk:435: Asser
 catalog/niekwit__damid-seq 1 workflow/scripts/general_functions.smk:430: AssertionError: No fastq files found...
 catalog/niekwit__gps-orfeome 33 workflow/scripts/general_functions.smk:33: Not supported yet: the library function platform.linux_distribution
 catalog/niekwit__methyl-seq 1 workflow/rules/common.smk:85: ValueError: No FASTQ (*.fastq.gz) files found in 'reads/' directory.
-catalog/niekwit__partridge-workflow 33 workflow/rules/common.smk:18: Not supported yet: subprocess.run: running commands while the workflow is planned
+catalog/niekwit__partridge-workflow 1 workflow/rules/common.smk:21: IndexError: list index out of range
 catalog/niekwit__rna-seq-salmon-deseq2 1 workflow/Snakefile:28: WorkflowError: Error validating row 0 of data frame.
 catalog/niekwit__rna-seq-star-deseq2 ok 32
 catalog/niekwit__rna-seq-star-rmats 1 workflow/Snakefile:29: ValueError: Invalid format specifier
@@ -334,7 +334,7 @@ catalog/nikostr__read-mapping 33 workflow/rules/common.smk:86: Not supported yet
 catalog/nismod__open-gira 33 workflow/Snakefile:20: ModuleNotFoundError: No module named 'open_gira'
 catalog/nixonlab__HERV_um_mets 1 workflow/rules/common.smk:6: FileNotFoundError: [Errno 2] No such file or directory: 'resources/mskruns.txt'
 catalog/nixonlab__snakemake_rule_library 1 workflow/Snakefile:8: FileNotFoundError: [Errno 2] No such file or directory: 'workflow/rules/common.smk'
-catalog/nodrogluap__tamor 33 workflow/rules/dragen_version.smk:8: Not supported yet: subprocess.run: running commands while the workflow is planned
+catalog/nodrogluap__tamor 1 workflow/rules/dragen_version.smk:17: SystemExit: FATAL: Unsupported Dragen version (not 4.2, 4.4 or 4.5) detected in dragen_info's install path ()
 catalog/ntnn19__combflow ok 3
 catalog/ntnn19__gaptrick-af_unmasked 33 workflow/Snakefile:17: Not supported yet: modules from remote repositories (github(...))
 catalog/odcambc__dumpling 1 workflow/rules/common.smk:215: FileNotFoundError: Data directory example/data does not exist
@@ -485,8 +485,8 @@ tests/test_(with_parenthese's) ok 1
 tests/test_access_patterns ok 12
 tests/test_all_temp ok 3
 tests/test_ambiguousruleexception ok 7
-tests/test_ancient 33 Snakefile:3: Not supported yet: shell(): running commands while the workflow is planned
-tests/test_ancient_cli 33 Snakefile:3: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_ancient 33 Snakefile:37: Not supported yet: storage providers
+tests/test_ancient_cli ok 4
 tests/test_ancient_dag ok 24
 tests/test_archive ok 1
 tests/test_azure_batch ok 2
@@ -512,9 +512,9 @@ tests/test_cloud_checkpoints_issue574 1 Snakefile:6: NotImplementedError: Remote
 tests/test_conda ok 7
 tests/test_conda_cmd_exe ok 7
 tests/test_conda_custom_prefix ok 4
-tests/test_conda_function 33 Snakefile:3: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_conda_function ok 5
 tests/test_conda_global 33 Snakefile:10: ModuleNotFoundError: No module named 'PIL'
-tests/test_conda_named 33 Snakefile:6: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_conda_named ok 2
 tests/test_conda_pin_file ok 1
 tests/test_conda_python_3_7_script ok 1
 tests/test_conda_python_script ok 1
@@ -541,7 +541,7 @@ tests/test_default_storage_local_job ok 4
 tests/test_default_target ok 3
 tests/test_deferred_func_eval ok 1
 tests/test_delete_all_output ok 3
-tests/test_delete_output 33 Snakefile:17: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_delete_output ok 9
 tests/test_delete_temp_fs ok 3
 tests/test_deploy_hashing ok 3
 tests/test_deploy_script ok 2
@@ -607,7 +607,7 @@ tests/test_github_issue413 ok 2
 tests/test_github_issue456 ok 1
 tests/test_github_issue52 ok 3
 tests/test_github_issue627 ok 1
-tests/test_github_issue640 33 Snakefile:4: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_github_issue640 ok 2
 tests/test_github_issue672 ok 5
 tests/test_github_issue727 ok 4
 tests/test_github_issue78 ok 5
@@ -777,7 +777,7 @@ tests/test_profile_new ok 1
 tests/test_profile_none ok 1
 tests/test_profile_old ok 1
 tests/test_profile_with_env_var ok 1
-tests/test_protected_symlink_output 33 Snakefile:21: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_protected_symlink_output ok 6
 tests/test_python_import_from_github_module 33 Snakefile:18: Not supported yet: modules from remote repositories (github(...))
 tests/test_queue_input ok 21
 tests/test_r_wrapper ok 1
@@ -785,7 +785,7 @@ tests/test_remote_auto 1 Snakefile:4: ImportError: cannot import name 'AUTO' fro
 tests/test_remote_azure 1 Snakefile:9: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_remote_gs 33 Snakefile:2: ModuleNotFoundError: No module named 'google'
 tests/test_remote_irods 1 Snakefile:3: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
-tests/test_remote_log 33 Snakefile:4: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_remote_log 1 Snakefile:8: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_remote_ncbi 1 Snakefile:2: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_remote_ncbi_simple 1 Snakefile:2: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_remote_sftp 1 Snakefile:2: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
@@ -856,7 +856,7 @@ tests/test_subpath ok 2
 tests/test_subworkflow_config 1 Snakefile:3: SyntaxError: Keyword subworkflow is deprecated. Use module directive instead.
 tests/test_subworkflows 1 Snakefile:3: SyntaxError: Keyword subworkflow is deprecated. Use module directive instead.
 tests/test_symlink_temp ok 9
-tests/test_symlink_time_handling 33 Snakefile:38: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_symlink_time_handling ok 8
 tests/test_temp 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
 tests/test_temp_and_all_input ok 2
 tests/test_temp_checkpoint ok 13
@@ -877,9 +877,9 @@ tests/test_unpack_dict ok 2
 tests/test_unpack_list ok 2
 tests/test_until ok 14
 tests/test_update_config ok 3
-tests/test_update_flag 33 Snakefile:1: Not supported yet: shell(): running commands while the workflow is planned
-tests/test_update_flag_fail 33 Snakefile:1: Not supported yet: shell(): running commands while the workflow is planned
-tests/test_update_flag_fail_cleanup 33 Snakefile:1: Not supported yet: shell(): running commands while the workflow is planned
+tests/test_update_flag ok 3
+tests/test_update_flag_fail ok 1
+tests/test_update_flag_fail_cleanup ok 2
 tests/test_url_include 1 Snakefile:3: FileNotFoundError: [Errno 2] No such file or directory: 'https:/github.com/snakemake/snakemake/raw/main/tests/test05/Snakefile'
 tests/test_use_rule_same_module ok 2
 tests/test_validate 33 Snakefile:4: ModuleNotFoundError: No module named 'polars'

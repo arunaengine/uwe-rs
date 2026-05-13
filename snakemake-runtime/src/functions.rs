@@ -5,11 +5,12 @@
 
 use std::any::Any;
 use std::cell::RefCell;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 use indexmap::IndexMap;
+use python_evaluator::modules::subprocess::called_process_error;
 use python_evaluator::value::NativeFunction;
-use python_evaluator::{Args, Dict, Error, Interpreter, Key, Native, Scope, Value};
+use python_evaluator::{Args, Command, Dict, Error, Interpreter, Key, Native, Scope, Value};
 
 use crate::objects::NamedList;
 use crate::pattern;
@@ -973,8 +974,13 @@ impl Native for RuleItemProxy {
     }
 }
 
-/// The `shell` global: settings work, running a command while planning does not.
-struct Shell(Rc<RefCell<State>>);
+/// The `shell` global: the settings of shell commands, and `shell(cmd)`, which runs a command
+/// while the workflow is planned. The host runs it as a task (decision 11).
+struct Shell {
+    state: Rc<RefCell<State>>,
+    /// The globals of the Snakefile, whose names the command may use.
+    globals: Weak<Scope>,
+}
 
 impl Native for Shell {
     fn type_name(&self) -> &str {
@@ -985,10 +991,64 @@ impl Native for Shell {
         self
     }
 
-    fn call(&self, _: &mut Interpreter, _: &Value, _: Args) -> Result<Option<Value>, Error> {
-        Err(Error::unsupported(
-            "shell(): running commands while the workflow is planned",
-        ))
+    fn call(
+        &self,
+        interpreter: &mut Interpreter,
+        _: &Value,
+        mut args: Args,
+    ) -> Result<Option<Value>, Error> {
+        let template = args
+            .take(0, "cmd")
+            .ok_or_else(|| Error::type_error("shell() missing 1 required argument: 'cmd'"))?;
+        let mut flag = |name: &str| -> Result<bool, Error> {
+            match args.take_keyword(name) {
+                Some(value) => interpreter.truthy(&value),
+                None => Ok(false),
+            }
+        };
+        let iterable = flag("iterable")?;
+        let read = flag("read")?;
+        args.take_keyword("bench_record");
+        let template = interpreter.to_str(&template)?;
+        let globals = self.globals.upgrade();
+        // Names of the calling function come after the keyword arguments, as in Snakemake.
+        if let Some(locals) = interpreter.caller_locals.take()
+            && !globals
+                .as_ref()
+                .is_some_and(|globals| Rc::ptr_eq(globals, &locals))
+        {
+            for (name, value) in locals.vars.borrow().iter() {
+                args.keywords.push((name.clone(), value.clone()));
+            }
+        }
+        let formatted =
+            crate::shell::format_command(interpreter, &template, &args, globals.as_ref())?;
+        let argv = crate::shell::command_line(&self.state.borrow(), formatted.trim());
+        let text = argv.last().cloned().unwrap_or_default();
+        let command = Command {
+            argv,
+            cwd: interpreter.host.cwd(),
+        };
+        let outcome = interpreter.host.run_command(&command)?;
+        if outcome.exit_code != 0 {
+            return Err(called_process_error(
+                interpreter,
+                &Value::str(text),
+                &outcome,
+                true,
+            )?);
+        }
+        let stdout = String::from_utf8_lossy(&outcome.stdout).into_owned();
+        Ok(Some(if iterable {
+            Value::iterator(stdout.lines().map(Value::str).collect::<Vec<_>>())
+        } else if read {
+            Value::str(stdout)
+        } else {
+            if !stdout.is_empty() {
+                interpreter.host.print(&stdout);
+            }
+            Value::None
+        }))
     }
 
     fn instance_of(&self, class: &str) -> bool {
@@ -1001,7 +1061,7 @@ impl Native for Shell {
         _: &Value,
         name: &str,
     ) -> Result<Option<Value>, Error> {
-        let state = self.0.clone();
+        let state = self.state.clone();
         Ok(Some(match name {
             "prefix" | "suffix" | "executable" => Value::builtin(name, {
                 let which = name.to_owned();
@@ -1222,7 +1282,13 @@ pub fn install(globals: &Rc<Scope>, state: &Rc<RefCell<State>>) {
     globals.set("github", hosted("github"));
     globals.set("gitlab", hosted("gitlab"));
     globals.set("gitfile", hosted("gitfile"));
-    globals.set("shell", Value::native(Shell(state.clone())));
+    globals.set(
+        "shell",
+        Value::native(Shell {
+            state: state.clone(),
+            globals: Rc::downgrade(globals),
+        }),
+    );
     globals.set("scatter", Value::native(ScatterGather(state.clone())));
     globals.set("gather", Value::native(ScatterGather(state.clone())));
     globals.set(

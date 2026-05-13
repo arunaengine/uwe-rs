@@ -1,0 +1,41 @@
+# Commands that run while the workflow is planned become tasks of their own. The mock gives
+# them no output, so the version is empty.
+shell("mkdir -p logs")
+version = shell("tool --version", read=True).strip()
+
+
+rule all:
+    input:
+        "aggregated.txt",
+        "other.txt",
+
+
+checkpoint split:
+    output:
+        directory("chunks"),
+    shell:
+        "mkdir -p {output} && touch {output}/chunk_a {output}/chunk_b"
+
+
+rule other:
+    output:
+        "other.txt",
+    shell:
+        "echo other > {output}"
+
+
+def chunks(wildcards):
+    folder = checkpoints.split.get().output[0]
+    # Runs after the checkpoint, while the task of `other` may still run.
+    shell("ls {folder}")
+    names = glob_wildcards(folder + "/chunk_{name}").name
+    return [folder + "/chunk_" + name for name in sorted(names)]
+
+
+rule aggregate:
+    input:
+        chunks,
+    output:
+        "aggregated.txt",
+    shell:
+        "echo {version} > {output}"

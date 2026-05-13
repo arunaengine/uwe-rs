@@ -1,0 +1,36 @@
+7 tasks, 5 steps, 4 edges
+1 command set -euo pipefail;  mkdir -p logs <- []
+2 command set -euo pipefail;  tool --version <- []
+3 split <- []
+4 other <- []
+5 command set -euo pipefail;  ls chunks <- []
+6 aggregate <- [3]
+7 all <- [6, 4]
+task 1: debian:stable-slim
+  command: bash -c set -euo pipefail;  mkdir -p logs
+  inputs: .
+  outputs: 
+task 2: debian:stable-slim
+  command: bash -c set -euo pipefail;  tool --version
+  inputs: .
+  outputs: 
+task 3: -
+  command: bash -c set -euo pipefail;  mkdir -p chunks && touch chunks/chunk_a chunks/chunk_b
+  inputs: 
+  outputs: chunks/
+task 4: -
+  command: bash -c set -euo pipefail;  echo other > other.txt
+  inputs: 
+  outputs: other.txt
+task 5: debian:stable-slim
+  command: bash -c set -euo pipefail;  ls chunks
+  inputs: .
+  outputs: 
+task 6: -
+  command: bash -c set -euo pipefail;  echo  > aggregated.txt
+  inputs: chunks/chunk_a chunks/chunk_b
+  outputs: aggregated.txt
+task 7: -
+  command: 
+  inputs: aggregated.txt other.txt
+  outputs: 

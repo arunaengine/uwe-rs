@@ -2102,46 +2102,436 @@ $ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1868/work
 > Field 'run' contains undefined reference to 'realworld/workflowhub/tools/strainy/strainy.cwl'
 > checking object 'realworld/workflowhub/1868/workflow_ada.cwl#unzip'
 > Field 'run' contains undefined reference to 'realworld/workflowhub/tools/gunzip/gunzip.cwl'
+
 realworld/workflowhub/1952/workflow_amplicon_longread.cwl
+= missing: the document names `../tools/emu/emu_abundance.cwl`, `workflow_longread_quality.cwl` and `workflow_merge_se_reads.cwl`, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1952/workflow_amplicon_longread.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1952/workflow_amplicon_longread.cwl#emu'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/tools/emu/emu_abundance.cwl'
+> checking object 'realworld/workflowhub/1952/workflow_amplicon_longread.cwl#workflow_longread_quality'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/1952/workflow_longread_quality.cwl'
+> checking object 'realworld/workflowhub/1952/workflow_amplicon_longread.cwl#workflow_merge_reads'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/1952/workflow_merge_se_reads.cwl'
+
 realworld/workflowhub/1982/WF5401.cwl
+= missing: the document names `ST540101.cwl`, `ST540102.cwl` and `ST540103.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1982/WF5401.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1982/WF5401.cwl#ST540103'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/1982/ST540103.cwl'
+> checking object 'realworld/workflowhub/1982/WF5401.cwl#ST540104'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/1982/ST540104.cwl'
+> checking object 'realworld/workflowhub/1982/WF5401.cwl#ST540205'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/1982/ST540205.cwl'
+
 realworld/workflowhub/1983/WF8101.cwl
+= missing: the document names `ST810101.cwl`, `ST810102.cwl` and `ST810103.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1983/WF8101.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1983/WF8101.cwl#ST810109'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/1983/ST810109.cwl'
+> checking object 'realworld/workflowhub/1983/WF8101.cwl#ST810110'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/1983/ST810110.cwl'
+> checking object 'realworld/workflowhub/1983/WF8101.cwl#ST810111'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/1983/ST810111.cwl'
+
 realworld/workflowhub/1984/WF8102.cwl
+= missing: the document names `ST810201.cwl`, `ST810202.cwl` and `ST810203.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1984/WF8102.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1984/WF8102.cwl#ST810209'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/1984/ST810209.cwl'
+> checking object 'realworld/workflowhub/1984/WF8102.cwl#ST810210'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/1984/ST810210.cwl'
+> checking object 'realworld/workflowhub/1984/WF8102.cwl#ST810211'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/1984/ST810211.cwl'
+
 realworld/workflowhub/1985/WF8103.cwl
+= missing: the document names `ST810305.cwl`, `ST810401.cwl` and `ST810402.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1985/WF8103.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1985/WF8103.cwl#ST810402'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/1985/ST810402.cwl'
+> checking object 'realworld/workflowhub/1985/WF8103.cwl#ST810403'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/1985/ST810403.cwl'
+> checking object 'realworld/workflowhub/1985/WF8103.cwl#ST810404'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/1985/ST810404.cwl'
+
 realworld/workflowhub/1986/WF8104.cwl
+= missing: the document names `ST810401.cwl`, `ST810402.cwl` and `ST810403.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1986/WF8104.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1986/WF8104.cwl#ST810413'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/1986/ST810413.cwl'
+> checking object 'realworld/workflowhub/1986/WF8104.cwl#ST810414'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/1986/ST810414.cwl'
+> checking object 'realworld/workflowhub/1986/WF8104.cwl#ST810415'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/1986/ST810415.cwl'
+
 realworld/workflowhub/2013/workflow_humann3.cwl
+= missing: the document names `../tools/expressions/files_to_folder.cwl`, `../tools/humann/humann.cwl` and `../tools/humann/humann_regroup_table.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/2013/workflow_humann3.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/2013/workflow_humann3.cwl#renorm_groups_to_array'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/tools/expressions/merge_file_arrays.cwl'
+> checking object 'realworld/workflowhub/2013/workflow_humann3.cwl#workflow_illumina_quality'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/2013/workflow_illumina_quality.cwl'
+> checking object 'realworld/workflowhub/2013/workflow_humann3.cwl#workflow_merge_reads'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/2013/workflow_merge_pe_reads.cwl'
+
 realworld/workflowhub/239/workflow.cwl
+= missing: the document names `tools/bwa-index.cwl`, `tools/bwa-mem.cwl` and `tools/cutadapt.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/239/workflow.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/239/workflow.cwl#alignment-workflow/picard_markduplicates'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/239/tools/picard_markduplicates.cwl'
+> checking object 'realworld/workflowhub/239/workflow.cwl#alignment-workflow/samtools_faidx'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/239/tools/samtools_faidx.cwl'
+> checking object 'realworld/workflowhub/239/workflow.cwl#alignment-workflow/samtools_sort'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/239/tools/samtools_sort.cwl'
+
 realworld/workflowhub/250/multiaffinity-workflow.cwl
+= missing: the document names `multiaffinity.cwl`, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/250/multiaffinity-workflow.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/250/multiaffinity-workflow.cwl#multiaffinity_workflow/tool'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/250/multiaffinity.cwl'
+
 realworld/workflowhub/253/workflow_nanopore.cwl
+= missing: the document names `../expressions/files_to_folder.cwl`, `../guppy/guppy.cwl` and `../minionqc/minionqc.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/253/workflow_nanopore.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/253/workflow_nanopore.cwl#workflow_basecalling'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/guppy/guppy.cwl'
+> checking object 'realworld/workflowhub/253/workflow_nanopore.cwl#workflow_minionqc'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/minionqc/minionqc.cwl'
+> checking object 'realworld/workflowhub/253/workflow_nanopore.cwl#workflow_nanopore_noguppy'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/253/workflow_nanopore_noguppy.cwl'
+
 realworld/workflowhub/254/workflow_nanopore_assembly.cwl
+= missing: the document names `../expressions/files_to_folder.cwl`, `../flye/flye.cwl` and `../kraken2/kraken2.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/254/workflow_nanopore_assembly.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/254/workflow_nanopore_assembly.cwl#workflow_pilon'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/254/workflow_pilon_mapping.cwl'
+> checking object 'realworld/workflowhub/254/workflow_nanopore_assembly.cwl#workflow_quality_illumina'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/254/workflow_illumina_quality.cwl'
+> checking object 'realworld/workflowhub/254/workflow_nanopore_assembly.cwl#workflow_quality_nanopore'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/254/workflow_nanopore_quality.cwl'
+
 realworld/workflowhub/254/workflow_nanopore_noguppy.cwl
+= missing: the document names `../bash/concatenate.cwl`, `../expressions/files_to_folder.cwl` and `../flye/flye.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/254/workflow_nanopore_noguppy.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/254/workflow_nanopore_noguppy.cwl#workflow_krona'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/krona/krona.cwl'
+> checking object 'realworld/workflowhub/254/workflow_nanopore_noguppy.cwl#workflow_medaka'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/medaka/medaka.cwl'
+> checking object 'realworld/workflowhub/254/workflow_nanopore_noguppy.cwl#workflow_quast'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/quast/quast.cwl'
+
 realworld/workflowhub/257/workflow.cwl
+= missing: the document names `/home/gbayarri_local/projects/BioBB/biobb_adapters/biobb_adapters/cwl/biobb_vs/fpocket_select.cwl`, `/home/gbayarri_local/projects/BioBB/biobb_adapters/biobb_adapters/cwl/biobb_vs/box.cwl` and `/home/gbayarri_local/projects/BioBB/biobb_adapters/biobb_adapters/cwl/biobb_chemistry/babel_convert.cwl` and more on the author's computer
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/257/workflow.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/257/workflow.cwl#step4_str_check_add_hydrogens'
+> Field 'run' contains undefined reference to 'file:///home/gbayarri_local/projects/BioBB/biobb_adapters/biobb_adapters/cwl/biobb_structure_utils/str_check_add_hydrogens.cwl'
+> checking object 'realworld/workflowhub/257/workflow.cwl#step5_autodock_vina_run'
+> Field 'run' contains undefined reference to 'file:///home/gbayarri_local/projects/BioBB/biobb_adapters/biobb_adapters/cwl/biobb_vs/autodock_vina_run.cwl'
+> checking object 'realworld/workflowhub/257/workflow.cwl#step6_babel_convert_pose_pdb'
+> Field 'run' contains undefined reference to 'file:///home/gbayarri_local/projects/BioBB/biobb_adapters/biobb_adapters/cwl/biobb_chemistry/babel_convert.cwl'
+
 realworld/workflowhub/258/workflow.cwl
+= invalid: the step `append_ligand` runs biobb_adapters/append_ligand.cwl, an empty file
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/258/workflow.cwl
+> ERROR I'm sorry, I couldn't load this CWL file, try again with --debug for more information.
+> The error was:
+
 realworld/workflowhub/26/pipeline.cwl
+= missing: the document names `Tools/Annotation/viral_annotation_swf.cwl`, `Tools/Assign/assign_swf.cwl` and `Tools/FastaRename/fasta_rename.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/26/pipeline.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/26/pipeline.cwl#ratio_evalue'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/26/Tools/RatioEvalue/ratio_evalue.cwl'
+> checking object 'realworld/workflowhub/26/pipeline.cwl#virfinder'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/26/Tools/VirFinder/virfinder.cwl'
+> checking object 'realworld/workflowhub/26/pipeline.cwl#virsorter'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/26/Tools/VirSorter/virsorter.cwl'
+
 realworld/workflowhub/28/variation_PE.cwl
+= missing: the document names `tools/fastp.cwl`, `tools/multiqc.cwl` and `tools/samtools_view_filter.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/28/variation_PE.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/28/variation_PE.cwl#var_pe/lofreq_call'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/28/tools/lofreq_call.cwl'
+> checking object 'realworld/workflowhub/28/variation_PE.cwl#var_pe/snpeff_build_ann'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/28/tools/snpEff_build_ann.cwl'
+> checking object 'realworld/workflowhub/28/variation_PE.cwl#var_pe/snpsift_extract'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/28/tools/snpSift_extract.cwl'
+
 realworld/workflowhub/29/protein_md.cwl
+= missing: the document names `biobb/biobb_adapters/cwl/biobb_analysis/gromacs/gmx_energy.cwl`, `biobb/biobb_adapters/cwl/biobb_md/gromacs/grompp.cwl` and `biobb/biobb_adapters/cwl/biobb_md/gromacs/mdrun.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/29/protein_md.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/29/protein_md.cwl#step7_genion'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/29/biobb/biobb_adapters/cwl/biobb_md/gromacs/genion.cwl'
+> checking object 'realworld/workflowhub/29/protein_md.cwl#step8_grompp_min'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/29/biobb/biobb_adapters/cwl/biobb_md/gromacs/grompp.cwl'
+> checking object 'realworld/workflowhub/29/protein_md.cwl#step9_mdrun_min'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/29/biobb/biobb_adapters/cwl/biobb_md/gromacs/mdrun.cwl'
+
 realworld/workflowhub/3/assembly-wf-virus.cwl
+= missing: the document names `../../bio-cwl-tools/unicycler/unicycler.cwl`, `../../bio-cwl-tools/spades/spades.cwl` and `../../bio-cwl-tools/bandage/bandage-image.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/3/assembly-wf-virus.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/3/assembly-wf-virus.cwl#assembly_wf_virus/bandage_info_unicycler'
+> Field 'run' contains undefined reference to 'realworld/bio-cwl-tools/bandage/bandage-info.cwl'
+> checking object 'realworld/workflowhub/3/assembly-wf-virus.cwl#assembly_wf_virus/bandage_image_spades'
+> Field 'run' contains undefined reference to 'realworld/bio-cwl-tools/bandage/bandage-image.cwl'
+> checking object 'realworld/workflowhub/3/assembly-wf-virus.cwl#assembly_wf_virus/bandage_info_spades'
+> Field 'run' contains undefined reference to 'realworld/bio-cwl-tools/bandage/bandage-info.cwl'
+
 realworld/workflowhub/30/gatk4W.cwl
+= missing: the document names `bowtie2_align.cwl`, `GATK-HaplotypeCaller.cwl` and `picard_CreateSequenceDictionary.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/30/gatk4W.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/30/gatk4W.cwl#select_snps'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/30/GATK-SelectVariants.cwl'
+> checking object 'realworld/workflowhub/30/gatk4W.cwl#split_alignments'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/30/GATK-SplitNCigarReads.cwl'
+> checking object 'realworld/workflowhub/30/gatk4W.cwl#update_read_group'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/30/picard_AddOrReplaceReadGroups.cwl'
+
 realworld/workflowhub/303/subworkflows/steps.cwl
+= missing: the document names `tools/8_clusterData.cwl`, `tools/2_filter.cwl` and `tools/11_findMarkers.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/303/subworkflows/steps.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/303/subworkflows/steps.cwl#runTSNE'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/303/subworkflows/tools/10_runTSNE.cwl'
+> checking object 'realworld/workflowhub/303/subworkflows/steps.cwl#runUMAP'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/303/subworkflows/tools/9_runUMAP.cwl'
+> checking object 'realworld/workflowhub/303/subworkflows/steps.cwl#scaleData'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/303/subworkflows/tools/5_Scaling.cwl'
+
 realworld/workflowhub/31/varscanW.cwl
+= missing: the document names `bowtie2_align.cwl`, `mpileup2indel.cwl` and `samtools_index.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/31/varscanW.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/31/varscanW.cwl#sam_to_bam_conversion_using_samtools_view'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/31/samtools_view_sam2bam.cwl'
+> checking object 'realworld/workflowhub/31/varscanW.cwl#snp_calling_using_mpileup2snp'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/31/mpileup2snp.cwl'
+> checking object 'realworld/workflowhub/31/varscanW.cwl#sort_alignment_files_using_samtools_sort'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/31/samtools_sort.cwl'
+
 realworld/workflowhub/33/gatk4W-spark.cwl
+= missing: the document names `bowtie2_align.cwl`, `GATK-HaplotypeCaller.cwl` and `picard_CreateSequenceDictionary.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/33/gatk4W-spark.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/33/gatk4W-spark.cwl#sort_sam'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/33/SortSamSparkNew.cwl'
+> checking object 'realworld/workflowhub/33/gatk4W-spark.cwl#split_alignments'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/33/GATK-SplitNCigarReads.cwl'
+> checking object 'realworld/workflowhub/33/gatk4W-spark.cwl#update_read_group'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/33/picard_AddOrReplaceReadGroups.cwl'
+
 realworld/workflowhub/336/workflow_illumina_quality.cwl
+= missing: the document names `../tools/fastp/fastp.cwl`, `../tools/hostile/hostile_clean_shortreads.cwl` and `../tools/bbmap/bbduk_filter.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/336/workflow_illumina_quality.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/336/workflow_illumina_quality.cwl#sequali_illumina_after'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/tools/sequali/sequali.cwl'
+> checking object 'realworld/workflowhub/336/workflow_illumina_quality.cwl#sequali_illumina_before'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/tools/sequali/sequali.cwl'
+> checking object 'realworld/workflowhub/336/workflow_illumina_quality.cwl#workflow_merge_pe_reads'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/336/workflow_merge_pe_reads.cwl'
+
 realworld/workflowhub/337/workflow_longread_quality.cwl
+= missing: the document names `../tools/filtlong/filtlong.cwl`, `../tools/expressions/files_to_folder.cwl` and `../tools/expressions/array_to_file.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/337/workflow_longread_quality.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/337/workflow_longread_quality.cwl#nanoplot_unfiltered_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/tools/expressions/files_to_folder.cwl'
+> checking object 'realworld/workflowhub/337/workflow_longread_quality.cwl#prepare_fasta_db'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/337/workflow_prepare_fasta_db.cwl'
+> checking object 'realworld/workflowhub/337/workflow_longread_quality.cwl#reference_filter_longreads'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/tools/minimap2/minimap2_to_fastq.cwl'
+
 realworld/workflowhub/34/samtoolsW.cwl
+= missing: the document names `bowtie2_align.cwl`, `bcftools_indels.cwl` and `samtools_index.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/34/samtoolsW.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/34/samtoolsW.cwl#sam_to_bam_conversion_using_samtools_view'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/34/samtools_view_sam2bam.cwl'
+> checking object 'realworld/workflowhub/34/samtoolsW.cwl#snp_generation_using_bcftools'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/34/bcftools_snps.cwl'
+> checking object 'realworld/workflowhub/34/samtoolsW.cwl#sort_alignment_files_using_samtools_sort'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/34/samtools_sort.cwl'
+
 realworld/workflowhub/344/workflow_RNAseq_kallisto.cwl
+= missing: the document names `../RNAseq/kallisto/kallisto_quant.cwl`, `../expressions/files_to_folder.cwl` and `workflow_illumina_quality.cwl`, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/344/workflow_RNAseq_kallisto.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/344/workflow_RNAseq_kallisto.cwl#kallisto'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/RNAseq/kallisto/kallisto_quant.cwl'
+> checking object 'realworld/workflowhub/344/workflow_RNAseq_kallisto.cwl#kallisto_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/expressions/files_to_folder.cwl'
+> checking object 'realworld/workflowhub/344/workflow_RNAseq_kallisto.cwl#workflow_quality'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/344/workflow_illumina_quality.cwl'
+
 realworld/workflowhub/367/workflow_metagenomics_assembly.cwl
+= missing: the document names `../tools/expressions/files_to_folder.cwl`, `../tools/minimap2/minimap2_to_sorted-bam_PE.cwl` and `../tools/bash/pigz.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/367/workflow_metagenomics_assembly.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/367/workflow_metagenomics_assembly.cwl#workflow_quality_illumina'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/367/workflow_illumina_quality.cwl'
+> checking object 'realworld/workflowhub/367/workflow_metagenomics_assembly.cwl#workflow_quality_nanopore'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/367/workflow_longread_quality.cwl'
+> checking object 'realworld/workflowhub/367/workflow_metagenomics_assembly.cwl#workflow_quality_pacbio'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/367/workflow_longread_quality.cwl'
+
 realworld/workflowhub/372/workflow_metagenomics_GEM.cwl
+= missing: the document names `../carveme/carveme.cwl`, `../expressions/files_to_folder.cwl` and `../bash/pigz.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/372/workflow_metagenomics_GEM.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/372/workflow_metagenomics_GEM.cwl#prodigal'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/prodigal/prodigal.cwl'
+> checking object 'realworld/workflowhub/372/workflow_metagenomics_GEM.cwl#prodigal_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/expressions/files_to_folder.cwl'
+> checking object 'realworld/workflowhub/372/workflow_metagenomics_GEM.cwl#smetana'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/smetana/smetana.cwl'
+
 realworld/workflowhub/384/workflows/conditionals/rna-prediction.cwl
+= invalid: the workflow has an embedded workflow without SubworkflowFeatureRequirement
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/384/workflows/conditionals/rna-prediction.cwl
+> ERROR Tool definition failed initialization:
+> Workflow contains embedded workflow but SubworkflowFeatureRequirement not in requirements
+
 realworld/workflowhub/384/workflows/subworkflows/cmsearch/cmsearch-condition.cwl
+= invalid: the workflow has an embedded workflow without SubworkflowFeatureRequirement
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/384/workflows/subworkflows/cmsearch/cmsearch-condition.cwl
+> ERROR Tool definition failed initialization:
+> Workflow contains embedded workflow but SubworkflowFeatureRequirement not in requirements
+
 realworld/workflowhub/384/workflows/subworkflows/rna_prediction-sub-wf.cwl
+= invalid: the workflow has an embedded workflow without SubworkflowFeatureRequirement
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/384/workflows/subworkflows/rna_prediction-sub-wf.cwl
+> ERROR Tool definition failed initialization:
+> Workflow contains embedded workflow but SubworkflowFeatureRequirement not in requirements
+
 realworld/workflowhub/43/nmrpipe_workflow.cwl
+= missing: the document names `brucker_to_script.cwl`, `fid_to_pipe.cwl` and `pipe_to_pick.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/43/nmrpipe_workflow.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/43/nmrpipe_workflow.cwl#fid_to_pipe'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/43/fid_to_pipe.cwl'
+> checking object 'realworld/workflowhub/43/nmrpipe_workflow.cwl#pipe_to_pick'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/43/pipe_to_pick.cwl'
+> checking object 'realworld/workflowhub/43/nmrpipe_workflow.cwl#script_to_fid'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/43/script_to_fid.cwl'
+
 realworld/workflowhub/45/workflow_ngtax.cwl
+= missing: the document names `../fastqc/fastqc.cwl`, `../expressions/files_to_folder.cwl` and `../ngtax/ngtax.cwl`, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/45/workflow_ngtax.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/45/workflow_ngtax.cwl#ngtax'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/ngtax/ngtax.cwl'
+> checking object 'realworld/workflowhub/45/workflow_ngtax.cwl#ngtax_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/expressions/files_to_folder.cwl'
+> checking object 'realworld/workflowhub/45/workflow_ngtax.cwl#reads_to_folder'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/expressions/files_to_folder.cwl'
+
 realworld/workflowhub/474/src/workflows/assembly.cwl
+= invalid: the source `reads2` of type `File?` does not fit `reads2` of type `File[]?`
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/474/src/workflows/assembly.cwl
+> ERROR Tool definition failed validation:
+> Source 'reads2' of type ["null", "File"] is incompatible
+> with sink 'reads2' of type ["null", {"type": "array", "items": "File"}]
+
 realworld/workflowhub/474/src/workflows/metagenome_pipeline.cwl
+= invalid: the source `reads2` of type `File?` does not fit `reads2` of type `File[]?`
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/474/src/workflows/metagenome_pipeline.cwl
+> ERROR Tool definition failed initialization:
+> Tool definition realworld/workflowhub/474/src/workflows/assembly.cwl failed validation:
+> Source 'reads2' of type ["null", "File"] is incompatible
+> with sink 'reads2' of type ["null", {"type": "array", "items": "File"}]
+
 realworld/workflowhub/474/src/workflows/metatranscriptome_pipeline.cwl
+= invalid: the file is not valid YAML: found duplicate key "cleaned_contigs"
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/474/src/workflows/metatranscriptome_pipeline.cwl
+> ERROR Tool definition failed validation:
+> while constructing a mapping
+> found duplicate key "cleaned_contigs" with value "{'type': 'File', 'label': 'contig file after qc', 'outputSource': 'post_assembly/final_contigs'}" (original value: "{'type': 'File', 'label': 'contig file after qc', 'outputSource': 'post_assembly/final_contigs'}")
+
 realworld/workflowhub/474/src/workflows/metatranscriptome_qc.cwl
+= invalid: a step does not give the required input `coassembly`
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/474/src/workflows/metatranscriptome_qc.cwl
+> ERROR Tool definition failed validation:
+> Step is missing required parameter 'coassembly'
+
 realworld/workflowhub/474/src/workflows/rna-prediction.cwl
+= missing: the document names `classify-otu-visualise.cwl`, `../../utils/count_fasta.cwl` and `../../tools/RNA_prediction/extract-coords/extract-coords_awk.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/474/src/workflows/rna-prediction.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/474/src/workflows/rna-prediction.cwl#find_ribosomal_ncRNAs'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/474/src/workflows/cmsearch-condition.cwl'
+> checking object 'realworld/workflowhub/474/src/workflows/rna-prediction.cwl#gzip_files'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/474/utils/pigz/gzip.cwl'
+> checking object 'realworld/workflowhub/474/src/workflows/rna-prediction.cwl#index_reads'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/474/tools/RNA_prediction/easel/esl-sfetch-index.cwl'
+
 realworld/workflowhub/510/cwl/maw-sirius.cwl
+= missing: the document names `sirius_isotope.cwl` and `sirius_no_isotope.cwl`, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/510/cwl/maw-sirius.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/510/cwl/maw-sirius.cwl#isotopefiles'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/510/cwl/sirius_isotope.cwl'
+> checking object 'realworld/workflowhub/510/cwl/maw-sirius.cwl#noisotopefiles'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/510/cwl/sirius_no_isotope.cwl'
+
 realworld/workflowhub/524/RNA-Seq_workflow.cwl
+= missing: the document names `../wrappers/DESeq2.cwl`, `../wrappers/ballgown.cwl` and `../wrappers/check-selected-steps.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/524/RNA-Seq_workflow.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/524/RNA-Seq_workflow.cwl#stringtie_transcript_assembly'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/wrappers/stringtie.cwl'
+> checking object 'realworld/workflowhub/524/RNA-Seq_workflow.cwl#trim_galore_paired'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/wrappers/trim-galore.cwl'
+> checking object 'realworld/workflowhub/524/RNA-Seq_workflow.cwl#trim_galore_single'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/wrappers/trim-galore.cwl'
 realworld/workflowhub/525/ChIP-Seq_workflow.cwl
 realworld/workflowhub/526/gatk_multi-sample_bqsr_vqsr.cwl
 realworld/workflowhub/527/gatk_single-sample_bqsr_cnn_hard-filtering.cwl

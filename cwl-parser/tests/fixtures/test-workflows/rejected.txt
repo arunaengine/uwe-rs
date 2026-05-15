@@ -2532,15 +2532,131 @@ $ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/524/RNA-S
 > Field 'run' contains undefined reference to 'realworld/workflowhub/wrappers/trim-galore.cwl'
 > checking object 'realworld/workflowhub/524/RNA-Seq_workflow.cwl#trim_galore_single'
 > Field 'run' contains undefined reference to 'realworld/workflowhub/wrappers/trim-galore.cwl'
+
 realworld/workflowhub/525/ChIP-Seq_workflow.cwl
+= missing: the document names `../wrappers/ChIPQC.cwl`, `../wrappers/DiffBind.cwl` and `../wrappers/awk.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/525/ChIP-Seq_workflow.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/525/ChIP-Seq_workflow.cwl#total_peaks_table'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/wrappers/table_total_peaks.cwl'
+> checking object 'realworld/workflowhub/525/ChIP-Seq_workflow.cwl#trimmomatic_paired_end'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/wrappers/Trimmomatic_PE.cwl'
+> checking object 'realworld/workflowhub/525/ChIP-Seq_workflow.cwl#trimmomatic_single_end'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/wrappers/Trimmomatic_SE.cwl'
+
 realworld/workflowhub/526/gatk_multi-sample_bqsr_vqsr.cwl
+= missing: the document names `../wrappers/bcftools-norm.cwl`, `../wrappers/bcftools-view.cwl` and `../wrappers/bwa-mem.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/526/gatk_multi-sample_bqsr_vqsr.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/526/gatk_multi-sample_bqsr_vqsr.cwl#table_annovar_filtered'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/wrappers/table-annovar.cwl'
+> checking object 'realworld/workflowhub/526/gatk_multi-sample_bqsr_vqsr.cwl#trim_galore_paired'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/wrappers/trim-galore.cwl'
+> checking object 'realworld/workflowhub/526/gatk_multi-sample_bqsr_vqsr.cwl#trim_galore_single'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/wrappers/trim-galore.cwl'
+
 realworld/workflowhub/527/gatk_single-sample_bqsr_cnn_hard-filtering.cwl
+= missing: the document names `../wrappers/bcftools-concat.cwl`, `../wrappers/bcftools-norm.cwl` and `../wrappers/bcftools-view.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/527/gatk_single-sample_bqsr_cnn_hard-filtering.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/527/gatk_single-sample_bqsr_cnn_hard-filtering.cwl#table_annovar_hard_filtered'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/wrappers/table-annovar.cwl'
+> checking object 'realworld/workflowhub/527/gatk_single-sample_bqsr_cnn_hard-filtering.cwl#trim_galore_paired'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/wrappers/trim-galore.cwl'
+> checking object 'realworld/workflowhub/527/gatk_single-sample_bqsr_cnn_hard-filtering.cwl#trim_galore_single'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/wrappers/trim-galore.cwl'
+
 realworld/workflowhub/63/pangenome-generate.cwl
+= missing: the document names `../tools/odgi/odgi_bin.cwl`, `odgi-build.cwl` and `../tools/seqkit/seqkit_rmdup.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/63/pangenome-generate.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/63/pangenome-generate.cwl#relabel'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/63/relabel-seqs.cwl'
+> checking object 'realworld/workflowhub/63/pangenome-generate.cwl#segment_components'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/tools/graph-genome-segmentation/component_segmentation.cwl'
+> checking object 'realworld/workflowhub/63/pangenome-generate.cwl#vizGraph'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/tools/odgi/odgi_viz.cwl'
+
 realworld/workflowhub/64/workflow_metagenomics_binning.cwl
+= missing: the document names `../tools/expressions/files_to_folder.cwl`, `../tools/expressions/merge_file_arrays.cwl` and `../tools/metagenomics/assembly_bins_readstats.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/64/workflow_metagenomics_binning.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/64/workflow_metagenomics_binning.cwl#semibin_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/tools/expressions/files_to_folder.cwl'
+> checking object 'realworld/workflowhub/64/workflow_metagenomics_binning.cwl#workflow_microbial_annotation_bins'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/64/workflow_microbial_annotation.cwl'
+> checking object 'realworld/workflowhub/64/workflow_metagenomics_binning.cwl#workflow_microbial_annotation_unbinned'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/64/workflow_microbial_annotation.cwl'
+
 realworld/workflowhub/681/workflows/workflow.cwl
+= invalid: the file is not valid YAML: found duplicate key "format"
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/681/workflows/workflow.cwl
+> ERROR Tool definition failed validation:
+> while constructing a mapping
+> found duplicate key "format" with value "ino:INO_0000311" (original value: "edam:data_0906")
+
 realworld/workflowhub/75/workflow_indexbuilder.cwl
+= invalid: the file is not valid YAML: found duplicate key "label"
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/75/workflow_indexbuilder.cwl
+> ERROR Tool definition failed validation:
+> while constructing a mapping
+> found duplicate key "label" with value "turtle file" (original value: "Input File")
+
 realworld/workflowhub/77/workflow_RNAseq_NonSpliced.cwl
+= missing: the document names `../bowtie2/bowtie2_align_simple.cwl`, `../expressions/files_to_folder.cwl` and `../RNAseq/featurecounts.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/77/workflow_RNAseq_NonSpliced.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/77/workflow_RNAseq_NonSpliced.cwl#kallisto_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/expressions/files_to_folder.cwl'
+> checking object 'realworld/workflowhub/77/workflow_RNAseq_NonSpliced.cwl#quality'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/workflows/workflow_quality.cwl'
+> checking object 'realworld/workflowhub/77/workflow_RNAseq_NonSpliced.cwl#sam_to_sorted-bam'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/samtools/sam_to_sorted-bam.cwl'
+
 realworld/workflowhub/814/workflow.cwl
+= missing: the document names `FileInput.cwl`, `MetgeneMetabolites.cwl` and `MetGeneRxns.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/814/workflow.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/814/workflow.cwl#step-7'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/814/LINCSL1000ReverseSearchExtract[Gene, Down].cwl'
+> checking object 'realworld/workflowhub/814/workflow.cwl#step-8'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/814/IDGFilter[Scored[Gene], all].cwl'
+> checking object 'realworld/workflowhub/814/workflow.cwl#step-9'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/814/MetGeneSearch.cwl'
+
 realworld/workflowhub/95/workflow_RNAseq_Spliced.cwl
+= missing: the document names `../RNAseq/star/star_align.cwl`, `../expressions/files_to_folder.cwl` and `../RNAseq/featurecounts.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/95/workflow_RNAseq_Spliced.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/95/workflow_RNAseq_Spliced.cwl#kallisto'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/RNAseq/kallisto/kallisto_quant.cwl'
+> checking object 'realworld/workflowhub/95/workflow_RNAseq_Spliced.cwl#kallisto_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/expressions/files_to_folder.cwl'
+> checking object 'realworld/workflowhub/95/workflow_RNAseq_Spliced.cwl#quality'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/workflows/workflow_quality.cwl'
+
 realworld/workflowhub/98/1_md_list.cwl
+= invalid: the file is not valid YAML: mapping values are not allowed here
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/98/1_md_list.cwl
+> ERROR Tool definition failed validation:
+> mapping values are not allowed here
+
 realworld/workflowhub/98/md_list.cwl
+= missing: the document names `biobb/biobb_adapters/cwl/biobb_md/gromacs/mdrun.cwl`, `biobb/biobb_adapters/cwl/biobb_md/gromacs/grompp.cwl` and `md_gather.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/98/md_list.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/98/md_list.cwl#step7_mdrun_min'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/98/biobb/biobb_adapters/cwl/biobb_md/gromacs/mdrun.cwl'
+> checking object 'realworld/workflowhub/98/md_list.cwl#step8_make_ndx'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/98/biobb/biobb_adapters/cwl/biobb_md/gromacs/make_ndx.cwl'
+> checking object 'realworld/workflowhub/98/md_list.cwl#step9_grompp_nvt'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/98/biobb/biobb_adapters/cwl/biobb_md/gromacs/grompp.cwl'

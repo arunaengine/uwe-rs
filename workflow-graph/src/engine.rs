@@ -2,8 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::VecDeque;
-
+use crate::queue::Queue;
 use crate::recorder::Recorder;
 use crate::{Driver, DriverError, ExecutionGraph, Outcome, Task, TaskId};
 
@@ -23,6 +22,9 @@ pub enum ExecuteError {
     Unsupported { task: String, message: String },
     #[error("task id {0} was asked for twice")]
     DuplicateTask(TaskId),
+    /// A task is to run after a task that the driver did not ask for before it.
+    #[error("task {task} is to run after task {after}, which the driver did not ask for before it")]
+    UnknownAfter { task: TaskId, after: TaskId },
 }
 
 impl ExecuteError {
@@ -53,22 +55,23 @@ impl Execution {
 }
 
 /// Runs the driver to its end, one task at a time in the order they were asked for, and
-/// returns the graph of what ran. On an error the graph so far is kept, so that a failed run
-/// can still be shown.
+/// returns the graph of what ran. A task starts only when the tasks in its `after` list have
+/// finished. On an error the graph so far is kept, so that a failed run can still be shown.
 pub fn execute(workflow: &str, driver: &mut dyn Driver, executor: &mut dyn Executor) -> Execution {
     let mut recorder = Recorder::new(workflow, driver.language());
     let result = (|| {
-        let mut queue: VecDeque<Task> = VecDeque::new();
+        let mut queue = Queue::default();
         for task in driver.start()? {
             recorder.add(&task)?;
-            queue.push_back(task);
+            queue.push(task);
         }
-        while let Some(task) = queue.pop_front() {
+        while let Some(task) = queue.next() {
             let outcome = executor.execute(&task)?;
             recorder.finished(&outcome);
+            queue.finished(outcome.id);
             for next in driver.complete(outcome)? {
                 recorder.add(&next)?;
-                queue.push_back(next);
+                queue.push(next);
             }
         }
         driver.finish()?;

@@ -29,11 +29,19 @@ impl Recorder {
     }
 
     /// Adds a task that the driver asked for, with an edge from each task that made one of its
-    /// input files and from each task in its `after` list.
+    /// input files and from each task in its `after` list. Each task in that list must have
+    /// been asked for before, so that no task waits for one that never comes.
     pub(crate) fn add(&mut self, task: &Task) -> Result<(), ExecuteError> {
-        if !self.seen.insert(task.id) {
+        if self.seen.contains(&task.id) {
             return Err(ExecuteError::DuplicateTask(task.id));
         }
+        if let Some(&after) = task.after.iter().find(|id| !self.seen.contains(id)) {
+            return Err(ExecuteError::UnknownAfter {
+                task: task.id,
+                after,
+            });
+        }
+        self.seen.insert(task.id);
         let mut edges: Vec<Edge> = Vec::new();
         // An input with literal content comes from no task.
         for input in task.inputs.iter().filter(|input| input.content.is_none()) {

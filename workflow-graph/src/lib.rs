@@ -12,6 +12,7 @@ mod driver;
 mod engine;
 mod graph;
 pub mod mock;
+mod queue;
 mod recorder;
 mod task;
 

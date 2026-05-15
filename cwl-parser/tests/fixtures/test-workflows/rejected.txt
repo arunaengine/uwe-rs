@@ -1263,42 +1263,430 @@ $ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m
 > Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/tools/samtools/sam_to_sorted-bam.cwl'
 > checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_RNAseq_NonSpliced.cwl#workflow_quality'
 > Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_illumina_quality.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_RNAseq_Spliced.cwl
+= missing: the document names `../tools/RNAseq/star/star_align.cwl`, `../tools/expressions/files_to_folder.cwl` and `../tools/RNAseq/featurecounts.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_RNAseq_Spliced.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_RNAseq_Spliced.cwl#kallisto'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/tools/RNAseq/kallisto/kallisto_quant.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_RNAseq_Spliced.cwl#kallisto_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/tools/expressions/files_to_folder.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_RNAseq_Spliced.cwl#workflow_quality'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_illumina_quality.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_ena_annotation.cwl
+= missing: the document names `../bash/decompress.cwl`, `../ena/enabrowsertools.cwl` and `../bash/concatenate.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_ena_annotation.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_ena_annotation.cwl#merge'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/bash/concatenate.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_ena_annotation.cwl#workflow_sapp_microbes'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflows/workflow_sapp_microbes.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_ena_annotation.cwl#workflow_sapp_others'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflows/workflow_sapp_others.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_illumina_assembly.cwl
+= missing: the document names `../expressions/files_to_folder.cwl`, `../bbmap/bbmap.cwl` and `../busco/busco.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_illumina_assembly.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_illumina_assembly.cwl#workflow_sam_index'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/samtools/samtools_index.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_illumina_assembly.cwl#workflow_sam_to_sorted_bam'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/samtools/sam_to_sorted-bam.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_illumina_assembly.cwl#workflow_spades'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/spades/spades.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_metagenomics.cwl
+= missing: the document names `../expressions/files_to_folder.cwl`, `../bash/pigz.cwl` and `../bbmap/bbmap.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_metagenomics.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_metagenomics.cwl#workflow_quast'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/quast/quast.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_metagenomics.cwl#workflow_sam_to_sorted_bam'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/samtools/sam_to_sorted-bam.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_metagenomics.cwl#workflow_spades'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/assembly/spades.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_metagenomics_read_annotation.cwl
+= missing: the document names `../bash/pigz.cwl`, `../fastq/fastq_to_fasta.cwl` and `../expressions/files_to_folder.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_metagenomics_read_annotation.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_metagenomics_read_annotation.cwl#workflow_humann'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/humann/humann.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_metagenomics_read_annotation.cwl#workflow_kraken2'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/kraken2/kraken2.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_metagenomics_read_annotation.cwl#workflow_quality'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_illumina_quality.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_microbial.cwl
+= missing: the document names `../tools/prodigal/prodigal.cwl`, `../tools/expressions/files_to_folder.cwl` and `../tools/spades/spades.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_microbial.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_microbial.cwl#prodigal_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/tools/expressions/files_to_folder.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_microbial.cwl#spades'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/tools/spades/spades.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_microbial.cwl#spades_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/tools/expressions/files_to_folder.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_nanopore.cwl
+= missing: the document names `../bash/compress.cwl`, `../expressions/files_to_folder.cwl` and `../bash/concatenate.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_nanopore.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_nanopore.cwl#merge_fastq'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/bash/concatenate.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_nanopore.cwl#workflow_basecalling'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/guppy/guppy.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_nanopore.cwl#workflow_nanopore_assembly'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_nanopore_assembly.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_samsa2.cwl
+= missing: the document names `../bash/pigz.cwl`, `../expressions/files_to_folder.cwl` and `../samsa2/convert.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_samsa2.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_samsa2.cwl#workflow_diamond_refseq'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/diamond/diamond.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_samsa2.cwl#workflow_diamond_seed'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/diamond/diamond.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_samsa2.cwl#workflow_diamond_view'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/diamond/view.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_sapp_microbes.cwl
+= missing: the document names `../sapp/conversion.cwl`, `../bash/compress.cwl` and `../sapp/interproscan.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_sapp_microbes.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_sapp_microbes.cwl#interproscan'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/sapp/interproscan.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_sapp_microbes.cwl#kofamscan'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/sapp/kofamscan.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_sapp_microbes.cwl#prodigal'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/sapp/prodigal.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_sapp_others.cwl
+= missing: the document names `../sapp/conversion.cwl`, `../bash/grep_count.cwl` and `../sapp/interproscan.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_sapp_others.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_sapp_others.cwl#count_genes'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/bash/grep_count.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_sapp_others.cwl#interproscan'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/sapp/interproscan.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflow_sapp_others.cwl#tohdt'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/sapp/toHDT.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/check/workflow_ena_annotation.cwl
+= missing: the document names `../bash/decompress.cwl`, `../ena/enabrowsertools.cwl` and `../bash/concatenate.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/check/workflow_ena_annotation.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/check/workflow_ena_annotation.cwl#merge'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/bash/concatenate.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/check/workflow_ena_annotation.cwl#workflow_sapp_microbes'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflows/workflow_sapp_microbes.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/check/workflow_ena_annotation.cwl#workflow_sapp_others'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflows/workflow_sapp_others.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/check/workflow_sapp_microbes.cwl
+= missing: the document names `../sapp/conversion.cwl`, `../bash/compress.cwl` and `../sapp/interproscan.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/check/workflow_sapp_microbes.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/check/workflow_sapp_microbes.cwl#interproscan'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/sapp/interproscan.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/check/workflow_sapp_microbes.cwl#kofamscan'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/sapp/kofamscan.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/check/workflow_sapp_microbes.cwl#prodigal'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/sapp/prodigal.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/check/workflow_sapp_others.cwl
+= missing: the document names `../sapp/conversion.cwl`, `../bash/grep_count.cwl` and `../sapp/interproscan.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/check/workflow_sapp_others.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/check/workflow_sapp_others.cwl#count_genes'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/bash/grep_count.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/check/workflow_sapp_others.cwl#interproscan'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/sapp/interproscan.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/check/workflow_sapp_others.cwl#tohdt'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/sapp/toHDT.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_RNAseq_NonSpliced.cwl
+= missing: the document names `../bowtie2/bowtie2_align_simple.cwl`, `../expressions/files_to_folder.cwl` and `../RNAseq/featurecounts.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_RNAseq_NonSpliced.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_RNAseq_NonSpliced.cwl#kallisto'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/RNAseq/kallisto/kallisto_quant.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_RNAseq_NonSpliced.cwl#kallisto_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/files_to_folder.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_RNAseq_NonSpliced.cwl#sam_to_sorted-bam'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/samtools/sam_to_sorted-bam.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_RNAseq_Spliced.cwl
+= missing: the document names `../RNAseq/star/star_align.cwl`, `../expressions/files_to_folder.cwl` and `../RNAseq/featurecounts.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_RNAseq_Spliced.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_RNAseq_Spliced.cwl#featurecounts_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/files_to_folder.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_RNAseq_Spliced.cwl#kallisto'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/RNAseq/kallisto/kallisto_quant.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_RNAseq_Spliced.cwl#kallisto_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/files_to_folder.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_RNAseq_kallisto.cwl
+= missing: the document names `../RNAseq/kallisto/kallisto_quant.cwl` and `../expressions/files_to_folder.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_RNAseq_kallisto.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_RNAseq_kallisto.cwl#kallisto'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/RNAseq/kallisto/kallisto_quant.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_RNAseq_kallisto.cwl#kallisto_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/files_to_folder.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_demultiplexing.cwl
+= missing: the document names `../ngtax/ngtax_demultiplexing.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_demultiplexing.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_demultiplexing.cwl#ngtax'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/ngtax/ngtax_demultiplexing.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_ena_annotation.cwl
+= missing: the document names `../bash/decompress.cwl`, `../ena/enabrowsertools.cwl` and `../bash/concatenate.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_ena_annotation.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_ena_annotation.cwl#merge'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/bash/concatenate.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_ena_annotation.cwl#workflow_sapp_microbes'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows/workflow_sapp_microbes.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_ena_annotation.cwl#workflow_sapp_others'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows/workflow_sapp_others.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_illumina_assembly.cwl
+= missing: the document names `../expressions/files_to_folder.cwl`, `../bbmap/bbmap.cwl` and `../busco/busco.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_illumina_assembly.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_illumina_assembly.cwl#workflow_sam_index'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/samtools/samtools_index.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_illumina_assembly.cwl#workflow_sam_to_sorted_bam'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/samtools/sam_to_sorted-bam.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_illumina_assembly.cwl#workflow_spades'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/spades/spades.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_illumina_quality.cwl
+= missing: the document names `../fastp/fastp.cwl`, `../expressions/array_to_file.cwl` and `../bash/concatenate.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_illumina_quality.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_illumina_quality.cwl#reference_filter_illumina'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/bbmap/bbmap_filter-reads.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_illumina_quality.cwl#reports_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/files_to_folder.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_illumina_quality.cwl#rrna_filter'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/bbmap/bbduk_filter.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_indexbuilder.cwl
+= missing: the document names `../RNAseq/star/star_index.cwl`, `../bowtie2/bowtie2_index.cwl` and `../RNAseq/kallisto/kallisto_index.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_indexbuilder.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_indexbuilder.cwl#kallisto'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/RNAseq/kallisto/kallisto_index.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_indexbuilder.cwl#rdf2fasta'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/sapp/conversion_rdf2fasta.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_indexbuilder.cwl#rdf2gtf'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/sapp/conversion_rdf2gtf.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_longread_quality.cwl
+= missing: the document names `../filtlong/filtlong.cwl`, `../expressions/files_to_folder.cwl` and `../expressions/array_to_file.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_longread_quality.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_longread_quality.cwl#nanoplot_longreads_unfiltered'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/nanoplot/nanoplot.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_longread_quality.cwl#nanoplot_unfiltered_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/files_to_folder.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_longread_quality.cwl#reference_filter_longreads'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/minimap2/minimap2_to_fastq.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics.cwl
+= missing: the document names `../expressions/files_to_folder.cwl`, `../bash/pigz.cwl` and `../bbmap/bbmap.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics.cwl#workflow_quast'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/quast/quast.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics.cwl#workflow_sam_to_sorted_bam'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/samtools/sam_to_sorted-bam.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics.cwl#workflow_spades'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/assembly/spades.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_GEM.cwl
+= missing: the document names `../carveme/carveme.cwl`, `../expressions/files_to_folder.cwl` and `../bash/pigz.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_GEM.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_GEM.cwl#prodigal'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/prodigal/prodigal.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_GEM.cwl#prodigal_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/files_to_folder.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_GEM.cwl#smetana'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/smetana/smetana.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_assembly.cwl
+= missing: the document names `../expressions/files_to_folder.cwl`, `../bbmap/bbmap.cwl` and `../bash/pigz.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_assembly.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_assembly.cwl#sam_to_sorted_bam'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/samtools/sam_to_sorted-bam.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_assembly.cwl#spades'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/spades/spades.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_assembly.cwl#spades_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/files_to_folder.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_binning.cwl
+= missing: the document names `../metabat2/aggregateBinDepths.cwl`, `../metagenomics/assembly_bins_readstats.cwl` and `../metagenomics/bins_summary.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_binning.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_binning.cwl#semibin'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/semibin/semibin_single_easy_bin.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_binning.cwl#semibin_contig2bin'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/das_tool/fasta_to_contig2bin.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_binning.cwl#semibin_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/files_to_folder.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_read_annotation.cwl
+= missing: the document names `../bash/pigz.cwl`, `../fastq/fastq_to_fasta.cwl` and `../expressions/files_to_folder.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_read_annotation.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_read_annotation.cwl#kraken_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/files_to_folder.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_read_annotation.cwl#workflow_humann'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/humann/humann.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_metagenomics_read_annotation.cwl#workflow_kraken2'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/kraken2/kraken2.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_microbial.cwl
+= missing: the document names `../prodigal/prodigal.cwl`, `../expressions/files_to_folder.cwl` and `../spades/spades.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_microbial.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_microbial.cwl#prodigal_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/files_to_folder.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_microbial.cwl#spades'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/spades/spades.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_microbial.cwl#spades_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/files_to_folder.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_microbial_annotation.cwl
+= missing: the document names `../eggnog/eggnog.cwl` and `../prodigal/prodigal.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_microbial_annotation.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_microbial_annotation.cwl#eggnog'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/eggnog/eggnog.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_microbial_annotation.cwl#prodigal'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/prodigal/prodigal.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_mock_ngtax.cwl
+= missing: the document names `../ngtax/ngtax.cwl`, `../expressions/files_to_folder.cwl` and `../ngtax/ngtax_to_tsv-fasta.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_mock_ngtax.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_mock_ngtax.cwl#ngtax_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/files_to_folder.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_mock_ngtax.cwl#ngtax_to_tsv-fasta'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/ngtax/ngtax_to_tsv-fasta.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_mock_ngtax.cwl#phyloseq_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/files_to_folder.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_nanopore.cwl
+= missing: the document names `../bash/compress.cwl`, `../expressions/files_to_folder.cwl` and `../bash/concatenate.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_nanopore.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_nanopore.cwl#merge_fastq'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/bash/concatenate.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_nanopore.cwl#workflow_basecalling'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/guppy/guppy.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_nanopore.cwl#workflow_nanopore_assembly'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_nanopore_assembly.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_ngtax.cwl
+= missing: the document names `../fastqc/fastqc.cwl`, `../expressions/files_to_folder.cwl` and `../ngtax/ngtax.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_ngtax.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_ngtax.cwl#ngtax_to_tsv-fasta'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/ngtax/ngtax_to_tsv-fasta.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_ngtax.cwl#phyloseq_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/files_to_folder.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_ngtax.cwl#reads_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/files_to_folder.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_ngtax_picrust2.cwl
+= missing: the document names `../fastqc/fastqc.cwl`, `../expressions/files_to_folder.cwl` and `../bash/compress_directory.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_ngtax_picrust2.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_ngtax_picrust2.cwl#picrust2'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/picrust2/picrust2_pipeline.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_ngtax_picrust2.cwl#picrust_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/files_to_folder.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_ngtax_picrust2.cwl#reads_to_folder'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/files_to_folder.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_pilon_mapping.cwl
+= missing: the document names `../samtools/samtools_index.cwl`, `../samtools/expression_bam_index.cwl` and `../pilon/pilon.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_pilon_mapping.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_pilon_mapping.cwl#readmapping_pilon'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/bbmap/bbmap.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_pilon_mapping.cwl#sam_to_sorted_bam'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/samtools/sam_to_sorted-bam.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_pilon_mapping.cwl#vcf_compress'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/bash/pigz.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_prepare_fasta_db.cwl
+= missing: the document names `../expressions/array_to_file.cwl`, `../bash/concatenate.cwl` and `../bbmap/prepare_fasta_db.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_prepare_fasta_db.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_prepare_fasta_db.cwl#fasta_array_to_file'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/expressions/array_to_file.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_prepare_fasta_db.cwl#merge_input'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/bash/concatenate.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_prepare_fasta_db.cwl#prepare_fasta_db'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/bbmap/prepare_fasta_db.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_samsa2.cwl
+= missing: the document names `../bash/pigz.cwl`, `../expressions/files_to_folder.cwl` and `../samsa2/convert.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_samsa2.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_samsa2.cwl#workflow_diamond_refseq'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/diamond/diamond.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_samsa2.cwl#workflow_diamond_seed'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/diamond/diamond.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_samsa2.cwl#workflow_diamond_view'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/diamond/view.cwl'
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_sapp_microbes.cwl
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_sapp_others.cwl
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_toHDT_compression.cwl

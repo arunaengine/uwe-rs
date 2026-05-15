@@ -119,6 +119,13 @@ fn workflows(test_workflows: &Path) -> Vec<(String, PathBuf)> {
 /// The outcome of one run in this process, as the fixture line records it.
 fn run(folder: &Path, launching: &Launching) -> String {
     let scratch = tempfile::tempdir().expect("a temporary directory");
+    // Files on the web, like remote modules, are downloaded once for all runs.
+    if let Some(root) = std::env::var_os("SNAKEMAKE_TEST_WORKFLOWS") {
+        let downloads = Path::new(&root).join("downloads");
+        std::fs::create_dir_all(&downloads).expect("the folder of downloads");
+        std::os::unix::fs::symlink(&downloads, scratch.path().join("downloads"))
+            .expect("a link to the downloads");
+    }
     let launch = launching.launch(folder, scratch.path());
     let mut driver = match snakemake_runtime::driver(&launch) {
         Ok(driver) => driver,

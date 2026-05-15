@@ -2,9 +2,10 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use crate::pending::Pending;
 use crate::queue::Queue;
 use crate::recorder::Recorder;
-use crate::{Driver, DriverError, ExecutionGraph, Outcome, Task, TaskId};
+use crate::{Driver, DriverError, ExecutionGraph, Outcome, RunOptions, Task, TaskId};
 
 /// Runs tasks, one call per task. Real executors (TES, local containers) and the mock share it.
 pub trait Executor {
@@ -58,27 +59,55 @@ impl Execution {
 /// returns the graph of what ran. A task starts only when the tasks in its `after` list have
 /// finished. On an error the graph so far is kept, so that a failed run can still be shown.
 pub fn execute(workflow: &str, driver: &mut dyn Driver, executor: &mut dyn Executor) -> Execution {
+    execute_with(workflow, driver, executor, &RunOptions::default())
+}
+
+/// Runs the driver to its end like [`execute`], with up to `max_pending` tasks pending at once
+/// that finish in the given order.
+pub fn execute_with(
+    workflow: &str,
+    driver: &mut dyn Driver,
+    executor: &mut dyn Executor,
+    options: &RunOptions,
+) -> Execution {
     let mut recorder = Recorder::new(workflow, driver.language());
-    let result = (|| {
-        let mut queue = Queue::default();
-        for task in driver.start()? {
-            recorder.add(&task)?;
-            queue.push(task);
-        }
-        while let Some(task) = queue.next() {
-            let outcome = executor.execute(&task)?;
-            recorder.finished(&outcome);
-            queue.finished(outcome.id);
-            for next in driver.complete(outcome)? {
-                recorder.add(&next)?;
-                queue.push(next);
-            }
-        }
-        driver.finish()?;
-        Ok::<(), ExecuteError>(())
-    })();
+    let result = run(driver, executor, options, &mut recorder);
     Execution {
         graph: recorder.graph,
         error: result.err(),
     }
+}
+
+/// Starts the tasks that can start, up to the limit, then hands one outcome to the driver and
+/// queues the tasks it asks for, until no task is left.
+fn run(
+    driver: &mut dyn Driver,
+    executor: &mut dyn Executor,
+    options: &RunOptions,
+    recorder: &mut Recorder,
+) -> Result<(), ExecuteError> {
+    let mut queue = Queue::default();
+    let mut pending = Pending::new(options.order);
+    for task in driver.start()? {
+        recorder.add(&task)?;
+        queue.push(task);
+    }
+    loop {
+        while pending.len() < options.max_pending.max(1)
+            && let Some(task) = queue.next()
+        {
+            pending.push(executor.execute(&task)?);
+        }
+        let Some(outcome) = pending.take() else {
+            break;
+        };
+        recorder.finished(&outcome);
+        queue.finished(outcome.id);
+        for next in driver.complete(outcome)? {
+            recorder.add(&next)?;
+            queue.push(next);
+        }
+    }
+    driver.finish()?;
+    Ok(())
 }

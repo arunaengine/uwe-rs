@@ -12,12 +12,15 @@ mod driver;
 mod engine;
 mod graph;
 pub mod mock;
+mod options;
+mod pending;
 mod queue;
 mod recorder;
 mod task;
 
 pub use driver::{Driver, DriverError, Launch};
-pub use engine::{ExecuteError, Execution, Executor, execute};
+pub use engine::{ExecuteError, Execution, Executor, execute, execute_with};
 pub use graph::{Edge, EdgeKind, ExecutionGraph, Node};
 pub use mock::{Mock, MockTes};
+pub use options::{Order, RunOptions};
 pub use task::{Input, Language, Outcome, OutputFile, Resources, Task, TaskId};

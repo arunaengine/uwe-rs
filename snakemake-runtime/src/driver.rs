@@ -133,7 +133,10 @@ impl Session {
     }
 
     fn error(&self, error: &Error) -> DriverError {
-        driver_error(error, &self.workdir)
+        let mut error = driver_error(error, &self.workdir);
+        // Files on the web by their address rather than their local copy.
+        error.message = self.state.borrow().mirrors.describe(&error.message);
+        error
     }
 
     /// Sets the config from the command line and runs the Snakefile.
@@ -235,7 +238,7 @@ impl Session {
             };
             match root {
                 Some(Ok(job)) => roots.push(job),
-                Some(Err(error)) => return Err(driver_error(&error, &self.workdir)),
+                Some(Err(error)) => return Err(self.error(&error)),
                 None => {}
             }
         }

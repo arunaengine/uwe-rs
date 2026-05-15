@@ -71,6 +71,16 @@ pub struct Task {
     pub after: Vec<TaskId>,
 }
 
+impl Task {
+    /// Whether the task does nothing: it has neither a command nor an image, like a CWL
+    /// `Operation` or a Snakemake rule without an action. Such a task finishes at once with exit
+    /// code 0 and makes no files. A task with an image but no command runs the image's default
+    /// command, as an Argo container without `command` and `args` does.
+    pub fn is_no_op(&self) -> bool {
+        self.command.is_empty() && self.image.is_none()
+    }
+}
+
 /// A file or directory the task reads.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Input {

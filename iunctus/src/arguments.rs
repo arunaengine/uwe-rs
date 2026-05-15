@@ -36,6 +36,8 @@ pub struct Arguments {
     pub max_pending: Option<usize>,
     /// `-order asked|reversed|shuffled[:seed]`: the order in which pending tasks finish.
     pub order: Option<Order>,
+    /// `-default-image image`: the container image of tasks that name none, for real executors.
+    pub default_image: Option<String>,
 }
 
 /// Reads the options after the command name.
@@ -80,6 +82,7 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
             "-executor" => parsed.executor = Some(value()?),
             "-graph" => parsed.graph = Some(value()?.into()),
             "-format" => parsed.format = Some(value()?),
+            "-default-image" => parsed.default_image = Some(value()?),
             "-max-pending" => {
                 let number = value()?;
                 parsed.max_pending = Some(number.parse().ok().filter(|n| *n > 0).ok_or(
@@ -230,6 +233,7 @@ mod tests {
     #[test]
     fn orders_and_pending_limits() {
         let parsed = parse_all(&["main.nf", "-max-pending", "4", "-order", "shuffled:7"]);
+        assert_eq!(parsed.default_image, None);
         assert_eq!(parsed.max_pending, Some(4));
         assert_eq!(parsed.order, Some(Order::Shuffled { seed: 7 }));
         assert_eq!(order("reversed"), Some(Order::Reversed));

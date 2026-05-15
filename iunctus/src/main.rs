@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod arguments;
+mod checked;
 mod detect;
 mod local;
 mod nextflow;
@@ -171,7 +172,8 @@ fn config(arguments: &Arguments) -> Result<(), Failure> {
 
 /// The executor that `-executor` names: `mock-tes` (the default) writes a TES task document
 /// for each task and makes empty outputs, `mock` only makes the outputs, `local` runs each
-/// task in a container. The mocks keep their files in the scratch directory of the cache.
+/// task in a container. The mocks keep their files in the scratch directory of the cache. A
+/// real executor gets its tasks through the checks of [`checked::Checked`].
 fn executor(arguments: &Arguments, run: &str, verbose: bool) -> Result<Box<dyn Executor>, Failure> {
     let cache = cache_directory();
     let scratch = cache.join("scratch");
@@ -191,7 +193,8 @@ fn executor(arguments: &Arguments, run: &str, verbose: bool) -> Result<Box<dyn E
             let mut executor = local::Local::new(&store, &engine(), &scratch, run)
                 .map_err(|message| failure(format!("iunctus: {message}")))?;
             executor.verbose = verbose;
-            Ok(Box::new(executor))
+            let default_image = arguments.default_image.clone();
+            Ok(Box::new(checked::Checked::new(executor, default_image)))
         }
         other => Err(failure(format!(
             "iunctus: unknown executor `{other}`; use `mock-tes`, `mock` or `local`"
@@ -250,6 +253,7 @@ options:
   -order asked|reversed|shuffled[:<seed>]
                                       the order in which pending tasks finish
   -store <directory>                  the cache of the local executor
+  -default-image <image>              the image of tasks that name none, for real executors
   -stub                               runs the stubs of tasks
   -profile <names>, -c <file>         Nextflow profiles and config files
   -params-file <file>, -inputs <file> a params file, or a CWL job file

@@ -1687,49 +1687,421 @@ $ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m
 > Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/diamond/diamond.cwl'
 > checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_samsa2.cwl#workflow_diamond_view'
 > Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/diamond/view.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_sapp_microbes.cwl
+= missing: the document names `../sapp/conversion.cwl`, `../bash/compress.cwl` and `../sapp/interproscan.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_sapp_microbes.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_sapp_microbes.cwl#interproscan'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/sapp/interproscan.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_sapp_microbes.cwl#kofamscan'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/sapp/kofamscan.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_sapp_microbes.cwl#prodigal'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/sapp/prodigal.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_sapp_others.cwl
+= missing: the document names `../sapp/conversion.cwl`, `../bash/grep_count.cwl` and `../sapp/interproscan.cwl` and more, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_sapp_others.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_sapp_others.cwl#count_genes'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/bash/grep_count.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_sapp_others.cwl#interproscan'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/sapp/interproscan.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_sapp_others.cwl#tohdt'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/sapp/toHDT.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_toHDT_compression.cwl
+= missing: the document names `../bash/compress.cwl` and `../sapp/toHDT.cwl`, which its repository does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_toHDT_compression.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_toHDT_compression.cwl#compress'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/bash/compress.cwl'
+> checking object 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/workflows_old/workflow_toHDT_compression.cwl#tohdt'
+> Field 'run' contains undefined reference to 'realworld/sources/gitlab.com__m-unlock__cwl/workflows/to_check/sapp/toHDT.cwl'
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_mock_ngtax.cwl
+= invalid: a step names the output `physeq_met`, which its tool does not have (it has `physeq_asv`, `physeq_seq`, `physeq_tax`, `picrust_fasta` and `picrust_tsv`)
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_mock_ngtax.cwl
+> ERROR Tool definition failed validation:
+> Workflow step output 'physeq_met' does not correspond to
+> tool output (expected 'physeq_asv', 'physeq_seq', 'physeq_tax', 'picrust_fasta', 'picrust_tsv')
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_sapp_microbes.cwl
+= invalid: a step names the output `output`, which its tool does not have (it has `outfile`)
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_sapp_microbes.cwl
+> ERROR Tool definition failed validation:
+> Workflow step output 'output' does not correspond to
+> tool output (expected 'outfile')
+
 realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_sapp_others.cwl
+= invalid: a step names the output `output`, which its tool does not have (it has `hdt_output`)
+$ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/workflows/workflow_sapp_others.cwl
+> ERROR Tool definition failed validation:
+> Workflow step output 'output' does not correspond to
+> tool output (expected 'hdt_output')
+
 realworld/workflowhub/107/workflow.cwl
+= missing: the document names `../tools/gunzip_known_sites.cwl`, `../tools/gunzip.cwl` and `../tools/picard_dictionary.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/107/workflow.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/107/workflow.cwl#gatk-base_recalibration'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/tools/gatk-base_recalibration.cwl'
+> checking object 'realworld/workflowhub/107/workflow.cwl#gatk-base_recalibration_print_reads'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/tools/gatk-base_recalibration_print_reads.cwl'
+> checking object 'realworld/workflowhub/107/workflow.cwl#gatk_haplotype_caller'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/tools/gatk-haplotype_caller.cwl'
+
 realworld/workflowhub/1170/workflow_microbial_annotation.cwl
+= missing: the document names `../tools/bakta/bakta.cwl`, `../tools/expressions/files_to_folder.cwl` and `../tools/bash/pigz.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1170/workflow_microbial_annotation.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1170/workflow_microbial_annotation.cwl#interproscan'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/tools/interproscan/interproscan_v5.cwl'
+> checking object 'realworld/workflowhub/1170/workflow_microbial_annotation.cwl#kofamscan'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/tools/kofamscan/kofamscan.cwl'
+> checking object 'realworld/workflowhub/1170/workflow_microbial_annotation.cwl#workflow_sapp_conversion'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/workflows/workflow_sapp_conversion.cwl'
+
 realworld/workflowhub/118/cosifer-workflow.cwl
+= missing: the document names `cosifer.cwl`, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/118/cosifer-workflow.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/118/cosifer-workflow.cwl#cosifer_workflow/cosifer'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/118/cosifer.cwl'
+
 realworld/workflowhub/121/md_list.cwl
+= missing: the document names `biobb/biobb_adapters/cwl/biobb_md/gromacs/mdrun.cwl`, `biobb/biobb_adapters/cwl/biobb_md/gromacs/grompp.cwl` and `md_gather.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/121/md_list.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/121/md_list.cwl#step7_mdrun_min'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/121/biobb/biobb_adapters/cwl/biobb_md/gromacs/mdrun.cwl'
+> checking object 'realworld/workflowhub/121/md_list.cwl#step8_make_ndx'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/121/biobb/biobb_adapters/cwl/biobb_md/gromacs/make_ndx.cwl'
+> checking object 'realworld/workflowhub/121/md_list.cwl#step9_grompp_nvt'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/121/biobb/biobb_adapters/cwl/biobb_md/gromacs/grompp.cwl'
+
 realworld/workflowhub/1231/DTC51/WF5101/ST510104.cwl
+= invalid: the `source` `DT5106` and `DT5111` name nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1231/DTC51/WF5101/ST510104.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1231/DTC51/WF5101/ST510104.cwl#SS5104'
+> checking field 'in'
+> checking object 'realworld/workflowhub/1231/DTC51/WF5101/ST510104.cwl#SS5104/DT5106'
+> Field 'source' references unknown identifier 'DT5106', tried realworld/workflowhub/1231/DTC51/WF5101/ST510104.cwl#DT5106
+> checking object 'realworld/workflowhub/1231/DTC51/WF5101/ST510104.cwl#SS5104/DT5111'
+> Field 'source' references unknown identifier 'DT5111', tried realworld/workflowhub/1231/DTC51/WF5101/ST510104.cwl#DT5111
+
 realworld/workflowhub/1231/DTC51/WF5101/ST510106.cwl
+= invalid: the `outputSource` `ST510106/DT5101` names nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1231/DTC51/WF5101/ST510106.cwl
+> ERROR Tool definition failed validation:
+> checking field 'outputs'
+> checking object 'realworld/workflowhub/1231/DTC51/WF5101/ST510106.cwl#DT5101'
+> Field 'outputSource' references unknown identifier 'ST510106/DT5101', tried realworld/workflowhub/1231/DTC51/WF5101/ST510106.cwl#DT5101/ST510106/DT5101 realworld/workflowhub/1231/DTC51/WF5101/ST510106.cwl#ST510106/DT5101
+
 realworld/workflowhub/1231/DTC51/WF5101/ST510108.cwl
+= invalid: the `outputSource` `ST510108/DT5107` names nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1231/DTC51/WF5101/ST510108.cwl
+> ERROR Tool definition failed validation:
+> checking field 'outputs'
+> checking object 'realworld/workflowhub/1231/DTC51/WF5101/ST510108.cwl#DT5107'
+> Field 'outputSource' references unknown identifier 'ST510108/DT5107', tried realworld/workflowhub/1231/DTC51/WF5101/ST510108.cwl#DT5107/ST510108/DT5107 realworld/workflowhub/1231/DTC51/WF5101/ST510108.cwl#ST510108/DT5107
+
 realworld/workflowhub/1231/DTC51/WF5101/ST510109.cwl
+= invalid: the `outputSource` `ST510109/DT5111` and `DT5103` name nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1231/DTC51/WF5101/ST510109.cwl
+> ERROR Tool definition failed validation:
+> checking field 'outputs'
+> Field 'outputSource' references unknown identifier 'ST510109/DT5111', tried realworld/workflowhub/1231/DTC51/WF5101/ST510109.cwl#DT5111/ST510109/DT5111 realworld/workflowhub/1231/DTC51/WF5101/ST510109.cwl#ST510109/DT5111
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1231/DTC51/WF5101/ST510109.cwl#SS5102'
+> checking field 'in'
+> checking object 'realworld/workflowhub/1231/DTC51/WF5101/ST510109.cwl#SS5102/DT5103'
+> Field 'source' references unknown identifier 'DT5103', tried realworld/workflowhub/1231/DTC51/WF5101/ST510109.cwl#DT5103
+
 realworld/workflowhub/1231/DTC51/WF5101/ST510111.cwl
+= invalid: the `source` `DT5104` and `DT5110` name nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1231/DTC51/WF5101/ST510111.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1231/DTC51/WF5101/ST510111.cwl#SS5103'
+> checking field 'in'
+> checking object 'realworld/workflowhub/1231/DTC51/WF5101/ST510111.cwl#SS5103/DT5104'
+> Field 'source' references unknown identifier 'DT5104', tried realworld/workflowhub/1231/DTC51/WF5101/ST510111.cwl#DT5104
+> checking object 'realworld/workflowhub/1231/DTC51/WF5101/ST510111.cwl#SS5103/DT5110'
+> Field 'source' references unknown identifier 'DT5110', tried realworld/workflowhub/1231/DTC51/WF5101/ST510111.cwl#DT5110
+
 realworld/workflowhub/1231/DTC51/WF5101/WF5101.cwl
+= invalid: the `outputSource` `ST510109/DT5111` and `DT5103` name nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1231/DTC51/WF5101/WF5101.cwl
+> ERROR Tool definition failed initialization:
+> Tool definition realworld/workflowhub/1231/DTC51/WF5101/ST510109.cwl failed validation:
+> Field 'outputSource' references unknown identifier 'ST510109/DT5111', tried realworld/workflowhub/1231/DTC51/WF5101/ST510109.cwl#DT5111/ST510109/DT5111 realworld/workflowhub/1231/DTC51/WF5101/ST510109.cwl#ST510109/DT5111
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1231/DTC51/WF5101/ST510109.cwl#SS5102'
+> checking field 'in'
+> checking object 'realworld/workflowhub/1231/DTC51/WF5101/ST510109.cwl#SS5102/DT5103'
+> Field 'source' references unknown identifier 'DT5103', tried realworld/workflowhub/1231/DTC51/WF5101/ST510109.cwl#DT5103
+
 realworld/workflowhub/1231/DTC53/WF5301/ST530102.cwl
+= invalid: the `outputSource` `ST530102/DT5305` names nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1231/DTC53/WF5301/ST530102.cwl
+> ERROR Tool definition failed validation:
+> checking field 'outputs'
+> checking object 'realworld/workflowhub/1231/DTC53/WF5301/ST530102.cwl#DT5305'
+> Field 'outputSource' references unknown identifier 'ST530102/DT5305', tried realworld/workflowhub/1231/DTC53/WF5301/ST530102.cwl#DT5305/ST530102/DT5305 realworld/workflowhub/1231/DTC53/WF5301/ST530102.cwl#ST530102/DT5305
+
 realworld/workflowhub/1231/DTC53/WF5301/WF5301.cwl
+= invalid: the `outputSource` `ST530102/DT5305` names nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1231/DTC53/WF5301/WF5301.cwl
+> ERROR Tool definition failed initialization:
+> Tool definition realworld/workflowhub/1231/DTC53/WF5301/ST530102.cwl failed validation:
+> checking field 'outputs'
+> checking object 'realworld/workflowhub/1231/DTC53/WF5301/ST530102.cwl#DT5305'
+> Field 'outputSource' references unknown identifier 'ST530102/DT5305', tried realworld/workflowhub/1231/DTC53/WF5301/ST530102.cwl#DT5305/ST530102/DT5305 realworld/workflowhub/1231/DTC53/WF5301/ST530102.cwl#ST530102/DT5305
+
 realworld/workflowhub/1231/DTC54/WF5401/WF5401.cwl
+= invalid: the steps `ST540103` depend on their own outputs
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1231/DTC54/WF5401/WF5401.cwl
+> ERROR Tool definition failed validation:
+> The following steps have circular dependency:
+> ['realworld/workflowhub/1231/DTC54/WF5401/WF5401.cwl#ST540103']
+
 realworld/workflowhub/154/workflow_ngtax_picrust2.cwl
+= missing: the document names `../fastqc/fastqc.cwl`, `../expressions/files_to_folder.cwl` and `../bash/compress_directory.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/154/workflow_ngtax_picrust2.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/154/workflow_ngtax_picrust2.cwl#picrust2'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/picrust2/picrust2_pipeline.cwl'
+> checking object 'realworld/workflowhub/154/workflow_ngtax_picrust2.cwl#picrust_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/expressions/files_to_folder.cwl'
+> checking object 'realworld/workflowhub/154/workflow_ngtax_picrust2.cwl#reads_to_folder'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/expressions/files_to_folder.cwl'
+
 realworld/workflowhub/1728/DTC51/WF5101/ST510104.cwl
+= invalid: the `source` `DT5106` and `DT5111` name nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1728/DTC51/WF5101/ST510104.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1728/DTC51/WF5101/ST510104.cwl#SS5104'
+> checking field 'in'
+> checking object 'realworld/workflowhub/1728/DTC51/WF5101/ST510104.cwl#SS5104/DT5106'
+> Field 'source' references unknown identifier 'DT5106', tried realworld/workflowhub/1728/DTC51/WF5101/ST510104.cwl#DT5106
+> checking object 'realworld/workflowhub/1728/DTC51/WF5101/ST510104.cwl#SS5104/DT5111'
+> Field 'source' references unknown identifier 'DT5111', tried realworld/workflowhub/1728/DTC51/WF5101/ST510104.cwl#DT5111
+
 realworld/workflowhub/1728/DTC51/WF5101/ST510106.cwl
+= invalid: the `outputSource` `ST510106/DT5101` names nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1728/DTC51/WF5101/ST510106.cwl
+> ERROR Tool definition failed validation:
+> checking field 'outputs'
+> checking object 'realworld/workflowhub/1728/DTC51/WF5101/ST510106.cwl#DT5101'
+> Field 'outputSource' references unknown identifier 'ST510106/DT5101', tried realworld/workflowhub/1728/DTC51/WF5101/ST510106.cwl#DT5101/ST510106/DT5101 realworld/workflowhub/1728/DTC51/WF5101/ST510106.cwl#ST510106/DT5101
+
 realworld/workflowhub/1728/DTC51/WF5101/ST510108.cwl
+= invalid: the `outputSource` `ST510108/DT5107` names nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1728/DTC51/WF5101/ST510108.cwl
+> ERROR Tool definition failed validation:
+> checking field 'outputs'
+> checking object 'realworld/workflowhub/1728/DTC51/WF5101/ST510108.cwl#DT5107'
+> Field 'outputSource' references unknown identifier 'ST510108/DT5107', tried realworld/workflowhub/1728/DTC51/WF5101/ST510108.cwl#DT5107/ST510108/DT5107 realworld/workflowhub/1728/DTC51/WF5101/ST510108.cwl#ST510108/DT5107
+
 realworld/workflowhub/1728/DTC51/WF5101/ST510109.cwl
+= invalid: the `outputSource` `ST510109/DT5111` and `DT5103` name nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1728/DTC51/WF5101/ST510109.cwl
+> ERROR Tool definition failed validation:
+> checking field 'outputs'
+> Field 'outputSource' references unknown identifier 'ST510109/DT5111', tried realworld/workflowhub/1728/DTC51/WF5101/ST510109.cwl#DT5111/ST510109/DT5111 realworld/workflowhub/1728/DTC51/WF5101/ST510109.cwl#ST510109/DT5111
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1728/DTC51/WF5101/ST510109.cwl#SS5102'
+> checking field 'in'
+> checking object 'realworld/workflowhub/1728/DTC51/WF5101/ST510109.cwl#SS5102/DT5103'
+> Field 'source' references unknown identifier 'DT5103', tried realworld/workflowhub/1728/DTC51/WF5101/ST510109.cwl#DT5103
+
 realworld/workflowhub/1728/DTC51/WF5101/ST510111.cwl
+= invalid: the `source` `DT5104` and `DT5110` name nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1728/DTC51/WF5101/ST510111.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1728/DTC51/WF5101/ST510111.cwl#SS5103'
+> checking field 'in'
+> checking object 'realworld/workflowhub/1728/DTC51/WF5101/ST510111.cwl#SS5103/DT5104'
+> Field 'source' references unknown identifier 'DT5104', tried realworld/workflowhub/1728/DTC51/WF5101/ST510111.cwl#DT5104
+> checking object 'realworld/workflowhub/1728/DTC51/WF5101/ST510111.cwl#SS5103/DT5110'
+> Field 'source' references unknown identifier 'DT5110', tried realworld/workflowhub/1728/DTC51/WF5101/ST510111.cwl#DT5110
+
 realworld/workflowhub/1728/DTC51/WF5101/WF5101.cwl
+= invalid: the `outputSource` `ST510109/DT5111` and `DT5103` name nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1728/DTC51/WF5101/WF5101.cwl
+> ERROR Tool definition failed initialization:
+> Tool definition realworld/workflowhub/1728/DTC51/WF5101/ST510109.cwl failed validation:
+> Field 'outputSource' references unknown identifier 'ST510109/DT5111', tried realworld/workflowhub/1728/DTC51/WF5101/ST510109.cwl#DT5111/ST510109/DT5111 realworld/workflowhub/1728/DTC51/WF5101/ST510109.cwl#ST510109/DT5111
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1728/DTC51/WF5101/ST510109.cwl#SS5102'
+> checking field 'in'
+> checking object 'realworld/workflowhub/1728/DTC51/WF5101/ST510109.cwl#SS5102/DT5103'
+> Field 'source' references unknown identifier 'DT5103', tried realworld/workflowhub/1728/DTC51/WF5101/ST510109.cwl#DT5103
+
 realworld/workflowhub/1728/DTC53/WF5301/ST530102.cwl
+= invalid: the `outputSource` `ST530102/DT5305` names nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1728/DTC53/WF5301/ST530102.cwl
+> ERROR Tool definition failed validation:
+> checking field 'outputs'
+> checking object 'realworld/workflowhub/1728/DTC53/WF5301/ST530102.cwl#DT5305'
+> Field 'outputSource' references unknown identifier 'ST530102/DT5305', tried realworld/workflowhub/1728/DTC53/WF5301/ST530102.cwl#DT5305/ST530102/DT5305 realworld/workflowhub/1728/DTC53/WF5301/ST530102.cwl#ST530102/DT5305
+
 realworld/workflowhub/1728/DTC53/WF5301/WF5301.cwl
+= invalid: the `outputSource` `ST530102/DT5305` names nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1728/DTC53/WF5301/WF5301.cwl
+> ERROR Tool definition failed initialization:
+> Tool definition realworld/workflowhub/1728/DTC53/WF5301/ST530102.cwl failed validation:
+> checking field 'outputs'
+> checking object 'realworld/workflowhub/1728/DTC53/WF5301/ST530102.cwl#DT5305'
+> Field 'outputSource' references unknown identifier 'ST530102/DT5305', tried realworld/workflowhub/1728/DTC53/WF5301/ST530102.cwl#DT5305/ST530102/DT5305 realworld/workflowhub/1728/DTC53/WF5301/ST530102.cwl#ST530102/DT5305
+
 realworld/workflowhub/1728/DTC54/WF5401.generated/WF5401.cwl
+= invalid: the steps `ST540103` depend on their own outputs
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1728/DTC54/WF5401.generated/WF5401.cwl
+> ERROR Tool definition failed validation:
+> The following steps have circular dependency:
+> ['realworld/workflowhub/1728/DTC54/WF5401.generated/WF5401.cwl#ST540103']
+
 realworld/workflowhub/1760/CWL/tools/samtools_index.cwl
+= invalid: the file is not valid YAML: found duplicate key "requirements"
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1760/CWL/tools/samtools_index.cwl
+> ERROR Tool definition failed validation:
+> while constructing a mapping
+> found duplicate key "requirements" with value "{'InitialWorkDirRequirement': {'listing': ['$(inputs.bam_sorted)']}}" (original value: "{'InlineJavascriptRequirement': {}}")
+
 realworld/workflowhub/1761/CWL/tools/samtools_index.cwl
+= invalid: the file is not valid YAML: found duplicate key "requirements"
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1761/CWL/tools/samtools_index.cwl
+> ERROR Tool definition failed validation:
+> while constructing a mapping
+> found duplicate key "requirements" with value "{'InitialWorkDirRequirement': {'listing': ['$(inputs.bam_sorted)']}}" (original value: "{'InlineJavascriptRequirement': {}}")
+
 realworld/workflowhub/1765/CWL/tools/samtools_index.cwl
+= invalid: the file is not valid YAML: found duplicate key "requirements"
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1765/CWL/tools/samtools_index.cwl
+> ERROR Tool definition failed validation:
+> while constructing a mapping
+> found duplicate key "requirements" with value "{'InitialWorkDirRequirement': {'listing': ['$(inputs.bam_sorted)']}}" (original value: "{'InlineJavascriptRequirement': {}}")
+
 realworld/workflowhub/1766/CWL/tools/samtools_index.cwl
+= invalid: the file is not valid YAML: found duplicate key "requirements"
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1766/CWL/tools/samtools_index.cwl
+> ERROR Tool definition failed validation:
+> while constructing a mapping
+> found duplicate key "requirements" with value "{'InitialWorkDirRequirement': {'listing': ['$(inputs.bam_sorted)']}}" (original value: "{'InlineJavascriptRequirement': {}}")
+
 realworld/workflowhub/1786/DTC51/WF5101/ST510104.cwl
+= invalid: the `source` `DT5106` and `DT5111` name nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1786/DTC51/WF5101/ST510104.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1786/DTC51/WF5101/ST510104.cwl#SS5104'
+> checking field 'in'
+> checking object 'realworld/workflowhub/1786/DTC51/WF5101/ST510104.cwl#SS5104/DT5106'
+> Field 'source' references unknown identifier 'DT5106', tried realworld/workflowhub/1786/DTC51/WF5101/ST510104.cwl#DT5106
+> checking object 'realworld/workflowhub/1786/DTC51/WF5101/ST510104.cwl#SS5104/DT5111'
+> Field 'source' references unknown identifier 'DT5111', tried realworld/workflowhub/1786/DTC51/WF5101/ST510104.cwl#DT5111
+
 realworld/workflowhub/1786/DTC51/WF5101/ST510106.cwl
+= invalid: the `outputSource` `ST510106/DT5101` names nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1786/DTC51/WF5101/ST510106.cwl
+> ERROR Tool definition failed validation:
+> checking field 'outputs'
+> checking object 'realworld/workflowhub/1786/DTC51/WF5101/ST510106.cwl#DT5101'
+> Field 'outputSource' references unknown identifier 'ST510106/DT5101', tried realworld/workflowhub/1786/DTC51/WF5101/ST510106.cwl#DT5101/ST510106/DT5101 realworld/workflowhub/1786/DTC51/WF5101/ST510106.cwl#ST510106/DT5101
+
 realworld/workflowhub/1786/DTC51/WF5101/ST510108.cwl
+= invalid: the `outputSource` `ST510108/DT5107` names nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1786/DTC51/WF5101/ST510108.cwl
+> ERROR Tool definition failed validation:
+> checking field 'outputs'
+> checking object 'realworld/workflowhub/1786/DTC51/WF5101/ST510108.cwl#DT5107'
+> Field 'outputSource' references unknown identifier 'ST510108/DT5107', tried realworld/workflowhub/1786/DTC51/WF5101/ST510108.cwl#DT5107/ST510108/DT5107 realworld/workflowhub/1786/DTC51/WF5101/ST510108.cwl#ST510108/DT5107
+
 realworld/workflowhub/1786/DTC51/WF5101/ST510109.cwl
+= invalid: the `outputSource` `ST510109/DT5111` and `DT5103` name nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1786/DTC51/WF5101/ST510109.cwl
+> ERROR Tool definition failed validation:
+> checking field 'outputs'
+> Field 'outputSource' references unknown identifier 'ST510109/DT5111', tried realworld/workflowhub/1786/DTC51/WF5101/ST510109.cwl#DT5111/ST510109/DT5111 realworld/workflowhub/1786/DTC51/WF5101/ST510109.cwl#ST510109/DT5111
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1786/DTC51/WF5101/ST510109.cwl#SS5102'
+> checking field 'in'
+> checking object 'realworld/workflowhub/1786/DTC51/WF5101/ST510109.cwl#SS5102/DT5103'
+> Field 'source' references unknown identifier 'DT5103', tried realworld/workflowhub/1786/DTC51/WF5101/ST510109.cwl#DT5103
+
 realworld/workflowhub/1786/DTC51/WF5101/ST510111.cwl
+= invalid: the `source` `DT5104` and `DT5110` name nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1786/DTC51/WF5101/ST510111.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1786/DTC51/WF5101/ST510111.cwl#SS5103'
+> checking field 'in'
+> checking object 'realworld/workflowhub/1786/DTC51/WF5101/ST510111.cwl#SS5103/DT5104'
+> Field 'source' references unknown identifier 'DT5104', tried realworld/workflowhub/1786/DTC51/WF5101/ST510111.cwl#DT5104
+> checking object 'realworld/workflowhub/1786/DTC51/WF5101/ST510111.cwl#SS5103/DT5110'
+> Field 'source' references unknown identifier 'DT5110', tried realworld/workflowhub/1786/DTC51/WF5101/ST510111.cwl#DT5110
+
 realworld/workflowhub/1786/DTC51/WF5101/WF5101.cwl
+= invalid: the `outputSource` `ST510109/DT5111` and `DT5103` name nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1786/DTC51/WF5101/WF5101.cwl
+> ERROR Tool definition failed initialization:
+> Tool definition realworld/workflowhub/1786/DTC51/WF5101/ST510109.cwl failed validation:
+> Field 'outputSource' references unknown identifier 'ST510109/DT5111', tried realworld/workflowhub/1786/DTC51/WF5101/ST510109.cwl#DT5111/ST510109/DT5111 realworld/workflowhub/1786/DTC51/WF5101/ST510109.cwl#ST510109/DT5111
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1786/DTC51/WF5101/ST510109.cwl#SS5102'
+> checking field 'in'
+> checking object 'realworld/workflowhub/1786/DTC51/WF5101/ST510109.cwl#SS5102/DT5103'
+> Field 'source' references unknown identifier 'DT5103', tried realworld/workflowhub/1786/DTC51/WF5101/ST510109.cwl#DT5103
+
 realworld/workflowhub/1786/DTC53/WF5301/ST530102.cwl
+= invalid: the `outputSource` `ST530102/DT5305` names nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1786/DTC53/WF5301/ST530102.cwl
+> ERROR Tool definition failed validation:
+> checking field 'outputs'
+> checking object 'realworld/workflowhub/1786/DTC53/WF5301/ST530102.cwl#DT5305'
+> Field 'outputSource' references unknown identifier 'ST530102/DT5305', tried realworld/workflowhub/1786/DTC53/WF5301/ST530102.cwl#DT5305/ST530102/DT5305 realworld/workflowhub/1786/DTC53/WF5301/ST530102.cwl#ST530102/DT5305
+
 realworld/workflowhub/1786/DTC53/WF5301/WF5301.cwl
+= invalid: the `outputSource` `ST530102/DT5305` names nothing in the workflow
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1786/DTC53/WF5301/WF5301.cwl
+> ERROR Tool definition failed initialization:
+> Tool definition realworld/workflowhub/1786/DTC53/WF5301/ST530102.cwl failed validation:
+> checking field 'outputs'
+> checking object 'realworld/workflowhub/1786/DTC53/WF5301/ST530102.cwl#DT5305'
+> Field 'outputSource' references unknown identifier 'ST530102/DT5305', tried realworld/workflowhub/1786/DTC53/WF5301/ST530102.cwl#DT5305/ST530102/DT5305 realworld/workflowhub/1786/DTC53/WF5301/ST530102.cwl#ST530102/DT5305
+
 realworld/workflowhub/1786/DTC54/WF5401/WF5401.cwl
+= invalid: the steps `ST540103` depend on their own outputs
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1786/DTC54/WF5401/WF5401.cwl
+> ERROR Tool definition failed validation:
+> The following steps have circular dependency:
+> ['realworld/workflowhub/1786/DTC54/WF5401/WF5401.cwl#ST540103']
+
 realworld/workflowhub/1868/workflow_ada.cwl
+= missing: the document names `../tools/bakta/bakta.cwl`, `../tools/bedtools/bedtools_bamtobed.cwl` and `../tools/clair3/clair3.cwl` and more, which its WorkflowHub entry does not have
+$ cwltool --validate --skip-schemas --enable-dev realworld/workflowhub/1868/workflow_ada.cwl
+> ERROR Tool definition failed validation:
+> checking field 'steps'
+> checking object 'realworld/workflowhub/1868/workflow_ada.cwl#snpeff_reads_files_to_folder'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/tools/expressions/files_to_folder.cwl'
+> checking object 'realworld/workflowhub/1868/workflow_ada.cwl#strainy'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/tools/strainy/strainy.cwl'
+> checking object 'realworld/workflowhub/1868/workflow_ada.cwl#unzip'
+> Field 'run' contains undefined reference to 'realworld/workflowhub/tools/gunzip/gunzip.cwl'
 realworld/workflowhub/1952/workflow_amplicon_longread.cwl
 realworld/workflowhub/1982/WF5401.cwl
 realworld/workflowhub/1983/WF8101.cwl

@@ -23,6 +23,7 @@ mod resources;
 mod rule;
 mod schema;
 mod shell;
+mod storage;
 mod task;
 mod utils;
 mod workflow;

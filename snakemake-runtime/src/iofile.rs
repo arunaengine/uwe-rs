@@ -34,7 +34,7 @@ impl AttributeHook for FileAttributes {
             "is_temp" => flagged("temp"),
             "is_ancient" => flagged("ancient"),
             "is_multiext" => flagged("multiext"),
-            "is_storage" => Value::Bool(false),
+            "is_storage" => flagged(crate::storage::TAG),
             "open" => Value::builtin("open", move |interpreter, mut args| {
                 let mode = match args.take(0, "mode") {
                     Some(mode) => interpreter.to_str(&mode)?,

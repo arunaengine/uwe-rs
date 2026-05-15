@@ -342,7 +342,14 @@ impl StatementHook for Hook {
             }
             Statement::UseRule(rule) => self.use_rule(interpreter, frame, rule)?,
             Statement::Module(module) => self.module(interpreter, frame, module)?,
-            Statement::Storage(_) => return Err(Error::unsupported("storage directives")),
+            Statement::Storage(storage) => {
+                let mut args = interpreter.eval_arguments(frame, &storage.arguments)?;
+                let provider = match args.take_keyword("provider") {
+                    Some(provider) if !provider.is_none() => Some(interpreter.to_str(&provider)?),
+                    _ => None,
+                };
+                crate::storage::check_provider(provider.as_deref())?;
+            }
         }
         Ok(true)
     }

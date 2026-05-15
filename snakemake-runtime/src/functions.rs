@@ -1338,12 +1338,7 @@ pub fn install(globals: &Rc<Scope>, state: &Rc<RefCell<State>>) {
         "workflow",
         Value::native(crate::objects::WorkflowObject(state.clone())),
     );
-    globals.set(
-        "storage",
-        Value::builtin("storage", |_, _| {
-            Err(Error::unsupported("storage providers"))
-        }),
-    );
+    globals.set("storage", Value::native(crate::storage::StorageRegistry));
     let mut access = Dict::default();
     for name in ["random", "sequential", "multi"] {
         access.insert(

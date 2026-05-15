@@ -464,7 +464,7 @@ impl Planner {
                 rule.name
             )));
         }
-        let inputs: Vec<(String, Option<String>)> = {
+        let inputs: Vec<(String, Option<String>, bool)> = {
             let mut seen: Vec<String> = Vec::new();
             let mut inputs = Vec::new();
             for value in &job.input.values {
@@ -476,11 +476,12 @@ impl Planner {
                 let dependency = value
                     .tag("rule")
                     .and_then(|rule| rule.as_str().map(str::to_owned));
-                inputs.push((text.to_owned(), dependency));
+                let stored = value.tag(crate::storage::TAG).is_some();
+                inputs.push((text.to_owned(), dependency, stored));
             }
             inputs
         };
-        for (file, dependency) in inputs {
+        for (file, dependency, stored) in inputs {
             let planned = match dependency
                 .and_then(|name| self.rules.iter().position(|rule| rule.name == name))
             {
@@ -497,6 +498,8 @@ impl Planner {
                     job.assumed |= self.jobs[producer].assumed;
                     job.dependencies.push((file, producer));
                 }
+                // A file in storage counts as present.
+                Ok(None) if stored => {}
                 Ok(None) => {
                     if !self.exists(interpreter, &file) {
                         if !self.assume_inputs {
@@ -510,7 +513,7 @@ impl Planner {
                     }
                 }
                 Err(failure) => {
-                    if self.exists(interpreter, &file) {
+                    if stored || self.exists(interpreter, &file) {
                         continue;
                     }
                     return Err(failure);
@@ -687,7 +690,16 @@ pub fn expand_input(
                         "Wildcards in input files cannot be determined from output files: '{missing}'"
                     ))
                 })?;
-                items.push(retag(&value, Value::str(filled)));
+                let mut filled = retag(&value, Value::str(filled));
+                // The address of a file in storage has the same wildcards.
+                if let Some(query) = value.tag(crate::storage::TAG).and_then(|query| {
+                    query
+                        .as_str()
+                        .and_then(|query| pattern::apply(query, wildcards).ok())
+                }) {
+                    filled = filled.with_tag(crate::storage::TAG, Value::str(query));
+                }
+                items.push(filled);
             }
         }
         if let Some(name) = &name

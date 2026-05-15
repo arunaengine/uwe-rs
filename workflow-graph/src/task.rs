@@ -66,7 +66,8 @@ pub struct Task {
     pub stdin: Option<String>,
     pub resources: Resources,
     /// Tasks this one must wait for besides those that made its input files, like Argo steps
-    /// or Snakemake rules ordered without files.
+    /// or Snakemake rules ordered without files. Each must be a task that the driver asked for
+    /// before this one; the engine starts this task only when all of them have finished.
     pub after: Vec<TaskId>,
 }
 

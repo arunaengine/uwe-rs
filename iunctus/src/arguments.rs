@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use workflow_graph::Language;
+use workflow_graph::{Language, Order};
 
 /// The options of a command.
 #[derive(Debug, Default, PartialEq)]
@@ -32,6 +32,10 @@ pub struct Arguments {
     pub graph: Option<PathBuf>,
     /// `-format json|dot|summary` of `iunctus graph`.
     pub format: Option<String>,
+    /// `-max-pending n`: how many tasks may be pending at once.
+    pub max_pending: Option<usize>,
+    /// `-order asked|reversed|shuffled[:seed]`: the order in which pending tasks finish.
+    pub order: Option<Order>,
 }
 
 /// Reads the options after the command name.
@@ -76,6 +80,18 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
             "-executor" => parsed.executor = Some(value()?),
             "-graph" => parsed.graph = Some(value()?.into()),
             "-format" => parsed.format = Some(value()?),
+            "-max-pending" => {
+                let number = value()?;
+                parsed.max_pending = Some(number.parse().ok().filter(|n| *n > 0).ok_or(
+                    format!("`-max-pending` needs a number above zero, not `{number}`"),
+                )?);
+            }
+            "-order" => {
+                let name = value()?;
+                parsed.order = Some(order(&name).ok_or(format!(
+                    "unknown order `{name}`; use asked, reversed or shuffled[:<seed>]"
+                ))?);
+            }
             // Snakemake's `--config a=1 b=2` sets several params.
             "--config"
                 if arguments
@@ -125,6 +141,18 @@ fn language(name: &str) -> Option<Language> {
         "argo" => Language::Argo,
         _ => return None,
     })
+}
+
+/// An order by its name, as `-order` takes it: `asked`, `reversed`, `shuffled` or
+/// `shuffled:<seed>`; the seed is 0 when not given.
+fn order(name: &str) -> Option<Order> {
+    match name.split_once(':') {
+        None if name == "asked" => Some(Order::AsAsked),
+        None if name == "reversed" => Some(Order::Reversed),
+        None if name == "shuffled" => Some(Order::Shuffled { seed: 0 }),
+        Some(("shuffled", seed)) => seed.parse().ok().map(|seed| Order::Shuffled { seed }),
+        _ => None,
+    }
 }
 
 /// `name=value`, as Snakemake's `--config` takes it.
@@ -197,6 +225,23 @@ mod tests {
             parsed.params,
             [("config".to_owned(), "file.txt".to_owned())]
         );
+    }
+
+    #[test]
+    fn orders_and_pending_limits() {
+        let parsed = parse_all(&["main.nf", "-max-pending", "4", "-order", "shuffled:7"]);
+        assert_eq!(parsed.max_pending, Some(4));
+        assert_eq!(parsed.order, Some(Order::Shuffled { seed: 7 }));
+        assert_eq!(order("reversed"), Some(Order::Reversed));
+        assert_eq!(order("shuffled"), Some(Order::Shuffled { seed: 0 }));
+        for wrong in [
+            ["-order", "random"],
+            ["-order", "shuffled:x"],
+            ["-max-pending", "0"],
+        ] {
+            let arguments = wrong.map(str::to_owned);
+            assert!(parse(&arguments).is_err(), "{wrong:?}");
+        }
     }
 
     #[test]

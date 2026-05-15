@@ -2,10 +2,10 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::{Path, PathBuf};
+use std::collections::VecDeque;
 
-use crate::{Driver, DriverError, Edge, EdgeKind, ExecutionGraph, Node, Outcome, Task, TaskId};
+use crate::recorder::Recorder;
+use crate::{Driver, DriverError, ExecutionGraph, Outcome, Task, TaskId};
 
 /// Runs tasks, one call per task. Real executors (TES, local containers) and the mock share it.
 pub trait Executor {
@@ -56,15 +56,7 @@ impl Execution {
 /// returns the graph of what ran. On an error the graph so far is kept, so that a failed run
 /// can still be shown.
 pub fn execute(workflow: &str, driver: &mut dyn Driver, executor: &mut dyn Executor) -> Execution {
-    let mut recorder = Recorder {
-        graph: ExecutionGraph {
-            language: Some(driver.language()),
-            workflow: workflow.to_owned(),
-            ..ExecutionGraph::default()
-        },
-        producers: HashMap::new(),
-        seen: HashSet::new(),
-    };
+    let mut recorder = Recorder::new(workflow, driver.language());
     let result = (|| {
         let mut queue: VecDeque<Task> = VecDeque::new();
         for task in driver.start()? {
@@ -86,87 +78,4 @@ pub fn execute(workflow: &str, driver: &mut dyn Driver, executor: &mut dyn Execu
         graph: recorder.graph,
         error: result.err(),
     }
-}
-
-struct Recorder {
-    graph: ExecutionGraph,
-    /// The task that made each output file, by its normalized local path.
-    producers: HashMap<PathBuf, TaskId>,
-    seen: HashSet<TaskId>,
-}
-
-impl Recorder {
-    fn add(&mut self, task: &Task) -> Result<(), ExecuteError> {
-        if !self.seen.insert(task.id) {
-            return Err(ExecuteError::DuplicateTask(task.id));
-        }
-        let mut edges: Vec<Edge> = Vec::new();
-        // An input with literal content comes from no task.
-        for input in task.inputs.iter().filter(|input| input.content.is_none()) {
-            if let Some(from) = self.producer(Path::new(&input.source)) {
-                let edge = Edge {
-                    from,
-                    to: task.id,
-                    kind: EdgeKind::File {
-                        path: input.path.clone(),
-                    },
-                };
-                if !edges.contains(&edge) {
-                    edges.push(edge);
-                }
-            }
-        }
-        for &from in &task.after {
-            if !edges.iter().any(|edge| edge.from == from) {
-                edges.push(Edge {
-                    from,
-                    to: task.id,
-                    kind: EdgeKind::Order,
-                });
-            }
-        }
-        self.graph.edges.extend(edges);
-        self.graph.nodes.push(Node {
-            task: task.clone(),
-            exit_code: None,
-        });
-        Ok(())
-    }
-
-    /// The task that made a path, or a directory that holds it.
-    fn producer(&self, path: &Path) -> Option<TaskId> {
-        let path = normalize(path);
-        path.ancestors()
-            .find_map(|ancestor| self.producers.get(ancestor).copied())
-    }
-
-    fn finished(&mut self, outcome: &Outcome) {
-        if let Some(node) = self
-            .graph
-            .nodes
-            .iter_mut()
-            .find(|node| node.task.id == outcome.id)
-        {
-            node.exit_code = Some(outcome.exit_code);
-        }
-        for file in &outcome.files {
-            self.producers.insert(normalize(&file.location), outcome.id);
-        }
-    }
-}
-
-/// An absolute path without `.` and `..`, so that the same file is found under both spellings.
-fn normalize(path: &Path) -> PathBuf {
-    let path = std::path::absolute(path).unwrap_or_else(|_| path.to_owned());
-    let mut normal = PathBuf::new();
-    for component in path.components() {
-        match component {
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                normal.pop();
-            }
-            other => normal.push(other),
-        }
-    }
-    normal
 }

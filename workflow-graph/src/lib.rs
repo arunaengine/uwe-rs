@@ -12,6 +12,7 @@ mod driver;
 mod engine;
 mod graph;
 pub mod mock;
+mod recorder;
 mod task;
 
 pub use driver::{Driver, DriverError, Launch};

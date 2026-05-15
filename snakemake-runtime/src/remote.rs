@@ -153,6 +153,16 @@ impl Mirrors {
         })
     }
 
+    /// A text with the local copies of files on the web replaced by their addresses.
+    pub fn describe(&self, text: &str) -> String {
+        let mut text = text.to_owned();
+        for mirror in self.mirrors.borrow().iter() {
+            let folder = format!("{}/", mirror.folder.display());
+            text = text.replace(&folder, &format!("{}/", mirror.url));
+        }
+        text
+    }
+
     /// Downloads a file of a mirror that is not there yet. Paths outside the mirrors, files
     /// that are there and files that the web does not have are left as they are.
     pub fn fetch(&self, path: &Path) -> std::io::Result<()> {

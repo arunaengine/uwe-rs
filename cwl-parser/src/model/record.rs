@@ -56,7 +56,12 @@ impl<'n> Record<'n> {
     /// Starts reading a map; `what` names the record in error messages.
     pub fn new(node: &'n Node, what: &'static str) -> Result<Self, Error> {
         let Some(entries) = node.as_map() else {
-            let message = format!("a {what} must be a map, not {}", node.kind());
+            let article = if what.starts_with(['a', 'e', 'i', 'o', 'u']) {
+                "an"
+            } else {
+                "a"
+            };
+            let message = format!("{article} {what} must be a map, not {}", node.kind());
             return Err(Error::new(&node.location, message));
         };
         Ok(Self {

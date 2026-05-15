@@ -51,6 +51,14 @@ fn rejects_unknown_references() {
     let error = checked(&files).expect_err("`y` is not defined");
     assert_eq!(error.message, "`source` refers to unknown `y`");
     assert_eq!((error.location.line, error.location.column), (9, 13));
+    // A full identifier shows as its fragment.
+    let text = WORKFLOW.replace("in: {a: x}", "in: {a: 'file:///work/workflow.cwl#step0/z'}");
+    let files = [
+        (URL, text.as_str()),
+        ("file:///work/tool.cwl", "class: CommandLineTool\n"),
+    ];
+    let error = checked(&files).expect_err("`step0/z` is not defined");
+    assert_eq!(error.message, "`source` refers to unknown `step0/z`");
 }
 
 #[test]

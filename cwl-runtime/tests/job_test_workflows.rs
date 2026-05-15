@@ -18,9 +18,14 @@ use std::time::Duration;
 
 use workflow_graph::{ExecuteError, Launch, MockTes, execute};
 
+#[path = "../../cwl-parser/tests/records/mod.rs"]
 mod records;
 
 const REJECTED: &str = include_str!("../../cwl-parser/tests/fixtures/test-workflows/rejected.txt");
+/// Documents that cwltool rejects but the loader reads; they are left out like those of
+/// `REJECTED`.
+const DIFFERENCES: &str =
+    include_str!("../../cwl-parser/tests/fixtures/test-workflows/differences.txt");
 /// Why the job files that fail here cannot run, and how cwltool rejects them, from
 /// `fixtures/job_evidence.py`.
 const EVIDENCE: &str = include_str!("fixtures/job_evidence.txt");
@@ -101,7 +106,8 @@ fn documents_run_with_their_job_files_as_recorded() {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/job_test_workflows.txt");
     let text = std::fs::read_to_string(&fixture).unwrap_or_default();
     let header: Vec<&str> = text.lines().filter(|line| line.starts_with('#')).collect();
-    let rejected: Vec<&str> = REJECTED
+    let rejected = records::reasons(REJECTED);
+    let differences: Vec<&str> = DIFFERENCES
         .lines()
         .filter(|line| !line.starts_with('#'))
         .filter_map(|line| line.split(' ').next())
@@ -121,7 +127,8 @@ fn documents_run_with_their_job_files_as_recorded() {
         let chosen = only
             .as_ref()
             .is_none_or(|only| document.contains(only.as_str()));
-        if present && chosen && !rejected.contains(&document) {
+        let known = rejected.contains_key(document) || differences.contains(&document);
+        if present && chosen && !known {
             actual.push(format!("{pair} {}", outcome(&root, document, job)));
         }
     }

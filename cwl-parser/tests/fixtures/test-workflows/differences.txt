@@ -1,5 +1,6 @@
-# Test workflows where the loader knowingly differs from `cwltool --validate`, with the reason.
-# The test-workflows test fails when one of them starts to agree, so this list stays current.
+# Test workflows that `cwltool --validate` rejects but the loader reads on purpose, with the
+# reason. They have no record in rejected.txt, so they must load; rejected.py says when cwltool
+# accepts one of them, so that this list stays current.
 realworld/collections/github.com__common-workflow-library__bio-cwl-tools/tb-profiler/tb-profiler-profile.cwl requirement: cwltool cannot satisfy SoftwareRequirement as a requirement
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/collect-seqs.cwl requirement: an Arvados requirement class, kept as written
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/from_sparql.cwl requirement: an Arvados requirement class, kept as written

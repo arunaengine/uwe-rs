@@ -1,5 +1,7 @@
-//! The records of the test workflows that cannot run, in `fixtures/graph_evidence.txt` and
-//! `fixtures/job_evidence.txt`. A record is a block of lines between empty lines: the
+//! The records of the CWL test workflows that cannot run: those that cwltool and the loader
+//! reject, in `cwl-parser/tests/fixtures/test-workflows/rejected.txt`, and those whose graph or
+//! example job fails, in `graph_evidence.txt` and `job_evidence.txt` of
+//! `cwl-runtime/tests/fixtures`. A record is a block of lines between empty lines: the
 //! workflows it is about, one per line, then `= <kind>: <why>` with one plain sentence, then
 //! the evidence that the reference tool, cwltool, fails the same way: `$` the command, and `>`
 //! the lines of its output. The kind is `invalid` (the workflow itself is broken), `missing`

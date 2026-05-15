@@ -1,5 +1,7 @@
 //! Checks the loader against `cwltool --validate` on the CWL test workflows from
-//! `just cwl-test-workflows`.
+//! `just cwl-test-workflows`: the documents of `fixtures/test-workflows/rejected.txt`, whose
+//! records say why they cannot run, must fail to load, and all others must load, including
+//! those of `differences.txt`, which cwltool rejects for the reason given there.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -9,6 +11,8 @@ use std::sync::Arc;
 
 use cwl_parser::source::Web;
 use cwl_parser::{Loader, Node, Value, yaml};
+
+mod records;
 
 const REJECTED: &str = include_str!("fixtures/test-workflows/rejected.txt");
 const DIFFERENCES: &str = include_str!("fixtures/test-workflows/differences.txt");
@@ -24,7 +28,7 @@ const SUITES: [&str; 3] = [
 fn matches_cwltool_validate() {
     let root =
         PathBuf::from(std::env::var("CWL_TEST_WORKFLOWS").expect("CWL_TEST_WORKFLOWS is set"));
-    let rejected = entries(REJECTED);
+    let rejected = records::reasons(REJECTED);
     let differences = entries(DIFFERENCES);
     let mut documents = BTreeSet::new();
     collect(&root, &root, &mut documents);
@@ -38,32 +42,34 @@ fn matches_cwltool_validate() {
         "incomplete test workflows: {count} documents"
     );
     let mut mismatches = Vec::new();
-    let mut stale = Vec::new();
     let mut agreed = 0;
     for document in &documents {
         let path = root.join(document);
         let loaded = Loader::new(Web).load_entries(&path.to_string_lossy());
         let expected = !rejected.contains_key(document.as_str());
-        let agrees = loaded.is_ok() == expected;
-        agreed += usize::from(agrees);
-        match (agrees, differences.contains_key(document.as_str())) {
-            (true, true) => stale.push(document.clone()),
-            (false, false) => match loaded {
-                Ok(_) => mismatches.push(format!("{document}: loads, but cwltool rejects it")),
-                Err(error) => mismatches.push(format!("{document}: {error}")),
-            },
-            _ => {}
+        if loaded.is_ok() == expected {
+            agreed += usize::from(!differences.contains_key(document.as_str()));
+            continue;
         }
+        mismatches.push(match loaded {
+            Ok(_) => format!("{document}: loads, but its record in rejected.txt says it cannot"),
+            Err(error) => format!("{document}: {error}"),
+        });
     }
     println!(
         "{count} documents, {agreed} agree with cwltool ({:.1}%), {} known differences",
         agreed as f64 * 100.0 / count as f64,
-        count - agreed - mismatches.len()
+        differences.len()
     );
+    let misplaced: Vec<&str> = differences
+        .keys()
+        .copied()
+        .filter(|document| rejected.contains_key(document) || !documents.contains(*document))
+        .collect();
     assert!(
-        stale.is_empty(),
-        "differences that now agree:\n{}",
-        stale.join("\n")
+        misplaced.is_empty(),
+        "differences.txt names documents that rejected.txt has too, or that are gone:\n{}",
+        misplaced.join("\n")
     );
     let failures = mismatches.len();
     assert!(
@@ -176,4 +182,10 @@ fn normalize(path: &Path) -> PathBuf {
         }
     }
     normal
+}
+
+#[test]
+fn every_rejected_document_has_a_record_with_its_kind() {
+    let reasons = records::reasons(REJECTED);
+    assert!(reasons.len() > 200, "{} records", reasons.len());
 }

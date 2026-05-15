@@ -225,7 +225,6 @@ realworld/collections/github.com__common-workflow-library__bio-cwl-tools/hopach/
 $ cwltool --validate --skip-schemas --enable-dev realworld/collections/github.com__common-workflow-library__bio-cwl-tools/hopach/hopach.cwl
 > ERROR Tool definition failed validation:
 > mapping values are not allowed here
-realworld/collections/github.com__common-workflow-library__bio-cwl-tools/tb-profiler/tb-profiler-profile.cwl
 
 realworld/collections/github.com__kids-first__kf-alignment-workflow/dev/input-agnostic/kfdrc_bwamem_naive.cwl
 = missing: the document names `../tools/alignment_gate.cwl`, `../tools/bwa_mem_naive.cwl` and `kfdrc_process_bam.cwl` and more, which its repository does not have
@@ -911,9 +910,6 @@ $ cwltool --validate --skip-schemas --enable-dev realworld/sources/github.com__a
 > Expected class 'org.w3id.cwl.cwl.MultipleInputFeatureRequirement' but this is 'http://arvados.org/cwl#APIRequirement'
 > - tried StepInputExpressionRequirement but
 > Expected class 'org.w3id.cwl.cwl.StepInputExpressionRequirement' but this is 'http://arvados.org/cwl#APIRequirement'
-realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/collect-seqs.cwl
-realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/from_sparql.cwl
-realworld/sources/github.com__arvados__bh20-seq-resource/workflows/pangenome-generate/query-to-gfa.cwl
 
 realworld/sources/github.com__arvados__bh20-seq-resource/workflows/phylogeny/phylogeny.cwl
 = invalid: the file is not valid YAML: found duplicate key "threads"
@@ -1243,7 +1239,6 @@ realworld/sources/gitlab.com__m-unlock__cwl/tools/gunc/gunc.cwl
 $ cwltool --validate --skip-schemas --enable-dev realworld/sources/gitlab.com__m-unlock__cwl/tools/gunc/gunc.cwl
 > ERROR Tool definition failed validation:
 > "outputs" section is not valid.
-realworld/sources/gitlab.com__m-unlock__cwl/tools/interproscan/interproscan.cwl
 
 realworld/sources/gitlab.com__m-unlock__cwl/tools/irods/irods_manager.cwl
 = invalid: cwltool rejects the document: invalid field 'irods', expected one of: 'class', 'packages'

@@ -21,9 +21,14 @@ use cwl_parser::{Loader, Node, Value, yaml};
 use cwl_runtime::{CwlDriver, Options};
 use workflow_graph::{ExecuteError, Launch, MockTes, execute};
 
+#[path = "../../cwl-parser/tests/records/mod.rs"]
 mod records;
 
 const REJECTED: &str = include_str!("../../cwl-parser/tests/fixtures/test-workflows/rejected.txt");
+/// Documents that cwltool rejects but the loader reads; like those of `REJECTED`, they have no
+/// graph to compare with cwltool's.
+const DIFFERENCES: &str =
+    include_str!("../../cwl-parser/tests/fixtures/test-workflows/differences.txt");
 /// Why the documents that fail here cannot run, and how cwltool fails on them, from
 /// `fixtures/graph_evidence.py`.
 const EVIDENCE: &str = include_str!("fixtures/graph_evidence.txt");
@@ -261,7 +266,8 @@ fn test_workflows_build_graphs_as_recorded() {
     let text = std::fs::read_to_string(&fixture).unwrap_or_default();
     let header: Vec<&str> = text.lines().filter(|line| line.starts_with('#')).collect();
     let expected = entries(&text);
-    let rejected = entries(REJECTED);
+    let rejected = records::reasons(REJECTED);
+    let differences = entries(DIFFERENCES);
     let mut documents = BTreeSet::new();
     collect(&root, &root, &mut documents);
     for suite in SUITES {
@@ -271,7 +277,7 @@ fn test_workflows_build_graphs_as_recorded() {
     let only = std::env::var("CWL_DOCUMENT").ok();
     let mut actual = Vec::new();
     for document in &documents {
-        if rejected.contains_key(document.as_str()) {
+        if rejected.contains_key(document.as_str()) || differences.contains_key(document.as_str()) {
             continue;
         }
         if only

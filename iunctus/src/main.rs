@@ -15,7 +15,7 @@ use std::process::ExitCode;
 
 use workflow_graph::{
     Driver, DriverError, ExecuteError, Execution, ExecutionGraph, Executor, Language, Launch, Mock,
-    MockTes,
+    MockTes, RunOptions,
 };
 
 use crate::arguments::Arguments;
@@ -135,10 +135,15 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<Execution, Failure> {
     let mut executor = executor(arguments, &run, !quiet)?;
     let mut driver = driver(language, &launch, &run, quiet)?;
     let workflow = target.to_string_lossy();
-    Ok(workflow_graph::execute(
+    let options = RunOptions {
+        max_pending: arguments.max_pending.unwrap_or(1),
+        order: arguments.order.unwrap_or_default(),
+    };
+    Ok(workflow_graph::execute_with(
         &workflow,
         driver.as_mut(),
         executor.as_mut(),
+        &options,
     ))
 }
 
@@ -241,6 +246,9 @@ options:
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it
   -executor mock-tes|mock|local       mock-tes (the default) writes TES task documents
   -graph <file>                       writes the execution graph, as DOT for a .dot file
+  -max-pending <n>                    lets up to n tasks be pending at once (default 1)
+  -order asked|reversed|shuffled[:<seed>]
+                                      the order in which pending tasks finish
   -store <directory>                  the cache of the local executor
   -stub                               runs the stubs of tasks
   -profile <names>, -c <file>         Nextflow profiles and config files

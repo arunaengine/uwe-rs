@@ -134,6 +134,25 @@ fn runs_write_the_graph_and_tes_documents() {
 }
 
 #[test]
+fn runs_take_a_pending_limit_and_an_order() {
+    let directory = pipeline();
+    let arguments = [
+        "graph",
+        "main.nf",
+        "-format",
+        "json",
+        "-max-pending",
+        "4",
+        "-order",
+        "shuffled:3",
+    ];
+    let (code, stdout, stderr) = iunctus(directory.path(), &arguments);
+    assert_eq!(code, 0, "{stderr}");
+    let graph: ExecutionGraph = serde_json::from_str(&stdout).expect("the graph as JSON");
+    check(&graph);
+}
+
+#[test]
 fn languages_can_be_named() {
     let directory = pipeline();
     std::fs::rename(

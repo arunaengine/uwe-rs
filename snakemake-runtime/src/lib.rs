@@ -18,6 +18,7 @@ mod pathvars;
 mod pattern;
 mod plan;
 mod profile;
+mod remote;
 mod resources;
 mod rule;
 mod schema;

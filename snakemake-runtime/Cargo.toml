@@ -16,6 +16,7 @@ fancy-regex.workspace = true
 indexmap.workspace = true
 jsonschema.workspace = true
 python-evaluator.workspace = true
+reqwest.workspace = true
 serde_json.workspace = true
 snakemake-parser.workspace = true
 workflow-graph.workspace = true

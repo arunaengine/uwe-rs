@@ -5,6 +5,7 @@
 
 use std::any::Any;
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 
 use indexmap::IndexMap;
@@ -1125,9 +1126,12 @@ impl Native for ScatterGather {
     }
 }
 
-/// A module source given by `github(...)`, `gitlab(...)` or `gitfile(...)`.
+/// A workflow file in a git repository: on GitHub or GitLab, given by `github(...)` or
+/// `gitlab(...)`, or on this machine, given by `gitfile(...)`.
 pub struct RemoteSource {
     pub url: String,
+    /// The local copy of a file on the web, which is downloaded when it is read.
+    pub local: Option<PathBuf>,
 }
 
 impl Native for RemoteSource {
@@ -1144,32 +1148,63 @@ impl Native for RemoteSource {
     }
 }
 
-fn hosted(provider: &'static str) -> Value {
+fn source_error(message: &str) -> Error {
+    Error::new("SourceFileError", message)
+}
+
+/// `github(repo, path, tag=..., branch=..., commit=..., host=...)`, and the same for `gitlab`
+/// and `gitfile`, with Snakemake's checks of the arguments.
+fn hosted(provider: &'static str, state: Rc<RefCell<State>>) -> Value {
     Value::builtin(provider, move |interpreter, mut args| {
-        let repository = args
-            .take(0, "repo")
-            .map(|value| interpreter.to_str(&value))
-            .transpose()?
-            .unwrap_or_default();
-        let path = args
-            .take(1, "path")
-            .map(|value| interpreter.to_str(&value))
-            .transpose()?
-            .unwrap_or_default();
-        let reference = ["tag", "branch", "commit"]
-            .iter()
-            .find_map(|key| args.take_keyword(key))
-            .map(|value| interpreter.to_str(&value))
-            .transpose()?
-            .unwrap_or_else(|| "main".into());
-        let url = match provider {
-            "github" => {
-                format!("https://raw.githubusercontent.com/{repository}/{reference}/{path}")
-            }
-            "gitlab" => format!("https://gitlab.com/{repository}/-/raw/{reference}/{path}"),
-            _ => format!("git+file://{repository}/{path}@{reference}"),
+        let Some(repository) = args.take(0, "repo") else {
+            return Err(source_error("repo must be given"));
         };
-        Ok(Value::native(RemoteSource { url }))
+        let repository = interpreter.to_str(&repository)?;
+        let Some(path) = args.take(1, "path") else {
+            return Err(source_error("path must be given"));
+        };
+        let path = interpreter.to_str(&path)?;
+        let mut references = Vec::new();
+        for key in ["tag", "branch", "commit"] {
+            if let Some(value) = args.take_keyword(key)
+                && !value.is_none()
+            {
+                references.push(interpreter.to_str(&value)?);
+            }
+        }
+        let [reference] = references.as_slice() else {
+            return Err(source_error(
+                "exactly one of tag, branch, or commit must be specified.",
+            ));
+        };
+        if provider == "gitfile" {
+            return Ok(Value::native(RemoteSource {
+                url: format!("git+file://{repository}/{path}@{reference}"),
+                local: None,
+            }));
+        }
+        let (owner, name) = repository.split_once('/').unwrap_or_default();
+        if owner.is_empty() || name.is_empty() {
+            return Err(source_error(
+                "repo {} is not a valid repo specification (must be given as owner/name).",
+            ));
+        }
+        let host = match args.take_keyword("host") {
+            Some(host) if !host.is_none() => interpreter.to_str(&host)?,
+            _ => format!("{provider}.com"),
+        };
+        if host.starts_with("https://") || host.starts_with("http://") {
+            return Err(workflow_error(format!(
+                "host must be given as domain name without protocol prefix (e.g. github.com, but found {host})  for git-hosted source file {path} in repo {repository}."
+            )));
+        }
+        let mirrors = state.borrow().mirrors.clone();
+        let local = mirrors.hosted(provider, &host, &repository, reference, &path);
+        let url = mirrors.address(&local).unwrap_or_default();
+        Ok(Value::native(RemoteSource {
+            url,
+            local: Some(local),
+        }))
     })
 }
 
@@ -1279,9 +1314,9 @@ pub fn install(globals: &Rc<Scope>, state: &Rc<RefCell<State>>) {
             Ok(args.take_keyword("threads").unwrap_or(Value::Int(1)))
         }),
     );
-    globals.set("github", hosted("github"));
-    globals.set("gitlab", hosted("gitlab"));
-    globals.set("gitfile", hosted("gitfile"));
+    globals.set("github", hosted("github", state.clone()));
+    globals.set("gitlab", hosted("gitlab", state.clone()));
+    globals.set("gitfile", hosted("gitfile", state.clone()));
     globals.set(
         "shell",
         Value::native(Shell {

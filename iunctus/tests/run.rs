@@ -70,6 +70,20 @@ fn runs_and_reuses_tasks() {
 }
 
 #[test]
+fn real_runs_need_an_image_for_each_task() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let script = "process P {\n    script:\n    'true'\n}\nworkflow {\n    P()\n}\n";
+    std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
+    // The check comes before the container engine, so this test needs no Docker.
+    let (code, output) = iunctus(directory.path(), &["run", "main.nf", "-executor", "local"]);
+    assert_eq!(code, 1, "{output}");
+    assert!(
+        output.contains("task P: the task names no container image"),
+        "{output}"
+    );
+}
+
+#[test]
 fn a_bare_script_name_has_the_launch_directory_as_project() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(

@@ -21,6 +21,7 @@ use snakemake_parser::keyword::{GlobalKeyword, ModuleKeyword, RuleKeyword};
 
 use crate::functions;
 use crate::pathvars::{Level, Pathvars};
+use crate::remote::Mirrors;
 use crate::rule::{Action, Items, Rule, retag};
 
 /// A `WorkflowError`, the error Snakemake raises for mistakes in a workflow.
@@ -181,12 +182,19 @@ pub struct State {
     pub modifiers: Vec<Modifier>,
     /// The workflow profile, which Snakemake reads as default command-line options.
     pub profile: crate::profile::Profile,
+    /// Local copies of workflow files on the web.
+    pub mirrors: Rc<Mirrors>,
     /// Parsed Snakefiles by path, for the statements their code reaches.
     pub snakefiles: HashMap<Rc<str>, Rc<Snakefile>>,
 }
 
 impl State {
-    pub fn new(globals: Rc<Scope>, main_snakefile: PathBuf, workdir: PathBuf) -> State {
+    pub fn new(
+        globals: Rc<Scope>,
+        main_snakefile: PathBuf,
+        workdir: PathBuf,
+        mirrors: Rc<Mirrors>,
+    ) -> State {
         State {
             rules: Vec::new(),
             infos: Vec::new(),
@@ -212,6 +220,7 @@ impl State {
             shell_executable: None,
             modifiers: vec![Modifier::root(globals)],
             profile: crate::profile::Profile::default(),
+            mirrors,
             snakefiles: HashMap::new(),
         }
     }
@@ -341,6 +350,38 @@ impl StatementHook for Hook {
 
 impl Hook {
     /// Includes a Snakefile: parses it and runs its code with the workflow's globals.
+    /// The local path of a Snakefile that `include:` or a module names: a file in a git
+    /// repository (`github(...)` or `gh:owner/repo@tag:path`), a web address, or a path
+    /// relative to `base`. Files on the web are downloaded when they are read.
+    fn source_path(
+        &self,
+        interpreter: &mut Interpreter,
+        value: &Value,
+        base: &Path,
+    ) -> Result<PathBuf, Error> {
+        if let Some(remote) = value.as_native::<functions::RemoteSource>() {
+            return remote.local.clone().ok_or_else(|| {
+                Error::unsupported("Snakefiles in local git repositories (gitfile(...))")
+            });
+        }
+        let path = python_evaluator::modules::path_text(interpreter, value)?;
+        let mirrors = self.state.borrow().mirrors.clone();
+        if let Some(local) = mirrors.shorthand(&path) {
+            return Ok(local);
+        }
+        if path.contains("://") {
+            return mirrors
+                .url(&path)
+                .ok_or_else(|| Error::unsupported(format!("Snakefiles at addresses like {path}")));
+        }
+        let full = if Path::new(&path).is_absolute() {
+            PathBuf::from(&path)
+        } else {
+            base.join(&path)
+        };
+        Ok(python_evaluator::host::normalize(&full))
+    }
+
     pub fn include(
         &self,
         interpreter: &mut Interpreter,
@@ -418,20 +459,8 @@ impl Hook {
         let first = || args.positional.first().cloned().unwrap_or(Value::None);
         match directive.keyword {
             GlobalKeyword::Include => {
-                let value = first();
-                if value.as_native::<functions::RemoteSource>().is_some() {
-                    return Err(Error::unsupported(
-                        "including Snakefiles from remote repositories",
-                    ));
-                }
-                let path = python_evaluator::modules::path_text(interpreter, &value)?;
                 let base = self.state.borrow().current_basedir();
-                let full = if Path::new(&path).is_absolute() {
-                    PathBuf::from(&path)
-                } else {
-                    base.join(&path)
-                };
-                let full = python_evaluator::host::normalize(&full);
+                let full = self.source_path(interpreter, &first(), &base)?;
                 self.include(interpreter, &full, false)?;
             }
             GlobalKeyword::WorkingDirectory => {
@@ -1188,21 +1217,7 @@ impl Hook {
                 "Module statement must either define snakefile or meta_wrapper to use.",
             ));
         };
-        if snakefile.as_native::<functions::RemoteSource>().is_some() {
-            return Err(Error::unsupported(
-                "modules from remote repositories (github(...))",
-            ));
-        }
-        let path = python_evaluator::modules::path_text(interpreter, &snakefile)?;
-        if path.contains("://") {
-            return Err(Error::unsupported("modules from remote repositories"));
-        }
-        let full = if Path::new(&path).is_absolute() {
-            PathBuf::from(&path)
-        } else {
-            spec.basedir.join(&path)
-        };
-        let full = python_evaluator::host::normalize(&full);
+        let full = self.source_path(interpreter, &snakefile, &spec.basedir)?;
         let all = rules.iter().any(|rule| rule == "*");
         if alias.as_ref().is_some_and(|alias| !alias.contains('*')) && (all || rules.len() > 1) {
             return Err(Error::new(

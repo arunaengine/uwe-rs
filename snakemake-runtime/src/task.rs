@@ -59,8 +59,9 @@ pub fn image_name(text: &str) -> String {
 }
 
 /// The path of a source file of a rule, relative to the working directory when it is inside,
-/// and its absolute location.
-fn source_file(rule: &Rule, path: &str, workdir: &Path) -> (String, String) {
+/// and its absolute location: the web address for a file of a remote module.
+fn source_file(rule: &Rule, path: &str, setting: &TaskSetting) -> (String, String) {
+    let workdir = setting.workdir;
     if path.contains("://") {
         let name = path.rsplit('/').next().unwrap_or(path).to_owned();
         return (name, path.to_owned());
@@ -71,6 +72,9 @@ fn source_file(rule: &Rule, path: &str, workdir: &Path) -> (String, String) {
         rule.basedir.join(path)
     };
     let absolute = python_evaluator::host::normalize(&absolute);
+    if let Some(address) = setting.state.mirrors.address(&absolute) {
+        return source_file(rule, &address, setting);
+    }
     let relative = absolute
         .strip_prefix(workdir)
         .map(|relative| relative.to_string_lossy().into_owned())
@@ -309,7 +313,7 @@ pub fn build(
         }
         Action::Script(value) | Action::Notebook(value) => {
             let path = format(interpreter, value)?;
-            let (relative, source) = source_file(rule, &path, setting.workdir);
+            let (relative, source) = source_file(rule, &path, setting);
             command = if matches!(rule.action, Action::Notebook(_)) {
                 vec![
                     "jupyter".into(),
@@ -358,7 +362,7 @@ pub fn build(
         }
         Action::Cwl(value) => {
             let path = format(interpreter, value)?;
-            let (relative, source) = source_file(rule, &path, setting.workdir);
+            let (relative, source) = source_file(rule, &path, setting);
             command = vec!["cwltool".into(), relative.clone()];
             inputs.push(Input {
                 path: relative,
@@ -386,7 +390,7 @@ pub fn build(
             let conda = pattern::apply(&conda, &job.wildcards).unwrap_or(conda);
             let is_file = conda.ends_with(".yaml") || conda.ends_with(".yml");
             let reference = if is_file && !conda.contains("://") {
-                source_file(rule, &conda, setting.workdir).0
+                source_file(rule, &conda, setting).0
             } else {
                 conda
             };

@@ -3216,6 +3216,7 @@ dependencies = [
  "indexmap",
  "jsonschema",
  "python-evaluator",
+ "reqwest",
  "serde_json",
  "snakemake-parser",
  "tempfile",

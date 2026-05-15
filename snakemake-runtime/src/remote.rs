@@ -1,0 +1,258 @@
+//! Workflow files on the web, like the Snakefile of a module from `github(...)` or an
+//! `include:` of a web address. Snakemake clones the git repository or downloads the file.
+//! iunctus mirrors each repository at its reference, or each web server, into a folder of
+//! downloads, and downloads a file the first time the workflow reads it. So paths relative to
+//! a remote Snakefile, like its includes, config schemas and scripts, work as local ones do.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::path::{Component, Path, PathBuf};
+
+/// A local folder that mirrors a place on the web.
+struct Mirror {
+    folder: PathBuf,
+    /// The web address of the folder, without a slash at the end.
+    url: String,
+}
+
+/// The mirrors of a run and the files that the web does not have.
+pub struct Mirrors {
+    downloads: PathBuf,
+    mirrors: RefCell<Vec<Mirror>>,
+    missing: RefCell<HashSet<PathBuf>>,
+}
+
+/// A folder name for each part of a web address: parts like `..` or empty ones become `_`.
+fn folder_of(parts: &[&str]) -> PathBuf {
+    parts
+        .iter()
+        .flat_map(|part| part.split('/'))
+        .map(|part| match part {
+            "" | "." | ".." => "_",
+            part => part,
+        })
+        .collect()
+}
+
+impl Mirrors {
+    pub fn new(downloads: PathBuf) -> Mirrors {
+        Mirrors {
+            downloads,
+            mirrors: RefCell::new(Vec::new()),
+            missing: RefCell::new(HashSet::new()),
+        }
+    }
+
+    fn add(&self, folder: PathBuf, url: String) -> PathBuf {
+        let mut mirrors = self.mirrors.borrow_mut();
+        if !mirrors.iter().any(|mirror| mirror.folder == folder) {
+            mirrors.push(Mirror {
+                folder: folder.clone(),
+                url: url.trim_end_matches('/').to_owned(),
+            });
+        }
+        folder
+    }
+
+    /// The local path of a file in a git repository on GitHub or GitLab at a tag, branch or
+    /// commit, with the web addresses of its raw files as Snakemake builds them.
+    pub fn hosted(
+        &self,
+        provider: &str,
+        host: &str,
+        repository: &str,
+        reference: &str,
+        path: &str,
+    ) -> PathBuf {
+        let url = match (provider, host) {
+            ("github", "github.com") => {
+                format!("https://raw.githubusercontent.com/{repository}/{reference}")
+            }
+            ("github", host) => format!("https://{host}/{repository}/raw/{reference}"),
+            (_, host) => format!("https://{host}/{repository}/-/raw/{reference}"),
+        };
+        let folder = self
+            .downloads
+            .join(folder_of(&[host, repository, "@", reference]));
+        self.add(folder, url).join(path.trim_matches('/'))
+    }
+
+    /// The local path of a file at a web address, or `None` for other paths.
+    pub fn url(&self, address: &str) -> Option<PathBuf> {
+        let (scheme, rest) = address.split_once("://")?;
+        if !matches!(scheme, "http" | "https") {
+            return None;
+        }
+        let (server, path) = rest.split_once('/').unwrap_or((rest, ""));
+        let folder = self.downloads.join(folder_of(&[scheme, server]));
+        Some(
+            self.add(folder, format!("{scheme}://{server}"))
+                .join(folder_of(&[path])),
+        )
+    }
+
+    /// The local path of a file that Snakemake's short form names, like
+    /// `gh:owner/repo@v1.0:workflow/Snakefile` or `gl:host:group/repo@main`; the path is
+    /// `workflow/Snakefile` unless given. `None` for other texts.
+    pub fn shorthand(&self, text: &str) -> Option<PathBuf> {
+        if text.contains("://") {
+            return None;
+        }
+        let (provider, remainder) = text.split_once(':')?;
+        let provider = match provider {
+            "gh" => "github",
+            "gl" => "gitlab",
+            _ => return None,
+        };
+        let slash = remainder.find('/')?;
+        let (host, remainder) = match remainder.find(':') {
+            Some(colon) if colon < slash => {
+                let host = &remainder[..colon];
+                if host.is_empty() {
+                    return None;
+                }
+                (Some(host), &remainder[colon + 1..])
+            }
+            _ => (None, remainder),
+        };
+        let (repository, reference_and_path) = remainder.split_once('@')?;
+        if repository.is_empty() || reference_and_path.is_empty() || !repository.contains('/') {
+            return None;
+        }
+        let (reference, path) = match reference_and_path.rsplit_once(':') {
+            Some((reference, path)) if !path.is_empty() => (reference, path),
+            Some((reference, _)) => (reference, "workflow/Snakefile"),
+            None => (reference_and_path, "workflow/Snakefile"),
+        };
+        if reference.is_empty() {
+            return None;
+        }
+        let host = host.unwrap_or(if provider == "github" {
+            "github.com"
+        } else {
+            "gitlab.com"
+        });
+        Some(self.hosted(provider, host, repository, reference, path))
+    }
+
+    /// The web address of a local path in a mirror.
+    pub fn address(&self, path: &Path) -> Option<String> {
+        let mirrors = self.mirrors.borrow();
+        mirrors.iter().find_map(|mirror| {
+            let rest = path.strip_prefix(&mirror.folder).ok()?;
+            let parts: Vec<String> = rest
+                .components()
+                .map(|component| match component {
+                    Component::Normal(part) => Some(part.to_string_lossy().into_owned()),
+                    _ => None,
+                })
+                .collect::<Option<_>>()?;
+            Some(format!("{}/{}", mirror.url, parts.join("/")))
+        })
+    }
+
+    /// Downloads a file of a mirror that is not there yet. Paths outside the mirrors, files
+    /// that are there and files that the web does not have are left as they are.
+    pub fn fetch(&self, path: &Path) -> std::io::Result<()> {
+        if path.exists() || self.missing.borrow().contains(path) {
+            return Ok(());
+        }
+        let Some(url) = self.address(path) else {
+            return Ok(());
+        };
+        match download(&url)? {
+            Some(data) => {
+                let folder = path.parent().unwrap_or(Path::new("/"));
+                std::fs::create_dir_all(folder)?;
+                // Another run may download the same file: write a copy, then rename it.
+                let partial = folder.join(format!(
+                    ".{}.{}.part",
+                    path.file_name().unwrap_or_default().to_string_lossy(),
+                    std::process::id()
+                ));
+                std::fs::write(&partial, data)?;
+                std::fs::rename(&partial, path)
+            }
+            None => {
+                self.missing.borrow_mut().insert(path.to_owned());
+                Ok(())
+            }
+        }
+    }
+}
+
+/// The content at a web address, or `None` when the server does not have it.
+fn download(url: &str) -> std::io::Result<Option<Vec<u8>>> {
+    let failed =
+        |error: reqwest::Error| std::io::Error::other(format!("cannot download {url}: {error}"));
+    let client = reqwest::blocking::Client::builder()
+        .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(failed)?;
+    let response = client.get(url).send().map_err(failed)?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let response = response.error_for_status().map_err(failed)?;
+    Ok(Some(response.bytes().map_err(failed)?.to_vec()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn remote_files_have_local_paths_and_web_addresses() {
+        let mirrors = Mirrors::new(PathBuf::from("/downloads"));
+        let snakefile = mirrors.hosted(
+            "github",
+            "github.com",
+            "owner/repo",
+            "v1.0",
+            "workflow/Snakefile",
+        );
+        assert_eq!(
+            snakefile,
+            Path::new("/downloads/github.com/owner/repo/@/v1.0/workflow/Snakefile")
+        );
+        assert_eq!(
+            mirrors.address(&snakefile.with_file_name("rules/common.smk")),
+            Some(
+                "https://raw.githubusercontent.com/owner/repo/v1.0/workflow/rules/common.smk"
+                    .into()
+            )
+        );
+        let gitlab = mirrors.hosted("gitlab", "gitlab.com", "group/repo", "main", "Snakefile");
+        assert_eq!(
+            mirrors.address(&gitlab),
+            Some("https://gitlab.com/group/repo/-/raw/main/Snakefile".into())
+        );
+        let included = mirrors
+            .url("https://example.org/a/../Snakefile")
+            .expect("a web address");
+        assert_eq!(
+            included,
+            Path::new("/downloads/https/example.org/a/_/Snakefile")
+        );
+        assert_eq!(mirrors.url("/local/Snakefile"), None);
+        assert_eq!(
+            mirrors.shorthand("gh:owner/repo@v1.0"),
+            Some(PathBuf::from(
+                "/downloads/github.com/owner/repo/@/v1.0/workflow/Snakefile"
+            ))
+        );
+        assert_eq!(
+            mirrors.shorthand("gl:example.org:group/repo@main:Snakefile"),
+            Some(PathBuf::from(
+                "/downloads/example.org/group/repo/@/main/Snakefile"
+            ))
+        );
+        assert_eq!(mirrors.shorthand("gh:repo@main"), None);
+        assert_eq!(mirrors.shorthand("rules/gh:x.smk"), None);
+        assert_eq!(mirrors.address(Path::new("/elsewhere/Snakefile")), None);
+    }
+}

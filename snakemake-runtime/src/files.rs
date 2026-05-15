@@ -12,6 +12,7 @@ use std::rc::Rc;
 use python_evaluator::{Command, CommandOutcome, Error, FileKind, Host, LocalHost, Stat};
 
 use crate::commands::CommandRunner;
+use crate::remote::Mirrors;
 
 /// An output of a finished task: where it is now, and whether it is a directory.
 #[derive(Clone, Debug)]
@@ -22,6 +23,8 @@ pub struct Produced {
 
 pub struct WorkflowFiles {
     local: LocalHost,
+    /// Local copies of workflow files on the web, downloaded when they are read.
+    mirrors: Rc<Mirrors>,
     /// Outputs of finished tasks by their absolute path in the working directory.
     produced: RefCell<BTreeMap<PathBuf, Produced>>,
     /// Output of `print` and of logging while the workflow is planned.
@@ -31,9 +34,10 @@ pub struct WorkflowFiles {
 }
 
 impl WorkflowFiles {
-    pub fn new(workdir: &Path) -> WorkflowFiles {
+    pub fn new(workdir: &Path, mirrors: Rc<Mirrors>) -> WorkflowFiles {
         WorkflowFiles {
             local: LocalHost::new(workdir),
+            mirrors,
             produced: RefCell::new(BTreeMap::new()),
             messages: RefCell::new(Vec::new()),
             commands: RefCell::new(None),
@@ -80,7 +84,10 @@ impl Host for WorkflowFiles {
     fn read(&self, path: &Path) -> std::io::Result<Vec<u8>> {
         match self.location(path) {
             Some((location, _)) => std::fs::read(location),
-            None => self.local.read(path),
+            None => {
+                self.mirrors.fetch(path)?;
+                self.local.read(path)
+            }
         }
     }
 
@@ -97,6 +104,8 @@ impl Host for WorkflowFiles {
                 modified: 0.0,
             });
         }
+        // A file on the web that cannot be downloaded counts as missing.
+        let _ = self.mirrors.fetch(path);
         if let Some(stat) = self.local.stat(path) {
             return Some(stat);
         }

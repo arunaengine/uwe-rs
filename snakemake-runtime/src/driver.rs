@@ -17,6 +17,7 @@ use workflow_graph::{Driver, DriverError, Language, Launch, Outcome, Task, TaskI
 use crate::commands::{Channel, CommandRunner, Reply, Request};
 use crate::files::{Produced, WorkflowFiles};
 use crate::plan::Planner;
+use crate::remote::Mirrors;
 use crate::workflow::{Hook, State};
 
 /// The Snakefile of a workflow folder, as Snakemake looks for it.
@@ -89,7 +90,10 @@ impl Session {
                 target.display()
             )));
         };
-        let files = Rc::new(WorkflowFiles::new(&workdir));
+        let mirrors = Rc::new(Mirrors::new(
+            launch.scratch.join("downloads").join("snakemake"),
+        ));
+        let files = Rc::new(WorkflowFiles::new(&workdir, mirrors.clone()));
         let mut interpreter = Interpreter::new(files.clone());
         interpreter.stack_limit = 480 << 20;
         let globals = interpreter.new_globals("snakemake.workflow", None);
@@ -97,6 +101,7 @@ impl Session {
             globals.clone(),
             snakefile.clone(),
             workdir.clone(),
+            mirrors,
         )));
         crate::functions::install(&globals, &state);
         crate::utils::register(&mut interpreter, &state, &globals);

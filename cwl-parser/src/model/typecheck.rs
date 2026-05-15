@@ -136,8 +136,20 @@ fn check_sink(
             continue;
         };
         if !fits(source, &sink.value_type, link_merge, sink.pick_value) {
+            let mut ways = Vec::new();
+            if let Some(pick) = sink.pick_value {
+                ways.push(format!("pickValue {}", pick_name(pick)));
+            }
+            if let Some(merge) = link_merge {
+                ways.push(format!("linkMerge {}", merge_name(merge)));
+            }
+            let with = if ways.is_empty() {
+                String::new()
+            } else {
+                format!(" with {}", ways.join(" and "))
+            };
             let message = format!(
-                "the source `{}` of type {} does not fit the sink `{}` of type {}",
+                "the source `{}` of type {} does not fit the sink `{}` of type {}{with}",
                 short_name(id),
                 describe(source),
                 sink.name,
@@ -147,6 +159,23 @@ fn check_sink(
         }
     }
     Ok(())
+}
+
+/// The name of a `pickValue` method as documents write it.
+fn pick_name(pick: PickValue) -> &'static str {
+    match pick {
+        PickValue::FirstNonNull => "first_non_null",
+        PickValue::OnlyNonNull => "the_only_non_null",
+        PickValue::AllNonNull => "all_non_null",
+    }
+}
+
+/// The name of a `linkMerge` method as documents write it.
+fn merge_name(merge: LinkMerge) -> &'static str {
+    match merge {
+        LinkMerge::MergeNested => "merge_nested",
+        LinkMerge::MergeFlattened => "merge_flattened",
+    }
 }
 
 /// cwltool's `check_types` without its warnings: whether a source can reach its sink.

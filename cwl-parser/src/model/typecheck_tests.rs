@@ -12,6 +12,11 @@ const TOOL: &str = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: echo\
 
 /// Whether a workflow with these inputs, step inputs and step fields loads.
 fn loads(inputs: &str, links: &str, step: &str) -> bool {
+    error(inputs, links, step).is_none()
+}
+
+/// The error of a workflow with these inputs, step inputs and step fields, if any.
+fn error(inputs: &str, links: &str, step: &str) -> Option<String> {
     let workflow = format!(
         "cwlVersion: v1.2\nclass: Workflow\nrequirements: {{ScatterFeatureRequirement: {{}}, \
          MultipleInputFeatureRequirement: {{}}}}\ninputs:\n  {inputs}\noutputs: []\nsteps:\n  \
@@ -23,7 +28,8 @@ fn loads(inputs: &str, links: &str, step: &str) -> bool {
     memory.insert("file:///work/workflow.cwl", &workflow);
     Loader::new(memory)
         .load("file:///work/workflow.cwl")
-        .is_ok()
+        .err()
+        .map(|error| error.message)
 }
 
 #[test]
@@ -71,11 +77,14 @@ fn wraps_scattered_inputs_in_arrays() {
 #[test]
 fn applies_pick_value_before_the_check() {
     let strings = "x: string\n  y: string";
-    assert!(!loads(
-        strings,
-        "s: {source: [x, y], pickValue: all_non_null}",
-        ""
-    ));
+    let message = error(strings, "s: {source: [x, y], pickValue: all_non_null}", "");
+    assert!(
+        message
+            .as_ref()
+            .is_some_and(|message| message
+                .ends_with(" with pickValue all_non_null and linkMerge merge_nested")),
+        "{message:?}"
+    );
     let files = "x: File?\n  y: File?";
     assert!(loads(
         files,

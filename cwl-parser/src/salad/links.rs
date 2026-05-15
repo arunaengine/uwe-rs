@@ -104,8 +104,10 @@ fn check_link(
     }
     if let Some(levels) = context::reference_scope(field) {
         let found = search_scopes(link, scope, levels, ids);
+        // An identifier of the document, like `file:///w.cwl#main/step/out`, by its fragment.
+        let shown = link.rsplit_once('#').map_or(link, |(_, fragment)| fragment);
         return found
-            .ok_or_else(|| Error::new(at, format!("`{field}` refers to unknown `{link}`")));
+            .ok_or_else(|| Error::new(at, format!("`{field}` refers to unknown `{shown}`")));
     }
     if documents.exists(link) {
         return Ok(link.to_owned());

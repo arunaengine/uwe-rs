@@ -201,6 +201,12 @@ fn rejects_unknown_fields() {
     );
     assert_eq!(error.message, "the input parameter has no field `colour`");
     assert_eq!((error.location.line, error.location.column), (4, 19));
+    let error =
+        failure("cwlVersion: v1.2\nclass: CommandLineTool\ninputs: []\noutputs: [report.json]\n");
+    assert_eq!(
+        error.message,
+        "an output parameter must be a map, not a string"
+    );
 }
 
 #[test]

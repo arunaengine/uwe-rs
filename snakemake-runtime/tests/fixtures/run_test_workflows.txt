@@ -1,7 +1,7 @@
 # The outcome of each workflow of the Snakemake test workflows with the mock executor: `ok` and
 # the number of tasks, or the exit code (33 for unsupported features) and the first line
 # of the error.
-catalog/3d-omics__hg_genotype 33 workflow/Snakefile:47: Not supported yet: modules from remote repositories (github(...))
+catalog/3d-omics__hg_genotype ok 61
 catalog/AToL-Bioinformatics__genome-launcher-workflow 33 workflow/Snakefile:5: ModuleNotFoundError: No module named 'git'
 catalog/Addimator__compare_meth 1 workflow/rules/common.smk:7: FileNotFoundError: [Errno 2] No such file or directory: '/projects/koesterlab/benchmark-methylation/data_analysis_jochen/compare_meth/config/sample.tsv'
 catalog/Addimator__varlociraptor-copy-number-variants ok 9
@@ -78,7 +78,7 @@ catalog/Ovewh__ACP-haugvaldstad-et-al-2025 ok 395
 catalog/Ovewh__Climaso 1 workflow/Snakefile:139: WorkflowError: InputFunctionException in rule calculate_SW_ERF (wildcards: experiment=piClim-2xdust, vName=ERFtsw, model=EC-Earth3-AerChem, freq=Ayear): FileNotFoundError: /home/oveh/mnt/Betzy_CMIP/CMIP6/AerChemMIP/EC-Earth-Consortium/EC-Earth3-AerChem/piClim-2xdust/r1i1p1f
 catalog/PathoGenOmics-Lab__VIPERA ok 217
 catalog/Phlya__C-integration-mapping ok 0
-catalog/Phlya__distill-reorder-C 33 workflow/Snakefile:11: Not supported yet: modules from remote repositories (github(...))
+catalog/Phlya__distill-reorder-C 1 https://raw.githubusercontent.com/open2c/distiller-sm/master/workflow/Snakefile:18: KeyError: 'output'
 catalog/Phlya__tagmap 1 workflow/rules/common.smk:265: WorkflowError: InputFunctionException in rule stats (wildcards: sample=H2): JSONDecodeError: Expecting value: line 1 char 0
 catalog/Princeton-LSI-ResearchComputing__hifi-assembly ok 0
 catalog/PyPSA__grid-builder 33 workflow/scripts/_schema.py:14: ModuleNotFoundError: No module named 'earth_osm'
@@ -105,7 +105,7 @@ catalog/SveTho__bcl2fastq2_workflow ok 0
 catalog/SveTho__merge_fastqs ok 3
 catalog/TLenfers__multispecies_mitochondrial_variant_analysis ok 25
 catalog/TRON-Bioinformatics__neorasp 33 workflow/rules/common.smk:2: ModuleNotFoundError: No module named 'magic'
-catalog/TRON-Bioinformatics__oblx 33 workflow/rules/uniprot_annotations.smk:6: Not supported yet: storage providers
+catalog/TRON-Bioinformatics__oblx 1 workflow/rules/common.smk:275: WorkflowError: InputFunctionException in rule download_uniprot_snapshot (wildcards: ): IndexError: list index out of range
 catalog/TidballLab__SNP-Cas13d-Selector ok 10
 catalog/UpalabdhaD__snakemake_wf_skeleton ok 0
 catalog/WHops__triopull-asm ok 7
@@ -133,10 +133,10 @@ catalog/arwisyah__snakemake_rna_vc_docker_reproduce ok 12
 catalog/aryazand__call_tss ok 20
 catalog/aryazand__fastq-process-align ok 24
 catalog/aryazand__genome_browser_workflow 1 workflow/rules/common.smk:19: WorkflowError: InputFunctionException in rule ucsc_trackhub (wildcards: ): FileNotFoundError: [Errno 2] No such file or directory: 'data/bigwig/'
-catalog/aryazand__proseq_workflow 33 workflow/Snakefile:27: Not supported yet: modules from remote repositories (github(...))
-catalog/aryazand__rnaseq_to_genome_annotation 33 workflow/Snakefile:23: Not supported yet: modules from remote repositories (github(...))
+catalog/aryazand__proseq_workflow 1 https://raw.githubusercontent.com/aryazand/fastq-process-align/main/workflow/rules/common.smk:9: FileNotFoundError: [Errno 2] No such file or directory: 'config/samples.tsv'
+catalog/aryazand__rnaseq_to_genome_annotation 1 https://raw.githubusercontent.com/aryazand/fastq-process-align/main/workflow/rules/common.smk:9: FileNotFoundError: [Errno 2] No such file or directory: 'config/samples.tsv'
 catalog/b-brankovics__bwa-gatk-fasttree-smkwf ok 55
-catalog/b-brankovics__smkwf-STRAf-typing 33 workflow/Snakefile:37: Not supported yet: modules from remote repositories (github(...))
+catalog/b-brankovics__smkwf-STRAf-typing ok 97
 catalog/b-brankovics__smkwf-oligo-screening ok 33
 catalog/babasaraki__NSIB ok 10
 catalog/babasaraki__snakemake-workshop-NBIS ok 10
@@ -153,7 +153,7 @@ catalog/brunosate21-a11y__codigo-sem-commit ok 8
 catalog/calliope-project__module_road_transport ok 1
 catalog/cbg-ethz__V-pipe 33 workflow/rules/common.smk:16: ModuleNotFoundError: No module named 'configparser'
 catalog/cbib__SpaceBlocks ok 25
-catalog/cecivale__snakemake-phylo-beast2 33 workflow/Snakefile:83: Not supported yet: modules from remote repositories (github(...))
+catalog/cecivale__snakemake-phylo-beast2 ok 13
 catalog/charleshefer__snakemake-workflow-template ok 0
 catalog/cjgunnar__snake-dreem ok 0
 catalog/clami66__AF_server 33 workflow/rules/common.smk:7: ModuleNotFoundError: No module named 'email'
@@ -266,7 +266,7 @@ catalog/loganylchen__prep_mix_data ok 502
 catalog/loganylchen__prep_public_nanoporeDRS_data 1 workflow/rules/common.smk:32: KeyError: 'project'
 catalog/loganylchen__snakeRIP ok 0
 catalog/loganylchen__snakemake-epitranscriptome ok 15
-catalog/lparsons__pf15-smallrna-rseto 33 workflow/rules/genome.smk:3: Not supported yet: storage providers
+catalog/lparsons__pf15-smallrna-rseto ok 102
 catalog/ltalignani__evo-shave 1 workflow/rules/common.smk:58: FileNotFoundError: [Errno 2] No such file or directory: 'resources/genomes/GCA_018104305.1_AalbF3_genomic.fna.fai'
 catalog/lueong1__cfdna_methylation_public 1 workflow/Snakefile:12: FileNotFoundError: [Errno 2] No such file or directory: 'config/samples.tsv'
 catalog/magwenelab__WeavePop 1 workflow/rules/common.smk:162: SystemExit: 1
@@ -294,7 +294,7 @@ catalog/metagenome-atlas__metagenome_instrain ok 10
 catalog/milesroberts-123__poolseq-kmers 1 workflow/Snakefile:11: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
 catalog/milesroberts-123__slim-sweep-cnn 1 workflow/Snakefile:9: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
 catalog/mkrg01__genome_assembly_pipeline ok 190
-catalog/modelblocks-org__geospatial_shapes_test_bench 33 workflow/rules/geo_boundaries.smk:24: Not supported yet: modules from remote repositories (github(...))
+catalog/modelblocks-org__geospatial_shapes_test_bench ok 449
 catalog/modelblocks-org__module_area_potentials ok 1
 catalog/modelblocks-org__module_co2stop_cdr ok 1
 catalog/modelblocks-org__module_demand_electricity 33 workflow/rules/source_entsoe.smk:7: Not supported yet: the attribute global_resources of Workflow
@@ -312,9 +312,9 @@ catalog/mushu-bytes__scelect ok 3
 catalog/mynameisdidit__UTS_Bioinformatika_SV-Callers 33 workflow/validator/__init__.py:6: ModuleNotFoundError: No module named 'ruamel'
 catalog/nate-d-olson__adotto-smk ok 136
 catalog/nate-d-olson__defrabb ok 101
-catalog/nate-d-olson__giab-stvar-curation-table 1 workflow/Snakefile:17: AttributeError: 'builtin_function_or_method' object has no attribute 'http'
+catalog/nate-d-olson__giab-stvar-curation-table 1 workflow/Snakefile:244: KeyError: 'liftover'
 catalog/nate-d-olson__giab-sv-external-eval ok 0
-catalog/ncbench__ncbench-workflow 33 workflow/Snakefile:27: Not supported yet: modules from remote repositories (github(...))
+catalog/ncbench__ncbench-workflow 1 https://raw.githubusercontent.com/snakemake-workflows/dna-seq-benchmark/v1.14.1/workflow/rules/common.smk:484: WorkflowError: InputFunctionException in rule benchmark_all (wildcards: ): JSONDecodeError: Expecting value: line 1 char 0
 catalog/ncherric__Iliad 1 workflow/rules/fq.smk:8: WorkflowError: InputFunctionException in rule wget_reads_from_url (wildcards: sample=KPGP-00127/): KeyError: 'KPGP-00127/'
 catalog/niekwit__atac-seq 1 workflow/rules/common.smk:49: ValueError: Following files not found:
 catalog/niekwit__chip-seq 1 workflow/scripts/general_functions.smk:319: AssertionError: No fastq files found...
@@ -336,7 +336,7 @@ catalog/nixonlab__HERV_um_mets 1 workflow/rules/common.smk:6: FileNotFoundError:
 catalog/nixonlab__snakemake_rule_library 1 workflow/Snakefile:8: FileNotFoundError: [Errno 2] No such file or directory: 'workflow/rules/common.smk'
 catalog/nodrogluap__tamor 1 workflow/rules/dragen_version.smk:17: SystemExit: FATAL: Unsupported Dragen version (not 4.2, 4.4 or 4.5) detected in dragen_info's install path ()
 catalog/ntnn19__combflow ok 3
-catalog/ntnn19__gaptrick-af_unmasked 33 workflow/Snakefile:17: Not supported yet: modules from remote repositories (github(...))
+catalog/ntnn19__gaptrick-af_unmasked 33 https://raw.githubusercontent.com/ntnn19/AlphaFold3_workflow/dev/workflow/rules/common.smk:15: ModuleNotFoundError: No module named 'resource'
 catalog/odcambc__dumpling 1 workflow/rules/common.smk:215: FileNotFoundError: Data directory example/data does not exist
 catalog/omidalam__can_vac 1 workflow/rules/prep_refs.smk:7: KeyError: 'ref'
 catalog/open2c__distiller-sm 1 workflow/Snakefile:18: KeyError: 'output'
@@ -370,7 +370,7 @@ catalog/sanjaysgk__WES_RNA_Pipeline ok 2
 catalog/schlesnerlab__multiconDEnrich 33 workflow/Snakefile:19: Not supported yet: the attribute replace of DataFrame
 catalog/scholl-lab__sm-calling ok 67
 catalog/seankmartin__atn-sub-lfp-workflow ok 23
-catalog/semenko__serpent-methylation-pipeline 1 workflow/Snakefile:184: AttributeError: 'builtin_function_or_method' object has no attribute 'http'
+catalog/semenko__serpent-methylation-pipeline ok 21
 catalog/seung1yoo__snakemake-s3-prototype ok 0
 catalog/sgallegosperez8__practice ok 10
 catalog/shahcompbio__bambu-smk 1 workflow/Snakefile:8: KeyError: 'out_dir'
@@ -418,7 +418,7 @@ catalog/t-i-r__snakemake-workflow-template ok 0
 catalog/tahiri-lab__aPhyloGeo-pipeline 1 workflow/rules/common.smk:75: WorkflowError: InputFunctionException in rule all (wildcards: ): EmptyDataError: No columns to parse from file
 catalog/tavareshugo__smk-indexer ok 137
 catalog/tbenavi1__RetroDetector ok 66
-catalog/tdayris__fair_bowtie2_mapping 33 workflow/rules/fair_genome_indexer.smk:15: Not supported yet: modules from remote repositories (github(...))
+catalog/tdayris__fair_bowtie2_mapping 33 https://raw.githubusercontent.com/tdayris/fair_fastqc_multiqc/2.5.5/workflow/rules/common.smk:56: Not supported yet: the attribute where of DataFrame
 catalog/tdayris__fair_cnv_facets 33 workflow/rules/common.smk:55: Not supported yet: the attribute where of DataFrame
 catalog/tdayris__fair_fastqc_multiqc 33 workflow/rules/common.smk:57: Not supported yet: the attribute where of DataFrame
 catalog/tdayris__fair_gatk_mutect2 33 workflow/rules/common.smk:55: Not supported yet: the attribute where of DataFrame
@@ -427,7 +427,7 @@ catalog/tdayris__fair_macs2_calling 33 workflow/rules/common.smk:56: Not support
 catalog/tdayris__fair_rnaseq_salmon_quant 33 workflow/rules/common.smk:37: Not supported yet: the attribute where of DataFrame
 catalog/thomasbtf__sars-cov-2-wbe 33 workflow/Snakefile:17: Not supported yet: PEP projects (pepfile)
 catalog/thomasmulvaney__snakemake-gromacs-workflow ok 10
-catalog/tmweiskittel__serpent-methylation-pipeline-cloud 1 workflow/Snakefile:196: AttributeError: 'builtin_function_or_method' object has no attribute 'http'
+catalog/tmweiskittel__serpent-methylation-pipeline-cloud ok 23
 catalog/tmweiskittel__tmw_align_emseq 1 1 jobs did not run, like a job of rule all
 catalog/tmweiskittel__tmw_analysis_emseq ok 244
 catalog/trickovicmatija__kingfisher_workflow 1 workflow/Snakefile:3: WorkflowError: Workflow defines configfile ../config/default_config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/default_config.yaml).
@@ -450,7 +450,7 @@ catalog/votti__snakemake-demo ok 0
 catalog/votti__snakemake-renv-quarto ok 7
 catalog/watronfire__Gloucester ok 0
 catalog/weizhu365__snakemake_template_test ok 0
-catalog/westerdijk-wm__smkwf-bwa-gatk-snpeff 33 workflow/Snakefile:25: Not supported yet: modules from remote repositories (github(...))
+catalog/westerdijk-wm__smkwf-bwa-gatk-snpeff ok 49
 catalog/westerdijk-wm__snakemake-mlsa-ani ok 90
 catalog/wharvey31__denovo_sv_validation 33 workflow/Snakefile:3: ModuleNotFoundError: No module named 'Bio'
 catalog/xiayh17__benchmark_scomatic ok 0
@@ -485,7 +485,7 @@ tests/test_(with_parenthese's) ok 1
 tests/test_access_patterns ok 12
 tests/test_all_temp ok 3
 tests/test_ambiguousruleexception ok 7
-tests/test_ancient 33 Snakefile:37: Not supported yet: storage providers
+tests/test_ancient ok 5
 tests/test_ancient_cli ok 4
 tests/test_ancient_dag ok 24
 tests/test_archive ok 1
@@ -497,7 +497,7 @@ tests/test_benchmark ok 5
 tests/test_benchmark_jsonl ok 5
 tests/test_cache_multioutput ok 1
 tests/test_callable ok 3
-tests/test_censored_path 33 Snakefile:1: Not supported yet: storage directives
+tests/test_censored_path ok 1
 tests/test_checkpoint_allowed_rules ok 3
 tests/test_checkpoint_missing_output ok 4
 tests/test_checkpoint_omit_from ok 7
@@ -664,7 +664,7 @@ tests/test_issue3361_fail ok 2
 tests/test_issue3361_pass ok 2
 tests/test_issue381 ok 2
 tests/test_issue3922 ok 8
-tests/test_issue3958 33 Snakefile:1: Not supported yet: storage directives
+tests/test_issue3958 ok 2
 tests/test_issue3970 ok 3
 tests/test_issue471 ok 2
 tests/test_issue584 ok 2
@@ -702,19 +702,19 @@ tests/test_match_by_wildcard_names ok 3
 tests/test_metadata_migration ok 1
 tests/test_missing_file_dryrun ok 2
 tests/test_module_checkpoint ok 5
-tests/test_module_complex 33 Snakefile:22: Not supported yet: modules from remote repositories (github(...))
-tests/test_module_complex2 33 Snakefile:23: Not supported yet: modules from remote repositories (github(...))
+tests/test_module_complex ok 1
+tests/test_module_complex2 ok 1
 tests/test_module_global_container ok 2
 tests/test_module_input_func ok 1
-tests/test_module_local_git 33 Snakefile:17: Not supported yet: modules from remote repositories (github(...))
+tests/test_module_local_git 33 Snakefile:17: Not supported yet: Snakefiles in local git repositories (gitfile(...))
 tests/test_module_nested 1 module_deep.smk:20: AttributeError: 'Rules' object has no attribute 'ignored'
 tests/test_module_no_prefixing_modified_paths ok 2
-tests/test_module_onerror 1 module1/Snakefile:5: AttributeError: 'builtin_function_or_method' object has no attribute 'http'
-tests/test_module_onstart_not_in_main_snakefile 1 module1/Snakefile:5: AttributeError: 'builtin_function_or_method' object has no attribute 'http'
-tests/test_module_onstart_onsuccess 1 module1/Snakefile:5: AttributeError: 'builtin_function_or_method' object has no attribute 'http'
-tests/test_module_report 33 Snakefile:11: Not supported yet: modules from remote repositories (github(...))
+tests/test_module_onerror ok 3
+tests/test_module_onstart_not_in_main_snakefile ok 3
+tests/test_module_onstart_onsuccess ok 3
+tests/test_module_report ok 13
 tests/test_module_wildcard_constraints ok 3
-tests/test_module_with_script 33 Snakefile:13: Not supported yet: modules from remote repositories (github(...))
+tests/test_module_with_script ok 2
 tests/test_module_workflow_snakefile_usage ok 1
 tests/test_modules_all 1 module-test/Snakefile:29: AttributeError: 'Rules' object has no attribute 'b'
 tests/test_modules_all_exclude ok 3
@@ -726,7 +726,7 @@ tests/test_modules_meta_wrapper 33 Snakefile:8: Not supported yet: meta-wrapper 
 tests/test_modules_name ok 5
 tests/test_modules_no_name 1 Snakefile:7: SyntaxError: Missing module name. A module name must be provided either after the module keyword or inside the module definition after the name keyword.
 tests/test_modules_peppy 33 module-test/Snakefile:2: Not supported yet: PEP projects (pepfile)
-tests/test_modules_prefix 1 module-test/Snakefile:10: AttributeError: 'builtin_function_or_method' object has no attribute 'http'
+tests/test_modules_prefix ok 1
 tests/test_modules_prefix_local ok 1
 tests/test_modules_ruledeps_inheritance ok 5
 tests/test_modules_semi_dynamic ok 9
@@ -778,7 +778,7 @@ tests/test_profile_none ok 1
 tests/test_profile_old ok 1
 tests/test_profile_with_env_var ok 1
 tests/test_protected_symlink_output ok 6
-tests/test_python_import_from_github_module 33 Snakefile:18: Not supported yet: modules from remote repositories (github(...))
+tests/test_python_import_from_github_module ok 3
 tests/test_queue_input ok 21
 tests/test_r_wrapper ok 1
 tests/test_remote_auto 1 Snakefile:4: ImportError: cannot import name 'AUTO' from 'snakemake.remote'
@@ -844,12 +844,12 @@ tests/test_source_path ok 1
 tests/test_source_path_rerun ok 3
 tests/test_spaces_in_fnames ok 3
 tests/test_speed ok 301
-tests/test_storage 33 Snakefile:1: Not supported yet: storage directives
+tests/test_storage 1 Snakefile:12: KeyError: 's3_prefix'
 tests/test_storage_call 1 Snakefile:7: KeyError: 's3_prefix'
 tests/test_storage_cleanup_local ok 2
-tests/test_storage_dependency_edge_flags 33 Snakefile:1: Not supported yet: storage directives
+tests/test_storage_dependency_edge_flags 1 Snakefile:6: KeyError: 's3_prefix'
 tests/test_storage_localrule ok 2
-tests/test_storage_noretrieve_dryrun 33 Snakefile:2: Not supported yet: storage directives
+tests/test_storage_noretrieve_dryrun ok 3
 tests/test_strict_mode ok 1
 tests/test_string_resources 1 WorkflowError: RuleException in rule b in file Snakefile, line 1: AttributeError: 'Resources' object has no attribute 'gpu_model', when formatting the shell command
 tests/test_subpath ok 2
@@ -880,7 +880,7 @@ tests/test_update_config ok 3
 tests/test_update_flag ok 3
 tests/test_update_flag_fail ok 1
 tests/test_update_flag_fail_cleanup ok 2
-tests/test_url_include 1 Snakefile:3: FileNotFoundError: [Errno 2] No such file or directory: 'https:/github.com/snakemake/snakemake/raw/main/tests/test05/Snakefile'
+tests/test_url_include ok 7
 tests/test_use_rule_same_module ok 2
 tests/test_validate 33 Snakefile:4: ModuleNotFoundError: No module named 'polars'
 tests/test_wildcard_annotatedstrings 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).

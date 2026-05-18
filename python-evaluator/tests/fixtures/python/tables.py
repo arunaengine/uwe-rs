@@ -94,3 +94,6 @@ print(samples["unit"].map({1: "one", 2: "two"}).tolist(), samples["unit"].apply(
 print(samples.empty, pd.DataFrame().empty, samples.get("missing", "default"), list(samples)[:2])
 print(samples.query("condition == 'control' & unit == 2")["fq1"].tolist(), samples.query("unit == 2 | sample == 'A'")["fq1"].tolist())
 print(pd.Series(["a,b", "c", ""]).str.split(",").explode().tolist(), samples.astype(dtype={"unit": str})["unit"].tolist())
+gaps = pd.DataFrame({"name": ["a", None], "size": [1.5, np.nan]})
+print(gaps.where(gaps.notnull(), None).to_dict(orient="records"), gaps.replace(np.nan, "NA").to_dict(orient="records"))
+print(gaps.replace({np.nan: None})["size"].tolist(), gaps.mask(gaps.isnull(), "x").to_dict(orient="list"))

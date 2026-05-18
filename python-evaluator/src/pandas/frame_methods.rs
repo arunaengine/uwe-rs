@@ -108,6 +108,86 @@ pub fn map_cells(data: &FrameData, function: impl Fn(&Value) -> Value) -> Value 
     DataFrame::from_data(result)
 }
 
+/// `replace(to_replace, value)`: the replacements of `Series.replace` in every column.
+pub fn replace(
+    interpreter: &mut Interpreter,
+    mut data: FrameData,
+    args: &mut Args,
+) -> Result<FrameData, Error> {
+    for column in data.data.iter_mut() {
+        *column = super::replace_values(interpreter, column, args)?;
+    }
+    Ok(data)
+}
+
+/// Whether the condition of `where` holds for a cell: a table of flags by column label and
+/// row, or one flag for all.
+fn condition_holds(
+    interpreter: &mut Interpreter,
+    condition: &Value,
+    label: &Value,
+    row: usize,
+) -> Result<bool, Error> {
+    if let Some(frame) = condition.as_native::<DataFrame>() {
+        let data = frame.data();
+        return Ok(match data.column_position(label) {
+            Some(position) => data.data[position]
+                .get(row)
+                .is_some_and(|value| matches!(value.plain(), Value::Bool(true))),
+            None => false,
+        });
+    }
+    interpreter.truthy(condition)
+}
+
+/// `where(cond, other=nan)`: the values where the condition holds, else `other`; `mask` is
+/// the opposite. `None` as `other` stays `None` only in columns of mixed values, as pandas
+/// keeps missing values of typed columns as `nan`.
+fn keep_where(
+    interpreter: &mut Interpreter,
+    mut data: FrameData,
+    args: &mut Args,
+    keep: bool,
+) -> Result<FrameData, Error> {
+    let mut condition = args.take(0, "cond").unwrap_or(Value::Bool(true));
+    if interpreter.callable(&condition) {
+        let table = DataFrame::from_data(data.copy());
+        condition = interpreter.call(&condition, Args::new(vec![table]))?;
+    }
+    let other = args.take(1, "other");
+    for position in data.all_columns() {
+        let label = data.columns.values[position].clone();
+        let mixed = super::dtype_name(&data.data[position]) == "object";
+        for row in 0..data.data[position].len() {
+            if condition_holds(interpreter, &condition, &label, row)? == keep {
+                continue;
+            }
+            data.data[position][row] = match &other {
+                Some(value) if value.is_none() && !mixed => super::nan(),
+                Some(value) => value.clone(),
+                None => super::nan(),
+            };
+        }
+    }
+    Ok(data)
+}
+
+pub fn where_(
+    interpreter: &mut Interpreter,
+    data: FrameData,
+    args: &mut Args,
+) -> Result<FrameData, Error> {
+    keep_where(interpreter, data, args, true)
+}
+
+pub fn mask(
+    interpreter: &mut Interpreter,
+    data: FrameData,
+    args: &mut Args,
+) -> Result<FrameData, Error> {
+    keep_where(interpreter, data, args, false)
+}
+
 /// `apply(func, axis=0)`: calls the function with each column, or with each row for
 /// `axis=1`. Results that are series make a table.
 pub fn apply(

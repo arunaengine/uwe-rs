@@ -59,3 +59,5 @@ ValueError cannot insert sample, already exists
 False True default ['sample', 'unit']
 ['c.fq'] ['a.fq', 'c.fq']
 ['a', 'b', 'c', ''] ['1', '1', '2', '1']
+[{'name': 'a', 'size': 1.5}, {'name': nan, 'size': nan}] [{'name': 'a', 'size': 1.5}, {'name': 'NA', 'size': 'NA'}]
+[1.5, None] {'name': ['a', 'x'], 'size': [1.5, 'x']}

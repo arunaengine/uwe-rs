@@ -1194,6 +1194,58 @@ impl Hook {
         Ok(())
     }
 
+    /// The module that `use rule ... from <name>` names, with the alias of its rules. The name
+    /// may also be a variable of the Snakefile that holds the name of a module, and then the
+    /// alias is one too, as in Snakemake's dynamic module names.
+    fn resolve_module(
+        &self,
+        interpreter: &mut Interpreter,
+        module_name: &str,
+        alias: Option<String>,
+    ) -> Result<(String, Option<String>, ModuleSpec), Error> {
+        let find = |name: &str| {
+            let state = self.state.borrow();
+            state
+                .modifiers
+                .iter()
+                .rev()
+                .find_map(|modifier| modifier.modules.get(name).cloned())
+        };
+        if let Some(spec) = find(module_name) {
+            return Ok((module_name.to_owned(), alias, spec));
+        }
+        let globals = self.state.borrow().modifier().globals.clone();
+        let Some(value) = globals.get(module_name) else {
+            return Err(workflow_error(format!(
+                "Module {module_name} has not been registered with 'module' statement before using it in 'use rule' statement."
+            )));
+        };
+        let resolved = interpreter.to_str(&value)?;
+        let spec = find(&resolved).ok_or_else(|| {
+            workflow_error(format!(
+                "Dynamic module name '{module_name}' resolves to '{resolved}', but has not been registered with a 'module' statement."
+            ))
+        })?;
+        let alias = match alias {
+            Some(alias) => {
+                let variable = alias.strip_suffix('*').unwrap_or(&alias);
+                let value = globals.get(variable).ok_or_else(|| {
+                    workflow_error(format!(
+                        "Module alias {alias} not in current frame to resolve dynamic module {resolved} in 'use rule'."
+                    ))
+                })?;
+                let text = interpreter.to_str(&value)?;
+                Some(if alias.ends_with('*') {
+                    format!("{text}*")
+                } else {
+                    text
+                })
+            }
+            None => None,
+        };
+        Ok((resolved, alias, spec))
+    }
+
     fn use_module_rules(
         &self,
         interpreter: &mut Interpreter,
@@ -1203,19 +1255,8 @@ impl Hook {
         alias: Option<String>,
         with: Option<RuleInfo>,
     ) -> Result<(), Error> {
-        let spec = {
-            let state = self.state.borrow();
-            let found = state
-                .modifiers
-                .iter()
-                .rev()
-                .find_map(|modifier| modifier.modules.get(module_name).cloned());
-            found.ok_or_else(|| {
-                workflow_error(format!(
-                    "Module {module_name} has not been registered with 'module' statement before using it in 'use rule' statement."
-                ))
-            })?
-        };
+        let (module_name, alias, spec) = self.resolve_module(interpreter, module_name, alias)?;
+        let module_name = module_name.as_str();
         if spec.meta_wrapper.is_some() {
             return Err(Error::unsupported("meta-wrapper modules"));
         }

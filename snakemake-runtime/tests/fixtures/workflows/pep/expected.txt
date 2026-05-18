@@ -1,0 +1,16 @@
+3 tasks, 2 steps, 2 edges
+1 merge (sample=A) <- []
+2 merge (sample=B) <- []
+3 all <- [1, 2]
+task 1: -
+  command: bash -c set -euo pipefail;  cat reads/A_1.fq reads/A_2.fq > merged/A.fq # treated
+  inputs: reads/A_1.fq reads/A_2.fq
+  outputs: merged/A.fq
+task 2: -
+  command: bash -c set -euo pipefail;  cat reads/B_1.fq > merged/B.fq # none
+  inputs: reads/B_1.fq
+  outputs: merged/B.fq
+task 3: -
+  command: 
+  inputs: merged/A.fq merged/B.fq
+  outputs: 

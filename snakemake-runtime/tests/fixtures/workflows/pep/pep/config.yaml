@@ -1,0 +1,10 @@
+pep_version: 2.0.0
+sample_table: samples.csv
+subsample_table: subsamples.csv
+sample_modifiers:
+  append:
+    folder: "reads"
+  derive:
+    attributes: [path]
+    sources:
+      fastq: "{folder}/{sample_name}_{run}.fq"

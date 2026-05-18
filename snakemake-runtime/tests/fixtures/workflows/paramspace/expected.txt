@@ -1,0 +1,16 @@
+3 tasks, 2 steps, 2 edges
+1 simulate (alpha=1, beta=0.1, gamma=0.99) <- []
+2 simulate (alpha=2, beta=0.0, gamma=3.9) <- []
+3 all <- [1, 2]
+task 1: -
+  command: bash -c set -euo pipefail;  echo 1 0.1 > results/alpha~1/beta~0.1_gamma~0.99.txt
+  inputs: 
+  outputs: results/alpha~1/beta~0.1_gamma~0.99.txt
+task 2: -
+  command: bash -c set -euo pipefail;  echo 2 0.0 > results/alpha~2/beta~0.0_gamma~3.9.txt
+  inputs: 
+  outputs: results/alpha~2/beta~0.0_gamma~3.9.txt
+task 3: -
+  command: 
+  inputs: results/alpha~1/beta~0.1_gamma~0.99.txt results/alpha~2/beta~0.0_gamma~3.9.txt
+  outputs: 

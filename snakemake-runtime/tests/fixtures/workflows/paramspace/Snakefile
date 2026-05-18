@@ -1,0 +1,19 @@
+from snakemake.utils import Paramspace
+import pandas as pd
+
+# alpha~{alpha}/beta~{beta}_gamma~{gamma}
+space = Paramspace(pd.read_csv("params.tsv", sep="\t"), filename_params=["beta", "gamma"])
+
+
+rule all:
+    input:
+        expand("results/{params}.txt", params=space.instance_patterns),
+
+
+rule simulate:
+    output:
+        f"results/{space.wildcard_pattern}.txt",
+    params:
+        simulation=space.instance,
+    shell:
+        "echo {params.simulation[alpha]} {params.simulation[beta]} > {output}"

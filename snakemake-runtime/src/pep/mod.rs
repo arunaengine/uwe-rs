@@ -7,10 +7,13 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod modifiers;
+mod objects;
 
 use indexmap::IndexMap;
 use python_evaluator::pandas::DataFrame;
 use python_evaluator::{Args, Error, Interpreter, Value};
+
+pub use objects::{Project, Sample};
 
 /// The attributes of a sample, in the order of the table.
 type Attributes = IndexMap<String, Value>;

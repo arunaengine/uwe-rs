@@ -169,7 +169,7 @@ fn utils_module(interpreter: &mut Interpreter, state: Rc<RefCell<State>>) -> Res
             ),
             (
                 "Paramspace",
-                Value::builtin("Paramspace", python_evaluator::pandas::paramspace),
+                Value::builtin("Paramspace", crate::paramspace::new),
             ),
             (
                 "report",

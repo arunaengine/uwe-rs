@@ -306,8 +306,3 @@ pub fn lookup_query(
     }
     Ok(Value::list(rows))
 }
-
-/// `snakemake.utils.Paramspace`.
-pub fn paramspace(_interpreter: &mut Interpreter, _args: Args) -> Result<Value, Error> {
-    Err(Error::unsupported("Paramspace"))
-}

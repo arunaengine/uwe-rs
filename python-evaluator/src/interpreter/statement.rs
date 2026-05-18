@@ -480,6 +480,7 @@ impl Interpreter {
             .map(|decorator| self.eval(frame, &decorator.expression))
             .collect::<Result<Vec<_>, _>>()?;
         let defaults = self.eval_defaults(frame, Some(&def.parameters))?;
+        self.eval_annotations(frame, def)?;
         let name = def.name.id.as_str();
         let qualname: Name = match frame.kind {
             FrameKind::Class => match frame.locals.get("__qualname__") {
@@ -507,6 +508,34 @@ impl Interpreter {
             value = self.call(&decorator, Args::new(vec![value]))?;
         }
         self.bind(frame, name, value);
+        Ok(())
+    }
+
+    /// Evaluates the annotations of a function as it is defined, as Python before 3.14 does,
+    /// unless the module imports `annotations` from `__future__`.
+    fn eval_annotations(&mut self, frame: &Frame, def: &ast::StmtFunctionDef) -> Result<(), Error> {
+        let lazy = frame.globals.get("annotations").is_some_and(|value| {
+            value
+                .as_native::<crate::modules::misc::Feature>()
+                .is_some_and(|feature| feature.0 == "annotations")
+        });
+        if lazy {
+            return Ok(());
+        }
+        let parameters = &def.parameters;
+        let annotations = parameters
+            .posonlyargs
+            .iter()
+            .chain(parameters.args.iter())
+            .chain(parameters.kwonlyargs.iter())
+            .map(|parameter| &parameter.parameter)
+            .chain(parameters.vararg.as_deref())
+            .chain(parameters.kwarg.as_deref())
+            .filter_map(|parameter| parameter.annotation.as_deref())
+            .chain(def.returns.as_deref());
+        for annotation in annotations {
+            self.eval(frame, annotation)?;
+        }
         Ok(())
     }
 

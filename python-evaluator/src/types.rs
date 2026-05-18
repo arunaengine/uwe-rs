@@ -323,3 +323,84 @@ pub fn is_exception(value: &Value) -> bool {
 pub fn is_exception_class(value: &Value) -> bool {
     matches!(value.plain(), Value::Class(class) if class.builtin == Some(TypeTag::BaseException))
 }
+
+/// `X | Y` of types, like `str | None` in annotations: `isinstance` accepts it.
+pub struct UnionType(pub Vec<Value>);
+
+impl UnionType {
+    /// Whether a value can be a member of a union: a class, `None`, a native object that
+    /// stands for a class, like `pandas.DataFrame`, or another union.
+    pub fn is_member(value: &Value) -> bool {
+        match value.plain() {
+            Value::Class(_) | Value::None => true,
+            Value::Native(object) => {
+                object.as_any().is::<UnionType>() || object.check_instance(&Value::None).is_some()
+            }
+            _ => false,
+        }
+    }
+
+    /// The union of two types, flattening unions within it.
+    pub fn of(a: &Value, b: &Value) -> Value {
+        let mut members = Vec::new();
+        for value in [a, b] {
+            match value.as_native::<UnionType>() {
+                Some(union) => members.extend(union.0.iter().cloned()),
+                None => members.push(value.plain().clone()),
+            }
+        }
+        Value::native(UnionType(members))
+    }
+}
+
+impl crate::value::Native for UnionType {
+    fn type_name(&self) -> &str {
+        "UnionType"
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn check_instance(&self, value: &Value) -> Option<bool> {
+        Some(self.0.iter().any(|member| match member {
+            Value::Class(class) => is_instance(value, class),
+            Value::None => value.is_none(),
+            Value::Native(object) => object.check_instance(value).unwrap_or(false),
+            _ => false,
+        }))
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut crate::interpreter::Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, crate::error::Error> {
+        Ok(match name {
+            "__args__" => Some(Value::tuple(
+                self.0
+                    .iter()
+                    .map(|member| match member {
+                        Value::None => Value::Class(class_of(member)),
+                        other => other.clone(),
+                    })
+                    .collect(),
+            )),
+            _ => None,
+        })
+    }
+
+    fn repr(&self, _: &mut crate::interpreter::Interpreter) -> Result<String, crate::error::Error> {
+        Ok(self
+            .0
+            .iter()
+            .map(|member| match member {
+                Value::Class(class) => class.name.to_string(),
+                Value::Native(object) => object.type_name().to_owned(),
+                _ => "None".to_owned(),
+            })
+            .collect::<Vec<_>>()
+            .join(" | "))
+    }
+}

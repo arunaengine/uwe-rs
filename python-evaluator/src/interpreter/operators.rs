@@ -258,6 +258,14 @@ impl Interpreter {
             (Operator::Mod, Value::Str(template), values) => Some(Value::str(
                 crate::format::percent_format(self, template, values)?,
             )),
+            // Unions of types, like `str | None`.
+            (Operator::BitOr, x, y)
+                if crate::types::UnionType::is_member(x)
+                    && crate::types::UnionType::is_member(y)
+                    && !(x.is_none() && y.is_none()) =>
+            {
+                Some(crate::types::UnionType::of(x, y))
+            }
             (Operator::BitOr, Value::Dict(x), Value::Dict(y)) => {
                 let mut dict: Dict = x.borrow().clone();
                 for (key, value) in y.borrow().entries.iter() {

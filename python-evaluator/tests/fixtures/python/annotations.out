@@ -1,0 +1,4 @@
+int | None True False
+True (<class 'str'>, <class 'NoneType'>)
+a None
+AttributeError: type object 'Box' has no attribute 'missing'

@@ -17,6 +17,7 @@ mod objects;
 mod paramspace;
 mod pathvars;
 mod pattern;
+mod pep;
 mod plan;
 mod profile;
 mod remote;

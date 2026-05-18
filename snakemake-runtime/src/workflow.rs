@@ -559,8 +559,18 @@ impl Hook {
                     }
                 }
             }
-            GlobalKeyword::PepFile | GlobalKeyword::PepSchema => {
-                return Err(Error::unsupported("PEP projects (pepfile)"));
+            GlobalKeyword::PepFile => {
+                let path = python_evaluator::modules::path_text(interpreter, &first())?;
+                let project = crate::pep::load(interpreter, &path)?;
+                self.state.borrow().modifier().globals.set("pep", project);
+            }
+            // iunctus does not check the project against its schema, as eido does.
+            GlobalKeyword::PepSchema => {
+                if self.state.borrow().modifier().globals.get("pep").is_none() {
+                    return Err(workflow_error(
+                        "Please specify a PEP with the pepfile directive.",
+                    ));
+                }
             }
             GlobalKeyword::PathVariables => {
                 let pairs: Vec<(Value, Value)> = args

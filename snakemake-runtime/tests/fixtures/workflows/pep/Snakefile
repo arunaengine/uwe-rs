@@ -1,0 +1,19 @@
+# A PEP project: sample names index the table, subsample rows become lists, and derived paths
+# have one value per list item.
+pepfile: "pep/config.yaml"
+
+
+rule all:
+    input:
+        expand("merged/{sample}.fq", sample=pep.sample_table["sample_name"]),
+
+
+rule merge:
+    input:
+        lambda wildcards: pep.sample_table.loc[wildcards.sample, "path"],
+    output:
+        "merged/{sample}.fq",
+    params:
+        condition=lambda wildcards: pep.get_sample(wildcards.sample).condition or "none",
+    shell:
+        "cat {input} > {output} # {params.condition}"

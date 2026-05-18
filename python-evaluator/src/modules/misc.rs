@@ -1787,6 +1787,20 @@ pub fn locale() -> Vec<(&'static str, Value)> {
     ]
 }
 
+/// A feature of `__future__`. With `annotations`, the annotations of functions stay
+/// unevaluated.
+pub struct Feature(pub &'static str);
+
+impl Native for Feature {
+    fn type_name(&self) -> &str {
+        "_Feature"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
 pub fn future() -> Vec<(&'static str, Value)> {
     [
         "annotations",
@@ -1797,7 +1811,7 @@ pub fn future() -> Vec<(&'static str, Value)> {
         "generator_stop",
     ]
     .into_iter()
-    .map(|name| (name, Value::Bool(true)))
+    .map(|name| (name, Value::native(Feature(name))))
     .collect()
 }
 

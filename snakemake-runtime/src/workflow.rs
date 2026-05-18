@@ -129,6 +129,8 @@ pub struct Modifier {
     pub allow_overwrite: bool,
     /// The path variables of the rules that this code defines.
     pub pathvars: Pathvars,
+    /// The tag of the wrappers of an old meta-wrapper, which replaces `master/` in their names.
+    pub wrapper_tag: Option<String>,
 }
 
 impl Modifier {
@@ -151,6 +153,7 @@ impl Modifier {
             modules: IndexMap::new(),
             allow_overwrite: false,
             pathvars: Pathvars::defaults(),
+            wrapper_tag: None,
         }
     }
 }
@@ -364,6 +367,72 @@ impl StatementHook for Hook {
 
 impl Hook {
     /// Includes a Snakefile: parses it and runs its code with the workflow's globals.
+    /// The Snakefile of a meta-wrapper of the Snakemake wrapper repository, like
+    /// `v1.0.0/meta/bio/bwa_mapping`, and the tag that replaces `master/` in the names of its
+    /// wrappers for meta-wrappers older than 8.0.0.
+    fn meta_wrapper(
+        &self,
+        interpreter: &mut Interpreter,
+        name: &str,
+    ) -> Result<(PathBuf, Option<String>), Error> {
+        let mirrors = self.state.borrow().mirrors.clone();
+        let is_url = |text: &str| {
+            text.starts_with("http") || text.starts_with("file:") || text.starts_with("git+file")
+        };
+        let version = |text: &str| -> Option<Vec<u64>> {
+            let text = text.strip_prefix('v').unwrap_or(text);
+            let parts: Vec<u64> = text
+                .split('.')
+                .take(3)
+                .map(|part| {
+                    let digits: String = part.chars().take_while(char::is_ascii_digit).collect();
+                    digits.parse().ok()
+                })
+                .collect::<Option<_>>()?;
+            (parts.len() == 3).then_some(parts)
+        };
+        for file in ["/meta_wrapper.smk", "/test/Snakefile"] {
+            let path = format!("{name}{file}");
+            let local = if is_url(&path) {
+                mirrors.url(&path).ok_or_else(|| {
+                    Error::unsupported(format!("meta-wrappers at addresses like {path}"))
+                })?
+            } else {
+                let (reference, tail) = path.split_once('/').unwrap_or((&path, ""));
+                if version(reference).is_some() {
+                    mirrors.hosted(
+                        "github",
+                        "github.com",
+                        "snakemake/snakemake-wrappers",
+                        reference,
+                        tail,
+                    )
+                } else {
+                    mirrors
+                        .url(&format!(
+                            "https://github.com/snakemake/snakemake-wrappers/raw/{path}"
+                        ))
+                        .unwrap_or_default()
+                }
+            };
+            if interpreter.host.stat(&local).is_some() {
+                let tag = if is_url(name) {
+                    None
+                } else {
+                    let tag = name.split('/').next().unwrap_or_default();
+                    match version(tag) {
+                        Some(parts) if parts[0] >= 8 => None,
+                        _ => Some(tag.to_owned()),
+                    }
+                };
+                return Ok((local, tag));
+            }
+        }
+        Err(workflow_error(format!(
+            "Invalid meta wrapper {name}: Could not find meta_wrapper.smk or test/Snakefile (old style)."
+        )))
+    }
+
     /// The local path of a Snakefile that `include:` or a module names: a file in a git
     /// repository (`github(...)` or `gh:owner/repo@tag:path`), a web address, or a path
     /// relative to `base`. Files on the web are downloaded when they are read.
@@ -895,7 +964,19 @@ impl Hook {
                 RuleKeyword::Shell => rule.action = Action::Shell(first),
                 RuleKeyword::Script => rule.action = Action::Script(first),
                 RuleKeyword::Notebook => rule.action = Action::Notebook(first),
-                RuleKeyword::Wrapper => rule.action = Action::Wrapper(first),
+                RuleKeyword::Wrapper => {
+                    // An old meta-wrapper names its wrappers by `master/`, meaning its own tag.
+                    let tag = self.state.borrow().modifier().wrapper_tag.clone();
+                    let wrapper = match (tag, first.as_str()) {
+                        (Some(tag), Some(name))
+                            if name.starts_with("master/") && !name.contains("://") =>
+                        {
+                            Value::str(format!("{tag}/{}", &name["master/".len()..]))
+                        }
+                        _ => first,
+                    };
+                    rule.action = Action::Wrapper(wrapper);
+                }
                 RuleKeyword::TemplateEngine => rule.action = Action::TemplateEngine(first),
                 RuleKeyword::Cwl => rule.action = Action::Cwl(first),
                 RuleKeyword::Run => rule.action = Action::Run(info.run.clone().unwrap_or_default()),
@@ -1289,15 +1370,21 @@ impl Hook {
     ) -> Result<(), Error> {
         let (module_name, alias, spec) = self.resolve_module(interpreter, module_name, alias)?;
         let module_name = module_name.as_str();
-        if spec.meta_wrapper.is_some() {
-            return Err(Error::unsupported("meta-wrapper modules"));
-        }
-        let Some(snakefile) = spec.snakefile.clone() else {
-            return Err(workflow_error(
-                "Module statement must either define snakefile or meta_wrapper to use.",
-            ));
+        let (full, wrapper_tag) = match (&spec.meta_wrapper, &spec.snakefile) {
+            (Some(meta_wrapper), _) => {
+                let meta_wrapper = interpreter.to_str(meta_wrapper)?;
+                self.meta_wrapper(interpreter, &meta_wrapper)?
+            }
+            (None, Some(snakefile)) => (
+                self.source_path(interpreter, snakefile, &spec.basedir)?,
+                None,
+            ),
+            (None, None) => {
+                return Err(workflow_error(
+                    "Module statement must either define snakefile or meta_wrapper to use.",
+                ));
+            }
         };
-        let full = self.source_path(interpreter, &snakefile, &spec.basedir)?;
         let all = rules.iter().any(|rule| rule == "*");
         if alias.as_ref().is_some_and(|alias| !alias.contains('*')) && (all || rules.len() > 1) {
             return Err(Error::new(
@@ -1358,6 +1445,7 @@ impl Hook {
             modules: IndexMap::new(),
             allow_overwrite: !all,
             pathvars,
+            wrapper_tag,
         };
         self.state.borrow_mut().modifiers.push(modifier);
         let result = self.include(interpreter, &full, true);

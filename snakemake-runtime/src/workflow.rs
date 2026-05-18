@@ -186,6 +186,9 @@ pub struct State {
     pub mirrors: Rc<Mirrors>,
     /// Parsed Snakefiles by path, for the statements their code reaches.
     pub snakefiles: HashMap<Rc<str>, Rc<Snakefile>>,
+    /// Rules of modules that `use rule` does not take. Other rules of the module may still
+    /// read them as `rules.<name>`, so they are kept, but they are not part of the workflow.
+    pub unused: Vec<Rule>,
 }
 
 impl State {
@@ -222,11 +225,15 @@ impl State {
             profile: crate::profile::Profile::default(),
             mirrors,
             snakefiles: HashMap::new(),
+            unused: Vec::new(),
         }
     }
 
     pub fn rule(&self, name: &str) -> Option<&Rule> {
-        self.rules.iter().find(|rule| rule.name == name)
+        self.rules
+            .iter()
+            .chain(self.unused.iter())
+            .find(|rule| rule.name == name)
     }
 
     pub fn rule_index(&self, name: &str) -> Option<usize> {
@@ -708,13 +715,16 @@ impl Hook {
                 .clone()
                 .unwrap_or_else(|| (state.rules.len() + 1).to_string())
         };
-        let Some(name) = self.state.borrow().available_name(&original_name) else {
-            return Ok(());
-        };
+        let available = self.state.borrow().available_name(&original_name);
+        let unused = available.is_none();
+        let name = available.unwrap_or_else(|| {
+            let count = self.state.borrow().unused.len() + 1;
+            format!("{original_name} (unused {count})")
+        });
         let skips: Vec<String> = {
             let state = self.state.borrow();
             let mut skips = Vec::new();
-            if let Some(overwrite) = &state.modifier().overwrite {
+            if let Some(overwrite) = state.modifier().overwrite.as_ref().filter(|_| !unused) {
                 for (keyword, property) in [
                     (RuleKeyword::Input, "input"),
                     (RuleKeyword::Output, "output"),
@@ -894,6 +904,13 @@ impl Hook {
         }
         self.check_wildcards(&rule)?;
         let mut state = self.state.borrow_mut();
+        if unused {
+            if let Some(modifier) = state.modifiers.last() {
+                modifier.rule_names.borrow_mut().insert(original_name, name);
+            }
+            state.unused.push(rule);
+            return Ok(());
+        }
         let allow_overwrite = state
             .modifiers
             .iter()
@@ -1098,6 +1115,11 @@ impl Hook {
                     return Err(workflow_error(
                         "'use rule' statement from rule in the same module must declare a single rule but multiple rules are declared.",
                     ));
+                }
+                // A module statement that takes other rules skips this one, as Snakemake does.
+                let new_name = alias.as_deref().unwrap_or(&names[0]);
+                if self.state.borrow().available_name(new_name).is_none() {
+                    return Ok(());
                 }
                 let original = self.modified_rule_name(&names[0]);
                 let mut info = {
@@ -1337,11 +1359,17 @@ impl Hook {
             .expect("the module modifier");
         result?;
         // The rules of the module become known to the code that uses it by their new names.
+        // Each rule of the module, used or not, by its name with the alias, as Snakemake's
+        // `inherit_rule_proxies` does.
         let parent_names = self.state.borrow().modifier().rule_names.clone();
-        for (_, global_name) in modifier.rule_names.borrow().iter() {
-            parent_names
-                .borrow_mut()
-                .insert(global_name.clone(), global_name.clone());
+        for (original, global_name) in modifier.rule_names.borrow().iter() {
+            let local = match &alias {
+                Some(pattern) if pattern.contains('*') => pattern.replace('*', original),
+                Some(pattern) if rules.contains(original) => pattern.clone(),
+                Some(_) => continue,
+                None => original.clone(),
+            };
+            parent_names.borrow_mut().insert(local, global_name.clone());
         }
         // The module's globals are reachable by its name.
         let module = Value::Module(Rc::new(python_evaluator::value::Module {

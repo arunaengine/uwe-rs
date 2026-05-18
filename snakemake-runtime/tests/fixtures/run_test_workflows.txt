@@ -38,10 +38,10 @@ catalog/GooglingTheCancerGenome__sv-callers 33 workflow/validator/__init__.py:6:
 catalog/GooglingTheCancerGenome__sv-gen 33 workflow/helper_functions.py:5: ModuleNotFoundError: No module named 'pyfaidx'
 catalog/GuttmanLab__chipdip-pipeline ok 207
 catalog/IHGGM-Aachen__CNVand ok 17
-catalog/IKIM-Essen__QC_pre_NextSeq 33 workflow/Snakefile:10: Not supported yet: PEP projects (pepfile)
-catalog/IKIM-Essen__ResMAG 33 workflow/Snakefile:15: Not supported yet: PEP projects (pepfile)
-catalog/IKIM-Essen__RiboSnake 33 workflow/Snakefile:13: Not supported yet: PEP projects (pepfile)
-catalog/IKIM-Essen__uncovar 33 workflow/Snakefile:15: Not supported yet: PEP projects (pepfile)
+catalog/IKIM-Essen__QC_pre_NextSeq ok 15
+catalog/IKIM-Essen__ResMAG ok 122
+catalog/IKIM-Essen__RiboSnake ok 59
+catalog/IKIM-Essen__uncovar 1 workflow/rules/common.smk:284: WorkflowError: InputFunctionException in rule cat_genomes (wildcards: date=SEQUENCING_DATE): EmptyDataError: No columns to parse from file
 catalog/IMS-Bio2Core-Facility__GTExSnake ok 4
 catalog/IMS-Bio2Core-Facility__polya_liftover ok 19
 catalog/IMS-Bio2Core-Facility__single_snake_sequencing ok 16
@@ -91,7 +91,7 @@ catalog/SarahSaadain__pastForward 33 workflow/rules/initialize.smk:27: ModuleNot
 catalog/SchlossLab__mikropml-snakemake-workflow ok 95
 catalog/SchlossLab__mothur-snakemake-workflow ok 13
 catalog/ShaolinXU__snakemake_repo ok 0
-catalog/SichongP__atac-seq 33 workflow/Snakefile:8: Not supported yet: PEP projects (pepfile)
+catalog/SichongP__atac-seq ok 737
 catalog/Siffreya__MKD_eDNA_biodiversity ok 10
 catalog/SilasK__Metagenome-Profile 1 workflow/rules/sample_table.smk:12: FileNotFoundError: [Errno 2] No such file or directory: 'samples.csv'
 catalog/SilasK__Metagenome-QC 1 workflow/Snakefile:18: KeyError: 'database_dir'
@@ -200,7 +200,7 @@ catalog/ezherman__example-workflow ok 1
 catalog/fcaretti__SNPs_from_RNA 1 workflow/Snakefile:5: WorkflowError: Workflow defines configfile config/actual_config.yml but it is not present or accessible (full checked path: config/actual_config.yml).
 catalog/fiberseq__fiberseq-smk ok 20
 catalog/fischuu__Snakebite-Holoruminant-MetaG 1 workflow/Snakefile:53: KeyError: 'params-file'
-catalog/flo-schu__pymob-workflow 33 workflow/rules/common.smk:59: Not supported yet: Paramspace
+catalog/flo-schu__pymob-workflow ok 5
 catalog/fmi-basel__ggiorget_ms2analysis ok 8
 catalog/franciscozorrilla__metaGEM 1 workflow/Snakefile:1: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
 catalog/frattalab__QAPA_snakemake 1 workflow/Snakefile:6: KeyError: 'sample_sheet'
@@ -411,7 +411,7 @@ catalog/solida-core__astra 1 workflow/rules/common.smk:13: EmptyDataError: No co
 catalog/solida-core__dima 1 workflow/rules/picard.smk:129: AttributeError: 'NoneType' object has no attribute 'get'
 catalog/solida-core__musta ok 0
 catalog/spjuhel__BoARIO-MRIOT-Tools 33 workflow/Snakefile:6: ModuleNotFoundError: No module named 'boario_tools'
-catalog/spjuhel__BoARIO-Sensitivity 33 workflow/rules/prepare_simspace.smk:37: Not supported yet: Paramspace
+catalog/spjuhel__BoARIO-Sensitivity 1 workflow/Snakefile:34: FileNotFoundError: [Errno 2] No such file or directory: '/home/sjuhel/Repos/BoARIO-MRIOT-Tools/workflow/Snakefile'
 catalog/spjuhel__Climada_TC_TCSurge_Generation 1 workflow/Snakefile:27: KeyError: 'start'
 catalog/spraeger__mutational-patterns-analysis ok 10
 catalog/t-i-r__snakemake-workflow-template ok 0
@@ -425,7 +425,7 @@ catalog/tdayris__fair_gatk_mutect2 33 workflow/rules/common.smk:55: Not supporte
 catalog/tdayris__fair_genome_indexer ok 198
 catalog/tdayris__fair_macs2_calling 33 workflow/rules/common.smk:56: Not supported yet: the attribute where of DataFrame
 catalog/tdayris__fair_rnaseq_salmon_quant 33 workflow/rules/common.smk:37: Not supported yet: the attribute where of DataFrame
-catalog/thomasbtf__sars-cov-2-wbe 33 workflow/Snakefile:17: Not supported yet: PEP projects (pepfile)
+catalog/thomasbtf__sars-cov-2-wbe 1 workflow/rules/common.smk:20: WorkflowError: InputFunctionException in rule cat_genomes (wildcards: ): EmptyDataError: No columns to parse from file
 catalog/thomasmulvaney__snakemake-gromacs-workflow ok 10
 catalog/tmweiskittel__serpent-methylation-pipeline-cloud ok 23
 catalog/tmweiskittel__tmw_align_emseq 1 1 jobs did not run, like a job of rule all
@@ -707,7 +707,7 @@ tests/test_module_complex2 ok 1
 tests/test_module_global_container ok 2
 tests/test_module_input_func ok 1
 tests/test_module_local_git 33 Snakefile:17: Not supported yet: Snakefiles in local git repositories (gitfile(...))
-tests/test_module_nested 1 module_deep.smk:20: AttributeError: 'Rules' object has no attribute 'ignored'
+tests/test_module_nested ok 2
 tests/test_module_no_prefixing_modified_paths ok 2
 tests/test_module_onerror ok 3
 tests/test_module_onstart_not_in_main_snakefile ok 3
@@ -716,16 +716,16 @@ tests/test_module_report ok 13
 tests/test_module_wildcard_constraints ok 3
 tests/test_module_with_script ok 2
 tests/test_module_workflow_snakefile_usage ok 1
-tests/test_modules_all 1 module-test/Snakefile:29: AttributeError: 'Rules' object has no attribute 'b'
+tests/test_modules_all ok 5
 tests/test_modules_all_exclude ok 3
-tests/test_modules_dynamic 1 Snakefile:16: WorkflowError: Module module_name has not been registered with 'module' statement before using it in 'use rule' statement.
+tests/test_modules_dynamic ok 9
 tests/test_modules_dynamic_import_rules ok 5
-tests/test_modules_dynamic_module_as_alias 1 Snakefile:16: WorkflowError: Module module_name has not been registered with 'module' statement before using it in 'use rule' statement.
-tests/test_modules_dynamic_no_as 1 Snakefile:16: WorkflowError: Module module_name has not been registered with 'module' statement before using it in 'use rule' statement.
+tests/test_modules_dynamic_module_as_alias ok 9
+tests/test_modules_dynamic_no_as ok 9
 tests/test_modules_meta_wrapper 33 Snakefile:8: Not supported yet: meta-wrapper modules
 tests/test_modules_name ok 5
 tests/test_modules_no_name 1 Snakefile:7: SyntaxError: Missing module name. A module name must be provided either after the module keyword or inside the module definition after the name keyword.
-tests/test_modules_peppy 33 module-test/Snakefile:2: Not supported yet: PEP projects (pepfile)
+tests/test_modules_peppy ok 1
 tests/test_modules_prefix ok 1
 tests/test_modules_prefix_local ok 1
 tests/test_modules_ruledeps_inheritance ok 5
@@ -748,8 +748,8 @@ tests/test_params ok 2
 tests/test_params_empty_inherit ok 2
 tests/test_params_outdated_code 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
 tests/test_params_pickling 33 Snakefile:3: ModuleNotFoundError: No module named 'polars'
-tests/test_paramspace 33 Snakefile:6: Not supported yet: Paramspace
-tests/test_paramspace_single_wildcard 33 Snakefile:6: Not supported yet: Paramspace
+tests/test_paramspace ok 37
+tests/test_paramspace_single_wildcard ok 37
 tests/test_parser ok 0
 tests/test_parsing_terminal_comment_following_statement ok 1
 tests/test_path_with_spaces ok 1
@@ -759,8 +759,8 @@ tests/test_pathvars ok 7
 tests/test_pathvars_cycle 1 Snakefile:1: WorkflowError: Cyclic pathvar reference detected between: foo, bar, foo
 tests/test_pathvars_modules ok 8
 tests/test_pathvars_storage ok 2
-tests/test_pep_pathlib 33 Snakefile:3: Not supported yet: PEP projects (pepfile)
-tests/test_peppy 33 Snakefile:1: Not supported yet: PEP projects (pepfile)
+tests/test_pep_pathlib ok 3
+tests/test_peppy ok 3
 tests/test_persistence_backend_db_run_directive_concurrency ok 101
 tests/test_pipe_depend ok 2
 tests/test_pipes ok 5

@@ -1,14 +1,15 @@
 # How the run test-workflows test launches each workflow; written by launches.py, which says
 # how it chooses. Columns, separated by tabs: the workflow, where the launch comes from
 # (ci, catalog or tests.py), then fields: directory= and snakefile= relative to the
-# workflow folder, configfile= relative to it, config=<key>=<value>, target=, and
-# shouldfail for a test that Snakemake's own tests expect to fail. Workflows not listed
-# run plainly in their folder.
+# workflow folder, configfile= relative to it, config=<key>=<value>, target=,
+# profile= and workflow-profile= relative to the workflow folder, and shouldfail for a
+# test that Snakemake's own tests expect to fail. Workflows not listed run plainly in
+# their folder.
 catalog/AllenInstitute__Bulk-RNA-Snakeline	catalog	configfile=config/config.yaml
 catalog/Bioinflows-Bioversity-CIAT__ont-target-dna-variant-calling	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/LiaOb21__colora	ci	directory=.	snakefile=workflow/Snakefile	configfile=config/config_test.yaml
 catalog/aryazand__call_tss	ci	directory=.test	snakefile=workflow/Snakefile
-catalog/boulardlab__3t-seq	ci	directory=.tests/integration	snakefile=workflow/Snakefile	configfile=.tests/integration/config.yaml
+catalog/boulardlab__3t-seq	ci	directory=.tests/integration	snakefile=workflow/Snakefile	configfile=.tests/integration/config.yaml	profile=.tests/integration/profile
 catalog/cbib__SpaceBlocks	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/cmc-aau__nanopore_16Samp	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/fiberseq__fiberseq-smk	ci	directory=.	snakefile=workflow/Snakefile	configfile=.test/config.yml
@@ -31,6 +32,7 @@ tests/test08	tests.py	target=test.out	target=test2.out
 tests/test09	tests.py	shouldfail
 tests/test_ancient	tests.py	target=D	target=C	target=old_file
 tests/test_checkpoint_allowed_rules	tests.py	target=c
+tests/test_conditional	tests.py	target=test.out	target=test.0.out	target=test.1.out	target=test.2.out
 tests/test_config_merging	tests.py	configfile=config_cmdline_01.yaml	configfile=config_cmdline_02.yaml	config=block={bowser: cmdline_bowser}	config=block={toad: cmdline_toad}
 tests/test_config_replacing	tests.py	configfile=cli-config.yaml	config=value=value2
 tests/test_directory	tests.py	target=downstream	target=symlinked_input	target=child_to_input	target=not_child_to_other
@@ -45,6 +47,7 @@ tests/test_github_issue261	tests.py	target=test1/target1/config1.done
 tests/test_github_issue2848	tests.py	target=output/c.txt	target=output/dir2/d.txt	shouldfail
 tests/test_github_issue640	tests.py	target=Output/FileWithRights
 tests/test_github_issue929	tests.py	target=childrule_2
+tests/test_github_issue_4039_runtime_profile	tests.py	profile=profile
 tests/test_group_job_fail	tests.py	shouldfail
 tests/test_groups_out_of_jobs	tests.py	shouldfail
 tests/test_issue1037	tests.py	target=Foo_A.done
@@ -82,16 +85,19 @@ tests/test_pathvars_cycle	tests.py	shouldfail
 tests/test_pipe_depend	tests.py	shouldfail
 tests/test_pipes_fail	tests.py	shouldfail
 tests/test_priority_invalid	tests.py	shouldfail
-tests/test_profile_double_dash	tests.py	target=done.txt
+tests/test_profile_double_dash	tests.py	profile=profile	target=done.txt
+tests/test_resource_quoting	tests.py	profile=test-profile
 tests/test_retries_not_overriden	tests.py	shouldfail
 tests/test_rule_inheritance_globals	tests.py	target=foo.txt
+tests/test_set_resources_complex	tests.py	profile=test-profile
 tests/test_singularity_module	tests.py	target=invalid.txt	shouldfail
 tests/test_source_path	tests.py	snakefile=workflow/Snakefile
 tests/test_spaces_in_fnames	tests.py	target=test bam file realigned.bam
 tests/test_strict_mode	tests.py	shouldfail
 tests/test_symlink_temp	tests.py	shouldfail
+tests/test_temp	tests.py	target=test.realigned.bam
 tests/test_update_flag_fail	tests.py	shouldfail
 tests/test_use_rule_same_module	tests.py	target=test.out	target=test2.out
 tests/test_workflow_profile_cli_overwrite	tests.py	snakefile=workflow/Snakefile
-tests/test_workflow_profile_relative_filename	tests.py	snakefile=workflow/Snakefile
-tests/test_workflow_profile_relative_path	tests.py	snakefile=workflow/Snakefile
+tests/test_workflow_profile_relative_filename	tests.py	snakefile=workflow/Snakefile	workflow-profile=workflow/some_dir/workflow_profile.yaml
+tests/test_workflow_profile_relative_path	tests.py	snakefile=workflow/Snakefile	workflow-profile=workflow_at_site_x

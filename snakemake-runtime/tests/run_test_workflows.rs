@@ -29,6 +29,8 @@ struct Launching {
     configfiles: Vec<String>,
     config: Vec<(String, String)>,
     targets: Vec<String>,
+    /// `--profile` and `--workflow-profile`: paths relative to the folder, or names.
+    profiles: Vec<String>,
 }
 
 impl Launching {
@@ -53,6 +55,7 @@ impl Launching {
                     launching.config.push((name.to_owned(), value.to_owned()));
                 }
                 "target" => launching.targets.push(value.to_owned()),
+                "profile" | "workflow-profile" => launching.profiles.push(value.to_owned()),
                 _ => {}
             }
         }
@@ -82,6 +85,18 @@ impl Launching {
                 .map(|file| folder.join(file))
                 .collect(),
             targets: self.targets.clone(),
+            profiles: self
+                .profiles
+                .iter()
+                .map(|profile| {
+                    let path = folder.join(profile);
+                    if path.exists() {
+                        path.to_string_lossy().into_owned()
+                    } else {
+                        profile.clone()
+                    }
+                })
+                .collect(),
             scratch: scratch.to_path_buf(),
             assume_inputs: true,
             ..Launch::default()

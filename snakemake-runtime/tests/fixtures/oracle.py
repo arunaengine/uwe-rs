@@ -1,12 +1,18 @@
 # Writes run_test_workflows_oracle.txt: what real Snakemake 9.27.0 does with each workflow of the
 # Snakemake test workflows and each launch that launches.py considers for it. Each run is
-# `snakemake --dry-run` in a copy of the workflow folder under the temporary directory. Run it
-# from the repository root after `just snakemake-test-workflows-data`, then run launches.py:
+# `snakemake --dry-run --printshellcmds` in a copy of the workflow folder under the temporary
+# directory, so that Snakemake also formats the shell command of each job, as iunctus does
+# when it builds the task of a job. Run it from the repository root after
+# `just snakemake-test-workflows-data`, then run launches.py:
 #
 #     uv run -q --with snakemake==9.27.0 --with pyyaml --with pandas --with numpy --with peppy \
 #         --with biopython --with psutil --with requests --with openpyxl --with pyarrow \
 #         --with ruamel.yaml --with snakemake-storage-plugin-http \
 #         --with snakemake-storage-plugin-s3 python snakemake-runtime/tests/fixtures/oracle.py
+#
+# With `--only FILE`, it runs only the workflows that FILE names, one per line, and replaces
+# their lines in the oracle file, keeping them even when Snakemake evaluates their first
+# launch: the evidence for the workflows that iunctus cannot run.
 #
 # Snakemake is only the reference here; iunctus never runs it (decision 1).
 #
@@ -33,7 +39,12 @@ def command(folder, copy, fields):
     """The working directory and the arguments of `snakemake` for a launch in a copy."""
     values = dict(fields)
     workdir = os.path.join(copy, values.get("directory", "."))
-    arguments = [sys.executable, "-m", "snakemake", "--dry-run", "--cores", "1", "--nocolor"]
+    arguments = [sys.executable, "-m", "snakemake", "--dry-run", "--printshellcmds", "--cores", "1",
+                 "--nocolor"]
+    if "profile" in values:
+        arguments += ["--profile", os.path.join(copy, values["profile"])]
+    if "workflow-profile" in values:
+        arguments += ["--workflow-profile", os.path.join(copy, values["workflow-profile"])]
     if "snakefile" in values:
         arguments += ["--snakefile", os.path.join(copy, values["snakefile"])]
     configfiles = [os.path.join(copy, value) for key, value in fields if key == "configfile"]
@@ -89,18 +100,28 @@ def failing(lines):
 
 
 def main():
+    only = None
+    if len(sys.argv) == 3 and sys.argv[1] == "--only":
+        only = {line.strip() for line in open(sys.argv[2], encoding="utf-8") if line.strip()}
     jobs = [(name, folder, via, fields) for name, folder, launches in candidates()
-            for via, fields in launches]
+            for via, fields in launches if only is None or name in only]
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         lines = list(pool.map(lambda job: run(*job), jobs))
+    if only is None:
+        kept = failing(lines)
+    else:
+        old = [line.rstrip("\n") for line in open(ORACLE, encoding="utf-8")
+               if not line.startswith("#") and line.split("\t")[0] not in only]
+        kept = sorted(old + lines, key=lambda line: line.split("\t")[0])
     with open(ORACLE, "w", encoding="utf-8") as output:
-        output.write("# What `snakemake --dry-run` of Snakemake 9.27.0 does with the Snakemake test workflows\n")
-        output.write("# that it cannot evaluate with their preferred launch, for each launch launches.py\n")
-        output.write("# considers; written by oracle.py. Workflows not listed evaluate with their preferred\n")
-        output.write("# launch. Columns, separated by tabs: the workflow, the launch (plain, ci, catalog or\n")
-        output.write("# tests.py), the exit code, `evaluated` when Snakemake evaluated the Snakefile and began\n")
-        output.write("# to plan the jobs, else `failed`, and the first error line.\n")
-        for line in failing(lines):
+        output.write("# What `snakemake --dry-run --printshellcmds` of Snakemake 9.27.0 does with the Snakemake\n")
+        output.write("# test workflows that it cannot evaluate with their preferred launch, and with those that\n")
+        output.write("# iunctus cannot run, for each launch launches.py considers; written by oracle.py.\n")
+        output.write("# Workflows not listed evaluate with their preferred launch. Columns, separated by tabs:\n")
+        output.write("# the workflow, the launch (plain, ci, catalog or tests.py), the exit code, `evaluated`\n")
+        output.write("# when Snakemake evaluated the Snakefile and began to plan the jobs, else `failed`, and\n")
+        output.write("# the first error line.\n")
+        for line in kept:
             output.write(line + "\n")
     print(f"{len(lines)} runs", file=sys.stderr)
 

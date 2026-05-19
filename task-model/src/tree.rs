@@ -36,7 +36,8 @@ impl TreeEntry {
 }
 
 impl Tree {
-    pub fn digest(&self) -> Result<Digest, SpecError> {
+    /// The RFC 8785 canonical JSON of the manifest, with the entries sorted by path.
+    pub fn canonical(&self) -> Result<Vec<u8>, SpecError> {
         let mut sorted = self.entries.clone();
         sorted.sort_by(|a, b| a.path().cmp(b.path()));
         for pair in sorted.windows(2) {
@@ -44,8 +45,22 @@ impl Tree {
                 return Err(SpecError::DuplicateInput(pair[0].path().to_owned()));
             }
         }
-        let canonical = serde_jcs::to_vec(&Tree { entries: sorted })
-            .map_err(|error| SpecError::Encoding(error.to_string()))?;
-        Ok(Digest::sha256(&canonical))
+        serde_jcs::to_vec(&Tree { entries: sorted })
+            .map_err(|error| SpecError::Encoding(error.to_string()))
+    }
+
+    pub fn digest(&self) -> Result<Digest, SpecError> {
+        Ok(Digest::sha256(&self.canonical()?))
+    }
+
+    /// The total size of the files.
+    pub fn size(&self) -> u64 {
+        self.entries
+            .iter()
+            .map(|entry| match entry {
+                TreeEntry::File { size, .. } => *size,
+                TreeEntry::EmptyDirectory { .. } => 0,
+            })
+            .sum()
     }
 }

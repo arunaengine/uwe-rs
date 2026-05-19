@@ -4,7 +4,7 @@
 
 use bytes::Bytes;
 use content_store::{S3Options, Store, StoreError, layout};
-use task_model::Digest;
+use task_model::{Digest, Tree, TreeEntry};
 
 async fn check_contract(store: &Store) {
     // Contents are addressed by digest and stored once.
@@ -43,9 +43,26 @@ async fn check_contract(store: &Store) {
         .put_output("run1", "fastqc-1", 1, name, Bytes::from_static(b"<html/>"))
         .await
         .expect("put output");
-    assert_eq!(location, "runs/run1/fastqc-1/1/results/sample 1.html");
+    assert_eq!(location, "runs/run1/fastqc-1/1/work/results/sample 1.html");
     let read = store.get_object(&location).await.expect("get output");
     assert_eq!(read, Bytes::from_static(b"<html/>"));
+
+    // Directory manifests are addressed by the digest of their canonical form.
+    let tree = Tree {
+        entries: vec![
+            TreeEntry::EmptyDirectory { path: "e".into() },
+            TreeEntry::File {
+                path: "a/b.txt".into(),
+                digest: digest.clone(),
+                size: 6,
+                executable: false,
+            },
+        ],
+    };
+    let tree_digest = store.put_tree(&tree).await.expect("put tree");
+    assert_eq!(Ok(tree_digest.clone()), tree.digest());
+    let read = store.get_tree(&tree_digest).await.expect("get tree");
+    assert_eq!(read.digest(), tree.digest());
 }
 
 #[tokio::test]
@@ -96,6 +113,13 @@ async fn uploads_large_files() {
     assert_eq!(size, content.len() as u64);
     assert_eq!(digest, Digest::sha256(&content));
     assert_eq!(store.get_content(&digest).await.expect("get"), content);
+    let location = store
+        .put_output_file("run1", "task-1", 1, "/tmp/large.bin", &file)
+        .await
+        .expect("put output file");
+    assert_eq!(location, "runs/run1/task-1/1/root/tmp/large.bin");
+    let stored = store.local_path(&location).expect("a local store");
+    assert_eq!(std::fs::read(stored).expect("read"), content);
 }
 
 #[test]
@@ -106,6 +130,8 @@ fn rejects_bad_locations() {
     assert!(layout::output("run", "task", 1, "../x").is_err());
     assert!(layout::output("run", "task", 1, "a//b").is_err());
     assert!(layout::output("run/other", "task", 1, "x").is_err());
+    assert!(layout::output("run", "task", 1, "/").is_err());
+    assert!(layout::output("run", "task", 1, "/a/../b").is_err());
     let digest = Digest::sha256(b"");
     assert_eq!(
         layout::content(&digest),

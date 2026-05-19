@@ -39,16 +39,22 @@ pub fn entry(namespace: &str, key: &Digest) -> Result<String, StoreError> {
     Ok(format!("ac/{ENTRY_VERSION}/{namespace}/{}.json", key.hex()))
 }
 
-/// Task outputs under their original names: `runs/<run>/<task>/<attempt>/<relative path>`.
-pub fn output(run: &str, task: &str, attempt: u32, relative: &str) -> Result<String, StoreError> {
+/// Task outputs under their original names: `runs/<run>/<task>/<attempt>/work/<path>` for a
+/// path relative to the work directory, and `runs/<run>/<task>/<attempt>/root/<path>` for an
+/// absolute path inside the container.
+pub fn output(run: &str, task: &str, attempt: u32, path: &str) -> Result<String, StoreError> {
     let unsafe_part =
         |part: &str| part.is_empty() || part == "." || part == ".." || part.contains('/');
+    let (base, relative) = match path.strip_prefix('/') {
+        Some(inside) => ("root", inside),
+        None => ("work", path),
+    };
     let escapes = relative.split('/').any(unsafe_part);
     if relative.is_empty() || escapes || unsafe_part(run) || unsafe_part(task) {
-        let message = format!("invalid output path `{run}/{task}/{attempt}/{relative}`");
+        let message = format!("invalid output path `{run}/{task}/{attempt}/{path}`");
         return Err(StoreError::Location(message));
     }
-    Ok(format!("runs/{run}/{task}/{attempt}/{relative}"))
+    Ok(format!("runs/{run}/{task}/{attempt}/{base}/{relative}"))
 }
 
 fn sharded(root: &str, digest: &Digest) -> String {

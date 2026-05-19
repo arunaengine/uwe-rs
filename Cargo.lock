@@ -567,6 +567,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "opendal",
+ "serde_json",
  "sha2",
  "task-model",
  "tempfile",

@@ -48,7 +48,7 @@ catalog/IMS-Bio2Core-Facility__single_snake_sequencing ok 16
 catalog/JAlvarezJarreta__community_gff3_validation ok 10
 catalog/Jain-Joyce-Labs__snakemake-chipseq ok 77
 catalog/JeremyTournayre__Pipeline-Holoruminant-Meta 1 workflow/Snakefile:22: KeyError: 'params-file'
-catalog/JoseFcoMH__af3_screening 33 workflow/scripts/logging_utils.py:9: Not supported yet: contextlib.contextmanager
+catalog/JoseFcoMH__af3_screening 33 workflow/scripts/logging_utils.py:16: Not supported yet: the library function logging.Logger
 catalog/JoyceS13__BEP_pipeline 1 workflow/Snakefile:101: SyntaxError: unindent does not match any outer indentation level
 catalog/KasperSkytte__snakemake_savont ok 14
 catalog/KasperSkytte__snakemake_usearch ok 14
@@ -73,7 +73,7 @@ catalog/MathiasEskildsen__ONT-AmpSeq ok 54
 catalog/MathiasEskildsen__ONT_RNA-seq_wf 1 workflow/Snakefile:13: FileNotFoundError: [Errno 2] No such file or directory: '/home/bio.aau.dk/mk20aj/Projects/ONT_RNA-seq_wf/data/samples'
 catalog/MethyleneBlues__Snake ok 10
 catalog/NCI-CGR__TriosCompass_v2 1 workflow/Snakefile:8: WorkflowError: Workflow defines configfile workflow/../config/config.yaml but it is not present or accessible (full checked path: config/config.yaml).
-catalog/NeuroGranberg__NODDIpipeline 33 workflow/rules/NODDIpipeline.smk:25: Not supported yet: the attribute replace of DataFrame
+catalog/NeuroGranberg__NODDIpipeline 1 workflow/rules/NODDIpipeline.smk:26: KeyError: ('sub', 'ses', 'scan', 'target', 'acq', 'suffix')
 catalog/Ovewh__ACP-haugvaldstad-et-al-2025 ok 395
 catalog/Ovewh__Climaso 1 workflow/Snakefile:139: WorkflowError: InputFunctionException in rule calculate_SW_ERF (wildcards: experiment=piClim-2xdust, vName=ERFtsw, model=EC-Earth3-AerChem, freq=Ayear): FileNotFoundError: /home/oveh/mnt/Betzy_CMIP/CMIP6/AerChemMIP/EC-Earth-Consortium/EC-Earth3-AerChem/piClim-2xdust/r1i1p1f
 catalog/PathoGenOmics-Lab__VIPERA ok 217
@@ -117,7 +117,7 @@ catalog/Xavster838__downstream_isoseq_process 1 workflow/Snakefile:10: NameError
 catalog/Xavster838__get_and_annotate_locus 1 workflow/Snakefile:8: NameError: name 'srcdir' is not defined
 catalog/Xavster838__run_NucFreq 1 workflow/Snakefile:8: NameError: name 'srcdir' is not defined
 catalog/Yegberink__euro_building_heat_supply ok 1
-catalog/Yegberink__module_geothermal 33 workflow/rules/automatic.smk:95: Not supported yet: the attribute replace of DataFrame
+catalog/Yegberink__module_geothermal ok 1
 catalog/Yegberink__module_heat_rasters ok 1
 catalog/Zilong-Li__array-imputation-workflow 1 workflow/rules/common.smk:31: FileNotFoundError: [Errno 2] No such file or directory: 'data/chip/megaMergedPlus.autosomes.QCedHg38.nonoverlap.bim'
 catalog/Zilong-Li__lcWGS-imputation-workflow ok 60
@@ -367,7 +367,7 @@ catalog/rochevin__RNA-seq-from-SRR-single 1 workflow/rules/samtools.smk:34: Synt
 catalog/rodolfobrandao8__Snakemake-Mag-Annotation ok 5
 catalog/sandragodinhosilva__melange ok 17
 catalog/sanjaysgk__WES_RNA_Pipeline ok 2
-catalog/schlesnerlab__multiconDEnrich 33 workflow/Snakefile:19: Not supported yet: the attribute replace of DataFrame
+catalog/schlesnerlab__multiconDEnrich ok 13
 catalog/scholl-lab__sm-calling ok 67
 catalog/seankmartin__atn-sub-lfp-workflow ok 23
 catalog/semenko__serpent-methylation-pipeline ok 21
@@ -394,7 +394,7 @@ catalog/snakemake-workflows__dna-seq-benchmark 1 workflow/rules/common.smk:540: 
 catalog/snakemake-workflows__dna-seq-gatk-variant-calling ok 38
 catalog/snakemake-workflows__dna-seq-mtb 33 workflow/rules/common.smk:1: ModuleNotFoundError: No module named 'yte'
 catalog/snakemake-workflows__dna-seq-short-read-circle-map ok 1
-catalog/snakemake-workflows__dna-seq-varlociraptor 33 workflow/rules/fusion_calling.smk:15: Not supported yet: meta-wrapper modules
+catalog/snakemake-workflows__dna-seq-varlociraptor 1 workflow/rules/common.smk:1681: WorkflowError: InputFunctionException in rule multiqc (wildcards: group=SRR702070_group): KeyError: 'SRR702070'
 catalog/snakemake-workflows__effect-size-estimation ok 11
 catalog/snakemake-workflows__microsatellite-instability-detection-with-msisensor-pro 1 workflow/rules/common.smk:76: WorkflowError: InputFunctionException in rule all (wildcards: ): KeyError: 'The configfile specifies both `aliases: matched_normal:` and `aliases: baseline:`. You must specify exactly one of these, and comment out the other, to clearly determine the mode the workflow
 catalog/snakemake-workflows__read-alignment-pangenome ok 22
@@ -418,13 +418,13 @@ catalog/t-i-r__snakemake-workflow-template ok 0
 catalog/tahiri-lab__aPhyloGeo-pipeline 1 workflow/rules/common.smk:75: WorkflowError: InputFunctionException in rule all (wildcards: ): EmptyDataError: No columns to parse from file
 catalog/tavareshugo__smk-indexer ok 137
 catalog/tbenavi1__RetroDetector ok 66
-catalog/tdayris__fair_bowtie2_mapping 33 https://raw.githubusercontent.com/tdayris/fair_fastqc_multiqc/2.5.5/workflow/rules/common.smk:56: Not supported yet: the attribute where of DataFrame
-catalog/tdayris__fair_cnv_facets 33 workflow/rules/common.smk:55: Not supported yet: the attribute where of DataFrame
-catalog/tdayris__fair_fastqc_multiqc 33 workflow/rules/common.smk:57: Not supported yet: the attribute where of DataFrame
-catalog/tdayris__fair_gatk_mutect2 33 workflow/rules/common.smk:55: Not supported yet: the attribute where of DataFrame
-catalog/tdayris__fair_genome_indexer ok 198
-catalog/tdayris__fair_macs2_calling 33 workflow/rules/common.smk:56: Not supported yet: the attribute where of DataFrame
-catalog/tdayris__fair_rnaseq_salmon_quant 33 workflow/rules/common.smk:37: Not supported yet: the attribute where of DataFrame
+catalog/tdayris__fair_bowtie2_mapping 1 https://raw.githubusercontent.com/tdayris/fair_genome_indexer/3.9.7/workflow/rules/common.smk:120: AttributeError: module 'snakemake.io' has no attribute 'Wildcards'
+catalog/tdayris__fair_cnv_facets 1 workflow/rules/common.smk:171: AttributeError: module 'snakemake.io' has no attribute 'Wildcards'
+catalog/tdayris__fair_fastqc_multiqc 1 workflow/rules/common.smk:172: AttributeError: module 'snakemake.io' has no attribute 'Wildcards'
+catalog/tdayris__fair_gatk_mutect2 1 workflow/rules/common.smk:171: AttributeError: module 'snakemake.io' has no attribute 'Wildcards'
+catalog/tdayris__fair_genome_indexer 1 workflow/rules/common.smk:123: AttributeError: module 'snakemake.io' has no attribute 'Wildcards'
+catalog/tdayris__fair_macs2_calling 1 workflow/rules/common.smk:171: AttributeError: module 'snakemake.io' has no attribute 'Wildcards'
+catalog/tdayris__fair_rnaseq_salmon_quant 1 workflow/rules/common.smk:106: AttributeError: module 'snakemake.io' has no attribute 'Wildcards'
 catalog/thomasbtf__sars-cov-2-wbe 1 workflow/rules/common.smk:20: WorkflowError: InputFunctionException in rule cat_genomes (wildcards: ): EmptyDataError: No columns to parse from file
 catalog/thomasmulvaney__snakemake-gromacs-workflow ok 10
 catalog/tmweiskittel__serpent-methylation-pipeline-cloud ok 23
@@ -692,7 +692,7 @@ tests/test_keyword_list ok 1
 tests/test_kubernetes 1 Snakefile:5: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_lazy_resources ok 3
 tests/test_list_untracked ok 1
-tests/test_load_metawrapper 33 Snakefile:11: Not supported yet: meta-wrapper modules
+tests/test_load_metawrapper ok 3
 tests/test_local_import ok 1
 tests/test_localrule ok 2
 tests/test_log_input ok 3
@@ -722,7 +722,7 @@ tests/test_modules_dynamic ok 9
 tests/test_modules_dynamic_import_rules ok 5
 tests/test_modules_dynamic_module_as_alias ok 9
 tests/test_modules_dynamic_no_as ok 9
-tests/test_modules_meta_wrapper 33 Snakefile:8: Not supported yet: meta-wrapper modules
+tests/test_modules_meta_wrapper ok 2
 tests/test_modules_name ok 5
 tests/test_modules_no_name 1 Snakefile:7: SyntaxError: Missing module name. A module name must be provided either after the module keyword or inside the module definition after the name keyword.
 tests/test_modules_peppy ok 1

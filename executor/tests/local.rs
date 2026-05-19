@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use executor::local::{ExecutorError, LocalContainer, Staged};
+use executor::local::{ExecutorError, LocalContainer, Staged, Staging};
 use task_model::{FORMAT, Image, OutputRule, TaskSpec};
 
 fn spec(image: Option<&str>, outputs: &[&str]) -> TaskSpec {
@@ -26,8 +26,13 @@ fn spec(image: Option<&str>, outputs: &[&str]) -> TaskSpec {
             })
             .collect(),
         stdin: None,
-        stdout: ".command.out".into(),
-        stderr: ".command.err".into(),
+    }
+}
+
+fn staging(files: Vec<Staged>) -> Staging {
+    Staging {
+        files,
+        ..Staging::default()
     }
 }
 
@@ -49,14 +54,14 @@ fn runs_a_task_in_a_container() {
         engine: "docker".into(),
         scratch: root.path().join("scratch"),
     };
-    let staged = [
+    let staged = staging(vec![
         stage(
             root.path(),
             ".command.sh",
             "cat in/data.txt > out.txt\necho done\n",
         ),
         stage(root.path(), "in/data.txt", "hello\n"),
-    ];
+    ]);
     let finished = executor
         .run(
             "task-1",
@@ -70,11 +75,13 @@ fn runs_a_task_in_a_container() {
         .iter()
         .map(|file| file.path.as_str())
         .collect();
-    assert_eq!(paths, [".command.out", ".command.err", "out.txt"]);
-    let output = std::fs::read_to_string(finished.work.join("out.txt")).expect("reads the output");
+    assert_eq!(paths, ["out.txt"]);
+    let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("reads the output");
     assert_eq!(output, "hello\n");
+    let said = std::fs::read_to_string(finished.stdout()).expect("reads the standard output");
+    assert_eq!(said, "done\n");
     let owner = std::os::unix::fs::MetadataExt::uid(
-        &std::fs::metadata(finished.work.join("out.txt")).unwrap(),
+        &std::fs::metadata(finished.local_path("out.txt")).unwrap(),
     );
     let me = std::os::unix::fs::MetadataExt::uid(&std::fs::metadata(root.path()).unwrap());
     assert_eq!(owner, me, "outputs belong to the current user");
@@ -88,11 +95,11 @@ fn reports_failures() {
         engine: "docker".into(),
         scratch: root.path().join("scratch"),
     };
-    let staged = [stage(
+    let staged = staging(vec![stage(
         root.path(),
         ".command.sh",
         "echo broken >&2\nexit 4\n",
-    )];
+    )]);
     let finished = executor
         .run(
             "task-2",
@@ -101,9 +108,11 @@ fn reports_failures() {
         )
         .expect("runs");
     assert_eq!(finished.exit_code, Some(4));
-    let error = std::fs::read_to_string(finished.work.join(".command.err")).expect("reads the log");
+    let error = std::fs::read_to_string(finished.stderr()).expect("reads the log");
     assert_eq!(error, "broken\n");
-    let missing = executor.run("task-3", &spec(None, &[]), &[]).unwrap_err();
+    let missing = executor
+        .run("task-3", &spec(None, &[]), &Staging::default())
+        .unwrap_err();
     assert!(matches!(missing, ExecutorError::NoImage));
     let error = executor
         .run(

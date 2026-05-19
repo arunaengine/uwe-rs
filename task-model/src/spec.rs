@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::Digest;
 
 /// Version of the specification format; any change to the encoding must raise it.
-pub const FORMAT: u32 = 1;
+pub const FORMAT: u32 = 2;
 
 /// What a task computes. Only this part of a task goes into the cache key.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,10 +24,8 @@ pub struct TaskSpec {
     pub environment: BTreeMap<String, EnvironmentValue>,
     pub inputs: Vec<InputFile>,
     pub outputs: Vec<OutputRule>,
+    /// The digest of the text that the task reads on standard input.
     pub stdin: Option<Digest>,
-    /// Relative paths of the files that capture the two output streams.
-    pub stdout: String,
-    pub stderr: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -104,8 +102,7 @@ impl TaskSpec {
         for output in &self.outputs {
             check_relative(&output.pattern)?;
         }
-        check_relative(&self.stdout)?;
-        check_relative(&self.stderr)
+        Ok(())
     }
 
     /// The RFC 8785 canonical JSON of the specification. Inputs and outputs are sorted, because

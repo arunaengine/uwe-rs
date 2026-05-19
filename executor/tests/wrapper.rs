@@ -8,7 +8,7 @@ use std::process::Command;
 
 use executor::manifest::{Collected, parse};
 use executor::wrapper::wrapper;
-use task_model::{EnvironmentValue, FORMAT, OutputRule, TaskSpec};
+use task_model::{Digest, EnvironmentValue, FORMAT, OutputRule, TaskSpec};
 
 fn spec(outputs: &[&str]) -> TaskSpec {
     let mut environment = BTreeMap::new();
@@ -31,8 +31,6 @@ fn spec(outputs: &[&str]) -> TaskSpec {
             })
             .collect(),
         stdin: None,
-        stdout: ".command.out".into(),
-        stderr: ".command.err".into(),
     }
 }
 
@@ -63,26 +61,16 @@ fn collects_outputs_after_success() {
                   mkdir -p dir/a && echo b > dir/a/b.txt\necho l > x.log\necho s > .hidden.log\n";
     let spec = spec(&["out.txt", "dir", "*.log", "missing.txt"]);
     assert_eq!(run(root.path(), &spec, script), 0);
-    let work = root.path().join("work");
     let control = root.path().join("control");
     assert_eq!(read(&control.join("exit")), "0\n");
-    assert_eq!(read(&work.join(".command.out")), "it's me in work\n");
-    assert_eq!(read(&work.join(".command.err")), "oops\n");
+    // The captured streams stay out of the work directory, where a pattern could match them.
+    assert_eq!(read(&control.join("stdout")), "it's me in work\n");
+    assert_eq!(read(&control.join("stderr")), "oops\n");
     let files = parse(&read(&control.join("manifest"))).expect("parses");
     let paths: Vec<&str> = files.iter().map(|file| file.path.as_str()).collect();
+    assert_eq!(paths, ["out.txt", "dir/a/b.txt", ".hidden.log", "x.log"]);
     assert_eq!(
-        paths,
-        [
-            ".command.out",
-            ".command.err",
-            "out.txt",
-            "dir/a/b.txt",
-            ".hidden.log",
-            "x.log"
-        ]
-    );
-    assert_eq!(
-        files[2],
+        files[0],
         Collected {
             path: "out.txt".into(),
             size: 3
@@ -97,9 +85,20 @@ fn keeps_only_the_logs_of_a_failure() {
     assert_eq!(run(root.path(), &spec, "echo hi > out.txt\nexit 3\n"), 0);
     let control = root.path().join("control");
     assert_eq!(read(&control.join("exit")), "3\n");
-    let files = parse(&read(&control.join("manifest"))).expect("parses");
-    let paths: Vec<&str> = files.iter().map(|file| file.path.as_str()).collect();
-    assert_eq!(paths, [".command.out", ".command.err"]);
+    assert_eq!(read(&control.join("manifest")), "");
+    assert!(control.join("stdout").is_file() && control.join("stderr").is_file());
+}
+
+#[test]
+fn reads_the_standard_input() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let mut spec = spec(&["got.txt"]);
+    spec.stdin = Some(Digest::sha256(b"piped\n"));
+    let control = root.path().join("control");
+    std::fs::create_dir_all(&control).expect("creates the control directory");
+    std::fs::write(control.join("stdin"), "piped\n").expect("writes the standard input");
+    assert_eq!(run(root.path(), &spec, "cat > got.txt\n"), 0);
+    assert_eq!(read(&root.path().join("work/got.txt")), "piped\n");
 }
 
 #[test]

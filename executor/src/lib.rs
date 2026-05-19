@@ -8,16 +8,17 @@ pub mod wrapper;
 
 use task_model::TaskSpec;
 
-pub use local::{ExecutorError, Finished, Staged};
+pub use local::{ExecutorError, Finished, Staged, Staging};
 
 /// Runs tasks, one call per task.
 pub trait Executor {
-    /// Runs a task in a scratch directory called `name`, with the given files in place.
+    /// Runs a task in a scratch directory called `name`, a name no other task uses, with the
+    /// staged files in place.
     fn run(
         &self,
         name: &str,
         spec: &TaskSpec,
-        staged: &[Staged],
+        staging: &Staging,
     ) -> Result<Finished, ExecutorError>;
 }
 
@@ -26,8 +27,8 @@ impl Executor for local::LocalContainer {
         &self,
         name: &str,
         spec: &TaskSpec,
-        staged: &[Staged],
+        staging: &Staging,
     ) -> Result<Finished, ExecutorError> {
-        local::LocalContainer::run(self, name, spec, staged)
+        local::LocalContainer::run(self, name, spec, staging)
     }
 }

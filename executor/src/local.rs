@@ -9,7 +9,12 @@ use std::process::Command;
 use task_model::TaskSpec;
 
 use crate::manifest::{Collected, ManifestError, parse};
-use crate::wrapper::{EXIT, MANIFEST, wrapper};
+use crate::wrapper::{EXIT, MANIFEST, STDERR, STDIN, STDOUT, wrapper};
+
+/// The folders of a task's scratch directory: the work directory and the control files of the
+/// wrapper.
+const WORK: &str = "work";
+const CONTROL: &str = "control";
 
 /// The local container executor.
 pub struct LocalContainer {
@@ -29,15 +34,40 @@ pub struct Staged {
     pub executable: bool,
 }
 
-/// What a task left behind.
+/// What an executor places before a task starts.
+#[derive(Clone, Debug, Default)]
+pub struct Staging {
+    pub files: Vec<Staged>,
+    /// The local file that the task reads on standard input.
+    pub stdin: Option<PathBuf>,
+}
+
+/// What a task left behind in its scratch directory.
 #[derive(Debug)]
 pub struct Finished {
     /// The tool's exit code; `None` when the wrapper was killed before it recorded one.
     pub exit_code: Option<i32>,
     /// The collected files, relative to the work directory.
     pub files: Vec<Collected>,
-    /// The work directory.
-    pub work: PathBuf,
+    /// The scratch directory, which the caller removes once it has the outputs.
+    pub root: PathBuf,
+}
+
+impl Finished {
+    /// Where an output is on the host.
+    pub fn local_path(&self, path: &str) -> PathBuf {
+        self.root.join(WORK).join(path)
+    }
+
+    /// The file that captured standard output.
+    pub fn stdout(&self) -> PathBuf {
+        self.root.join(CONTROL).join(STDOUT)
+    }
+
+    /// The file that captured standard error.
+    pub fn stderr(&self) -> PathBuf {
+        self.root.join(CONTROL).join(STDERR)
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -53,25 +83,24 @@ pub enum ExecutorError {
 }
 
 impl LocalContainer {
-    /// Runs a task in `<scratch>/<name>`: stages its inputs, runs the wrapper in the task's
-    /// image as the current user, and reads the control files. The directory stays for the
-    /// caller to take the outputs from.
+    /// Runs a task in `<scratch>/<name>`, a name that must not be in use: stages its inputs,
+    /// runs the wrapper in the task's image as the current user, and reads the control files.
+    /// The directory stays for the caller to take the outputs from.
     pub fn run(
         &self,
         name: &str,
         spec: &TaskSpec,
-        staged: &[Staged],
+        staging: &Staging,
     ) -> Result<Finished, ExecutorError> {
         let image = spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
+        std::fs::create_dir_all(&self.scratch)?;
         let root = self.scratch.join(name);
-        if root.exists() {
-            std::fs::remove_dir_all(&root)?;
-        }
-        let work = root.join("work");
-        let control = root.join("control");
+        std::fs::create_dir(&root)?;
+        let work = root.join(WORK);
+        let control = root.join(CONTROL);
         std::fs::create_dir_all(&work)?;
         std::fs::create_dir_all(&control)?;
-        for file in staged {
+        for file in &staging.files {
             let target = work.join(&file.path);
             if let Some(parent) = target.parent() {
                 std::fs::create_dir_all(parent)?;
@@ -80,6 +109,9 @@ impl LocalContainer {
             if file.executable {
                 std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755))?;
             }
+        }
+        if let Some(stdin) = &staging.stdin {
+            std::fs::copy(stdin, control.join(STDIN))?;
         }
         let script = control.join("wrapper.sh");
         std::fs::write(&script, wrapper(spec, &text(&work), &text(&control)))?;
@@ -109,7 +141,7 @@ impl LocalContainer {
         Ok(Finished {
             exit_code,
             files,
-            work,
+            root,
         })
     }
 }

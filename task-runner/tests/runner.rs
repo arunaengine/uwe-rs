@@ -8,13 +8,14 @@ use std::path::Path;
 
 use content_store::Store;
 use executor::manifest::Collected;
-use executor::{Executor, ExecutorError, Finished, Staged};
+use executor::{Executor, ExecutorError, Finished, Staging};
 use task_model::{
     FORMAT, FileKind, Image, InputFile, OutputRule, Placement, ReuseScope, TaskRequest, TaskSpec,
 };
 use task_runner::Runner;
 
-/// Writes each output pattern as a file with the staged input's content, and remembers each run.
+/// Writes each output pattern as a file with the staged input's content, prints `said`, and
+/// remembers each run.
 struct Fake {
     scratch: std::path::PathBuf,
     runs: RefCell<Vec<String>>,
@@ -26,28 +27,29 @@ impl Executor for Fake {
         &self,
         name: &str,
         spec: &TaskSpec,
-        staged: &[Staged],
+        staging: &Staging,
     ) -> Result<Finished, ExecutorError> {
         self.runs.borrow_mut().push(name.to_owned());
-        let work = self.scratch.join(name).join("work");
-        std::fs::create_dir_all(&work)?;
-        let input = match staged.first() {
+        let mut finished = Finished {
+            exit_code: Some(self.exit_code),
+            files: Vec::new(),
+            root: self.scratch.join(name),
+        };
+        std::fs::create_dir_all(finished.root.join("work"))?;
+        std::fs::create_dir_all(finished.root.join("control"))?;
+        std::fs::write(finished.stdout(), "said\n")?;
+        let input = match staging.files.first() {
             Some(file) => std::fs::read_to_string(&file.source)?,
             None => String::new(),
         };
-        let mut files = Vec::new();
         for rule in &spec.outputs {
-            std::fs::write(work.join(&rule.pattern), &input)?;
-            files.push(Collected {
+            std::fs::write(finished.local_path(&rule.pattern), &input)?;
+            finished.files.push(Collected {
                 path: rule.pattern.clone(),
                 size: input.len() as u64,
             });
         }
-        Ok(Finished {
-            exit_code: Some(self.exit_code),
-            files,
-            work,
-        })
+        Ok(finished)
     }
 }
 
@@ -80,8 +82,6 @@ fn request(runner: &Runner<Fake>, root: &Path, command: &str) -> TaskRequest {
                 pattern: "out.txt".into(),
             }],
             stdin: None,
-            stdout: ".command.out".into(),
-            stderr: ".command.err".into(),
         },
         placement: Placement::default(),
     }
@@ -111,11 +111,16 @@ fn reuses_shared_results() {
     assert_eq!(output.location, "runs/run1/P__1_/1/work/out.txt");
     let stored = runner.local_path(&output.location).expect("a local store");
     assert_eq!(std::fs::read_to_string(stored).expect("reads"), "data\n");
+    let said = runner
+        .read_content(first.stdout.as_ref().expect("a standard output"))
+        .expect("reads");
+    assert_eq!(said, "said\n");
     let second = runner
         .execute(&request(&runner, root.path(), "a"))
         .expect("runs");
     assert!(second.reused);
     assert_eq!(second.files, first.files);
+    assert_eq!(second.stdout, first.stdout);
     let third = runner
         .execute(&request(&runner, root.path(), "b"))
         .expect("runs");

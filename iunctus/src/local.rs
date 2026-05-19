@@ -9,15 +9,11 @@ use std::path::{Path, PathBuf};
 use content_store::Store;
 use executor::local::LocalContainer;
 use task_model::{
-    EnvironmentValue, FORMAT, FileKind, Image, InputFile, OutputRule, Placement, ReuseScope,
-    TaskSpec,
+    Digest, EnvironmentValue, FORMAT, FileKind, Image, InputFile, OutputRule, Placement,
+    ReuseScope, TaskSpec,
 };
 use task_runner::Runner;
 use workflow_graph::{ExecuteError, Executor, Outcome, OutputFile, Task};
-
-/// The files that capture the standard output and error of a task, as Nextflow names them.
-const STDOUT: &str = ".command.out";
-const STDERR: &str = ".command.err";
 
 pub struct Local {
     runner: Runner<LocalContainer>,
@@ -70,11 +66,6 @@ impl Executor for Local {
             task: task.name.clone(),
             message,
         };
-        if task.stdin.is_some() {
-            return Err(unsupported(
-                "standard input is not supported yet by the local executor".into(),
-            ));
-        }
         let image = match &task.image {
             Some(image) => Some(self.pin(image).map_err(|error| problem(&error))?),
             None => None,
@@ -108,7 +99,15 @@ impl Executor for Local {
                 writable: false,
             });
         }
-        let request = request(task, image, inputs);
+        let stdin = match &task.stdin {
+            Some(text) => Some(
+                self.runner
+                    .import_bytes(text.as_bytes())
+                    .map_err(|error| problem(&error))?,
+            ),
+            None => None,
+        };
+        let request = request(task, image, inputs, stdin);
         let result = self
             .runner
             .execute(&request)
@@ -117,41 +116,45 @@ impl Executor for Local {
             let state = if result.reused { "cached" } else { "done" };
             println!("[{state}] {}", task.name);
         }
+        let text = |digest: &Option<Digest>| match digest {
+            Some(digest) => self
+                .runner
+                .read_content(digest)
+                .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+                .map_err(|error| problem(&error)),
+            None => Ok(String::new()),
+        };
         let mut outcome = Outcome {
             id: task.id,
             exit_code: result.exit_code.unwrap_or(-1),
+            stdout: text(&result.stdout)?,
+            stderr: text(&result.stderr)?,
             ..Outcome::default()
         };
         for file in &result.files {
-            let text = || {
-                self.runner
-                    .read(&file.location)
-                    .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-                    .map_err(|error| problem(&error))
-            };
-            match file.path.as_str() {
-                STDOUT => outcome.stdout = text()?,
-                STDERR => outcome.stderr = text()?,
-                _ => {
-                    let location = self
-                        .runner
-                        .local_path(&file.location)
-                        .unwrap_or_else(|| PathBuf::from(&file.location));
-                    outcome.files.push(OutputFile {
-                        path: file.path.clone(),
-                        directory: location.is_dir(),
-                        location,
-                    });
-                }
-            }
+            let location = self
+                .runner
+                .local_path(&file.location)
+                .unwrap_or_else(|| PathBuf::from(&file.location));
+            outcome.files.push(OutputFile {
+                path: file.path.clone(),
+                directory: location.is_dir(),
+                location,
+            });
         }
         Ok(outcome)
     }
 }
 
-/// The task-model request of a task whose image is pinned if possible and whose inputs are in
-/// the store. Results are shared across runs only when the image is pinned to a digest.
-fn request(task: &Task, image: Option<String>, inputs: Vec<InputFile>) -> task_model::TaskRequest {
+/// The task-model request of a task whose image is pinned if possible and whose inputs and
+/// standard input are in the store. Results are shared across runs only when the image is
+/// pinned to a digest.
+fn request(
+    task: &Task,
+    image: Option<String>,
+    inputs: Vec<InputFile>,
+    stdin: Option<Digest>,
+) -> task_model::TaskRequest {
     let environment: BTreeMap<String, EnvironmentValue> = task
         .environment
         .iter()
@@ -174,9 +177,7 @@ fn request(task: &Task, image: Option<String>, inputs: Vec<InputFile>) -> task_m
                 pattern: pattern.clone(),
             })
             .collect(),
-        stdin: None,
-        stdout: STDOUT.into(),
-        stderr: STDERR.into(),
+        stdin,
     };
     let scope = if spec.image_pinned() {
         ReuseScope::Shared
@@ -203,7 +204,6 @@ fn request(task: &Task, image: Option<String>, inputs: Vec<InputFile>) -> task_m
 #[cfg(test)]
 mod tests {
     use super::*;
-    use task_model::Digest;
     use workflow_graph::Resources;
 
     #[test]
@@ -230,16 +230,16 @@ mod tests {
             &task,
             Some("debian:stable-slim".into()),
             vec![input.clone()],
+            None,
         );
         assert_eq!(tagged.scope, ReuseScope::Lineage);
         assert_eq!(tagged.spec.arguments, task.command);
-        assert_eq!(tagged.spec.stdout, ".command.out");
         assert_eq!(tagged.placement.cpus, 2);
         assert_eq!(
             tagged.spec.environment["A"],
             EnvironmentValue::Literal("1".into())
         );
-        let pinned = request(&task, Some("debian@sha256:ab".into()), vec![input]);
+        let pinned = request(&task, Some("debian@sha256:ab".into()), vec![input], None);
         assert_eq!(pinned.scope, ReuseScope::Shared);
     }
 }

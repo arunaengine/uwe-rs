@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 
 use bytes::Bytes;
 use content_store::{Store, StoreError, layout};
-use executor::{Executor, ExecutorError, Staged};
+use executor::{Executor, ExecutorError, Finished, Staged, Staging};
 use serde::{Deserialize, Serialize};
-use task_model::{Digest, FileKind, ReuseScope, SpecError, TaskRequest};
+use task_model::{Digest, FileKind, ReuseScope, SpecError, TaskRequest, TaskSpec};
 
 /// A file of a task result, in the store.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,6 +27,9 @@ pub struct TaskResult {
     /// The tool's exit code; `None` when the task was killed before it recorded one.
     pub exit_code: Option<i32>,
     pub files: Vec<StoredFile>,
+    /// The digests of the captured standard output and error, when the task got that far.
+    pub stdout: Option<Digest>,
+    pub stderr: Option<Digest>,
     /// Whether a stored result answered the request.
     pub reused: bool,
 }
@@ -37,6 +40,8 @@ struct Entry {
     run: String,
     task: String,
     files: Vec<StoredFile>,
+    stdout: Option<Digest>,
+    stderr: Option<Digest>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -101,6 +106,11 @@ impl<E: Executor> Runner<E> {
         Ok(self.runtime.block_on(self.store.get_object(location))?)
     }
 
+    /// Reads content by its digest, like a captured standard output.
+    pub fn read_content(&self, digest: &Digest) -> Result<Bytes, RunnerError> {
+        Ok(self.runtime.block_on(self.store.get_content(digest))?)
+    }
+
     /// The executor that runs the tasks.
     pub fn executor(&self) -> &E {
         &self.executor
@@ -128,41 +138,25 @@ impl<E: Executor> Runner<E> {
             return Ok(TaskResult {
                 exit_code: Some(0),
                 files: entry.files,
+                stdout: entry.stdout,
+                stderr: entry.stderr,
                 reused: true,
             });
         }
         let task = segment(&request.identity);
-        let staged = self.stage(request)?;
+        let staging = self.stage(&request.spec)?;
         let name = format!("{}-{task}-{}", self.run, request.attempt);
-        let finished = self.executor.run(&name, &request.spec, &staged)?;
-        let mut files = Vec::new();
-        for collected in &finished.files {
-            let bytes = Bytes::from(std::fs::read(finished.work.join(&collected.path))?);
-            let digest = self
-                .runtime
-                .block_on(self.store.put_content(bytes.clone()))?;
-            let location = self.runtime.block_on(self.store.put_output(
-                &self.run,
-                &task,
-                request.attempt,
-                &collected.path,
-                bytes,
-            ))?;
-            files.push(StoredFile {
-                path: collected.path.clone(),
-                digest,
-                size: collected.size,
-                location,
-            });
-        }
-        if let Some(root) = finished.work.parent() {
-            std::fs::remove_dir_all(root)?;
-        }
-        if finished.exit_code == Some(0) && request.scope != ReuseScope::None {
+        let finished = self.executor.run(&name, &request.spec, &staging)?;
+        let stored = self.store_outputs(&finished, &task, request.attempt);
+        std::fs::remove_dir_all(&finished.root)?;
+        let result = stored?;
+        if result.exit_code == Some(0) && request.scope != ReuseScope::None {
             let entry = Entry {
                 run: self.run.clone(),
                 task,
-                files: files.clone(),
+                files: result.files.clone(),
+                stdout: result.stdout.clone(),
+                stderr: result.stderr.clone(),
             };
             let bytes = serde_json::to_vec(&entry).map_err(|error| RunnerError::Entry {
                 key: key.clone(),
@@ -171,42 +165,88 @@ impl<E: Executor> Runner<E> {
             self.runtime
                 .block_on(self.store.put_entry(namespace, &key, bytes.into()))?;
         }
-        Ok(TaskResult {
-            exit_code: finished.exit_code,
-            files,
-            reused: false,
-        })
+        Ok(result)
     }
 
-    /// The inputs of a request: files of a local store as they are, others downloaded.
-    fn stage(&self, request: &TaskRequest) -> Result<Vec<Staged>, RunnerError> {
-        let mut staged = Vec::new();
-        for input in &request.spec.inputs {
+    /// What the executor places for a specification: each input file, and the standard input.
+    fn stage(&self, spec: &TaskSpec) -> Result<Staging, RunnerError> {
+        let mut staging = Staging::default();
+        for input in &spec.inputs {
             if input.kind == FileKind::Directory {
                 return Err(RunnerError::Directory(input.path.clone()));
             }
-            let location = layout::content(&input.digest);
-            let source = match self.store.local_path(&location) {
-                Some(path) => path,
-                None => {
-                    let path = self.downloads.join(input.digest.hex());
-                    if !path.exists() {
-                        std::fs::create_dir_all(&self.downloads)?;
-                        let bytes = self
-                            .runtime
-                            .block_on(self.store.get_content(&input.digest))?;
-                        std::fs::write(&path, bytes)?;
-                    }
-                    path
-                }
-            };
-            staged.push(Staged {
+            staging.files.push(Staged {
                 path: input.path.clone(),
-                source,
+                source: self.local_content(&input.digest)?,
                 executable: input.executable,
             });
         }
-        Ok(staged)
+        if let Some(digest) = &spec.stdin {
+            staging.stdin = Some(self.local_content(digest)?);
+        }
+        Ok(staging)
+    }
+
+    /// A local file with the content of a digest: the store's own file for a local store, else
+    /// a download.
+    fn local_content(&self, digest: &Digest) -> Result<PathBuf, RunnerError> {
+        if let Some(path) = self.store.local_path(&layout::content(digest)) {
+            return Ok(path);
+        }
+        let path = self.downloads.join(digest.hex());
+        if !path.exists() {
+            std::fs::create_dir_all(&self.downloads)?;
+            let bytes = self.runtime.block_on(self.store.get_content(digest))?;
+            // A name of this process first, then a rename, so that another run that downloads
+            // the same content never reads half a file.
+            let part = self
+                .downloads
+                .join(format!("{}.{}", digest.hex(), std::process::id()));
+            std::fs::write(&part, bytes)?;
+            std::fs::rename(&part, &path)?;
+        }
+        Ok(path)
+    }
+
+    /// Stores the outputs of a finished task under its attempt, reading each file in parts,
+    /// and the captured streams by their content.
+    fn store_outputs(
+        &self,
+        finished: &Finished,
+        task: &str,
+        attempt: u32,
+    ) -> Result<TaskResult, RunnerError> {
+        let mut files = Vec::new();
+        for collected in &finished.files {
+            let local = finished.local_path(&collected.path);
+            let location = self.runtime.block_on(self.store.put_output_file(
+                &self.run,
+                task,
+                attempt,
+                &collected.path,
+                &local,
+            ))?;
+            let (digest, size) = self.runtime.block_on(self.store.put_file(&local))?;
+            files.push(StoredFile {
+                path: collected.path.clone(),
+                digest,
+                size,
+                location,
+            });
+        }
+        let log = |file: PathBuf| -> Result<Option<Digest>, RunnerError> {
+            if !file.is_file() {
+                return Ok(None);
+            }
+            Ok(Some(self.runtime.block_on(self.store.put_file(&file))?.0))
+        };
+        Ok(TaskResult {
+            exit_code: finished.exit_code,
+            files,
+            stdout: log(finished.stdout())?,
+            stderr: log(finished.stderr())?,
+            reused: false,
+        })
     }
 }
 

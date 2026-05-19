@@ -10,12 +10,17 @@ pub const EXIT: &str = "exit";
 pub const START: &str = "start";
 pub const END: &str = "end";
 pub const MANIFEST: &str = "manifest";
+pub const STDOUT: &str = "stdout";
+pub const STDERR: &str = "stderr";
+pub const STDIN: &str = "stdin";
 
 /// The wrapper for a task whose work and control directories are at the given absolute paths.
 ///
-/// It runs the arguments with both streams redirected, records the exit code and times,
-/// collects the outputs only on success, writes the manifest, and exits with 0 whenever it
-/// got that far, so that the logs of a failed tool are kept.
+/// It runs the arguments with both streams captured in the control directory, so that output
+/// patterns cannot match the capture files, and with `stdin` of the control directory as
+/// standard input when the task has one. It records the exit code and times, collects the
+/// outputs only on success, writes the manifest, and exits with 0 whenever it got that far, so
+/// that the logs of a failed tool are kept.
 pub fn wrapper(spec: &TaskSpec, work: &str, control: &str) -> String {
     let mut script = String::from("#!/bin/bash\n# The iunctus task wrapper.\nset -u\n");
     script.push_str(&format!(
@@ -36,12 +41,14 @@ pub fn wrapper(spec: &TaskSpec, work: &str, control: &str) -> String {
         .iter()
         .map(|argument| quote(argument))
         .collect();
+    let stdin = match spec.stdin {
+        Some(_) => format!(" < \"$control/{STDIN}\""),
+        None => String::new(),
+    };
     script.push_str(&format!("date +%s > \"$control/{START}\"\n"));
     script.push_str(&format!(
-        "{} > {} 2> {}\n",
-        arguments.join(" "),
-        quote(&spec.stdout),
-        quote(&spec.stderr)
+        "{} > \"$control/{STDOUT}\" 2> \"$control/{STDERR}\"{stdin}\n",
+        arguments.join(" ")
     ));
     script.push_str(&format!(
         "status=$?\necho \"$status\" > \"$control/{EXIT}\"\n"
@@ -49,16 +56,15 @@ pub fn wrapper(spec: &TaskSpec, work: &str, control: &str) -> String {
     script.push_str(&format!("date +%s > \"$control/{END}\"\n"));
     script.push_str(COLLECT);
     script.push_str(&format!(": > \"$control/{MANIFEST}\"\n"));
-    script.push_str(&format!(
-        "collect {}\ncollect {}\n",
-        quote(&spec.stdout),
-        quote(&spec.stderr)
-    ));
-    script.push_str("if [ \"$status\" -eq 0 ]; then\n");
-    for rule in &spec.outputs {
-        script.push_str(&format!("    collect {}\n", quote(&rule.pattern)));
+    // Bash rejects an empty `then` block, so a task without outputs gets none.
+    if !spec.outputs.is_empty() {
+        script.push_str("if [ \"$status\" -eq 0 ]; then\n");
+        for rule in &spec.outputs {
+            script.push_str(&format!("    collect {}\n", quote(&rule.pattern)));
+        }
+        script.push_str("fi\n");
     }
-    script.push_str("fi\nexit 0\n");
+    script.push_str("exit 0\n");
     script
 }
 

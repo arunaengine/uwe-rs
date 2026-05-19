@@ -53,8 +53,6 @@ fn fastqc() -> TaskSpec {
             },
         ],
         stdin: None,
-        stdout: ".command.out".into(),
-        stderr: ".command.err".into(),
     }
 }
 
@@ -65,7 +63,7 @@ fn golden_fastqc_key() {
     // Only accept it together with a new FORMAT.
     assert_eq!(
         key.as_str(),
-        "sha256:3726a522e2c2d41f664f08a7c5f4873240b6885150b55b652084a2052cc90ee2"
+        "sha256:5f0f01034ca522d9a869dd4acb935726ac4da4bb95173e208197f8d52251e8dd"
     );
 }
 
@@ -110,7 +108,7 @@ fn every_field_counts() {
                 pattern: "*.txt".into(),
             })
         },
-        |spec| spec.stdout = "out.txt".into(),
+        |spec| spec.stdin = Some(Digest::sha256(b"text")),
     ];
     for (index, change) in changes.into_iter().enumerate() {
         let mut spec = fastqc();

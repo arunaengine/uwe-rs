@@ -14,11 +14,13 @@ use task_model::{
 };
 use task_runner::Runner;
 
-/// Writes each output pattern as a file with the staged input's content, prints `said`, and
-/// remembers each run.
+/// Writes each output pattern as a file with the first staged file's content, or for a pattern
+/// that ends with `/` as a directory with that file and an empty folder. It prints `said` and
+/// remembers each run and what it staged.
 struct Fake {
     scratch: std::path::PathBuf,
     runs: RefCell<Vec<String>>,
+    staged: RefCell<Vec<Staging>>,
     exit_code: i32,
 }
 
@@ -30,6 +32,7 @@ impl Executor for Fake {
         staging: &Staging,
     ) -> Result<Finished, ExecutorError> {
         self.runs.borrow_mut().push(name.to_owned());
+        self.staged.borrow_mut().push(staging.clone());
         let mut finished = Finished {
             exit_code: Some(self.exit_code),
             files: Vec::new(),
@@ -43,10 +46,20 @@ impl Executor for Fake {
             None => String::new(),
         };
         for rule in &spec.outputs {
-            std::fs::write(finished.local_path(&rule.pattern), &input)?;
+            let path = rule.pattern.trim_end_matches('/').to_owned();
+            let local = finished.local_path(&path);
+            let directory = rule.pattern.ends_with('/');
+            if directory {
+                std::fs::create_dir_all(local.join("empty"))?;
+                std::fs::write(local.join("a.txt"), &input)?;
+            } else {
+                std::fs::create_dir_all(local.parent().expect("a parent"))?;
+                std::fs::write(&local, &input)?;
+            }
             finished.files.push(Collected {
-                path: rule.pattern.clone(),
-                size: input.len() as u64,
+                path,
+                directory,
+                size: if directory { 0 } else { input.len() as u64 },
             });
         }
         Ok(finished)
@@ -92,6 +105,7 @@ fn runner(root: &Path, exit_code: i32) -> Runner<Fake> {
     let fake = Fake {
         scratch: root.join("scratch"),
         runs: RefCell::new(Vec::new()),
+        staged: RefCell::new(Vec::new()),
         exit_code,
     };
     Runner::new(store, fake, "run1", &root.join("downloads")).expect("a runner")
@@ -140,4 +154,49 @@ fn failures_are_not_cached() {
         .execute(&request(&runner, root.path(), "a"))
         .expect("runs");
     assert!(!second.reused);
+}
+
+#[test]
+fn directories_travel_as_one_entry() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let runner = runner(root.path(), 0);
+    let mut first = request(&runner, root.path(), "a");
+    first.spec.outputs = vec![OutputRule {
+        pattern: "db/".into(),
+    }];
+    let result = runner.execute(&first).expect("runs");
+    let [db] = result.files.as_slice() else {
+        panic!("one output")
+    };
+    assert!(db.directory);
+    assert_eq!(db.location, "runs/run1/P__1_/1/work/db");
+    assert_eq!(db.size, 5);
+    let on_disk = runner.local_path(&db.location).expect("a local store");
+    assert_eq!(
+        std::fs::read_to_string(on_disk.join("a.txt")).expect("reads"),
+        "data\n"
+    );
+    assert!(on_disk.join("empty").is_dir());
+
+    // The directory goes back in as an input, with its empty folder.
+    let (digest, size) = runner.import_directory(&on_disk).expect("imports");
+    assert_eq!((&digest, size), (&db.digest, 5));
+    let mut second = request(&runner, root.path(), "b");
+    second.spec.inputs.push(InputFile {
+        path: "in".into(),
+        kind: FileKind::Directory,
+        digest,
+        executable: false,
+        writable: false,
+    });
+    runner.execute(&second).expect("runs");
+    let staged = runner.executor().staged.borrow();
+    let staging = staged.last().expect("a staging");
+    let files: Vec<&str> = staging
+        .files
+        .iter()
+        .map(|file| file.path.as_str())
+        .collect();
+    assert_eq!(files, ["input.txt", "in/a.txt"]);
+    assert_eq!(staging.directories, ["in", "in/empty"]);
 }

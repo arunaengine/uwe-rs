@@ -54,12 +54,16 @@ fn read(path: &Path) -> String {
     std::fs::read_to_string(path).expect("reads the file")
 }
 
+fn paths(files: &[Collected]) -> Vec<&str> {
+    files.iter().map(|file| file.path.as_str()).collect()
+}
+
 #[test]
 fn collects_outputs_after_success() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let script = "echo \"$GREETING in ${TASK_DIR##*/}\"\necho oops >&2\necho hi > out.txt\n\
                   mkdir -p dir/a && echo b > dir/a/b.txt\necho l > x.log\necho s > .hidden.log\n";
-    let spec = spec(&["out.txt", "dir", "*.log", "missing.txt"]);
+    let spec = spec(&["out.txt", "dir/", "*.log", "missing.txt"]);
     assert_eq!(run(root.path(), &spec, script), 0);
     let control = root.path().join("control");
     assert_eq!(read(&control.join("exit")), "0\n");
@@ -67,15 +71,33 @@ fn collects_outputs_after_success() {
     assert_eq!(read(&control.join("stdout")), "it's me in work\n");
     assert_eq!(read(&control.join("stderr")), "oops\n");
     let files = parse(&read(&control.join("manifest"))).expect("parses");
-    let paths: Vec<&str> = files.iter().map(|file| file.path.as_str()).collect();
-    assert_eq!(paths, ["out.txt", "dir/a/b.txt", ".hidden.log", "x.log"]);
+    assert_eq!(paths(&files), ["out.txt", "dir", ".hidden.log", "x.log"]);
     assert_eq!(
-        files[0],
-        Collected {
-            path: "out.txt".into(),
-            size: 3
-        }
+        files[..2],
+        [
+            Collected {
+                path: "out.txt".into(),
+                directory: false,
+                size: 3
+            },
+            Collected {
+                path: "dir".into(),
+                directory: true,
+                size: 0
+            }
+        ]
     );
+}
+
+#[test]
+fn patterns_take_braces_and_globstar() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let script = "mkdir -p a/b && touch a/b/c.fq top.fq r.html r.zip r.txt\n";
+    let spec = spec(&["**/*.fq", "r.{html,zip}"]);
+    assert_eq!(run(root.path(), &spec, script), 0);
+    let control = root.path().join("control");
+    let files = parse(&read(&control.join("manifest"))).expect("parses");
+    assert_eq!(paths(&files), ["a/b/c.fq", "top.fq", "r.html", "r.zip"]);
 }
 
 #[test]
@@ -103,10 +125,12 @@ fn reads_the_standard_input() {
 
 #[test]
 fn manifest_errors() {
-    assert!(parse("12 a.txt\n12 a.txt\n").is_ok_and(|files| files.len() == 1));
-    let error = parse("x a.txt\n").unwrap_err();
+    let text = "file 12 a.txt\nfile 12 a.txt\ndirectory d e\n";
+    let files = parse(text).expect("parses");
+    assert_eq!(paths(&files), ["a.txt", "d e"]);
+    let error = parse("12 a.txt\n").unwrap_err();
     assert_eq!(
         error.to_string(),
-        "line 1 of the result manifest is not `<size> <path>`: x a.txt"
+        "line 1 of the result manifest is not `file <size> <path>` or `directory <path>`: 12 a.txt"
     );
 }

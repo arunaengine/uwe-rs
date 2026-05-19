@@ -10,7 +10,7 @@ use content_store::Store;
 use executor::local::LocalContainer;
 use task_model::{
     Digest, EnvironmentValue, FORMAT, FileKind, Image, InputFile, OutputRule, Placement,
-    ReuseScope, TaskSpec,
+    ReuseScope, TaskSpec, Tree,
 };
 use task_runner::Runner;
 use workflow_graph::{ExecuteError, Executor, Outcome, OutputFile, Task};
@@ -72,28 +72,34 @@ impl Executor for Local {
         };
         let mut inputs = Vec::new();
         for input in &task.inputs {
-            let digest = match &input.content {
-                Some(content) => self.runner.import_bytes(content.as_bytes()),
-                None if input.directory => {
-                    return Err(unsupported(format!(
-                        "directory inputs are not supported yet by the local executor: {}",
-                        input.source
-                    )));
-                }
+            let source = Path::new(&input.source);
+            let (kind, digest) = match &input.content {
+                Some(content) => (FileKind::File, self.runner.import_bytes(content.as_bytes())),
                 None if input.source.contains("://") => {
                     return Err(unsupported(format!(
                         "remote input files are not supported yet: {}",
                         input.source
                     )));
                 }
-                None => self
-                    .runner
-                    .import(Path::new(&input.source))
-                    .map(|(digest, _)| digest),
+                // A directory that the workflow makes itself, like an empty CWL literal.
+                None if input.directory && input.source.is_empty() => (
+                    FileKind::Directory,
+                    self.runner.import_tree(&Tree::default()),
+                ),
+                None if input.directory || source.is_dir() => (
+                    FileKind::Directory,
+                    self.runner
+                        .import_directory(source)
+                        .map(|(digest, _)| digest),
+                ),
+                None => (
+                    FileKind::File,
+                    self.runner.import(source).map(|(digest, _)| digest),
+                ),
             };
             inputs.push(InputFile {
                 path: input.path.clone(),
-                kind: FileKind::File,
+                kind,
                 digest: digest.map_err(|error| problem(&error))?,
                 executable: false,
                 writable: false,
@@ -138,8 +144,8 @@ impl Executor for Local {
                 .unwrap_or_else(|| PathBuf::from(&file.location));
             outcome.files.push(OutputFile {
                 path: file.path.clone(),
-                directory: location.is_dir(),
                 location,
+                directory: file.directory,
             });
         }
         Ok(outcome)

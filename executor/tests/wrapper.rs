@@ -22,6 +22,7 @@ fn spec(outputs: &[&str]) -> TaskSpec {
         namespace: String::new(),
         image: None,
         arguments: vec!["/bin/bash".into(), "-ue".into(), "task script.sh".into()],
+        workdir: None,
         environment,
         inputs: Vec::new(),
         outputs: outputs
@@ -90,14 +91,27 @@ fn collects_outputs_after_success() {
 }
 
 #[test]
-fn patterns_take_braces_and_globstar() {
+fn patterns_take_braces_globstar_and_absolute_paths() {
     let root = tempfile::tempdir().expect("a temporary directory");
-    let script = "mkdir -p a/b && touch a/b/c.fq top.fq r.html r.zip r.txt\n";
-    let spec = spec(&["**/*.fq", "r.{html,zip}"]);
-    assert_eq!(run(root.path(), &spec, script), 0);
+    let elsewhere = root.path().join("elsewhere");
+    let script = format!(
+        "mkdir -p a/b && touch a/b/c.fq top.fq r.html r.zip r.txt\n\
+         mkdir -p '{0}' && echo far > '{0}/far.txt'\n",
+        elsewhere.display()
+    );
+    let far = format!("{}/*.txt", elsewhere.display());
+    let spec = spec(&["**/*.fq", "r.{html,zip}", &far]);
+    assert_eq!(run(root.path(), &spec, &script), 0);
     let control = root.path().join("control");
     let files = parse(&read(&control.join("manifest"))).expect("parses");
-    assert_eq!(paths(&files), ["a/b/c.fq", "top.fq", "r.html", "r.zip"]);
+    let far = format!("{}/far.txt", elsewhere.display());
+    assert_eq!(
+        paths(&files),
+        ["a/b/c.fq", "top.fq", "r.html", "r.zip", far.as_str()]
+    );
+    // An output at an absolute path is copied below `root` in the control directory.
+    let copy = control.join("root").join(far.trim_start_matches('/'));
+    assert_eq!(read(&copy), "far\n");
 }
 
 #[test]

@@ -83,6 +83,7 @@ fn request(runner: &Runner<Fake>, root: &Path, command: &str) -> TaskRequest {
                 platform: None,
             }),
             arguments: vec!["/bin/bash".into(), "-c".into(), command.into()],
+            workdir: None,
             environment: BTreeMap::new(),
             inputs: vec![InputFile {
                 path: "input.txt".into(),

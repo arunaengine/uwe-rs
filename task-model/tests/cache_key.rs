@@ -33,6 +33,7 @@ fn fastqc() -> TaskSpec {
             platform: Some("linux/amd64".to_owned()),
         }),
         arguments: vec!["/bin/bash".into(), "-ue".into(), ".command.sh".into()],
+        workdir: None,
         environment: BTreeMap::from([(
             "NXF_TASK_WORKDIR".to_owned(),
             EnvironmentValue::WorkDirectory,
@@ -63,7 +64,7 @@ fn golden_fastqc_key() {
     // Only accept it together with a new FORMAT.
     assert_eq!(
         key.as_str(),
-        "sha256:5f0f01034ca522d9a869dd4acb935726ac4da4bb95173e208197f8d52251e8dd"
+        "sha256:f77bffcf7ba16509e4517b757e0a57b5b905aeeaf7adf7e03dab33de5269ac7d"
     );
 }
 
@@ -108,7 +109,9 @@ fn every_field_counts() {
                 pattern: "*.txt".into(),
             })
         },
+        |spec| spec.workdir = Some("/work".into()),
         |spec| spec.stdin = Some(Digest::sha256(b"text")),
+        |spec| spec.inputs[1].path = "/data/test_1.fastq.gz".into(),
     ];
     for (index, change) in changes.into_iter().enumerate() {
         let mut spec = fastqc();
@@ -135,7 +138,23 @@ fn rejects_invalid_specs() {
 
     let mut empty = fastqc();
     empty.arguments.clear();
+    // An image without arguments runs its default command.
+    assert_eq!(empty.validate(), Ok(()));
+    empty.image = None;
     assert_eq!(empty.validate(), Err(SpecError::NoProgram));
+
+    let mut absolute = fastqc();
+    absolute.inputs[1].path = "/var/lib/cwl/inputs/1/test_1.fastq.gz".into();
+    absolute.outputs.push(OutputRule {
+        pattern: "/tmp/results/".into(),
+    });
+    absolute.workdir = Some("/var/spool/cwl".into());
+    assert_eq!(absolute.validate(), Ok(()));
+    absolute.workdir = Some("spool".into());
+    assert_eq!(absolute.validate(), Err(SpecError::Workdir("spool".into())));
+    let mut root = fastqc();
+    root.outputs[0].pattern = "/".into();
+    assert_eq!(root.validate(), Err(SpecError::Path("/".into())));
 
     let mut future = fastqc();
     future.format = FORMAT + 1;

@@ -519,7 +519,7 @@ tests/test_conda_pin_file ok 1
 tests/test_conda_python_3_7_script ok 1
 tests/test_conda_python_script ok 1
 tests/test_conda_run ok 1
-tests/test_conditional ok 1
+tests/test_conditional ok 4
 tests/test_config ok 1
 tests/test_config_merging ok 1
 tests/test_config_replacing ok 2
@@ -798,7 +798,7 @@ tests/test_report_display_code ok 4
 tests/test_report_href ok 1
 tests/test_report_metadata ok 1
 tests/test_report_zip ok 1
-tests/test_resource_quoting 1 WorkflowError: RuleException in rule a in file Snakefile, line 1: AttributeError: 'Resources' object has no attribute 'test', when formatting the shell command
+tests/test_resource_quoting ok 1
 tests/test_resource_string_in_cli_or_profile ok 2
 tests/test_resource_tbdstring ok 2
 tests/test_restartable_job_cmd_exit_1 ok 2
@@ -857,7 +857,7 @@ tests/test_subworkflow_config 1 Snakefile:3: SyntaxError: Keyword subworkflow is
 tests/test_subworkflows 1 Snakefile:3: SyntaxError: Keyword subworkflow is deprecated. Use module directive instead.
 tests/test_symlink_temp ok 9
 tests/test_symlink_time_handling ok 8
-tests/test_temp 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
+tests/test_temp ok 3
 tests/test_temp_and_all_input ok 2
 tests/test_temp_checkpoint ok 13
 tests/test_temp_expand ok 2
@@ -888,8 +888,8 @@ tests/test_wildcard_count_ambiguity ok 2
 tests/test_wildcard_keyword ok 8
 tests/test_workflow_profile ok 1
 tests/test_workflow_profile_cli_overwrite ok 1
-tests/test_workflow_profile_relative_filename 1 WorkflowError: RuleException in rule a in file workflow/Snakefile, line 1: AttributeError: 'Resources' object has no attribute 'foo', when formatting the shell command
-tests/test_workflow_profile_relative_path 1 WorkflowError: RuleException in rule a in file workflow/Snakefile, line 1: AttributeError: 'Resources' object has no attribute 'foo', when formatting the shell command
+tests/test_workflow_profile_relative_filename ok 1
+tests/test_workflow_profile_relative_path ok 1
 tests/test_wrapper ok 1
 tests/test_xrootd 1 Snakefile:3: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_yaml_config ok 1

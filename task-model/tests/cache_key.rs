@@ -186,6 +186,7 @@ fn tree_order_ignored() {
         entries: vec![empty, file.clone()],
     };
     assert_eq!(forward.digest(), backward.digest());
+    assert_eq!(forward.size(), 1);
     let doubled = Tree {
         entries: vec![file.clone(), file],
     };

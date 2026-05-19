@@ -108,7 +108,7 @@ fn reuses_shared_results() {
     let [output] = first.files.as_slice() else {
         panic!("one output")
     };
-    assert_eq!(output.location, "runs/run1/P__1_/1/out.txt");
+    assert_eq!(output.location, "runs/run1/P__1_/1/work/out.txt");
     let stored = runner.local_path(&output.location).expect("a local store");
     assert_eq!(std::fs::read_to_string(stored).expect("reads"), "data\n");
     let second = runner

@@ -7,7 +7,7 @@ use opendal::layers::RetryLayer;
 use opendal::services::{Fs, Memory, S3};
 use opendal::{ErrorKind, Operator};
 use sha2::{Digest as _, Sha256};
-use task_model::Digest;
+use task_model::{Digest, SpecError, Tree};
 use tokio::io::AsyncReadExt;
 
 use crate::layout;
@@ -25,6 +25,10 @@ pub enum StoreError {
     Corrupt { expected: Digest, actual: Digest },
     #[error("{0}")]
     Location(String),
+    #[error("the directory manifest {digest} cannot be read: {message}")]
+    Tree { digest: Digest, message: String },
+    #[error("invalid directory manifest: {0}")]
+    InvalidTree(#[from] SpecError),
 }
 
 /// Connection settings for an S3-compatible bucket; credentials come from the environment.
@@ -101,15 +105,16 @@ impl Store {
     pub async fn put_file(&self, file: &std::path::Path) -> Result<(Digest, u64), StoreError> {
         let (digest, size) = hash_file(file).await?;
         let location = layout::content(&digest);
-        if self.operator.exists(&location).await? {
-            return Ok((digest, size));
+        if !self.operator.exists(&location).await? {
+            self.upload(&location, file).await?;
         }
+        Ok((digest, size))
+    }
+
+    /// Uploads a local file in parts to a location.
+    async fn upload(&self, location: &str, file: &std::path::Path) -> Result<(), StoreError> {
         let mut reader = tokio::fs::File::open(file).await?;
-        let mut writer = self
-            .operator
-            .writer_with(&location)
-            .chunk(PART_SIZE)
-            .await?;
+        let mut writer = self.operator.writer_with(location).chunk(PART_SIZE).await?;
         let mut buffer = vec![0; PART_SIZE];
         loop {
             let read = reader.read(&mut buffer).await?;
@@ -121,7 +126,32 @@ impl Store {
                 .await?;
         }
         writer.close().await?;
-        Ok((digest, size))
+        Ok(())
+    }
+
+    /// Stores a directory manifest by the digest of its canonical form.
+    pub async fn put_tree(&self, tree: &Tree) -> Result<Digest, StoreError> {
+        let canonical = tree.canonical()?;
+        let digest = Digest::sha256(&canonical);
+        let location = layout::tree(&digest);
+        if !self.operator.exists(&location).await? {
+            self.operator.write(&location, canonical).await?;
+        }
+        Ok(digest)
+    }
+
+    /// Reads a directory manifest by digest and checks that it still matches the digest.
+    pub async fn get_tree(&self, digest: &Digest) -> Result<Tree, StoreError> {
+        let bytes = self.operator.read(&layout::tree(digest)).await?.to_bytes();
+        let actual = Digest::sha256(&bytes);
+        if &actual != digest {
+            let expected = digest.clone();
+            return Err(StoreError::Corrupt { expected, actual });
+        }
+        serde_json::from_slice(&bytes).map_err(|error| StoreError::Tree {
+            digest: digest.clone(),
+            message: error.to_string(),
+        })
     }
 
     /// Reads content by digest and checks that the bytes still match it.
@@ -177,7 +207,22 @@ impl Store {
         }
     }
 
-    /// Stores one output file of a task attempt under its original relative path.
+    /// Stores one output file of a task attempt under its original path, reading it from a
+    /// local file in parts.
+    pub async fn put_output_file(
+        &self,
+        run: &str,
+        task: &str,
+        attempt: u32,
+        path: &str,
+        file: &std::path::Path,
+    ) -> Result<String, StoreError> {
+        let location = layout::output(run, task, attempt, path)?;
+        self.upload(&location, file).await?;
+        Ok(location)
+    }
+
+    /// Stores one output file of a task attempt under its original path.
     pub async fn put_output(
         &self,
         run: &str,

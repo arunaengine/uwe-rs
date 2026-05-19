@@ -132,6 +132,35 @@ pub fn is_native(name: &str) -> bool {
     NATIVE.contains(&name)
 }
 
+/// Names that Python 3 removed from modules that have a stand-in. Code that still uses them
+/// gets the `AttributeError` of Python, which it may catch, rather than an unsupported
+/// feature.
+const REMOVED: &[(&str, &str)] = &[
+    ("platform", "linux_distribution"),
+    ("platform", "dist"),
+    ("time", "clock"),
+    ("os", "getcwdu"),
+    ("string", "maketrans"),
+    ("string", "letters"),
+    ("string", "lowercase"),
+    ("string", "uppercase"),
+    ("sys", "maxint"),
+    ("itertools", "izip"),
+    ("itertools", "imap"),
+    ("itertools", "ifilter"),
+    ("collections", "Mapping"),
+    ("collections", "MutableMapping"),
+    ("collections", "Sequence"),
+    ("collections", "Iterable"),
+    ("collections", "Callable"),
+    ("inspect", "getargspec"),
+];
+
+/// Whether Python 3 removed a name from a module.
+pub fn is_removed(module: &str, name: &str) -> bool {
+    REMOVED.contains(&(module, name))
+}
+
 /// The stand-in module of that name, if there is one.
 pub fn native(interpreter: &mut Interpreter, name: &str) -> Result<Option<Value>, Error> {
     let entries: Vec<(&str, Value)> = match name {

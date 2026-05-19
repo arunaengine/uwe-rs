@@ -11,7 +11,8 @@ use crate::TaskSpec;
 /// What a driver asks the runner to execute.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskRequest {
-    /// Stable inside a run; for Nextflow the process name plus a digest of the input values.
+    /// Unique inside a run and usable as one path segment, like `FASTQC-12` for task 12 of
+    /// the step `FASTQC`. Scratch directories and stored outputs are named after it.
     pub identity: String,
     /// For logs, for example `NFCORE_DEMO:DEMO:FASTQC (SAMPLE1)`.
     pub display: String,

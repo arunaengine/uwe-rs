@@ -28,9 +28,16 @@ pub struct Profile {
 /// The folder of the workflow profile, as Snakemake looks for it: `profiles/default` in the
 /// working directory, else next to the Snakefile.
 pub fn find(workdir: &Path, snakefile: &Path) -> Option<PathBuf> {
-    let relative = Path::new("profiles").join("default");
+    find_named(workdir, snakefile, "default")
+}
+
+/// A workflow profile by name, as Snakemake looks for `--workflow-profile <name>`: the folder
+/// of that name in the working directory, else in its `profiles` folder, else in the
+/// `profiles` folder next to the Snakefile.
+pub fn find_named(workdir: &Path, snakefile: &Path, name: &str) -> Option<PathBuf> {
+    let relative = Path::new("profiles").join(name);
     [
-        workdir.join("default"),
+        workdir.join(name),
         workdir.join(&relative),
         snakefile
             .parent()
@@ -96,13 +103,62 @@ fn pairs(interpreter: &mut Interpreter, value: &Value) -> Result<Vec<(String, St
 }
 
 impl Profile {
+    /// The settings of profiles given at launch, like `--profile` and `--workflow-profile`: a
+    /// folder or a settings file each. A later profile replaces the settings it has.
+    pub fn given(interpreter: &mut Interpreter, paths: &[PathBuf]) -> Result<Profile, Error> {
+        let mut merged = Profile::default();
+        for path in paths {
+            let (folder, file) = if path.is_file() {
+                (
+                    path.parent().unwrap_or(Path::new("")).to_path_buf(),
+                    Some(path.clone()),
+                )
+            } else {
+                (path.clone(), profile_file(path))
+            };
+            let Some(file) = file else {
+                return Err(workflow_error(format!(
+                    "The profile {} has no profile.yaml or config.yaml",
+                    path.display()
+                )));
+            };
+            let profile = Profile::read(interpreter, &folder, &file)?;
+            merged.merge(profile);
+        }
+        Ok(merged)
+    }
+
+    /// Takes the settings that another profile has.
+    fn merge(&mut self, other: Profile) {
+        if !other.configfiles.is_empty() {
+            self.configfiles = other.configfiles;
+        }
+        if !other.config.is_empty() {
+            self.config = other.config;
+        }
+        if !other.default_resources.is_empty() {
+            self.default_resources = other.default_resources;
+        }
+        if !other.set_resources.is_empty() {
+            self.set_resources = other.set_resources;
+        }
+        if !other.set_threads.is_empty() {
+            self.set_threads = other.set_threads;
+        }
+    }
+
     /// Reads the settings of a profile folder.
     pub fn load(interpreter: &mut Interpreter, folder: &Path) -> Result<Profile, Error> {
+        match profile_file(folder) {
+            Some(file) => Profile::read(interpreter, folder, &file),
+            None => Ok(Profile::default()),
+        }
+    }
+
+    /// Reads a settings file of a profile, whose paths are relative to the folder.
+    fn read(interpreter: &mut Interpreter, folder: &Path, file: &Path) -> Result<Profile, Error> {
         let mut profile = Profile::default();
-        let Some(file) = profile_file(folder) else {
-            return Ok(profile);
-        };
-        let text = std::fs::read_to_string(&file)
+        let text = std::fs::read_to_string(file)
             .map_err(|error| Error::os_error(&error, &file.to_string_lossy()))?;
         let settings = load_yaml(&text)?;
         if !matches!(settings.plain(), Value::Dict(_)) {
@@ -189,5 +245,31 @@ mod tests {
             [("align".to_owned(), "runtime".to_owned(), "30".to_owned())]
         );
         assert_eq!(profile.set_threads, [("align".to_owned(), "4".to_owned())]);
+    }
+
+    #[test]
+    fn later_profiles_replace_the_settings_they_have() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let general = folder.path().join("general");
+        std::fs::create_dir_all(&general).expect("the profile folder");
+        std::fs::write(
+            general.join("config.yaml"),
+            "set-resources:\n  a:\n    test: one\nset-threads:\n  a: 2\n",
+        )
+        .expect("the general profile");
+        let file = folder.path().join("workflow_profile.yaml");
+        std::fs::write(&file, "set-resources:\n  a:\n    test: two\n").expect("a profile file");
+        let mut interpreter = Interpreter::new(std::rc::Rc::new(python_evaluator::LocalHost::new(
+            folder.path(),
+        )));
+        let profile =
+            Profile::given(&mut interpreter, &[general, file]).expect("the profiles load");
+        assert_eq!(
+            profile.set_resources,
+            [("a".to_owned(), "test".to_owned(), "two".to_owned())]
+        );
+        assert_eq!(profile.set_threads, [("a".to_owned(), "2".to_owned())]);
+        let missing = Profile::given(&mut interpreter, &[folder.path().join("none")]);
+        assert!(missing.is_err());
     }
 }

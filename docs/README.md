@@ -16,7 +16,7 @@ iunctus graph <workflow file or directory> [-format json|dot|summary]
 iunctus config [<Nextflow project>] [-profile <names>]
 ```
 
-`iunctus run` finds the language of its target, or takes it from `-lang`. The default executor is the mock TES executor, which writes the TES task document of each task and makes empty outputs, so any workflow runs through without containers. Nextflow runs today; Snakemake, CWL and Argo exit with code 33 until their drivers land. See [the engine](design/engine.md).
+`iunctus run` finds the language of its target, or takes it from `-lang`. The default executor is the mock TES executor, which writes the TES task document of each task and makes empty outputs, so any workflow runs through without containers. All four languages run: Nextflow, Snakemake, CWL and Argo. The local executor runs tasks in Docker or Podman instead. See [the engine](design/engine.md).
 
 ## Start here
 
@@ -25,7 +25,7 @@ iunctus config [<Nextflow project>] [-profile <names>]
 
 ## Design
 
-- [Engine](design/engine.md): how `iunctus run` finds the language, the driver interface every language implements, the execution graph and the executors.
+- [Engine](design/engine.md): how `iunctus run` finds the language, the driver interface every language implements, how tasks run, the execution graph, the executors, and the next steps for the execution layer.
 - [Nextflow runtime](design/nextflow/runtime.md): the chosen design of the Nextflow evaluator, the dataflow runtime and the shared task layer, with milestones.
 - [Argo runtime](design/argo/runtime.md): how `argo-runtime` runs Argo Workflows documents as tasks: the template library, substitution, the expression languages, control flow, leaf templates, mock runs and the results on its test workflows.
 

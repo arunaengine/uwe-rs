@@ -3,6 +3,8 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod request;
 mod runner;
 
+pub use request::{identity, request};
 pub use runner::{Runner, RunnerError, StoredFile, TaskResult};

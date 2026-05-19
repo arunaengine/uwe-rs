@@ -61,10 +61,19 @@ pub enum RunnerError {
     Io(#[from] std::io::Error),
     #[error("cannot read the cache entry {key}: {message}")]
     Entry { key: Digest, message: String },
+    #[error("remote input files are not supported yet: {0}")]
+    Remote(String),
     #[error("the name of `{0}` is not UTF-8")]
     Name(PathBuf),
     #[error("the directory manifest of the input `{0}` names a path outside the directory")]
     Tree(String),
+}
+
+impl RunnerError {
+    /// Whether the cause is a feature that the runner does not support yet.
+    pub fn unsupported(&self) -> bool {
+        matches!(self, RunnerError::Remote(_))
+    }
 }
 
 pub struct Runner<E> {
@@ -399,7 +408,7 @@ fn walk(root: &Path) -> Result<Vec<Found>, RunnerError> {
 }
 
 /// A task identity as one path segment of the store.
-fn segment(identity: &str) -> String {
+pub(crate) fn segment(identity: &str) -> String {
     identity
         .chars()
         .map(|c| {

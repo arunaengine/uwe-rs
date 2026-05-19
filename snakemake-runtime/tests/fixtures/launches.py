@@ -44,9 +44,26 @@ SKIPPED = [
 ]
 
 
+def without_executor(words):
+    """The words without the executor and its options, which do not change the plan and
+    which the parser rejects for executor plugins that are not installed."""
+    kept, skip = [], False
+    for word in words:
+        if skip:
+            skip = False
+            continue
+        name = word.split("=", 1)[0]
+        if name in ("--executor", "-e") or name.startswith("--cluster-generic-"):
+            skip = "=" not in word
+            continue
+        kept.append(word)
+    return kept
+
+
 def parse_command(words, base=""):
     """The launch fields of a Snakemake command line; `None` for one that does not run the
     workflow or that Snakemake cannot parse."""
+    words = without_executor(words)
     try:
         with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
             arguments, _ = PARSER.parse_known_args(words)
@@ -61,6 +78,12 @@ def parse_command(words, base=""):
         fields.append(("snakefile", os.path.normpath(os.path.join(base, str(arguments.snakefile)))))
     for configfile in arguments.configfile or []:
         fields.append(("configfile", os.path.normpath(os.path.join(base, str(configfile)))))
+    profiles = arguments.profile or []
+    for profile in profiles if isinstance(profiles, list) else [profiles]:
+        fields.append(("profile", os.path.normpath(os.path.join(base, str(profile)))))
+    workflow_profile = getattr(arguments, "workflow_profile", None)
+    if workflow_profile and str(workflow_profile) != "none":
+        fields.append(("workflow-profile", os.path.normpath(os.path.join(base, str(workflow_profile)))))
     # Config values as written, which the options parse like the words after them.
     for index, word in enumerate(words):
         if word in ("--config", "-C"):
@@ -167,6 +190,11 @@ def catalog_launch(folder):
 
 
 def constant(node):
+    """The value of a literal, or of a literal text split into words like `"a b".split()`."""
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "split" and not node.args and not node.keywords
+            and isinstance(node.func.value, ast.Constant) and isinstance(node.func.value.value, str)):
+        return node.func.value.value.split()
     try:
         return ast.literal_eval(node)
     except ValueError:
@@ -302,9 +330,10 @@ def main():
         output.write("# How the run test-workflows test launches each workflow; written by launches.py, which says\n")
         output.write("# how it chooses. Columns, separated by tabs: the workflow, where the launch comes from\n")
         output.write("# (ci, catalog or tests.py), then fields: directory= and snakefile= relative to the\n")
-        output.write("# workflow folder, configfile= relative to it, config=<key>=<value>, target=, and\n")
-        output.write("# shouldfail for a test that Snakemake's own tests expect to fail. Workflows not listed\n")
-        output.write("# run plainly in their folder.\n")
+        output.write("# workflow folder, configfile= relative to it, config=<key>=<value>, target=,\n")
+        output.write("# profile= and workflow-profile= relative to the workflow folder, and shouldfail for a\n")
+        output.write("# test that Snakemake's own tests expect to fail. Workflows not listed run plainly in\n")
+        output.write("# their folder.\n")
         for name, via, fields in lines:
             text = "\t".join(f"{key}={value}" if key != "shouldfail" else key for key, value in fields)
             output.write(f"{name}\t{via}\t{text}\n".replace("\t\n", "\n"))

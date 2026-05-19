@@ -5,6 +5,8 @@
 
 use task_model::{EnvironmentValue, TaskSpec};
 
+use crate::braces::expand_braces;
+
 /// The names of the control files the wrapper writes.
 pub const EXIT: &str = "exit";
 pub const START: &str = "start";
@@ -60,7 +62,9 @@ pub fn wrapper(spec: &TaskSpec, work: &str, control: &str) -> String {
     if !spec.outputs.is_empty() {
         script.push_str("if [ \"$status\" -eq 0 ]; then\n");
         for rule in &spec.outputs {
-            script.push_str(&format!("    collect {}\n", quote(&rule.pattern)));
+            for pattern in expand_braces(rule.pattern.trim_end_matches('/')) {
+                script.push_str(&format!("    collect {}\n", quote(&pattern)));
+            }
         }
         script.push_str("fi\n");
     }
@@ -68,18 +72,18 @@ pub fn wrapper(spec: &TaskSpec, work: &str, control: &str) -> String {
     script
 }
 
-/// Adds each file that a pattern matches to the manifest as `<size> <path>`; a directory adds
-/// every file below it. Bash expands the pattern with `globstar`, `nullglob` and `dotglob`.
+/// Adds each file and directory that a pattern matches to the manifest, as
+/// `file <size> <path>` or `directory <path>`. Bash expands the pattern with `globstar`,
+/// `nullglob` and `dotglob`.
 const COLLECT: &str = r#"shopt -s globstar nullglob dotglob
 collect() {
-    local IFS=$'\n' match file
+    local IFS=$'\n' match
     for match in $1; do
+        match=${match#./}
         if [ -d "$match" ]; then
-            while IFS= read -r file; do
-                printf '%s %s\n' "$(wc -c < "$file")" "${file#./}" >> "$control/manifest"
-            done < <(find "$match" -type f)
+            printf 'directory %s\n' "$match" >> "$control/manifest"
         elif [ -f "$match" ]; then
-            printf '%s %s\n' "$(wc -c < "$match")" "${match#./}" >> "$control/manifest"
+            printf 'file %s %s\n' "$(wc -c < "$match")" "$match" >> "$control/manifest"
         fi
     done
 }

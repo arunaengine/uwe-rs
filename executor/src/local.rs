@@ -38,6 +38,8 @@ pub struct Staged {
 #[derive(Clone, Debug, Default)]
 pub struct Staging {
     pub files: Vec<Staged>,
+    /// Directories to make, like the empty directories of a directory input.
+    pub directories: Vec<String>,
     /// The local file that the task reads on standard input.
     pub stdin: Option<PathBuf>,
 }
@@ -47,7 +49,7 @@ pub struct Staging {
 pub struct Finished {
     /// The tool's exit code; `None` when the wrapper was killed before it recorded one.
     pub exit_code: Option<i32>,
-    /// The collected files, relative to the work directory.
+    /// The collected outputs, by the paths the task named them with.
     pub files: Vec<Collected>,
     /// The scratch directory, which the caller removes once it has the outputs.
     pub root: PathBuf,
@@ -100,6 +102,9 @@ impl LocalContainer {
         let control = root.join(CONTROL);
         std::fs::create_dir_all(&work)?;
         std::fs::create_dir_all(&control)?;
+        for directory in &staging.directories {
+            std::fs::create_dir_all(work.join(directory))?;
+        }
         for file in &staging.files {
             let target = work.join(&file.path);
             if let Some(parent) = target.parent() {

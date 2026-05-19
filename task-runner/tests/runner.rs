@@ -1,18 +1,16 @@
-//! Checks the cache and staging of the runner with a fake executor.
+//! Checks the cache, the staging and the stored outputs of the runner with a fake executor.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
 use std::path::Path;
 
 use content_store::Store;
 use executor::manifest::Collected;
 use executor::{Executor, ExecutorError, Finished, Staging};
-use task_model::{
-    FORMAT, FileKind, Image, InputFile, OutputRule, Placement, ReuseScope, TaskRequest, TaskSpec,
-};
+use task_model::{FileKind, TaskRequest, TaskSpec};
 use task_runner::Runner;
+use workflow_graph::{Input, Task, TaskId};
 
 /// Writes each output pattern as a file with the first staged file's content, or for a pattern
 /// that ends with `/` as a directory with that file and an empty folder. It prints `said` and
@@ -66,41 +64,6 @@ impl Executor for Fake {
     }
 }
 
-fn request(runner: &Runner<Fake>, root: &Path, command: &str) -> TaskRequest {
-    let input = root.join("input.txt");
-    std::fs::write(&input, "data\n").expect("writes the input");
-    let (digest, _) = runner.import(&input).expect("imports");
-    TaskRequest {
-        identity: "P (1)".into(),
-        display: "P (1)".into(),
-        scope: ReuseScope::Shared,
-        attempt: 1,
-        spec: TaskSpec {
-            format: FORMAT,
-            namespace: String::new(),
-            image: Some(Image {
-                reference: "debian@sha256:00".into(),
-                platform: None,
-            }),
-            arguments: vec!["/bin/bash".into(), "-c".into(), command.into()],
-            workdir: None,
-            environment: BTreeMap::new(),
-            inputs: vec![InputFile {
-                path: "input.txt".into(),
-                kind: FileKind::File,
-                digest,
-                executable: false,
-                writable: false,
-            }],
-            outputs: vec![OutputRule {
-                pattern: "out.txt".into(),
-            }],
-            stdin: None,
-        },
-        placement: Placement::default(),
-    }
-}
-
 fn runner(root: &Path, exit_code: i32) -> Runner<Fake> {
     let store = Store::local(&root.join("store")).expect("a store");
     let fake = Fake {
@@ -112,18 +75,45 @@ fn runner(root: &Path, exit_code: i32) -> Runner<Fake> {
     Runner::new(store, fake, "run1", &root.join("downloads")).expect("a runner")
 }
 
+/// Task 1 of step `P`, which reads `input.txt` and writes `out.txt`.
+fn task(root: &Path, command: &str) -> Task {
+    let input = root.join("input.txt");
+    std::fs::write(&input, "data\n").expect("writes the input");
+    Task {
+        id: TaskId(1),
+        name: "P (1)".into(),
+        step: "P".into(),
+        image: Some("debian".into()),
+        command: vec!["/bin/bash".into(), "-c".into(), command.into()],
+        inputs: vec![Input {
+            path: "input.txt".into(),
+            source: input.to_string_lossy().into_owned(),
+            directory: false,
+            content: None,
+        }],
+        outputs: vec!["out.txt".into()],
+        ..Task::default()
+    }
+}
+
+fn request(runner: &Runner<Fake>, task: &Task) -> TaskRequest {
+    runner
+        .request(task, Some("debian@sha256:00".into()))
+        .expect("a request")
+}
+
 #[test]
 fn reuses_shared_results() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);
     let first = runner
-        .execute(&request(&runner, root.path(), "a"))
+        .execute(&request(&runner, &task(root.path(), "a")))
         .expect("runs");
     assert!(!first.reused);
     let [output] = first.files.as_slice() else {
         panic!("one output")
     };
-    assert_eq!(output.location, "runs/run1/P__1_/1/work/out.txt");
+    assert_eq!(output.location, "runs/run1/P-1/1/work/out.txt");
     let stored = runner.local_path(&output.location).expect("a local store");
     assert_eq!(std::fs::read_to_string(stored).expect("reads"), "data\n");
     let said = runner
@@ -131,16 +121,18 @@ fn reuses_shared_results() {
         .expect("reads");
     assert_eq!(said, "said\n");
     let second = runner
-        .execute(&request(&runner, root.path(), "a"))
+        .execute(&request(&runner, &task(root.path(), "a")))
         .expect("runs");
     assert!(second.reused);
     assert_eq!(second.files, first.files);
     assert_eq!(second.stdout, first.stdout);
     let third = runner
-        .execute(&request(&runner, root.path(), "b"))
+        .execute(&request(&runner, &task(root.path(), "b")))
         .expect("runs");
     assert!(!third.reused);
     assert_eq!(runner.executor().runs.borrow().len(), 2);
+    // Each run removes its scratch directory.
+    assert!(!root.path().join("scratch/run1-P-1-1").exists());
 }
 
 #[test]
@@ -148,11 +140,11 @@ fn failures_are_not_cached() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 3);
     let first = runner
-        .execute(&request(&runner, root.path(), "a"))
+        .execute(&request(&runner, &task(root.path(), "a")))
         .expect("runs");
     assert_eq!(first.exit_code, Some(3));
     let second = runner
-        .execute(&request(&runner, root.path(), "a"))
+        .execute(&request(&runner, &task(root.path(), "a")))
         .expect("runs");
     assert!(!second.reused);
 }
@@ -161,16 +153,15 @@ fn failures_are_not_cached() {
 fn directories_travel_as_one_entry() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);
-    let mut first = request(&runner, root.path(), "a");
-    first.spec.outputs = vec![OutputRule {
-        pattern: "db/".into(),
-    }];
-    let result = runner.execute(&first).expect("runs");
-    let [db] = result.files.as_slice() else {
-        panic!("one output")
+    let mut first = task(root.path(), "a");
+    first.outputs = vec!["db/".into(), "/tmp/result.txt".into()];
+    let result = runner.execute(&request(&runner, &first)).expect("runs");
+    let [db, absolute] = result.files.as_slice() else {
+        panic!("two outputs")
     };
-    assert!(db.directory);
-    assert_eq!(db.location, "runs/run1/P__1_/1/work/db");
+    assert!(db.directory && !absolute.directory);
+    assert_eq!(db.location, "runs/run1/P-1/1/work/db");
+    assert_eq!(absolute.location, "runs/run1/P-1/1/root/tmp/result.txt");
     assert_eq!(db.size, 5);
     let on_disk = runner.local_path(&db.location).expect("a local store");
     assert_eq!(
@@ -179,18 +170,30 @@ fn directories_travel_as_one_entry() {
     );
     assert!(on_disk.join("empty").is_dir());
 
-    // The directory goes back in as an input, with its empty folder.
-    let (digest, size) = runner.import_directory(&on_disk).expect("imports");
-    assert_eq!((&digest, size), (&db.digest, 5));
-    let mut second = request(&runner, root.path(), "b");
-    second.spec.inputs.push(InputFile {
+    // The directory goes back in as an input, with its empty folder and standard input.
+    let mut second = task(root.path(), "b");
+    second.id = TaskId(2);
+    second.inputs.push(Input {
         path: "in".into(),
-        kind: FileKind::Directory,
-        digest,
-        executable: false,
-        writable: false,
+        source: on_disk.to_string_lossy().into_owned(),
+        directory: true,
+        content: None,
     });
-    runner.execute(&second).expect("runs");
+    second.inputs.push(Input {
+        path: "made".into(),
+        source: String::new(),
+        directory: true,
+        content: None,
+    });
+    second.stdin = Some("text\n".into());
+    let request = request(&runner, &second);
+    let kinds: Vec<FileKind> = request.spec.inputs.iter().map(|input| input.kind).collect();
+    assert_eq!(
+        kinds,
+        [FileKind::File, FileKind::Directory, FileKind::Directory]
+    );
+    assert_eq!(request.spec.inputs[1].digest, db.digest);
+    runner.execute(&request).expect("runs");
     let staged = runner.executor().staged.borrow();
     let staging = staged.last().expect("a staging");
     let files: Vec<&str> = staging
@@ -199,5 +202,17 @@ fn directories_travel_as_one_entry() {
         .map(|file| file.path.as_str())
         .collect();
     assert_eq!(files, ["input.txt", "in/a.txt"]);
-    assert_eq!(staging.directories, ["in", "in/empty"]);
+    assert_eq!(staging.directories, ["in", "in/empty", "made"]);
+    let stdin = staging.stdin.as_ref().expect("a standard input");
+    assert_eq!(std::fs::read_to_string(stdin).expect("reads"), "text\n");
+}
+
+#[test]
+fn remote_inputs_are_not_supported_yet() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let runner = runner(root.path(), 0);
+    let mut remote = task(root.path(), "a");
+    remote.inputs[0].source = "s3://bucket/input.txt".into();
+    let error = runner.request(&remote, None).unwrap_err();
+    assert!(error.unsupported(), "{error}");
 }

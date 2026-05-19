@@ -141,12 +141,30 @@ impl Session {
 
     /// Sets the config from the command line and runs the Snakefile.
     pub fn evaluate(&mut self) -> Result<(), DriverError> {
-        // The workflow profile gives config files and values unless the launch does.
-        let profile = match crate::profile::find(&self.workdir, &self.snakefile) {
-            Some(folder) => crate::profile::Profile::load(&mut self.interpreter, &folder)
-                .map_err(|error| self.error(&error))?,
-            None => crate::profile::Profile::default(),
-        };
+        // The profiles of the launch, else the workflow profile that Snakemake finds by itself,
+        // give config files and values unless the launch does.
+        let profile = if self.launch.profiles.is_empty() {
+            match crate::profile::find(&self.workdir, &self.snakefile) {
+                Some(folder) => crate::profile::Profile::load(&mut self.interpreter, &folder),
+                None => Ok(crate::profile::Profile::default()),
+            }
+        } else {
+            // A path, or the name of a workflow profile in a `profiles` folder.
+            let paths: Vec<PathBuf> = self
+                .launch
+                .profiles
+                .iter()
+                .map(|name| {
+                    let path = std::path::absolute(name).unwrap_or_else(|_| PathBuf::from(name));
+                    if path.exists() {
+                        return path;
+                    }
+                    crate::profile::find_named(&self.workdir, &self.snakefile, name).unwrap_or(path)
+                })
+                .collect();
+            crate::profile::Profile::given(&mut self.interpreter, &paths)
+        }
+        .map_err(|error| self.error(&error))?;
         let launch_configs: Vec<PathBuf> = self
             .launch
             .configs

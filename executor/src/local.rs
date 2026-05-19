@@ -9,12 +9,13 @@ use std::process::Command;
 use task_model::TaskSpec;
 
 use crate::manifest::{Collected, ManifestError, parse};
-use crate::wrapper::{EXIT, MANIFEST, STDERR, STDIN, STDOUT, wrapper};
+use crate::wrapper::{EXIT, MANIFEST, ROOT, STDERR, STDIN, STDOUT, wrapper};
 
-/// The folders of a task's scratch directory: the work directory and the control files of the
-/// wrapper.
+/// The folders of a task's scratch directory: the work directory, the control files of the
+/// wrapper, and the inputs at absolute paths, which are mounted where the task sees them.
 const WORK: &str = "work";
 const CONTROL: &str = "control";
+const MOUNTS: &str = "mounts";
 
 /// The local container executor.
 pub struct LocalContainer {
@@ -24,10 +25,10 @@ pub struct LocalContainer {
     pub scratch: PathBuf,
 }
 
-/// A file placed in the work directory before the task starts.
+/// A file placed before the task starts.
 #[derive(Clone, Debug)]
 pub struct Staged {
-    /// The path relative to the work directory.
+    /// A path relative to the work directory, or an absolute path inside the container.
     pub path: String,
     /// The local file whose content it gets.
     pub source: PathBuf,
@@ -56,9 +57,13 @@ pub struct Finished {
 }
 
 impl Finished {
-    /// Where an output is on the host.
+    /// Where an output is on the host: a relative path in the work directory, an absolute one
+    /// where the wrapper copied it.
     pub fn local_path(&self, path: &str) -> PathBuf {
-        self.root.join(WORK).join(path)
+        match path.strip_prefix('/') {
+            Some(inside) => self.root.join(CONTROL).join(ROOT).join(inside),
+            None => self.root.join(WORK).join(path),
+        }
     }
 
     /// The file that captured standard output.
@@ -76,6 +81,8 @@ impl Finished {
 pub enum ExecutorError {
     #[error("the task has no container image; every task runs in a container")]
     NoImage,
+    #[error("the task has no command, and the image {0} has no default command")]
+    NoCommand(String),
     #[error("cannot prepare the task directory: {0}")]
     Io(#[from] std::io::Error),
     #[error("{engine} could not run the task: {message}")]
@@ -88,6 +95,10 @@ impl LocalContainer {
     /// Runs a task in `<scratch>/<name>`, a name that must not be in use: stages its inputs,
     /// runs the wrapper in the task's image as the current user, and reads the control files.
     /// The directory stays for the caller to take the outputs from.
+    ///
+    /// The work directory is mounted at the task's `workdir` when it has one, and each input
+    /// at an absolute path is mounted there. A task without arguments runs the image's default
+    /// command.
     pub fn run(
         &self,
         name: &str,
@@ -102,11 +113,15 @@ impl LocalContainer {
         let control = root.join(CONTROL);
         std::fs::create_dir_all(&work)?;
         std::fs::create_dir_all(&control)?;
+        let place = |path: &str| match path.strip_prefix('/') {
+            Some(inside) => root.join(MOUNTS).join(inside),
+            None => work.join(path),
+        };
         for directory in &staging.directories {
-            std::fs::create_dir_all(work.join(directory))?;
+            std::fs::create_dir_all(place(directory))?;
         }
         for file in &staging.files {
-            let target = work.join(&file.path);
+            let target = place(&file.path);
             if let Some(parent) = target.parent() {
                 std::fs::create_dir_all(parent)?;
             }
@@ -118,15 +133,31 @@ impl LocalContainer {
         if let Some(stdin) = &staging.stdin {
             std::fs::copy(stdin, control.join(STDIN))?;
         }
+        let mut spec = spec.clone();
+        if spec.arguments.is_empty() {
+            spec.arguments = self.default_command(&image.reference)?;
+        }
+        let inside = spec.workdir.clone().unwrap_or_else(|| text(&work));
         let script = control.join("wrapper.sh");
-        std::fs::write(&script, wrapper(spec, &text(&work), &text(&control)))?;
+        std::fs::write(&script, wrapper(&spec, &inside, &text(&control)))?;
         let owner = std::fs::metadata(&root)?;
         let mut command = Command::new(&self.engine);
         command
             .args(["run", "--rm", "--entrypoint", "/bin/bash"])
             .args(["--user", &format!("{}:{}", owner.uid(), owner.gid())])
-            .args(["--volume", &format!("{0}:{0}", text(&root))])
-            .args(["--workdir", &text(&work)]);
+            .args(["--volume", &format!("{0}:{0}", text(&root))]);
+        if spec.workdir.is_some() {
+            command.args(["--volume", &format!("{}:{inside}", text(&work))]);
+        }
+        for input in spec
+            .inputs
+            .iter()
+            .filter(|input| input.path.starts_with('/'))
+        {
+            let path = input.path.trim_end_matches('/');
+            command.args(["--volume", &format!("{}:{path}", text(&place(path)))]);
+        }
+        command.args(["--workdir", &inside]);
         if let Some(platform) = &image.platform {
             command.args(["--platform", platform]);
         }
@@ -148,6 +179,34 @@ impl LocalContainer {
             files,
             root,
         })
+    }
+
+    /// The default command of an image: its entrypoint, then its command.
+    fn default_command(&self, reference: &str) -> Result<Vec<String>, ExecutorError> {
+        let format = "{{json .Config.Entrypoint}}\n{{json .Config.Cmd}}";
+        let engine_error = |message: String| ExecutorError::Engine {
+            engine: self.engine.clone(),
+            message,
+        };
+        let output = Command::new(&self.engine)
+            .args(["image", "inspect", "--format", format, reference])
+            .output()
+            .map_err(|error| engine_error(error.to_string()))?;
+        if !output.status.success() {
+            return Err(engine_error(
+                String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+            ));
+        }
+        let mut command = Vec::new();
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            let part: Option<Vec<String>> =
+                serde_json::from_str(line).map_err(|error| engine_error(error.to_string()))?;
+            command.extend(part.unwrap_or_default());
+        }
+        if command.is_empty() {
+            return Err(ExecutorError::NoCommand(reference.to_owned()));
+        }
+        Ok(command)
     }
 }
 

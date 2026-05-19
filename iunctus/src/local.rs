@@ -174,6 +174,7 @@ fn request(
             platform: None,
         }),
         arguments: task.command.clone(),
+        workdir: task.workdir.clone(),
         environment,
         inputs,
         outputs: task

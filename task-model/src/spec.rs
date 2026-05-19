@@ -19,8 +19,12 @@ pub struct TaskSpec {
     /// A cache salt; changing it disowns all earlier results.
     pub namespace: String,
     pub image: Option<Image>,
-    /// The program and its arguments, run in the work directory.
+    /// The program and its arguments, run in the work directory. An empty list runs the
+    /// image's default command.
     pub arguments: Vec<String>,
+    /// The work directory inside the container, as an absolute path; `None` lets the executor
+    /// choose one.
+    pub workdir: Option<String>,
     pub environment: BTreeMap<String, EnvironmentValue>,
     pub inputs: Vec<InputFile>,
     pub outputs: Vec<OutputRule>,
@@ -47,7 +51,7 @@ pub enum EnvironmentValue {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InputFile {
-    /// Relative path inside the work directory.
+    /// A path relative to the work directory, or an absolute path inside the container.
     pub path: String,
     pub kind: FileKind,
     /// The file digest, or for a directory the digest of its tree manifest.
@@ -63,7 +67,8 @@ pub enum FileKind {
     Directory,
 }
 
-/// A shell glob, relative to the work directory. Drivers apply their exact rules afterwards.
+/// A shell glob, relative to the work directory or absolute inside the container. A pattern
+/// that ends with `/` names a directory. Drivers apply their exact rules afterwards.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OutputRule {
@@ -74,10 +79,12 @@ pub struct OutputRule {
 pub enum SpecError {
     #[error("unsupported specification format {0}; this build writes format {FORMAT}")]
     Format(u32),
-    #[error("the task has no program to run")]
+    #[error("the task has neither a program nor an image to run")]
     NoProgram,
-    #[error("`{0}` must be a relative path inside the work directory")]
+    #[error("`{0}` must be a path inside the work directory or an absolute path, without `..`")]
     Path(String),
+    #[error("the work directory `{0}` must be an absolute path without `..`")]
+    Workdir(String),
     #[error("the input path `{0}` appears more than once")]
     DuplicateInput(String),
     #[error("cannot encode the specification: {0}")]
@@ -89,18 +96,23 @@ impl TaskSpec {
         if self.format != FORMAT {
             return Err(SpecError::Format(self.format));
         }
-        if self.arguments.is_empty() {
+        if self.arguments.is_empty() && self.image.is_none() {
             return Err(SpecError::NoProgram);
+        }
+        if let Some(workdir) = &self.workdir
+            && (!workdir.starts_with('/') || check_path(workdir).is_err())
+        {
+            return Err(SpecError::Workdir(workdir.clone()));
         }
         let mut seen = BTreeSet::new();
         for input in &self.inputs {
-            check_relative(&input.path)?;
+            check_path(&input.path)?;
             if !seen.insert(input.path.as_str()) {
                 return Err(SpecError::DuplicateInput(input.path.clone()));
             }
         }
         for output in &self.outputs {
-            check_relative(&output.pattern)?;
+            check_path(&output.pattern)?;
         }
         Ok(())
     }
@@ -128,10 +140,11 @@ impl TaskSpec {
     }
 }
 
-/// Paths must stay inside the work directory, whatever the executor mounts it as.
-fn check_relative(path: &str) -> Result<(), SpecError> {
+/// A relative path must stay inside the work directory, whatever the executor mounts it as.
+/// An absolute path names a place inside the container other than its root.
+fn check_path(path: &str) -> Result<(), SpecError> {
     let escapes = path.split('/').any(|part| part == "..");
-    if path.is_empty() || path.starts_with('/') || escapes || path.contains('\0') {
+    if path.trim_matches('/').is_empty() || escapes || path.contains('\0') {
         return Err(SpecError::Path(path.to_owned()));
     }
     Ok(())

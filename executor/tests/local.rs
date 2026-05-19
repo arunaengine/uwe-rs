@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use executor::local::{ExecutorError, LocalContainer, Staged, Staging};
-use task_model::{FORMAT, Image, OutputRule, TaskSpec};
+use task_model::{Digest, FORMAT, FileKind, Image, InputFile, OutputRule, TaskSpec};
 
 fn spec(image: Option<&str>, outputs: &[&str]) -> TaskSpec {
     TaskSpec {
@@ -17,6 +17,7 @@ fn spec(image: Option<&str>, outputs: &[&str]) -> TaskSpec {
             platform: None,
         }),
         arguments: vec!["/bin/bash".into(), "-ue".into(), ".command.sh".into()],
+        workdir: None,
         environment: BTreeMap::new(),
         inputs: Vec::new(),
         outputs: outputs
@@ -127,6 +128,51 @@ fn reports_failures() {
             .starts_with("docker could not run the task"),
         "{error}"
     );
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn runs_in_the_workdir_with_absolute_paths_and_standard_input() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let executor = LocalContainer {
+        engine: "docker".into(),
+        scratch: root.path().join("scratch"),
+    };
+    let mut task = spec(Some("debian:stable-slim"), &["here.txt", "/tmp/out/"]);
+    task.workdir = Some("/var/spool/task".into());
+    task.arguments = vec![
+        "/bin/bash".into(),
+        "-c".into(),
+        "pwd > here.txt && mkdir -p /tmp/out && cat /data/in.txt - > /tmp/out/both.txt".into(),
+    ];
+    task.inputs = vec![InputFile {
+        path: "/data/in.txt".into(),
+        kind: FileKind::File,
+        digest: Digest::sha256(b"in\n"),
+        executable: false,
+        writable: false,
+    }];
+    task.stdin = Some(Digest::sha256(b"piped\n"));
+    let stdin = root.path().join("stdin");
+    std::fs::write(&stdin, "piped\n").expect("writes the standard input");
+    let staged = Staging {
+        files: vec![stage(root.path(), "/data/in.txt", "in\n")],
+        directories: Vec::new(),
+        stdin: Some(stdin),
+    };
+    let finished = executor.run("task-5", &task, &staged).expect("runs");
+    assert_eq!(finished.exit_code, Some(0));
+    let read = |path: &str| std::fs::read_to_string(finished.local_path(path)).expect("reads");
+    assert_eq!(read("here.txt"), "/var/spool/task\n");
+    assert!(finished.files[1].directory);
+    assert_eq!(read("/tmp/out/both.txt"), "in\npiped\n");
+    // Without arguments, the task runs the image's default command, `bash` for Debian.
+    let mut default = spec(Some("debian:stable-slim"), &[]);
+    default.arguments.clear();
+    let finished = executor
+        .run("task-6", &default, &Staging::default())
+        .expect("runs");
+    assert_eq!(finished.exit_code, Some(0));
 }
 
 #[test]

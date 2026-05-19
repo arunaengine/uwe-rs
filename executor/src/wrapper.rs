@@ -7,7 +7,8 @@ use task_model::{EnvironmentValue, TaskSpec};
 
 use crate::braces::expand_braces;
 
-/// The names of the control files the wrapper writes.
+/// The names of the control files the wrapper writes, and of the folder that holds copies of
+/// outputs at absolute paths.
 pub const EXIT: &str = "exit";
 pub const START: &str = "start";
 pub const END: &str = "end";
@@ -15,14 +16,18 @@ pub const MANIFEST: &str = "manifest";
 pub const STDOUT: &str = "stdout";
 pub const STDERR: &str = "stderr";
 pub const STDIN: &str = "stdin";
+pub const ROOT: &str = "root";
 
-/// The wrapper for a task whose work and control directories are at the given absolute paths.
+/// The wrapper for a task whose work and control directories are at the given absolute paths
+/// inside the container. The task runs the arguments of the specification, which must not be
+/// empty.
 ///
 /// It runs the arguments with both streams captured in the control directory, so that output
 /// patterns cannot match the capture files, and with `stdin` of the control directory as
 /// standard input when the task has one. It records the exit code and times, collects the
 /// outputs only on success, writes the manifest, and exits with 0 whenever it got that far, so
-/// that the logs of a failed tool are kept.
+/// that the logs of a failed tool are kept. Outputs at absolute paths are copied below `root`
+/// in the control directory, so that they outlive the container.
 pub fn wrapper(spec: &TaskSpec, work: &str, control: &str) -> String {
     let mut script = String::from("#!/bin/bash\n# The iunctus task wrapper.\nset -u\n");
     script.push_str(&format!(
@@ -74,12 +79,18 @@ pub fn wrapper(spec: &TaskSpec, work: &str, control: &str) -> String {
 
 /// Adds each file and directory that a pattern matches to the manifest, as
 /// `file <size> <path>` or `directory <path>`. Bash expands the pattern with `globstar`,
-/// `nullglob` and `dotglob`.
+/// `nullglob` and `dotglob`. A match at an absolute path is copied below `root` in the control
+/// directory.
 const COLLECT: &str = r#"shopt -s globstar nullglob dotglob
 collect() {
     local IFS=$'\n' match
     for match in $1; do
         match=${match#./}
+        case $match in
+            /*) [ -e "$control/root$match" ] || {
+                    mkdir -p "$control/root${match%/*}" && cp -a "$match" "$control/root$match"
+                } ;;
+        esac
         if [ -d "$match" ]; then
             printf 'directory %s\n' "$match" >> "$control/manifest"
         elif [ -f "$match" ]; then

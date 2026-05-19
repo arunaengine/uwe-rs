@@ -263,7 +263,9 @@ impl Interpreter {
         match value.plain() {
             Value::Module(module) => {
                 let full = format!("{}.{name}", module.name);
-                if crate::modules::is_native(&module.name) {
+                if crate::modules::is_native(&module.name)
+                    && !crate::modules::is_removed(&module.name, name)
+                {
                     Error::unsupported(format!("the library function {full}"))
                 } else {
                     Error::attribute_error(format!(

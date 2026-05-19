@@ -36,3 +36,8 @@ print(pt, pt.x, pt[1], pt._asdict(), tuple(pt), pt == (1, 2))
 print(math.ceil(2.1), math.floor(-2.1), math.sqrt(16), math.log(8, 2), math.isnan(float("nan")), math.inf > 1e308, math.pi)
 print(math.log10(1000), math.prod([2, 3]), math.gcd(12, 18), math.isclose(0.1 + 0.2, 0.3))
 print(sorted(set(os.path.basename(f) for f in ["x/a.txt", "y/a.txt", "b.txt"])))
+import platform
+try:
+    platform.linux_distribution()
+except AttributeError as error:
+    print("AttributeError:", error)

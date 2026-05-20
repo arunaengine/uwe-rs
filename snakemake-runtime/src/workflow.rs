@@ -192,6 +192,8 @@ pub struct State {
     /// Rules of modules that `use rule` does not take. Other rules of the module may still
     /// read them as `rules.<name>`, so they are kept, but they are not part of the workflow.
     pub unused: Vec<Rule>,
+    /// Resources that `workflow.register_resource` added.
+    pub global_resources: IndexMap<String, Value>,
 }
 
 impl State {
@@ -229,6 +231,7 @@ impl State {
             mirrors,
             snakefiles: HashMap::new(),
             unused: Vec::new(),
+            global_resources: IndexMap::new(),
         }
     }
 

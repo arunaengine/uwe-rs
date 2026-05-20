@@ -41,3 +41,4 @@ try:
     platform.linux_distribution()
 except AttributeError as error:
     print("AttributeError:", error)
+print(platform.mac_ver(), platform.win32_ver(), platform.python_implementation())

@@ -892,6 +892,28 @@ pub fn platform() -> Vec<(&'static str, Value)> {
             "processor",
             function("processor", |_, _| Ok(Value::str("x86_64"))),
         ),
+        (
+            "python_implementation",
+            function("python_implementation", |_, _| Ok(Value::str("CPython"))),
+        ),
+        // On Linux, the versions of other systems are empty.
+        (
+            "mac_ver",
+            function("mac_ver", |_, _| {
+                let empty = Value::str("");
+                Ok(Value::tuple(vec![
+                    empty.clone(),
+                    Value::tuple(vec![empty.clone(), empty.clone(), empty.clone()]),
+                    empty,
+                ]))
+            }),
+        ),
+        (
+            "win32_ver",
+            function("win32_ver", |_, _| {
+                Ok(Value::tuple(vec![Value::str(""); 4]))
+            }),
+        ),
     ]
 }
 

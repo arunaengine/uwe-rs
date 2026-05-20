@@ -11,3 +11,11 @@ parsed = datetime.strptime("2026-01-05", "%Y-%m-%d")
 print(parsed.year, parsed.day, parsed.strftime("%d.%m.%Y"))
 print(isinstance(datetime.now(timezone.utc), datetime), isinstance(timezone.utc, timezone))
 print(datetime(2026, 1, 1, tzinfo=timezone.utc).isoformat()[:19])
+from datetime import datetime, timedelta, timezone
+
+start = datetime.fromisoformat("2015-01-01T00:00:00Z")
+naive = datetime.fromisoformat("2016-06-30 12:30:00")
+print(start, start.tzinfo is None, naive, naive.tzinfo is None, start.isoformat())
+aware = naive.replace(tzinfo=timezone.utc)
+print(aware, aware.year, aware - start > timedelta(days=500), aware.astimezone(timezone.utc).hour)
+print(datetime.fromisoformat("2020-02-03").weekday(), datetime(2020, 1, 1, tzinfo=timezone.utc).isoformat())

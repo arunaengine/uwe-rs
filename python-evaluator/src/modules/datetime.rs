@@ -21,11 +21,83 @@ fn time_format(time: &jiff::Zoned, separator: char) -> &'static str {
     }
 }
 
-/// A point in time for `datetime` and `time`, in local time.
+/// A point in time for `datetime` and `time`. A naive one, without `tzinfo`, is kept in local
+/// time.
 #[derive(Clone)]
 struct DateTime {
     time: jiff::Zoned,
     date_only: bool,
+    naive: bool,
+}
+
+impl DateTime {
+    fn naive(time: jiff::Zoned, date_only: bool) -> Value {
+        Value::native(DateTime {
+            time,
+            date_only,
+            naive: true,
+        })
+    }
+
+    /// The offset from UTC as Python writes it, like `+00:00`; empty for a naive time.
+    fn offset_text(&self) -> String {
+        if self.naive {
+            return String::new();
+        }
+        let seconds = self.time.offset().seconds();
+        let sign = if seconds < 0 { '-' } else { '+' };
+        let seconds = seconds.abs();
+        format!("{sign}{:02}:{:02}", seconds / 3600, seconds % 3600 / 60)
+    }
+
+    /// `datetime.fromisoformat(text)`: a date, optionally with a time after `T` or a space,
+    /// and an offset like `Z` or `+02:00`, which makes the time aware.
+    fn from_iso(text: &str, date_only: bool) -> Result<Value, Error> {
+        let invalid = || Error::value_error(format!("Invalid isoformat string: '{text}'"));
+        let (body, offset) = match text.strip_suffix('Z') {
+            Some(body) => (body, Some(0)),
+            None => {
+                let time_start = text.find(['T', ' ']).map_or(text.len(), |at| at + 1);
+                match text[time_start..].rfind(['+', '-']) {
+                    Some(at) => {
+                        let sign = if &text[time_start + at..time_start + at + 1] == "-" {
+                            -1
+                        } else {
+                            1
+                        };
+                        let zone = &text[time_start + at + 1..];
+                        let (hours, minutes) = zone.split_once(':').unwrap_or((zone, "0"));
+                        let hours: i32 = hours.parse().map_err(|_| invalid())?;
+                        let minutes: i32 = minutes.parse().map_err(|_| invalid())?;
+                        (
+                            &text[..time_start + at],
+                            Some(sign * (hours * 3600 + minutes * 60)),
+                        )
+                    }
+                    None => (text, None),
+                }
+            }
+        };
+        let civil: jiff::civil::DateTime = if body.len() == 10 {
+            body.parse::<jiff::civil::Date>()
+                .map_err(|_| invalid())?
+                .to_datetime(jiff::civil::Time::midnight())
+        } else {
+            body.replace(' ', "T").parse().map_err(|_| invalid())?
+        };
+        let zone = match offset {
+            Some(seconds) => jiff::tz::TimeZone::fixed(
+                jiff::tz::Offset::from_seconds(seconds).map_err(|_| invalid())?,
+            ),
+            None => jiff::tz::TimeZone::system(),
+        };
+        let time = civil.to_zoned(zone).map_err(|_| invalid())?;
+        Ok(Value::native(DateTime {
+            time,
+            date_only,
+            naive: offset.is_none(),
+        }))
+    }
 }
 
 impl Native for DateTime {
@@ -58,7 +130,7 @@ impl Native for DateTime {
             .map_err(|error| Error::new("OverflowError", error.to_string()))?;
             return Ok(Some(Value::native(DateTime {
                 time: moved,
-                date_only: self.date_only,
+                ..self.clone()
             })));
         }
         if let Some(earlier) = other.as_native::<DateTime>() {
@@ -86,7 +158,8 @@ impl Native for DateTime {
         Ok(Some(if self.date_only {
             self.time.strftime("%Y-%m-%d").to_string()
         } else {
-            self.time.strftime(time_format(&self.time, ' ')).to_string()
+            let text = self.time.strftime(time_format(&self.time, ' ')).to_string();
+            text + &self.offset_text()
         }))
     }
 
@@ -104,6 +177,86 @@ impl Native for DateTime {
             "hour" => Value::Int(i64::from(this.time.hour())),
             "minute" => Value::Int(i64::from(this.time.minute())),
             "second" => Value::Int(i64::from(this.time.second())),
+            "microsecond" => Value::Int(i64::from(this.time.subsec_nanosecond() / 1000)),
+            "tzinfo" => {
+                if this.naive {
+                    Value::None
+                } else {
+                    Value::native(TimeZone(this.time.offset().seconds()))
+                }
+            }
+            "weekday" | "isoweekday" => {
+                let day = i64::from(this.time.weekday().to_monday_zero_offset());
+                let iso = name == "isoweekday";
+                Value::builtin(name, move |_, _| {
+                    Ok(Value::Int(if iso { day + 1 } else { day }))
+                })
+            }
+            "astimezone" => Value::builtin("astimezone", move |_, mut args| {
+                let zone = args.take(0, "tz").filter(|zone| !zone.is_none());
+                let zone = zone_of(zone.as_ref());
+                Ok(Value::native(DateTime {
+                    time: this.time.with_time_zone(zone),
+                    date_only: this.date_only,
+                    naive: false,
+                }))
+            }),
+            "replace" => Value::builtin("replace", move |_, mut args| {
+                let mut civil = this.time.datetime();
+                let invalid = |error: jiff::Error| Error::value_error(error.to_string());
+                for (index, name) in [
+                    "year",
+                    "month",
+                    "day",
+                    "hour",
+                    "minute",
+                    "second",
+                    "microsecond",
+                ]
+                .iter()
+                .enumerate()
+                {
+                    let Some(value) = args.take(index, name) else {
+                        continue;
+                    };
+                    let number = value
+                        .as_int()
+                        .ok_or_else(|| Error::type_error(format!("'{name}' must be an integer")))?;
+                    let small = |range: &str| {
+                        i8::try_from(number)
+                            .map_err(|_| Error::value_error(format!("{name} {range}")))
+                    };
+                    civil =
+                        match *name {
+                            "year" => civil.with().year(
+                                i16::try_from(number)
+                                    .map_err(|_| Error::value_error("year is out of range"))?,
+                            ),
+                            "month" => civil.with().month(small("must be in 1..12")?),
+                            "day" => civil.with().day(small("is out of range for month")?),
+                            "hour" => civil.with().hour(small("must be in 0..23")?),
+                            "minute" => civil.with().minute(small("must be in 0..59")?),
+                            "second" => civil.with().second(small("must be in 0..59")?),
+                            _ => civil.with().subsec_nanosecond(
+                                i32::try_from(number * 1000).map_err(|_| {
+                                    Error::value_error("microsecond must be in 0..999999")
+                                })?,
+                            ),
+                        }
+                        .build()
+                        .map_err(invalid)?;
+                }
+                let (zone, naive) = match args.take(7, "tzinfo") {
+                    Some(zone) if zone.is_none() => (jiff::tz::TimeZone::system(), true),
+                    Some(zone) => (zone_of(Some(&zone)), false),
+                    None => (this.time.time_zone().clone(), this.naive),
+                };
+                Ok(Value::native(DateTime {
+                    time: civil.to_zoned(zone).map_err(invalid)?,
+                    date_only: this.date_only,
+                    naive,
+                }))
+            }),
             "strftime" => Value::builtin("strftime", move |_, args| {
                 let format = args
                     .positional
@@ -116,13 +269,15 @@ impl Native for DateTime {
                 Ok(Value::str(if this.date_only {
                     this.time.strftime("%Y-%m-%d").to_string()
                 } else {
-                    this.time.strftime(time_format(&this.time, 'T')).to_string()
+                    let text = this.time.strftime(time_format(&this.time, 'T')).to_string();
+                    text + &this.offset_text()
                 }))
             }),
             "date" => Value::builtin("date", move |_, _| {
                 Ok(Value::native(DateTime {
                     time: this.time.clone(),
                     date_only: true,
+                    naive: true,
                 }))
             }),
             "timestamp" => Value::builtin("timestamp", move |_, _| {
@@ -179,7 +334,9 @@ impl Native for DateClass {
                 None => 0,
             };
         }
-        let zone = zone_of(args.take(7, "tzinfo").as_ref());
+        let tzinfo = args.take(7, "tzinfo").filter(|zone| !zone.is_none());
+        let naive = tzinfo.is_none();
+        let zone = zone_of(tzinfo.as_ref());
         let invalid = |error: jiff::Error| Error::value_error(error.to_string());
         let civil = jiff::civil::DateTime::new(
             i16::try_from(parts[0]).map_err(|_| Error::value_error("year is out of range"))?,
@@ -196,6 +353,7 @@ impl Native for DateClass {
         let time = civil.to_zoned(zone).map_err(invalid)?;
         Ok(Some(Value::native(DateTime {
             time,
+            naive,
             date_only: self.0,
         })))
     }
@@ -211,7 +369,8 @@ impl Native for DateClass {
             "now" | "today" | "utcnow" => {
                 let utc = name == "utcnow";
                 Some(Value::builtin(name, move |_, mut args| {
-                    let zone = args.take(0, "tz");
+                    let zone = args.take(0, "tz").filter(|zone| !zone.is_none());
+                    let naive = zone.is_none();
                     let zone = if utc {
                         jiff::tz::TimeZone::UTC
                     } else {
@@ -220,6 +379,7 @@ impl Native for DateClass {
                     Ok(Value::native(DateTime {
                         time: jiff::Timestamp::now().to_zoned(zone),
                         date_only,
+                        naive,
                     }))
                 }))
             }
@@ -245,16 +405,20 @@ impl Native for DateClass {
                 let time = civil
                     .to_zoned(jiff::tz::TimeZone::system())
                     .map_err(|error| Error::value_error(error.to_string()))?;
-                Ok(Value::native(DateTime { time, date_only }))
+                Ok(DateTime::naive(time, date_only))
             })),
             "fromtimestamp" => Some(Value::builtin("fromtimestamp", move |_, args| {
                 let seconds = args.positional.first().and_then(to_f64).unwrap_or(0.0) as i64;
                 let timestamp = jiff::Timestamp::from_second(seconds)
                     .map_err(|error| Error::value_error(error.to_string()))?;
-                Ok(Value::native(DateTime {
-                    time: timestamp.to_zoned(jiff::tz::TimeZone::system()),
+                Ok(DateTime::naive(
+                    timestamp.to_zoned(jiff::tz::TimeZone::system()),
                     date_only,
-                }))
+                ))
+            })),
+            "fromisoformat" => Some(Value::builtin("fromisoformat", move |interpreter, args| {
+                let text = interpreter.to_str(args.get(0).unwrap_or(&Value::None))?;
+                DateTime::from_iso(text.trim(), date_only)
             })),
             _ => None,
         })
@@ -509,10 +673,7 @@ pub fn time() -> Vec<(&'static str, Value)> {
         (
             "localtime",
             function("localtime", |_, _| {
-                Ok(Value::native(DateTime {
-                    time: jiff::Zoned::now(),
-                    date_only: false,
-                }))
+                Ok(DateTime::naive(jiff::Zoned::now(), false))
             }),
         ),
     ]

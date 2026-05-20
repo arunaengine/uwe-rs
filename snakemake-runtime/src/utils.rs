@@ -286,6 +286,57 @@ fn remote_provider() -> Value {
     })
 }
 
+/// `snakemake.dag.toposort(graph)`: the nodes of a graph, given as each node's predecessors,
+/// in layers whose nodes depend only on those of earlier layers, as `graphlib` makes them.
+fn toposort(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    let graph = args.get(0).cloned().unwrap_or(Value::None);
+    let mut nodes: Vec<Value> = Vec::new();
+    let mut predecessors: Vec<Vec<Value>> = Vec::new();
+    let add = |node: &Value, nodes: &mut Vec<Value>, predecessors: &mut Vec<Vec<Value>>| match nodes
+        .iter()
+        .position(|known| python_evaluator::value::key_equal(known, node))
+    {
+        Some(position) => position,
+        None => {
+            nodes.push(node.clone());
+            predecessors.push(Vec::new());
+            nodes.len() - 1
+        }
+    };
+    for (node, before) in interpreter.mapping_items(&graph)? {
+        let position = add(&node, &mut nodes, &mut predecessors);
+        for item in interpreter.iterate(&before)? {
+            add(&item, &mut nodes, &mut predecessors);
+            predecessors[position].push(item);
+        }
+    }
+    let mut done = vec![false; nodes.len()];
+    let mut layers = Vec::new();
+    while done.iter().any(|finished| !finished) {
+        let ready: Vec<usize> = (0..nodes.len())
+            .filter(|position| !done[*position])
+            .filter(|position| {
+                predecessors[*position].iter().all(|before| {
+                    nodes
+                        .iter()
+                        .position(|known| python_evaluator::value::key_equal(known, before))
+                        .is_some_and(|index| done[index])
+                })
+            })
+            .collect();
+        if ready.is_empty() {
+            return Err(Error::new("CycleError", "nodes are in a cycle"));
+        }
+        let mut layer = indexmap::IndexSet::new();
+        for position in ready {
+            done[position] = true;
+            layer.insert(python_evaluator::Key::new(nodes[position].clone())?);
+        }
+        layers.push(Value::set(layer));
+    }
+    Ok(Value::list(layers))
+}
+
 /// Registers the `snakemake` modules with an interpreter.
 pub fn register(interpreter: &mut Interpreter, state: &Rc<RefCell<State>>, globals: &Rc<Scope>) {
     let factory = |make: ModuleFactory| make;
@@ -362,6 +413,15 @@ pub fn register(interpreter: &mut Interpreter, state: &Rc<RefCell<State>>, globa
             Ok(module(
                 "snakemake.remote",
                 vec![("RemoteProviderBase", remote_provider())],
+            ))
+        })),
+    );
+    interpreter.host_modules.insert(
+        "snakemake.dag".into(),
+        factory(Rc::new(|_| {
+            Ok(module(
+                "snakemake.dag",
+                vec![("toposort", Value::builtin("toposort", toposort))],
             ))
         })),
     );

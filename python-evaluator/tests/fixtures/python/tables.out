@@ -62,3 +62,4 @@ False True default ['sample', 'unit']
 [{'name': 'a', 'size': 1.5}, {'name': nan, 'size': nan}] [{'name': 'a', 'size': 1.5}, {'name': 'NA', 'size': 'NA'}]
 [1.5, None] {'name': ['a', 'x'], 'size': [1.5, 'x']}
 {'a': ['x', 'y'], 'b': ['z']}
+['a_c', nan, 'b_e'] a-?

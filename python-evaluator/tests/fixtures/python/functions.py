@@ -169,3 +169,18 @@ match {"cmd": "go", "args": [1, 2]}:
         print("stop")
     case {"cmd": "go", "args": [first, *others]}:
         print("go", first, others)
+from typing import Generic, Protocol, TypeVar
+
+Item = TypeVar("Item")
+
+
+class Named(Protocol):
+    name: str
+
+
+class Box(Generic[Item]):
+    def __init__(self, item):
+        self.item = item
+
+
+print(Box(3).item, Named.__name__)

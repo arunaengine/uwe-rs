@@ -565,6 +565,13 @@ impl Interpreter {
                         }
                         bases.push(base.clone());
                     }
+                    // Protocols and generic classes of `typing` are plain classes when the
+                    // code runs.
+                    Value::Native(object)
+                        if object
+                            .as_any()
+                            .downcast_ref::<crate::modules::misc::TypingName>()
+                            .is_some_and(|name| matches!(name.0, "Protocol" | "Generic")) => {}
                     Value::Native(object) => {
                         return Err(Error::unsupported(format!(
                             "classes that derive from {}",

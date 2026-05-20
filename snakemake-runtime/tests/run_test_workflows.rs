@@ -261,9 +261,10 @@ fn check_records(outcomes: &[(String, String)]) -> Vec<String> {
             .map_or("plain", |fields| fields[1])
             .to_owned()
     };
+    // Whether the dry run of Snakemake with the launch of the workflow failed.
     let snakemake_fails = |name: &str| {
         let via = launched(name);
-        records(ORACLE).any(|fields| fields[0] == name && fields[1] == via && fields[3] == "failed")
+        records(ORACLE).any(|fields| fields[0] == name && fields[1] == via && fields[2] != "0")
     };
     let mut problems = Vec::new();
     for (name, outcome) in outcomes {

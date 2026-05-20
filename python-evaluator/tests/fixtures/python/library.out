@@ -25,3 +25,4 @@ Point(x=1, y=2) 1 2 {'x': 1, 'y': 2} (1, 2) True
 3.0 6 6 True
 ['a.txt', 'b.txt']
 AttributeError: module 'platform' has no attribute 'linux_distribution'
+('', ('', '', ''), '') ('', '', '', '') CPython

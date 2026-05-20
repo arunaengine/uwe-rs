@@ -249,7 +249,6 @@ impl Native for GroupBy {
         this: &Value,
         name: &str,
     ) -> Result<Option<Value>, Error> {
-        let _ = interpreter;
         Ok(Some(match name {
             "ngroups" => Value::Int(self.groups.len() as i64),
             "groups" | "indices" => {
@@ -319,6 +318,12 @@ impl Native for GroupBy {
                 }
                 Ok(Series::value(results, groups.keys(), Value::None))
             }),
+            // A column by its name, as `groups.column` selects it.
+            _ if self.column.is_none()
+                && self.frame.column_position(&Value::str(name)).is_some() =>
+            {
+                return self.get_item(interpreter, this, &Value::str(name));
+            }
             _ => return Ok(None),
         }))
     }

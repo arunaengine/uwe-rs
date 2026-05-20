@@ -97,3 +97,4 @@ print(pd.Series(["a,b", "c", ""]).str.split(",").explode().tolist(), samples.ast
 gaps = pd.DataFrame({"name": ["a", None], "size": [1.5, np.nan]})
 print(gaps.where(gaps.notnull(), None).to_dict(orient="records"), gaps.replace(np.nan, "NA").to_dict(orient="records"))
 print(gaps.replace({np.nan: None})["size"].tolist(), gaps.mask(gaps.isnull(), "x").to_dict(orient="list"))
+print(pd.DataFrame({"group": ["a", "a", "b"], "sample_id": ["x", "y", "z"]}).groupby("group").sample_id.apply(list).to_dict())

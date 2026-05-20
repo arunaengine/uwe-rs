@@ -772,6 +772,14 @@ impl Hook {
                 }
             }
         }
+        // A directive that a rule gives twice keeps its first value: Snakemake applies the
+        // decorators of the directives from the last one to the first.
+        let mut seen: Vec<RuleKeyword> = Vec::new();
+        info.directives.retain(|(keyword, _)| {
+            let first = !seen.contains(keyword);
+            seen.push(*keyword);
+            first
+        });
         if let Some((_, args)) = info
             .directives
             .iter()

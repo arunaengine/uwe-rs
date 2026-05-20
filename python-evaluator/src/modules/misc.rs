@@ -929,7 +929,7 @@ pub fn getpass() -> Vec<(&'static str, Value)> {
 }
 
 /// A name of `typing`: subscripting and calling give it back.
-struct TypingName(&'static str);
+pub(crate) struct TypingName(pub(crate) &'static str);
 
 impl Native for TypingName {
     fn type_name(&self) -> &str {
@@ -1012,6 +1012,7 @@ pub fn typing() -> Vec<(&'static str, Value)> {
         "Self",
         "AnyStr",
         "Protocol",
+        "Generic",
         "TypeAlias",
         "Awaitable",
         "Coroutine",

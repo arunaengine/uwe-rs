@@ -257,14 +257,43 @@ impl StrAccessor {
                     });
                 }
             }
+            // `cat(others=None, sep="", na_rep=None)`: all values joined into one text, or
+            // each value joined with the value of `others` at its position.
             "cat" => {
-                let separator = args.take_keyword("sep").unwrap_or(Value::str(""));
+                let others = args.take(0, "others").filter(|value| !value.is_none());
+                let separator = args.take(1, "sep").unwrap_or(Value::str(""));
                 let separator = interpreter.to_str(&separator)?;
-                let mut texts = Vec::new();
-                for value in values.iter().filter(|value| !is_missing(value)) {
-                    texts.push(interpreter.to_str(value)?);
+                let missing_text = match args.take(2, "na_rep") {
+                    Some(value) if !value.is_none() => Some(interpreter.to_str(&value)?),
+                    _ => None,
+                };
+                let text_of = |interpreter: &mut Interpreter, value: &Value| {
+                    if is_missing(value) {
+                        Ok(missing_text.clone())
+                    } else {
+                        interpreter.to_str(value).map(Some)
+                    }
+                };
+                let Some(others) = others else {
+                    let mut texts = Vec::new();
+                    for value in &values {
+                        if let Some(text) = text_of(interpreter, value)? {
+                            texts.push(text);
+                        }
+                    }
+                    return Ok(Value::str(texts.join(&separator)));
+                };
+                let others = super::seq_values(interpreter, &others)?;
+                for (value, other) in values.iter().zip(others.iter()) {
+                    let first = text_of(interpreter, value)?;
+                    let second = text_of(interpreter, other)?;
+                    results.push(match (first, second) {
+                        (Some(first), Some(second)) => {
+                            Value::str(format!("{first}{separator}{second}"))
+                        }
+                        _ => nan(),
+                    });
                 }
-                return Ok(Value::str(texts.join(&separator)));
             }
             "extract" => {
                 let pattern = args.take(0, "pat").unwrap_or(Value::None);

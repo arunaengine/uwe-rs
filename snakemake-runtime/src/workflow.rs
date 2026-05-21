@@ -549,9 +549,11 @@ impl Hook {
                 let full = self.source_path(interpreter, &first(), &base)?;
                 self.include(interpreter, &full, false)?;
             }
+            // Snakemake makes the working directory when it is missing.
             GlobalKeyword::WorkingDirectory => {
                 let path = python_evaluator::modules::path_text(interpreter, &first())?;
                 let resolved = interpreter.host.resolve(&path);
+                python_evaluator::modules::make_dirs(interpreter, &resolved)?;
                 interpreter.host.set_cwd(&resolved);
                 self.state.borrow_mut().workdir = resolved;
             }

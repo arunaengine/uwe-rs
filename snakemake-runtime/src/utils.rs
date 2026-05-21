@@ -109,6 +109,23 @@ fn utils_module(interpreter: &mut Interpreter, state: Rc<RefCell<State>>) -> Res
         "snakemake.utils",
         vec![
             ("min_version", Value::builtin("min_version", min_version)),
+            // Snakemake 9 keeps these in `snakemake.utils`, not in `snakemake.io`.
+            (
+                "_load_configfile",
+                Value::builtin("_load_configfile", |interpreter, args| {
+                    let path = args.get(0).cloned().unwrap_or(Value::None);
+                    let path = python_evaluator::modules::path_text(interpreter, &path)?;
+                    crate::config::load_config(interpreter, &path)
+                }),
+            ),
+            (
+                "Namedlist",
+                Value::Class(python_evaluator::types::native_class("Namedlist")),
+            ),
+            (
+                "Wildcards",
+                Value::Class(python_evaluator::types::native_class("Wildcards")),
+            ),
             (
                 "validate",
                 Value::builtin("validate", move |interpreter, args| {
@@ -252,21 +269,10 @@ fn io_module(globals: &Rc<Scope>) -> Value {
         "repeat",
         "flag",
     ];
-    let mut entries: Vec<(&str, Value)> = names
+    let entries: Vec<(&str, Value)> = names
         .iter()
         .filter_map(|name| globals.get(name).map(|value| (*name, value)))
         .collect();
-    entries.push((
-        "load_configfile",
-        Value::builtin("load_configfile", |interpreter, args| {
-            let path = python_evaluator::modules::path_text(interpreter, &args.positional[0])?;
-            crate::config::load_config(interpreter, &path)
-        }),
-    ));
-    entries.push((
-        "Namedlist",
-        Value::Class(python_evaluator::types::native_class("Namedlist")),
-    ));
     module("snakemake.io", entries)
 }
 

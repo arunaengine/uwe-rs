@@ -781,6 +781,14 @@ impl Native for Logger {
             "setLevel" | "addHandler" | "removeHandler" | "addFilter" | "propagate"
             | "disabled" => Some(Value::builtin(name, |_, _| Ok(Value::None))),
             "isEnabledFor" => Some(Value::builtin(name, |_, _| Ok(Value::Bool(true)))),
+            // A name that Python's loggers do not have is an error of the code.
+            _ if !matches!(self.0.as_str(), "handler" | "formatter")
+                && !LOGGER_ATTRIBUTES.contains(&name) =>
+            {
+                return Err(Error::attribute_error(format!(
+                    "'Logger' object has no attribute '{name}'"
+                )));
+            }
             _ => None,
         })
     }
@@ -789,6 +797,43 @@ impl Native for Logger {
         Ok(true)
     }
 }
+
+/// The attributes of Python's `logging.Logger`.
+const LOGGER_ATTRIBUTES: &[&str] = &[
+    "addFilter",
+    "addHandler",
+    "callHandlers",
+    "critical",
+    "debug",
+    "disabled",
+    "error",
+    "exception",
+    "fatal",
+    "filter",
+    "filters",
+    "findCaller",
+    "getChild",
+    "getChildren",
+    "getEffectiveLevel",
+    "handle",
+    "handlers",
+    "hasHandlers",
+    "info",
+    "isEnabledFor",
+    "level",
+    "log",
+    "makeRecord",
+    "manager",
+    "name",
+    "parent",
+    "propagate",
+    "removeFilter",
+    "removeHandler",
+    "root",
+    "setLevel",
+    "warn",
+    "warning",
+];
 
 pub fn logger(name: &str) -> Value {
     Value::native(Logger(name.to_owned()))

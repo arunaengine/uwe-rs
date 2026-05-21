@@ -1122,6 +1122,11 @@ pub fn collections() -> Vec<(&'static str, Value)> {
             "Counter",
             Value::Class(types::builtin_class(TypeTag::Counter)),
         ),
+        // A dict that code wraps in a class of its own; here a plain dict.
+        (
+            "UserDict",
+            Value::Class(types::builtin_class(TypeTag::Dict)),
+        ),
         ("namedtuple", function("namedtuple", namedtuple)),
         (
             "deque",

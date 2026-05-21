@@ -1899,6 +1899,66 @@ pub fn placeholder(_name: &str) -> Vec<(&'static str, Value)> {
     Vec::new()
 }
 
+/// The constants of `tkinter` that name sides and directions, which code imports for
+/// other purposes; the widgets are not there.
+pub fn tkinter() -> Vec<(&'static str, Value)> {
+    let texts = [
+        ("N", "n"),
+        ("S", "s"),
+        ("E", "e"),
+        ("W", "w"),
+        ("NE", "ne"),
+        ("NW", "nw"),
+        ("SE", "se"),
+        ("SW", "sw"),
+        ("NS", "ns"),
+        ("EW", "ew"),
+        ("NSEW", "nsew"),
+        ("CENTER", "center"),
+        ("END", "end"),
+        ("LEFT", "left"),
+        ("RIGHT", "right"),
+        ("TOP", "top"),
+        ("BOTTOM", "bottom"),
+        ("BOTH", "both"),
+        ("X", "x"),
+        ("Y", "y"),
+        ("NONE", "none"),
+    ];
+    let mut entries: Vec<(&'static str, Value)> = texts
+        .into_iter()
+        .map(|(name, text)| (name, Value::str(text)))
+        .collect();
+    entries.extend([
+        ("YES", Value::Int(1)),
+        ("NO", Value::Int(0)),
+        ("TRUE", Value::Int(1)),
+        ("FALSE", Value::Int(0)),
+    ]);
+    entries
+}
+
+/// The classes of modules that code imports while the workflow is planned but only uses in
+/// its jobs: they can be named, and using them is not supported.
+pub fn classes_of(name: &str) -> Vec<(&'static str, Value)> {
+    let classes: &[&'static str] = match name {
+        "configparser" => &[
+            "ConfigParser",
+            "RawConfigParser",
+            "SafeConfigParser",
+            "Error",
+            "NoSectionError",
+            "NoOptionError",
+        ],
+        "email.message" => &["EmailMessage", "Message"],
+        _ => &[],
+    };
+    classes
+        .iter()
+        .map(|class| (*class, Value::Class(types::native_class(class))))
+        .collect()
+}
+
 /// A version number that compares by its numeric parts, like `packaging.version.Version`.
 struct Version(String, Vec<i64>);
 

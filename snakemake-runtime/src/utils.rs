@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use python_evaluator::interpreter::ModuleFactory;
 use python_evaluator::modules::module;
-use python_evaluator::{Args, Error, Interpreter, Scope, Value};
+use python_evaluator::{Args, Error, Interpreter, Native, Scope, Value};
 
 use crate::functions;
 use crate::workflow::{State, workflow_error};
@@ -337,6 +337,93 @@ fn toposort(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
     Ok(Value::list(layers))
 }
 
+/// `ExecMode`: the modes `DEFAULT`, `SUBPROCESS` and `REMOTE`, each one object.
+struct ExecMode(Vec<(&'static str, Value)>);
+
+/// A member of `ExecMode`.
+struct ExecModeMember(&'static str);
+
+impl ExecMode {
+    fn value() -> Value {
+        Value::native(ExecMode(
+            ["DEFAULT", "SUBPROCESS", "REMOTE"]
+                .into_iter()
+                .map(|name| (name, Value::native(ExecModeMember(name))))
+                .collect(),
+        ))
+    }
+}
+
+impl Native for ExecMode {
+    fn type_name(&self) -> &str {
+        "EnumType"
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        Ok(self
+            .0
+            .iter()
+            .find(|(member, _)| *member == name)
+            .map(|(_, value)| value.clone()))
+    }
+
+    fn check_instance(&self, value: &Value) -> Option<bool> {
+        Some(value.as_native::<ExecModeMember>().is_some())
+    }
+}
+
+impl Native for ExecModeMember {
+    fn type_name(&self) -> &str {
+        "ExecMode"
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Error> {
+        Ok(match name {
+            "name" => Some(Value::str(self.0)),
+            "value" => Some(Value::Int(match self.0 {
+                "DEFAULT" => 0,
+                "SUBPROCESS" => 1,
+                _ => 2,
+            })),
+            _ => None,
+        })
+    }
+
+    fn repr(&self, _: &mut Interpreter) -> Result<String, Error> {
+        Ok(format!(
+            "<ExecMode.{}: {}>",
+            self.0,
+            match self.0 {
+                "DEFAULT" => 0,
+                "SUBPROCESS" => 1,
+                _ => 2,
+            }
+        ))
+    }
+
+    fn to_str(&self, _: &mut Interpreter) -> Result<Option<String>, Error> {
+        Ok(Some(format!("ExecMode.{}", self.0)))
+    }
+}
+
 /// Registers the `snakemake` modules with an interpreter.
 pub fn register(interpreter: &mut Interpreter, state: &Rc<RefCell<State>>, globals: &Rc<Scope>) {
     let factory = |make: ModuleFactory| make;
@@ -413,6 +500,29 @@ pub fn register(interpreter: &mut Interpreter, state: &Rc<RefCell<State>>, globa
             Ok(module(
                 "snakemake.remote",
                 vec![("RemoteProviderBase", remote_provider())],
+            ))
+        })),
+    );
+    // `ExecMode` of the interface of executor plugins, which workflows compare with to learn
+    // whether they are the main process.
+    let exec_mode = ExecMode::value();
+    interpreter.host_modules.insert(
+        "snakemake_interface_executor_plugins.settings".into(),
+        factory(Rc::new(move |_| {
+            Ok(module(
+                "snakemake_interface_executor_plugins.settings",
+                vec![("ExecMode", exec_mode.clone())],
+            ))
+        })),
+    );
+    interpreter.host_modules.insert(
+        "snakemake_interface_executor_plugins".into(),
+        factory(Rc::new(|interpreter| {
+            let settings =
+                interpreter.import_module("snakemake_interface_executor_plugins.settings")?;
+            Ok(module(
+                "snakemake_interface_executor_plugins",
+                vec![("settings", settings)],
             ))
         })),
     );

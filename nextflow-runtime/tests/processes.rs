@@ -159,6 +159,21 @@ fn config_settings_reach_the_task() {
     assert_eq!(cpus.as_deref(), Some("4"));
 }
 
+/// A tag of the config that fails names the task by its index, as Nextflow's
+/// `TaskRun.getName` ignores the error.
+#[test]
+fn tags_that_fail_are_left_out() {
+    let source = format!("{DOUBLE}workflow {{\n    DOUBLE(channel.of(1, 2))\n}}");
+    let text = "process {\n    withName: 'DOUBLE' {\n        tag = { \"${meta.id}\" }\n    }\n}\n";
+    let options = Options {
+        config: config(text),
+        ..Options::default()
+    };
+    let (tasks, _) = run(&source, &options).expect("runs");
+    let names: Vec<&str> = tasks.iter().map(|task| task.name.as_str()).collect();
+    assert_eq!(names, ["DOUBLE (1)", "DOUBLE (2)"]);
+}
+
 #[test]
 fn workflow_metadata_and_completion_handlers() {
     let source = format!(

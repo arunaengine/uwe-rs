@@ -215,7 +215,14 @@ impl Interpreter<'_> {
             this.block(&mut task.frame, &process.setup)?;
             let mut directives = Vec::new();
             for directive in &process.directives {
-                let arguments = this.arguments(&mut task.frame, &directive.arguments)?;
+                let arguments = match this.arguments(&mut task.frame, &directive.arguments) {
+                    Ok(arguments) => arguments,
+                    // Nextflow reads the tag only to name the task, and ignores its errors.
+                    Err(error) if &*directive.name == "tag" && error.exception().is_some() => {
+                        continue;
+                    }
+                    Err(error) => return Err(error),
+                };
                 directives.push(TaskDirective {
                     name: directive.name.clone(),
                     arguments,

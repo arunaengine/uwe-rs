@@ -8,7 +8,9 @@ use std::rc::Rc;
 
 use nextflow_config::ProcessSettings;
 use nextflow_evaluator::exception::Exception;
-use nextflow_evaluator::interpreter::{Error, RenderedOutput, RenderedPart, TaskDirective};
+use nextflow_evaluator::interpreter::{
+    Error, Interpreter, RenderedOutput, RenderedPart, TaskDirective, TaskFrame,
+};
 use nextflow_evaluator::lowered::{Input, Module, Process};
 use nextflow_evaluator::units::{parse_duration, parse_memory};
 use nextflow_evaluator::value::{ChannelId, Key, MapKind, PathValue, Value};
@@ -151,23 +153,17 @@ impl ProcessNode {
         // Selectors replace the process's own directives; plain settings fill in the rest.
         for (name, value) in &self.settings.selected {
             if &**name != "ext" {
-                let value = interpreter.resolve_setting(&frame, value, &base)?;
+                let value = setting(interpreter, &frame, name, value, &base)?;
                 directives.retain(|directive| directive.name != *name);
-                directives.push(TaskDirective {
-                    name: name.clone(),
-                    arguments: vec![value],
-                });
+                directives.extend(value);
             }
         }
         for (name, value) in &self.settings.defaults {
             let current = directives.iter().find(|directive| directive.name == *name);
             if &**name != "ext" && current.is_none_or(built_in_default) {
-                let value = interpreter.resolve_setting(&frame, value, &base)?;
+                let value = setting(interpreter, &frame, name, value, &base)?;
                 directives.retain(|directive| directive.name != *name);
-                directives.push(TaskDirective {
-                    name: name.clone(),
-                    arguments: vec![value],
-                });
+                directives.extend(value);
             }
         }
         limit_resources(&mut directives);
@@ -304,6 +300,25 @@ fn ext_map(settings: &ProcessSettings) -> Value {
         }
     }
     ext
+}
+
+/// The directive of a config setting for a task. A `tag` whose closure fails is left out, as
+/// Nextflow's `TaskRun.getName` ignores the error and names the task by its index.
+fn setting(
+    interpreter: &mut Interpreter,
+    frame: &TaskFrame,
+    name: &Rc<str>,
+    value: &Value,
+    task_object: &Value,
+) -> Result<Option<TaskDirective>, Error> {
+    match interpreter.resolve_setting(frame, value, task_object) {
+        Ok(value) => Ok(Some(TaskDirective {
+            name: name.clone(),
+            arguments: vec![value],
+        })),
+        Err(error) if &**name == "tag" && error.exception().is_some() => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 
 /// Whether a directive has the value Nextflow gives it when nothing sets it, which a plain

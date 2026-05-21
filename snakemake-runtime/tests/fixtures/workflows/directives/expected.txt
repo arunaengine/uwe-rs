@@ -30,7 +30,7 @@ task 6: continuumio/miniconda3:4.4.10
   command: bash -c set -euo pipefail;  multiqc results/stats.txt results/stats.json -o results/multiqc_data && echo  > results/multiqc.html
   inputs: results/stats.txt results/stats.json
   outputs: results/multiqc.html results/multiqc_data/
-task 7: continuumio/miniconda3:4.4.10
+task 7: -
   command: 
   inputs: results/S1.vcf results/S2.vcf results/multiqc.html
   outputs: 

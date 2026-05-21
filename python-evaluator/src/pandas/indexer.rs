@@ -75,7 +75,12 @@ pub fn select(
     if is_list_like(key) && !matches!(key.plain(), Value::Tuple(_)) {
         let mut positions = Vec::new();
         for label in seq_values(interpreter, key)? {
-            let found = labels.find(&label);
+            // A value of the first level selects all rows below it, with all levels.
+            let found = if labels.is_multi() && !matches!(label.plain(), Value::Tuple(_)) {
+                labels.find_prefix(std::slice::from_ref(&label))
+            } else {
+                labels.find(&label)
+            };
             if found.is_empty() {
                 return Err(Error::key_error(label));
             }

@@ -42,3 +42,8 @@ try:
 except AttributeError as error:
     print("AttributeError:", error)
 print(platform.mac_ver(), platform.win32_ver(), platform.python_implementation())
+import configparser, email, imaplib, smtplib
+from email.message import EmailMessage
+from collections import UserDict
+from tkinter import E
+print(EmailMessage.__name__, configparser.ConfigParser.__name__, UserDict({"a": 1})["a"], E)

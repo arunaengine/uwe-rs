@@ -40,10 +40,13 @@ fn array_method(
 impl Array {
     /// Whether an element, or an element of a row, equals the item.
     fn holds(&self, item: &Value) -> bool {
-        self.values.borrow().iter().any(|value| match value.as_native::<Array>() {
-            Some(row) => row.holds(item),
-            None => !is_missing(value) && key_equal(value, item),
-        })
+        self.values
+            .borrow()
+            .iter()
+            .any(|value| match value.as_native::<Array>() {
+                Some(row) => row.holds(item),
+                None => !is_missing(value) && key_equal(value, item),
+            })
     }
 }
 

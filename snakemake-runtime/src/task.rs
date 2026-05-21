@@ -400,6 +400,8 @@ pub fn build(
         _ => None,
     };
     let image = match (container, conda) {
+        // A rule without an action is a no-op task: no command and no image.
+        _ if matches!(rule.action, Action::None) => None,
         (Some(container), _) => Some(image_name(&container)),
         (None, Some(conda)) => {
             let conda = pattern::apply(&conda, &job.wildcards).unwrap_or(conda);

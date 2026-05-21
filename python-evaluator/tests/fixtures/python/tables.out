@@ -65,3 +65,4 @@ False True default ['sample', 'unit']
 ['a_c', nan, 'b_e'] a-?
 ['x', nan] (3, 3) ['A', 'B']
 True (2, 3)
+True False

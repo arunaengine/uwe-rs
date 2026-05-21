@@ -389,6 +389,32 @@ pub fn data_frame(interpreter: &mut Interpreter, mut args: Args) -> Result<Value
     Ok(DataFrame::from_data(frame))
 }
 
+/// The values of a column as pandas 3 infers its type: `None` among texts or numbers is
+/// missing, and whole numbers among missing values become floats.
+fn infer_column(values: Vec<Value>) -> Vec<Value> {
+    let present: Vec<&Value> = values
+        .iter()
+        .filter(|value| !super::is_missing(value))
+        .collect();
+    if present.len() == values.len() || present.is_empty() {
+        return values;
+    }
+    let texts = present
+        .iter()
+        .all(|value| matches!(value.plain(), Value::Str(_)));
+    let numbers = present
+        .iter()
+        .all(|value| matches!(value.plain(), Value::Int(_) | Value::Float(_)));
+    values
+        .into_iter()
+        .map(|value| match value.plain() {
+            _ if super::is_missing(&value) && (texts || numbers) => nan(),
+            Value::Int(number) if numbers => Value::Float(*number as f64),
+            _ => value,
+        })
+        .collect()
+}
+
 /// A table from a dict of columns: sequences, series, dicts by row label, or single values.
 fn from_columns(
     interpreter: &mut Interpreter,
@@ -461,7 +487,7 @@ fn from_columns(
             if column.len() != labels.len() {
                 return Err(Error::value_error("All arrays must be of the same length"));
             }
-            column
+            infer_column(column)
         } else {
             vec![value.clone(); labels.len()]
         };

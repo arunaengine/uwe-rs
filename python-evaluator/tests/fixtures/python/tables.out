@@ -63,3 +63,5 @@ False True default ['sample', 'unit']
 [1.5, None] {'name': ['a', 'x'], 'size': [1.5, 'x']}
 {'a': ['x', 'y'], 'b': ['z']}
 ['a_c', nan, 'b_e'] a-?
+['x', nan] (3, 3) ['A', 'B']
+True (2, 3)

@@ -203,12 +203,14 @@ fn expand_sized(
         }
         if name == "runtime"
             && let Some(text) = value.as_str()
-            && let Some(seconds) = seconds(&Value::str(text.trim_matches(['\'', '"'])))
         {
-            expanded.push((
-                name,
-                Value::Int(((seconds as f64 / 60.0).round() as i64).max(1)),
-            ));
+            let Some(minutes) = runtime_minutes(text) else {
+                return Err(workflow_error(format!(
+                    "Resource '{name}' with value {} could not be parsed as minutes",
+                    interpreter.repr(&value)?
+                )));
+            };
+            expanded.push((name, Value::Int(minutes)));
             continue;
         }
         expanded.push((name, value));
@@ -249,6 +251,65 @@ fn megabytes(text: &str) -> Option<f64> {
         _ => return None,
     };
     Some(number * factor)
+}
+
+/// A runtime text in minutes as Snakemake parses it: whole minutes, or one number of seconds
+/// or of a time unit, like `90`, `2h` or `30 minutes`, as humanfriendly's `parse_timespan`
+/// reads it. `None` when it cannot be parsed.
+fn runtime_minutes(text: &str) -> Option<i64> {
+    let stripped = text.trim_matches(['\'', '"']);
+    if !stripped.is_empty() && stripped.chars().all(|c| c.is_ascii_digit()) {
+        return stripped.parse().ok();
+    }
+    // humanfriendly's tokens: numbers, and the texts between them.
+    let mut tokens: Vec<Result<f64, String>> = Vec::new();
+    let mut rest = stripped;
+    while !rest.is_empty() {
+        let digits = rest
+            .find(|c: char| c.is_ascii_digit())
+            .unwrap_or(rest.len());
+        let text = rest[..digits].trim();
+        if !text.is_empty() {
+            tokens.push(Err(text.to_owned()));
+        }
+        rest = &rest[digits..];
+        if rest.is_empty() {
+            break;
+        }
+        let whole = rest
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(rest.len());
+        let mut end = whole;
+        if rest[whole..].starts_with('.')
+            && rest[whole + 1..].starts_with(|c: char| c.is_ascii_digit())
+        {
+            end = whole
+                + 1
+                + rest[whole + 1..]
+                    .find(|c: char| !c.is_ascii_digit())
+                    .unwrap_or(rest.len() - whole - 1);
+        }
+        tokens.push(Ok(rest[..end].parse().ok()?));
+        rest = &rest[end..];
+    }
+    let seconds = match tokens.as_slice() {
+        [Ok(number)] => *number,
+        [Ok(number), Err(unit)] => {
+            let divider = match unit.to_lowercase().as_str() {
+                "ms" | "millisecond" | "milliseconds" => 1e-3,
+                "s" | "sec" | "secs" | "second" | "seconds" => 1.0,
+                "m" | "min" | "mins" | "minute" | "minutes" => 60.0,
+                "h" | "hour" | "hours" => 3600.0,
+                "d" | "day" | "days" => 86400.0,
+                "w" | "week" | "weeks" => 604_800.0,
+                "y" | "year" | "years" => 31_449_600.0,
+                _ => return None,
+            };
+            number * divider
+        }
+        _ => return None,
+    };
+    Some(((seconds.round() / 60.0) as i64).max(1))
 }
 
 /// Parses a runtime in minutes or with units like `2h` or `1d 3h` into seconds.
@@ -332,6 +393,24 @@ mod tests {
         assert_eq!(human_size(1500), "1.5 GB");
         assert_eq!(human_size(954), "954 MB");
         assert_eq!(human_size(16_000), "16 GB");
+    }
+
+    #[test]
+    fn runtimes_are_read_as_humanfriendly_reads_them() {
+        let cases = [
+            ("2h", Some(120)),
+            ("1.5h", Some(90)),
+            ("'30 minutes'", Some(30)),
+            ("1y", Some(524_160)),
+            ("45", Some(45)),
+            ("90s", Some(1)),
+            ("2 H", Some(120)),
+            ("1d 3h", None),
+            ("03:00:00", None),
+        ];
+        for (text, minutes) in cases {
+            assert_eq!(runtime_minutes(text), minutes, "{text}");
+        }
     }
 
     #[test]

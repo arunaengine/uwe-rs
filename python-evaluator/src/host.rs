@@ -294,6 +294,13 @@ impl Host for LocalHost {
     }
 
     fn make_dir(&self, path: &Path) -> std::io::Result<()> {
+        // As on the system, a new folder needs the permission to write into its parent.
+        if let Some(parent) = path.parent()
+            && !path.exists()
+            && !permitted(parent, 3)
+        {
+            return Err(std::io::ErrorKind::PermissionDenied.into());
+        }
         self.directories.borrow_mut().insert(path.to_owned());
         self.removed.borrow_mut().remove(path);
         Ok(())
@@ -315,5 +322,34 @@ impl Host for LocalHost {
 
     fn environment(&self) -> Vec<(String, String)> {
         std::env::vars().collect()
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn new_folders_need_write_permission_on_their_parent() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let locked = folder.path().join("locked");
+        std::fs::create_dir(&locked).expect("a locked folder");
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555))
+            .expect("read-only permissions");
+        let host = LocalHost::new(folder.path());
+        let denied = host.make_dir(&locked.join("new"));
+        let made = host.make_dir(&folder.path().join("free"));
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755))
+            .expect("the permissions back");
+        assert!(made.is_ok());
+        // The superuser may write anywhere.
+        if process_ids().is_some_and(|(user, _)| user == 0) {
+            return;
+        }
+        assert_eq!(
+            denied.map_err(|error| error.kind()),
+            Err(std::io::ErrorKind::PermissionDenied)
+        );
     }
 }

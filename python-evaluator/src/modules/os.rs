@@ -309,7 +309,8 @@ impl Native for ContextList {
     }
 }
 
-fn make_dirs(interpreter: &mut Interpreter, path: &std::path::Path) -> Result<(), Error> {
+/// Makes a folder and the folders above it that are missing, as `os.makedirs` does.
+pub fn make_dirs(interpreter: &mut Interpreter, path: &std::path::Path) -> Result<(), Error> {
     let mut missing = Vec::new();
     for ancestor in path.ancestors() {
         if interpreter.host.stat(ancestor).is_some() {

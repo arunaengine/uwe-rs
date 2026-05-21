@@ -23,7 +23,7 @@ use crate::interpreter::Interpreter;
 use crate::value::{Args, Module, Scope, Value};
 
 pub use misc::{dedent, logger, shell_quote};
-pub use os::PathObject;
+pub use os::{PathObject, make_dirs};
 pub use re::{Pattern, compile as compile_regex, translate as translate_regex};
 
 /// The modules that have a native stand-in.

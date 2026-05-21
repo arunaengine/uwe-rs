@@ -1,17 +1,21 @@
 //! A small simulation of the shell scripts of tasks, for the mock executors: which files a
 //! script makes and what text it writes into them. It follows the commands that stub scripts
 //! use to make their files, like `touch`, `mkdir`, `echo`, `printf`, `cat` with a here
-//! document, `cp`, `mv`, `gzip` and `for` loops over words. Anything else, like a tool or an
-//! `if`, makes the simulation incomplete: the script may make more files than it tells.
+//! document, `cp`, `mv`, `gzip`, `for` loops over words and `if` statements whose condition
+//! it can decide. Anything else, like a tool, makes the simulation incomplete: the script may
+//! make more files than it tells.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod condition;
 mod lexer;
 mod programs;
 mod words;
 
 use std::collections::HashMap;
+use std::ops::Range;
 
+use condition::Entry;
 use lexer::{Command, Line, Piece, Token, assignment, logical_lines, pipelines, tokens};
 use words::{expand, expand_all, expand_text, normal};
 
@@ -76,7 +80,8 @@ impl Shell<'_> {
             let words = self.words_of(&lines[index]);
             match words.first().map(String::as_str) {
                 Some("for") => index = self.for_loop(lines, index),
-                Some("if" | "while" | "until" | "case" | "function" | "select") => {
+                Some("if") => index = self.if_statement(lines, index),
+                Some("while" | "until" | "case" | "function" | "select") => {
                     self.complete = false;
                     index = skip_block(lines, index);
                 }
@@ -147,12 +152,7 @@ impl Shell<'_> {
             return end;
         };
         let body = rest[..done].to_vec();
-        let nested = body.iter().any(|token| {
-            matches!(token, Token::Word(word) if ["for", "if", "while", "case"]
-                .iter()
-                .any(|keyword| word == &text_piece(keyword)))
-        });
-        if nested {
+        if has_block(&body) {
             self.complete = false;
             return end;
         }
@@ -163,6 +163,79 @@ impl Shell<'_> {
             }
         }
         end
+    }
+
+    /// `if condition; then commands; elif ...; else commands; fi`, on one line or several.
+    /// The simulation follows the commands of the first condition that holds, when it can
+    /// decide the conditions; gives the index of the line after the statement.
+    fn if_statement(&mut self, lines: &[Line], start: usize) -> usize {
+        let end = skip_block(lines, start);
+        let text: Vec<String> = lines[start..end]
+            .iter()
+            .map(|line| line.text.clone())
+            .collect();
+        let bodies: Vec<String> = lines[start..end]
+            .iter()
+            .flat_map(|line| line.bodies.clone())
+            .collect();
+        let tokens = tokens(&text.join("; "));
+        let Some(clauses) = clauses(&tokens) else {
+            self.complete = false;
+            return end;
+        };
+        for (condition, commands) in clauses {
+            let holds = match condition {
+                Some(condition) => self.condition(&tokens[condition]),
+                None => Some(true),
+            };
+            match holds {
+                Some(true) if !has_block(&tokens[commands.clone()]) => {
+                    // The here documents of the commands come after those before them.
+                    let before = tokens[..commands.start]
+                        .iter()
+                        .filter(|token| **token == Token::HereDocument)
+                        .count();
+                    let bodies = bodies.get(before..).unwrap_or_default();
+                    for pipeline in pipelines(tokens[commands].to_vec()) {
+                        self.pipeline(&pipeline, bodies);
+                    }
+                    return end;
+                }
+                Some(false) => {}
+                _ => {
+                    self.complete = false;
+                    return end;
+                }
+            }
+        }
+        end
+    }
+
+    /// Whether the condition of an `if` holds: one test command with known words.
+    fn condition(&self, tokens: &[Token]) -> Option<bool> {
+        let mut words = Vec::new();
+        let mut ended = false;
+        for token in tokens {
+            match token {
+                Token::Word(_) if ended => return None,
+                Token::Word(word) => words.push(expand(word, &self.variables)?),
+                Token::End => ended = !words.is_empty(),
+                _ => return None,
+            }
+        }
+        condition::decide(&words, |path| {
+            if let Some(made) = self.find(path) {
+                if made.directory {
+                    Entry::Directory
+                } else {
+                    Entry::File
+                }
+            } else if self.inputs.contains(&normal(path).as_str()) {
+                Entry::Input
+            } else {
+                Entry::Absent
+            }
+        })
     }
 
     fn line(&mut self, line: &Line) {
@@ -325,6 +398,83 @@ fn text_piece(text: &str) -> Vec<Piece> {
     }]
 }
 
+/// Whether commands hold a loop, an `if` or a `case`, which the simulation does not follow
+/// inside other blocks.
+fn has_block(tokens: &[Token]) -> bool {
+    tokens.iter().any(|token| {
+        matches!(token, Token::Word(word) if ["for", "if", "while", "until", "case"]
+            .iter()
+            .any(|keyword| word == &text_piece(keyword)))
+    })
+}
+
+/// A word of plain text, which may be a keyword like `then`.
+fn keyword(token: &Token) -> Option<&str> {
+    match token {
+        Token::Word(word) => match word.as_slice() {
+            [
+                Piece::Text {
+                    text,
+                    quoted: false,
+                },
+            ] => Some(text.as_str()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// A clause of an `if` statement as ranges of its tokens: the condition (none for `else`)
+/// and the commands.
+type Clause = (Option<Range<usize>>, Range<usize>);
+
+/// The clauses of an `if` statement. `None` when the tokens are not a whole `if` statement.
+fn clauses(tokens: &[Token]) -> Option<Vec<Clause>> {
+    if tokens.first().and_then(keyword) != Some("if") {
+        return None;
+    }
+    let mut clauses = Vec::new();
+    let mut condition = Some(1..1);
+    let mut commands_start = None;
+    let mut depth = 0;
+    let mut command_start = true;
+    for (index, token) in tokens.iter().enumerate().skip(1) {
+        let word = if command_start { keyword(token) } else { None };
+        command_start = matches!(token, Token::End | Token::Pipe);
+        match (word, depth) {
+            (Some("if" | "for" | "while" | "until" | "case" | "select"), _) => depth += 1,
+            (Some("fi" | "done" | "esac"), 0) => {
+                let start = commands_start?;
+                clauses.push((condition, start..index));
+                let last = tokens[index + 1..].iter().all(|token| *token == Token::End);
+                return (word == Some("fi") && last).then_some(clauses);
+            }
+            (Some("fi" | "done" | "esac"), _) => depth -= 1,
+            (Some("then"), 0) => {
+                let start = condition.as_ref()?.start;
+                condition = Some(start..index);
+                commands_start = Some(index + 1);
+                command_start = true;
+            }
+            (Some("elif"), 0) => {
+                clauses.push((condition, commands_start?..index));
+                condition = Some(index + 1..index + 1);
+                commands_start = None;
+                command_start = true;
+            }
+            (Some("else"), 0) => {
+                clauses.push((condition, commands_start?..index));
+                condition = None;
+                commands_start = Some(index + 1);
+                command_start = true;
+            }
+            (Some("then" | "else" | "do"), _) => command_start = true,
+            _ => {}
+        }
+    }
+    None
+}
+
 /// The index of the line after the block that starts at `start`: the line whose `done`,
 /// `fi` or `esac` closes it, counting blocks inside.
 fn skip_block(lines: &[Line], start: usize) -> usize {
@@ -408,6 +558,23 @@ mod tests {
         assert!(!simulation.complete);
         assert_eq!(files(&simulation), [("done.txt", Some(""))]);
         assert!(!simulate("touch $(date).txt", &[]).complete);
-        assert!(!simulate("if [ -f a ]; then touch b; fi", &[]).complete);
+        assert!(!simulate("if [ -s a ]; then touch b; fi", &[]).complete);
+    }
+
+    #[test]
+    fn if_statements_follow_the_commands_whose_condition_holds() {
+        let script = "if [ \"false\" == true ]; then\n    touch s.fq.gz\nelse\n    \
+                      touch s_1.fq.gz\n    cat <<-END > s_2.txt\n    two\n    END\nfi\n\
+                      if [ -f s_1.fq.gz ]; then touch found.txt; elif [ x ]; then touch no.txt; fi";
+        let simulation = simulate(script, &[]);
+        assert!(simulation.complete);
+        assert_eq!(
+            files(&simulation),
+            [
+                ("s_1.fq.gz", Some("")),
+                ("s_2.txt", Some("    two\n")),
+                ("found.txt", Some("")),
+            ]
+        );
     }
 }

@@ -37,6 +37,16 @@ fn array_method(
     })
 }
 
+impl Array {
+    /// Whether an element, or an element of a row, equals the item.
+    fn holds(&self, item: &Value) -> bool {
+        self.values.borrow().iter().any(|value| match value.as_native::<Array>() {
+            Some(row) => row.holds(item),
+            None => !is_missing(value) && key_equal(value, item),
+        })
+    }
+}
+
 impl Native for Array {
     fn type_name(&self) -> &str {
         "ndarray"
@@ -154,18 +164,8 @@ impl Native for Array {
     }
 
     /// Whether any element equals the item, in rows too, as NumPy's `(array == item).any()`.
-    fn contains(&self, interpreter: &mut Interpreter, item: &Value) -> Result<Option<bool>, Error> {
-        let values = self.values.borrow().clone();
-        for value in &values {
-            let found = match value.as_native::<Array>() {
-                Some(row) => row.contains(interpreter, item)?.unwrap_or(false),
-                None => !is_missing(value) && key_equal(value, item),
-            };
-            if found {
-                return Ok(Some(true));
-            }
-        }
-        Ok(Some(false))
+    fn contains(&self, _: &mut Interpreter, item: &Value) -> Result<Option<bool>, Error> {
+        Ok(Some(self.holds(item)))
     }
 
     fn truthy(&self) -> Option<bool> {

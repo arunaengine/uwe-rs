@@ -3,7 +3,10 @@
 //! code (33 for unsupported features) and the first line of the error. Each workflow runs
 //! the way `tests/fixtures/run_test_workflows_launches.txt` says, which `launches.py` next to it
 //! writes: as its CI tests it, or as Snakemake's own tests run it. Input files that no rule
-//! makes are assumed to exist, since the test workflows hold no large data files. Each workflow runs
+//! makes are assumed to exist, since the test workflows hold no large data files. Up to eight
+//! tasks are pending at once and finish in a shuffled order, whose seed
+//! `SNAKEMAKE_TEST_WORKFLOWS_SEED` sets (1 by default), so that the driver meets the orders of
+//! a real run. Each workflow runs
 //! in a child process, so that a crash or a run of more than two minutes (exit code 124)
 //! stays with its workflow. Run with `just snakemake-run-test-workflows-test`; on a difference the
 //! test prints the lines of the new fixture. `SNAKEMAKE_TEST_WORKFLOWS_FILTER` runs only the
@@ -16,7 +19,7 @@ use std::process::Command;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use workflow_graph::{Launch, MockTes, execute};
+use workflow_graph::{Launch, MockTes, Order, RunOptions, execute_with};
 
 const LAUNCHES: &str = include_str!("fixtures/run_test_workflows_launches.txt");
 
@@ -131,6 +134,14 @@ fn workflows(test_workflows: &Path) -> Vec<(String, PathBuf)> {
     found
 }
 
+/// The seed of the shuffled order of finished tasks: `SNAKEMAKE_TEST_WORKFLOWS_SEED`, else 1.
+fn shuffle_seed() -> u64 {
+    std::env::var("SNAKEMAKE_TEST_WORKFLOWS_SEED")
+        .ok()
+        .and_then(|seed| seed.parse().ok())
+        .unwrap_or(1)
+}
+
 /// The outcome of one run in this process, as the fixture line records it.
 fn run(folder: &Path, launching: &Launching) -> String {
     let scratch = tempfile::tempdir().expect("a temporary directory");
@@ -147,7 +158,19 @@ fn run(folder: &Path, launching: &Launching) -> String {
         Err(error) => return format!("{} {error}", if error.unsupported { 33 } else { 1 }),
     };
     let mut executor = MockTes::new(scratch.path().join("mock"));
-    let execution = execute(&folder.to_string_lossy(), driver.as_mut(), &mut executor);
+    // Up to eight tasks finish in a shuffled order, as tasks of a real run may.
+    let options = RunOptions {
+        max_pending: 8,
+        order: Order::Shuffled {
+            seed: shuffle_seed(),
+        },
+    };
+    let execution = execute_with(
+        &folder.to_string_lossy(),
+        driver.as_mut(),
+        &mut executor,
+        &options,
+    );
     match execution.error {
         None => format!("ok {}", execution.graph.nodes.len()),
         Some(error) => format!("{} {error}", if error.unsupported() { 33 } else { 1 }),

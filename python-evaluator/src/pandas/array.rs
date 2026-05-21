@@ -153,13 +153,19 @@ impl Native for Array {
         Some(self.values.borrow().len())
     }
 
-    fn contains(&self, _: &mut Interpreter, item: &Value) -> Result<Option<bool>, Error> {
-        Ok(Some(
-            self.values
-                .borrow()
-                .iter()
-                .any(|value| !is_missing(value) && key_equal(value, item)),
-        ))
+    /// Whether any element equals the item, in rows too, as NumPy's `(array == item).any()`.
+    fn contains(&self, interpreter: &mut Interpreter, item: &Value) -> Result<Option<bool>, Error> {
+        let values = self.values.borrow().clone();
+        for value in &values {
+            let found = match value.as_native::<Array>() {
+                Some(row) => row.contains(interpreter, item)?.unwrap_or(false),
+                None => !is_missing(value) && key_equal(value, item),
+            };
+            if found {
+                return Ok(Some(true));
+            }
+        }
+        Ok(Some(false))
     }
 
     fn truthy(&self) -> Option<bool> {

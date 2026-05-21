@@ -102,3 +102,4 @@ print(pd.Series(["a", None, "b"]).str.cat(pd.Series(["c", "d", "e"]), sep="_").t
 df = pd.DataFrame({"sample": ["A", "A", "B"], "rep": [1, 2, 1], "fq": ["x", None, "z"]}).set_index(["sample", "rep"], drop=False)
 print(df.loc[["A"]].fq.tolist(), df.loc[["A", "B"]].shape, list(df.index.get_level_values("sample").unique()))
 print(all(df.loc[["B"]].fq.notna()), df.loc["A"].shape)
+print("H3" in pd.DataFrame({"a": ["H3", "x"]})[["a"]].values, "y" in pd.DataFrame({"a": ["H3", "x"]})[["a"]].values)

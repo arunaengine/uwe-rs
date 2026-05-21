@@ -623,13 +623,39 @@ impl Hook {
                         .insert("scatteritem".into(), "\\d+-of-\\d+".into());
                 }
             }
+            // Variables that jobs get, which must be set, as `register_envvars` checks.
             GlobalKeyword::EnvironmentVariables => {
-                let mut state = self.state.borrow_mut();
+                let mut names = Vec::new();
                 for name in &args.positional {
-                    if let Some(name) = name.as_str() {
-                        state.envvars.push(name.to_owned());
-                    }
+                    names.push(interpreter.to_str(name)?);
                 }
+                let invalid: Vec<String> = names
+                    .iter()
+                    .filter(|name| {
+                        name.is_empty()
+                            || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                    })
+                    .map(|name| python_evaluator::format::quote(name))
+                    .collect();
+                if !invalid.is_empty() {
+                    return Err(workflow_error(format!(
+                        "Invalid environment variables requested: {}. Environment variable names may only contain alphanumeric characters and the underscore. ",
+                        invalid.join(", ")
+                    )));
+                }
+                let environment = interpreter.host.environment();
+                let undefined: Vec<&String> = names
+                    .iter()
+                    .filter(|name| !environment.iter().any(|(key, _)| key == *name))
+                    .collect();
+                if !undefined.is_empty() {
+                    let undefined: Vec<&str> = undefined.iter().map(|name| name.as_str()).collect();
+                    return Err(workflow_error(format!(
+                        "The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:\n{}",
+                        undefined.join("\n")
+                    )));
+                }
+                self.state.borrow_mut().envvars.extend(names);
             }
             GlobalKeyword::PepFile => {
                 let path = python_evaluator::modules::path_text(interpreter, &first())?;

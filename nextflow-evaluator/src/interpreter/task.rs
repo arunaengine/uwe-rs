@@ -212,7 +212,7 @@ impl Interpreter<'_> {
         task_object: &Value,
     ) -> Result<Vec<TaskDirective>, Error> {
         let variables = task.variables.clone();
-        self.with_task(variables, task_object, |this| {
+        let result = self.with_task(variables, task_object, |this| {
             this.block(&mut task.frame, &process.setup)?;
             let mut directives = Vec::new();
             for directive in &process.directives {
@@ -220,6 +220,7 @@ impl Interpreter<'_> {
                     Ok(arguments) => arguments,
                     // Nextflow reads the tag only to name the task, and ignores its errors.
                     Err(error) if &*directive.name == "tag" && error.exception().is_some() => {
+                        this.error_module = None;
                         continue;
                     }
                     Err(error) => return Err(error),
@@ -230,7 +231,8 @@ impl Interpreter<'_> {
                 });
             }
             Ok(directives)
-        })
+        });
+        self.in_script(&task.frame, result)
     }
 
     /// The value of a config setting for a task: a closure is called with the task's
@@ -299,9 +301,19 @@ impl Interpreter<'_> {
         stub: bool,
     ) -> Result<RenderedTask, Error> {
         let variables = task.variables.clone();
-        self.with_task(variables, task_object, |this| {
+        let result = self.with_task(variables, task_object, |this| {
             this.render_sections(task, process, task_object, stub)
-        })
+        });
+        self.in_script(&task.frame, result)
+    }
+
+    /// A result of task code, whose error, like one of an output, happened in the script of
+    /// the process unless a statement tells another.
+    fn in_script<T>(&mut self, frame: &Frame, result: Result<T, Error>) -> Result<T, Error> {
+        if result.is_err() && self.error_module.is_none() {
+            self.error_module = Some(frame.module.clone());
+        }
+        result
     }
 
     /// The value of a `val` output. A variable that the section that ran did not set is a

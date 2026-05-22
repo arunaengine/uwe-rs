@@ -413,9 +413,9 @@ fn stub_runs_leave_the_variables_of_scripts_unset() {
         ..Options::default()
     };
     let error = run(source, &stub).unwrap_err();
-    assert!(
-        error.ends_with("MissingPropertyException: No such variable: outformat"),
-        "{error}"
+    assert_eq!(
+        error,
+        "/modules/test/main.nf:5:15: MissingPropertyException: No such variable: outformat"
     );
     run(source, &Options::default()).expect("runs");
     // A `val` output of such a variable is a missing value.

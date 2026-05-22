@@ -276,3 +276,13 @@ fn collection_classes() {
     assert_eq!(value("[a: 1].getClass() == LinkedHashMap"), "true");
     assert_eq!(value("[a: 1].getClass() == ArrayList"), "false");
 }
+
+/// A list indexed with a name gives that property of each element that is not null, as
+/// Groovy's `getAt(String)` does; Nextflow 26.04.6 prints these.
+#[test]
+fn lists_indexed_with_names() {
+    let list = "def l = [[id: 1, c: 2], null, [id: 3]]";
+    assert_eq!(value(&format!("{list}\nl['id']")), "[1, 3]");
+    assert_eq!(value(&format!("{list}\nl['c']")), "[2, null]");
+    assert_eq!(value("[]['id']"), "[]");
+}

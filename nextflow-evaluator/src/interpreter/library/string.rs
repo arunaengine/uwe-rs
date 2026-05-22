@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use nextflow_parser::Span;
+use sha2::Digest;
 
 use super::super::{AtSpan, Error, Interpreter, thrown};
 use crate::exception::Exception;
@@ -47,6 +48,9 @@ impl Interpreter<'_> {
             ("minus", [other]) => Value::string(text)
                 .apply(crate::value::Operator::Subtract, other)
                 .at(span)?,
+            // Groovy's `md5()` and `sha256()`: the digest of the UTF-8 text in lowercase hex.
+            ("md5", []) => Value::string(hex(&md5::Md5::digest(text.as_bytes()))),
+            ("sha256", []) => Value::string(hex(&sha2::Sha256::digest(text.as_bytes()))),
             ("isEmpty", []) => Value::Boolean(text.is_empty()),
             ("isBlank", []) => Value::Boolean(text.chars().all(char::is_whitespace)),
             ("toString", []) => Value::string(text),
@@ -401,4 +405,9 @@ fn strip_margin(text: &str, marker: char) -> String {
         out.pop();
     }
     out
+}
+
+/// Bytes in lowercase hex.
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }

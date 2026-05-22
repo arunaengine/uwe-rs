@@ -246,3 +246,17 @@ fn characters() {
         "[2, Integer, C, Character, true, true, 67]"
     );
 }
+
+/// Groovy's `md5()` and `sha256()` of text, as Nextflow 26.04.6 prints them.
+#[test]
+fn digests_of_text() {
+    assert_eq!(value("'abc'.md5()"), "900150983cd24fb0d6963f7d28e17f72");
+    assert_eq!(
+        value("'a\\u00e9'.sha256()"),
+        "561951c2b8c47984b8b4b8ae1f173a03d9c703f66cf36f145e27bc6145499f74"
+    );
+    assert_eq!(
+        value("def m = [id: 1]; \"$m\".md5()"),
+        "6b2b8a6ecb0c99efd1e6c0ebac6f90e5"
+    );
+}

@@ -364,6 +364,12 @@ pub enum StatementKind {
     /// Legacy syntax: an include inside an `if` of the script, which links the includes with
     /// these indexes in `Module::includes` when it runs.
     Include(Vec<usize>),
+    /// Legacy syntax: `params.a.b = value` among the statements of a script, which sets the
+    /// param when nothing, like the config or the command line, set it before.
+    SetParam {
+        path: Vec<Rc<str>>,
+        value: Expression,
+    },
 }
 
 #[derive(Debug)]

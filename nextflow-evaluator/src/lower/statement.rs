@@ -24,7 +24,7 @@ impl Lowering<'_> {
             .collect()
     }
 
-    fn statement(&mut self, statement: &ast::Statement) -> Option<Statement> {
+    pub(super) fn statement(&mut self, statement: &ast::Statement) -> Option<Statement> {
         let span = statement.span;
         if self.in_workflow
             && !self.scopes.in_closure()

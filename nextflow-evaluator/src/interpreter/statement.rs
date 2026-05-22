@@ -10,7 +10,7 @@ use super::library::org_json;
 use super::{AtSpan, Error, Frame, Interpreter, thrown};
 use crate::exception::Exception;
 use crate::lowered::{Place, Statement, StatementKind, Target, Update};
-use crate::value::Value;
+use crate::value::{Value, tree};
 
 /// How a statement or block ended.
 pub(super) enum Completion {
@@ -255,6 +255,17 @@ impl Interpreter<'_> {
                             .borrow_mut()
                             .insert(include.alias.clone(), link);
                     }
+                }
+                Value::Null
+            }
+            StatementKind::SetParam { path, value } => {
+                let value = self.expression(frame, value)?;
+                let names: Vec<&str> = path.iter().map(|name| &**name).collect();
+                if let Some(params) = self.globals.get("params").cloned()
+                    && tree::get(&params, &names).is_none()
+                {
+                    tree::assign(&params, path, value)
+                        .map_err(|message| thrown(Exception::illegal_argument(message), span))?;
                 }
                 Value::Null
             }

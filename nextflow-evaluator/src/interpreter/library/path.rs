@@ -8,6 +8,7 @@ use nextflow_parser::Span;
 
 use super::super::{Error, Interpreter};
 use crate::number::Number;
+use crate::split::{self, Splitter};
 use crate::value::{PathValue, Value};
 
 pub(super) fn path_method(path: &Rc<PathValue>, name: &str, arguments: &[Value]) -> Option<Value> {
@@ -110,6 +111,63 @@ impl Interpreter<'_> {
                 }
                 let text = String::from_utf8_lossy(&bytes);
                 return Ok(Some(super::csv_records(&text, arguments.first())));
+            }
+            // The records of a file, as the operators of these names read them. With
+            // `file: true`, or a folder, each chunk is a file.
+            (
+                "splitText" | "splitFasta" | "splitFastq" | "splitJson" | "countLines"
+                | "countFasta" | "countFastq",
+                [] | [Value::Map(_)],
+            ) => {
+                let options = arguments.first();
+                let mut bytes = self.host.read(path).map_err(host_error)?;
+                let decompress = split::option(options, "decompress").is_none_or(|v| v.truth());
+                if path.name().ends_with(".gz") && decompress {
+                    bytes = split::decompressed(&bytes, path)
+                        .map_err(|exception| super::super::thrown(exception, span))?;
+                }
+                let text = String::from_utf8_lossy(&bytes);
+                let chunks = Splitter::new(name, options)
+                    .chunks(&text)
+                    .map_err(|exception| super::super::thrown(exception, span))?;
+                if name.starts_with("count") {
+                    return Ok(Some(Value::Number(Number::Long(chunks.len() as i64))));
+                }
+                let Some(files) = split::option(options, "file").filter(Value::truth) else {
+                    return Ok(Some(Value::list(chunks)));
+                };
+                // As Nextflow's `AbstractTextSplitter`: a folder gets chunks named after the
+                // file, another path is the name of the chunks, and so is a text, in a folder
+                // of the file below `work/tmp`.
+                let source = path.name().strip_suffix(".gz").unwrap_or(path.name());
+                let (directory, named) = match files {
+                    Value::Path(target) => {
+                        let metadata = self.host.metadata(&target).map_err(host_error)?;
+                        match target.parent() {
+                            Some(parent) if !metadata.is_some_and(|m| m.directory) => {
+                                (parent, target.name().to_owned())
+                            }
+                            _ => ((*target).clone(), source.to_owned()),
+                        }
+                    }
+                    Value::String(text) | Value::GString(text) => (
+                        chunk_directory(path, &self.host.launch_dir()),
+                        text.to_string(),
+                    ),
+                    _ => (
+                        chunk_directory(path, &self.host.launch_dir()),
+                        source.to_owned(),
+                    ),
+                };
+                let mut paths = Vec::new();
+                for (index, chunk) in chunks.iter().enumerate() {
+                    let file = directory.resolve(&chunk_name(&named, index + 1));
+                    self.host
+                        .write(&file, chunk.to_string().as_bytes())
+                        .map_err(host_error)?;
+                    paths.push(Value::Path(Rc::new(file)));
+                }
+                return Ok(Some(Value::list(paths)));
             }
             ("setText" | "write", [text]) => {
                 let text = text.to_string();
@@ -245,16 +303,6 @@ impl Interpreter<'_> {
                         .collect(),
                 )));
             }
-            ("countLines" | "countFasta" | "countFastq", []) => {
-                let bytes = self.host.read(path).map_err(host_error)?;
-                let text = String::from_utf8_lossy(&bytes);
-                let count = match name {
-                    "countLines" => text.lines().count(),
-                    "countFasta" => text.lines().filter(|line| line.starts_with('>')).count(),
-                    _ => text.lines().count() / 4,
-                };
-                return Ok(Some(Value::Number(Number::Long(count as i64))));
-            }
             (_, []) => {}
             _ => return Ok(None),
         }
@@ -286,5 +334,23 @@ impl Interpreter<'_> {
             }
             _ => return Ok(None),
         }))
+    }
+}
+
+/// The folder of the chunk files of a file, unique to it, below the `work/tmp` folder of the
+/// launch folder, as Nextflow's `cacheableFile` makes one below its work folder.
+fn chunk_directory(path: &PathValue, launch: &str) -> PathValue {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::hash::DefaultHasher::new();
+    path.uri().hash(&mut hasher);
+    PathValue::parse(&format!("work/tmp/{:016x}", hasher.finish()), launch)
+}
+
+/// The name of a chunk file, as Nextflow's `TextFileCollector` gives it: `name.1.fa` for the
+/// first chunk named `name.fa`.
+fn chunk_name(name: &str, index: usize) -> String {
+    match name.rsplit_once('.') {
+        Some((base, extension)) if !base.is_empty() => format!("{base}.{index}.{extension}"),
+        _ => format!("{name}.{index}"),
     }
 }

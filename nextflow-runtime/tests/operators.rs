@@ -632,3 +632,28 @@ fn splitters_read_gzip_files() {
         ["[a:1, b:2]"]
     );
 }
+
+/// The split methods of paths give the records of a file, or with `file:` chunk files, named
+/// as Nextflow 26.04.6 names them: `seqs.1.fa` in a folder, else after the path.
+#[test]
+fn paths_split_into_records_and_files() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let fasta = directory.path().join("seqs.fa");
+    std::fs::write(&fasta, ">a\nAC\n>b\nGT\n").expect("writes the file");
+    let chunks = directory.path().join("chunks");
+    std::fs::create_dir(&chunks).expect("creates the folder");
+    let body = format!(
+        "def f = file('{}')\nprintln(f.splitFasta().size())\nprintln(f.countFasta())\n\
+         println(f.splitFasta(file: file('{}')).collect {{ it.name }})\n\
+         println(f.splitFasta(file: file('{}/part.fa')).collect {{ it.name }})",
+        fasta.display(),
+        chunks.display(),
+        directory.path().display()
+    );
+    assert_eq!(
+        lines(&body),
+        ["2", "2", "[seqs.1.fa, seqs.2.fa]", "[part.1.fa, part.2.fa]"]
+    );
+    let second = std::fs::read_to_string(chunks.join("seqs.2.fa")).expect("reads the chunk");
+    assert_eq!(second, ">b\nGT\n");
+}

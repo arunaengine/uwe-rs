@@ -224,44 +224,47 @@ impl Loader {
         }
     }
 
-    /// Links each include of a module to the module and name it refers to.
+    /// Links each include of a module to the module and name it refers to. A conditional
+    /// include takes effect when its statement runs.
     fn link(&mut self, module: &Rc<Module>, path: &Path) {
         let directory = path.parent().unwrap_or(Path::new("/")).to_owned();
-        for include in &module.includes {
-            if let Some(plugin) = include.source.strip_prefix("plugin/") {
+        for (index, include) in module.includes.iter().enumerate() {
+            let target = match include.source.strip_prefix("plugin/") {
                 // A function that a script ports runs as script code.
-                let script = self
-                    .plugin_scripts
-                    .get(plugin)
-                    .filter(|script| script.function_names.contains_key(&include.name))
-                    .cloned();
-                let target = script.unwrap_or_else(|| {
-                    let native = self.plugins.entry(plugin.into()).or_insert_with(|| {
-                        Rc::new(Module {
-                            plugin: Some(plugin.into()),
-                            ..Module::default()
-                        })
-                    });
-                    native.clone()
-                });
-                let link = Link {
-                    module: target,
-                    name: include.name.clone(),
-                };
-                module
-                    .links
-                    .borrow_mut()
-                    .insert(include.alias.clone(), link);
-                continue;
-            }
-            let Some(target) = include_path(&self.project, &directory, &include.source) else {
-                continue;
+                Some(plugin) => {
+                    let script = self
+                        .plugin_scripts
+                        .get(plugin)
+                        .filter(|script| script.function_names.contains_key(&include.name))
+                        .cloned();
+                    script.unwrap_or_else(|| {
+                        let native = self.plugins.entry(plugin.into()).or_insert_with(|| {
+                            Rc::new(Module {
+                                plugin: Some(plugin.into()),
+                                ..Module::default()
+                            })
+                        });
+                        native.clone()
+                    })
+                }
+                None => {
+                    let Some(target) = include_path(&self.project, &directory, &include.source)
+                    else {
+                        continue;
+                    };
+                    let Some(target) = self.modules.get(&target).cloned() else {
+                        continue;
+                    };
+                    target
+                }
             };
-            if let Some(target) = self.modules.get(&target).cloned() {
-                let link = Link {
-                    module: target,
-                    name: include.name.clone(),
-                };
+            let link = Link {
+                module: target,
+                name: include.name.clone(),
+            };
+            if include.conditional {
+                module.conditional_links.borrow_mut().insert(index, link);
+            } else {
                 module
                     .links
                     .borrow_mut()

@@ -36,6 +36,10 @@ impl Parser<'_> {
                 StatementKind::Empty
             }
             TokenKind::Def => self.declaration()?,
+            TokenKind::Include if self.kind_after(1) == TokenKind::LeftBrace => {
+                self.legacy_at("Unexpected input: 'include'", start);
+                StatementKind::Include(self.include()?)
+            }
             _ => self.expression_statement()?,
         };
         Ok(Statement {

@@ -227,10 +227,8 @@ fn script_params(
             })?;
         }
     }
-    let included: Vec<Rc<Module>> = module
-        .links
-        .borrow()
-        .values()
+    let included: Vec<Rc<Module>> = (module.links.borrow().values())
+        .chain(module.conditional_links.borrow().values())
         .map(|link| link.module.clone())
         .collect();
     for module in included {

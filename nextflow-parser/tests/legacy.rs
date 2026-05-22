@@ -166,3 +166,19 @@ fn when_sections_of_several_lines() {
     assert_eq!(&source[start..end], "x > 1");
     assert!(process.body.is_some());
 }
+
+/// An include inside an `if`, which Nextflow's strict parser rejects with this message.
+#[test]
+fn include_inside_an_if() {
+    let (items, legacy) = parse("if (x) {\n    include { A as C } from './a'\n}\n");
+    let [Item::Statement(statement)] = items.as_slice() else {
+        panic!("one statement: {items:?}");
+    };
+    let StatementKind::If { then, .. } = &statement.kind else {
+        panic!("an if: {statement:?}");
+    };
+    assert!(
+        matches!(&then.statements[0].kind, StatementKind::Include(include) if include.source.text == "./a")
+    );
+    assert_eq!(legacy, ["Unexpected input: 'include'"]);
+}

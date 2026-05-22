@@ -10,6 +10,7 @@ mod object;
 mod operators;
 mod path;
 mod range;
+pub mod tree;
 
 use std::cell::RefCell;
 use std::rc::Rc;

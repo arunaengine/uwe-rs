@@ -96,6 +96,35 @@ workflow {
     assert_eq!(output.0, "B\n");
 }
 
+/// `params.x = value` among the statements of a script runs in order with them, and only
+/// sets a param that nothing set before, as with Nextflow 26.04.6 and the legacy parser,
+/// which prints `b 1` for this script.
+#[test]
+fn params_assignments_run_in_order_with_the_statements() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    write(
+        root.path(),
+        "main.nf",
+        "if (true) {
+    platform = 'b'
+}
+params.platform = platform
+params.count = 1
+params.count = 2
+def show() { \"${params.platform} ${params.count}\" }
+workflow {
+    println(show())
+}
+",
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let mut output = Output::default();
+    nextflow_runtime::run(&module, &mut output).expect("runs");
+    assert_eq!(output.0, "b 1\n");
+}
+
 /// A `lib/` class like the `NfcoreSchema` of older nf-core pipelines, which reads a schema
 /// with `org.json`, drops an ignored param from it and validates params with everit. The
 /// violations are those of everit 1.14.1, which

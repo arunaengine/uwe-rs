@@ -207,6 +207,8 @@ pub fn lower_script(
                 let workflow = lowering.workflow(workflow);
                 module.workflows.push(Rc::new(workflow));
             }
+            // In a script with statements, they run with the statements, in order.
+            Item::LegacyParameter { .. } if legacy => {}
             Item::LegacyParameter { path, value, span } => {
                 let path = path.iter().map(|name| name.text.as_str().into()).collect();
                 let code = lowering.expression_code("params", value, *span);
@@ -270,7 +272,12 @@ pub fn lower_script(
         module.workflows.push(Rc::new(workflow));
     }
     if legacy {
-        module.initializer = Some(Rc::new(lowering.initializer(&statements)));
+        let items: Vec<&Item> = script
+            .items
+            .iter()
+            .filter(|item| matches!(item, Item::Statement(_) | Item::LegacyParameter { .. }))
+            .collect();
+        module.initializer = Some(Rc::new(lowering.initializer(&items)));
     }
     module.variables = (0..lowering.scopes.module_count())
         .map(|_| Rc::new(std::cell::RefCell::new(Value::Null)))
@@ -538,16 +545,27 @@ impl<'a> Lowering<'a> {
 
     /// The statements of a script that also has declarations, as code without parameters. A
     /// `def` at the top declares a variable of the script.
-    fn initializer(&mut self, statements: &[&ast::Statement]) -> Code {
+    fn initializer(&mut self, items: &[&Item]) -> Code {
         self.scopes.push_frame(false);
-        let statements: Vec<ast::Statement> = statements
-            .iter()
-            .map(|statement| script_assignment(statement))
-            .collect();
-        let body = self.statements(&statements);
+        let mut body = Vec::new();
+        for item in items {
+            match item {
+                Item::Statement(statement) => {
+                    body.extend(self.statement(&script_assignment(statement)));
+                }
+                Item::LegacyParameter { path, value, span } => body.push(Statement {
+                    kind: StatementKind::SetParam {
+                        path: path.iter().map(|name| name.text.as_str().into()).collect(),
+                        value: self.expression(value),
+                    },
+                    span: *span,
+                }),
+                _ => {}
+            }
+        }
         let layout = self.scopes.pop_frame();
-        let span = match (statements.first(), statements.last()) {
-            (Some(first), Some(last)) => first.span.to(last.span),
+        let span = match (items.first(), items.last()) {
+            (Some(first), Some(last)) => item_span(first).to(item_span(last)),
             _ => Span::default(),
         };
         Code {

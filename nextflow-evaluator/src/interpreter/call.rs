@@ -107,6 +107,7 @@ impl Interpreter<'_> {
                 .map(|_| Rc::new(RefCell::new(Value::Null)))
                 .collect(),
             captured,
+            unset: RefCell::default(),
         };
         let mut arguments = arguments.into_iter();
         if code.implicit_parameter {

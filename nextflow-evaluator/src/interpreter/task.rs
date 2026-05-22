@@ -11,7 +11,7 @@ use nextflow_parser::ast::BodyKind;
 
 use super::{Error, Frame, Interpreter, thrown, unsupported};
 use crate::exception::Exception;
-use crate::lowered::{Input, Module, OutputPart, Place, Process};
+use crate::lowered::{Expression, ExpressionKind, Input, Module, OutputPart, Place, Process};
 use crate::value::{List, ListKind, PathValue, Value};
 
 /// The frame of one task, with the files its inputs stage.
@@ -99,6 +99,7 @@ impl Interpreter<'_> {
                 module: module.clone(),
                 slots,
                 captured: Vec::new(),
+                unset: RefCell::default(),
             },
             staged: Vec::new(),
             variables,
@@ -303,6 +304,21 @@ impl Interpreter<'_> {
         })
     }
 
+    /// The value of a `val` output. A variable that the section that ran did not set is a
+    /// missing value, as Nextflow says.
+    fn output_value(&mut self, frame: &mut Frame, value: &Expression) -> Result<Value, Error> {
+        if let ExpressionKind::Variable(place) = &value.kind
+            && let Some(name) = frame.unset_name(*place)
+        {
+            let message = format!("Missing value declared as output parameter: {name}");
+            return Err(thrown(
+                Exception::new("MissingValueException", message),
+                value.span,
+            ));
+        }
+        self.expression(frame, value)
+    }
+
     fn render_sections(
         &mut self,
         task: &mut TaskFrame,
@@ -314,6 +330,13 @@ impl Interpreter<'_> {
             Some(when) => self.expression(&mut task.frame, when)?.truth(),
             None => true,
         };
+        // As in Nextflow, only the section that runs sets its variables, so outputs that read
+        // the variables of the other section fail.
+        *task.frame.unset.borrow_mut() = process
+            .section_variables
+            .iter()
+            .map(|(name, slot)| (*slot, name.clone()))
+            .collect();
         let statements = match (&process.stub, &process.body) {
             (Some(statements), _) if stub => statements,
             (_, Some(body)) if matches!(body.kind, BodyKind::Script | BodyKind::Implicit) => {
@@ -347,7 +370,7 @@ impl Interpreter<'_> {
             for part in &output.parts {
                 parts.push(match part {
                     OutputPart::Value(value) => {
-                        RenderedPart::Value(self.expression(&mut task.frame, value)?)
+                        RenderedPart::Value(self.output_value(&mut task.frame, value)?)
                     }
                     OutputPart::Path { pattern, options } => RenderedPart::Path {
                         pattern: self.expression(&mut task.frame, pattern)?.to_string(),

@@ -374,7 +374,7 @@ impl Interpreter<'_> {
 
     fn load(&mut self, frame: &Frame, target: &Resolved, span: Span) -> Result<Value, Error> {
         match target {
-            Resolved::Variable(place) => Ok(frame.get(*place)),
+            Resolved::Variable(place) => frame.read(*place, span),
             Resolved::Property(object, name) => self.property(object, name, span),
             Resolved::Index(object, index) => self.index(object, std::slice::from_ref(index), span),
         }

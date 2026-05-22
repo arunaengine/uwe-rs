@@ -415,7 +415,7 @@ fn check(
 ) -> Result<(), Error> {
     let validator = super::paths::validator(schema, instance, context)
         .map_err(|error| thrown(format!("Invalid samplesheet schema: {error}")))?;
-    let errors: Vec<String> = errors(&validator, instance, "field")
+    let errors: Vec<String> = errors(&validator, instance, "field", super::lenient(context))
         .into_iter()
         .map(|(location, message)| {
             let mut parts = location.trim_start_matches('/').splitn(2, '/');

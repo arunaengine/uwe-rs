@@ -71,7 +71,7 @@ fn validate(
     let instance = json(input);
     let validator = paths::validator(&schema.json, &instance, context)
         .map_err(|error| thrown(format!("Invalid JSON schema: {error}")))?;
-    let errors: Vec<String> = errors(&validator, &instance, "object")
+    let errors: Vec<String> = errors(&validator, &instance, "object", lenient(context))
         .into_iter()
         .map(|(location, message)| {
             let value = instance.pointer(&location).map(plain).unwrap_or_default();
@@ -161,13 +161,24 @@ pub(crate) fn json(value: &Value) -> serde_json::Value {
     }
 }
 
+/// Whether types are checked leniently, as `validation.lenientMode` asks: a `string` then also
+/// takes a number, a boolean or null, as nf-schema's `LenientTypeEvaluator` does.
+pub(crate) fn lenient(context: &Context) -> bool {
+    context
+        .config
+        .get(&["validation", "lenientMode"])
+        .is_some_and(|value| value.truth())
+}
+
 /// The errors of an instance, in nf-schema's words, by the path of the value they concern.
 /// Missing required fields become one error of the object, like `Missing required field(s):
-/// a, b`; `what` names the fields, like `field` or `parameter`.
+/// a, b`; `what` names the fields, like `field` or `parameter`. With `lenient`, types are
+/// checked leniently.
 pub(crate) fn errors(
     validator: &jsonschema::Validator,
     instance: &serde_json::Value,
     what: &str,
+    lenient: bool,
 ) -> Vec<(String, String)> {
     use jsonschema::error::{TypeKind, ValidationErrorKind as Kind};
     let mut errors: Vec<(String, String)> = Vec::new();
@@ -190,14 +201,20 @@ pub(crate) fn errors(
                 continue;
             }
             Kind::Type { kind } => {
-                let expected = match kind {
-                    TypeKind::Single(kind) => kind.to_string(),
+                let expected: Vec<String> = match kind {
+                    TypeKind::Single(kind) => vec![kind.to_string()],
                     TypeKind::Multiple(kinds) => {
-                        let kinds: Vec<String> =
-                            kinds.iter().map(|kind| kind.to_string()).collect();
-                        kinds.join(", ")
+                        kinds.iter().map(|kind| kind.to_string()).collect()
                     }
                 };
+                let scalar = !matches!(
+                    &**value,
+                    serde_json::Value::Array(_) | serde_json::Value::Object(_)
+                );
+                if lenient && scalar && expected.iter().any(|kind| kind == "string") {
+                    continue;
+                }
+                let expected = expected.join(", ");
                 format!("Value is [{}] but should be [{expected}]", json_type(value))
             }
             Kind::Pattern { pattern } => {

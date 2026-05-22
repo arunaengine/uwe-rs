@@ -250,19 +250,19 @@ impl Host for Builder<'_> {
             );
             return Err(thrown(message));
         }
-        if process
-            .inputs
-            .iter()
-            .any(|input| matches!(input, Input::Each(_)))
-        {
-            return Err(Error::Unsupported {
-                message: "`each` process inputs".into(),
-                span: process.span,
-            });
-        }
         let mut inputs = Vec::new();
         let mut queue_inputs = false;
-        for argument in arguments {
+        for (argument, input) in arguments.into_iter().zip(&process.inputs) {
+            let argument = match (input, argument) {
+                // An `each` input takes all values of a queue channel as one list, as
+                // Nextflow's `EachInParam` does.
+                (Input::Each(_), Value::Channel(channel)) if !self.network.is_value(channel) => {
+                    let source = Value::Channel(channel);
+                    self.operator(&source, "toList", Vec::new())?
+                        .unwrap_or(source)
+                }
+                (_, argument) => argument,
+            };
             let channel = match argument {
                 Value::Channel(channel) => channel,
                 Value::Null => {
@@ -298,9 +298,11 @@ impl Host for Builder<'_> {
             name: name.into(),
             outputs: outputs.clone(),
             singleton,
+            one_round: !queue_inputs,
             stub: self.stub,
             settings: Rc::new(settings),
             rounds: 0,
+            tasks: 0,
             poisoned: false,
             pending: Default::default(),
         };

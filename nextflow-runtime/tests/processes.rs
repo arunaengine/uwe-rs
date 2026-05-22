@@ -429,6 +429,36 @@ fn stub_runs_leave_the_variables_of_scripts_unset() {
     );
 }
 
+/// `each` inputs start a task for each combination of their values with the other inputs, as
+/// Nextflow's `ForwardClosure` does; a queue channel gives all its values.
+#[test]
+fn each_inputs_start_a_task_for_each_value() {
+    let process = |name: &str| {
+        format!(
+            "process {name} {{\n    input:\n    val x\n    each y\n    script:\n    \
+             \"echo ${{x}}${{y}}\"\n}}\n"
+        )
+    };
+    let source = format!(
+        "{}{}workflow {{\n    P(channel.of('a', 'b'), channel.of(1, 2))\n    \
+         Q(channel.value('c'), [3, 4])\n}}",
+        process("P"),
+        process("Q")
+    );
+    let (tasks, _) = run(&source, &Options::default()).expect("runs");
+    let mut scripts: Vec<&str> = tasks
+        .iter()
+        .map(|task| task.script.lines().last().unwrap_or_default())
+        .collect();
+    scripts.sort_unstable();
+    assert_eq!(
+        scripts,
+        [
+            "echo a1", "echo a2", "echo b1", "echo b2", "echo c3", "echo c4"
+        ]
+    );
+}
+
 /// A `set` at the top of a script assigns a variable of the script, which the workflow reads,
 /// as in Nextflow 26.04.6 with the legacy parser.
 #[test]

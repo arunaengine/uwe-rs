@@ -61,12 +61,16 @@ pub(crate) struct ProcessNode {
     pub process: Rc<Process>,
     pub name: Rc<str>,
     pub outputs: Vec<ChannelId>,
-    /// A process whose inputs are all values runs one task.
+    /// A process whose inputs are all values, without `each` inputs, runs one task.
     pub singleton: bool,
+    /// Whether every input is a value channel, so that one round of values starts tasks.
+    pub one_round: bool,
     pub stub: bool,
     /// The config settings of this call of the process.
     pub settings: Rc<ProcessSettings>,
     pub rounds: u32,
+    /// The number of tasks started, which gives each task its index.
+    pub tasks: u32,
     /// Whether an input closed, so no more rounds start.
     pub poisoned: bool,
     pub pending: HashMap<TaskId, Vec<RenderedOutput>>,
@@ -78,7 +82,7 @@ impl Behaviour for ProcessNode {
     }
 
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
-        while !self.poisoned && !(self.singleton && self.rounds == 1) {
+        while !self.poisoned && !(self.one_round && self.rounds == 1) {
             // A round starts when every input has a message.
             let mut messages = Vec::new();
             for input in 0..context.input_count() {
@@ -107,7 +111,7 @@ impl Behaviour for ProcessNode {
                 })
                 .collect();
             self.rounds += 1;
-            self.start_task(context, values)?;
+            self.start_tasks(context, values)?;
         }
         self.finish_if_done(context)
     }
@@ -140,10 +144,33 @@ impl Behaviour for ProcessNode {
 }
 
 impl ProcessNode {
+    /// Starts the tasks of one round of input values: one task, or with `each` inputs one
+    /// task for each combination of their values, the first varying fastest, as Nextflow's
+    /// `ForwardClosure` does.
+    fn start_tasks(&mut self, context: &mut Context, values: Vec<Value>) -> Result<(), Error> {
+        let each: Vec<usize> = (self.process.inputs.iter().enumerate())
+            .filter(|(_, input)| matches!(input, Input::Each(_)))
+            .map(|(index, _)| index)
+            .collect();
+        if each.is_empty() {
+            return self.start_task(context, values);
+        }
+        let lists: Vec<Value> = each.iter().map(|index| values[*index].clone()).collect();
+        for combination in nextflow_evaluator::interpreter::combinations(&lists) {
+            let mut values = values.clone();
+            for (index, value) in each.iter().zip(combination) {
+                values[*index] = value;
+            }
+            self.start_task(context, values)?;
+        }
+        Ok(())
+    }
+
     /// Binds the inputs of one task, evaluates its directives and `task` object, renders it,
     /// and asks for it to run unless `when:` skips it.
     fn start_task(&mut self, context: &mut Context, values: Vec<Value>) -> Result<(), Error> {
-        let index = self.rounds;
+        self.tasks += 1;
+        let index = self.tasks;
         let interpreter = &mut *context.interpreter;
         let mut frame =
             interpreter.bind_task_as(&self.module, &self.process, &self.name, &values)?;
@@ -264,7 +291,7 @@ impl ProcessNode {
 
     /// Closes the outputs once no round can start and no task is in flight.
     fn finish_if_done(&mut self, context: &mut Context) -> Result<State, Error> {
-        let done = self.poisoned || (self.singleton && self.rounds == 1);
+        let done = self.poisoned || (self.one_round && self.rounds == 1);
         if done && self.pending.is_empty() {
             for output in self.outputs.clone() {
                 context.close(output);

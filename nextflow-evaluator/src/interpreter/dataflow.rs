@@ -148,12 +148,13 @@ impl Interpreter<'_> {
         let mut names = Vec::new();
         for (index, (emit, expression)) in workflow.emits.iter().enumerate() {
             // After a `return`, Nextflow finds only the emits that name a variable the body
-            // has set.
+            // has set, or a take of the emit's name.
             let bare = workflow.bare_emits.get(index).copied().unwrap_or(false);
-            let value = if returned && !bare {
-                Value::Null
-            } else {
-                self.expression(&mut frame, expression)?
+            let take = workflow.takes.iter().find(|(name, _)| name == emit);
+            let value = match take {
+                _ if !returned || bare => self.expression(&mut frame, expression)?,
+                Some((_, slot)) => frame.get(Place::Local(*slot)),
+                None => Value::Null,
             };
             if returned && matches!(value, Value::Null) {
                 let message = format!("Missing workflow output parameter: {emit}");

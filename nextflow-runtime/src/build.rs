@@ -10,6 +10,7 @@ use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::glob::{FileType, GlobOptions, glob, is_glob, no_match};
 use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
 use nextflow_evaluator::lowered::{Expression, ExpressionKind, Input, Module, Process};
+use nextflow_evaluator::split::{Splitter, positive};
 use nextflow_evaluator::value::{ChannelId, ChannelOut, ListKind, PathValue, Value};
 
 use crate::files::CollectFile;
@@ -20,7 +21,7 @@ use crate::operator::{
 };
 use crate::process::{ProcessNode, singleton};
 use crate::route::{Concat, Merge, Route};
-use crate::split::{Format, Split, Subscribe};
+use crate::split::{Split, Subscribe};
 
 /// The channel operators of Nextflow (`OperatorImpl` and `ChannelEx`). Another method of a
 /// value channel is a method of its value.
@@ -849,77 +850,15 @@ impl Builder<'_> {
                 // The count operators give the number of records in a value channel.
                 let counting = name.starts_with("count");
                 let output = self.network.channel(counting);
-                let number = |name: &str| match option(&options, name) {
-                    Some(Value::Number(number)) if number.to_i64() > 0 => {
-                        Some(number.to_i64() as usize)
-                    }
-                    _ => None,
-                };
-                let format = match name {
-                    "splitCsv" => Format::Csv {
-                        separator: option(&options, "sep")
-                            .and_then(|sep| sep.to_string().chars().next())
-                            .unwrap_or(','),
-                        quote: option(&options, "quote")
-                            .and_then(|quote| quote.to_string().chars().next()),
-                        header: match option(&options, "header") {
-                            Some(Value::List(names)) => Some(Some(names.borrow().items.clone())),
-                            Some(value) if value.truth() => Some(None),
-                            _ => None,
-                        },
-                        skip: number("skip").unwrap_or(0),
-                        strip: option(&options, "strip").is_some_and(|value| value.truth()),
-                    },
-                    // There is no `countJson`: Nextflow 26.04.6 fails on it with "Unknown
-                    // argument 'each' for operator 'JsonSplitter'".
-                    "splitJson" => Format::Json {
-                        path: option(&options, "path")
-                            .map(|path| path.to_string())
-                            .unwrap_or_default(),
-                    },
-                    "splitText" | "countLines" => Format::Text {
-                        keep_header: option(&options, "keepHeader")
-                            .is_some_and(|value| value.truth()),
-                    },
-                    _ => {
-                        let fasta = matches!(name, "splitFasta" | "countFasta");
-                        let all = if fasta {
-                            ["id", "desc", "header", "text", "seqString", "sequence"].as_slice()
-                        } else {
-                            ["readHeader", "readString", "qualityHeader", "qualityString"]
-                                .as_slice()
-                        };
-                        let fields = match option(&options, "record") {
-                            Some(Value::Map(map)) => Some(
-                                map.borrow()
-                                    .entries
-                                    .iter()
-                                    .filter(|(_, wanted)| wanted.truth())
-                                    .map(|(field, _)| field.0.to_string())
-                                    .collect(),
-                            ),
-                            Some(value) if value.truth() => {
-                                Some(all.iter().map(|field| field.to_string()).collect())
-                            }
-                            _ => None,
-                        };
-                        if fasta {
-                            Format::Fasta(fields)
-                        } else {
-                            Format::Fastq(fields)
-                        }
-                    }
-                };
+                let splitter = Splitter::new(name, options.as_ref());
                 let launch = self.base.launch_dir();
                 let files = option(&options, "file")
                     .filter(|value| value.truth())
                     .map(|_| PathValue::parse(&format!("work/split/{}", output.0), &launch));
                 let node = Split {
                     output,
-                    format,
-                    by: number("by"),
-                    limit: number("limit"),
-                    elem: number("elem"),
+                    splitter,
+                    elem: positive(options.as_ref(), "elem"),
                     each: match (rest, option(&options, "each")) {
                         ([Value::Closure(closure)], _) => Some(closure.clone()),
                         ([], Some(Value::Closure(closure))) => Some(closure),

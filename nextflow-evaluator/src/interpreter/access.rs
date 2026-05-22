@@ -282,6 +282,16 @@ impl Interpreter<'_> {
                 }
                 Value::list(items)
             }
+            // Groovy's `getAt(String)` of a collection: the property of each element that is
+            // not null.
+            (Value::List(list), Value::String(name) | Value::GString(name)) => {
+                let items = list.borrow().items.clone();
+                let mut values = Vec::new();
+                for item in items.iter().filter(|item| !matches!(item, Value::Null)) {
+                    values.push(self.property(item, name, span)?);
+                }
+                Value::list(values)
+            }
             // A list of indexes gives the element at each, with ranges spread.
             (Value::List(_), Value::List(indexes)) => {
                 let indexes = indexes.borrow().items.clone();

@@ -1834,6 +1834,7 @@ dependencies = [
  "flate2",
  "indexmap",
  "jiff",
+ "md-5",
  "nextflow-parser",
  "num-bigint 0.5.1",
  "num-traits",

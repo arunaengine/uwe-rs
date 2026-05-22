@@ -1,88 +1,23 @@
 //! Splitters: `splitCsv`, `splitText`, `splitFasta`, `splitFastq` and `splitJson` emit the
-//! records of a file or text, alone or `by` several (channels spec, section 5.33).
+//! records of a file or text, alone or `by` several, as the splitter of the evaluator reads
+//! them (channels spec, section 5.33).
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::rc::Rc;
 
-use nextflow_evaluator::csv::{self, CsvOptions};
+use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::Error;
 use nextflow_evaluator::number::Number;
+use nextflow_evaluator::split::{Splitter, decompressed};
 use nextflow_evaluator::value::{ChannelId, Closure, PathValue, Value};
 
 use crate::channel::Message;
 use crate::network::{Behaviour, Context, State};
 
-pub(crate) enum Format {
-    Csv {
-        separator: char,
-        quote: Option<char>,
-        /// Column names from the first line (`header: true`) or given as a list.
-        header: Option<Option<Vec<Value>>>,
-        skip: usize,
-        strip: bool,
-    },
-    Text {
-        keep_header: bool,
-    },
-    /// FASTA and FASTQ records as text, or as maps of the named fields.
-    Fasta(Option<Vec<String>>),
-    Fastq(Option<Vec<String>>),
-    /// The elements of the array, or the entries of the object, at a path like `a.b[0].c`;
-    /// the empty path is the whole document.
-    Json {
-        path: String,
-    },
-}
-
-/// The fields of FASTA and FASTQ records, in the order Nextflow puts them in a record map.
-const FASTA_FIELDS: &[&str] = &["id", "desc", "header", "text", "seqString", "sequence"];
-const FASTQ_FIELDS: &[&str] = &["readHeader", "readString", "qualityHeader", "qualityString"];
-
-/// A FASTA or FASTQ record as a map of the requested fields.
-fn record_map(text: &str, fields: &[String], fastq: bool) -> Value {
-    let lines: Vec<&str> = text.lines().collect();
-    let all = if fastq { FASTQ_FIELDS } else { FASTA_FIELDS };
-    let mut entries = Vec::new();
-    for field in all
-        .iter()
-        .filter(|field| fields.iter().any(|wanted| wanted == *field))
-    {
-        let header = lines.first().map_or("", |line| &line[1.min(line.len())..]);
-        let value = match (*field, fastq) {
-            ("id", _) => Value::string(header.split_whitespace().next().unwrap_or("")),
-            ("desc", _) => header
-                .split_once(char::is_whitespace)
-                .map_or(Value::Null, |(_, desc)| Value::string(desc.trim())),
-            ("header", _) => Value::string(header),
-            ("text", _) => Value::string(text),
-            ("seqString", _) => Value::string(lines.iter().skip(1).copied().collect::<String>()),
-            ("sequence", _) => Value::string(
-                lines
-                    .iter()
-                    .skip(1)
-                    .map(|line| format!("{line}\n"))
-                    .collect::<String>(),
-            ),
-            ("readHeader", _) => Value::string(header),
-            ("readString", _) => Value::string(lines.get(1).copied().unwrap_or("")),
-            ("qualityHeader", _) => {
-                Value::string(lines.get(2).map_or("", |line| &line[1.min(line.len())..]))
-            }
-            _ => Value::string(lines.get(3).copied().unwrap_or("")),
-        };
-        entries.push((Value::string(*field), value));
-    }
-    Value::map(entries)
-}
-
 pub(crate) struct Split {
     pub output: ChannelId,
-    pub format: Format,
-    /// Records per emitted chunk.
-    pub by: Option<usize>,
-    /// The most records to read of each value.
-    pub limit: Option<usize>,
+    pub splitter: Splitter,
     /// The tuple element to split; by default the first path of a tuple, else its first
     /// element.
     pub elem: Option<usize>,
@@ -126,14 +61,14 @@ impl Behaviour for Split {
                 Value::Path(path) => {
                     let mut bytes = context.interpreter.host().read(path)?;
                     if path.name().ends_with(".gz") && self.decompress {
-                        bytes = decompressed(&bytes, path)?;
+                        bytes = decompressed(&bytes, path).map_err(thrown)?;
                     }
                     let text = String::from_utf8_lossy(&bytes).into_owned();
                     (text, path.base_name().to_owned())
                 }
                 other => (other.to_string(), "chunk".to_owned()),
             };
-            let chunks = self.chunks(&text)?;
+            let chunks = self.splitter.chunks(&text).map_err(thrown)?;
             if let Some(total) = &mut self.total {
                 *total += chunks.len() as i64;
                 continue;
@@ -170,168 +105,11 @@ impl Behaviour for Split {
     }
 }
 
-impl Split {
-    /// The chunks of one text: single records, or lists of `by` records for CSV, or the
-    /// joined text of `by` records for the other formats.
-    fn chunks(&self, text: &str) -> Result<Vec<Value>, Error> {
-        let mut records = match &self.format {
-            Format::Csv { .. } => self.csv(text),
-            Format::Text { .. } => text.split_inclusive('\n').map(Value::string).collect(),
-            Format::Fasta(_) => records(text, |line, _| line.starts_with('>')),
-            Format::Fastq(_) => records(text, |_, index| index % 4 == 0),
-            Format::Json { path } => json_records(text, path)?,
-        };
-        if let Format::Fasta(Some(fields)) | Format::Fastq(Some(fields)) = &self.format {
-            let fastq = matches!(self.format, Format::Fastq(_));
-            records = records
-                .iter()
-                .map(|record| record_map(&record.to_string(), fields, fastq))
-                .collect();
-        }
-        if let Some(limit) = self.limit {
-            records.truncate(limit);
-        }
-        let header = match &self.format {
-            Format::Text { keep_header: true } => {
-                text.split_inclusive('\n').next().map(str::to_owned)
-            }
-            _ => None,
-        };
-        let Some(by) = self.by.filter(|by| *by > 0) else {
-            return Ok(records);
-        };
-        Ok(records
-            .chunks(by)
-            .map(|chunk| match self.format {
-                Format::Csv { .. } | Format::Fasta(Some(_)) | Format::Fastq(Some(_)) => {
-                    Value::list(chunk.to_vec())
-                }
-                _ => {
-                    let mut text = header.clone().unwrap_or_default();
-                    text.extend(chunk.iter().map(Value::to_string));
-                    Value::string(text)
-                }
-            })
-            .collect())
-    }
-
-    fn csv(&self, text: &str) -> Vec<Value> {
-        let Format::Csv {
-            separator,
-            quote,
-            header,
-            skip,
-            strip,
-        } = &self.format
-        else {
-            return Vec::new();
-        };
-        let options = CsvOptions {
-            separator: *separator,
-            quote: *quote,
-            header: header.clone(),
-            skip: *skip,
-            strip: *strip,
-        };
-        csv::records(text, &options)
-    }
-}
-
-/// The bytes of a gzip file, decompressed.
-fn decompressed(bytes: &[u8], path: &PathValue) -> Result<Vec<u8>, Error> {
-    let mut decoded = Vec::new();
-    let mut decoder = flate2::read::MultiGzDecoder::new(bytes);
-    std::io::Read::read_to_end(&mut decoder, &mut decoded).map_err(|error| {
-        let message = format!("Cannot decompress {}: {error}", path.uri());
-        Error::Thrown {
-            exception: Rc::new(nextflow_evaluator::exception::Exception::new(
-                "ZipException",
-                message,
-            )),
-            span: Default::default(),
-        }
-    })?;
-    Ok(decoded)
-}
-
-/// The records of a JSON document for `splitJson`: the elements of the array at `path`, or the
-/// entries of the object there as maps `[key: name, value: value]`. Nothing is at a path that
-/// the document lacks.
-fn json_records(text: &str, path: &str) -> Result<Vec<Value>, Error> {
-    let failed = |cause: String| Error::Thrown {
-        exception: Rc::new(nextflow_evaluator::exception::Exception::new(
-            "IllegalStateException",
-            format!("Error while parsing JSON content - cause: {cause}"),
-        )),
+fn thrown(exception: Exception) -> Error {
+    Error::Thrown {
+        exception: Rc::new(exception),
         span: Default::default(),
-    };
-    let document = nextflow_evaluator::interpreter::parse_json_for_split(text)
-        .map_err(|exception| failed(exception.to_string()))?;
-    let Some(found) = json_node(&document, "", path) else {
-        return Ok(Vec::new());
-    };
-    match found {
-        Value::List(list) => Ok(list.borrow().items.clone()),
-        Value::Map(map) => Ok(map
-            .borrow()
-            .entries
-            .iter()
-            .map(|(key, value)| {
-                Value::map([
-                    (Value::string("key"), key.0.clone()),
-                    (Value::string("value"), value.clone()),
-                ])
-            })
-            .collect()),
-        other => {
-            let token = match other {
-                Value::String(_) => "STRING",
-                Value::Number(_) => "NUMBER",
-                Value::Boolean(_) => "BOOLEAN",
-                _ => "NULL",
-            };
-            Err(failed(format!(
-                "Expected JSON to be an object or an array but got {token} for json-path \"{path}\"."
-            )))
-        }
     }
-}
-
-/// The first node, in document order, whose path is `wanted`: `key` below the root, `a.key`
-/// below an object and `a[0]` below an array.
-fn json_node(node: &Value, current: &str, wanted: &str) -> Option<Value> {
-    if current == wanted {
-        return Some(node.clone());
-    }
-    match node {
-        Value::List(list) => list
-            .borrow()
-            .items
-            .iter()
-            .enumerate()
-            .find_map(|(index, item)| json_node(item, &format!("{current}[{index}]"), wanted)),
-        Value::Map(map) => map.borrow().entries.iter().find_map(|(key, value)| {
-            let separator = if current.is_empty() || current.ends_with('.') {
-                ""
-            } else {
-                "."
-            };
-            json_node(value, &format!("{current}{separator}{}", key.0), wanted)
-        }),
-        _ => None,
-    }
-}
-
-/// The records of a text: a record starts at each line that `starts` accepts.
-fn records(text: &str, starts: impl Fn(&str, usize) -> bool) -> Vec<Value> {
-    let mut records: Vec<String> = Vec::new();
-    for (index, line) in text.split_inclusive('\n').enumerate() {
-        match records.last_mut() {
-            Some(record) if !starts(line, index) => record.push_str(line),
-            _ => records.push(line.to_owned()),
-        }
-    }
-    records.into_iter().map(Value::string).collect()
 }
 
 /// `subscribe`: calls a closure for each value, and another at the end.

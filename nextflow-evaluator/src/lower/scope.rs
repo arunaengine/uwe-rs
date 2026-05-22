@@ -122,6 +122,12 @@ impl Scopes {
         slot
     }
 
+    /// The number of names declared in the outermost block of the current frame, which
+    /// `FrameLayout::names` lists in order.
+    pub fn frame_names(&self) -> usize {
+        self.frames.last().map_or(0, |frame| frame.blocks[0].len())
+    }
+
     /// Whether the code being lowered is inside a closure.
     pub fn in_closure(&self) -> bool {
         self.frames.last().is_some_and(|frame| frame.closure)

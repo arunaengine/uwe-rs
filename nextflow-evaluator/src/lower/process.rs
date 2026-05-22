@@ -51,6 +51,7 @@ impl Lowering<'_> {
             .cloned()
             .collect();
         let mut setup = self.statements(&variables);
+        let first_section_name = self.scopes.frame_names();
         let body = process.body.as_ref().map(|body| {
             self.escape_paths = matches!(body.kind, BodyKind::Script | BodyKind::Implicit);
             let statements = self.block(&body.block);
@@ -66,6 +67,7 @@ impl Lowering<'_> {
             self.escape_paths = false;
             statements
         });
+        let section_names = first_section_name..self.scopes.frame_names();
         self.implicit_declarations = false;
         let mut directives = Vec::new();
         for directive in &process.directives {
@@ -89,6 +91,7 @@ impl Lowering<'_> {
             .collect();
         self.in_process = false;
         let layout = self.scopes.pop_frame();
+        let section_variables = layout.names[section_names].to_vec();
         Process {
             name: process.name.text.as_str().into(),
             slot_count: layout.slot_count,
@@ -99,6 +102,7 @@ impl Lowering<'_> {
             body,
             stub,
             variables: layout.names,
+            section_variables,
             setup,
             span: process.span,
         }

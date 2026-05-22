@@ -117,6 +117,7 @@ impl Interpreter<'_> {
                 .map(|_| Rc::new(RefCell::new(Value::Null)))
                 .collect(),
             captured: Vec::new(),
+            unset: RefCell::default(),
         };
         for ((_, slot), argument) in workflow.takes.iter().zip(arguments) {
             frame.set(Place::Local(*slot), argument);

@@ -22,7 +22,7 @@ use std::rc::Rc;
 use nextflow_parser::Span;
 
 use crate::exception::Exception;
-use crate::lowered::{Code, Module, Place, Process};
+use crate::lowered::{Code, Module, Place, Process, Slot};
 use crate::value::{Closure, PathValue, Value};
 
 pub use library::{parse_json, parse_json_for_split, parse_yaml};
@@ -424,6 +424,10 @@ struct Frame {
     module: Rc<Module>,
     slots: Vec<Rc<RefCell<Value>>>,
     captured: Vec<Rc<RefCell<Value>>>,
+    /// The variables of a task that its sections declare and that are not set yet, with their
+    /// names. Reading one is an error, as reading a missing variable of Nextflow's task
+    /// context is.
+    unset: RefCell<Vec<(Slot, Rc<str>)>>,
 }
 
 impl Frame {
@@ -439,7 +443,35 @@ impl Frame {
         self.cell(place).borrow().clone()
     }
 
+    /// The name of a task variable that is not set yet.
+    fn unset_name(&self, place: Place) -> Option<Rc<str>> {
+        let Place::Local(slot) = place else {
+            return None;
+        };
+        let unset = self.unset.borrow();
+        let (_, name) = unset.iter().find(|(unset, _)| *unset == slot)?;
+        Some(name.clone())
+    }
+
+    /// The value of a variable that code reads; an error for a task variable not set yet.
+    fn read(&self, place: Place, span: Span) -> Result<Value, Error> {
+        if let Some(name) = self.unset_name(place) {
+            let message = format!("No such variable: {name}");
+            return Err(thrown(
+                Exception::new("MissingPropertyException", message),
+                span,
+            ));
+        }
+        Ok(self.get(place))
+    }
+
     fn set(&self, place: Place, value: Value) {
+        if let Place::Local(slot) = place {
+            let mut unset = self.unset.borrow_mut();
+            if !unset.is_empty() {
+                unset.retain(|(unset, _)| *unset != slot);
+            }
+        }
         *self.cell(place).borrow_mut() = value;
     }
 }

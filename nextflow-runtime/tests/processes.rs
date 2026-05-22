@@ -400,6 +400,35 @@ fn emits_of_call_outputs_are_their_channel() {
     assert_eq!(printed, "hi\n1\n");
 }
 
+/// An output that reads a variable that only the script sets fails in a stub run, as in
+/// Nextflow 26.04.6, which says "No such variable: outformat", or for a `val` output "Missing
+/// value declared as output parameter: outformat".
+#[test]
+fn stub_runs_leave_the_variables_of_scripts_unset() {
+    let source = "process P {\n    input:\n    val x\n    output:\n    path(\"*.${outformat}\")\n    \
+                  script:\n    outformat = 'fastq'\n    \"touch a.${outformat}\"\n    stub:\n    \
+                  \"touch a.fastq\"\n}\nworkflow {\n    P(channel.of(1))\n}";
+    let stub = Options {
+        stub: true,
+        ..Options::default()
+    };
+    let error = run(source, &stub).unwrap_err();
+    assert!(
+        error.ends_with("MissingPropertyException: No such variable: outformat"),
+        "{error}"
+    );
+    run(source, &Options::default()).expect("runs");
+    // A `val` output of such a variable is a missing value.
+    let source = source.replace("path(\"*.${outformat}\")", "val(outformat)");
+    let error = run(&source, &stub).unwrap_err();
+    assert!(
+        error.ends_with(
+            "MissingValueException: Missing value declared as output parameter: outformat"
+        ),
+        "{error}"
+    );
+}
+
 /// A `set` at the top of a script assigns a variable of the script, which the workflow reads,
 /// as in Nextflow 26.04.6 with the legacy parser.
 #[test]

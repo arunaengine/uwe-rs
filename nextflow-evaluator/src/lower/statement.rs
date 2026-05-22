@@ -171,6 +171,15 @@ impl Lowering<'_> {
                     })
                     .collect(),
             },
+            // Legacy syntax: an include inside an `if` of the script; elsewhere Nextflow's
+            // legacy parser does not take it either.
+            Kind::Include(include) => match self.conditional_includes.get(&include.span) {
+                Some(indexes) => StatementKind::Include(indexes.clone()),
+                None => {
+                    self.error("Unexpected input: 'include'", span);
+                    return None;
+                }
+            },
             Kind::Break => StatementKind::Break,
             Kind::Continue => StatementKind::Continue,
             Kind::Empty => return None,

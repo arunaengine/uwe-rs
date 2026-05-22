@@ -236,7 +236,7 @@ impl Parser<'_> {
         }
         match self.peek() {
             TokenKind::Nextflow if self.at_path_assign() => self.feature_flag(),
-            TokenKind::Include => self.include(),
+            TokenKind::Include => Ok(Item::Include(self.include()?)),
             TokenKind::Import => self.legacy_import(),
             _ if self.at_class() => self.class_item(),
             TokenKind::Params if self.kind_after(1) == TokenKind::LeftBrace => {
@@ -291,7 +291,7 @@ impl Parser<'_> {
     }
 
     /// The `includeDeclaration` rule, like `include { FASTQC as QC } from './modules/fastqc'`.
-    fn include(&mut self) -> Parse<Item> {
+    pub(super) fn include(&mut self) -> Parse<Include> {
         let start = self.bump().span;
         self.expect(TokenKind::LeftBrace, "`{`")?;
         self.skip_newlines();
@@ -323,11 +323,11 @@ impl Parser<'_> {
             _ => self.string_name()?,
         };
         let span = self.span_from(start);
-        Ok(Item::Include(Include {
+        Ok(Include {
             names,
             source,
             span,
-        }))
+        })
     }
 
     /// Legacy syntax: an include source with the variables of the script's directories, like

@@ -323,6 +323,7 @@ pub(in crate::parser) fn render_statement(statement: &Statement) -> String {
                 .collect();
             format!("(switch {}{})", render(subject), cases.concat())
         }
+        StatementKind::Include(include) => format!("(include {})", include.source.text),
         StatementKind::Break => "(break)".to_owned(),
         StatementKind::Continue => "(continue)".to_owned(),
         StatementKind::Empty => "(empty)".to_owned(),

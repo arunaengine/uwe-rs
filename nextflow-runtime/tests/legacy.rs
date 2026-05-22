@@ -64,6 +64,38 @@ workflow SHOW {
     );
 }
 
+/// An include inside an `if` takes effect when its branch runs, as with Nextflow 26.04.6 and
+/// the legacy parser, which prints `B` for this script.
+#[test]
+fn includes_inside_if_statements_take_effect_when_they_run() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    write(
+        root.path(),
+        "main.nf",
+        "def platform = 'b'
+if (platform == 'a') {
+    include { A as C } from './a'
+} else {
+    include { B as C } from './a'
+}
+workflow {
+    C()
+}
+",
+    );
+    write(
+        root.path(),
+        "a.nf",
+        "workflow A { println('A') }\nworkflow B { println('B') }\n",
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let mut output = Output::default();
+    nextflow_runtime::run(&module, &mut output).expect("runs");
+    assert_eq!(output.0, "B\n");
+}
+
 /// A `lib/` class like the `NfcoreSchema` of older nf-core pipelines, which reads a schema
 /// with `org.json`, drops an ignored param from it and validates params with everit. The
 /// violations are those of everit 1.14.1, which

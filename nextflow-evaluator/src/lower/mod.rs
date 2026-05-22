@@ -320,6 +320,9 @@ pub(crate) struct Lowering<'a> {
     static_imports: HashMap<Rc<str>, Rc<str>>,
     /// The classes of `IMPORTED_CLASSES` that the script imports.
     imported_classes: HashSet<Rc<str>>,
+    /// Legacy syntax: the indexes in `Module::includes` of each include inside an `if` of the
+    /// script, by its position.
+    conditional_includes: HashMap<Span, Vec<usize>>,
 }
 
 impl<'a> Lowering<'a> {
@@ -344,6 +347,7 @@ impl<'a> Lowering<'a> {
             class: None,
             static_imports: HashMap::new(),
             imported_classes: HashSet::new(),
+            conditional_includes: HashMap::new(),
         }
     }
 
@@ -468,25 +472,11 @@ impl<'a> Lowering<'a> {
                     None => continue,
                 },
                 Item::Include(include) => {
-                    for included in &include.names {
-                        let alias = included.alias.as_ref().unwrap_or(&included.name);
-                        if self.definitions.contains_key(alias.text.as_str()) {
-                            self.error(format!("`{}` is already included", alias.text), alias.span);
-                            continue;
-                        }
-                        match imports.kind(&include.source.text, &included.name.text) {
-                            Ok(kind) => {
-                                self.definitions.insert(alias.text.as_str().into(), kind);
-                            }
-                            Err(message) => self.error(message, included.name.span),
-                        }
-                        module.includes.push(Include {
-                            name: included.name.text.as_str().into(),
-                            alias: alias.text.as_str().into(),
-                            source: include.source.text.as_str().into(),
-                            span: include.span,
-                        });
-                    }
+                    self.declare_include(include, false, imports, module);
+                    continue;
+                }
+                Item::Statement(statement) => {
+                    self.declare_conditional_includes(statement, imports, module);
                     continue;
                 }
                 _ => continue,
@@ -568,6 +558,71 @@ impl<'a> Lowering<'a> {
             captures: layout.captures,
             body,
             span,
+        }
+    }
+
+    /// Declares the names of an include. A conditional include may give a name that another
+    /// conditional include of the same kind gives too, as the branches of an `if` do.
+    fn declare_include(
+        &mut self,
+        include: &ast::Include,
+        conditional: bool,
+        imports: &mut dyn Imports,
+        module: &mut Module,
+    ) -> Vec<usize> {
+        let mut indexes = Vec::new();
+        for included in &include.names {
+            let alias = included.alias.as_ref().unwrap_or(&included.name);
+            let kind = match imports.kind(&include.source.text, &included.name.text) {
+                Ok(kind) => kind,
+                Err(message) => {
+                    self.error(message, included.name.span);
+                    continue;
+                }
+            };
+            let earlier = self.definitions.get(alias.text.as_str()).copied();
+            let again = module
+                .includes
+                .iter()
+                .any(|earlier| earlier.conditional && conditional && *earlier.alias == *alias.text);
+            if earlier.is_some_and(|earlier| !again || earlier != kind) {
+                self.error(format!("`{}` is already included", alias.text), alias.span);
+                continue;
+            }
+            self.definitions.insert(alias.text.as_str().into(), kind);
+            indexes.push(module.includes.len());
+            module.includes.push(Include {
+                name: included.name.text.as_str().into(),
+                alias: alias.text.as_str().into(),
+                source: include.source.text.as_str().into(),
+                conditional,
+                span: include.span,
+            });
+        }
+        indexes
+    }
+
+    /// Legacy syntax: declares the includes inside the `if` statements of the script.
+    fn declare_conditional_includes(
+        &mut self,
+        statement: &ast::Statement,
+        imports: &mut dyn Imports,
+        module: &mut Module,
+    ) {
+        match &statement.kind {
+            ast::StatementKind::Include(include) => {
+                let indexes = self.declare_include(include, true, imports, module);
+                self.conditional_includes.insert(include.span, indexes);
+            }
+            ast::StatementKind::If {
+                then, otherwise, ..
+            } => {
+                let blocks = std::iter::once(then).chain(otherwise);
+                for statement in blocks.flat_map(|block| &block.statements) {
+                    self.declare_conditional_includes(statement, imports, module);
+                }
+            }
+            _ => {}
         }
     }
 

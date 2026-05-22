@@ -245,6 +245,19 @@ impl Interpreter<'_> {
                 }
                 value
             }
+            StatementKind::Include(indexes) => {
+                let module = frame.module.clone();
+                for index in indexes {
+                    let link = module.conditional_links.borrow().get(index).cloned();
+                    if let (Some(link), Some(include)) = (link, module.includes.get(*index)) {
+                        module
+                            .links
+                            .borrow_mut()
+                            .insert(include.alias.clone(), link);
+                    }
+                }
+                Value::Null
+            }
             StatementKind::Break => return Ok(Completion::Break),
             StatementKind::Continue => return Ok(Completion::Continue),
             StatementKind::Assert {

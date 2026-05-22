@@ -44,6 +44,9 @@ pub struct Module {
     /// What each include refers to: the included script and the name there. The module loader
     /// fills this in once the included scripts are loaded.
     pub links: std::cell::RefCell<HashMap<Rc<str>, Link>>,
+    /// The links of the conditional includes, by index in `includes`, which their statements
+    /// put into `links` when they run; the loader fills this in.
+    pub conditional_links: std::cell::RefCell<HashMap<usize, Link>>,
     /// The directory of the script file, which `moduleDir` gives; the loader sets it.
     pub directory: std::cell::RefCell<Option<Rc<str>>>,
     /// The text of the file, which config output needs to show closures and error messages
@@ -163,6 +166,9 @@ pub struct Include {
     /// The name in this script.
     pub alias: Rc<str>,
     pub source: Rc<str>,
+    /// Legacy syntax: whether the include is inside an `if` of the script, so that it only
+    /// takes effect when its statement runs.
+    pub conditional: bool,
     pub span: Span,
 }
 
@@ -355,6 +361,9 @@ pub enum StatementKind {
     },
     Break,
     Continue,
+    /// Legacy syntax: an include inside an `if` of the script, which links the includes with
+    /// these indexes in `Module::includes` when it runs.
+    Include(Vec<usize>),
 }
 
 #[derive(Debug)]

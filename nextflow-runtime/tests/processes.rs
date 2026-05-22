@@ -387,6 +387,14 @@ fn a_return_in_a_workflow_leaves_its_assigned_emits_missing() {
     );
     let (_, printed) = run(&source, &Options::default()).expect("runs");
     assert_eq!(printed, "1\n");
+    // An emit with a value of its own and the name of a take gives the take, as Nextflow
+    // 26.04.6 prints `1` with both parsers.
+    let source = format!(
+        "{}workflow {{\n    W(channel.of(1))\n    W.out.x.view()\n}}",
+        workflow.replace("EMITS", "x = y")
+    );
+    let (_, printed) = run(&source, &Options::default()).expect("runs");
+    assert_eq!(printed, "1\n");
 }
 
 /// A workflow that emits the outputs of a call emits their one channel, as Nextflow's

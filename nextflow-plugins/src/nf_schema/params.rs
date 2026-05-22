@@ -46,7 +46,7 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
     let instance = serde_json::Value::Object(instance);
     let validator = super::paths::validator(&schema.json, &instance, context)
         .map_err(|error| thrown(format!("Invalid parameters schema: {error}")))?;
-    let errors: Vec<String> = errors(&validator, &instance, "parameter")
+    let errors: Vec<String> = errors(&validator, &instance, "parameter", super::lenient(context))
         .into_iter()
         .map(|(path, message)| {
             let name = path.trim_start_matches('/');

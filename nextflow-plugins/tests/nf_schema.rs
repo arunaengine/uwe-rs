@@ -172,15 +172,24 @@ fn params(extra: &[(&str, &str)]) -> Value {
 }
 
 fn params_call(name: &str, params: Value, arguments: Vec<Value>) -> Result<String, Error> {
+    params_call_in(&Config::default(), name, params, arguments)
+}
+
+/// Calls a function with the params of the probe and a config.
+fn params_call_in(
+    config: &Config,
+    name: &str,
+    params: Value,
+    arguments: Vec<Value>,
+) -> Result<String, Error> {
     let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/params")
         .to_string_lossy()
         .into_owned();
     let mut host = Fixtures(directory.clone());
-    let config = Config::default();
     let mut context = Context {
         host: &mut host,
-        config: &config,
+        config,
         params,
         project_dir: &directory,
     };
@@ -236,6 +245,37 @@ fn parameters_are_validated_as_nf_schema_does() {
         "{error}"
     );
     assert!(params_call("validateParameters", falsy("res"), vec![]).is_ok());
+}
+
+/// With `validation.lenientMode`, a `string` param also takes a number, as nf-schema's
+/// `LenientTypeEvaluator` allows.
+#[test]
+fn lenient_mode_takes_numbers_for_strings() {
+    let params = || {
+        Value::map([
+            (Value::string("outdir"), Value::integer(7)),
+            (Value::string("n"), Value::integer(5)),
+        ])
+    };
+    let error = params_call("validateParameters", params(), vec![]).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .ends_with("* --outdir (7): Value is [integer] but should be [string]\n\n"),
+        "{error}"
+    );
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let file = directory.path().join("nextflow.config");
+    std::fs::write(&file, "validation {\n    lenientMode = true\n}\n").expect("writes");
+    let options = nextflow_config::Options {
+        profiles: None,
+        params: Value::map([]),
+        project_dir: "/project".into(),
+        launch_dir: "/launch".into(),
+    };
+    let mut host = Fixtures(String::new());
+    let config = nextflow_config::load(&[file], &options, &mut host).expect("loads");
+    assert!(params_call_in(&config, "validateParameters", params(), vec![]).is_ok());
 }
 
 #[test]

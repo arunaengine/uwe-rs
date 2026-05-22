@@ -19,6 +19,7 @@ mod yaml;
 
 pub(super) use iterable::{elements, hash_set};
 pub use json::{parse as parse_json, parse_for_split as parse_json_for_split};
+pub use list::combinations;
 pub(super) use number::{convert, unit_property};
 pub use yaml::load as parse_yaml;
 

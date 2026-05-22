@@ -156,31 +156,8 @@ impl Interpreter<'_> {
                         .collect(),
                 )
             }
-            // Groovy's `combinations()`: every way to take one element of each element, the
-            // first varying fastest; an element that is not a list stands for itself.
             ("combinations", []) => {
-                let mut combinations: Vec<Vec<Value>> = if items.is_empty() {
-                    Vec::new()
-                } else {
-                    vec![Vec::new()]
-                };
-                for item in &items {
-                    let choices = match item {
-                        Value::List(_) | Value::Set(_) => super::elements(item),
-                        other => vec![other.clone()],
-                    };
-                    combinations = choices
-                        .iter()
-                        .flat_map(|choice| {
-                            combinations.iter().map(move |combination| {
-                                let mut combination = combination.clone();
-                                combination.push(choice.clone());
-                                combination
-                            })
-                        })
-                        .collect();
-                }
-                Value::list(combinations.into_iter().map(Value::list).collect())
+                Value::list(combinations(&items).into_iter().map(Value::list).collect())
             }
             ("transpose", []) => {
                 let rows: Vec<Vec<Value>> = items.iter().map(elements).collect();
@@ -469,4 +446,31 @@ fn unique_by<T: Clone>(items: &[T], same: impl Fn(&T, &T) -> bool) -> Vec<T> {
 /// The `UnsupportedOperationException` of a tuple or array that rejects a change.
 fn rejected(span: Span) -> Error {
     thrown(Exception::new("UnsupportedOperationException", ""), span)
+}
+
+/// Groovy's `combinations()`: every way to take one element of each item, the first varying
+/// fastest; an item that is not a list stands for itself.
+pub fn combinations(items: &[Value]) -> Vec<Vec<Value>> {
+    let mut combinations: Vec<Vec<Value>> = if items.is_empty() {
+        Vec::new()
+    } else {
+        vec![Vec::new()]
+    };
+    for item in items {
+        let choices = match item {
+            Value::List(_) | Value::Set(_) => super::elements(item),
+            other => vec![other.clone()],
+        };
+        combinations = choices
+            .iter()
+            .flat_map(|choice| {
+                combinations.iter().map(move |combination| {
+                    let mut combination = combination.clone();
+                    combination.push(choice.clone());
+                    combination
+                })
+            })
+            .collect();
+    }
+    combinations
 }

@@ -297,7 +297,9 @@ fn write_made(task: &Task, work: &Path, made: &Made) -> std::io::Result<()> {
     if made.directory {
         return std::fs::create_dir_all(&path);
     }
-    if made.path == "versions.yml" {
+    // A versions file gets the entry that nf-core code reads, unless the script makes it
+    // empty, as `touch versions.yml` does.
+    if made.path == "versions.yml" && made.content.as_deref() != Some("") {
         return std::fs::write(&path, format!("\"{}\":\n    mock: 1.0.0\n", task.step));
     }
     // A copy of a local input file has its bytes.

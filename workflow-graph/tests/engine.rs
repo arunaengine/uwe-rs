@@ -210,13 +210,19 @@ fn mocks_make_the_files_that_the_script_names() {
 fn mocks_write_the_text_of_stub_scripts() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = "cat <<-END > s.flagstat\n900 + 0 mapped (90.00% : N/A)\nEND\n\
-                  touch s.lf.{drp,drs}\necho '' | gzip > s.fq.gz";
+                  touch s.lf.{drp,drs}\necho '' | gzip > s.fq.gz\ntouch versions.yml";
     let task = Task {
         id: TaskId(9),
         script: Some(script.into()),
-        outputs: ["*.flagstat", "s.lf.*", "*.fq.gz", "*.unaligned.fasta"]
-            .map(String::from)
-            .to_vec(),
+        outputs: [
+            "*.flagstat",
+            "s.lf.*",
+            "*.fq.gz",
+            "*.unaligned.fasta",
+            "versions.yml",
+        ]
+        .map(String::from)
+        .to_vec(),
         ..Task::default()
     };
     let outcome = Mock::new(directory.path())
@@ -234,12 +240,15 @@ fn mocks_write_the_text_of_stub_scripts() {
             "s.lf.drp",
             "s.lf.drs",
             "s.fq.gz",
-            "mock.unaligned.fasta"
+            "mock.unaligned.fasta",
+            "versions.yml"
         ]
     );
     let work = directory.path().join("9");
     let read = |name: &str| std::fs::read(work.join(name)).expect("reads a file");
     assert_eq!(read("s.flagstat"), b"900 + 0 mapped (90.00% : N/A)\n");
+    // A versions file that the stub touches stays empty, as in Nextflow.
+    assert_eq!(read("versions.yml"), b"");
     let mut text = String::new();
     std::io::Read::read_to_string(
         &mut flate2::read::GzDecoder::new(read("s.fq.gz").as_slice()),

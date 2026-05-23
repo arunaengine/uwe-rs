@@ -74,12 +74,20 @@ fn here_documents(line: &str) -> Vec<(String, bool)> {
     found
 }
 
-/// A part of a word: text, a variable, or something the simulation cannot know, like
-/// `$(command)`.
+/// A part of a word: text, a variable, the commands of a command substitution, or something
+/// else the simulation cannot know, like `${name:-default}`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Piece {
-    Text { text: String, quoted: bool },
-    Variable { name: String, quoted: bool },
+    Text {
+        text: String,
+        quoted: bool,
+    },
+    Variable {
+        name: String,
+        quoted: bool,
+    },
+    /// `$(commands)` or a backquoted command, whose output is not known.
+    Command(String),
     Unknown,
 }
 
@@ -261,7 +269,8 @@ pub fn dollar(characters: &[char], index: usize, quoted: bool, pieces: &mut Vec<
             .iter()
             .position(|c| *c == '`')
             .map_or(characters.len(), |end| index + 1 + end + 1);
-        pieces.push(Piece::Unknown);
+        let inner = characters[index + 1..end.saturating_sub(1).max(index + 1)].iter();
+        pieces.push(Piece::Command(inner.collect()));
         return end;
     }
     match characters.get(index + 1) {
@@ -281,7 +290,13 @@ pub fn dollar(characters: &[char], index: usize, quoted: bool, pieces: &mut Vec<
                 }
                 end += 1;
             }
-            pieces.push(Piece::Unknown);
+            // `$((...))` is arithmetic, which makes nothing.
+            if characters.get(index + 2) == Some(&'(') {
+                pieces.push(Piece::Unknown);
+            } else {
+                let inner = characters[index + 2..end.min(characters.len())].iter();
+                pieces.push(Piece::Command(inner.collect()));
+            }
             end + 1
         }
         Some('{') => {
@@ -426,7 +441,7 @@ mod tests {
                     },
                     text("y")
                 ]),
-                Token::Word(vec![Piece::Unknown]),
+                Token::Word(vec![Piece::Command("date".into())]),
                 Token::Redirect {
                     output: true,
                     append: true

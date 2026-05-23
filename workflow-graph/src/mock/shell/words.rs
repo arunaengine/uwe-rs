@@ -133,7 +133,7 @@ pub fn expand(pieces: &[Piece], variables: &HashMap<String, String>) -> Option<S
         match piece {
             Piece::Text { text: part, .. } => text.push_str(part),
             Piece::Variable { name, .. } => text.push_str(variables.get(name)?),
-            Piece::Unknown => return None,
+            Piece::Command(_) | Piece::Unknown => return None,
         }
     }
     Some(text)
@@ -193,7 +193,7 @@ pub fn expand_text(body: &str, variables: &HashMap<String, String>) -> String {
         .map(|piece| match piece {
             Piece::Text { text, .. } => text.clone(),
             Piece::Variable { name, .. } => variables.get(name).cloned().unwrap_or_default(),
-            Piece::Unknown => String::new(),
+            Piece::Command(_) | Piece::Unknown => String::new(),
         })
         .collect()
 }

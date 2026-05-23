@@ -282,6 +282,20 @@ impl Shell<'_> {
         if command.words.is_empty() && command.outputs.is_empty() {
             return input;
         }
+        // The commands of command substitutions run first; what they print stays unknown.
+        let substituted: Vec<String> = (command.words.iter())
+            .chain(command.outputs.iter().map(|(target, _)| target))
+            .flatten()
+            .filter_map(|piece| match piece {
+                Piece::Command(text) => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+        for text in substituted {
+            for pipeline in pipelines(tokens(&text)) {
+                self.pipeline(&pipeline, &[]);
+            }
+        }
         // Assignments like `prefix=sample` before any command word.
         let mut words = command.words.as_slice();
         while let Some((first, rest)) = words.split_first() {
@@ -581,6 +595,10 @@ mod tests {
         assert_eq!(files(&simulation), [("done.txt", Some(""))]);
         assert!(!simulate("touch $(date).txt", &[]).complete);
         assert!(!simulate("if [ -s a ]; then touch b; fi", &[]).complete);
+        // A command substitution runs its command, which may be a tool.
+        assert!(!simulate("lengths=$(unify.py -s x)\ntouch done.txt", &[]).complete);
+        assert!(simulate("echo $(date) > d.txt", &[]).complete);
+        assert!(simulate("echo $((1 + 2)) > n.txt", &[]).complete);
     }
 
     /// As gzip, which does not replace a file without `-f`: the script ends there, as the

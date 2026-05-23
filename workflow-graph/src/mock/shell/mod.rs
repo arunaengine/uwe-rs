@@ -334,6 +334,14 @@ impl Shell<'_> {
         };
         let mut result = output.clone();
         for (target, append) in &command.outputs {
+            // A target that brace expansion makes several words of is an error of bash.
+            if let Some(words) = expand_all(target, &self.variables)
+                && words.len() > 1
+            {
+                let text = expand(target, &self.variables).unwrap_or_default();
+                self.fail(1, format!("{text}: ambiguous redirect"));
+                return Output::Unknown;
+            }
             match expand(target, &self.variables) {
                 Some(target) => {
                     let content = match &output {
@@ -616,6 +624,15 @@ mod tests {
         assert!(!simulation.made.iter().any(|made| made.path == "after.txt"));
         let forced = simulate("touch s.fastq\ngzip -f s.fastq", &["s.fastq.gz"]);
         assert!(forced.failure.is_none());
+    }
+
+    /// As bash, a redirect to a word that brace expansion makes several of fails.
+    #[test]
+    fn redirects_to_several_words_fail() {
+        let simulation = simulate("echo '' | gzip > s_{1..2}.fq.gz\ntouch after.txt", &[]);
+        let failure = simulation.failure.expect("a failure");
+        assert_eq!(failure.status, 1);
+        assert_eq!(failure.message, "s_{1..2}.fq.gz: ambiguous redirect");
     }
 
     #[test]

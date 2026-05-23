@@ -143,7 +143,8 @@ pub fn expand(pieces: &[Piece], variables: &HashMap<String, String>) -> Option<S
 pub fn expand_all(pieces: &[Piece], variables: &HashMap<String, String>) -> Option<Vec<String>> {
     let text = expand(pieces, variables)?;
     let unquoted_braces = pieces.iter().any(|piece| {
-        matches!(piece, Piece::Text { text, quoted: false } if text.contains('{') && text.contains(','))
+        matches!(piece, Piece::Text { text, quoted: false }
+            if text.contains('{') && (text.contains(',') || text.contains("..")))
     });
     let unquoted_glob = pieces.iter().any(|piece| {
         matches!(piece, Piece::Text { text, quoted: false } if text.contains(['*', '?', '[']))

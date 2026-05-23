@@ -73,7 +73,8 @@ pub(crate) struct ProcessNode {
     pub tasks: u32,
     /// Whether an input closed, so no more rounds start.
     pub poisoned: bool,
-    pub pending: HashMap<TaskId, Vec<RenderedOutput>>,
+    /// The tasks in flight: the name of each, and its outputs.
+    pub pending: HashMap<TaskId, (String, Vec<RenderedOutput>)>,
 }
 
 impl Behaviour for ProcessNode {
@@ -117,13 +118,13 @@ impl Behaviour for ProcessNode {
     }
 
     fn complete(&mut self, context: &mut Context, outcome: TaskOutcome) -> Result<State, Error> {
-        let Some(outputs) = self.pending.remove(&outcome.id) else {
+        let Some((task, outputs)) = self.pending.remove(&outcome.id) else {
             return Ok(State::Running);
         };
         if outcome.exit_status != 0 {
             let message = format!(
-                "Process `{}` terminated with an error exit status ({})",
-                self.name, outcome.exit_status
+                "Process `{task}` terminated with an error exit status ({})",
+                outcome.exit_status
             );
             return Err(thrown(Exception::new("ProcessFailedException", message)));
         }
@@ -227,7 +228,8 @@ impl ProcessNode {
                 RenderedPart::Value(_) | RenderedPart::Stdout => {}
             }
         }
-        self.pending.insert(id, rendered.outputs);
+        self.pending
+            .insert(id, (request.name.clone(), rendered.outputs));
         context.request(request);
         Ok(())
     }

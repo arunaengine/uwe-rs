@@ -26,6 +26,17 @@ pub struct Simulation {
     pub made: Vec<Made>,
     /// Whether every command was understood, so that the script makes no other files.
     pub complete: bool,
+    /// The command that surely fails, where the script ends, as `bash -e` ends it.
+    pub failure: Option<Failure>,
+}
+
+/// A command of a script that surely fails, like `gzip x` when `x.gz` exists.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Failure {
+    /// The exit status of the command.
+    pub status: i32,
+    /// What the command prints to standard error.
+    pub message: String,
 }
 
 /// A file or directory that a script makes.
@@ -48,6 +59,7 @@ pub fn simulate(script: &str, inputs: &[&str]) -> Simulation {
         variables: HashMap::new(),
         made: Vec::new(),
         complete: true,
+        failure: None,
         inputs,
     };
     let lines = logical_lines(script);
@@ -55,6 +67,7 @@ pub fn simulate(script: &str, inputs: &[&str]) -> Simulation {
     Simulation {
         made: shell.made,
         complete: shell.complete,
+        failure: shell.failure,
     }
 }
 
@@ -62,6 +75,7 @@ struct Shell<'a> {
     variables: HashMap<String, String>,
     made: Vec<Made>,
     complete: bool,
+    failure: Option<Failure>,
     inputs: &'a [&'a str],
 }
 
@@ -76,7 +90,7 @@ enum Output {
 impl Shell<'_> {
     fn run(&mut self, lines: &[Line]) {
         let mut index = 0;
-        while index < lines.len() {
+        while index < lines.len() && self.failure.is_none() {
             let words = self.words_of(&lines[index]);
             match words.first().map(String::as_str) {
                 Some("for") => index = self.for_loop(lines, index),
@@ -247,8 +261,16 @@ impl Shell<'_> {
     fn pipeline(&mut self, pipeline: &[Command], bodies: &[String]) {
         let mut input = Output::Unknown;
         for command in pipeline {
+            if self.failure.is_some() {
+                return;
+            }
             input = self.command(command, input, bodies);
         }
+    }
+
+    /// Records the command that fails; the script ends there.
+    fn fail(&mut self, status: i32, message: String) {
+        self.failure.get_or_insert(Failure { status, message });
     }
 
     /// Runs a command with its standard input; gives its standard output.
@@ -559,6 +581,23 @@ mod tests {
         assert_eq!(files(&simulation), [("done.txt", Some(""))]);
         assert!(!simulate("touch $(date).txt", &[]).complete);
         assert!(!simulate("if [ -s a ]; then touch b; fi", &[]).complete);
+    }
+
+    /// As gzip, which does not replace a file without `-f`: the script ends there, as the
+    /// PORECHOP stub of nf-core/methylong does in Nextflow 26.04.6.
+    #[test]
+    fn gzip_fails_on_a_file_that_exists() {
+        let script = "touch s.fastq\ngzip s.fastq\ntouch after.txt";
+        let simulation = simulate(script, &["s.fastq.gz"]);
+        let failure = simulation.failure.expect("a failure");
+        assert_eq!(failure.status, 2);
+        assert_eq!(
+            failure.message,
+            "gzip: s.fastq.gz already exists;\tnot overwritten"
+        );
+        assert!(!simulation.made.iter().any(|made| made.path == "after.txt"));
+        let forced = simulate("touch s.fastq\ngzip -f s.fastq", &["s.fastq.gz"]);
+        assert!(forced.failure.is_none());
     }
 
     #[test]

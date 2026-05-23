@@ -285,3 +285,31 @@ fn mocks_of_commands_without_a_script_make_the_files_the_arguments_name() {
         .collect();
     assert_eq!(paths, ["a_IR.bam", "b_IR.bam", "run.log", "mock.txt"]);
 }
+
+/// A script that surely fails, like one that gzips a file onto its input, ends so: the mock
+/// gives the exit status and message of the command, and no files.
+#[test]
+fn mocks_of_scripts_that_fail_give_the_failure() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let task = Task {
+        id: TaskId(4),
+        script: Some("touch s.fastq\ngzip s.fastq\ntouch s.log".into()),
+        inputs: vec![Input {
+            path: "s.fastq.gz".into(),
+            source: "/data/s.fastq.gz".into(),
+            directory: false,
+            content: None,
+        }],
+        outputs: ["*.fastq.gz", "*.log"].map(String::from).to_vec(),
+        ..Task::default()
+    };
+    let outcome = Mock::new(directory.path())
+        .execute(&task)
+        .expect("an outcome");
+    assert_eq!(outcome.exit_code, 2);
+    assert_eq!(
+        outcome.stderr,
+        "gzip: s.fastq.gz already exists;\tnot overwritten"
+    );
+    assert!(outcome.files.is_empty());
+}

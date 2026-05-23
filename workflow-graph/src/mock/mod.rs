@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 
 use crate::{ExecuteError, Executor, Outcome, OutputFile, Task};
-use shell::Made;
+use shell::{Failure, Made};
 
 /// The mock TES executor.
 pub struct MockTes {
@@ -52,8 +52,8 @@ impl Executor for MockTes {
         if self.verbose {
             println!("[mock tes] {}", task.name);
         }
-        let files = pretend(task, &work).map_err(failed)?;
-        Ok(success(task, files))
+        let run = pretend_run(task, &work).map_err(failed)?;
+        Ok(outcome(task, run))
     }
 }
 
@@ -80,23 +80,28 @@ impl Executor for Mock {
         if self.verbose {
             println!("[mock] {}", task.name);
         }
-        let files = std::fs::create_dir_all(&work)
-            .and_then(|()| pretend(task, &work))
+        let run = std::fs::create_dir_all(&work)
+            .and_then(|()| pretend_run(task, &work))
             .map_err(|error| ExecuteError::Executor {
                 task: task.name.clone(),
                 message: error.to_string(),
             })?;
-        Ok(success(task, files))
+        Ok(outcome(task, run))
     }
 }
 
-fn success(task: &Task, files: Vec<OutputFile>) -> Outcome {
+/// The outcome of a task that pretended to run: its files, or the failure of its script.
+fn outcome(task: &Task, run: Result<Vec<OutputFile>, Failure>) -> Outcome {
+    let (exit_code, files, stderr) = match run {
+        Ok(files) => (0, files, String::new()),
+        Err(failure) => (failure.status, Vec::new(), failure.message),
+    };
     Outcome {
         id: task.id,
-        exit_code: 0,
+        exit_code,
         files,
         stdout: String::new(),
-        stderr: String::new(),
+        stderr,
     }
 }
 
@@ -190,6 +195,12 @@ fn url(source: &str) -> String {
 /// ([`shell::simulate`]). A `.gz` file without text is an empty gzip file, so that it can be
 /// read, and a `versions.yml` gets the one entry that nf-core code reads.
 pub fn pretend(task: &Task, work: &Path) -> std::io::Result<Vec<OutputFile>> {
+    Ok(pretend_run(task, work)?.unwrap_or_default())
+}
+
+/// The same as [`pretend`], but a script that surely fails, like one that runs `gzip x` when
+/// `x.gz` exists, gives its failure instead of files, as it would end so when it ran.
+pub fn pretend_run(task: &Task, work: &Path) -> std::io::Result<Result<Vec<OutputFile>, Failure>> {
     for input in &task.inputs {
         if let Some(content) = &input.content
             && inside(&input.path)
@@ -210,6 +221,9 @@ pub fn pretend(task: &Task, work: &Path) -> std::io::Result<Vec<OutputFile>> {
         Some(script) => shell::simulate(script, &inputs),
         None => command_words(&task.command, &inputs),
     };
+    if let Some(failure) = simulation.failure {
+        return Ok(Err(failure));
+    }
     let made: Vec<Made> = simulation
         .made
         .iter()
@@ -281,7 +295,7 @@ pub fn pretend(task: &Task, work: &Path) -> std::io::Result<Vec<OutputFile>> {
             });
         }
     }
-    Ok(files)
+    Ok(Ok(files))
 }
 
 /// Writes a file or directory that a task makes; one that exists stays, like an input.
@@ -388,6 +402,7 @@ fn command_words(command: &[String], inputs: &[&str]) -> shell::Simulation {
     shell::Simulation {
         made,
         complete: false,
+        failure: None,
     }
 }
 

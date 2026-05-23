@@ -176,7 +176,21 @@ impl Shell<'_> {
                 other => other,
             };
         }
+        let force = arguments[1..]
+            .iter()
+            .any(|argument| matches!(argument.as_deref(), Some("-f" | "--force")));
         for file in files {
+            // As gzip, which does not replace a file without `-f`, like an input.
+            let target = format!("{file}.gz");
+            let exists =
+                self.find(&target).is_some() || self.inputs.contains(&normal(&target).as_str());
+            if exists && !force {
+                self.fail(
+                    2,
+                    format!("gzip: {target} already exists;\tnot overwritten"),
+                );
+                return Output::Unknown;
+            }
             let content = self.find(&file).and_then(|made| made.content.clone());
             self.make_file(
                 &format!("{file}.gz"),

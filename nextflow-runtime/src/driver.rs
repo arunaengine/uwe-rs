@@ -163,7 +163,7 @@ impl Driver for Nextflow {
         })?;
         let mut outcome = outcome;
         if self.launch.assume_inputs {
-            drop_made_up_optional_outputs(&request, &mut outcome);
+            drop_made_up_outputs(&request, &mut outcome);
         }
         let outcome = task_outcome(&request, outcome)?;
         let run = self.run.as_mut().ok_or_else(not_started)?;
@@ -180,13 +180,12 @@ impl Driver for Nextflow {
 }
 
 /// In a mock run, a task only pretends to run, and the mock makes up the outputs that a
-/// script does not tell how it makes. An optional output that a script, like a stub, surely
-/// does not make is left out, as Nextflow's stub run leaves it out; so the run takes the same
-/// path.
-fn drop_made_up_optional_outputs(request: &TaskRequest, outcome: &mut Outcome) {
-    if request.optional_patterns.is_empty() {
-        return;
-    }
+/// script does not tell how it makes. An output that a script, like a stub, surely does not
+/// make is left out, as Nextflow's stub run finds no file for it: an optional output is then
+/// missing and a required one fails the task, so the run takes the same path. An output that
+/// names an input or the folder of one, without wildcards, keeps it, as Nextflow collects
+/// such an input.
+fn drop_made_up_outputs(request: &TaskRequest, outcome: &mut Outcome) {
     let inputs: Vec<&str> = request
         .staged
         .iter()
@@ -196,17 +195,26 @@ fn drop_made_up_optional_outputs(request: &TaskRequest, outcome: &mut Outcome) {
     if !simulation.complete {
         return;
     }
-    for pattern in &request.optional_patterns {
+    for pattern in &request.output_patterns {
+        // A pattern like `./results/` names the folder `results`.
+        let wanted = pattern.trim_start_matches("./").trim_end_matches('/');
+        let literal = !wanted.contains(['*', '?', '[', '{']);
         let made = simulation
             .made
             .iter()
-            .any(|made| glob_matches(pattern, &made.path));
+            .any(|made| glob_matches(wanted, &made.path))
+            || (literal && inputs.iter().any(|input| is_within(input, wanted)));
         if !made {
             outcome
                 .files
-                .retain(|file| !glob_matches(pattern, &file.path));
+                .retain(|file| !glob_matches(wanted, &file.path));
         }
     }
+}
+
+/// Whether an input is the file or folder `wanted`, or inside that folder.
+fn is_within(input: &str, wanted: &str) -> bool {
+    input == wanted || input.starts_with(&format!("{wanted}/"))
 }
 
 fn not_started() -> DriverError {

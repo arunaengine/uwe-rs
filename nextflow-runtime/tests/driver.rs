@@ -114,10 +114,11 @@ fn entry_workflows_are_not_supported_yet() {
     assert!(error.unsupported);
 }
 
-/// In a mock run, an optional output that a stub surely does not make is left out, as in
-/// Nextflow's stub run, while a required one is made up so that the run goes on.
+/// In a mock run, an output that a stub surely does not make is left out, as in Nextflow's
+/// stub run: an optional one is then missing, and a required one fails the task with
+/// Nextflow's message.
 #[test]
-fn mock_runs_leave_out_optional_outputs_that_stubs_do_not_make() {
+fn mock_runs_leave_out_outputs_that_stubs_do_not_make() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let pipeline = r#"
 process SPLIT {
@@ -125,10 +126,11 @@ process SPLIT {
     path "*.aligned.fasta", emit: aligned
     path "*.unaligned.fasta", emit: unaligned, optional: true
     path "*.log", emit: log
+    path "./db/", emit: db
     script:
     "split"
     stub:
-    "touch s.aligned.fasta"
+    "mkdir -p db\ntouch s.aligned.fasta s.log"
 }
 
 process USE {
@@ -152,8 +154,8 @@ workflow {
         assume_inputs: true,
         ..Launch::default()
     };
-    let graph = run(directory.path(), launch);
-    // USE runs once, for the made-up log, and not for the unaligned sequences.
+    let graph = run(directory.path(), launch.clone());
+    // USE runs once, for the log, and not for the unaligned sequences.
     assert_eq!(graph.steps(), ["SPLIT", "USE"]);
     let use_task = &graph.nodes[1].task;
     let inputs: Vec<&str> = use_task
@@ -161,6 +163,22 @@ workflow {
         .iter()
         .map(|input| input.path.as_str())
         .collect();
-    assert!(inputs.contains(&"mock.log"), "{inputs:?}");
+    assert!(inputs.contains(&"s.log"), "{inputs:?}");
     assert_eq!(graph.nodes.len(), 2);
+    // A stub that makes no log fails the task.
+    let pipeline = pipeline.replace("touch s.aligned.fasta s.log", "touch s.aligned.fasta");
+    assert!(pipeline.contains("mkdir -p db"));
+    std::fs::write(directory.path().join("main.nf"), pipeline).expect("writes the script");
+    let mut driver = nextflow_runtime::driver(&launch).expect("a driver");
+    let mut executor = MockTes::new(directory.path().join("mock2"));
+    let error = execute("main.nf", driver.as_mut(), &mut executor)
+        .into_result()
+        .err()
+        .expect("the run fails");
+    assert!(
+        error
+            .to_string()
+            .contains("Missing output file(s) `*.log` expected by process `SPLIT`"),
+        "{error}"
+    );
 }

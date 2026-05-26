@@ -90,12 +90,11 @@ impl PathValue {
         self.relative.is_none()
     }
 
-    /// The file name; empty for the root. A task input's name is its staged name.
+    /// The file name; empty for the root. A task input's name is the last part of its staged
+    /// name, like `a.fq` of `input1/a.fq`.
     pub fn name(&self) -> &str {
-        match &self.staged {
-            Some(staged) => staged,
-            None => self.path.rsplit('/').next().unwrap_or(""),
-        }
+        let path = self.staged.as_deref().unwrap_or(&self.path);
+        path.rsplit('/').next().unwrap_or("")
     }
 
     /// The name without its last extension: `sample.fastq.gz` gives `sample.fastq`.

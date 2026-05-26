@@ -133,7 +133,7 @@ impl Behaviour for ProcessNode {
         let mut values = Vec::new();
         let mut eval_index = 0;
         for output in &outputs {
-            values.push(self.output_value(output, &outcome, &mut eval_index)?);
+            values.push(self.output_value(output, &outcome, &task, &mut eval_index)?);
         }
         for (channel, value) in self.outputs.clone().into_iter().zip(values) {
             if let Some(value) = value {
@@ -239,6 +239,7 @@ impl ProcessNode {
         &self,
         output: &RenderedOutput,
         outcome: &TaskOutcome,
+        task: &str,
         eval_index: &mut usize,
     ) -> Result<Option<Value>, Error> {
         let mut parts = Vec::new();
@@ -268,8 +269,7 @@ impl ProcessNode {
                     let arity = option(options, "arity");
                     if files.is_empty() && !output.optional {
                         let message = format!(
-                            "Missing output file(s) `{pattern}` expected by process `{}`",
-                            self.name
+                            "Missing output file(s) `{pattern}` expected by process `{task}`"
                         );
                         return Err(thrown(Exception::new("MissingFileException", message)));
                     }

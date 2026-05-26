@@ -1132,6 +1132,8 @@ pub struct RemoteSource {
     pub url: String,
     /// The local copy of a file on the web, which is downloaded when it is read.
     pub local: Option<PathBuf>,
+    /// The folder of the local git repository of `gitfile(...)`.
+    pub git_repository: Option<String>,
 }
 
 impl Native for RemoteSource {
@@ -1181,6 +1183,7 @@ fn hosted(provider: &'static str, state: Rc<RefCell<State>>) -> Value {
             return Ok(Value::native(RemoteSource {
                 url: format!("git+file://{repository}/{path}@{reference}"),
                 local: None,
+                git_repository: Some(repository),
             }));
         }
         let (owner, name) = repository.split_once('/').unwrap_or_default();
@@ -1204,6 +1207,7 @@ fn hosted(provider: &'static str, state: Rc<RefCell<State>>) -> Value {
         Ok(Value::native(RemoteSource {
             url,
             local: Some(local),
+            git_repository: None,
         }))
     })
 }

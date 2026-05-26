@@ -199,10 +199,15 @@ fn drop_made_up_outputs(request: &TaskRequest, outcome: &mut Outcome) {
         // A pattern like `./results/` names the folder `results`.
         let wanted = pattern.trim_start_matches("./").trim_end_matches('/');
         let literal = !wanted.contains(['*', '?', '[', '{']);
-        let made = simulation
-            .made
-            .iter()
-            .any(|made| glob_matches(wanted, &made.path))
+        // As Nextflow, only a pattern that starts with a dot matches hidden files.
+        let hidden = if wanted.starts_with('.') {
+            TASK_FILES
+        } else {
+            &[]
+        };
+        let made = (simulation.made.iter().map(|made| made.path.as_str()))
+            .chain(hidden.iter().copied())
+            .any(|path| glob_matches(wanted, path))
             || (literal && inputs.iter().any(|input| is_within(input, wanted)));
         if !made {
             outcome
@@ -211,6 +216,18 @@ fn drop_made_up_outputs(request: &TaskRequest, outcome: &mut Outcome) {
         }
     }
 }
+
+/// The hidden files that Nextflow writes into the work folder of every task, which outputs
+/// like `.command.*` collect.
+const TASK_FILES: &[&str] = &[
+    ".command.begin",
+    ".command.err",
+    ".command.log",
+    ".command.out",
+    ".command.run",
+    ".command.sh",
+    ".exitcode",
+];
 
 /// Whether an input is the file or folder `wanted`, or inside that folder.
 fn is_within(input: &str, wanted: &str) -> bool {

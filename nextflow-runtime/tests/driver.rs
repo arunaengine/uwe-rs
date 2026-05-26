@@ -127,6 +127,7 @@ process SPLIT {
     path "*.unaligned.fasta", emit: unaligned, optional: true
     path "*.log", emit: log
     path "./db/", emit: db
+    path ".command.*", emit: command
     script:
     "split"
     stub:

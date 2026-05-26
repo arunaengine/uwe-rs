@@ -136,6 +136,19 @@ impl Session {
         let mut error = driver_error(error, &self.workdir);
         // Files on the web by their address rather than their local copy.
         error.message = self.state.borrow().mirrors.describe(&error.message);
+        // A mock run goes on without the input files that do not exist; say so, as the error
+        // may come from that.
+        let assumed = self
+            .planner
+            .as_ref()
+            .map(Planner::all_assumed_files)
+            .unwrap_or_default();
+        if let Some(first) = assumed.first() {
+            error.message.push_str(&format!(
+                " (the mock run assumed {} input files that do not exist and that no rule makes, like {first}; a real run needs them)",
+                assumed.len()
+            ));
+        }
         error
     }
 

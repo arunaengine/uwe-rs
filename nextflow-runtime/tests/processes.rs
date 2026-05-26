@@ -174,6 +174,23 @@ fn tags_that_fail_are_left_out() {
     assert_eq!(names, ["DOUBLE (1)", "DOUBLE (2)"]);
 }
 
+/// `${meta.id}` outside a string in a config closure is a call with one closure, which
+/// Nextflow's legacy config parser takes for a config block: the closure gives null, as
+/// Nextflow 26.04.6 prints for nf-core/metaboigniter's `ext.prefix = { ${meta.id} }`.
+#[test]
+fn config_blocks_in_config_closures_give_null() {
+    let source = "process P {\n    input:\n    val meta\n    output:\n    val x\n    script:\n    \
+                  x = \"${task.ext.prefix}\"\n    'true'\n}\n\
+                  workflow {\n    P([id: 'a']).view()\n}";
+    let text = "process {\n    withName: 'P' {\n        ext.prefix = { ${meta.id} }\n    }\n}\n";
+    let options = Options {
+        config: config(text),
+        ..Options::default()
+    };
+    let (_, printed) = run(source, &options).expect("runs");
+    assert_eq!(printed, "null\n");
+}
+
 #[test]
 fn workflow_metadata_and_completion_handlers() {
     let source = format!(

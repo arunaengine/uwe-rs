@@ -466,6 +466,21 @@ impl Lowering<'_> {
                 callee: Box::new(callee),
                 arguments,
             };
+        } else if self.config
+            && self.scopes.in_closure()
+            && arguments.named.is_empty()
+            && matches!(
+                arguments.positional.as_slice(),
+                [Expression {
+                    kind: Kind::Closure(_),
+                    ..
+                }]
+            )
+        {
+            // Legacy syntax: Nextflow's legacy config parser takes a call with one closure,
+            // like `${meta.id}` outside a string, for a config block, which gives null.
+            self.legacy(format!("`{name}` is not defined"), span);
+            return Kind::Literal(Value::Null);
         } else if !self.config
             || (self.lookup.is_some() && self.scopes.in_closure() && self.dynamic_names)
         {

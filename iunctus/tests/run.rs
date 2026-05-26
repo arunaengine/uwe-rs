@@ -156,7 +156,7 @@ fn mock_runs_use_the_config_and_the_command_line() {
 fn mock_outputs_include_directories() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = "process P {\n    output:\n    path 'db/', emit: db\n    path 'db/x.txt', emit: x\n    \
-                  path '*.{csv,tsv}', emit: table\n    script:\n    'true'\n}\n\
+                  path '*.{csv,tsv}', emit: table\n    script:\n    'tool'\n}\n\
                   workflow {\n    P()\n    P.out.db.view { d -> \"${d.name} ${d.isDirectory()}\" }\n    \
                   P.out.x.view { f -> f.name }\n    P.out.table.view { f -> f.name }\n}\n";
     std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
@@ -171,13 +171,13 @@ fn mock_outputs_include_directories() {
 fn mock_outputs_are_the_names_in_the_script() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = "process P {\n    input:\n    val x\n    output:\n    path '*.fq', emit: reads\n    \
-                  path x, emit: db\n    path 'none.txt', emit: none\n    path '*cluster', emit: c\n    \
+                  path x, emit: db\n    path '*cluster', emit: c\n    \
                   script:\n    'true'\n    \
                   stub:\n    \"touch ${x}_1.fq ${x}_2.fq\\nmkdir -p ${x}\\ntouch ${x}/a.txt\\n\
                   echo 'cluster' > ${x}.cluster\"\n}\n\
                   workflow {\n    P('s')\n    P.out.reads.view { f -> f*.name }\n    \
                   P.out.db.view { d -> \"${d.name} ${d.isDirectory()} ${d.list()}\" }\n    \
-                  P.out.none.view { f -> f.name }\n    P.out.c.view { f -> f.name }\n}\n";
+                  P.out.c.view { f -> f.name }\n}\n";
     std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
     let arguments = ["run", "main.nf", "-stub-run", "-executor", "mock"];
     let (code, output) = iunctus(directory.path(), &arguments);
@@ -189,9 +189,17 @@ fn mock_outputs_are_the_names_in_the_script() {
         [
             "[mock] P",
             "[s_1.fq, s_2.fq]",
-            "none.txt",
             "s true [a.txt]",
             "s.cluster"
         ]
+    );
+    // An output that the stub surely does not make fails the task, as in Nextflow.
+    let script = script.replace("path '*cluster', emit: c", "path 'none.txt', emit: c");
+    std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
+    let (code, output) = iunctus(directory.path(), &arguments);
+    assert_eq!(code, 1, "{output}");
+    assert!(
+        output.contains("Missing output file(s) `none.txt` expected by process `P`"),
+        "{output}"
     );
 }

@@ -446,9 +446,21 @@ impl Hook {
         base: &Path,
     ) -> Result<PathBuf, Error> {
         if let Some(remote) = value.as_native::<functions::RemoteSource>() {
-            return remote.local.clone().ok_or_else(|| {
-                Error::unsupported("Snakefiles in local git repositories (gitfile(...))")
-            });
+            if let Some(local) = &remote.local {
+                return Ok(local.clone());
+            }
+            // A file of a local git repository at a reference, which Snakemake reads with git.
+            let repository = remote.git_repository.clone().unwrap_or_default();
+            let git = interpreter.host.resolve(&repository).join(".git");
+            if interpreter.host.stat(&git).is_none() {
+                return Err(workflow_error(format!(
+                    "Failed to read source {} from git repo.",
+                    remote.url
+                )));
+            }
+            return Err(Error::unsupported(
+                "Snakefiles in local git repositories (gitfile(...))",
+            ));
         }
         let path = python_evaluator::modules::path_text(interpreter, value)?;
         let mirrors = self.state.borrow().mirrors.clone();

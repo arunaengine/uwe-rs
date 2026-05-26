@@ -173,8 +173,7 @@ workflow {
     let mut executor = MockTes::new(directory.path().join("mock2"));
     let error = execute("main.nf", driver.as_mut(), &mut executor)
         .into_result()
-        .err()
-        .expect("the run fails");
+        .expect_err("the run fails");
     assert!(
         error
             .to_string()

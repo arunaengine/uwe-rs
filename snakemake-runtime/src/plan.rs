@@ -175,6 +175,19 @@ impl Planner {
         files
     }
 
+    /// The input files that the jobs planned so far assumed to exist.
+    pub fn all_assumed_files(&self) -> Vec<String> {
+        let mut files: Vec<String> = Vec::new();
+        for job in &self.jobs {
+            for file in &job.missing {
+                if !files.contains(file) {
+                    files.push(file.clone());
+                }
+            }
+        }
+        files
+    }
+
     fn exists(&self, interpreter: &Interpreter, file: &str) -> bool {
         let path = interpreter.host.resolve(file);
         interpreter.host.stat(&path).is_some()

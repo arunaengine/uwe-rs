@@ -366,3 +366,18 @@ fn regex_classes_and_file_walks() {
         "[[true, 5, \\Qa.b\\E, true], [x.txt, y.txt, z.txt], [a, b], [a, x.txt]]"
     );
 }
+
+/// A task input staged in a folder, like `input1/a.fastq.gz` of `stageAs: "input*/*"`, has the
+/// name of its last part, as Java's `Path.getFileName` gives it.
+#[test]
+fn staged_names_in_folders() {
+    let path = nextflow_evaluator::value::PathValue {
+        path: "/data/a.fastq.gz".into(),
+        staged: Some("input1/a.fastq.gz".into()),
+        relative: None,
+        prefix: None,
+    };
+    assert_eq!(path.name(), "a.fastq.gz");
+    assert_eq!(path.base_name(), "a.fastq");
+    assert_eq!(path.extension(), "gz");
+}

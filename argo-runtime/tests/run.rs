@@ -769,8 +769,6 @@ fn leaf_kinds_become_tasks() {
     steps:
     - - name: set
         template: set
-      - name: resource
-        template: resource
       - name: http
         template: http
       - name: wait
@@ -785,12 +783,6 @@ fn leaf_kinds_become_tasks() {
         - {name: POD, valueFrom: {fieldRef: {fieldPath: metadata.name}}}
         - {name: TOKEN, valueFrom: {secretKeyRef: {name: s, key: k}}}
       - {name: main, image: alpine, command: [cat, /mnt/a], dependencies: [first]}
-  - name: resource
-    resource:
-      action: create
-      manifest: |
-        apiVersion: v1
-        kind: ConfigMap
   - name: http
     http:
       url: https://example.org/{{workflow.name}}
@@ -803,22 +795,13 @@ fn leaf_kinds_become_tasks() {
     ran.succeeded();
     assert_eq!(
         ran.names(),
-        [
-            "[0].set (first)",
-            "[0].set (main)",
-            "[0].resource",
-            "[0].http"
-        ]
+        ["[0].set (first)", "[0].set (main)", "[0].http"]
     );
     assert_eq!(ran.upstream("[0].set (main)"), ["[0].set (first)"]);
     // Pods get made-up fields, while Secrets are left out.
     let environment = &ran.task("[0].set (first)").environment;
     assert!(environment["POD"].starts_with("test-"), "{environment:?}");
     assert!(!environment.contains_key("TOKEN"));
-    assert_eq!(
-        ran.task("[0].resource").command[..2],
-        ["argoexec", "resource"]
-    );
     let http = &ran.task("[0].http").command;
     assert_eq!(http[..2], ["sh", "-c"]);
     assert!(http[2].starts_with("curl --silent"), "{}", http[2]);

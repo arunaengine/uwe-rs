@@ -19,7 +19,7 @@ fn check(text: &str, others: &[&str]) -> Result<(), String> {
     std::fs::write(&file, text).expect("the file is written");
     let documents = load_file(&file).expect("the file loads");
     library.add_documents(0, documents.iter().cloned());
-    validate(&documents[0], &library)
+    validate(&documents[0], &library).map_err(|rejection| rejection.message)
 }
 
 fn workflow(templates: &str) -> String {
@@ -189,4 +189,44 @@ fn leaf_templates() {
         "spec:\n  templateDefaults:\n    container: {image: busybox}\n",
     );
     assert_eq!(check(&defaults, &[]), Ok(()));
+}
+
+#[test]
+fn templates_that_need_a_cluster_are_unsupported() {
+    let resource = |kind: &str| {
+        workflow(&format!(
+            "  - name: main\n    steps:\n    - - {{name: make, template: make}}\n  - name: make\n    resource:\n      action: create\n      manifest: |\n        apiVersion: v1\n        kind: {kind}\n        metadata: {{name: x}}\n"
+        ))
+    };
+    let check_document = |text: &str| {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let file = directory.path().join("document.yaml");
+        std::fs::write(&file, text).expect("the file is written");
+        let documents = load_file(&file).expect("the file loads");
+        let library = Library::new();
+        library.add_documents(0, documents.iter().cloned());
+        validate(&documents[0], &library)
+    };
+    let rejection = check_document(&resource("Deployment")).expect_err("a Deployment");
+    assert!(rejection.unsupported);
+    assert_eq!(
+        rejection.message,
+        "templates.main.steps[0].make template make is a resource template that manages Kubernetes objects of kind Deployment; iunctus runs workflows without Kubernetes and does not support this (decision 18)"
+    );
+    // A claim becomes a volume of the run.
+    assert_eq!(check_document(&resource("PersistentVolumeClaim")), Ok(()));
+    let daemon = workflow("  - name: main\n    daemon: true\n    container: {image: nginx}\n");
+    let rejection = check_document(&daemon).expect_err("a daemon");
+    assert!(rejection.unsupported, "{rejection:?}");
+    assert!(
+        rejection.message.contains("runs as a daemon"),
+        "{rejection:?}"
+    );
+    // Argo's own checks are no question of support.
+    let undefined = workflow("  - name: main\n    steps:\n    - - {name: a, template: nope}\n");
+    assert!(
+        !check_document(&undefined)
+            .expect_err("undefined")
+            .unsupported
+    );
 }

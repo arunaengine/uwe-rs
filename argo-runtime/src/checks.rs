@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::sync::OnceLock;
 
 use argo_parser::model::{Arguments, Artifact, DagTask, LifecycleHook, Template};
-use argo_parser::{Node, Value as Yaml};
+use argo_parser::{Node, Value as Yaml, parse_yaml};
 use regex::Regex;
 
 use crate::dag::dependencies;
@@ -91,6 +91,43 @@ pub(crate) fn process_args(template: &Template, supplied: Supplied) -> Result<()
         }
     }
     Ok(())
+}
+
+/// Why a template cannot run without a Kubernetes cluster, if it cannot (decision 18):
+/// `resource` templates, except those that manage a PersistentVolumeClaim, which become volumes
+/// of the run, `data` templates, sidecars and daemons.
+pub(crate) fn cluster_only(template: &Template) -> Option<String> {
+    let name = &template.name;
+    let reason = if let Some(resource) = &template.resource {
+        // Tags that name no variable yet stand for text, so that the manifest parses.
+        let kind = parse_yaml(&without_tags(&resource.manifest))
+            .ok()
+            .flatten()
+            .and_then(|manifest| {
+                manifest
+                    .get("kind")
+                    .and_then(Node::as_str)
+                    .map(str::to_owned)
+            });
+        let claim = kind.as_deref() == Some("PersistentVolumeClaim")
+            && matches!(resource.action.as_str(), "create" | "apply" | "delete");
+        if claim {
+            return None;
+        }
+        let objects = kind.map_or(String::new(), |kind| format!(" of kind {kind}"));
+        format!("is a resource template that manages Kubernetes objects{objects}")
+    } else if template.data.is_some() {
+        "is a data template, which reads an artifact repository from inside a cluster".to_owned()
+    } else if !template.sidecars.is_empty() {
+        "has sidecars, services that run beside the task in its Kubernetes pod".to_owned()
+    } else if template.daemon == Some(true) {
+        "runs as a daemon, a service that later steps reach through the cluster network".to_owned()
+    } else {
+        return None;
+    };
+    Some(format!(
+        "template {name} {reason}; iunctus runs workflows without Kubernetes and does not support this (decision 18)"
+    ))
 }
 
 /// Whether an artifact says where it is, as Argo's `HasLocationOrKey`: a raw artifact, or a

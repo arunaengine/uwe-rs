@@ -16,6 +16,7 @@ use jiff::Timestamp;
 use workflow_graph::{Outcome, Task, TaskId};
 
 use crate::Options;
+use crate::checks::cluster_only;
 use crate::library::{Document, Kind as DocumentKind, Library};
 use crate::merge::with_defaults;
 use crate::node::{ArtifactValue, Location, NodeKind, NodeOutputs, NodeStatus, Phase, RetryCall};
@@ -233,14 +234,15 @@ impl Run {
             &spec_node,
             document.kind,
         ));
-        Check::new(&library)
-            .spec(
-                &spec,
-                &base,
-                Some((&entrypoint, Supplied::Arguments(&supplied))),
-                false,
-            )
-            .map_err(Failure::error)?;
+        let mut check = Check::new(&library);
+        let entry = Some((entrypoint.as_str(), Supplied::Arguments(&supplied)));
+        if let Err(message) = check.spec(&spec, &base, entry, false) {
+            return Err(if check.unsupported() {
+                Failure::unsupported(message)
+            } else {
+                Failure::error(message)
+            });
+        }
         let mut run = Run {
             workflow_name,
             options,
@@ -426,6 +428,10 @@ impl Run {
     /// Starts a node for its processed template.
     pub(crate) fn start_node(&mut self, index: usize, processed: Rc<Processed>) -> Result<()> {
         let template = &processed.template;
+        // Templates that a tag chose come here without the checks at the start.
+        if let Some(reason) = cluster_only(template) {
+            return Err(Failure::unsupported(reason));
+        }
         let kind = if !template.steps.is_empty() || processed.node.get("steps").is_some() {
             NodeKind::Steps
         } else if template.dag.is_some() {

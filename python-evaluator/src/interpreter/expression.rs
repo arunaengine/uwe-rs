@@ -32,7 +32,7 @@ impl Interpreter {
                     None => crate::number::parse_int(&int.to_string(), 0)?,
                 },
                 Number::Float(value) => Value::Float(*value),
-                Number::Complex { .. } => return Err(Error::unsupported("complex numbers")),
+                Number::Complex { real, imag } => crate::complex::Complex::value(*real, *imag),
             },
             Expr::StringLiteral(literal) => Value::str(literal.value.to_str()),
             Expr::BytesLiteral(literal) => Value::Bytes(literal.value.bytes().collect()),

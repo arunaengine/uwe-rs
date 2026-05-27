@@ -212,7 +212,14 @@ pub fn construct(
                 },
             },
         },
-        TypeTag::Complex => Err(Error::unsupported("complex numbers")),
+        TypeTag::Complex => {
+            let real = args.get(0).or_else(|| args.keyword("real"));
+            let imag = args.get(1).or_else(|| args.keyword("imag"));
+            if real.is_some_and(|value| value.as_str().is_some()) {
+                return Err(Error::unsupported("complex numbers from texts"));
+            }
+            crate::complex::Complex::construct(real, imag)
+        }
         TypeTag::Str => match first {
             None => Ok(Value::str("")),
             Some(value) => {
@@ -401,6 +408,13 @@ fn abs(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
         })),
         Value::BigInt(i) => Ok(Value::from_bigint(i.magnitude().clone().into())),
         Value::Float(f) => Ok(Value::Float(f.abs())),
+        Value::Native(object) if object.as_any().is::<crate::complex::Complex>() => {
+            let complex = object
+                .as_any()
+                .downcast_ref::<crate::complex::Complex>()
+                .expect("a complex number");
+            Ok(Value::Float(complex.0.hypot(complex.1)))
+        }
         other => match interpreter.lookup_special(other, "__abs__") {
             Some(method) => interpreter.call(&method, Args::default()),
             None => Err(Error::type_error(format!(

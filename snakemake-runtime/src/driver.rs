@@ -64,6 +64,13 @@ pub struct Session {
     /// The number of the next task, which commands of workflow code share.
     next_task: Rc<Cell<u64>>,
     replan: bool,
+    /// The planned jobs in the order their tasks are asked for, the position of each, and
+    /// the jobs that wait for each job, as the last planning left them.
+    order: Vec<usize>,
+    position: HashMap<usize, usize>,
+    dependents: HashMap<usize, Vec<usize>>,
+    /// How many jobs that must run each job still waits for.
+    remaining: HashMap<usize, usize>,
 }
 
 impl Session {
@@ -129,6 +136,10 @@ impl Session {
             outstanding: 0,
             next_task: Rc::new(Cell::new(1)),
             replan: false,
+            order: Vec::new(),
+            position: HashMap::new(),
+            dependents: HashMap::new(),
+            remaining: HashMap::new(),
         })
     }
 
@@ -274,19 +285,53 @@ impl Session {
             }
         }
         self.needrun = planner.needrun(&self.interpreter, &roots);
+        self.order = planner.ordered_jobs(&roots);
+        self.position = self
+            .order
+            .iter()
+            .enumerate()
+            .map(|(position, job)| (*job, position))
+            .collect();
+        self.dependents.clear();
+        self.remaining.clear();
+        for job in &self.order {
+            let mut waiting_for: Vec<usize> = planner.jobs[*job]
+                .dependencies
+                .iter()
+                .map(|(_, dependency)| *dependency)
+                .collect();
+            waiting_for.sort_unstable();
+            waiting_for.dedup();
+            let mut count = 0;
+            for dependency in waiting_for {
+                self.dependents.entry(dependency).or_default().push(*job);
+                if self.needrun.get(&dependency).copied().unwrap_or(false)
+                    && !self.done.contains(&dependency)
+                {
+                    count += 1;
+                }
+            }
+            self.remaining.insert(*job, count);
+        }
         self.roots = roots;
         Ok(())
     }
 
     /// The tasks of the jobs that can run now.
-    fn ready_tasks(&mut self) -> Result<Vec<Task>, DriverError> {
-        let order = self
-            .planner
-            .as_ref()
-            .expect("a planner")
-            .ordered_jobs(&self.roots);
+    /// The tasks of the jobs that can run now, among all planned jobs, or only among the jobs
+    /// that wait for a job that finished, so that a run of many jobs stays fast.
+    fn ready_tasks(&mut self, finished: Option<usize>) -> Result<Vec<Task>, DriverError> {
+        let candidates: Vec<usize> = match finished {
+            None => self.order.clone(),
+            Some(job) => {
+                let mut waiting = self.dependents.get(&job).cloned().unwrap_or_default();
+                waiting.sort_by_key(|job| self.position.get(job).copied().unwrap_or(usize::MAX));
+                waiting.dedup();
+                waiting
+            }
+        };
         let mut tasks = Vec::new();
-        for job in order {
+        for job in candidates {
             if !self.needrun.get(&job).copied().unwrap_or(false) || self.tasks.contains_key(&job) {
                 continue;
             }
@@ -295,11 +340,7 @@ impl Session {
             if entry.incomplete {
                 continue;
             }
-            let waiting = entry.dependencies.iter().any(|(_, dependency)| {
-                self.needrun.get(dependency).copied().unwrap_or(false)
-                    && !self.done.contains(dependency)
-            });
-            if waiting {
+            if self.remaining.get(&job).copied().unwrap_or(0) > 0 {
                 continue;
             }
             let id = TaskId(self.next_task.get());
@@ -342,7 +383,7 @@ impl Session {
         self.evaluate()?;
         self.plan()?;
         self.report_assumed();
-        self.ready_tasks()
+        self.ready_tasks(None)
     }
 
     fn report_assumed(&self) {
@@ -385,6 +426,13 @@ impl Session {
             );
         }
         self.done.insert(job);
+        if self.needrun.get(&job).copied().unwrap_or(false) {
+            for dependent in self.dependents.get(&job).cloned().unwrap_or_default() {
+                if let Some(count) = self.remaining.get_mut(&dependent) {
+                    *count = count.saturating_sub(1);
+                }
+            }
+        }
         let planner = self.planner.as_ref().expect("a planner");
         if planner.rules[planner.jobs[job].rule].checkpoint {
             self.replan = true;
@@ -392,8 +440,9 @@ impl Session {
         if self.replan && self.outstanding == 0 {
             self.replan = false;
             self.plan()?;
+            return self.ready_tasks(None);
         }
-        self.ready_tasks()
+        self.ready_tasks(Some(job))
     }
 
     pub fn finish(&mut self) -> Result<(), DriverError> {

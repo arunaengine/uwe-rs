@@ -278,7 +278,7 @@ argo-workflows/examples/global-outputs.yaml	ok 5
 argo-workflows/examples/global-parameters-from-configmap-referenced-as-local-variable.yaml	ok 1
 argo-workflows/examples/global-parameters-from-configmap.yaml	ok 1
 argo-workflows/examples/global-parameters.yaml	ok 1
-argo-workflows/examples/handle-large-output-results.yaml	ok 1
+argo-workflows/examples/handle-large-output-results.yaml	ok 4
 argo-workflows/examples/hdfs-artifact.yaml	ok 2
 argo-workflows/examples/hello-hybrid.yaml	ok 2
 argo-workflows/examples/hello-windows.yaml	ok 1
@@ -922,7 +922,7 @@ gennext-workflows/workflows/prototypes/debug-cnvkit-analyze.yaml	ok 1
 gennext-workflows/workflows/prototypes/debug-qc-recollect.yaml	ok 5
 gennext-workflows/workflows/prototypes/sample-worker-prototype.yaml	ok 3
 gennext-workflows/workflows/prototypes/test-fusion-inspector.yaml	ok 13
-gennext-workflows/workflows/prs/prs_workflow.yaml	ok 8
+gennext-workflows/workflows/prs/prs_workflow.yaml	ok 9
 gennext-workflows/workflows/somatic-testing-workflow.yaml	1 templates.somatic-testing-tumor templates.somatic-testing-tumor.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
 gennext-workflows/workflows/somatic/somatic-testing-dna-gpu-workflow.yaml	valid
 gennext-workflows/workflows/somatic/somatic-testing-dna-workflow.yaml	valid
@@ -1103,7 +1103,7 @@ hera/examples/workflows/upstream/global-outputs.yaml	ok 5
 hera/examples/workflows/upstream/global-parameters-from-configmap-referenced-as-local-variable.yaml	ok 1
 hera/examples/workflows/upstream/global-parameters-from-configmap.yaml	ok 1
 hera/examples/workflows/upstream/global-parameters.yaml	ok 1
-hera/examples/workflows/upstream/handle-large-output-results.yaml	ok 1
+hera/examples/workflows/upstream/handle-large-output-results.yaml	ok 4
 hera/examples/workflows/upstream/hdfs-artifact.yaml	ok 2
 hera/examples/workflows/upstream/hello-hybrid.yaml	ok 2
 hera/examples/workflows/upstream/hello-windows.yaml	ok 1

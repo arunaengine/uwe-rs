@@ -13,6 +13,8 @@ pub(crate) struct Recorder {
     /// The task that made each output file, by its normalized local path.
     producers: HashMap<PathBuf, TaskId>,
     seen: HashSet<TaskId>,
+    /// The position of each task's node in the graph, so that a run of many tasks stays fast.
+    positions: HashMap<TaskId, usize>,
 }
 
 impl Recorder {
@@ -25,6 +27,7 @@ impl Recorder {
             },
             producers: HashMap::new(),
             seen: HashSet::new(),
+            positions: HashMap::new(),
         }
     }
 
@@ -68,6 +71,7 @@ impl Recorder {
             }
         }
         self.graph.edges.extend(edges);
+        self.positions.insert(task.id, self.graph.nodes.len());
         self.graph.nodes.push(Node {
             task: task.clone(),
             exit_code: None,
@@ -85,10 +89,9 @@ impl Recorder {
     /// Notes the exit code of a task and the files it made.
     pub(crate) fn finished(&mut self, outcome: &Outcome) {
         if let Some(node) = self
-            .graph
-            .nodes
-            .iter_mut()
-            .find(|node| node.task.id == outcome.id)
+            .positions
+            .get(&outcome.id)
+            .and_then(|position| self.graph.nodes.get_mut(*position))
         {
             node.exit_code = Some(outcome.exit_code);
         }

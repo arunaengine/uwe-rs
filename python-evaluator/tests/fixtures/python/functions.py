@@ -184,3 +184,11 @@ class Box(Generic[Item]):
 
 
 print(Box(3).item, Named.__name__)
+
+
+class Strict:
+    def __getattr__(self, name):
+        raise AttributeError(name)
+
+
+print(getattr(Strict(), "missing", "default"))

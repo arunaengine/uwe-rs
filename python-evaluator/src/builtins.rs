@@ -599,12 +599,16 @@ fn getattr(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
         .as_str()
         .ok_or_else(|| Error::type_error("attribute name must be string"))?
         .to_owned();
-    match interpreter.find_attribute(&args.positional[0], &name)? {
-        Some(value) => Ok(value),
-        None => match args.positional.get(2) {
-            Some(default) => Ok(default.clone()),
-            None => interpreter.get_attribute(&args.positional[0], &name),
-        },
+    // With a default, an object that raises AttributeError gives the default too.
+    match (
+        interpreter.find_attribute(&args.positional[0], &name),
+        args.positional.get(2),
+    ) {
+        (Ok(Some(value)), _) => Ok(value),
+        (Ok(None), Some(default)) => Ok(default.clone()),
+        (Err(error), Some(default)) if error.is("AttributeError") => Ok(default.clone()),
+        (Ok(None), None) => interpreter.get_attribute(&args.positional[0], &name),
+        (Err(error), _) => Err(error),
     }
 }
 

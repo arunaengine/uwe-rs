@@ -13,8 +13,8 @@ Status: implemented in the crate `argo-runtime`, 2026-09-28. The reference is th
 3. **Substitution follows Argo's phases.** Globals and the local scope are substituted first, inputs second. Tags that cannot be resolved yet stay in place for a later phase, as in Argo.
 4. **The expression languages are implemented in the crate.** expr-lang with Argo's helpers and a Sprig subset, govaluate for `when`, and JSONPath. Values keep Go's model: JSON numbers are float64, maps print with sorted keys, and results print the way Go prints them.
 5. **A mock run always makes a full graph when Argo would.** Data that is not known in a mock run (empty stdout, placeholder parameters) never stops the run. Where Argo would read that data, the runtime takes the path that keeps the graph whole and logs a warning.
-6. **Kubernetes fields are left out with a warning.** Volumes, sidecars, init containers, secrets and similar fields do not exist without a cluster. The run goes on without them.
-7. **Unsupported features fail loudly.** Artifact plugins stop the run with exit code 33 (`DriverError::unsupported`).
+6. **No Kubernetes, the common scientific subset (decision 18).** Templates that need a cluster, like `resource` and `data` templates, sidecars and daemons, stop the run before its first task. Fields that only tell Kubernetes how to run a pod are left out with a warning. ConfigMaps and volumes map onto task inputs, outputs and files; secret values never enter a task (section 11).
+7. **Unsupported features fail loudly.** They stop the run with exit code 33 (`DriverError::unsupported`) and an error that names the decision.
 8. **Executor plugins run in their own containers.** A plugin template becomes a task in the image of the plugin, which calls the plugin's server as Argo's agent does (section 8.1).
 9. **Workflows are checked as Argo checks them when they are submitted** (section 4.1), and so are documents without an entrypoint, like libraries of WorkflowTemplates.
 
@@ -151,12 +151,12 @@ Outputs of steps and DAG templates read the scope (`valueFrom.parameter`, `expre
 | `container` | One task with the image, command, arguments, working directory and environment. |
 | `script` | The command runs the file `/argo/staging/script`, which the task gets as an `Input` with the source as its content, as Argo's executor writes it. |
 | `containerSet` | One task per container, ordered by their `dependencies` with `Order` edges. The main container (named `main`, or the last one) gets the outputs. |
-| `resource` | Argo's executor image runs `argoexec resource <action>` with the manifest as `/tmp/manifest.yaml`, as Argo does in a pod. It needs a Kubernetes cluster when it really runs. Output parameters from `jsonPath` or `jqFilter` are empty, with a warning. |
+| `resource` | Not supported (decision 18), except for a PersistentVolumeClaim, which becomes a volume of the run (section 11.4). |
 | `http` | The image `curlimages/curl` runs curl, which writes the response body and status code to files. The status code decides `successCondition`. When the status is not known, as in a mock run, the node succeeds with a warning. |
-| `data` | Argo's executor image runs `argoexec data` with the source and the transformations as JSON. |
+| `data` | Not supported (decision 18). |
 | `plugin` | One call of an executor plugin per task, in the plugin's image (section 8.1). |
 
-Resources come from the container's requests, or its limits where requests say nothing. `activeDeadlineSeconds` or `timeout` sets the time limit. Environment variables that read a field of the pod with `fieldRef` get the run's values: the pod name, the namespace, a stable uid, the service account, a node name and an IP address. Variables from Secrets or ConfigMaps are left out with a warning.
+Resources come from the container's requests, or its limits where requests say nothing. `activeDeadlineSeconds` or `timeout` sets the time limit. Environment variables that read a field of the pod with `fieldRef` get the run's values: the pod name, the namespace, a stable uid, the service account, a node name and an IP address. Variables from ConfigMaps and Secrets follow section 11.
 
 ### 8.1 Executor plugins
 
@@ -196,11 +196,60 @@ A mock run gives empty stdout and no files. Real workflows read that data, so th
 
 A real executor gives real data, and these rules then do not apply.
 
-## 11. Kubernetes fields
+## 11. Kubernetes objects and fields (decision 18)
 
-These fields are read, and left out with a warning: `volumes` and volume mounts (tasks share files only as artifacts), sidecars, init containers, `memoize`, `synchronization`, `podSpecPatch`, `envFrom`, and environment variables from Secrets or ConfigMaps. Warnings are printed to standard error once each, and `ArgoDriver::warnings` returns them.
+iunctus runs Argo workflows without a Kubernetes cluster. It supports what scientific workflows commonly use, and maps Kubernetes objects onto task inputs, outputs and files where that keeps what a task computes. Warnings are printed to standard error once each, and `ArgoDriver::warnings` returns them.
 
-In the corpus, the most common warnings are volumes that are not mounted (360 templates), environment variables from Secrets or ConfigMaps (141), resource templates that need a cluster (134) and workflow parameters that get a placeholder.
+### 11.1 Templates that need a cluster
+
+These stop the run before its first task, with an error that names the template and decision 18, and exit code 33, in mock runs too:
+
+- `resource` templates, which create or change Kubernetes objects like Deployments, Services or Jobs. The one exception is a PersistentVolumeClaim (section 11.4).
+- `data` templates, which list an artifact repository from inside the cluster.
+- `sidecars` and `daemon: true`, which are services that run beside tasks or across them and are reached over the pod network.
+- Artifact plugins.
+
+The check is part of the checks at submission (section 4.1), so it covers every template that the workflow can call. A template that a `templateRef` with a tag names is checked when it is called.
+
+### 11.2 Fields that are left out
+
+Fields that only tell Kubernetes where and how to run a pod do not change what a task computes. They are left out with a warning: `podSpecPatch`, `nodeSelector`, `tolerations`, `affinity`, `securityContext`, `serviceAccountName`, `automountServiceAccountToken`, `priorityClassName`, `schedulerName`, `hostAliases`, `dnsConfig`, `dnsPolicy`, `hostNetwork`, `imagePullSecrets`, `imagePullPolicy`, `podGC`, `podMetadata`, `podDisruptionBudget`, `ttlStrategy`, `metrics`, `archiveLocation`, `artifactGC`, `volumeClaimGC`, `executor`, `initContainers`, `memoize` and `synchronization`.
+
+### 11.3 ConfigMaps
+
+ConfigMaps come from the same documents as templates: the workflow file, the configs and the repository (section 3). They give:
+
+- parameters with `valueFrom.configMapKeyRef`, of the workflow and of template inputs;
+- environment variables with `valueFrom.configMapKeyRef`, and every key of an `envFrom` `configMapRef`;
+- volumes of type `configMap`: each key, or each entry of `items`, becomes a file input with its text.
+
+When no loaded document holds the ConfigMap or the key, a parameter takes its `valueFrom.default`, as Argo does, and an environment variable or volume marked `optional` is left out. Otherwise a mock run uses a placeholder with a warning, and a real run stops with an error that names the ConfigMap and the key.
+
+### 11.4 Volumes as shared files
+
+Volumes that several steps mount act as a shared file system. The run keeps the files that tasks write into a volume and gives them to the tasks that mount it later:
+
+- A volume is a `persistentVolumeClaim` (known by its claim name), a claim of `volumeClaimTemplates` (by its name), a `hostPath` (by its path), or an `emptyDir`, which only the containers of one pod share, like those of a container set.
+- A task that mounts a volume at a path gets the files that earlier tasks wrote there as file inputs below the mount path, or an empty directory. `subPath` selects a folder of the volume.
+- Unless the mount is `readOnly`, the mount path is also a directory output of the task. When the task ends, its files replace the files of the same name in the volume.
+- Tasks that run at the same time see the volume as it was when they started. Their files are merged when they end; for a file that both wrote, the one that ended last wins.
+- A `resource` template that creates or applies a PersistentVolumeClaim, like Ensembl's `create-pvc`, makes a new empty volume of the claim's name and runs no task. Its output parameters read the manifest with `jsonPath`. A `delete` of the claim drops the volume.
+- A claim that the workflow does not create starts empty, with a warning. Other volume types, like NFS, act like a claim of their name, with a warning.
+
+`hostPath` names a folder on the Kubernetes node that runs the pod. Without a cluster there is no such node, so iunctus reads the path on the machine that runs iunctus, like other local input files: the task gets the host folder (or file, for `type: File`) as an input, and on top of it the files that earlier tasks wrote there. iunctus never writes into a host path: the files that tasks write there stay in the store of the run and go to later tasks, as for the other volumes. In a mock run a host path that does not exist is no error.
+
+### 11.5 Secrets
+
+Secret values never enter a task, because a task is written into TES documents, logs and cache keys. This holds for environment variables and HTTP headers from `secretKeyRef`, for `envFrom` with `secretRef`, and for volumes of type `secret`:
+
+- A mock run gives a placeholder like `placeholder_secret_<name>_<key>`, with a warning. A secret volume holds a placeholder file for each of its `items`.
+- A real run stops before its first task with an error that names the Secret, because iunctus has no secret store yet.
+
+The execution layer must supply that store. It maps a Secret's name and key to a value from the user's own store, like a local file or a vault. It gives the value to the container only when the container runs, as an environment variable or a file, and keeps it out of task documents, logs and cache keys, which name only the Secret and the key. The credentials of artifact repositories, like `accessKeySecret` of S3 artifacts, belong to the execution layer's storage, not to tasks.
+
+### 11.6 Commands
+
+A container's `command` and `args` form one command line, which the executor runs as given (decision 18). A container without either runs the default command of its image.
 
 ## 12. Deliberate differences from Argo
 

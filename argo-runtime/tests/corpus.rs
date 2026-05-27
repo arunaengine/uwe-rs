@@ -233,7 +233,10 @@ fn run_corpus() {
                 } else {
                     match validate(document, &library) {
                         Ok(()) => "valid".to_owned(),
-                        Err(error) => format!("1 {}", one_line(&error, "")),
+                        Err(rejection) => {
+                            let code = if rejection.unsupported { 33 } else { 1 };
+                            format!("{code} {}", one_line(&rejection.message, ""))
+                        }
                     }
                 };
                 total += 1;

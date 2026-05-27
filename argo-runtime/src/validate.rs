@@ -21,8 +21,8 @@ use argo_parser::model::{Arguments, DagTask, Template, TemplateRef, WorkflowSpec
 use argo_parser::{Node, Value as Yaml, decode};
 
 use crate::checks::{
-    Names, argument_dependencies, arguments, field_names, hooks, invalid_field_name, leaf_checks,
-    node_types, one_loop, process_args, sort_tasks, template_types, without_tags,
+    Names, argument_dependencies, arguments, cluster_only, field_names, hooks, invalid_field_name,
+    leaf_checks, node_types, one_loop, process_args, sort_tasks, template_types, without_tags,
 };
 use crate::dag::ancestry;
 use crate::library::{Document, Kind, Library};
@@ -105,10 +105,29 @@ impl<'a> Holder<'a> {
     }
 }
 
+/// Why a document cannot run: Argo rejects it, or it needs a feature that iunctus does not
+/// support.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Rejection {
+    pub message: String,
+    /// The document needs a feature that iunctus leaves out on purpose, like a template that
+    /// needs a Kubernetes cluster (decision 18).
+    pub unsupported: bool,
+}
+
 /// Checks a document as Argo does when it is submitted or created: a Workflow or the workflow
 /// spec of a CronWorkflow with its entrypoint, a WorkflowTemplate or ClusterWorkflowTemplate
 /// with every template on its own. Executor plugins only need their container and a port.
-pub fn validate(document: &Document, library: &Library) -> Result<(), String> {
+pub fn validate(document: &Document, library: &Library) -> Result<(), Rejection> {
+    let mut check = Check::new(library);
+    check_document(&mut check, document).map_err(|message| Rejection {
+        message,
+        unsupported: check.unsupported,
+    })
+}
+
+/// The checks of [`validate`], with messages only.
+fn check_document(check: &mut Check, document: &Document) -> Result<(), String> {
     let Some(spec_node) = document.spec() else {
         if document.kind == Kind::ExecutorPlugin {
             return Ok(());
@@ -116,7 +135,6 @@ pub fn validate(document: &Document, library: &Library) -> Result<(), String> {
         return Err(format!("{} has no spec", document.label()));
     };
     let (spec, _) = decode::<WorkflowSpec>(spec_node).map_err(|error| format!("spec: {error}"))?;
-    let mut check = Check::new(library);
     let base = Rc::new(Base::new(
         String::new(),
         document.path.clone(),
@@ -171,6 +189,8 @@ pub fn validate(document: &Document, library: &Library) -> Result<(), String> {
 /// Argo's `results`.
 pub(crate) struct Check<'a> {
     library: &'a Library,
+    /// Whether the error is about a feature that iunctus does not support.
+    unsupported: bool,
     checked: HashSet<(String, String)>,
     bases: Vec<((PathBuf, usize), Rc<Base>)>,
 }
@@ -179,9 +199,15 @@ impl<'a> Check<'a> {
     pub fn new(library: &'a Library) -> Self {
         Check {
             library,
+            unsupported: false,
             checked: HashSet::new(),
             bases: Vec::new(),
         }
+    }
+
+    /// Whether the error of a check is about a feature that iunctus does not support.
+    pub fn unsupported(&self) -> bool {
+        self.unsupported
     }
 
     /// Checks a workflow spec whose templates are those of `base`. `entry` is the entrypoint
@@ -323,6 +349,10 @@ impl<'a> Check<'a> {
             return Err(format!(
                 "templates.{name} multiple template types specified. choose one of: container, containerSet, steps, script, resource, dag, suspend, template, template ref"
             ));
+        }
+        if let Some(reason) = cluster_only(template) {
+            self.unsupported = true;
+            return Err(reason);
         }
         let parameters: Vec<&str> = template
             .inputs

@@ -8,7 +8,8 @@
 #     uv run -q --with snakemake==9.27.0 --with pyyaml --with pandas --with numpy --with peppy \
 #         --with biopython --with psutil --with requests --with openpyxl --with pyarrow \
 #         --with ruamel.yaml --with snakemake-storage-plugin-http \
-#         --with snakemake-storage-plugin-s3 python snakemake-runtime/tests/fixtures/oracle.py
+#         --with snakemake-storage-plugin-s3 --with snakemake-executor-plugin-slurm \
+#         python snakemake-runtime/tests/fixtures/oracle.py
 #
 # With `--only FILE`, it runs only the workflows that FILE names, one per line, and replaces
 # their lines in the oracle file, keeping them even when Snakemake evaluates their first

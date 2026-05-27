@@ -143,21 +143,20 @@ fn shuffle_seed() -> u64 {
 }
 
 /// The outcome of one run in this process, as the fixture line records it.
-fn run(folder: &Path, launching: &Launching) -> String {
-    let scratch = tempfile::tempdir().expect("a temporary directory");
+fn run(folder: &Path, launching: &Launching, scratch: &Path) -> String {
     // Files on the web, like remote modules, are downloaded once for all runs.
     if let Some(root) = std::env::var_os("SNAKEMAKE_TEST_WORKFLOWS") {
         let downloads = Path::new(&root).join("downloads");
         std::fs::create_dir_all(&downloads).expect("the folder of downloads");
-        std::os::unix::fs::symlink(&downloads, scratch.path().join("downloads"))
+        std::os::unix::fs::symlink(&downloads, scratch.join("downloads"))
             .expect("a link to the downloads");
     }
-    let launch = launching.launch(folder, scratch.path());
+    let launch = launching.launch(folder, scratch);
     let mut driver = match snakemake_runtime::driver(&launch) {
         Ok(driver) => driver,
         Err(error) => return format!("{} {error}", if error.unsupported { 33 } else { 1 }),
     };
-    let mut executor = MockTes::new(scratch.path().join("mock"));
+    let mut executor = MockTes::new(scratch.join("mock"));
     // Up to eight tasks finish in a shuffled order, as tasks of a real run may.
     let options = RunOptions {
         max_pending: 8,
@@ -206,7 +205,11 @@ fn run_one() {
     // SAFETY: the variable is set before any other thread of this process reads it.
     unsafe { std::env::set_var("IUNCTUS_QUIET", "1") };
     let folder = PathBuf::from(folder);
-    let result = run(&folder, &Launching::of(&name.to_string_lossy()));
+    // The parent removes the scratch folder, also after a timeout ended this process.
+    let scratch = std::env::var_os("SNAKEMAKE_RUN_SCRATCH").map(PathBuf::from);
+    let own = tempfile::tempdir().expect("a temporary directory");
+    let scratch = scratch.unwrap_or_else(|| own.path().to_path_buf());
+    let result = run(&folder, &Launching::of(&name.to_string_lossy()), &scratch);
     std::fs::write(outcome, clean(&result, &folder)).expect("writes the outcome");
 }
 
@@ -221,6 +224,7 @@ fn child(name: &str, folder: &Path, outcome: &Path) -> String {
             folder,
         );
     }
+    let scratch = tempfile::tempdir().expect("a temporary directory");
     let status = Command::new("timeout")
         .args([
             "120",
@@ -239,6 +243,7 @@ fn child(name: &str, folder: &Path, outcome: &Path) -> String {
         .env("SNAKEMAKE_RUN_NAME", name)
         .env("SNAKEMAKE_RUN_ONE", folder)
         .env("SNAKEMAKE_RUN_OUTCOME", outcome)
+        .env("SNAKEMAKE_RUN_SCRATCH", scratch.path())
         .current_dir(workdir)
         .output()
         .expect("runs the test binary");

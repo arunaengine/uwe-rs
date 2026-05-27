@@ -21,3 +21,5 @@ x **= 2
 print(x)
 print(format(3.14159, ".2f"), format(42, "05d"), format(1234567, ","), format(0.25, "%"), format(255, "x"))
 print(format(1e-7, "g"), format(123456789, "e"), format(0.0001234, ".3g"), format(12.0, "g"), format(1.5, ".0f"))
+z = complex(1, 2)
+print(z, 2j, complex(0, -2), z * (1 - 1j), (z + 1) / 2, abs(3 + 4j), z.real, z.imag, z == 1 + 2j, isinstance(z, complex))

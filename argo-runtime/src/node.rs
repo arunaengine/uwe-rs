@@ -11,6 +11,7 @@ use jiff::Timestamp;
 use workflow_graph::{Outcome, TaskId};
 
 use crate::run::{Expanded, Processed};
+use crate::volumes::Written;
 
 /// The phase of a node, as Argo names it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -116,6 +117,8 @@ pub(crate) struct NodeStatus {
     pub retry: Option<Rc<RetryCall>>,
     pub started: Timestamp,
     pub finished: Option<Timestamp>,
+    /// The mounts whose files go into their volumes when the node's tasks end.
+    pub written: Vec<Written>,
 }
 
 /// The call that a retry node makes again for each attempt.

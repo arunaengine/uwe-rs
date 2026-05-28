@@ -108,23 +108,11 @@ impl Run {
     /// without Kubernetes leaves out.
     pub(crate) fn warn_ignored(&mut self, spec: &Node) {
         self.warn_left_out(spec);
-        for (field, what) in [
-            (
-                "volumes",
-                "workflow volumes are not mounted; tasks share files only as artifacts",
-            ),
-            (
-                "volumeClaimTemplates",
-                "volume claims are not created; tasks share files only as artifacts",
-            ),
-            (
-                "suspend",
-                "the workflow starts at once instead of suspended",
-            ),
-        ] {
-            if spec.get(field).is_some_and(|node| node.value != Yaml::Null) {
-                self.warn(what.to_owned());
-            }
+        if spec
+            .get("suspend")
+            .is_some_and(|node| node.value != Yaml::Null)
+        {
+            self.warn("the workflow starts at once instead of suspended".to_owned());
         }
     }
 }

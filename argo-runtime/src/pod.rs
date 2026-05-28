@@ -82,6 +82,7 @@ impl Run {
             fill_container(&mut task, container);
             task.environment = self.environment(container, &fields)?;
             task.outputs = outputs.clone();
+            self.mount_volumes(index, 0, template, &container.volume_mounts, &mut task)?;
             tasks.push(task);
         } else if let Some(script) = &template.script {
             let mut task = base(&script.image, Some(script));
@@ -98,6 +99,7 @@ impl Run {
             });
             task.script = Some(source);
             task.outputs = outputs.clone();
+            self.mount_volumes(index, 0, template, &script.volume_mounts, &mut task)?;
             tasks.push(task);
         } else if let Some(set) = &template.container_set {
             let names: Vec<&str> = set
@@ -116,6 +118,14 @@ impl Run {
                 if position == main {
                     task.outputs = outputs.clone();
                 }
+                let mounts: Vec<Node> = set
+                    .volume_mounts
+                    .iter()
+                    .chain(&container.volume_mounts)
+                    .cloned()
+                    .collect();
+                let slot = tasks.len();
+                self.mount_volumes(index, slot, template, &mounts, &mut task)?;
                 let after: Vec<usize> = container
                     .dependencies
                     .iter()
@@ -242,7 +252,7 @@ impl Run {
         };
         // Output files by the path the task asked for; paths the executor spelled
         // differently, like literal braces a mock reads as a glob, by their position.
-        let asked: Vec<String> = self.emitted_outputs(index);
+        let asked: Vec<String> = self.emitted_outputs(index, slot);
         let file = |path: &str| {
             let clean = |text: &str| {
                 text.trim_start_matches('/')
@@ -347,6 +357,7 @@ impl Run {
             outputs.artifacts.push(value);
         }
         self.nodes[index].outputs = outputs;
+        self.keep_written(index);
         if exit_code != 0 {
             self.fail(
                 index,
@@ -390,12 +401,17 @@ impl Run {
         Ok(())
     }
 
-    /// The output paths the main task of a leaf asked for.
-    fn emitted_outputs(&self, index: usize) -> Vec<String> {
-        match &self.nodes[index].processed {
+    /// The output paths the main task of a leaf asked for: its outputs, then its mounts.
+    fn emitted_outputs(&self, index: usize, slot: usize) -> Vec<String> {
+        let node = &self.nodes[index];
+        let mut paths = match &node.processed {
             Some(processed) => output_paths(&processed.template),
             None => Vec::new(),
+        };
+        for mount in node.written.iter().filter(|mount| mount.slot == slot) {
+            paths.push(format!("{}/", mount.path.trim_end_matches('/')));
         }
+        paths
     }
 
     /// The fields of a node's pod that environment variables read with `fieldRef`, as the run
@@ -422,14 +438,6 @@ impl Run {
     /// Warns once about fields of a template and its containers that only matter to
     /// Kubernetes, which a run without Kubernetes leaves out (decision 18).
     fn warn_pod_fields(&mut self, processed: &crate::run::Processed) {
-        let template = &processed.template;
-        let mounts = [&template.container, &template.script]
-            .into_iter()
-            .flatten()
-            .any(|container| !container.volume_mounts.is_empty());
-        if !template.volumes.is_empty() || mounts {
-            self.warn("volumes are not mounted; tasks share files only as artifacts".to_owned());
-        }
         self.warn_left_out(&processed.node);
         let node = &processed.node;
         for kind in ["container", "script"] {

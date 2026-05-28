@@ -38,6 +38,7 @@ pub mod tags;
 mod time;
 mod validate;
 pub mod value;
+mod volumes;
 pub mod when;
 
 use std::path::{Path, PathBuf};

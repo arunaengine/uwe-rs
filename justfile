@@ -311,14 +311,15 @@ snakemake-test-workflows-test:
 snakemake-run-test-workflows-test:
 	SNAKEMAKE_TEST_WORKFLOWS="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/snakemake}" cargo test --release --locked -p snakemake-runtime --test run_test_workflows -- --ignored --exact workflows_run_as_recorded
 
-# Fetches the text-only Argo corpus at the commits the Argo corpus test expects. The checkouts
-# keep their `.git`, which marks the repository whose templates a workflow may reference.
-argo-corpus:
+# Fetches the text-only Argo test workflows at the commits the Argo test-workflows test
+# expects. The checkouts keep their `.git`, which marks the repository whose templates a workflow
+# may reference.
+argo-test-workflows:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	root="${ARGO_CORPUS:-$HOME/.cache/iunctus/test-workflows/argo}"
+	root="${ARGO_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/argo}"
 	mkdir -p "$root"
-	grep -v '^#' argo-parser/tests/fixtures/corpus/revisions.txt | while read -r repository branch commit patterns; do
+	grep -v '^#' argo-parser/tests/fixtures/test-workflows/revisions.txt | while read -r repository branch commit patterns; do
 		target="$root/${repository#*/}"
 		[ -d "$target" ] && continue
 		work="$(mktemp -d "$root/.fetch.XXXXXX")"
@@ -343,11 +344,11 @@ argo-corpus:
 		mv "$work" "$target"
 	done
 
-# Runs every Argo document of the corpus that has an entrypoint with the mock executor, checks
+# Runs every Argo document of the test workflows that has an entrypoint with the mock executor, checks
 # the others as Argo does when they are created, and compares the outcomes with
-# argo-runtime/tests/fixtures/corpus/outcomes.txt.
-argo-corpus-test:
-	ARGO_CORPUS="${ARGO_CORPUS:-$HOME/.cache/iunctus/test-workflows/argo}" cargo test --release --locked -p argo-runtime --test test_workflows -- --ignored --nocapture
+# argo-runtime/tests/fixtures/test-workflows/outcomes.txt.
+argo-test-workflows-test:
+	ARGO_TEST_WORKFLOWS="${ARGO_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/argo}" cargo test --release --locked -p argo-runtime --test test_workflows -- --ignored --nocapture
 
 # Starts a local RustFS (S3-compatible) with the bucket `iunctus-test` for the S3 tests.
 # `docker stop iunctus-s3` ends it.

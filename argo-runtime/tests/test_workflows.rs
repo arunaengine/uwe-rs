@@ -1,11 +1,11 @@
-//! Reads every Argo document of the corpus from `just argo-corpus`. Documents with an entrypoint
-//! run with the mock TES executor; the others, like libraries of WorkflowTemplates, get the
-//! checks Argo makes when they are created. The outcomes are compared with
-//! tests/fixtures/corpus/outcomes.txt: `ok` and the number of tasks, `valid`, or the exit code
-//! (33 for unsupported features) and the first error. Each document that does not pass needs a
-//! line in tests/fixtures/corpus/rejected.txt with the evidence that Argo rejects or fails it
-//! too. `ARGO_CORPUS_UPDATE=1` rewrites the outcomes; `ARGO_CORPUS_FILTER` runs only the
-//! documents whose path contains it.
+//! Reads every Argo document of the test workflows from `just argo-test-workflows`. Documents
+//! with an entrypoint run with the mock TES executor; the others, like libraries of
+//! WorkflowTemplates, get the checks Argo makes when they are created. The outcomes are compared
+//! with tests/fixtures/test-workflows/outcomes.txt: `ok` and the number of tasks, `valid`, or the
+//! exit code (33 for unsupported features) and the first error. Each document that does not pass
+//! needs a line in tests/fixtures/test-workflows/rejected.txt with the evidence that Argo rejects
+//! or fails it too. `ARGO_TEST_WORKFLOWS_UPDATE=1` rewrites the outcomes;
+//! `ARGO_TEST_WORKFLOWS_FILTER` runs only the documents whose path contains it.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -17,10 +17,10 @@ use argo_runtime::library::collect_files;
 use argo_runtime::{ArgoDriver, Document, Kind, Library, Options, load_file, validate};
 use workflow_graph::{MockTes, execute};
 
-const FIXTURE: &str = "tests/fixtures/corpus/outcomes.txt";
+const FIXTURE: &str = "tests/fixtures/test-workflows/outcomes.txt";
 
 /// Why the documents that do not pass fail in Argo too, by document.
-const REJECTED: &str = "tests/fixtures/corpus/rejected.txt";
+const REJECTED: &str = "tests/fixtures/test-workflows/rejected.txt";
 
 /// Directories of templates that documents under a path get as configs, as `Launch.configs`
 /// gives them. Hera's upstream examples are copies of Argo's examples, but Hera does not copy
@@ -43,20 +43,20 @@ const CONFIGS: &[(&str, &str)] = &[
 ];
 
 #[test]
-#[ignore = "needs the Argo corpus from `just argo-corpus`; run it with `just argo-corpus-test`"]
-fn runs_the_corpus() {
+#[ignore = "needs the Argo test workflows from `just argo-test-workflows`; run it with `just argo-test-workflows-test`"]
+fn runs_the_test_workflows() {
     // Recursive workflows nest templates 100 levels deep before the depth limit stops them,
     // which needs more stack than a test thread has.
     std::thread::Builder::new()
         .stack_size(256 << 20)
-        .spawn(run_corpus)
+        .spawn(run_test_workflows)
         .expect("a thread")
         .join()
         .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
 }
 
-/// The corpus, the options of the test, and what the runs share.
-struct Corpus {
+/// The test workflows, the options of the test, and what the runs share.
+struct TestWorkflows {
     root: PathBuf,
     filter: String,
     verbose: bool,
@@ -65,7 +65,7 @@ struct Corpus {
     configs: BTreeMap<&'static str, Vec<Rc<Document>>>,
 }
 
-impl Corpus {
+impl TestWorkflows {
     /// The library of a document: its own file first, then the configs for its path, then the
     /// documents of its repository.
     fn library(&mut self, relative: &str, own: &[Rc<Document>], pool: &[Rc<Document>]) -> Library {
@@ -125,7 +125,7 @@ impl Corpus {
     }
 }
 
-/// A message on one line without the corpus directory. A message of more than 200 characters
+/// A message on one line without the folder of the test workflows. A message of more than 200 characters
 /// keeps its end, where Argo's messages name what failed.
 fn one_line(message: &str, root: &str) -> String {
     let mut message = message.replace(['\n', '\r'], " ");
@@ -140,10 +140,10 @@ fn one_line(message: &str, root: &str) -> String {
     format!("...{end}")
 }
 
-/// The directories of the corpus, one per repository.
+/// The folders of the test workflows, one per repository.
 fn repositories(root: &Path) -> Vec<PathBuf> {
     let mut repositories: Vec<PathBuf> = std::fs::read_dir(root)
-        .expect("the corpus directory is readable")
+        .expect("the folder of the test workflows is readable")
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
         .filter(|path| {
             path.is_dir()
@@ -167,16 +167,17 @@ fn read_fixture(fixture: &Path) -> BTreeMap<String, String> {
         .collect()
 }
 
-fn run_corpus() {
-    let root = PathBuf::from(std::env::var("ARGO_CORPUS").expect("ARGO_CORPUS is set"));
-    let update = std::env::var("ARGO_CORPUS_UPDATE").is_ok_and(|value| value == "1");
-    let trace = std::env::var("ARGO_CORPUS_TRACE").is_ok();
+fn run_test_workflows() {
+    let root =
+        PathBuf::from(std::env::var("ARGO_TEST_WORKFLOWS").expect("ARGO_TEST_WORKFLOWS is set"));
+    let update = std::env::var("ARGO_TEST_WORKFLOWS_UPDATE").is_ok_and(|value| value == "1");
+    let trace = std::env::var("ARGO_TEST_WORKFLOWS_TRACE").is_ok();
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join(FIXTURE);
     let expected = read_fixture(&fixture);
-    let mut corpus = Corpus {
+    let mut workflows = TestWorkflows {
         root: root.clone(),
-        filter: std::env::var("ARGO_CORPUS_FILTER").unwrap_or_default(),
-        verbose: std::env::var("ARGO_CORPUS_VERBOSE").is_ok(),
+        filter: std::env::var("ARGO_TEST_WORKFLOWS_FILTER").unwrap_or_default(),
+        verbose: std::env::var("ARGO_TEST_WORKFLOWS_VERBOSE").is_ok(),
         scratch: tempfile::tempdir().expect("a temporary directory"),
         configs: BTreeMap::new(),
     };
@@ -199,7 +200,7 @@ fn run_corpus() {
                 .unwrap_or(&file)
                 .to_string_lossy()
                 .into_owned();
-            if !relative.contains(&corpus.filter) {
+            if !relative.contains(&workflows.filter) {
                 continue;
             }
             let documents = match load_file(&file) {
@@ -210,7 +211,7 @@ fn run_corpus() {
                     if text.contains("apiVersion: argoproj.io/") {
                         total += 1;
                         let message = one_line(&error, &root.to_string_lossy());
-                        if corpus.verbose {
+                        if workflows.verbose {
                             println!("{relative} 1 {message}");
                         }
                         outcomes.insert(relative.clone(), format!("1 {message}"));
@@ -219,12 +220,12 @@ fn run_corpus() {
                 }
             };
             // ConfigMaps are no workflows; they serve the documents that read them.
-            let workflows: Vec<&Rc<Document>> = documents
+            let checked: Vec<&Rc<Document>> = documents
                 .iter()
                 .filter(|document| document.kind != Kind::ConfigMap)
                 .collect();
-            for document in workflows.iter().copied() {
-                let key = if workflows.len() > 1 {
+            for document in checked.iter().copied() {
+                let key = if checked.len() > 1 {
                     format!("{relative}#{}", document.index)
                 } else {
                     relative.clone()
@@ -232,9 +233,9 @@ fn run_corpus() {
                 if trace {
                     eprintln!("running {key}");
                 }
-                let library = corpus.library(&relative, &documents, &pool);
+                let library = workflows.library(&relative, &documents, &pool);
                 let outcome = if document.runnable() {
-                    corpus.run(&relative, document, library)
+                    workflows.run(&relative, document, library)
                 } else {
                     match validate(document, &library) {
                         Ok(()) => "valid".to_owned(),
@@ -261,7 +262,7 @@ fn run_corpus() {
     println!("{}", summary.join("\n"));
     println!("{ok} of {total} documents run through with a full graph or pass Argo's checks");
     if update {
-        write_fixture(&fixture, outcomes, &expected, &corpus.filter);
+        write_fixture(&fixture, outcomes, &expected, &workflows.filter);
         return;
     }
     let mut differences = Vec::new();
@@ -274,21 +275,26 @@ fn run_corpus() {
             None => differences.push(format!("{document}: {outcome} (not recorded)")),
         }
     }
-    if corpus.filter.is_empty() {
+    if workflows.filter.is_empty() {
         for document in expected.keys() {
             if !outcomes.contains_key(document) {
-                differences.push(format!("{document}: recorded, but not in the corpus"));
+                differences.push(format!(
+                    "{document}: recorded, but not in the test workflows"
+                ));
             }
         }
-        assert!(total > 1_000, "incomplete corpus: {total} documents");
+        assert!(
+            total > 1_000,
+            "incomplete test workflows: {total} documents"
+        );
     }
     assert!(
         differences.is_empty(),
-        "{} documents differ from {FIXTURE}; ARGO_CORPUS_UPDATE=1 records them:\n{}",
+        "{} documents differ from {FIXTURE}; ARGO_TEST_WORKFLOWS_UPDATE=1 records them:\n{}",
         differences.len(),
         differences.join("\n")
     );
-    if corpus.filter.is_empty() {
+    if workflows.filter.is_empty() {
         check_evidence(&outcomes);
     }
 }
@@ -336,7 +342,7 @@ fn write_fixture(
         }
     }
     let mut text = String::from(
-        "# Outcomes of the Argo corpus test: `ok` and the number of tasks of a run with the mock TES\n# executor, `valid` for a document without an entrypoint that passes Argo's checks, or the\n# exit code (33 for unsupported features) and the first error. A tab ends the path, which may\n# hold spaces.\n",
+        "# Outcomes of the Argo test-workflows test: `ok` and the number of tasks of a run with the mock TES\n# executor, `valid` for a document without an entrypoint that passes Argo's checks, or the\n# exit code (33 for unsupported features) and the first error. A tab ends the path, which may\n# hold spaces.\n",
     );
     for (document, outcome) in &outcomes {
         text.push_str(&format!("{document}\t{outcome}\n"));

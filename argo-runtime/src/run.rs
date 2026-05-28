@@ -4,7 +4,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -24,6 +24,7 @@ use crate::start::{Given, Joined, joined_spec, workflow_name, workflow_parameter
 use crate::tags::Variables;
 use crate::validate::{Base, Check, Supplied};
 use crate::value::Value;
+use crate::volumes::Volumes;
 
 /// Templates may call templates this many levels deep; deeper recursion is taken as endless.
 pub(crate) const MAX_DEPTH: usize = 100;
@@ -173,6 +174,10 @@ pub(crate) struct Run {
     pub warnings: Vec<String>,
     /// Artifact URLs that tasks wrote, and the local files that hold them.
     pub store: HashMap<String, PathBuf>,
+    /// The files of the volumes that tasks mount, by volume.
+    pub volumes: Volumes,
+    /// The claims that the run made, from `volumeClaimTemplates` or resource templates.
+    pub claims: BTreeSet<String>,
     pub first_failure: Option<String>,
     pub root: Option<usize>,
     pub exit_node: Option<usize>,
@@ -270,6 +275,8 @@ impl Run {
             changed: false,
             warnings: Vec::new(),
             store: HashMap::new(),
+            volumes: Volumes::new(),
+            claims: BTreeSet::new(),
             first_failure: None,
             root: None,
             exit_node: None,
@@ -727,6 +734,7 @@ impl Run {
             retry: None,
             started: self.created,
             finished: None,
+            written: Vec::new(),
         });
         self.names.insert(name.to_owned(), index);
         self.changed = true;

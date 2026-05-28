@@ -1021,3 +1021,73 @@ fn environments_read_config_maps_and_keep_secrets_out() {
         ran.error()
     );
 }
+
+#[test]
+fn volumes_share_files_between_steps() {
+    let text = r#"
+  - name: main
+    steps:
+    - - {name: write, template: write}
+    - - {name: read, template: read}
+    - - {name: host, template: host}
+  - name: write
+    volumes:
+    - {name: work, persistentVolumeClaim: {claimName: shared}}
+    container:
+      image: alpine
+      command: [sh, -c, "echo hi > /work/a.txt"]
+      volumeMounts: [{name: work, mountPath: /work}]
+  - name: read
+    volumes:
+    - {name: data, persistentVolumeClaim: {claimName: shared}}
+    container:
+      image: alpine
+      command: [cat, /data/a.txt]
+      volumeMounts: [{name: data, mountPath: /data, readOnly: true}]
+  - name: host
+    volumes:
+    - {name: reference, hostPath: {path: /no/such/folder, type: Directory}}
+    container:
+      image: alpine
+      command: [ls, /reference]
+      volumeMounts: [{name: reference, mountPath: /reference}]
+"#;
+    let ran = run(&workflow(text));
+    ran.succeeded();
+    let write = ran.task("[0].write");
+    assert!(
+        write.outputs.contains(&"/work/".to_owned()),
+        "{:?}",
+        write.outputs
+    );
+    let read = ran.task("[1].read");
+    assert!(
+        read.inputs.iter().any(|input| input.path == "/data/a.txt"),
+        "{:?}",
+        read.inputs
+    );
+    assert!(read.outputs.is_empty(), "a read-only mount is no output");
+    assert_eq!(ran.upstream("[1].read"), ["[0].write"]);
+    // A host path is read on the machine that runs iunctus; a mock run needs no such folder.
+    let host = ran.task("[2].host");
+    assert!(
+        host.inputs
+            .iter()
+            .any(|input| input.path == "/reference" && input.source == "/no/such/folder"),
+        "{:?}",
+        host.inputs
+    );
+    assert!(
+        ran.warnings
+            .iter()
+            .any(|warning| warning.contains("volume claim shared exists only in a cluster"))
+    );
+    // A real run needs the host path.
+    let real = run_with(&workflow(text), real());
+    assert!(
+        real.error()
+            .contains("mounts the host path /no/such/folder, which does not exist on this machine"),
+        "{}",
+        real.error()
+    );
+}

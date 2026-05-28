@@ -6,13 +6,13 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use argo_parser::model::{Artifact, Template};
+use argo_parser::model::{AnyString, Artifact, Template};
 use argo_parser::{Entry, Node, Value as Yaml, decode};
 
 use crate::node::{ArtifactValue, Location};
+use crate::objects::{KeyRef, config_map_value};
 use crate::run::{
-    Args, Context, Failure, Processed, Result, Run, entry_mut, is_pod, parameters_json,
-    placeholder, scalar_text,
+    Args, Context, Failure, Processed, Result, Run, entry_mut, is_pod, parameters_json, scalar_text,
 };
 use crate::tags::{Variables, replace_node};
 
@@ -34,10 +34,7 @@ impl Run {
         let mut values: Vec<(String, String)> = Vec::new();
         for (position, input) in typed.inputs.parameters.iter().enumerate() {
             let mut value = input.value.clone().or_else(|| input.default.clone());
-            let mut from_config_map = input
-                .value_from
-                .as_ref()
-                .is_some_and(|from| from.config_map_key_ref.is_some());
+            let mut from = input.value_from.clone();
             if let Some(argument) = args
                 .parameters
                 .iter()
@@ -45,29 +42,36 @@ impl Run {
             {
                 if let Some(given) = &argument.value {
                     value = Some(given.clone());
-                    from_config_map = false;
-                } else if let Some(from) = &argument.value_from {
-                    if from.config_map_key_ref.is_some() {
-                        from_config_map = true;
-                        value = from.default.clone().or(value);
-                    } else if !from.supplied.is_none() || !from.expression.is_empty() {
-                        value = from.default.clone().or(value);
+                    from = None;
+                } else if let Some(given) = &argument.value_from {
+                    if given.config_map_key_ref.is_some() {
+                        from = Some(given.clone());
+                    } else if !given.supplied.is_none() || !given.expression.is_empty() {
+                        value = given.default.clone().or(value);
                     }
                 }
             }
-            if from_config_map {
-                let fallback = input
-                    .value_from
+            // A ConfigMap wins; without it the default of `valueFrom` takes over, as in Argo.
+            if let Some(from) = from.filter(|from| from.config_map_key_ref.is_some()) {
+                let variables = Variables::new(self.globals.clone());
+                let mut reference = from
+                    .config_map_key_ref
                     .as_ref()
-                    .and_then(|from| from.default.clone());
-                value = value.or(fallback);
-                self.warn(format!(
-                    "input {} of template {} reads a ConfigMap, which a run without Kubernetes cannot",
-                    input.name, typed.name
-                ));
-                if value.is_none() {
-                    value = Some(placeholder(&input.name));
+                    .map(KeyRef::of)
+                    .unwrap_or_default();
+                for text in [&mut reference.name, &mut reference.key] {
+                    *text = crate::tags::replace(text, &variables, true).map_err(Failure::error)?;
                 }
+                let what = format!("input {} of template {}", input.name, typed.name);
+                value = Some(AnyString(
+                    match config_map_value(&self.library, &self.document.path, &reference) {
+                        Some(found) => found,
+                        None => match from.default {
+                            Some(default) => default.0,
+                            None => self.config_map_key(&what, &reference)?,
+                        },
+                    },
+                ));
             }
             let Some(value) = value else {
                 return Err(Failure::error(format!(

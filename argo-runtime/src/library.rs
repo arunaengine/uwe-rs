@@ -22,6 +22,8 @@ pub enum Kind {
     /// `workflows.argoproj.io/configmap-type: ExecutorPlugin`, as `argo executor-plugin build`
     /// makes it.
     ExecutorPlugin,
+    /// Any other ConfigMap, which parameters, environment variables and volumes may read.
+    ConfigMap,
 }
 
 impl Kind {
@@ -42,6 +44,7 @@ impl Kind {
             Kind::ClusterWorkflowTemplate => "ClusterWorkflowTemplate",
             Kind::CronWorkflow => "CronWorkflow",
             Kind::ExecutorPlugin => "ExecutorPlugin",
+            Kind::ConfigMap => "ConfigMap",
         }
     }
 }
@@ -97,7 +100,8 @@ impl Document {
     }
 }
 
-/// Reads the Argo documents of a file. Other documents, like Kubernetes objects, are left out.
+/// Reads the Argo documents and the ConfigMaps of a file. Other documents, like other Kubernetes
+/// objects, are left out.
 pub fn load_file(path: &Path) -> Result<Vec<Rc<Document>>, String> {
     let text = std::fs::read_to_string(path)
         .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
@@ -110,6 +114,16 @@ pub fn load_file(path: &Path) -> Result<Vec<Rc<Document>>, String> {
                 path: path.to_owned(),
                 index,
                 kind: Kind::ExecutorPlugin,
+                name,
+                node,
+            }));
+            continue;
+        }
+        if let Some(name) = config_map(&node) {
+            documents.push(Rc::new(Document {
+                path: path.to_owned(),
+                index,
+                kind: Kind::ConfigMap,
                 name,
                 node,
             }));
@@ -169,6 +183,17 @@ fn plugin_config_map(node: &Node) -> Option<String> {
             .unwrap_or(name)
             .to_owned()
     })
+}
+
+/// The name of a ConfigMap that is not a plugin.
+fn config_map(node: &Node) -> Option<String> {
+    let is_config_map = node.get("apiVersion").and_then(Node::as_str) == Some("v1")
+        && node.get("kind").and_then(Node::as_str) == Some("ConfigMap");
+    let name = node
+        .get("metadata")
+        .and_then(|metadata| metadata.get("name"))
+        .and_then(Node::as_str)?;
+    is_config_map.then(|| name.to_owned())
 }
 
 /// Documents by kind and name. Directories are read on the first lookup that the documents
@@ -352,9 +377,11 @@ mod tests {
         let text = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: hello-executor-plugin\n  labels: {workflows.argoproj.io/configmap-type: ExecutorPlugin}\ndata:\n  sidecar.container: 'image: python'\n---\napiVersion: v1\nkind: ConfigMap\nmetadata: {name: settings}\n";
         std::fs::write(&file, text).expect("the file is written");
         let documents = load_file(&file).expect("the file loads");
-        assert_eq!(documents.len(), 1);
+        assert_eq!(documents.len(), 2);
         assert_eq!(documents[0].kind, Kind::ExecutorPlugin);
         assert_eq!(documents[0].name, "hello");
+        assert_eq!(documents[1].kind, Kind::ConfigMap);
+        assert_eq!(documents[1].name, "settings");
         let library = Library::new();
         library.add_directory(2, directory.path());
         let plugins = library.all(Kind::ExecutorPlugin, &file);

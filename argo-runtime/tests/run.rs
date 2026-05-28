@@ -943,3 +943,55 @@ fn plugin_templates_call_executor_plugins() {
         ran.error()
     );
 }
+
+/// A workflow of `templates` after `documents`, like ConfigMaps, in one file.
+fn with_documents(documents: &str, templates: &str) -> String {
+    format!("{documents}---\n{}", workflow(templates))
+}
+
+const SETTINGS: &str = "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: settings}\ndata: {genome: hg38, threads: '4'}\n";
+
+/// A real run, which gives no placeholders for missing inputs.
+fn real() -> Setup {
+    Setup {
+        real_inputs: true,
+        ..Setup::default()
+    }
+}
+
+#[test]
+fn parameters_read_config_maps_of_the_loaded_documents() {
+    let templates = r#"
+  - name: main
+    steps:
+    - - name: show
+        template: show
+        arguments:
+          parameters:
+          - {name: genome, valueFrom: {configMapKeyRef: {name: settings, key: genome}}}
+          - {name: fallback, valueFrom: {configMapKeyRef: {name: absent, key: x}, default: dflt}}
+  - name: show
+    inputs:
+      parameters: [{name: genome}, {name: fallback}]
+    container:
+      image: alpine
+      command: [echo, "{{inputs.parameters.genome}} {{inputs.parameters.fallback}}"]
+"#;
+    let ran = run(&with_documents(SETTINGS, templates));
+    ran.succeeded();
+    assert_eq!(ran.task("[0].show").command, ["echo", "hg38 dflt"]);
+    // Without the ConfigMap, a mock run uses a placeholder and a real run stops.
+    let missing = templates.replace("name: settings, key: genome", "name: absent, key: genome");
+    let ran = run(&with_documents(SETTINGS, &missing));
+    assert_eq!(
+        ran.task("[0].show").command,
+        ["echo", "placeholder_config_map_absent_genome dflt"]
+    );
+    let ran = run_with(&with_documents(SETTINGS, &missing), real());
+    assert!(
+        ran.error()
+            .contains("reads key genome of ConfigMap absent, which none of the loaded documents"),
+        "{}",
+        ran.error()
+    );
+}

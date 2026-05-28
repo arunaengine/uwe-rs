@@ -13,6 +13,7 @@
 
 mod checks;
 mod dag;
+mod environment;
 pub mod expr;
 mod hooks;
 mod http;

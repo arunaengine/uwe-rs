@@ -198,9 +198,8 @@ impl Run {
             },
             ..Task::default()
         };
-        fill_container(&mut task, &plugin.container, &fields, &mut |message| {
-            self.warn(message)
-        });
+        fill_container(&mut task, &plugin.container);
+        task.environment = self.environment(&plugin.container, &fields)?;
         let script = call_script();
         task.command = vec![
             "sh".to_owned(),

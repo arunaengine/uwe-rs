@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 
 use argo_parser::model::HttpTemplate;
 
+use crate::objects::KeyRef;
 use crate::run::scalar_text;
 use crate::value::Value;
 
@@ -18,9 +19,21 @@ pub const CURL_IMAGE: &str = "curlimages/curl:8.16.0";
 pub const RESPONSE_BODY: &str = "/tmp/response-body";
 pub const RESPONSE_STATUS: &str = "/tmp/response-status";
 
-/// The shell script that sends the request, and the names of the headers it leaves out because
-/// they read Secrets.
-pub(crate) fn http_script(http: &HttpTemplate) -> (String, Vec<String>) {
+/// The headers that read a Secret, with the Secret's key.
+pub(crate) fn secret_headers(http: &HttpTemplate) -> Vec<(String, KeyRef)> {
+    http.headers
+        .iter()
+        .filter_map(|header| {
+            let reference = header.get("valueFrom")?.get("secretKeyRef")?;
+            let name = header.get("name").map(scalar_text).unwrap_or_default();
+            Some((name, KeyRef::of(reference)))
+        })
+        .collect()
+}
+
+/// The shell script that sends the request. Headers that read a Secret get their value from
+/// `secrets`, by header name.
+pub(crate) fn http_script(http: &HttpTemplate, secrets: &BTreeMap<String, String>) -> String {
     let mut command: Vec<String> = vec![
         "curl".into(),
         "--silent".into(),
@@ -36,14 +49,12 @@ pub(crate) fn http_script(http: &HttpTemplate) -> (String, Vec<String>) {
         http.method.as_str()
     };
     command.extend(["--request".to_owned(), method.to_owned()]);
-    let mut secret_headers = Vec::new();
     for header in &http.headers {
         let name = header.get("name").map(scalar_text).unwrap_or_default();
-        if header.get("valueFrom").is_some() {
-            secret_headers.push(name);
-            continue;
-        }
-        let value = header.get("value").map(scalar_text).unwrap_or_default();
+        let value = match secrets.get(&name) {
+            Some(value) if header.get("valueFrom").is_some() => value.clone(),
+            _ => header.get("value").map(scalar_text).unwrap_or_default(),
+        };
         command.extend(["--header".to_owned(), format!("{name}: {value}")]);
     }
     if !http.body.is_empty() {
@@ -57,8 +68,7 @@ pub(crate) fn http_script(http: &HttpTemplate) -> (String, Vec<String>) {
         http.url.clone(),
     ]);
     let quoted: Vec<String> = command.iter().map(|word| shell_quote(word)).collect();
-    let script = format!("{} > {RESPONSE_STATUS}", quoted.join(" "));
-    (script, secret_headers)
+    format!("{} > {RESPONSE_STATUS}", quoted.join(" "))
 }
 
 /// What the response of an HTTP template makes of its node.

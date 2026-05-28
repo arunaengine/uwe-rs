@@ -106,6 +106,7 @@ impl Run {
     /// Warns once about fields that change what a workflow does on Kubernetes, which a run
     /// without Kubernetes leaves out.
     pub(crate) fn warn_ignored(&mut self, spec: &Node) {
+        self.warn_left_out(spec);
         for (field, what) in [
             (
                 "volumes",
@@ -114,10 +115,6 @@ impl Run {
             (
                 "volumeClaimTemplates",
                 "volume claims are not created; tasks share files only as artifacts",
-            ),
-            (
-                "synchronization",
-                "synchronization is left out: one run holds no locks",
             ),
             (
                 "suspend",

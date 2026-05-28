@@ -35,7 +35,7 @@ impl Run {
             return Ok(());
         };
         let template = &processed.template;
-        self.warn_pod_fields(template);
+        self.warn_pod_fields(&processed);
         let fields = self.pod_fields(index);
         let name = self.nodes[index].name.clone();
         let inbound = self.nodes[index].inbound.clone();
@@ -421,8 +421,10 @@ impl Run {
         ])
     }
 
-    /// Warns once about pod fields that a run without Kubernetes leaves out.
-    fn warn_pod_fields(&mut self, template: &Template) {
+    /// Warns once about fields of a template and its containers that only matter to
+    /// Kubernetes, which a run without Kubernetes leaves out (decision 18).
+    fn warn_pod_fields(&mut self, processed: &crate::run::Processed) {
+        let template = &processed.template;
         let mounts = [&template.container, &template.script]
             .into_iter()
             .flatten()
@@ -430,28 +432,22 @@ impl Run {
         if !template.volumes.is_empty() || mounts {
             self.warn("volumes are not mounted; tasks share files only as artifacts".to_owned());
         }
-        let checks = [
-            (!template.sidecars.is_empty(), "sidecars do not run"),
-            (
-                !template.init_containers.is_empty(),
-                "init containers do not run",
-            ),
-            (
-                template.memoize.is_some(),
-                "memoize is left out: every task runs",
-            ),
-            (
-                template.synchronization.is_some(),
-                "synchronization is left out: one run holds no locks",
-            ),
-            (
-                template.pod_spec_patch.is_some(),
-                "podSpecPatch is left out",
-            ),
-        ];
-        for (found, message) in checks {
-            if found {
-                self.warn(message.to_owned());
+        self.warn_left_out(&processed.node);
+        let node = &processed.node;
+        for kind in ["container", "script"] {
+            if let Some(container) = node.get(kind) {
+                self.warn_left_out(container);
+            }
+        }
+        if let Some(Node {
+            value: Yaml::Sequence(containers),
+            ..
+        }) = node
+            .get("containerSet")
+            .and_then(|set| set.get("containers"))
+        {
+            for container in containers {
+                self.warn_left_out(container);
             }
         }
     }

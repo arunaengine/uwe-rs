@@ -1,4 +1,4 @@
-# Outcomes of the Argo corpus test: `ok` and the number of tasks of a run with the mock TES
+# Outcomes of the Argo test-workflows test: `ok` and the number of tasks of a run with the mock TES
 # executor, `valid` for a document without an entrypoint that passes Argo's checks, or the
 # exit code (33 for unsupported features) and the first error. A tab ends the path, which may
 # hold spaces.
@@ -130,7 +130,7 @@ argo-workflow-examples/dag/dag-diamond.yaml	ok 4
 argo-workflow-examples/embodied-eval/workflow.yaml	ok 12
 argo-workflow-examples/ephemeral-snapshot-disk/create-disk-from-nas-data.yaml	ok 2
 argo-workflow-examples/ephemeral-snapshot-disk/parallel-read-snapshot-data.yaml	ok 2
-argo-workflow-examples/ephemeral-snapshot-disk/workflowtemplate/all-in-one-template.yaml	ok 5
+argo-workflow-examples/ephemeral-snapshot-disk/workflowtemplate/all-in-one-template.yaml	33 ...te-snapshot template create-snapshot is a resource template that manages Kubernetes objects of kind VolumeSnapshot; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflow-examples/ephemeral-snapshot-disk/workflowtemplate/parallel-read-snapshot-data.yaml	ok 2
 argo-workflow-examples/fine-tune-with-argo/tcm-fine-argo-workflow.yaml	ok 6
 argo-workflow-examples/genomics/workflow/workflow.yaml	ok 4
@@ -156,32 +156,32 @@ argo-workflows-catalog/templates/jenkins-pipeline/manifests.yaml	ok 1
 argo-workflows-catalog/templates/jenkins-pipeline/tests/run-task.yaml	ok 1
 argo-workflows-catalog/templates/pgdump-s3/manifests.yaml	valid
 argo-workflows-catalog/templates/sendmail/manifests.yaml	ok 1
-argo-workflows-catalog/templates/sendmail/tests/send-email.yaml	ok 5
+argo-workflows-catalog/templates/sendmail/tests/send-email.yaml	33 ....steps[0].smtp template smtp-server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows-catalog/templates/slack-workflow-notifications/manifests.yaml#0	valid
 argo-workflows-catalog/templates/slack-workflow-notifications/manifests.yaml#1	ok 3
 argo-workflows-catalog/templates/slack-workflow-notifications/tests/run-task.yaml	ok 2
 argo-workflows-catalog/templates/slack/manifests.yaml	valid
 argo-workflows-catalog/templates/terraform-basic/manifests.yaml	ok 2
-argo-workflows-ci-example/bootstrap/workflow-templates/common/deploy-resources.yml	ok 3
-argo-workflows-ci-example/bootstrap/workflow-templates/minio/ci-rollouts-s3.yml	ok 6
-argo-workflows-ci-example/bootstrap/workflow-templates/minio/ci-workflow-s3.yml	ok 4
+argo-workflows-ci-example/bootstrap/workflow-templates/common/deploy-resources.yml	33 ...y-resource-svc template deploy-resource-svc is a resource template that manages Kubernetes objects of kind Service; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows-ci-example/bootstrap/workflow-templates/minio/ci-rollouts-s3.yml	33 ...y-resource-svc template deploy-resource-svc is a resource template that manages Kubernetes objects of kind Service; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows-ci-example/bootstrap/workflow-templates/minio/ci-workflow-s3.yml	33 ...application template deploy-application is a resource template that manages Kubernetes objects of kind Application; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows-ci-example/bootstrap/workflow-templates/minio/container-build-kaniko-s3 copy.yml	1 templates.main.tasks.container-build templates.container-build inputs.artifacts.modified_git_repo was not supplied
 argo-workflows-ci-example/bootstrap/workflow-templates/minio/container-build-s3.yml	1 spec.templates[2].name 'container-build' is not unique
 argo-workflows-ci-example/bootstrap/workflow-templates/minio/git-checkout-pr-s3.yml	ok 1
 argo-workflows-ci-example/bootstrap/workflow-templates/minio/html-modifier-s3.yml	1 templates.main.tasks.html-modifier templates.html-modifier inputs.artifacts.git_repo was not supplied
-argo-workflows-ci-example/bootstrap/workflow-templates/nfs/ci-rollouts-workflow.yml	ok 6
-argo-workflows-ci-example/bootstrap/workflow-templates/nfs/ci-workflow.yml	ok 4
+argo-workflows-ci-example/bootstrap/workflow-templates/nfs/ci-rollouts-workflow.yml	33 ...y-resource-svc template deploy-resource-svc is a resource template that manages Kubernetes objects of kind Service; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows-ci-example/bootstrap/workflow-templates/nfs/ci-workflow.yml	33 ...application template deploy-application is a resource template that manages Kubernetes objects of kind Application; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows-ci-example/bootstrap/workflow-templates/nfs/container-build-kaniko.yml	ok 1
 argo-workflows-ci-example/bootstrap/workflow-templates/nfs/container-build.yml	ok 1
-argo-workflows-ci-example/bootstrap/workflow-templates/nfs/deploy-application.yml	ok 1
+argo-workflows-ci-example/bootstrap/workflow-templates/nfs/deploy-application.yml	33 ...application template deploy-application is a resource template that manages Kubernetes objects of kind Application; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows-ci-example/bootstrap/workflow-templates/nfs/git-checkout-pr.yml	ok 1
 argo-workflows-ci-example/bootstrap/workflow-templates/nfs/html-modifier.yml	ok 1
-argo-workflows-ci-example/rollouts-workflow-2.yml	ok 6
-argo-workflows-ci-example/rollouts-workflow-s3-2.yml	ok 6
-argo-workflows-ci-example/rollouts-workflow-s3.yml	ok 6
-argo-workflows-ci-example/rollouts-workflow.yml	ok 6
-argo-workflows-ci-example/workflow-s3.yml	ok 4
-argo-workflows-ci-example/workflow.yml	ok 4
+argo-workflows-ci-example/rollouts-workflow-2.yml	33 ...y-resource-svc template deploy-resource-svc is a resource template that manages Kubernetes objects of kind Service; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows-ci-example/rollouts-workflow-s3-2.yml	33 ...y-resource-svc template deploy-resource-svc is a resource template that manages Kubernetes objects of kind Service; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows-ci-example/rollouts-workflow-s3.yml	33 ...y-resource-svc template deploy-resource-svc is a resource template that manages Kubernetes objects of kind Service; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows-ci-example/rollouts-workflow.yml	33 ...y-resource-svc template deploy-resource-svc is a resource template that manages Kubernetes objects of kind Service; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows-ci-example/workflow-s3.yml	33 ...application template deploy-application is a resource template that manages Kubernetes objects of kind Application; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows-ci-example/workflow.yml	33 ...application template deploy-application is a resource template that manages Kubernetes objects of kind Application; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows-guide/templates/library.yaml	valid
 argo-workflows-guide/templates/script.yaml	ok 2
 argo-workflows-guide/templates/workflow-status.yaml	valid
@@ -228,22 +228,22 @@ argo-workflows/examples/container-set-template/workspace-workflow.yaml	ok 2
 argo-workflows/examples/continue-on-fail.yaml	ok 4
 argo-workflows/examples/cron-backfill.yaml#0	ok 1
 argo-workflows/examples/cron-backfill.yaml#1	ok 1
-argo-workflows/examples/cron-backfill.yaml#2	ok 3
+argo-workflows/examples/cron-backfill.yaml#2	33 ...ates.main.steps[0].day template create-job is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/cron-backfill.yaml#3	ok 3
 argo-workflows/examples/cron-when.yaml	ok 1
 argo-workflows/examples/cron-workflow-multiple-schedules.yaml	ok 1
 argo-workflows/examples/cron-workflow.yaml	ok 1
 argo-workflows/examples/custom-metrics.yaml	ok 2
-argo-workflows/examples/daemon-nginx.yaml	ok 2
-argo-workflows/examples/daemon-step.yaml	ok 6
-argo-workflows/examples/daemoned-stateful-set-with-service.yaml	ok 6
+argo-workflows/examples/daemon-nginx.yaml	33 ....nginx-server template nginx-server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/daemon-step.yaml	33 ...e.steps[0].influx template influxdb runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/daemoned-stateful-set-with-service.yaml	33 ...s[0].create-service template create-service is a resource template that manages Kubernetes objects of kind Service; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/dag-coinflip.yaml	ok 4
 argo-workflows/examples/dag-conditional-artifacts.yaml	ok 1
 argo-workflows/examples/dag-conditional-parameters.yaml	ok 1
 argo-workflows/examples/dag-continue-on-fail.yaml	ok 6
 argo-workflows/examples/dag-custom-metrics.yaml	ok 4
-argo-workflows/examples/dag-daemon-retry-strategy.yaml	ok 7
-argo-workflows/examples/dag-daemon-task.yaml	ok 6
+argo-workflows/examples/dag-daemon-retry-strategy.yaml	33 ...s.main.tasks.server template server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/dag-daemon-task.yaml	33 ...mple.tasks.influx template influxdb runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/dag-diamond-steps.yaml	ok 12
 argo-workflows/examples/dag-diamond.yaml	ok 4
 argo-workflows/examples/dag-disable-failFast.yaml	ok 5
@@ -256,7 +256,7 @@ argo-workflows/examples/dag-multiroot.yaml	ok 4
 argo-workflows/examples/dag-nested.yaml	ok 16
 argo-workflows/examples/dag-targets.yaml	ok 3
 argo-workflows/examples/dag-task-level-timeout.yaml	ok 3
-argo-workflows/examples/data-transformations.yaml	ok 1
+argo-workflows/examples/data-transformations.yaml	33 ...ist-log-files template list-log-files is a data template, which reads an artifact repository from inside a cluster; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/default-pdb-support.yaml	ok 1
 argo-workflows/examples/dns-config.yaml	ok 1
 argo-workflows/examples/exit-code-output-variable.yaml	ok 2
@@ -286,7 +286,7 @@ argo-workflows/examples/hello-world.yaml	ok 1
 argo-workflows/examples/http-hello-world.yaml	ok 2
 argo-workflows/examples/http-success-condition.yaml	ok 2
 argo-workflows/examples/image-pull-secrets.yaml	ok 1
-argo-workflows/examples/influxdb-ci.yaml	ok 11
+argo-workflows/examples/influxdb-ci.yaml	33 ...xdb-server template influxdb-server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/init-container.yaml	ok 1
 argo-workflows/examples/input-artifact-azure.yaml	ok 1
 argo-workflows/examples/input-artifact-gcs.yaml	ok 1
@@ -296,16 +296,16 @@ argo-workflows/examples/input-artifact-oss.yaml	ok 1
 argo-workflows/examples/input-artifact-raw.yaml	ok 1
 argo-workflows/examples/input-artifact-s3.yaml	ok 1
 argo-workflows/examples/intermediate-parameters.yaml	ok 1
-argo-workflows/examples/k8s-jobs.yaml	ok 1
-argo-workflows/examples/k8s-orchestration.yaml	ok 3
-argo-workflows/examples/k8s-owner-reference.yaml	ok 1
-argo-workflows/examples/k8s-patch-json-pod.yaml	ok 1
+argo-workflows/examples/k8s-jobs.yaml	33 template rand-num is a resource template that manages Kubernetes objects of kind Job; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/k8s-orchestration.yaml	33 ...0].random-number-job template random-number-job is a resource template that manages Kubernetes objects of kind Job; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/k8s-owner-reference.yaml	33 template main is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/k8s-patch-json-pod.yaml	33 template main is a resource template that manages Kubernetes objects; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/k8s-patch-json-workflow.yaml	1 /argo-workflows/examples/k8s-patch-json-workflow.yaml:13:3: duplicate key `annotations`, first set on line 6
-argo-workflows/examples/k8s-patch-merge-pod.yaml	ok 1
-argo-workflows/examples/k8s-patch-pod.yaml	ok 1
-argo-workflows/examples/k8s-resource-log-selector.yaml	ok 1
-argo-workflows/examples/k8s-set-owner-reference.yaml	ok 1
-argo-workflows/examples/k8s-wait-wf.yaml	ok 2
+argo-workflows/examples/k8s-patch-merge-pod.yaml	33 template main is a resource template that manages Kubernetes objects; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/k8s-patch-pod.yaml	33 template main is a resource template that manages Kubernetes objects of kind Pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/k8s-resource-log-selector.yaml	33 template tf-jobtmpl is a resource template that manages Kubernetes objects of kind TFJob; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/k8s-set-owner-reference.yaml	33 template k8s-set-owner-reference is a resource template that manages Kubernetes objects of kind ConfigMap; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/k8s-wait-wf.yaml	33 ...t-wf.steps[0].create-wf template create-wf is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/key-only-artifact.yaml	ok 2
 argo-workflows/examples/label-value-from-workflow.yaml	ok 1
 argo-workflows/examples/life-cycle-hooks-tmpl-level.yaml	ok 6
@@ -337,7 +337,7 @@ argo-workflows/examples/pod-gc-strategy-with-label-selector.yaml	ok 3
 argo-workflows/examples/pod-gc-strategy.yaml	ok 2
 argo-workflows/examples/pod-metadata-wf-field.yaml	ok 1
 argo-workflows/examples/pod-metadata.yaml	ok 1
-argo-workflows/examples/pod-resources-template-override.yaml	ok 2
+argo-workflows/examples/pod-resources-template-override.yaml	33 templates.main.steps[1].large template large has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/pod-resources.yaml	ok 1
 argo-workflows/examples/pod-spec-from-previous-step.yaml	ok 2
 argo-workflows/examples/pod-spec-patch-wf-tmpl.yaml	ok 1
@@ -346,8 +346,8 @@ argo-workflows/examples/pod-spec-yaml-patch.yaml	ok 1
 argo-workflows/examples/recursive-for-loop.yaml	ok 1
 argo-workflows/examples/resource-claims-template-override.yaml	ok 2
 argo-workflows/examples/resource-claims.yaml	ok 1
-argo-workflows/examples/resource-delete-with-flags.yaml	ok 2
-argo-workflows/examples/resource-flags.yaml	ok 1
+argo-workflows/examples/resource-delete-with-flags.yaml	33 ...submit-resource template create-configmap is a resource template that manages Kubernetes objects of kind ConfigMap; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/resource-flags.yaml	33 ...teps[0].submit-resource template create-route is a resource template that manages Kubernetes objects of kind Route; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/resubmit.yaml	ok 9
 argo-workflows/examples/retry-backoff.yaml	ok 1
 argo-workflows/examples/retry-conditional.yaml	ok 2
@@ -360,15 +360,15 @@ argo-workflows/examples/scripts-bash.yaml	ok 2
 argo-workflows/examples/scripts-javascript.yaml	ok 2
 argo-workflows/examples/scripts-python.yaml	ok 2
 argo-workflows/examples/secrets.yaml	ok 1
-argo-workflows/examples/sidecar-dind.yaml	ok 1
-argo-workflows/examples/sidecar-nginx.yaml	ok 1
-argo-workflows/examples/sidecar.yaml	ok 1
+argo-workflows/examples/sidecar-dind.yaml	33 template dind-sidecar-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/sidecar-nginx.yaml	33 template sidecar-nginx-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/sidecar.yaml	33 template sidecar-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/skipped-output-defaults/consumer-input-default.yaml	ok 1
 argo-workflows/examples/skipped-output-defaults/expression-fallback.yaml	ok 0
 argo-workflows/examples/skipped-output-defaults/producer-output-default.yaml	ok 1
 argo-workflows/examples/status-reference.yaml	ok 2
 argo-workflows/examples/step-level-timeout.yaml	ok 2
-argo-workflows/examples/steps-daemon-retry-strategy.yaml	ok 11
+argo-workflows/examples/steps-daemon-retry-strategy.yaml	33 ...ain.steps[0].server template server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/steps-inline-workflow.yaml	ok 1
 argo-workflows/examples/steps.yaml	ok 3
 argo-workflows/examples/suspend-template-outputs.yaml	ok 1
@@ -386,7 +386,7 @@ argo-workflows/examples/template-on-exit.yaml	ok 4
 argo-workflows/examples/timeouts-step.yaml	ok 1
 argo-workflows/examples/timeouts-workflow.yaml	ok 6
 argo-workflows/examples/title-and-description-with-markdown.yaml	ok 1
-argo-workflows/examples/variables-showcase.yaml	ok 13
+argo-workflows/examples/variables-showcase.yaml	33 ...in.steps[0].svc template svc-daemon runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/volumes-emptydir.yaml	ok 1
 argo-workflows/examples/volumes-existing.yaml	ok 2
 argo-workflows/examples/volumes-pvc.yaml	ok 2
@@ -396,7 +396,7 @@ argo-workflows/examples/work-avoidance.yaml	ok 5
 argo-workflows/examples/workflow-event-binding/event-consumer-workflowtemplate.yaml	ok 1
 argo-workflows/examples/workflow-event-binding/github-path-filter-workflowtemplate.yaml	ok 1
 argo-workflows/examples/workflow-level-executor-plugin.yaml	ok 1
-argo-workflows/examples/workflow-of-workflows.yaml	ok 2
+argo-workflows/examples/workflow-of-workflows.yaml	33 ...rkflow1 template resource-without-argument is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/workflow-template/dag.yaml	ok 7
 argo-workflows/examples/workflow-template/hello-world.yaml	ok 1
 argo-workflows/examples/workflow-template/input-artifacts.yaml	ok 1
@@ -440,13 +440,13 @@ argo-workflows/test/e2e/expectedfailures/failed-retries.yaml	ok 2
 argo-workflows/test/e2e/expectedfailures/failed-step-event.yaml	ok 1
 argo-workflows/test/e2e/expectedfailures/failed-step.yaml	ok 2
 argo-workflows/test/e2e/expectedfailures/input-artifact-not-optional.yaml	1 templates.http-artifact-example inputs.artifacts.kubectl was not supplied
-argo-workflows/test/e2e/expectedfailures/large-workflow.yaml	ok 1
+argo-workflows/test/e2e/expectedfailures/large-workflow.yaml	33 template main is a resource template that manages Kubernetes objects of kind ConfigMap; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/expectedfailures/misreference-template-name.yaml	1 templates.steps-with-misreference.steps[1].hello2 template name 'hell0' undefined
 argo-workflows/test/e2e/expectedfailures/oom-kill.yaml	ok 1
 argo-workflows/test/e2e/expectedfailures/output-artifact-not-optional.yaml	ok 1
 argo-workflows/test/e2e/expectedfailures/parallelism-dag-fail-fast.yaml	ok 2
 argo-workflows/test/e2e/expectedfailures/parallelism-step-fail-fast.yaml	ok 2
-argo-workflows/test/e2e/expectedfailures/pns/pns-output-artifacts.yaml	ok 1
+argo-workflows/test/e2e/expectedfailures/pns/pns-output-artifacts.yaml	33 template pns-output-artifacts has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/expectedfailures/pns/pns-quick-exit-output-art.yaml	ok 1
 argo-workflows/test/e2e/expectedfailures/pod-termination-failure.yaml	ok 3
 argo-workflows/test/e2e/expectedfailures/serviceaccount-insufficient-permissions.yaml	ok 1
@@ -468,11 +468,11 @@ argo-workflows/test/e2e/functional/conditionals.yaml	ok 3
 argo-workflows/test/e2e/functional/continue-on-fail.yaml	ok 4
 argo-workflows/test/e2e/functional/continue-on-failed.yaml	ok 3
 argo-workflows/test/e2e/functional/custom_template_variable.yaml	ok 3
-argo-workflows/test/e2e/functional/daemon-nginx.yaml	ok 2
-argo-workflows/test/e2e/functional/daemon-step.yaml	ok 6
+argo-workflows/test/e2e/functional/daemon-nginx.yaml	33 ....nginx-server template nginx-server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/functional/daemon-step.yaml	33 ...e.steps[0].influx template influxdb runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/functional/dag-argument-passing.yaml	ok 3
 argo-workflows/test/e2e/functional/dag-coinflip.yaml	ok 4
-argo-workflows/test/e2e/functional/dag-daemon-task.yaml	ok 6
+argo-workflows/test/e2e/functional/dag-daemon-task.yaml	33 ...mple.tasks.influx template influxdb runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/functional/dag-depends.yaml	ok 6
 argo-workflows/test/e2e/functional/dag-diamond-steps.yaml	ok 12
 argo-workflows/test/e2e/functional/dag-diamond.yaml	ok 4
@@ -506,8 +506,8 @@ argo-workflows/test/e2e/functional/input-artifact-http.yaml	ok 1
 argo-workflows/test/e2e/functional/input-artifact-optional.yaml	ok 1
 argo-workflows/test/e2e/functional/input-artifact-raw.yaml	ok 1
 argo-workflows/test/e2e/functional/json-argument.yaml	ok 1
-argo-workflows/test/e2e/functional/k8s-jobs.yaml	ok 1
-argo-workflows/test/e2e/functional/k8s-orchestration.yaml	ok 3
+argo-workflows/test/e2e/functional/k8s-jobs.yaml	33 template rand-num is a resource template that manages Kubernetes objects of kind Job; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/functional/k8s-orchestration.yaml	33 ...0].random-number-job template random-number-job is a resource template that manages Kubernetes objects of kind Job; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/functional/loop-sequence-empty.yaml	ok 1
 argo-workflows/test/e2e/functional/loop-sequence-many-long-pods.yaml	ok 10000
 argo-workflows/test/e2e/functional/loops-dag.yaml	ok 5
@@ -524,7 +524,7 @@ argo-workflows/test/e2e/functional/nested-workflow.yaml	ok 4
 argo-workflows/test/e2e/functional/node-selector.yaml	ok 1
 argo-workflows/test/e2e/functional/output-artifact-optional.yaml	ok 1
 argo-workflows/test/e2e/functional/output-input-artifact-optional.yaml	ok 2
-argo-workflows/test/e2e/functional/output-jqfilter-parameters.yaml	ok 5
+argo-workflows/test/e2e/functional/output-jqfilter-parameters.yaml	33 ...eps[0].create-param template create-param is a resource template that manages Kubernetes objects of kind ConfigMap; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/functional/output-param-different-uid.yaml	ok 10
 argo-workflows/test/e2e/functional/output-parameter.yaml	ok 2
 argo-workflows/test/e2e/functional/parallelism-limit.yaml	ok 10
@@ -540,7 +540,7 @@ argo-workflows/test/e2e/functional/pause-after.yaml	ok 1
 argo-workflows/test/e2e/functional/pause-before-after.yaml	ok 1
 argo-workflows/test/e2e/functional/pause-before.yaml	ok 1
 argo-workflows/test/e2e/functional/pns-output-params.yaml	ok 2
-argo-workflows/test/e2e/functional/resource-template.yaml	ok 1
+argo-workflows/test/e2e/functional/resource-template.yaml	33 templates.main.steps[0].a template wf1 is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/functional/retry-container-to-completion.yaml	ok 1
 argo-workflows/test/e2e/functional/retry-container.yaml	ok 1
 argo-workflows/test/e2e/functional/retry-script.yaml	ok 1
@@ -552,11 +552,11 @@ argo-workflows/test/e2e/functional/scripts-bash.yaml	ok 2
 argo-workflows/test/e2e/functional/scripts-javascript.yaml	ok 2
 argo-workflows/test/e2e/functional/scripts-python.yaml	ok 2
 argo-workflows/test/e2e/functional/secrets.yaml	ok 1
-argo-workflows/test/e2e/functional/sidecar-dind.yaml	ok 1
-argo-workflows/test/e2e/functional/sidecar-force-kill.yaml	ok 1
-argo-workflows/test/e2e/functional/sidecar-nginx.yaml	ok 1
-argo-workflows/test/e2e/functional/sidecar-volumes.yaml	ok 2
-argo-workflows/test/e2e/functional/sidecar.yaml	ok 1
+argo-workflows/test/e2e/functional/sidecar-dind.yaml	33 template dind-sidecar-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/functional/sidecar-force-kill.yaml	33 template sidecar-force-kill has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/functional/sidecar-nginx.yaml	33 template sidecar-nginx-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/functional/sidecar-volumes.yaml	33 ...-volumes.steps[0].generate template generate has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/functional/sidecar.yaml	33 template sidecar-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/functional/steps-skipped-consumer-default.yaml	ok 1
 argo-workflows/test/e2e/functional/steps-skipped-output-ref.yaml	ok 1
 argo-workflows/test/e2e/functional/steps-skipped-producer-default.yaml	ok 1
@@ -564,7 +564,7 @@ argo-workflows/test/e2e/functional/steps-skipped-withparam-ref.yaml	ok 0
 argo-workflows/test/e2e/functional/steps-when-expr-filter.yaml	ok 4
 argo-workflows/test/e2e/functional/steps.yaml	ok 3
 argo-workflows/test/e2e/functional/stop-terminate-2.yaml	ok 2
-argo-workflows/test/e2e/functional/stop-terminate-daemon.yaml	ok 2
+argo-workflows/test/e2e/functional/stop-terminate-daemon.yaml	33 ...main.steps[0].Daemon template sleep runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/functional/stop-terminate.yaml	ok 3
 argo-workflows/test/e2e/functional/success-event.yaml	ok 1
 argo-workflows/test/e2e/functional/suspend-dag-template.yaml	ok 3
@@ -663,8 +663,8 @@ argo-workflows/test/e2e/testdata/convert/convert-legacy-cron.yaml	ok 1
 argo-workflows/test/e2e/testdata/convert/convert-legacy-sync.yaml	ok 1
 argo-workflows/test/e2e/testdata/cronworkflow-metrics-forbid.yaml	ok 1
 argo-workflows/test/e2e/testdata/cronworkflow-metrics-replace.yaml	ok 1
-argo-workflows/test/e2e/testdata/daemoned-pod-completed.yaml	ok 2
-argo-workflows/test/e2e/testdata/data-transformation.yaml	ok 5
+argo-workflows/test/e2e/testdata/daemoned-pod-completed.yaml	33 ...in.tasks.daemoned template daemoned runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/testdata/data-transformation.yaml	33 ...fact-path template get-artifact-paths is a data template, which reads an artifact repository from inside a cluster; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/testdata/default-params-plugin-workflow.yaml	ok 1
 argo-workflows/test/e2e/testdata/exit-1.yaml	ok 1
 argo-workflows/test/e2e/testdata/exit-handler-parameterized-global-artifacts.yaml	ok 3
@@ -702,8 +702,8 @@ argo-workflows/test/e2e/testdata/plugins/executor/massive-executor-workflow.yaml
 argo-workflows/test/e2e/testdata/plugins/executor/template-executor-workflow.yaml	ok 1
 argo-workflows/test/e2e/testdata/plugins/executor/workflow-level-template-executor-workflow.yaml	ok 1
 argo-workflows/test/e2e/testdata/progress-workflow.yaml	ok 1
-argo-workflows/test/e2e/testdata/resource-templates/failed.yaml	ok 1
-argo-workflows/test/e2e/testdata/resource-templates/outputs.yaml	ok 1
+argo-workflows/test/e2e/testdata/resource-templates/failed.yaml	33 template main is a resource template that manages Kubernetes objects; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/testdata/resource-templates/outputs.yaml	33 template main is a resource template that manages Kubernetes objects of kind Pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/testdata/resubmit-dag-with-dependencies.yaml	ok 4
 argo-workflows/test/e2e/testdata/retry-nested-dag-test.yaml	ok 5
 argo-workflows/test/e2e/testdata/retry-omit.yaml	ok 2
@@ -715,7 +715,7 @@ argo-workflows/test/e2e/testdata/retry-workflow-with-continueon.yaml	ok 5
 argo-workflows/test/e2e/testdata/retry-workflow-with-failed-exit-handler.yaml	ok 2
 argo-workflows/test/e2e/testdata/same-input-output-path-optional-plugin.yaml	ok 1
 argo-workflows/test/e2e/testdata/same-input-output-path-optional.yaml	ok 1
-argo-workflows/test/e2e/testdata/sidecar-workflow.yaml	ok 1
+argo-workflows/test/e2e/testdata/sidecar-workflow.yaml	33 template main has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/testdata/signaled-container-set-workflow.yaml	ok 2
 argo-workflows/test/e2e/testdata/signaled-workflow.yaml	ok 1
 argo-workflows/test/e2e/testdata/sleep-3s.yaml	ok 1
@@ -736,7 +736,7 @@ argo-workflows/test/e2e/testdata/wellformed/wellformed-workflowtemplate.yaml	ok 
 argo-workflows/test/e2e/testdata/wf-default-ns.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-archive-logs-tracing.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-dag-metrics.yaml	ok 4
-argo-workflows/test/e2e/testdata/workflow-data-tracing.yaml	ok 2
+argo-workflows/test/e2e/testdata/workflow-data-tracing.yaml	33 ...steps[1].transform template get-paths is a data template, which reads an artifact repository from inside a cluster; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/testdata/workflow-hook-parameter.yaml	ok 2
 argo-workflows/test/e2e/testdata/workflow-node-sync-tracing.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-otel-cli.yaml	ok 2
@@ -753,7 +753,7 @@ argo-workflows/test/e2e/testdata/workflow-template-ref.yaml	ok 2
 argo-workflows/test/e2e/testdata/workflow-template-sub-test.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-template-with-containerset.yaml	ok 3
 argo-workflows/test/e2e/testdata/workflow-template-with-enum-values.yaml	ok 1
-argo-workflows/test/e2e/testdata/workflow-template-with-resource-expr.yaml	ok 1
+argo-workflows/test/e2e/testdata/workflow-template-with-resource-expr.yaml	33 template whalesay is a resource template that manages Kubernetes objects of kind Pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/testdata/workflow-templates/invalid-workflowtemplate.yaml	valid
 argo-workflows/test/e2e/testdata/workflow-templates/success-hook.yaml	ok 3
 argo-workflows/test/e2e/testdata/workflow-templates/workflowtemplate.yaml	ok 1
@@ -783,9 +783,9 @@ couler/couler/tests/test_data/workflow_basic_golden.yaml	ok 2
 distributed-ml-patterns/code/project/basics/argo-coinflip.yaml	ok 1
 distributed-ml-patterns/code/project/basics/argo-dag-diamond.yaml	ok 4
 distributed-ml-patterns/code/project/basics/argo-hello-world.yaml	ok 1
-distributed-ml-patterns/code/project/basics/argo-resource-template.yaml	ok 1
+distributed-ml-patterns/code/project/basics/argo-resource-template.yaml	33 template k8s-resource is a resource template that manages Kubernetes objects of kind ConfigMap; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 distributed-ml-patterns/code/project/basics/argo-script-template.yaml	ok 1
-distributed-ml-patterns/code/project/code/workflow.yaml	ok 6
+distributed-ml-patterns/code/project/code/workflow.yaml	33 ...g-steps.steps[0].cnn-model template cnn-model is a resource template that manages Kubernetes objects of kind TFJob; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 gennext-workflows/chore/update_existing_run_with_exomedepth.yaml	1 template name 'main' undefined
 gennext-workflows/plans/test-fusion-inspector-acu2.yaml	ok 1
 gennext-workflows/tasks/base_tasks/alter_bam_contig_names.yaml	valid
@@ -917,7 +917,7 @@ gennext-workflows/workflows/per-sample-somatic-rna.yaml	ok 3
 gennext-workflows/workflows/post-process-cnv.yaml	ok 7
 gennext-workflows/workflows/post-process-variant-counter.yaml	ok 2
 gennext-workflows/workflows/preprocess-fastq.yaml	ok 4
-gennext-workflows/workflows/prototypes/batch-orchestrator-prototype.yaml	ok 0
+gennext-workflows/workflows/prototypes/batch-orchestrator-prototype.yaml	33 ...ess-sample template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 gennext-workflows/workflows/prototypes/debug-cnvkit-analyze.yaml	ok 1
 gennext-workflows/workflows/prototypes/debug-qc-recollect.yaml	ok 5
 gennext-workflows/workflows/prototypes/sample-worker-prototype.yaml	ok 3
@@ -942,11 +942,11 @@ gennext-workflows/workflows/wrapper-annotation.yaml	ok 1
 gennext-workflows/workflows/wrapper-workflow-prs.yaml	1 templates.wrapper-workflow-prs.tasks.prs-workflow templates.main inputs.parameters.genotype-file-name was not supplied
 gennext-workflows/workflows/wrapper-workflow-somatic.yaml	1 templates.wrapper-workflow-somatic.tasks.somatic-testing-tumor-workflow template reference somatic-testing-workflow.main not found
 gennext-workflows/workflows/wrapper-workflow.yaml	1 ...s.wrapper-workflow.tasks.rna-workflow templates.main.tasks.germline-rna-bam-workflow templates.germline-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-dna-rna.yaml	ok 6
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-dna.yaml	ok 6
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-fusion-gpu.yaml	ok 6
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-fusion.yaml	ok 6
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-rna.yaml	ok 6
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-dna-rna.yaml	33 ...mit-sample template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-dna.yaml	33 ...mit-sample template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-fusion-gpu.yaml	33 ...mit-sample template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-fusion.yaml	33 ...mit-sample template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-rna.yaml	33 ...mit-sample template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 gennext-workflows/workflows/wrappers/wrapper-rna.yaml	1 templates.main.tasks.run-workflow templates.main.tasks.germline-rna-bam-workflow templates.germline-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
 gennext-workflows/workflows/wrappers/wrapper-somatic-dna-rna.yaml	1 ....tasks.som-test-rna-workflow templates.main-rna.tasks.somatic-testing-rna-bam templates.somatic-testing-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
 gennext-workflows/workflows/wrappers/wrapper-somatic-dna.yaml	ok 3
@@ -991,8 +991,8 @@ hera/examples/workflows/misc/container-with-resources.yaml	ok 1
 hera/examples/workflows/misc/container.yaml	ok 1
 hera/examples/workflows/misc/cron-hello-world.yaml	ok 1
 hera/examples/workflows/misc/cron-workflow-stop-strategy.yaml	ok 1
-hera/examples/workflows/misc/daemon.yaml	ok 2
-hera/examples/workflows/misc/data.yaml	ok 1
+hera/examples/workflows/misc/daemon.yaml	33 ...ates.d.tasks.server template server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/misc/data.yaml	33 template list-log-files is a data template, which reads an artifact repository from inside a cluster; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/misc/dynamic-resources.yaml	ok 1
 hera/examples/workflows/misc/dynamic-volumes.yaml	ok 1
 hera/examples/workflows/misc/env-from.yaml	ok 1
@@ -1003,13 +1003,13 @@ hera/examples/workflows/misc/http.yaml	ok 1
 hera/examples/workflows/misc/init-containers-with-env.yaml	ok 1
 hera/examples/workflows/misc/map-outputs-to-inputs.yaml	ok 4
 hera/examples/workflows/misc/multi-env.yaml	ok 1
-hera/examples/workflows/misc/resource-flags.yaml	ok 1
+hera/examples/workflows/misc/resource-flags.yaml	33 ...teps[0].submit-resource template create-route is a resource template that manages Kubernetes objects of kind Route; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/misc/retry-workflow.yaml	ok 1
 hera/examples/workflows/misc/suspend-input-duration.yaml	1 templates.suspend.steps[0].get-value-step templates.suspend-with-intermediate-param inputs.parameters.duration was not supplied
 hera/examples/workflows/misc/suspend.yaml	ok 0
-hera/examples/workflows/misc/template-level-volume.yaml	ok 3
+hera/examples/workflows/misc/template-level-volume.yaml	ok 2
 hera/examples/workflows/misc/template-refs.yaml	1 templates.steps.steps[0].hello-template-ref couldn't find workflow template "hello-world-workflow-template"
-hera/examples/workflows/misc/user-container.yaml	ok 1
+hera/examples/workflows/misc/user-container.yaml	33 templates.d.tasks.foo template foo has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/misc/volume-mount.yaml	ok 1
 hera/examples/workflows/misc/volume-mounts-nfs.yaml	ok 1
 hera/examples/workflows/misc/volume-mounts-wt.yaml	ok 3
@@ -1062,16 +1062,16 @@ hera/examples/workflows/upstream/cron-when.yaml	ok 1
 hera/examples/workflows/upstream/cron-workflow-multiple-schedules.yaml	ok 1
 hera/examples/workflows/upstream/cron-workflow.yaml	ok 1
 hera/examples/workflows/upstream/custom-metrics.yaml	ok 2
-hera/examples/workflows/upstream/daemon-nginx.yaml	ok 2
-hera/examples/workflows/upstream/daemon-step.yaml	ok 6
-hera/examples/workflows/upstream/daemoned-stateful-set-with-service.yaml	ok 6
+hera/examples/workflows/upstream/daemon-nginx.yaml	33 ....nginx-server template nginx-server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/daemon-step.yaml	33 ...e.steps[0].influx template influxdb runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/daemoned-stateful-set-with-service.yaml	33 ...s[0].create-service template create-service is a resource template that manages Kubernetes objects of kind Service; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/dag-coinflip.yaml	ok 4
 hera/examples/workflows/upstream/dag-conditional-artifacts.yaml	ok 1
 hera/examples/workflows/upstream/dag-conditional-parameters.yaml	ok 1
 hera/examples/workflows/upstream/dag-continue-on-fail.yaml	ok 6
 hera/examples/workflows/upstream/dag-custom-metrics.yaml	ok 4
-hera/examples/workflows/upstream/dag-daemon-retry-strategy.yaml	ok 11
-hera/examples/workflows/upstream/dag-daemon-task.yaml	ok 6
+hera/examples/workflows/upstream/dag-daemon-retry-strategy.yaml	33 ...s.main.tasks.server template server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/dag-daemon-task.yaml	33 ...mple.tasks.influx template influxdb runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/dag-diamond-steps.yaml	ok 12
 hera/examples/workflows/upstream/dag-diamond.yaml	ok 4
 hera/examples/workflows/upstream/dag-enhanced-depends.yaml	ok 7
@@ -1081,7 +1081,7 @@ hera/examples/workflows/upstream/dag-multiroot.yaml	ok 4
 hera/examples/workflows/upstream/dag-nested.yaml	ok 16
 hera/examples/workflows/upstream/dag-targets.yaml	ok 3
 hera/examples/workflows/upstream/dag-task-level-timeout.yaml	ok 3
-hera/examples/workflows/upstream/data-transformations.yaml	ok 1
+hera/examples/workflows/upstream/data-transformations.yaml	33 ...ist-log-files template list-log-files is a data template, which reads an artifact repository from inside a cluster; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/default-pdb-support.yaml	ok 1
 hera/examples/workflows/upstream/dns-config.yaml	ok 1
 hera/examples/workflows/upstream/exit-code-output-variable.yaml	ok 2
@@ -1111,7 +1111,7 @@ hera/examples/workflows/upstream/hello-world.yaml	ok 1
 hera/examples/workflows/upstream/http-hello-world.yaml	ok 2
 hera/examples/workflows/upstream/http-success-condition.yaml	ok 2
 hera/examples/workflows/upstream/image-pull-secrets.yaml	ok 1
-hera/examples/workflows/upstream/influxdb-ci.yaml	ok 11
+hera/examples/workflows/upstream/influxdb-ci.yaml	33 ...xdb-server template influxdb-server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/init-container.yaml	ok 1
 hera/examples/workflows/upstream/input-artifact-azure.yaml	ok 1
 hera/examples/workflows/upstream/input-artifact-gcs.yaml	ok 1
@@ -1121,16 +1121,16 @@ hera/examples/workflows/upstream/input-artifact-oss.yaml	ok 1
 hera/examples/workflows/upstream/input-artifact-raw.yaml	ok 1
 hera/examples/workflows/upstream/input-artifact-s3.yaml	ok 1
 hera/examples/workflows/upstream/intermediate-parameters.yaml	ok 1
-hera/examples/workflows/upstream/k8s-jobs.yaml	ok 1
-hera/examples/workflows/upstream/k8s-orchestration.yaml	ok 3
-hera/examples/workflows/upstream/k8s-owner-reference.yaml	ok 1
-hera/examples/workflows/upstream/k8s-patch-json-pod.yaml	ok 1
-hera/examples/workflows/upstream/k8s-patch-json-workflow.yaml	ok 1
-hera/examples/workflows/upstream/k8s-patch-merge-pod.yaml	ok 1
-hera/examples/workflows/upstream/k8s-patch-pod.yaml	ok 1
-hera/examples/workflows/upstream/k8s-resource-log-selector.yaml	ok 1
-hera/examples/workflows/upstream/k8s-set-owner-reference.yaml	ok 1
-hera/examples/workflows/upstream/k8s-wait-wf.yaml	ok 2
+hera/examples/workflows/upstream/k8s-jobs.yaml	33 template rand-num is a resource template that manages Kubernetes objects of kind Job; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/k8s-orchestration.yaml	33 ...0].random-number-job template random-number-job is a resource template that manages Kubernetes objects of kind Job; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/k8s-owner-reference.yaml	33 template main is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/k8s-patch-json-pod.yaml	33 template main is a resource template that manages Kubernetes objects; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/k8s-patch-json-workflow.yaml	33 template main is a resource template that manages Kubernetes objects; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/k8s-patch-merge-pod.yaml	33 template main is a resource template that manages Kubernetes objects; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/k8s-patch-pod.yaml	33 template main is a resource template that manages Kubernetes objects of kind Pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/k8s-resource-log-selector.yaml	33 template tf-jobtmpl is a resource template that manages Kubernetes objects of kind TFJob; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/k8s-set-owner-reference.yaml	33 template k8s-set-owner-reference is a resource template that manages Kubernetes objects of kind ConfigMap; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/k8s-wait-wf.yaml	33 ...t-wf.steps[0].create-wf template create-wf is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/key-only-artifact.yaml	ok 2
 hera/examples/workflows/upstream/label-value-from-workflow.yaml	ok 1
 hera/examples/workflows/upstream/life-cycle-hooks-tmpl-level.yaml	ok 6
@@ -1166,8 +1166,8 @@ hera/examples/workflows/upstream/pod-spec-patch-wf-tmpl.yaml	ok 1
 hera/examples/workflows/upstream/pod-spec-patch.yaml	ok 1
 hera/examples/workflows/upstream/pod-spec-yaml-patch.yaml	ok 1
 hera/examples/workflows/upstream/recursive-for-loop.yaml	ok 1
-hera/examples/workflows/upstream/resource-delete-with-flags.yaml	ok 2
-hera/examples/workflows/upstream/resource-flags.yaml	ok 1
+hera/examples/workflows/upstream/resource-delete-with-flags.yaml	33 ...submit-resource template create-configmap is a resource template that manages Kubernetes objects of kind ConfigMap; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/resource-flags.yaml	33 ...teps[0].submit-resource template create-route is a resource template that manages Kubernetes objects of kind Route; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/resubmit.yaml	ok 9
 hera/examples/workflows/upstream/retry-backoff.yaml	ok 1
 hera/examples/workflows/upstream/retry-conditional.yaml	ok 2
@@ -1180,12 +1180,12 @@ hera/examples/workflows/upstream/scripts-bash.yaml	ok 2
 hera/examples/workflows/upstream/scripts-javascript.yaml	ok 2
 hera/examples/workflows/upstream/scripts-python.yaml	ok 2
 hera/examples/workflows/upstream/secrets.yaml	ok 1
-hera/examples/workflows/upstream/sidecar-dind.yaml	ok 1
-hera/examples/workflows/upstream/sidecar-nginx.yaml	ok 1
-hera/examples/workflows/upstream/sidecar.yaml	ok 1
+hera/examples/workflows/upstream/sidecar-dind.yaml	33 template dind-sidecar-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/sidecar-nginx.yaml	33 template sidecar-nginx-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/sidecar.yaml	33 template sidecar-example has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/status-reference.yaml	ok 2
 hera/examples/workflows/upstream/step-level-timeout.yaml	ok 2
-hera/examples/workflows/upstream/steps-daemon-retry-strategy.yaml	ok 11
+hera/examples/workflows/upstream/steps-daemon-retry-strategy.yaml	33 ...ain.steps[0].server template server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/steps-inline-workflow.yaml	ok 1
 hera/examples/workflows/upstream/steps.yaml	ok 3
 hera/examples/workflows/upstream/suspend-template-outputs.yaml	ok 1
@@ -1214,7 +1214,7 @@ hera/examples/workflows/upstream/webhdfs-input-output-artifacts.yaml	ok 1
 hera/examples/workflows/upstream/withsequence-nested-result.yaml	ok 1
 hera/examples/workflows/upstream/work-avoidance.yaml	ok 5
 hera/examples/workflows/upstream/workflow-event-binding--event-consumer-workflowtemplate.yaml	ok 1
-hera/examples/workflows/upstream/workflow-of-workflows.yaml	ok 2
+hera/examples/workflows/upstream/workflow-of-workflows.yaml	33 ...rkflow1 template resource-without-argument is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/workflow-template--dag.yaml	ok 7
 hera/examples/workflows/upstream/workflow-template--hello-world.yaml	ok 1
 hera/examples/workflows/upstream/workflow-template--retry-with-steps.yaml	ok 3
@@ -1223,7 +1223,7 @@ hera/examples/workflows/upstream/workflow-template--workflow-archive-logs.yaml	o
 hera/examples/workflows/upstream/workflow-template--workflow-template-ref-with-entrypoint-arg-passing.yaml	ok 1
 hera/examples/workflows/upstream/workflow-template--workflow-template-ref.yaml	ok 1
 hera/examples/workflows/use_cases/dask.yaml	ok 1
-hera/examples/workflows/use_cases/fine-tune-llama.yaml	ok 9
+hera/examples/workflows/use_cases/fine-tune-llama.yaml	33 ...lass template create-ssd-storage-class is a resource template that manages Kubernetes objects of kind StorageClass; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/use_cases/map-reduce.yaml	ok 2
 hera/examples/workflows/use_cases/parquet-pandas.yaml	ok 3
 hera/examples/workflows/use_cases/reusing-cli-app.yaml	ok 1
@@ -1231,7 +1231,7 @@ hera/examples/workflows/use_cases/spacy-inference-pipeline.yaml	ok 2
 hera/examples/workflows/use_cases/spark.yaml	ok 6
 hera/examples/workflows/use_cases/testing-templates-and-workflows.yaml	ok 2
 hera/examples/workflows/use_cases/wandb-ml-monitoring.yaml	ok 3
-hera/examples/workflows/use_cases/workflow-of-workflows.yaml	ok 2
+hera/examples/workflows/use_cases/workflow-of-workflows.yaml	33 ...eps[0].sub-workflow-1 template w1-resource is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 pipelines/test_data/compiled-workflows/add_numbers.yaml	ok 2
 pipelines/test_data/compiled-workflows/arguments_parameters.yaml	ok 2
 pipelines/test_data/compiled-workflows/artifact_cache.yaml	ok 5
@@ -1469,11 +1469,11 @@ regulation-workflows/workflow-templates/helpers/copy-pvc-to-pvc-v-0.1.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/copy-s3-object-to-pvc-v-0.1.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/copy-s3-prefix-objects-to-pvc-v-0.1.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/cp-s3-object-to-s3-v-0.1.yaml	ok 1
-regulation-workflows/workflow-templates/helpers/create-pvc-v-0.2.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/create-pvc-v-0.2.yaml	ok 0
 regulation-workflows/workflow-templates/helpers/decompress-tgz-pvc-callable-v-0.1.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/decompress-tgz-pvc-callable-v-0.2.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/delete-file-from-pvc-v-0.1.yaml	ok 1
-regulation-workflows/workflow-templates/helpers/delete-pvc-v-0.1.yaml	ok 1
+regulation-workflows/workflow-templates/helpers/delete-pvc-v-0.1.yaml	ok 0
 regulation-workflows/workflow-templates/helpers/expose-payload-fields-as-params-v-0.1.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.1.yaml	ok 1
 regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.2.yaml	ok 1
@@ -1511,7 +1511,7 @@ regulation-workflows/workflow-templates/peak-calling/open-chromatin-genrich-valu
 regulation-workflows/workflow-templates/peak-calling/open-chromatin-peaks-v-0.2.yaml	1 templates.peak-calling-open-chromatin.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.get-peak-calling-pvc-size template reference compute-pvc-size-v-0.1.1.compute-pvc not found
 regulation-workflows/workflow-templates/peak-calling/peak-calling-tasks.yaml	1 ...s templates.peak-calling-open-chromatin.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.get-peak-calling-pvc-size template reference compute-pvc-size-v-0.1.1.compute-pvc not found
 regulation-workflows/workflow-templates/samtools/.deprecated/samtools-quickcheck-cmd-pvc-callable.yaml	ok 1
-regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.1.yaml	ok 4
+regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.1.yaml	ok 2
 regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.2.yaml	ok 3
 regulation-workflows/workflow-templates/signal/.deprecated/genrich-pq-values-to-bigwig-high-mem-pvc-callable.yaml	ok 6
 regulation-workflows/workflow-templates/signal/.deprecated/get-signal-task.yaml	1 ...asks.submit-pq-values-to-bigwig templates.genrich-pq-values-to-bigwig-dag.tasks.genrich-pq-values-to-bigwig couldn't find workflow template "genrich-pq-values-to-bigwig-pvc-callable-v1-submittable"
@@ -1528,13 +1528,13 @@ singlem-sra-processing/cloud/argo/sra_weebill_workflow_template.yaml	ok 1
 singlem-sra-processing/cloud/argo/test3.yaml	ok 1
 snakemake-tutorial-argo-workflows/argo-workflows/workflows.yaml	ok 7
 snakemake-tutorial-argo-workflows/argo-workflows/workflowtemplates.yaml	ok 7
-talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_standard_cluster_workflow_template.yaml	ok 4
-talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_template.yaml#1	ok 4
-talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_template.yaml#2	ok 4
+talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_standard_cluster_workflow_template.yaml	33 ...r template dask-scheduler-generator runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_template.yaml#1	33 ...r template dask-scheduler-generator runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_template.yaml#2	33 ...r template dask-scheduler-generator runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/doubler-assertion.yaml	ok 2
 talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/doubler-template.yaml	ok 1
 talk-demos/argocon-demos/2022-ci-cd-for-data/bootstrap/argo-workflows/git-checkout-template.yaml	ok 1
-talk-demos/argocon-demos/2023-artifact-management-at-scale/ci-workflow-s3.yaml	ok 4
+talk-demos/argocon-demos/2023-artifact-management-at-scale/ci-workflow-s3.yaml	33 ...application template deploy-application is a resource template that manages Kubernetes objects of kind Application; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 talk-demos/argocon-demos/2023-artifact-management-at-scale/fan-out-fan-in.yaml	ok 2
 talk-demos/argocon-demos/2023-configuring-volumes-for-parallel-workflow-reads-and-writes/tests/nfs-workflow.yml	ok 4
 talk-demos/argocon-demos/2023-configuring-volumes-for-parallel-workflow-reads-and-writes/tests/s3-workflow.yml	ok 4
@@ -1547,31 +1547,31 @@ talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-arg
 talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/run-unit-tests.yml	ok 1
 talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/update-jira.yml	1 templates.main.tasks.update-jira templates.update-jira inputs.parameters.jira_ticket_number was not supplied
 talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/argo-workflow.yaml	1 templates.main.tasks.git-checkout templates.main.tasks.git-checkout-pr template name 'git-checkout-pr' undefined
-talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/create-and-setup-vcluster-workflow/create.yaml	ok 2
-talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/demonstrating-argo-workflows-and-vcluster-at-scale/lots-of-hellos-workflow.yaml	ok 170
+talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/create-and-setup-vcluster-workflow/create.yaml	33 ...reate-vcluster template create-vcluster is a resource template that manages Kubernetes objects of kind Application; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/demonstrating-argo-workflows-and-vcluster-at-scale/lots-of-hellos-workflow.yaml	33 templates.main.tasks.main template hello is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 talk-demos/argocon-demos/2023-streamlining-big-data-workflows-with-memoization-and-work-avoidance/workflow/example.yaml	ok 2
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/container.yaml	ok 2
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/containerset.yaml	ok 3
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/dag-example.yaml	ok 8
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/dag-example.yaml	33 templates.main.tasks.resource template resource is a resource template that manages Kubernetes objects of kind Pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/http.yaml	ok 3
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/inline.yaml	ok 1
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/plugin.yaml	ok 1
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/resource.yaml	ok 1
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/resource.yaml	33 template hello is a resource template that manages Kubernetes objects of kind Pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/script.yaml	ok 2
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/steps-example.yaml	ok 8
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/steps-example.yaml	33 templates.main.steps[3].resource template resource is a resource template that manages Kubernetes objects of kind Pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/suspend.yaml	ok 0
-talk-demos/oss-2022/python/cron-workflow-python.yaml	ok 3
-talk-demos/oss-2022/scala/workflows/spark-template-jvm.yaml	ok 1
-talk-demos/oss-2022/scala/workflows/workflow-scala-with-template.yaml	ok 2
-talk-demos/oss-2022/scala/workflows/workflow-scala.yaml	ok 2
-workflows/examples/inspection-batch-with-failure.yaml	ok 2
-workflows/examples/inspection-batch-with-output-gathering.yaml	1 template 'collect-outputs' type is unknown
-workflows/examples/inspection-batch.yaml	ok 1
-workflows/examples/inspection.yaml	1 template 'collect-outputs' type is unknown
-workflows/examples/resource-validate.yaml	ok 1
-workflows/templates/inspection-build-template.yaml	ok 3
+talk-demos/oss-2022/python/cron-workflow-python.yaml	33 ...tasks.bike-type template bike-type is a resource template that manages Kubernetes objects of kind SparkApplication; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+talk-demos/oss-2022/scala/workflows/spark-template-jvm.yaml	33 template spark is a resource template that manages Kubernetes objects of kind SparkApplication; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+talk-demos/oss-2022/scala/workflows/workflow-scala-with-template.yaml	33 ...dag.tasks.bike-type template spark is a resource template that manages Kubernetes objects of kind SparkApplication; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+talk-demos/oss-2022/scala/workflows/workflow-scala.yaml	33 ...tasks.bike-type template bike-type is a resource template that manages Kubernetes objects of kind SparkApplication; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+workflows/examples/inspection-batch-with-failure.yaml	33 ...es.main.steps[0].run template run-to-completion is a resource template that manages Kubernetes objects of kind Job; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+workflows/examples/inspection-batch-with-output-gathering.yaml	33 template run-to-completion is a resource template that manages Kubernetes objects of kind Job; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+workflows/examples/inspection-batch.yaml	33 template run-to-completion is a resource template that manages Kubernetes objects of kind Job; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+workflows/examples/inspection.yaml	33 ...imagestream template create-imagestream is a resource template that manages Kubernetes objects of kind ImageStream; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+workflows/examples/resource-validate.yaml	33 ...teps[0].submit-resource template create-route is a resource template that manages Kubernetes objects of kind Route; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+workflows/templates/inspection-build-template.yaml	33 ...imagestream template create-imagestream is a resource template that manages Kubernetes objects of kind ImageStream; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 workflows/templates/inspection-results-template.yaml	valid
-workflows/templates/inspection-run-template.yaml	ok 2
+workflows/templates/inspection-run-template.yaml	33 templates.main.steps[0].job template create-job is a resource template that manages Kubernetes objects of kind Job; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 workflows/templates/solver-rhel-8.0-py36.yaml	valid
 workflows/templates/solver-sync.yaml	valid
 workflows/templates/sync-template.yaml	valid

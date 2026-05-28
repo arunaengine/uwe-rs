@@ -3,10 +3,9 @@
 //! A container template is one task with the container's image, command and arguments. A
 //! script template runs its command on the source, which the task gets as the file
 //! `/argo/staging/script`, as Argo's executor writes it. A container set gives one task per
-//! container, ordered by their dependencies. Resource and data templates run Argo's own
-//! executor image (`argoexec resource` and `argoexec data`), as Argo does in a pod; a resource
-//! template needs a Kubernetes cluster when it really runs. An HTTP template runs curl, which
-//! writes the response body and status code to files that decide the success condition.
+//! container, ordered by their dependencies. An HTTP template runs curl, which writes the
+//! response body and status code to files that decide the success condition. Environment
+//! variables and volumes come from the modules `objects` and `volumes` (decision 18).
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -23,9 +22,6 @@ use crate::node::{ArtifactValue, Location, Phase};
 use crate::resources::{duration_seconds, resources_of};
 use crate::run::{Failure, Result, Run};
 use crate::value::Value;
-
-/// The image of Argo's executor, which runs resource and data templates.
-pub const ARGOEXEC_IMAGE: &str = "quay.io/argoproj/argoexec:v4.1.4";
 
 /// Where Argo's executor puts the source of a script template.
 pub const SCRIPT_PATH: &str = "/argo/staging/script";
@@ -136,26 +132,6 @@ impl Run {
                 dependencies.push(after);
                 tasks.push(task);
             }
-        } else if let Some(resource) = &template.resource {
-            self.warn(format!(
-                "resource template {} runs `argoexec resource {}`, which needs a Kubernetes cluster when it really runs",
-                template.name, resource.action
-            ));
-            let mut task = base(ARGOEXEC_IMAGE, None);
-            task.command = vec![
-                "argoexec".into(),
-                "resource".into(),
-                resource.action.clone(),
-            ];
-            task.command.extend(resource.flags.iter().cloned());
-            task.inputs.push(Input {
-                path: "/tmp/manifest.yaml".into(),
-                source: String::new(),
-                directory: false,
-                content: Some(resource.manifest.clone()),
-            });
-            task.outputs = outputs.clone();
-            tasks.push(task);
         } else if let Some(http) = &template.http {
             let mut task = base(CURL_IMAGE, None);
             let mut secrets = BTreeMap::new();
@@ -167,20 +143,6 @@ impl Run {
             task.command = vec!["sh".into(), "-c".into(), script.clone()];
             task.script = Some(script);
             task.outputs = vec![RESPONSE_BODY.to_owned(), RESPONSE_STATUS.to_owned()];
-            tasks.push(task);
-        } else if let Some(data) = &template.data {
-            self.warn(format!(
-                "data template {} runs `argoexec data`, which reads its artifact repository when it really runs",
-                template.name
-            ));
-            let mut task = base(ARGOEXEC_IMAGE, None);
-            let description = processed
-                .node
-                .get("data")
-                .map(node_json)
-                .unwrap_or_else(|| format!("{data:?}"));
-            task.command = vec!["argoexec".into(), "data".into(), description];
-            task.outputs = outputs.clone();
             tasks.push(task);
         }
         if dependencies.len() < tasks.len() {
@@ -439,16 +401,16 @@ impl Run {
     /// Kubernetes, which a run without Kubernetes leaves out (decision 18).
     fn warn_pod_fields(&mut self, processed: &crate::run::Processed) {
         self.warn_left_out(&processed.node);
-        let node = &processed.node;
+        let template = &processed.node;
         for kind in ["container", "script"] {
-            if let Some(container) = node.get(kind) {
+            if let Some(container) = template.get(kind) {
                 self.warn_left_out(container);
             }
         }
         if let Some(Node {
             value: Yaml::Sequence(containers),
             ..
-        }) = node
+        }) = template
             .get("containerSet")
             .and_then(|set| set.get("containers"))
         {

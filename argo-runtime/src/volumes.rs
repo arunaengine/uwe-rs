@@ -1,7 +1,8 @@
 //! Volumes as shared files (decision 18). Volumes that several steps mount act as a shared file
 //! system: the run keeps the files that tasks write into a volume, and gives them to the tasks
 //! that mount it later. A volume is a claim (`persistentVolumeClaim` or `volumeClaimTemplates`),
-//! a host path, or the `emptyDir` of one pod.
+//! a host path, or the `emptyDir` of one pod. ConfigMaps become files with their text, and
+//! Secrets placeholders in a mock run.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -12,6 +13,7 @@ use argo_parser::model::Template;
 use argo_parser::{Node, Value as Yaml};
 use workflow_graph::{Input, Outcome, Task};
 
+use crate::objects::{KeyRef, config_map};
 use crate::run::{Failure, Result, Run, scalar_text};
 use crate::tags::{Variables, replace_node};
 
@@ -28,6 +30,14 @@ pub(crate) struct Written {
 enum Source {
     /// Files that tasks write, shared under a key; a host path adds the files on the host.
     Shared { key: String, host: Option<Host> },
+    ConfigMap {
+        reference: KeyRef,
+        items: Vec<(String, String)>,
+    },
+    Secret {
+        reference: KeyRef,
+        items: Vec<(String, String)>,
+    },
 }
 
 /// A path of the machine that runs iunctus, read as a `hostPath` volume.
@@ -35,6 +45,20 @@ struct Host {
     path: String,
     file: bool,
     create: bool,
+}
+
+/// `items` of a ConfigMap or Secret volume: keys and the paths of their files.
+fn items(source: &Node) -> Vec<(String, String)> {
+    match source.get("items").map(|items| &items.value) {
+        Some(Yaml::Sequence(items)) => items
+            .iter()
+            .map(|item| {
+                let text = |key: &str| item.get(key).map(scalar_text).unwrap_or_default();
+                (text("key"), text("path"))
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 /// A mount path without `.` parts, which an empty parameter can leave, like `/mnt/input/.`.
@@ -115,6 +139,22 @@ impl Run {
             return Some(Source::Shared {
                 key: format!("pod:{pod}:{name}"),
                 host: None,
+            });
+        }
+        if let Some(map) = volume.get("configMap") {
+            let mut reference = KeyRef::of(map);
+            reference.key.clear();
+            return Some(Source::ConfigMap {
+                reference,
+                items: items(map),
+            });
+        }
+        if let Some(secret) = volume.get("secret") {
+            let mut reference = KeyRef::of(secret);
+            reference.name = text(secret, "secretName");
+            return Some(Source::Secret {
+                reference,
+                items: items(secret),
             });
         }
         self.warn(format!(
@@ -204,6 +244,72 @@ impl Run {
                             key,
                             path,
                             sub_path: prefix,
+                        });
+                    }
+                }
+                Source::ConfigMap { reference, items } => {
+                    let found = config_map(&self.library, &self.document.path, &reference.name);
+                    let Some(entries) = found else {
+                        if !reference.optional {
+                            let message = format!(
+                                "volume {name} of template {} reads ConfigMap {}, which none of the loaded documents (the workflow file, the configs and the repository) holds",
+                                template.name, reference.name
+                            );
+                            if !self.options.assume_inputs {
+                                return Err(Failure::error(message));
+                            }
+                            self.warn(format!("{message}; a mock run mounts an empty folder"));
+                        }
+                        task.inputs.push(empty(&path));
+                        continue;
+                    };
+                    let wanted: Vec<(String, String)> = if items.is_empty() {
+                        entries
+                            .iter()
+                            .map(|(key, _)| (key.clone(), key.clone()))
+                            .collect()
+                    } else {
+                        items
+                    };
+                    for (key, file) in wanted {
+                        if let Some((_, value)) = entries.iter().find(|(known, _)| *known == key) {
+                            task.inputs.push(Input {
+                                path: below(&path, &file),
+                                source: String::new(),
+                                directory: false,
+                                content: Some(value.clone()),
+                            });
+                        }
+                    }
+                }
+                Source::Secret { reference, items } => {
+                    if items.is_empty() {
+                        let message = format!(
+                            "volume {name} of template {} reads Secret {}",
+                            template.name, reference.name
+                        );
+                        if !self.options.assume_inputs && !reference.optional {
+                            return Err(Failure::error(format!(
+                                "{message}; iunctus has no secret store yet, so a real run cannot give it to a task"
+                            )));
+                        }
+                        self.warn(format!(
+                            "{message}, whose keys only a secret store knows; the task gets an empty folder"
+                        ));
+                        task.inputs.push(empty(&path));
+                    }
+                    for (key, file) in items {
+                        let what = format!("file {file} of volume {name}");
+                        let reference = KeyRef {
+                            key,
+                            ..reference.clone()
+                        };
+                        let value = self.secret(&what, &reference)?;
+                        task.inputs.push(Input {
+                            path: below(&path, &file),
+                            source: String::new(),
+                            directory: false,
+                            content: Some(value),
                         });
                     }
                 }

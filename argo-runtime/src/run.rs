@@ -217,7 +217,13 @@ impl Run {
         let Given {
             parameters,
             entry_artifacts,
-        } = workflow_parameters(&spec, entry, &options, &mut warnings)?;
+        } = workflow_parameters(
+            &spec,
+            entry,
+            &options,
+            (&library, &document.path),
+            &mut warnings,
+        )?;
         spec.arguments.parameters = parameters;
         // The workflow is checked as Argo checks it when it is submitted, with the parameters
         // and artifacts it got.

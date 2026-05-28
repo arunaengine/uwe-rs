@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use argo_parser::model::{AnyString, Parameter, Template, WorkflowSpec};
 use argo_parser::{Node, Value as Yaml, decode};
@@ -13,6 +13,7 @@ use argo_parser::{Node, Value as Yaml, decode};
 use crate::Options;
 use crate::library::{Document, Kind, Library};
 use crate::merge::merge;
+use crate::objects::{KeyRef, config_map_value, missing_config_map};
 use crate::run::{
     Failure, Result, Run, empty_mapping, fnv32a, parameters_json, placeholder, remove_key,
     scalar_text, uid,
@@ -225,6 +226,7 @@ pub(crate) fn workflow_parameters(
     spec: &WorkflowSpec,
     entry: Option<&Node>,
     options: &Options,
+    config_maps: (&Library, &Path),
     warnings: &mut Vec<String>,
 ) -> Result<Given> {
     // Parameters of the command line and the parameter file override the spec.
@@ -295,30 +297,33 @@ pub(crate) fn workflow_parameters(
         if parameter.value.is_some() {
             continue;
         }
-        let from_config_map = parameter
+        let reference = parameter
             .value_from
             .as_ref()
-            .is_some_and(|from| from.config_map_key_ref.is_some());
+            .and_then(|from| from.config_map_key_ref.as_ref())
+            .map(KeyRef::of);
+        let (library, near) = config_maps;
         let fallback = parameter
             .value_from
             .as_ref()
             .and_then(|from| from.default.clone());
-        let value = if let Some(default) = parameter.default.clone().or(fallback.clone()) {
-            if from_config_map {
-                warnings.push(format!(
-                    "parameter {} reads a ConfigMap, which a run without Kubernetes cannot; using its default `{default}`",
-                    parameter.name
-                ));
-            }
+        let value = if let Some(value) = reference
+            .as_ref()
+            .and_then(|reference| config_map_value(library, near, reference))
+        {
+            AnyString(value)
+        } else if let Some(default) = parameter.default.clone().or(fallback) {
             default
+        } else if let Some(reference) = &reference {
+            let what = format!("parameter {}", parameter.name);
+            AnyString(missing_config_map(
+                &what,
+                reference,
+                options.assume_inputs,
+                warnings,
+            )?)
         } else if !options.assume_inputs {
             // A real run needs the value, as `argo submit` does; the checks below name it.
-            if from_config_map {
-                return Err(Failure::error(format!(
-                    "parameter {} reads a ConfigMap, which a run without Kubernetes cannot, and has no default",
-                    parameter.name
-                )));
-            }
             continue;
         } else if let Some(first) = parameter.enumeration.first() {
             warnings.push(format!(

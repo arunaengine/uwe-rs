@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use argo_runtime::library::collect_files;
-use argo_runtime::{ArgoDriver, Document, Library, Options, load_file, validate};
+use argo_runtime::{ArgoDriver, Document, Kind, Library, Options, load_file, validate};
 use workflow_graph::{MockTes, execute};
 
 const FIXTURE: &str = "tests/fixtures/corpus/outcomes.txt";
@@ -218,8 +218,13 @@ fn run_corpus() {
                     continue;
                 }
             };
-            for document in &documents {
-                let key = if documents.len() > 1 {
+            // ConfigMaps are no workflows; they serve the documents that read them.
+            let workflows: Vec<&Rc<Document>> = documents
+                .iter()
+                .filter(|document| document.kind != Kind::ConfigMap)
+                .collect();
+            for document in workflows.iter().copied() {
+                let key = if workflows.len() > 1 {
                     format!("{relative}#{}", document.index)
                 } else {
                     relative.clone()

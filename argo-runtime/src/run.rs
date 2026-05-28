@@ -480,6 +480,7 @@ impl Run {
                 Ok(())
             }
             NodeKind::Plugin => self.start_plugin(index),
+            _ if template.resource.is_some() => self.start_claim(index),
             _ => self.start_pod(index),
         }
     }

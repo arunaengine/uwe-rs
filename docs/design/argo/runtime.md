@@ -209,7 +209,7 @@ These stop the run before its first task, with an error that names the template 
 - `sidecars` and `daemon: true`, which are services that run beside tasks or across them and are reached over the pod network.
 - Artifact plugins.
 
-The check is part of the checks at submission (section 4.1), so it covers every template that the workflow can call. A template that a `templateRef` with a tag names is checked when it is called.
+The check is part of the checks at submission (section 4.1), so it covers every template of the workflow and every template that it calls. A template that a `templateRef` with a tag names is checked when it is called.
 
 ### 11.2 Fields that are left out
 

@@ -949,6 +949,76 @@ fn with_documents(documents: &str, templates: &str) -> String {
     format!("{documents}---\n{}", workflow(templates))
 }
 
+#[test]
+fn volumes_share_files_between_steps() {
+    let text = r#"
+  - name: main
+    steps:
+    - - {name: write, template: write}
+    - - {name: read, template: read}
+    - - {name: host, template: host}
+  - name: write
+    volumes:
+    - {name: work, persistentVolumeClaim: {claimName: shared}}
+    container:
+      image: alpine
+      command: [sh, -c, "echo hi > /work/a.txt"]
+      volumeMounts: [{name: work, mountPath: /work}]
+  - name: read
+    volumes:
+    - {name: data, persistentVolumeClaim: {claimName: shared}}
+    container:
+      image: alpine
+      command: [cat, /data/a.txt]
+      volumeMounts: [{name: data, mountPath: /data, readOnly: true}]
+  - name: host
+    volumes:
+    - {name: reference, hostPath: {path: /no/such/folder, type: Directory}}
+    container:
+      image: alpine
+      command: [ls, /reference]
+      volumeMounts: [{name: reference, mountPath: /reference}]
+"#;
+    let ran = run(&workflow(text));
+    ran.succeeded();
+    let write = ran.task("[0].write");
+    assert!(
+        write.outputs.contains(&"/work/".to_owned()),
+        "{:?}",
+        write.outputs
+    );
+    let read = ran.task("[1].read");
+    assert!(
+        read.inputs.iter().any(|input| input.path == "/data/a.txt"),
+        "{:?}",
+        read.inputs
+    );
+    assert!(read.outputs.is_empty(), "a read-only mount is no output");
+    assert_eq!(ran.upstream("[1].read"), ["[0].write"]);
+    // A host path is read on the machine that runs iunctus; a mock run needs no such folder.
+    let host = ran.task("[2].host");
+    assert!(
+        host.inputs
+            .iter()
+            .any(|input| input.path == "/reference" && input.source == "/no/such/folder"),
+        "{:?}",
+        host.inputs
+    );
+    assert!(
+        ran.warnings
+            .iter()
+            .any(|warning| warning.contains("volume claim shared exists only in a cluster"))
+    );
+    // A real run needs the host path.
+    let real = run_with(&workflow(text), real());
+    assert!(
+        real.error()
+            .contains("mounts the host path /no/such/folder, which does not exist on this machine"),
+        "{}",
+        real.error()
+    );
+}
+
 const SETTINGS: &str = "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: settings}\ndata: {genome: hg38, threads: '4'}\n";
 
 /// A real run, which gives no placeholders for missing inputs.
@@ -1023,71 +1093,78 @@ fn environments_read_config_maps_and_keep_secrets_out() {
 }
 
 #[test]
-fn volumes_share_files_between_steps() {
-    let text = r#"
+fn config_maps_and_secrets_become_files() {
+    let templates = r#"
+  - name: main
+    volumes:
+    - {name: config, configMap: {name: settings, items: [{key: threads, path: threads.txt}]}}
+    - {name: keys, secret: {secretName: db, items: [{key: password, path: password.txt}]}}
+    container:
+      image: alpine
+      command: [cat, /config/threads.txt]
+      volumeMounts: [{name: config, mountPath: /config}, {name: keys, mountPath: /keys}]
+"#;
+    let ran = run(&with_documents(SETTINGS, templates));
+    ran.succeeded();
+    let content = |path: &str| {
+        ran.tasks()[0]
+            .inputs
+            .iter()
+            .find(|input| input.path == path)
+            .and_then(|input| input.content.clone())
+    };
+    assert_eq!(content("/config/threads.txt").as_deref(), Some("4"));
+    assert_eq!(
+        content("/keys/password.txt").as_deref(),
+        Some("placeholder_secret_db_password")
+    );
+}
+
+#[test]
+fn claims_become_volumes_and_cluster_templates_stop_the_run() {
+    let claim = r#"
   - name: main
     steps:
-    - - {name: write, template: write}
-    - - {name: read, template: read}
-    - - {name: host, template: host}
-  - name: write
+    - - {name: claim, template: claim}
+    - - name: use
+        template: use
+        arguments: {parameters: [{name: claim, value: "{{steps.claim.outputs.parameters.name}}"}]}
+  - name: claim
+    resource:
+      action: create
+      manifest: |
+        apiVersion: v1
+        kind: PersistentVolumeClaim
+        metadata: {name: pvc-{{workflow.name}}}
+    outputs:
+      parameters: [{name: name, valueFrom: {jsonPath: '{.metadata.name}'}}]
+  - name: use
+    inputs: {parameters: [{name: claim}]}
     volumes:
-    - {name: work, persistentVolumeClaim: {claimName: shared}}
+    - {name: work, persistentVolumeClaim: {claimName: "{{inputs.parameters.claim}}"}}
     container:
       image: alpine
-      command: [sh, -c, "echo hi > /work/a.txt"]
+      command: [touch, /work/done]
       volumeMounts: [{name: work, mountPath: /work}]
-  - name: read
-    volumes:
-    - {name: data, persistentVolumeClaim: {claimName: shared}}
-    container:
-      image: alpine
-      command: [cat, /data/a.txt]
-      volumeMounts: [{name: data, mountPath: /data, readOnly: true}]
-  - name: host
-    volumes:
-    - {name: reference, hostPath: {path: /no/such/folder, type: Directory}}
-    container:
-      image: alpine
-      command: [ls, /reference]
-      volumeMounts: [{name: reference, mountPath: /reference}]
 "#;
-    let ran = run(&workflow(text));
+    let ran = run(&workflow(claim));
     ran.succeeded();
-    let write = ran.task("[0].write");
+    // The claim runs no task, and the volume is the run's own: no warning about a cluster.
+    assert_eq!(ran.names(), ["[1].use"]);
     assert!(
-        write.outputs.contains(&"/work/".to_owned()),
-        "{:?}",
-        write.outputs
-    );
-    let read = ran.task("[1].read");
-    assert!(
-        read.inputs.iter().any(|input| input.path == "/data/a.txt"),
-        "{:?}",
-        read.inputs
-    );
-    assert!(read.outputs.is_empty(), "a read-only mount is no output");
-    assert_eq!(ran.upstream("[1].read"), ["[0].write"]);
-    // A host path is read on the machine that runs iunctus; a mock run needs no such folder.
-    let host = ran.task("[2].host");
-    assert!(
-        host.inputs
+        !ran.warnings
             .iter()
-            .any(|input| input.path == "/reference" && input.source == "/no/such/folder"),
+            .any(|warning| warning.contains("exists only in a cluster")),
         "{:?}",
-        host.inputs
-    );
-    assert!(
         ran.warnings
-            .iter()
-            .any(|warning| warning.contains("volume claim shared exists only in a cluster"))
     );
-    // A real run needs the host path.
-    let real = run_with(&workflow(text), real());
+    let deployment = claim.replace("kind: PersistentVolumeClaim", "kind: Deployment");
+    let ran = run(&workflow(&deployment));
+    assert!(ran.names().is_empty());
     assert!(
-        real.error()
-            .contains("mounts the host path /no/such/folder, which does not exist on this machine"),
-        "{}",
-        real.error()
+        matches!(&ran.execution.error, Some(error) if error.unsupported()),
+        "{:?}",
+        ran.execution.error
     );
+    assert!(ran.error().contains("decision 18"), "{}", ran.error());
 }

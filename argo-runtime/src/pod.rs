@@ -16,7 +16,9 @@ use argo_parser::model::{Container, Template};
 use argo_parser::{Node, Value as Yaml};
 use workflow_graph::{Input, Outcome, Task, TaskId};
 
-use crate::http::{CURL_IMAGE, RESPONSE_BODY, RESPONSE_STATUS, Verdict, http_script, http_verdict};
+use crate::http::{
+    CURL_IMAGE, RESPONSE_BODY, RESPONSE_STATUS, Verdict, http_script, http_verdict, secret_headers,
+};
 use crate::node::{ArtifactValue, Location, Phase};
 use crate::resources::{duration_seconds, resources_of};
 use crate::run::{Failure, Result, Run};
@@ -77,16 +79,14 @@ impl Run {
         let mut dependencies: Vec<Vec<usize>> = Vec::new();
         if let Some(container) = &template.container {
             let mut task = base(&container.image, Some(container));
-            fill_container(&mut task, container, &fields, &mut |message| {
-                self.warn(message)
-            });
+            fill_container(&mut task, container);
+            task.environment = self.environment(container, &fields)?;
             task.outputs = outputs.clone();
             tasks.push(task);
         } else if let Some(script) = &template.script {
             let mut task = base(&script.image, Some(script));
-            fill_container(&mut task, script, &fields, &mut |message| {
-                self.warn(message)
-            });
+            fill_container(&mut task, script);
+            task.environment = self.environment(script, &fields)?;
             task.command = script.command.iter().chain(&script.args).cloned().collect();
             task.command.push(SCRIPT_PATH.to_owned());
             let source = script.source.clone().unwrap_or_default();
@@ -111,9 +111,8 @@ impl Run {
                 let container = &set.containers[position];
                 let mut task = base(&container.image, Some(container));
                 task.name = format!("{name} ({})", container.name);
-                fill_container(&mut task, container, &fields, &mut |message| {
-                    self.warn(message)
-                });
+                fill_container(&mut task, container);
+                task.environment = self.environment(container, &fields)?;
                 if position == main {
                     task.outputs = outputs.clone();
                 }
@@ -149,13 +148,12 @@ impl Run {
             tasks.push(task);
         } else if let Some(http) = &template.http {
             let mut task = base(CURL_IMAGE, None);
-            let (script, secret_headers) = http_script(http);
-            for header in secret_headers {
-                self.warn(format!(
-                    "HTTP template {}: header {header} reads a Secret, which a run without Kubernetes cannot; it is left out",
-                    template.name
-                ));
+            let mut secrets = BTreeMap::new();
+            for (header, reference) in secret_headers(http) {
+                let what = format!("header {header} of HTTP template {}", template.name);
+                secrets.insert(header, self.secret(&what, &reference)?);
             }
+            let script = http_script(http, &secrets);
             task.command = vec!["sh".into(), "-c".into(), script.clone()];
             task.script = Some(script);
             task.outputs = vec![RESPONSE_BODY.to_owned(), RESPONSE_STATUS.to_owned()];
@@ -453,14 +451,9 @@ impl Run {
     }
 }
 
-/// Fills a task from a container: command, arguments, working directory and environment.
-/// Variables that read a field of the pod get the run's value of it.
-pub(crate) fn fill_container(
-    task: &mut Task,
-    container: &Container,
-    fields: &BTreeMap<&'static str, String>,
-    warn: &mut dyn FnMut(String),
-) {
+/// Fills a task from a container: one command line of `command` and `args` (decision 18), and
+/// the working directory.
+pub(crate) fn fill_container(task: &mut Task, container: &Container) {
     task.command = container
         .command
         .iter()
@@ -470,32 +463,6 @@ pub(crate) fn fill_container(
     task.script = shell_script(&task.command);
     if !container.working_dir.is_empty() {
         task.workdir = Some(container.working_dir.clone());
-    }
-    for variable in &container.env {
-        let field = variable
-            .value_from
-            .as_ref()
-            .and_then(|from| from.get("fieldRef"))
-            .and_then(|reference| reference.get("fieldPath"))
-            .and_then(Node::as_str)
-            .and_then(|path| fields.get(path));
-        match (&variable.value, &variable.value_from) {
-            (_, Some(_)) if field.is_some() => {
-                task.environment
-                    .insert(variable.name.clone(), field.cloned().unwrap_or_default());
-            }
-            (_, Some(_)) => warn(format!(
-                "environment variable {} reads a Secret, a ConfigMap or a pod field that a run without Kubernetes does not have; it is left out",
-                variable.name
-            )),
-            (value, None) => {
-                task.environment
-                    .insert(variable.name.clone(), value.clone().unwrap_or_default());
-            }
-        }
-    }
-    if container.env_from.is_some() {
-        warn("envFrom reads Secrets or ConfigMaps, which a run without Kubernetes cannot; it is left out".to_owned());
     }
 }
 

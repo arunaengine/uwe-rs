@@ -798,10 +798,10 @@ fn leaf_kinds_become_tasks() {
         ["[0].set (first)", "[0].set (main)", "[0].http"]
     );
     assert_eq!(ran.upstream("[0].set (main)"), ["[0].set (first)"]);
-    // Pods get made-up fields, while Secrets are left out.
+    // Pods get made-up fields, and Secrets placeholders in a mock run.
     let environment = &ran.task("[0].set (first)").environment;
     assert!(environment["POD"].starts_with("test-"), "{environment:?}");
-    assert!(!environment.contains_key("TOKEN"));
+    assert_eq!(environment["TOKEN"], "placeholder_secret_s_k");
     let http = &ran.task("[0].http").command;
     assert_eq!(http[..2], ["sh", "-c"]);
     assert!(http[2].starts_with("curl --silent"), "{}", http[2]);
@@ -991,6 +991,32 @@ fn parameters_read_config_maps_of_the_loaded_documents() {
     assert!(
         ran.error()
             .contains("reads key genome of ConfigMap absent, which none of the loaded documents"),
+        "{}",
+        ran.error()
+    );
+}
+
+#[test]
+fn environments_read_config_maps_and_keep_secrets_out() {
+    let templates = r#"
+  - name: main
+    container:
+      image: alpine
+      command: [env]
+      env:
+      - {name: THREADS, valueFrom: {configMapKeyRef: {name: settings, key: threads}}}
+      - {name: TOKEN, valueFrom: {secretKeyRef: {name: db, key: password}}}
+"#;
+    let ran = run(&with_documents(SETTINGS, templates));
+    ran.succeeded();
+    let environment = &ran.tasks()[0].environment;
+    assert_eq!(environment["THREADS"], "4");
+    assert_eq!(environment["TOKEN"], "placeholder_secret_db_password");
+    let ran = run_with(&with_documents(SETTINGS, templates), real());
+    assert!(
+        ran.error().contains(
+            "environment variable TOKEN reads key password of Secret db; iunctus has no secret store yet"
+        ),
         "{}",
         ran.error()
     );

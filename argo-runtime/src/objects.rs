@@ -96,6 +96,26 @@ pub(crate) fn missing_config_map(
 }
 
 impl Run {
+    /// What stands for a key of a Secret: a placeholder in a mock run, with a warning. A real
+    /// run stops, because iunctus has no secret store yet and secret values never enter a task.
+    pub(crate) fn secret(&mut self, what: &str, reference: &KeyRef) -> Result<String> {
+        let place = format!("key {} of Secret {}", reference.key, reference.name);
+        if !self.options.assume_inputs {
+            return Err(Failure::error(format!(
+                "{what} reads {place}; iunctus has no secret store yet, so a real run cannot give it to a task"
+            )));
+        }
+        let placeholder = format!(
+            "placeholder_secret_{}_{}",
+            word(&reference.name),
+            word(&reference.key)
+        );
+        self.warn(format!(
+            "{what} reads {place}; a mock run uses `{placeholder}`"
+        ));
+        Ok(placeholder)
+    }
+
     /// The value of a ConfigMap key, or what stands for it when no loaded document holds it.
     pub(crate) fn config_map_key(&mut self, what: &str, reference: &KeyRef) -> Result<String> {
         if let Some(value) = config_map_value(&self.library, &self.document.path, reference) {

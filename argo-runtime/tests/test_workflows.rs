@@ -5,7 +5,8 @@
 //! exit code (33 for unsupported features) and the first error. Each document that does not pass
 //! needs a line in tests/fixtures/test-workflows/rejected.txt with the evidence that Argo rejects
 //! or fails it too. `ARGO_TEST_WORKFLOWS_UPDATE=1` rewrites the outcomes;
-//! `ARGO_TEST_WORKFLOWS_FILTER` runs only the documents whose path contains it.
+//! `ARGO_TEST_WORKFLOWS_FILTER` runs only the documents whose path contains it, and
+//! `ARGO_TEST_WORKFLOWS_ORDER=shuffled:<seed>` lets tasks finish in a random order.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -15,7 +16,7 @@ use std::rc::Rc;
 
 use argo_runtime::library::collect_files;
 use argo_runtime::{ArgoDriver, Document, Kind, Library, Options, load_file, validate};
-use workflow_graph::{MockTes, execute};
+use workflow_graph::{MockTes, Order, RunOptions, execute_with};
 
 const FIXTURE: &str = "tests/fixtures/test-workflows/outcomes.txt";
 
@@ -59,6 +60,8 @@ fn runs_the_test_workflows() {
 struct TestWorkflows {
     root: PathBuf,
     filter: String,
+    /// How tasks finish: in the order asked for, or up to 8 at a time in another order.
+    options: RunOptions,
     verbose: bool,
     scratch: tempfile::TempDir,
     /// The documents of the directories in [`CONFIGS`], read once.
@@ -102,7 +105,7 @@ impl TestWorkflows {
         let work = self.scratch.path().join("mock");
         let _ = std::fs::remove_dir_all(&work);
         let mut executor = MockTes::new(&work);
-        let execution = execute(relative, &mut driver, &mut executor);
+        let execution = execute_with(relative, &mut driver, &mut executor, &self.options);
         let outcome = match &execution.error {
             None => {
                 if let Err(message) = execution.graph.check() {
@@ -138,6 +141,23 @@ fn one_line(message: &str, root: &str) -> String {
     }
     let end: String = characters[characters.len() - 197..].iter().collect();
     format!("...{end}")
+}
+
+/// The run options that `ARGO_TEST_WORKFLOWS_ORDER` asks for: `reversed` or `shuffled:<seed>`
+/// let up to 8 tasks be pending and finish in that order, which shows whether the driver
+/// depends on the order of outcomes; anything else runs one task at a time.
+fn run_options(order: &str) -> RunOptions {
+    let order = match order.split_once(':') {
+        Some(("shuffled", seed)) => Order::Shuffled {
+            seed: seed.parse().expect("a number as the seed"),
+        },
+        _ if order == "reversed" => Order::Reversed,
+        _ => return RunOptions::default(),
+    };
+    RunOptions {
+        max_pending: 8,
+        order,
+    }
 }
 
 /// The folders of the test workflows, one per repository.
@@ -177,6 +197,7 @@ fn run_test_workflows() {
     let mut workflows = TestWorkflows {
         root: root.clone(),
         filter: std::env::var("ARGO_TEST_WORKFLOWS_FILTER").unwrap_or_default(),
+        options: run_options(&std::env::var("ARGO_TEST_WORKFLOWS_ORDER").unwrap_or_default()),
         verbose: std::env::var("ARGO_TEST_WORKFLOWS_VERBOSE").is_ok(),
         scratch: tempfile::tempdir().expect("a temporary directory"),
         configs: BTreeMap::new(),

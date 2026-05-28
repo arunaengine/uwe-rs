@@ -1,12 +1,12 @@
-<!-- Research notes on the Argo Workflows language, its Kubernetes coupling, a corpus inventory and a Rust parser evaluation. -->
+<!-- Research notes on the Argo Workflows language, its Kubernetes coupling, an inventory of test workflows and a Rust parser evaluation. -->
 <!-- Copyright (c) 2026 The iunctus Contributors -->
 <!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
 
 # Argo Workflows: language, Kubernetes coupling, and what a native Rust implementation needs
 
-Research date: 2026-09-27. Main evidence: a blobless sparse clone of `argoproj/argo-workflows` at tag v4.1.4 (commit b5b4d665, 2026-09-18), with its examples, docs, CRDs, JSON schema and the Go source of the controller, the executor and the template code. I built a text corpus of 1,466 unique Argo documents from 19 repositories (Q6). I ran a feature inventory over it (Q7). I generated Rust types with kopium and typify and loaded every corpus document with serde-saphyr (Q8). I compiled every corpus expression with the Rust `expr-lang` crate (Q3). Line numbers refer to files at v4.1.4. "Own measurement" marks numbers I computed myself. Everything under "Inferences" is my own reasoning, not a sourced fact.
+Research date: 2026-09-27. Main evidence: a blobless sparse clone of `argoproj/argo-workflows` at tag v4.1.4 (commit b5b4d665, 2026-09-18), with its examples, docs, CRDs, JSON schema and the Go source of the controller, the executor and the template code. I built a set of test workflows: 1,466 unique Argo documents from 19 repositories (Q6). I ran a feature inventory over it (Q7). I generated Rust types with kopium and typify and loaded every document of the test workflows with serde-saphyr (Q8). I compiled every expression of the test workflows with the Rust `expr-lang` crate (Q3). Line numbers refer to files at v4.1.4. "Own measurement" marks numbers I computed myself. Everything under "Inferences" is my own reasoning, not a sourced fact.
 
-The corpus, the scripts and the raw results are in `~/.cache/iunctus/corpus/argo/`. Sources and commits are listed in `~/.cache/iunctus/corpus/argo/revisions.txt`. Scripts and outputs are in `~/.cache/iunctus/corpus/argo/_analysis/`.
+The test workflows, the scripts and the raw results are in `~/.cache/iunctus/test-workflows/argo/`. Sources and commits are listed in `~/.cache/iunctus/test-workflows/argo/revisions.txt`. Scripts and outputs are in `~/.cache/iunctus/test-workflows/argo/_analysis/`.
 
 ## Q1. Current version, resource kinds and recent changes
 
@@ -66,7 +66,7 @@ An Argo document is a list of named templates plus an entrypoint. A template is 
 ## Q3. Expression languages and variable substitution
 
 ### Takeaway
-Argo uses three kinds of expressions. Simple tags (`{{inputs.parameters.x}}`) are string lookups. Expression tags (`{{=...}}`) and most expression fields (`depends`, hook and retry expressions, HTTP `successCondition`, `valueFrom.expression`, `fromExpression`, `data` transformations) use expr-lang (Go `github.com/expr-lang/expr` v1.17.8) plus Argo helpers and the Sprig function map. `when` clauses use govaluate after simple-tag substitution, with a trick that turns bare words into strings. The Rust crate `expr-lang` 2.1.0 compiles 1,427 of 1,431 unique corpus expressions. It needs work for `sprig.fn(...)` calls, and it panics on one real expression. No Rust govaluate exists; iunctus needs its own small evaluator.
+Argo uses three kinds of expressions. Simple tags (`{{inputs.parameters.x}}`) are string lookups. Expression tags (`{{=...}}`) and most expression fields (`depends`, hook and retry expressions, HTTP `successCondition`, `valueFrom.expression`, `fromExpression`, `data` transformations) use expr-lang (Go `github.com/expr-lang/expr` v1.17.8) plus Argo helpers and the Sprig function map. `when` clauses use govaluate after simple-tag substitution, with a trick that turns bare words into strings. The Rust crate `expr-lang` 2.1.0 compiles 1,427 of 1,431 unique expressions of the test workflows. It needs work for `sprig.fn(...)` calls, and it panics on one real expression. No Rust govaluate exists; iunctus needs its own small evaluator.
 
 ### Cited Findings
 - Tag kinds: "simple" (`{{workflow.name}}`) and "expression", "where `{{` is immediately followed by `=`". Hyphenated names must be indexed: `inputs.parameters['my-param']`. Argo adds `asInt`, `asFloat`, `toJson`, `jsonpath` and `sprig.*` ([docs/variables.md](https://github.com/argoproj/argo-workflows/blob/v4.1.4/docs/variables.md)).
@@ -77,10 +77,10 @@ Argo uses three kinds of expressions. Simple tags (`{{inputs.parameters.x}}`) ar
 - `depends` is evaluated with expr after replacing `-` with `_` in task names, over a map of task result booleans (dag.go lines 1003-1058) ([dag.go](https://github.com/argoproj/argo-workflows/blob/v4.1.4/workflow/controller/dag.go)).
 - expr is also used for exit and lifecycle hook expressions, `retryStrategy.expression`, `valueFrom.expression`, `fromExpression`, `data` transformations, HTTP `successCondition` and CronWorkflow `stopStrategy.expression` (own grep for `expr.Compile` and `argoexpr.EvalBool` over the v4.1.4 source).
 - Rust `expr-lang` 2.1.0 (jdx/expr.rs, MIT, 2026-08-21, 304,316 downloads): "implements expr syntax and built-ins with Go-compatible runtime semantics". It ships a Go parity test (`tests/go_compat.rs`, 255 cases in `compat/cases.tsv`). "Go-specific reflection and static type checking are not implemented" ([crates.io](https://crates.io/crates/expr-lang), [GitHub](https://github.com/jdx/expr.rs)). Method calls are evaluated only for its date and time values (`src/functions/temporal.rs`, `eval_method`). Own reading of the 2.1.0 source.
-- Own measurement over the corpus (`_analysis/results/exprcheck.txt`): 1,431 unique expressions (497 `{{=...}}` bodies, 904 `depends` strings after Argo's rewrite, 11 `valueFrom.expression`, 7 hook, 5 HTTP, 4 `data`, 2 `fromExpression`, 1 retry). `expr::compile` accepts 1,427. Of the 4 failures, 2 are panics ("entered unreachable code: Unexpected rule: ident sprig") on one Argo example (`examples/expression-destructure-json-complex.yaml`) and its Hera copy. The other 2 are artifacts of my test (a retry expression that still holds a simple tag, and a Hera task named `map-`).
+- Own measurement over the test workflows (`_analysis/results/exprcheck.txt`): 1,431 unique expressions (497 `{{=...}}` bodies, 904 `depends` strings after Argo's rewrite, 11 `valueFrom.expression`, 7 hook, 5 HTTP, 4 `data`, 2 `fromExpression`, 1 retry). `expr::compile` accepts 1,427. Of the 4 failures, 2 are panics ("entered unreachable code: Unexpected rule: ident sprig") on one Argo example (`examples/expression-destructure-json-complex.yaml`) and its Hera copy. The other 2 are artifacts of my test (a retry expression that still holds a simple tag, and a Hera task named `map-`).
 - Own evaluation test: `sprig.osBase(x)` fails with "unknown variable: sprig". The same function registered as `sprig_osBase` works. `filter`, `map`, `toJSON`, `??`, `contains`, `int` and `string` evaluate as documented.
 - Own measurement of `when` clauses: 505 occurrences, 135 unique. 58 compare with a bare word (for example `== Succeeded`, `== tails`), 54 use quoted strings, 30 use parentheses, 29 use `&&` or `||`, 17 embed an expression tag, 3 use `<`, `>`, `<=` or `>=`, 2 use `=~`.
-- Sprig functions used in the corpus (by number of documents): `osBase` 103, `osDir` 73, `base` 15, `trimSuffix` 12, `int` 11, `ext` 6, `min` 6, `default` 4, and 1 to 3 documents each for `max`, `add`, `b64dec`, `date`, `replace`, `join`, `last`, `osClean`, `splitList`, `empty`, `lower`, `toString`, `trimPrefix`. Own measurement.
+- Sprig functions used in the test workflows (by number of documents): `osBase` 103, `osDir` 73, `base` 15, `trimSuffix` 12, `int` 11, `ext` 6, `min` 6, `default` 4, and 1 to 3 documents each for `max`, `add`, `b64dec`, `date`, `replace`, `join`, `last`, `osClean`, `splitList`, `empty`, `lower`, `toString`, `trimPrefix`. Own measurement.
 - A crates.io search on 2026-09-27 for "govaluate" returned no crate. Searches for "sprig" returned only partial ports for other template engines (`tera-sprig`, `handlebars_sprig`, `lithos-sprig`) ([crates.io search](https://crates.io/search?q=sprig)).
 
 ### Inferences
@@ -104,7 +104,7 @@ The workflow logic (templates, steps, DAG, loops, conditions, retries, parameter
 - Executor plugins are disabled by default and are enabled per controller or per workflow ([docs/executor_plugins.md](https://github.com/argoproj/argo-workflows/blob/v4.1.4/docs/executor_plugins.md)). Artifact plugins implement a gRPC service over a Unix socket ([docs/artifact-plugin.md](https://github.com/argoproj/argo-workflows/blob/v4.1.4/docs/artifact-plugin.md)).
 - Kubernetes-backed state: memoization caches in ConfigMaps, semaphore sizes in ConfigMaps, parameters from `configMapKeyRef`, environment from `secretKeyRef`, artifact credentials from Secrets, WorkflowTemplates looked up in the cluster (Q2 sources).
 - TES has no GPU or wall-time field, per-task `volumes` only, optional inline `content` for inputs, and "no guarantees" for captured stdout. Aruna's TES route does not support inline content or volumes. See [tes-and-executors.md](tes-and-executors.md).
-- Real bioinformatics repositories use volumes as a shared file system. gennext-workflows passes file paths as parameters and mounts `hostPath` directories derived with `sprig.osDir` (`~/.cache/iunctus/corpus/argo/gennext-workflows/tasks/base_tasks/samtools.yaml`). Ensembl creates a PVC with a resource template, passes `pvc-name` through parameters and mounts it in each step (`~/.cache/iunctus/corpus/argo/regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.2.yaml`, `helpers/create-pvc-v-0.2.yaml`).
+- Real bioinformatics repositories use volumes as a shared file system. gennext-workflows passes file paths as parameters and mounts `hostPath` directories derived with `sprig.osDir` (`~/.cache/iunctus/test-workflows/argo/gennext-workflows/tasks/base_tasks/samtools.yaml`). Ensembl creates a PVC with a resource template, passes `pvc-name` through parameters and mounts it in each step (`~/.cache/iunctus/test-workflows/argo/regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.2.yaml`, `helpers/create-pvc-v-0.2.yaml`).
 
 ### Mapping table (inference)
 
@@ -152,7 +152,7 @@ I found one independent runner: argo-junit, a Java library that runs Argo YAML l
 - `argo lint --offline`: "perform offline linting. For resources referencing other resources, the references will be resolved from the provided args" ([docs/cli/argo_lint.md](https://github.com/argoproj/argo-workflows/blob/v4.1.4/docs/cli/argo_lint.md)).
 - Argo parses user files with `sigs.k8s.io/yaml` into JSON, then decodes strictly (`kjson.UnmarshalStrict`) when `strict` is set (parse.go lines 84-120) ([parse.go](https://github.com/argoproj/argo-workflows/blob/v4.1.4/workflow/common/parse.go)).
 - Hera (argoproj-labs/hera, 939 stars) is the recommended Python SDK after v4.0 ([docs/upgrading.md](https://github.com/argoproj/argo-workflows/blob/v4.1.4/docs/upgrading.md), [Hera](https://github.com/argoproj-labs/hera)).
-- Kubeflow Pipelines compiles pipelines to Argo Workflows. The compiled test workflows use `kfp-driver` and `kfp-launcher` images and call `ml-pipeline.kubeflow.svc.cluster.local` (`~/.cache/iunctus/corpus/argo/pipelines/test_data/compiled-workflows/two_step_pipeline.yaml`). See also [ir-design-models.md](ir-design-models.md).
+- Kubeflow Pipelines compiles pipelines to Argo Workflows. The compiled test workflows use `kfp-driver` and `kfp-launcher` images and call `ml-pipeline.kubeflow.svc.cluster.local` (`~/.cache/iunctus/test-workflows/argo/pipelines/test_data/compiled-workflows/two_step_pipeline.yaml`). See also [ir-design-models.md](ir-design-models.md).
 - Couler (couler-proj/couler, 943 stars, last push 2024-10-08) is a "Unified Interface for Constructing and Managing Workflows" with an Argo backend ([Couler](https://github.com/couler-proj/couler)).
 - tugboat (tzing/tugboat) is "A linter to streamline your Argo Workflows" ([tugboat](https://github.com/tzing/tugboat)).
 - `kcr_argoproj_io` 3.20260618.213614 (metio/kube-custom-resources-rs, 0BSD) is kopium-generated, but its modules are Argo CD only (`applications`, `appprojects`, `applicationsets`, `argocds`, `argocdexports`). It has no Workflow types. Own reading of the crate source.
@@ -169,13 +169,13 @@ I found one independent runner: argo-junit, a Java library that runs Argo YAML l
 - I did not run argo-junit. Its feature claims come from its README and DESIGN.md.
 - I did not check Metaflow, ZenML or Kedro exports to Argo.
 
-## Q6. The corpus
+## Q6. The test workflows
 
 ### Takeaway
-The corpus has 2,845 text files (34 MB) from 19 repositories. It holds 1,466 unique Argo documents (by content hash; 1,465 with the Rust loader). Only 546 documents are hand-written real-world workflows. Public bioinformatics use of Argo is thin: two sizable repositories (gennext-workflows, 167 documents; Ensembl regulation-workflows, 132 documents) and a few small ones.
+The test workflows have 2,845 text files (34 MB) from 19 repositories. It holds 1,466 unique Argo documents (by content hash; 1,465 with the Rust loader). Only 546 documents are hand-written real-world workflows. Public bioinformatics use of Argo is thin: two sizable repositories (gennext-workflows, 167 documents; Ensembl regulation-workflows, 132 documents) and a few small ones.
 
 ### Cited Findings
-Own measurement. All clones are blobless sparse clones of YAML and Markdown (and, for Argo itself, Go source and docs). Commits are in `~/.cache/iunctus/corpus/argo/revisions.txt`.
+Own measurement. All clones are blobless sparse clones of YAML and Markdown (and, for Argo itself, Go source and docs). Commits are in `~/.cache/iunctus/test-workflows/argo/revisions.txt`.
 
 | Group | Repositories (commit date) | Unique Argo documents |
 |---|---|---|
@@ -191,7 +191,7 @@ Own measurement. All clones are blobless sparse clones of YAML and Markdown (and
 
 ### Inferences
 - A usable Argo runner must load a template library (directories of WorkflowTemplates, and kustomization lists as in Ensembl) and resolve `templateRef` against it. Loading single files is not enough.
-- gennext-workflows has no license file. It can be used as a local research corpus but not redistributed as test data.
+- gennext-workflows has no license file. It can be used as local research test workflows but not redistributed as test data.
 - KFP-compiled workflows depend on KFP services and are not a realistic target, even though they parse.
 
 ### Gaps
@@ -338,7 +338,7 @@ Own measurements (`_analysis/results/kopium-final.txt`, `typify-final.txt`).
 - Write custom deserializers for Argo's lenient types: `AnyString`, `IntOrString`, `Quantity` (including floats), `Item`, `ParallelSteps`, and the removed v3 fields (normalize them to v4).
 - Record unknown fields with `serde_ignored`. Report them as warnings by default and as errors in a strict mode, similar to `argo lint`.
 - Configure serde-saphyr with `legacy_octal_numbers = true` and `emit_comments = false`. Keep duplicate keys as an error, but test what Argo does.
-- The kopium output is still useful as a checked reference for field names, and as a test: every corpus document that loads with kopium types must also load with the hand-written types.
+- The kopium output is still useful as a checked reference for field names, and as a test: every document of the test workflows that loads with kopium types must also load with the hand-written types.
 
 ### Gaps
 - I did not measure the peak memory of the reduced kopium build.
@@ -366,7 +366,7 @@ Checklist:
    - [ ] Validation that matches `argo lint --offline` for the supported subset (names, references, cycles, parameter declarations).
 2. Substitution and expressions
    - [ ] Simple tags with Argo's phases (globals, inputs, late variables) and variable set (`workflow.*`, `inputs.*`, `steps.*`, `tasks.*`, `item`, `retries`, `lastRetry.*`, `pod.name`), including JSON-list aggregation for looped outputs and the v4.0.7 rules for skipped and omitted outputs.
-   - [ ] expr-lang environment: nested variable maps, `asInt`, `asFloat`, `toJson`, `jsonpath`, a Sprig subset (start with the 21 functions found in the corpus), `sprig.` call rewriting, panic isolation.
+   - [ ] expr-lang environment: nested variable maps, `asInt`, `asFloat`, `toJson`, `jsonpath`, a Sprig subset (start with the 21 functions found in the test workflows), `sprig.` call rewriting, panic isolation.
    - [ ] govaluate-compatible `when` evaluator with the bare-word rule.
    - [ ] `depends` translation (bare names, `-` to `_`, task result booleans, `AnySucceeded` and `AllFailed` for loops).
 3. Orchestration
@@ -383,7 +383,7 @@ Checklist:
    - [ ] ConfigMap and Secret stand-ins for `configMapKeyRef`, `secretKeyRef`, and secret and configMap volumes.
    - [ ] Resource requests to TES resources; GPU through backend parameters; warnings for ignored pod settings.
 5. Verification
-   - [ ] Load test over the whole corpus (the kopium result above is the baseline).
+   - [ ] Load test over all test workflows (the kopium result above is the baseline).
    - [ ] Differential validation against `argo lint --offline` in CI.
    - [ ] Port selected e2e expectations from Argo's Go tests; run the Argo examples that need no cluster.
    - [ ] End-to-end runs of selected gennext and Ensembl pipelines with small test data on a local runtime, and a subset on a TES test server.
@@ -392,7 +392,7 @@ Effort and risk estimate (rough, for engineers experienced in Rust and workflow 
 
 | Scope | Effort | Risk | Notes |
 |---|---|---|---|
-| Tier 1: loading, template library, simple tags, expression tags with the small function set the corpus uses (Sprig path helpers, `jsonpath`, `asInt`), `when`, `depends`, container and script, steps and DAG, loops, outputs, retries, timeouts, `onExit`, S3 and default-repository artifacts, volume mapping, local and TES execution | about 3 to 4 person-months | Low to medium | Well defined by schema and docs. Corner cases in substitution phases and node states need test-driven work. |
+| Tier 1: loading, template library, simple tags, expression tags with the small function set the test workflows use (Sprig path helpers, `jsonpath`, `asInt`), `when`, `depends`, container and script, steps and DAG, loops, outputs, retries, timeouts, `onExit`, S3 and default-repository artifacts, volume mapping, local and TES execution | about 3 to 4 person-months | Low to medium | Well defined by schema and docs. Corner cases in substitution phases and node states need test-driven work. |
 | Tier 2: broader Sprig coverage and Go compatibility tests for expressions, hooks, memoization, synchronization, suspend and resume, containerSet, daemons and sidecars, HTTP and data templates, more artifact drivers, CronWorkflow scheduling | about 3 to 5 more person-months | Medium | Expression compatibility (Go versus Rust expr, Sprig edge cases) is the main uncertainty. |
 | Tier 3: resource templates through an optional Kubernetes backend (for example the `kube` crate), executor and artifact plugins, `podSpecPatch` beyond resources, metrics and events | about 3 to 6 more person-months | High | Needs a cluster. It works against the goal of running without Kubernetes. |
 | Full parity (Argo Server API, UI-compatible node status, archive, artifact GC) | not a goal | Very high | These are cluster services, not language features. |

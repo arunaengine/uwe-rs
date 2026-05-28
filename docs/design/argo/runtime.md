@@ -4,7 +4,7 @@
 
 # Argo runtime design
 
-Status: implemented in the crate `argo-runtime`, 2026-09-28. The reference is the controller of Argo Workflows v4.1.4. The [research note](../../research/argo-workflows.md) describes the language, the corpus and the feature inventory that this design builds on.
+Status: implemented in the crate `argo-runtime`, 2026-09-28. The reference is the controller of Argo Workflows v4.1.4. The [research note](../../research/argo-workflows.md) describes the language, the test workflows and the feature inventory that this design builds on.
 
 ## 1. The design in short
 
@@ -33,7 +33,7 @@ The entry point is `argo_runtime::driver(launch: &workflow_graph::Launch) -> Res
 | `configs` | Files or directories of more templates for the library. |
 | `scratch` | Where the run keeps files of its own. |
 
-`ArgoDriver::new(document, library, options)` builds the same thing from a loaded document, for callers that load their own library, like the corpus test.
+`ArgoDriver::new(document, library, options)` builds the same thing from a loaded document, for callers that load their own library, like the test-workflows test.
 
 The modules of `argo-runtime`:
 
@@ -111,13 +111,13 @@ The research proposed the Rust crate `expr-lang`. The runtime has its own evalua
 - Argo calls Sprig as `sprig.name(...)`, a method call on a map of functions. The crate evaluates method calls only on its date and time values.
 - The crate's value model differs from what Argo gets from Go: JSON numbers in Argo are float64, maps from JSON have sorted keys, and `%v` prints `map[a:1]`. These differences change task commands without an error.
 - Argo's own helpers (`asInt`, `asFloat`, `toJson`, `jsonpath`) and the rules for unknown names (a top-level name that is not in the environment is an error, a missing map key is nil) need hooks in the evaluator.
-- An evaluator in the crate never panics on corpus input and has no dependency.
+- An evaluator in the crate never panics on the input of the test workflows and has no dependency.
 
-The evaluator has a lexer, a Pratt parser with expr's precedence table, and a tree walker. It covers literals, arithmetic (`/` always gives a float), comparison, `in`, `not in`, `contains`, `startsWith`, `endsWith`, `matches`, ranges, slices, the ternary operator, `??`, `let`, optional chaining, closures with `#` and `.field` for the predicate functions (`all`, `any`, `none`, `one`, `filter`, `map`, `count`, `sum`, `find`, `groupBy`, `sortBy` and others), and expr's built-in functions. The unit tests use expressions from the corpus.
+The evaluator has a lexer, a Pratt parser with expr's precedence table, and a tree walker. It covers literals, arithmetic (`/` always gives a float), comparison, `in`, `not in`, `contains`, `startsWith`, `endsWith`, `matches`, ranges, slices, the ternary operator, `??`, `let`, optional chaining, closures with `#` and `.field` for the predicate functions (`all`, `any`, `none`, `one`, `filter`, `map`, `count`, `sum`, `find`, `groupBy`, `sortBy` and others), and expr's built-in functions. The unit tests use expressions from the test workflows.
 
 ### 6.2 Sprig
 
-The Sprig subset covers what the corpus uses and what is cheap to add alongside it: strings, paths (`base`, `dir`, `ext`, `clean` and the `os` forms), numbers with Sprig's lenient conversion, `default`, `empty`, `coalesce`, lists, dicts, base64, JSON, regular expressions and dates. An unknown Sprig function is an error that names it.
+The Sprig subset covers what the test workflows use and what is cheap to add alongside it: strings, paths (`base`, `dir`, `ext`, `clean` and the `os` forms), numbers with Sprig's lenient conversion, `default`, `empty`, `coalesce`, lists, dicts, base64, JSON, regular expressions and dates. An unknown Sprig function is an error that names it.
 
 ### 6.3 govaluate for `when`
 
@@ -259,13 +259,13 @@ A container's `command` and `args` form one command line, which the executor run
 - Retries do not wait for their backoff.
 - `workflow.failures` lists failed nodes in the order the run made them. Argo iterates a Go map, so its order varies.
 
-## 13. The corpus
+## 13. The test workflows
 
-`just argo-corpus` fetches the 19 repositories of research question Q6 at the commits in `argo-parser/tests/fixtures/corpus/revisions.txt` into `~/.cache/iunctus/corpus/argo`, and argoproj-labs/argo-workflows-hello-executor-plugin, whose plugin the talk-demos examples of plugin templates install. gennext-workflows has no license: it is fetched for research only and never copied into this repository.
+`just argo-test-workflows` fetches the 19 repositories of research question Q6 at the commits in `argo-parser/tests/fixtures/test-workflows/revisions.txt` into `~/.cache/iunctus/test-workflows/argo`, and argoproj-labs/argo-workflows-hello-executor-plugin, whose plugin the talk-demos examples of plugin templates install. gennext-workflows has no license: it is fetched for research only and never copied into this repository.
 
-`just argo-corpus-test` runs the ignored test `argo-runtime/tests/corpus.rs`. It reads every Argo document of the corpus. A document with an entrypoint runs through `MockTes`; the others, like libraries of WorkflowTemplates and executor plugin ConfigMaps, get the checks of section 4.1. The outcomes are compared with `argo-runtime/tests/fixtures/corpus/outcomes.txt`: `ok` and the number of tasks, `valid`, or the exit code and the error (its end, when it is long). Every document that does not pass needs a line in `argo-runtime/tests/fixtures/corpus/rejected.txt` with the evidence that Argo rejects or fails it for the same reason, and the test fails on a document without evidence or on evidence for a document that passes.
+`just argo-test-workflows-test` runs the ignored test `argo-runtime/tests/test_workflows.rs`. It reads every Argo document of the test workflows. A document with an entrypoint runs through `MockTes`; the others, like libraries of WorkflowTemplates and executor plugin ConfigMaps, get the checks of section 4.1. The outcomes are compared with `argo-runtime/tests/fixtures/test-workflows/outcomes.txt`: `ok` and the number of tasks, `valid`, or the exit code and the error (its end, when it is long). Every document that does not pass needs a line in `argo-runtime/tests/fixtures/test-workflows/rejected.txt` with the evidence that Argo rejects or fails it for the same reason, and the test fails on a document without evidence or on evidence for a document that passes.
 
-Some documents get directories as configs, as `-c` gives them: Hera's copies of Argo's examples get Argo's `examples`, because Hera does not copy all the WorkflowTemplates they refer to; the talk-demos plugin examples get the hello executor plugin; and the talk-demos copy of pipekit's CI workflow gets the WorkflowTemplates of pipekit/argo-workflows-ci-example. `ARGO_CORPUS_UPDATE=1` records new outcomes, `ARGO_CORPUS_FILTER` runs only matching paths and `ARGO_CORPUS_VERBOSE=1` prints the warnings.
+Some documents get directories as configs, as `-c` gives them: Hera's copies of Argo's examples get Argo's `examples`, because Hera does not copy all the WorkflowTemplates they refer to; the talk-demos plugin examples get the hello executor plugin; and the talk-demos copy of pipekit's CI workflow gets the WorkflowTemplates of pipekit/argo-workflows-ci-example. `ARGO_TEST_WORKFLOWS_UPDATE=1` records new outcomes, `ARGO_TEST_WORKFLOWS_FILTER` runs only matching paths and `ARGO_TEST_WORKFLOWS_VERBOSE=1` prints the warnings.
 
 Results on 2026-09-29: 1493 of 1573 documents pass: 1285 run through with a full graph and 208 documents without an entrypoint pass Argo's checks. No document stops as unsupported.
 
@@ -296,7 +296,7 @@ Results on 2026-09-29: 1493 of 1573 documents pass: 1285 run through with a full
 
 | Reason | Documents |
 |---|---:|
-| A WorkflowTemplate that no document of the corpus defines, like gennext's `collect-qc-data-templates` or Ensembl's deprecated `*-submittable` templates | 29 |
+| A WorkflowTemplate that no document of the test workflows defines, like gennext's `collect-qc-data-templates` or Ensembl's deprecated `*-submittable` templates | 29 |
 | A template that is not there, or that has no type | 20 |
 | A step or task that does not supply an input of the template it calls, among them Argo's expected failures | 11 |
 | Names that are missing, invalid or not unique | 10 |

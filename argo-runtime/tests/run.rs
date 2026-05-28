@@ -818,6 +818,19 @@ fn leaf_kinds_become_tasks() {
     );
 }
 
+#[test]
+fn kubernetes_fields_are_left_out_with_a_warning() {
+    let ran = run(&workflow(
+        "  - name: main\n    nodeSelector: {disk: ssd}\n    container: {image: alpine, securityContext: {runAsUser: 1000}}\n",
+    ));
+    ran.succeeded();
+    for field in ["nodeSelector", "securityContext"] {
+        let warning =
+            format!("{field} is left out: it only tells Kubernetes how to run pods (decision 18)");
+        assert!(ran.warnings.contains(&warning), "{:?}", ran.warnings);
+    }
+}
+
 /// A workflow with a plugin template and a step that prints its output; `plugins` is the text of
 /// `spec.executorPlugins`.
 fn plugin_workflow(plugins: &str) -> String {

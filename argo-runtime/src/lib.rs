@@ -16,6 +16,7 @@ mod dag;
 pub mod expr;
 mod hooks;
 mod http;
+mod ignored;
 mod inputs;
 mod items;
 pub mod jsonpath;

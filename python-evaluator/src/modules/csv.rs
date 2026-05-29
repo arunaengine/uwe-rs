@@ -254,14 +254,12 @@ pub fn csv() -> Vec<(&'static str, Value)> {
                     .ok_or_else(|| Error::type_error("DictReader() missing file"))?;
                 let mut rows: VecDeque<Vec<String>> =
                     csv_rows(interpreter, &source, delimiter, quote)?.into();
-                let header: Vec<Value> = match fieldnames {
-                    Some(names) if !names.is_none() => interpreter.iterate(&names)?,
+                // Without a first row, as in an empty file, the reader has no field names.
+                let header: Option<Vec<Value>> = match fieldnames {
+                    Some(names) if !names.is_none() => Some(interpreter.iterate(&names)?),
                     _ => rows
                         .pop_front()
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(Value::str)
-                        .collect(),
+                        .map(|row| row.into_iter().map(Value::str).collect()),
                 };
                 rows.retain(|row| !(row.len() == 1 && row[0].is_empty()));
                 Ok(Value::native(DictReader {
@@ -319,7 +317,7 @@ pub fn csv() -> Vec<(&'static str, Value)> {
 
 /// `csv.DictReader`: row dicts by the field names, which code may change before it reads.
 struct DictReader {
-    fieldnames: RefCell<Vec<Value>>,
+    fieldnames: RefCell<Option<Vec<Value>>>,
     rows: RefCell<VecDeque<Vec<String>>>,
     restval: Value,
 }
@@ -328,7 +326,7 @@ impl DictReader {
     /// A row as a dict of the current field names.
     fn record(&self, row: Vec<String>) -> Result<Value, Error> {
         let mut dict = Dict::default();
-        for (index, name) in self.fieldnames.borrow().iter().enumerate() {
+        for (index, name) in self.fieldnames.borrow().iter().flatten().enumerate() {
             let value = row
                 .get(index)
                 .map_or_else(|| self.restval.clone(), |text| Value::str(text.as_str()));
@@ -363,7 +361,12 @@ impl Native for DictReader {
     ) -> Result<Option<Value>, Error> {
         let this = this.clone();
         Ok(match name {
-            "fieldnames" => Some(Value::list(self.fieldnames.borrow().clone())),
+            "fieldnames" => Some(
+                self.fieldnames
+                    .borrow()
+                    .clone()
+                    .map_or(Value::None, Value::list),
+            ),
             "__next__" => Some(Value::builtin("__next__", move |_, _| {
                 let Some(reader) = this.as_native::<DictReader>() else {
                     return Err(Error::type_error("not a DictReader"));
@@ -387,7 +390,11 @@ impl Native for DictReader {
         if name != "fieldnames" {
             return Ok(false);
         }
-        *self.fieldnames.borrow_mut() = interpreter.iterate(&value)?;
+        *self.fieldnames.borrow_mut() = if value.is_none() {
+            None
+        } else {
+            Some(interpreter.iterate(&value)?)
+        };
         Ok(true)
     }
 }

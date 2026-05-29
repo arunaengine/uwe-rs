@@ -777,6 +777,23 @@ fn next(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
             },
             None => None,
         },
+        // Native iterators like files and csv readers have `__next__`.
+        Value::Native(object) => {
+            let object = object.clone();
+            match object.get_attribute(interpreter, iterator, "__next__")? {
+                Some(method) => match interpreter.call(&method, Args::default()) {
+                    Ok(value) => Some(value),
+                    Err(error) if error.is("StopIteration") => None,
+                    Err(error) => return Err(error),
+                },
+                None => {
+                    return Err(Error::type_error(format!(
+                        "'{}' object is not an iterator",
+                        object.type_name()
+                    )));
+                }
+            }
+        }
         other => {
             return Err(Error::type_error(format!(
                 "'{}' object is not an iterator",

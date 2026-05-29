@@ -49,3 +49,5 @@ from tkinter import E
 print(EmailMessage.__name__, configparser.ConfigParser.__name__, UserDict({"a": 1})["a"], E)
 import csv, io
 print(csv.DictReader(io.StringIO("")).fieldnames, csv.DictReader(io.StringIO("a,b\n1,2\n")).fieldnames)
+with open("library.py") as source:
+    print(next(source).rstrip(), next(source, "end") != "end")

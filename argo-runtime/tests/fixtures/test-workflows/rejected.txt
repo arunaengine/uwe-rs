@@ -398,3 +398,368 @@ gennext-workflows/workflows/wes-workflow.yaml
 = missing: it calls WorkflowTemplate collect-qc-data-templates, which is in no repository of the test workflows
 $ argo lint --offline --strict=false gennext-workflows/workflows/wes-workflow.yaml gennext-workflows/tasks/base_tasks/alter_bam_contig_names.yaml gennext-workflows/tasks/base_tasks/annotsv.yaml gennext-workflows/tasks/base_tasks/dir_cleanup.yaml gennext-workflows/tasks/base_tasks/elprep.yaml gennext-workflows/tasks/base_tasks/fastqc.yaml gennext-workflows/tasks/base_tasks/manta.yaml gennext-workflows/tasks/base_tasks/mosdepth.yaml gennext-workflows/tasks/base_tasks/multiqc.yaml gennext-workflows/tasks/base_tasks/samtools.yaml gennext-workflows/tasks/base_tasks/snap.yaml gennext-workflows/tasks/base_tasks/trim-galore.yaml gennext-workflows/tasks/base_tasks/verifybamid.yaml gennext-workflows/tasks/callers/deepvariant.yaml gennext-workflows/tasks/compose-read-group-str.yaml gennext-workflows/tasks/copy_inputs_to_scratch.yaml gennext-workflows/tasks/copy_temp_to_output.yaml gennext-workflows/tasks/cravat/cravat-solo.yaml gennext-workflows/tasks/get_abs_ref_dirs.yaml gennext-workflows/workflows/preprocess-fastq.yaml
 > gennext-workflows/workflows/wes-workflow.yaml: in "wes-workflow" (WorkflowTemplate): templates.main.tasks.wes-fastq-workflow templates.wes-fastq-workflow.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates" in namespace ""
+
+gennext-workflows/workflows/wgs-workflow.yaml
+= missing: it calls WorkflowTemplate collect-qc-data-templates, which is in no repository of the test workflows
+$ argo lint --offline --strict=false gennext-workflows/workflows/wgs-workflow.yaml gennext-workflows/tasks/base_tasks/annotsv.yaml gennext-workflows/tasks/base_tasks/dir_cleanup.yaml gennext-workflows/tasks/base_tasks/elprep.yaml gennext-workflows/tasks/base_tasks/fastqc.yaml gennext-workflows/tasks/base_tasks/manta.yaml gennext-workflows/tasks/base_tasks/mosdepth.yaml gennext-workflows/tasks/base_tasks/multiqc.yaml gennext-workflows/tasks/base_tasks/samtools.yaml gennext-workflows/tasks/base_tasks/snap.yaml gennext-workflows/tasks/base_tasks/trim-galore.yaml gennext-workflows/tasks/base_tasks/verifybamid.yaml gennext-workflows/tasks/callers/deepvariant.yaml gennext-workflows/tasks/compose-read-group-str.yaml gennext-workflows/tasks/copy_inputs_to_scratch.yaml gennext-workflows/tasks/copy_temp_to_output.yaml gennext-workflows/tasks/cravat/cravat-solo.yaml gennext-workflows/tasks/get_abs_ref_dirs.yaml gennext-workflows/workflows/preprocess-fastq.yaml
+> gennext-workflows/workflows/wgs-workflow.yaml: in "wgs-workflow" (WorkflowTemplate): templates.main.tasks.wgs-fastq-workflow templates.wgs-fastq-workflow.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates" in namespace ""
+
+gennext-workflows/workflows/wrapper-workflow-prs.yaml
+= invalid: a step or task calls a template without its input parameter genotype-file-name
+$ argo lint --offline --strict=false gennext-workflows/workflows/wrapper-workflow-prs.yaml gennext-workflows/tasks/base_tasks/dir_cleanup.yaml gennext-workflows/tasks/change_run_state.yaml gennext-workflows/tasks/check-file-path.yaml gennext-workflows/tasks/copy_inputs_to_scratch.yaml gennext-workflows/tasks/copy_temp_to_output.yaml gennext-workflows/tasks/get-node-config.yaml gennext-workflows/tasks/get_abs_ref_dirs.yaml gennext-workflows/tasks/prs/gennext_prs_matcher.yaml gennext-workflows/tasks/prs/genotype_conditional_workflow.yaml gennext-workflows/tasks/prs/update_genotype_snps.yaml gennext-workflows/workflows/prs/prs_workflow.yaml
+> gennext-workflows/workflows/wrapper-workflow-prs.yaml: in "wrapper-workflow-prs" (WorkflowTemplate): templates.wrapper-workflow-prs.tasks.prs-workflow templates.main inputs.parameters.genotype-file-name was not supplied
+
+gennext-workflows/workflows/wrapper-workflow-somatic.yaml
+= invalid: it calls template main of WorkflowTemplate somatic-testing-workflow, which does not have it
+$ argo lint --offline --strict=false gennext-workflows/workflows/wrapper-workflow-somatic.yaml gennext-workflows/tasks/base_tasks/duckdb.yaml gennext-workflows/tasks/base_tasks/fastqc.yaml gennext-workflows/tasks/base_tasks/mosdepth.yaml gennext-workflows/tasks/base_tasks/multiqc.yaml gennext-workflows/tasks/base_tasks/oncokb.yaml gennext-workflows/tasks/base_tasks/samtools.yaml gennext-workflows/tasks/base_tasks/star-fusion-to-oncokb.yaml gennext-workflows/tasks/base_tasks/star-fusion.yaml gennext-workflows/tasks/base_tasks/trim-galore.yaml gennext-workflows/tasks/base_tasks/verifybamid.yaml gennext-workflows/tasks/change_run_state.yaml gennext-workflows/tasks/compose-read-group-str.yaml gennext-workflows/tasks/copy_inputs_to_scratch.yaml gennext-workflows/tasks/get-node-config.yaml gennext-workflows/tasks/get_abs_ref_dirs.yaml gennext-workflows/tasks/get_run_data.yaml gennext-workflows/workflows/somatic-testing-workflow.yaml
+> gennext-workflows/workflows/wrapper-workflow-somatic.yaml: in "wrapper-workflow-somatic" (WorkflowTemplate): templates.wrapper-workflow-somatic.tasks.somatic-testing-tumor-workflow template reference somatic-testing-workflow.main not found
+
+gennext-workflows/workflows/wrapper-workflow.yaml
+= missing: it calls WorkflowTemplate collect-qc-data-templates, which is in no repository of the test workflows
+$ argo lint --offline --strict=false gennext-workflows/workflows/wrapper-workflow.yaml gennext-workflows/tasks/base_tasks/annotsv.yaml gennext-workflows/tasks/base_tasks/annovar-to-maf.yaml gennext-workflows/tasks/base_tasks/annovar.yaml gennext-workflows/tasks/base_tasks/bcftools.yaml gennext-workflows/tasks/base_tasks/bed_validator.yaml gennext-workflows/tasks/base_tasks/cancervar.yaml gennext-workflows/tasks/base_tasks/cnvpytor.yaml gennext-workflows/tasks/base_tasks/dir_cleanup.yaml gennext-workflows/tasks/base_tasks/duckdb.yaml gennext-workflows/tasks/base_tasks/exomedepth.yaml gennext-workflows/tasks/base_tasks/fastp.yaml gennext-workflows/tasks/base_tasks/fastqc.yaml gennext-workflows/tasks/base_tasks/filter-annotsv.yaml gennext-workflows/tasks/base_tasks/filter-msisensor-pro.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-bam2fq.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-bqsr.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-fq2bam.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-mutect2.yaml gennext-workflows/tasks/base_tasks/maf-to-db.yaml gennext-workflows/tasks/base_tasks/manta.yaml gennext-workflows/tasks/base_tasks/mosdepth.yaml gennext-workflows/tasks/base_tasks/msisensor-pro.yaml gennext-workflows/tasks/base_tasks/multiqc.yaml gennext-workflows/tasks/base_tasks/mutect2.yaml gennext-workflows/tasks/base_tasks/oncokb.yaml gennext-workflows/tasks/base_tasks/qorts.yaml gennext-workflows/tasks/base_tasks/remove-temp-fqs.yaml gennext-workflows/tasks/base_tasks/samtools.yaml gennext-workflows/tasks/base_tasks/star-fusion-to-oncokb.yaml gennext-workflows/tasks/base_tasks/star-fusion.yaml gennext-workflows/tasks/base_tasks/trim-galore.yaml gennext-workflows/tasks/base_tasks/vcf-harmonizer.yaml gennext-workflows/tasks/base_tasks/verifybamid.yaml gennext-workflows/tasks/base_tasks/vlod.yaml gennext-workflows/tasks/callers/deepvariant.yaml gennext-workflows/tasks/change_run_state.yaml gennext-workflows/tasks/check-file-path.yaml gennext-workflows/tasks/collect_qc_data.yaml gennext-workflows/tasks/collect_somatic_data.yaml gennext-workflows/tasks/collect_tmb_data.yaml gennext-workflows/tasks/compose-read-group-str.yaml gennext-workflows/tasks/copy_inputs_to_scratch.yaml gennext-workflows/tasks/copy_temp_to_output.yaml gennext-workflows/tasks/cravat/cravat-solo.yaml gennext-workflows/tasks/get-node-config.yaml gennext-workflows/tasks/get_abs_ref_dirs.yaml gennext-workflows/tasks/get_run_data.yaml gennext-workflows/workflows/germline/germline-rna-gpu-workflow.yaml gennext-workflows/workflows/germline/germline-tps-gpu-workflow.yaml gennext-workflows/workflows/germline/germline-wes-gpu-workflow.yaml gennext-workflows/workflows/germline/germline-wgs-gpu-workflow.yaml gennext-workflows/workflows/somatic-testing-workflow.yaml gennext-workflows/workflows/somatic/somatic-testing-dna-gpu-workflow.yaml gennext-workflows/workflows/somatic/somatic-testing-rna-gpu-workflow.yaml
+> gennext-workflows/workflows/wrapper-workflow.yaml: in "wrapper-workflow" (WorkflowTemplate): templates.wrapper-workflow.tasks.rna-workflow templates.main.tasks.germline-rna-bam-workflow templates.germline-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates" in namespace ""
+
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-dna-rna.yaml
+= unsupported (decision 18): template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow
+
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-dna.yaml
+= unsupported (decision 18): template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow
+
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-fusion-gpu.yaml
+= unsupported (decision 18): template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow
+
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-fusion.yaml
+= unsupported (decision 18): template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow
+
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-rna.yaml
+= unsupported (decision 18): template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow
+
+gennext-workflows/workflows/wrappers/wrapper-rna.yaml
+= missing: it calls WorkflowTemplate collect-qc-data-templates, which is in no repository of the test workflows
+$ argo lint --offline --strict=false gennext-workflows/workflows/wrappers/wrapper-rna.yaml gennext-workflows/tasks/base_tasks/dir_cleanup.yaml gennext-workflows/tasks/base_tasks/fastqc.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-bam2fq.yaml gennext-workflows/tasks/base_tasks/mosdepth.yaml gennext-workflows/tasks/base_tasks/multiqc.yaml gennext-workflows/tasks/base_tasks/qorts.yaml gennext-workflows/tasks/base_tasks/samtools.yaml gennext-workflows/tasks/base_tasks/star-fusion.yaml gennext-workflows/tasks/base_tasks/trim-galore.yaml gennext-workflows/tasks/base_tasks/verifybamid.yaml gennext-workflows/tasks/change_run_state.yaml gennext-workflows/tasks/check-file-path.yaml gennext-workflows/tasks/compose-read-group-str.yaml gennext-workflows/tasks/copy_inputs_to_scratch.yaml gennext-workflows/tasks/copy_temp_to_output.yaml gennext-workflows/tasks/get-node-config.yaml gennext-workflows/tasks/get_abs_ref_dirs.yaml gennext-workflows/tasks/get_run_data.yaml gennext-workflows/workflows/germline/germline-rna-gpu-workflow.yaml
+> gennext-workflows/workflows/wrappers/wrapper-rna.yaml: in "wrapper-rna" (WorkflowTemplate): templates.main.tasks.run-workflow templates.main.tasks.germline-rna-bam-workflow templates.germline-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates" in namespace ""
+
+gennext-workflows/workflows/wrappers/wrapper-somatic-dna-rna.yaml
+= missing: it calls WorkflowTemplate collect-qc-data-templates, which is in no repository of the test workflows
+$ argo lint --offline --strict=false gennext-workflows/workflows/wrappers/wrapper-somatic-dna-rna.yaml gennext-workflows/tasks/base_tasks/annotsv.yaml gennext-workflows/tasks/base_tasks/annovar-to-maf.yaml gennext-workflows/tasks/base_tasks/annovar.yaml gennext-workflows/tasks/base_tasks/bcftools.yaml gennext-workflows/tasks/base_tasks/bed_validator.yaml gennext-workflows/tasks/base_tasks/cancervar.yaml gennext-workflows/tasks/base_tasks/cnvpytor.yaml gennext-workflows/tasks/base_tasks/dir_cleanup.yaml gennext-workflows/tasks/base_tasks/duckdb.yaml gennext-workflows/tasks/base_tasks/fastqc.yaml gennext-workflows/tasks/base_tasks/filter-annotsv.yaml gennext-workflows/tasks/base_tasks/filter-msisensor-pro.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-bam2fq.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-bqsr.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-fq2bam.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-mutect2.yaml gennext-workflows/tasks/base_tasks/maf-to-db.yaml gennext-workflows/tasks/base_tasks/manta.yaml gennext-workflows/tasks/base_tasks/mosdepth.yaml gennext-workflows/tasks/base_tasks/msisensor-pro.yaml gennext-workflows/tasks/base_tasks/multiqc.yaml gennext-workflows/tasks/base_tasks/mutect2.yaml gennext-workflows/tasks/base_tasks/oncokb.yaml gennext-workflows/tasks/base_tasks/qorts.yaml gennext-workflows/tasks/base_tasks/samtools.yaml gennext-workflows/tasks/base_tasks/star-fusion-to-oncokb.yaml gennext-workflows/tasks/base_tasks/star-fusion.yaml gennext-workflows/tasks/base_tasks/trim-galore.yaml gennext-workflows/tasks/base_tasks/vcf-harmonizer.yaml gennext-workflows/tasks/base_tasks/verifybamid.yaml gennext-workflows/tasks/base_tasks/vlod.yaml gennext-workflows/tasks/change_run_state.yaml gennext-workflows/tasks/check-file-path.yaml gennext-workflows/tasks/collect_qc_data.yaml gennext-workflows/tasks/collect_somatic_data.yaml gennext-workflows/tasks/collect_tmb_data.yaml gennext-workflows/tasks/compose-read-group-str.yaml gennext-workflows/tasks/copy_inputs_to_scratch.yaml gennext-workflows/tasks/copy_temp_to_output.yaml gennext-workflows/tasks/get-node-config.yaml gennext-workflows/tasks/get_abs_ref_dirs.yaml gennext-workflows/tasks/get_run_data.yaml gennext-workflows/workflows/somatic-testing-workflow.yaml gennext-workflows/workflows/somatic/somatic-testing-dna-gpu-workflow.yaml gennext-workflows/workflows/somatic/somatic-testing-rna-gpu-workflow.yaml
+> gennext-workflows/workflows/wrappers/wrapper-somatic-dna-rna.yaml: in "wrapper-somatic-dna-rna" (WorkflowTemplate): templates.main.tasks.run-workflow templates.main-dna-rna.tasks.som-test-rna-workflow templates.main-rna.tasks.somatic-testing-rna-bam templates.somatic-testing-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates" in namespace ""
+
+gennext-workflows/workflows/wrappers/wrapper-somatic-rna.yaml
+= missing: it calls WorkflowTemplate collect-qc-data-templates, which is in no repository of the test workflows
+$ argo lint --offline --strict=false gennext-workflows/workflows/wrappers/wrapper-somatic-rna.yaml gennext-workflows/tasks/base_tasks/dir_cleanup.yaml gennext-workflows/tasks/base_tasks/duckdb.yaml gennext-workflows/tasks/base_tasks/fastqc.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-bam2fq.yaml gennext-workflows/tasks/base_tasks/mosdepth.yaml gennext-workflows/tasks/base_tasks/multiqc.yaml gennext-workflows/tasks/base_tasks/oncokb.yaml gennext-workflows/tasks/base_tasks/qorts.yaml gennext-workflows/tasks/base_tasks/samtools.yaml gennext-workflows/tasks/base_tasks/star-fusion-to-oncokb.yaml gennext-workflows/tasks/base_tasks/star-fusion.yaml gennext-workflows/tasks/base_tasks/trim-galore.yaml gennext-workflows/tasks/base_tasks/verifybamid.yaml gennext-workflows/tasks/change_run_state.yaml gennext-workflows/tasks/check-file-path.yaml gennext-workflows/tasks/collect_qc_data.yaml gennext-workflows/tasks/compose-read-group-str.yaml gennext-workflows/tasks/copy_inputs_to_scratch.yaml gennext-workflows/tasks/copy_temp_to_output.yaml gennext-workflows/tasks/get-node-config.yaml gennext-workflows/tasks/get_abs_ref_dirs.yaml gennext-workflows/tasks/get_run_data.yaml gennext-workflows/workflows/somatic-testing-workflow.yaml gennext-workflows/workflows/somatic/somatic-testing-rna-gpu-workflow.yaml
+> gennext-workflows/workflows/wrappers/wrapper-somatic-rna.yaml: in "wrapper-somatic-rna" (WorkflowTemplate): templates.main.tasks.run-workflow templates.main-rna.tasks.somatic-testing-rna-bam templates.somatic-testing-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates" in namespace ""
+
+hera/examples/workflows/misc/daemon.yaml
+= unsupported (decision 18): template server runs as a daemon, a service that later steps reach through the cluster network
+
+hera/examples/workflows/misc/data.yaml
+= unsupported (decision 18): template list-log-files is a data template, which reads an artifact repository from inside a cluster
+
+hera/examples/workflows/misc/resource-flags.yaml
+= unsupported (decision 18): template create-route is a resource template that manages Kubernetes objects of kind Route
+
+hera/examples/workflows/misc/suspend-input-duration.yaml
+= invalid: a step or task calls a template without its input parameter duration
+$ argo lint --offline --strict=false hera/examples/workflows/misc/suspend-input-duration.yaml
+> hera/examples/workflows/misc/suspend-input-duration.yaml: in "suspend-input-duration-" (Workflow): templates.suspend.steps[0].get-value-step templates.suspend-with-intermediate-param inputs.parameters.duration was not supplied
+
+hera/examples/workflows/misc/template-refs.yaml
+= missing: it calls WorkflowTemplate hello-world-workflow-template, which is in no repository of the test workflows
+$ argo lint --offline --strict=false hera/examples/workflows/misc/template-refs.yaml
+> hera/examples/workflows/misc/template-refs.yaml: in "use-workflow-templates-" (Workflow): templates.steps.steps[0].hello-template-ref couldn't find workflow template "hello-world-workflow-template" in namespace ""
+
+hera/examples/workflows/misc/user-container.yaml
+= unsupported (decision 18): template foo has sidecars, services that run beside the task in its Kubernetes pod
+
+hera/examples/workflows/upstream/daemon-nginx.yaml
+= unsupported (decision 18): template nginx-server runs as a daemon, a service that later steps reach through the cluster network
+
+hera/examples/workflows/upstream/daemon-step.yaml
+= unsupported (decision 18): template influxdb runs as a daemon, a service that later steps reach through the cluster network
+
+hera/examples/workflows/upstream/daemoned-stateful-set-with-service.yaml
+= unsupported (decision 18): template create-service is a resource template that manages Kubernetes objects of kind Service
+
+hera/examples/workflows/upstream/dag-daemon-retry-strategy.yaml
+= unsupported (decision 18): template server runs as a daemon, a service that later steps reach through the cluster network
+
+hera/examples/workflows/upstream/dag-daemon-task.yaml
+= unsupported (decision 18): template influxdb runs as a daemon, a service that later steps reach through the cluster network
+
+hera/examples/workflows/upstream/data-transformations.yaml
+= unsupported (decision 18): template list-log-files is a data template, which reads an artifact repository from inside a cluster
+
+hera/examples/workflows/upstream/influxdb-ci.yaml
+= unsupported (decision 18): template influxdb-server runs as a daemon, a service that later steps reach through the cluster network
+
+hera/examples/workflows/upstream/k8s-jobs.yaml
+= unsupported (decision 18): template rand-num is a resource template that manages Kubernetes objects of kind Job
+
+hera/examples/workflows/upstream/k8s-orchestration.yaml
+= unsupported (decision 18): template random-number-job is a resource template that manages Kubernetes objects of kind Job
+
+hera/examples/workflows/upstream/k8s-owner-reference.yaml
+= unsupported (decision 18): template main is a resource template that manages Kubernetes objects of kind Workflow
+
+hera/examples/workflows/upstream/k8s-patch-json-pod.yaml
+= unsupported (decision 18): template main is a resource template that manages Kubernetes objects
+
+hera/examples/workflows/upstream/k8s-patch-json-workflow.yaml
+= unsupported (decision 18): template main is a resource template that manages Kubernetes objects
+
+hera/examples/workflows/upstream/k8s-patch-merge-pod.yaml
+= unsupported (decision 18): template main is a resource template that manages Kubernetes objects
+
+hera/examples/workflows/upstream/k8s-patch-pod.yaml
+= unsupported (decision 18): template main is a resource template that manages Kubernetes objects of kind Pod
+
+hera/examples/workflows/upstream/k8s-resource-log-selector.yaml
+= unsupported (decision 18): template tf-jobtmpl is a resource template that manages Kubernetes objects of kind TFJob
+
+hera/examples/workflows/upstream/k8s-set-owner-reference.yaml
+= unsupported (decision 18): template k8s-set-owner-reference is a resource template that manages Kubernetes objects of kind ConfigMap
+
+hera/examples/workflows/upstream/k8s-wait-wf.yaml
+= unsupported (decision 18): template create-wf is a resource template that manages Kubernetes objects of kind Workflow
+
+hera/examples/workflows/upstream/resource-delete-with-flags.yaml
+= unsupported (decision 18): template create-configmap is a resource template that manages Kubernetes objects of kind ConfigMap
+
+hera/examples/workflows/upstream/resource-flags.yaml
+= unsupported (decision 18): template create-route is a resource template that manages Kubernetes objects of kind Route
+
+hera/examples/workflows/upstream/sidecar-dind.yaml
+= unsupported (decision 18): template dind-sidecar-example has sidecars, services that run beside the task in its Kubernetes pod
+
+hera/examples/workflows/upstream/sidecar-nginx.yaml
+= unsupported (decision 18): template sidecar-nginx-example has sidecars, services that run beside the task in its Kubernetes pod
+
+hera/examples/workflows/upstream/sidecar.yaml
+= unsupported (decision 18): template sidecar-example has sidecars, services that run beside the task in its Kubernetes pod
+
+hera/examples/workflows/upstream/steps-daemon-retry-strategy.yaml
+= unsupported (decision 18): template server runs as a daemon, a service that later steps reach through the cluster network
+
+hera/examples/workflows/upstream/workflow-of-workflows.yaml
+= unsupported (decision 18): template resource-without-argument is a resource template that manages Kubernetes objects of kind Workflow
+
+hera/examples/workflows/use_cases/fine-tune-llama.yaml
+= unsupported (decision 18): template create-ssd-storage-class is a resource template that manages Kubernetes objects of kind StorageClass
+
+hera/examples/workflows/use_cases/workflow-of-workflows.yaml
+= unsupported (decision 18): template w1-resource is a resource template that manages Kubernetes objects of kind Workflow
+
+regulation-workflows/workflow-templates/alignment/.deprecated/delete-alignment-task-markers.yaml
+= missing: it calls WorkflowTemplate compute-rfs-alignments-tasks-url-v1-submittable, which is in no repository of the test workflows
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/alignment/.deprecated/delete-alignment-task-markers.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-s3-object-exists.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api.yaml regulation-workflows/workflow-templates/helpers/.experimental/delete-s3-object.yaml regulation-workflows/workflow-templates/helpers/.experimental/delete-task-marker.yaml
+> regulation-workflows/workflow-templates/alignment/.deprecated/delete-alignment-task-markers.yaml: in "delete-alignment-tasks-markers-" (Workflow): templates.delete-alignment-tasks-markers.tasks.get-rfs-alignments-tasks-url couldn't find workflow template "compute-rfs-alignments-tasks-url-v1-submittable" in namespace ""
+
+regulation-workflows/workflow-templates/alignment/.deprecated/get-rfs-alignments-tasks.yaml
+= missing: it calls WorkflowTemplate compute-rfs-alignments-tasks-url-v1-submittable, which is in no repository of the test workflows
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/alignment/.deprecated/get-rfs-alignments-tasks.yaml regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api-v2.yaml regulation-workflows/workflow-templates/helpers/.deprecated/get-wf-task-payload-by-index.yaml
+> regulation-workflows/workflow-templates/alignment/.deprecated/get-rfs-alignments-tasks.yaml: in "get-rfs-alignments-tasks-v2-submittable" (WorkflowTemplate): templates.get-rfs-alignments-tasks-dag.tasks.get-rfs-alignments-tasks-url couldn't find workflow template "compute-rfs-alignments-tasks-url-v1-submittable" in namespace ""
+
+regulation-workflows/workflow-templates/alignment/.deprecated/rfs-alignments.yaml
+= missing: it calls WorkflowTemplate run-alignment-se-v1-submittable, which is in no repository of the test workflows
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/alignment/.deprecated/rfs-alignments.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-s3-object-exists.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata-pvc-callable.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-pvc-size.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml regulation-workflows/workflow-templates/helpers/.deprecated/copy-from-pvc-to-s3-object.yaml regulation-workflows/workflow-templates/helpers/.deprecated/copy-s3-prefix-objects-to-pvc.yaml regulation-workflows/workflow-templates/helpers/.deprecated/create-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/delete-patch-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/resolve-work-avoidance.yaml regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker.yaml regulation-workflows/workflow-templates/helpers/.deprecated/validate-expected-number-of-files-in-dir.yaml
+> regulation-workflows/workflow-templates/alignment/.deprecated/rfs-alignments.yaml: in "muliple-rfs-alignments-v1-submittable" (WorkflowTemplate): templates.multiple-rfs-alignments.tasks.execute-rfs-alignment templates.rfs-alignment.tasks.execute-runs-alignment templates.run-alignment.tasks.execute-se-alignment couldn't find workflow template "run-alignment-se-v1-submittable" in namespace ""
+
+regulation-workflows/workflow-templates/bowtie2/build/build-index-v-0.1.yaml
+= invalid: the name bt2_build-index has characters that Argo does not allow
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/bowtie2/build/build-index-v-0.1.yaml
+> regulation-workflows/workflow-templates/bowtie2/build/build-index-v-0.1.yaml: in "bowtie2-build-index-v-0.1.3" (WorkflowTemplate): spec.templates[0].name: 'bt2_build-index' is invalid: name must consist of alpha-numeric characters or '-', and must start with an alpha-numeric character (e.g. My-name1-2, 123-NAME)
+
+regulation-workflows/workflow-templates/export-peak/export-peak-tasks.yaml
+= invalid: two entries of a list have the same name export-peak-tasks-dag
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/export-peak/export-peak-tasks.yaml regulation-workflows/workflow-templates/export-peak/bed-to-bigbed-v-0.1.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api.yaml regulation-workflows/workflow-templates/helpers/analysis-file-post-request-payload-v-0.1.yaml regulation-workflows/workflow-templates/helpers/check-s3-object-exists-v-0.1.yaml regulation-workflows/workflow-templates/helpers/resolve-work-avoidance-v-0.1.yaml regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.1.yaml
+> regulation-workflows/workflow-templates/export-peak/export-peak-tasks.yaml: in "export-peak-tasks-v-0.1.1" (WorkflowTemplate): spec.templates[2].name 'export-peak-tasks-dag' is not unique
+
+regulation-workflows/workflow-templates/motif-mapping/motif-mapping-tasks.yaml
+= invalid: two entries of a list have the same name motif-mapping-tasks-dag
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/motif-mapping/motif-mapping-tasks.yaml regulation-workflows/workflow-templates/helpers/.deprecated/copy-s3-object-to-pvc.yaml regulation-workflows/workflow-templates/helpers/check-s3-object-exists-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-pvc-size-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-task-marker-name-v-0.1.yaml regulation-workflows/workflow-templates/helpers/copy-s3-object-to-pvc-v-0.1.yaml regulation-workflows/workflow-templates/helpers/create-pvc-v-0.2.yaml regulation-workflows/workflow-templates/helpers/delete-file-from-pvc-v-0.1.yaml regulation-workflows/workflow-templates/helpers/delete-pvc-v-0.1.yaml regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.2.yaml regulation-workflows/workflow-templates/helpers/get-wf-task-payload-by-index-v-0.1.yaml regulation-workflows/workflow-templates/helpers/resolve-work-avoidance-v-0.1.yaml regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.1.yaml
+> regulation-workflows/workflow-templates/motif-mapping/motif-mapping-tasks.yaml: in "motif-mapping-tasks-v-0.1.2" (WorkflowTemplate): spec.templates[2].name 'motif-mapping-tasks-dag' is not unique
+
+regulation-workflows/workflow-templates/peak-calling/.deprecated/atac-seq.yaml
+= missing: it calls WorkflowTemplate sort-alignment-by-queryname-pvc-callable-v1-submittable, which is in no repository of the test workflows
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/peak-calling/.deprecated/atac-seq.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-s3-object-exists.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata-pvc-callable.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-pvc-size.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml regulation-workflows/workflow-templates/helpers/.deprecated/create-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/delete-patch-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/resolve-work-avoidance.yaml regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker.yaml
+> regulation-workflows/workflow-templates/peak-calling/.deprecated/atac-seq.yaml: in "peak-calling-atac-seq-v1-submittable" (WorkflowTemplate): templates.peak-calling-atac-seq.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.execute-sort-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable" in namespace ""
+
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-ad-hoc.yaml
+= missing: it calls WorkflowTemplate sort-alignment-by-queryname-pvc-callable-v1-submittable, which is in no repository of the test workflows
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-ad-hoc.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-if-field-present-and-not-empty.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-s3-object-exists.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata-pvc-callable.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-pvc-size.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml regulation-workflows/workflow-templates/helpers/.deprecated/create-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/delete-patch-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/resolve-work-avoidance.yaml regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker.yaml
+> regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-ad-hoc.yaml: in "peak-calling-chip-seq-ad-hoc-v1-submittable" (WorkflowTemplate): templates.peak-calling-chip-seq.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.execute-sort-signal-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable" in namespace ""
+
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-pe-with-controls.yaml
+= invalid: two entries of a list have the same name overwrite-results
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-pe-with-controls.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-s3-object-exists.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml regulation-workflows/workflow-templates/helpers/.deprecated/resolve-work-avoidance.yaml regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker.yaml
+> regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-pe-with-controls.yaml: in "peak-calling-chip-seq-v1-submittable" (WorkflowTemplate): templates.peak-calling-chip-seq.tasks.execute-peak-calling-task templates.peak-calling-task.inputs.parameters[11].name 'overwrite-results' is not unique
+
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-se-no-controls.yaml
+= missing: it calls WorkflowTemplate sort-alignment-by-queryname-pvc-callable-v1-submittable, which is in no repository of the test workflows
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-se-no-controls.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-s3-object-exists.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata-pvc-callable.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-pvc-size.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml regulation-workflows/workflow-templates/helpers/.deprecated/create-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/delete-patch-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/resolve-work-avoidance.yaml regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker.yaml
+> regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-se-no-controls.yaml: in "peak-calling-chip-seq-se-no-controls-v1-submittable" (WorkflowTemplate): templates.peak-calling-chip-seq-se-no-controls.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.execute-sort-signal-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable" in namespace ""
+
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-v2.yaml
+= missing: it calls WorkflowTemplate sort-alignment-by-queryname-pvc-callable-v-0.2.0-, which is in no repository of the test workflows
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-v2.yaml regulation-workflows/workflow-templates/helpers/.deprecated/analysis-file-post-request-payload.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-if-field-present-and-not-empty.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-if-s3-objects-exist.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-s3-object-exists.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata-pvc-callable.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-pvc-size.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml regulation-workflows/workflow-templates/helpers/.deprecated/cp-s3-object-to-s3.yaml regulation-workflows/workflow-templates/helpers/.deprecated/create-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/delete-patch-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/pvc-to-pvc-copy.yaml regulation-workflows/workflow-templates/helpers/.deprecated/resolve-work-avoidance.yaml regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker.yaml
+> regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-v2.yaml: in "peak-calling-chip-seq-v2-submittable" (WorkflowTemplate): templates.peak-calling-chip-seq.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.execute-signals-samtools-sort-tasks templates.dag-samtools-sort-tasks.tasks.create-tasks templates.dag-samtools-sort-task.tasks.samtools-sort-task couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v-0.2.0-" in namespace ""
+
+regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq.yaml
+= missing: it calls WorkflowTemplate sort-alignment-by-queryname-pvc-callable-v1-submittable, which is in no repository of the test workflows
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-if-field-present-and-not-empty.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-s3-object-exists.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata-pvc-callable.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-pvc-size.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml regulation-workflows/workflow-templates/helpers/.deprecated/create-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/delete-patch-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/resolve-work-avoidance.yaml regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker.yaml
+> regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq.yaml: in "peak-calling-chip-seq-v1-submittable" (WorkflowTemplate): templates.peak-calling-chip-seq.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.execute-sort-signal-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable" in namespace ""
+
+regulation-workflows/workflow-templates/peak-calling/.deprecated/dnase-seq.yaml
+= missing: it calls WorkflowTemplate sort-alignment-by-queryname-pvc-callable-v1-submittable, which is in no repository of the test workflows
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/peak-calling/.deprecated/dnase-seq.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-s3-object-exists.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata-pvc-callable.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-pvc-size.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml regulation-workflows/workflow-templates/helpers/.deprecated/create-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/delete-patch-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/resolve-work-avoidance.yaml regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker.yaml
+> regulation-workflows/workflow-templates/peak-calling/.deprecated/dnase-seq.yaml: in "peak-calling-dnase-seq-v1-submittable" (WorkflowTemplate): templates.peak-calling-dnase-seq.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.execute-sort-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable" in namespace ""
+
+regulation-workflows/workflow-templates/peak-calling/.deprecated/get-genrich-values-tasks.yaml
+= missing: it calls WorkflowTemplate genrich-values-v2-submittable, which is in no repository of the test workflows
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/peak-calling/.deprecated/get-genrich-values-tasks.yaml regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api-v1_1.yaml
+> regulation-workflows/workflow-templates/peak-calling/.deprecated/get-genrich-values-tasks.yaml: in "get-genrich-values-tasks-" (Workflow): templates.get-genrich-values-tasks-dag.tasks.submit-genrich-values-tasks couldn't find workflow template "genrich-values-v2-submittable" in namespace ""
+
+regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks-ad-hoc.yaml
+= missing: it calls WorkflowTemplate sort-alignment-by-queryname-pvc-callable-v1-submittable, which is in no repository of the test workflows
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks-ad-hoc.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-if-field-present-and-not-empty.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-s3-object-exists.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata-pvc-callable.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-pvc-size.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml regulation-workflows/workflow-templates/helpers/.deprecated/create-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/delete-patch-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api.yaml regulation-workflows/workflow-templates/helpers/.deprecated/resolve-work-avoidance.yaml regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker.yaml regulation-workflows/workflow-templates/peak-calling/.deprecated/atac-seq.yaml regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-ad-hoc.yaml regulation-workflows/workflow-templates/peak-calling/.deprecated/dnase-seq.yaml
+> regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks-ad-hoc.yaml: in "get-peak-calling-tasks-ad-hoc-" (Workflow): templates.get-peak-calling-tasks-dag.tasks.submit-atac-seq-peak-calling-tasks templates.peak-calling-atac-seq.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.execute-sort-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable" in namespace ""
+
+regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks.yaml
+= missing: it calls WorkflowTemplate sort-alignment-by-queryname-pvc-callable-v1-submittable, which is in no repository of the test workflows
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks.yaml regulation-workflows/workflow-templates/helpers/.deprecated/analysis-file-post-request-payload.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-if-field-present-and-not-empty.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-if-s3-objects-exist.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-s3-object-exists.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata-pvc-callable.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-pvc-size.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml regulation-workflows/workflow-templates/helpers/.deprecated/cp-s3-object-to-s3.yaml regulation-workflows/workflow-templates/helpers/.deprecated/create-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/delete-patch-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api.yaml regulation-workflows/workflow-templates/helpers/.deprecated/pvc-to-pvc-copy.yaml regulation-workflows/workflow-templates/helpers/.deprecated/resolve-work-avoidance.yaml regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker.yaml regulation-workflows/workflow-templates/peak-calling/.deprecated/atac-seq.yaml regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-v2.yaml regulation-workflows/workflow-templates/peak-calling/.deprecated/dnase-seq.yaml
+> regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks.yaml: in "get-peak-calling-tasks-" (Workflow): templates.get-peak-calling-tasks-dag.tasks.submit-atac-seq-peak-calling-tasks templates.peak-calling-atac-seq.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.execute-sort-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable" in namespace ""
+
+regulation-workflows/workflow-templates/peak-calling/controls/control-peak-calling-for-mask-file.yaml
+= missing: it calls WorkflowTemplate compute-pvc-v-0.1.0, which is in no repository of the test workflows
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/peak-calling/controls/control-peak-calling-for-mask-file.yaml regulation-workflows/workflow-templates/helpers/analysis-file-post-request-payload-v-0.1.yaml regulation-workflows/workflow-templates/helpers/check-s3-object-exists-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compress-tgz-pvc-callable-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-file-metadata-pvc-callable-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-file-metadata-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-pvc-size-v-0.1.yaml regulation-workflows/workflow-templates/helpers/copy-from-pvc-to-s3-object-v-0.1.yaml regulation-workflows/workflow-templates/helpers/copy-s3-object-to-pvc-v-0.1.yaml regulation-workflows/workflow-templates/helpers/cp-s3-object-to-s3-v-0.1.yaml regulation-workflows/workflow-templates/helpers/create-pvc-v-0.2.yaml regulation-workflows/workflow-templates/helpers/delete-pvc-v-0.1.yaml regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.1.yaml
+> regulation-workflows/workflow-templates/peak-calling/controls/control-peak-calling-for-mask-file.yaml: in "control-peak-calling-for-mask-file-v-0.1.1" (WorkflowTemplate): templates.control-peak-calling-for-mask-file.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.execute-sort-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.get-pvc-size couldn't find workflow template "compute-pvc-v-0.1.0" in namespace ""
+
+regulation-workflows/workflow-templates/peak-calling/controls/get-control-peak-calling-tasks.yaml
+= missing: it calls WorkflowTemplate control-peak-calling-for-mask-file-v-0.1.0, which is in no repository of the test workflows
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/peak-calling/controls/get-control-peak-calling-tasks.yaml regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.1.yaml
+> regulation-workflows/workflow-templates/peak-calling/controls/get-control-peak-calling-tasks.yaml: in "get-control-peak-calling-tasks-v-0.1.0" (WorkflowTemplate): templates.get-control-peak-calling-tasks-dag.tasks.submit-controls-pc-tasks-for-mask-file couldn't find workflow template "control-peak-calling-for-mask-file-v-0.1.0" in namespace ""
+
+regulation-workflows/workflow-templates/peak-calling/genrich-tasks.yaml
+= invalid: it calls template 1.0.check-if-s3-objects-exist of WorkflowTemplate check-s3-object-exists-v-0, which does not have it
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/peak-calling/genrich-tasks.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-pvc-size.yaml regulation-workflows/workflow-templates/helpers/analysis-file-post-request-payload-v-0.1.yaml regulation-workflows/workflow-templates/helpers/check-if-field-present-and-not-empty-v-0.1.yaml regulation-workflows/workflow-templates/helpers/check-s3-object-exists-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compress-tgz-pvc-callable-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-file-metadata-pvc-callable-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-pvc-size-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-task-marker-name-v-0.1.yaml regulation-workflows/workflow-templates/helpers/copy-from-pvc-to-s3-object-v-0.1.yaml regulation-workflows/workflow-templates/helpers/cp-s3-object-to-s3-v-0.1.yaml regulation-workflows/workflow-templates/helpers/create-pvc-v-0.2.yaml regulation-workflows/workflow-templates/helpers/delete-pvc-v-0.1.yaml regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.1.yaml regulation-workflows/workflow-templates/helpers/resolve-work-avoidance-v-0.1.yaml regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.1.yaml regulation-workflows/workflow-templates/peak-calling/chip-seq-genrich-values-cmd.yaml regulation-workflows/workflow-templates/peak-calling/genrich-values-cmd.yaml regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.2.yaml regulation-workflows/workflow-templates/peak-calling/open-chromatin-genrich-values-cmd.yaml
+> regulation-workflows/workflow-templates/peak-calling/genrich-tasks.yaml: in "genrich-tasks-v-0.1.1" (WorkflowTemplate): templates.genrich-values-tasks-dag.tasks.submit-genrich-values-tasks templates.genrich-values.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.check-if-pq-values-and-pileups-already-in-s3-bucket template reference check-s3-object-exists-v-0.1.0.check-if-s3-objects-exist not found
+
+regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.1.yaml
+= invalid: it calls template 1.0.check-if-s3-objects-exist of WorkflowTemplate check-s3-object-exists-v-0, which does not have it
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.1.yaml regulation-workflows/workflow-templates/helpers/analysis-file-post-request-payload-v-0.1.yaml regulation-workflows/workflow-templates/helpers/check-if-field-present-and-not-empty-v-0.1.yaml regulation-workflows/workflow-templates/helpers/check-s3-object-exists-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compress-tgz-pvc-callable-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-file-metadata-pvc-callable-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-pvc-size-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-task-marker-name-v-0.1.yaml regulation-workflows/workflow-templates/helpers/copy-from-pvc-to-s3-object-v-0.1.yaml regulation-workflows/workflow-templates/helpers/copy-s3-object-to-pvc-v-0.1.yaml regulation-workflows/workflow-templates/helpers/cp-s3-object-to-s3-v-0.1.yaml regulation-workflows/workflow-templates/helpers/create-pvc-v-0.2.yaml regulation-workflows/workflow-templates/helpers/delete-pvc-v-0.1.yaml regulation-workflows/workflow-templates/helpers/resolve-work-avoidance-v-0.1.yaml regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.1.yaml regulation-workflows/workflow-templates/peak-calling/chip-seq-genrich-values-cmd.yaml regulation-workflows/workflow-templates/peak-calling/genrich-values-cmd.yaml regulation-workflows/workflow-templates/peak-calling/open-chromatin-genrich-values-cmd.yaml regulation-workflows/workflow-templates/samtools/samtools-sort-pvc-callable-v-0.2.yaml
+> regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.1.yaml: in "genrich-values-v-0.1.1" (WorkflowTemplate): templates.genrich-values.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.check-if-pq-values-and-pileups-already-in-s3-bucket template reference check-s3-object-exists-v-0.1.0.check-if-s3-objects-exist not found
+
+regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.2.yaml
+= invalid: it calls template 1.0.check-if-s3-objects-exist of WorkflowTemplate check-s3-object-exists-v-0, which does not have it
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.2.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-pvc-size.yaml regulation-workflows/workflow-templates/helpers/analysis-file-post-request-payload-v-0.1.yaml regulation-workflows/workflow-templates/helpers/check-if-field-present-and-not-empty-v-0.1.yaml regulation-workflows/workflow-templates/helpers/check-s3-object-exists-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compress-tgz-pvc-callable-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-file-metadata-pvc-callable-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-pvc-size-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-task-marker-name-v-0.1.yaml regulation-workflows/workflow-templates/helpers/copy-from-pvc-to-s3-object-v-0.1.yaml regulation-workflows/workflow-templates/helpers/cp-s3-object-to-s3-v-0.1.yaml regulation-workflows/workflow-templates/helpers/create-pvc-v-0.2.yaml regulation-workflows/workflow-templates/helpers/delete-pvc-v-0.1.yaml regulation-workflows/workflow-templates/helpers/resolve-work-avoidance-v-0.1.yaml regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.1.yaml regulation-workflows/workflow-templates/peak-calling/chip-seq-genrich-values-cmd.yaml regulation-workflows/workflow-templates/peak-calling/genrich-values-cmd.yaml regulation-workflows/workflow-templates/peak-calling/open-chromatin-genrich-values-cmd.yaml
+> regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.2.yaml: in "genrich-values-v-0.2.1" (WorkflowTemplate): templates.genrich-values.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.check-if-pq-values-and-pileups-already-in-s3-bucket template reference check-s3-object-exists-v-0.1.0.check-if-s3-objects-exist not found
+
+regulation-workflows/workflow-templates/peak-calling/open-chromatin-peaks-v-0.2.yaml
+= invalid: it calls template 1.1.compute-pvc of WorkflowTemplate compute-pvc-size-v-0, which does not have it
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/peak-calling/open-chromatin-peaks-v-0.2.yaml regulation-workflows/workflow-templates/helpers/analysis-file-post-request-payload-v-0.1.yaml regulation-workflows/workflow-templates/helpers/check-s3-object-exists-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-file-metadata-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-pvc-size-v-0.1.yaml regulation-workflows/workflow-templates/helpers/copy-s3-object-to-pvc-v-0.1.yaml regulation-workflows/workflow-templates/helpers/cp-s3-object-to-s3-v-0.1.yaml regulation-workflows/workflow-templates/helpers/create-pvc-v-0.2.yaml regulation-workflows/workflow-templates/helpers/decompress-tgz-pvc-callable-v-0.1.yaml regulation-workflows/workflow-templates/helpers/delete-pvc-v-0.1.yaml
+> regulation-workflows/workflow-templates/peak-calling/open-chromatin-peaks-v-0.2.yaml: in "open-chromatin-peaks-v-0.2.1" (WorkflowTemplate): templates.peak-calling-open-chromatin.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.get-peak-calling-pvc-size template reference compute-pvc-size-v-0.1.1.compute-pvc not found
+
+regulation-workflows/workflow-templates/peak-calling/peak-calling-tasks.yaml
+= invalid: it calls template 1.1.compute-pvc of WorkflowTemplate compute-pvc-size-v-0, which does not have it
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/peak-calling/peak-calling-tasks.yaml regulation-workflows/workflow-templates/helpers/analysis-file-post-request-payload-v-0.1.yaml regulation-workflows/workflow-templates/helpers/check-if-s3-objects-exist-v-0.1.yaml regulation-workflows/workflow-templates/helpers/check-s3-object-exists-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-file-metadata-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-pvc-size-v-0.1.yaml regulation-workflows/workflow-templates/helpers/copy-s3-object-to-pvc-v-0.1.yaml regulation-workflows/workflow-templates/helpers/cp-s3-object-to-s3-v-0.1.yaml regulation-workflows/workflow-templates/helpers/create-pvc-v-0.2.yaml regulation-workflows/workflow-templates/helpers/decompress-tgz-pvc-callable-v-0.1.yaml regulation-workflows/workflow-templates/helpers/delete-pvc-v-0.1.yaml regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.1.yaml regulation-workflows/workflow-templates/peak-calling/chip-seq-peaks-v-0.2.yaml regulation-workflows/workflow-templates/peak-calling/open-chromatin-peaks-v-0.2.yaml
+> regulation-workflows/workflow-templates/peak-calling/peak-calling-tasks.yaml: in "peak-calling-tasks-v-0.2.0" (WorkflowTemplate): templates.peak-calling-tasks-dag.tasks.submit-open-chromatin-peak-calling-tasks templates.peak-calling-open-chromatin.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.get-peak-calling-pvc-size template reference compute-pvc-size-v-0.1.1.compute-pvc not found
+
+regulation-workflows/workflow-templates/signal/.deprecated/get-signal-task.yaml
+= missing: it calls WorkflowTemplate genrich-pq-values-to-bigwig-pvc-callable-v1-submittable, which is in no repository of the test workflows
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/signal/.deprecated/get-signal-task.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-s3-object-exists.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-pvc-size.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml regulation-workflows/workflow-templates/helpers/.deprecated/copy-s3-object-to-pvc.yaml regulation-workflows/workflow-templates/helpers/.deprecated/create-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/decompress-tgz-pvc-callable_v2.yaml regulation-workflows/workflow-templates/helpers/.deprecated/delete-patch-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/get-request-from-reg-pipelines-api.yaml regulation-workflows/workflow-templates/helpers/.deprecated/resolve-work-avoidance.yaml regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker.yaml
+> regulation-workflows/workflow-templates/signal/.deprecated/get-signal-task.yaml: in "get-signal-tasks-" (Workflow): templates.get-signal-tasks-dag.tasks.submit-signal-tasks templates.signal-tasks-dag.tasks.submit-pq-values-to-bigwig templates.genrich-pq-values-to-bigwig-dag.tasks.genrich-pq-values-to-bigwig couldn't find workflow template "genrich-pq-values-to-bigwig-pvc-callable-v1-submittable" in namespace ""
+
+regulation-workflows/workflow-templates/signal/signal-tasks.yaml
+= invalid: two entries of a list have the same name signal-tasks-dag
+$ argo lint --offline --strict=false regulation-workflows/workflow-templates/signal/signal-tasks.yaml regulation-workflows/workflow-templates/helpers/analysis-file-post-request-payload-v-0.1.yaml regulation-workflows/workflow-templates/helpers/check-s3-object-exists-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-file-metadata-pvc-callable-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-pvc-size-v-0.1.yaml regulation-workflows/workflow-templates/helpers/compute-task-marker-name-v-0.1.yaml regulation-workflows/workflow-templates/helpers/copy-s3-object-to-pvc-v-0.1.yaml regulation-workflows/workflow-templates/helpers/create-pvc-v-0.2.yaml regulation-workflows/workflow-templates/helpers/decompress-tgz-pvc-callable-v-0.2.yaml regulation-workflows/workflow-templates/helpers/delete-file-from-pvc-v-0.1.yaml regulation-workflows/workflow-templates/helpers/delete-pvc-v-0.1.yaml regulation-workflows/workflow-templates/helpers/get-request-from-reg-pipelines-api-v-0.2.yaml regulation-workflows/workflow-templates/helpers/get-wf-task-payload-by-index-v-0.1.yaml regulation-workflows/workflow-templates/helpers/resolve-work-avoidance-v-0.1.yaml regulation-workflows/workflow-templates/helpers/update-task-marker-v-0.1.yaml regulation-workflows/workflow-templates/signal/genrich-pq-values-to-bigwig-pvc-callable-v-0.1.yaml
+> regulation-workflows/workflow-templates/signal/signal-tasks.yaml: in "signal-tasks-v-0.2.2" (WorkflowTemplate): spec.templates[2].name 'signal-tasks-dag' is not unique
+
+talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_standard_cluster_workflow_template.yaml
+= unsupported (decision 18): template dask-scheduler-generator runs as a daemon, a service that later steps reach through the cluster network
+
+talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_template.yaml#1
+= unsupported (decision 18): template dask-scheduler-generator runs as a daemon, a service that later steps reach through the cluster network
+
+talk-demos/argocon-demos/2021-processing-petabytes-with-dask/dask_workflow_template.yaml#2
+= unsupported (decision 18): template dask-scheduler-generator runs as a daemon, a service that later steps reach through the cluster network
+
+talk-demos/argocon-demos/2023-artifact-management-at-scale/ci-workflow-s3.yaml
+= unsupported (decision 18): template deploy-application is a resource template that manages Kubernetes objects of kind Application
+
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/code-analysis.yml
+= invalid: it calls template code-analysis, which the document does not define
+$ argo lint --offline --strict=false 'talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/code-analysis.yml'
+> talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/code-analysis.yml: in "code-analysis" (WorkflowTemplate): templates.main.tasks.code-analysis template name 'code-analysis' undefined
+
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/container-build.yml
+= invalid: a step or task calls a template without its input parameter container_tag
+$ argo lint --offline --strict=false 'talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/container-build.yml'
+> talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/container-build.yml: in "container-build" (WorkflowTemplate): templates.main.tasks.container-build templates.container-build inputs.parameters.container_tag was not supplied
+
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/deploy-application.yml
+= invalid: a step or task calls a template without its input parameter app_type
+$ argo lint --offline --strict=false 'talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/deploy-application.yml'
+> talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/deploy-application.yml: in "deploy-application" (WorkflowTemplate): templates.main.tasks.deploy-application templates.deploy-application inputs.parameters.app_type was not supplied
+
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/git-checkout.yml
+= invalid: it calls template git-checkout-pr, which the document does not define
+$ argo lint --offline --strict=false 'talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/git-checkout.yml'
+> talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/git-checkout.yml: in "git-checkout" (WorkflowTemplate): templates.main.tasks.git-checkout-pr template name 'git-checkout-pr' undefined
+
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/update-jira.yml
+= invalid: a step or task calls a template without its input parameter jira_ticket_number
+$ argo lint --offline --strict=false 'talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/update-jira.yml'
+> talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/update-jira.yml: in "update-jira" (WorkflowTemplate): templates.main.tasks.update-jira templates.update-jira inputs.parameters.jira_ticket_number was not supplied
+
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/argo-workflow.yaml
+= invalid: it calls template git-checkout-pr, which the document does not define
+$ argo lint --offline --strict=false talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/argo-workflow.yaml 'talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/code-analysis.yml' 'talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/container-build.yml' 'talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/cpd-certification.yml' 'talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/deploy-application.yml' 'talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/get-git.yml' 'talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/git-checkout.yml' 'talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/run-unit-tests.yml' 'talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/update-jira.yml'
+> talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/argo-workflow.yaml: in "ci-workflow" (WorkflowTemplate): templates.main.tasks.git-checkout templates.main.tasks.git-checkout-pr template name 'git-checkout-pr' undefined
+
+talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/create-and-setup-vcluster-workflow/create.yaml
+= unsupported (decision 18): template create-vcluster is a resource template that manages Kubernetes objects of kind Application
+
+talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/demonstrating-argo-workflows-and-vcluster-at-scale/lots-of-hellos-workflow.yaml
+= unsupported (decision 18): template hello is a resource template that manages Kubernetes objects of kind Workflow
+
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/dag-example.yaml
+= unsupported (decision 18): template resource is a resource template that manages Kubernetes objects of kind Pod
+
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/resource.yaml
+= unsupported (decision 18): template hello is a resource template that manages Kubernetes objects of kind Pod
+
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/steps-example.yaml
+= unsupported (decision 18): template resource is a resource template that manages Kubernetes objects of kind Pod
+
+talk-demos/oss-2022/python/cron-workflow-python.yaml
+= unsupported (decision 18): template bike-type is a resource template that manages Kubernetes objects of kind SparkApplication
+
+talk-demos/oss-2022/scala/workflows/spark-template-jvm.yaml
+= unsupported (decision 18): template spark is a resource template that manages Kubernetes objects of kind SparkApplication
+
+talk-demos/oss-2022/scala/workflows/workflow-scala-with-template.yaml
+= unsupported (decision 18): template spark is a resource template that manages Kubernetes objects of kind SparkApplication
+
+talk-demos/oss-2022/scala/workflows/workflow-scala.yaml
+= unsupported (decision 18): template bike-type is a resource template that manages Kubernetes objects of kind SparkApplication
+
+workflows/examples/inspection-batch-with-failure.yaml
+= unsupported (decision 18): template run-to-completion is a resource template that manages Kubernetes objects of kind Job
+
+workflows/examples/inspection-batch-with-output-gathering.yaml
+= unsupported (decision 18): template run-to-completion is a resource template that manages Kubernetes objects of kind Job
+
+workflows/examples/inspection-batch.yaml
+= unsupported (decision 18): template run-to-completion is a resource template that manages Kubernetes objects of kind Job
+
+workflows/examples/inspection.yaml
+= unsupported (decision 18): template create-imagestream is a resource template that manages Kubernetes objects of kind ImageStream
+
+workflows/examples/resource-validate.yaml
+= unsupported (decision 18): template create-route is a resource template that manages Kubernetes objects of kind Route
+
+workflows/templates/inspection-build-template.yaml
+= unsupported (decision 18): template create-imagestream is a resource template that manages Kubernetes objects of kind ImageStream
+
+workflows/templates/inspection-run-template.yaml
+= unsupported (decision 18): template create-job is a resource template that manages Kubernetes objects of kind Job

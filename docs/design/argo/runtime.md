@@ -263,44 +263,48 @@ A container's `command` and `args` form one command line, which the executor run
 
 `just argo-test-workflows` fetches the 19 repositories of research question Q6 at the commits in `argo-parser/tests/fixtures/test-workflows/revisions.txt` into `~/.cache/iunctus/test-workflows/argo`, and argoproj-labs/argo-workflows-hello-executor-plugin, whose plugin the talk-demos examples of plugin templates install. gennext-workflows has no license: it is fetched for research only and never copied into this repository.
 
-`just argo-test-workflows-test` runs the ignored test `argo-runtime/tests/test_workflows.rs`. It reads every Argo document of the test workflows. A document with an entrypoint runs through `MockTes`; the others, like libraries of WorkflowTemplates and executor plugin ConfigMaps, get the checks of section 4.1. The outcomes are compared with `argo-runtime/tests/fixtures/test-workflows/outcomes.txt`: `ok` and the number of tasks, `valid`, or the exit code and the error (its end, when it is long). Every document that does not pass needs a line in `argo-runtime/tests/fixtures/test-workflows/rejected.txt` with the evidence that Argo rejects or fails it for the same reason, and the test fails on a document without evidence or on evidence for a document that passes.
+`just argo-test-workflows-test` runs the ignored test `argo-runtime/tests/test_workflows.rs`. It reads every Argo document of the test workflows. A document with an entrypoint runs through `MockTes`; the others, like libraries of WorkflowTemplates and executor plugin ConfigMaps, get the checks of section 4.1. The outcomes are compared with `argo-runtime/tests/fixtures/test-workflows/outcomes.txt`: `ok` and the number of tasks, `valid`, or the exit code and the error (its end, when it is long). Every document that does not pass needs a record in `argo-runtime/tests/fixtures/test-workflows/rejected.txt` that names its kind and why, in one sentence: `invalid` (the workflow itself is broken) or `missing` (it calls a WorkflowTemplate that is in no repository of the test workflows), each with the output of `argo lint`, which rejects it the same way, or `unsupported (decision 18)`. The test fails on a document without a record, on a record of the wrong kind (exit code 33 is `unsupported`), and on a record for a document that passes. `rejected.py` next to the records writes them; it runs `argo lint` and never runs as part of iunctus.
 
-Some documents get directories as configs, as `-c` gives them: Hera's copies of Argo's examples get Argo's `examples`, because Hera does not copy all the WorkflowTemplates they refer to; the talk-demos plugin examples get the hello executor plugin; and the talk-demos copy of pipekit's CI workflow gets the WorkflowTemplates of pipekit/argo-workflows-ci-example. `ARGO_TEST_WORKFLOWS_UPDATE=1` records new outcomes, `ARGO_TEST_WORKFLOWS_FILTER` runs only matching paths and `ARGO_TEST_WORKFLOWS_VERBOSE=1` prints the warnings.
+Some documents get directories as configs, as `-c` gives them: Hera's copies of Argo's examples get Argo's `examples`, because Hera does not copy all the WorkflowTemplates they refer to; the talk-demos plugin examples get the hello executor plugin; and the talk-demos copy of pipekit's CI workflow gets the WorkflowTemplates of pipekit/argo-workflows-ci-example. `ARGO_TEST_WORKFLOWS_UPDATE=1` records new outcomes, `ARGO_TEST_WORKFLOWS_FILTER` runs only matching paths, `ARGO_TEST_WORKFLOWS_VERBOSE=1` prints the warnings, and `ARGO_TEST_WORKFLOWS_ORDER=shuffled:<seed>` lets up to 8 tasks be pending and finish in a random order. With seeds 1 and 2 the outcomes stay the same, so the driver does not depend on the order of outcomes.
 
-Results on 2026-09-29: 1493 of 1573 documents pass: 1285 run through with a full graph and 208 documents without an entrypoint pass Argo's checks. No document stops as unsupported.
+Results on 2026-09-29: 1375 of 1573 documents pass: 1167 run through with a full graph and 208 documents without an entrypoint pass Argo's checks. 120 documents are unsupported by decision 18, and `argo lint` rejects the other 78 the same way.
 
 | Repository | Pass | Documents |
 |---|---:|---:|
-| argoproj/argo-workflows | 555 | 571 |
-| argoproj-labs/hera | 276 | 278 |
-| GenivaInformatics/gennext-workflows | 147 | 168 |
+| argoproj/argo-workflows | 507 | 571 |
+| argoproj-labs/hera | 246 | 278 |
+| GenivaInformatics/gennext-workflows | 141 | 168 |
 | kubeflow/pipelines | 153 | 153 |
 | Ensembl/regulation-workflows | 107 | 132 |
 | codefresh-io/argo-hub | 104 | 106 |
-| pipekit/talk-demos | 30 | 36 |
-| AliyunContainerService/argo-workflow-examples | 20 | 20 |
-| pipekit/argo-workflows-ci-example | 17 | 20 |
+| pipekit/talk-demos | 17 | 36 |
+| AliyunContainerService/argo-workflow-examples | 19 | 20 |
+| pipekit/argo-workflows-ci-example | 5 | 20 |
 | couler-proj/couler | 18 | 19 |
-| argoproj-labs/argo-workflows-catalog | 17 | 17 |
+| argoproj-labs/argo-workflows-catalog | 16 | 17 |
 | DataCloud-project/SIM-PIPE | 11 | 11 |
-| thoth-station/workflows | 9 | 11 |
+| thoth-station/workflows | 4 | 11 |
 | wwood/singlem-sra-processing | 9 | 9 |
 | PGpalt/Hybrid-Argo-Workflows | 6 | 6 |
-| terrytangyuan/distributed-ml-patterns | 6 | 6 |
+| terrytangyuan/distributed-ml-patterns | 4 | 6 |
 | devops-ws/argo-workflows-guide | 3 | 3 |
 | uc-cdis/argo-wrapper | 1 | 3 |
 | argoproj-labs/argo-workflows-hello-executor-plugin | 2 | 2 |
 | DonaldKellett/snakemake-tutorial-argo-workflows | 2 | 2 |
 
-`argo lint` of Argo v4.1.4 rejects each of the 80 documents that do not pass, for the same reason:
+The 198 documents that do not pass:
 
-| Reason | Documents |
-|---|---:|
-| A WorkflowTemplate that no document of the test workflows defines, like gennext's `collect-qc-data-templates` or Ensembl's deprecated `*-submittable` templates | 29 |
-| A template that is not there, or that has no type | 20 |
-| A step or task that does not supply an input of the template it calls, among them Argo's expected failures | 11 |
-| Names that are missing, invalid or not unique | 10 |
-| Documents that are not valid YAML or do not fit Argo's types, among them Argo's malformed test files; one has a duplicate key, which `argo lint` and `argo submit` reject in their default strict mode | 9 |
-| A tag that does not resolve (`{{steps.A...}}` inside a DAG) | 1 |
+| Kind | Reason | Documents |
+|---|---|---:|
+| unsupported (decision 18) | A resource template that manages Kubernetes objects other than a PersistentVolumeClaim, like Jobs, Services, Pods, Workflows or Argo CD Applications | 77 |
+| unsupported (decision 18) | A daemon template | 23 |
+| unsupported (decision 18) | Sidecars | 15 |
+| unsupported (decision 18) | A data template | 5 |
+| missing | A WorkflowTemplate that no repository of the test workflows defines, like gennext's `collect-qc-data-templates` or Ensembl's deprecated `*-submittable` templates | 29 |
+| invalid | A template that is not there, or that has no type | 18 |
+| invalid | A step or task that does not supply an input of the template it calls, among them Argo's expected failures | 11 |
+| invalid | Names that are missing, invalid or not unique | 10 |
+| invalid | Documents that are not valid YAML or do not fit Argo's types, among them Argo's malformed test files; one has a duplicate key, which `argo lint` and `argo submit` reject in their default strict mode | 9 |
+| invalid | A tag that does not resolve (`{{steps.A...}}` inside a DAG) | 1 |
 
 Some documents that pass are rejected by `argo lint --strict=false`, where iunctus is more lenient without a change to what runs: tags that name variables no template sets (19 documents; section 4.1 leaves this check out), CronWorkflows with the v3 field `schedule`, which iunctus converts as `argo convert` does (6), and references to WorkflowTemplates that Argo would refuse to create, like gennext's `copy-inputs-to-scratch` with its unfinished template that no workflow calls. With `--strict`, its default, `argo lint` also rejects unknown fields, which iunctus leaves out.

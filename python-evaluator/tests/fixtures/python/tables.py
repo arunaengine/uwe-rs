@@ -103,3 +103,7 @@ df = pd.DataFrame({"sample": ["A", "A", "B"], "rep": [1, 2, 1], "fq": ["x", None
 print(df.loc[["A"]].fq.tolist(), df.loc[["A", "B"]].shape, list(df.index.get_level_values("sample").unique()))
 print(all(df.loc[["B"]].fq.notna()), df.loc["A"].shape)
 print("H3" in pd.DataFrame({"a": ["H3", "x"]})[["a"]].values, "y" in pd.DataFrame({"a": ["H3", "x"]})[["a"]].values)
+try:
+    pd.read_table(io.StringIO("a b\n1 2\n"), delim_whitespace=True)
+except TypeError as error:
+    print("TypeError", error)

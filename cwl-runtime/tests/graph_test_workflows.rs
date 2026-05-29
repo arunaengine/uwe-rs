@@ -6,7 +6,8 @@
 //! fail when `tests/fixtures/graph_evidence.txt` has a record of it: why it cannot run, and
 //! that cwltool fails on it too (see `records`). Run with
 //! `just cwl-graph-test-workflows-test`; on a difference the test writes the new fixture to the
-//! target directory and says where.
+//! target directory and says where. `CWL_TEST_WORKFLOWS_ORDER=shuffled:<seed>` lets
+//! tasks finish in a random order (see `order`).
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -19,8 +20,9 @@ use std::time::Duration;
 use cwl_parser::source::Web;
 use cwl_parser::{Loader, Node, Value, yaml};
 use cwl_runtime::{CwlDriver, Options};
-use workflow_graph::{ExecuteError, Launch, MockTes, execute};
+use workflow_graph::{ExecuteError, Launch, MockTes, execute_with};
 
+mod order;
 #[path = "../../cwl-parser/tests/records/mod.rs"]
 mod records;
 
@@ -106,7 +108,7 @@ fn graph_with(reference: &str, options: Options) -> Result<usize, String> {
     };
     let mut driver = CwlDriver::new(&launch, options).map_err(|error| describe(&error))?;
     let mut executor = MockTes::new(directory.path().join("mock"));
-    let execution = execute(reference, &mut driver, &mut executor);
+    let execution = execute_with(reference, &mut driver, &mut executor, &order::run_options());
     if let Some(error) = execution.error {
         return Err(match error {
             ExecuteError::Driver(error) => describe(&error),

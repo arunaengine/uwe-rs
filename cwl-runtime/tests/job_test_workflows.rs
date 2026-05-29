@@ -7,7 +7,8 @@
 //! it too (see `records`). Documents that
 //! `cwltool --validate` rejects, and pairs whose files the test workflows lack, are left out.
 //! Run with `just cwl-job-test-workflows-test`; on a difference the test writes the new fixture
-//! to the target directory and says where.
+//! to the target directory and says where. `CWL_TEST_WORKFLOWS_ORDER=shuffled:<seed>` lets
+//! tasks finish in a random order (see `order`).
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -16,8 +17,9 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
 
-use workflow_graph::{ExecuteError, Launch, MockTes, execute};
+use workflow_graph::{ExecuteError, Launch, MockTes, execute_with};
 
+mod order;
 #[path = "../../cwl-parser/tests/records/mod.rs"]
 mod records;
 
@@ -67,7 +69,12 @@ fn run(target: PathBuf, inputs: PathBuf) -> Result<usize, String> {
     };
     let mut driver = cwl_runtime::driver(&launch).map_err(describe)?;
     let mut executor = MockTes::new(directory.path().join("mock"));
-    let execution = execute(&target.to_string_lossy(), driver.as_mut(), &mut executor);
+    let execution = execute_with(
+        &target.to_string_lossy(),
+        driver.as_mut(),
+        &mut executor,
+        &order::run_options(),
+    );
     if let Some(error) = execution.error {
         return Err(match error {
             ExecuteError::Driver(error) => describe(error),

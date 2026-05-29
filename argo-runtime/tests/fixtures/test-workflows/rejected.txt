@@ -1,89 +1,400 @@
-# Evidence that Argo v4.1.4 rejects or fails, for the same reason, each document of the Argo
-# corpus that does not pass: the document, a tab, and the evidence. `argo lint: ...` is the output
-# of `argo lint --offline --strict=false` (the argo CLI v4.1.4) on the document together with the
-# files of its repository that define the WorkflowTemplates it refers to (the copy that holds the
-# referenced template), with namespaces removed so that the references resolve, with values for
-# the inputs of a Workflow's entrypoint as `argo submit -p` gives them, and without the unfinished
-# template copy-bam-to-scratch-path-aware of gennext's copy_inputs_to_scratch.yaml, which Argo
-# refuses to create and which the documents do not call. "No document of the corpus defines X"
-# means that the WorkflowTemplate X lives outside the corpus.
-argo-hub/examples/jira-sonar/versions/0.0.1/workflowTemplate.yaml	argo lint: templates.jira-sonar.tasks.build-docker-image templates.build inputs.parameters.REPO was not supplied
-argo-hub/workflows/codefresh-classic/versions/0.0.1/workflowTemplate.mock.yaml	argo lint: template name 'main' undefined
-argo-workflows-ci-example/bootstrap/workflow-templates/minio/container-build-kaniko-s3 copy.yml	argo lint: templates.main.tasks.container-build templates.container-build inputs.artifacts.modified_git_repo was not supplied
-argo-workflows-ci-example/bootstrap/workflow-templates/minio/container-build-s3.yml	argo lint: spec.templates[2].name 'container-build' is not unique
-argo-workflows-ci-example/bootstrap/workflow-templates/minio/html-modifier-s3.yml	argo lint: templates.main.tasks.html-modifier templates.html-modifier inputs.artifacts.git_repo was not supplied
-argo-workflows/examples/k8s-patch-json-workflow.yaml	argo lint --offline (strict, the default of argo lint and argo submit) finds nothing to lint: the duplicate key fails strict decoding; only --strict=false accepts the file
-argo-workflows/test/e2e/cron/cron-and-malformed-template.yaml#1	argo lint: spec.templates[0].name is required
-argo-workflows/test/e2e/expectedfailures/empty-parameter-dag.yaml	argo lint: templates.abc.tasks.a templates.whalesay inputs.parameters.message was not supplied
-argo-workflows/test/e2e/expectedfailures/empty-parameter-steps.yaml	argo lint: templates.abc.steps[0].a templates.whalesay inputs.parameters.message was not supplied
-argo-workflows/test/e2e/expectedfailures/input-artifact-not-optional.yaml	argo lint: templates.http-artifact-example inputs.artifacts.kubectl was not supplied
-argo-workflows/test/e2e/expectedfailures/misreference-template-name.yaml	argo lint: templates.steps-with-misreference.steps[1].hello2 template name 'hell0' undefined
-argo-workflows/test/e2e/lintfail/invalid-spec.yaml	argo lint: template name 'doesnotexist' undefined
-argo-workflows/test/e2e/lintfail/malformed-spec.yaml	argo lint: Error: failed to parse YAML json: cannot unmarshal array into Go struct field WorkflowSpec.spec.entrypoint of type string
-argo-workflows/test/e2e/smoke/basic-invalid.yaml	argo lint: error converting YAML to JSON: yaml: line 10: did not find expected key
-argo-workflows/test/e2e/testdata/malformed/malformed-clusterworkflowtemplate.yaml	argo lint: Error: failed to parse YAML json: cannot unmarshal object into Go struct field Arguments.spec.arguments.parameters of type []v1alpha1.Parameter
-argo-workflows/test/e2e/testdata/malformed/malformed-cronworkflow.yaml	argo lint: Error: failed to parse YAML json: cannot unmarshal object into Go struct field Arguments.spec.workflowSpec.arguments.parameters of type []v1alpha1.Parameter
-argo-workflows/test/e2e/testdata/malformed/malformed-workflow.yaml	argo lint: Error: failed to parse YAML json: cannot unmarshal object into Go struct field Arguments.spec.arguments.parameters of type []v1alpha1.Parameter
-argo-workflows/test/e2e/testdata/malformed/malformed-workflowtemplate-2.yaml	argo lint: spec.templates[0].name is required
-argo-workflows/test/e2e/testdata/malformed/malformed-workflowtemplate.yaml	argo lint: Error: failed to parse YAML json: cannot unmarshal object into Go struct field Arguments.spec.arguments.parameters of type []v1alpha1.Parameter
-argo-workflows/test/e2e/testdata/wellformed/wellformed-workflow-with-malformed-cluster-workflow-template-ref.yaml	argo lint: Error: failed to parse YAML json: cannot unmarshal object into Go struct field Arguments.spec.arguments.parameters of type []v1alpha1.Parameter
-argo-workflows/test/e2e/testdata/wellformed/wellformed-workflow-with-malformed-workflow-template-ref.yaml	argo lint: spec.entrypoint is required
-argo-wrapper/src/argowrapper/argo_workflows_templates/header.yaml	argo lint: couldn't find workflow template "gwas-template-integration-test"; no document of the corpus defines gwas-template-integration-test
-argo-wrapper/workflow_examples/gwas_header.yaml	argo lint: couldn't find workflow template "gwas-template"; no document of the corpus defines gwas-template
-couler/couler/tests/test_data/artifact_passing_golden.yaml	argo lint: templates.pytest.tasks.B failed to resolve {{steps.A.outputs.artifacts.output-oss-1c392c25}}
-gennext-workflows/chore/update_existing_run_with_exomedepth.yaml	argo lint: template name 'main' undefined
-gennext-workflows/tasks/base_tasks/multicaller.yaml	argo lint: templates.multicaller templates.multicaller.tasks[0].name is required
-gennext-workflows/tasks/base_tasks/split-caller.yaml	argo lint: templates.parallel-caller.tasks.split-regions-beds-list template 'split-regions-beds-list' type is unknown
-gennext-workflows/tasks/base_tasks/zyalign.yaml	argo lint: error converting YAML to JSON: yaml: line 98: could not find expected ':'
-gennext-workflows/tasks/compose-read-group-str.yaml	argo lint: template name 'main' undefined
-gennext-workflows/tasks/copy_inputs_to_scratch.yaml	argo lint: templates.copy-bam-to-scratch-path-aware templates.copy-bam-to-scratch-path-aware.steps[0].check- failed to get a template
-gennext-workflows/tasks/copy_inputs_to_temp.yaml	argo lint: templates.read-run-data template 'read-run-data' type is unknown
-gennext-workflows/tasks/regenerate_qc_workflow.yaml	argo lint: templates.main.tasks.mosdepth failed to get a template
-gennext-workflows/workflows/germline/germline-rna-gpu-workflow.yaml	argo lint: templates.germline-rna-gpu-fastq templates.germline-rna-gpu-fastq.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"; no document of the corpus defines collect-qc-data-templates
-gennext-workflows/workflows/msi_tmb_coverage_workflow.yaml	argo lint: templates.msi-tmb-coverage-workflow templates.msi-tmb-coverage-workflow.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"; no document of the corpus defines collect-qc-data-templates
-gennext-workflows/workflows/somatic-testing-workflow.yaml	argo lint: templates.somatic-testing-tumor templates.somatic-testing-tumor.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"; no document of the corpus defines collect-qc-data-templates
-gennext-workflows/workflows/somatic/somatic-testing-rna-gpu-workflow.yaml	argo lint: templates.somatic-testing-rna-gpu-bam templates.somatic-testing-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"; no document of the corpus defines collect-qc-data-templates
-gennext-workflows/workflows/tps-workflow.yaml	argo lint: templates.main.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"; no document of the corpus defines collect-qc-data-templates
-gennext-workflows/workflows/wes-workflow.yaml	argo lint: templates.main.tasks.wes-bam-workflow templates.wes-bam-workflow.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"; no document of the corpus defines collect-qc-data-templates
-gennext-workflows/workflows/wgs-workflow.yaml	argo lint: templates.main.tasks.wgs-fastq-workflow templates.wgs-fastq-workflow.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"; no document of the corpus defines collect-qc-data-templates
-gennext-workflows/workflows/wrapper-workflow-prs.yaml	argo lint: templates.wrapper-workflow-prs.tasks.prs-workflow templates.main inputs.parameters.genotype-file-name was not supplied
-gennext-workflows/workflows/wrapper-workflow-somatic.yaml	argo lint: templates.wrapper-workflow-somatic.tasks.somatic-testing-tumor-workflow template reference somatic-testing-workflow.main not found
-gennext-workflows/workflows/wrapper-workflow.yaml	argo lint: templates.wrapper-workflow.tasks.rna-workflow templates.main.tasks.germline-rna-bam-workflow templates.germline-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"; no document of the corpus defines collect-qc-data-templates
-gennext-workflows/workflows/wrappers/wrapper-rna.yaml	argo lint: templates.main.tasks.run-workflow templates.main.tasks.germline-rna-bam-workflow templates.germline-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"; no document of the corpus defines collect-qc-data-templates
-gennext-workflows/workflows/wrappers/wrapper-somatic-dna-rna.yaml	argo lint: ...asks.run-workflow templates.main-dna-rna.tasks.som-test-rna-workflow templates.main-rna.tasks.somatic-testing-rna-bam templates.somatic-testing-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"; no document of the corpus defines collect-qc-data-templates
-gennext-workflows/workflows/wrappers/wrapper-somatic-rna.yaml	argo lint: templates.main.tasks.run-workflow templates.main-rna.tasks.somatic-testing-rna-bam templates.somatic-testing-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"; no document of the corpus defines collect-qc-data-templates
-hera/examples/workflows/misc/suspend-input-duration.yaml	argo lint: templates.suspend.steps[0].get-value-step templates.suspend-with-intermediate-param inputs.parameters.duration was not supplied
-hera/examples/workflows/misc/template-refs.yaml	argo lint: templates.steps.steps[0].hello-template-ref couldn't find workflow template "hello-world-workflow-template"; no document of the corpus defines hello-world-workflow-template
-regulation-workflows/workflow-templates/alignment/.deprecated/delete-alignment-task-markers.yaml	argo lint: templates.delete-alignment-tasks-markers.tasks.get-rfs-alignments-tasks-url couldn't find workflow template "compute-rfs-alignments-tasks-url-v1-submittable"; no document of the corpus defines compute-rfs-alignments-tasks-url-v1-submittable
-regulation-workflows/workflow-templates/alignment/.deprecated/get-rfs-alignments-tasks.yaml	argo lint: templates.get-rfs-alignments-tasks-dag.tasks.get-rfs-alignments-tasks-url couldn't find workflow template "compute-rfs-alignments-tasks-url-v1-submittable"; no document of the corpus defines compute-rfs-alignments-tasks-url-v1-submittable
-regulation-workflows/workflow-templates/alignment/.deprecated/rfs-alignments.yaml	argo lint: templates.multiple-rfs-alignments.tasks.execute-rfs-alignment templates.rfs-alignment.tasks.execute-runs-alignment templates.run-alignment.tasks.execute-pe-alignment couldn't find workflow template "run-alignment-pe-v1-submittable"; no document of the corpus defines run-alignment-pe-v1-submittable
-regulation-workflows/workflow-templates/bowtie2/build/build-index-v-0.1.yaml	argo lint: spec.templates[0].name: 'bt2_build-index' is invalid: name must consist of alpha-numeric characters or '-', and must start with an alpha-numeric character (e.g. My-name1-2, 123-NAME)
-regulation-workflows/workflow-templates/export-peak/export-peak-tasks.yaml	argo lint: spec.templates[2].name 'export-peak-tasks-dag' is not unique
-regulation-workflows/workflow-templates/motif-mapping/motif-mapping-tasks.yaml	argo lint: spec.templates[2].name 'motif-mapping-tasks-dag' is not unique
-regulation-workflows/workflow-templates/peak-calling/.deprecated/atac-seq.yaml	argo lint: ...lates.peak-calling-task.tasks.execute-sort-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable"; no document of the corpus defines sort-alignment-by-queryname-pvc-callable-v1-submittable
-regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-ad-hoc.yaml	argo lint: ...eak-calling-task.tasks.execute-sort-signal-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable"; no document of the corpus defines sort-alignment-by-queryname-pvc-callable-v1-submittable
-regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-pe-with-controls.yaml	argo lint: templates.peak-calling-chip-seq.tasks.execute-peak-calling-task templates.peak-calling-task.inputs.parameters[11].name 'overwrite-results' is not unique
-regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-se-no-controls.yaml	argo lint: ...eak-calling-task.tasks.execute-sort-signal-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable"; no document of the corpus defines sort-alignment-by-queryname-pvc-callable-v1-submittable
-regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq-v2.yaml	argo lint: ....tasks.execute-signals-samtools-sort-tasks templates.dag-samtools-sort-tasks.tasks.create-tasks templates.dag-samtools-sort-task.tasks.samtools-sort-task couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v-0.2.0-"; no document of the corpus defines sort-alignment-by-queryname-pvc-callable-v-0.2.0-
-regulation-workflows/workflow-templates/peak-calling/.deprecated/chip-seq.yaml	argo lint: ...eak-calling-task.tasks.execute-sort-signal-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable"; no document of the corpus defines sort-alignment-by-queryname-pvc-callable-v1-submittable
-regulation-workflows/workflow-templates/peak-calling/.deprecated/dnase-seq.yaml	argo lint: ...lates.peak-calling-task.tasks.execute-sort-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable"; no document of the corpus defines sort-alignment-by-queryname-pvc-callable-v1-submittable
-regulation-workflows/workflow-templates/peak-calling/.deprecated/get-genrich-values-tasks.yaml	argo lint: templates.get-genrich-values-tasks-dag.tasks.submit-genrich-values-tasks couldn't find workflow template "genrich-values-v2-submittable"; no document of the corpus defines genrich-values-v2-submittable
-regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks-ad-hoc.yaml	argo lint: ...lates.peak-calling-task.tasks.execute-sort-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable"; no document of the corpus defines sort-alignment-by-queryname-pvc-callable-v1-submittable
-regulation-workflows/workflow-templates/peak-calling/.deprecated/get-peak-calling-tasks.yaml	argo lint: ...lates.peak-calling-task.tasks.execute-sort-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.execute-sort-alignment-by-queryname couldn't find workflow template "sort-alignment-by-queryname-pvc-callable-v1-submittable"; no document of the corpus defines sort-alignment-by-queryname-pvc-callable-v1-submittable
-regulation-workflows/workflow-templates/peak-calling/controls/control-peak-calling-for-mask-file.yaml	argo lint: ...-calling-for-mask-file.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.execute-sort-alignments-by-queryname templates.sort-alignments-by-queryname.tasks.get-pvc-size couldn't find workflow template "compute-pvc-v-0.1.0"; no document of the corpus defines compute-pvc-v-0.1.0
-regulation-workflows/workflow-templates/peak-calling/controls/get-control-peak-calling-tasks.yaml	argo lint: templates.get-control-peak-calling-tasks-dag.tasks.submit-controls-pc-tasks-for-mask-file couldn't find workflow template "control-peak-calling-for-mask-file-v-0.1.0"; no document of the corpus defines control-peak-calling-for-mask-file-v-0.1.0
-regulation-workflows/workflow-templates/peak-calling/genrich-tasks.yaml	argo lint: ...es-tasks templates.genrich-values.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.check-if-pq-values-and-pileups-already-in-s3-bucket template reference check-s3-object-exists-v-0.1.0.check-if-s3-objects-exist not found
-regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.1.yaml	argo lint: templates.genrich-values.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.check-if-pq-values-and-pileups-already-in-s3-bucket template reference check-s3-object-exists-v-0.1.0.check-if-s3-objects-exist not found
-regulation-workflows/workflow-templates/peak-calling/genrich-values-v-0.2.yaml	argo lint: templates.genrich-values.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.check-if-pq-values-and-pileups-already-in-s3-bucket template reference check-s3-object-exists-v-0.1.0.check-if-s3-objects-exist not found
-regulation-workflows/workflow-templates/peak-calling/open-chromatin-peaks-v-0.2.yaml	argo lint: templates.peak-calling-open-chromatin.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.get-peak-calling-pvc-size template reference compute-pvc-size-v-0.1.1.compute-pvc not found
-regulation-workflows/workflow-templates/peak-calling/peak-calling-tasks.yaml	argo lint: ....submit-open-chromatin-peak-calling-tasks templates.peak-calling-open-chromatin.tasks.execute-peak-calling-task templates.peak-calling-task.tasks.get-peak-calling-pvc-size template reference compute-pvc-size-v-0.1.1.compute-pvc not found
-regulation-workflows/workflow-templates/signal/.deprecated/get-signal-task.yaml	argo lint: ...ignal-tasks templates.signal-tasks-dag.tasks.submit-pq-values-to-bigwig templates.genrich-pq-values-to-bigwig-dag.tasks.genrich-pq-values-to-bigwig couldn't find workflow template "genrich-pq-values-to-bigwig-pvc-callable-v1-submittable"; no document of the corpus defines genrich-pq-values-to-bigwig-pvc-callable-v1-submittable
-regulation-workflows/workflow-templates/signal/signal-tasks.yaml	argo lint: spec.templates[2].name 'signal-tasks-dag' is not unique
-talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/code-analysis.yml	argo lint: templates.main.tasks.code-analysis template name 'code-analysis' undefined
-talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/container-build.yml	argo lint: templates.main.tasks.container-build templates.container-build inputs.parameters.container_tag was not supplied
-talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/deploy-application.yml	argo lint: templates.main.tasks.deploy-application templates.deploy-application inputs.parameters.app_type was not supplied
-talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/git-checkout.yml	argo lint: templates.main.tasks.git-checkout-pr template name 'git-checkout-pr' undefined
-talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/update-jira.yml	argo lint: templates.main.tasks.update-jira templates.update-jira inputs.parameters.jira_ticket_number was not supplied
-talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/argo-workflow.yaml	argo lint: templates.main.tasks.git-checkout templates.main.tasks.git-checkout-pr template name 'git-checkout-pr' undefined
-workflows/examples/inspection-batch-with-output-gathering.yaml	argo lint: template 'collect-outputs' type is unknown
-workflows/examples/inspection.yaml	argo lint: template 'collect-outputs' type is unknown
+# Why each Argo test workflow that does not pass cannot run, recorded by rejected.py: the
+# document, then `=`, its kind and one plain sentence, then for `invalid` and `missing` the
+# command (`$`) and the output (`>`) of `argo lint` of Argo v4.1.4, which rejects the document
+# the same way. The kind is `invalid` (the workflow itself is broken), `missing` (it needs a
+# WorkflowTemplate that is in no repository of the test workflows), or `unsupported (decision
+# N)` (iunctus leaves the feature out on purpose, as decision N of docs/decisions.md says).
+# argo lint ran on a copy of the document and of the WorkflowTemplates it calls, without
+# namespaces, the called templates only, and with values for the inputs of a Workflow's
+# entrypoint, as `argo submit -p` gives them.
+
+argo-hub/examples/jira-sonar/versions/0.0.1/workflowTemplate.yaml
+= invalid: a step or task calls a template without its input parameter REPO
+$ argo lint --offline --strict=false argo-hub/examples/jira-sonar/versions/0.0.1/workflowTemplate.yaml argo-hub/workflows/codefresh-csdp/versions/1.1.0/workflowTemplate.yaml argo-hub/workflows/codefresh-csdp/versions/1.1.1/workflowTemplate.yaml argo-hub/workflows/git/versions/0.0.2/workflowTemplate.yaml argo-hub/workflows/gitops-promotion/versions/0.0.1/workflowTemplate.yaml argo-hub/workflows/jira/versions/0.0.1/workflowTemplate.yaml argo-hub/workflows/kaniko/versions/0.0.1/workflowTemplate.yaml argo-hub/workflows/sonar/versions/0.0.1/workflowTemplate.yaml
+> argo-hub/examples/jira-sonar/versions/0.0.1/workflowTemplate.yaml: in "argo-hub.jira-sonar.0.0.1" (WorkflowTemplate): templates.jira-sonar.tasks.build-docker-image templates.build inputs.parameters.REPO was not supplied
+
+argo-hub/workflows/codefresh-classic/versions/0.0.1/workflowTemplate.mock.yaml
+= invalid: it calls template main, which the document does not define
+$ argo lint --offline --strict=false argo-hub/workflows/codefresh-classic/versions/0.0.1/workflowTemplate.mock.yaml argo-hub/workflows/argo-workflows-utils/versions/0.0.1/workflowTemplate.yaml
+> argo-hub/workflows/codefresh-classic/versions/0.0.1/workflowTemplate.mock.yaml: in "argo-hub.codefresh-classic-mock.0.0.1" (WorkflowTemplate): template name 'main' undefined
+
+argo-workflow-examples/ephemeral-snapshot-disk/workflowtemplate/all-in-one-template.yaml
+= unsupported (decision 18): template create-snapshot is a resource template that manages Kubernetes objects of kind VolumeSnapshot
+
+argo-workflows-catalog/templates/sendmail/tests/send-email.yaml
+= unsupported (decision 18): template smtp-server runs as a daemon, a service that later steps reach through the cluster network
+
+argo-workflows-ci-example/bootstrap/workflow-templates/common/deploy-resources.yml
+= unsupported (decision 18): template deploy-resource-svc is a resource template that manages Kubernetes objects of kind Service
+
+argo-workflows-ci-example/bootstrap/workflow-templates/minio/ci-rollouts-s3.yml
+= unsupported (decision 18): template deploy-resource-svc is a resource template that manages Kubernetes objects of kind Service
+
+argo-workflows-ci-example/bootstrap/workflow-templates/minio/ci-workflow-s3.yml
+= unsupported (decision 18): template deploy-application is a resource template that manages Kubernetes objects of kind Application
+
+argo-workflows-ci-example/bootstrap/workflow-templates/minio/container-build-kaniko-s3 copy.yml
+= invalid: a step or task calls a template without its input artifact modified_git_repo
+$ argo lint --offline --strict=false 'argo-workflows-ci-example/bootstrap/workflow-templates/minio/container-build-kaniko-s3 copy.yml'
+> argo-workflows-ci-example/bootstrap/workflow-templates/minio/container-build-kaniko-s3 copy.yml: in "container-build-kaniko-s3" (WorkflowTemplate): templates.main.tasks.container-build templates.container-build inputs.artifacts.modified_git_repo was not supplied
+
+argo-workflows-ci-example/bootstrap/workflow-templates/minio/container-build-s3.yml
+= invalid: two entries of a list have the same name container-build
+$ argo lint --offline --strict=false argo-workflows-ci-example/bootstrap/workflow-templates/minio/container-build-s3.yml
+> argo-workflows-ci-example/bootstrap/workflow-templates/minio/container-build-s3.yml: in "container-build-s3" (WorkflowTemplate): spec.templates[2].name 'container-build' is not unique
+
+argo-workflows-ci-example/bootstrap/workflow-templates/minio/html-modifier-s3.yml
+= invalid: a step or task calls a template without its input artifact git_repo
+$ argo lint --offline --strict=false argo-workflows-ci-example/bootstrap/workflow-templates/minio/html-modifier-s3.yml
+> argo-workflows-ci-example/bootstrap/workflow-templates/minio/html-modifier-s3.yml: in "html-modifier-s3" (WorkflowTemplate): templates.main.tasks.html-modifier templates.html-modifier inputs.artifacts.git_repo was not supplied
+
+argo-workflows-ci-example/bootstrap/workflow-templates/nfs/ci-rollouts-workflow.yml
+= unsupported (decision 18): template deploy-resource-svc is a resource template that manages Kubernetes objects of kind Service
+
+argo-workflows-ci-example/bootstrap/workflow-templates/nfs/ci-workflow.yml
+= unsupported (decision 18): template deploy-application is a resource template that manages Kubernetes objects of kind Application
+
+argo-workflows-ci-example/bootstrap/workflow-templates/nfs/deploy-application.yml
+= unsupported (decision 18): template deploy-application is a resource template that manages Kubernetes objects of kind Application
+
+argo-workflows-ci-example/rollouts-workflow-2.yml
+= unsupported (decision 18): template deploy-resource-svc is a resource template that manages Kubernetes objects of kind Service
+
+argo-workflows-ci-example/rollouts-workflow-s3-2.yml
+= unsupported (decision 18): template deploy-resource-svc is a resource template that manages Kubernetes objects of kind Service
+
+argo-workflows-ci-example/rollouts-workflow-s3.yml
+= unsupported (decision 18): template deploy-resource-svc is a resource template that manages Kubernetes objects of kind Service
+
+argo-workflows-ci-example/rollouts-workflow.yml
+= unsupported (decision 18): template deploy-resource-svc is a resource template that manages Kubernetes objects of kind Service
+
+argo-workflows-ci-example/workflow-s3.yml
+= unsupported (decision 18): template deploy-application is a resource template that manages Kubernetes objects of kind Application
+
+argo-workflows-ci-example/workflow.yml
+= unsupported (decision 18): template deploy-application is a resource template that manages Kubernetes objects of kind Application
+
+argo-workflows/examples/cron-backfill.yaml#2
+= unsupported (decision 18): template create-job is a resource template that manages Kubernetes objects of kind Workflow
+
+argo-workflows/examples/daemon-nginx.yaml
+= unsupported (decision 18): template nginx-server runs as a daemon, a service that later steps reach through the cluster network
+
+argo-workflows/examples/daemon-step.yaml
+= unsupported (decision 18): template influxdb runs as a daemon, a service that later steps reach through the cluster network
+
+argo-workflows/examples/daemoned-stateful-set-with-service.yaml
+= unsupported (decision 18): template create-service is a resource template that manages Kubernetes objects of kind Service
+
+argo-workflows/examples/dag-daemon-retry-strategy.yaml
+= unsupported (decision 18): template server runs as a daemon, a service that later steps reach through the cluster network
+
+argo-workflows/examples/dag-daemon-task.yaml
+= unsupported (decision 18): template influxdb runs as a daemon, a service that later steps reach through the cluster network
+
+argo-workflows/examples/data-transformations.yaml
+= unsupported (decision 18): template list-log-files is a data template, which reads an artifact repository from inside a cluster
+
+argo-workflows/examples/influxdb-ci.yaml
+= unsupported (decision 18): template influxdb-server runs as a daemon, a service that later steps reach through the cluster network
+
+argo-workflows/examples/k8s-jobs.yaml
+= unsupported (decision 18): template rand-num is a resource template that manages Kubernetes objects of kind Job
+
+argo-workflows/examples/k8s-orchestration.yaml
+= unsupported (decision 18): template random-number-job is a resource template that manages Kubernetes objects of kind Job
+
+argo-workflows/examples/k8s-owner-reference.yaml
+= unsupported (decision 18): template main is a resource template that manages Kubernetes objects of kind Workflow
+
+argo-workflows/examples/k8s-patch-json-pod.yaml
+= unsupported (decision 18): template main is a resource template that manages Kubernetes objects
+
+argo-workflows/examples/k8s-patch-json-workflow.yaml
+= invalid: it sets the key annotations twice, which argo lint and argo submit reject in their default strict mode
+$ argo lint --offline --strict=false argo-workflows/examples/k8s-patch-json-workflow.yaml
+> no linting errors found!
+$ argo lint --offline --strict=true argo-workflows/examples/k8s-patch-json-workflow.yaml
+> found nothing to lint in the specified paths, failing...
+
+argo-workflows/examples/k8s-patch-merge-pod.yaml
+= unsupported (decision 18): template main is a resource template that manages Kubernetes objects
+
+argo-workflows/examples/k8s-patch-pod.yaml
+= unsupported (decision 18): template main is a resource template that manages Kubernetes objects of kind Pod
+
+argo-workflows/examples/k8s-resource-log-selector.yaml
+= unsupported (decision 18): template tf-jobtmpl is a resource template that manages Kubernetes objects of kind TFJob
+
+argo-workflows/examples/k8s-set-owner-reference.yaml
+= unsupported (decision 18): template k8s-set-owner-reference is a resource template that manages Kubernetes objects of kind ConfigMap
+
+argo-workflows/examples/k8s-wait-wf.yaml
+= unsupported (decision 18): template create-wf is a resource template that manages Kubernetes objects of kind Workflow
+
+argo-workflows/examples/pod-resources-template-override.yaml
+= unsupported (decision 18): template large has sidecars, services that run beside the task in its Kubernetes pod
+
+argo-workflows/examples/resource-delete-with-flags.yaml
+= unsupported (decision 18): template create-configmap is a resource template that manages Kubernetes objects of kind ConfigMap
+
+argo-workflows/examples/resource-flags.yaml
+= unsupported (decision 18): template create-route is a resource template that manages Kubernetes objects of kind Route
+
+argo-workflows/examples/sidecar-dind.yaml
+= unsupported (decision 18): template dind-sidecar-example has sidecars, services that run beside the task in its Kubernetes pod
+
+argo-workflows/examples/sidecar-nginx.yaml
+= unsupported (decision 18): template sidecar-nginx-example has sidecars, services that run beside the task in its Kubernetes pod
+
+argo-workflows/examples/sidecar.yaml
+= unsupported (decision 18): template sidecar-example has sidecars, services that run beside the task in its Kubernetes pod
+
+argo-workflows/examples/steps-daemon-retry-strategy.yaml
+= unsupported (decision 18): template server runs as a daemon, a service that later steps reach through the cluster network
+
+argo-workflows/examples/variables-showcase.yaml
+= unsupported (decision 18): template svc-daemon runs as a daemon, a service that later steps reach through the cluster network
+
+argo-workflows/examples/workflow-of-workflows.yaml
+= unsupported (decision 18): template resource-without-argument is a resource template that manages Kubernetes objects of kind Workflow
+
+argo-workflows/test/e2e/cron/cron-and-malformed-template.yaml#1
+= invalid: an entry of a list has no name
+$ argo lint --offline --strict=false argo-workflows/test/e2e/cron/cron-and-malformed-template.yaml
+> argo-workflows/test/e2e/cron/cron-and-malformed-template.yaml: in "basic-malformed" (WorkflowTemplate): spec.templates[0].name is required
+
+argo-workflows/test/e2e/expectedfailures/empty-parameter-dag.yaml
+= invalid: a step or task calls a template without its input parameter message
+$ argo lint --offline --strict=false argo-workflows/test/e2e/expectedfailures/empty-parameter-dag.yaml
+> argo-workflows/test/e2e/expectedfailures/empty-parameter-dag.yaml: in "arguments-dag-" (Workflow): templates.abc.tasks.a templates.whalesay inputs.parameters.message was not supplied
+
+argo-workflows/test/e2e/expectedfailures/empty-parameter-steps.yaml
+= invalid: a step or task calls a template without its input parameter message
+$ argo lint --offline --strict=false argo-workflows/test/e2e/expectedfailures/empty-parameter-steps.yaml
+> argo-workflows/test/e2e/expectedfailures/empty-parameter-steps.yaml: in "arguments-steps-" (Workflow): templates.abc.steps[0].a templates.whalesay inputs.parameters.message was not supplied
+
+argo-workflows/test/e2e/expectedfailures/input-artifact-not-optional.yaml
+= invalid: a step or task calls a template without its input artifact kubectl
+$ argo lint --offline --strict=false argo-workflows/test/e2e/expectedfailures/input-artifact-not-optional.yaml
+> argo-workflows/test/e2e/expectedfailures/input-artifact-not-optional.yaml: in "input-artifact-not-optional-" (Workflow): templates.http-artifact-example inputs.artifacts.kubectl was not supplied
+
+argo-workflows/test/e2e/expectedfailures/large-workflow.yaml
+= unsupported (decision 18): template main is a resource template that manages Kubernetes objects of kind ConfigMap
+
+argo-workflows/test/e2e/expectedfailures/misreference-template-name.yaml
+= invalid: it calls template hell0, which the document does not define
+$ argo lint --offline --strict=false argo-workflows/test/e2e/expectedfailures/misreference-template-name.yaml
+> argo-workflows/test/e2e/expectedfailures/misreference-template-name.yaml: in "steps-with-misreference-" (Workflow): templates.steps-with-misreference.steps[1].hello2 template name 'hell0' undefined
+
+argo-workflows/test/e2e/expectedfailures/pns/pns-output-artifacts.yaml
+= unsupported (decision 18): template pns-output-artifacts has sidecars, services that run beside the task in its Kubernetes pod
+
+argo-workflows/test/e2e/functional/daemon-nginx.yaml
+= unsupported (decision 18): template nginx-server runs as a daemon, a service that later steps reach through the cluster network
+
+argo-workflows/test/e2e/functional/daemon-step.yaml
+= unsupported (decision 18): template influxdb runs as a daemon, a service that later steps reach through the cluster network
+
+argo-workflows/test/e2e/functional/dag-daemon-task.yaml
+= unsupported (decision 18): template influxdb runs as a daemon, a service that later steps reach through the cluster network
+
+argo-workflows/test/e2e/functional/k8s-jobs.yaml
+= unsupported (decision 18): template rand-num is a resource template that manages Kubernetes objects of kind Job
+
+argo-workflows/test/e2e/functional/k8s-orchestration.yaml
+= unsupported (decision 18): template random-number-job is a resource template that manages Kubernetes objects of kind Job
+
+argo-workflows/test/e2e/functional/output-jqfilter-parameters.yaml
+= unsupported (decision 18): template create-param is a resource template that manages Kubernetes objects of kind ConfigMap
+
+argo-workflows/test/e2e/functional/resource-template.yaml
+= unsupported (decision 18): template wf1 is a resource template that manages Kubernetes objects of kind Workflow
+
+argo-workflows/test/e2e/functional/sidecar-dind.yaml
+= unsupported (decision 18): template dind-sidecar-example has sidecars, services that run beside the task in its Kubernetes pod
+
+argo-workflows/test/e2e/functional/sidecar-force-kill.yaml
+= unsupported (decision 18): template sidecar-force-kill has sidecars, services that run beside the task in its Kubernetes pod
+
+argo-workflows/test/e2e/functional/sidecar-nginx.yaml
+= unsupported (decision 18): template sidecar-nginx-example has sidecars, services that run beside the task in its Kubernetes pod
+
+argo-workflows/test/e2e/functional/sidecar-volumes.yaml
+= unsupported (decision 18): template generate has sidecars, services that run beside the task in its Kubernetes pod
+
+argo-workflows/test/e2e/functional/sidecar.yaml
+= unsupported (decision 18): template sidecar-example has sidecars, services that run beside the task in its Kubernetes pod
+
+argo-workflows/test/e2e/functional/stop-terminate-daemon.yaml
+= unsupported (decision 18): template sleep runs as a daemon, a service that later steps reach through the cluster network
+
+argo-workflows/test/e2e/lintfail/invalid-spec.yaml
+= invalid: it calls template doesnotexist, which the document does not define
+$ argo lint --offline --strict=false argo-workflows/test/e2e/lintfail/invalid-spec.yaml
+> argo-workflows/test/e2e/lintfail/invalid-spec.yaml: in "invalid-spec-" (Workflow): template name 'doesnotexist' undefined
+
+argo-workflows/test/e2e/lintfail/malformed-spec.yaml
+= invalid: the field spec.entrypoint has the wrong type
+$ argo lint --offline --strict=false argo-workflows/test/e2e/lintfail/malformed-spec.yaml
+> Error: failed to parse YAML from file argo-workflows/test/e2e/lintfail/malformed-spec.yaml: json: cannot unmarshal array into Go struct field WorkflowSpec.spec.entrypoint of type string
+
+argo-workflows/test/e2e/smoke/basic-invalid.yaml
+= invalid: the file is not valid YAML (line 10)
+$ argo lint --offline --strict=false argo-workflows/test/e2e/smoke/basic-invalid.yaml
+> found nothing to lint in the specified paths, failing...
+> level=ERROR msg="yaml file is not valid" index=0 error="error converting YAML to JSON: yaml: line 10: did not find expected key"
+> level=ERROR msg="yaml file is not valid" index=0 error="error converting YAML to JSON: yaml: line 10: did not find expected key"
+
+argo-workflows/test/e2e/testdata/daemoned-pod-completed.yaml
+= unsupported (decision 18): template daemoned runs as a daemon, a service that later steps reach through the cluster network
+
+argo-workflows/test/e2e/testdata/data-transformation.yaml
+= unsupported (decision 18): template get-artifact-paths is a data template, which reads an artifact repository from inside a cluster
+
+argo-workflows/test/e2e/testdata/malformed/malformed-clusterworkflowtemplate.yaml
+= invalid: the field spec.arguments.parameters has the wrong type
+$ argo lint --offline --strict=false argo-workflows/test/e2e/testdata/malformed/malformed-clusterworkflowtemplate.yaml
+> Error: failed to parse YAML from file argo-workflows/test/e2e/testdata/malformed/malformed-clusterworkflowtemplate.yaml: json: cannot unmarshal object into Go struct field Arguments.spec.arguments.parameters of type []v1alpha1.Parameter
+
+argo-workflows/test/e2e/testdata/malformed/malformed-cronworkflow.yaml
+= invalid: the field spec.workflowSpec.arguments.parameters has the wrong type
+$ argo lint --offline --strict=false argo-workflows/test/e2e/testdata/malformed/malformed-cronworkflow.yaml
+> Error: failed to parse YAML from file argo-workflows/test/e2e/testdata/malformed/malformed-cronworkflow.yaml: json: cannot unmarshal object into Go struct field Arguments.spec.workflowSpec.arguments.parameters of type []v1alpha1.Parameter
+
+argo-workflows/test/e2e/testdata/malformed/malformed-workflow.yaml
+= invalid: the field spec.arguments.parameters has the wrong type
+$ argo lint --offline --strict=false argo-workflows/test/e2e/testdata/malformed/malformed-workflow.yaml
+> Error: failed to parse YAML from file argo-workflows/test/e2e/testdata/malformed/malformed-workflow.yaml: json: cannot unmarshal object into Go struct field Arguments.spec.arguments.parameters of type []v1alpha1.Parameter
+
+argo-workflows/test/e2e/testdata/malformed/malformed-workflowtemplate-2.yaml
+= invalid: an entry of a list has no name
+$ argo lint --offline --strict=false argo-workflows/test/e2e/testdata/malformed/malformed-workflowtemplate-2.yaml
+> argo-workflows/test/e2e/testdata/malformed/malformed-workflowtemplate-2.yaml: in "malformed" (WorkflowTemplate): spec.templates[0].name is required
+
+argo-workflows/test/e2e/testdata/malformed/malformed-workflowtemplate.yaml
+= invalid: the field spec.arguments.parameters has the wrong type
+$ argo lint --offline --strict=false argo-workflows/test/e2e/testdata/malformed/malformed-workflowtemplate.yaml
+> Error: failed to parse YAML from file argo-workflows/test/e2e/testdata/malformed/malformed-workflowtemplate.yaml: json: cannot unmarshal object into Go struct field Arguments.spec.arguments.parameters of type []v1alpha1.Parameter
+
+argo-workflows/test/e2e/testdata/resource-templates/failed.yaml
+= unsupported (decision 18): template main is a resource template that manages Kubernetes objects
+
+argo-workflows/test/e2e/testdata/resource-templates/outputs.yaml
+= unsupported (decision 18): template main is a resource template that manages Kubernetes objects of kind Pod
+
+argo-workflows/test/e2e/testdata/sidecar-workflow.yaml
+= unsupported (decision 18): template main has sidecars, services that run beside the task in its Kubernetes pod
+
+argo-workflows/test/e2e/testdata/wellformed/wellformed-workflow-with-malformed-cluster-workflow-template-ref.yaml
+= invalid: the WorkflowTemplate that it calls, in argo-workflows/test/e2e/testdata/malformed/malformed-clusterworkflowtemplate.yaml, is broken: the field spec.arguments.parameters has the wrong type
+$ argo lint --offline --strict=false argo-workflows/test/e2e/testdata/wellformed/wellformed-workflow-with-malformed-cluster-workflow-template-ref.yaml argo-workflows/test/e2e/testdata/malformed/malformed-clusterworkflowtemplate.yaml
+> Error: failed to parse YAML from file argo-workflows/test/e2e/testdata/malformed/malformed-clusterworkflowtemplate.yaml: json: cannot unmarshal object into Go struct field Arguments.spec.arguments.parameters of type []v1alpha1.Parameter
+
+argo-workflows/test/e2e/testdata/wellformed/wellformed-workflow-with-malformed-workflow-template-ref.yaml
+= invalid: the workflow names no entrypoint
+$ argo lint --offline --strict=false argo-workflows/test/e2e/testdata/wellformed/wellformed-workflow-with-malformed-workflow-template-ref.yaml argo-workflows/test/e2e/testdata/malformed/malformed-workflowtemplate-2.yaml
+> argo-workflows/test/e2e/testdata/wellformed/wellformed-workflow-with-malformed-workflow-template-ref.yaml: in "wellformed" (Workflow): spec.entrypoint is required
+
+argo-workflows/test/e2e/testdata/workflow-data-tracing.yaml
+= unsupported (decision 18): template get-paths is a data template, which reads an artifact repository from inside a cluster
+
+argo-workflows/test/e2e/testdata/workflow-template-with-resource-expr.yaml
+= unsupported (decision 18): template whalesay is a resource template that manages Kubernetes objects of kind Pod
+
+argo-wrapper/src/argowrapper/argo_workflows_templates/header.yaml
+= missing: it calls WorkflowTemplate gwas-template-integration-test, which is in no repository of the test workflows
+$ argo lint --offline --strict=false argo-wrapper/src/argowrapper/argo_workflows_templates/header.yaml
+> argo-wrapper/src/argowrapper/argo_workflows_templates/header.yaml: in "gwas-integration-test-wrapper-" (Workflow): couldn't find workflow template "gwas-template-integration-test" in namespace ""
+
+argo-wrapper/workflow_examples/gwas_header.yaml
+= missing: it calls WorkflowTemplate gwas-template, which is in no repository of the test workflows
+$ argo lint --offline --strict=false argo-wrapper/workflow_examples/gwas_header.yaml
+> argo-wrapper/workflow_examples/gwas_header.yaml: in "gwas-template-wrapper-" (Workflow): couldn't find workflow template "gwas-template" in namespace ""
+
+couler/couler/tests/test_data/artifact_passing_golden.yaml
+= invalid: the tag {{steps.A.outputs.artifacts.output-oss-1c392c25}} names a variable that nothing sets
+$ argo lint --offline --strict=false couler/couler/tests/test_data/artifact_passing_golden.yaml
+> couler/couler/tests/test_data/artifact_passing_golden.yaml: in "pytest-" (Workflow): templates.pytest.tasks.B failed to resolve {{steps.A.outputs.artifacts.output-oss-1c392c25}}
+
+distributed-ml-patterns/code/project/basics/argo-resource-template.yaml
+= unsupported (decision 18): template k8s-resource is a resource template that manages Kubernetes objects of kind ConfigMap
+
+distributed-ml-patterns/code/project/code/workflow.yaml
+= unsupported (decision 18): template cnn-model is a resource template that manages Kubernetes objects of kind TFJob
+
+gennext-workflows/chore/update_existing_run_with_exomedepth.yaml
+= invalid: it calls template main, which the document does not define
+$ argo lint --offline --strict=false gennext-workflows/chore/update_existing_run_with_exomedepth.yaml gennext-workflows/tasks/base_tasks/annotsv.yaml gennext-workflows/tasks/base_tasks/exomedepth.yaml
+> gennext-workflows/chore/update_existing_run_with_exomedepth.yaml: in "germline-wes-gpu-workflow" (WorkflowTemplate): template name 'main' undefined
+
+gennext-workflows/tasks/base_tasks/multicaller.yaml
+= invalid: an entry of a list has no name
+$ argo lint --offline --strict=false gennext-workflows/tasks/base_tasks/multicaller.yaml
+> gennext-workflows/tasks/base_tasks/multicaller.yaml: in "multicaller-template" (WorkflowTemplate): templates.multicaller templates.multicaller.tasks[0].name is required
+
+gennext-workflows/tasks/base_tasks/split-caller.yaml
+= invalid: template split-regions-beds-list has no type, like container, script, steps or dag
+$ argo lint --offline --strict=false gennext-workflows/tasks/base_tasks/split-caller.yaml
+> gennext-workflows/tasks/base_tasks/split-caller.yaml: in "parallel-caller-workflow" (WorkflowTemplate): templates.parallel-caller.tasks.split-regions-beds-list template 'split-regions-beds-list' type is unknown
+
+gennext-workflows/tasks/base_tasks/zyalign.yaml
+= invalid: the file is not valid YAML (line 98)
+$ argo lint --offline --strict=false gennext-workflows/tasks/base_tasks/zyalign.yaml
+> found nothing to lint in the specified paths, failing...
+> level=ERROR msg="yaml file is not valid" index=0 error="error converting YAML to JSON: yaml: line 98: could not find expected ':'"
+> level=ERROR msg="yaml file is not valid" index=0 error="error converting YAML to JSON: yaml: line 98: could not find expected ':'"
+
+gennext-workflows/tasks/compose-read-group-str.yaml
+= invalid: it calls template main, which the document does not define
+$ argo lint --offline --strict=false gennext-workflows/tasks/compose-read-group-str.yaml
+> gennext-workflows/tasks/compose-read-group-str.yaml: in "compose-read-group-str" (WorkflowTemplate): template name 'main' undefined
+
+gennext-workflows/tasks/copy_inputs_to_scratch.yaml
+= invalid: a step or task names no template
+$ argo lint --offline --strict=false gennext-workflows/tasks/copy_inputs_to_scratch.yaml
+> gennext-workflows/tasks/copy_inputs_to_scratch.yaml: in "copy-inputs-to-scratch" (WorkflowTemplate): templates.copy-bam-to-scratch-path-aware templates.copy-bam-to-scratch-path-aware.steps[0].check- failed to get a template
+
+gennext-workflows/tasks/copy_inputs_to_temp.yaml
+= invalid: template read-run-data has no type, like container, script, steps or dag
+$ argo lint --offline --strict=false gennext-workflows/tasks/copy_inputs_to_temp.yaml
+> gennext-workflows/tasks/copy_inputs_to_temp.yaml: in "copy-inputs-to-temp" (WorkflowTemplate): templates.read-run-data template 'read-run-data' type is unknown
+
+gennext-workflows/tasks/regenerate_qc_workflow.yaml
+= invalid: a step or task names no template
+$ argo lint --offline --strict=false gennext-workflows/tasks/regenerate_qc_workflow.yaml gennext-workflows/tasks/get-node-config.yaml
+> gennext-workflows/tasks/regenerate_qc_workflow.yaml: in "regenerate-qc-workflow" (WorkflowTemplate): templates.main.tasks.mosdepth failed to get a template
+
+gennext-workflows/workflows/germline/germline-rna-gpu-workflow.yaml
+= missing: it calls WorkflowTemplate collect-qc-data-templates, which is in no repository of the test workflows
+$ argo lint --offline --strict=false gennext-workflows/workflows/germline/germline-rna-gpu-workflow.yaml gennext-workflows/tasks/base_tasks/dir_cleanup.yaml gennext-workflows/tasks/base_tasks/fastqc.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-bam2fq.yaml gennext-workflows/tasks/base_tasks/mosdepth.yaml gennext-workflows/tasks/base_tasks/multiqc.yaml gennext-workflows/tasks/base_tasks/qorts.yaml gennext-workflows/tasks/base_tasks/samtools.yaml gennext-workflows/tasks/base_tasks/star-fusion.yaml gennext-workflows/tasks/base_tasks/trim-galore.yaml gennext-workflows/tasks/base_tasks/verifybamid.yaml gennext-workflows/tasks/check-file-path.yaml gennext-workflows/tasks/compose-read-group-str.yaml gennext-workflows/tasks/copy_inputs_to_scratch.yaml gennext-workflows/tasks/copy_temp_to_output.yaml gennext-workflows/tasks/get_abs_ref_dirs.yaml
+> gennext-workflows/workflows/germline/germline-rna-gpu-workflow.yaml: in "germline-rna-gpu-workflow" (WorkflowTemplate): templates.germline-rna-gpu-fastq templates.germline-rna-gpu-fastq.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates" in namespace ""
+
+gennext-workflows/workflows/msi_tmb_coverage_workflow.yaml
+= missing: it calls WorkflowTemplate collect-qc-data-templates, which is in no repository of the test workflows
+$ argo lint --offline --strict=false gennext-workflows/workflows/msi_tmb_coverage_workflow.yaml gennext-workflows/tasks/base_tasks/mosdepth.yaml gennext-workflows/tasks/base_tasks/msisensor-pro.yaml gennext-workflows/tasks/base_tasks/multiqc.yaml gennext-workflows/tasks/collect_somatic_data.yaml gennext-workflows/tasks/collect_tmb_data.yaml
+> gennext-workflows/workflows/msi_tmb_coverage_workflow.yaml: in "msi-tmb-coverage-workflow-template" (WorkflowTemplate): templates.msi-tmb-coverage-workflow templates.msi-tmb-coverage-workflow.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates" in namespace ""
+
+gennext-workflows/workflows/prototypes/batch-orchestrator-prototype.yaml
+= unsupported (decision 18): template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow
+
+gennext-workflows/workflows/somatic-testing-workflow.yaml
+= missing: it calls WorkflowTemplate collect-qc-data-templates, which is in no repository of the test workflows
+$ argo lint --offline --strict=false gennext-workflows/workflows/somatic-testing-workflow.yaml gennext-workflows/tasks/base_tasks/annotsv.yaml gennext-workflows/tasks/base_tasks/annovar-to-maf.yaml gennext-workflows/tasks/base_tasks/annovar.yaml gennext-workflows/tasks/base_tasks/bcftools.yaml gennext-workflows/tasks/base_tasks/bed_validator.yaml gennext-workflows/tasks/base_tasks/cancervar.yaml gennext-workflows/tasks/base_tasks/cnvpytor.yaml gennext-workflows/tasks/base_tasks/dir_cleanup.yaml gennext-workflows/tasks/base_tasks/duckdb.yaml gennext-workflows/tasks/base_tasks/elprep.yaml gennext-workflows/tasks/base_tasks/fastqc.yaml gennext-workflows/tasks/base_tasks/filter-annotsv.yaml gennext-workflows/tasks/base_tasks/filter-msisensor-pro.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-bam2fq.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-bqsr.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-fq2bam.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-mutect2.yaml gennext-workflows/tasks/base_tasks/maf-to-db.yaml gennext-workflows/tasks/base_tasks/manta.yaml gennext-workflows/tasks/base_tasks/mosdepth.yaml gennext-workflows/tasks/base_tasks/msisensor-pro.yaml gennext-workflows/tasks/base_tasks/multiqc.yaml gennext-workflows/tasks/base_tasks/mutect2.yaml gennext-workflows/tasks/base_tasks/oncokb.yaml gennext-workflows/tasks/base_tasks/qorts.yaml gennext-workflows/tasks/base_tasks/samtools.yaml gennext-workflows/tasks/base_tasks/seqkit_bedtools.yaml gennext-workflows/tasks/base_tasks/snap.yaml gennext-workflows/tasks/base_tasks/star-fusion-to-oncokb.yaml gennext-workflows/tasks/base_tasks/star-fusion.yaml gennext-workflows/tasks/base_tasks/trim-galore.yaml gennext-workflows/tasks/base_tasks/vcf-harmonizer.yaml gennext-workflows/tasks/base_tasks/verifybamid.yaml gennext-workflows/tasks/base_tasks/vlod.yaml gennext-workflows/tasks/check-file-path.yaml gennext-workflows/tasks/collect_qc_data.yaml gennext-workflows/tasks/collect_somatic_data.yaml gennext-workflows/tasks/collect_tmb_data.yaml gennext-workflows/tasks/compose-read-group-str.yaml gennext-workflows/tasks/copy_inputs_to_scratch.yaml gennext-workflows/tasks/copy_temp_to_output.yaml gennext-workflows/tasks/get_abs_ref_dirs.yaml gennext-workflows/workflows/preprocess-fastq.yaml gennext-workflows/workflows/somatic/somatic-testing-dna-gpu-workflow.yaml gennext-workflows/workflows/somatic/somatic-testing-rna-gpu-workflow.yaml
+> gennext-workflows/workflows/somatic-testing-workflow.yaml: in "somatic-testing-workflow" (WorkflowTemplate): templates.somatic-testing-tumor templates.somatic-testing-tumor.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates" in namespace ""
+
+gennext-workflows/workflows/somatic/somatic-testing-rna-gpu-workflow.yaml
+= missing: it calls WorkflowTemplate collect-qc-data-templates, which is in no repository of the test workflows
+$ argo lint --offline --strict=false gennext-workflows/workflows/somatic/somatic-testing-rna-gpu-workflow.yaml gennext-workflows/tasks/base_tasks/dir_cleanup.yaml gennext-workflows/tasks/base_tasks/duckdb.yaml gennext-workflows/tasks/base_tasks/fastqc.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-bam2fq.yaml gennext-workflows/tasks/base_tasks/mosdepth.yaml gennext-workflows/tasks/base_tasks/multiqc.yaml gennext-workflows/tasks/base_tasks/oncokb.yaml gennext-workflows/tasks/base_tasks/qorts.yaml gennext-workflows/tasks/base_tasks/samtools.yaml gennext-workflows/tasks/base_tasks/star-fusion-to-oncokb.yaml gennext-workflows/tasks/base_tasks/star-fusion.yaml gennext-workflows/tasks/base_tasks/trim-galore.yaml gennext-workflows/tasks/base_tasks/verifybamid.yaml gennext-workflows/tasks/check-file-path.yaml gennext-workflows/tasks/collect_qc_data.yaml gennext-workflows/tasks/compose-read-group-str.yaml gennext-workflows/tasks/copy_inputs_to_scratch.yaml gennext-workflows/tasks/copy_temp_to_output.yaml gennext-workflows/tasks/get_abs_ref_dirs.yaml
+> gennext-workflows/workflows/somatic/somatic-testing-rna-gpu-workflow.yaml: in "somatic-testing-rna-gpu-workflow" (WorkflowTemplate): templates.somatic-testing-rna-gpu-bam templates.somatic-testing-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates" in namespace ""
+
+gennext-workflows/workflows/tps-workflow.yaml
+= missing: it calls WorkflowTemplate collect-qc-data-templates, which is in no repository of the test workflows
+$ argo lint --offline --strict=false gennext-workflows/workflows/tps-workflow.yaml gennext-workflows/tasks/base_tasks/annotsv.yaml gennext-workflows/tasks/base_tasks/bgzip-tabix.yaml gennext-workflows/tasks/base_tasks/dir_cleanup.yaml gennext-workflows/tasks/base_tasks/elprep.yaml gennext-workflows/tasks/base_tasks/fastqc.yaml gennext-workflows/tasks/base_tasks/manta.yaml gennext-workflows/tasks/base_tasks/mosdepth.yaml gennext-workflows/tasks/base_tasks/multiqc.yaml gennext-workflows/tasks/base_tasks/samtools.yaml gennext-workflows/tasks/base_tasks/snap.yaml gennext-workflows/tasks/base_tasks/trim-galore.yaml gennext-workflows/tasks/base_tasks/verifybamid.yaml gennext-workflows/tasks/callers/deepvariant.yaml gennext-workflows/tasks/compose-read-group-str.yaml gennext-workflows/tasks/copy_inputs_to_scratch.yaml gennext-workflows/tasks/copy_temp_to_output.yaml gennext-workflows/tasks/cravat/cravat-solo.yaml gennext-workflows/tasks/get_abs_ref_dirs.yaml gennext-workflows/workflows/preprocess-fastq.yaml
+> gennext-workflows/workflows/tps-workflow.yaml: in "tps-workflow" (WorkflowTemplate): templates.main.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates" in namespace ""
+
+gennext-workflows/workflows/wes-workflow.yaml
+= missing: it calls WorkflowTemplate collect-qc-data-templates, which is in no repository of the test workflows
+$ argo lint --offline --strict=false gennext-workflows/workflows/wes-workflow.yaml gennext-workflows/tasks/base_tasks/alter_bam_contig_names.yaml gennext-workflows/tasks/base_tasks/annotsv.yaml gennext-workflows/tasks/base_tasks/dir_cleanup.yaml gennext-workflows/tasks/base_tasks/elprep.yaml gennext-workflows/tasks/base_tasks/fastqc.yaml gennext-workflows/tasks/base_tasks/manta.yaml gennext-workflows/tasks/base_tasks/mosdepth.yaml gennext-workflows/tasks/base_tasks/multiqc.yaml gennext-workflows/tasks/base_tasks/samtools.yaml gennext-workflows/tasks/base_tasks/snap.yaml gennext-workflows/tasks/base_tasks/trim-galore.yaml gennext-workflows/tasks/base_tasks/verifybamid.yaml gennext-workflows/tasks/callers/deepvariant.yaml gennext-workflows/tasks/compose-read-group-str.yaml gennext-workflows/tasks/copy_inputs_to_scratch.yaml gennext-workflows/tasks/copy_temp_to_output.yaml gennext-workflows/tasks/cravat/cravat-solo.yaml gennext-workflows/tasks/get_abs_ref_dirs.yaml gennext-workflows/workflows/preprocess-fastq.yaml
+> gennext-workflows/workflows/wes-workflow.yaml: in "wes-workflow" (WorkflowTemplate): templates.main.tasks.wes-fastq-workflow templates.wes-fastq-workflow.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates" in namespace ""

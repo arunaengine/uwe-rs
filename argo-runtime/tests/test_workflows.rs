@@ -3,8 +3,9 @@
 //! WorkflowTemplates, get the checks Argo makes when they are created. The outcomes are compared
 //! with tests/fixtures/test-workflows/outcomes.txt: `ok` and the number of tasks, `valid`, or the
 //! exit code (33 for unsupported features) and the first error. Each document that does not pass
-//! needs a line in tests/fixtures/test-workflows/rejected.txt with the evidence that Argo rejects
-//! or fails it too. `ARGO_TEST_WORKFLOWS_UPDATE=1` rewrites the outcomes;
+//! needs a record in tests/fixtures/test-workflows/rejected.txt that names why it cannot run:
+//! `invalid` or `missing`, with the evidence that `argo lint` rejects it too, or `unsupported`
+//! by a decision. `ARGO_TEST_WORKFLOWS_UPDATE=1` rewrites the outcomes;
 //! `ARGO_TEST_WORKFLOWS_FILTER` runs only the documents whose path contains it, and
 //! `ARGO_TEST_WORKFLOWS_ORDER=shuffled:<seed>` lets tasks finish in a random order.
 // Copyright (c) 2026 The iunctus Contributors
@@ -20,7 +21,7 @@ use workflow_graph::{MockTes, Order, RunOptions, execute_with};
 
 const FIXTURE: &str = "tests/fixtures/test-workflows/outcomes.txt";
 
-/// Why the documents that do not pass fail in Argo too, by document.
+/// The records of the documents that do not pass: why each cannot run, with evidence.
 const REJECTED: &str = "tests/fixtures/test-workflows/rejected.txt";
 
 /// Directories of templates that documents under a path get as configs, as `Launch.configs`
@@ -141,6 +142,21 @@ fn one_line(message: &str, root: &str) -> String {
     }
     let end: String = characters[characters.len() - 197..].iter().collect();
     format!("...{end}")
+}
+
+#[test]
+fn records_name_a_kind_and_their_evidence() {
+    let text = "# a comment\n\na.yaml\n= invalid: it calls template x, which it does not define\n$ argo lint --offline a.yaml\n> template name 'x' undefined\n\nb.yaml\n= unsupported (decision 18): template y is a data template\n";
+    let found = records(text);
+    assert_eq!(
+        found["b.yaml"],
+        "unsupported (decision 18): template y is a data template"
+    );
+    assert_eq!(found.len(), 2);
+    let without_evidence = std::panic::catch_unwind(|| records("c.yaml\n= missing: a template\n"));
+    assert!(without_evidence.is_err());
+    let without_kind = std::panic::catch_unwind(|| records("d.yaml\n= broken: why\n> x\n"));
+    assert!(without_kind.is_err());
 }
 
 /// The run options that `ARGO_TEST_WORKFLOWS_ORDER` asks for: `reversed` or `shuffled:<seed>`
@@ -316,7 +332,7 @@ fn run_test_workflows() {
         differences.join("\n")
     );
     if workflows.filter.is_empty() {
-        check_evidence(&outcomes);
+        check_records(&outcomes);
     }
 }
 
@@ -325,19 +341,68 @@ fn passed(outcome: &str) -> bool {
     outcome.starts_with("ok") || outcome == "valid"
 }
 
-/// Checks that every document that does not pass has evidence that Argo rejects or fails it
-/// too, and that no evidence is left for a document that passes.
-fn check_evidence(outcomes: &BTreeMap<String, String>) {
-    let evidence = read_fixture(&Path::new(env!("CARGO_MANIFEST_DIR")).join(REJECTED));
+/// The records of rejected.txt: for each document, its kind and why it cannot run. A record is
+/// a block of lines between empty lines: the document, then `= <kind>: <why>` with one plain
+/// sentence, then for `invalid` and `missing` the command (`$`) and the output (`>`) of `argo
+/// lint`. The kind is `invalid` (the workflow itself is broken), `missing` (it needs a
+/// WorkflowTemplate that is in no repository of the test workflows), or `unsupported (decision
+/// N)` (iunctus leaves the feature out on purpose, as decision N of docs/decisions.md says).
+/// Panics on a record without a valid kind or without its evidence.
+fn records(text: &str) -> BTreeMap<String, String> {
+    let mut records = BTreeMap::new();
+    for block in text.split("\n\n") {
+        let lines: Vec<&str> = block
+            .lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .collect();
+        let Some((document, rest)) = lines.split_first() else {
+            continue;
+        };
+        let reason = rest
+            .iter()
+            .find_map(|line| line.strip_prefix("= "))
+            .unwrap_or_default();
+        let (kind, why) = reason.split_once(": ").unwrap_or_default();
+        let unsupported = kind
+            .strip_prefix("unsupported (decision ")
+            .and_then(|rest| rest.strip_suffix(')'))
+            .is_some_and(|number| number.parse::<u32>().is_ok());
+        assert!(
+            (unsupported || matches!(kind, "invalid" | "missing")) && !why.trim().is_empty(),
+            "the record of {document} needs a line `= invalid: <why>`, `= missing: <why>` or `= unsupported (decision N): <why>`"
+        );
+        assert!(
+            unsupported || rest.iter().any(|line| line.starts_with('>')),
+            "the record of {document} shows no output of argo lint"
+        );
+        records.insert((*document).to_owned(), reason.to_owned());
+    }
+    records
+}
+
+/// Checks that every document that does not pass has a record of the right kind: exit code 33
+/// for `unsupported`, 1 for `invalid` and `missing`; and that no record is left for a document
+/// that passes.
+fn check_records(outcomes: &BTreeMap<String, String>) {
+    let text = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(REJECTED))
+        .unwrap_or_default();
+    let records = records(&text);
     let mut problems = Vec::new();
     for (document, outcome) in outcomes {
-        if !passed(outcome) && !evidence.contains_key(document) {
-            problems.push(format!("{document}: {outcome} (no evidence)"));
+        if passed(outcome) {
+            continue;
+        }
+        match records.get(document) {
+            None => problems.push(format!("{document}: {outcome} (no record)")),
+            Some(reason) if reason.starts_with("unsupported") != outcome.starts_with("33 ") => {
+                problems.push(format!("{document}: {outcome} (recorded as {reason})"))
+            }
+            Some(_) => {}
         }
     }
-    for document in evidence.keys() {
+    for document in records.keys() {
         if outcomes.get(document).is_none_or(|outcome| passed(outcome)) {
-            problems.push(format!("{document}: evidence, but the document passes"));
+            problems.push(format!("{document}: a record, but the document passes"));
         }
     }
     assert!(

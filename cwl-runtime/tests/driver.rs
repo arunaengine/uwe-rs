@@ -6,7 +6,7 @@
 use std::path::Path;
 
 use cwl_runtime::{CwlDriver, Options};
-use workflow_graph::{Launch, MockTes, execute};
+use workflow_graph::{ExecuteError, Executor, Launch, MockTes, Outcome, Task, execute};
 
 /// Writes the files into a temporary folder, runs `main.cwl` and gives the task count or the
 /// error.
@@ -241,6 +241,87 @@ fn a_mock_run_says_when_a_scatter_needs_real_data() {
         error.ends_with(
             "pick: the scattered input `peak` is null, not a list; the mock run has no real \
              data to fill it"
+        ),
+        "{error}"
+    );
+}
+
+/// Finishes the tasks that do nothing at once and without files, as real executors do, and
+/// pretends the others like the mock.
+struct Real {
+    mock: MockTes,
+}
+
+impl Executor for Real {
+    fn execute(&mut self, task: &Task) -> Result<Outcome, ExecuteError> {
+        if task.is_no_op() {
+            return Ok(Outcome {
+                id: task.id,
+                ..Outcome::default()
+            });
+        }
+        self.mock.execute(task)
+    }
+}
+
+/// Runs `main.cwl` of these files for real, not assuming its inputs, and gives the task count
+/// or the error.
+fn run_for_real(files: &[(&str, &str)]) -> Result<usize, String> {
+    let folder = tempfile::tempdir().map_err(|error| error.to_string())?;
+    for (name, text) in files {
+        std::fs::write(folder.path().join(name), text).map_err(|error| error.to_string())?;
+    }
+    let launch = Launch {
+        target: folder.path().join("main.cwl"),
+        scratch: folder.path().join("scratch"),
+        assume_inputs: false,
+        ..Launch::default()
+    };
+    let mut driver = cwl_runtime::driver(&launch).map_err(|error| error.message)?;
+    let mut executor = Real {
+        mock: MockTes::new(folder.path().join("mock")),
+    };
+    let execution = execute("main", driver.as_mut(), &mut executor);
+    match execution.error {
+        Some(error) => Err(error.to_string()),
+        None => Ok(execution.graph.nodes.len()),
+    }
+}
+
+#[test]
+fn operations_do_nothing_in_a_real_run() {
+    let index = |kind: &str| {
+        format!("cwlVersion: v1.2\nclass: Operation\ninputs: []\noutputs:\n  indexed: {kind}\n")
+    };
+    let align = |kind: &str| {
+        format!(
+            "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: align\n\
+             inputs:\n  reference: {{type: '{kind}', inputBinding: {{}}}}\noutputs: []\n"
+        )
+    };
+    let main = "cwlVersion: v1.2\nclass: Workflow\ninputs: []\noutputs: []\nsteps:\n  \
+        index: {run: index.cwl, in: [], out: [indexed]}\n  \
+        align: {run: align.cwl, in: {reference: index/indexed}, out: []}\n";
+    // An optional output is null, and the next step runs without it.
+    let (optional_index, optional_align) = (index("File?"), align("File?"));
+    let files = [
+        ("index.cwl", optional_index.as_str()),
+        ("align.cwl", optional_align.as_str()),
+        ("main.cwl", main),
+    ];
+    assert_eq!(run_for_real(&files), Ok(2));
+    // A required output has no value, which the error says.
+    let (required_index, required_align) = (index("File"), align("File"));
+    let files = [
+        ("index.cwl", required_index.as_str()),
+        ("align.cwl", required_align.as_str()),
+        ("main.cwl", main),
+    ];
+    let error = run_for_real(&files).expect_err("nothing makes the output");
+    assert!(
+        error.contains(
+            "the output `indexed`: the step runs an abstract Operation, which has no tool, so a \
+             real run has no value for this output"
         ),
         "{error}"
     );

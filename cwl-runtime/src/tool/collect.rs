@@ -314,7 +314,9 @@ impl Collector<'_> {
         }
     }
 
-    /// The value of an output of an `Operation`: the file named after it, or a placeholder.
+    /// The value of an output of an `Operation`: the file named after it, or a placeholder in
+    /// a mock run. A real run makes no files for an `Operation`, which is a task that does
+    /// nothing, so its outputs are null, and an error when their type does not allow null.
     fn operation(&self, output: &OutputParameter) -> Result<Value, String> {
         let name = short_name(&output.id);
         let types = &self.pending.types;
@@ -327,7 +329,15 @@ impl Collector<'_> {
         };
         let mut file = match found.first() {
             Some(file) => self.file_object(file, &binding)?,
-            None => return Ok(self.pending.placeholder(output, self)),
+            None if self.pending.options.mock => return Ok(self.pending.placeholder(output, self)),
+            None if types.optional(&output.value_type) => return Ok(Value::Null),
+            None => {
+                return Err(
+                    "the step runs an abstract Operation, which has no tool, so a real \
+                            run has no value for this output; give the step a tool that makes it"
+                        .into(),
+                );
+            }
         };
         if !output.secondary_files.is_empty() {
             self.secondary_files(&mut file, &output.secondary_files)?;

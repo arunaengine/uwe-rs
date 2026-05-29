@@ -415,8 +415,23 @@ impl Session {
                 outcome.exit_code
             )));
         }
+        // An executor may give an absolute output without its leading `/`, as the mocks do.
+        let declared = self
+            .planner
+            .as_ref()
+            .map(|planner| planner.jobs[job].output_files())
+            .unwrap_or_default();
         for file in &outcome.files {
-            let path = self.interpreter.host.resolve(&file.path);
+            let relative = file.path.trim_end_matches('/');
+            let absolute = declared.iter().find(|output| {
+                output.starts_with('/')
+                    && Path::new(&file.path).is_relative()
+                    && output.trim_start_matches('/').trim_end_matches('/') == relative
+            });
+            let path = match absolute {
+                Some(output) => PathBuf::from(output.trim_end_matches('/')),
+                None => self.interpreter.host.resolve(&file.path),
+            };
             self.files.add_output(
                 &path,
                 Produced {

@@ -21,11 +21,75 @@ const DEFAULT_MISSING: &[&str] = &[
 ];
 
 pub fn read_csv(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    check_arguments("read_csv", &args)?;
     read(interpreter, args, ",")
 }
 
 pub fn read_table(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    check_arguments("read_table", &args)?;
     read(interpreter, args, "\t")
+}
+
+/// The keyword arguments of `read_csv` and `read_table` in pandas 3.0.
+const ARGUMENTS: &[&str] = &[
+    "filepath_or_buffer",
+    "sep",
+    "delimiter",
+    "header",
+    "names",
+    "index_col",
+    "usecols",
+    "dtype",
+    "engine",
+    "converters",
+    "true_values",
+    "false_values",
+    "skipinitialspace",
+    "skiprows",
+    "skipfooter",
+    "nrows",
+    "na_values",
+    "keep_default_na",
+    "na_filter",
+    "skip_blank_lines",
+    "parse_dates",
+    "date_format",
+    "dayfirst",
+    "cache_dates",
+    "iterator",
+    "chunksize",
+    "compression",
+    "thousands",
+    "decimal",
+    "lineterminator",
+    "quotechar",
+    "quoting",
+    "doublequote",
+    "escapechar",
+    "comment",
+    "encoding",
+    "encoding_errors",
+    "dialect",
+    "on_bad_lines",
+    "low_memory",
+    "memory_map",
+    "float_precision",
+    "storage_options",
+    "dtype_backend",
+];
+
+/// Arguments that pandas 3.0 no longer takes, like `delim_whitespace`, fail as in pandas.
+fn check_arguments(function: &str, args: &Args) -> Result<(), Error> {
+    match args
+        .keywords
+        .iter()
+        .find(|(name, _)| !ARGUMENTS.contains(&&**name))
+    {
+        Some((name, _)) => Err(Error::type_error(format!(
+            "{function}() got an unexpected keyword argument '{name}'"
+        ))),
+        None => Ok(()),
+    }
 }
 
 /// The text of the source: a path, which may be compressed with gzip, or a file object.
@@ -93,9 +157,8 @@ fn read(
         Some(value) => Some(interpreter.to_str(&value)?),
         None => None,
     };
-    let whitespace = flag(interpreter, &mut args, "delim_whitespace", false)?;
     let separator = separator.unwrap_or_else(|| default_separator.to_owned());
-    let separator = if whitespace || separator == r"\s+" {
+    let separator = if separator == r"\s+" {
         Separator::Whitespace
     } else if separator.chars().count() == 1 {
         Separator::Char(separator.chars().next().unwrap_or(','))

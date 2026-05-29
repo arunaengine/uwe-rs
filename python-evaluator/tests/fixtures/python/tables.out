@@ -66,3 +66,4 @@ False True default ['sample', 'unit']
 ['x', nan] (3, 3) ['A', 'B']
 True (2, 3)
 True False
+TypeError read_table() got an unexpected keyword argument 'delim_whitespace'

@@ -129,6 +129,8 @@ const NATIVE: &[&str] = &[
     "email.message",
     "imaplib",
     "smtplib",
+    "resource",
+    "pyarrow",
 ];
 
 /// Whether a module name has a native stand-in, so that missing names in it are unsupported
@@ -221,9 +223,9 @@ pub fn native(interpreter: &mut Interpreter, name: &str) -> Result<Option<Value>
             "collect",
             Value::builtin("collect", |_, _| Ok(Value::Int(0))),
         )],
-        "signal" | "weakref" | "importlib" | "pkgutil" | "numbers" | "imaplib" | "smtplib" => {
-            misc::placeholder(name)
-        }
+        "resource" => system::resource(),
+        "signal" | "weakref" | "importlib" | "pkgutil" | "numbers" | "imaplib" | "smtplib"
+        | "pyarrow" => misc::placeholder(name),
         "tkinter" => misc::tkinter(),
         "configparser" | "email" | "email.message" => misc::classes_of(name),
         "threading" => system::threading(),

@@ -52,6 +52,7 @@ pub fn module() -> Vec<(&'static str, Value)> {
     vec![
         ("read_csv", function("read_csv", read::read_csv)),
         ("read_table", function("read_table", read::read_table)),
+        ("read_parquet", function("read_parquet", read::read_parquet)),
         (
             "DataFrame",
             Value::native(construct::Constructor::DataFrame),

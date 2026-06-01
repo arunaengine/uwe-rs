@@ -331,6 +331,56 @@ pub fn multiprocessing() -> Vec<(&'static str, Value)> {
     ]
 }
 
+/// `resource`: the limits of the process, from `/proc/self/limits`; `setrlimit` changes
+/// nothing, as planning a workflow must not change the process.
+pub fn resource() -> Vec<(&'static str, Value)> {
+    const LIMITS: &[(&str, &str)] = &[
+        ("RLIMIT_CPU", "Max cpu time"),
+        ("RLIMIT_FSIZE", "Max file size"),
+        ("RLIMIT_DATA", "Max data size"),
+        ("RLIMIT_STACK", "Max stack size"),
+        ("RLIMIT_CORE", "Max core file size"),
+        ("RLIMIT_RSS", "Max resident set"),
+        ("RLIMIT_NPROC", "Max processes"),
+        ("RLIMIT_NOFILE", "Max open files"),
+        ("RLIMIT_MEMLOCK", "Max locked memory"),
+        ("RLIMIT_AS", "Max address space"),
+    ];
+    let mut entries: Vec<(&'static str, Value)> = LIMITS
+        .iter()
+        .enumerate()
+        .map(|(number, (name, _))| (*name, Value::Int(number as i64)))
+        .collect();
+    entries.push(("RLIM_INFINITY", Value::Int(-1)));
+    entries.push((
+        "getrlimit",
+        function("getrlimit", |_, args| {
+            let number = args.get(0).and_then(Value::as_int).unwrap_or(-1);
+            let label = usize::try_from(number)
+                .ok()
+                .and_then(|number| LIMITS.get(number))
+                .map(|(_, label)| *label)
+                .ok_or_else(|| Error::value_error("invalid resource specified"))?;
+            let text = std::fs::read_to_string("/proc/self/limits").unwrap_or_default();
+            let parse = |word: &str| word.parse::<i64>().unwrap_or(-1);
+            let (soft, hard) = text
+                .lines()
+                .find(|line| line.starts_with(label))
+                .map(|line| {
+                    let words: Vec<&str> = line[label.len()..].split_whitespace().collect();
+                    (
+                        words.first().map_or(-1, |word| parse(word)),
+                        words.get(1).map_or(-1, |word| parse(word)),
+                    )
+                })
+                .unwrap_or((-1, -1));
+            Ok(Value::tuple(vec![Value::Int(soft), Value::Int(hard)]))
+        }),
+    ));
+    entries.push(("setrlimit", function("setrlimit", |_, _| Ok(Value::None))));
+    entries
+}
+
 pub fn pickle() -> Vec<(&'static str, Value)> {
     let refuse = |name: &'static str| {
         (

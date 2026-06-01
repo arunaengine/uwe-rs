@@ -30,6 +30,22 @@ pub fn read_table(interpreter: &mut Interpreter, args: Args) -> Result<Value, Er
     read(interpreter, args, "\t")
 }
 
+/// `read_parquet(path)`: a missing file is an error as in pandas; reading the columnar
+/// format is not supported.
+pub fn read_parquet(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    let source = args.get(0).cloned().ok_or_else(|| {
+        Error::type_error("read_parquet() missing 1 required positional argument: 'path'")
+    })?;
+    let path = crate::modules::path_text(interpreter, &source)?;
+    let resolved = interpreter.host.resolve(&path);
+    if !path.contains("://") && interpreter.host.stat(&resolved).is_none() {
+        return Err(Error::os_error(&std::io::ErrorKind::NotFound.into(), &path));
+    }
+    Err(Error::unsupported(
+        "pandas.read_parquet: reading Parquet files",
+    ))
+}
+
 /// The keyword arguments of `read_csv` and `read_table` in pandas 3.0.
 const ARGUMENTS: &[&str] = &[
     "filepath_or_buffer",

@@ -107,3 +107,5 @@ try:
     pd.read_table(io.StringIO("a b\n1 2\n"), delim_whitespace=True)
 except TypeError as error:
     print("TypeError", error)
+grouped = pd.DataFrame({"s": ["a", "a", "b"], "v": [1, 2, 5]}).groupby("s")
+print(grouped.s.transform("count").tolist(), grouped["v"].transform("sum").tolist(), grouped.v.transform(lambda x: x - x.min()).tolist())

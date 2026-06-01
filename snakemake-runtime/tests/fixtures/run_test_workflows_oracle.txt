@@ -156,7 +156,7 @@ catalog/kevinrue__snakemake-cncb-ensembl-2024	plain	1	evaluated	MissingInputExce
 catalog/khanlab__SPIMprep	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 2: No module named 'upath'
 catalog/knutdrand__bionumpy-benchmarks	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 5: No module named 'bionumpy'
 catalog/koesterlab__rossi-ips-dmr	plain	1	failed	FileNotFoundError in file "workflow/Snakefile", line 68: [Errno 2] No such file or directory: 'workflow/../../rna-seq-kallisto-sleuth/workflow/Snakefile'
-catalog/lasyaa418__control-of-latent-dynamics	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 7: No module named 'brian2'
+catalog/lasyaa418__control-of-latent-dynamics	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 7: No module named 'src'
 catalog/liezeltamon__single-cell-preprocess	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 12: No module named 'utils'
 catalog/liezeltamon__single-cell-preprocess	ci	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 12: No module named 'utils'
 catalog/loganylchen__NanoInsight	plain	1	evaluated	MissingInputException in rule filtering_genome_and_annotation in file "workflow/rules/prepare_reference.smk", line 34: Missing input files for rule filtering_genome_and_annotation:
@@ -232,7 +232,7 @@ catalog/rabiafidan__pure-faf	ci	1	failed	WorkflowError in file "workflow/Snakefi
 catalog/regulatory-genomics__hic_sm	plain	1	failed	FileNotFoundError in file "workflow/rules/common.smk", line 38: [Errno 2] No such file or directory: 'pep/../config/20260119_hic_sample_2.csv'
 catalog/richardstoeckl__QCforSeqCode	plain	0	evaluated
 catalog/richardstoeckl__basecallNanopore	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 21: A configuration file is required; use --configfile FILE.yaml
-catalog/rmFlynn__snakemake_example	plain	1	failed	FileNotFoundError in file "workflow/rules/bowtie2.smk", line 14: [Errno 2] No such file or directory: 'an/fa/file/for/bowtie2.fa'
+catalog/rmFlynn__snakemake_example	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 6: No module named 'workflow'
 catalog/rnsherpa__TLand-predict	plain	1	failed	FileNotFoundError in file "workflow/Snakefile", line 17: [Errno 2] No such file or directory: '/path/to/your/runs_table.tsv'
 catalog/rochevin__RNA-seq-from-SRR-single	plain	1	failed	RuleException in file "workflow/rules/STAR_quant.smk", line 2: Not all output, log and benchmark files of rule star_index_gtf contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
 catalog/rodolfobrandao8__Snakemake-Mag-Annotation	plain	1	failed	FileNotFoundError in file "workflow/rules/common.smk", line 7: [Errno 2] No such file or directory: '/home/argomes/data/meta/EST6/results/domain/EST6/annotation_samples_test.tsv'

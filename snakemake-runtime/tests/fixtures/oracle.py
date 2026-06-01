@@ -40,8 +40,10 @@ def command(folder, copy, fields):
     """The working directory and the arguments of `snakemake` for a launch in a copy."""
     values = dict(fields)
     workdir = os.path.join(copy, values.get("directory", "."))
-    arguments = [sys.executable, "-m", "snakemake", "--dry-run", "--printshellcmds", "--cores", "1",
-                 "--nocolor"]
+    # The `snakemake` command, as users run it: unlike `python -m snakemake`, it does not put
+    # the working directory on the Python path.
+    snakemake = os.path.join(os.path.dirname(sys.executable), "snakemake")
+    arguments = [snakemake, "--dry-run", "--printshellcmds", "--cores", "1", "--nocolor"]
     if "profile" in values:
         arguments += ["--profile", os.path.join(copy, values["profile"])]
     if "workflow-profile" in values:

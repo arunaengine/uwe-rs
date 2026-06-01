@@ -30,3 +30,4 @@ EmailMessage ConfigParser 1 e
 None ['a', 'b']
 # Library modules. True
 7 True None
+True Logger

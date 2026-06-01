@@ -48,7 +48,7 @@ catalog/IMS-Bio2Core-Facility__single_snake_sequencing ok 16
 catalog/JAlvarezJarreta__community_gff3_validation ok 10
 catalog/Jain-Joyce-Labs__snakemake-chipseq ok 77
 catalog/JeremyTournayre__Pipeline-Holoruminant-Meta 1 workflow/Snakefile:22: KeyError: 'params-file'
-catalog/JoseFcoMH__af3_screening 33 workflow/scripts/logging_utils.py:16: Not supported yet: the library function logging.Logger
+catalog/JoseFcoMH__af3_screening 1 workflow/Snakefile:35: KeyError: 'out_dir'
 catalog/JoyceS13__BEP_pipeline 1 workflow/Snakefile:101: SyntaxError: unindent does not match any outer indentation level
 catalog/KasperSkytte__snakemake_savont ok 14
 catalog/KasperSkytte__snakemake_usearch ok 14
@@ -330,13 +330,13 @@ catalog/niekwit__rna-seq-star-rmats 1 workflow/Snakefile:29: ValueError: Invalid
 catalog/niekwit__rna-seq-star-tetranscripts 1 workflow/scripts/general_functions.smk:174: AssertionError: No fastq files found ending with .fastq.gz...
 catalog/niekwit__smallRNA-seq ok 73
 catalog/nikostr__dna-seq-deepvariant-glnexus-variant-calling ok 58
-catalog/nikostr__read-mapping 33 workflow/rules/common.smk:86: Not supported yet: the attribute transform of SeriesGroupBy
+catalog/nikostr__read-mapping 33 workflow/rules/common.smk:143: Not supported yet: the library function pandas.wide_to_long (the mock run assumed 1 input files that do not exist and that no rule makes, like resources/genome.fasta; a real run needs them)
 catalog/nismod__open-gira 33 workflow/Snakefile:20: ModuleNotFoundError: No module named 'open_gira'
 catalog/nixonlab__HERV_um_mets 1 workflow/rules/common.smk:6: FileNotFoundError: [Errno 2] No such file or directory: 'resources/mskruns.txt'
 catalog/nixonlab__snakemake_rule_library 1 workflow/Snakefile:8: FileNotFoundError: [Errno 2] No such file or directory: 'workflow/rules/common.smk'
 catalog/nodrogluap__tamor 1 workflow/rules/dragen_version.smk:17: SystemExit: FATAL: Unsupported Dragen version (not 4.2, 4.4 or 4.5) detected in dragen_info's install path ()
 catalog/ntnn19__combflow ok 3
-catalog/ntnn19__gaptrick-af_unmasked 33 https://raw.githubusercontent.com/ntnn19/AlphaFold3_workflow/dev/workflow/rules/common.smk:15: ModuleNotFoundError: No module named 'resource'
+catalog/ntnn19__gaptrick-af_unmasked 1 https://raw.githubusercontent.com/ntnn19/AlphaFold3_workflow/dev/workflow/rules/common.smk:34: WorkflowError: Error validating config file.
 catalog/odcambc__dumpling 1 workflow/rules/common.smk:215: FileNotFoundError: Data directory example/data does not exist
 catalog/omidalam__can_vac 1 workflow/rules/prep_refs.smk:7: KeyError: 'ref'
 catalog/open2c__distiller-sm 1 workflow/Snakefile:18: KeyError: 'output'
@@ -354,7 +354,7 @@ catalog/rabiafidan__pure-faf 33 workflow/rules/common.smk:5: ModuleNotFoundError
 catalog/rcavalcante__test_snakemake_pipeline ok 0
 catalog/recervictory__rna-seq-test ok 0
 catalog/regevs__tadpoles ok 0
-catalog/regulatory-genomics__hic_sm 33 workflow/rules/common.smk:10: ModuleNotFoundError: No module named 'peppy'
+catalog/regulatory-genomics__hic_sm 1 workflow/rules/common.smk:38: FileNotFoundError: [Errno 2] No such file or directory: 'pep/../config/20260119_hic_sample_2.csv'
 catalog/rglez__bflow-smk ok 10
 catalog/richardstoeckl__QCforSeqCode 1 workflow/Snakefile:153: WorkflowError: InputFunctionException in rule infernal (wildcards: sampleID=Pfu): EmptyDataError: No columns to parse from file (the workflow read results/seqkit-stats/Pfu_assembly.tsv, a task output that the mock run made without its content)
 catalog/richardstoeckl__basecallNanopore 1 workflow/Snakefile:21: WorkflowError: A configuration file is required; use --configfile FILE.yaml
@@ -381,8 +381,8 @@ catalog/simonmoulds__gwm-analysis 1 workflow/Snakefile:21: NameError: name 'Snak
 catalog/simonmoulds__india-crop-atlas ok 0
 catalog/simonmoulds__jules-ganges-data-preparation ok 0
 catalog/simonmoulds__jules-mosart ok 13
-catalog/simonmoulds__subseasonal-flood-prediction 33 workflow/Snakefile:11: ModuleNotFoundError: No module named 'pyarrow'
-catalog/simonmoulds__uk-decadal-flood-prediction 33 workflow/Snakefile:16: Not supported yet: the library function pandas.read_parquet
+catalog/simonmoulds__subseasonal-flood-prediction 1 workflow/rules/common.smk:18: FileNotFoundError: [Errno 2] No such file or directory: 'resources/stations_selected.parquet'
+catalog/simonmoulds__uk-decadal-flood-prediction 1 workflow/Snakefile:16: FileNotFoundError: [Errno 2] No such file or directory: 'resources/station_list_with_grid_coords.parquet'
 catalog/simonmoulds__uk-decadal-flood-prediction-lstm ok 16
 catalog/simonmoulds__us-streamflow-prediction ok 4
 catalog/sims-lab__snakemake-cncb-genetic-demultiplexing 1 workflow/rules/process_reads.smk:440: WorkflowError: InputFunctionException in rule simpleaf (wildcards: id=WPP000_018hrs_rep1): FileNotFoundError: [Errno 2] No such file or directory: '/project/cncb/shared/proj140/analyses/novogene_sequencing/single_cell/20250304_run_1/fastq/X204SC25012818-Z01-F0

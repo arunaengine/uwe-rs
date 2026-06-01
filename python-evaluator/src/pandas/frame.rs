@@ -222,6 +222,18 @@ impl Native for DataFrame {
             "dropna" => inplace_method(this, name, reshape::dropna),
             "fillna" => inplace_method(this, name, reshape::fillna),
             "replace" => inplace_method(this, name, methods::replace),
+            "droplevel" => frame_method(this, name, |interpreter, data, args| {
+                let index = IndexObject::value(data.index());
+                let method = interpreter.get_attribute(&index, "droplevel")?;
+                let dropped = interpreter.call(&method, args)?;
+                let labels = dropped
+                    .as_native::<IndexObject>()
+                    .map(IndexObject::labels)
+                    .ok_or_else(|| Error::type_error("droplevel did not give an index"))?;
+                let result = data.copy();
+                *result.index.borrow_mut() = labels;
+                Ok(DataFrame::from_data(result))
+            }),
             "where" => inplace_method(this, name, methods::where_),
             "mask" => inplace_method(this, name, methods::mask),
             "drop_duplicates" => inplace_method(this, name, reshape::drop_duplicates),

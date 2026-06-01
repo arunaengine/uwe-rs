@@ -109,3 +109,4 @@ except TypeError as error:
     print("TypeError", error)
 grouped = pd.DataFrame({"s": ["a", "a", "b"], "v": [1, 2, 5]}).groupby("s")
 print(grouped.s.transform("count").tolist(), grouped["v"].transform("sum").tolist(), grouped.v.transform(lambda x: x - x.min()).tolist())
+print(pd.DataFrame({"a": ["x", "y"], "b": [1, 2], "c": [3, 4]}).set_index(["a", "b"]).droplevel("b").index.tolist())

@@ -201,6 +201,55 @@ impl GroupBy {
         Ok(DataFrame::from_data(result))
     }
 
+    /// `transform(func)` of a selected column: the result of each group for each of its rows,
+    /// in the order of the table; rows in no group get `nan`.
+    fn transform(&self, interpreter: &mut Interpreter, function: &Value) -> Result<Value, Error> {
+        let Some(label) = self.column.clone() else {
+            return Err(Error::unsupported("transform of a grouped table"));
+        };
+        let mut results = Vec::with_capacity(self.groups.len());
+        let position = self
+            .frame
+            .column_position(&label)
+            .ok_or_else(|| Error::key_error(label.clone()))?;
+        for (_, rows) in &self.groups {
+            let series = self.frame.column(position).take(rows);
+            let result = match function.as_str() {
+                Some(name) => {
+                    let grouped = GroupBy {
+                        frame: self.frame.take_rows(rows),
+                        names: self.names.clone(),
+                        groups: vec![(Value::None, (0..rows.len()).collect())],
+                        column: Some(label.clone()),
+                        as_index: true,
+                    };
+                    let aggregated = grouped.named(interpreter, name)?;
+                    aggregated
+                        .as_native::<Series>()
+                        .and_then(|series| series.data().values.first().cloned())
+                        .unwrap_or_else(super::nan)
+                }
+                None => interpreter.call(function, Args::new(vec![Series::from_data(series)]))?,
+            };
+            results.push(result);
+        }
+        let mut values = vec![super::nan(); self.frame.rows()];
+        for ((_, rows), result) in self.groups.iter().zip(results) {
+            // A result per row, or one for the whole group.
+            let per_row = result
+                .as_native::<Series>()
+                .map(|series| series.data().values)
+                .filter(|items| items.len() == rows.len());
+            for (index, row) in rows.iter().enumerate() {
+                values[*row] = match &per_row {
+                    Some(items) => items[index].clone(),
+                    None => result.clone(),
+                };
+            }
+        }
+        Ok(Series::value(values, self.frame.index(), label))
+    }
+
     fn named(&self, interpreter: &mut Interpreter, name: &str) -> Result<Value, Error> {
         let name = name.to_owned();
         self.aggregate(interpreter, &mut |interpreter, data| {
@@ -317,6 +366,10 @@ impl Native for GroupBy {
                     results.push(interpreter.call(&function, Args::new(vec![frame]))?);
                 }
                 Ok(Series::value(results, groups.keys(), Value::None))
+            }),
+            "transform" => method::<GroupBy>(this, name, |interpreter, groups, args| {
+                let function = args.get(0).cloned().unwrap_or(Value::None);
+                groups.transform(interpreter, &function)
             }),
             // A column by its name, as `groups.column` selects it.
             _ if self.column.is_none()

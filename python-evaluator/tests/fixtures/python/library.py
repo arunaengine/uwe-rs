@@ -53,3 +53,12 @@ with open("library.py") as source:
     print(next(source).rstrip(), next(source, "end") != "end")
 import resource
 print(resource.RLIMIT_NOFILE, resource.getrlimit(resource.RLIMIT_NOFILE)[0] > 0, resource.setrlimit(resource.RLIMIT_NOFILE, resource.getrlimit(resource.RLIMIT_NOFILE)))
+import contextlib, logging
+
+
+@contextlib.contextmanager
+def opened(name) -> "logging.Logger":
+    yield name
+
+
+print(callable(opened), logging.Logger.__name__)

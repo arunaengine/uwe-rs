@@ -876,6 +876,11 @@ pub fn logging() -> Vec<(&'static str, Value)> {
             function("Formatter", |_, _| Ok(logger("formatter"))),
         ),
         ("Handler", Value::Class(types::native_class("Handler"))),
+        ("Logger", Value::Class(types::native_class("Logger"))),
+        (
+            "LoggerAdapter",
+            Value::Class(types::native_class("LoggerAdapter")),
+        ),
     ];
     for level in ["debug", "info", "warning", "error", "critical", "exception"] {
         if let Value::Native(object) = &root
@@ -1565,8 +1570,15 @@ pub fn contextlib() -> Vec<(&'static str, Value)> {
         ),
         (
             "contextmanager",
-            function("contextmanager", |_, _| {
-                Err(Error::unsupported("contextlib.contextmanager"))
+            // Code may define such context managers while it is planned; they need to pause a
+            // generator, so using one is not supported.
+            function("contextmanager", |_, args| {
+                args.expect("contextmanager", 1, 1)?;
+                Ok(Value::builtin("contextmanager", |_, _| {
+                    Err(Error::unsupported(
+                        "using a context manager made with contextlib.contextmanager",
+                    ))
+                }))
             }),
         ),
         (

@@ -191,6 +191,12 @@ pub fn build(
     for (name, values, many) in rule.params.named_entries() {
         let start = params.values.len();
         for value in values {
+            if value.tag("unpack").is_some() {
+                return Err(workflow_error(format!(
+                    "unpack() is not allowed with params. Simply return a dictionary which can be directly .used, e.g. via {{params[mykey]}}. (rule {})",
+                    rule.name
+                )));
+            }
             let concrete = if is_callable(interpreter, &value) {
                 match call_input_function(
                     interpreter,

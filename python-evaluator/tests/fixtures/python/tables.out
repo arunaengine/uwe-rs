@@ -68,3 +68,4 @@ True (2, 3)
 True False
 TypeError read_table() got an unexpected keyword argument 'delim_whitespace'
 [2, 2, 1] [3, 3, 5] [0, 1, 0]
+['x', 'y']

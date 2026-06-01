@@ -532,6 +532,23 @@ pub fn register(interpreter: &mut Interpreter, state: &Rc<RefCell<State>>, globa
             ))
         })),
     );
+    // peppy, which Snakemake uses for PEP projects and which code may use itself.
+    interpreter.host_modules.insert(
+        "peppy".into(),
+        factory(Rc::new(|_| {
+            Ok(module(
+                "peppy",
+                vec![(
+                    "Project",
+                    Value::builtin("Project", |interpreter, mut args| {
+                        let config = args.take(0, "cfg").unwrap_or(Value::None);
+                        let path = python_evaluator::modules::path_text(interpreter, &config)?;
+                        crate::pep::load(interpreter, &path)
+                    }),
+                )],
+            ))
+        })),
+    );
     interpreter.host_modules.insert(
         "snakemake.dag".into(),
         factory(Rc::new(|_| {

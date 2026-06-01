@@ -648,3 +648,31 @@ These are my own conclusions, not measured facts.
 4. **Software environments.** 86% of the workflows rely on `conda:` env files. Only 33% name containers. Running tools in containers therefore needs a mapping from conda env files to images early on. `containerized:` (9%) already names one image for all environments.
 5. **Early execution features.** Python and R script preambles (54% and 28% of workflows) and wrappers (42%) come right after shell. `run:` (18%) needs Python at job time with the Snakefile globals, so it should come late.
 6. **A first Snakemake test suite.** Start with the 109 test folders in `results/tests-first-suite.txt`. Next, allow Python helpers (32 more folders, 141 in total) and then checkpoints and modules.
+
+## 7. Running the test workflows
+
+`just snakemake-run-test-workflows-test` runs every workflow of the test workflows with the mock TES executor (`snakemake-runtime/tests/run_test_workflows.rs`). Each workflow runs in a child process with a timeout of two minutes. Up to eight tasks are pending at once and finish in a shuffled order (seed 1, or `SNAKEMAKE_TEST_WORKFLOWS_SEED`), as tasks of a real run may. Input files that no rule makes and that do not exist are assumed to exist. `run_test_workflows.txt` records the outcome of each workflow: `ok` and the number of tasks, or the exit code and the first line of the error.
+
+### 7.1 How a workflow is launched
+
+`launches.py` writes `run_test_workflows_launches.txt`. A catalog workflow runs plainly in its repository, unless Snakemake cannot evaluate it that way and it can with the launch of its CI or with the mandatory flags of its catalog entry. A test of Snakemake runs as the first test function of `tests.py` runs it: its folder, Snakefile, config files and values, targets (also written as `"a b".split()`), and `--profile` or `--workflow-profile`. iunctus takes the profiles of a launch in `Launch.profiles`, by path or by the name of a workflow profile.
+
+### 7.2 Evidence from Snakemake
+
+`oracle.py` runs `snakemake --dry-run --printshellcmds` of Snakemake 9.27.0 in a copy of each workflow, with the Python packages and plugins its header names. `--printshellcmds` makes Snakemake format the shell command of each job, as iunctus does when it builds a task. The first mode records every launch of the workflows whose preferred launch Snakemake cannot evaluate; launches.py uses it to choose launches. `--only FILE` records the workflows that iunctus cannot run, as evidence. Snakemake is only the reference here; iunctus never runs it.
+
+### 7.3 Why a workflow cannot run
+
+Every workflow that does not run has a record in `run_test_workflows_rejected.txt`: `invalid` when Snakemake fails the same way because the workflow is broken, `missing` when it needs something that is not in its repository (data, a config file, a Python package, environment variables), or `unsupported (decision N)`. The run test fails for a failing workflow without a record, for a record whose workflow runs, and for an `invalid` or `missing` record without a failing dry run of Snakemake in the oracle file.
+
+A mock run cannot know the content of task outputs. Some workflows read that content while they are planned, like a sample list that a checkpoint downloads; the mock executor makes these files empty, so their input functions fail. A real run gives the content. Errors of mock runs say which task output the workflow read, and which input files the run assumed to exist.
+
+### 7.4 Commands while the workflow is planned
+
+Workflow code may run commands while it is planned: `shell()`, `subprocess`, `os.system` and `os.popen`. They never run on the machine of iunctus (decision 11). Each becomes a task of its own: the image is the workflow's global `container:`, else `debian:stable-slim`, and the working directory of the workflow is its input. The driver hands the task to the engine as the answer to the request it is handling and waits for its outcome; outcomes of other tasks that come meanwhile wait until the request is done. The mock executors give such a command no output and exit code 0. Files that a command writes are not kept yet.
+
+### 7.5 Files on the web and in storage
+
+Modules and includes may come from GitHub or GitLab (`github(...)`, `gitlab(...)`, `gh:owner/repo@tag`) or from web addresses. iunctus mirrors each repository at its reference into the downloads folder of the run and downloads a file the first time the workflow reads it, so relative includes, schemas and scripts work as for local files. Errors name such files by their web address. Tasks get scripts of remote modules from their web address.
+
+A file in storage (`storage.http(url)`, `storage("s3://...")`) has the local path that Snakemake gives it, `.snakemake/storage/<provider>/<address without scheme>`. Its task gets it from its address, and it counts as present while the workflow is planned.

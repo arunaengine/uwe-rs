@@ -196,14 +196,21 @@ def constant(node):
             and node.func.attr == "split" and not node.args and not node.keywords
             and isinstance(node.func.value, ast.Constant) and isinstance(node.func.value.value, str)):
         return node.func.value.value.split()
+    if (isinstance(node, ast.Call) and getattr(node.func, "id", None) == "dict" and not node.args
+            and all(keyword.arg for keyword in node.keywords)):
+        values = {keyword.arg: constant(keyword.value) for keyword in node.keywords}
+        return None if any(value is None for value in values.values()) else values
     try:
         return ast.literal_eval(node)
     except ValueError:
         return None
 
 
-def test_path(node):
-    """The folder a `dpath("...")` argument names, relative to the tests folder."""
+def test_path(node, names=None):
+    """The folder a `dpath("...")` argument names, relative to the tests folder, also through a
+    variable that the test function sets to it."""
+    if isinstance(node, ast.Name) and names and node.id in names:
+        return test_path(names[node.id])
     if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "dpath" and node.args:
         return test_path(node.args[0])
     if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "Path" and node.args:
@@ -220,10 +227,13 @@ def tests_launches(tests):
     for function in tree.body:
         if not isinstance(function, ast.FunctionDef):
             continue
+        names = {target.id: statement.value for statement in ast.walk(function)
+                 if isinstance(statement, ast.Assign)
+                 for target in statement.targets if isinstance(target, ast.Name)}
         for call in ast.walk(function):
             if not (isinstance(call, ast.Call) and getattr(call.func, "id", None) == "run" and call.args):
                 continue
-            path = test_path(call.args[0])
+            path = test_path(call.args[0], names)
             if not path:
                 continue
             path = os.path.normpath(path)

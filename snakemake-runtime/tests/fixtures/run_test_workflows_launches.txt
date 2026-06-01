@@ -47,6 +47,7 @@ tests/test_directory	tests.py	target=downstream	target=symlinked_input	target=ch
 tests/test_dup_out_patterns	tests.py	shouldfail
 tests/test_ensure	tests.py	target=b	target=c
 tests/test_expand_flag	tests.py	shouldfail
+tests/test_failed_intermediate	tests.py	config=fail=init
 tests/test_filesep_windows	tests.py	target=subfolder/test2.out2	target=subfolder/test1.out2
 tests/test_fstring	tests.py	target=SID23454678.txt
 tests/test_github_issue1261	tests.py	shouldfail
@@ -54,6 +55,7 @@ tests/test_github_issue1389	tests.py	shouldfail
 tests/test_github_issue261	tests.py	target=test1/target1/config1.done
 tests/test_github_issue2848	tests.py	target=output/c.txt	target=output/dir2/d.txt	shouldfail
 tests/test_github_issue640	tests.py	target=Output/FileWithRights
+tests/test_github_issue806	tests.py	config=src_lang=es	config=trg_lang=en
 tests/test_github_issue929	tests.py	target=childrule_2
 tests/test_github_issue_4039_runtime_profile	tests.py	profile=profile
 tests/test_group_job_fail	tests.py	shouldfail
@@ -88,6 +90,7 @@ tests/test_modules_prefix_local	tests.py	target=out_1/test_final.txt
 tests/test_modules_semi_dynamic	tests.py	target=all
 tests/test_modules_specific	tests.py	target=test_a
 tests/test_modules_two_names	tests.py	target=all	shouldfail
+tests/test_no_workflow_profile	tests.py	snakefile=workflow/Snakefile
 tests/test_pathlib_missing_file	tests.py	shouldfail
 tests/test_pathvars_cycle	tests.py	shouldfail
 tests/test_pipe_depend	tests.py	shouldfail
@@ -97,6 +100,7 @@ tests/test_profile_double_dash	tests.py	profile=profile	target=done.txt
 tests/test_resource_quoting	tests.py	profile=test-profile
 tests/test_retries_not_overriden	tests.py	shouldfail
 tests/test_rule_inheritance_globals	tests.py	target=foo.txt
+tests/test_runtime_conversion_from_workflow_profile	tests.py	snakefile=workflow/Snakefile
 tests/test_set_resources_complex	tests.py	profile=test-profile
 tests/test_singularity_module	tests.py	target=invalid.txt	shouldfail
 tests/test_source_path	tests.py	snakefile=workflow/Snakefile
@@ -105,7 +109,10 @@ tests/test_strict_mode	tests.py	shouldfail
 tests/test_symlink_temp	tests.py	shouldfail
 tests/test_temp	tests.py	target=test.realigned.bam
 tests/test_update_flag_fail	tests.py	shouldfail
+tests/test_update_flag_fail_cleanup	tests.py	shouldfail
 tests/test_use_rule_same_module	tests.py	target=test.out	target=test2.out
+tests/test_wildcard_annotatedstrings	tests.py	target=test.out
+tests/test_workflow_profile	tests.py	snakefile=workflow/Snakefile
 tests/test_workflow_profile_cli_overwrite	tests.py	snakefile=workflow/Snakefile
 tests/test_workflow_profile_relative_filename	tests.py	snakefile=workflow/Snakefile	workflow-profile=workflow/some_dir/workflow_profile.yaml
 tests/test_workflow_profile_relative_path	tests.py	snakefile=workflow/Snakefile	workflow-profile=workflow_at_site_x

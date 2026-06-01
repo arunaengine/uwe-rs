@@ -36,6 +36,8 @@ catalog/IKIM-Essen__uncovar	ci	1	evaluated	MissingInputException in rule fastp_p
 catalog/JeremyTournayre__Pipeline-Holoruminant-Meta	plain	1	failed	KeyError in file "workflow/Snakefile", line 22: 'params-file'
 catalog/JoseFcoMH__af3_screening	plain	1	failed	FileNotFoundError in file "workflow/Snakefile", line 19: [Errno 2] No such file or directory: 'conda'
 catalog/JoyceS13__BEP_pipeline	plain	1	failed	TabError in file "<string>", line 101: inconsistent use of tabs and spaces in indentation:
+catalog/KonstantinBurkin__cbai	plain	1	evaluated	MissingInputException in rule mark_duplicates in file "workflow/rules/mapping.smk", line 66: Missing input files for rule mark_duplicates:
+catalog/KonstantinBurkin__cbai	ci	1	failed	KeyError in file "workflow/rules/mapping.smk", line 68: 'minimap'
 catalog/LiaOb21__colora	plain	1	failed	ValueError in file "workflow/Snakefile", line 11: not enough values to unpack (expected 1, got 0)
 catalog/LiaOb21__colora	ci	0	evaluated
 catalog/MarieRiisgaard__snakemake_usearch_primertrim_and_subset	plain	1	failed	FileNotFoundError in file "workflow/Snakefile", line 19: [Errno 2] No such file or directory: '.test/nanopore_run_xyz123/fastq_pass'
@@ -251,6 +253,8 @@ catalog/snakemake-workflows__cellranger-multi	plain	1	failed	WorkflowError in fi
 catalog/snakemake-workflows__cellranger-multi	ci	1	failed	WorkflowError in file ".test/../workflow/Snakefile", line 20: The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:
 catalog/snakemake-workflows__dna-seq-benchmark	plain	0	evaluated
 catalog/snakemake-workflows__dna-seq-benchmark	ci	0	evaluated
+catalog/snakemake-workflows__dna-seq-gatk-variant-calling	plain	1	evaluated	MissingInputException in rule trim_reads_pe in file "workflow/rules/mapping.smk", line 15: Missing input files for rule trim_reads_pe:
+catalog/snakemake-workflows__dna-seq-gatk-variant-calling	ci	0	evaluated
 catalog/snakemake-workflows__dna-seq-mtb	plain	1	evaluated	InputFunctionException in rule all in file "https://raw.githubusercontent.com/snakemake-workflows/dna-seq-varlociraptor/v6.10.1/workflow/Snakefile", line 61: Error:
 catalog/snakemake-workflows__dna-seq-mtb	ci	0	evaluated
 catalog/snakemake-workflows__dna-seq-varlociraptor	plain	1	evaluated	MissingInputException in rule fastqc in file "workflow/rules/qc.smk", line 1: Missing input files for rule fastqc:

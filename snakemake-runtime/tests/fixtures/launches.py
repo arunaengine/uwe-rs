@@ -3,9 +3,10 @@
 #
 #     uv run -q --with pyyaml --with snakemake==9.27.0 python snakemake-runtime/tests/fixtures/launches.py
 #
-# A catalog workflow runs plainly in its repository, unless real Snakemake cannot evaluate it
-# that way (run_test_workflows_oracle.txt from oracle.py says so) and it can with another launch: the
-# way its CI tests it, or with the mandatory flags of its catalog entry. The CI launch is the
+# A catalog workflow runs plainly in its repository, unless real Snakemake does better with
+# another launch (run_test_workflows_oracle.txt from oracle.py says so): the way its CI tests
+# it, or with the mandatory flags of its catalog entry. Better means a dry run that succeeds,
+# else a Snakefile that Snakemake evaluates. The CI launch is the
 # first step of its GitHub workflows that runs Snakemake on it, with the
 # snakemake-github-action or a `snakemake` command, other than linting, reports, unit test
 # generation and environment setup, and whose folders and files exist. The catalog launch
@@ -303,26 +304,27 @@ def candidates():
 
 
 def read_oracle():
-    """Whether real Snakemake evaluated each launch of the workflows in the oracle file, which
-    lists only the workflows whose first launch it could not evaluate."""
-    evaluated = {}
+    """How real Snakemake did with each launch of the workflows in the oracle file: 2 when its
+    dry run succeeded, 1 when it evaluated the Snakefile, else 0."""
+    results = {}
     if not os.path.exists(ORACLE):
-        return evaluated
+        return results
     for line in open(ORACLE, encoding="utf-8"):
         if line.startswith("#"):
             continue
-        name, via, _, stage, *_ = line.rstrip("\n").split("\t")
-        evaluated.setdefault(name, {})[via] = stage == "evaluated"
-    return evaluated
+        name, via, code, stage, *_ = line.rstrip("\n").split("\t")
+        results.setdefault(name, {})[via] = 2 if code == "0" else int(stage == "evaluated")
+    return results
 
 
 def main():
-    evaluated = read_oracle()
+    results = read_oracle()
     lines = []
     for name, _, launches in candidates():
-        runs = evaluated.get(name)
-        chosen = launches[0] if runs is None else next(
-            (launch for launch in launches if runs.get(launch[0])), launches[0])
+        runs = results.get(name)
+        # The first launch whose dry run succeeds, else the first that Snakemake evaluates.
+        chosen = launches[0] if runs is None else max(
+            launches, key=lambda launch: (runs.get(launch[0], 0), -launches.index(launch)))
         via, fields = chosen
         if fields:
             lines.append((name, via, fields))

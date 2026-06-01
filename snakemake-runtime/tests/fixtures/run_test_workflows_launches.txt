@@ -8,19 +8,27 @@
 catalog/AllenInstitute__Bulk-RNA-Snakeline	catalog	configfile=config/config.yaml
 catalog/Bioinflows-Bioversity-CIAT__ont-target-dna-variant-calling	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/LiaOb21__colora	ci	directory=.	snakefile=workflow/Snakefile	configfile=config/config_test.yaml
+catalog/Phlya__tagmap	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/aryazand__call_tss	ci	directory=.test	snakefile=workflow/Snakefile
+catalog/aryazand__genome_browser_workflow	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/boulardlab__3t-seq	ci	directory=.tests/integration	snakefile=workflow/Snakefile	configfile=.tests/integration/config.yaml	profile=.tests/integration/profile
 catalog/cbib__SpaceBlocks	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/cmc-aau__nanopore_16Samp	ci	directory=.test	snakefile=workflow/Snakefile
+catalog/daspacio9__pooledpremiumpcrpipeline2	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/fiberseq__fiberseq-smk	ci	directory=.	snakefile=workflow/Snakefile	configfile=.test/config.yml
 catalog/gynecoloji__snakemake_debug	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/hzi-bifo__snakemake-workflow-univec-removal	ci	directory=.test	snakefile=.test/Snakefile
+catalog/isaacvock__PROseq_etal	ci	directory=.test	snakefile=workflow/Snakefile	configfile=.test/config_ChIP/config.yaml
 catalog/jma1991__arrays	ci	directory=.tests/integration	snakefile=workflow/Snakefile
+catalog/ncbench__ncbench-workflow	ci	directory=.	snakefile=workflow/Snakefile	target=resources/reference/genome.fasta
 catalog/niekwit__gps-orfeome	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/niekwit__rna-seq-star-deseq2	ci	directory=.test_se	snakefile=workflow/Snakefile
 catalog/niekwit__smallRNA-seq	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/rodolfobrandao8__Snakemake-Mag-Annotation	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/schlesnerlab__multiconDEnrich	ci	directory=.	snakefile=workflow/Snakefile	configfile=config/workflow_unit_test.yaml
+catalog/snakemake-workflows__dna-seq-gatk-variant-calling	ci	directory=.test	snakefile=workflow/Snakefile
+catalog/snakemake-workflows__dna-seq-mtb	ci	directory=.test	snakefile=workflow/Snakefile	configfile=.test/config-tumor_normal/config.yaml
+catalog/snakemake-workflows__star-arriba-fusion-calling	ci	directory=.test	snakefile=.test/Snakefile	configfile=.test/config/config.yaml
 catalog/westerdijk-wm__smkwf-bwa-gatk-snpeff	ci	directory=.test	snakefile=workflow/Snakefile
 catalog/xin-huang__selscape	ci	directory=.	snakefile=workflow/Snakefile	configfile=.tests/ci/config/main.yaml
 catalog/zifornd__arrays	ci	directory=.tests/integration	snakefile=workflow/Snakefile

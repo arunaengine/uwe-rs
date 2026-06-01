@@ -160,6 +160,17 @@ impl Session {
                 assumed.len()
             ));
         }
+        // Code that reads what a task made gets empty files from the mock executors.
+        let read = self.files.last_output_read.borrow().clone();
+        if self.launch.assume_inputs
+            && let Some(read) = read
+        {
+            let shown = read.strip_prefix(&self.workdir).unwrap_or(&read);
+            error.message.push_str(&format!(
+                " (the workflow read {}, a task output that the mock run made without its content)",
+                shown.display()
+            ));
+        }
         error
     }
 
@@ -404,6 +415,8 @@ impl Session {
             return Err(DriverError::new(format!("unknown task {}", outcome.id)));
         };
         self.outstanding = self.outstanding.saturating_sub(1);
+        // Only reads while this outcome is handled explain an error of it.
+        *self.files.last_output_read.borrow_mut() = None;
         if outcome.exit_code != 0 {
             let name = self
                 .planner

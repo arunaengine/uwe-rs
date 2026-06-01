@@ -31,6 +31,8 @@ pub struct WorkflowFiles {
     pub messages: RefCell<Vec<String>>,
     /// Runs the commands of workflow code as tasks, once the driver connects it.
     commands: RefCell<Option<Rc<CommandRunner>>>,
+    /// The last output of a task that workflow code read.
+    pub last_output_read: RefCell<Option<PathBuf>>,
 }
 
 impl WorkflowFiles {
@@ -41,6 +43,7 @@ impl WorkflowFiles {
             produced: RefCell::new(BTreeMap::new()),
             messages: RefCell::new(Vec::new()),
             commands: RefCell::new(None),
+            last_output_read: RefCell::new(None),
         }
     }
 
@@ -83,7 +86,10 @@ impl Host for WorkflowFiles {
 
     fn read(&self, path: &Path) -> std::io::Result<Vec<u8>> {
         match self.location(path) {
-            Some((location, _)) => std::fs::read(location),
+            Some((location, _)) => {
+                *self.last_output_read.borrow_mut() = Some(path.to_owned());
+                std::fs::read(location)
+            }
             None => {
                 self.mirrors.fetch(path)?;
                 self.local.read(path)

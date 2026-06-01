@@ -370,7 +370,7 @@ tests/test_temp	tests.py	0	evaluated
 tests/test_tibanna	plain	1	failed	NotImplementedError in file "Snakefile", line 13: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_toposort	plain	0	evaluated
 tests/test_validate	plain	1	failed	ModuleNotFoundError in file "Snakefile", line 4: No module named 'polars'
-tests/test_wildcard_annotatedstrings	plain	1	evaluated	WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
+tests/test_wildcard_annotatedstrings	tests.py	1	evaluated	WorkflowError in rule all in file "Snakefile", line 3: unpack() is not allowed with params. Simply return a dictionary which can be directly .used, e.g. via {params[mykey]}. (rule all, line 3, Snakefile)
 tests/test_workflow_profile_relative_filename	tests.py	0	evaluated
 tests/test_workflow_profile_relative_path	tests.py	1	evaluated	RuleException in rule a in file "workflow/Snakefile", line 1: AttributeError: 'ResourceList' object has no attribute 'foo', when formatting the following:
 tests/test_xrootd	plain	1	failed	NotImplementedError in file "Snakefile", line 3: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).

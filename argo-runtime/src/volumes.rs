@@ -1,7 +1,8 @@
 //! Volumes as shared files (decision 18). Volumes that several steps mount act as a shared file
 //! system: the run keeps the files that tasks write into a volume, and gives them to the tasks
 //! that mount it later. A volume is a claim (`persistentVolumeClaim` or `volumeClaimTemplates`),
-//! a host path, or the `emptyDir` of one pod. ConfigMaps become files with their text, and
+//! a host path, or the `emptyDir` of one pod. In a real run, the files that tasks write into a
+//! host path go back to that path on this machine. ConfigMaps become files with their text, and
 //! Secrets placeholders in a mock run.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -318,8 +319,10 @@ impl Run {
         Ok(())
     }
 
-    /// Takes the files that the tasks of a node wrote into their volumes.
-    pub(crate) fn keep_written(&mut self, index: usize) {
+    /// Takes the files that the tasks of a node wrote into their volumes. In a real run, the
+    /// files written into a host path go back to that path on this machine; a mock run never
+    /// writes there.
+    pub(crate) fn keep_written(&mut self, index: usize) -> std::result::Result<(), String> {
         let written = self.nodes[index].written.clone();
         for mount in written {
             let Some(Some(outcome)) = self.nodes[index].outcomes.get(mount.slot).cloned() else {
@@ -330,12 +333,37 @@ impl Run {
             };
             let mut files = Vec::new();
             walk(&location, &location, &mut files);
-            let volume = self.volumes.entry(mount.key).or_default();
+            let host = mount
+                .key
+                .strip_prefix("host:")
+                .filter(|_| !self.options.assume_inputs)
+                .map(PathBuf::from);
+            let volume = self.volumes.entry(mount.key.clone()).or_default();
             for (relative, file) in files {
-                volume.insert(format!("{}{relative}", mount.sub_path), file);
+                let relative = format!("{}{relative}", mount.sub_path);
+                if let Some(host) = &host {
+                    write_back(&file, &host.join(&relative))?;
+                }
+                volume.insert(relative, file);
             }
         }
+        Ok(())
     }
+}
+
+/// Copies a file that a task wrote into a host path to that path, over a file of the same name.
+fn write_back(file: &Path, target: &Path) -> std::result::Result<(), String> {
+    let failed = |error: std::io::Error| {
+        format!(
+            "cannot write {} back to the host path: {error}",
+            target.display()
+        )
+    };
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(failed)?;
+    }
+    std::fs::copy(file, target).map_err(failed)?;
+    Ok(())
 }
 
 /// The directory that a task made at a mount path.

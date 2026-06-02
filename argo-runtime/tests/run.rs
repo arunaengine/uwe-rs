@@ -1239,3 +1239,29 @@ fn init_containers_run_before_the_main_task_on_the_same_files() {
         failed.error()
     );
 }
+
+#[test]
+fn host_paths_are_written_back_in_a_real_run() {
+    let host = tempfile::tempdir().expect("a temporary directory");
+    let templates = format!(
+        r#"
+  - name: main
+    volumes:
+    - {{name: out, hostPath: {{path: {}, type: Directory}}}}
+    container:
+      image: alpine
+      command: [sh, -c, "echo hi > /out/a.txt"]
+      volumeMounts: [{{name: out, mountPath: /out}}]
+"#,
+        host.path().display()
+    );
+    let written = host.path().join("a.txt");
+    run(&workflow(&templates)).succeeded();
+    assert!(!written.exists(), "a mock run never writes to a host path");
+    run_with(&workflow(&templates), real()).succeeded();
+    assert!(written.exists(), "a real run writes the file back");
+    std::fs::remove_file(&written).expect("the file is removed");
+    let read_only = templates.replace("mountPath: /out}", "mountPath: /out, readOnly: true}");
+    run_with(&workflow(&read_only), real()).succeeded();
+    assert!(!written.exists(), "a read-only mount is not written back");
+}

@@ -358,7 +358,10 @@ impl Run {
             outputs.artifacts.push(value);
         }
         self.nodes[index].outputs = outputs;
-        self.keep_written(index);
+        if let Err(message) = self.keep_written(index) {
+            self.fail(index, Phase::Error, message);
+            return Ok(());
+        }
         if exit_code != 0 {
             self.fail(
                 index,
@@ -419,7 +422,10 @@ impl Run {
         let Some(Some(outcome)) = self.nodes[index].outcomes.last().cloned() else {
             return Ok(());
         };
-        self.keep_written(index);
+        if let Err(message) = self.keep_written(index) {
+            self.fail(index, Phase::Error, message);
+            return Ok(());
+        }
         if outcome.exit_code != 0 {
             let node = &self.nodes[index];
             let container = match &node.processed {

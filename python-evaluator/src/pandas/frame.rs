@@ -222,6 +222,22 @@ impl Native for DataFrame {
             "dropna" => inplace_method(this, name, reshape::dropna),
             "fillna" => inplace_method(this, name, reshape::fillna),
             "replace" => inplace_method(this, name, methods::replace),
+            // `squeeze(axis=None)`: a table of one column is that column, of one row that row,
+            // and of one cell that value.
+            "squeeze" => frame_method(this, name, |interpreter, data, mut args| {
+                let axis = match args.take(0, "axis") {
+                    Some(value) if !value.is_none() => Some(interpreter.to_str(&value)?),
+                    _ => None,
+                };
+                let columns = matches!(axis.as_deref(), None | Some("columns" | "1"));
+                let rows = matches!(axis.as_deref(), None | Some("index" | "0"));
+                match (data.columns.len(), data.rows()) {
+                    (1, 1) if columns && rows => Ok(data.data[0][0].clone()),
+                    (1, _) if columns => Ok(Series::from_data(data.column(0))),
+                    (_, 1) if rows => Ok(Series::from_data(data.row(0, &data.all_columns()))),
+                    _ => Ok(DataFrame::from_data(data)),
+                }
+            }),
             "droplevel" => frame_method(this, name, |interpreter, data, args| {
                 let index = IndexObject::value(data.index());
                 let method = interpreter.get_attribute(&index, "droplevel")?;

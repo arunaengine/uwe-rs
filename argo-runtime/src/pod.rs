@@ -3,16 +3,18 @@
 //! A container template is one task with the container's image, command and arguments. A
 //! script template runs its command on the source, which the task gets as the file
 //! `/argo/staging/script`, as Argo's executor writes it. A container set gives one task per
-//! container, ordered by their dependencies. An HTTP template runs curl, which writes the
-//! response body and status code to files that decide the success condition. Environment
-//! variables and volumes come from the modules `objects` and `volumes` (decision 18).
+//! container, ordered by their dependencies. Init containers are tasks before these, one after
+//! the other, and the files they write into volumes are inputs of the next. An HTTP template
+//! runs curl, which writes the response body and status code to files that decide the success
+//! condition. Environment variables and volumes come from the modules `objects` and `volumes`
+//! (decision 18).
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;
 
 use argo_parser::model::{Container, Template};
-use argo_parser::{Node, Value as Yaml};
+use argo_parser::{Node, Value as Yaml, decode};
 use workflow_graph::{Input, Outcome, Task, TaskId};
 
 use crate::http::{
@@ -20,7 +22,7 @@ use crate::http::{
 };
 use crate::node::{ArtifactValue, Location, Phase};
 use crate::resources::{duration_seconds, resources_of};
-use crate::run::{Failure, Result, Run};
+use crate::run::{Failure, Result, Run, scalar_text};
 use crate::value::Value;
 
 /// Where Argo's executor puts the source of a script template.
@@ -71,6 +73,35 @@ impl Run {
                 ..Task::default()
             }
         };
+        // Init containers run one after the other before the main containers, each as a task
+        // of its own on the same volumes, so that the next task gets the files it wrote.
+        let init = init_containers(template)?;
+        let done = self.nodes[index].tasks.clone();
+        if done.len() < init.len() {
+            let (container, mirror) = &init[done.len()];
+            let mut task = base(&container.image, Some(container));
+            task.name = format!("{name} (init {})", container.name);
+            task.inputs.clear();
+            fill_container(&mut task, container);
+            task.environment = self.environment(container, &fields)?;
+            if let Some(&last) = done.last() {
+                task.after = vec![last];
+            }
+            let mut mounts = container.volume_mounts.clone();
+            if *mirror {
+                for mount in main_mounts(template) {
+                    let path = |mount: &Node| mount.get("mountPath").map(scalar_text);
+                    if !mounts.iter().any(|known| path(known) == path(&mount)) {
+                        mounts.push(mount);
+                    }
+                }
+            }
+            self.mount_volumes(index, done.len(), template, &mounts, &mut task)?;
+            task.id = self.next_task_id()?;
+            self.ask(index, task);
+            return Ok(());
+        }
+        let first = init.len();
         let mut tasks: Vec<Task> = Vec::new();
         let mut dependencies: Vec<Vec<usize>> = Vec::new();
         if let Some(container) = &template.container {
@@ -78,7 +109,7 @@ impl Run {
             fill_container(&mut task, container);
             task.environment = self.environment(container, &fields)?;
             task.outputs = outputs.clone();
-            self.mount_volumes(index, 0, template, &container.volume_mounts, &mut task)?;
+            self.mount_volumes(index, first, template, &container.volume_mounts, &mut task)?;
             tasks.push(task);
         } else if let Some(script) = &template.script {
             let mut task = base(&script.image, Some(script));
@@ -95,7 +126,7 @@ impl Run {
             });
             task.script = Some(source);
             task.outputs = outputs.clone();
-            self.mount_volumes(index, 0, template, &script.volume_mounts, &mut task)?;
+            self.mount_volumes(index, first, template, &script.volume_mounts, &mut task)?;
             tasks.push(task);
         } else if let Some(set) = &template.container_set {
             let names: Vec<&str> = set
@@ -120,7 +151,7 @@ impl Run {
                     .chain(&container.volume_mounts)
                     .cloned()
                     .collect();
-                let slot = tasks.len();
+                let slot = first + tasks.len();
                 self.mount_volumes(index, slot, template, &mounts, &mut task)?;
                 let after: Vec<usize> = container
                     .dependencies
@@ -154,6 +185,11 @@ impl Run {
         }
         for (slot, mut task) in tasks.into_iter().enumerate() {
             task.id = ids[slot];
+            for &id in &done {
+                if !task.after.contains(&id) {
+                    task.after.push(id);
+                }
+            }
             for &dependency in &dependencies[slot] {
                 if let Some(&id) = ids.get(dependency)
                     && !task.after.contains(&id)
@@ -175,13 +211,16 @@ impl Run {
         let Some(processed) = self.nodes[index].processed.clone() else {
             return Ok(());
         };
+        let template = &processed.template;
+        // The outcomes of the main containers, after those of the init containers.
+        let first = init_containers(template)?.len();
         let outcomes: Vec<Outcome> = self.nodes[index]
             .outcomes
             .iter()
+            .skip(first)
             .flatten()
             .cloned()
             .collect();
-        let template = &processed.template;
         // The main container of a container set gives the result; its tasks are in
         // dependency order.
         let slot = match &template.container_set {
@@ -214,7 +253,7 @@ impl Run {
         };
         // Output files by the path the task asked for; paths the executor spelled
         // differently, like literal braces a mock reads as a glob, by their position.
-        let asked: Vec<String> = self.emitted_outputs(index, slot);
+        let asked: Vec<String> = self.emitted_outputs(index, first + slot);
         let file = |path: &str| {
             let clean = |text: &str| {
                 text.trim_start_matches('/')
@@ -363,6 +402,41 @@ impl Run {
         Ok(())
     }
 
+    /// Whether a leaf still runs its init containers: its tasks so far are all init containers.
+    pub fn initializing(&self, index: usize) -> bool {
+        let node = &self.nodes[index];
+        node.kind == crate::node::NodeKind::Pod
+            && node.processed.as_ref().is_some_and(|processed| {
+                init_containers(&processed.template)
+                    .is_ok_and(|init| node.tasks.len() <= init.len())
+            })
+    }
+
+    /// Takes the outcome of an init container: its files go into the volumes it wrote, and
+    /// the next init container or the main containers start. One that fails fails the node,
+    /// as its pod fails in Argo.
+    pub fn finish_init(&mut self, index: usize) -> Result<()> {
+        let Some(Some(outcome)) = self.nodes[index].outcomes.last().cloned() else {
+            return Ok(());
+        };
+        self.keep_written(index);
+        if outcome.exit_code != 0 {
+            let node = &self.nodes[index];
+            let container = match &node.processed {
+                Some(processed) => init_containers(&processed.template)?
+                    .into_iter()
+                    .nth(node.tasks.len() - 1)
+                    .map(|(container, _)| container.name)
+                    .unwrap_or_default(),
+                None => String::new(),
+            };
+            let message = format!("{container}: Error (exit code {})", outcome.exit_code);
+            self.fail(index, Phase::Failed, message);
+            return Ok(());
+        }
+        self.start_pod(index)
+    }
+
     /// The output paths the main task of a leaf asked for: its outputs, then its mounts.
     fn emitted_outputs(&self, index: usize, slot: usize) -> Vec<String> {
         let node = &self.nodes[index];
@@ -407,17 +481,51 @@ impl Run {
                 self.warn_left_out(container);
             }
         }
-        if let Some(Node {
-            value: Yaml::Sequence(containers),
-            ..
-        }) = template
+        let set = template
             .get("containerSet")
-            .and_then(|set| set.get("containers"))
-        {
-            for container in containers {
-                self.warn_left_out(container);
+            .and_then(|set| set.get("containers"));
+        for list in [set, template.get("initContainers")].into_iter().flatten() {
+            if let Yaml::Sequence(containers) = &list.value {
+                for container in containers {
+                    self.warn_left_out(container);
+                }
             }
         }
+    }
+}
+
+/// The init containers of a template that runs containers, each with whether it mirrors the
+/// volume mounts of the main container (`mirrorVolumeMounts`).
+fn init_containers(template: &Template) -> Result<Vec<(Container, bool)>> {
+    if template.container.is_none() && template.script.is_none() && template.container_set.is_none()
+    {
+        return Ok(Vec::new());
+    }
+    let mut containers = Vec::new();
+    for node in &template.init_containers {
+        let (container, _) = decode::<Container>(node).map_err(|error| {
+            Failure::error(format!(
+                "init container of template {}: {error}",
+                template.name
+            ))
+        })?;
+        let mirror = matches!(
+            node.get("mirrorVolumeMounts").map(|mirror| &mirror.value),
+            Some(Yaml::Bool(true))
+        );
+        containers.push((container, mirror));
+    }
+    Ok(containers)
+}
+
+/// The volume mounts of a template's main container, which init containers can mirror.
+fn main_mounts(template: &Template) -> Vec<Node> {
+    if let Some(container) = template.container.as_ref().or(template.script.as_ref()) {
+        return container.volume_mounts.clone();
+    }
+    match &template.container_set {
+        Some(set) => set.volume_mounts.clone(),
+        None => Vec::new(),
     }
 }
 

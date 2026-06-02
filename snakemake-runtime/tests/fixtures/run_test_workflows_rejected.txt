@@ -131,7 +131,6 @@ catalog/niekwit__partridge-workflow	unsupported (decision 16)	While it is planne
 catalog/niekwit__rna-seq-salmon-deseq2	invalid	Its sample table does not match the workflow's own schema.
 catalog/niekwit__rna-seq-star-rmats	missing	Needs input data that is not in its repository.
 catalog/niekwit__rna-seq-star-tetranscripts	missing	Needs FASTQ files that are not in its repository.
-catalog/nikostr__read-mapping	missing	Needs read files that are not in its repository.
 catalog/nismod__open-gira	missing	Needs the Python package open_gira, which is not in its repository.
 catalog/nixonlab__HERV_um_mets	missing	Reads resources/mskruns.txt, which is not in its repository.
 catalog/nixonlab__snakemake_rule_library	missing	Includes workflow/rules/common.smk, which is not in its repository.

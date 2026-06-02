@@ -1168,3 +1168,74 @@ fn claims_become_volumes_and_cluster_templates_stop_the_run() {
     );
     assert!(ran.error().contains("decision 18"), "{}", ran.error());
 }
+
+#[test]
+fn init_containers_run_before_the_main_task_on_the_same_files() {
+    let templates = r#"
+  - name: main
+    steps:
+    - - {name: step, template: launch}
+  - name: launch
+    volumes:
+    - {name: launcher, emptyDir: {}}
+    initContainers:
+    - name: copy
+      image: alpine
+      command: [sh, -c, "echo run > /launcher/launch"]
+      volumeMounts: [{name: launcher, mountPath: /launcher}]
+    - name: check
+      image: alpine
+      command: [ls, /launcher]
+      mirrorVolumeMounts: true
+    container:
+      image: alpine
+      command: [/launcher/launch]
+      volumeMounts: [{name: launcher, mountPath: /launcher}]
+"#;
+    let ran = run(&workflow(templates));
+    ran.succeeded();
+    assert_eq!(
+        ran.names(),
+        ["[0].step (init copy)", "[0].step (init check)", "[0].step"]
+    );
+    assert_eq!(
+        ran.upstream("[0].step (init check)"),
+        ["[0].step (init copy)"]
+    );
+    assert_eq!(
+        ran.upstream("[0].step"),
+        ["[0].step (init check)", "[0].step (init copy)"]
+    );
+    // What the first init container wrote into the emptyDir reaches the next tasks.
+    for name in ["[0].step (init check)", "[0].step"] {
+        assert!(
+            ran.task(name)
+                .inputs
+                .iter()
+                .any(|input| input.path == "/launcher/launch"),
+            "{name}: {:?}",
+            ran.task(name).inputs
+        );
+    }
+    assert!(
+        !ran.warnings
+            .iter()
+            .any(|warning| warning.contains("initContainers")),
+        "{:?}",
+        ran.warnings
+    );
+    // A failed init container fails the node, and the main task does not run.
+    let failed = run_with(
+        &workflow(templates),
+        Setup {
+            exit: vec![("launch", vec![1])],
+            ..Setup::default()
+        },
+    );
+    assert_eq!(failed.names(), ["[0].step (init copy)"]);
+    assert!(
+        failed.error().contains("copy: Error (exit code 1)"),
+        "{}",
+        failed.error()
+    );
+}

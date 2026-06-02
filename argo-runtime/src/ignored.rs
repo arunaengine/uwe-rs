@@ -9,7 +9,7 @@ use crate::run::Run;
 
 /// Fields of workflows, templates and containers that only tell Kubernetes where and how to run
 /// a pod; they do not change what a task computes.
-const LEFT_OUT: [&str; 26] = [
+const LEFT_OUT: [&str; 25] = [
     "podSpecPatch",
     "nodeSelector",
     "tolerations",
@@ -35,7 +35,6 @@ const LEFT_OUT: [&str; 26] = [
     "artifactGC",
     "volumeClaimGC",
     "executor",
-    "initContainers",
 ];
 
 impl Run {

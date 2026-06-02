@@ -868,6 +868,8 @@ impl Run {
         if node.outcomes.iter().all(Option::is_some) {
             if node.kind == NodeKind::Plugin {
                 self.finish_plugin(index)?;
+            } else if self.initializing(index) {
+                self.finish_init(index)?;
             } else {
                 self.finish_pod(index)?;
             }

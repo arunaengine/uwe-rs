@@ -114,3 +114,7 @@ wide = pd.DataFrame({"sample_id": ["a", "b"], "unit": [1, 1], "fq1": ["a1", "b1"
 long = pd.wide_to_long(wide, "fq", i=["sample_id", "unit"], j="read")
 print(long.index.tolist(), long["fq"].tolist(), long.dropna().reset_index()[["sample_id", "read"]].values.tolist())
 print(pd.DataFrame({"x": ["p", "q"]}).squeeze("columns").tolist(), pd.DataFrame({"x": [3]}).squeeze())
+try:
+    pd.read_csv(io.StringIO(""), header=None)
+except pd.errors.EmptyDataError as error:
+    print("EmptyDataError", error)

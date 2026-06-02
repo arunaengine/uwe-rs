@@ -204,7 +204,7 @@ iunctus runs Argo workflows without a Kubernetes cluster. It supports what scien
 
 These stop the run before its first task, with an error that names the template and decision 18, and exit code 33, in mock runs too:
 
-- `resource` templates, which create or change Kubernetes objects like Deployments, Services or Jobs. The one exception is a PersistentVolumeClaim (section 11.4).
+- `resource` templates, which create or change Kubernetes objects like Deployments, Services or Jobs. The exceptions are a PersistentVolumeClaim (section 11.4) and an Argo Workflow, which runs as part of the same run (section 11.7).
 - `data` templates, which list an artifact repository from inside the cluster.
 - `sidecars` and `daemon: true`, which are services that run beside tasks or across them and are reached over the pod network.
 - Artifact plugins.
@@ -213,7 +213,9 @@ The check is part of the checks at submission (section 4.1), so it covers every 
 
 ### 11.2 Fields that are left out
 
-Fields that only tell Kubernetes where and how to run a pod do not change what a task computes. They are left out with a warning: `podSpecPatch`, `nodeSelector`, `tolerations`, `affinity`, `securityContext`, `serviceAccountName`, `automountServiceAccountToken`, `priorityClassName`, `schedulerName`, `hostAliases`, `dnsConfig`, `dnsPolicy`, `hostNetwork`, `imagePullSecrets`, `imagePullPolicy`, `podGC`, `podMetadata`, `podDisruptionBudget`, `ttlStrategy`, `metrics`, `archiveLocation`, `artifactGC`, `volumeClaimGC`, `executor`, `initContainers`, `memoize` and `synchronization`.
+Fields that only tell Kubernetes where and how to run a pod do not change what a task computes. They are left out with a warning: `podSpecPatch`, `nodeSelector`, `tolerations`, `affinity`, `securityContext`, `serviceAccountName`, `automountServiceAccountToken`, `priorityClassName`, `schedulerName`, `hostAliases`, `dnsConfig`, `dnsPolicy`, `hostNetwork`, `imagePullSecrets`, `imagePullPolicy`, `podGC`, `podMetadata`, `podDisruptionBudget`, `ttlStrategy`, `metrics`, `archiveLocation`, `artifactGC`, `volumeClaimGC`, `executor`, `memoize` and `synchronization`.
+
+Init containers are no such field: they run as tasks (section 11.8).
 
 ### 11.3 ConfigMaps
 
@@ -236,7 +238,13 @@ Volumes that several steps mount act as a shared file system. The run keeps the 
 - A `resource` template that creates or applies a PersistentVolumeClaim, like Ensembl's `create-pvc`, makes a new empty volume of the claim's name and runs no task. Its output parameters read the manifest with `jsonPath`. A `delete` of the claim drops the volume.
 - A claim that the workflow does not create starts empty, with a warning. Other volume types, like NFS, act like a claim of their name, with a warning.
 
-`hostPath` names a folder on the Kubernetes node that runs the pod. Without a cluster there is no such node, so iunctus reads the path on the machine that runs iunctus, like other local input files: the task gets the host folder (or file, for `type: File`) as an input, and on top of it the files that earlier tasks wrote there. iunctus never writes into a host path: the files that tasks write there stay in the store of the run and go to later tasks, as for the other volumes. In a mock run a host path that does not exist is no error.
+`hostPath` names a folder on the Kubernetes node that runs the pod. Without a cluster there is no such node, so a host path is a path on the machine that runs iunctus (decision 18):
+
+- A task that mounts it gets the host folder (or file, for `type: File`) as an input, and on top of it the files that earlier tasks of the run wrote there.
+- Unless the mount is `readOnly` or of `type: File`, the files that the task writes there go into the volume, as for other volumes. In a real run the driver also writes them back to the host path when the task ends, into the folders of `subPath`, over files of the same name.
+- A mock run never writes to a host path, and a host path that does not exist is no error there.
+
+The driver writes back from the local paths of the task's output files, which the local executor and the mock give it. An executor that keeps outputs elsewhere, like TES with S3, needs the Files service of the execution layer (docs/design/engine.md): the driver then asks it for each file and writes the bytes to the host path. Writing back stays in the driver, because only the driver knows which output belongs to a host path.
 
 ### 11.5 Secrets
 
@@ -250,6 +258,27 @@ The execution layer must supply that store. It maps a Secret's name and key to a
 ### 11.6 Commands
 
 A container's `command` and `args` form one command line, which the executor runs as given (decision 18). A container without either runs the default command of its image.
+
+### 11.7 Workflows that start other workflows
+
+A `resource` template whose manifest is an Argo Workflow, with its own templates or with a `workflowTemplateRef`, runs that workflow as part of the same run (decision 18):
+
+- The action `create` (or `apply`) starts the child workflow when the resource node starts. The child is a run of its own, with its own name, globals, templates, parameters and exit handlers. Its arguments come from the manifest, after substitution. A `generateName` gets a suffix from the name of the resource node, so that children of a loop get different names.
+- The tasks of the child join the execution graph of the run. Its first tasks wait for the tasks that the resource node waits for, and the tasks after the resource node wait for the last tasks of the child when the node waits for the child. Task ids are unique across parent and children.
+- The resource node reads the child as Argo reads the Workflow object: `metadata.name`, the manifest's `spec`, and `status.phase` (`Running`, `Succeeded`, `Failed` or `Error`), `status.message`, `status.startedAt`, `status.finishedAt` and the workflow outputs in `status.outputs.parameters`.
+- With a `successCondition` or `failureCondition`, the node waits for the child to end and then applies them, as Argo's executor does: requirements like `status.phase == Succeeded` or `status.phase in (Failed, Error)`, separated by commas, on paths of the Workflow object. The failure condition is checked first. A child that fails therefore fails the node. When the child has ended and neither condition holds, the node ends with an error, where Argo would wait forever. Without conditions, the node succeeds as soon as the child starts, as in Argo, and the child runs on.
+- A `get` of a Workflow that this run started, by name, waits for that child in the same way, like `k8s-wait-wf`. Other actions on Workflows, like `patch` or `delete`, and Workflows that this run did not start, need a cluster and stay unsupported.
+- Output parameters read the Workflow object with `jsonPath`.
+- Workflows that start workflows may nest at most 10 levels deep. Deeper nesting stops the run with the error `workflows start other workflows more than 10 levels deep`, which catches a workflow that starts itself without end.
+- A child that Argo would reject at submission, or that uses a feature iunctus does not support, ends the resource node with an error, or stops the run with exit code 33, like any template.
+
+### 11.8 Init containers
+
+Init containers run as their own tasks before the task they belong to, one after the other, as Kubernetes runs them (decision 18):
+
+- Each init container is a task with its image, command, arguments, environment and resources, named after the node and the container, like `wf.step (init launcher)`. Its mounts are its own `volumeMounts`, and with `mirrorVolumeMounts` also those of the main container.
+- The next task starts when the one before ends; the main task, or the tasks of a container set, come last and have the init tasks in `after`. The files that an init container writes to a mounted volume, like an `emptyDir` of the pod, are inputs of the tasks that mount it later, as for any volume (section 11.4). KFP-compiled workflows use this: an init container copies the KFP launcher into an `emptyDir` that the main container runs.
+- An init container that fails fails the node, as a failed pod does in Argo. In a mock run an init task gets pretended outputs like any task.
 
 ## 12. Deliberate differences from Argo
 

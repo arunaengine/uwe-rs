@@ -249,7 +249,8 @@ snakemake-test-workflows:
 	done
 
 # Adds the files that Snakemake runs read while they plan to the folders of `just snakemake-test-workflows`:
-# text files up to 1 MiB of each workflow (config files, sample sheets, schemas, helper modules)
+# text files up to 1 MiB of each workflow (config files, sample sheets, schemas, helper modules,
+# and files without an extension, like Snakefiles and sample maps)
 # and every file up to 1 MiB of the Snakemake tests (inputs and expected results). Other files
 # are made empty, so that they exist. A folder is done once it holds `.iunctus-data`.
 snakemake-test-workflows-data:
@@ -264,7 +265,7 @@ snakemake-test-workflows-data:
 		else
 			target="$root/catalog/${repository/\//__}"
 			scope='.'
-			text='\.(ya?ml|json|tsv|csv|txt|py|cfg|ini|toml|tab|list|fai|bed|smk|snakefile)$|(^|/)[Ss]nakefile$'
+			text='\.(ya?ml|json|tsv|csv|txt|py|cfg|ini|toml|tab|list|fai|bed|smk|snakefile)$|(^|/)[^/.]+$'
 		fi
 		[ -d "$target" ] && [ ! -e "$target/.iunctus-data" ] || continue
 		work="$(mktemp -d)"

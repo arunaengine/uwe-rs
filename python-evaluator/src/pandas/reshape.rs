@@ -378,3 +378,101 @@ pub fn transpose(data: &FrameData) -> FrameData {
         .collect();
     FrameData::new(index, values, data.columns.clone())
 }
+
+/// `pandas.wide_to_long(df, stubnames, i, j, sep="", suffix=r"\d+")`: each column named after
+/// a stub and a suffix becomes rows, one per suffix, indexed by the `i` columns and `j`, the
+/// suffix; whole-number suffixes become numbers.
+pub fn wide_to_long(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
+    let frame = args.take(0, "df").unwrap_or(Value::None);
+    let Some(frame) = frame
+        .as_native::<super::DataFrame>()
+        .map(super::DataFrame::data)
+    else {
+        return Err(Error::type_error("wide_to_long() needs a DataFrame"));
+    };
+    let stubs = args.take(1, "stubnames").unwrap_or(Value::None);
+    let stubs: Vec<String> = column_list(interpreter, &stubs)?
+        .iter()
+        .map(|stub| interpreter.to_str(stub))
+        .collect::<Result<_, _>>()?;
+    let keys = args.take(2, "i").unwrap_or(Value::None);
+    let keys = column_positions(interpreter, &frame, &keys)?;
+    let j = args.take(3, "j").unwrap_or(Value::None);
+    let separator = match args.take(4, "sep") {
+        Some(value) => interpreter.to_str(&value)?,
+        None => String::new(),
+    };
+    let suffix = match args.take(5, "suffix") {
+        Some(value) => interpreter.to_str(&value)?,
+        None => r"\d+".to_owned(),
+    };
+    // The columns of each stub by suffix, in the order of the table.
+    let mut suffixes: Vec<String> = Vec::new();
+    let mut found: Vec<(usize, usize, String)> = Vec::new();
+    for (position, label) in frame.columns.values.iter().enumerate() {
+        let name = interpreter.to_str(label)?;
+        for (stub_index, stub) in stubs.iter().enumerate() {
+            let pattern = format!(
+                "^{}{}({suffix})$",
+                fancy_regex::escape(stub),
+                fancy_regex::escape(&separator)
+            );
+            let regex = fancy_regex::Regex::new(&pattern)
+                .map_err(|error| Error::value_error(error.to_string()))?;
+            if let Some(captures) = regex.captures(&name).ok().flatten() {
+                let text = captures
+                    .get(1)
+                    .map_or("", |group| group.as_str())
+                    .to_owned();
+                if !suffixes.contains(&text) {
+                    suffixes.push(text.clone());
+                }
+                found.push((stub_index, position, text));
+            }
+        }
+    }
+    let stub_columns: Vec<usize> = found.iter().map(|(_, position, _)| *position).collect();
+    let others: Vec<usize> = (0..frame.columns.len())
+        .filter(|position| !keys.contains(position) && !stub_columns.contains(position))
+        .collect();
+    let rows = frame.rows();
+    let mut index_levels: Vec<Vec<Value>> = vec![Vec::new(); keys.len() + 1];
+    let mut columns: Vec<Vec<Value>> = vec![Vec::new(); others.len() + stubs.len()];
+    for row in 0..rows {
+        for suffix in &suffixes {
+            let number = suffix.parse::<i64>().ok();
+            for (level, key) in keys.iter().enumerate() {
+                index_levels[level].push(frame.data[*key][row].clone());
+            }
+            index_levels[keys.len()]
+                .push(number.map_or_else(|| Value::str(suffix.as_str()), Value::Int));
+            for (slot, other) in others.iter().enumerate() {
+                columns[slot].push(frame.data[*other][row].clone());
+            }
+            for stub_index in 0..stubs.len() {
+                let value = found
+                    .iter()
+                    .find(|(stub, _, text)| *stub == stub_index && text == suffix)
+                    .map_or_else(super::nan, |(_, position, _)| {
+                        frame.data[*position][row].clone()
+                    });
+                columns[others.len() + stub_index].push(value);
+            }
+        }
+    }
+    let mut names: Vec<Value> = keys
+        .iter()
+        .map(|key| frame.columns.values[*key].clone())
+        .collect();
+    names.push(j);
+    let mut labels: Vec<Value> = others
+        .iter()
+        .map(|other| frame.columns.values[*other].clone())
+        .collect();
+    labels.extend(stubs.iter().map(|stub| Value::str(stub.as_str())));
+    Ok(super::DataFrame::from_data(FrameData::new(
+        Labels::single(labels, Value::None),
+        columns,
+        Labels::from_levels(index_levels, names),
+    )))
+}

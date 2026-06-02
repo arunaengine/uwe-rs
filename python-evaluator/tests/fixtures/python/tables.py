@@ -110,3 +110,7 @@ except TypeError as error:
 grouped = pd.DataFrame({"s": ["a", "a", "b"], "v": [1, 2, 5]}).groupby("s")
 print(grouped.s.transform("count").tolist(), grouped["v"].transform("sum").tolist(), grouped.v.transform(lambda x: x - x.min()).tolist())
 print(pd.DataFrame({"a": ["x", "y"], "b": [1, 2], "c": [3, 4]}).set_index(["a", "b"]).droplevel("b").index.tolist())
+wide = pd.DataFrame({"sample_id": ["a", "b"], "unit": [1, 1], "fq1": ["a1", "b1"], "fq2": ["a2", None]})
+long = pd.wide_to_long(wide, "fq", i=["sample_id", "unit"], j="read")
+print(long.index.tolist(), long["fq"].tolist(), long.dropna().reset_index()[["sample_id", "read"]].values.tolist())
+print(pd.DataFrame({"x": ["p", "q"]}).squeeze("columns").tolist(), pd.DataFrame({"x": [3]}).squeeze())

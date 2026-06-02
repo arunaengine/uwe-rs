@@ -89,6 +89,10 @@ pub fn module() -> Vec<(&'static str, Value)> {
         ),
         ("concat", function("concat", combine::concat)),
         (
+            "wide_to_long",
+            function("wide_to_long", reshape::wide_to_long),
+        ),
+        (
             "merge",
             function("merge", |interpreter, mut args| {
                 let left = args

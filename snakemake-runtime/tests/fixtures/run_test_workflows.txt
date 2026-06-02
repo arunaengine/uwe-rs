@@ -24,7 +24,7 @@ catalog/Crollo95__survhive-workflow 1 workflow/Snakefile:18: WorkflowError: Work
 catalog/DSiB-G2__G2-CovPipeline ok 50
 catalog/DavideBrex__SpikeFlow 1 workflow/rules/common.smk:661: WorkflowError: InputFunctionException in rule bam2bigwig_general (wildcards: id=H3K4me3_EGF-rep1): ValueError: could not convert string to float: '' (the workflow read results/logs/spike/H3K4me3_EGF-rep1.normFactor, a task output that the mock run made without its co
 catalog/DustinMathia__aradopsis-drive ok 1
-catalog/ETH-NEXUS__gExcite_pipeline 1 workflow/rules/misc_snake.smk:8: EmptyDataError: No columns to parse from file
+catalog/ETH-NEXUS__gExcite_pipeline 1 workflow/rules/misc_snake.smk:152: WorkflowError: InputFunctionException in rule CITE_seq_Count (wildcards: sample_set=PBMC_D1): FileNotFoundError: [Errno 2] No such file or directory: 'fastqs/adt/PBMC_D1/' (the mock run assumed 3 input files that do not exist and that no rule makes, like fastqs/a
 catalog/EichlerLab__ONT_pipelines 1 workflow/Snakefile:11: NameError: name 'srcdir' is not defined
 catalog/EloiseEsox__snakemake ok 0
 catalog/EloiseIsobelPearce__snakemake-example ok 10

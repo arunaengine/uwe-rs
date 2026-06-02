@@ -37,8 +37,9 @@ pub fn find_snakefile(folder: &Path) -> Option<PathBuf> {
 pub fn driver_error(error: &Error, workdir: &Path) -> DriverError {
     let prefix = format!("{}/", workdir.display());
     let message = error.to_string().replace(&prefix, "");
-    let missing_module = error.is("ModuleNotFoundError");
-    if error.is_unsupported() || missing_module {
+    // A package that the workflow imports and that is not there is missing, as in Python;
+    // modules of the standard library without a stand-in are unsupported.
+    if error.is_unsupported() {
         DriverError::unsupported(message)
     } else {
         DriverError::new(message)

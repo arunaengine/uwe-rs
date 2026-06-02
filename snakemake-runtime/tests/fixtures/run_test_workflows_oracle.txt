@@ -10,7 +10,7 @@ catalog/Addimator__compare_meth	plain	1	failed	FileNotFoundError in file "workfl
 catalog/Albinam1__bioinformatics_school	plain	1	failed	RuleException in file "workflow/rules/mapping.smk", line 34: Not all output, log and benchmark files of rule map_reads_with_minimap contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
 catalog/AllenInstitute__Bulk-RNA-Snakeline	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 11: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-upv2hemq/config/config.yaml).
 catalog/AllenInstitute__Bulk-RNA-Snakeline	catalog	1	evaluated	MissingInputException in rule cutadapt in file "workflow/rules/trim.smk", line 1: Missing input files for rule cutadapt:
-catalog/AmberFu__snakemake_BAMmetrics_mosdepth	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 8: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-2umwo41n/config/config.yaml).
+catalog/AmberFu__snakemake_BAMmetrics_mosdepth	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 8: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-ynp5ak7j/config/config.yaml).
 catalog/BesenbacherLab__bbq_pipeline	plain	2	failed	__main__.py: error: Couldn't parse config file: Error processing template in section /__definitions__: KeyError: 'ACCOUNT_NAME'
 catalog/BesenbacherLab__bbq_pipeline	ci	2	failed	__main__.py: error: Couldn't parse config file: Error processing template in section /__definitions__: KeyError: 'ACCOUNT_NAME'
 catalog/Bioinflows-Bioversity-CIAT__ont-target-dna-variant-calling	plain	1	failed	KeyError in file "workflow/rules/common.smk", line 103: 'sample_units_path'
@@ -24,10 +24,10 @@ catalog/ClavelLab__genome-assembly	plain	1	failed	NotImplementedError in file "w
 catalog/Crollo95__survhive-workflow	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 18: Workflow defines configfile config/config.yaml but it is not present or accessible (full checked path: config/config.yaml).
 catalog/DavideBrex__SpikeFlow	plain	0	evaluated
 catalog/DavideBrex__SpikeFlow	ci	0	evaluated
-catalog/ETH-NEXUS__gExcite_pipeline	plain	1	failed	EmptyDataError in file "workflow/rules/misc_snake.smk", line 8: No columns to parse from file
+catalog/ETH-NEXUS__gExcite_pipeline	plain	1	evaluated	MissingInputException in rule create_library_file_adt in file "workflow/rules/adt_cellranger.smk", line 10: Missing input files for rule create_library_file_adt:
 catalog/EichlerLab__ONT_pipelines	plain	1	failed	NameError in file "workflow/Snakefile", line 11: name 'srcdir' is not defined
 catalog/EichlerLab__ONT_pipelines	ci	1	failed	NameError in file "workflow/Snakefile", line 11: name 'srcdir' is not defined
-catalog/GArcho44__snvs-annotation-pipeline	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 5: Workflow defines configfile ../config/config.yml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-mnp0l467/config/config.yml).
+catalog/GArcho44__snvs-annotation-pipeline	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 5: Workflow defines configfile ../config/config.yml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-a6rrdl0u/config/config.yml).
 catalog/GArcho44__snvs-annotation-pipeline	ci	1	failed	RuleException in file "workflow/Snakefile", line 22: Input and output files have to be specified as strings or lists of strings.
 catalog/GooglingTheCancerGenome__sv-callers	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 7: No module named 'yatiml'
 catalog/GooglingTheCancerGenome__sv-gen	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 1: No module named 'pyfaidx'
@@ -74,7 +74,7 @@ catalog/Zilong-Li__array-imputation-workflow	plain	1	failed	FileNotFoundError in
 catalog/abbyevewilliams__map-pipeline	plain	1	failed	FileNotFoundError in file "workflow/Snakefile", line 13: [Errno 2] No such file or directory: '/data/biol-silvereye/ball6625/map-pipeline/config/zborb-samples.txt'
 catalog/adrisede__Isoseq_smk_min	plain	1	failed	RuleException in file "workflow/Snakefile", line 273: Not all output, log and benchmark files of rule collapse contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
 catalog/adrisede__Isoseq_smk_min	ci	1	failed	RuleException in file "workflow/Snakefile", line 273: Not all output, log and benchmark files of rule collapse contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
-catalog/aekrylova__scPASU	plain	1	failed	WorkflowError in file "workflow/rules/1_data_preprocessing.smk", line 1: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-1c_4j4xa/config/config.yaml).
+catalog/aekrylova__scPASU	plain	1	failed	WorkflowError in file "workflow/rules/1_data_preprocessing.smk", line 1: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-jhjnc25d/config/config.yaml).
 catalog/akcorut__kGWASflow	plain	1	failed	logger.info("     kGWASflow: A Snakemake Workflow for k-mers Based GWAS                            ")
 catalog/akcorut__kGWASflow	ci	1	failed	FileNotFoundError in file "workflow/rules/common.smk", line 29: [Errno 2] No such file or directory: 'test/config_ecoli/samples.tsv'
 catalog/ammaraziz__voi	plain	1	failed	KeyError in file "workflow/Snakefile", line 6: 'output'
@@ -91,14 +91,14 @@ catalog/bakerwm__snakemake-rnaseq-star	plain	1	failed	NotImplementedError in fil
 catalog/bakerwm__snakemake-rnaseq-star	ci	1	failed	NotImplementedError in file "workflow/rules/common.smk", line 7: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 catalog/boulardlab__3t-seq	plain	1	failed	KeyError in file "workflow/Snakefile", line 106: 'protocol'
 catalog/boulardlab__3t-seq	ci	1	evaluated	InputFunctionException in rule all in file "workflow/Snakefile", line 176: Error:
-catalog/cbg-ethz__V-pipe	plain	1	failed	ImportError in file "workflow/rules/common.smk", line 21: cannot import name 'load_configfile' from 'snakemake.io' (/home/beavis/.cache/uv/archive-v0/UN5tBkx-ahcUuB3e/lib/python3.13/site-packages/snakemake/io/__init__.py)
+catalog/cbg-ethz__V-pipe	plain	1	failed	ImportError in file "workflow/rules/common.smk", line 21: cannot import name 'load_configfile' from 'snakemake.io' (/home/beavis/.cache/uv/archive-v0/BytD8Vi5erkz6OTu/lib/python3.13/site-packages/snakemake/io/__init__.py)
 catalog/cbib__SpaceBlocks	plain	1	failed	Every sample in the core sheet must already have a contract present as <contract_dir>/<sample>.h5ad (mode: decoupled does not build them). Fix the sheet or contract_dir, or set mode to a head technology (e.g. visiumhd).
 catalog/cbib__SpaceBlocks	ci	0	evaluated
 catalog/clami66__AF_server	plain	1	failed	AttributeError in file "workflow/rules/common.smk", line 18: 'Workflow' object has no attribute 'use_env_modules'
 catalog/clarajegousse__hanoxy	plain	1	failed	FileNotFoundError in file "Snakefile", line 8: [Errno 2] No such file or directory: '/hpchome/cat3/project/hanoxy/data/info/samples.txt'
 catalog/cmc-aau__nanopore_16Samp	plain	1	failed	FileNotFoundError in file "workflow/Snakefile", line 15: [Errno 2] No such file or directory: 'nanopore_run_xyz123/fastq_pass'
 catalog/cmc-aau__nanopore_16Samp	ci	0	evaluated
-catalog/crs4__fair-crcc-get-data	plain	1	failed	ImportError in file "workflow/rules/common.smk", line 8: cannot import name 'AbstractRemoteProvider' from 'snakemake.remote' (/home/beavis/.cache/uv/archive-v0/UN5tBkx-ahcUuB3e/lib/python3.13/site-packages/snakemake/remote/__init__.py)
+catalog/crs4__fair-crcc-get-data	plain	1	failed	ImportError in file "workflow/rules/common.smk", line 8: cannot import name 'AbstractRemoteProvider' from 'snakemake.remote' (/home/beavis/.cache/uv/archive-v0/BytD8Vi5erkz6OTu/lib/python3.13/site-packages/snakemake/remote/__init__.py)
 catalog/daspacio9__pooledpremiumpcrpipeline2	plain	1	evaluated	MissingInputException in rule filter_reads_by_length in file "workflow/rules/demux.smk", line 16: Missing input files for rule filter_reads_by_length:
 catalog/daspacio9__pooledpremiumpcrpipeline2	ci	0	evaluated
 catalog/davelunt__mmseqs	plain	1	failed	SyntaxError in file "workflow/Snakefile", line 14: Expected name or colon after rule or checkpoint keyword. The keyword rule has a special meaning in Snakemake. If you named a variable or function like this, please rename it to avoid the conflict.:
@@ -107,7 +107,7 @@ catalog/dlaehnemann__create-ecdna-testing-data	ci	0	evaluated
 catalog/dlaehnemann__create-sv-ci-testing-dataset	plain	1	evaluated	MissingInputException in rule fix_target_bed in file "workflow/rules/ref.smk", line 37: Missing input files for rule fix_target_bed:
 catalog/dlaehnemann__wgs-mosdepth-maftools-copy-numbers	plain	1	failed	KeyError in file "workflow/rules/common.smk", line 9: "None of ['sample_name'] are in the columns"
 catalog/dlaehnemann__wgs-mosdepth-maftools-copy-numbers	ci	1	failed	KeyError in file "workflow/rules/common.smk", line 9: "None of ['sample_name'] are in the columns"
-catalog/drifter089__pypsa-workflow	plain	1	failed	ImportError in file "workflow/Snakefile", line 6: cannot import name 'load_configfile' from 'snakemake.io' (/home/beavis/.cache/uv/archive-v0/UN5tBkx-ahcUuB3e/lib/python3.13/site-packages/snakemake/io/__init__.py)
+catalog/drifter089__pypsa-workflow	plain	1	failed	ImportError in file "workflow/Snakefile", line 6: cannot import name 'load_configfile' from 'snakemake.io' (/home/beavis/.cache/uv/archive-v0/BytD8Vi5erkz6OTu/lib/python3.13/site-packages/snakemake/io/__init__.py)
 catalog/elsamah__ExomeSeq	plain	1	failed	PermissionError in file "workflow/Snakefile", line 6: [Errno 13] Permission denied: '/cluster'
 catalog/elsamah__ExomeSeq	ci	1	failed	PermissionError in file "workflow/Snakefile", line 6: [Errno 13] Permission denied: '/cluster'
 catalog/elsamah__ExomeSeq_wNorm	plain	1	failed	PermissionError in file "workflow/Snakefile", line 5: [Errno 13] Permission denied: '/cluster'
@@ -129,7 +129,7 @@ catalog/fcaretti__SNPs_from_RNA	ci	1	failed	WorkflowError in file "workflow/Snak
 catalog/fiberseq__fiberseq-smk	plain	1	failed	RuleException in file "workflow/rules/fiberseq-bam.smk", line 143: Input and output files have to be specified as strings or lists of strings.
 catalog/fiberseq__fiberseq-smk	ci	0	evaluated
 catalog/fischuu__Snakebite-Holoruminant-MetaG	plain	1	failed	KeyError in file "workflow/Snakefile", line 53: 'params-file'
-catalog/franciscozorrilla__metaGEM	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 1: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-7rceqkk5/config/config.yaml).
+catalog/franciscozorrilla__metaGEM	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 1: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-g_5qoi_o/config/config.yaml).
 catalog/frattalab__QAPA_snakemake	plain	1	failed	KeyError in file "workflow/Snakefile", line 6: 'sample_sheet'
 catalog/friendsofstrandseq__ashleys-qc-pipeline	plain	1	failed	FileNotFoundError in file "workflow/rules/common.smk", line 309: [Errno 2] No such file or directory: '.tests/data_CHR17'
 catalog/friendsofstrandseq__ashleys-qc-pipeline	ci	1	failed	FileNotFoundError in file "workflow/rules/common.smk", line 309: [Errno 2] No such file or directory: '.tests/data_CHR17'
@@ -174,8 +174,8 @@ catalog/mdondrup__yeast_variantcalling	plain	1	failed	FileNotFoundError in file 
 catalog/merfre__Adaptive_Sequencing_Analysis_Workflow	plain	1	failed	FileNotFoundError in file "workflow/Snakefile", line 120: [Errno 2] No such file or directory: './resources/ONT_skin1_adap/LF1A_adap.fastq'
 catalog/merfre__MMCAW	plain	1	failed	FileNotFoundError in file "workflow/Snakefile", line 65: [Errno 2] No such file or directory: './resources/ONT_mockecoli1_cont1/CN3.1_cont.fastq'
 catalog/merfre__MMCAW	ci	1	failed	KeyError in file "workflow/Snakefile", line 55: 'Barcode'
-catalog/milesroberts-123__poolseq-kmers	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 11: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-4ml8c0i3/config/config.yaml).
-catalog/milesroberts-123__slim-sweep-cnn	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 9: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-1ee0dnnl/config/config.yaml).
+catalog/milesroberts-123__poolseq-kmers	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 11: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-b9l2k4oy/config/config.yaml).
+catalog/milesroberts-123__slim-sweep-cnn	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 9: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-kpr784xg/config/config.yaml).
 catalog/modelblocks-org__module_demand_electricity	plain	1	evaluated	WorkflowError: Error running conda info. Is conda installed and accessible? Error: Command 'conda info --json' returned non-zero exit status 127.
 catalog/moiexpositoalonsolab__grenepipe	plain	1	failed	AttributeError in file "workflow/rules/initialize.smk", line 24: 'Logger' object has no attribute 'mode'
 catalog/monagrland__MB_Pipeline	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 4: Error validating config file.
@@ -226,7 +226,7 @@ catalog/open2c__distiller-sm	plain	1	failed	KeyError in file "workflow/Snakefile
 catalog/panguangze__trio_call_phase_pipeline	plain	1	failed	KeyError in file "workflow/Snakefile", line 10: 'joint_calling_groups'
 catalog/plycrsk__rna-seq-star-deseq2	plain	1	failed	NotImplementedError in file "workflow/rules/common.smk", line 7: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 catalog/plycrsk__rna-seq-star-deseq2	ci	1	failed	NotImplementedError in file "workflow/rules/common.smk", line 7: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
-catalog/poloarol__snakemake-methylseq	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 11: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-nx3krnkm/config/config.yaml).
+catalog/poloarol__snakemake-methylseq	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 11: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-ra699a3q/config/config.yaml).
 catalog/rabiafidan__pure-faf	plain	1	failed	ModuleNotFoundError in file "workflow/rules/common.smk", line 5: No module named 'cyvcf2'
 catalog/rabiafidan__pure-faf	ci	1	failed	WorkflowError in file "workflow/Snakefile", line 6: Workflow defines configfile config/config.yaml but it is not present or accessible (full checked path: .test/config/config.yaml).
 catalog/regulatory-genomics__hic_sm	plain	1	failed	FileNotFoundError in file "workflow/rules/common.smk", line 38: [Errno 2] No such file or directory: 'pep/../config/20260119_hic_sample_2.csv'
@@ -264,7 +264,7 @@ catalog/snakemake-workflows__rna-longseq-de-isoform	plain	1	failed	WorkflowError
 catalog/snakemake-workflows__rna-longseq-de-isoform	ci	1	failed	WorkflowError in file "workflow/rules/commons.smk", line 134: no valid samples found, allowed extensions are: '('.fastq', '.fq', '.fastq.gz', '.fq.gz')'
 catalog/snakemake-workflows__star-arriba-fusion-calling	plain	1	evaluated	InputFunctionException in rule arriba in file "workflow/rules/fusion_calling.smk", line 1: Error:
 catalog/snakemake-workflows__star-arriba-fusion-calling	ci	0	evaluated
-catalog/sneuensc__mapache	plain	1	failed	ImportError in file "workflow/scripts/utils.py", line 9: cannot import name 'Wildcards' from 'snakemake.io' (/home/beavis/.cache/uv/archive-v0/UN5tBkx-ahcUuB3e/lib/python3.13/site-packages/snakemake/io/__init__.py)
+catalog/sneuensc__mapache	plain	1	failed	ImportError in file "workflow/scripts/utils.py", line 9: cannot import name 'Wildcards' from 'snakemake.io' (/home/beavis/.cache/uv/archive-v0/BytD8Vi5erkz6OTu/lib/python3.13/site-packages/snakemake/io/__init__.py)
 catalog/solida-core__astra	plain	1	failed	EmptyDataError in file "workflow/rules/common.smk", line 13: No columns to parse from file
 catalog/solida-core__dima	plain	1	failed	AttributeError in file "workflow/rules/picard.smk", line 129: 'NoneType' object has no attribute 'get'
 catalog/spjuhel__BoARIO-MRIOT-Tools	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 6: No module named 'boario_tools'
@@ -288,7 +288,7 @@ catalog/tdayris__fair_rnaseq_salmon_quant	ci	1	failed	AttributeError in file "wo
 catalog/thomasbtf__sars-cov-2-wbe	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 7: The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:
 catalog/tmweiskittel__tmw_align_emseq	plain	0	evaluated
 catalog/tmweiskittel__tmw_align_emseq	ci	1	failed	KeyError in file "workflow/Snakefile", line 13: 'meta'
-catalog/trickovicmatija__kingfisher_workflow	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 3: Workflow defines configfile ../config/default_config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-nx33bfzg/config/default_config.yaml).
+catalog/trickovicmatija__kingfisher_workflow	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 3: Workflow defines configfile ../config/default_config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-702vyyin/config/default_config.yaml).
 catalog/tucca-cellag__tucca-rna-seq	plain	0	evaluated
 catalog/vkpat__short-read-mapping-and-QC-snakemake-pipeline	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 1: Workflow defines configfile config.yaml but it is not present or accessible (full checked path: config.yaml).
 catalog/vollgerlab__DSA-phasing	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 15: Error validating config file.
@@ -329,6 +329,7 @@ tests/test_groupid_expand	plain	0	evaluated
 tests/test_groupid_expand_cluster	plain	0	evaluated
 tests/test_gs_requester_pays	plain	1	failed	ModuleNotFoundError in file "Snakefile", line 2: No module named 'google'
 tests/test_immediate_submit	plain	0	evaluated
+tests/test_issue1085	tests.py	1	evaluated	WorkflowError in rule test in file "Snakefile", line 6: unpack() is not allowed with params. Simply return a dictionary which can be directly .used, e.g. via {params[mykey]}. (rule test, line 6, Snakefile)
 tests/test_issue1256	plain	1	failed	SyntaxError in file "Snakefile", line 9: cannot assign to literal here. Maybe you meant '==' instead of '='?:
 tests/test_issue2574	plain	1	failed	KeyError in file "Snakefile", line 4: 'unexisting_key'
 tests/test_issue3192	plain	1	failed	KeyError in file "Snakefile", line 1: 'CONDA_PREFIX'
@@ -347,7 +348,7 @@ tests/test_pep_pathlib	plain	1	failed	WorkflowError in file "Snakefile", line 6:
 tests/test_peppy	plain	1	failed	WorkflowError in file "Snakefile", line 4: For PEP schema support, please install eido.
 tests/test_profile_double_dash	tests.py	0	evaluated
 tests/test_python_import_from_github_module	plain	1	failed	WorkflowError in file "Snakefile", line 18: Failed to get mtime of git source file f4d5854841d79e0393d118745c7dbe856268ed59:tests/test_python_import_from_github_module/minimal_module/Snakefile
-tests/test_remote_auto	plain	1	failed	ImportError in file "Snakefile", line 4: cannot import name 'AUTO' from 'snakemake.remote' (/home/beavis/.cache/uv/archive-v0/UN5tBkx-ahcUuB3e/lib/python3.13/site-packages/snakemake/remote/__init__.py)
+tests/test_remote_auto	plain	1	failed	ImportError in file "Snakefile", line 4: cannot import name 'AUTO' from 'snakemake.remote' (/home/beavis/.cache/uv/archive-v0/BytD8Vi5erkz6OTu/lib/python3.13/site-packages/snakemake/remote/__init__.py)
 tests/test_remote_azure	plain	1	failed	NotImplementedError in file "Snakefile", line 9: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_remote_gs	plain	1	failed	ModuleNotFoundError in file "Snakefile", line 2: No module named 'google'
 tests/test_remote_irods	plain	1	failed	NotImplementedError in file "Snakefile", line 3: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).

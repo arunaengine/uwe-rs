@@ -215,6 +215,13 @@ impl Interpreter {
                 return Ok(module);
             }
         }
+        // A module of the standard library without a stand-in is a gap of iunctus; another
+        // module is missing as in Python.
+        if crate::modules::is_standard_library(name) {
+            return Err(Error::unsupported(format!(
+                "the standard library module {name}"
+            )));
+        }
         Err(not_found())
     }
 

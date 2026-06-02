@@ -109,6 +109,13 @@ pub(super) fn table(text: &str, options: &Options) -> Result<Table, Error> {
         .iter()
         .map(|(line, record)| (*line, fields(record, options)))
         .collect();
+    // A file without any line has no columns, with or without a header row.
+    if rows.is_empty() && options.names.is_none() {
+        return Err(Error::new(
+            "EmptyDataError",
+            "No columns to parse from file",
+        ));
+    }
     let header: Option<Vec<String>> = match options.header {
         Some(row) if row < rows.len() => {
             let header = rows[row].1.clone();

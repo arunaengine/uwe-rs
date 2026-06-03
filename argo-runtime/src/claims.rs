@@ -3,11 +3,13 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use argo_parser::model::Template;
 use argo_parser::{Node, Value as Yaml, parse_yaml};
 
 use crate::items::yaml_value;
-use crate::node::Phase;
+use crate::node::{NodeOutputs, Phase};
 use crate::run::{Result, Run, scalar_text};
+use crate::value::Value;
 
 impl Run {
     /// Runs a resource template that manages a PersistentVolumeClaim: `create` and `apply`
@@ -38,15 +40,26 @@ impl Run {
             self.volumes.entry(key).or_default();
             self.claims.insert(name);
         }
-        let document = yaml_value(&manifest);
-        let mut outputs = crate::node::NodeOutputs::default();
+        let outputs = self.resource_outputs(template, &yaml_value(&manifest));
+        self.nodes[index].outputs = outputs;
+        self.set_phase(index, Phase::Succeeded, String::new());
+        Ok(())
+    }
+
+    /// The output parameters of a resource template, which read the resource with `jsonPath`.
+    pub(crate) fn resource_outputs(
+        &mut self,
+        template: &Template,
+        document: &Value,
+    ) -> NodeOutputs {
+        let mut outputs = NodeOutputs::default();
         for parameter in &template.outputs.parameters {
             let from = parameter.value_from.as_ref();
             let path = from.map(|from| from.json_path.clone()).unwrap_or_default();
             let found = (!path.is_empty())
                 .then(|| {
                     let path = format!("${}", path.trim_start_matches('{').trim_end_matches('}'));
-                    crate::jsonpath::get(&path, &document).ok()
+                    crate::jsonpath::get(&path, document).ok()
                 })
                 .flatten()
                 .map(|value| match value.as_str() {
@@ -59,7 +72,7 @@ impl Run {
                 (None, Some(default)) => default.0,
                 (None, None) => {
                     self.warn(format!(
-                        "output parameter {} of template {} reads the claim with something other than jsonPath; it is empty",
+                        "output parameter {} of template {} reads the resource with something other than jsonPath; it is empty",
                         parameter.name, template.name
                     ));
                     String::new()
@@ -73,8 +86,6 @@ impl Run {
             }
             outputs.parameters.push((parameter.name.clone(), value));
         }
-        self.nodes[index].outputs = outputs;
-        self.set_phase(index, Phase::Succeeded, String::new());
-        Ok(())
+        outputs
     }
 }

@@ -164,6 +164,18 @@ pub(crate) fn joined_spec(document: &Document, library: &Library) -> Result<Join
     })
 }
 
+/// Five letters and digits made from a text, the suffix that a `generateName` gets.
+pub(crate) fn name_suffix(seed: &str) -> String {
+    format!("{:08x}", fnv32a(seed))
+        .chars()
+        .map(|c| match c {
+            '0'..='9' => c,
+            _ => char::from(b'a' + (c as u8 - b'a') % 26),
+        })
+        .take(5)
+        .collect()
+}
+
 /// The name of the workflow: its `metadata.name`, or its `generateName` with a suffix made from
 /// the kind, name and position of the document, so that runs of the same document get the same
 /// names wherever its file is.
@@ -178,15 +190,7 @@ pub(crate) fn workflow_name(document: &Document, metadata: Option<&Node>) -> Str
             .unwrap_or("")
             .to_owned()
     };
-    let seed = format!("{}#{}", document.label(), document.index);
-    let suffix: String = format!("{:08x}", fnv32a(&seed))
-        .chars()
-        .map(|c| match c {
-            '0'..='9' => c,
-            _ => char::from(b'a' + (c as u8 - b'a') % 26),
-        })
-        .take(5)
-        .collect();
+    let suffix = name_suffix(&format!("{}#{}", document.label(), document.index));
     match document.kind {
         Kind::Workflow => match text("name") {
             name if name.is_empty() => format!("{}{suffix}", text("generateName")),

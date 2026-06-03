@@ -1265,3 +1265,27 @@ fn host_paths_are_written_back_in_a_real_run() {
     run_with(&workflow(&read_only), real()).succeeded();
     assert!(!written.exists(), "a read-only mount is not written back");
 }
+
+#[test]
+fn a_mock_run_takes_the_default_of_an_empty_output() {
+    let templates = r#"
+  - name: main
+    steps:
+    - - {name: decide, template: decide}
+    - - name: run
+        template: print
+        arguments: {parameters: [{name: message, value: "{{steps.decide.outputs.parameters.cached}}"}]}
+        when: "{{steps.decide.outputs.parameters.cached}} != true"
+  - name: decide
+    container: {image: alpine, command: [driver]}
+    outputs:
+      parameters:
+      - {name: cached, valueFrom: {path: /tmp/cached, default: "false"}}
+"#;
+    let ran = run(&workflow(templates));
+    ran.succeeded();
+    assert_eq!(ran.task("[1].run").command, ["echo", "false"]);
+    // A real run reads the empty file.
+    let real = run_with(&workflow(templates), real());
+    assert_eq!(real.names(), ["[0].decide"]);
+}

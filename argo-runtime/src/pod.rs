@@ -288,7 +288,10 @@ impl Run {
                         if text.ends_with('\n') {
                             text.pop();
                         }
-                        Some(text)
+                        // The mock executor makes up empty files for outputs that it cannot
+                        // simulate, so a mock run takes the default of such an output.
+                        let made_up = text.is_empty() && self.options.assume_inputs;
+                        (!made_up || default.is_none()).then_some(text)
                     }
                     _ => None,
                 }

@@ -54,9 +54,10 @@ pub struct RenderedOutput {
 #[derive(Debug)]
 pub enum RenderedPart {
     Value(Value),
-    /// A glob pattern of output files, with options like `arity` as a map.
+    /// The glob patterns of output files, with options like `arity` as a map. A closure or a
+    /// list gives several, as Nextflow's `FileOutParam` takes them.
     Path {
-        pattern: String,
+        patterns: Vec<String>,
         options: Value,
     },
     Env(Rc<str>),
@@ -331,6 +332,25 @@ impl Interpreter<'_> {
         self.expression(frame, value)
     }
 
+    /// The patterns of a `path` output: the value of a closure is taken when the task runs,
+    /// and a list gives a pattern for each element.
+    fn output_patterns(
+        &mut self,
+        frame: &mut Frame,
+        pattern: &Expression,
+    ) -> Result<Vec<String>, Error> {
+        let value = match self.expression(frame, pattern)? {
+            Value::Closure(closure) => {
+                self.call_closure_value(&closure, Vec::new(), pattern.span)?
+            }
+            value => value,
+        };
+        Ok(match value {
+            Value::List(list) => list.borrow().items.iter().map(Value::to_string).collect(),
+            value => vec![value.to_string()],
+        })
+    }
+
     fn render_sections(
         &mut self,
         task: &mut TaskFrame,
@@ -385,7 +405,7 @@ impl Interpreter<'_> {
                         RenderedPart::Value(self.output_value(&mut task.frame, value)?)
                     }
                     OutputPart::Path { pattern, options } => RenderedPart::Path {
-                        pattern: self.expression(&mut task.frame, pattern)?.to_string(),
+                        patterns: self.output_patterns(&mut task.frame, pattern)?,
                         options: self
                             .arguments(&mut task.frame, options)?
                             .into_iter()

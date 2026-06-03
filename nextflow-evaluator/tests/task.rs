@@ -97,7 +97,7 @@ fn directives_and_outputs() {
     };
     assert_eq!(files.emit.as_deref(), Some("gunzip"));
     assert!(
-        matches!(&files.parts[1], RenderedPart::Path { pattern, .. } if pattern == "sample.fastq")
+        matches!(&files.parts[1], RenderedPart::Path { patterns, .. } if patterns == &["sample.fastq"])
     );
     assert!(
         matches!(&versions.parts[0], RenderedPart::Value(Value::String(process)) if &**process == "GUNZIP")

@@ -5,6 +5,7 @@
 
 pub(super) mod bytes;
 mod format;
+pub(super) mod groovy_methods;
 mod iterable;
 mod json;
 mod list;

@@ -293,3 +293,14 @@ fn lists_indexed_with_several_indexes() {
     assert_eq!(value("[10, 11, 12, 13][0, 2, 3]"), "[10, 12, 13]");
     assert_eq!(value("[10, 11, 12, 13][0, 1..2]"), "[10, 11, 12]");
 }
+
+/// A method that Groovy does not have for a list fails with Groovy's message, as Nextflow
+/// 26.04.6 gives it.
+#[test]
+fn methods_that_lists_lack() {
+    assert_eq!(
+        eval("['a.b', 'c.d'].tokenize('.')").unwrap_err(),
+        "MissingMethodException: No signature of method: java.util.ArrayList.tokenize() is \
+         applicable for argument types: (String) values: [.]"
+    );
+}

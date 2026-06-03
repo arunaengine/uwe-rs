@@ -529,6 +529,13 @@ impl Interpreter<'_> {
                 if let Some(value) = self.library_method(object, name, &arguments, span)? {
                     return Ok(value);
                 }
+                // A method that Groovy does not have for the class fails as in Groovy.
+                let java_class = object.java_class_name();
+                if super::library::groovy_methods::has_method(java_class, name) == Some(false) {
+                    return Err(super::call::no_signature(
+                        java_class, name, &arguments, span,
+                    ));
+                }
                 // Groovy has no path methods for lists, like the files of a task input.
                 if matches!(object, Value::List(_)) && PATH_METHODS.contains(&name) {
                     let class = object.java_class_name();

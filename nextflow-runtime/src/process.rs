@@ -212,7 +212,9 @@ impl ProcessNode {
         };
         for part in rendered.outputs.iter().flat_map(|output| &output.parts) {
             match part {
-                RenderedPart::Path { pattern, .. } => request.output_patterns.push(pattern.clone()),
+                RenderedPart::Path { patterns, .. } => {
+                    request.output_patterns.extend(patterns.iter().cloned())
+                }
                 RenderedPart::Env(name) => request.env.push(name.clone()),
                 RenderedPart::Eval(command) => request.eval.push(command.clone()),
                 RenderedPart::Value(_) | RenderedPart::Stdout => {}
@@ -249,20 +251,24 @@ impl ProcessNode {
                     *eval_index += 1;
                     value
                 }
-                RenderedPart::Path { pattern, options } => {
-                    let files: Vec<Value> = outcome
-                        .files
-                        .iter()
-                        .filter(|(name, _)| glob_matches(pattern, name))
-                        .map(|(_, path)| Value::Path(Rc::new(path.clone())))
-                        .collect();
-                    let arity = option(options, "arity");
-                    if files.is_empty() && !output.optional {
-                        let message = format!(
-                            "Missing output file(s) `{pattern}` expected by process `{task}`"
-                        );
-                        return Err(thrown(Exception::new("MissingFileException", message)));
+                RenderedPart::Path { patterns, options } => {
+                    let mut files: Vec<Value> = Vec::new();
+                    for pattern in patterns {
+                        let found: Vec<Value> = outcome
+                            .files
+                            .iter()
+                            .filter(|(name, _)| glob_matches(pattern, name))
+                            .map(|(_, path)| Value::Path(Rc::new(path.clone())))
+                            .collect();
+                        if found.is_empty() && !output.optional {
+                            let message = format!(
+                                "Missing output file(s) `{pattern}` expected by process `{task}`"
+                            );
+                            return Err(thrown(Exception::new("MissingFileException", message)));
+                        }
+                        files.extend(found);
                     }
+                    let arity = option(options, "arity");
                     match (files.as_slice(), arity) {
                         ([single], None) => single.clone(),
                         _ => Value::list(files),

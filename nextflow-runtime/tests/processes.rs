@@ -484,6 +484,18 @@ fn each_inputs_start_a_task_for_each_value() {
     );
 }
 
+/// A `path` output with a closure takes its value when the task runs, and a list gives a
+/// pattern for each element, as nf-core/metaboigniter names its outputs after `meta.id`.
+#[test]
+fn path_outputs_take_closures_and_lists() {
+    let source = "process P {\n    input:\n    val ids\n    output:\n    \
+                  path({ ids.collect { 'out/' + it + '.xml' } })\n    script:\n    'true'\n}\n\
+                  workflow {\n    P(['a', 'b']).view { files -> files*.name }\n}";
+    let (tasks, printed) = run(source, &Options::default()).expect("runs");
+    assert_eq!(tasks[0].output_patterns, ["out/a.xml", "out/b.xml"]);
+    assert_eq!(printed, "[a.xml, b.xml]\n");
+}
+
 /// A `set` at the top of a script assigns a variable of the script, which the workflow reads,
 /// as in Nextflow 26.04.6 with the legacy parser.
 #[test]

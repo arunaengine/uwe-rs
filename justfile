@@ -50,14 +50,15 @@ test-workflows-test:
 	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" cargo test --release --locked -p nextflow-parser --test test_workflows -- --ignored
 	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" cargo test --release --locked -p nextflow-evaluator --test test_workflows -- --ignored
 
-# Records `nextflow config -flat -profile test` of every nf-core pipeline for the config test.
+# Records `nextflow config -flat -profile test` of every nf-core pipeline for the config test, four
+# pipelines at a time.
 config-oracle:
 	#!/usr/bin/env bash
 	set -euo pipefail
 	test_workflows="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}/pipelines"
 	oracle="${IUNCTUS_CONFIG_ORACLE:-$HOME/.cache/iunctus/oracle/config}"
 	mkdir -p "$oracle"
-	find "$test_workflows" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | xargs -P 8 -I{} sh -c \
+	find "$test_workflows" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | xargs -P 4 -I{} sh -c \
 		"cd '$test_workflows/{}' && nextflow config -flat -profile test . > '$oracle/{}.txt' 2> '$oracle/{}.err'; echo \$? > '$oracle/{}.exit'"
 
 # Compares `iunctus config` with the recorded `nextflow config` of every nf-core pipeline.

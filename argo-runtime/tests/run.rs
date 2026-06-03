@@ -1240,6 +1240,125 @@ fn init_containers_run_before_the_main_task_on_the_same_files() {
     );
 }
 
+const GREETER: &str = r#"
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata: {name: greeter}
+spec:
+  entrypoint: main
+  arguments: {parameters: [{name: message}]}
+  templates:
+  - name: main
+    steps:
+    - - {name: say, template: say}
+  - name: say
+    container: {image: alpine, command: [echo, "{{workflow.parameters.message}}"]}
+"#;
+
+#[test]
+fn workflows_start_other_workflows_in_the_same_run() {
+    let templates = r#"
+  - name: main
+    steps:
+    - - {name: before, template: print, arguments: {parameters: [{name: message, value: start}]}}
+    - - {name: start, template: start}
+    - - name: after
+        template: print
+        arguments:
+          parameters:
+          - {name: message, value: "{{steps.start.outputs.parameters.name}} {{steps.start.outputs.parameters.phase}}"}
+  - name: start
+    resource:
+      action: create
+      successCondition: status.phase == Succeeded
+      failureCondition: status.phase in (Failed, Error)
+      manifest: |
+        apiVersion: argoproj.io/v1alpha1
+        kind: Workflow
+        metadata: {generateName: child-}
+        spec:
+          arguments: {parameters: [{name: message, value: hello}]}
+          workflowTemplateRef: {name: greeter}
+    outputs:
+      parameters:
+      - {name: name, valueFrom: {jsonPath: '{.metadata.name}'}}
+      - {name: phase, valueFrom: {jsonPath: '{.status.phase}'}}
+"#;
+    let setup = || Setup {
+        library: vec![GREETER],
+        ..Setup::default()
+    };
+    let ran = run_with(&workflow(templates), setup());
+    ran.succeeded();
+    assert_eq!(ran.names(), ["[0].before", "[0].say", "[2].after"]);
+    assert_eq!(ran.task("[0].say").command, ["echo", "hello"]);
+    assert!(ran.task("[0].say").name.starts_with("child-"));
+    assert_eq!(ran.upstream("[0].say"), ["[0].before"]);
+    assert_eq!(ran.upstream("[2].after"), ["[0].say"]);
+    let said = &ran.task("[2].after").command;
+    assert!(
+        said[1].starts_with("child-") && said[1].ends_with(" Succeeded"),
+        "{said:?}"
+    );
+    // A child that fails fails the resource node.
+    let failed = run_with(
+        &workflow(templates),
+        Setup {
+            exit: vec![("say", vec![1])],
+            ..setup()
+        },
+    );
+    assert!(
+        failed
+            .error()
+            .contains("failure condition 'status.phase in (Error,Failed)' evaluated true"),
+        "{}",
+        failed.error()
+    );
+    // A workflow that starts itself stops at the nesting limit.
+    let again = r#"
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata: {name: again}
+spec:
+  entrypoint: main
+  templates:
+  - name: main
+    resource:
+      action: create
+      manifest: |
+        apiVersion: argoproj.io/v1alpha1
+        kind: Workflow
+        metadata: {generateName: again-}
+        spec: {workflowTemplateRef: {name: again}}
+"#;
+    let starting = "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {generateName: again-}\nspec: {workflowTemplateRef: {name: again}}\n";
+    let endless = run_with(
+        starting,
+        Setup {
+            library: vec![again],
+            ..Setup::default()
+        },
+    );
+    assert!(
+        endless
+            .error()
+            .contains("workflows start other workflows more than 10 levels deep"),
+        "{}",
+        endless.error()
+    );
+    // A Workflow that the run did not start is left to a cluster.
+    let get = templates
+        .replace("action: create", "action: get")
+        .replace("generateName: child-", "name: elsewhere");
+    let ran = run_with(&workflow(&get), setup());
+    assert!(
+        matches!(&ran.execution.error, Some(error) if error.unsupported()),
+        "{:?}",
+        ran.execution.error
+    );
+}
+
 #[test]
 fn host_paths_are_written_back_in_a_real_run() {
     let host = tempfile::tempdir().expect("a temporary directory");

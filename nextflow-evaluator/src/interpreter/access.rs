@@ -199,8 +199,14 @@ impl Interpreter<'_> {
         index: &[Value],
         span: Span,
     ) -> Result<Value, Error> {
-        let [index] = index else {
-            return Err(unsupported("indexing with several indexes", span));
+        // Groovy's `list[0, 2]` indexes with the list of the indexes.
+        let several;
+        let index = match index {
+            [index] => index,
+            _ => {
+                several = Value::list(index.to_vec());
+                &several
+            }
         };
         Ok(match (object, index) {
             (Value::Path(path), Value::Number(position)) => {

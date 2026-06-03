@@ -119,8 +119,10 @@ impl Shell<'_> {
             | "basename" | "dirname" | "date" | "ls" | "find" | "awk" | "paste" | "xargs" => {
                 Output::Unknown
             }
+            // A tool, which may make files that its arguments name.
             _ => {
                 self.complete = false;
+                self.words.extend(arguments[1..].iter().flatten().cloned());
                 Output::Unknown
             }
         }

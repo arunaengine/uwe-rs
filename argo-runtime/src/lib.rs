@@ -13,6 +13,7 @@
 
 mod checks;
 mod claims;
+mod conditions;
 mod dag;
 mod environment;
 pub mod expr;

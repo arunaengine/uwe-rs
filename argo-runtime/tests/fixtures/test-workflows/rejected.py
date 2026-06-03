@@ -28,9 +28,10 @@ HEADER = """\
 # Why each Argo test workflow that does not pass cannot run, recorded by rejected.py: the
 # document, then `=`, its kind and one plain sentence, then for `invalid` and `missing` the
 # command (`$`) and the output (`>`) of `argo lint` of Argo v4.1.4, which rejects the document
-# the same way. The kind is `invalid` (the workflow itself is broken), `missing` (it needs a
-# WorkflowTemplate that is in no repository of the test workflows), or `unsupported (decision
-# N)` (iunctus leaves the feature out on purpose, as decision N of docs/decisions.md says).
+# the same way, or accepts a workflow that would wait forever in Argo. The kind is `invalid`
+# (the workflow itself is broken), `missing` (it needs a WorkflowTemplate that is in no
+# repository of the test workflows), or `unsupported (decision N)` (iunctus leaves the feature
+# out on purpose, as decision N of docs/decisions.md says).
 # argo lint ran on a copy of the document and of the WorkflowTemplates it calls, without
 # namespaces, the called templates only, and with values for the inputs of a Workflow's
 # entrypoint, as `argo submit -p` gives them."""
@@ -242,6 +243,11 @@ def main():
             continue
         code, command, lines = lint(key, strict=False)
         evidence = [f"$ {command}"] + [f"> {line}" for line in lines]
+        if "neither the success condition nor the failure condition holds" in outcome:
+            why = ("it waits for a Workflow whose phase never meets the success or failure condition, "
+                   "so Argo waits until the run is stopped; argo lint accepts it")
+            blocks.append("\n".join([key, f"= invalid: {why}"] + evidence))
+            continue
         if code == 0:
             code, command, strict = lint(key, strict=True)
             evidence += [f"$ {command}"] + [f"> {line}" for line in strict]

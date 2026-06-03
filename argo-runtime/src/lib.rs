@@ -12,6 +12,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod checks;
+mod child;
 mod claims;
 mod conditions;
 mod dag;

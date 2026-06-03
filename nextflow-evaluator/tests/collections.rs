@@ -286,3 +286,10 @@ fn lists_indexed_with_names() {
     assert_eq!(value(&format!("{list}\nl['c']")), "[2, null]");
     assert_eq!(value("[]['id']"), "[]");
 }
+
+/// Several indexes give the element at each, as Groovy's `getAt(Collection)`.
+#[test]
+fn lists_indexed_with_several_indexes() {
+    assert_eq!(value("[10, 11, 12, 13][0, 2, 3]"), "[10, 12, 13]");
+    assert_eq!(value("[10, 11, 12, 13][0, 1..2]"), "[10, 11, 12]");
+}

@@ -193,6 +193,7 @@ A mock run gives empty stdout and no files. Real workflows read that data, so th
 - An item that is empty text leaves the tags that read its fields in place.
 - An output of a steps or DAG template that reads a skipped step, or a step whose output is empty, is empty, with a warning.
 - A `when` that still holds a tag skips the step, with a warning.
+- An output parameter whose file is empty takes its `default`, if it has one: the mock executor makes up empty files for outputs that it cannot simulate. KFP-compiled workflows need this: their driver writes `cached-decision`, and the executor step runs only when that is not `true`. This rule too applies only with `Options.assume_inputs`.
 
 A real executor gives real data, and these rules then do not apply.
 
@@ -241,7 +242,7 @@ Volumes that several steps mount act as a shared file system. The run keeps the 
 `hostPath` names a folder on the Kubernetes node that runs the pod. Without a cluster there is no such node, so a host path is a path on the machine that runs iunctus (decision 18):
 
 - A task that mounts it gets the host folder (or file, for `type: File`) as an input, and on top of it the files that earlier tasks of the run wrote there.
-- Unless the mount is `readOnly` or of `type: File`, the files that the task writes there go into the volume, as for other volumes. In a real run the driver also writes them back to the host path when the task ends, into the folders of `subPath`, over files of the same name.
+- Unless the mount is `readOnly` or of `type: File`, the files that the task writes there go into the volume, as for other volumes. In a real run the driver also writes them back to the host path when the task ends, into the folders of `subPath`, over files of the same name. A file that cannot be written back ends the node with an error.
 - A mock run never writes to a host path, and a host path that does not exist is no error there.
 
 The driver writes back from the local paths of the task's output files, which the local executor and the mock give it. An executor that keeps outputs elsewhere, like TES with S3, needs the Files service of the execution layer (docs/design/engine.md): the driver then asks it for each file and writes the bytes to the host path. Writing back stays in the driver, because only the driver knows which output belongs to a host path.
@@ -292,21 +293,21 @@ Init containers run as their own tasks before the task they belong to, one after
 
 `just argo-test-workflows` fetches the 19 repositories of research question Q6 at the commits in `argo-parser/tests/fixtures/test-workflows/revisions.txt` into `~/.cache/iunctus/test-workflows/argo`, and argoproj-labs/argo-workflows-hello-executor-plugin, whose plugin the talk-demos examples of plugin templates install. gennext-workflows has no license: it is fetched for research only and never copied into this repository.
 
-`just argo-test-workflows-test` runs the ignored test `argo-runtime/tests/test_workflows.rs`. It reads every Argo document of the test workflows. A document with an entrypoint runs through `MockTes`; the others, like libraries of WorkflowTemplates and executor plugin ConfigMaps, get the checks of section 4.1. The outcomes are compared with `argo-runtime/tests/fixtures/test-workflows/outcomes.txt`: `ok` and the number of tasks, `valid`, or the exit code and the error (its end, when it is long). Every document that does not pass needs a record in `argo-runtime/tests/fixtures/test-workflows/rejected.txt` that names its kind and why, in one sentence: `invalid` (the workflow itself is broken) or `missing` (it calls a WorkflowTemplate that is in no repository of the test workflows), each with the output of `argo lint`, which rejects it the same way, or `unsupported (decision 18)`. The test fails on a document without a record, on a record of the wrong kind (exit code 33 is `unsupported`), and on a record for a document that passes. `rejected.py` next to the records writes them; it runs `argo lint` and never runs as part of iunctus.
+`just argo-test-workflows-test` runs the ignored test `argo-runtime/tests/test_workflows.rs`. It reads every Argo document of the test workflows. A document with an entrypoint runs through `MockTes`; the others, like libraries of WorkflowTemplates and executor plugin ConfigMaps, get the checks of section 4.1. The outcomes are compared with `argo-runtime/tests/fixtures/test-workflows/outcomes.txt`: `ok` and the number of tasks, `valid`, or the exit code and the error (its end, when it is long). Every document that does not pass needs a record in `argo-runtime/tests/fixtures/test-workflows/rejected.txt` that names its kind and why, in one sentence: `invalid` (the workflow itself is broken) or `missing` (it calls a WorkflowTemplate that is in no repository of the test workflows), each with the output of `argo lint`, which rejects it the same way (or accepts a workflow that would wait forever in Argo, section 11.7), or `unsupported (decision 18)`. The test fails on a document without a record, on a record of the wrong kind (exit code 33 is `unsupported`), and on a record for a document that passes. `rejected.py` next to the records writes them; it runs `argo lint` and never runs as part of iunctus.
 
 Some documents get directories as configs, as `-c` gives them: Hera's copies of Argo's examples get Argo's `examples`, because Hera does not copy all the WorkflowTemplates they refer to; the talk-demos plugin examples get the hello executor plugin; and the talk-demos copy of pipekit's CI workflow gets the WorkflowTemplates of pipekit/argo-workflows-ci-example. `ARGO_TEST_WORKFLOWS_UPDATE=1` records new outcomes, `ARGO_TEST_WORKFLOWS_FILTER` runs only matching paths, `ARGO_TEST_WORKFLOWS_VERBOSE=1` prints the warnings, and `ARGO_TEST_WORKFLOWS_ORDER=shuffled:<seed>` lets up to 8 tasks be pending and finish in a random order. With seeds 1 and 2 the outcomes stay the same, so the driver does not depend on the order of outcomes.
 
-Results on 2026-09-29: 1375 of 1573 documents pass: 1167 run through with a full graph and 208 documents without an entrypoint pass Argo's checks. 120 documents are unsupported by decision 18, and `argo lint` rejects the other 78 the same way.
+Results on 2026-09-29: 1390 of 1573 documents pass: 1182 run through with a full graph and 208 documents without an entrypoint pass Argo's checks. 104 documents are unsupported by decision 18, `argo lint` rejects 78 others the same way, and one would wait forever in Argo.
 
 | Repository | Pass | Documents |
 |---|---:|---:|
-| argoproj/argo-workflows | 507 | 571 |
-| argoproj-labs/hera | 246 | 278 |
-| GenivaInformatics/gennext-workflows | 141 | 168 |
+| argoproj/argo-workflows | 511 | 571 |
+| argoproj-labs/hera | 250 | 278 |
+| GenivaInformatics/gennext-workflows | 147 | 168 |
 | kubeflow/pipelines | 153 | 153 |
 | Ensembl/regulation-workflows | 107 | 132 |
 | codefresh-io/argo-hub | 104 | 106 |
-| pipekit/talk-demos | 17 | 36 |
+| pipekit/talk-demos | 18 | 36 |
 | AliyunContainerService/argo-workflow-examples | 19 | 20 |
 | pipekit/argo-workflows-ci-example | 5 | 20 |
 | couler-proj/couler | 18 | 19 |
@@ -321,11 +322,11 @@ Results on 2026-09-29: 1375 of 1573 documents pass: 1167 run through with a full
 | argoproj-labs/argo-workflows-hello-executor-plugin | 2 | 2 |
 | DonaldKellett/snakemake-tutorial-argo-workflows | 2 | 2 |
 
-The 198 documents that do not pass:
+The 183 documents that do not pass:
 
 | Kind | Reason | Documents |
 |---|---|---:|
-| unsupported (decision 18) | A resource template that manages Kubernetes objects other than a PersistentVolumeClaim, like Jobs, Services, Pods, Workflows or Argo CD Applications | 77 |
+| unsupported (decision 18) | A resource template that manages Kubernetes objects other than a PersistentVolumeClaim or a Workflow that the run starts, like Jobs, Services, Pods or Argo CD Applications, or that patches a Workflow | 61 |
 | unsupported (decision 18) | A daemon template | 23 |
 | unsupported (decision 18) | Sidecars | 15 |
 | unsupported (decision 18) | A data template | 5 |
@@ -335,5 +336,6 @@ The 198 documents that do not pass:
 | invalid | Names that are missing, invalid or not unique | 10 |
 | invalid | Documents that are not valid YAML or do not fit Argo's types, among them Argo's malformed test files; one has a duplicate key, which `argo lint` and `argo submit` reject in their default strict mode | 9 |
 | invalid | A tag that does not resolve (`{{steps.A...}}` inside a DAG) | 1 |
+| invalid | A resource template that waits for a Workflow whose phase never meets its conditions (`status.phase == Test`, an Argo test of stopping a run); Argo waits forever, and `argo lint` accepts it | 1 |
 
 Some documents that pass are rejected by `argo lint --strict=false`, where iunctus is more lenient without a change to what runs: tags that name variables no template sets (19 documents; section 4.1 leaves this check out), CronWorkflows with the v3 field `schedule`, which iunctus converts as `argo convert` does (6), and references to WorkflowTemplates that Argo would refuse to create, like gennext's `copy-inputs-to-scratch` with its unfinished template that no workflow calls. With `--strict`, its default, `argo lint` also rejects unknown fields, which iunctus leaves out.

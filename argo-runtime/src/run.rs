@@ -17,6 +17,7 @@ use workflow_graph::{Outcome, Task, TaskId};
 
 use crate::Options;
 use crate::checks::cluster_only;
+use crate::child::{Child, runs_workflow};
 use crate::library::{Document, Kind as DocumentKind, Library};
 use crate::merge::with_defaults;
 use crate::node::{ArtifactValue, Location, NodeKind, NodeOutputs, NodeStatus, Phase, RetryCall};
@@ -183,6 +184,14 @@ pub(crate) struct Run {
     pub exit_node: Option<usize>,
     pub hook_nodes: Vec<usize>,
     pub created: Timestamp,
+    /// The workflows that resource templates of this run started.
+    pub children: Vec<Child>,
+    /// Resource nodes that wait for a child, and the child.
+    pub watches: Vec<(usize, usize)>,
+    /// How deep this run is among workflows that start workflows: 0 for the run itself.
+    pub nesting: usize,
+    /// The tasks that the root waits for: those before the resource node of a child.
+    pub inbound: Vec<TaskId>,
 }
 
 impl Run {
@@ -282,6 +291,10 @@ impl Run {
             exit_node: None,
             hook_nodes: Vec::new(),
             created,
+            children: Vec::new(),
+            watches: Vec::new(),
+            nesting: 0,
+            inbound: Vec::new(),
         };
         for warning in warnings {
             run.warn(warning);
@@ -358,8 +371,11 @@ impl Run {
                 let holder = Holder::named(&self.entrypoint.clone());
                 let context = Rc::clone(&self.root_context);
                 let args = self.arguments.clone();
-                let root =
-                    self.execute_template(&name, &holder, &context, &args, &Call::default())?;
+                let call = Call {
+                    inbound: self.inbound.clone(),
+                    ..Call::default()
+                };
+                let root = self.execute_template(&name, &holder, &context, &args, &call)?;
                 self.root = Some(root);
                 root
             }
@@ -480,6 +496,9 @@ impl Run {
                 Ok(())
             }
             NodeKind::Plugin => self.start_plugin(index),
+            _ if template.resource.as_ref().is_some_and(runs_workflow) => {
+                self.start_workflow(index)
+            }
             _ if template.resource.is_some() => self.start_claim(index),
             _ => self.start_pod(index),
         }
@@ -814,7 +833,11 @@ impl Run {
     pub fn outbound(&self, index: usize) -> Vec<TaskId> {
         let node = &self.nodes[index];
         let mut tasks = match node.kind {
-            NodeKind::Pod => node.tasks.clone(),
+            // A resource node that waits for a child ends with the child.
+            NodeKind::Pod => match self.watches.iter().find(|(node, _)| *node == index) {
+                Some(&(_, child)) => self.children[child].run.last_tasks(),
+                None => node.tasks.clone(),
+            },
             // The calls of plugins follow each other; the last one gave the reply.
             NodeKind::Plugin => node.tasks.last().copied().into_iter().collect(),
             NodeKind::Retry => node
@@ -856,6 +879,14 @@ impl Run {
     /// Takes the outcome of a task.
     pub fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>> {
         let Some((index, slot)) = self.tasks.remove(&outcome.id) else {
+            if let Some(child) = self
+                .children
+                .iter()
+                .position(|child| child.run.owns(outcome.id))
+            {
+                self.step_child(child, |run| run.complete(outcome))?;
+                return self.operate();
+            }
             return Err(Failure::error(format!(
                 "the outcome of task {} arrived, which this run did not ask for",
                 outcome.id

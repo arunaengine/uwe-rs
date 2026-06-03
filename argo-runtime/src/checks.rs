@@ -95,7 +95,8 @@ pub(crate) fn process_args(template: &Template, supplied: Supplied) -> Result<()
 
 /// Why a template cannot run without a Kubernetes cluster, if it cannot (decision 18):
 /// `resource` templates, except those that manage a PersistentVolumeClaim, which become volumes
-/// of the run, `data` templates, sidecars and daemons.
+/// of the run, and those that start an Argo Workflow, which runs inside the run; `data`
+/// templates, sidecars and daemons.
 pub(crate) fn cluster_only(template: &Template) -> Option<String> {
     let name = &template.name;
     let reason = if let Some(resource) = &template.resource {
@@ -111,7 +112,7 @@ pub(crate) fn cluster_only(template: &Template) -> Option<String> {
             });
         let claim = kind.as_deref() == Some("PersistentVolumeClaim")
             && matches!(resource.action.as_str(), "create" | "apply" | "delete");
-        if claim {
+        if claim || crate::child::runs_workflow(resource) {
             return None;
         }
         let objects = kind.map_or(String::new(), |kind| format!(" of kind {kind}"));

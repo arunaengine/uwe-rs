@@ -28,6 +28,9 @@ pub struct Simulation {
     pub complete: bool,
     /// The command that surely fails, where the script ends, as `bash -e` ends it.
     pub failure: Option<Failure>,
+    /// The arguments of the tools that the simulation does not know, which may name the files
+    /// they make.
+    pub words: Vec<String>,
 }
 
 /// A command of a script that surely fails, like `gzip x` when `x.gz` exists.
@@ -60,6 +63,7 @@ pub fn simulate(script: &str, inputs: &[&str]) -> Simulation {
         made: Vec::new(),
         complete: true,
         failure: None,
+        words: Vec::new(),
         inputs,
     };
     let lines = logical_lines(script);
@@ -68,6 +72,7 @@ pub fn simulate(script: &str, inputs: &[&str]) -> Simulation {
         made: shell.made,
         complete: shell.complete,
         failure: shell.failure,
+        words: shell.words,
     }
 }
 
@@ -76,6 +81,7 @@ struct Shell<'a> {
     made: Vec<Made>,
     complete: bool,
     failure: Option<Failure>,
+    words: Vec<String>,
     inputs: &'a [&'a str],
 }
 

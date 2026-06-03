@@ -263,9 +263,23 @@ pub fn pretend_run(task: &Task, work: &Path) -> std::io::Result<Result<Vec<Outpu
         }
         outputs.push(names);
     }
-    // Outputs that the script does not tell how it makes are made up, so that a run goes on.
+    // Outputs that the script does not tell how it makes are made up, so that a run goes on:
+    // the files that the arguments of its tools name, else a name after the pattern.
+    let named = named_files(&simulation.words, &inputs);
     for (pattern, names) in task.outputs.iter().zip(outputs.iter_mut()) {
         if !names.is_empty() {
+            continue;
+        }
+        let base = pattern.trim_start_matches('/').trim_end_matches('/');
+        let by_tools: Vec<&String> = named
+            .iter()
+            .filter(|name| has_literal(base) && glob_matches(base, name))
+            .collect();
+        if !by_tools.is_empty() {
+            for name in by_tools {
+                paths.push(placeholder(name));
+                names.push(name.clone());
+            }
             continue;
         }
         let name = file_name(pattern.trim_start_matches('/'));
@@ -379,31 +393,37 @@ pub const EMPTY_GZIP: &[u8] = &[
     0x00, 0x00, 0x00, 0x00,
 ];
 
-/// The files a command without a script may make: the parts of its arguments between `,`
-/// and `=`, like `a.bam` of `--out=a.bam` or `--out a.bam,b.bam`. Only patterns with text
-/// besides wildcards choose among them. Flags, absolute paths and inputs do not count.
+/// The files a command without a script may make: the files its arguments name.
 fn command_words(command: &[String], inputs: &[&str]) -> shell::Simulation {
-    let mut made: Vec<Made> = Vec::new();
-    for part in command
-        .iter()
-        .skip(1)
-        .flat_map(|word| word.split([',', '=']))
-    {
-        let part = part.trim_start_matches("./");
-        let skip = part.is_empty()
-            || part.starts_with(['-', '/'])
-            || part.contains(['$', '*', '?', '[', '{', '\\', ' '])
-            || inputs.contains(&part);
-        if !skip && !made.iter().any(|known| known.path == part) {
-            made.push(placeholder(part));
-        }
-    }
+    let made = named_files(command.get(1..).unwrap_or_default(), inputs)
+        .into_iter()
+        .map(|name| placeholder(&name))
+        .collect();
     // A command may make any file, so the simulation is not complete.
     shell::Simulation {
         made,
         complete: false,
         failure: None,
+        words: Vec::new(),
     }
+}
+
+/// The files that the arguments of a tool may name: the parts between `,` and `=`, like
+/// `a.bam` of `--out=a.bam` or `--out a.bam,b.bam`. Only patterns with text besides wildcards
+/// choose among them. Flags, absolute paths and inputs do not count.
+fn named_files(arguments: &[String], inputs: &[&str]) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for part in arguments.iter().flat_map(|word| word.split([',', '='])) {
+        let part = part.trim_start_matches("./");
+        let skip = part.is_empty()
+            || part.starts_with(['-', '/'])
+            || part.contains(['$', '*', '?', '[', '{', '\\', ' '])
+            || inputs.contains(&part);
+        if !skip && !names.iter().any(|known| known == part) {
+            names.push(part.to_owned());
+        }
+    }
+    names
 }
 
 /// Whether a glob pattern has text besides wildcards, so that not every word matches it.

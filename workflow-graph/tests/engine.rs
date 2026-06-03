@@ -313,3 +313,33 @@ fn mocks_of_scripts_that_fail_give_the_failure() {
     );
     assert!(outcome.files.is_empty());
 }
+
+/// An output of a tool that the simulation does not know is named after the arguments of the
+/// tool that match its pattern, as the tool would name it.
+#[test]
+fn mocks_name_the_outputs_of_tools_after_their_arguments() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let task = Task {
+        id: TaskId(5),
+        script: Some(
+            "mkdir output\nFeatureFinderMetabo -in s.mzML -out output/s.featureXML".into(),
+        ),
+        inputs: vec![Input {
+            path: "s.mzML".into(),
+            source: "/data/s.mzML".into(),
+            directory: false,
+            content: None,
+        }],
+        outputs: ["output/*.featureXML", "*.log"].map(String::from).to_vec(),
+        ..Task::default()
+    };
+    let outcome = Mock::new(directory.path())
+        .execute(&task)
+        .expect("an outcome");
+    let paths: Vec<&str> = outcome
+        .files
+        .iter()
+        .map(|file| file.path.as_str())
+        .collect();
+    assert_eq!(paths, ["output/s.featureXML", "mock.log"]);
+}

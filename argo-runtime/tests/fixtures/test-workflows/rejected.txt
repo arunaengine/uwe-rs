@@ -1,9 +1,10 @@
 # Why each Argo test workflow that does not pass cannot run, recorded by rejected.py: the
 # document, then `=`, its kind and one plain sentence, then for `invalid` and `missing` the
 # command (`$`) and the output (`>`) of `argo lint` of Argo v4.1.4, which rejects the document
-# the same way. The kind is `invalid` (the workflow itself is broken), `missing` (it needs a
-# WorkflowTemplate that is in no repository of the test workflows), or `unsupported (decision
-# N)` (iunctus leaves the feature out on purpose, as decision N of docs/decisions.md says).
+# the same way, or accepts a workflow that would wait forever in Argo. The kind is `invalid`
+# (the workflow itself is broken), `missing` (it needs a WorkflowTemplate that is in no
+# repository of the test workflows), or `unsupported (decision N)` (iunctus leaves the feature
+# out on purpose, as decision N of docs/decisions.md says).
 # argo lint ran on a copy of the document and of the WorkflowTemplates it calls, without
 # namespaces, the called templates only, and with values for the inputs of a Workflow's
 # entrypoint, as `argo submit -p` gives them.
@@ -75,9 +76,6 @@ argo-workflows-ci-example/workflow-s3.yml
 argo-workflows-ci-example/workflow.yml
 = unsupported (decision 18): template deploy-application is a resource template that manages Kubernetes objects of kind Application
 
-argo-workflows/examples/cron-backfill.yaml#2
-= unsupported (decision 18): template create-job is a resource template that manages Kubernetes objects of kind Workflow
-
 argo-workflows/examples/daemon-nginx.yaml
 = unsupported (decision 18): template nginx-server runs as a daemon, a service that later steps reach through the cluster network
 
@@ -105,9 +103,6 @@ argo-workflows/examples/k8s-jobs.yaml
 argo-workflows/examples/k8s-orchestration.yaml
 = unsupported (decision 18): template random-number-job is a resource template that manages Kubernetes objects of kind Job
 
-argo-workflows/examples/k8s-owner-reference.yaml
-= unsupported (decision 18): template main is a resource template that manages Kubernetes objects of kind Workflow
-
 argo-workflows/examples/k8s-patch-json-pod.yaml
 = unsupported (decision 18): template main is a resource template that manages Kubernetes objects
 
@@ -129,9 +124,6 @@ argo-workflows/examples/k8s-resource-log-selector.yaml
 
 argo-workflows/examples/k8s-set-owner-reference.yaml
 = unsupported (decision 18): template k8s-set-owner-reference is a resource template that manages Kubernetes objects of kind ConfigMap
-
-argo-workflows/examples/k8s-wait-wf.yaml
-= unsupported (decision 18): template create-wf is a resource template that manages Kubernetes objects of kind Workflow
 
 argo-workflows/examples/pod-resources-template-override.yaml
 = unsupported (decision 18): template large has sidecars, services that run beside the task in its Kubernetes pod
@@ -156,9 +148,6 @@ argo-workflows/examples/steps-daemon-retry-strategy.yaml
 
 argo-workflows/examples/variables-showcase.yaml
 = unsupported (decision 18): template svc-daemon runs as a daemon, a service that later steps reach through the cluster network
-
-argo-workflows/examples/workflow-of-workflows.yaml
-= unsupported (decision 18): template resource-without-argument is a resource template that manages Kubernetes objects of kind Workflow
 
 argo-workflows/test/e2e/cron/cron-and-malformed-template.yaml#1
 = invalid: an entry of a list has no name
@@ -210,7 +199,9 @@ argo-workflows/test/e2e/functional/output-jqfilter-parameters.yaml
 = unsupported (decision 18): template create-param is a resource template that manages Kubernetes objects of kind ConfigMap
 
 argo-workflows/test/e2e/functional/resource-template.yaml
-= unsupported (decision 18): template wf1 is a resource template that manages Kubernetes objects of kind Workflow
+= invalid: it waits for a Workflow whose phase never meets the success or failure condition, so Argo waits until the run is stopped; argo lint accepts it
+$ argo lint --offline --strict=false argo-workflows/test/e2e/functional/resource-template.yaml
+> no linting errors found!
 
 argo-workflows/test/e2e/functional/sidecar-dind.yaml
 = unsupported (decision 18): template dind-sidecar-example has sidecars, services that run beside the task in its Kubernetes pod
@@ -376,9 +367,6 @@ gennext-workflows/workflows/msi_tmb_coverage_workflow.yaml
 $ argo lint --offline --strict=false gennext-workflows/workflows/msi_tmb_coverage_workflow.yaml gennext-workflows/tasks/base_tasks/mosdepth.yaml gennext-workflows/tasks/base_tasks/msisensor-pro.yaml gennext-workflows/tasks/base_tasks/multiqc.yaml gennext-workflows/tasks/collect_somatic_data.yaml gennext-workflows/tasks/collect_tmb_data.yaml
 > gennext-workflows/workflows/msi_tmb_coverage_workflow.yaml: in "msi-tmb-coverage-workflow-template" (WorkflowTemplate): templates.msi-tmb-coverage-workflow templates.msi-tmb-coverage-workflow.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates" in namespace ""
 
-gennext-workflows/workflows/prototypes/batch-orchestrator-prototype.yaml
-= unsupported (decision 18): template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow
-
 gennext-workflows/workflows/somatic-testing-workflow.yaml
 = missing: it calls WorkflowTemplate collect-qc-data-templates, which is in no repository of the test workflows
 $ argo lint --offline --strict=false gennext-workflows/workflows/somatic-testing-workflow.yaml gennext-workflows/tasks/base_tasks/annotsv.yaml gennext-workflows/tasks/base_tasks/annovar-to-maf.yaml gennext-workflows/tasks/base_tasks/annovar.yaml gennext-workflows/tasks/base_tasks/bcftools.yaml gennext-workflows/tasks/base_tasks/bed_validator.yaml gennext-workflows/tasks/base_tasks/cancervar.yaml gennext-workflows/tasks/base_tasks/cnvpytor.yaml gennext-workflows/tasks/base_tasks/dir_cleanup.yaml gennext-workflows/tasks/base_tasks/duckdb.yaml gennext-workflows/tasks/base_tasks/elprep.yaml gennext-workflows/tasks/base_tasks/fastqc.yaml gennext-workflows/tasks/base_tasks/filter-annotsv.yaml gennext-workflows/tasks/base_tasks/filter-msisensor-pro.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-bam2fq.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-bqsr.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-fq2bam.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-mutect2.yaml gennext-workflows/tasks/base_tasks/maf-to-db.yaml gennext-workflows/tasks/base_tasks/manta.yaml gennext-workflows/tasks/base_tasks/mosdepth.yaml gennext-workflows/tasks/base_tasks/msisensor-pro.yaml gennext-workflows/tasks/base_tasks/multiqc.yaml gennext-workflows/tasks/base_tasks/mutect2.yaml gennext-workflows/tasks/base_tasks/oncokb.yaml gennext-workflows/tasks/base_tasks/qorts.yaml gennext-workflows/tasks/base_tasks/samtools.yaml gennext-workflows/tasks/base_tasks/seqkit_bedtools.yaml gennext-workflows/tasks/base_tasks/snap.yaml gennext-workflows/tasks/base_tasks/star-fusion-to-oncokb.yaml gennext-workflows/tasks/base_tasks/star-fusion.yaml gennext-workflows/tasks/base_tasks/trim-galore.yaml gennext-workflows/tasks/base_tasks/vcf-harmonizer.yaml gennext-workflows/tasks/base_tasks/verifybamid.yaml gennext-workflows/tasks/base_tasks/vlod.yaml gennext-workflows/tasks/check-file-path.yaml gennext-workflows/tasks/collect_qc_data.yaml gennext-workflows/tasks/collect_somatic_data.yaml gennext-workflows/tasks/collect_tmb_data.yaml gennext-workflows/tasks/compose-read-group-str.yaml gennext-workflows/tasks/copy_inputs_to_scratch.yaml gennext-workflows/tasks/copy_temp_to_output.yaml gennext-workflows/tasks/get_abs_ref_dirs.yaml gennext-workflows/workflows/preprocess-fastq.yaml gennext-workflows/workflows/somatic/somatic-testing-dna-gpu-workflow.yaml gennext-workflows/workflows/somatic/somatic-testing-rna-gpu-workflow.yaml
@@ -418,21 +406,6 @@ gennext-workflows/workflows/wrapper-workflow.yaml
 = missing: it calls WorkflowTemplate collect-qc-data-templates, which is in no repository of the test workflows
 $ argo lint --offline --strict=false gennext-workflows/workflows/wrapper-workflow.yaml gennext-workflows/tasks/base_tasks/annotsv.yaml gennext-workflows/tasks/base_tasks/annovar-to-maf.yaml gennext-workflows/tasks/base_tasks/annovar.yaml gennext-workflows/tasks/base_tasks/bcftools.yaml gennext-workflows/tasks/base_tasks/bed_validator.yaml gennext-workflows/tasks/base_tasks/cancervar.yaml gennext-workflows/tasks/base_tasks/cnvpytor.yaml gennext-workflows/tasks/base_tasks/dir_cleanup.yaml gennext-workflows/tasks/base_tasks/duckdb.yaml gennext-workflows/tasks/base_tasks/exomedepth.yaml gennext-workflows/tasks/base_tasks/fastp.yaml gennext-workflows/tasks/base_tasks/fastqc.yaml gennext-workflows/tasks/base_tasks/filter-annotsv.yaml gennext-workflows/tasks/base_tasks/filter-msisensor-pro.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-bam2fq.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-bqsr.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-fq2bam.yaml gennext-workflows/tasks/base_tasks/gpu_tasks/parabricks-mutect2.yaml gennext-workflows/tasks/base_tasks/maf-to-db.yaml gennext-workflows/tasks/base_tasks/manta.yaml gennext-workflows/tasks/base_tasks/mosdepth.yaml gennext-workflows/tasks/base_tasks/msisensor-pro.yaml gennext-workflows/tasks/base_tasks/multiqc.yaml gennext-workflows/tasks/base_tasks/mutect2.yaml gennext-workflows/tasks/base_tasks/oncokb.yaml gennext-workflows/tasks/base_tasks/qorts.yaml gennext-workflows/tasks/base_tasks/remove-temp-fqs.yaml gennext-workflows/tasks/base_tasks/samtools.yaml gennext-workflows/tasks/base_tasks/star-fusion-to-oncokb.yaml gennext-workflows/tasks/base_tasks/star-fusion.yaml gennext-workflows/tasks/base_tasks/trim-galore.yaml gennext-workflows/tasks/base_tasks/vcf-harmonizer.yaml gennext-workflows/tasks/base_tasks/verifybamid.yaml gennext-workflows/tasks/base_tasks/vlod.yaml gennext-workflows/tasks/callers/deepvariant.yaml gennext-workflows/tasks/change_run_state.yaml gennext-workflows/tasks/check-file-path.yaml gennext-workflows/tasks/collect_qc_data.yaml gennext-workflows/tasks/collect_somatic_data.yaml gennext-workflows/tasks/collect_tmb_data.yaml gennext-workflows/tasks/compose-read-group-str.yaml gennext-workflows/tasks/copy_inputs_to_scratch.yaml gennext-workflows/tasks/copy_temp_to_output.yaml gennext-workflows/tasks/cravat/cravat-solo.yaml gennext-workflows/tasks/get-node-config.yaml gennext-workflows/tasks/get_abs_ref_dirs.yaml gennext-workflows/tasks/get_run_data.yaml gennext-workflows/workflows/germline/germline-rna-gpu-workflow.yaml gennext-workflows/workflows/germline/germline-tps-gpu-workflow.yaml gennext-workflows/workflows/germline/germline-wes-gpu-workflow.yaml gennext-workflows/workflows/germline/germline-wgs-gpu-workflow.yaml gennext-workflows/workflows/somatic-testing-workflow.yaml gennext-workflows/workflows/somatic/somatic-testing-dna-gpu-workflow.yaml gennext-workflows/workflows/somatic/somatic-testing-rna-gpu-workflow.yaml
 > gennext-workflows/workflows/wrapper-workflow.yaml: in "wrapper-workflow" (WorkflowTemplate): templates.wrapper-workflow.tasks.rna-workflow templates.main.tasks.germline-rna-bam-workflow templates.germline-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates" in namespace ""
-
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-dna-rna.yaml
-= unsupported (decision 18): template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow
-
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-dna.yaml
-= unsupported (decision 18): template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow
-
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-fusion-gpu.yaml
-= unsupported (decision 18): template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow
-
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-fusion.yaml
-= unsupported (decision 18): template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow
-
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-rna.yaml
-= unsupported (decision 18): template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow
 
 gennext-workflows/workflows/wrappers/wrapper-rna.yaml
 = missing: it calls WorkflowTemplate collect-qc-data-templates, which is in no repository of the test workflows
@@ -498,9 +471,6 @@ hera/examples/workflows/upstream/k8s-jobs.yaml
 hera/examples/workflows/upstream/k8s-orchestration.yaml
 = unsupported (decision 18): template random-number-job is a resource template that manages Kubernetes objects of kind Job
 
-hera/examples/workflows/upstream/k8s-owner-reference.yaml
-= unsupported (decision 18): template main is a resource template that manages Kubernetes objects of kind Workflow
-
 hera/examples/workflows/upstream/k8s-patch-json-pod.yaml
 = unsupported (decision 18): template main is a resource template that manages Kubernetes objects
 
@@ -518,9 +488,6 @@ hera/examples/workflows/upstream/k8s-resource-log-selector.yaml
 
 hera/examples/workflows/upstream/k8s-set-owner-reference.yaml
 = unsupported (decision 18): template k8s-set-owner-reference is a resource template that manages Kubernetes objects of kind ConfigMap
-
-hera/examples/workflows/upstream/k8s-wait-wf.yaml
-= unsupported (decision 18): template create-wf is a resource template that manages Kubernetes objects of kind Workflow
 
 hera/examples/workflows/upstream/resource-delete-with-flags.yaml
 = unsupported (decision 18): template create-configmap is a resource template that manages Kubernetes objects of kind ConfigMap
@@ -540,14 +507,8 @@ hera/examples/workflows/upstream/sidecar.yaml
 hera/examples/workflows/upstream/steps-daemon-retry-strategy.yaml
 = unsupported (decision 18): template server runs as a daemon, a service that later steps reach through the cluster network
 
-hera/examples/workflows/upstream/workflow-of-workflows.yaml
-= unsupported (decision 18): template resource-without-argument is a resource template that manages Kubernetes objects of kind Workflow
-
 hera/examples/workflows/use_cases/fine-tune-llama.yaml
 = unsupported (decision 18): template create-ssd-storage-class is a resource template that manages Kubernetes objects of kind StorageClass
-
-hera/examples/workflows/use_cases/workflow-of-workflows.yaml
-= unsupported (decision 18): template w1-resource is a resource template that manages Kubernetes objects of kind Workflow
 
 regulation-workflows/workflow-templates/alignment/.deprecated/delete-alignment-task-markers.yaml
 = missing: it calls WorkflowTemplate compute-rfs-alignments-tasks-url-v1-submittable, which is in no repository of the test workflows
@@ -560,9 +521,9 @@ $ argo lint --offline --strict=false regulation-workflows/workflow-templates/ali
 > regulation-workflows/workflow-templates/alignment/.deprecated/get-rfs-alignments-tasks.yaml: in "get-rfs-alignments-tasks-v2-submittable" (WorkflowTemplate): templates.get-rfs-alignments-tasks-dag.tasks.get-rfs-alignments-tasks-url couldn't find workflow template "compute-rfs-alignments-tasks-url-v1-submittable" in namespace ""
 
 regulation-workflows/workflow-templates/alignment/.deprecated/rfs-alignments.yaml
-= missing: it calls WorkflowTemplate run-alignment-se-v1-submittable, which is in no repository of the test workflows
+= missing: it calls WorkflowTemplate run-alignment-pe-v1-submittable, which is in no repository of the test workflows
 $ argo lint --offline --strict=false regulation-workflows/workflow-templates/alignment/.deprecated/rfs-alignments.yaml regulation-workflows/workflow-templates/helpers/.deprecated/check-s3-object-exists.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-file-metadata-pvc-callable.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-pvc-size.yaml regulation-workflows/workflow-templates/helpers/.deprecated/compute-task-marker-name.yaml regulation-workflows/workflow-templates/helpers/.deprecated/copy-from-pvc-to-s3-object.yaml regulation-workflows/workflow-templates/helpers/.deprecated/copy-s3-prefix-objects-to-pvc.yaml regulation-workflows/workflow-templates/helpers/.deprecated/create-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/delete-patch-pvc-kubectl.yaml regulation-workflows/workflow-templates/helpers/.deprecated/resolve-work-avoidance.yaml regulation-workflows/workflow-templates/helpers/.deprecated/update-task-marker.yaml regulation-workflows/workflow-templates/helpers/.deprecated/validate-expected-number-of-files-in-dir.yaml
-> regulation-workflows/workflow-templates/alignment/.deprecated/rfs-alignments.yaml: in "muliple-rfs-alignments-v1-submittable" (WorkflowTemplate): templates.multiple-rfs-alignments.tasks.execute-rfs-alignment templates.rfs-alignment.tasks.execute-runs-alignment templates.run-alignment.tasks.execute-se-alignment couldn't find workflow template "run-alignment-se-v1-submittable" in namespace ""
+> regulation-workflows/workflow-templates/alignment/.deprecated/rfs-alignments.yaml: in "muliple-rfs-alignments-v1-submittable" (WorkflowTemplate): templates.multiple-rfs-alignments.tasks.execute-rfs-alignment templates.rfs-alignment.tasks.execute-runs-alignment templates.run-alignment.tasks.execute-pe-alignment couldn't find workflow template "run-alignment-pe-v1-submittable" in namespace ""
 
 regulation-workflows/workflow-templates/bowtie2/build/build-index-v-0.1.yaml
 = invalid: the name bt2_build-index has characters that Argo does not allow
@@ -718,9 +679,6 @@ $ argo lint --offline --strict=false talk-demos/argocon-demos/2023-migrating-cic
 
 talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/create-and-setup-vcluster-workflow/create.yaml
 = unsupported (decision 18): template create-vcluster is a resource template that manages Kubernetes objects of kind Application
-
-talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/demonstrating-argo-workflows-and-vcluster-at-scale/lots-of-hellos-workflow.yaml
-= unsupported (decision 18): template hello is a resource template that manages Kubernetes objects of kind Workflow
 
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/dag-example.yaml
 = unsupported (decision 18): template resource is a resource template that manages Kubernetes objects of kind Pod

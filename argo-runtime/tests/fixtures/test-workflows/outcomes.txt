@@ -228,7 +228,7 @@ argo-workflows/examples/container-set-template/workspace-workflow.yaml	ok 2
 argo-workflows/examples/continue-on-fail.yaml	ok 4
 argo-workflows/examples/cron-backfill.yaml#0	ok 1
 argo-workflows/examples/cron-backfill.yaml#1	ok 1
-argo-workflows/examples/cron-backfill.yaml#2	33 ...ates.main.steps[0].day template create-job is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/cron-backfill.yaml#2	ok 3
 argo-workflows/examples/cron-backfill.yaml#3	ok 3
 argo-workflows/examples/cron-when.yaml	ok 1
 argo-workflows/examples/cron-workflow-multiple-schedules.yaml	ok 1
@@ -287,7 +287,7 @@ argo-workflows/examples/http-hello-world.yaml	ok 2
 argo-workflows/examples/http-success-condition.yaml	ok 2
 argo-workflows/examples/image-pull-secrets.yaml	ok 1
 argo-workflows/examples/influxdb-ci.yaml	33 ...xdb-server template influxdb-server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-argo-workflows/examples/init-container.yaml	ok 1
+argo-workflows/examples/init-container.yaml	ok 2
 argo-workflows/examples/input-artifact-azure.yaml	ok 1
 argo-workflows/examples/input-artifact-gcs.yaml	ok 1
 argo-workflows/examples/input-artifact-git.yaml	ok 1
@@ -298,14 +298,14 @@ argo-workflows/examples/input-artifact-s3.yaml	ok 1
 argo-workflows/examples/intermediate-parameters.yaml	ok 1
 argo-workflows/examples/k8s-jobs.yaml	33 template rand-num is a resource template that manages Kubernetes objects of kind Job; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/k8s-orchestration.yaml	33 ...0].random-number-job template random-number-job is a resource template that manages Kubernetes objects of kind Job; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-argo-workflows/examples/k8s-owner-reference.yaml	33 template main is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/k8s-owner-reference.yaml	ok 1
 argo-workflows/examples/k8s-patch-json-pod.yaml	33 template main is a resource template that manages Kubernetes objects; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/k8s-patch-json-workflow.yaml	1 /argo-workflows/examples/k8s-patch-json-workflow.yaml:13:3: duplicate key `annotations`, first set on line 6
 argo-workflows/examples/k8s-patch-merge-pod.yaml	33 template main is a resource template that manages Kubernetes objects; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/k8s-patch-pod.yaml	33 template main is a resource template that manages Kubernetes objects of kind Pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/k8s-resource-log-selector.yaml	33 template tf-jobtmpl is a resource template that manages Kubernetes objects of kind TFJob; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/examples/k8s-set-owner-reference.yaml	33 template k8s-set-owner-reference is a resource template that manages Kubernetes objects of kind ConfigMap; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-argo-workflows/examples/k8s-wait-wf.yaml	33 ...t-wf.steps[0].create-wf template create-wf is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/k8s-wait-wf.yaml	ok 1
 argo-workflows/examples/key-only-artifact.yaml	ok 2
 argo-workflows/examples/label-value-from-workflow.yaml	ok 1
 argo-workflows/examples/life-cycle-hooks-tmpl-level.yaml	ok 6
@@ -396,7 +396,7 @@ argo-workflows/examples/work-avoidance.yaml	ok 5
 argo-workflows/examples/workflow-event-binding/event-consumer-workflowtemplate.yaml	ok 1
 argo-workflows/examples/workflow-event-binding/github-path-filter-workflowtemplate.yaml	ok 1
 argo-workflows/examples/workflow-level-executor-plugin.yaml	ok 1
-argo-workflows/examples/workflow-of-workflows.yaml	33 ...rkflow1 template resource-without-argument is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/examples/workflow-of-workflows.yaml	ok 2
 argo-workflows/examples/workflow-template/dag.yaml	ok 7
 argo-workflows/examples/workflow-template/hello-world.yaml	ok 1
 argo-workflows/examples/workflow-template/input-artifacts.yaml	ok 1
@@ -501,7 +501,7 @@ argo-workflows/test/e2e/functional/global-parameters-complex.yaml	ok 1
 argo-workflows/test/e2e/functional/global-parameters.yaml	ok 1
 argo-workflows/test/e2e/functional/hello-world.json	ok 1
 argo-workflows/test/e2e/functional/hello-world.yaml	ok 1
-argo-workflows/test/e2e/functional/init-container.yaml	ok 1
+argo-workflows/test/e2e/functional/init-container.yaml	ok 2
 argo-workflows/test/e2e/functional/input-artifact-http.yaml	ok 1
 argo-workflows/test/e2e/functional/input-artifact-optional.yaml	ok 1
 argo-workflows/test/e2e/functional/input-artifact-raw.yaml	ok 1
@@ -540,7 +540,7 @@ argo-workflows/test/e2e/functional/pause-after.yaml	ok 1
 argo-workflows/test/e2e/functional/pause-before-after.yaml	ok 1
 argo-workflows/test/e2e/functional/pause-before.yaml	ok 1
 argo-workflows/test/e2e/functional/pns-output-params.yaml	ok 2
-argo-workflows/test/e2e/functional/resource-template.yaml	33 templates.main.steps[0].a template wf1 is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+argo-workflows/test/e2e/functional/resource-template.yaml	1 workflow failed: a: workflow hello-world-adb3b ended Succeeded, and neither the success condition nor the failure condition holds; Argo would wait for it forever
 argo-workflows/test/e2e/functional/retry-container-to-completion.yaml	ok 1
 argo-workflows/test/e2e/functional/retry-container.yaml	ok 1
 argo-workflows/test/e2e/functional/retry-script.yaml	ok 1
@@ -741,7 +741,7 @@ argo-workflows/test/e2e/testdata/workflow-hook-parameter.yaml	ok 2
 argo-workflows/test/e2e/testdata/workflow-node-sync-tracing.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-otel-cli.yaml	ok 2
 argo-workflows/test/e2e/testdata/workflow-pending-metrics.yaml	ok 1
-argo-workflows/test/e2e/testdata/workflow-pod-restart.yaml	ok 1
+argo-workflows/test/e2e/testdata/workflow-pod-restart.yaml	ok 2
 argo-workflows/test/e2e/testdata/workflow-retry-metrics.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-script-tracing.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-sync-tracing.yaml	ok 1
@@ -917,7 +917,7 @@ gennext-workflows/workflows/per-sample-somatic-rna.yaml	ok 3
 gennext-workflows/workflows/post-process-cnv.yaml	ok 7
 gennext-workflows/workflows/post-process-variant-counter.yaml	ok 2
 gennext-workflows/workflows/preprocess-fastq.yaml	ok 4
-gennext-workflows/workflows/prototypes/batch-orchestrator-prototype.yaml	33 ...ess-sample template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+gennext-workflows/workflows/prototypes/batch-orchestrator-prototype.yaml	ok 0
 gennext-workflows/workflows/prototypes/debug-cnvkit-analyze.yaml	ok 1
 gennext-workflows/workflows/prototypes/debug-qc-recollect.yaml	ok 5
 gennext-workflows/workflows/prototypes/sample-worker-prototype.yaml	ok 3
@@ -942,11 +942,11 @@ gennext-workflows/workflows/wrapper-annotation.yaml	ok 1
 gennext-workflows/workflows/wrapper-workflow-prs.yaml	1 templates.wrapper-workflow-prs.tasks.prs-workflow templates.main inputs.parameters.genotype-file-name was not supplied
 gennext-workflows/workflows/wrapper-workflow-somatic.yaml	1 templates.wrapper-workflow-somatic.tasks.somatic-testing-tumor-workflow template reference somatic-testing-workflow.main not found
 gennext-workflows/workflows/wrapper-workflow.yaml	1 ...s.wrapper-workflow.tasks.rna-workflow templates.main.tasks.germline-rna-bam-workflow templates.germline-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-dna-rna.yaml	33 ...mit-sample template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-dna.yaml	33 ...mit-sample template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-fusion-gpu.yaml	33 ...mit-sample template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-fusion.yaml	33 ...mit-sample template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-gennext-workflows/workflows/wrappers/wrapper-batch-somatic-rna.yaml	33 ...mit-sample template submit-sample-workflow is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-dna-rna.yaml	ok 9
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-dna.yaml	ok 8
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-fusion-gpu.yaml	ok 7
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-fusion.yaml	ok 7
+gennext-workflows/workflows/wrappers/wrapper-batch-somatic-rna.yaml	ok 8
 gennext-workflows/workflows/wrappers/wrapper-rna.yaml	1 templates.main.tasks.run-workflow templates.main.tasks.germline-rna-bam-workflow templates.germline-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
 gennext-workflows/workflows/wrappers/wrapper-somatic-dna-rna.yaml	1 ....tasks.som-test-rna-workflow templates.main-rna.tasks.somatic-testing-rna-bam templates.somatic-testing-rna-gpu-bam.tasks.collect-qc-data couldn't find workflow template "collect-qc-data-templates"
 gennext-workflows/workflows/wrappers/wrapper-somatic-dna.yaml	ok 3
@@ -1000,7 +1000,7 @@ hera/examples/workflows/misc/env.yaml	ok 1
 hera/examples/workflows/misc/global-config.yaml	ok 1
 hera/examples/workflows/misc/hello-world.yaml	ok 1
 hera/examples/workflows/misc/http.yaml	ok 1
-hera/examples/workflows/misc/init-containers-with-env.yaml	ok 1
+hera/examples/workflows/misc/init-containers-with-env.yaml	ok 2
 hera/examples/workflows/misc/map-outputs-to-inputs.yaml	ok 4
 hera/examples/workflows/misc/multi-env.yaml	ok 1
 hera/examples/workflows/misc/resource-flags.yaml	33 ...teps[0].submit-resource template create-route is a resource template that manages Kubernetes objects of kind Route; iunctus runs workflows without Kubernetes and does not support this (decision 18)
@@ -1112,7 +1112,7 @@ hera/examples/workflows/upstream/http-hello-world.yaml	ok 2
 hera/examples/workflows/upstream/http-success-condition.yaml	ok 2
 hera/examples/workflows/upstream/image-pull-secrets.yaml	ok 1
 hera/examples/workflows/upstream/influxdb-ci.yaml	33 ...xdb-server template influxdb-server runs as a daemon, a service that later steps reach through the cluster network; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-hera/examples/workflows/upstream/init-container.yaml	ok 1
+hera/examples/workflows/upstream/init-container.yaml	ok 2
 hera/examples/workflows/upstream/input-artifact-azure.yaml	ok 1
 hera/examples/workflows/upstream/input-artifact-gcs.yaml	ok 1
 hera/examples/workflows/upstream/input-artifact-git.yaml	ok 1
@@ -1123,14 +1123,14 @@ hera/examples/workflows/upstream/input-artifact-s3.yaml	ok 1
 hera/examples/workflows/upstream/intermediate-parameters.yaml	ok 1
 hera/examples/workflows/upstream/k8s-jobs.yaml	33 template rand-num is a resource template that manages Kubernetes objects of kind Job; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/k8s-orchestration.yaml	33 ...0].random-number-job template random-number-job is a resource template that manages Kubernetes objects of kind Job; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-hera/examples/workflows/upstream/k8s-owner-reference.yaml	33 template main is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/k8s-owner-reference.yaml	ok 1
 hera/examples/workflows/upstream/k8s-patch-json-pod.yaml	33 template main is a resource template that manages Kubernetes objects; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/k8s-patch-json-workflow.yaml	33 template main is a resource template that manages Kubernetes objects; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/k8s-patch-merge-pod.yaml	33 template main is a resource template that manages Kubernetes objects; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/k8s-patch-pod.yaml	33 template main is a resource template that manages Kubernetes objects of kind Pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/k8s-resource-log-selector.yaml	33 template tf-jobtmpl is a resource template that manages Kubernetes objects of kind TFJob; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 hera/examples/workflows/upstream/k8s-set-owner-reference.yaml	33 template k8s-set-owner-reference is a resource template that manages Kubernetes objects of kind ConfigMap; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-hera/examples/workflows/upstream/k8s-wait-wf.yaml	33 ...t-wf.steps[0].create-wf template create-wf is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/k8s-wait-wf.yaml	ok 1
 hera/examples/workflows/upstream/key-only-artifact.yaml	ok 2
 hera/examples/workflows/upstream/label-value-from-workflow.yaml	ok 1
 hera/examples/workflows/upstream/life-cycle-hooks-tmpl-level.yaml	ok 6
@@ -1214,7 +1214,7 @@ hera/examples/workflows/upstream/webhdfs-input-output-artifacts.yaml	ok 1
 hera/examples/workflows/upstream/withsequence-nested-result.yaml	ok 1
 hera/examples/workflows/upstream/work-avoidance.yaml	ok 5
 hera/examples/workflows/upstream/workflow-event-binding--event-consumer-workflowtemplate.yaml	ok 1
-hera/examples/workflows/upstream/workflow-of-workflows.yaml	33 ...rkflow1 template resource-without-argument is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+hera/examples/workflows/upstream/workflow-of-workflows.yaml	ok 2
 hera/examples/workflows/upstream/workflow-template--dag.yaml	ok 7
 hera/examples/workflows/upstream/workflow-template--hello-world.yaml	ok 1
 hera/examples/workflows/upstream/workflow-template--retry-with-steps.yaml	ok 3
@@ -1231,160 +1231,160 @@ hera/examples/workflows/use_cases/spacy-inference-pipeline.yaml	ok 2
 hera/examples/workflows/use_cases/spark.yaml	ok 6
 hera/examples/workflows/use_cases/testing-templates-and-workflows.yaml	ok 2
 hera/examples/workflows/use_cases/wandb-ml-monitoring.yaml	ok 3
-hera/examples/workflows/use_cases/workflow-of-workflows.yaml	33 ...eps[0].sub-workflow-1 template w1-resource is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-pipelines/test_data/compiled-workflows/add_numbers.yaml	ok 2
-pipelines/test_data/compiled-workflows/arguments_parameters.yaml	ok 2
-pipelines/test_data/compiled-workflows/artifact_cache.yaml	ok 5
-pipelines/test_data/compiled-workflows/artifact_crust.yaml	ok 5
-pipelines/test_data/compiled-workflows/artifacts_complex.yaml	ok 6
-pipelines/test_data/compiled-workflows/artifacts_simple.yaml	ok 4
-pipelines/test_data/compiled-workflows/collected_artifacts.yaml	ok 6
-pipelines/test_data/compiled-workflows/collected_parameters.yaml	ok 6
-pipelines/test_data/compiled-workflows/component_with_env_variable.yaml	ok 2
-pipelines/test_data/compiled-workflows/component_with_metadata_fields.yaml	ok 2
-pipelines/test_data/compiled-workflows/component_with_optional_inputs.yaml	ok 2
-pipelines/test_data/compiled-workflows/component_with_pip_index_urls.yaml	ok 2
-pipelines/test_data/compiled-workflows/component_with_pip_install.yaml	ok 2
-pipelines/test_data/compiled-workflows/component_with_pip_install_in_venv.yaml	ok 2
-pipelines/test_data/compiled-workflows/components_with_optional_artifacts.yaml	ok 8
-pipelines/test_data/compiled-workflows/concat_message.yaml	ok 2
-pipelines/test_data/compiled-workflows/conditional_producer_and_consumers.yaml	ok 3
-pipelines/test_data/compiled-workflows/container_component_with_no_inputs.yaml	ok 2
-pipelines/test_data/compiled-workflows/container_io.yaml	ok 2
-pipelines/test_data/compiled-workflows/container_no_input.yaml	ok 2
-pipelines/test_data/compiled-workflows/container_with_artifact_output.yaml	ok 2
-pipelines/test_data/compiled-workflows/container_with_concat_placeholder.yaml	ok 2
-pipelines/test_data/compiled-workflows/container_with_if_placeholder.yaml	ok 2
-pipelines/test_data/compiled-workflows/container_with_if_placeholder_default.yaml	ok 2
-pipelines/test_data/compiled-workflows/container_with_placeholder_in_fstring.yaml	ok 2
-pipelines/test_data/compiled-workflows/containerized_python_component.yaml	ok 2
-pipelines/test_data/compiled-workflows/create_pod_metadata_complex.yaml	ok 4
-pipelines/test_data/compiled-workflows/cross_loop_after_topology.yaml	ok 7
-pipelines/test_data/compiled-workflows/dict_input.yaml	ok 2
-pipelines/test_data/compiled-workflows/dra_json_input_check.yaml	ok 2
-pipelines/test_data/compiled-workflows/dra_passthrough_check.yaml	ok 2
-pipelines/test_data/compiled-workflows/dra_static_claim_check.yaml	ok 2
-pipelines/test_data/compiled-workflows/embedded_artifact.yaml	ok 3
-pipelines/test_data/compiled-workflows/env-var.yaml	ok 2
-pipelines/test_data/compiled-workflows/fail_v2.yaml	ok 2
-pipelines/test_data/compiled-workflows/flip_coin.yaml	ok 4
-pipelines/test_data/compiled-workflows/hello_world.yaml	ok 2
-pipelines/test_data/compiled-workflows/identity.yaml	ok 2
-pipelines/test_data/compiled-workflows/if_elif_else_complex.yaml	ok 3
-pipelines/test_data/compiled-workflows/if_elif_else_with_oneof_parameters.yaml	ok 8
-pipelines/test_data/compiled-workflows/if_else_with_oneof_artifacts.yaml	ok 8
-pipelines/test_data/compiled-workflows/if_else_with_oneof_parameters.yaml	ok 6
-pipelines/test_data/compiled-workflows/input_artifact.yaml	ok 2
-pipelines/test_data/compiled-workflows/iris_pipeline_compiled.yaml	ok 4
-pipelines/test_data/compiled-workflows/lightweight_python_functions_pipeline.yaml	ok 3
-pipelines/test_data/compiled-workflows/lightweight_python_functions_with_outputs.yaml	ok 5
-pipelines/test_data/compiled-workflows/local_execution_pipeline_with_exit_handler.yaml	ok 4
-pipelines/test_data/compiled-workflows/local_execution_pipeline_with_ignore_upstream_failure.yaml	ok 3
-pipelines/test_data/compiled-workflows/local_execution_pipeline_with_k8s_only_methods.yaml	ok 2
-pipelines/test_data/compiled-workflows/local_execution_pipeline_with_oneof.yaml	ok 5
-pipelines/test_data/compiled-workflows/local_execution_pipeline_with_retry.yaml	ok 2
-pipelines/test_data/compiled-workflows/log_streaming_compiled.yaml	ok 2
-pipelines/test_data/compiled-workflows/long-running.yaml	ok 3
-pipelines/test_data/compiled-workflows/loop_consume_upstream.yaml	ok 4
-pipelines/test_data/compiled-workflows/metrics_visualization_v2.yaml	ok 6
-pipelines/test_data/compiled-workflows/missing_kubernetes_optional_inputs.yaml	ok 2
-pipelines/test_data/compiled-workflows/mixed_parameters.yaml	ok 5
-pipelines/test_data/compiled-workflows/modelcar.yaml	ok 4
-pipelines/test_data/compiled-workflows/mounted_cabundle_configmap.yaml	ok 2
-pipelines/test_data/compiled-workflows/mounted_cabundle_secret.yaml	ok 2
-pipelines/test_data/compiled-workflows/multiple_artifacts_namedtuple.yaml	ok 5
-pipelines/test_data/compiled-workflows/multiple_parameters_namedtuple.yaml	ok 5
-pipelines/test_data/compiled-workflows/nested_parallel_for_secret.yaml	ok 3
-pipelines/test_data/compiled-workflows/nested_pipeline_opt_input_child_level_compiled.yaml	ok 8
-pipelines/test_data/compiled-workflows/nested_pipeline_opt_inputs_nil_compiled.yaml	ok 5
-pipelines/test_data/compiled-workflows/nested_pipeline_opt_inputs_parent_level_compiled.yaml	ok 9
-pipelines/test_data/compiled-workflows/nested_return.yaml	ok 2
-pipelines/test_data/compiled-workflows/nested_with_parameters.yaml	ok 3
-pipelines/test_data/compiled-workflows/notebook_component_mixed.yaml	ok 4
-pipelines/test_data/compiled-workflows/notebook_component_simple.yaml	ok 2
-pipelines/test_data/compiled-workflows/nvidia_gpu_scheduling_check.yaml	ok 2
-pipelines/test_data/compiled-workflows/output_metrics.yaml	ok 2
-pipelines/test_data/compiled-workflows/parallel_for_after_dependency.yaml	ok 4
+hera/examples/workflows/use_cases/workflow-of-workflows.yaml	ok 2
+pipelines/test_data/compiled-workflows/add_numbers.yaml	ok 4
+pipelines/test_data/compiled-workflows/arguments_parameters.yaml	ok 4
+pipelines/test_data/compiled-workflows/artifact_cache.yaml	ok 9
+pipelines/test_data/compiled-workflows/artifact_crust.yaml	ok 9
+pipelines/test_data/compiled-workflows/artifacts_complex.yaml	ok 12
+pipelines/test_data/compiled-workflows/artifacts_simple.yaml	ok 8
+pipelines/test_data/compiled-workflows/collected_artifacts.yaml	ok 12
+pipelines/test_data/compiled-workflows/collected_parameters.yaml	ok 12
+pipelines/test_data/compiled-workflows/component_with_env_variable.yaml	ok 4
+pipelines/test_data/compiled-workflows/component_with_metadata_fields.yaml	ok 4
+pipelines/test_data/compiled-workflows/component_with_optional_inputs.yaml	ok 4
+pipelines/test_data/compiled-workflows/component_with_pip_index_urls.yaml	ok 4
+pipelines/test_data/compiled-workflows/component_with_pip_install.yaml	ok 4
+pipelines/test_data/compiled-workflows/component_with_pip_install_in_venv.yaml	ok 4
+pipelines/test_data/compiled-workflows/components_with_optional_artifacts.yaml	ok 16
+pipelines/test_data/compiled-workflows/concat_message.yaml	ok 4
+pipelines/test_data/compiled-workflows/conditional_producer_and_consumers.yaml	ok 6
+pipelines/test_data/compiled-workflows/container_component_with_no_inputs.yaml	ok 4
+pipelines/test_data/compiled-workflows/container_io.yaml	ok 4
+pipelines/test_data/compiled-workflows/container_no_input.yaml	ok 4
+pipelines/test_data/compiled-workflows/container_with_artifact_output.yaml	ok 4
+pipelines/test_data/compiled-workflows/container_with_concat_placeholder.yaml	ok 4
+pipelines/test_data/compiled-workflows/container_with_if_placeholder.yaml	ok 4
+pipelines/test_data/compiled-workflows/container_with_if_placeholder_default.yaml	ok 4
+pipelines/test_data/compiled-workflows/container_with_placeholder_in_fstring.yaml	ok 4
+pipelines/test_data/compiled-workflows/containerized_python_component.yaml	ok 4
+pipelines/test_data/compiled-workflows/create_pod_metadata_complex.yaml	ok 10
+pipelines/test_data/compiled-workflows/cross_loop_after_topology.yaml	ok 9
+pipelines/test_data/compiled-workflows/dict_input.yaml	ok 4
+pipelines/test_data/compiled-workflows/dra_json_input_check.yaml	ok 4
+pipelines/test_data/compiled-workflows/dra_passthrough_check.yaml	ok 4
+pipelines/test_data/compiled-workflows/dra_static_claim_check.yaml	ok 4
+pipelines/test_data/compiled-workflows/embedded_artifact.yaml	ok 7
+pipelines/test_data/compiled-workflows/env-var.yaml	ok 4
+pipelines/test_data/compiled-workflows/fail_v2.yaml	ok 4
+pipelines/test_data/compiled-workflows/flip_coin.yaml	ok 28
+pipelines/test_data/compiled-workflows/hello_world.yaml	ok 4
+pipelines/test_data/compiled-workflows/identity.yaml	ok 4
+pipelines/test_data/compiled-workflows/if_elif_else_complex.yaml	ok 5
+pipelines/test_data/compiled-workflows/if_elif_else_with_oneof_parameters.yaml	ok 21
+pipelines/test_data/compiled-workflows/if_else_with_oneof_artifacts.yaml	ok 20
+pipelines/test_data/compiled-workflows/if_else_with_oneof_parameters.yaml	ok 16
+pipelines/test_data/compiled-workflows/input_artifact.yaml	ok 4
+pipelines/test_data/compiled-workflows/iris_pipeline_compiled.yaml	ok 10
+pipelines/test_data/compiled-workflows/lightweight_python_functions_pipeline.yaml	ok 7
+pipelines/test_data/compiled-workflows/lightweight_python_functions_with_outputs.yaml	ok 13
+pipelines/test_data/compiled-workflows/local_execution_pipeline_with_exit_handler.yaml	ok 8
+pipelines/test_data/compiled-workflows/local_execution_pipeline_with_ignore_upstream_failure.yaml	ok 7
+pipelines/test_data/compiled-workflows/local_execution_pipeline_with_k8s_only_methods.yaml	ok 4
+pipelines/test_data/compiled-workflows/local_execution_pipeline_with_oneof.yaml	ok 13
+pipelines/test_data/compiled-workflows/local_execution_pipeline_with_retry.yaml	ok 4
+pipelines/test_data/compiled-workflows/log_streaming_compiled.yaml	ok 4
+pipelines/test_data/compiled-workflows/long-running.yaml	ok 7
+pipelines/test_data/compiled-workflows/loop_consume_upstream.yaml	ok 8
+pipelines/test_data/compiled-workflows/metrics_visualization_v2.yaml	ok 16
+pipelines/test_data/compiled-workflows/missing_kubernetes_optional_inputs.yaml	ok 4
+pipelines/test_data/compiled-workflows/mixed_parameters.yaml	ok 9
+pipelines/test_data/compiled-workflows/modelcar.yaml	ok 8
+pipelines/test_data/compiled-workflows/mounted_cabundle_configmap.yaml	ok 4
+pipelines/test_data/compiled-workflows/mounted_cabundle_secret.yaml	ok 4
+pipelines/test_data/compiled-workflows/multiple_artifacts_namedtuple.yaml	ok 9
+pipelines/test_data/compiled-workflows/multiple_parameters_namedtuple.yaml	ok 9
+pipelines/test_data/compiled-workflows/nested_parallel_for_secret.yaml	ok 5
+pipelines/test_data/compiled-workflows/nested_pipeline_opt_input_child_level_compiled.yaml	ok 20
+pipelines/test_data/compiled-workflows/nested_pipeline_opt_inputs_nil_compiled.yaml	ok 11
+pipelines/test_data/compiled-workflows/nested_pipeline_opt_inputs_parent_level_compiled.yaml	ok 21
+pipelines/test_data/compiled-workflows/nested_return.yaml	ok 4
+pipelines/test_data/compiled-workflows/nested_with_parameters.yaml	ok 5
+pipelines/test_data/compiled-workflows/notebook_component_mixed.yaml	ok 10
+pipelines/test_data/compiled-workflows/notebook_component_simple.yaml	ok 4
+pipelines/test_data/compiled-workflows/nvidia_gpu_scheduling_check.yaml	ok 4
+pipelines/test_data/compiled-workflows/output_metrics.yaml	ok 4
+pipelines/test_data/compiled-workflows/parallel_for_after_dependency.yaml	ok 8
 pipelines/test_data/compiled-workflows/parallel_for_mount_pvc.yaml	ok 3
 pipelines/test_data/compiled-workflows/parallel_for_secret.yaml	ok 2
-pipelines/test_data/compiled-workflows/parameter_cache.yaml	ok 5
-pipelines/test_data/compiled-workflows/parameter_oneof.yaml	ok 8
-pipelines/test_data/compiled-workflows/parameters_complex.yaml	ok 5
-pipelines/test_data/compiled-workflows/parameters_simple.yaml	ok 4
-pipelines/test_data/compiled-workflows/pipeline_as_exit_task.yaml	ok 7
-pipelines/test_data/compiled-workflows/pipeline_in_pipeline.yaml	ok 5
-pipelines/test_data/compiled-workflows/pipeline_in_pipeline_complex.yaml	ok 3
-pipelines/test_data/compiled-workflows/pipeline_in_pipeline_loaded_from_yaml.yaml	ok 7
-pipelines/test_data/compiled-workflows/pipeline_producer_consumer.yaml	ok 6
-pipelines/test_data/compiled-workflows/pipeline_with_after.yaml	ok 4
-pipelines/test_data/compiled-workflows/pipeline_with_artifact_custom_path.yaml	ok 3
-pipelines/test_data/compiled-workflows/pipeline_with_artifact_upload_download.yaml	ok 3
-pipelines/test_data/compiled-workflows/pipeline_with_caching.yaml	ok 2
-pipelines/test_data/compiled-workflows/pipeline_with_collected_artifacts.yaml	ok 3
-pipelines/test_data/compiled-workflows/pipeline_with_concat_placeholder.yaml	ok 2
-pipelines/test_data/compiled-workflows/pipeline_with_condition.yaml	ok 4
-pipelines/test_data/compiled-workflows/pipeline_with_condition_dynamic_task_output_custom_training_job.yaml	ok 6
-pipelines/test_data/compiled-workflows/pipeline_with_dynamic_importer_metadata.yaml	ok 4
-pipelines/test_data/compiled-workflows/pipeline_with_dynamic_task_output_custom_training_job.yaml	ok 5
-pipelines/test_data/compiled-workflows/pipeline_with_env.yaml	ok 3
-pipelines/test_data/compiled-workflows/pipeline_with_exit_handler.yaml	ok 5
-pipelines/test_data/compiled-workflows/pipeline_with_google_artifact_type.yaml	ok 4
-pipelines/test_data/compiled-workflows/pipeline_with_importer.yaml	ok 4
-pipelines/test_data/compiled-workflows/pipeline_with_importer_and_gcpc_types.yaml	ok 3
-pipelines/test_data/compiled-workflows/pipeline_with_importer_workspace.yaml	ok 10
-pipelines/test_data/compiled-workflows/pipeline_with_input_status_state.yaml	ok 4
-pipelines/test_data/compiled-workflows/pipeline_with_loops.yaml	ok 5
-pipelines/test_data/compiled-workflows/pipeline_with_loops_and_conditions.yaml	ok 5
-pipelines/test_data/compiled-workflows/pipeline_with_metadata_fields.yaml	ok 3
-pipelines/test_data/compiled-workflows/pipeline_with_metrics_outputs.yaml	ok 3
-pipelines/test_data/compiled-workflows/pipeline_with_multiple_exit_handlers.yaml	ok 11
-pipelines/test_data/compiled-workflows/pipeline_with_nested_conditions.yaml	ok 6
-pipelines/test_data/compiled-workflows/pipeline_with_nested_conditions_yaml.yaml	ok 4
+pipelines/test_data/compiled-workflows/parameter_cache.yaml	ok 9
+pipelines/test_data/compiled-workflows/parameter_oneof.yaml	ok 18
+pipelines/test_data/compiled-workflows/parameters_complex.yaml	ok 9
+pipelines/test_data/compiled-workflows/parameters_simple.yaml	ok 8
+pipelines/test_data/compiled-workflows/pipeline_as_exit_task.yaml	ok 16
+pipelines/test_data/compiled-workflows/pipeline_in_pipeline.yaml	ok 11
+pipelines/test_data/compiled-workflows/pipeline_in_pipeline_complex.yaml	ok 5
+pipelines/test_data/compiled-workflows/pipeline_in_pipeline_loaded_from_yaml.yaml	ok 15
+pipelines/test_data/compiled-workflows/pipeline_producer_consumer.yaml	ok 10
+pipelines/test_data/compiled-workflows/pipeline_with_after.yaml	ok 10
+pipelines/test_data/compiled-workflows/pipeline_with_artifact_custom_path.yaml	ok 7
+pipelines/test_data/compiled-workflows/pipeline_with_artifact_upload_download.yaml	ok 7
+pipelines/test_data/compiled-workflows/pipeline_with_caching.yaml	ok 4
+pipelines/test_data/compiled-workflows/pipeline_with_collected_artifacts.yaml	ok 5
+pipelines/test_data/compiled-workflows/pipeline_with_concat_placeholder.yaml	ok 4
+pipelines/test_data/compiled-workflows/pipeline_with_condition.yaml	ok 17
+pipelines/test_data/compiled-workflows/pipeline_with_condition_dynamic_task_output_custom_training_job.yaml	ok 17
+pipelines/test_data/compiled-workflows/pipeline_with_dynamic_importer_metadata.yaml	ok 6
+pipelines/test_data/compiled-workflows/pipeline_with_dynamic_task_output_custom_training_job.yaml	ok 13
+pipelines/test_data/compiled-workflows/pipeline_with_env.yaml	ok 7
+pipelines/test_data/compiled-workflows/pipeline_with_exit_handler.yaml	ok 11
+pipelines/test_data/compiled-workflows/pipeline_with_google_artifact_type.yaml	ok 8
+pipelines/test_data/compiled-workflows/pipeline_with_importer.yaml	ok 10
+pipelines/test_data/compiled-workflows/pipeline_with_importer_and_gcpc_types.yaml	ok 5
+pipelines/test_data/compiled-workflows/pipeline_with_importer_workspace.yaml	ok 22
+pipelines/test_data/compiled-workflows/pipeline_with_input_status_state.yaml	ok 8
+pipelines/test_data/compiled-workflows/pipeline_with_loops.yaml	ok 7
+pipelines/test_data/compiled-workflows/pipeline_with_loops_and_conditions.yaml	ok 13
+pipelines/test_data/compiled-workflows/pipeline_with_metadata_fields.yaml	ok 7
+pipelines/test_data/compiled-workflows/pipeline_with_metrics_outputs.yaml	ok 5
+pipelines/test_data/compiled-workflows/pipeline_with_multiple_exit_handlers.yaml	ok 25
+pipelines/test_data/compiled-workflows/pipeline_with_nested_conditions.yaml	ok 27
+pipelines/test_data/compiled-workflows/pipeline_with_nested_conditions_yaml.yaml	ok 28
 pipelines/test_data/compiled-workflows/pipeline_with_nested_loops.yaml	ok 3
-pipelines/test_data/compiled-workflows/pipeline_with_only_display_name.yaml	ok 2
-pipelines/test_data/compiled-workflows/pipeline_with_outputs.yaml	ok 5
-pipelines/test_data/compiled-workflows/pipeline_with_parallelfor_parallelism.yaml	ok 14
-pipelines/test_data/compiled-workflows/pipeline_with_parallelfor_pipeline_param.yaml	ok 5
-pipelines/test_data/compiled-workflows/pipeline_with_params_containing_format.yaml	ok 4
-pipelines/test_data/compiled-workflows/pipeline_with_placeholders.yaml	ok 2
-pipelines/test_data/compiled-workflows/pipeline_with_pod_metadata.yaml	ok 6
-pipelines/test_data/compiled-workflows/pipeline_with_retry.yaml	ok 2
-pipelines/test_data/compiled-workflows/pipeline_with_retry_policy.yaml	ok 2
-pipelines/test_data/compiled-workflows/pipeline_with_reused_component.yaml	ok 4
-pipelines/test_data/compiled-workflows/pipeline_with_secret_as_env.yaml	ok 3
-pipelines/test_data/compiled-workflows/pipeline_with_secret_as_volume.yaml	ok 2
-pipelines/test_data/compiled-workflows/pipeline_with_string_machine_fields_pipeline_input.yaml	ok 2
-pipelines/test_data/compiled-workflows/pipeline_with_string_machine_fields_task_output.yaml	ok 6
-pipelines/test_data/compiled-workflows/pipeline_with_submit_request.yaml	ok 3
-pipelines/test_data/compiled-workflows/pipeline_with_task_final_status.yaml	ok 5
-pipelines/test_data/compiled-workflows/pipeline_with_task_final_status_yaml.yaml	ok 4
-pipelines/test_data/compiled-workflows/pipeline_with_task_using_ignore_upstream_failure.yaml	ok 3
-pipelines/test_data/compiled-workflows/pipeline_with_utils.yaml	ok 2
-pipelines/test_data/compiled-workflows/pipeline_with_various_io_types.yaml	ok 3
-pipelines/test_data/compiled-workflows/pipeline_with_volume.yaml	ok 5
-pipelines/test_data/compiled-workflows/pipeline_with_volume_long_name.yaml	ok 3
-pipelines/test_data/compiled-workflows/pipeline_with_volume_no_cache.yaml	ok 5
-pipelines/test_data/compiled-workflows/pipeline_with_workspace.yaml	ok 3
-pipelines/test_data/compiled-workflows/placeholder_with_if_placeholder_none_input_value.yaml	ok 2
-pipelines/test_data/compiled-workflows/preprocess.yaml	ok 2
-pipelines/test_data/compiled-workflows/producer_consumer_param_pipeline.yaml	ok 3
-pipelines/test_data/compiled-workflows/pvc_mount.yaml	ok 3
-pipelines/test_data/compiled-workflows/pythonic_artifact_with_single_return.yaml	ok 3
-pipelines/test_data/compiled-workflows/pythonic_artifacts_test_pipeline.yaml	ok 3
-pipelines/test_data/compiled-workflows/pythonic_artifacts_with_list_of_artifacts.yaml	ok 3
-pipelines/test_data/compiled-workflows/pythonic_artifacts_with_multiple_returns.yaml	ok 4
-pipelines/test_data/compiled-workflows/ray_integration_compiled.yaml	ok 2
-pipelines/test_data/compiled-workflows/ray_job_integration_compiled.yaml	ok 2
-pipelines/test_data/compiled-workflows/run_as_user_cache_disabled.yaml	ok 2
-pipelines/test_data/compiled-workflows/run_as_user_cache_enabled.yaml	ok 2
-pipelines/test_data/compiled-workflows/sequential_container.yaml	ok 3
-pipelines/test_data/compiled-workflows/sequential_v2.yaml	ok 3
-pipelines/test_data/compiled-workflows/take_nap_compiled.yaml	ok 3
-pipelines/test_data/compiled-workflows/take_nap_pipeline_root_compiled.yaml	ok 3
-pipelines/test_data/compiled-workflows/two_step_pipeline.yaml	ok 3
-pipelines/test_data/compiled-workflows/two_step_pipeline_containerized.yaml	ok 3
-pipelines/test_data/compiled-workflows/upload_download_compiled.yaml	ok 4
-pipelines/test_data/compiled-workflows/xgboost_sample_pipeline.yaml	ok 9
+pipelines/test_data/compiled-workflows/pipeline_with_only_display_name.yaml	ok 4
+pipelines/test_data/compiled-workflows/pipeline_with_outputs.yaml	ok 11
+pipelines/test_data/compiled-workflows/pipeline_with_parallelfor_parallelism.yaml	ok 24
+pipelines/test_data/compiled-workflows/pipeline_with_parallelfor_pipeline_param.yaml	ok 7
+pipelines/test_data/compiled-workflows/pipeline_with_params_containing_format.yaml	ok 8
+pipelines/test_data/compiled-workflows/pipeline_with_placeholders.yaml	ok 4
+pipelines/test_data/compiled-workflows/pipeline_with_pod_metadata.yaml	ok 16
+pipelines/test_data/compiled-workflows/pipeline_with_retry.yaml	ok 4
+pipelines/test_data/compiled-workflows/pipeline_with_retry_policy.yaml	ok 4
+pipelines/test_data/compiled-workflows/pipeline_with_reused_component.yaml	ok 10
+pipelines/test_data/compiled-workflows/pipeline_with_secret_as_env.yaml	ok 7
+pipelines/test_data/compiled-workflows/pipeline_with_secret_as_volume.yaml	ok 4
+pipelines/test_data/compiled-workflows/pipeline_with_string_machine_fields_pipeline_input.yaml	ok 4
+pipelines/test_data/compiled-workflows/pipeline_with_string_machine_fields_task_output.yaml	ok 16
+pipelines/test_data/compiled-workflows/pipeline_with_submit_request.yaml	ok 7
+pipelines/test_data/compiled-workflows/pipeline_with_task_final_status.yaml	ok 11
+pipelines/test_data/compiled-workflows/pipeline_with_task_final_status_yaml.yaml	ok 8
+pipelines/test_data/compiled-workflows/pipeline_with_task_using_ignore_upstream_failure.yaml	ok 7
+pipelines/test_data/compiled-workflows/pipeline_with_utils.yaml	ok 4
+pipelines/test_data/compiled-workflows/pipeline_with_various_io_types.yaml	ok 7
+pipelines/test_data/compiled-workflows/pipeline_with_volume.yaml	ok 9
+pipelines/test_data/compiled-workflows/pipeline_with_volume_long_name.yaml	ok 5
+pipelines/test_data/compiled-workflows/pipeline_with_volume_no_cache.yaml	ok 9
+pipelines/test_data/compiled-workflows/pipeline_with_workspace.yaml	ok 7
+pipelines/test_data/compiled-workflows/placeholder_with_if_placeholder_none_input_value.yaml	ok 4
+pipelines/test_data/compiled-workflows/preprocess.yaml	ok 4
+pipelines/test_data/compiled-workflows/producer_consumer_param_pipeline.yaml	ok 7
+pipelines/test_data/compiled-workflows/pvc_mount.yaml	ok 7
+pipelines/test_data/compiled-workflows/pythonic_artifact_with_single_return.yaml	ok 5
+pipelines/test_data/compiled-workflows/pythonic_artifacts_test_pipeline.yaml	ok 7
+pipelines/test_data/compiled-workflows/pythonic_artifacts_with_list_of_artifacts.yaml	ok 5
+pipelines/test_data/compiled-workflows/pythonic_artifacts_with_multiple_returns.yaml	ok 8
+pipelines/test_data/compiled-workflows/ray_integration_compiled.yaml	ok 4
+pipelines/test_data/compiled-workflows/ray_job_integration_compiled.yaml	ok 4
+pipelines/test_data/compiled-workflows/run_as_user_cache_disabled.yaml	ok 4
+pipelines/test_data/compiled-workflows/run_as_user_cache_enabled.yaml	ok 4
+pipelines/test_data/compiled-workflows/sequential_container.yaml	ok 7
+pipelines/test_data/compiled-workflows/sequential_v2.yaml	ok 7
+pipelines/test_data/compiled-workflows/take_nap_compiled.yaml	ok 7
+pipelines/test_data/compiled-workflows/take_nap_pipeline_root_compiled.yaml	ok 7
+pipelines/test_data/compiled-workflows/two_step_pipeline.yaml	ok 7
+pipelines/test_data/compiled-workflows/two_step_pipeline_containerized.yaml	ok 7
+pipelines/test_data/compiled-workflows/upload_download_compiled.yaml	ok 10
+pipelines/test_data/compiled-workflows/xgboost_sample_pipeline.yaml	ok 25
 regulation-workflows/workflow-templates/.deprecated/ad-hoc-tasks/update-old-genrich-values-files.yaml	ok 0
 regulation-workflows/workflow-templates/.deprecated/coverage/bam-to-coverage-bedgraph-pvc-callable.yaml	ok 6
 regulation-workflows/workflow-templates/.deprecated/coverage/experiment-alignments-to-bigwig.yaml	ok 0
@@ -1524,7 +1524,7 @@ singlem-sra-processing/cloud/argo/prod_workflow_template2.yaml	ok 1
 singlem-sra-processing/cloud/argo/prod_workflow_template3.yaml	ok 1
 singlem-sra-processing/cloud/argo/prod_workflow_template4.yaml	ok 1
 singlem-sra-processing/cloud/argo/prod_workflow_template_less_than30gbp.yaml	ok 1
-singlem-sra-processing/cloud/argo/sra_weebill_workflow_template.yaml	ok 1
+singlem-sra-processing/cloud/argo/sra_weebill_workflow_template.yaml	ok 2
 singlem-sra-processing/cloud/argo/test3.yaml	ok 1
 snakemake-tutorial-argo-workflows/argo-workflows/workflows.yaml	ok 7
 snakemake-tutorial-argo-workflows/argo-workflows/workflowtemplates.yaml	ok 7
@@ -1548,7 +1548,7 @@ talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-arg
 talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/update-jira.yml	1 templates.main.tasks.update-jira templates.update-jira inputs.parameters.jira_ticket_number was not supplied
 talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/argo-workflow.yaml	1 templates.main.tasks.git-checkout templates.main.tasks.git-checkout-pr template name 'git-checkout-pr' undefined
 talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/create-and-setup-vcluster-workflow/create.yaml	33 ...reate-vcluster template create-vcluster is a resource template that manages Kubernetes objects of kind Application; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/demonstrating-argo-workflows-and-vcluster-at-scale/lots-of-hellos-workflow.yaml	33 templates.main.tasks.main template hello is a resource template that manages Kubernetes objects of kind Workflow; iunctus runs workflows without Kubernetes and does not support this (decision 18)
+talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/demonstrating-argo-workflows-and-vcluster-at-scale/lots-of-hellos-workflow.yaml	ok 170
 talk-demos/argocon-demos/2023-streamlining-big-data-workflows-with-memoization-and-work-avoidance/workflow/example.yaml	ok 2
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/container.yaml	ok 2
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/containerset.yaml	ok 3

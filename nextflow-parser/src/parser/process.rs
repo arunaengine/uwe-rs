@@ -185,9 +185,12 @@ impl Parser<'_> {
         let mut previous = None;
         let mut implicit = false;
         let mut last = (0, start);
+        let mut out_of_order = false;
         while !self.at_list_end(true) {
             if let Some(section) = self.process_label() {
-                valid &= order.accept(section.ranks()) && !implicit;
+                // Legacy syntax: the legacy parser takes the sections in any order.
+                out_of_order |= !order.accept(section.ranks());
+                valid &= !implicit;
                 // The label and its colon.
                 self.bump();
                 self.bump();
@@ -256,10 +259,12 @@ impl Parser<'_> {
                 valid = false;
             }
         }
+        let message =
+            "Invalid process definition -- check for missing or out-of-order section labels";
         if !valid {
-            let message =
-                "Invalid process definition -- check for missing or out-of-order section labels";
             self.error_at(message, process.span);
+        } else if out_of_order {
+            self.legacy_at(message, process.span);
         }
         Ok(Item::Process(Box::new(process)))
     }

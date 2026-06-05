@@ -28,7 +28,7 @@ test-workflows:
 		git -C "$work" init -q
 		git -C "$work" remote add origin "https://github.com/nf-core/$name.git"
 		git -C "$work" fetch -q --depth 1 --filter=blob:limit=1m origin "$commit"
-		git -C "$work" sparse-checkout set --no-cone '*.nf' '*.config' '*.groovy' 'nextflow_schema.json' '/CITATIONS.md'
+		git -C "$work" sparse-checkout set --no-cone '*.nf' '*.config' '*.groovy' 'nextflow_schema.json' '/CITATIONS.md' '/docs/output.md'
 		git -C "$work" checkout -q FETCH_HEAD
 		# The files of assets/, bin/, docs/images/, tests/ and templates/ that runs read; files
 		# over 1 MiB are not downloaded and stay empty, so that they exist.

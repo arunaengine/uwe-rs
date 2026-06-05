@@ -336,6 +336,9 @@ pub enum StatementKind {
     /// An include inside a block of the script, like an `if`, which only the legacy parser
     /// accepts. It takes effect when the block runs.
     Include(Include),
+    /// A process inside a block of a DSL1 script, like an `if`, which only the legacy parser
+    /// accepts. It runs when the block runs.
+    Process(Box<Process>),
     /// `break`, which only the legacy parser accepts.
     Break,
     /// `continue`, which only the legacy parser accepts.

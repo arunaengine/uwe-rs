@@ -2,9 +2,9 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use super::{Failed, Parse, Parser};
+use super::{Failed, Parse, Parser, is_name};
 use crate::ast::{
-    AssignOperator, Block, Catch, Expression, ExpressionKind, QualifiedName, Statement,
+    AssignOperator, Block, Catch, Expression, ExpressionKind, Item, QualifiedName, Statement,
     StatementKind, TypedName,
 };
 use crate::token::{Dialect, TokenKind};
@@ -36,6 +36,15 @@ impl Parser<'_> {
                 StatementKind::Empty
             }
             TokenKind::Def => self.declaration()?,
+            TokenKind::Process
+                if is_name(self.nth(1)) && self.kind_after(2) == TokenKind::LeftBrace =>
+            {
+                self.legacy_at("Unexpected input: 'process'", start);
+                let Item::Process(process) = self.process()? else {
+                    unreachable!("a process")
+                };
+                StatementKind::Process(process)
+            }
             TokenKind::Include if self.kind_after(1) == TokenKind::LeftBrace => {
                 self.legacy_at("Unexpected input: 'include'", start);
                 StatementKind::Include(self.include()?)

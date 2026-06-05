@@ -513,7 +513,23 @@ fn dsl1_scripts_call_their_processes_where_they_define_them() {
     assert_eq!(lines, ["2", "x 1 2", "x 2 4"]);
 }
 
-/// A `set` at the top of a script assigns a variable of the script, which the workflow reads,
+/// The channel operators of DSL1: `into(n)`, `Channel.create()` with `into` and `choice`,
+/// as Nextflow 22.10 runs them.
+#[test]
+fn dsl1_operators() {
+    let source = "(a, b) = Channel.from(1, 2, 3).into(2)\nsmall = Channel.create()\n\
+                  large = Channel.create()\na.choice(small, large) { it > 1 ? 1 : 0 }\n\
+                  copy = Channel.create()\nb.into(copy)\n\
+                  small.view { \"small ${it}\" }\nlarge.view { \"large ${it}\" }\n\
+                  copy.count().view { \"copies ${it}\" }\n\
+                  process P {\n    input:\n    val x from Channel.from(1)\n    script:\n    'true'\n}\n";
+    let (_, printed) = run(source, &Options::default()).expect("runs");
+    let mut lines: Vec<&str> = printed.lines().collect();
+    lines.sort_unstable();
+    assert_eq!(lines, ["copies 3", "large 2", "large 3", "small 1"]);
+}
+
+/// A `set` at the top of a script assigns/// A `set` at the top of a script assigns/// A `set` at the top of a script assigns a variable of the script, which the workflow reads,
 /// as in Nextflow 26.04.6 with the legacy parser.
 #[test]
 fn a_set_at_the_top_assigns_a_script_variable() {

@@ -1,5 +1,5 @@
 //! Operators with several outputs or ordered inputs: `branch`, `multiMap`, `concat` and
-//! `merge` (channels spec, sections 5.2, 5.8, 5.25 and 5.27).
+//! `merge` (channels spec, sections 5.2, 5.8, 5.25 and 5.27), and `into` and `choice` of DSL1.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -50,6 +50,46 @@ impl Behaviour for Route {
                     && let Some(index) = self.labels.iter().position(|l| l.java_equals(label))
                 {
                     context.emit(self.outputs[index], value.clone());
+                }
+            }
+        }
+        Ok(State::Running)
+    }
+}
+
+/// DSL1 `into(a, b)` and `choice(a, b) { ... }`: each value goes to all the channels, or to the
+/// one whose index the closure gives; the channels come from `Channel.create()`.
+pub(crate) struct Distribute {
+    pub outputs: Vec<ChannelId>,
+    pub choose: Option<Rc<Closure>>,
+}
+
+impl Behaviour for Distribute {
+    fn run(&mut self, context: &mut Context) -> Result<State, Error> {
+        while let Some(message) = context.read(0) {
+            let Message::Value(value) = message else {
+                for output in &self.outputs {
+                    context.close(*output);
+                }
+                return Ok(State::Stopped);
+            };
+            match &self.choose {
+                Some(closure) => {
+                    let index = context
+                        .interpreter
+                        .call_closure(closure, vec![value.clone()])?;
+                    let output = match index {
+                        Value::Number(index) => self.outputs.get(index.to_i64() as usize),
+                        _ => None,
+                    };
+                    if let Some(output) = output {
+                        context.emit(*output, value);
+                    }
+                }
+                None => {
+                    for output in &self.outputs {
+                        context.emit(*output, value.clone());
+                    }
                 }
             }
         }

@@ -409,11 +409,18 @@ impl Parser<'_> {
                 value,
             });
         }
+        let before = self.position;
         let expression = self.command_expression(target)?;
         if self.at(TokenKind::Comma)
             && let Some(command) = self.retry_command(start)
         {
             return Ok(StatementKind::Expression(command));
+        }
+        // Legacy syntax: a command or a call may go on as a Groovy command chain.
+        let called = matches!(expression.kind, ExpressionKind::MethodCall { .. });
+        if self.position > before || called {
+            let expression = self.command_chain(expression)?;
+            return Ok(StatementKind::Expression(expression));
         }
         Ok(StatementKind::Expression(expression))
     }

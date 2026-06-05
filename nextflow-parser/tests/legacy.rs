@@ -182,3 +182,30 @@ fn include_inside_an_if() {
     );
     assert_eq!(legacy, ["Unexpected input: 'include'"]);
 }
+
+/// The inputs and outputs of DSL1 processes are Groovy command chains: `file 'x' into a, b`
+/// calls `into(a, b)` on the result of `file('x')`.
+#[test]
+fn command_chains_of_dsl1_processes() {
+    let (kind, legacy) = expression("file 'x.txt' optional true into ch_a, ch_b\n");
+    let ExpressionKind::MethodCall {
+        target: Some(target),
+        name,
+        arguments,
+        ..
+    } = kind
+    else {
+        panic!("a call");
+    };
+    assert_eq!(name.text, "into");
+    assert_eq!(arguments.len(), 2);
+    assert!(
+        matches!(&target.kind, ExpressionKind::MethodCall { name, .. } if name.text == "optional")
+    );
+    assert_eq!(
+        legacy,
+        ["Unexpected input: 'optional'", "Unexpected input: 'into'"]
+    );
+    let (kind, _) = expression("set val(a), file(b) from ch.collect()\n");
+    assert!(matches!(kind, ExpressionKind::MethodCall { name, .. } if name.text == "from"));
+}

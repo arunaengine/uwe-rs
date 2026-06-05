@@ -23,6 +23,46 @@ impl Parser<'_> {
         Ok(self.call(target, arguments, false))
     }
 
+    /// Legacy syntax: the rest of a Groovy command chain, like `into ch` of `file 'x' into ch` in
+    /// the outputs of DSL1 processes, where a name and its arguments call that method on the
+    /// result of the command before.
+    pub(super) fn command_chain(&mut self, mut target: Expression) -> Parse<Expression> {
+        while is_name(self.peek()) && self.chain_arguments_follow() {
+            let token = self.bump();
+            let name = Name {
+                text: self.text(token).to_owned(),
+                span: token.span,
+            };
+            self.legacy_at(format!("Unexpected input: '{}'", name.text), name.span);
+            // `into (a, b)` gives the arguments in parentheses.
+            let arguments = if self.at(TokenKind::LeftParen) {
+                self.arguments()?
+            } else {
+                self.argument_list()?
+            };
+            let span = target.span;
+            target = Expression {
+                kind: ExpressionKind::MethodCall {
+                    target: Some(Box::new(target)),
+                    name,
+                    access: Access::Normal,
+                    arguments,
+                    parentheses: false,
+                },
+                span: self.span_from(span),
+            };
+        }
+        Ok(target)
+    }
+
+    /// Whether the token after the current name starts arguments on the same line.
+    fn chain_arguments_follow(&mut self) -> bool {
+        self.position += 1;
+        let follows = self.at_argument_start() || self.at(TokenKind::LeftParen);
+        self.position -= 1;
+        follows
+    }
+
     /// The `argumentList` rule: call arguments without parentheses.
     pub(super) fn argument_list(&mut self) -> Parse<Vec<Argument>> {
         let mut arguments = vec![self.argument()?];

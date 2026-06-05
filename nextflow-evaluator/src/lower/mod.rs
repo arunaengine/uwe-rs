@@ -722,6 +722,9 @@ fn script_variables(statement: &ast::Statement, top: bool, names: &mut Vec<Strin
             if let Some((_, name, _)) = workflow::set_parts(statement) {
                 add(name);
             }
+            for (name, _) in workflow::into_parts(statement).map_or(Vec::new(), |(_, n)| n) {
+                add(name);
+            }
         }
         _ => {}
     }

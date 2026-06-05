@@ -496,6 +496,23 @@ fn path_outputs_take_closures_and_lists() {
     assert_eq!(printed, "[a.xml, b.xml]\n");
 }
 
+/// A DSL1 script: each process reads `from` channels and writes `into` channels where it is
+/// defined, and the statements around it run in order, as Nextflow 22.10 runs it (decision 14).
+#[test]
+fn dsl1_scripts_call_their_processes_where_they_define_them() {
+    let source = "params.factor = 2\ndef label = 'x'\nChannel.from(1, 2).into { ch_a; ch_b }\n\
+                  process DOUBLE {\n    input:\n    val x from ch_a\n    output:\n    \
+                  set val(x), val(y) into doubled\n    script:\n    y = x * params.factor\n    \
+                  \"echo ${label}\"\n}\n\
+                  doubled.map { a, b -> \"${label} ${a} ${b}\" }.view()\nch_b.count().view()\n";
+    let (tasks, printed) = run(source, &Options::default()).expect("runs");
+    assert_eq!(tasks.len(), 2);
+    assert!(tasks[0].script.contains("echo x"), "{}", tasks[0].script);
+    let mut lines: Vec<&str> = printed.lines().collect();
+    lines.sort_unstable();
+    assert_eq!(lines, ["2", "x 1 2", "x 2 4"]);
+}
+
 /// A `set` at the top of a script assigns a variable of the script, which the workflow reads,
 /// as in Nextflow 26.04.6 with the legacy parser.
 #[test]

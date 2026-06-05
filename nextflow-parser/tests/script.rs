@@ -465,9 +465,10 @@ fn rejects_section_order() {
     \"echo\"
 }
 ";
-    assert_eq!(messages(reordered), [INVALID_PROCESS]);
+    // Legacy syntax: the legacy parser takes the sections in any order.
+    assert_eq!(legacy(reordered), [INVALID_PROCESS]);
     let repeated = "process HELLO {\n    input:\n    val x\n\n    input:\n    val y\n\n    script:\n    \"echo\"\n}\n";
-    assert_eq!(messages(repeated), [INVALID_PROCESS]);
+    assert_eq!(legacy(repeated), [INVALID_PROCESS]);
     let unlabeled = "process HELLO {\n    input:\n    val x\n}\n";
     assert_eq!(messages(unlabeled), [INVALID_PROCESS]);
 }

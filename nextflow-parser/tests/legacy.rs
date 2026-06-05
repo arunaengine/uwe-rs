@@ -209,3 +209,21 @@ fn command_chains_of_dsl1_processes() {
     let (kind, _) = expression("set val(a), file(b) from ch.collect()\n");
     assert!(matches!(kind, ExpressionKind::MethodCall { name, .. } if name.text == "from"));
 }
+
+/// The legacy parser takes the sections of a process in any order, like `when:` before
+/// `input:` in nf-core/mnaseseq.
+#[test]
+fn process_sections_in_any_order() {
+    let (items, legacy) = parse(
+        "process P {\n    when:\n    true\n    input:\n    val x\n    script:\n    'true'\n}\n",
+    );
+    let [Item::Process(process)] = items.as_slice() else {
+        panic!("a process: {items:?}");
+    };
+    assert!(process.when.is_some());
+    assert_eq!(process.inputs.len(), 1);
+    assert_eq!(
+        legacy,
+        ["Invalid process definition -- check for missing or out-of-order section labels"]
+    );
+}

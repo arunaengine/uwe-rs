@@ -57,6 +57,21 @@ impl Lowering<'_> {
                 value,
             } => {
                 let value = self.expression(value);
+                // Legacy syntax: a script of the legacy parser may set a name of its binding
+                // like `projectDir`, which keeps the value it had, as it is the same here.
+                if let Syntax::Variable(name) = &target.kind
+                    && super::names::SCRIPT_CONSTANTS.contains(&name.as_str())
+                    && *operator == AssignOperator::Assign
+                    && !self.in_process
+                    && !self.scopes.in_closure()
+                    && self.scopes.resolve(name).is_none()
+                {
+                    self.legacy("Built-in constant or namespace cannot be re-assigned", span);
+                    return Some(Statement {
+                        kind: StatementKind::Expression(value),
+                        span,
+                    });
+                }
                 let target = self.target(target)?;
                 match update(*operator) {
                     None => StatementKind::Assign { target, value },

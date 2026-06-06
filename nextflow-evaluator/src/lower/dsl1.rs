@@ -72,7 +72,7 @@ pub(super) fn convert(script: &ast::Script) -> (ast::Script, Vec<String>) {
     for item in &script.items {
         match item {
             Item::Statement(statement) => {
-                let statement = super::script_assignment(statement);
+                let statement = super::script_assignment(&into_only(statement));
                 main.extend(convert_statement(statement, &mut items, &mut channels));
             }
             Item::Process(process) => {
@@ -99,6 +99,24 @@ pub(super) fn convert(script: &ast::Script) -> (ast::Script, Vec<String>) {
         span,
     })));
     (ast::Script { items }, channels)
+}
+
+/// `x = ch.into { a; b }` as `ch.into { a; b }`: the names take the channel, and `x`, which
+/// DSL1 gave nothing useful, is left out.
+fn into_only(statement: &Statement) -> Statement {
+    if let Kind::Assign { value, .. } = &statement.kind
+        && let Syntax::MethodCall { name, .. } = &value.kind
+        && name.text == "into"
+    {
+        let candidate = Statement {
+            kind: Kind::Expression(value.clone()),
+            span: statement.span,
+        };
+        if super::workflow::into_parts(&candidate).is_some() {
+            return candidate;
+        }
+    }
+    statement.clone()
 }
 
 /// A statement of the script, with each process inside it, like one in an `if`, defined as an
@@ -136,7 +154,7 @@ fn convert_statement(
                 span,
             }]
         }
-        kind => vec![Statement { kind, span }],
+        kind => vec![into_only(&Statement { kind, span })],
     }
 }
 
@@ -167,6 +185,10 @@ fn split_process(process: &ast::Process) -> (ast::Process, Vec<Expression>, Vec<
                 sources.push(source.value.clone());
             }
             *statement = qualifier_statement(qualifier, statement.span);
+        } else if let Some((qualifier, name)) = implicit_source(statement) {
+            // An input without `from` reads the channel of its own name.
+            sources.push(variable(&name, statement.span));
+            *statement = qualifier_statement(qualifier, statement.span);
         }
     }
     let mut targets = Vec::new();
@@ -176,7 +198,11 @@ fn split_process(process: &ast::Process) -> (ast::Process, Vec<Expression>, Vec<
             continue;
         };
         let mut names = Vec::new();
-        if let Some((qualifier, arguments)) = chain_call(statement, &["into"]) {
+        if let Some(name) = stdout_target(statement) {
+            // `stdout ch` writes the standard output into `ch`.
+            names.push(name);
+            *statement = qualifier_statement(variable("stdout", statement.span), statement.span);
+        } else if let Some((qualifier, arguments)) = chain_call(statement, &["into"]) {
             names = arguments
                 .iter()
                 .filter_map(|argument| match &argument.value.kind {
@@ -194,6 +220,70 @@ fn split_process(process: &ast::Process) -> (ast::Process, Vec<Expression>, Vec<
         targets.push(names);
     }
     (process, sources, targets)
+}
+
+/// An input without `from`, like `ksize` or `val(ksize)`, and the name of the channel it
+/// reads, which is its own.
+fn implicit_source(statement: &Statement) -> Option<(Expression, String)> {
+    let Kind::Expression(expression) = &statement.kind else {
+        return None;
+    };
+    match &expression.kind {
+        Syntax::Variable(name) if name != "stdin" => Some((
+            call("val", vec![expression.clone()], expression.span),
+            name.clone(),
+        )),
+        Syntax::MethodCall {
+            target: None,
+            name,
+            arguments,
+            ..
+        } if matches!(name.text.as_str(), "val" | "file" | "path") => match arguments.as_slice() {
+            [
+                Argument {
+                    name: None,
+                    value:
+                        Expression {
+                            kind: Syntax::Variable(variable),
+                            ..
+                        },
+                },
+            ] => Some((expression.clone(), variable.clone())),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// The channel of `stdout ch`, an output that DSL1 wrote without `into`.
+fn stdout_target(statement: &Statement) -> Option<Name> {
+    let Kind::Expression(expression) = &statement.kind else {
+        return None;
+    };
+    match &expression.kind {
+        Syntax::MethodCall {
+            target: None,
+            name,
+            arguments,
+            ..
+        } if name.text == "stdout" => match arguments.as_slice() {
+            [
+                Argument {
+                    name: None,
+                    value:
+                        Expression {
+                            kind: Syntax::Variable(channel),
+                            span,
+                        },
+                },
+            ] => Some(Name {
+                text: channel.clone(),
+                span: *span,
+            }),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// The call `target.name(arguments)` that a statement is, for one of the names.
@@ -301,33 +391,29 @@ fn dsl2_qualifier(qualifier: Expression) -> Expression {
 }
 
 /// The call of a process where a DSL1 script defines it, and the names of its outputs:
-/// `P(a, b)` and `ch = P.out[0]` for `into ch`.
+/// `P.out = P(a, b)` and `ch = P.out[0]` for `into ch`. `P.out` is one variable, whose name no
+/// script can write, so that a variable of the script with the name of the process, as DSL1
+/// allows, stays apart.
 fn calls(
     process: &Name,
     sources: Vec<Expression>,
     targets: &[Vec<Name>],
     span: Span,
 ) -> Vec<Statement> {
+    let outputs = format!("{}.out", process.text);
     let mut statements = vec![Statement {
-        kind: Kind::Expression(call(&process.text, sources, span)),
+        kind: Kind::Assign {
+            target: variable(&outputs, span),
+            operator: ast::AssignOperator::Assign,
+            value: call(&process.text, sources, span),
+        },
         span,
     }];
     for (index, names) in targets.iter().enumerate() {
         for name in names {
-            let out = Expression {
-                kind: Syntax::Property {
-                    target: Box::new(variable(&process.text, span)),
-                    name: Name {
-                        text: "out".into(),
-                        span,
-                    },
-                    access: Access::Normal,
-                },
-                span,
-            };
             let value = Expression {
                 kind: Syntax::Index {
-                    target: Box::new(out),
+                    target: Box::new(variable(&outputs, span)),
                     index: vec![Expression {
                         kind: Syntax::Literal(Literal::Integer(index.to_string())),
                         span,

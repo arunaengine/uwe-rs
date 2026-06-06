@@ -260,3 +260,10 @@ fn digests_of_text() {
         "6b2b8a6ecb0c99efd1e6c0ebac6f90e5"
     );
 }
+
+/// `File.separator` and `File.pathSeparator` of Linux, as nf-core/eager reads them.
+#[test]
+fn file_separators() {
+    assert_eq!(value("'/a/b'.lastIndexOf(File.separator)"), "2");
+    assert_eq!(value("File.pathSeparator"), ":");
+}

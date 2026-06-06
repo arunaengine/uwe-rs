@@ -124,6 +124,9 @@ impl Interpreter<'_> {
             ("Double", "MAX_VALUE") => number(Number::Double(f64::MAX)),
             ("Long", "MAX_VALUE") => number(Number::Long(i64::MAX)),
             ("Long", "MIN_VALUE") => number(Number::Long(i64::MIN)),
+            // The separators of paths on Linux, where tasks run.
+            ("File", "separator") => Some(Value::string("/")),
+            ("File", "pathSeparator") => Some(Value::string(":")),
             // The kinds of files that `eachFile` and `eachFileRecurse` visit.
             ("FileType", "FILES" | "DIRECTORIES" | "ANY") => Some(Value::string(name)),
             ("Locale", "ROOT" | "US" | "UK" | "ENGLISH") => {

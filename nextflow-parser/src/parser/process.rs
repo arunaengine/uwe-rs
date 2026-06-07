@@ -196,7 +196,8 @@ impl Parser<'_> {
                 self.bump();
                 self.skip_newlines();
                 last = self.process_section(section, &mut process);
-                valid &= last.0 > 0;
+                // Legacy syntax: the legacy parser takes an empty section too.
+                out_of_order |= last.0 == 0;
                 previous = Some(section);
             } else {
                 let block = self.labeled_block(Self::at_process_label);

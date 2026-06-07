@@ -211,7 +211,7 @@ fn command_chains_of_dsl1_processes() {
 }
 
 /// The legacy parser takes the sections of a process in any order, like `when:` before
-/// `input:` in nf-core/mnaseseq.
+/// `input:` in nf-core/mnaseseq, and empty sections, like the `input:` of nf-core/exoseq.
 #[test]
 fn process_sections_in_any_order() {
     let (items, legacy) = parse(
@@ -222,6 +222,12 @@ fn process_sections_in_any_order() {
     };
     assert!(process.when.is_some());
     assert_eq!(process.inputs.len(), 1);
+    assert_eq!(
+        legacy,
+        ["Invalid process definition -- check for missing or out-of-order section labels"]
+    );
+    let (_, legacy) =
+        parse("process P {\n    input:\n\n    output:\n    stdout\n    script:\n    'true'\n}\n");
     assert_eq!(
         legacy,
         ["Invalid process definition -- check for missing or out-of-order section labels"]

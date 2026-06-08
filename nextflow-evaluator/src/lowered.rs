@@ -232,6 +232,9 @@ pub enum Input {
         slot: Option<Slot>,
         pattern: Option<Expression>,
         options: Arguments,
+        /// Whether text values are paths, as for `path`. The legacy `file` qualifier writes
+        /// every value that is not a path into a file of its own instead.
+        coerce: bool,
     },
     /// `env(NAME)`
     Env(Rc<str>),

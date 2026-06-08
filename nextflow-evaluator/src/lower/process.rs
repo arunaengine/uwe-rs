@@ -177,11 +177,13 @@ impl Lowering<'_> {
                         slot: Some(self.declare_name(variable, value.span)),
                         pattern: None,
                         options,
+                        coerce: name == "path",
                     }),
                     _ => Some(Input::Path {
                         slot: None,
                         pattern: Some(self.expression(value)),
                         options,
+                        coerce: name == "path",
                     }),
                 }
             }

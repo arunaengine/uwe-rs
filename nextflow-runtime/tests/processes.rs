@@ -23,6 +23,17 @@ impl Host for Output {
     fn launch_dir(&self) -> String {
         "/launch".into()
     }
+
+    /// Prints what would be written, as `/launch` does not exist.
+    fn write(
+        &mut self,
+        path: &PathValue,
+        bytes: &[u8],
+    ) -> Result<(), nextflow_evaluator::interpreter::Error> {
+        let text = String::from_utf8_lossy(bytes);
+        self.0.push_str(&format!("write {}: {text}\n", path.uri()));
+        Ok(())
+    }
 }
 
 /// Runs a script, finishing every task in request order: each output pattern becomes a file
@@ -232,6 +243,21 @@ fn text_paths_are_input_files() {
     assert!(
         error.contains("Not a valid path value type: java.lang.String (a.txt)"),
         "{error}"
+    );
+}
+
+/// The legacy `file` qualifier writes each value that is not a path into a file `input.N`, as
+/// with Nextflow 26.04.6 and the legacy parser.
+#[test]
+fn file_inputs_write_values_into_files() {
+    let process = "process P {\n    input:\n    path a\n    file x\n    output:\n    val x\n    \
+                   script:\n    'true'\n}\n";
+    let source = format!("{process}workflow {{\n    P('https://host/a.txt', 'Tcell').view()\n}}");
+    let (tasks, printed) = run(&source, &Options::default()).expect("runs");
+    assert_eq!(tasks[0].staged[1].1, "input.2");
+    assert_eq!(
+        printed,
+        "write /launch/work/tmp/161e9be40764b3be5916702860e57f75/input.2: Tcell\ninput.2\n"
     );
 }
 

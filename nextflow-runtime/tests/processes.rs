@@ -591,3 +591,14 @@ fn completion_handlers_read_value_channels() {
     let (_, printed) = run(source, &Options::default()).expect("runs");
     assert_eq!(printed, "reports [1, 2] 2\n");
 }
+
+/// A `shell:` section interpolates `!{expression}` and keeps `$` for the shell. Nextflow
+/// 26.04.6 with the legacy parser writes `echo 1 $HOME 2 !x \n` for this process.
+#[test]
+fn shell_sections_interpolate_placeholders() {
+    let source = "process P {\n    input:\n    val x\n    output:\n    stdout\n    shell:\n    \
+                  '''\n    echo !{x} $HOME !{x +\n    1} !x \\\\n\n    '''\n}\n\
+                  workflow {\n    P(channel.of(1))\n}\n";
+    let (tasks, _) = run(source, &Options::default()).expect("runs");
+    assert_eq!(tasks[0].script, "#!/bin/bash -ue\necho 1 $HOME 2 !x \\n\n");
+}

@@ -413,17 +413,8 @@ impl Interpreter<'_> {
             .collect();
         let statements = match (&process.stub, &process.body) {
             (Some(statements), _) if stub => statements,
-            (_, Some(body)) if matches!(body.kind, BodyKind::Script | BodyKind::Implicit) => {
-                &body.statements
-            }
-            (_, Some(body)) => {
-                let kind = if body.kind == BodyKind::Shell {
-                    "shell:"
-                } else {
-                    "exec:"
-                };
-                return Err(unsupported(format!("`{kind}` sections"), process.span));
-            }
+            (_, Some(body)) if body.kind != BodyKind::Exec => &body.statements,
+            (_, Some(_)) => return Err(unsupported("`exec:` sections", process.span)),
             (_, None) => return Err(unsupported("processes without a script", process.span)),
         };
         let script = self

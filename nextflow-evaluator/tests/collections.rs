@@ -304,3 +304,12 @@ fn methods_that_lists_lack() {
          applicable for argument types: (String) values: [.]"
     );
 }
+
+/// Array classes like `Object[]` and `isAssignableFrom`, as the `isCollectionOrArray` of older
+/// nf-core pipelines uses them; Nextflow 26.04.6 with the legacy parser gives these.
+#[test]
+fn array_classes_and_assignable_classes() {
+    let check = "def f = { x -> [Collection, Object[]].any { it.isAssignableFrom(x.getClass()) } }";
+    assert_eq!(value(&format!("{check}\nf.call([1])")), "true");
+    assert_eq!(value(&format!("{check}\nf.call('x')")), "false");
+}

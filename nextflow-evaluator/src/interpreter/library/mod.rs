@@ -99,6 +99,9 @@ impl Interpreter<'_> {
                     },
                 )),
                 ("getName", []) => Some(Value::String(class.clone())),
+                ("isAssignableFrom", [Value::Class(other)]) => {
+                    Some(Value::Boolean(crate::value::assignable(class, other)))
+                }
                 // Legacy code copies a map with `map.getClass().newInstance(map)`.
                 ("newInstance", _) => {
                     let simple = crate::value::simple_class_name(class).to_owned();

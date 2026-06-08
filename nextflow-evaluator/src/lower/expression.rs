@@ -242,6 +242,13 @@ impl Lowering<'_> {
         if let Some(qualified) = crate::value::qualified_class_name(name) {
             return Kind::Literal(Value::Class(qualified.into()));
         }
+        // Legacy syntax: `Object[]` is the class of arrays of objects, `[Ljava.lang.Object;`.
+        if let Some(qualified) = name
+            .strip_suffix("[]")
+            .and_then(crate::value::qualified_class_name)
+        {
+            return Kind::Literal(Value::Class(format!("[L{qualified};").into()));
+        }
         if CLASSES.contains(&name) {
             self.error(
                 format!("Using the class `{name}` as a value is not supported yet"),

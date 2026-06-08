@@ -247,3 +247,14 @@ fn commands_as_arguments() {
     );
     assert_eq!(legacy, ["Unexpected input: '\"x\"'"]);
 }
+
+/// `Object[]` names the class of arrays, like in `[Collection, Object[]]` of nf-core/quantms.
+#[test]
+fn array_classes() {
+    let (kind, legacy) = expression("[Collection, Object[]]\n");
+    let ExpressionKind::List(items) = kind else {
+        panic!("a list");
+    };
+    assert!(matches!(&items[1].kind, ExpressionKind::Variable(name) if name == "Object[]"));
+    assert_eq!(legacy, ["Unexpected input: '['"]);
+}

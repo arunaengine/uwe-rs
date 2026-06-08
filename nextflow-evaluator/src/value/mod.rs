@@ -21,7 +21,7 @@ use crate::exception::Exception;
 use crate::lowered::{Code, Module};
 use crate::number::Number;
 
-pub use class::{class_text, qualified_class_name, simple_class_name};
+pub use class::{assignable, class_text, qualified_class_name, simple_class_name};
 pub use compare::Relation;
 pub use key::Key;
 pub use object::{JsonOptions, Object, State, Workflow};

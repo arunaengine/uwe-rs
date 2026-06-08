@@ -339,6 +339,20 @@ impl Parser<'_> {
                     count += 1;
                     continue;
                 }
+                // Legacy syntax: `Object[]` names the class of arrays of a class.
+                TokenKind::LeftBracket
+                    if self.nth(1) == TokenKind::RightBracket
+                        && matches!(&expression.kind, ExpressionKind::Variable(name)
+                            if name.starts_with(char::is_uppercase)) =>
+                {
+                    let ExpressionKind::Variable(name) = expression.kind else {
+                        unreachable!("a name")
+                    };
+                    self.bump();
+                    let end = self.bump().span;
+                    self.legacy_at("Unexpected input: '['", end);
+                    ExpressionKind::Variable(format!("{name}[]"))
+                }
                 TokenKind::LeftBracket => {
                     // After a name, `[` that starts no index starts the list or map argument of
                     // a call without parentheses, as in `foo [k: 1]`.

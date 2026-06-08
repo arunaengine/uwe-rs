@@ -79,3 +79,52 @@ pub fn class_text(qualified: &str) -> String {
     };
     format!("{kind} {qualified}")
 }
+
+/// `to.isAssignableFrom(from)`: whether a value of the class `from` is also a `to`.
+pub fn assignable(to: &str, from: &str) -> bool {
+    if to == from || to == "java.lang.Object" {
+        return true;
+    }
+    // An array class like `[Ljava.lang.String;` is assignable to the arrays of a supertype.
+    let element = |name: &str| {
+        name.strip_prefix("[L")?
+            .strip_suffix(';')
+            .map(str::to_owned)
+    };
+    if let (Some(to), Some(from)) = (element(to), element(from)) {
+        return assignable(&to, &from);
+    }
+    let supertypes: &[&str] = match from {
+        "java.util.ArrayList"
+        | "java.util.LinkedList"
+        | "nextflow.util.ArrayTuple"
+        | "nextflow.util.BlankSeparatedList"
+        | "groovy.lang.IntRange"
+        | "groovy.lang.NumberRange"
+        | "groovy.lang.ObjectRange"
+        | "groovy.lang.EmptyRange" => &[
+            "java.util.List",
+            "java.util.Collection",
+            "java.lang.Iterable",
+        ],
+        "java.util.LinkedHashSet" | "java.util.HashSet" => &[
+            "java.util.Set",
+            "java.util.Collection",
+            "java.lang.Iterable",
+        ],
+        "java.util.LinkedHashMap" | "nextflow.util.RecordMap" | "java.util.TreeMap" => {
+            &["java.util.Map"]
+        }
+        "java.lang.String" | "org.codehaus.groovy.runtime.GStringImpl" => {
+            &["java.lang.CharSequence"]
+        }
+        "java.lang.Integer"
+        | "java.lang.Long"
+        | "java.lang.Double"
+        | "java.lang.Float"
+        | "java.math.BigDecimal"
+        | "java.math.BigInteger" => &["java.lang.Number"],
+        _ => &[],
+    };
+    supertypes.contains(&to)
+}

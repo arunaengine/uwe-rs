@@ -277,6 +277,198 @@ workflow {
         },
         "expect": [r"Missing output file\(s\) `\*.report.sourcepredict.csv`"],
     },
+    {
+        "pipelines": ["dartseq"],
+        "kind": "missing",
+        "why": "the test profile and its samplesheet name folders on the computer of the author "
+        "(`/work_ikmb/sukmb662`)",
+        "args": ["-w", "{launch}/work"],
+        "expect": [
+            "The following invalid input values have been detected",
+            r"Entry 1: Error for field 'fastq_2' \(/work_ikmb/",
+        ],
+    },
+    {
+        "pipelines": ["demultiplex", "rangeland", "smrnaseq", "spatialaxe", "spatialvi"],
+        "kind": "unsupported (decision 16)",
+        "why": "the UNTAR stub lists the files of the real archive with `tar -tf` and makes "
+        "them, which the mock executor cannot do, and the pipeline then reads those files",
+        "expect": [
+            r"\[PROCESS .*UNTAR_FLOWCELL",
+            r"\[PROCESS .*MULTIQCSAV",
+        ],
+    },
+    {
+        "pipelines": ["diseasemodulediscovery"],
+        "kind": "unsupported (decision 16)",
+        "parser": "v2",
+        "why": "GRAPHTOOLPARSER and TOPOLOGY have no stubs, so they need their Python scripts to "
+        "write the files that the pipeline reads, and the mock executor only makes up empty ones",
+        "tools": {"python": "1.0"},
+        "expect": [
+            "Error executing process > .*GRAPHTOOLPARSER",
+            r"Missing output file\(s\)",
+        ],
+    },
+    {
+        "pipelines": ["drop"],
+        "why": "the SAMTOOLS_IDXSTATS stub makes an empty file, and the pipeline reads the read "
+        "counts of its first line",
+        "tools": {"tabix": "Version: 1.21"},
+        "expect": [r"Cannot invoke method getAt\(\) on null object"],
+    },
+    {
+        "pipelines": ["epigenomesegmentation"],
+        "why": "the CUSTOM_FILTERCHROMSIZES stub makes `mm10.chrom.sizes_V2`, not the "
+        "`mm10.chrom.sizes.V2` that the process declares",
+        "expect": [r"Missing output file\(s\) `mm10.chrom.sizes.V2`"],
+    },
+    {
+        "pipelines": ["nanostring"],
+        "why": "the CREATE_ANNOTATED_TABLES stub makes `mqc.tsv`, which the declared "
+        "`*_mqc.tsv` does not match",
+        "expect": [r"Missing output file\(s\) `\*_mqc.tsv`"],
+    },
+    {
+        "pipelines": ["pairgenomealign"],
+        "why": "the LAST_SPLIT stub makes no `*.matrix.txt`, which the process declares",
+        "expect": [r"Missing output file\(s\) `\*.matrix.txt`"],
+    },
+    {
+        "pipelines": ["radseq"],
+        "jars": True,
+        "why": "workflows/radseq.nf includes subworkflows/local/fastq_fastp.nf, which the "
+        "repository does not have",
+        "args": ["--input", "{pipeline}/assets/samplesheet.csv"],
+        "expect": ["fastq_fastp"],
+    },
+    {
+        "pipelines": ["viralrecon"],
+        "why": "the FREYJA_UPDATE stub makes no `usher_barcodes.feather`, which the process "
+        "declares",
+        "expect": [r"Missing output file\(s\) `freyja_db/usher_barcodes.feather`"],
+    },
+    {
+        "pipelines": ["crisprvar", "vipr"],
+        "why": "the pipeline has no `test` profile",
+        "expect": ["Unknown configuration profile: 'test'"],
+    },
+    {
+        "pipelines": ["oncoanalyser"],
+        "why": "the CUSTOM_EXTRACTTARBALL stub makes an empty folder, and the pipeline checks "
+        "that the reference files in it exist (shown with a small script, as Nextflow first "
+        "downloads tens of gigabytes of reference data here)",
+        "reproduce": {
+            "main.nf": """process DECOMP_HMF_DATA {
+    output:
+    path 'hmf_pipeline_resources/'
+    script:
+    'true'
+    stub:
+    'mkdir -p hmf_pipeline_resources/'
+}
+
+// From subworkflows/local/prepare_reference/main.nf of nf-core/oncoanalyser.
+def getRefdataFile(filepath, ref_data_path) {
+    def data_path_noslash = ref_data_path.toString().replaceAll('/$', '')
+    return file("${data_path_noslash}/${filepath}", checkIfExists: true)
+}
+
+workflow {
+    DECOMP_HMF_DATA()
+        .map { dir -> getRefdataFile('dna/copy_number/AmberGermlineSites.38.tsv.gz', dir) }
+        .view()
+}
+""",
+        },
+        "expect": ["No such file or directory: .*AmberGermlineSites.38.tsv.gz"],
+    },
+    {
+        "pipelines": ["phaseimpute"],
+        "why": "the pipeline reads the result of `subscribe`, which Nextflow 26.04.6 gives as "
+        "null; iunctus gives the channel, as Nextflow up to 25.10 did, and then fails as those "
+        "did, because the BAMCHREXTRACT stub makes an empty list of contigs",
+        "expect": [r"Cannot invoke method toList\(\) on null object"],
+    },
+    {
+        "pipelines": ["rnadnavar"],
+        "why": "the STAR_ALIGN stub makes three files that `*d.out.bam` matches, and the "
+        "`ext.prefix` of SAMTOOLS_SORT then calls `tokenize` on the list of their names (shown "
+        "with a small script, as Nextflow first stops at TABIX_DBSNP, which needs bgzip)",
+        "reproduce": {
+            "main.nf": """// The outputs of the STAR_ALIGN stub of nf-core/rnadnavar, and SAMTOOLS_SORT with the
+// ext.prefix of conf/modules/alignment/bam_align.config.
+process STAR_ALIGN {
+    output:
+    path '*d.out.bam'
+    script:
+    'true'
+    stub:
+    'touch sXd.out.bam s.sortedByCoord.out.bam s.Aligned.sortedByCoord.out.bam'
+}
+
+process SAMTOOLS_SORT {
+    input:
+    path bam
+    script:
+    "echo ${task.ext.prefix}"
+}
+
+workflow {
+    SAMTOOLS_SORT(STAR_ALIGN())
+}
+""",
+            "nextflow.config": """process {
+    withName: 'SAMTOOLS_SORT' {
+        ext.prefix = { "s".concat('.').concat(bam.name.tokenize('.')[1]) }
+    }
+}
+""",
+        },
+        "expect": [r"No signature of method: java.util.ArrayList.tokenize\(\)"],
+    },
+    {
+        "pipelines": ["rnavar"],
+        "parser": "v2",
+        "config": "timeline.overwrite = true\nreport.overwrite = true\ntrace.overwrite = true\ndag.overwrite = true\n",
+        "why": "SAMTOOLS_SORT gets a tuple `[[:], []]`, which does not match its input "
+        "declaration",
+        "tools": {"STAR": "versionGenome 2.7.4a"},
+        "expect": [
+            "Execution aborted due to an unexpected error",
+            r"error \[nextflow.exception.ProcessUnrecoverableException\]: Input tuple does not "
+            "match tuple declaration",
+        ],
+    },
+    {
+        "pipelines": ["scrnaseq"],
+        "why": "the MTX_TO_H5AD stub makes an empty versions.yml, which "
+        "processVersionsFromYAML reads as null (shown with a small script, as Nextflow first "
+        "stops at STAR_ALIGN, which has no stub and needs STAR)",
+        "reproduce": {
+            "main.nf": """process MTX_TO_H5AD {
+    output:
+    path 'versions.yml', emit: versions
+    script:
+    'true'
+    stub:
+    'touch versions.yml'
+}
+
+// From subworkflows/nf-core/utils_nfcore_pipeline/main.nf of nf-core/scrnaseq.
+def processVersionsFromYAML(yaml_file) {
+    def yaml = new org.yaml.snakeyaml.Yaml()
+    def versions = yaml.load(yaml_file).collectEntries { k, v -> [k.tokenize(':')[-1], v] }
+    return yaml.dumpAsMap(versions).trim()
+}
+
+workflow {
+    MTX_TO_H5AD().versions.map { processVersionsFromYAML(it) }.view()
+}
+""",
+        },
+        "expect": [r"Cannot invoke method collectEntries\(\) on null object"],
+    },
 ]
 
 

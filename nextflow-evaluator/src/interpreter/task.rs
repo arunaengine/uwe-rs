@@ -6,6 +6,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use md5::Digest;
 use nextflow_parser::Span;
 use nextflow_parser::ast::BodyKind;
 
@@ -166,6 +167,7 @@ impl Interpreter<'_> {
                 slot,
                 pattern,
                 options,
+                coerce,
             } => {
                 let options = self.arguments(&mut task.frame, options)?;
                 let option = |name: &str| match options.first() {
@@ -195,7 +197,11 @@ impl Interpreter<'_> {
                     (None, Some(name)) => Some(name.to_string()),
                     (None, None) => None,
                 };
-                let staged = stage(task, value, name.as_deref(), single, span)?;
+                let value = match coerce {
+                    true => value.clone(),
+                    false => self.file_values(task, value)?,
+                };
+                let staged = stage(task, &value, name.as_deref(), single, span)?;
                 if let Some(slot) = slot {
                     task.frame.set(Place::Local(*slot), staged);
                 }
@@ -203,6 +209,42 @@ impl Interpreter<'_> {
             Input::Env(_) | Input::Stdin => {}
         }
         Ok(())
+    }
+
+    /// The values of a legacy `file` input, where each value that is not a path becomes a
+    /// file with its text, named `input.N` after the files of the task before it, as
+    /// Nextflow's `normalizeInputToFile` does. The file goes below `work/tmp` of the launch
+    /// directory, in a folder named by the MD5 hash of its text.
+    fn file_values(&mut self, task: &TaskFrame, value: &Value) -> Result<Value, Error> {
+        let items = match value {
+            Value::List(list) => list.borrow().items.clone(),
+            other => vec![other.clone()],
+        };
+        let mut count = task.staged.len();
+        let mut files = Vec::new();
+        for item in items {
+            if let Value::Path(_) = item {
+                files.push(item);
+                continue;
+            }
+            count += 1;
+            let text = match item {
+                Value::Null => String::new(),
+                other => other.to_string(),
+            };
+            let digest = md5::Md5::digest(text.as_bytes());
+            let hash: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+            let launch = self.host().launch_dir();
+            let path = PathValue::parse(&format!("work/tmp/{hash}/input.{count}"), &launch);
+            self.host().write(&path, text.as_bytes())?;
+            files.push(Value::Path(Rc::new(path)));
+        }
+        Ok(match value {
+            Value::List(_) => {
+                Value::List(Rc::new(RefCell::new(List::new(ListKind::ArrayList, files))))
+            }
+            _ => files.remove(0),
+        })
     }
 
     /// The directives of the process in source order, with their evaluated arguments.

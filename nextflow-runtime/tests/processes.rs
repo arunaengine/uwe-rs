@@ -555,7 +555,7 @@ fn dsl1_operators() {
     assert_eq!(lines, ["copies 3", "large 2", "large 3", "small 1"]);
 }
 
-/// A `set` at the top of a script assigns/// A `set` at the top of a script assigns/// A `set` at the top of a script assigns a variable of the script, which the workflow reads,
+/// A `set` at the top of a script assigns a variable of the script, which the workflow reads,
 /// as in Nextflow 26.04.6 with the legacy parser.
 #[test]
 fn a_set_at_the_top_assigns_a_script_variable() {

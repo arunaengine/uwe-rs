@@ -98,7 +98,7 @@ impl Lowering<'_> {
     /// declares it, as Nextflow's `checkSetAssignment` does; `None` for other statements.
     pub(super) fn set_statement(&mut self, statement: &ast::Statement) -> Option<Statement> {
         if let Some((target, names)) = into_parts(statement) {
-            return self.into_statement(target, &names, statement.span);
+            return self.lower_into(target, &names, statement.span);
         }
         let (target, variable, span) = set_parts(statement)?;
         let value = self.expression(target);
@@ -116,7 +116,7 @@ impl Lowering<'_> {
 impl Lowering<'_> {
     /// Legacy syntax: `ch.into { a; b }` of DSL1, which gives the channel to each name. The
     /// first name takes the channel, and the others the first.
-    fn into_statement(
+    fn lower_into(
         &mut self,
         target: &ast::Expression,
         names: &[(&str, nextflow_parser::Span)],

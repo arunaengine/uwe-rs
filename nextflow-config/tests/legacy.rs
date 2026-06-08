@@ -217,7 +217,7 @@ process.ext.args = {
     def half = { value -> value / 2 }
     \"${half(8)} ${twice(3)}\"
 }
-process.ext.prefix = { ${meta.id} }
+process.ext.prefix = { foo(1) }
 ",
     );
     assert_eq!(get(&config, &["params", "four"]), "4");

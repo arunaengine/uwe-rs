@@ -80,7 +80,7 @@ impl Interpreter<'_> {
 
     fn render_parts(&mut self, text: &str, span: Span) -> Result<String, Error> {
         if text.contains("<%") {
-            return Err(unsupported("templates with `<% %>` code", span));
+            return self.render_code(text, span);
         }
         let mut result = String::new();
         let mut rest = text;
@@ -115,25 +115,68 @@ impl Interpreter<'_> {
         Ok(result)
     }
 
-    fn template_expression(&mut self, expression: &str, span: Span) -> Result<Value, Error> {
-        let source = format!("template = {expression}");
-        let parsed = parse_config(&source);
-        let Some(ConfigStatement::Assign { value, .. }) = parsed.tree.statements.first() else {
-            return Err(unsupported(
-                format!("the template expression `{expression}`"),
-                span,
-            ));
-        };
-        if !parsed.errors.is_empty() {
-            return Err(unsupported(
-                format!("the template expression `{expression}`"),
-                span,
-            ));
+    /// A template with `<% code %>` or `<%= expression %>`, which Groovy's template engines
+    /// turn into code: each text part goes to `out` as a GString, and the code runs in place.
+    fn render_code(&mut self, text: &str, span: Span) -> Result<String, Error> {
+        let mut source = String::from("template = { ->\ndef out = []\n");
+        let mut rest = text;
+        while let Some(start) = rest.find("<%") {
+            push_text(&mut source, &rest[..start]);
+            let after = &rest[start + 2..];
+            let end = after
+                .find("%>")
+                .ok_or_else(|| unsupported("a template with an unclosed `<%`", span))?;
+            match after[..end].strip_prefix('=') {
+                Some(expression) => source.push_str(&format!("out << ({expression})\n")),
+                None => {
+                    source.push_str(&after[..end]);
+                    source.push('\n');
+                }
+            }
+            rest = &after[end + 2..];
         }
-        let code = lower_template_value(value, &source)
-            .map_err(|_| unsupported(format!("the template expression `{expression}`"), span))?;
+        push_text(&mut source, rest);
+        source.push_str("out.join('')\n}\n");
+        let what = "the code of this template";
+        let Value::Closure(closure) = self.template_value(&source, what, span)? else {
+            return Err(unsupported(what, span));
+        };
+        let result = self.call_closure_value(&closure, Vec::new(), span)?;
+        Ok(result.to_string())
+    }
+
+    fn template_expression(&mut self, expression: &str, span: Span) -> Result<Value, Error> {
+        let what = format!("the template expression `{expression}`");
+        self.template_value(&format!("template = {expression}"), &what, span)
+    }
+
+    /// The value of `template = <value>`, whose names come from the binding. `what` names the
+    /// part of the template for errors.
+    fn template_value(&mut self, source: &str, what: &str, span: Span) -> Result<Value, Error> {
+        let parsed = parse_config(source);
+        let value = match parsed.tree.statements.first() {
+            Some(ConfigStatement::Assign { value, .. }) if parsed.errors.is_empty() => value,
+            _ => return Err(unsupported(what, span)),
+        };
+        let code = lower_template_value(value, source).map_err(|_| unsupported(what, span))?;
         self.evaluate(&Rc::new(code), &Rc::new(Module::default()))
     }
+}
+
+/// Adds `out << """text"""` for a text part of a template, with `"` escaped, as Groovy's
+/// `SimpleTemplateEngine` writes it.
+fn push_text(source: &mut String, text: &str) {
+    if text.is_empty() {
+        return;
+    }
+    source.push_str("out << \"\"\"");
+    for character in text.chars() {
+        if character == '"' {
+            source.push('\\');
+        }
+        source.push(character);
+    }
+    source.push_str("\"\"\"\n");
 }
 
 /// Where the `}` that closes a `${` is: braces nest, and braces in quotes do not count.

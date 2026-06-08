@@ -478,7 +478,9 @@ fn shell_statement(statement: &mut ast::Statement) {
         StatementKind::Expression(expression) | StatementKind::Return(Some(expression)) => {
             shell_template(expression);
         }
-        StatementKind::If { then, otherwise, .. } => {
+        StatementKind::If {
+            then, otherwise, ..
+        } => {
             for block in std::iter::once(then).chain(otherwise) {
                 if let Some(last) = block.statements.last_mut() {
                     shell_statement(last);
@@ -529,10 +531,12 @@ fn shell_parts(text: &str) -> Vec<ast::GStringPart> {
             .collect();
         let parsed = nextflow_parser::parse_script(&source);
         let value = match parsed.tree.items.as_slice() {
-            [ast::Item::Statement(ast::Statement {
-                kind: StatementKind::Expression(value),
-                ..
-            })] if parsed.errors.is_empty() => value.clone(),
+            [
+                ast::Item::Statement(ast::Statement {
+                    kind: StatementKind::Expression(value),
+                    ..
+                }),
+            ] if parsed.errors.is_empty() => value.clone(),
             _ => break,
         };
         if start > 0 {

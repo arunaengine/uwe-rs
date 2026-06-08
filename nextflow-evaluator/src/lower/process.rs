@@ -54,7 +54,16 @@ impl Lowering<'_> {
         let first_section_name = self.scopes.frame_names();
         let body = process.body.as_ref().map(|body| {
             self.escape_paths = matches!(body.kind, BodyKind::Script | BodyKind::Implicit);
-            let statements = self.block(&body.block);
+            let statements = match body.kind {
+                BodyKind::Shell => {
+                    let mut block = body.block.clone();
+                    if let Some(last) = block.statements.last_mut() {
+                        shell_statement(last);
+                    }
+                    self.block(&block)
+                }
+                _ => self.block(&body.block),
+            };
             self.escape_paths = false;
             Body {
                 kind: body.kind,
@@ -458,4 +467,82 @@ fn name_or_text(value: &ast::Expression) -> Option<&str> {
         Syntax::Literal(ast::Literal::String(text)) => Some(text),
         _ => None,
     }
+}
+
+/// The script of a `shell:` section, whose text interpolates `!{expression}` instead of
+/// `${expression}` and keeps `$` for the shell, as Nextflow's `TaskTemplateEngine` does with
+/// the placeholder `!`. The strings that make the value of the section become strings that
+/// interpolate each `!{expression}`.
+fn shell_statement(statement: &mut ast::Statement) {
+    match &mut statement.kind {
+        StatementKind::Expression(expression) | StatementKind::Return(Some(expression)) => {
+            shell_template(expression);
+        }
+        StatementKind::If { then, otherwise, .. } => {
+            for block in std::iter::once(then).chain(otherwise) {
+                if let Some(last) = block.statements.last_mut() {
+                    shell_statement(last);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn shell_template(expression: &mut ast::Expression) {
+    match &mut expression.kind {
+        Syntax::Literal(ast::Literal::String(text)) if text.contains("!{") => {
+            expression.kind = Syntax::GString(shell_parts(text));
+        }
+        Syntax::GString(parts) => {
+            *parts = std::mem::take(parts)
+                .into_iter()
+                .flat_map(|part| match part {
+                    ast::GStringPart::Text(text) => shell_parts(&text),
+                    value => vec![value],
+                })
+                .collect();
+        }
+        Syntax::Parenthesized(inner) => shell_template(inner),
+        Syntax::Ternary {
+            then, otherwise, ..
+        } => {
+            shell_template(then);
+            shell_template(otherwise);
+        }
+        _ => {}
+    }
+}
+
+/// The parts of a shell text: `!{expression}` up to the next `}` is a value, as in
+/// `EscapeTemplate.processGString`, which drops the line breaks inside.
+fn shell_parts(text: &str) -> Vec<ast::GStringPart> {
+    let mut parts = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("!{") {
+        let Some(length) = rest[start..].find('}') else {
+            break;
+        };
+        let source: String = rest[start + 2..start + length]
+            .chars()
+            .filter(|c| !matches!(c, '\n' | '\r'))
+            .collect();
+        let parsed = nextflow_parser::parse_script(&source);
+        let value = match parsed.tree.items.as_slice() {
+            [ast::Item::Statement(ast::Statement {
+                kind: StatementKind::Expression(value),
+                ..
+            })] if parsed.errors.is_empty() => value.clone(),
+            _ => break,
+        };
+        if start > 0 {
+            parts.push(ast::GStringPart::Text(rest[..start].to_owned()));
+        }
+        parts.push(ast::GStringPart::Value(value));
+        rest = &rest[start + length + 1..];
+    }
+    if !rest.is_empty() {
+        parts.push(ast::GStringPart::Text(rest.to_owned()));
+    }
+    parts
 }

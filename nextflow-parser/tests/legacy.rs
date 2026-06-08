@@ -233,3 +233,17 @@ fn process_sections_in_any_order() {
         ["Invalid process definition -- check for missing or out-of-order section labels"]
     );
 }
+
+/// A command as the last argument of a command, like `exit 1, log.info "x"` of
+/// nf-core/denovohybrid, which Groovy reads as `exit(1, log.info("x"))`.
+#[test]
+fn commands_as_arguments() {
+    let (kind, legacy) = expression("exit 1, log.info \"x\"\n");
+    let ExpressionKind::MethodCall { arguments, .. } = kind else {
+        panic!("a call");
+    };
+    assert!(
+        matches!(&arguments[1].value.kind, ExpressionKind::MethodCall { name, .. } if name.text == "info")
+    );
+    assert_eq!(legacy, ["Unexpected input: '\"x\"'"]);
+}

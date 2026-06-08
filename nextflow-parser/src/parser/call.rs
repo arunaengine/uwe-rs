@@ -65,12 +65,12 @@ impl Parser<'_> {
 
     /// The `argumentList` rule: call arguments without parentheses.
     pub(super) fn argument_list(&mut self) -> Parse<Vec<Argument>> {
-        let mut arguments = vec![self.argument()?];
+        let mut arguments = vec![self.command_argument()?];
         while self.peek_past_newlines() == TokenKind::Comma {
             self.skip_newlines();
             self.bump();
             self.skip_newlines();
-            arguments.push(self.argument()?);
+            arguments.push(self.command_argument()?);
         }
         self.check_names(&arguments);
         Ok(arguments)
@@ -180,6 +180,23 @@ impl Parser<'_> {
                 self.error_at(message, name.span);
             }
         }
+    }
+
+    /// An argument of a call without parentheses. Legacy syntax: it may be a command itself,
+    /// like `log.info "x"` of `exit 1, log.info "x"`, which Groovy reads as `log.info("x")`.
+    fn command_argument(&mut self) -> Parse<Argument> {
+        let mut argument = self.argument()?;
+        if matches!(argument.value.kind, ExpressionKind::Property { .. })
+            && self.at_argument_start()
+        {
+            self.legacy_at(
+                format!("Unexpected input: '{}'", self.text(self.current())),
+                self.current().span,
+            );
+            let arguments = self.argument_list()?;
+            argument.value = self.call(argument.value, arguments, false);
+        }
+        Ok(argument)
     }
 
     /// An argument, which is named when it starts with a property name and a colon.

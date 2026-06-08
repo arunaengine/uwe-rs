@@ -1,0 +1,243 @@
+# Why each nf-core pipeline that fails in run_test_workflows.txt cannot run, and how
+# Nextflow 26.04.6 fails on it, recorded by run_evidence.py. Each block gives the
+# pipelines, then `=`, the kind (`invalid`, `missing` or `unsupported (decision N)`)
+# and why in one plain sentence, then what Nextflow was asked (`$`) and the lines of
+# its output that show it (`>`). Tools that the pipelines call are stood in by a
+# shell function that prints `1.0`.
+
+alleleexpression
+= invalid: the test profile gives no `--input` samplesheet, which the pipeline requires
+$ NXF_SYNTAX_PARSER=v1 nextflow run alleleexpression -profile test -stub-run --outdir <out>
+> [ERROR] Input samplesheet not specified!
+
+ampliseq
+= invalid: an output of CUTADAPT reads `outformat`, which only its script sets, so a stub run fails
+$ NXF_SYNTAX_PARSER=v1 nextflow run ampliseq -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No such variable: outformat
+>  -- Check script '<pipeline>/modules/nf-core/cutadapt/main.nf' at line: 14 or see '.nextflow.log' file for more details
+
+bacmodel
+= invalid: the BACMODEL_SUMMARY stub makes an empty versions.yml, which processVersionsFromYAML reads as null
+$ NXF_SYNTAX_PARSER=v1 nextflow run bacmodel -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Cannot invoke method collectEntries() on null object
+>  -- Check script '<pipeline>/subworkflows/nf-core/utils_nfcore_pipeline/main.nf' at line: 82 or see '.nextflow.log' file for more details
+
+callingcards
+= unsupported (decision 16): SEQKIT_SPLIT2 has no stub, so it needs seqkit to split the reads into the files whose names the pipeline reads, and the mock executor only makes up one file
+$ NXF_SYNTAX_PARSER=v1 nextflow run callingcards -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Error executing process > 'NFCORE_CALLINGCARDS:CALLINGCARDS:YEAST_PREPARE_READS:SEQKIT_SPLIT2 (run_6177)'
+>   Missing output file(s) `**/*.gz` expected by process `NFCORE_CALLINGCARDS:CALLINGCARDS:YEAST_PREPARE_READS:SEQKIT_SPLIT2 (run_6177)`
+
+chipseq
+pathogensurveillance
+= unsupported (decision 16): SAMPLESHEET_CHECK has no stub, so it needs its script to write the samplesheet that the pipeline reads, and the mock executor only makes up an empty file
+$ NXF_SYNTAX_PARSER=v1 nextflow run chipseq -profile test -stub-run --outdir <out>  # with a `python3` that prints '1.0', with a `Rscript` that prints '1.0'
+> [ERROR] ERROR ~ Error executing process > 'NFCORE_CHIPSEQ:CHIPSEQ:INPUT_CHECK:SAMPLESHEET_CHECK (samplesheet_test.csv)'
+>   Missing output file(s) `*.csv` expected by process `NFCORE_CHIPSEQ:CHIPSEQ:INPUT_CHECK:SAMPLESHEET_CHECK (samplesheet_test.csv)` (note: input files are not included in the default matching set)
+
+circrna
+= invalid: the MAJORITY_VOTE stub makes no `mirna.targets.tsv`, which the process declares (shown with a small script, as Nextflow first stops at SEQKIT_SPLIT, which has no stub and needs seqkit)
+$ NXF_SYNTAX_PARSER=v1 nextflow run <reproduction of circrna>/main.nf -stub-run
+>   Missing output file(s) `mirna.targets.tsv` expected by process `MAJORITY_VOTE`
+
+coproid
+= invalid: the SOURCEPREDICT stub makes `*.sourcepredict.csv`, not the `*.report.sourcepredict.csv` that the process declares (shown with a small script, as Nextflow first stops at DAMAGEPROFILER, which has no stub and needs damageprofiler)
+$ NXF_SYNTAX_PARSER=v1 nextflow run <reproduction of coproid>/main.nf -stub-run
+>   Missing output file(s) `*.report.sourcepredict.csv` expected by process `SOURCEPREDICT`
+
+crisprvar
+vipr
+= invalid: the pipeline has no `test` profile
+$ NXF_SYNTAX_PARSER=v1 nextflow run crisprvar -profile test -stub-run --outdir <out>
+> Unknown configuration profile: 'test'
+
+cutandrun
+ssds
+= invalid: an output of its TRIMGALORE ends with `emit: html optional true`, without a comma, which Nextflow reads as calling `optional` on null
+$ NXF_SYNTAX_PARSER=v1 nextflow run cutandrun -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Cannot invoke method optional() on null object
+
+daamicrobiome
+= invalid: the test profile gives lists for params that the schema types as text
+$ NXF_SYNTAX_PARSER=v1 nextflow run daamicrobiome -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Validation of pipeline parameters failed!
+> * --sim_p_da ([0.05,0.1]): Value is [array] but should be [string]
+
+dartseq
+= missing: the test profile and its samplesheet name folders on the computer of the author (`/work_ikmb/sukmb662`)
+$ NXF_SYNTAX_PARSER=v1 nextflow run dartseq -profile test -stub-run --outdir <out> -w <launch>/work
+> The following invalid input values have been detected:
+> 	-> Entry 1: Error for field 'fastq_2' (/work_ikmb/sukmb662/test-datasets/data/dartseq/fastq/A03_R2.fastq.gz): the file or directory '/work_ikmb/sukmb662/test-datasets/data/dartseq/fastq/A03_R2.fastq.gz' does not exist (FastQ file for reads 2 cannot contain spaces and must have extension '.fq.gz' or '.fastq.gz')
+
+deepmodeloptim
+= invalid: CUSTOM_MODIFY_MODEL_CONFIG emits `meta_updated`, which only its script sets, so a stub run fails
+$ NXF_SYNTAX_PARSER=v1 nextflow run deepmodeloptim -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Error executing process > 'NFCORE_DEEPMODELOPTIM:DEEPMODELOPTIM:TUNE_WF:CUSTOM_MODIFY_MODEL_CONFIG (titanic_model - #trial [])'
+>   Missing value declared as output parameter: meta_updated
+
+demultiplex
+rangeland
+smrnaseq
+spatialaxe
+spatialvi
+= unsupported (decision 16): the UNTAR stub lists the files of the real archive with `tar -tf` and makes them, which the mock executor cannot do, and the pipeline then reads those files
+$ NXF_SYNTAX_PARSER=v1 nextflow run demultiplex -profile test -stub-run --outdir <out>
+> [PROCESS 68/ca693b] NFCORE_DEMULTIPLEX:DEMULTIPLEX:UNTAR_FLOWCELL (220422_M11111_0222_000000000-K9H97.tar.gz)
+> [PROCESS bb/727f3f] NFCORE_DEMULTIPLEX:DEMULTIPLEX:BCL_DEMULTIPLEX:MULTIQCSAV (220422_M11111_0222_000000000-K9H97)
+
+denovotranscript
+= invalid: the FASTP stub makes an empty JSON report, which the pipeline parses
+$ NXF_SYNTAX_PARSER=v1 nextflow run denovotranscript -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Text must not be null or empty
+>  -- Check script '<pipeline>/subworkflows/nf-core/fastq_trim_fastp_fastqc/main.nf' at line: 15 or see '.nextflow.log' file for more details
+
+diseasemodulediscovery
+= unsupported (decision 16): GRAPHTOOLPARSER and TOPOLOGY have no stubs, so they need their Python scripts to write the files that the pipeline reads, and the mock executor only makes up empty ones
+$ nextflow run diseasemodulediscovery -profile test -stub-run --outdir <out>  # with a `python` that prints '1.0'
+> [ERROR] ERROR ~ Error executing process > 'NFCORE_DISEASEMODULEDISCOVERY:DISEASEMODULEDISCOVERY:GRAPHTOOLPARSER (entrez_ppi)'
+>   Missing output file(s) `*gt*` expected by process `NFCORE_DISEASEMODULEDISCOVERY:DISEASEMODULEDISCOVERY:GRAPHTOOLPARSER (entrez_ppi)`
+
+drop
+= invalid: the SAMTOOLS_IDXSTATS stub makes an empty file, and the pipeline reads the read counts of its first line
+$ NXF_SYNTAX_PARSER=v1 nextflow run drop -profile test -stub-run --outdir <out>  # with a `tabix` that prints 'Version: 1.21'
+> [ERROR] ERROR ~ Cannot invoke method getAt() on null object
+
+drugresponseeval
+= missing: the test profile includes conf/test.config, which the repository does not have
+$ NXF_SYNTAX_PARSER=v1 nextflow run drugresponseeval -profile test -stub-run --outdir <out>
+> ERROR ~ No such file or directory: Config file does not exist: <pipeline>/conf/test.config
+
+epigenomesegmentation
+= invalid: the CUSTOM_FILTERCHROMSIZES stub makes `mm10.chrom.sizes_V2`, not the `mm10.chrom.sizes.V2` that the process declares
+$ NXF_SYNTAX_PARSER=v1 nextflow run epigenomesegmentation -profile test -stub-run --outdir <out>
+>   Missing output file(s) `mm10.chrom.sizes.V2` expected by process `NFCORE_EPIGENOMESEGMENTATION:EPIGENOMESEGMENTATION:PREPARE_GENOME:CUSTOM_FILTERCHROMSIZES (mm10.chrom.sizes)`
+
+evexplorer
+= invalid: main.nf gives PIPELINE_INITIALISATION 6 of its 8 inputs
+$ NXF_SYNTAX_PARSER=v1 nextflow run evexplorer -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Workflow `PIPELINE_INITIALISATION` declares 8 input channels but 6 were given
+
+genomeassembler
+= invalid: the FASTPLONG stub makes an empty JSON report, which the pipeline parses
+$ NXF_SYNTAX_PARSER=v1 nextflow run genomeassembler -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Unable to determine the current character, it is not a string, number, array, or object
+>  -- Check script '<pipeline>/subworkflows/local/prepare/main.nf' at line: 208 or see '.nextflow.log' file for more details
+
+genomicrelatedness
+= invalid: the test profile sets neither `--input` nor `--fasta`, which the schema requires
+$ NXF_SYNTAX_PARSER=v1 nextflow run genomicrelatedness -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Validation of pipeline parameters failed!
+> * Missing required parameter(s): input
+> * Missing required parameter(s): fasta
+
+gwas
+= missing: the test samplesheet samplesheet_gwas_test.csv is gone from nf-core/test-datasets
+$ NXF_SYNTAX_PARSER=v1 nextflow run gwas -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Validation of pipeline parameters failed!
+> * --input (https://raw.githubusercontent.com/nf-core/test-datasets/gwas/samplesheets/samplesheet_gwas_test.csv): the file or directory 'https://raw.githubusercontent.com/nf-core/test-datasets/gwas/samplesheets/samplesheet_gwas_test.csv' does not exist
+
+hgtseq
+= invalid: the test samplesheet has no column `input1`, which the pipeline requires
+$ NXF_SYNTAX_PARSER=v1 nextflow run hgtseq -profile test -stub-run --outdir <out>  # with the Java libraries of nf-validation 1.1.3 in lib/
+> [ERROR] ERROR ~ ERROR: Please check input samplesheet -> a column named input1 with either fastq or bam/cram input is mandatory!
+
+mag
+= invalid: an output of UNTAR reads `output_dir`, which only its script sets, so a stub run fails
+$ NXF_SYNTAX_PARSER=v1 nextflow run mag -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No such variable: output_dir
+>  -- Check script '<pipeline>/modules/nf-core/untar/main.nf' at line: 14 or see '.nextflow.log' file for more details
+
+magmap
+= invalid: the CHECK_DUPLICATES stub reads `outfile`, which only its script sets
+$ NXF_SYNTAX_PARSER=v1 nextflow run magmap -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Error executing process > 'NFCORE_MAGMAP:MAGMAP:CHECK_DUPLICATES'
+>   No such variable: outfile -- Check script '<pipeline>/modules/local/check_duplicates/main.nf' at line: 32
+
+marsseq
+= invalid: the test profile reads the genome from the output folder of an earlier run
+$ NXF_SYNTAX_PARSER=v1 nextflow run marsseq -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No such file or directory: <out>/references/mm10/GRCm39.fa
+
+mcmicro
+= invalid: the PRELUDE_MULTI_SUMMARY stub makes an empty error table, which the pipeline takes as a failed quality check
+$ NXF_SYNTAX_PARSER=v1 nextflow run mcmicro -profile test -stub-run --outdir <out>
+> [ERROR] QC Error found
+
+meerpipe
+= missing: its config reads `PSRDB_URL`, the address of the pulsar database of its authors, from the environment
+$ NXF_SYNTAX_PARSER=v1 nextflow run meerpipe -profile test -stub-run --outdir <out>
+> ERROR ~ Unknown config attribute `params.PSRDB_URL` -- check config file: <pipeline>/nextflow.config
+
+methylong
+= invalid: the PORECHOP stub gzips a file onto its own input, which gzip refuses
+$ NXF_SYNTAX_PARSER=v1 nextflow run methylong -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Error executing process > 'NFCORE_METHYLONG:METHYLONG:ONT:ONT_TRIM_REPAIR:PORECHOP_PORECHOP (homo_sapiens)'
+>   gzip: homo_sapiens.fastq.gz already exists;	not overwritten
+
+mspepid
+= invalid: the COMETCONFIG stub reads `params_file`, which only its script sets
+$ NXF_SYNTAX_PARSER=v1 nextflow run mspepid -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Error executing process > 'NFCORE_MSPEPID:MSPEPID:SPECTRA_IDENTIFICATION:COMETCONFIG (1)'
+>   No such variable: params_file -- Check script '<pipeline>/modules/local/cometconfig/main.nf' at line: 60
+
+nanostring
+= invalid: the CREATE_ANNOTATED_TABLES stub makes `mqc.tsv`, which the declared `*_mqc.tsv` does not match
+$ NXF_SYNTAX_PARSER=v1 nextflow run nanostring -profile test -stub-run --outdir <out>
+>   Missing output file(s) `*_mqc.tsv` expected by process `NFCORE_NANOSTRING:NANOSTRING:CREATE_ANNOTATED_TABLES (samplesheet_test.csv)`
+
+oncoanalyser
+= invalid: the CUSTOM_EXTRACTTARBALL stub makes an empty folder, and the pipeline checks that the reference files in it exist (shown with a small script, as Nextflow first downloads tens of gigabytes of reference data here)
+$ NXF_SYNTAX_PARSER=v1 nextflow run <reproduction of oncoanalyser>/main.nf -stub-run
+> [ERROR] ERROR ~ No such file or directory: <task>/hmf_pipeline_resources/dna/copy_number/AmberGermlineSites.38.tsv.gz
+
+pairgenomealign
+= invalid: the LAST_SPLIT stub makes no `*.matrix.txt`, which the process declares
+$ NXF_SYNTAX_PARSER=v1 nextflow run pairgenomealign -profile test -stub-run --outdir <out>
+>   Missing output file(s) `*.matrix.txt` expected by process `NFCORE_PAIRGENOMEALIGN:PAIRGENOMEALIGN:PAIRALIGN_M2O:ALIGNMENT_SPLIT_O2O (MT192765___genome-OY074094)`
+
+phaseimpute
+= invalid: the pipeline reads the result of `subscribe`, which Nextflow 26.04.6 gives as null; iunctus gives the channel, as Nextflow up to 25.10 did, and then fails as those did, because the BAMCHREXTRACT stub makes an empty list of contigs
+$ NXF_SYNTAX_PARSER=v1 nextflow run phaseimpute -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Cannot invoke method toList() on null object
+
+radseq
+= invalid: workflows/radseq.nf includes subworkflows/local/fastq_fastp.nf, which the repository does not have
+$ NXF_SYNTAX_PARSER=v1 nextflow run radseq -profile test -stub-run --outdir <out> --input <pipeline>/assets/samplesheet.csv  # with the Java libraries of nf-validation 1.1.3 in lib/
+> [ERROR] ERROR ~ No such file or directory: Can't find a matching module file for include: ../subworkflows/local/fastq_fastp
+
+references
+= invalid: main.nf uses the `publish:` section of the workflow outputs of Nextflow 24.10, which Nextflow 26.04.6 no longer accepts
+$ NXF_SYNTAX_PARSER=v1 nextflow run references -profile test -stub-run --outdir <out>
+> - cause: Invalid workflow publish statement @ line 97, column 5.
+
+rnadnavar
+= invalid: the STAR_ALIGN stub makes three files that `*d.out.bam` matches, and the `ext.prefix` of SAMTOOLS_SORT then calls `tokenize` on the list of their names (shown with a small script, as Nextflow first stops at TABIX_DBSNP, which needs bgzip)
+$ NXF_SYNTAX_PARSER=v1 nextflow run <reproduction of rnadnavar>/main.nf -stub-run
+>   No signature of method: java.util.ArrayList.tokenize() is applicable for argument types: (String) values: [.]
+
+rnavar
+= invalid: SAMTOOLS_SORT gets a tuple `[[:], []]`, which does not match its input declaration
+$ nextflow run rnavar -profile test -stub-run --outdir <out> -c extra.config  # extra.config: timeline.overwrite = true; report.overwrite = true; trace.overwrite = true; dag.overwrite = true, with a `STAR` that prints 'versionGenome 2.7.4a'
+> [ERROR] ERROR ~ Execution aborted due to an unexpected error
+>   error [nextflow.exception.ProcessUnrecoverableException]: Input tuple does not match tuple declaration in process `NFCORE_RNAVAR:RNAVAR:FASTQ_ALIGN_STAR:BAM_SORT_STATS_SAMTOOLS_TRANSCRIPTOME:SAMTOOLS_SORT` -- offending value: [[:], []]
+
+scdownstream
+= invalid: the CELLDEX_FETCHREFERENCE stub makes an empty versions.yml, which processVersionsFromYAML reads as null
+$ NXF_SYNTAX_PARSER=v1 nextflow run scdownstream -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Cannot invoke method collectEntries() on null object
+>  -- Check script '<pipeline>/subworkflows/nf-core/utils_nfcore_pipeline/main.nf' at line: 82 or see '.nextflow.log' file for more details
+
+scrnaseq
+= invalid: the MTX_TO_H5AD stub makes an empty versions.yml, which processVersionsFromYAML reads as null (shown with a small script, as Nextflow first stops at STAR_ALIGN, which has no stub and needs STAR)
+$ NXF_SYNTAX_PARSER=v1 nextflow run <reproduction of scrnaseq>/main.nf -stub-run
+> [ERROR] ERROR ~ Cannot invoke method collectEntries() on null object
+
+variantcatalogue
+= invalid: the test profile names assets/samplesheet.csv relative to the folder where the run starts, so it only runs from the folder of the pipeline
+$ NXF_SYNTAX_PARSER=v1 nextflow run variantcatalogue -profile test -stub-run --outdir <out>  # with the Java libraries of nf-validation 1.1.3 in lib/
+> [ERROR] ERROR ~ No such file or directory: <launch>/assets/samplesheet.csv
+
+viralrecon
+= invalid: the FREYJA_UPDATE stub makes no `usher_barcodes.feather`, which the process declares
+$ NXF_SYNTAX_PARSER=v1 nextflow run viralrecon -profile test -stub-run --outdir <out>
+>   Missing output file(s) `freyja_db/usher_barcodes.feather` expected by process `NFCORE_VIRALRECON:VIRALRECON:BAM_VARIANT_DEMIX_BOOT_FREYJA:FREYJA_UPDATE (freyja_db)`

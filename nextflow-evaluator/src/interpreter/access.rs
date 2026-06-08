@@ -729,9 +729,13 @@ impl Interpreter<'_> {
                     state: State::Yaml,
                 }))))
             }
-            (None, []) if class == "SimpleTemplateEngine" => {
+            // Both engines render the templates of nf-core pipelines the same way.
+            (None, []) if class == "SimpleTemplateEngine" || class == "GStringTemplateEngine" => {
                 Ok(Value::Object(Rc::new(std::cell::RefCell::new(Object {
-                    class: "groovy.text.SimpleTemplateEngine",
+                    class: match class {
+                        "SimpleTemplateEngine" => "groovy.text.SimpleTemplateEngine",
+                        _ => "groovy.text.GStringTemplateEngine",
+                    },
                     state: State::TemplateEngine,
                 }))))
             }

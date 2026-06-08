@@ -233,6 +233,20 @@ fn simple_template_engine() {
     );
 }
 
+/// Code in a template, as nf-core's email templates have, which Groovy 4 renders as
+/// `'Run yes and - 1,- 2 "quoted" x\n\n2'` with both engines.
+#[test]
+fn template_code() {
+    let template = r#"'Run <% if (ok) { out << "yes" } else { out << """no""" } %> and <%= list.collect { "- $it" }.join(",") %> "quoted" $name\\n\n<% out << list.size() %>'"#;
+    assert_eq!(
+        value(&format!(
+            "new groovy.text.GStringTemplateEngine().createTemplate({template})\
+             .make([ok: true, list: [1, 2], name: 'x']).toString()"
+        )),
+        "Run yes and - 1,- 2 \"quoted\" x\n\n2"
+    );
+}
+
 /// Characters from `as char` compute and compare with their codes, as in Nextflow 26.04.6.
 #[test]
 fn characters() {

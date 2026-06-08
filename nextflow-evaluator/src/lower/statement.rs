@@ -63,6 +63,7 @@ impl Lowering<'_> {
                     && super::names::SCRIPT_CONSTANTS.contains(&name.as_str())
                     && *operator == AssignOperator::Assign
                     && !self.in_process
+                    && !self.in_function
                     && !self.scopes.in_closure()
                     && self.scopes.resolve(name).is_none()
                 {

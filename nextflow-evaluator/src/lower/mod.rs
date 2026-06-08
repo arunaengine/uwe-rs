@@ -331,6 +331,8 @@ pub(crate) struct Lowering<'a> {
     escape_paths: bool,
     /// Whether the code belongs to a process, where `task` and `template` exist.
     in_process: bool,
+    /// Whether the code is the body of a function, which cannot set a constant of the script.
+    in_function: bool,
     /// Whether assigning an undeclared name declares it, as in process and workflow sections.
     implicit_declarations: bool,
     /// Whether the code is a config value, which knows fewer names than a script.
@@ -368,6 +370,7 @@ impl<'a> Lowering<'a> {
             in_gstring: false,
             escape_paths: false,
             in_process: false,
+            in_function: false,
             implicit_declarations: false,
             config: false,
             dynamic_names: false,
@@ -433,7 +436,9 @@ impl<'a> Lowering<'a> {
                 }
             })
             .collect();
+        self.in_function = true;
         let body = self.statements(&function.body.statements);
+        self.in_function = false;
         let layout = self.scopes.pop_frame();
         Code {
             name: function.name.text.as_str().into(),

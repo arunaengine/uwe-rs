@@ -17,6 +17,7 @@ mod labels;
 pub mod numpy;
 mod options;
 mod parse;
+pub mod polars;
 mod query;
 mod read;
 mod reshape;

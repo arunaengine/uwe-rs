@@ -73,6 +73,7 @@ const NATIVE: &[&str] = &[
     "statistics",
     "uuid",
     "pandas",
+    "polars",
     "numpy",
     "urllib",
     "urllib.parse",
@@ -456,6 +457,7 @@ pub fn native(interpreter: &mut Interpreter, name: &str) -> Result<Option<Value>
             }))));
         }
         "pandas" => crate::pandas::module(),
+        "polars" => crate::pandas::polars::module(),
         "numpy" => crate::pandas::numpy::module(),
         "urllib" => vec![],
         "concurrent" => vec![],

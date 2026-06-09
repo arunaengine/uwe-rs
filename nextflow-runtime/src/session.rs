@@ -102,7 +102,7 @@ impl Host for Session<'_> {
     }
 
     /// `getVal()` of a value channel after the run gives its value, as completion handlers
-    /// read it.
+    /// read it, and of a queue channel that nothing reads its first value.
     fn operator(
         &mut self,
         source: &Value,
@@ -114,6 +114,12 @@ impl Host for Session<'_> {
             && network.is_value(*channel)
         {
             return Ok(Some(network.bound(*channel).unwrap_or(Value::Null)));
+        }
+        if let (Some(network), Value::Channel(channel), "getVal" | "getValue", []) =
+            (self.network, source, name, arguments.as_slice())
+            && let Some(value) = network.first_unread(*channel)
+        {
+            return Ok(Some(value));
         }
         self.base.operator(source, name, arguments)
     }

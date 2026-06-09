@@ -40,6 +40,8 @@ pub enum State {
     Locale(Rc<str>),
     /// `byte[]`, which like every Java array is only equal to itself.
     Bytes(Rc<[u8]>),
+    /// The writer of `path.withWriter { w -> ... }`, with the text written so far.
+    Writer(String),
     /// `java.security.MessageDigest`, by its algorithm.
     Digest(&'static str),
     /// An object of a plugin class that is known by its text, like fgbio's `ReadStructure`.

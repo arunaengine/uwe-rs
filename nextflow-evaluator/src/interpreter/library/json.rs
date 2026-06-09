@@ -120,6 +120,29 @@ impl Interpreter<'_> {
         if let Some(value) = self.org_json_method(object, name, arguments, span)? {
             return Ok(Some(value));
         }
+        if let State::Writer(text) = &mut object.borrow_mut().state {
+            return Ok(Some(match (name, arguments) {
+                ("write" | "print" | "append", [value]) | ("leftShift", [value]) => {
+                    text.push_str(&value.to_string());
+                    if name == "leftShift" || name == "append" {
+                        Value::Object(object.clone())
+                    } else {
+                        Value::Null
+                    }
+                }
+                ("println", [value]) => {
+                    text.push_str(&value.to_string());
+                    text.push('\n');
+                    Value::Null
+                }
+                ("newLine" | "println", []) => {
+                    text.push('\n');
+                    Value::Null
+                }
+                ("flush" | "close", []) => Value::Null,
+                _ => return Ok(None),
+            }));
+        }
         match &object.borrow().state {
             State::Bytes(bytes) => return Ok(super::bytes::bytes_method(bytes, name, arguments)),
             State::Digest(algorithm) => {

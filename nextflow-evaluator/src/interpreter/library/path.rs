@@ -169,6 +169,25 @@ impl Interpreter<'_> {
                 }
                 return Ok(Some(Value::list(paths)));
             }
+            // Groovy's `withWriter`: the closure writes into a writer, whose text becomes the
+            // file.
+            ("withWriter", [.., Value::Closure(closure)]) => {
+                let writer = Rc::new(std::cell::RefCell::new(crate::value::Object {
+                    class: "java.io.BufferedWriter",
+                    state: crate::value::State::Writer(String::new()),
+                }));
+                let result = self.call_closure_value(
+                    closure,
+                    vec![Value::Object(writer.clone())],
+                    span,
+                )?;
+                let text = match &writer.borrow().state {
+                    crate::value::State::Writer(text) => text.clone(),
+                    _ => String::new(),
+                };
+                self.host.write(path, text.as_bytes()).map_err(host_error)?;
+                return Ok(Some(result));
+            }
             ("setText" | "write", [text]) => {
                 let text = text.to_string();
                 self.host.write(path, text.as_bytes()).map_err(host_error)?;
@@ -307,6 +326,10 @@ impl Interpreter<'_> {
             _ => return Ok(None),
         }
         Ok(Some(match name {
+            "getBytes" => {
+                let bytes = self.host.read(path).map_err(|error| error.or_at(span))?;
+                super::bytes::bytes(bytes)
+            }
             "getText" | "readLines" => {
                 let bytes = self.host.read(path).map_err(|error| error.or_at(span))?;
                 let text = String::from_utf8_lossy(&bytes).into_owned();

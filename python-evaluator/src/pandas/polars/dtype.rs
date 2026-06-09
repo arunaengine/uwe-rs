@@ -156,3 +156,23 @@ pub fn cast(interpreter: &mut Interpreter, value: &Value, dtype: DType) -> Resul
         },
     })
 }
+
+/// The type of text read from a file: whole numbers, else numbers, else booleans, else texts.
+pub fn infer(values: &[Value]) -> DType {
+    let texts: Vec<&str> = values.iter().filter_map(Value::as_str).collect();
+    if texts.is_empty() {
+        return DType::Null;
+    }
+    if texts.iter().all(|text| text.parse::<i64>().is_ok()) {
+        DType::Int("Int64")
+    } else if texts.iter().all(|text| text.parse::<f64>().is_ok()) {
+        DType::Float("Float64")
+    } else if texts
+        .iter()
+        .all(|text| matches!(text.to_ascii_lowercase().as_str(), "true" | "false"))
+    {
+        DType::Boolean
+    } else {
+        DType::String
+    }
+}

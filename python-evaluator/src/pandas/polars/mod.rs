@@ -20,6 +20,7 @@ use frame::{PolarsFrame, record_names, record_value};
 use lazy::LazyFrame;
 use series::PolarsSeries;
 
+use super::{DataFrame, flag, is_missing};
 use crate::error::Error;
 use crate::interpreter::Interpreter;
 use crate::modules::function;
@@ -30,6 +31,13 @@ pub fn module() -> Vec<(&'static str, Value)> {
         ("DataFrame", Value::native(Class::DataFrame)),
         ("LazyFrame", Value::native(Class::LazyFrame)),
         ("Series", Value::native(Class::Series)),
+        ("read_csv", function("read_csv", read_csv)),
+        (
+            "scan_csv",
+            function("scan_csv", |interpreter, args| {
+                Ok(LazyFrame::value(read_csv(interpreter, args)?))
+            }),
+        ),
         ("concat", function("concat", concat)),
         (
             "col",
@@ -152,6 +160,119 @@ fn data_frame(interpreter: &mut Interpreter, data: Option<Value>) -> Result<Valu
     }
     let dtypes = columns.iter().map(|column| DType::of(column)).collect();
     Ok(PolarsFrame::value(names, columns, dtypes))
+}
+
+/// `pl.read_csv(source, separator=",", has_header=True, schema=None, schema_overrides=None,
+/// null_values=None)`. Empty fields and the null values become nulls; the other fields
+/// take the type of the schema, or the type that all fields of their column fit.
+fn read_csv(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
+    let source = args.take(0, "source").ok_or_else(|| {
+        Error::type_error("read_csv() missing 1 required positional argument: 'source'")
+    })?;
+    let separator = args
+        .take_keyword("separator")
+        .unwrap_or_else(|| Value::str(","));
+    let has_header = flag(interpreter, &mut args, "has_header", true)?;
+    let schema = args.take_keyword("schema").filter(|value| !value.is_none());
+    let overrides = args
+        .take_keyword("schema_overrides")
+        .or_else(|| args.take_keyword("dtypes"))
+        .filter(|value| !value.is_none());
+    let null_values = args
+        .take_keyword("null_values")
+        .filter(|value| !value.is_none());
+    // Read every field as text; empty fields are the only missing ones.
+    let mut read_args = Args::new(vec![source]);
+    read_args.keywords = vec![
+        (Rc::from("sep"), separator),
+        (Rc::from("dtype"), Value::str("str")),
+        (Rc::from("keep_default_na"), Value::Bool(false)),
+        (Rc::from("na_values"), Value::list(vec![Value::str("")])),
+    ];
+    if !has_header {
+        read_args.keywords.push((Rc::from("header"), Value::None));
+    }
+    let table = match super::read::read(interpreter, read_args, ",") {
+        Err(failure) if failure.is("EmptyDataError") => {
+            return Err(error("NoDataError", "empty CSV"));
+        }
+        result => result?,
+    };
+    let data = table
+        .as_native::<DataFrame>()
+        .map(DataFrame::data)
+        .ok_or_else(|| Error::type_error("read_csv() did not read a table"))?;
+    let mut names = Vec::with_capacity(data.columns.len());
+    for (position, label) in data.columns.values.iter().enumerate() {
+        names.push(if has_header {
+            interpreter.to_str(label)?
+        } else {
+            format!("column_{}", position + 1)
+        });
+    }
+    let mut dtypes: Vec<Option<DType>> = vec![None; names.len()];
+    if let Some(schema) = &schema {
+        for (position, (name, dtype)) in interpreter.mapping_items(schema)?.into_iter().enumerate()
+        {
+            if position < names.len() {
+                names[position] = interpreter.to_str(&name)?;
+                dtypes[position] = Some(dtype::of_value(&dtype)?);
+            }
+        }
+    }
+    if let Some(overrides) = &overrides {
+        for (name, dtype) in interpreter.mapping_items(overrides)? {
+            let name = interpreter.to_str(&name)?;
+            if let Some(position) = names.iter().position(|known| *known == name) {
+                dtypes[position] = Some(dtype::of_value(&dtype)?);
+            }
+        }
+    }
+    let mut columns = Vec::with_capacity(names.len());
+    let mut types = Vec::with_capacity(names.len());
+    for (position, column) in data.data.into_iter().enumerate() {
+        let nulls = match &null_values {
+            Some(null_values) => null_texts(interpreter, null_values, &names[position])?,
+            None => Vec::new(),
+        };
+        let texts: Vec<Value> = column
+            .into_iter()
+            .map(|value| match value.as_str() {
+                Some(text) if nulls.iter().any(|null| null == text) => Value::None,
+                _ if is_missing(&value) => Value::None,
+                _ => value,
+            })
+            .collect();
+        let dtype = dtypes[position].unwrap_or_else(|| dtype::infer(&texts));
+        let mut values = Vec::with_capacity(texts.len());
+        for text in &texts {
+            values.push(dtype::cast(interpreter, text, dtype)?);
+        }
+        columns.push(values);
+        types.push(dtype);
+    }
+    Ok(PolarsFrame::value(names, columns, types))
+}
+
+/// The texts that `null_values` makes null in a column: one text, a list, or a dict by column.
+fn null_texts(
+    interpreter: &mut Interpreter,
+    null_values: &Value,
+    column: &str,
+) -> Result<Vec<String>, Error> {
+    let values = match null_values.plain() {
+        Value::Str(text) => return Ok(vec![text.to_string()]),
+        Value::Dict(_) => match record_value(null_values, column) {
+            Value::None => return Ok(Vec::new()),
+            Value::Str(text) => return Ok(vec![text.to_string()]),
+            other => interpreter.iterate(&other)?,
+        },
+        _ => interpreter.iterate(null_values)?,
+    };
+    values
+        .iter()
+        .map(|value| interpreter.to_str(value))
+        .collect()
 }
 
 /// `pl.concat(items)`: the rows of tables with the same columns, one table after the other.

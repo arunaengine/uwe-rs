@@ -40,3 +40,15 @@ print(df.head(2).height, pl.concat([df, df]).height)
 lazy = df.lazy().filter(pl.col("a") > 1)
 print(isinstance(lazy, pl.LazyFrame), isinstance(df, pl.LazyFrame), lazy.collect()["a"].to_list())
 print(pl.concat([lazy, lazy]).collect().height)
+
+# CSV files.
+schema = {"sample": pl.String, "condition": pl.String, "n": pl.UInt8, "score": pl.Float64}
+typed = pl.read_csv("polars_samples.tsv", separator="\t", schema=schema, null_values="NA")
+print(typed.dtypes, typed[1, "n"], typed[2, "n"], typed.to_dicts())
+inferred = pl.read_csv("polars_samples.tsv", separator="\t", null_values=["NA"])
+print(inferred.dtypes, inferred["n"].to_list(), inferred["score"].to_list())
+text = pl.read_csv("polars_samples.tsv", separator="\t")
+print(text.dtypes, text["n"].to_list())
+scanned = pl.scan_csv("polars_samples.tsv", separator="\t", null_values="NA")
+cases = scanned.filter(pl.col("condition") == "case").collect()
+print(isinstance(scanned, pl.LazyFrame), cases["sample"].to_list())

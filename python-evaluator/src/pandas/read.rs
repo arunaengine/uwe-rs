@@ -152,7 +152,7 @@ fn text_option(
     }
 }
 
-fn read(
+pub(super) fn read(
     interpreter: &mut Interpreter,
     mut args: Args,
     default_separator: &str,

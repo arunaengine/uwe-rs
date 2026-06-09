@@ -1,0 +1,32 @@
+# validate() on polars tables: a DataFrame takes the defaults of the schema into its nulls
+# and new columns, a LazyFrame is only checked.
+import polars as pl
+from snakemake.utils import validate
+
+samples = pl.read_csv(
+    "samples.tsv",
+    separator="\t",
+    schema={"sample": pl.String, "n": pl.UInt8},
+    null_values="NA",
+)
+validate(samples, "samples.schema.yaml")
+lazy = pl.scan_csv("samples.tsv", separator="\t", null_values="NA")
+validate(lazy, "samples.schema.yaml")
+
+
+rule all:
+    input:
+        expand(
+            "{sample}.txt",
+            sample=samples.filter(pl.col("tissue").eq("blood"))["sample"].to_list(),
+        ),
+
+
+rule make:
+    output:
+        "{sample}.txt",
+    params:
+        n=lambda wildcards: samples.filter(pl.col("sample") == wildcards.sample)[0, "n"],
+        columns=samples.columns,
+    shell:
+        "echo {params.n} {params.columns} > {output}"

@@ -325,3 +325,51 @@ fn error(class: &str, message: impl Into<String>) -> Error {
         vec![Value::str(message.into())],
     ))
 }
+
+/// The rows of a polars table as Snakemake's `validate` checks them: dicts without nulls,
+/// and for a `LazyFrame` only its first 1000 rows. `None` for other values.
+pub fn records(value: &Value) -> Option<Vec<Value>> {
+    let (frame, limit) = match value.as_native::<LazyFrame>() {
+        Some(lazy) => (lazy.frame()?, 1000),
+        None => (value.as_native::<PolarsFrame>()?, usize::MAX),
+    };
+    Some(
+        frame
+            .records()
+            .into_iter()
+            .take(limit)
+            .map(|record| Value::dict_of(record.into_iter().filter(|(_, value)| !value.is_none())))
+            .collect(),
+    )
+}
+
+/// Takes the defaults of validated rows into a polars `DataFrame`, as Snakemake does: the
+/// columns that only the rows have are added, and each null cell takes the value at the same
+/// row and column position of the table of the rows. A `LazyFrame` stays as it is.
+pub fn fill(interpreter: &mut Interpreter, value: &Value, records: &[Value]) -> Result<(), Error> {
+    let Some(frame) = value.as_native::<PolarsFrame>() else {
+        return Ok(());
+    };
+    let names = record_names(interpreter, records)?;
+    let known = frame.names();
+    let rows = frame.data.borrow().rows();
+    for name in names.iter().filter(|name| !known.contains(name)) {
+        frame.set_column(name, vec![Value::None; rows]);
+    }
+    let mut data = frame.data.borrow_mut();
+    let width = data.data.len();
+    for (row, record) in records.iter().enumerate().take(rows) {
+        for column in 0..width {
+            if data.data[column][row].is_none()
+                && let Some(name) = names.get(column)
+            {
+                data.data[column][row] = record_value(record, name);
+            }
+        }
+    }
+    let mut dtypes = frame.dtypes.borrow_mut();
+    for column in known.len()..width {
+        dtypes[column] = DType::of(&data.data[column]);
+    }
+    Ok(())
+}

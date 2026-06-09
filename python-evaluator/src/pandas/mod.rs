@@ -195,10 +195,13 @@ fn missing_test(interpreter: &mut Interpreter, args: Args, missing: bool) -> Res
     Ok(test(&value))
 }
 
-/// The rows of a data frame as dicts without missing values, or `None` for other values, as
-/// Snakemake's `validate` checks them.
+/// The rows of a pandas or polars data frame as dicts without missing values, or `None` for
+/// other values, as Snakemake's `validate` checks them.
 pub fn records(interpreter: &mut Interpreter, value: &Value) -> Result<Option<Vec<Value>>, Error> {
     let _ = interpreter;
+    if let Some(records) = polars::records(value) {
+        return Ok(Some(records));
+    }
     let Some(frame) = value.as_native::<DataFrame>() else {
         return Ok(None);
     };
@@ -218,12 +221,14 @@ pub fn records(interpreter: &mut Interpreter, value: &Value) -> Result<Option<Ve
 }
 
 /// Takes the values of validated rows, which may hold defaults, into a data frame: new
-/// columns start as `None`, and every value of a row replaces the table's value.
+/// columns start as `None`, and every value of a row replaces the table's value. A polars
+/// table takes them as `polars::fill` does.
 pub fn fill_from_records(
     interpreter: &mut Interpreter,
     frame: &Value,
     records: &[Value],
 ) -> Result<(), Error> {
+    polars::fill(interpreter, frame, records)?;
     let Some(frame) = frame.as_native::<DataFrame>() else {
         return Ok(());
     };

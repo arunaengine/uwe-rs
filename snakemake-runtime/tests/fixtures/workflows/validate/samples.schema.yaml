@@ -1,0 +1,12 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+properties:
+  sample:
+    type: string
+  n:
+    type: integer
+    default: 0
+  tissue:
+    type: string
+    default: blood
+required:
+  - sample

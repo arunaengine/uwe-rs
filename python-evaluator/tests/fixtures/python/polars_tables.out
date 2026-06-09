@@ -11,3 +11,11 @@ ColumnNotFoundError
 ['1', '2', '3']
 [{'b': 'x', 'x': 1}, {'b': 'y', 'x': 2}, {'b': None, 'x': 3}]
 InvalidOperationError
+[2, 3]
+[2]
+['y']
+[3, 2, 1]
+[None, 'x', 'y']
+2 6
+True False [2, 3]
+4

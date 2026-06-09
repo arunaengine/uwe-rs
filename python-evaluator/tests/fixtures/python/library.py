@@ -62,3 +62,7 @@ def opened(name) -> "logging.Logger":
 
 
 print(callable(opened), logging.Logger.__name__)
+from git import Repo
+from git.exc import InvalidGitRepositoryError
+import git
+print(issubclass(InvalidGitRepositoryError, Exception), git.exc.InvalidGitRepositoryError.__name__)

@@ -232,6 +232,13 @@ impl Interpreter {
         Ok(globals)
     }
 
+    /// Runs statements given as text in the given globals, like `exec(text, globals)`.
+    pub fn exec_text(&mut self, path: &str, text: &str, globals: &Rc<Scope>) -> Result<(), Error> {
+        let suite = Interpreter::parse(path, text)?;
+        let frame = Frame::module(globals.clone(), Source::new(path, text));
+        self.run(&suite, &frame)
+    }
+
     /// Evaluates one expression given as text, with the given globals.
     pub fn eval_text(&mut self, text: &str, globals: &Rc<Scope>) -> Result<Value, Error> {
         let parsed = ruff_python_parser::parse_expression(text)

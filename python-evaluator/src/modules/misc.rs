@@ -1911,6 +1911,38 @@ pub fn placeholder(_name: &str) -> Vec<(&'static str, Value)> {
     Vec::new()
 }
 
+/// GitPython (`git`), which comes with Snakemake: code can import its classes and exceptions;
+/// reading a repository is not supported.
+pub fn git(name: &str) -> Vec<(&'static str, Value)> {
+    let exceptions: Vec<(&'static str, Value)> = [
+        ("GitError", "Exception"),
+        ("InvalidGitRepositoryError", "GitError"),
+        ("NoSuchPathError", "GitError"),
+        ("GitCommandError", "GitError"),
+        ("GitCommandNotFound", "GitError"),
+        ("BadName", "GitError"),
+    ]
+    .into_iter()
+    .map(|(class, base)| {
+        (
+            class,
+            Value::Class(types::library_exception(class, "git.exc", base)),
+        )
+    })
+    .collect();
+    if name == "git.exc" {
+        return exceptions;
+    }
+    let mut entries = exceptions;
+    entries.push((
+        "Repo",
+        Value::builtin("Repo", |_, _| {
+            Err(Error::unsupported("reading git repositories with git.Repo"))
+        }),
+    ));
+    entries
+}
+
 /// The constants of `tkinter` that name sides and directions, which code imports for
 /// other purposes; the widgets are not there.
 pub fn tkinter() -> Vec<(&'static str, Value)> {

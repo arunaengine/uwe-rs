@@ -5,8 +5,8 @@
 use super::section::{LabelOrder, section_block, section_end};
 use super::{Parse, Parser};
 use crate::ast::{
-    Agent, BinaryOperator, BodyKind, ExpressionKind, Item, NamedOutput, Process, ProcessBody,
-    ProcessInput, Statement, StatementKind, TypedName,
+    Agent, BinaryOperator, BodyKind, Expression, ExpressionKind, Item, Literal, NamedOutput,
+    Process, ProcessBody, ProcessInput, Statement, StatementKind, TypedName,
 };
 use crate::token::TokenKind;
 use crate::{Diagnostic, Span};
@@ -251,10 +251,16 @@ impl Parser<'_> {
         }
         if previous.is_some() && process.body.is_none() {
             // The official parser takes the last statement as the body and then rejects it,
-            // unless that would leave the last section empty.
+            // unless that would leave the last section empty. Legacy syntax: the legacy parser
+            // takes a last string for the script.
             let allowed = previous != Some(ProcessSection::When) && process.stub.is_none();
             let (count, span) = last;
-            if valid && allowed && order.valid[0] && count > 1 {
+            if let Some(statement) = last_script(&mut process, previous) {
+                self.legacy_at(MISSING_LABEL, statement.span);
+                let block = section_block(vec![statement], span);
+                let kind = BodyKind::Implicit;
+                process.body = Some(ProcessBody { kind, block });
+            } else if valid && allowed && order.valid[0] && count > 1 {
                 self.error_at(MISSING_LABEL, span);
             } else {
                 valid = false;
@@ -271,17 +277,20 @@ impl Parser<'_> {
     }
 
     /// Makes the statements of a process without labels its script body. The official parser
-    /// takes all but the last statement as directives, which then need a label.
+    /// takes all but the last statement as directives, which then need a label. Legacy
+    /// syntax: the legacy parser takes them as directives, and the last one as the script.
     fn implicit_body(&mut self, process: &mut Process) {
-        let statements = std::mem::take(&mut process.directives);
-        let Some(last) = statements.last() else {
+        let mut statements = std::mem::take(&mut process.directives);
+        let Some(last) = statements.pop() else {
             self.error_at("Missing process script body", process.span);
             return;
         };
-        if statements.len() > 1 {
-            self.error_at(MISSING_LABEL, last.span);
+        if !statements.is_empty() {
+            self.legacy_at(MISSING_LABEL, last.span);
+            self.check_directives(&statements, "Invalid process directive");
         }
-        let block = section_block(statements, process.span);
+        process.directives = statements;
+        let block = section_block(vec![last], process.span);
         let kind = BodyKind::Implicit;
         process.body = Some(ProcessBody { kind, block });
     }
@@ -466,6 +475,41 @@ impl ProcessSection {
             ProcessSection::Body(_) => [5, 3],
             ProcessSection::Stub => [6, 4],
         }
+    }
+}
+
+/// The last statement of the last section when it is a string, which the legacy parser takes
+/// for the script of a process without `script:`, as nf-core/ddamsproteomics has.
+fn last_script(process: &mut Process, section: Option<ProcessSection>) -> Option<Statement> {
+    let is_string = |statement: &Statement| {
+        matches!(
+            &statement.kind,
+            StatementKind::Expression(Expression {
+                kind: ExpressionKind::Literal(Literal::String(_)) | ExpressionKind::GString(_),
+                ..
+            })
+        )
+    };
+    match section? {
+        ProcessSection::Input => match process.inputs.last() {
+            Some(ProcessInput::Statement(statement)) if is_string(statement) => {
+                match process.inputs.pop() {
+                    Some(ProcessInput::Statement(statement)) => Some(statement),
+                    _ => None,
+                }
+            }
+            _ => None,
+        },
+        ProcessSection::Output => match process.outputs.last() {
+            Some(NamedOutput::Statement(statement)) if is_string(statement) => {
+                match process.outputs.pop() {
+                    Some(NamedOutput::Statement(statement)) => Some(statement),
+                    _ => None,
+                }
+            }
+            _ => None,
+        },
+        _ => None,
     }
 }
 

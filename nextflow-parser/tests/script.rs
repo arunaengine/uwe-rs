@@ -427,6 +427,8 @@ fn implicit_after_when() {
     assert_eq!(kind, Some(BodyKind::Implicit));
 }
 
+/// Legacy syntax: without `script:`, the legacy parser takes the last string for the script,
+/// and the statements before it for directives, as Nextflow 26.04.6 runs both processes.
 #[test]
 fn requires_script_label() {
     let inputs = "process HELLO {
@@ -439,9 +441,14 @@ fn requires_script_label() {
     \"\"\"
 }
 ";
-    assert_eq!(messages(inputs), [MISSING_LABEL]);
+    assert_eq!(legacy(inputs), [MISSING_LABEL]);
     let directives = "process HELLO {\n    cpus 2\n\n    \"echo hello\"\n}\n";
-    assert_eq!(messages(directives), [MISSING_LABEL]);
+    assert_eq!(legacy(directives), [MISSING_LABEL]);
+    let items = parse(directives);
+    let Some(Item::Process(process)) = items.first() else {
+        panic!("a process");
+    };
+    assert_eq!(process.directives.len(), 1);
 }
 
 #[test]

@@ -2,7 +2,7 @@
 # the number of tasks, or the exit code (33 for unsupported features) and the first line
 # of the error.
 catalog/3d-omics__hg_genotype ok 61
-catalog/AToL-Bioinformatics__genome-launcher-workflow 1 workflow/Snakefile:5: ModuleNotFoundError: No module named 'git'
+catalog/AToL-Bioinformatics__genome-launcher-workflow 1 workflow/Snakefile:8: ModuleNotFoundError: No module named 'giturlparse'
 catalog/Addimator__compare_meth 1 workflow/rules/common.smk:7: FileNotFoundError: [Errno 2] No such file or directory: '/projects/koesterlab/benchmark-methylation/data_analysis_jochen/compare_meth/config/sample.tsv'
 catalog/Addimator__varlociraptor-copy-number-variants ok 9
 catalog/Albinam1__bioinformatics_school 1 workflow/rules/mapping.smk:34: WorkflowError: Not all output, log and benchmark files of rule map_reads_with_minimap contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
@@ -392,7 +392,7 @@ catalog/snakemake-workflows__cellranger-multi 1 workflow/Snakefile:20: WorkflowE
 catalog/snakemake-workflows__cyrcular-calling ok 1
 catalog/snakemake-workflows__dna-seq-benchmark 1 workflow/rules/common.smk:456: WorkflowError: InputFunctionException in rule all (wildcards: ): JSONDecodeError: Expecting value: line 1 char 0 (the workflow read results/variants/giab-na12878-exome.truth.cov-lc_low.stats.json, a task output that the mock run made without its content)
 catalog/snakemake-workflows__dna-seq-gatk-variant-calling 1 workflow/rules/common.smk:44: WorkflowError: InputFunctionException in rule merge_variants (wildcards: ): TypeError: read_table() got an unexpected keyword argument 'squeeze' (the workflow read resources/genome.fasta.fai, a task output that the mock run made without its content)
-catalog/snakemake-workflows__dna-seq-mtb 1 workflow/rules/common.smk:1: ModuleNotFoundError: No module named 'yte'
+catalog/snakemake-workflows__dna-seq-mtb 1 https://raw.githubusercontent.com/snakemake-workflows/dna-seq-varlociraptor/v6.10.1/workflow/rules/common.smk:1309: WorkflowError: InputFunctionException in rule vembrane_table (wildcards: group=patient-a, event=somatic_or_germline_pathogenic_risk_factor_drug_response, calling_type=variants): Type
 catalog/snakemake-workflows__dna-seq-short-read-circle-map ok 1
 catalog/snakemake-workflows__dna-seq-varlociraptor 1 workflow/rules/common.smk:1318: WorkflowError: InputFunctionException in rule vembrane_table (wildcards: group=SRR702070_group, event=some_id, calling_type=variants): TypeError: 'NoneType' object is not subscriptable (the mock run assumed 2 input files that do not exist and that no rule makes, lik
 catalog/snakemake-workflows__effect-size-estimation ok 11
@@ -747,7 +747,7 @@ tests/test_output_file_cache_storage ok 5
 tests/test_params ok 2
 tests/test_params_empty_inherit ok 2
 tests/test_params_outdated_code 1 WorkflowError: Target rules may not contain wildcards. Please specify concrete files or a rule without wildcards at the command line, or have a rule without wildcards at the very top of your workflow (e.g. the typical "rule all" which just collects all results you want to generate in the end).
-tests/test_params_pickling 1 Snakefile:3: ModuleNotFoundError: No module named 'polars'
+tests/test_params_pickling ok 1
 tests/test_paramspace ok 37
 tests/test_paramspace_single_wildcard ok 37
 tests/test_parser ok 0
@@ -882,7 +882,7 @@ tests/test_update_flag_fail ok 1
 tests/test_update_flag_fail_cleanup ok 2
 tests/test_url_include ok 7
 tests/test_use_rule_same_module ok 2
-tests/test_validate 1 Snakefile:4: ModuleNotFoundError: No module named 'polars'
+tests/test_validate ok 3
 tests/test_wildcard_annotatedstrings 1 WorkflowError: unpack() is not allowed with params. Simply return a dictionary which can be directly .used, e.g. via {params[mykey]}. (rule all)
 tests/test_wildcard_count_ambiguity ok 2
 tests/test_wildcard_keyword ok 8

@@ -1,0 +1,16 @@
+3 tasks, 2 steps, 2 edges
+1 make (sample=A) <- []
+2 make (sample=B) <- []
+3 all <- [1, 2]
+task 1: -
+  command: bash -c set -euo pipefail;  echo 1 sample n tissue > A.txt
+  inputs: 
+  outputs: A.txt
+task 2: -
+  command: bash -c set -euo pipefail;  echo 0 sample n tissue > B.txt
+  inputs: 
+  outputs: B.txt
+task 3: -
+  command: 
+  inputs: A.txt B.txt
+  outputs: 

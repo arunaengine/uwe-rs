@@ -31,3 +31,4 @@ None ['a', 'b']
 # Library modules. True
 7 True None
 True Logger
+True InvalidGitRepositoryError

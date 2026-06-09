@@ -1,0 +1,2 @@
+{'plain': 1, 'computed': 25, 'middle': True, 'items': [1, 7, 8, 'x3'], 'key_a': 3, 'key_b': 6, 'merged': {'first': 1, 'second': 2}}
+{'a': '?1 + 1'} {'a': 2}

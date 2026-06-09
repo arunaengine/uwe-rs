@@ -15,6 +15,7 @@ pub mod subprocess;
 pub mod system;
 mod template;
 mod urllib;
+mod yte;
 
 use std::rc::Rc;
 
@@ -131,6 +132,9 @@ const NATIVE: &[&str] = &[
     "smtplib",
     "resource",
     "pyarrow",
+    "yte",
+    "git",
+    "git.exc",
 ];
 
 /// Whether a module name has a native stand-in, so that missing names in it are unsupported
@@ -427,6 +431,8 @@ pub fn native(interpreter: &mut Interpreter, name: &str) -> Result<Option<Value>
             Value::builtin("collect", |_, _| Ok(Value::Int(0))),
         )],
         "resource" => system::resource(),
+        "yte" => yte::yte(),
+        "git" | "git.exc" => misc::git(name),
         "signal" | "weakref" | "importlib" | "pkgutil" | "numbers" | "imaplib" | "smtplib"
         | "pyarrow" => misc::placeholder(name),
         "tkinter" => misc::tkinter(),

@@ -205,11 +205,8 @@ impl Parser<'_> {
                 match previous {
                     None => process.directives.extend(block.statements),
                     // Legacy syntax: more statements of `when:`, where the last one is the
-                    // condition, when a body label follows.
-                    Some(ProcessSection::When)
-                        if !implicit
-                            && matches!(self.process_label(), Some(ProcessSection::Body(_))) =>
-                    {
+                    // condition, when a label follows.
+                    Some(ProcessSection::When) if !implicit && self.process_label().is_some() => {
                         let message = "Invalid process definition -- check for missing or \
                                        out-of-order section labels";
                         self.legacy_at(message, block.span);

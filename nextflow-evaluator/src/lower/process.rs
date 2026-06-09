@@ -31,7 +31,20 @@ impl Lowering<'_> {
         if let Some(first) = process.stage.first().or(process.topics.first()) {
             self.error("Typed process sections are not supported yet", first.span);
         }
-        let when = process.when.as_ref().map(|when| self.expression(when));
+        let when = process.when.as_ref().map(|when| match &when.kind {
+            // Legacy syntax: a directive after `when:` belongs to the guard, where Nextflow
+            // 26.04.6 gives null for it, so the process runs no task.
+            Syntax::MethodCall {
+                target: None, name, ..
+            } if DIRECTIVES.contains(&name.text.as_str()) => {
+                self.legacy("Invalid process directive", when.span);
+                crate::lowered::Expression {
+                    kind: crate::lowered::ExpressionKind::Literal(crate::value::Value::Null),
+                    span: when.span,
+                }
+            }
+            _ => self.expression(when),
+        });
         self.implicit_declarations = true;
         // Legacy syntax: a variable that is declared or assigned among the directives, the
         // inputs or the outputs, like `def threshold = params.t`, which later sections read.

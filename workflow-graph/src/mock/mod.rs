@@ -276,8 +276,12 @@ pub fn pretend_run(task: &Task, work: &Path) -> std::io::Result<Result<Vec<Outpu
             .filter(|name| has_literal(base) && glob_matches(base, name))
             .collect();
         if !by_tools.is_empty() {
+            // A pattern that ends with `/` wants directories.
             for name in by_tools {
-                paths.push(placeholder(name));
+                paths.push(match pattern.ends_with('/') {
+                    true => directory(name),
+                    false => placeholder(name),
+                });
                 names.push(name.clone());
             }
             continue;

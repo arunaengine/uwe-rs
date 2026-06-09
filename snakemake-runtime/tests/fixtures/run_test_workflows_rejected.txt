@@ -4,7 +4,7 @@
 # for a feature that iunctus leaves out on purpose, as decision N of docs/decisions.md says.
 # For `invalid` and `missing`, run_test_workflows_oracle.txt holds the evidence: the error of
 # `snakemake --dry-run` (Snakemake 9.27.0) with the same launch, which oracle.py records.
-catalog/AToL-Bioinformatics__genome-launcher-workflow	missing	Needs the Python packages GitPython and giturlparse, which are not in its repository.
+catalog/AToL-Bioinformatics__genome-launcher-workflow	missing	Needs the Python package giturlparse, which is not in its repository.
 catalog/Addimator__compare_meth	missing	Reads /projects/koesterlab/benchmark-methylation/data_analysis_jochen/compare_meth/config/sample.tsv, a file on its authors' machines.
 catalog/Albinam1__bioinformatics_school	invalid	Has a rule whose output, log and benchmark files do not name the same wildcards.
 catalog/AmberFu__snakemake_BAMmetrics_mosdepth	missing	Needs the config file ../config/config.yaml, which is not in its repository.
@@ -160,7 +160,7 @@ catalog/snakemake-workflows__cellranger-count	missing	Needs environment variable
 catalog/snakemake-workflows__cellranger-multi	missing	Needs environment variables that are not set, which the workflow asks for with envvars.
 catalog/snakemake-workflows__dna-seq-benchmark	unsupported (decision 16)	While it is planned, the workflow reads a JSON file that a checkpoint writes, which the mock executor makes empty.
 catalog/snakemake-workflows__dna-seq-gatk-variant-calling	unsupported (decision 16)	The mock run gets past the checkpoint genome_faidx, where Snakemake's dry run stops; after it the workflow calls pandas.read_table with squeeze, which pandas 3 removed.
-catalog/snakemake-workflows__dna-seq-mtb	unsupported (decision 17)	The workflow uses the Python package yte, for which iunctus has no stand-in.
+catalog/snakemake-workflows__dna-seq-mtb	unsupported (decision 16)	While it is planned, the workflow reads the calling scenario that a job renders, which the mock executor makes empty.
 catalog/snakemake-workflows__dna-seq-varlociraptor	missing	Needs input data that is not in its repository.
 catalog/snakemake-workflows__microsatellite-instability-detection-with-msisensor-pro	invalid	Its config gives two kinds of aliases for normal samples at once, which the workflow rejects.
 catalog/snakemake-workflows__rna-longseq-de-isoform	missing	Needs the config file config/config.yml, which is not in its repository.
@@ -210,7 +210,6 @@ tests/test_module_local_git	missing	Needs a git repository that Snakemake's own 
 tests/test_modules_no_name	invalid	Snakemake's own tests expect it to fail.
 tests/test_modules_two_names	invalid	Snakemake's own tests expect it to fail.
 tests/test_params_outdated_code	invalid	Its first rule has wildcards, so it has no default target, and no test of Snakemake gives one.
-tests/test_params_pickling	missing	Needs the Python package polars, which is not in its repository.
 tests/test_pathvars_cycle	invalid	Snakemake's own tests expect it to fail.
 tests/test_remote_auto	invalid	Imports AUTO from snakemake.remote, which Snakemake 9.27 does not have.
 tests/test_remote_azure	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
@@ -228,6 +227,5 @@ tests/test_string_resources	missing	Needs the default resource gpu_model, which 
 tests/test_subworkflow_config	invalid	Has Snakefile code that Snakemake cannot parse.
 tests/test_subworkflows	invalid	Has Snakefile code that Snakemake cannot parse.
 tests/test_tibanna	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
-tests/test_validate	missing	Needs the Python package polars, which is not in its repository.
 tests/test_wildcard_annotatedstrings	invalid	Uses unpack() in params, which Snakemake forbids; Snakemake's own test expects this error.
 tests/test_xrootd	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.

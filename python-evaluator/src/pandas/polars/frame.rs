@@ -10,6 +10,7 @@ use super::super::frame::FrameData;
 use super::super::labels::Labels;
 use super::super::method;
 use super::dtype::DType;
+use super::methods::{TABLE_METHODS, table_method};
 use super::series::PolarsSeries;
 use crate::error::Error;
 use crate::interpreter::Interpreter;
@@ -48,6 +49,11 @@ impl PolarsFrame {
         self.data.borrow().data.clone()
     }
 
+    /// A copy that shares nothing with this table.
+    pub fn copy(&self) -> Value {
+        PolarsFrame::value(self.names(), self.columns(), self.dtypes.borrow().clone())
+    }
+
     /// Each row as a dict by column name.
     pub fn records(&self) -> Vec<Vec<(String, Value)>> {
         let names = self.names();
@@ -61,6 +67,19 @@ impl PolarsFrame {
                     .collect()
             })
             .collect()
+    }
+
+    /// Sets a column, adding it at the end when the table has none of that name.
+    pub fn set_column(&self, name: &str, values: Vec<Value>) {
+        let dtype = DType::of(&values);
+        let mut data = self.data.borrow_mut();
+        let position = data.column_position(&Value::str(name));
+        data.set_column(Value::str(name), values);
+        let mut dtypes = self.dtypes.borrow_mut();
+        match position {
+            Some(position) => dtypes[position] = dtype,
+            None => dtypes.push(dtype),
+        }
     }
 
     /// A table of some rows, in the given order.
@@ -183,6 +202,12 @@ impl Native for PolarsFrame {
             "get_column" => method::<PolarsFrame>(this, name, |interpreter, frame, args| {
                 frame.item(interpreter, args.get(0).unwrap_or(&Value::None))
             }),
+            _ if TABLE_METHODS.contains(&name) => {
+                let which = name.to_owned();
+                method::<PolarsFrame>(this, name, move |interpreter, frame, args| {
+                    table_method(interpreter, frame, &which, args)
+                })
+            }
             _ => return Ok(None),
         }))
     }

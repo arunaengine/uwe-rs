@@ -1,2 +1,9 @@
 a [1, None, 3] Int64 3 3 [1, None, 3] Int64 UInt8 String
 True Float64
+['a', 'b'] (3, 2) 3 3 [Int64, String]
+1 None 3 ['x', 'y', None] [{'a': 2, 'b': 'y'}]
+[{'a': 1, 'b': 'x'}, {'a': 2, 'b': 'y'}, {'a': 3, 'b': None}]
+[(1, 'x'), (2, 'y'), (3, None)]
+[{'x': 1, 'y': None}, {'x': 2, 'y': 'z'}]
+True
+ColumnNotFoundError

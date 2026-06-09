@@ -592,6 +592,16 @@ fn completion_handlers_read_value_channels() {
     assert_eq!(printed, "reports [1, 2] 2\n");
 }
 
+/// A DSL1 completion handler takes the first value of a queue channel that nothing reads, as
+/// nf-core/clipseq reads its MultiQC report with `ch_multiqc_report.getVal()`.
+#[test]
+fn completion_handlers_take_the_first_value_of_unread_queues() {
+    let source = "process P {\n    output:\n    file 'r.html' into ch_report\n    script:\n    \
+                  'true'\n}\nworkflow.onComplete { println(ch_report.getVal().name) }\n";
+    let (_, printed) = run(source, &Options::default()).expect("runs");
+    assert_eq!(printed, "r.html\n");
+}
+
 /// A `shell:` section interpolates `!{expression}` and keeps `$` for the shell. Nextflow
 /// 26.04.6 with the legacy parser writes `echo 1 $HOME 2 !x \n` for this process.
 #[test]

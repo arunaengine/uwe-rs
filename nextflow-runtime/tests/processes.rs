@@ -602,6 +602,16 @@ fn completion_handlers_take_the_first_value_of_unread_queues() {
     assert_eq!(printed, "r.html\n");
 }
 
+/// Legacy syntax: a directive after `when:` belongs to the guard, where it gives null, so
+/// the process runs no task, as with Nextflow 26.04.6 for nf-core/ddamsproteomics.
+#[test]
+fn directives_after_when_make_the_guard_null() {
+    let source = "process P {\n    when: true\n\n    publishDir 'out'\n\n    input:\n    val x\n\n    \
+                  script:\n    'true'\n}\nworkflow {\n    P(channel.of(1))\n}\n";
+    let (tasks, _) = run(source, &Options::default()).expect("runs");
+    assert!(tasks.is_empty());
+}
+
 /// A `shell:` section interpolates `!{expression}` and keeps `$` for the shell. Nextflow
 /// 26.04.6 with the legacy parser writes `echo 1 $HOME 2 !x \n` for this process.
 #[test]

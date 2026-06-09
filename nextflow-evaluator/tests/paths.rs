@@ -144,6 +144,22 @@ fn writing_copying_and_deleting_files() {
     assert_eq!(value(&body), "[hi, true, false, hi, false]");
 }
 
+/// `withWriter` and `bytes`, as nf-core's old completion handlers write reports and read the
+/// logo; Groovy 4 gives `[done, 'abc\n', YWJjCg==, YW|Jj|Cg|==]`.
+#[test]
+fn writers_and_bytes_of_files() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let dir = directory.path().display();
+    let body = format!(
+        "def f = new File('{dir}/w.txt')\n\
+         def r = f.withWriter {{ w -> w << 'a' << 'b'; w.println('c'); 'done' }}\n\
+         [r, f.text.inspect(), f.bytes.encodeBase64().toString(), \
+         f.bytes.encodeBase64().toString().tokenize('\\n')*.toList()*.collate(2)*.collect {{ it.join() }}\
+         .flatten().join('|')]"
+    );
+    assert_eq!(value(&body), "[done, 'abc\\n', YWJjCg==, YW|Jj|Cg|==]");
+}
+
 #[test]
 fn directories_are_made_and_files_copied_into_them() {
     let directory = tempfile::tempdir().expect("a temporary directory");

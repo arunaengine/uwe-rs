@@ -10,6 +10,7 @@ use super::super::frame::FrameData;
 use super::super::labels::Labels;
 use super::super::method;
 use super::dtype::DType;
+use super::lazy::LazyFrame;
 use super::methods::{TABLE_METHODS, table_method};
 use super::series::PolarsSeries;
 use crate::error::Error;
@@ -176,6 +177,10 @@ impl Native for PolarsFrame {
                     .map(|dtype| Value::native(*dtype))
                     .collect(),
             ),
+            "lazy" => {
+                let this = this.clone();
+                Value::builtin("lazy", move |_, _| Ok(LazyFrame::value(this.clone())))
+            }
             "iter_rows" | "rows" | "to_dicts" => {
                 let which = name.to_owned();
                 method::<PolarsFrame>(this, name, move |interpreter, frame, mut args| {

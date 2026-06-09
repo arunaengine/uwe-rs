@@ -7,6 +7,7 @@
 mod dtype;
 mod expr;
 mod frame;
+mod lazy;
 mod methods;
 mod series;
 
@@ -16,6 +17,7 @@ use std::rc::Rc;
 use dtype::DType;
 use expr::{Expr, Kind};
 use frame::{PolarsFrame, record_names, record_value};
+use lazy::LazyFrame;
 use series::PolarsSeries;
 
 use crate::error::Error;
@@ -26,7 +28,9 @@ use crate::value::{Args, Native, Value};
 pub fn module() -> Vec<(&'static str, Value)> {
     let mut entries = vec![
         ("DataFrame", Value::native(Class::DataFrame)),
+        ("LazyFrame", Value::native(Class::LazyFrame)),
         ("Series", Value::native(Class::Series)),
+        ("concat", function("concat", concat)),
         (
             "col",
             function("col", |interpreter, args| {
@@ -55,6 +59,7 @@ pub fn module() -> Vec<(&'static str, Value)> {
 /// The classes of the module, which build tables and answer `isinstance`.
 enum Class {
     DataFrame,
+    LazyFrame,
     Series,
 }
 
@@ -74,6 +79,7 @@ impl Native for Class {
     fn check_instance(&self, value: &Value) -> Option<bool> {
         Some(match self {
             Class::DataFrame => value.as_native::<PolarsFrame>().is_some(),
+            Class::LazyFrame => value.as_native::<LazyFrame>().is_some(),
             Class::Series => value.as_native::<PolarsSeries>().is_some(),
         })
     }
@@ -86,6 +92,7 @@ impl Native for Class {
     ) -> Result<Option<Value>, Error> {
         Ok(Some(match self {
             Class::DataFrame => data_frame(interpreter, args.take(0, "data"))?,
+            Class::LazyFrame => LazyFrame::value(data_frame(interpreter, args.take(0, "data"))?),
             Class::Series => {
                 let first = args.take(0, "name").unwrap_or(Value::None);
                 let (name, values) = match first.as_str() {
@@ -145,6 +152,48 @@ fn data_frame(interpreter: &mut Interpreter, data: Option<Value>) -> Result<Valu
     }
     let dtypes = columns.iter().map(|column| DType::of(column)).collect();
     Ok(PolarsFrame::value(names, columns, dtypes))
+}
+
+/// `pl.concat(items)`: the rows of tables with the same columns, one table after the other.
+fn concat(interpreter: &mut Interpreter, mut args: Args) -> Result<Value, Error> {
+    let items = args.take(0, "items").unwrap_or(Value::None);
+    let items = interpreter.iterate(&items)?;
+    if items.is_empty() {
+        return Err(Error::value_error("cannot concat empty list"));
+    }
+    let lazy = items[0].as_native::<LazyFrame>().is_some();
+    let mut frames = Vec::with_capacity(items.len());
+    for item in &items {
+        let frame = match item.as_native::<LazyFrame>() {
+            Some(lazy) => lazy.frame(),
+            None => item.as_native::<PolarsFrame>(),
+        };
+        frames.push(
+            frame.ok_or_else(|| {
+                Error::type_error("concat() takes polars DataFrames or LazyFrames")
+            })?,
+        );
+    }
+    let names = frames[0].names();
+    let mut dtypes = frames[0].dtypes.borrow().clone();
+    let mut columns: Vec<Vec<Value>> = vec![Vec::new(); names.len()];
+    for frame in &frames {
+        if frame.names() != names {
+            return Err(error(
+                "ShapeError",
+                "unable to vertically concatenate tables with different column names",
+            ));
+        }
+        let data = frame.data.borrow();
+        for (position, column) in data.data.iter().enumerate() {
+            columns[position].extend(column.iter().cloned());
+            if dtypes[position] == DType::Null {
+                dtypes[position] = frame.dtypes.borrow()[position];
+            }
+        }
+    }
+    let frame = PolarsFrame::value(names, columns, dtypes);
+    Ok(if lazy { LazyFrame::value(frame) } else { frame })
 }
 
 /// An exception of polars, like `ColumnNotFoundError`.

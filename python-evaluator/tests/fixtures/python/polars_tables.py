@@ -29,3 +29,14 @@ try:
     df.with_columns(pl.lit(-1).cast(pl.UInt8))
 except Exception as e:
     print(type(e).__name__)
+
+# Rows that expressions select, sorted rows and lazy tables.
+print(df.filter(pl.col("a").eq(2) | pl.col("b").is_null())["a"].to_list())
+print(df.filter(~pl.col("b").is_in(["x"]))["a"].to_list())
+print(df.filter((pl.col("a") >= 2) & pl.col("b").is_not_null())["b"].to_list())
+print(df.sort("a", descending=True)["a"].to_list())
+print(df.sort(["b", "a"])["b"].to_list())
+print(df.head(2).height, pl.concat([df, df]).height)
+lazy = df.lazy().filter(pl.col("a") > 1)
+print(isinstance(lazy, pl.LazyFrame), isinstance(df, pl.LazyFrame), lazy.collect()["a"].to_list())
+print(pl.concat([lazy, lazy]).collect().height)

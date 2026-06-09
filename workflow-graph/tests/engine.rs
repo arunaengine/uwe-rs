@@ -315,14 +315,16 @@ fn mocks_of_scripts_that_fail_give_the_failure() {
 }
 
 /// An output of a tool that the simulation does not know is named after the arguments of the
-/// tool that match its pattern, as the tool would name it.
+/// tool that match its pattern, as the tool would name it, and is a directory when the pattern
+/// ends with `/`.
 #[test]
 fn mocks_name_the_outputs_of_tools_after_their_arguments() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let task = Task {
         id: TaskId(5),
         script: Some(
-            "mkdir output\nFeatureFinderMetabo -in s.mzML -out output/s.featureXML".into(),
+            "mkdir output\nFeatureFinderMetabo -in s.mzML -out output/s.featureXML -oc report"
+                .into(),
         ),
         inputs: vec![Input {
             path: "s.mzML".into(),
@@ -330,7 +332,9 @@ fn mocks_name_the_outputs_of_tools_after_their_arguments() {
             directory: false,
             content: None,
         }],
-        outputs: ["output/*.featureXML", "*.log"].map(String::from).to_vec(),
+        outputs: ["output/*.featureXML", "*.log", "report/"]
+            .map(String::from)
+            .to_vec(),
         ..Task::default()
     };
     let outcome = Mock::new(directory.path())
@@ -341,5 +345,6 @@ fn mocks_name_the_outputs_of_tools_after_their_arguments() {
         .iter()
         .map(|file| file.path.as_str())
         .collect();
-    assert_eq!(paths, ["output/s.featureXML", "mock.log"]);
+    assert_eq!(paths, ["output/s.featureXML", "mock.log", "report"]);
+    assert!(outcome.files[2].directory);
 }

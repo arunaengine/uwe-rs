@@ -19,3 +19,13 @@ try:
     df[0, "missing"]
 except Exception as e:
     print(type(e).__name__)
+
+# Expressions.
+added = df.with_columns(pl.lit(7).alias("c"), (pl.col("a") > 1).alias("big"))
+print(added.columns, added["c"].to_list(), added["big"].to_list())
+print(df.with_columns(pl.col("a").cast(pl.String))["a"].to_list())
+print(df.select("b", pl.col("a").alias("x")).to_dicts())
+try:
+    df.with_columns(pl.lit(-1).cast(pl.UInt8))
+except Exception as e:
+    print(type(e).__name__)

@@ -5,23 +5,48 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod dtype;
+mod expr;
 mod frame;
+mod methods;
 mod series;
 
 use std::any::Any;
+use std::rc::Rc;
 
 use dtype::DType;
+use expr::{Expr, Kind};
 use frame::{PolarsFrame, record_names, record_value};
 use series::PolarsSeries;
 
 use crate::error::Error;
 use crate::interpreter::Interpreter;
+use crate::modules::function;
 use crate::value::{Args, Native, Value};
 
 pub fn module() -> Vec<(&'static str, Value)> {
     let mut entries = vec![
         ("DataFrame", Value::native(Class::DataFrame)),
         ("Series", Value::native(Class::Series)),
+        (
+            "col",
+            function("col", |interpreter, args| {
+                let name = interpreter.to_str(args.get(0).unwrap_or(&Value::None))?;
+                Ok(Expr::value(Kind::Column(name)))
+            }),
+        ),
+        (
+            "lit",
+            function("lit", |_, mut args| {
+                let value = args.take(0, "value").unwrap_or(Value::None);
+                let literal = Rc::new(Kind::Literal(value));
+                Ok(
+                    match args.take(1, "dtype").filter(|value| !value.is_none()) {
+                        Some(dtype) => Expr::value(Kind::Cast(literal, dtype::of_value(&dtype)?)),
+                        None => Expr(literal).into_value(),
+                    },
+                )
+            }),
+        ),
     ];
     entries.extend(dtype::dtypes());
     entries

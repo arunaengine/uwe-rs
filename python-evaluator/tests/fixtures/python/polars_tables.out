@@ -7,3 +7,7 @@ True Float64
 [{'x': 1, 'y': None}, {'x': 2, 'y': 'z'}]
 True
 ColumnNotFoundError
+['a', 'b', 'c', 'big'] [7, 7, 7] [False, True, True]
+['1', '2', '3']
+[{'b': 'x', 'x': 1}, {'b': 'y', 'x': 2}, {'b': None, 'x': 3}]
+InvalidOperationError

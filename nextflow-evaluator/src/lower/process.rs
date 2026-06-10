@@ -312,6 +312,30 @@ impl Lowering<'_> {
         {
             return Some(single(OutputPart::Stdout, statement.span));
         }
+        // Legacy syntax: `path "*.pdf" optional true` calls a method on the output, which
+        // strict syntax gives as the option `optional: true`.
+        let folded;
+        let statement = match &statement.kind {
+            StatementKind::Expression(
+                expression @ ast::Expression {
+                    kind:
+                        Syntax::MethodCall {
+                            target: Some(_), ..
+                        },
+                    ..
+                },
+            ) => {
+                self.legacy("Invalid process output", statement.span);
+                folded = ast::Statement {
+                    kind: StatementKind::Expression(super::dsl1::dsl2_qualifier(
+                        expression.clone(),
+                    )),
+                    span: statement.span,
+                };
+                &folded
+            }
+            _ => statement,
+        };
         let Some((name, arguments, span)) = call(statement) else {
             self.error("Invalid process output", statement.span);
             return None;

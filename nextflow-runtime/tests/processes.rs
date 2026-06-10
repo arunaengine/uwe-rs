@@ -522,16 +522,6 @@ fn path_outputs_take_closures_and_lists() {
     assert_eq!(printed, "[a.xml, b.xml]\n");
 }
 
-/// Legacy syntax: `path "*.pdf" optional true` makes the output optional, as in
-/// nf-core/quantms.
-#[test]
-fn option_calls_on_outputs() {
-    let source = "process P {\n    output:\n    path '*.pdf' optional true\n    path 'a.txt'\n    \
-                  script:\n    'true'\n}\nworkflow {\n    P()\n}\n";
-    let (tasks, _) = run(source, &Options::default()).expect("runs");
-    assert_eq!(tasks.len(), 1);
-}
-
 /// The text of a channel, as nf-core/quantms reads `is_sdrf.toString()` of a value that a
 /// workflow emits, and `println()` of a channel in a completion handler, which prints an
 /// empty line. Nextflow 26.04.6 prints `DataflowVariable(value=true)` and

@@ -227,7 +227,12 @@ impl Host for Builder<'_> {
             ("channel", "empty", []) => (Vec::new(), false, true),
             // `channel.value()` and `channel.value(null)` are never bound.
             ("channel", "value", [] | [Value::Null]) => (Vec::new(), true, false),
-            ("channel", "value", [value]) => (vec![value.clone()], true, true),
+            // A value channel is bound at once, as GPars binds `Channel.value(x)`.
+            ("channel", "value", [value]) => {
+                let output = self.network.channel(true);
+                self.network.bind(output, value.clone());
+                return Ok(Some(Value::Channel(output)));
+            }
             _ => return self.base.namespace_method(namespace, name, arguments),
         };
         Ok(Some(self.factory(name, values, value, close)))
@@ -354,6 +359,17 @@ impl Host for Builder<'_> {
             _ => return Ok(None),
         };
         let same_kind = self.network.is_value(source);
+        // The text of a GPars channel, as Nextflow 26.04.6 prints it.
+        if name == "toString" && arguments.is_empty() {
+            let text = match same_kind {
+                true => {
+                    let value = self.network.bound(source).unwrap_or(Value::Null);
+                    format!("DataflowVariable(value={value})")
+                }
+                false => "DataflowBroadcast around DataflowStream[?]".into(),
+            };
+            return Ok(Some(Value::string(text)));
+        }
         let own = matches!(name, "getClass" | "toString" | "hashCode" | "equals");
         if same_kind && !own && !OPERATORS.contains(&name) {
             let output = self.network.channel(true);

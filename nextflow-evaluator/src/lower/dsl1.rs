@@ -72,7 +72,7 @@ pub(super) fn convert(script: &ast::Script) -> (ast::Script, Vec<String>) {
     for item in &script.items {
         match item {
             Item::Statement(statement) => {
-                let statement = super::script_assignment(&into_only(statement));
+                let statement = super::script_assignment(statement);
                 main.extend(convert_statement(statement, &mut items, &mut channels));
             }
             Item::Process(process) => {
@@ -99,24 +99,6 @@ pub(super) fn convert(script: &ast::Script) -> (ast::Script, Vec<String>) {
         span,
     })));
     (ast::Script { items }, channels)
-}
-
-/// `x = ch.into { a; b }` as `ch.into { a; b }`: the names take the channel, and `x`, which
-/// DSL1 gave nothing useful, is left out.
-fn into_only(statement: &Statement) -> Statement {
-    if let Kind::Assign { value, .. } = &statement.kind
-        && let Syntax::MethodCall { name, .. } = &value.kind
-        && name.text == "into"
-    {
-        let candidate = Statement {
-            kind: Kind::Expression(value.clone()),
-            span: statement.span,
-        };
-        if super::workflow::into_parts(&candidate).is_some() {
-            return candidate;
-        }
-    }
-    statement.clone()
 }
 
 /// A statement of the script, with each process inside it, like one in an `if`, defined as an
@@ -154,7 +136,7 @@ fn convert_statement(
                 span,
             }]
         }
-        kind => vec![into_only(&Statement { kind, span })],
+        kind => vec![Statement { kind, span }],
     }
 }
 

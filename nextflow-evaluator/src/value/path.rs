@@ -90,22 +90,31 @@ impl PathValue {
         self.relative.is_none()
     }
 
-    /// The file name; empty for the root. A task input's name is the last part of its staged
-    /// name, like `a.fq` of `input1/a.fq`.
+    /// The file name; empty for the root. A task input's name is its staged name, like
+    /// `input1/a.fq`, as Nextflow's `TaskPath.getName` gives it.
     pub fn name(&self) -> &str {
+        match &self.staged {
+            Some(staged) => staged,
+            None => self.path.rsplit('/').next().unwrap_or(""),
+        }
+    }
+
+    /// The last part of the name, like `a.fq` of the task input `input1/a.fq`, which the base
+    /// name, simple name and extension come from.
+    fn last_part(&self) -> &str {
         let path = self.staged.as_deref().unwrap_or(&self.path);
         path.rsplit('/').next().unwrap_or("")
     }
 
     /// The name without its last extension: `sample.fastq.gz` gives `sample.fastq`.
     pub fn base_name(&self) -> &str {
-        let name = self.name();
+        let name = self.last_part();
         name.rfind('.').map_or(name, |dot| &name[..dot])
     }
 
     /// The name up to the first dot after the first character: `sample.fastq.gz` gives `sample`.
     pub fn simple_name(&self) -> &str {
-        let name = self.name();
+        let name = self.last_part();
         match name.get(1..).and_then(|rest| rest.find('.')) {
             Some(dot) => &name[..dot + 1],
             None => name,
@@ -114,7 +123,7 @@ impl PathValue {
 
     /// The text after the last dot of the name, or nothing.
     pub fn extension(&self) -> &str {
-        let name = self.name();
+        let name = self.last_part();
         name.rfind('.').map_or("", |dot| &name[dot + 1..])
     }
 

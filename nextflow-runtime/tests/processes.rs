@@ -555,6 +555,16 @@ fn dsl1_operators() {
     assert_eq!(lines, ["copies 3", "large 2", "large 3", "small 1"]);
 }
 
+/// Legacy syntax: `path "*.pdf" optional true` makes the output optional, as in
+/// nf-core/quantms.
+#[test]
+fn option_calls_on_outputs() {
+    let source = "process P {\n    output:\n    path '*.pdf' optional true\n    path 'a.txt'\n    \
+                  script:\n    'true'\n}\nworkflow {\n    P()\n}\n";
+    let (tasks, _) = run(source, &Options::default()).expect("runs");
+    assert_eq!(tasks.len(), 1);
+}
+
 /// A `set` at the top of a script assigns a variable of the script, which the workflow reads,
 /// as in Nextflow 26.04.6 with the legacy parser.
 #[test]

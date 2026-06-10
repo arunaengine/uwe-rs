@@ -419,8 +419,10 @@ fn named_files(arguments: &[String], inputs: &[&str]) -> Vec<String> {
     let mut names: Vec<String> = Vec::new();
     for part in arguments.iter().flat_map(|word| word.split([',', '='])) {
         let part = part.trim_start_matches("./");
+        // A name that ends with `/`, like `out/`, is a folder, not a file.
         let skip = part.is_empty()
             || part.starts_with(['-', '/'])
+            || part.ends_with('/')
             || part.contains(['$', '*', '?', '[', '{', '\\', ' '])
             || inputs.contains(&part);
         if !skip && !names.iter().any(|known| known == part) {

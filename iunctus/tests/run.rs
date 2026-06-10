@@ -109,6 +109,18 @@ fn unsupported_features_exit_with_33() {
         output.contains("main.nf:1:1: This script item is not supported yet"),
         "{output}"
     );
+    // DSL1 scripts are not supported (decision 14).
+    std::fs::write(
+        directory.path().join("dsl1.nf"),
+        "process P {\n    input:\n    val x from Channel.from(1)\n    script:\n    'true'\n}\n",
+    )
+    .expect("writes the script");
+    let (code, output) = iunctus(directory.path(), &["run", "dsl1.nf"]);
+    assert_eq!(code, 33, "{output}");
+    assert!(
+        output.contains("dsl1.nf:1:1: DSL1 scripts are not supported (decision 14)"),
+        "{output}"
+    );
 }
 
 const GREETER: &str = r#"

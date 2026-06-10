@@ -154,6 +154,11 @@ pub fn lower_template_value(
     }
 }
 
+/// The error for a DSL1 script, which iunctus does not run.
+pub const DSL1: &str = "DSL1 scripts are not supported (decision 14): this script has processes \
+                        that read `from` channels and write `into` channels, which only DSL1 \
+                        has, and Nextflow 22.12 and later do not run it either";
+
 /// Lowers a script: functions, processes, workflows, includes and `params.x = value`.
 /// A script of statements only is the entry workflow; the parser rejects other mixes.
 pub fn lower_script(
@@ -161,24 +166,10 @@ pub fn lower_script(
     source: &str,
     imports: &mut dyn Imports,
 ) -> Result<Module, Vec<Diagnostic>> {
-    // A DSL1 script runs as a DSL2 script whose entry workflow calls its processes.
-    let converted;
-    let mut dsl1_names = Vec::new();
-    let script = if dsl1::is_dsl1(script) {
-        let (script, channels) = dsl1::convert(script);
-        converted = script;
-        for item in &converted.items {
-            if let Item::Workflow(workflow) = item {
-                for statement in &workflow.main.statements {
-                    script_variables(statement, true, &mut dsl1_names);
-                }
-            }
-        }
-        dsl1_names.extend(channels);
-        &converted
-    } else {
-        script
-    };
+    if dsl1::is_dsl1(script) {
+        let span = script.items.first().map(item_span).unwrap_or_default();
+        return Err(vec![Diagnostic::new(DSL1, span)]);
+    }
     let mut lowering = Lowering::new(source);
     let mut module = Module::default();
     lowering.declare_definitions(script, imports, &mut module);
@@ -208,11 +199,6 @@ pub fn lower_script(
         for name in names {
             lowering.scopes.declare_module(&name);
         }
-    }
-    // The variables and channels of a DSL1 script belong to the script, as Groovy's binding
-    // keeps them, so that its processes and functions read them too.
-    for name in &dsl1_names {
-        lowering.scopes.declare_module(name);
     }
     for item in &script.items {
         match item {

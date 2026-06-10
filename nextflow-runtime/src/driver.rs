@@ -247,10 +247,9 @@ fn error(error: Error) -> DriverError {
 
 fn load_error(error: LoadError) -> DriverError {
     DriverError {
-        unsupported: error
-            .messages
-            .iter()
-            .any(|message| message.contains("not supported yet")),
+        unsupported: error.messages.iter().any(|message| {
+            message.contains("not supported yet") || message.contains("not supported (decision")
+        }),
         message: error.to_string(),
     }
 }

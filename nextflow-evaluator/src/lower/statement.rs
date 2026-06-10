@@ -187,13 +187,13 @@ impl Lowering<'_> {
                     })
                     .collect(),
             },
-            // Legacy syntax: an include inside an `if` of the script; elsewhere Nextflow's
-            // legacy parser does not take it either.
-            // A process inside a block belongs to a DSL1 script, which lowering converts first.
+            // A process inside a block belongs to a DSL1 script, which fails to load earlier.
             Kind::Process(process) => {
                 self.error("Unexpected input: 'process'", process.span);
                 return None;
             }
+            // Legacy syntax: an include inside an `if` of the script; elsewhere Nextflow's
+            // legacy parser does not take it either.
             Kind::Include(include) => match self.conditional_includes.get(&include.span) {
                 Some(indexes) => StatementKind::Include(indexes.clone()),
                 None => {

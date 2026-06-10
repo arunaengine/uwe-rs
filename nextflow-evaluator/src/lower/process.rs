@@ -327,9 +327,7 @@ impl Lowering<'_> {
             ) => {
                 self.legacy("Invalid process output", statement.span);
                 folded = ast::Statement {
-                    kind: StatementKind::Expression(super::dsl1::dsl2_qualifier(
-                        expression.clone(),
-                    )),
+                    kind: StatementKind::Expression(option_calls(expression.clone())),
                     span: statement.span,
                 };
                 &folded
@@ -486,6 +484,43 @@ fn call(statement: &ast::Statement) -> Option<(&str, &[Argument], Span)> {
             ..
         }) => Some((name.text.as_str(), arguments.as_slice(), name.span)),
         _ => None,
+    }
+}
+
+/// Legacy syntax: the calls on an output, like `path("*.pdf").optional(true)` of
+/// `path "*.pdf" optional true`, as named options of the output: `path("*.pdf", optional:
+/// true)`. A call without an argument, like `optional`, gives `true`.
+fn option_calls(expression: ast::Expression) -> ast::Expression {
+    match expression.kind {
+        Syntax::MethodCall {
+            target: Some(target),
+            name,
+            arguments,
+            ..
+        } => {
+            let mut inner = option_calls(*target);
+            if let Syntax::MethodCall {
+                arguments: options, ..
+            } = &mut inner.kind
+            {
+                let value = arguments.into_iter().next().map_or(
+                    ast::Expression {
+                        kind: Syntax::Literal(ast::Literal::Boolean(true)),
+                        span: name.span,
+                    },
+                    |argument| argument.value,
+                );
+                options.push(Argument {
+                    name: Some(name),
+                    value,
+                });
+            }
+            inner
+        }
+        kind => ast::Expression {
+            kind,
+            span: expression.span,
+        },
     }
 }
 

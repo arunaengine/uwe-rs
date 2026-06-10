@@ -174,6 +174,20 @@ fn directories_are_made_and_files_copied_into_them() {
     assert_eq!(value(&body), "[false, true, false, true, true, hi, false]");
 }
 
+/// `path.matches(glob)` matches the whole path, as in nf-core/eager's `r1.matches('NA')`;
+/// Nextflow 26.04.6 gives `[false, true, false, true, false, true, true]`.
+#[test]
+fn paths_match_globs() {
+    assert_eq!(
+        value(
+            "def f = file('/tmp/w.txt')\ndef h = file('https://example.com/data/a.fq.gz')\n\
+             [f.matches('NA'), f.matches('/tmp/**'), f.matches('*.txt'), f.matches('**.txt'), \
+             h.matches('NA'), h.matches('/data/*.gz'), h.matches('**.gz')]"
+        ),
+        "[false, true, false, true, false, true, true]"
+    );
+}
+
 #[test]
 fn file_names_as_paths() {
     assert_eq!(

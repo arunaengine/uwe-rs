@@ -20,6 +20,11 @@ pub(super) fn path_method(path: &Rc<PathValue>, name: &str, arguments: &[Value])
     let path_value = |path: PathValue| Some(Value::Path(Rc::new(path)));
     match (name, arguments) {
         ("getName", []) => Some(Value::string(path.name())),
+        // Nextflow's `FilesEx.matches`: whether the whole path matches a glob pattern.
+        ("matches", [pattern]) => Some(Value::Boolean(crate::interpreter::glob::matches(
+            &pattern.to_string(),
+            path.text(),
+        ))),
         // The name as a relative path.
         ("getFileName", []) => {
             let mut name = PathValue::parse(path.name(), "/");

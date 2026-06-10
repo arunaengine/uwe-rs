@@ -20,7 +20,7 @@ use crate::operator::{
     Buffer, Closing, Collate, Each, Factory, Gather, Gathering, Invoke, Mix, Opening, Single,
 };
 use crate::process::{ProcessNode, singleton};
-use crate::route::{Concat, Distribute, Merge, Route};
+use crate::route::{Concat, Merge, Route};
 use crate::split::{Split, Subscribe};
 
 /// The channel operators of Nextflow (`OperatorImpl` and `ChannelEx`). Another method of a
@@ -29,7 +29,6 @@ const OPERATORS: &[&str] = &[
     "branch",
     "buffer",
     "chain",
-    "choice",
     "collate",
     "collect",
     "collectFile",
@@ -50,7 +49,6 @@ const OPERATORS: &[&str] = &[
     "groupBy",
     "groupTuple",
     "ifEmpty",
-    "into",
     "join",
     "last",
     "map",
@@ -198,10 +196,6 @@ impl Host for Builder<'_> {
             return Ok(Some(self.factory(name, elements(&values), false, true)));
         }
         let (values, value, close) = match (namespace, name, arguments.as_slice()) {
-            // DSL1: a queue channel that `into` or `choice` feeds later.
-            ("channel", "create", []) => {
-                return Ok(Some(Value::Channel(self.network.channel(false))));
-            }
             ("channel", "topic", [topic]) => {
                 return Ok(Some(Value::Channel(self.network.topic(&topic.to_string()))));
             }
@@ -793,35 +787,6 @@ impl Builder<'_> {
                     inputs,
                     Box::new(Concat { output, current: 0 }),
                     Value::Channel(output),
-                )
-            }
-            // DSL1: `into(n)` gives n copies of the channel, as a channel may be read again.
-            ("into", [Value::Number(count)]) => {
-                let copies = (0..count.to_i64().max(0))
-                    .map(|_| Value::Channel(source))
-                    .collect();
-                return Ok(Some(Value::list(copies)));
-            }
-            // DSL1: `into(a, b)` and `choice(a, b) { ... }` feed channels of `Channel.create()`.
-            ("into" | "choice", targets) if !targets.is_empty() => {
-                let (choose, targets) = match targets {
-                    [targets @ .., Value::Closure(closure)] if name == "choice" => {
-                        (Some(closure.clone()), targets)
-                    }
-                    _ if name == "into" => (None, targets),
-                    _ => return Ok(None),
-                };
-                let outputs = targets
-                    .iter()
-                    .map(|target| match target {
-                        Value::Channel(channel) => Ok(*channel),
-                        other => Err(thrown(format!("Invalid `{name}` target: {other}"))),
-                    })
-                    .collect::<Result<Vec<ChannelId>, Error>>()?;
-                (
-                    vec![source],
-                    Box::new(Distribute { outputs, choose }),
-                    Value::Null,
                 )
             }
             ("merge", others) => {

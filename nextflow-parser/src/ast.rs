@@ -108,6 +108,18 @@ pub enum Member {
 pub struct Include {
     pub names: Vec<IncludeName>,
     pub source: Name,
+    /// Legacy syntax: `addParams(...)` or `params(...)` after the source, which give the
+    /// included script params of its own.
+    pub params: Option<IncludeParams>,
+    pub span: Span,
+}
+
+/// The params of `include { ... } from '...' addParams(options: x)`: with `add`, those of the
+/// including script with these added; else only these.
+#[derive(Clone, Debug, PartialEq)]
+pub struct IncludeParams {
+    pub add: bool,
+    pub arguments: Vec<Argument>,
     pub span: Span,
 }
 

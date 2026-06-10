@@ -4,8 +4,8 @@
 
 use super::{Failed, Parse, Parser, is_name};
 use crate::ast::{
-    Expression, ExpressionKind, Function, GStringPart, Include, IncludeName, Item, Name,
-    ParameterDeclaration, Script, Statement, StatementKind, Type, TypedName,
+    Expression, ExpressionKind, Function, GStringPart, Include, IncludeName, IncludeParams, Item,
+    Name, ParameterDeclaration, Script, Statement, StatementKind, Type, TypedName,
 };
 use crate::token::TokenKind;
 use crate::{Diagnostic, Span};
@@ -322,10 +322,29 @@ impl Parser<'_> {
             TokenKind::GStringBegin { .. } => self.legacy_include_source()?,
             _ => self.string_name()?,
         };
+        // Legacy syntax: `addParams(...)` or `params(...)` gives the included script params.
+        let params = match self.at_name() && self.nth(1) == TokenKind::LeftParen {
+            true => {
+                let name = self.name()?;
+                if !matches!(name.text.as_str(), "addParams" | "params") {
+                    let message = format!("Unexpected input: '{}'", name.text);
+                    return Err(self.error_at(message, name.span));
+                }
+                self.legacy_at(format!("Unexpected input: '{}'", name.text), name.span);
+                let arguments = self.arguments()?;
+                Some(IncludeParams {
+                    add: name.text == "addParams",
+                    arguments,
+                    span: self.span_from(name.span),
+                })
+            }
+            false => None,
+        };
         let span = self.span_from(start);
         Ok(Include {
             names,
             source,
+            params,
             span,
         })
     }

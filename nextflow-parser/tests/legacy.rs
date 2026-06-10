@@ -258,3 +258,36 @@ fn array_classes() {
     assert!(matches!(&items[1].kind, ExpressionKind::Variable(name) if name == "Object[]"));
     assert_eq!(legacy, ["Unexpected input: '['"]);
 }
+
+/// `addParams(...)` and `params(...)` after an include give the included script params, as
+/// nf-core/scflow has.
+#[test]
+fn include_params() {
+    let parsed = nextflow_parser::parse_script(
+        "include { A } from './a' addParams( options: [x: 1] )\ninclude { B } from './b' params(y: 2)\n",
+    );
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let params: Vec<(bool, usize)> = parsed
+        .tree
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Include(include) => include.params.as_ref(),
+            _ => None,
+        })
+        .map(|params| (params.add, params.arguments.len()))
+        .collect();
+    assert_eq!(params, [(true, 1), (false, 1)]);
+    let legacy: Vec<String> = parsed
+        .legacy
+        .into_iter()
+        .map(|error| error.message)
+        .collect();
+    assert_eq!(
+        legacy,
+        [
+            "Unexpected input: 'addParams'",
+            "Unexpected input: 'params'"
+        ]
+    );
+}

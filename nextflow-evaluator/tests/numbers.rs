@@ -210,3 +210,20 @@ fn operator_methods() {
         "[3 GB, 1 GB, 2 GB, 2 GB, 2h, 42, 3.5, 3, 4, 8, 1]"
     );
 }
+
+/// Groovy's `upto` and `downto`, as nf-core/proteomicslfq reads lines with `1.upto(5) { ... }`;
+/// Groovy 4 gives `[1, 2, 3, 5, 4, 3]` and fails for a range that goes the wrong way.
+#[test]
+fn upto_and_downto() {
+    assert_eq!(
+        value("def l = []\n1.upto(3) { l << it }\n5.downto(3) { l << it }\nl"),
+        "[1, 2, 3, 5, 4, 3]"
+    );
+    let error = eval("3.downto(5) { }").expect_err("fails");
+    assert!(
+        error.contains(
+            "GroovyRuntimeException: The argument (5) to downto() cannot be greater than the value (3) it's called on."
+        ),
+        "{error}"
+    );
+}

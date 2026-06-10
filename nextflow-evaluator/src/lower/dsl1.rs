@@ -320,9 +320,7 @@ fn qualifier_statement(qualifier: Expression, span: Span) -> Statement {
     }
 }
 
-/// A qualifier in the form of strict syntax: `set` is `tuple` with `val` for bare names, and
-/// calls on the qualifier like `optional true` are named options.
-pub(super) fn dsl2_qualifier(qualifier: Expression) -> Expression {
+fn dsl2_qualifier(qualifier: Expression) -> Expression {
     let span = qualifier.span;
     match qualifier.kind {
         // `... optional true` or `... type('dir')` calls a method on the qualifier, which DSL2

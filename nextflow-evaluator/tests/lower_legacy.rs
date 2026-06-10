@@ -135,3 +135,19 @@ fn bare_env_names_are_names() {
     };
     assert_eq!(&**name, "trim_OT");
 }
+
+/// A DSL1 script fails to lower: with `nextflow.enable.dsl = 1`, with a process that reads
+/// `from` a channel or writes `into` one, or with a process inside a block (decision 14).
+#[test]
+fn dsl1_scripts_are_not_supported() {
+    let message = nextflow_evaluator::lower::DSL1;
+    for source in [
+        "nextflow.enable.dsl = 1\nprintln 'hi'\n",
+        "process P {\n    input:\n    val x from Channel.from(1)\n    script:\n    'true'\n}\n",
+        "process P {\n    output:\n    val 1 into ch\n    script:\n    'true'\n}\n",
+        "if (true) {\n    process P {\n        script:\n        'true'\n    }\n}\n",
+    ] {
+        let errors = lower(source).map(|_| ()).expect_err("fails");
+        assert_eq!(errors, [format!("1:1: {message}")], "{source}");
+    }
+}

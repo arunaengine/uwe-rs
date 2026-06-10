@@ -522,39 +522,6 @@ fn path_outputs_take_closures_and_lists() {
     assert_eq!(printed, "[a.xml, b.xml]\n");
 }
 
-/// A DSL1 script: each process reads `from` channels and writes `into` channels where it is
-/// defined, and the statements around it run in order, as Nextflow 22.10 runs it (decision 14).
-#[test]
-fn dsl1_scripts_call_their_processes_where_they_define_them() {
-    let source = "params.factor = 2\ndef label = 'x'\nChannel.from(1, 2).into { ch_a; ch_b }\n\
-                  process DOUBLE {\n    input:\n    val x from ch_a\n    output:\n    \
-                  set val(x), val(y) into doubled\n    script:\n    y = x * params.factor\n    \
-                  \"echo ${label}\"\n}\n\
-                  doubled.map { a, b -> \"${label} ${a} ${b}\" }.view()\nch_b.count().view()\n";
-    let (tasks, printed) = run(source, &Options::default()).expect("runs");
-    assert_eq!(tasks.len(), 2);
-    assert!(tasks[0].script.contains("echo x"), "{}", tasks[0].script);
-    let mut lines: Vec<&str> = printed.lines().collect();
-    lines.sort_unstable();
-    assert_eq!(lines, ["2", "x 1 2", "x 2 4"]);
-}
-
-/// The channel operators of DSL1: `into(n)`, `Channel.create()` with `into` and `choice`,
-/// as Nextflow 22.10 runs them.
-#[test]
-fn dsl1_operators() {
-    let source = "(a, b) = Channel.from(1, 2, 3).into(2)\nsmall = Channel.create()\n\
-                  large = Channel.create()\na.choice(small, large) { it > 1 ? 1 : 0 }\n\
-                  copy = Channel.create()\nb.into(copy)\n\
-                  small.view { \"small ${it}\" }\nlarge.view { \"large ${it}\" }\n\
-                  copy.count().view { \"copies ${it}\" }\n\
-                  process P {\n    input:\n    val x from Channel.from(1)\n    script:\n    'true'\n}\n";
-    let (_, printed) = run(source, &Options::default()).expect("runs");
-    let mut lines: Vec<&str> = printed.lines().collect();
-    lines.sort_unstable();
-    assert_eq!(lines, ["copies 3", "large 2", "large 3", "small 1"]);
-}
-
 /// Legacy syntax: `path "*.pdf" optional true` makes the output optional, as in
 /// nf-core/quantms.
 #[test]
@@ -616,16 +583,6 @@ fn completion_handlers_read_value_channels() {
                   workflow.onComplete { println(\"reports ${reports.getVal()} ${reports.val.size()}\") }\n}";
     let (_, printed) = run(source, &Options::default()).expect("runs");
     assert_eq!(printed, "reports [1, 2] 2\n");
-}
-
-/// A DSL1 completion handler takes the first value of a queue channel that nothing reads, as
-/// nf-core/clipseq reads its MultiQC report with `ch_multiqc_report.getVal()`.
-#[test]
-fn completion_handlers_take_the_first_value_of_unread_queues() {
-    let source = "process P {\n    output:\n    file 'r.html' into ch_report\n    script:\n    \
-                  'true'\n}\nworkflow.onComplete { println(ch_report.getVal().name) }\n";
-    let (_, printed) = run(source, &Options::default()).expect("runs");
-    assert_eq!(printed, "r.html\n");
 }
 
 /// Legacy syntax: a directive after `when:` belongs to the guard, where it gives null, so

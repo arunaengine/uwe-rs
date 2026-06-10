@@ -196,22 +196,6 @@ impl Network {
         }
     }
 
-    /// What `getVal()` of a queue channel that nothing reads takes after the run: its first
-    /// value, as a DSL1 completion handler reads `ch_multiqc_report.getVal()`. `None` when
-    /// something reads the channel or it has no value.
-    pub fn first_unread(&self, channel: ChannelId) -> Option<Value> {
-        if !self.readers[channel.0 as usize].is_empty() {
-            return None;
-        }
-        match &self.channels[channel.0 as usize] {
-            Channel::Queue { messages, .. } => match messages.first() {
-                Some(Message::Value(value)) => Some(value.clone()),
-                _ => None,
-            },
-            Channel::Value(_) => None,
-        }
-    }
-
     /// Adds a node that reads the given channels from now on.
     pub(crate) fn add(&mut self, name: &str, inputs: &[ChannelId], behaviour: Box<dyn Behaviour>) {
         let index = self.nodes.len();

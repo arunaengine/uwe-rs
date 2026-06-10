@@ -383,8 +383,9 @@ fn regex_classes_and_file_walks() {
     );
 }
 
-/// A task input staged in a folder, like `input1/a.fastq.gz` of `stageAs: "input*/*"`, has the
-/// name of its last part, as Java's `Path.getFileName` gives it.
+/// A task input staged in a folder, like `input1/a.fastq.gz` of `stageAs: "input*/*"`, has its
+/// staged name, and the base name, simple name and extension of its last part: Nextflow
+/// 26.04.6 gives `input1/a.fastq.gz a.fastq a gz`.
 #[test]
 fn staged_names_in_folders() {
     let path = nextflow_evaluator::value::PathValue {
@@ -393,7 +394,8 @@ fn staged_names_in_folders() {
         relative: None,
         prefix: None,
     };
-    assert_eq!(path.name(), "a.fastq.gz");
+    assert_eq!(path.name(), "input1/a.fastq.gz");
     assert_eq!(path.base_name(), "a.fastq");
+    assert_eq!(path.simple_name(), "a");
     assert_eq!(path.extension(), "gz");
 }

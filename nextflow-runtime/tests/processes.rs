@@ -565,6 +565,22 @@ fn option_calls_on_outputs() {
     assert_eq!(tasks.len(), 1);
 }
 
+/// The text of a channel, as nf-core/quantms reads `is_sdrf.toString()` of a value that a
+/// workflow emits, and `println()` of a channel in a completion handler, which prints an
+/// empty line. Nextflow 26.04.6 prints `DataflowVariable(value=true)` and
+/// `DataflowBroadcast around DataflowStream[?]`.
+#[test]
+fn texts_of_channels() {
+    let source = "workflow A {\n    main:\n    x = true\n    emit:\n    x = x\n}\n\
+                  workflow {\n    A()\n    println(A.out.x.toString())\n    println(channel.of(1).toString())\n    \
+                  def q = channel.of(2)\n    workflow.onComplete { q.println(); println('done') }\n}\n";
+    let (_, printed) = run(source, &Options::default()).expect("runs");
+    assert_eq!(
+        printed,
+        "DataflowVariable(value=true)\nDataflowBroadcast around DataflowStream[?]\n\ndone\n"
+    );
+}
+
 /// A `set` at the top of a script assigns a variable of the script, which the workflow reads,
 /// as in Nextflow 26.04.6 with the legacy parser.
 #[test]

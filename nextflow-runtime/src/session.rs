@@ -121,6 +121,11 @@ impl Host for Session<'_> {
         {
             return Ok(Some(value));
         }
+        // Groovy's `println()` of any object prints an empty line.
+        if let (Value::Channel(_), "println", []) = (source, name, arguments.as_slice()) {
+            self.base.print("\n");
+            return Ok(Some(Value::Null));
+        }
         self.base.operator(source, name, arguments)
     }
 

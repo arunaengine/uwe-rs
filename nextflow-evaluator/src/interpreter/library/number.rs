@@ -63,6 +63,34 @@ impl Interpreter<'_> {
                 }
                 Value::Null
             }
+            // Groovy's `upto` and `downto`: each number from this one to the other, inclusive.
+            ("upto" | "downto", [Value::Number(end), Value::Closure(f)]) => {
+                let (start, end) = (number.to_i64(), end.to_i64());
+                let wrong = match name {
+                    "upto" if end < start => Some("less"),
+                    "downto" if end > start => Some("greater"),
+                    _ => None,
+                };
+                if let Some(wrong) = wrong {
+                    let message = format!(
+                        "The argument ({end}) to {name}() cannot be {wrong} than the value \
+                         ({start}) it's called on."
+                    );
+                    return Err(thrown(
+                        Exception::new("GroovyRuntimeException", message),
+                        span,
+                    ));
+                }
+                let indexes: Vec<i64> = match name {
+                    "upto" => (start..=end).collect(),
+                    _ => (end..=start).rev().collect(),
+                };
+                for index in indexes {
+                    let index = Value::Number(integer_like(number, index));
+                    self.call_closure_value(f, vec![index], span)?;
+                }
+                Value::Null
+            }
             ("plus" | "minus" | "multiply" | "div" | "mod" | "power", [other]) => {
                 let operator = match name {
                     "plus" => Operator::Add,

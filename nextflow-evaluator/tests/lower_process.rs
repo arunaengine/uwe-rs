@@ -104,6 +104,12 @@ fn errors() {
         errors("    script:\n    task = 1\n    'x'"),
         ["3:5: Built-in constant or namespace cannot be re-assigned"]
     );
+    // Nextflow 26.04.6 fails on `optional true` after an output too: "Cannot invoke method
+    // optional() on null object".
+    assert_eq!(
+        errors("    output:\n    path '*.pdf' optional true\n    script:\n    'x'"),
+        ["3:5: Invalid process output"]
+    );
     // A variable that the script sets without `def` is a task variable, which outputs can read.
     assert!(
         lower(&process(

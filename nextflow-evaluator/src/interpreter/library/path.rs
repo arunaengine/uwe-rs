@@ -344,7 +344,7 @@ impl Interpreter<'_> {
                     return self.string_method(&text, "readLines", &[], span);
                 }
             }
-            "exists" | "isFile" | "isDirectory" | "size" | "isEmpty" => {
+            "exists" | "isFile" | "isDirectory" | "size" | "length" | "isEmpty" => {
                 let metadata = self
                     .host
                     .metadata(path)
@@ -353,7 +353,8 @@ impl Interpreter<'_> {
                     "exists" => Value::Boolean(metadata.is_some()),
                     "isFile" => Value::Boolean(metadata.is_some_and(|file| !file.directory)),
                     "isDirectory" => Value::Boolean(metadata.is_some_and(|file| file.directory)),
-                    "size" => {
+                    // `length()` of a `java.io.File` is its size too.
+                    "size" | "length" => {
                         Value::Number(Number::Long(metadata.map_or(0, |file| file.size as i64)))
                     }
                     // Nextflow's `isEmpty`: missing, or no bytes.

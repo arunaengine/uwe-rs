@@ -538,6 +538,24 @@ fn texts_of_channels() {
     );
 }
 
+/// Legacy syntax: directives inside `if` statements apply under their conditions, like the
+/// `container` of nf-core modules that depends on `workflow.containerEngine`.
+#[test]
+fn directives_inside_if_statements() {
+    let source = "process P {\n    if (1 > 2) {\n        container 'a'\n    } else {\n        container 'b'\n        \
+                  if (true) { cpus 2 }\n    }\n    script:\n    'true'\n}\nworkflow {\n    P()\n}\n";
+    let (tasks, _) = run(source, &Options::default()).expect("runs");
+    let directives: Vec<String> = tasks[0]
+        .directives
+        .iter()
+        .map(|directive| format!("{} {:?}", directive.name, directive.arguments))
+        .collect();
+    assert_eq!(
+        directives,
+        ["container [String(\"b\")]", "cpus [Number(Integer(2))]"]
+    );
+}
+
 /// A `set` at the top of a script assigns a variable of the script, which the workflow reads,
 /// as in Nextflow 26.04.6 with the legacy parser.
 #[test]

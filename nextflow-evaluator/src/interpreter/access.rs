@@ -529,6 +529,13 @@ impl Interpreter<'_> {
                 if let Some(value) = self.library_method(object, name, &arguments, span)? {
                     return Ok(value);
                 }
+                // Groovy calls a closure that a map holds under the name of a missing method.
+                if let Value::Map(map) = object {
+                    let entry = map.borrow().entries.get(&Key(Value::string(name))).cloned();
+                    if let Some(Value::Closure(closure)) = entry {
+                        return self.call_closure_value(&closure, arguments, span);
+                    }
+                }
                 // A method that Groovy does not have for the class fails as in Groovy.
                 let java_class = object.java_class_name();
                 if super::library::groovy_methods::has_method(java_class, name) == Some(false) {
@@ -727,6 +734,12 @@ impl Interpreter<'_> {
                 Ok(Value::Object(Rc::new(std::cell::RefCell::new(Object {
                     class: "groovy.yaml.YamlSlurper",
                     state: State::Yaml,
+                }))))
+            }
+            (None, []) if class == "ConfigSlurper" => {
+                Ok(Value::Object(Rc::new(std::cell::RefCell::new(Object {
+                    class: "groovy.util.ConfigSlurper",
+                    state: State::ConfigSlurper,
                 }))))
             }
             // Both engines render the templates of nf-core pipelines the same way.

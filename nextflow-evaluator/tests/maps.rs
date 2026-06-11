@@ -132,6 +132,7 @@ fn to_map_copies() {
 #[test]
 fn config_slurper() {
     let text = "process {\n    publishDir = [ path: { \"${params.outdir}/x\" }, mode: params.publish_dir_mode ]\n    \
+                time = { check_max(1.h, 'time') }\n    \
                 withName: 'FOO' {\n        publishDir = [ path: { \"${params.outdir}/foo\" } ]\n        \
                 ext.args = '--quiet'\n    }\n}\n";
     let body = format!(

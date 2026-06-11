@@ -103,7 +103,10 @@ impl Interpreter<'_> {
             span: value.span,
         };
         let what = "a value of a ConfigSlurper text";
-        let code = lower_template_value(&closure, text).map_err(|_| unsupported(what, span))?;
+        let code = lower_template_value(&closure, text).map_err(|errors| {
+            let first = errors.first().map_or("", |error| error.message.as_str());
+            unsupported(format!("{what}: {first}"), span)
+        })?;
         let Value::Closure(closure) = self.evaluate(&Rc::new(code), &Rc::new(Module::default()))?
         else {
             return Err(unsupported(what, span));

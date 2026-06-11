@@ -489,10 +489,13 @@ impl Lowering<'_> {
             self.legacy(format!("`{name}` is not defined"), span);
             return Kind::Literal(Value::Null);
         } else if !self.config
-            || (self.lookup.is_some() && self.scopes.in_closure() && self.dynamic_names)
+            || ((self.lookup.is_some() || self.template)
+                && self.scopes.in_closure()
+                && self.dynamic_names)
         {
             // Legacy syntax: Groovy looks for the function when the call runs, which then
-            // fails. So does a config closure in the `process` scope, when a task calls it.
+            // fails. So does a config closure in the `process` scope, when a task calls it, and
+            // a closure of a template or a ConfigSlurper text.
             self.legacy(format!("`{name}` is not defined"), span);
             Function::Script(name.into())
         } else if !self.config {

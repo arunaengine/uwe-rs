@@ -146,6 +146,38 @@ impl Splitter {
             .collect())
     }
 
+    /// Whether the records of a text go one by one: CSV records, each a chunk of its own,
+    /// without `by` and `limit`.
+    pub fn streams(&self) -> bool {
+        matches!(self.format, Format::Csv { .. }) && self.by.is_none() && self.limit.is_none()
+    }
+
+    /// The CSV records of a text one by one, when each record is a chunk of its own: without
+    /// `by` and `limit`.
+    pub fn csv_records(&self, text: String) -> Option<csv::Records> {
+        let Format::Csv {
+            separator,
+            quote,
+            header,
+            skip,
+            strip,
+        } = &self.format
+        else {
+            return None;
+        };
+        if self.by.is_some() || self.limit.is_some() {
+            return None;
+        }
+        let options = CsvOptions {
+            separator: *separator,
+            quote: *quote,
+            header: header.clone(),
+            skip: *skip,
+            strip: *strip,
+        };
+        Some(csv::Records::new(text, &options))
+    }
+
     fn csv(&self, text: &str) -> Vec<Value> {
         let Format::Csv {
             separator,

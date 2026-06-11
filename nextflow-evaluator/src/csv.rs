@@ -2,7 +2,12 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use crate::value::Value;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use indexmap::IndexMap;
+
+use crate::value::{Key, Map, MapKind, Value};
 
 /// How to read CSV text.
 pub struct CsvOptions {
@@ -20,32 +25,113 @@ pub struct CsvOptions {
 /// The records of a text: a list of fields per line, or with a header a map of them. Blank
 /// lines are left out.
 pub fn records(text: &str, options: &CsvOptions) -> Vec<Value> {
-    let mut rows = text
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .skip(options.skip)
-        .map(|line| fields(line, options.separator, options.quote, options.strip));
-    let names: Option<Vec<Value>> = match &options.header {
-        Some(None) => rows
-            .next()
-            .map(|names| names.into_iter().map(Value::string).collect()),
-        Some(Some(names)) => Some(names.clone()),
-        None => None,
-    };
-    rows.map(|row| match &names {
-        Some(names) => Value::map(names.iter().enumerate().map(|(index, name)| {
-            let field = row
-                .get(index)
-                .map_or(Value::Null, |f| Value::string(f.as_str()));
-            (name.clone(), field)
-        })),
-        None => Value::list(row.into_iter().map(Value::string).collect()),
-    })
-    .collect()
+    Records::new(text.to_owned(), options).collect()
+}
+
+/// The records of a text one by one, so that a large file need not be in records all at once.
+pub struct Records {
+    text: String,
+    /// Where the next line starts.
+    position: usize,
+    separator: char,
+    quote: Option<char>,
+    strip: bool,
+    names: Option<Vec<Value>>,
+    /// A map of the names, which each record copies, so that its keys are hashed once. Names
+    /// that repeat have none, and each record hashes its keys.
+    template: Option<IndexMap<Key, Value>>,
+}
+
+impl Records {
+    pub fn new(text: String, options: &CsvOptions) -> Records {
+        let mut records = Records {
+            text,
+            position: 0,
+            separator: options.separator,
+            quote: options.quote,
+            strip: options.strip,
+            names: None,
+            template: None,
+        };
+        for _ in 0..options.skip {
+            records.line();
+        }
+        records.names = match &options.header {
+            Some(None) => records
+                .line()
+                .map(|names| names.into_iter().map(Value::string).collect()),
+            Some(Some(names)) => Some(names.clone()),
+            None => None,
+        };
+        records.template = records.names.as_ref().and_then(|names| {
+            let template: IndexMap<Key, Value> = (names.iter())
+                .map(|name| (Key(name.clone()), Value::Null))
+                .collect();
+            (template.len() == names.len()).then_some(template)
+        });
+        records
+    }
+
+    /// Whether the whole text is read.
+    pub fn is_done(&self) -> bool {
+        self.position >= self.text.len()
+    }
+
+    /// The fields of the next line that is not blank.
+    fn line(&mut self) -> Option<Vec<String>> {
+        loop {
+            let rest = &self.text[self.position..];
+            if rest.is_empty() {
+                return None;
+            }
+            let end = rest.find('\n').unwrap_or(rest.len());
+            let line = rest[..end].strip_suffix('\r').unwrap_or(&rest[..end]);
+            self.position += (end + 1).min(rest.len());
+            if !line.trim().is_empty() {
+                return Some(fields(line, self.separator, self.quote, self.strip));
+            }
+        }
+    }
+}
+
+impl Iterator for Records {
+    type Item = Value;
+
+    fn next(&mut self) -> Option<Value> {
+        let row = self.line()?;
+        Some(match (&self.names, &self.template) {
+            (Some(_), Some(template)) => {
+                let mut entries = template.clone();
+                for (field, (_, value)) in row.into_iter().zip(entries.iter_mut()) {
+                    *value = Value::string(field);
+                }
+                Value::Map(Rc::new(RefCell::new(Map {
+                    kind: MapKind::LinkedHashMap,
+                    entries,
+                    default: None,
+                })))
+            }
+            (Some(names), None) => Value::map(names.iter().enumerate().map(|(index, name)| {
+                let field = row
+                    .get(index)
+                    .map_or(Value::Null, |f| Value::string(f.as_str()));
+                (name.clone(), field)
+            })),
+            (None, _) => Value::list(row.into_iter().map(Value::string).collect()),
+        })
+    }
 }
 
 /// The fields of a CSV line; quotes group text with separators and `""` is a quote.
 fn fields(line: &str, separator: char, quote: Option<char>, strip: bool) -> Vec<String> {
+    // Without quotes, the fields are the parts between separators.
+    if quote.is_none_or(|quote| !line.contains(quote)) {
+        let part = |field: &str| match strip {
+            true => field.trim().to_owned(),
+            false => field.to_owned(),
+        };
+        return line.split(separator).map(part).collect();
+    }
     let mut fields = vec![String::new()];
     let mut quoted = false;
     let mut characters = line.chars().peekable();

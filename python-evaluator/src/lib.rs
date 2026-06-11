@@ -14,6 +14,7 @@ pub mod interpreter;
 pub mod methods;
 pub mod modules;
 pub mod number;
+pub mod packages;
 pub mod pandas;
 pub mod types;
 pub mod value;

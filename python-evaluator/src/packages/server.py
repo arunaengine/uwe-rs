@@ -1,0 +1,250 @@
+# The Python process of the packages without a stand-in in iunctus (decision 19). It reads
+# one JSON request per line on standard input and writes one JSON reply per line on standard
+# output. The protocol is in docs/design/snakemake/python-packages.md.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+import fcntl
+import importlib
+import json
+import math
+import numbers
+import operator
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+
+replies = sys.stdout
+# What packages print goes to standard error, so that standard output holds only replies.
+sys.stdout = sys.stderr
+
+objects = {}  # handle -> object
+counts = {}  # handle -> how often it was sent and not yet released
+handles = {}  # id(object) -> handle
+next_handle = [1]
+
+
+def handle_of(value):
+    number = handles.get(id(value))
+    if number is None:
+        number = next_handle[0]
+        next_handle[0] += 1
+        handles[id(value)] = number
+        objects[number] = value
+        counts[number] = 0
+    counts[number] += 1
+    return {"handle": number, "type": type(value).__name__, "callable": callable(value)}
+
+
+def release(numbers_):
+    for number in numbers_:
+        if number in counts:
+            counts[number] -= 1
+            if counts[number] <= 0:
+                value = objects.pop(number)
+                del counts[number]
+                handles.pop(id(value), None)
+
+
+def encode(value):
+    if value is None or isinstance(value, bool):
+        return value
+    if type(value).__name__ == "bool_":
+        return bool(value)
+    if isinstance(value, numbers.Integral):
+        value = int(value)
+        return value if -(2**63) <= value < 2**63 else {"int": str(value)}
+    if isinstance(value, numbers.Real):
+        value = float(value)
+        if math.isnan(value):
+            return {"float": "nan"}
+        if math.isinf(value):
+            return {"float": "inf" if value > 0 else "-inf"}
+        return {"float": value}
+    if isinstance(value, str):
+        return str(value)
+    if isinstance(value, (bytes, bytearray)):
+        return {"bytes": bytes(value).hex()}
+    if isinstance(value, pathlib.PurePath):
+        return {"path": str(value)}
+    if isinstance(value, tuple) and not hasattr(value, "_fields"):
+        return {"tuple": [encode(item) for item in value]}
+    if isinstance(value, list):
+        return {"list": [encode(item) for item in value]}
+    if isinstance(value, (set, frozenset)):
+        return {"set": [encode(item) for item in value]}
+    if isinstance(value, dict):
+        return {"dict": [[encode(key), encode(item)] for key, item in value.items()]}
+    return handle_of(value)
+
+
+def decode(value):
+    if isinstance(value, dict):
+        tag, inner = next(iter(value.items()))
+        if tag == "handle":
+            if inner not in objects:
+                raise ValueError(f"iunctus sent the unknown handle {inner}")
+            return objects[inner]
+        if tag == "int":
+            return int(inner)
+        if tag == "float":
+            return float(inner)
+        if tag == "bytes":
+            return bytes.fromhex(inner)
+        if tag == "path":
+            return pathlib.Path(inner)
+        if tag == "list":
+            return [decode(item) for item in inner]
+        if tag == "tuple":
+            return tuple(decode(item) for item in inner)
+        if tag == "set":
+            return {decode(item) for item in inner}
+        if tag == "dict":
+            return {decode(key): decode(item) for key, item in inner}
+        raise ValueError(f"iunctus sent a value of the unknown kind {tag}")
+    return value
+
+
+CHANNELS = ["--channel", "conda-forge", "--channel", "bioconda"]
+
+
+def listed(name):
+    """The conda packages that a file of the environment lists, one per line."""
+    try:
+        with open(os.path.join(sys.prefix, name)) as file:
+            return set(file.read().split())
+    except OSError:
+        return set()
+
+
+# The packages that the environment has, and those that neither channel has.
+installed = listed("conda-installed")
+missing = listed("conda-missing")
+
+
+def available(installer, package):
+    """Whether conda-forge or bioconda has a package, without a solve that could fail."""
+    found = subprocess.run(
+        [installer, "search", "--quiet", "--json", *CHANNELS, package],
+        capture_output=True,
+        text=True,
+    )
+    try:
+        packages = json.loads(found.stdout)["result"]["pkgs"]
+    except (ValueError, KeyError, TypeError):
+        return False
+    return any(entry.get("name") == package for entry in packages)
+
+
+def install(conda):
+    """Installs the conda packages that the channels have into this environment, one install
+    at a time on the machine, and gives the packages that neither channel has."""
+    installer = shutil.which("micromamba")
+    wanted = [package for package in conda if package not in installed]
+    if installer is None:
+        return [package for package in wanted if package in missing]
+    for package in wanted:
+        if package not in missing and not available(installer, package):
+            missing.add(package)
+    wanted = [package for package in wanted if package not in missing]
+    if wanted:
+        lock = os.path.join(os.environ.get("CONDA_PKGS_DIRS", "/tmp"), ".iunctus-lock")
+        with open(lock, "a") as file:
+            fcntl.flock(file, fcntl.LOCK_EX)
+            command = [installer, "install", "--yes", "--quiet", "--no-pyc", "--prefix", sys.prefix]
+            done = subprocess.run([*command, *CHANNELS, *wanted], stdout=sys.stderr)
+        importlib.invalidate_caches()
+        if done.returncode == 0:
+            installed.update(wanted)
+    return [package for package in conda if package in missing]
+
+
+def import_module(name, conda):
+    try:
+        return importlib.import_module(name)
+    except ModuleNotFoundError as error:
+        top = name.split(".")[0]
+        if (error.name or "").split(".")[0] != top:
+            raise
+        absent = install(conda)
+        if absent:
+            message = f"No module named '{name}' (neither conda-forge nor bioconda has the package {absent[0]})"
+            raise ModuleNotFoundError(message, name=name) from None
+    return importlib.import_module(name)
+
+
+def answer(request):
+    release(request.get("release", []))
+    op = request["op"]
+    if op == "import":
+        return import_module(request["module"], request.get("conda", []))
+    if op == "stop":
+        return None
+    if op == "binary":
+        function = getattr(operator, request["operator"])
+        return function(decode(request["left"]), decode(request["right"]))
+    target = decode(request["object"])
+    if op == "getattr":
+        return getattr(target, request["name"])
+    if op == "setattr":
+        setattr(target, request["name"], decode(request["value"]))
+        return None
+    if op == "call":
+        args = [decode(arg) for arg in request["args"]]
+        kwargs = {name: decode(value) for name, value in request["kwargs"]}
+        return target(*args, **kwargs)
+    if op == "getitem":
+        return target[decode(request["key"])]
+    if op == "setitem":
+        target[decode(request["key"])] = decode(request["value"])
+        return None
+    if op == "iter":
+        return list(target)
+    if op == "len":
+        return len(target)
+    if op == "bool":
+        return bool(target)
+    if op == "str":
+        return str(target)
+    if op == "repr":
+        return repr(target)
+    if op == "contains":
+        return decode(request["item"]) in target
+    if op == "unary":
+        return getattr(operator, request["operator"])(target)
+    if op == "isinstance":
+        return isinstance(target, decode(request["class"]))
+    raise ValueError(f"iunctus sent the unknown request {op}")
+
+
+def describe(error):
+    kind = type(error)
+    plain = (str, int, float, bool, type(None))
+    return {
+        "type": kind.__name__,
+        "module": kind.__module__,
+        "bases": [base.__name__ for base in kind.__mro__[1:] if issubclass(base, BaseException)],
+        "message": str(error),
+        "args": [arg if isinstance(arg, plain) else repr(arg) for arg in error.args],
+    }
+
+
+def main():
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            break
+        request = json.loads(line)
+        try:
+            reply = {"value": encode(answer(request))}
+        except BaseException as error:  # noqa: BLE001, every error of a package is a reply
+            reply = {"error": describe(error)}
+        replies.write(json.dumps(reply) + "\n")
+        replies.flush()
+        if request.get("op") == "stop":
+            break
+
+
+main()

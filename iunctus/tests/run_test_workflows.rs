@@ -77,8 +77,7 @@ fn valid(reason: &str) -> bool {
 
 /// The outcome of one run: `ok`, or the exit code and the first error line without the
 /// parts that differ between machines and runs. A run that takes more than ten minutes is
-/// stopped with exit code 124; nf-core/magmap, which reads 2 GB of NCBI genome lists, takes one
-/// minute alone and more when other runs share the machine. A run that succeeds
+/// stopped with exit code 124. A run that succeeds
 /// with an invalid graph is `graph` and the problem.
 fn outcome(test_workflows: &Path, pipeline: &str, cache: &Path) -> String {
     let graph = cache.join("graph.json");

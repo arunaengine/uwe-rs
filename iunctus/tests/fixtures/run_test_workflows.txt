@@ -72,7 +72,7 @@ lncpipe ok
 longraredisease ok
 lsmquant ok
 mag 1 workflows/../subworkflows/local/bin_qc/../../../modules/nf-core/untar/main.nf:14:30: MissingPropertyException: No such variable: output_dir
-magmap 124
+magmap 1 workflows/../modules/local/check_duplicates/main.nf:33:13: MissingPropertyException: No such variable: outfile
 marsseq 1 workflows/marsseq.nf:20:78: NoSuchFileException: No such file or directory: <cache>/out/references/mm10/GRCm39.fa
 mcmicro 1 workflows/mcmicro.nf:265:39: AbortOperationException: QC Error found
 meerpipe 1 nextflow.config:53:21: `PSRDB_URL` is not defined (hint: use `env('...')` to access environment variable)

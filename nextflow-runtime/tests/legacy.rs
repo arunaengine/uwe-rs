@@ -272,3 +272,31 @@ fn script_classes_serve_their_script() {
     nextflow_runtime::run(&module, &mut output).expect("runs");
     assert_eq!(output.0, "clean 1\n");
 }
+
+/// An include with `addParams(...)` loads the script again with params of its own: those of
+/// the including script with the given ones added, as Nextflow 26.04.6 prints
+/// `m loaded 5`, `m loaded 6`, `5 hi`, `6 hi` and `null` for these scripts.
+#[test]
+fn includes_with_params_load_the_script_again() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    write(
+        root.path(),
+        "m.nf",
+        "params.options = [:]\nparams.greeting = 'hello'\nprintln \"m loaded ${params.options.x}\"\n\
+         def show() { \"${params.options.x} ${params.greeting}\" }\n",
+    );
+    write(
+        root.path(),
+        "main.nf",
+        "params.greeting = 'hi'\ndef opts = [x: 5]\n\
+         include { show as A } from './m' addParams( options: opts )\n\
+         include { show as B } from './m' addParams( options: [x: 6] )\n\
+         workflow {\n    println(A())\n    println(B())\n    println(params.options)\n}\n",
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let mut output = Output::default();
+    nextflow_runtime::run(&module, &mut output).expect("runs");
+    assert_eq!(output.0, "m loaded 5\nm loaded 6\n5 hi\n6 hi\nnull\n");
+}

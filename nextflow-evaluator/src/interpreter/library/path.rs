@@ -181,11 +181,8 @@ impl Interpreter<'_> {
                     class: "java.io.BufferedWriter",
                     state: crate::value::State::Writer(String::new()),
                 }));
-                let result = self.call_closure_value(
-                    closure,
-                    vec![Value::Object(writer.clone())],
-                    span,
-                )?;
+                let result =
+                    self.call_closure_value(closure, vec![Value::Object(writer.clone())], span)?;
                 let text = match &writer.borrow().state {
                     crate::value::State::Writer(text) => text.clone(),
                     _ => String::new(),

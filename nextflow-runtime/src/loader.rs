@@ -29,6 +29,10 @@ impl std::error::Error for LoadError {}
 #[derive(Default)]
 pub struct Loader {
     modules: HashMap<PathBuf, Rc<Module>>,
+    /// Legacy syntax: the scripts that includes with `addParams(...)` or `params(...)` load
+    /// again, as each such include runs a script of its own, by path, and by the including
+    /// script and the position of the include.
+    copies: HashMap<(PathBuf, PathBuf, u32), Rc<Module>>,
     /// The modules that stand for plugins, by plugin id.
     plugins: HashMap<Rc<str>, Rc<Module>>,
     /// The scripts that port plugin functions, by plugin id.
@@ -89,6 +93,22 @@ impl Loader {
         self.add_classes(&module);
         self.link(&module, &path);
         self.modules.insert(path, module.clone());
+        Some(module)
+    }
+
+    /// A script loaded again for an include with params, once for each include.
+    fn copy(&mut self, path: &Path, include: (PathBuf, u32)) -> Option<Rc<Module>> {
+        let key = (path.to_owned(), include.0, include.1);
+        if let Some(module) = self.copies.get(&key) {
+            return Some(module.clone());
+        }
+        let module = Rc::new(self.read(path)?);
+        if let Some(directory) = path.parent() {
+            *module.directory.borrow_mut() = Some(directory.to_string_lossy().into());
+        }
+        self.add_classes(&module);
+        self.link(&module, path);
+        self.copies.insert(key, module.clone());
         Some(module)
     }
 
@@ -252,7 +272,11 @@ impl Loader {
                     else {
                         continue;
                     };
-                    let Some(target) = self.modules.get(&target).cloned() else {
+                    let target = match include.params {
+                        true => self.copy(&target, (path.to_owned(), include.span.start)),
+                        false => self.modules.get(&target).cloned(),
+                    };
+                    let Some(target) = target else {
                         continue;
                     };
                     target

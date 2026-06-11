@@ -258,10 +258,45 @@ impl Interpreter<'_> {
                 }
                 Value::Null
             }
+            StatementKind::IncludeParams {
+                indexes,
+                add,
+                arguments,
+            } => {
+                let given = match self.arguments(frame, arguments)?.first() {
+                    Some(Value::Map(map)) => map.borrow().entries.clone(),
+                    _ => Default::default(),
+                };
+                // Nextflow's `ParamsMap.copyWith`: the params of this script, then these.
+                let mut entries = match (*add, self.params_of(&frame.module)) {
+                    (true, Some(Value::Map(owner))) => owner.borrow().entries.clone(),
+                    _ => Default::default(),
+                };
+                entries.extend(given);
+                let module = frame.module.clone();
+                let target = indexes
+                    .first()
+                    .and_then(|index| module.includes.get(*index))
+                    .and_then(|include| {
+                        let links = module.links.borrow();
+                        links.get(&include.alias).map(|link| link.module.clone())
+                    });
+                if let Some(target) = target {
+                    let params = crate::value::Map {
+                        kind: crate::value::MapKind::LinkedHashMap,
+                        entries,
+                        default: None,
+                    };
+                    let params = Value::Map(Rc::new(std::cell::RefCell::new(params)));
+                    *target.params.borrow_mut() = Some(params);
+                    self.start_script(&target)?;
+                }
+                Value::Null
+            }
             StatementKind::SetParam { path, value } => {
                 let value = self.expression(frame, value)?;
                 let names: Vec<&str> = path.iter().map(|name| &**name).collect();
-                if let Some(params) = self.globals.get("params").cloned()
+                if let Some(params) = self.params_of(&frame.module)
                     && tree::get(&params, &names).is_none()
                 {
                     tree::assign(&params, path, value)

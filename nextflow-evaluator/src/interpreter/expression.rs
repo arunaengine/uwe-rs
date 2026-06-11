@@ -39,6 +39,12 @@ impl Interpreter<'_> {
                 frame.set(*target, value.clone());
                 value
             }
+            // Legacy syntax: a script that an include with `addParams(...)` loads has params of
+            // its own.
+            Kind::Builtin(name) if &**name == "params" => match self.params_of(&frame.module) {
+                Some(value) => value,
+                None => return Err(unsupported("the built-in `params`", span)),
+            },
             Kind::Builtin(name) => match self.globals.get(name) {
                 Some(value) => value.clone(),
                 None => return Err(unsupported(format!("the built-in `{name}`"), span)),

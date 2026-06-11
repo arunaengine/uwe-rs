@@ -1,12 +1,16 @@
-//! Runs every nf-core pipeline of the test workflows with `-profile test` and the mock TES executor,
-//! and compares the outcome with `tests/fixtures/run_test_workflows.txt`: `ok`, or the exit code and
-//! the first line of the error. The runs are stub runs, as pipelines then do not read the
-//! content of the outputs that the mock makes up. The execution graph of each run that
-//! succeeds must be valid. Run with `just run-test-workflows-test`; on a difference the test prints the
-//! lines of the new fixture.
+//! Runs every nf-core pipeline of the test workflows with `-profile test` and the mock TES
+//! executor, and compares the outcome with `tests/fixtures/run_test_workflows.txt`: `ok`, or the
+//! exit code and the first line of the error. The runs are stub runs, as pipelines then do not
+//! read the content of the outputs that the mock makes up, and up to 8 tasks finish in a seeded
+//! shuffled order, so that the Nextflow driver cannot depend on the order of outcomes. The
+//! execution graph of each run that succeeds must be valid. A pipeline may only fail with a
+//! record in `tests/fixtures/run_evidence.txt` of why it cannot run, and a record is only kept
+//! while its pipeline fails. Run with `just run-test-workflows-test`; on a difference the test
+//! prints the lines of the new fixture.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
@@ -15,17 +19,75 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use fancy_regex::Regex;
 use workflow_graph::ExecutionGraph;
 
+/// Why each pipeline that fails cannot run, with the output of Nextflow, recorded by
+/// `fixtures/run_evidence.py`.
+const EVIDENCE: &str = include_str!("fixtures/run_evidence.txt");
+
+/// The reason of each pipeline that a record names. A record is a block of lines between
+/// empty lines: the pipelines, then `= <kind>: <why>` with one plain sentence, then the
+/// evidence that Nextflow fails the same way: `$` the command, and `>` the lines of its output.
+/// The kind is `invalid` (the pipeline itself is broken), `missing` (it needs something that is
+/// not public or not in its repository), or `unsupported (decision N)` (iunctus leaves the
+/// feature out on purpose, as decision N of docs/decisions.md says). Panics on a record without
+/// a valid reason or without evidence, so that the record file stays complete.
+fn reasons(text: &str) -> BTreeMap<&str, &str> {
+    let mut reasons = BTreeMap::new();
+    for block in text.split("\n\n") {
+        let lines: Vec<&str> = block
+            .lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .collect();
+        let pipelines: Vec<&str> = lines
+            .iter()
+            .copied()
+            .filter(|line| !line.starts_with(['=', '$', '>']))
+            .collect();
+        if pipelines.is_empty() {
+            continue;
+        }
+        let reason = lines.iter().find_map(|line| line.strip_prefix("= "));
+        let Some(reason) = reason.filter(|reason| valid(reason)) else {
+            panic!(
+                "the record of {pipelines:?} needs a line `= invalid: <why>`, \
+                 `= missing: <why>` or `= unsupported (decision N): <why>`"
+            );
+        };
+        assert!(
+            lines.iter().any(|line| line.starts_with('>')),
+            "the record of {pipelines:?} shows no output of Nextflow"
+        );
+        for pipeline in pipelines {
+            reasons.insert(pipeline, reason);
+        }
+    }
+    reasons
+}
+
+/// Whether a reason names one of the three kinds and says why.
+fn valid(reason: &str) -> bool {
+    let Some((kind, why)) = reason.split_once(": ") else {
+        return false;
+    };
+    let decision = kind
+        .strip_prefix("unsupported (decision ")
+        .and_then(|rest| rest.strip_suffix(')'))
+        .is_some_and(|number| number.parse::<u32>().is_ok());
+    (matches!(kind, "invalid" | "missing") || decision) && !why.trim().is_empty()
+}
+
 /// The outcome of one run: `ok`, or the exit code and the first error line without the
-/// parts that differ between machines and runs. A run that takes more than five minutes, like
-/// one that reads gigabytes of remote files, is stopped with exit code 124. A run that succeeds
+/// parts that differ between machines and runs. A run that takes more than ten minutes is
+/// stopped with exit code 124; nf-core/magmap, which reads 2 GB of NCBI genome lists, takes one
+/// minute alone and more when other runs share the machine. A run that succeeds
 /// with an invalid graph is `graph` and the problem.
 fn outcome(test_workflows: &Path, pipeline: &str, cache: &Path) -> String {
     let graph = cache.join("graph.json");
     let _ = std::fs::remove_file(&graph);
     let output = Command::new("timeout")
-        .args(["300", env!("CARGO_BIN_EXE_iunctus")])
+        .args(["600", env!("CARGO_BIN_EXE_iunctus")])
         .args(["run", &test_workflows.join(pipeline).to_string_lossy()])
         .args(["-profile", "test", "-stub-run"])
+        .args(["-max-pending", "8", "-order", "shuffled:1"])
         .args(["-graph", &graph.to_string_lossy()])
         .args(["--outdir", &cache.join("out").to_string_lossy()])
         .env("XDG_CACHE_HOME", cache)
@@ -123,6 +185,17 @@ fn pipelines_run_as_recorded() {
         }
     });
     let actual = outcomes.into_inner().expect("no run panicked");
+    // A pipeline may only fail with a record, and a record is only kept while it fails.
+    let reasons = reasons(EVIDENCE);
+    let name = |line: &String| line.split(' ').next().unwrap_or_default().to_owned();
+    let unexplained: Vec<&String> = actual
+        .iter()
+        .filter(|line| !line.ends_with(" ok") && !reasons.contains_key(name(line).as_str()))
+        .collect();
+    let running: Vec<&&str> = reasons
+        .keys()
+        .filter(|pipeline| actual.contains(&format!("{pipeline} ok")))
+        .collect();
     if actual != expected {
         let changed: Vec<String> = actual
             .iter()
@@ -136,4 +209,22 @@ fn pipelines_run_as_recorded() {
             actual.join("\n")
         );
     }
+    assert!(
+        unexplained.is_empty(),
+        "pipelines fail without a record in run_evidence.txt of why they cannot run:\n{}",
+        unexplained
+            .iter()
+            .map(|line| line.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    assert!(
+        running.is_empty(),
+        "pipelines of run_evidence.txt run now; remove their records:\n{}",
+        running
+            .iter()
+            .map(|pipeline| **pipeline)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
 }

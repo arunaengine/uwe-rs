@@ -24,6 +24,8 @@ pub enum State {
     Workflow(Workflow),
     /// `groovy.text.SimpleTemplateEngine`
     TemplateEngine,
+    /// `groovy.util.ConfigSlurper`
+    ConfigSlurper,
     /// `org.yaml.snakeyaml.Yaml`
     Yaml,
     /// `java.net.URI`, by its text.

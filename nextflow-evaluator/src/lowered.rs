@@ -224,6 +224,9 @@ pub struct Process {
 pub struct Directive {
     pub name: Rc<str>,
     pub arguments: Arguments,
+    /// Legacy syntax: the condition of the `if` statements that the directive is in, like
+    /// `container` in `if (workflow.containerEngine == 'singularity') { ... }`.
+    pub guard: Option<Expression>,
     pub span: Span,
 }
 

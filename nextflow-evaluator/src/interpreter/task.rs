@@ -259,6 +259,11 @@ impl Interpreter<'_> {
             this.block(&mut task.frame, &process.setup)?;
             let mut directives = Vec::new();
             for directive in &process.directives {
+                if let Some(guard) = &directive.guard
+                    && !this.expression(&mut task.frame, guard)?.truth()
+                {
+                    continue;
+                }
                 let arguments = match this.arguments(&mut task.frame, &directive.arguments) {
                     Ok(arguments) => arguments,
                     // Nextflow reads the tag only to name the task, and ignores its errors.

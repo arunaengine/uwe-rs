@@ -98,7 +98,17 @@ impl Lowering<'_> {
             }
             if let StatementKind::If { .. } = directive.kind {
                 self.legacy("Invalid process directive", directive.span);
-                setup.extend(self.statements(std::slice::from_ref(directive)));
+                let mut guarded = Vec::new();
+                if guarded_directives(directive, None, &mut guarded) {
+                    for (statement, guard) in guarded {
+                        if let Some(mut lowered) = self.directive(&statement) {
+                            lowered.guard = guard.map(|guard| self.expression(&guard));
+                            directives.push(lowered);
+                        }
+                    }
+                } else {
+                    setup.extend(self.statements(std::slice::from_ref(directive)));
+                }
                 continue;
             }
             directives.extend(self.directive(directive));
@@ -142,6 +152,7 @@ impl Lowering<'_> {
         Some(Directive {
             name: name.into(),
             arguments: self.arguments(arguments),
+            guard: None,
             span: statement.span,
         })
     }
@@ -462,6 +473,61 @@ fn call(statement: &ast::Statement) -> Option<(&str, &[Argument], Span)> {
             ..
         }) => Some((name.text.as_str(), arguments.as_slice(), name.span)),
         _ => None,
+    }
+}
+
+/// Legacy syntax: the directives inside the `if` statements of a process, each with the
+/// condition under which it applies. False when a branch holds anything but directives.
+fn guarded_directives(
+    statement: &ast::Statement,
+    guard: Option<ast::Expression>,
+    found: &mut Vec<(ast::Statement, Option<ast::Expression>)>,
+) -> bool {
+    let both = |guard: &Option<ast::Expression>, condition: ast::Expression| {
+        let span = condition.span;
+        Some(match guard {
+            Some(guard) => ast::Expression {
+                kind: Syntax::Binary {
+                    operator: ast::BinaryOperator::And,
+                    left: Box::new(guard.clone()),
+                    right: Box::new(condition),
+                },
+                span,
+            },
+            None => condition,
+        })
+    };
+    match &statement.kind {
+        StatementKind::If {
+            condition,
+            then,
+            otherwise,
+        } => {
+            let negated = ast::Expression {
+                kind: Syntax::Unary {
+                    operator: ast::UnaryOperator::Not,
+                    operand: Box::new(condition.clone()),
+                },
+                span: condition.span,
+            };
+            let branches = [
+                (Some(then), both(&guard, condition.clone())),
+                (otherwise.as_ref(), both(&guard, negated)),
+            ];
+            branches.into_iter().all(|(block, guard)| {
+                block.is_none_or(|block| {
+                    (block.statements.iter())
+                        .all(|statement| guarded_directives(statement, guard.clone(), found))
+                })
+            })
+        }
+        _ => match call(statement) {
+            Some((name, _, _)) if DIRECTIVES.contains(&name) => {
+                found.push((statement.clone(), guard));
+                true
+            }
+            _ => false,
+        },
     }
 }
 

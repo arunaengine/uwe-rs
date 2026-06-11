@@ -84,9 +84,18 @@ pub(crate) struct Context<'n, 'i, 'h> {
     requests: Vec<TaskRequest>,
     next_task: &'n mut u64,
     pub interpreter: &'i mut Interpreter<'h>,
+    /// Whether the node has more to do without new input, and runs again after the nodes
+    /// that read what it wrote.
+    again: bool,
 }
 
 impl Context<'_, '_, '_> {
+    /// Runs the node again later, after the nodes that read what it wrote, as a node that
+    /// writes many values does, so that they need not all wait in its channel.
+    pub fn again(&mut self) {
+        self.again = true;
+    }
+
     /// The next message of an input, as an operator reads it: a value channel gives its value
     /// once and then the stop signal.
     pub fn read(&mut self, input: usize) -> Option<Message> {
@@ -304,6 +313,7 @@ impl Network {
             requests: Vec::new(),
             next_task: &mut self.next_task,
             interpreter,
+            again: false,
         };
         let result = match step {
             Step::Ignite => behaviour.ignite(&mut context),
@@ -312,6 +322,7 @@ impl Network {
         };
         let written = std::mem::take(&mut context.written);
         let requests = std::mem::take(&mut context.requests);
+        let again = context.again;
         for request in &requests {
             self.owners.insert(request.id, index);
         }
@@ -322,6 +333,9 @@ impl Network {
             for reader in self.readers[channel.0 as usize].clone() {
                 self.enqueue(reader);
             }
+        }
+        if again {
+            self.enqueue(index);
         }
         Ok(())
     }

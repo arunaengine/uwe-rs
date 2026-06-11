@@ -410,6 +410,22 @@ fn collect_file_writes_files_at_the_end() {
     );
 }
 
+/// The records of a large CSV text go out in batches, in order, with their tuple.
+#[test]
+fn large_csv_texts_split_in_order() {
+    assert_eq!(
+        lines(
+            "channel.of(['k', 'n\\n' + (1..25000).join('\\n')])\
+             .splitCsv(header: true, elem: 1)\
+             .map { k, row -> row.n.toInteger() }\
+             .toList()\
+             .map { l -> [l.size(), l == (1..25000).toList()] }\
+             .view()"
+        ),
+        ["[25000, true]"]
+    );
+}
+
 #[test]
 fn splitters() {
     // Quotes group text only with the `quote` option.

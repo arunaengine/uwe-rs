@@ -885,6 +885,7 @@ impl Builder<'_> {
                     decompress: option(&options, "decompress").is_none_or(|value| value.truth()),
                     count: 0,
                     total: counting.then_some(0),
+                    pending: None,
                 };
                 (vec![source], Box::new(node), Value::Channel(output))
             }

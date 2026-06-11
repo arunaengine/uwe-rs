@@ -30,11 +30,45 @@ pub(crate) struct Split {
     pub count: usize,
     /// For the count operators: the number of records so far, which is emitted at the end.
     pub total: Option<i64>,
+    /// The CSV records of a file that are not emitted yet, with the tuple they go into and
+    /// their position in it.
+    pub pending: Option<(nextflow_evaluator::csv::Records, Option<Vec<Value>>, usize)>,
 }
+
+/// The most records that a split emits before the nodes that read them run.
+const BATCH: usize = 10_000;
 
 impl Behaviour for Split {
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
-        while let Some(message) = context.read(0) {
+        loop {
+            // The records of a large CSV file go out a batch at a time.
+            if let Some((records, tuple, position)) = &mut self.pending {
+                for record in records.by_ref().take(BATCH) {
+                    let item = match tuple {
+                        Some(items) => {
+                            let mut items = items.clone();
+                            if *position < items.len() {
+                                items[*position] = record;
+                            }
+                            Value::list(items)
+                        }
+                        None => record,
+                    };
+                    let item = match &self.each {
+                        Some(closure) => context.interpreter.call_closure(closure, vec![item])?,
+                        None => item,
+                    };
+                    context.emit(self.output, item);
+                }
+                if !records.is_done() {
+                    context.again();
+                    return Ok(State::Running);
+                }
+                self.pending = None;
+            }
+            let Some(message) = context.read(0) else {
+                return Ok(State::Running);
+            };
             let Message::Value(value) = message else {
                 if let Some(total) = self.total {
                     context.emit(self.output, Value::Number(Number::Long(total)));
@@ -68,6 +102,12 @@ impl Behaviour for Split {
                 }
                 other => (other.to_string(), "chunk".to_owned()),
             };
+            if self.total.is_none() && self.files.is_none() && self.splitter.streams() {
+                if let Some(records) = self.splitter.csv_records(text) {
+                    self.pending = Some((records, tuple, position));
+                }
+                continue;
+            }
             let chunks = self.splitter.chunks(&text).map_err(thrown)?;
             if let Some(total) = &mut self.total {
                 *total += chunks.len() as i64;
@@ -101,7 +141,6 @@ impl Behaviour for Split {
                 context.emit(self.output, item);
             }
         }
-        Ok(State::Running)
     }
 }
 

@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub(super) mod bytes;
+mod config_slurper;
 mod format;
 pub(super) mod groovy_methods;
 mod iterable;

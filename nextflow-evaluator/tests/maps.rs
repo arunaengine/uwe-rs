@@ -126,3 +126,17 @@ fn to_map_copies() {
         "[[a:1], [a:1, b:2]]"
     );
 }
+
+/// Groovy's `ConfigSlurper`, as nf-core/hicar reads `conf/modules.config` in `lib/`; Groovy 4
+/// gives `[[:]/foo, --quiet, [:], [:]]`.
+#[test]
+fn config_slurper() {
+    let text = "process {\n    publishDir = [ path: { \"${params.outdir}/x\" }, mode: params.publish_dir_mode ]\n    \
+                withName: 'FOO' {\n        publishDir = [ path: { \"${params.outdir}/foo\" } ]\n        \
+                ext.args = '--quiet'\n    }\n}\n";
+    let body = format!(
+        "def c = new ConfigSlurper().parse('''{text}''')\ndef prop = c.process['FOO']\n\
+         [prop.publishDir.path(), prop.ext.args, c.process['BAR'], c.process.publishDir.mode.toString()]"
+    );
+    assert_eq!(value(&body), "[[:]/foo, --quiet, [:], [:]]");
+}

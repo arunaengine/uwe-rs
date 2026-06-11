@@ -152,7 +152,12 @@ impl Interpreter<'_> {
 
     /// The value of `template = <value>`, whose names come from the binding. `what` names the
     /// part of the template for errors.
-    fn template_value(&mut self, source: &str, what: &str, span: Span) -> Result<Value, Error> {
+    pub(super) fn template_value(
+        &mut self,
+        source: &str,
+        what: &str,
+        span: Span,
+    ) -> Result<Value, Error> {
         let parsed = parse_config(source);
         let value = match parsed.tree.statements.first() {
             Some(ConfigStatement::Assign { value, .. }) if parsed.errors.is_empty() => value,

@@ -231,6 +231,17 @@ impl Interpreter<'_> {
                 super::yaml::load(&text).at(span)?
             }
             (State::Yaml, "dumpAsMap", [map]) => Value::string(super::yaml::dump_as_map(map)),
+            (State::ConfigSlurper, "parse", [text]) => {
+                let text = match text {
+                    Value::Path(path) => {
+                        let bytes = self.host.read(path).map_err(|error| error.or_at(span))?;
+                        String::from_utf8_lossy(&bytes).into_owned()
+                    }
+                    other => other.to_string(),
+                };
+                drop(target);
+                self.slurp(&text, span)?
+            }
             (State::TemplateEngine, "createTemplate", [text]) => {
                 let text = match text {
                     Value::Path(path) => {

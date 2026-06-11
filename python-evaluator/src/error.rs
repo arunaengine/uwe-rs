@@ -1,5 +1,5 @@
-//! Errors of evaluation: Python exceptions, which code can catch, and unsupported features,
-//! which it cannot.
+//! Errors of evaluation: Python exceptions, which code can catch, and unsupported features
+//! and conditions that stop the run, which it cannot.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -31,6 +31,9 @@ pub enum ErrorKind {
     /// A feature of Python or of a library that iunctus does not support; `except` does
     /// not catch it.
     Unsupported(String),
+    /// A condition that stops the run, like a Python package that needs a container when no
+    /// container runtime is available (decision 19); `except` does not catch it.
+    Stop(String),
 }
 
 /// An error with the innermost place of the Python code that raised it.
@@ -53,6 +56,7 @@ impl std::fmt::Display for Error {
         }
         match &self.kind {
             ErrorKind::Unsupported(message) => write!(f, "Not supported yet: {message}"),
+            ErrorKind::Stop(message) => write!(f, "{message}"),
             ErrorKind::Exception(_) => {
                 let message = self.message();
                 if message.is_empty() {
@@ -85,6 +89,14 @@ impl Error {
     pub fn unsupported(message: impl Into<String>) -> Error {
         Error {
             kind: ErrorKind::Unsupported(message.into()),
+            location: None,
+        }
+    }
+
+    /// An error that stops the run and that `except` does not catch.
+    pub fn stop(message: impl Into<String>) -> Error {
+        Error {
+            kind: ErrorKind::Stop(message.into()),
             location: None,
         }
     }
@@ -171,7 +183,7 @@ impl Error {
     pub fn exception(&self) -> Option<&Value> {
         match &self.kind {
             ErrorKind::Exception(value) => Some(value),
-            ErrorKind::Unsupported(_) => None,
+            ErrorKind::Unsupported(_) | ErrorKind::Stop(_) => None,
         }
     }
 
@@ -179,7 +191,7 @@ impl Error {
     pub fn is(&self, class: &str) -> bool {
         match &self.kind {
             ErrorKind::Exception(value) => types::class_of(value).derives_from(class),
-            ErrorKind::Unsupported(_) => false,
+            ErrorKind::Unsupported(_) | ErrorKind::Stop(_) => false,
         }
     }
 
@@ -187,13 +199,14 @@ impl Error {
         match &self.kind {
             ErrorKind::Exception(value) => types::type_name(value).to_string(),
             ErrorKind::Unsupported(_) => "Unsupported".into(),
+            ErrorKind::Stop(_) => "Stop".into(),
         }
     }
 
     /// `str()` of the exception, without calling Python code.
     pub fn message(&self) -> String {
         match &self.kind {
-            ErrorKind::Unsupported(message) => message.clone(),
+            ErrorKind::Unsupported(message) | ErrorKind::Stop(message) => message.clone(),
             ErrorKind::Exception(value) => exception_text(value),
         }
     }

@@ -70,6 +70,15 @@ CASES = [
         ],
     },
     {
+        "pipelines": ["quantms"],
+        "why": "an output of MSSTATSTMT is `path \"*.pdf\" optional true`, without a comma, which "
+        "Nextflow reads as calling `optional` on null",
+        "expect": [
+            r"Cannot invoke method optional\(\) on null object",
+            "Check script .*msstatstmt/main.nf",
+        ],
+    },
+    {
         "pipelines": ["cutandrun", "ssds"],
         "why": "an output of its TRIMGALORE ends with `emit: html optional true`, without a "
         "comma, which Nextflow reads as calling `optional` on null",
@@ -344,8 +353,9 @@ workflow {
     },
     {
         "pipelines": ["viralrecon"],
-        "why": "the FREYJA_UPDATE stub makes no `usher_barcodes.feather`, which the process "
-        "declares",
+        "why": "stubs make files that the pipeline cannot use: FREYJA_UPDATE makes no "
+        "`usher_barcodes.feather`, which the process declares, and FASTP an empty JSON report, "
+        "which the pipeline parses",
         "expect": [r"Missing output file\(s\) `freyja_db/usher_barcodes.feather`"],
     },
     {
@@ -471,6 +481,49 @@ workflow {
     },
 ]
 
+# DSL1 pipelines, whose processes read `from` and write `into` channels. iunctus leaves DSL1
+# out (decision 14), and Nextflow 26.04.6 does not run it either: each record shows how it
+# fails on the pipeline.
+DSL1 = {
+    "cageseq": {},
+    "clipseq": {"jars": True},
+    "ddamsproteomics": {},
+    "deepvariant": {},
+    "denovohybrid": {},
+    "diaproteomics": {"jars": True},
+    # Without this, the run stops at `data/`, which the test workflows do not fetch.
+    "dualrnaseq": {"args": ["--mapping_statistics", "false"]},
+    "eager": {"jars": True},
+    "exoseq": {"args": ["--reads", "{launch}/x_R{1,2}.fastq.gz", "--genome", "GRCh37"]},
+    "imcyto": {},
+    "kmermaid": {},
+    "mnaseseq": {},
+    "neutronstar": {"args": ["--id", "test", "--fastqs", "{launch}/x_R{1,2}.fastq.gz"]},
+    # The test workflows do not fetch its `conf/*.yaml`, so another file of it stands in.
+    "proteogenomicsdb": {
+        "jars": True,
+        "args": [
+            argument
+            for name in ["ensembl_downloader", "ensembl", "cosmic", "cbioportal", "protein_decoy"]
+            for argument in [f"--{name}_config", "{pipeline}/conf/base.config"]
+        ],
+    },
+    "proteomicslfq": {},
+    "slamseq": {},
+    "smartseq2": {},
+}
+CASES += [
+    {
+        "pipelines": [name],
+        "kind": "unsupported (decision 14)",
+        "why": "the pipeline is a DSL1 script, whose processes read `from` and write `into` "
+        "channels, which iunctus leaves out and Nextflow 26.04.6 does not run either",
+        "expect": [r"ERROR ~"],
+        **extra,
+    }
+    for name, extra in DSL1.items()
+]
+
 
 def stand_ins(directory, case):
     """A file for BASH_ENV that stands in for every missing command, and a folder of the
@@ -583,6 +636,9 @@ def execute(case):
         text = text.replace(str(temporary), "<tmp>")
         text = re.sub(r"<work>/[0-9a-f]{2}/[0-9a-f]{30}", "<task>", text)
         text = re.sub(r"\[[0-9a-f]{2}/[0-9a-f]{6}\]", "[<task>]", text)
+        # The names and addresses of the classes that Groovy makes for a script.
+        text = re.sub(r"_nf_script_[0-9a-f]+", "_nf_script_<hash>", text)
+        text = re.sub(r"(closure\d+)@[0-9a-f]+", r"\1@<address>", text)
         return text
 
 

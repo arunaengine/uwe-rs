@@ -22,6 +22,11 @@ $ NXF_SYNTAX_PARSER=v1 nextflow run bacmodel -profile test -stub-run --outdir <o
 > [ERROR] ERROR ~ Cannot invoke method collectEntries() on null object
 >  -- Check script '<pipeline>/subworkflows/nf-core/utils_nfcore_pipeline/main.nf' at line: 82 or see '.nextflow.log' file for more details
 
+cageseq
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run cageseq -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No signature of method: groovyx.gpars.dataflow.DataflowBroadcast.into() is applicable for argument types: (_nf_script_<hash>$_runScript_closure7) values: [_nf_script_<hash>$_runScript_closure7@<address>]
+
 callingcards
 = unsupported (decision 16): SEQKIT_SPLIT2 has no stub, so it needs seqkit to split the reads into the files whose names the pipeline reads, and the mock executor only makes up one file
 $ NXF_SYNTAX_PARSER=v1 nextflow run callingcards -profile test -stub-run --outdir <out>
@@ -39,6 +44,11 @@ circrna
 = invalid: the MAJORITY_VOTE stub makes no `mirna.targets.tsv`, which the process declares (shown with a small script, as Nextflow first stops at SEQKIT_SPLIT, which has no stub and needs seqkit)
 $ NXF_SYNTAX_PARSER=v1 nextflow run <reproduction of circrna>/main.nf -stub-run
 >   Missing output file(s) `mirna.targets.tsv` expected by process `MAJORITY_VOTE`
+
+clipseq
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run clipseq -profile test -stub-run --outdir <out>  # with the Java libraries of nf-validation 1.1.3 in lib/
+> [ERROR] ERROR ~ No signature of method: groovyx.gpars.dataflow.DataflowBroadcast.into() is applicable for argument types: (_nf_script_<hash>$_runScript_closure4) values: [_nf_script_<hash>$_runScript_closure4@<address>]
 
 coproid
 = invalid: the SOURCEPREDICT stub makes `*.sourcepredict.csv`, not the `*.report.sourcepredict.csv` that the process declares (shown with a small script, as Nextflow first stops at DAMAGEPROFILER, which has no stub and needs damageprofiler)
@@ -69,11 +79,21 @@ $ NXF_SYNTAX_PARSER=v1 nextflow run dartseq -profile test -stub-run --outdir <ou
 > The following invalid input values have been detected:
 > 	-> Entry 1: Error for field 'fastq_2' (/work_ikmb/sukmb662/test-datasets/data/dartseq/fastq/A03_R2.fastq.gz): the file or directory '/work_ikmb/sukmb662/test-datasets/data/dartseq/fastq/A03_R2.fastq.gz' does not exist (FastQ file for reads 2 cannot contain spaces and must have extension '.fq.gz' or '.fastq.gz')
 
+ddamsproteomics
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run ddamsproteomics -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Cannot invoke method into() on null object
+
 deepmodeloptim
 = invalid: CUSTOM_MODIFY_MODEL_CONFIG emits `meta_updated`, which only its script sets, so a stub run fails
 $ NXF_SYNTAX_PARSER=v1 nextflow run deepmodeloptim -profile test -stub-run --outdir <out>
 > [ERROR] ERROR ~ Error executing process > 'NFCORE_DEEPMODELOPTIM:DEEPMODELOPTIM:TUNE_WF:CUSTOM_MODIFY_MODEL_CONFIG (titanic_model - #trial [])'
 >   Missing value declared as output parameter: meta_updated
+
+deepvariant
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run deepvariant -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Unknown method invocation `into` on channel type
 
 demultiplex
 rangeland
@@ -85,11 +105,21 @@ $ NXF_SYNTAX_PARSER=v1 nextflow run demultiplex -profile test -stub-run --outdir
 > [PROCESS 68/ca693b] NFCORE_DEMULTIPLEX:DEMULTIPLEX:UNTAR_FLOWCELL (220422_M11111_0222_000000000-K9H97.tar.gz)
 > [PROCESS bb/727f3f] NFCORE_DEMULTIPLEX:DEMULTIPLEX:BCL_DEMULTIPLEX:MULTIQCSAV (220422_M11111_0222_000000000-K9H97)
 
+denovohybrid
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run denovohybrid -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Cannot invoke method into() on null object
+
 denovotranscript
 = invalid: the FASTP stub makes an empty JSON report, which the pipeline parses
 $ NXF_SYNTAX_PARSER=v1 nextflow run denovotranscript -profile test -stub-run --outdir <out>
 > [ERROR] ERROR ~ Text must not be null or empty
 >  -- Check script '<pipeline>/subworkflows/nf-core/fastq_trim_fastp_fastqc/main.nf' at line: 15 or see '.nextflow.log' file for more details
+
+diaproteomics
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run diaproteomics -profile test -stub-run --outdir <out>  # with the Java libraries of nf-validation 1.1.3 in lib/
+> [ERROR] ERROR ~ No signature of method: groovyx.gpars.dataflow.DataflowBroadcast.into() is applicable for argument types: (_nf_script_<hash>$_runScript_closure2) values: [_nf_script_<hash>$_runScript_closure2@<address>]
 
 diseasemodulediscovery
 = unsupported (decision 16): GRAPHTOOLPARSER and TOPOLOGY have no stubs, so they need their Python scripts to write the files that the pipeline reads, and the mock executor only makes up empty ones
@@ -107,6 +137,16 @@ drugresponseeval
 $ NXF_SYNTAX_PARSER=v1 nextflow run drugresponseeval -profile test -stub-run --outdir <out>
 > ERROR ~ No such file or directory: Config file does not exist: <pipeline>/conf/test.config
 
+dualrnaseq
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run dualrnaseq -profile test -stub-run --outdir <out> --mapping_statistics false
+> [ERROR] ERROR ~ No signature of method: groovyx.gpars.dataflow.DataflowBroadcast.into() is applicable for argument types: (_nf_script_<hash>$_runScript_closure7) values: [_nf_script_<hash>$_runScript_closure7@<address>]
+
+eager
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run eager -profile test -stub-run --outdir <out>  # with the Java libraries of nf-validation 1.1.3 in lib/
+> [ERROR] ERROR ~ No signature of method: groovyx.gpars.dataflow.DataflowBroadcast.into() is applicable for argument types: (_nf_script_<hash>$_runScript_closure23) values: [_nf_script_<hash>$_runScript_closure23@<address>]
+
 epigenomesegmentation
 = invalid: the CUSTOM_FILTERCHROMSIZES stub makes `mm10.chrom.sizes_V2`, not the `mm10.chrom.sizes.V2` that the process declares
 $ NXF_SYNTAX_PARSER=v1 nextflow run epigenomesegmentation -profile test -stub-run --outdir <out>
@@ -116,6 +156,11 @@ evexplorer
 = invalid: main.nf gives PIPELINE_INITIALISATION 6 of its 8 inputs
 $ NXF_SYNTAX_PARSER=v1 nextflow run evexplorer -profile test -stub-run --outdir <out>
 > [ERROR] ERROR ~ Workflow `PIPELINE_INITIALISATION` declares 8 input channels but 6 were given
+
+exoseq
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run exoseq -profile test -stub-run --outdir <out> --reads <launch>/x_R{1,2}.fastq.gz --genome GRCh37
+> [ERROR] ERROR ~ No signature of method: groovyx.gpars.dataflow.DataflowBroadcast.into() is applicable for argument types: (_nf_script_<hash>$_runScript_closure2) values: [_nf_script_<hash>$_runScript_closure2@<address>]
 
 genomeassembler
 = invalid: the FASTPLONG stub makes an empty JSON report, which the pipeline parses
@@ -140,6 +185,16 @@ hgtseq
 = invalid: the test samplesheet has no column `input1`, which the pipeline requires
 $ NXF_SYNTAX_PARSER=v1 nextflow run hgtseq -profile test -stub-run --outdir <out>  # with the Java libraries of nf-validation 1.1.3 in lib/
 > [ERROR] ERROR ~ ERROR: Please check input samplesheet -> a column named input1 with either fastq or bam/cram input is mandatory!
+
+imcyto
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run imcyto -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No signature of method: groovyx.gpars.dataflow.DataflowQueue.into() is applicable for argument types: (_nf_script_<hash>$_runScript_closure6) values: [_nf_script_<hash>$_runScript_closure6@<address>]
+
+kmermaid
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run kmermaid -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Cannot invoke method into() on null object
 
 mag
 = invalid: an output of UNTAR reads `output_dir`, which only its script sets, so a stub run fails
@@ -174,6 +229,11 @@ $ NXF_SYNTAX_PARSER=v1 nextflow run methylong -profile test -stub-run --outdir <
 > [ERROR] ERROR ~ Error executing process > 'NFCORE_METHYLONG:METHYLONG:ONT:ONT_TRIM_REPAIR:PORECHOP_PORECHOP (homo_sapiens)'
 >   gzip: homo_sapiens.fastq.gz already exists;	not overwritten
 
+mnaseseq
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run mnaseseq -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Cannot invoke method from() on null object
+
 mspepid
 = invalid: the COMETCONFIG stub reads `params_file`, which only its script sets
 $ NXF_SYNTAX_PARSER=v1 nextflow run mspepid -profile test -stub-run --outdir <out>
@@ -184,6 +244,11 @@ nanostring
 = invalid: the CREATE_ANNOTATED_TABLES stub makes `mqc.tsv`, which the declared `*_mqc.tsv` does not match
 $ NXF_SYNTAX_PARSER=v1 nextflow run nanostring -profile test -stub-run --outdir <out>
 >   Missing output file(s) `*_mqc.tsv` expected by process `NFCORE_NANOSTRING:NANOSTRING:CREATE_ANNOTATED_TABLES (samplesheet_test.csv)`
+
+neutronstar
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run neutronstar -profile test -stub-run --outdir <out> --id test --fastqs <launch>/x_R{1,2}.fastq.gz
+> [ERROR] ERROR ~ Unknown process directive: `_in_set`
 
 oncoanalyser
 = invalid: the CUSTOM_EXTRACTTARBALL stub makes an empty folder, and the pipeline checks that the reference files in it exist (shown with a small script, as Nextflow first downloads tens of gigabytes of reference data here)
@@ -199,6 +264,22 @@ phaseimpute
 = invalid: the pipeline reads the result of `subscribe`, which Nextflow 26.04.6 gives as null; iunctus gives the channel, as Nextflow up to 25.10 did, and then fails as those did, because the BAMCHREXTRACT stub makes an empty list of contigs
 $ NXF_SYNTAX_PARSER=v1 nextflow run phaseimpute -profile test -stub-run --outdir <out>
 > [ERROR] ERROR ~ Cannot invoke method toList() on null object
+
+proteogenomicsdb
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run proteogenomicsdb -profile test -stub-run --outdir <out> --ensembl_downloader_config <pipeline>/conf/base.config --ensembl_config <pipeline>/conf/base.config --cosmic_config <pipeline>/conf/base.config --cbioportal_config <pipeline>/conf/base.config --protein_decoy_config <pipeline>/conf/base.config  # with the Java libraries of nf-validation 1.1.3 in lib/
+> [ERROR] ERROR ~ Cannot invoke method into() on null object
+
+proteomicslfq
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run proteomicslfq -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Unqualified input value declaration is not allowed - replace `tuple mzml_id,..` with `tuple val(mzml_id),..`
+
+quantms
+= invalid: an output of MSSTATSTMT is `path "*.pdf" optional true`, without a comma, which Nextflow reads as calling `optional` on null
+$ NXF_SYNTAX_PARSER=v1 nextflow run quantms -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Cannot invoke method optional() on null object
+>  -- Check script '<pipeline>/modules/local/msstatstmt/main.nf' at line: 18 or see '.nextflow.log' file for more details
 
 radseq
 = invalid: workflows/radseq.nf includes subworkflows/local/fastq_fastp.nf, which the repository does not have
@@ -232,12 +313,22 @@ scrnaseq
 $ NXF_SYNTAX_PARSER=v1 nextflow run <reproduction of scrnaseq>/main.nf -stub-run
 > [ERROR] ERROR ~ Cannot invoke method collectEntries() on null object
 
+slamseq
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run slamseq -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Cannot invoke method from() on null object
+
+smartseq2
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run smartseq2 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No signature of method: groovyx.gpars.dataflow.DataflowBroadcast.into() is applicable for argument types: (_nf_script_<hash>$_runScript_closure4) values: [_nf_script_<hash>$_runScript_closure4@<address>]
+
 variantcatalogue
 = invalid: the test profile names assets/samplesheet.csv relative to the folder where the run starts, so it only runs from the folder of the pipeline
 $ NXF_SYNTAX_PARSER=v1 nextflow run variantcatalogue -profile test -stub-run --outdir <out>  # with the Java libraries of nf-validation 1.1.3 in lib/
 > [ERROR] ERROR ~ No such file or directory: <launch>/assets/samplesheet.csv
 
 viralrecon
-= invalid: the FREYJA_UPDATE stub makes no `usher_barcodes.feather`, which the process declares
+= invalid: stubs make files that the pipeline cannot use: FREYJA_UPDATE makes no `usher_barcodes.feather`, which the process declares, and FASTP an empty JSON report, which the pipeline parses
 $ NXF_SYNTAX_PARSER=v1 nextflow run viralrecon -profile test -stub-run --outdir <out>
 >   Missing output file(s) `freyja_db/usher_barcodes.feather` expected by process `NFCORE_VIRALRECON:VIRALRECON:BAM_VARIANT_DEMIX_BOOT_FREYJA:FREYJA_UPDATE (freyja_db)`

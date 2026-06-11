@@ -123,6 +123,12 @@ impl Host for Builder<'_> {
         self.base.validate_json(schema, instance)
     }
 
+    fn bound_channel(&mut self, value: Value) -> Option<Value> {
+        let output = self.network.channel(true);
+        self.network.bind(output, value);
+        Some(Value::Channel(output))
+    }
+
     /// A property of the value of a value channel is a value channel of that property, as a
     /// GPars `DataflowVariable` gives it.
     fn channel_property(&mut self, channel: &Value, name: &str) -> Result<Option<Value>, Error> {
@@ -221,12 +227,7 @@ impl Host for Builder<'_> {
             ("channel", "empty", []) => (Vec::new(), false, true),
             // `channel.value()` and `channel.value(null)` are never bound.
             ("channel", "value", [] | [Value::Null]) => (Vec::new(), true, false),
-            // A value channel is bound at once, as GPars binds `Channel.value(x)`.
-            ("channel", "value", [value]) => {
-                let output = self.network.channel(true);
-                self.network.bind(output, value.clone());
-                return Ok(Some(Value::Channel(output)));
-            }
+            ("channel", "value", [value]) => (vec![value.clone()], true, true),
             _ => return self.base.namespace_method(namespace, name, arguments),
         };
         Ok(Some(self.factory(name, values, value, close)))

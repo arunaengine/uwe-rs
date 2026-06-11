@@ -181,7 +181,13 @@ impl Interpreter<'_> {
                     return Err(thrown(Exception::new(class, message), expression.span));
                 }
                 value @ Value::Channel(_) => value,
-                plain => self.namespace_call("channel", "value", vec![plain], expression.span)?,
+                // Nextflow binds a plain value at once, even `null`.
+                plain => match self.host.bound_channel(plain.clone()) {
+                    Some(channel) => channel,
+                    None => {
+                        self.namespace_call("channel", "value", vec![plain], expression.span)?
+                    }
+                },
             };
             values.push(value);
             names.push(Some(emit.clone()));

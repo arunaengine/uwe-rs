@@ -523,18 +523,22 @@ fn path_outputs_take_closures_and_lists() {
 }
 
 /// The text of a channel, as nf-core/quantms reads `is_sdrf.toString()` of a value that a
-/// workflow emits, and `println()` of a channel in a completion handler, which prints an
-/// empty line. Nextflow 26.04.6 prints `DataflowVariable(value=true)` and
-/// `DataflowBroadcast around DataflowStream[?]`.
+/// workflow emits, which is bound at once, even `null`, while `channel.value` binds its value
+/// when the run starts; and `println()` of a channel in a completion handler, which prints an
+/// empty line. Nextflow 26.04.6 prints the same lines for this script, with the empty line
+/// after `done`, as it writes that line through `System.out` apart.
 #[test]
 fn texts_of_channels() {
-    let source = "workflow A {\n    main:\n    x = true\n    emit:\n    x = x\n}\n\
-                  workflow {\n    A()\n    println(A.out.x.toString())\n    println(channel.of(1).toString())\n    \
-                  def q = channel.of(2)\n    workflow.onComplete { q.println(); println('done') }\n}\n";
+    let source = "workflow A {\n    main:\n    x = true\n    y = null\n    emit:\n    x = x\n    y = y\n}\n\
+                  workflow {\n    A()\n    println(A.out.x.toString())\n    println(A.out.y.toString())\n    \
+                  println(channel.value(1).toString())\n    println(channel.of(1).toString())\n    \
+                  def q = channel.of(2)\n    workflow.onComplete { q.println(); println('done') }\n    \
+                  channel.of(1).combine(A.out.y).view()\n}\n";
     let (_, printed) = run(source, &Options::default()).expect("runs");
     assert_eq!(
         printed,
-        "DataflowVariable(value=true)\nDataflowBroadcast around DataflowStream[?]\n\ndone\n"
+        "DataflowVariable(value=true)\nDataflowVariable(value=null)\nDataflowVariable(value=null)\n\
+         DataflowBroadcast around DataflowStream[?]\n[1, null]\n\ndone\n"
     );
 }
 

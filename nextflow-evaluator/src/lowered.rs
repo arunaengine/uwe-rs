@@ -71,6 +71,9 @@ pub struct Module {
     pub classes: Vec<Rc<ClassDef>>,
     /// The Groovy classes of the pipeline, which every script can use; the loader sets it.
     pub library: std::cell::RefCell<Option<Rc<Library>>>,
+    /// Legacy syntax: the params of a script that an include with `addParams(...)` or
+    /// `params(...)` loads, set when the include runs; `None` for the params of the run.
+    pub params: std::cell::RefCell<Option<Value>>,
 }
 
 /// A Groovy class or enum, which only the legacy parser accepts.
@@ -169,6 +172,9 @@ pub struct Include {
     /// Legacy syntax: whether the include is inside an `if` of the script, so that it only
     /// takes effect when its statement runs.
     pub conditional: bool,
+    /// Legacy syntax: whether the include gives the script params with `addParams(...)` or
+    /// `params(...)`, so that the script loads again for it, and starts when the include runs.
+    pub params: bool,
     pub span: Span,
 }
 
@@ -372,6 +378,14 @@ pub enum StatementKind {
     SetParam {
         path: Vec<Rc<str>>,
         value: Expression,
+    },
+    /// Legacy syntax: `include { ... } from '...' addParams(...)`, which gives the script of
+    /// the includes with these indexes its params, with the params of this script when `add`,
+    /// and then starts it.
+    IncludeParams {
+        indexes: Vec<usize>,
+        add: bool,
+        arguments: Arguments,
     },
 }
 

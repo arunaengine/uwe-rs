@@ -357,6 +357,38 @@ impl<'h> Interpreter<'h> {
         self.run(code, module, Vec::new(), Vec::new())
     }
 
+    /// The params that the code of a script reads: its own, from an include with
+    /// `addParams(...)`, else those of the run.
+    pub(super) fn params_of(&self, module: &Rc<Module>) -> Option<Value> {
+        let own = module.params.borrow().clone();
+        own.or_else(|| self.globals.get("params").cloned())
+    }
+
+    /// Starts a script that an include with params loads: its `params.x = value` declarations
+    /// set what its params lack, then its statements run, as Nextflow runs the script when the
+    /// include runs.
+    pub(super) fn start_script(&mut self, module: &Rc<Module>) -> Result<(), Error> {
+        let Some(params) = self.params_of(module) else {
+            return Ok(());
+        };
+        for (path, code) in &module.parameters {
+            let names: Vec<&str> = path.iter().map(|name| &**name).collect();
+            if crate::value::tree::get(&params, &names).is_none() {
+                let value = self.evaluate(code, module)?;
+                crate::value::tree::assign(&params, path, value).map_err(|message| {
+                    thrown(
+                        crate::exception::Exception::illegal_argument(message),
+                        code.span,
+                    )
+                })?;
+            }
+        }
+        if let Some(code) = &module.initializer {
+            self.evaluate(code, module)?;
+        }
+        Ok(())
+    }
+
     /// The error with the file and position where it happened, when the script is known.
     pub fn locate(&mut self, error: Error) -> Error {
         let module = self.error_module.take();

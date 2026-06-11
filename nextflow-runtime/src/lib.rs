@@ -227,14 +227,30 @@ fn script_params(
             })?;
         }
     }
-    let included: Vec<Rc<Module>> = (module.links.borrow().values())
-        .chain(module.conditional_links.borrow().values())
-        .map(|link| link.module.clone())
-        .collect();
-    for module in included {
+    for module in included(module) {
         script_params(interpreter, &module, params, done)?;
     }
     Ok(())
+}
+
+/// The scripts that a script includes, in the order of the includes, without those of includes
+/// with `addParams(...)` or `params(...)`, which start when their include runs.
+fn included(module: &Module) -> Vec<Rc<Module>> {
+    let links = module.links.borrow();
+    let conditional = module.conditional_links.borrow();
+    let mut modules: Vec<Rc<Module>> = Vec::new();
+    for (index, include) in module.includes.iter().enumerate() {
+        let link = match include.conditional {
+            true => conditional.get(&index),
+            false => links.get(&include.alias),
+        };
+        if let Some(link) = link.filter(|_| !include.params)
+            && !modules.iter().any(|known| Rc::ptr_eq(known, &link.module))
+        {
+            modules.push(link.module.clone());
+        }
+    }
+    modules
 }
 
 /// Runs the top-level statements of legacy syntax of a script, then those of the scripts it
@@ -251,16 +267,13 @@ fn script_statements(
     if let Some(code) = &module.initializer {
         interpreter.evaluate(code, module)?;
     }
-    let included: Vec<Rc<Module>> = {
-        let links = module.links.borrow();
-        module
-            .includes
-            .iter()
-            .filter_map(|include| links.get(&include.alias))
-            .map(|link| link.module.clone())
-            .collect()
-    };
-    for module in included {
+    let unconditional: Vec<Rc<Module>> = included(module)
+        .into_iter()
+        .filter(|included| {
+            (module.links.borrow().values()).any(|link| Rc::ptr_eq(&link.module, included))
+        })
+        .collect();
+    for module in unconditional {
         script_statements(interpreter, &module, done)?;
     }
     Ok(())

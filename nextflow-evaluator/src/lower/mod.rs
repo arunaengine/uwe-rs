@@ -281,11 +281,20 @@ pub fn lower_script(
         let workflow = lowering.implicit_workflow(&statements);
         module.workflows.push(Rc::new(workflow));
     }
-    if legacy {
+    // Legacy syntax: an include with params runs in order with the statements, which may set
+    // the variables that its params read.
+    let include_params = script
+        .items
+        .iter()
+        .any(|item| matches!(item, Item::Include(include) if include.params.is_some()));
+    if legacy || include_params {
         let items: Vec<&Item> = script
             .items
             .iter()
-            .filter(|item| matches!(item, Item::Statement(_) | Item::LegacyParameter { .. }))
+            .filter(|item| match item {
+                Item::Include(include) => include.params.is_some(),
+                _ => matches!(item, Item::Statement(_) | Item::LegacyParameter { .. }),
+            })
             .collect();
         module.initializer = Some(Rc::new(lowering.initializer(&items)));
     }
@@ -342,6 +351,8 @@ pub(crate) struct Lowering<'a> {
     /// Legacy syntax: the indexes in `Module::includes` of each include inside an `if` of the
     /// script, by its position.
     conditional_includes: HashMap<Span, Vec<usize>>,
+    /// The indexes in `Module::includes` of each include, by its position.
+    include_indexes: HashMap<Span, Vec<usize>>,
 }
 
 impl<'a> Lowering<'a> {
@@ -368,6 +379,7 @@ impl<'a> Lowering<'a> {
             static_imports: HashMap::new(),
             imported_classes: HashSet::new(),
             conditional_includes: HashMap::new(),
+            include_indexes: HashMap::new(),
         }
     }
 
@@ -568,6 +580,20 @@ impl<'a> Lowering<'a> {
                 Item::Statement(statement) => {
                     body.extend(self.statement(&script_assignment(statement)));
                 }
+                Item::Include(include) => {
+                    let Some(params) = &include.params else {
+                        continue;
+                    };
+                    let indexes = self.include_indexes.get(&include.span).cloned();
+                    body.push(Statement {
+                        kind: StatementKind::IncludeParams {
+                            indexes: indexes.unwrap_or_default(),
+                            add: params.add,
+                            arguments: self.arguments(&params.arguments),
+                        },
+                        span: params.span,
+                    });
+                }
                 Item::LegacyParameter { path, value, span } => body.push(Statement {
                     kind: StatementKind::SetParam {
                         path: path.iter().map(|name| name.text.as_str().into()).collect(),
@@ -629,9 +655,11 @@ impl<'a> Lowering<'a> {
                 alias: alias.text.as_str().into(),
                 source: include.source.text.as_str().into(),
                 conditional,
+                params: include.params.is_some(),
                 span: include.span,
             });
         }
+        self.include_indexes.insert(include.span, indexes.clone());
         indexes
     }
 

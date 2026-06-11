@@ -118,6 +118,12 @@ pub trait Host {
         std::env::var(name).ok()
     }
 
+    /// A value channel bound to a value at once, even `null`, as a workflow emits a value
+    /// that is not a channel; `None` when there are no channels.
+    fn bound_channel(&mut self, _value: Value) -> Option<Value> {
+        None
+    }
+
     /// A method of a namespace like `channel` or `log`; `None` when it has no such method.
     fn namespace_method(
         &mut self,

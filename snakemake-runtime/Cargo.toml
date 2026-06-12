@@ -12,6 +12,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+executor.workspace = true
 fancy-regex.workspace = true
 indexmap.workspace = true
 jsonschema.workspace = true

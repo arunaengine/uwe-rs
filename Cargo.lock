@@ -3216,6 +3216,7 @@ dependencies = [
 name = "snakemake-runtime"
 version = "0.1.0"
 dependencies = [
+ "executor",
  "fancy-regex",
  "indexmap",
  "jsonschema",

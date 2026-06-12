@@ -62,6 +62,9 @@ pub struct Packages {
     /// Counts the processes started, so that a handle of a stopped process is known.
     generation: Cell<u64>,
     released: RefCell<Vec<u64>>,
+    /// The full dotted name that an import asks for while its packages are imported, so that
+    /// `google.auth` installs `google-auth`, not `google`.
+    wanted: RefCell<Option<String>>,
 }
 
 impl Packages {
@@ -84,6 +87,20 @@ impl Packages {
         }
     }
 
+    /// Notes the full name of an import, unless an outer import did; whether it did.
+    pub(crate) fn want(&self, module: &str) -> bool {
+        let mut wanted = self.wanted.borrow_mut();
+        if wanted.is_some() {
+            return false;
+        }
+        *wanted = Some(module.to_owned());
+        true
+    }
+
+    pub(crate) fn forget_wanted(&self) {
+        *self.wanted.borrow_mut() = None;
+    }
+
     /// Forgets a handle at the next request.
     fn release(&self, generation: u64, handle: u64) {
         if generation == self.generation.get()
@@ -99,7 +116,11 @@ impl Packages {
         interpreter: &mut Interpreter,
         module: &str,
     ) -> Result<Value, Error> {
-        let packages = pypi_packages(module);
+        let wanted = self.wanted.borrow().clone();
+        let full = wanted
+            .filter(|wanted| wanted.starts_with(&format!("{module}.")))
+            .unwrap_or_else(|| module.to_owned());
+        let packages = pypi_packages(&full);
         if !self.is_running() {
             let starter = self.starter.borrow().clone();
             let top = module.split('.').next().unwrap_or(module);

@@ -20,6 +20,7 @@ const PACKAGES: &[(&str, &str)] = &[
     ("dotenv", "python-dotenv"),
     ("fitz", "pymupdf"),
     ("gi", "pygobject"),
+    ("google.auth", "google-auth"),
     ("google.cloud.bigquery", "google-cloud-bigquery"),
     ("google.cloud.storage", "google-cloud-storage"),
     ("google.protobuf", "protobuf"),
@@ -68,6 +69,7 @@ mod tests {
             ["google-cloud-storage"]
         );
         assert_eq!(pypi_packages("google.protobuf.json_format"), ["protobuf"]);
+        assert_eq!(pypi_packages("google.auth"), ["google-auth"]);
         assert_eq!(pypi_packages("pyfaidx"), ["pyfaidx"]);
         assert_eq!(pypi_packages("earth_osm.eo"), ["earth_osm"]);
     }

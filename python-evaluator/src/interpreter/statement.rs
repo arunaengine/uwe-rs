@@ -573,9 +573,18 @@ impl Interpreter {
                             .downcast_ref::<crate::modules::misc::TypingName>()
                             .is_some_and(|name| matches!(name.0, "Protocol" | "Generic")) => {}
                     Value::Native(object) => {
+                        let base = match object
+                            .as_any()
+                            .downcast_ref::<crate::packages::PackageObject>()
+                        {
+                            Some(class) => format!(
+                                "{}, a class of a Python package, which runs in the container of decision 19",
+                                class.class_name().unwrap_or(object.type_name())
+                            ),
+                            None => object.type_name().to_owned(),
+                        };
                         return Err(Error::unsupported(format!(
-                            "classes that derive from {}",
-                            object.type_name()
+                            "classes that derive from {base}"
                         )));
                     }
                     other => {

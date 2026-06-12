@@ -52,8 +52,6 @@ pub enum ProcessError {
     Start { engine: String, reason: String },
     #[error("the container ended{}", last_lines(.stderr))]
     Ended { stderr: Vec<String> },
-    #[error("cannot prepare the image {image}: {reason}")]
-    Prepare { image: String, reason: String },
     #[error("the container of {image} failed: {reason}")]
     Failed { image: String, reason: String },
 }
@@ -225,52 +223,6 @@ fn options(spec: &ContainerSpec) -> Vec<String> {
     options.push(spec.image.clone());
     options.extend(spec.command.iter().cloned());
     options
-}
-
-/// Whether the engine has an image locally.
-pub fn image_exists(engine: &str, image: &str) -> bool {
-    Command::new(engine)
-        .args(["image", "inspect", "--format", "{{.Id}}", image])
-        .output()
-        .is_ok_and(|output| output.status.success())
-}
-
-/// Prepares an image: runs the container of the spec to its end, and keeps what it made as
-/// the image when it succeeds. The container is removed in any case.
-pub fn prepare_image(spec: &ContainerSpec, image: &str) -> Result<(), ProcessError> {
-    check_engine(&spec.engine)?;
-    let failed = |reason: String| ProcessError::Prepare {
-        image: image.to_owned(),
-        reason,
-    };
-    let output = Command::new(&spec.engine)
-        .arg("run")
-        .args(options(spec))
-        .output()
-        .map_err(|error| failed(error.to_string()));
-    let result = output.and_then(|output| {
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let lines: Vec<&str> = stderr.lines().collect();
-            let last = lines[lines.len().saturating_sub(KEPT_LINES)..].join("\n");
-            return Err(failed(last));
-        }
-        let commit = Command::new(&spec.engine)
-            .args(["commit", &spec.name, image])
-            .output()
-            .map_err(|error| failed(error.to_string()))?;
-        if commit.status.success() {
-            Ok(())
-        } else {
-            Err(failed(
-                String::from_utf8_lossy(&commit.stderr).trim().to_owned(),
-            ))
-        }
-    });
-    let _ = Command::new(&spec.engine)
-        .args(["rm", "--force", &spec.name])
-        .output();
-    result
 }
 
 /// Runs the container of the spec to its end, and removes it; an error has the last lines

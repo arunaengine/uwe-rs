@@ -173,7 +173,12 @@ impl Interpreter {
             .filter_map(|entry| entry.as_str().map(PathBuf::from))
             .collect();
         if let Some((parent, _)) = name.rsplit_once('.') {
-            let parent_module = self.import_module(parent)?;
+            let wanted = self.packages.want(name);
+            let parent_module = self.import_module(parent);
+            if wanted {
+                self.packages.forget_wanted();
+            }
+            let parent_module = parent_module?;
             if let Some(module) = self.modules.get(name) {
                 return Ok(module.clone());
             }
@@ -230,6 +235,15 @@ impl Interpreter {
             return Err(Error::unsupported(format!(
                 "the standard library module {name}"
             )));
+        }
+        // A folder or file of the working directory that is not on the module path is the
+        // workflow's own module, not a package of PyPI: the import fails as in Python.
+        let cwd = self.host.cwd();
+        if [cwd.join(name), cwd.join(format!("{name}.py"))]
+            .iter()
+            .any(|path| self.host.stat(path).is_some())
+        {
+            return Err(not_found());
         }
         self.import_package(name)
     }

@@ -287,3 +287,43 @@ fn without_a_container_runtime_the_run_stops() {
 fn interpreter_failing(reason: &str) -> Run {
     interpreter(Vec::new(), Some(reason))
 }
+
+#[test]
+fn a_dotted_import_installs_the_package_of_its_full_name() {
+    let mut test = interpreter(
+        vec![handle(1, "module", false), handle(2, "module", false)],
+        None,
+    );
+    run(&mut test, "import google.auth\n").expect("runs");
+    assert_eq!(test.seen.borrow().starts[0].packages, ["google-auth"]);
+    assert_eq!(
+        requests(&test)[0],
+        json!({"op": "import", "module": "google", "packages": ["google-auth"]})
+    );
+}
+
+#[test]
+fn folders_of_the_workflow_are_not_packages() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    std::fs::create_dir(folder.path().join("src")).expect("a folder");
+    let host = Rc::new(LocalHost::new(folder.path()));
+    let interpreter = Interpreter::new(host.clone());
+    let seen = Rc::new(RefCell::new(Seen::default()));
+    interpreter.packages.set_starter(Rc::new(FakeStarter {
+        replies: RefCell::new(Some(Vec::new())),
+        failure: None,
+        seen: seen.clone(),
+    }));
+    let mut test = Run {
+        interpreter,
+        host,
+        seen,
+    };
+    let output = run(
+        &mut test,
+        "try:\n    from src.helpers import x\nexcept ModuleNotFoundError as error:\n    print(error)\n",
+    )
+    .expect("runs");
+    assert_eq!(output, "No module named 'src'\n");
+    assert!(test.seen.borrow().starts.is_empty());
+}

@@ -4,7 +4,6 @@
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
-import fcntl
 import importlib
 import json
 import math
@@ -67,7 +66,7 @@ def encode(value):
         return str(value)
     if isinstance(value, (bytes, bytearray)):
         return {"bytes": bytes(value).hex()}
-    if isinstance(value, pathlib.PurePath):
+    if type(value) in (pathlib.PosixPath, pathlib.PurePosixPath):
         return {"path": str(value)}
     if isinstance(value, tuple) and not hasattr(value, "_fields"):
         return {"tuple": [encode(item) for item in value]}
@@ -107,70 +106,58 @@ def decode(value):
     return value
 
 
-CHANNELS = ["--channel", "conda-forge", "--channel", "bioconda"]
+# Where packages that later imports need are installed, in the running container.
+EXTRA = "/tmp/iunctus-packages"
 
 
-def listed(name):
-    """The conda packages that a file of the environment lists, one per line."""
-    try:
-        with open(os.path.join(sys.prefix, name)) as file:
-            return set(file.read().split())
-    except OSError:
-        return set()
+def failures():
+    """The packages that could not be installed into the environment, with uv's error."""
+    folder = os.path.join(sys.prefix, "iunctus-failed")
+    found = {}
+    for package in os.listdir(folder) if os.path.isdir(folder) else []:
+        with open(os.path.join(folder, package)) as file:
+            found[package] = file.read()
+    return found
 
 
-# The packages that the environment has, and those that neither channel has.
-installed = listed("conda-installed")
-missing = listed("conda-missing")
+failed = failures()
 
 
-def available(installer, package):
-    """Whether conda-forge or bioconda has a package, without a solve that could fail."""
-    found = subprocess.run(
-        [installer, "search", "--quiet", "--json", *CHANNELS, package],
-        capture_output=True,
-        text=True,
-    )
-    try:
-        packages = json.loads(found.stdout)["result"]["pkgs"]
-    except (ValueError, KeyError, TypeError):
-        return False
-    return any(entry.get("name") == package for entry in packages)
+def first_lines(text):
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return " ".join(lines[:4])
 
 
-def install(conda):
-    """Installs the conda packages that the channels have into this environment, one install
-    at a time on the machine, and gives the packages that neither channel has."""
-    installer = shutil.which("micromamba")
-    wanted = [package for package in conda if package not in installed]
-    if installer is None:
-        return [package for package in wanted if package in missing]
-    for package in wanted:
-        if package not in missing and not available(installer, package):
-            missing.add(package)
-    wanted = [package for package in wanted if package not in missing]
-    if wanted:
-        lock = os.path.join(os.environ.get("CONDA_PKGS_DIRS", "/tmp"), ".iunctus-lock")
-        with open(lock, "a") as file:
-            fcntl.flock(file, fcntl.LOCK_EX)
-            command = [installer, "install", "--yes", "--quiet", "--no-pyc", "--prefix", sys.prefix]
-            done = subprocess.run([*command, *CHANNELS, *wanted], stdout=sys.stderr)
+def install(packages):
+    """Installs packages from PyPI into the running container with uv, when it has uv, and
+    gives the ones that could not be installed, with the first lines of uv's error."""
+    uv = shutil.which("uv")
+    wanted = [package for package in packages if package not in failed]
+    if uv is not None and wanted:
+        command = [uv, "pip", "install", "--quiet", "--python", sys.executable, "--target", EXTRA]
+        if subprocess.run([*command, *wanted], capture_output=True, text=True).returncode != 0:
+            for package in wanted:
+                done = subprocess.run([*command, package], capture_output=True, text=True)
+                if done.returncode != 0:
+                    failed[package] = done.stderr
+        if EXTRA not in sys.path:
+            sys.path.append(EXTRA)
+        sys.path_importer_cache.pop(EXTRA, None)
         importlib.invalidate_caches()
-        if done.returncode == 0:
-            installed.update(wanted)
-    return [package for package in conda if package in missing]
+    return [package for package in packages if package in failed]
 
 
-def import_module(name, conda):
+def import_module(name, packages):
     try:
         return importlib.import_module(name)
     except ModuleNotFoundError as error:
         top = name.split(".")[0]
         if (error.name or "").split(".")[0] != top:
             raise
-        absent = install(conda)
+        absent = install(packages)
         if absent:
-            message = f"No module named '{name}' (neither conda-forge nor bioconda has the package {absent[0]})"
+            reason = first_lines(failed[absent[0]])
+            message = f"No module named '{name}' (the package {absent[0]} could not be installed from PyPI: {reason})"
             raise ModuleNotFoundError(message, name=name) from None
     return importlib.import_module(name)
 
@@ -179,7 +166,7 @@ def answer(request):
     release(request.get("release", []))
     op = request["op"]
     if op == "import":
-        return import_module(request["module"], request.get("conda", []))
+        return import_module(request["module"], request.get("packages", []))
     if op == "stop":
         return None
     if op == "binary":

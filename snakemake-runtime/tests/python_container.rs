@@ -22,7 +22,7 @@ fn packages_run_in_a_container() {
     let settings = PythonContainers {
         engine: std::env::var("IUNCTUS_ENGINE").unwrap_or_else(|_| "docker".into()),
         image: None,
-        package_cache: Some(folder.path().join("conda-packages")),
+        cache: folder.path().join("python-cache"),
         show_output: false,
     };
     interpreter

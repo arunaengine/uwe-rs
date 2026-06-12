@@ -132,13 +132,13 @@ fn calls_give_plain_values_and_handles() {
     );
     let seen = test.seen.borrow();
     assert_eq!(seen.starts.len(), 1);
-    assert_eq!(seen.starts[0].conda, ["toy"]);
+    assert_eq!(seen.starts[0].packages, ["toy"]);
     assert!(seen.starts[0].script.contains("def answer(request)"));
     drop(seen);
     assert_eq!(
         requests(&test),
         vec![
-            json!({"op": "import", "module": "toy", "conda": ["toy"]}),
+            json!({"op": "import", "module": "toy", "packages": ["toy"]}),
             json!({"op": "getattr", "object": {"handle": 1}, "name": "add"}),
             json!({"op": "call", "object": {"handle": 2}, "args": [1, {"float": 2.5}], "kwargs": []}),
             json!({"op": "getattr", "object": {"handle": 1}, "name": "Counter", "release": [2]}),

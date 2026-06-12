@@ -38,6 +38,9 @@ pub struct Arguments {
     pub order: Option<Order>,
     /// `-default-image image`: the container image of tasks that name none, for real executors.
     pub default_image: Option<String>,
+    /// `-python-image image`: the image of the Python container of decision 19, with the
+    /// Python packages that the workflow imports.
+    pub python_image: Option<String>,
 }
 
 /// Reads the options after the command name.
@@ -83,6 +86,7 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
             "-graph" => parsed.graph = Some(value()?.into()),
             "-format" => parsed.format = Some(value()?),
             "-default-image" => parsed.default_image = Some(value()?),
+            "-python-image" => parsed.python_image = Some(value()?),
             "-max-pending" => {
                 let number = value()?;
                 parsed.max_pending = Some(number.parse().ok().filter(|n| *n > 0).ok_or(
@@ -234,6 +238,9 @@ mod tests {
     fn orders_and_pending_limits() {
         let parsed = parse_all(&["main.nf", "-max-pending", "4", "-order", "shuffled:7"]);
         assert_eq!(parsed.default_image, None);
+        let parsed = parse_all(&["Snakefile", "-python-image", "python:3.12"]);
+        assert_eq!(parsed.python_image.as_deref(), Some("python:3.12"));
+        let parsed = parse_all(&["main.nf", "-max-pending", "4", "-order", "shuffled:7"]);
         assert_eq!(parsed.max_pending, Some(4));
         assert_eq!(parsed.order, Some(Order::Shuffled { seed: 7 }));
         assert_eq!(order("reversed"), Some(Order::Reversed));

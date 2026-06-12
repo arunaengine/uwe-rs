@@ -134,7 +134,7 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<Execution, Failure> {
     let launch = launch(arguments, target.clone());
     let run = run_id();
     let mut executor = executor(arguments, &run, !quiet)?;
-    let mut driver = driver(language, &launch, &run, quiet)?;
+    let mut driver = driver(language, &launch, &run, quiet, arguments)?;
     let workflow = target.to_string_lossy();
     let options = RunOptions {
         max_pending: arguments.max_pending.unwrap_or(1),
@@ -154,12 +154,26 @@ fn driver(
     launch: &Launch,
     run: &str,
     quiet: bool,
+    arguments: &Arguments,
 ) -> Result<Box<dyn Driver>, DriverError> {
     match language {
         Language::Nextflow => nextflow::driver(launch, run, quiet),
-        Language::Snakemake => snakemake_runtime::driver(launch),
+        Language::Snakemake => snakemake_runtime::driver_with(launch, snakemake(arguments)),
         Language::Cwl => cwl_runtime::driver(launch),
         Language::Argo => argo_runtime::driver(launch),
+    }
+}
+
+/// The settings of Snakemake runs: the Python container of decision 19, with the engine of
+/// the local executor, which keeps the conda packages it downloads in the cache.
+fn snakemake(arguments: &Arguments) -> snakemake_runtime::Settings {
+    snakemake_runtime::Settings {
+        python: Some(snakemake_runtime::PythonContainers {
+            engine: engine(),
+            image: arguments.python_image.clone(),
+            package_cache: Some(cache_directory().join("conda-packages")),
+            show_output: true,
+        }),
     }
 }
 
@@ -254,6 +268,7 @@ options:
                                       the order in which pending tasks finish
   -store <directory>                  the cache of the local executor
   -default-image <image>              the image of tasks that name none, for real executors
+  -python-image <image>               the image of the Python packages without a stand-in
   -stub                               runs the stubs of tasks
   -profile <names>, -c <file>         Nextflow profiles and config files
   -params-file <file>, -inputs <file> a params file, or a CWL job file

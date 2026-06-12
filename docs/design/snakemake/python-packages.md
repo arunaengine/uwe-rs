@@ -4,7 +4,7 @@
 
 # Python packages in a container
 
-Status: design of decision 19, 2026-09-29. The code is in `python-evaluator` (the interface, the protocol, the objects and the server script), `executor` (a container process that answers lines) and `snakemake-runtime` (the Python container of a Snakemake run).
+Status: design of decision 19, 2026-09-29. The code is in `python-evaluator` (the interface, the protocol, the objects and the server script), `executor` (a container process that answers lines) and `snakemake-runtime` (the Python container of a Snakemake run, with uv).
 
 ## 1. The design in short
 
@@ -45,7 +45,7 @@ pub trait PythonStarter {
 }
 ```
 
-`PythonStart` holds the server script, the conda packages of the first import, and the working directory of the interpreter. The interpreter keeps a `Packages` value: the starter, the running process and the handles to release. An embedder sets the starter with `Packages::set_starter`. Without a starter, an import of a package stops the run with the error of section 7.
+`PythonStart` holds the server script, the PyPI packages of the first import, and the working directory of the interpreter. The interpreter keeps a `Packages` value: the starter, the running process and the handles to release. An embedder sets the starter with `Packages::set_starter`. Without a starter, an import of a package stops the run with the error of section 7.
 
 `snakemake-runtime` has `ContainerPython`, the starter that runs the process with the local container engine. It uses `executor::process::ContainerProcess`, which starts a container with an open standard input and exchanges lines with it. `executor` does not know Python, and python-evaluator does not know containers. Tests use a fake starter whose process gives prepared replies and records the requests.
 
@@ -59,7 +59,7 @@ Every request has an `op`. It may have `release`, a list of handles that the int
 
 | `op` | Fields | Reply value |
 |---|---|---|
-| `import` | `module` (dotted name), `conda` (packages to install when the module is missing) | the module |
+| `import` | `module` (dotted name), `packages` (the PyPI packages to install when the module is missing) | the module |
 | `getattr` | `object`, `name` | the attribute |
 | `setattr` | `object`, `name`, `value` | `None` |
 | `call` | `object`, `args`, `kwargs` (a list of name and value pairs) | the result |
@@ -101,13 +101,17 @@ When the interpreter drops a handle, its number goes on the list of the next req
 
 ## 6. The container
 
-### 6.1 The image
+### 6.1 The image and the packages
 
-The default image is `mambaorg/micromamba` with a pinned version. The container runs as the user of the run, so that it reads the workflow's files as that user does. Its first step creates a Python environment with the conda packages of the first import, from conda-forge and bioconda, with micromamba inside the container. When conda has no such package, the environment gets Python alone, and the import fails with `ModuleNotFoundError` as in Python. A later import of another missing package installs it into the same environment. The downloaded conda packages are kept in a cache folder of the machine (`~/.cache/iunctus/conda-packages`), which the container mounts, so that the next run installs them fast.
+The default image is a slim Python image with uv (`ghcr.io/astral-sh/uv`, Python 3.12, a pinned version). The container runs as the user of the run, so that it reads the workflow's files as that user does.
 
-Import names differ from conda package names. A table maps them, like `PIL` to `pillow`, `Bio` to `biopython`, `yaml` to `pyyaml`, `sklearn` to `scikit-learn` and `cv2` to `opencv`. Other names map to themselves, with `_` as `-`.
+Before the container starts, uv installs the PyPI packages of the first import into a Python environment, in a container of the same image that ends when the install is done. The environment is kept in a folder of the machine (`~/.cache/iunctus/python/environments/<key>`), whose key is made from the image, the install script and the sorted set of packages, so a later run with the same packages installs nothing. A lock file per key makes a second run wait while the first makes the environment. uv's cache (`~/.cache/iunctus/python/uv`) is shared by all containers; uv handles several users of one cache at once. The Python container mounts the cache folder and runs the environment's Python.
 
-This first step is a stand-in for the image preparation of decision 12. Once that exists, the conda packages become a prepared image, and the container starts without installing. A user can give an image with `iunctus run -python-image <image>`. It must have `python3` with the packages the workflow imports; iunctus installs nothing into it unless it has micromamba.
+uv installs the packages together, and when that fails, one by one. It keeps the error of each package that it cannot install, like one that PyPI does not have. A later import of another missing package installs it with uv into a folder of the running container, which the next run does not keep.
+
+Import names differ from PyPI package names. A table maps them, like `PIL` to `pillow`, `Bio` to `biopython`, `yaml` to `pyyaml`, `sklearn` to `scikit-learn` and `cv2` to `opencv-python-headless`. Other names map to the name of their top package.
+
+A user can give an image with `iunctus run -python-image <image>`. It must have `python3` with the packages the workflow imports; iunctus installs nothing into it unless it has uv. Every Python container runs with `--ulimit core=0`: a tool that crashes inside it gives iunctus nothing to use from a core dump.
 
 ### 6.2 Start and stop
 
@@ -120,7 +124,7 @@ At most one container runs per run. Runs of the test workflows start at most fou
 ## 7. Errors
 
 - An exception of the package becomes a Python exception in the interpreter. A builtin exception, like `KeyError`, keeps its class. Another class, like `pyfaidx.FastaIndexingError`, becomes a class of that name and module whose base is the nearest builtin class of its bases, so that `except ValueError` catches it when Python would.
-- A package that conda does not have, or an import that fails after the install, is a `ModuleNotFoundError`, so `try: import x` / `except ImportError:` works as in Python.
+- A package that uv cannot install from PyPI is a `ModuleNotFoundError` whose message names the package and gives the first lines of uv's error, so `try: import x` / `except ImportError:` works as in Python. So is an import that still fails after the install.
 - No starter, or a starter that cannot start the container (no container engine, an engine that does not run), stops the run with an error that `except` does not catch: "the workflow imports the Python package pyfaidx, which has no stand-in in iunctus; it runs in a Python container (decision 19), but ...", followed by the reason.
 - A process that ends while the interpreter waits for a reply stops the run with the last lines of its standard error.
 

@@ -163,6 +163,8 @@ pub struct Interpreter {
     handling: Vec<Error>,
     /// The `sys.argv` and similar values that code may ask for.
     pub argv: Vec<String>,
+    /// The Python process of the packages without a stand-in (decision 19).
+    pub packages: Rc<crate::packages::Packages>,
 }
 
 impl Interpreter {
@@ -186,6 +188,7 @@ impl Interpreter {
             stack_limit: 1 << 20,
             handling: Vec::new(),
             argv: vec!["snakemake".into()],
+            packages: Rc::default(),
         };
         crate::builtins::install(&mut interpreter);
         interpreter

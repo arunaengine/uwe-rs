@@ -61,7 +61,13 @@ impl Interpreter {
                 self.import_all(frame, &module)?;
                 continue;
             }
-            let value = match self.find_attribute(&module, name)? {
+            // A submodule of a package in the container is not an attribute before it is
+            // imported.
+            let found = match self.find_attribute(&module, name) {
+                Err(error) if error.is("AttributeError") && is_package(&module) => None,
+                found => found?,
+            };
+            let value = match found {
                 Some(value) => value,
                 None => match self.import_module(&format!("{full}.{name}")) {
                     Ok(submodule) => submodule,
@@ -171,6 +177,9 @@ impl Interpreter {
             if let Some(module) = self.modules.get(name) {
                 return Ok(module.clone());
             }
+            if is_package(&parent_module) {
+                return self.import_package(name);
+            }
             match parent_module.plain() {
                 Value::Module(module) => match module.globals.get("__path__") {
                     Some(Value::Str(path)) => search = vec![PathBuf::from(&*path)],
@@ -216,13 +225,13 @@ impl Interpreter {
             }
         }
         // A module of the standard library without a stand-in is a gap of iunctus; another
-        // module is missing as in Python.
+        // module comes from a package, which runs in the Python container (decision 19).
         if crate::modules::is_standard_library(name) {
             return Err(Error::unsupported(format!(
                 "the standard library module {name}"
             )));
         }
-        Err(not_found())
+        self.import_package(name)
     }
 
     fn load_file_module(
@@ -281,4 +290,11 @@ impl Interpreter {
             parent.globals.set(leaf, module);
         }
     }
+}
+
+/// Whether a module is a package module in the Python container.
+fn is_package(module: &Value) -> bool {
+    module
+        .as_native::<crate::packages::PackageObject>()
+        .is_some()
 }

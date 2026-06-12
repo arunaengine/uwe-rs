@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::any::Any;
+use std::hash::Hasher;
 use std::rc::Rc;
 
 use serde_json::{Map, Value as Json};
@@ -11,7 +12,7 @@ use serde_json::{Map, Value as Json};
 use super::Packages;
 use super::protocol::encode;
 use crate::error::Error;
-use crate::interpreter::Interpreter;
+use crate::interpreter::{Interpreter, Operator};
 use crate::value::{Args, Native, Value};
 
 pub struct PackageObject {
@@ -71,6 +72,31 @@ impl PackageObject {
 impl Drop for PackageObject {
     fn drop(&mut self) {
         self.packages.release(self.generation, self.handle);
+    }
+}
+
+/// The name of an operator in Python's `operator` module.
+fn operator_name(operator: Operator) -> &'static str {
+    match operator {
+        Operator::Add => "add",
+        Operator::Sub => "sub",
+        Operator::Mul => "mul",
+        Operator::MatMul => "matmul",
+        Operator::TrueDiv => "truediv",
+        Operator::FloorDiv => "floordiv",
+        Operator::Mod => "mod",
+        Operator::Pow => "pow",
+        Operator::LShift => "lshift",
+        Operator::RShift => "rshift",
+        Operator::BitAnd => "and_",
+        Operator::BitOr => "or_",
+        Operator::BitXor => "xor",
+        Operator::Eq => "eq",
+        Operator::NotEq => "ne",
+        Operator::Lt => "lt",
+        Operator::LtE => "le",
+        Operator::Gt => "gt",
+        Operator::GtE => "ge",
     }
 }
 
@@ -161,14 +187,100 @@ impl Native for PackageObject {
         interpreter.iterate(&items).map(Some)
     }
 
+    fn length(&self) -> Option<usize> {
+        self.ask("len", Vec::new())
+            .ok()
+            .and_then(|length| length.as_int())
+            .and_then(|length| usize::try_from(length).ok())
+    }
+
     fn contains(&self, interpreter: &mut Interpreter, item: &Value) -> Result<Option<bool>, Error> {
         let item = encode(interpreter, item)?;
         let found = self.ask("contains", vec![("item", item)])?;
         Ok(Some(matches!(found, Value::Bool(true))))
     }
 
+    fn truthy(&self) -> Option<bool> {
+        match self.ask("bool", Vec::new()) {
+            Ok(Value::Bool(flag)) => Some(flag),
+            _ => None,
+        }
+    }
+
+    fn to_str(&self, _: &mut Interpreter) -> Result<Option<String>, Error> {
+        let text = self.ask("str", Vec::new())?;
+        Ok(text.as_str().map(str::to_owned))
+    }
+
+    fn repr(&self, _: &mut Interpreter) -> Result<String, Error> {
+        let text = self.ask("repr", Vec::new())?;
+        Ok(text.as_str().unwrap_or_default().to_owned())
+    }
+
+    fn binary(
+        &self,
+        interpreter: &mut Interpreter,
+        operator: Operator,
+        other: &Value,
+        reflected: bool,
+    ) -> Result<Option<Value>, Error> {
+        let this = self.reference()?;
+        let other = encode(interpreter, other)?;
+        let (left, right) = if reflected {
+            (other, this)
+        } else {
+            (this, other)
+        };
+        self.packages
+            .call(
+                "binary",
+                vec![
+                    ("operator", Json::String(operator_name(operator).to_owned())),
+                    ("left", left),
+                    ("right", right),
+                ],
+            )
+            .map(Some)
+    }
+
+    fn unary(&self, _: &mut Interpreter, operator: &str) -> Result<Option<Value>, Error> {
+        let name = match operator {
+            "-" => "neg",
+            "+" => "pos",
+            "~" => "invert",
+            _ => return Ok(None),
+        };
+        self.ask("unary", vec![("operator", Json::String(name.to_owned()))])
+            .map(Some)
+    }
+
+    fn key_equal(&self, other: &dyn Native) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<PackageObject>()
+            .is_some_and(|other| other.handle == self.handle && other.generation == self.generation)
+    }
+
+    fn key_hash(&self, state: &mut dyn Hasher) {
+        state.write_u64(self.handle);
+    }
+
     fn instance_of(&self, class: &str) -> bool {
         class == "callable" && self.callable
     }
 
+    fn check_instance(&self, value: &Value) -> Option<bool> {
+        let object = match value.as_native::<PackageObject>() {
+            Some(object) => object.reference().ok()?,
+            None => return Some(false),
+        };
+        let class = self.reference().ok()?;
+        match self
+            .packages
+            .call("isinstance", vec![("object", object), ("class", class)])
+        {
+            Ok(Value::Bool(flag)) => Some(flag),
+            _ => None,
+        }
+    }
 }

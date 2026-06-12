@@ -6,9 +6,9 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-mod conda;
 mod object;
 mod protocol;
+mod pypi;
 
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
@@ -16,8 +16,8 @@ use std::rc::Rc;
 
 use serde_json::{Map, Value as Json};
 
-pub use conda::conda_packages;
 pub use object::PackageObject;
+pub use pypi::pypi_packages;
 
 use crate::error::Error;
 use crate::interpreter::Interpreter;
@@ -31,8 +31,8 @@ pub const SERVER: &str = include_str!("server.py");
 pub struct PythonStart {
     /// The server script, which the process runs with `python -u`.
     pub script: &'static str,
-    /// The conda packages of the first import, to install before the script runs.
-    pub conda: Vec<String>,
+    /// The PyPI packages of the first import, to install before the script runs.
+    pub packages: Vec<String>,
     /// The working directory of the interpreter, where the process runs.
     pub cwd: PathBuf,
 }
@@ -99,7 +99,7 @@ impl Packages {
         interpreter: &mut Interpreter,
         module: &str,
     ) -> Result<Value, Error> {
-        let conda = conda_packages(module);
+        let packages = pypi_packages(module);
         if !self.is_running() {
             let starter = self.starter.borrow().clone();
             let top = module.split('.').next().unwrap_or(module);
@@ -110,7 +110,7 @@ impl Packages {
             };
             let start = PythonStart {
                 script: SERVER,
-                conda: conda.clone(),
+                packages: packages.clone(),
                 cwd: interpreter.host.cwd(),
             };
             let process = starter.start(&start).map_err(|reason| {
@@ -121,12 +121,12 @@ impl Packages {
             *self.process.borrow_mut() = Some(process);
             self.generation.set(self.generation.get() + 1);
         }
-        let conda = Json::Array(conda.into_iter().map(Json::String).collect());
+        let packages = Json::Array(packages.into_iter().map(Json::String).collect());
         self.call(
             "import",
             vec![
                 ("module", Json::String(module.to_owned())),
-                ("conda", conda),
+                ("packages", packages),
             ],
         )
     }

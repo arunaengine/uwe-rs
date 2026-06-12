@@ -1,22 +1,20 @@
-//! The conda packages that give a Python module, for the modules whose package has another
+//! The PyPI packages that give a Python module, for the modules whose package has another
 //! name, like `PIL` from `pillow`.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-/// Modules and the conda packages of conda-forge and bioconda that give them. A dotted name
-/// is matched before its package, so `google.cloud.storage` differs from `google.protobuf`.
+/// Modules and the PyPI packages that give them. A dotted name is matched before its
+/// package, so `google.cloud.storage` differs from `google.protobuf`.
 const PACKAGES: &[(&str, &str)] = &[
     ("Bio", "biopython"),
     ("Crypto", "pycryptodome"),
-    ("HTSeq", "htseq"),
-    ("Levenshtein", "levenshtein"),
     ("MySQLdb", "mysqlclient"),
     ("OpenSSL", "pyopenssl"),
     ("PIL", "pillow"),
     ("attr", "attrs"),
     ("bs4", "beautifulsoup4"),
     ("community", "python-louvain"),
-    ("cv2", "opencv"),
+    ("cv2", "opencv-python-headless"),
     ("dateutil", "python-dateutil"),
     ("docx", "python-docx"),
     ("dotenv", "python-dotenv"),
@@ -25,10 +23,9 @@ const PACKAGES: &[(&str, &str)] = &[
     ("google.cloud.bigquery", "google-cloud-bigquery"),
     ("google.cloud.storage", "google-cloud-storage"),
     ("google.protobuf", "protobuf"),
-    ("igraph", "python-igraph"),
     ("jwt", "pyjwt"),
     ("magic", "python-magic"),
-    ("mpl_toolkits", "matplotlib-base"),
+    ("mpl_toolkits", "matplotlib"),
     ("osgeo", "gdal"),
     ("pptx", "python-pptx"),
     ("ruamel", "ruamel.yaml"),
@@ -36,16 +33,14 @@ const PACKAGES: &[(&str, &str)] = &[
     ("skimage", "scikit-image"),
     ("sklearn", "scikit-learn"),
     ("slugify", "python-slugify"),
-    ("tables", "pytables"),
-    ("upath", "universal_pathlib"),
-    ("wget", "python-wget"),
+    ("upath", "universal-pathlib"),
     ("yaml", "pyyaml"),
     ("zmq", "pyzmq"),
 ];
 
-/// The conda packages that give a module: from the table, else the name of its top package
-/// in lower case with `_` as `-`, as conda names most Python packages.
-pub fn conda_packages(module: &str) -> Vec<String> {
+/// The PyPI packages that give a module: from the table, else the name of its top package,
+/// as PyPI names most packages.
+pub fn pypi_packages(module: &str) -> Vec<String> {
     let mut prefix = module;
     loop {
         if let Some((_, package)) = PACKAGES.iter().find(|(name, _)| *name == prefix) {
@@ -56,24 +51,24 @@ pub fn conda_packages(module: &str) -> Vec<String> {
             None => break,
         }
     }
-    let top = module.split('.').next().unwrap_or(module);
-    vec![top.to_lowercase().replace('_', "-")]
+    vec![module.split('.').next().unwrap_or(module).to_owned()]
 }
 
 #[cfg(test)]
 mod tests {
-    use super::conda_packages;
+    use super::pypi_packages;
 
     #[test]
-    fn modules_map_to_conda_packages() {
-        assert_eq!(conda_packages("PIL.Image"), ["pillow"]);
-        assert_eq!(conda_packages("Bio.SeqIO"), ["biopython"]);
+    fn modules_map_to_pypi_packages() {
+        assert_eq!(pypi_packages("PIL.Image"), ["pillow"]);
+        assert_eq!(pypi_packages("Bio.SeqIO"), ["biopython"]);
+        assert_eq!(pypi_packages("cv2"), ["opencv-python-headless"]);
         assert_eq!(
-            conda_packages("google.cloud.storage"),
+            pypi_packages("google.cloud.storage"),
             ["google-cloud-storage"]
         );
-        assert_eq!(conda_packages("google.protobuf.json_format"), ["protobuf"]);
-        assert_eq!(conda_packages("pyfaidx"), ["pyfaidx"]);
-        assert_eq!(conda_packages("earth_osm.eo"), ["earth-osm"]);
+        assert_eq!(pypi_packages("google.protobuf.json_format"), ["protobuf"]);
+        assert_eq!(pypi_packages("pyfaidx"), ["pyfaidx"]);
+        assert_eq!(pypi_packages("earth_osm.eo"), ["earth_osm"]);
     }
 }

@@ -165,13 +165,13 @@ fn driver(
 }
 
 /// The settings of Snakemake runs: the Python container of decision 19, with the engine of
-/// the local executor, which keeps the conda packages it downloads in the cache.
+/// the local executor, which keeps what uv downloads and installs in the cache.
 fn snakemake(arguments: &Arguments) -> snakemake_runtime::Settings {
     snakemake_runtime::Settings {
         python: Some(snakemake_runtime::PythonContainers {
             engine: engine(),
             image: arguments.python_image.clone(),
-            package_cache: Some(cache_directory().join("conda-packages")),
+            cache: cache_directory().join("python"),
             show_output: true,
         }),
     }

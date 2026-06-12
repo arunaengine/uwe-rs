@@ -109,6 +109,50 @@ fn requests(run: &Run) -> Vec<Json> {
 }
 
 #[test]
+fn calls_give_plain_values_and_handles() {
+    let mut test = interpreter(
+        vec![
+            handle(1, "module", false),
+            handle(2, "function", true),
+            value(json!({"float": 3.5})),
+            handle(3, "type", true),
+            handle(4, "Counter", false),
+            value(json!(3)),
+            value(json!(3)),
+            value(json!("Counter(a)")),
+            handle(5, "function", true),
+            value(json!({"tuple": ["joined", {"list": [1, 2]}]})),
+        ],
+        None,
+    );
+    let code = "import toy\nprint(toy.add(1, 2.5))\ncounter = toy.Counter('a', size=3)\nprint(counter.size, len(counter), str(counter))\nprint(toy.join(counter, [1, (2, None)], {'k': True}))\n";
+    assert_eq!(
+        run(&mut test, code).expect("runs"),
+        "3.5\n3 3 Counter(a)\n('joined', [1, 2])\n"
+    );
+    let seen = test.seen.borrow();
+    assert_eq!(seen.starts.len(), 1);
+    assert_eq!(seen.starts[0].conda, ["toy"]);
+    assert!(seen.starts[0].script.contains("def answer(request)"));
+    drop(seen);
+    assert_eq!(
+        requests(&test),
+        vec![
+            json!({"op": "import", "module": "toy", "conda": ["toy"]}),
+            json!({"op": "getattr", "object": {"handle": 1}, "name": "add"}),
+            json!({"op": "call", "object": {"handle": 2}, "args": [1, {"float": 2.5}], "kwargs": []}),
+            json!({"op": "getattr", "object": {"handle": 1}, "name": "Counter", "release": [2]}),
+            json!({"op": "call", "object": {"handle": 3}, "args": ["a"], "kwargs": [["size", 3]]}),
+            json!({"op": "getattr", "object": {"handle": 4}, "name": "size", "release": [3]}),
+            json!({"op": "len", "object": {"handle": 4}}),
+            json!({"op": "str", "object": {"handle": 4}}),
+            json!({"op": "getattr", "object": {"handle": 1}, "name": "join"}),
+            json!({"op": "call", "object": {"handle": 5}, "args": [{"handle": 4}, {"list": [1, {"tuple": [2, null]}]}, {"dict": [["k", true]]}], "kwargs": []}),
+        ]
+    );
+}
+
+#[test]
 fn values_of_every_kind_come_back() {
     let mut test = interpreter(
         vec![
@@ -196,6 +240,23 @@ fn submodules_are_imported_in_the_process() {
         modules,
         [json!("toy"), json!("toy.sub"), json!("toy.other")]
     );
+}
+
+#[test]
+fn stopping_ends_the_process_and_its_handles() {
+    let mut test = interpreter(vec![handle(1, "module", false)], None);
+    let Ok(globals) = test.interpreter.run_text("<test>", "import toy\n") else {
+        panic!("imports");
+    };
+    test.interpreter.packages.stop();
+    assert!(test.seen.borrow().stopped);
+    assert_eq!(requests(&test).last(), Some(&json!({"op": "stop"})));
+    let error = test
+        .interpreter
+        .exec_text("<test>", "print(toy.name)\n", &globals)
+        .expect_err("a stopped process");
+    assert!(error.exception().is_none(), "{error}");
+    assert!(error.to_string().contains("stopped"), "{error}");
 }
 
 #[test]

@@ -54,6 +54,8 @@ pub enum ProcessError {
     Ended { stderr: Vec<String> },
     #[error("cannot prepare the image {image}: {reason}")]
     Prepare { image: String, reason: String },
+    #[error("the container of {image} failed: {reason}")]
+    Failed { image: String, reason: String },
 }
 
 fn last_lines(lines: &[String]) -> String {
@@ -269,6 +271,29 @@ pub fn prepare_image(spec: &ContainerSpec, image: &str) -> Result<(), ProcessErr
         .args(["rm", "--force", &spec.name])
         .output();
     result
+}
+
+/// Runs the container of the spec to its end, and removes it; an error has the last lines
+/// that it wrote to standard error.
+pub fn run_to_end(spec: &ContainerSpec) -> Result<(), ProcessError> {
+    check_engine(&spec.engine)?;
+    let failed = |reason: String| ProcessError::Failed {
+        image: spec.image.clone(),
+        reason,
+    };
+    let output = Command::new(&spec.engine)
+        .args(["run", "--rm"])
+        .args(options(spec))
+        .output()
+        .map_err(|error| failed(error.to_string()))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let lines: Vec<&str> = stderr.lines().collect();
+    Err(failed(
+        lines[lines.len().saturating_sub(KEPT_LINES)..].join("\n"),
+    ))
 }
 
 /// Whether the engine is installed and its service runs.

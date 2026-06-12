@@ -9,9 +9,10 @@ use std::rc::Rc;
 use serde_json::{Map, Value as Json};
 
 use super::Packages;
+use super::protocol::encode;
 use crate::error::Error;
 use crate::interpreter::Interpreter;
-use crate::value::{Native, Value};
+use crate::value::{Args, Native, Value};
 
 pub struct PackageObject {
     packages: Rc<Packages>,
@@ -90,6 +91,80 @@ impl Native for PackageObject {
     ) -> Result<Option<Value>, Error> {
         self.ask("getattr", vec![("name", Json::String(name.to_owned()))])
             .map(Some)
+    }
+
+    fn set_attribute(
+        &self,
+        interpreter: &mut Interpreter,
+        name: &str,
+        value: Value,
+    ) -> Result<bool, Error> {
+        let value = encode(interpreter, &value)?;
+        self.ask(
+            "setattr",
+            vec![("name", Json::String(name.to_owned())), ("value", value)],
+        )?;
+        Ok(true)
+    }
+
+    fn call(
+        &self,
+        interpreter: &mut Interpreter,
+        _: &Value,
+        args: Args,
+    ) -> Result<Option<Value>, Error> {
+        let mut positional = Vec::with_capacity(args.positional.len());
+        for arg in &args.positional {
+            positional.push(encode(interpreter, arg)?);
+        }
+        let mut keywords = Vec::with_capacity(args.keywords.len());
+        for (name, value) in &args.keywords {
+            keywords.push(Json::Array(vec![
+                Json::String(name.to_string()),
+                encode(interpreter, value)?,
+            ]));
+        }
+        self.ask(
+            "call",
+            vec![
+                ("args", Json::Array(positional)),
+                ("kwargs", Json::Array(keywords)),
+            ],
+        )
+        .map(Some)
+    }
+
+    fn get_item(
+        &self,
+        interpreter: &mut Interpreter,
+        _: &Value,
+        key: &Value,
+    ) -> Result<Option<Value>, Error> {
+        let key = encode(interpreter, key)?;
+        self.ask("getitem", vec![("key", key)]).map(Some)
+    }
+
+    fn set_item(
+        &self,
+        interpreter: &mut Interpreter,
+        key: &Value,
+        value: Value,
+    ) -> Result<bool, Error> {
+        let key = encode(interpreter, key)?;
+        let value = encode(interpreter, &value)?;
+        self.ask("setitem", vec![("key", key), ("value", value)])?;
+        Ok(true)
+    }
+
+    fn iterate(&self, interpreter: &mut Interpreter) -> Result<Option<Vec<Value>>, Error> {
+        let items = self.ask("iter", Vec::new())?;
+        interpreter.iterate(&items).map(Some)
+    }
+
+    fn contains(&self, interpreter: &mut Interpreter, item: &Value) -> Result<Option<bool>, Error> {
+        let item = encode(interpreter, item)?;
+        let found = self.ask("contains", vec![("item", item)])?;
+        Ok(Some(matches!(found, Value::Bool(true))))
     }
 
     fn instance_of(&self, class: &str) -> bool {

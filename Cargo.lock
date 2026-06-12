@@ -2394,6 +2394,7 @@ dependencies = [
  "ruff_python_parser",
  "ruff_text_size",
  "saphyr-parser",
+ "serde_json",
  "tempfile",
 ]
 

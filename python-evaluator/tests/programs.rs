@@ -179,12 +179,8 @@ fn commands_run_where_the_host_runs_them() {
 }
 
 #[test]
-fn missing_packages_are_errors_and_missing_standard_modules_are_unsupported() {
-    let output = evaluate(
-        "try:\n    import some_package_nobody_installed\nexcept ModuleNotFoundError as error:\n    print(error)\n",
-    )
-    .expect("runs");
-    assert_eq!(output, "No module named 'some_package_nobody_installed'\n");
+fn missing_standard_modules_are_unsupported() {
+    // Packages without a stand-in run in a container; tests/packages.rs covers them.
     let error = evaluate("import turtle\n").expect_err("no stand-in");
     assert!(error.is_unsupported(), "{error}");
 }

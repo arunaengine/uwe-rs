@@ -1,0 +1,9 @@
+Genotype.HOMOZYG_SV <Genotype.HOMOZYG_NOSV: 'hmz'> hmz-sv
+True HOMOZYG_SV
+[<Genotype.HOMOZYG_NOSV: 'hmz'>, <Genotype.HOMOZYG_SV: 'hmz-sv'>] 2 ['HOMOZYG_NOSV', 'HOMOZYG_SV'] HMZ-SV
+True True
+1 2 GREEN ['RED', 'GREEN']
+True LOW file True
+1
+'other' is not a valid Genotype
+KeyError 'OTHER'

@@ -637,6 +637,7 @@ impl Interpreter {
                 dict.insert(key.clone(), value.clone());
             }
         }
+        crate::modules::enums::make_members(&new)?;
         let mut value = Value::Class(new);
         for decorator in decorators.into_iter().rev() {
             value = self.call(&decorator, Args::new(vec![value]))?;

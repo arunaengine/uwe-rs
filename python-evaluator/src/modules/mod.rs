@@ -7,6 +7,7 @@ pub mod collections;
 pub mod csv;
 pub mod data;
 mod datetime;
+pub(crate) mod enums;
 mod files;
 pub(crate) mod misc;
 mod os;
@@ -433,6 +434,7 @@ pub fn native(interpreter: &mut Interpreter, name: &str) -> Result<Option<Value>
         )],
         "resource" => system::resource(),
         "yte" => yte::yte(),
+        "enum" => return Ok(Some(enums::module(interpreter)?)),
         "git" | "git.exc" => misc::git(name),
         "signal" | "weakref" | "importlib" | "pkgutil" | "numbers" | "imaplib" | "smtplib"
         | "pyarrow" => misc::placeholder(name),

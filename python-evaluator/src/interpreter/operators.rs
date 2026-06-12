@@ -454,6 +454,13 @@ impl Interpreter {
     /// `item in container`.
     pub fn contains(&mut self, container: &Value, item: &Value) -> Result<bool, Error> {
         let item = item.plain();
+        if let Value::Class(class) = container.plain()
+            && let Some(members) = crate::modules::enums::members(class)
+        {
+            return Ok(members
+                .iter()
+                .any(|member| crate::value::key_equal(member, item)));
+        }
         match container.plain() {
             Value::Str(text) => match item {
                 Value::Str(part) => Ok(text.contains(&**part)),

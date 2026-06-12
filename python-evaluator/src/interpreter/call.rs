@@ -579,11 +579,11 @@ impl Interpreter {
                     types::type_name(value)
                 ))),
             },
-            Value::Class(class) => {
+            Value::Class(class) => match crate::modules::enums::member(class, key) {
+                Some(member) => member,
                 // Generic aliases like `list[str]` in annotations.
-                let _ = class;
-                Ok(value.plain().clone())
-            }
+                None => Ok(value.plain().clone()),
+            },
             Value::Native(object) => {
                 let object = object.clone();
                 match object.get_item(self, value.plain(), key)? {
@@ -711,6 +711,11 @@ impl Interpreter {
 
     /// The items of an iterable, all at once.
     pub fn iterate(&mut self, value: &Value) -> Result<Vec<Value>, Error> {
+        if let Value::Class(class) = value.plain()
+            && let Some(members) = crate::modules::enums::members(class)
+        {
+            return Ok(members);
+        }
         match value.plain() {
             Value::List(items) => Ok(items.borrow().clone()),
             Value::Tuple(items) => Ok(items.to_vec()),
@@ -824,6 +829,11 @@ impl Interpreter {
 
     /// `len(value)`.
     pub fn length(&mut self, value: &Value) -> Result<usize, Error> {
+        if let Value::Class(class) = value.plain()
+            && let Some(members) = crate::modules::enums::members(class)
+        {
+            return Ok(members.len());
+        }
         Ok(match value.plain() {
             Value::Str(text) => {
                 if text.is_ascii() {

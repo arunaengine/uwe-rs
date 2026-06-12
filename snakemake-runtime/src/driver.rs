@@ -17,6 +17,7 @@ use workflow_graph::{Driver, DriverError, Language, Launch, Outcome, Task, TaskI
 use crate::commands::{Channel, CommandRunner, Reply, Request};
 use crate::files::{Produced, WorkflowFiles};
 use crate::plan::Planner;
+use crate::python::{ContainerStarter, PythonContainers};
 use crate::remote::Mirrors;
 use crate::workflow::{Hook, State};
 
@@ -391,6 +392,42 @@ impl Session {
         Ok(tasks)
     }
 
+    /// Runs the Python packages without a stand-in in a container of the local engine
+    /// (decision 19), which sees the folders of the workflow.
+    pub fn use_python_containers(&mut self, settings: PythonContainers) {
+        let mut folders = vec![self.workdir.clone()];
+        if let Some(folder) = self.snakefile.parent() {
+            folders.push(folder.to_path_buf());
+        }
+        let target = std::path::absolute(&self.launch.target).unwrap_or_default();
+        if target.is_dir() {
+            folders.push(target);
+        }
+        self.interpreter
+            .packages
+            .set_starter(Rc::new(ContainerStarter::new(settings, folders)));
+    }
+
+    /// Stops the Python container once no more Python code runs: every job that must run has
+    /// its task, and no checkpoint job is left whose outputs make the workflow planned again.
+    fn stop_python_when_done(&self) {
+        if !self.interpreter.packages.is_running() {
+            return;
+        }
+        let Some(planner) = &self.planner else {
+            return;
+        };
+        let pending = self.needrun.iter().any(|(job, needed)| {
+            *needed
+                && (!self.tasks.contains_key(job)
+                    || (!self.done.contains(job)
+                        && planner.rules[planner.jobs[*job].rule].checkpoint))
+        });
+        if !pending && !self.replan {
+            self.interpreter.packages.stop();
+        }
+    }
+
     pub fn start(&mut self) -> Result<Vec<Task>, DriverError> {
         self.evaluate()?;
         self.plan()?;
@@ -475,6 +512,7 @@ impl Session {
     }
 
     pub fn finish(&mut self) -> Result<(), DriverError> {
+        self.interpreter.packages.stop();
         let Some(planner) = &self.planner else {
             return Ok(());
         };
@@ -546,9 +584,22 @@ impl Drop for SnakemakeDriver {
     }
 }
 
+/// What a Snakemake run may use besides its launch.
+#[derive(Clone, Debug, Default)]
+pub struct Settings {
+    /// The Python container of decision 19; without it, an import of a package without a
+    /// stand-in stops the run.
+    pub python: Option<PythonContainers>,
+}
+
 /// The driver of a Snakemake workflow: `launch.target` is a Snakefile, or a folder with a
 /// `Snakefile` or `workflow/Snakefile`, which is then the working directory.
 pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
+    driver_with(launch, Settings::default())
+}
+
+/// The driver of a Snakemake workflow with settings, like the Python container.
+pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver>, DriverError> {
     let (requests, incoming) = channel::<Request>();
     let (outgoing, replies) = channel::<Reply>();
     let launch = launch.clone();
@@ -574,6 +625,9 @@ pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
             let Some(session) = session.as_mut() else {
                 return;
             };
+            if let Some(python) = settings.python {
+                session.use_python_containers(python);
+            }
             session.files.set_commands(Rc::new(CommandRunner {
                 channel: channel.clone(),
                 next_task: session.next_task.clone(),
@@ -600,6 +654,7 @@ pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
                     }
                     Ok(tasks)
                 });
+                session.stop_python_when_done();
                 if channel.replies.send(reply).is_err() {
                     break;
                 }

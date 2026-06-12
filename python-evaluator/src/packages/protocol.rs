@@ -8,13 +8,106 @@ use std::rc::Rc;
 
 use indexmap::IndexSet;
 use num_bigint::BigInt;
-use serde_json::Value as Json;
+use serde_json::{Map, Value as Json};
 
 use super::{PackageObject, Packages};
 use crate::error::Error;
+use crate::interpreter::Interpreter;
 use crate::modules::PathObject;
 use crate::types;
 use crate::value::{Dict, Key, Value};
+
+fn tagged(tag: &str, value: Json) -> Json {
+    let mut object = Map::new();
+    object.insert(tag.to_owned(), value);
+    Json::Object(object)
+}
+
+/// A value of the interpreter as the process takes it. Functions and objects of the
+/// stand-ins cannot cross; they are a `TypeError`.
+pub fn encode(interpreter: &mut Interpreter, value: &Value) -> Result<Json, Error> {
+    let all = |interpreter: &mut Interpreter, items: &[Value]| -> Result<Json, Error> {
+        let mut encoded = Vec::with_capacity(items.len());
+        for item in items {
+            encoded.push(encode(interpreter, item)?);
+        }
+        Ok(Json::Array(encoded))
+    };
+    Ok(match value.plain() {
+        Value::None => Json::Null,
+        Value::Bool(flag) => Json::Bool(*flag),
+        Value::Int(number) => Json::from(*number),
+        Value::BigInt(number) => tagged("int", Json::String(number.to_string())),
+        Value::Float(number) => tagged("float", float(*number)),
+        Value::Str(text) => Json::String(text.to_string()),
+        Value::Bytes(bytes) => tagged(
+            "bytes",
+            Json::String(bytes.iter().map(|byte| format!("{byte:02x}")).collect()),
+        ),
+        Value::List(items) => {
+            let items = items.borrow().clone();
+            tagged("list", all(interpreter, &items)?)
+        }
+        Value::Tuple(items) => tagged("tuple", all(interpreter, items)?),
+        Value::Set(_) | Value::FrozenSet(_) | Value::Range(_) | Value::Iterator(_) => {
+            let items = interpreter.iterate(value)?;
+            let tag = if matches!(value.plain(), Value::Set(_) | Value::FrozenSet(_)) {
+                "set"
+            } else {
+                "list"
+            };
+            tagged(tag, all(interpreter, &items)?)
+        }
+        Value::Dict(dict) => {
+            let entries: Vec<(Value, Value)> = dict
+                .borrow()
+                .entries
+                .iter()
+                .map(|(key, value)| (key.0.clone(), value.clone()))
+                .collect();
+            let mut pairs = Vec::with_capacity(entries.len());
+            for (key, value) in entries {
+                pairs.push(Json::Array(vec![
+                    encode(interpreter, &key)?,
+                    encode(interpreter, &value)?,
+                ]));
+            }
+            tagged("dict", Json::Array(pairs))
+        }
+        Value::Native(object) => {
+            if let Some(object) = object.as_any().downcast_ref::<PackageObject>() {
+                object.reference()?
+            } else if let Some(path) = object.as_any().downcast_ref::<PathObject>() {
+                tagged("path", Json::String(path.path.clone()))
+            } else if object.instance_of("str") {
+                Json::String(interpreter.to_str(value)?)
+            } else if let Ok(items) = interpreter.iterate(value) {
+                // Lists of the host, like Snakemake's lists of files.
+                tagged("list", all(interpreter, &items)?)
+            } else {
+                return Err(cannot_cross(value));
+            }
+        }
+        _ => return Err(cannot_cross(value)),
+    })
+}
+
+fn cannot_cross(value: &Value) -> Error {
+    Error::type_error(format!(
+        "a {} of the workflow cannot be passed to a Python package that runs in the container of decision 19",
+        types::type_name(value)
+    ))
+}
+
+fn float(number: f64) -> Json {
+    if number.is_nan() {
+        Json::String("nan".into())
+    } else if number.is_infinite() {
+        Json::String(if number > 0.0 { "inf" } else { "-inf" }.into())
+    } else {
+        Json::from(number)
+    }
+}
 
 /// A value that the process sent: a plain value, or a handle of its object.
 pub fn decode(packages: &Rc<Packages>, json: &Json) -> Result<Value, Error> {

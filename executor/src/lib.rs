@@ -1,10 +1,12 @@
-//! Runs tasks: the Bash wrapper that every task runs in, its result manifest, and executors.
+//! Runs tasks: the Bash wrapper that every task runs in, its result manifest, and executors;
+//! and containers that answer lines, like the Python process of decision 19.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod braces;
 pub mod local;
 pub mod manifest;
+pub mod process;
 pub mod wrapper;
 
 use task_model::TaskSpec;

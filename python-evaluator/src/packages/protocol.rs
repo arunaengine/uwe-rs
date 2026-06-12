@@ -23,8 +23,8 @@ fn tagged(tag: &str, value: Json) -> Json {
     Json::Object(object)
 }
 
-/// A value of the interpreter as the process takes it. Functions and objects of the
-/// stand-ins cannot cross; they are a `TypeError`.
+/// A value of the interpreter as the process takes it. Functions, classes and objects of the
+/// stand-ins cannot cross, which is unsupported.
 pub fn encode(interpreter: &mut Interpreter, value: &Value) -> Result<Json, Error> {
     let all = |interpreter: &mut Interpreter, items: &[Value]| -> Result<Json, Error> {
         let mut encoded = Vec::with_capacity(items.len());
@@ -93,8 +93,8 @@ pub fn encode(interpreter: &mut Interpreter, value: &Value) -> Result<Json, Erro
 }
 
 fn cannot_cross(value: &Value) -> Error {
-    Error::type_error(format!(
-        "a {} of the workflow cannot be passed to a Python package that runs in the container of decision 19",
+    Error::unsupported(format!(
+        "passing a {} of the workflow to a Python package, which runs in the container of decision 19",
         types::type_name(value)
     ))
 }

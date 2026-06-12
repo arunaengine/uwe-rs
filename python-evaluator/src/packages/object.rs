@@ -21,6 +21,8 @@ pub struct PackageObject {
     generation: u64,
     handle: u64,
     type_name: String,
+    /// The name of the class, when the object is a class.
+    class_name: Option<String>,
     callable: bool,
 }
 
@@ -42,11 +44,17 @@ impl PackageObject {
                 .and_then(Json::as_str)
                 .unwrap_or("object")
                 .to_owned(),
+            class_name: fields.get("name").and_then(Json::as_str).map(str::to_owned),
             callable: fields
                 .get("callable")
                 .and_then(Json::as_bool)
                 .unwrap_or(false),
         }))
+    }
+
+    /// The name of the class, when the object is a class.
+    pub fn class_name(&self) -> Option<&str> {
+        self.class_name.as_deref()
     }
 
     /// The handle as the process takes it back, while its process runs.

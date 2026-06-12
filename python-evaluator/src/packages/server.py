@@ -15,6 +15,11 @@ import shutil
 import subprocess
 import sys
 
+# The working directory is not on the module path, as it is not when Snakemake runs; the
+# workflow's own modules are run by iunctus.
+if sys.path and sys.path[0] in ("", os.getcwd()):
+    del sys.path[0]
+
 replies = sys.stdout
 # What packages print goes to standard error, so that standard output holds only replies.
 sys.stdout = sys.stderr
@@ -34,7 +39,10 @@ def handle_of(value):
         objects[number] = value
         counts[number] = 0
     counts[number] += 1
-    return {"handle": number, "type": type(value).__name__, "callable": callable(value)}
+    handle = {"handle": number, "type": type(value).__name__, "callable": callable(value)}
+    if isinstance(value, type):
+        handle["name"] = value.__qualname__
+    return handle
 
 
 def release(numbers_):

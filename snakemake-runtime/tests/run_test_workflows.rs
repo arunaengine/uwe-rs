@@ -11,6 +11,12 @@
 //! stays with its workflow. Run with `just snakemake-run-test-workflows-test`; on a difference the
 //! test prints the lines of the new fixture. `SNAKEMAKE_TEST_WORKFLOWS_FILTER` runs only the
 //! workflows whose name contains it; with `UPDATE_FIXTURE=1` it updates only their lines.
+//!
+//! Workflows that import a Python package without a stand-in while they are planned need the
+//! Python container of decision 19. Without a container runtime they stop with an error that
+//! says so, and `tests/fixtures/run_test_workflows_containers.txt` must list them. With
+//! `IUNCTUS_CONTAINER_TESTS=1`, the test runs only these workflows, with the container, and
+//! compares their outcomes with that file; each may then take up to fifteen minutes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -19,9 +25,39 @@ use std::process::Command;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use snakemake_runtime::{PythonContainers, Settings};
 use workflow_graph::{Launch, MockTes, Order, RunOptions, execute_with};
 
 const LAUNCHES: &str = include_str!("fixtures/run_test_workflows_launches.txt");
+
+/// The outcomes of the workflows that need the Python container, when it runs.
+const CONTAINERS: &str = include_str!("fixtures/run_test_workflows_containers.txt");
+
+/// What the error of a workflow that needs the Python container says without it.
+const NO_RUNTIME: &str = "(decision 19), but this run has no container runtime";
+
+/// Whether the workflows run with the Python container: `IUNCTUS_CONTAINER_TESTS=1`.
+fn containers() -> bool {
+    std::env::var_os("IUNCTUS_CONTAINER_TESTS").is_some()
+}
+
+/// The settings of a run: the Python container, when the test runs with it. What uv
+/// downloads and the environments it makes are kept next to the test workflows.
+fn settings() -> Settings {
+    if !containers() {
+        return Settings::default();
+    }
+    let root =
+        std::env::var_os("SNAKEMAKE_TEST_WORKFLOWS").map_or_else(std::env::temp_dir, PathBuf::from);
+    Settings {
+        python: Some(PythonContainers {
+            engine: std::env::var("IUNCTUS_ENGINE").unwrap_or_else(|_| "docker".into()),
+            image: None,
+            cache: root.join("python-cache"),
+            show_output: false,
+        }),
+    }
+}
 
 /// How a workflow is launched: its working directory and Snakefile relative to its folder,
 /// config files and values, and targets. The default runs the Snakefile of the folder in it.
@@ -152,7 +188,7 @@ fn run(folder: &Path, launching: &Launching, scratch: &Path) -> String {
             .expect("a link to the downloads");
     }
     let launch = launching.launch(folder, scratch);
-    let mut driver = match snakemake_runtime::driver(&launch) {
+    let mut driver = match snakemake_runtime::driver_with(&launch, settings()) {
         Ok(driver) => driver,
         Err(error) => return format!("{} {error}", if error.unsupported { 33 } else { 1 }),
     };
@@ -225,9 +261,10 @@ fn child(name: &str, folder: &Path, outcome: &Path) -> String {
         );
     }
     let scratch = tempfile::tempdir().expect("a temporary directory");
+    let limit = if containers() { "900" } else { "120" };
     let status = Command::new("timeout")
         .args([
-            "120",
+            limit,
             &std::env::current_exe()
                 .expect("the test binary")
                 .to_string_lossy(),
@@ -280,8 +317,16 @@ fn records(text: &str) -> impl Iterator<Item = Vec<&str>> {
 
 /// The problems of the records of workflows that do not run: a failing workflow without a
 /// record, a record of a workflow that runs, a reason that is not one of the three, and an
-/// `invalid` or `missing` workflow that real Snakemake evaluated with the same launch.
+/// `invalid` or `missing` workflow that real Snakemake evaluated with the same launch. A
+/// workflow that needs the Python container needs no record when it has none, but a line in
+/// `run_test_workflows_containers.txt`.
 fn check_records(outcomes: &[(String, String)]) -> Vec<String> {
+    let listed = |name: &str| {
+        CONTAINERS.lines().any(|line| {
+            line.split_once(' ')
+                .is_some_and(|(listed, _)| listed == name)
+        })
+    };
     let rejected: Vec<Vec<&str>> = records(REJECTED).collect();
     let launched = |name: &str| {
         records(LAUNCHES)
@@ -299,6 +344,11 @@ fn check_records(outcomes: &[(String, String)]) -> Vec<String> {
         let failing = !outcome.starts_with("ok");
         let record = rejected.iter().find(|fields| fields[0] == name);
         match (failing, record) {
+            (true, None) if outcome.contains(NO_RUNTIME) => {
+                if !listed(name) {
+                    problems.push(format!("{name}: needs the Python container, but run_test_workflows_containers.txt does not list it"));
+                }
+            }
             (true, None) => problems.push(format!("{name}: {outcome} (no record)")),
             (false, Some(_)) => problems.push(format!("{name}: a record, but it runs")),
             (true, Some(fields)) => {
@@ -331,18 +381,33 @@ fn workflows_run_as_recorded() {
         std::env::var("SNAKEMAKE_TEST_WORKFLOWS").expect("SNAKEMAKE_TEST_WORKFLOWS is set"),
     );
     let filter = std::env::var("SNAKEMAKE_TEST_WORKFLOWS_FILTER").unwrap_or_default();
-    let fixture =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/run_test_workflows.txt");
-    let recorded = std::fs::read_to_string(&fixture).unwrap_or_default();
-    let recorded: Vec<(String, String)> = recorded
-        .lines()
-        .filter(|line| !line.starts_with('#'))
-        .filter_map(|line| line.split_once(' '))
-        .map(|(name, outcome)| (name.to_owned(), outcome.to_owned()))
-        .collect();
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let read = |fixture: &Path| -> Vec<(String, String)> {
+        std::fs::read_to_string(fixture)
+            .unwrap_or_default()
+            .lines()
+            .filter(|line| !line.starts_with('#'))
+            .filter_map(|line| line.split_once(' '))
+            .map(|(name, outcome)| (name.to_owned(), outcome.to_owned()))
+            .collect()
+    };
+    // With the Python container, only the workflows that need it run, into their own file.
+    let without = read(&fixtures.join("run_test_workflows.txt"));
+    let fixture = fixtures.join(if containers() {
+        "run_test_workflows_containers.txt"
+    } else {
+        "run_test_workflows.txt"
+    });
+    let recorded = read(&fixture);
+    let needs_container = |name: &str| {
+        without
+            .iter()
+            .any(|(listed, outcome)| listed == name && outcome.contains(NO_RUNTIME))
+    };
     let workflows: Vec<(String, PathBuf)> = workflows(&test_workflows)
         .into_iter()
         .filter(|(name, _)| name.contains(&filter))
+        .filter(|(name, _)| !containers() || needs_container(name))
         .collect();
     let outcomes = tempfile::tempdir().expect("a temporary directory");
     let next = AtomicUsize::new(0);
@@ -392,7 +457,11 @@ fn workflows_run_as_recorded() {
         .iter()
         .map(|(name, outcome)| format!("{name} {outcome}"))
         .collect();
-    let header = "# The outcome of each workflow of the Snakemake test workflows with the mock executor: `ok` and\n# the number of tasks, or the exit code (33 for unsupported features) and the first line\n# of the error.";
+    let header = if containers() {
+        "# The outcome of each workflow of the Snakemake test workflows that imports a Python package\n# without a stand-in while it is planned, with the Python container of decision 19 and the\n# mock executor: `ok` and the number of tasks, or the exit code and the first line of the\n# error. Without a container runtime, these workflows stop with an error that says so."
+    } else {
+        "# The outcome of each workflow of the Snakemake test workflows with the mock executor: `ok` and\n# the number of tasks, or the exit code (33 for unsupported features) and the first line\n# of the error."
+    };
     if std::env::var_os("UPDATE_FIXTURE").is_some() {
         std::fs::write(&fixture, format!("{header}\n{}\n", lines.join("\n")))
             .expect("writes the fixture");

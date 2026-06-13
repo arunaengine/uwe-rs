@@ -1,0 +1,23 @@
+# The outcome of each workflow of the Snakemake test workflows that imports a Python package
+# without a stand-in while it is planned, with the Python container of decision 19 and the
+# mock executor: `ok` and the number of tasks, or the exit code and the first line of the
+# error. Without a container runtime, these workflows stop with an error that says so.
+catalog/AToL-Bioinformatics__genome-launcher-workflow 1 workflow/Snakefile:11: ModuleNotFoundError: No module named 'yaml_manifest' (the package yaml_manifest could not be installed from PyPI: × No solution found when resolving dependencies: ╰─▶ Because yaml-manifest was not found in the package registry and you require yaml-manifest, we can conclude t
+catalog/GooglingTheCancerGenome__sv-callers 1 workflow/validator/__init__.py:143: AttributeError: module 'yatiml' has no attribute 'Loader'
+catalog/GooglingTheCancerGenome__sv-gen 33 workflow/validator/__init__.py:178: Not supported yet: passing a type of the workflow to a Python package, which runs in the container of decision 19
+catalog/PyPSA__grid-builder 33 workflow/scripts/_schema.py:39: Not supported yet: classes that derive from BaseModel, a class of a Python package, which runs in the container of decision 19
+catalog/TRON-Bioinformatics__neorasp 1 workflow/rules/common.smk:2: ImportError: failed to find libmagic.  Check your installation
+catalog/khanlab__SPIMprep 1 workflow/rules/common.smk:173: WorkflowError: InputFunctionException in rule imaris_channel_to_zarr (wildcards: subject=AS134F3, sample=brain, acq=imaris4x, stain=Iba1): FileNotFoundError: [Errno 2] No such file or directory: '/nfs/trident3/lightsheet/prado/mouse_app_lecanemab_ki3/raw/ims_4x_stitc
+catalog/knutdrand__bionumpy-benchmarks 1 workflow/Snakefile:6: ModuleNotFoundError: No module named 'bionumpy.intervals'
+catalog/lasyaa418__control-of-latent-dynamics 1 workflow/Snakefile:7: ModuleNotFoundError: No module named 'src'
+catalog/liezeltamon__single-cell-preprocess 1 workflow/Snakefile:12: ImportError: cannot import name 'params_to_cli_args' from 'utils'
+catalog/mukherjeelab__CLIPs4U 1 workflow/Snakefile:42: ValueError: three_prime_adapter must be provided in config file
+catalog/mynameisdidit__UTS_Bioinformatika_SV-Callers 1 workflow/validator/__init__.py:143: AttributeError: module 'yatiml' has no attribute 'Loader'
+catalog/nismod__open-gira 1 workflow/Snakefile:20: ModuleNotFoundError: No module named 'open_gira' (the package open_gira could not be installed from PyPI: × No solution found when resolving dependencies: ╰─▶ Because open-gira was not found in the package registry and you require open-gira, we can conclude that your require
+catalog/rabiafidan__pure-faf 1 workflow/rules/common.smk:63: OSError: Error opening /nemo/project/proj-tracerX/working/CRENAL/fidanr/Mutect2/temp/or_flagged_K1058_HB005_D02.vcf.gz
+catalog/rmFlynn__snakemake_example 1 workflow/Snakefile:6: ModuleNotFoundError: No module named 'workflow'
+catalog/spjuhel__BoARIO-MRIOT-Tools 1 workflow/Snakefile:6: ModuleNotFoundError: No module named 'boario_tools' (the package boario_tools could not be installed from PyPI: × No solution found when resolving dependencies: ╰─▶ Because boario-tools was not found in the package registry and you require boario-tools, we can conclude that y
+catalog/wharvey31__denovo_sv_validation 1 WorkflowError: RuleException in rule make_multi_fa in file workflow/rules/msa.smk, line 42: NameError: The name 'ids' is unknown in this context. Did you mean 'wildcards.ids'?, when formatting the shell command (the mock run assumed 14 input files that do not exist and that no rule makes, like /pa
+tests/test_conda_global ok 1
+tests/test_gs_requester_pays 1 Snakefile:4: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
+tests/test_remote_gs 1 Snakefile:4: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).

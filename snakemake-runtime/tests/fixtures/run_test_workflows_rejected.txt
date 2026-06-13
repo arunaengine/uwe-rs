@@ -4,7 +4,7 @@
 # for a feature that iunctus leaves out on purpose, as decision N of docs/decisions.md says.
 # For `invalid` and `missing`, run_test_workflows_oracle.txt holds the evidence: the error of
 # `snakemake --dry-run` (Snakemake 9.27.0) with the same launch, which oracle.py records.
-catalog/AToL-Bioinformatics__genome-launcher-workflow	missing	Needs the Python package giturlparse, which is not in its repository.
+catalog/AToL-Bioinformatics__genome-launcher-workflow	missing	Needs the Python package yaml_manifest, which is neither in its repository nor on PyPI.
 catalog/Addimator__compare_meth	missing	Reads /projects/koesterlab/benchmark-methylation/data_analysis_jochen/compare_meth/config/sample.tsv, a file on its authors' machines.
 catalog/Albinam1__bioinformatics_school	invalid	Has a rule whose output, log and benchmark files do not name the same wildcards.
 catalog/AmberFu__snakemake_BAMmetrics_mosdepth	missing	Needs the config file ../config/config.yaml, which is not in its repository.
@@ -17,8 +17,8 @@ catalog/DavideBrex__SpikeFlow	unsupported (decision 16)	While it is planned, the
 catalog/ETH-NEXUS__gExcite_pipeline	invalid	Its sample map config/samplemap is an empty file.
 catalog/EichlerLab__ONT_pipelines	invalid	Calls srcdir(), which Snakemake 8 removed.
 catalog/GArcho44__snvs-annotation-pipeline	missing	Needs the config file ../config/config.yml, which is not in its repository.
-catalog/GooglingTheCancerGenome__sv-callers	missing	Needs the Python packages ruamel.yaml and yatiml, which are not in its repository.
-catalog/GooglingTheCancerGenome__sv-gen	missing	Needs the Python package pyfaidx, which is not in its repository.
+catalog/GooglingTheCancerGenome__sv-callers	unsupported (decision 19)	Needs yatiml 0.7, which its environment.yaml pins, but the Python container of decision 19 installs the newest yatiml, which has no yatiml.Loader.
+catalog/GooglingTheCancerGenome__sv-gen	unsupported (decision 19)	Its validator passes its own classes to the package yatiml, which runs in the Python container of decision 19, where classes of workflow code cannot go.
 catalog/IKIM-Essen__uncovar	missing	Needs input data that is not in its repository.
 catalog/JeremyTournayre__Pipeline-Holoruminant-Meta	invalid	Reads the config key 'params-file', which its config does not have.
 catalog/JoseFcoMH__af3_screening	missing	Needs conda while it is planned and a config.yaml with out_dir, and neither is in its repository.
@@ -31,14 +31,14 @@ catalog/NeuroGranberg__NODDIpipeline	invalid	Uses snakemake.io.Wildcards, which 
 catalog/Ovewh__Climaso	missing	Needs input data that is not in its repository; Snakemake's input function for rule calculate_SW_ERF fails the same way.
 catalog/Phlya__distill-reorder-C	invalid	Reads the config key 'output', which its config does not have.
 catalog/Phlya__tagmap	unsupported (decision 16)	While it is planned, the workflow reads the primer positions that a job writes to a JSON file, which the mock executor makes empty.
-catalog/PyPSA__grid-builder	missing	Needs the Python package earth_osm, which is not in its repository.
+catalog/PyPSA__grid-builder	unsupported (decision 19)	Its schema derives classes from BaseModel of the package pydantic, which runs in the Python container of decision 19, where classes of workflow code cannot go.
 catalog/SamBryce-Smith__LAPA_snakemake	invalid	Reads the config key 'lapa_disable_internal_priming_filter', which its config does not have.
 catalog/SarahSaadain__Single_Copy_Gene_Selector	missing	Reads the environment variable CONDA_DEFAULT_ENV, which is set only inside a conda environment.
 catalog/SarahSaadain__pastForward	missing	Needs environment variables that are not set, which the workflow asks for with envvars.
 catalog/SilasK__Metagenome-Profile	missing	Reads samples.csv, which is not in its repository.
 catalog/SilasK__Metagenome-QC	invalid	Reads the config key 'database_dir', which its config does not have.
 catalog/SilasK__Snakebread	missing	Needs a sample table samples.csv or samples.tsv, which is not in its repository.
-catalog/TRON-Bioinformatics__neorasp	missing	Needs the Python package magic, which is not in its repository.
+catalog/TRON-Bioinformatics__neorasp	unsupported (decision 19)	The package python-magic needs the system library libmagic, which the slim Python image of decision 19 does not have.
 catalog/TRON-Bioinformatics__oblx	unsupported (decision 16)	While it is planned, the workflow reads the UniProt release that a checkpoint writes, which the mock executor makes empty.
 catalog/Xavster838__assembly_validation	invalid	Calls srcdir(), which Snakemake 8 removed.
 catalog/Xavster838__coreDupGraph	invalid	Calls srcdir(), which Snakemake 8 removed.
@@ -93,11 +93,11 @@ catalog/johnne__map_metaT	missing	Reads samples.tsv, which is not in its reposit
 catalog/juliawiggeshoff__AugusMake	invalid	Has Snakefile code that Snakemake cannot parse.
 catalog/karltayeb__laplace-bfs	missing	Reads output/single_variable_selection/, which is not in its repository.
 catalog/kevinrue__snakemake-cncb-ensembl-2024	missing	Needs input data that is not in its repository.
-catalog/khanlab__SPIMprep	missing	Needs the Python package upath, which is not in its repository.
-catalog/knutdrand__bionumpy-benchmarks	missing	Needs the Python package bionumpy, which is not in its repository.
+catalog/khanlab__SPIMprep	missing	Reads its samples under /nfs/trident3, a folder of its authors' machines.
+catalog/knutdrand__bionumpy-benchmarks	missing	Needs an older bionumpy with the module bionumpy.intervals, and its repository does not name the version.
 catalog/koesterlab__rossi-ips-dmr	missing	Includes the Snakefile of the neighbouring repository rna-seq-kallisto-sleuth, which is not in its own.
 catalog/lasyaa418__control-of-latent-dynamics	invalid	Imports its folder src as a Python package, which is not on the Python path when Snakemake runs.
-catalog/liezeltamon__single-cell-preprocess	missing	Needs the Python module utils, which is not in its repository.
+catalog/liezeltamon__single-cell-preprocess	missing	Needs its own Python module utils, which is not in its repository; the package utils on PyPI is another one.
 catalog/loganylchen__NanoInsight	missing	Needs input data that is not in its repository.
 catalog/loganylchen__prep-bonito-training-data	invalid	Its sample table lacks the column SampleName that the workflow indexes by.
 catalog/loganylchen__prep_public_nanoporeDRS_data	invalid	Reads the config key 'project', which its config does not have.
@@ -117,8 +117,8 @@ catalog/milesroberts-123__slim-sweep-cnn	missing	Needs the config file ../config
 catalog/moiexpositoalonsolab__grenepipe	invalid	Reads logger.mode, which the logger of Snakemake 9 does not have.
 catalog/monagrland__MB_Pipeline	invalid	Its config does not match the workflow's own config schema.
 catalog/mrvollger__sd-divergence	invalid	Calls srcdir(), which Snakemake 8 removed.
-catalog/mukherjeelab__CLIPs4U	missing	Needs the Python package wget, which is not in its repository.
-catalog/mynameisdidit__UTS_Bioinformatika_SV-Callers	missing	Needs the Python packages ruamel.yaml and yatiml, which are not in its repository.
+catalog/mukherjeelab__CLIPs4U	invalid	Reads the config key three_prime_adapter, which its config does not have.
+catalog/mynameisdidit__UTS_Bioinformatika_SV-Callers	unsupported (decision 19)	Needs yatiml 0.7, which its environment.yaml pins, but the Python container of decision 19 installs the newest yatiml, which has no yatiml.Loader.
 catalog/nate-d-olson__giab-stvar-curation-table	invalid	Reads the config key 'liftover', which its config does not have.
 catalog/ncherric__Iliad	invalid	Gives the runtime 03:00:00, which Snakemake cannot read as minutes.
 catalog/niekwit__atac-seq	missing	Needs FASTQ files that are not in its repository.
@@ -131,7 +131,7 @@ catalog/niekwit__partridge-workflow	unsupported (decision 16)	While it is planne
 catalog/niekwit__rna-seq-salmon-deseq2	invalid	Its sample table does not match the workflow's own schema.
 catalog/niekwit__rna-seq-star-rmats	missing	Needs input data that is not in its repository.
 catalog/niekwit__rna-seq-star-tetranscripts	missing	Needs FASTQ files that are not in its repository.
-catalog/nismod__open-gira	missing	Needs the Python package open_gira, which is not in its repository.
+catalog/nismod__open-gira	missing	Needs the Python package open_gira, which is neither in its repository nor on PyPI.
 catalog/nixonlab__HERV_um_mets	missing	Reads resources/mskruns.txt, which is not in its repository.
 catalog/nixonlab__snakemake_rule_library	missing	Includes workflow/rules/common.smk, which is not in its repository.
 catalog/nodrogluap__tamor	missing	Needs the DRAGEN software (dragen_info), which only its authors' machines have.
@@ -142,7 +142,7 @@ catalog/open2c__distiller-sm	invalid	Reads the config key 'output', which its co
 catalog/panguangze__trio_call_phase_pipeline	invalid	Reads the config key 'joint_calling_groups', which its config does not have.
 catalog/plycrsk__rna-seq-star-deseq2	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 catalog/poloarol__snakemake-methylseq	missing	Needs the config file ../config/config.yaml, which is not in its repository.
-catalog/rabiafidan__pure-faf	missing	Needs the Python package cyvcf2, which is not in its repository.
+catalog/rabiafidan__pure-faf	missing	Reads /nemo/project/proj-tracerX/working/CRENAL/fidanr/Mutect2/temp/or_flagged_K1058_HB005_D02.vcf.gz, a file on its authors' machines.
 catalog/regulatory-genomics__hic_sm	missing	Reads pep/../config/20260119_hic_sample_2.csv, which is not in its repository.
 catalog/richardstoeckl__QCforSeqCode	unsupported (decision 16)	While it is planned, the workflow reads a table that a checkpoint writes, which the mock executor makes empty.
 catalog/richardstoeckl__basecallNanopore	missing	Needs a config file given at launch, which its repository does not name.
@@ -167,7 +167,7 @@ catalog/snakemake-workflows__rna-longseq-de-isoform	missing	Needs the config fil
 catalog/sneuensc__mapache	invalid	Imports Wildcards from snakemake.io, which Snakemake 9.27 does not have.
 catalog/solida-core__astra	invalid	Its sample table is an empty file.
 catalog/solida-core__dima	invalid	Its config lacks the section paths that its rules read.
-catalog/spjuhel__BoARIO-MRIOT-Tools	missing	Needs the Python package boario_tools, which is not in its repository.
+catalog/spjuhel__BoARIO-MRIOT-Tools	missing	Needs the Python package boario_tools, which is neither in its repository nor on PyPI.
 catalog/spjuhel__BoARIO-Sensitivity	missing	Reads /home/sjuhel/Repos/BoARIO-MRIOT-Tools/workflow/Snakefile, a file on its authors' machines.
 catalog/spjuhel__Climada_TC_TCSurge_Generation	invalid	Reads the config key 'start', which its config does not have.
 catalog/tahiri-lab__aPhyloGeo-pipeline	unsupported (decision 16)	While it is planned, the workflow reads a table that a job writes, which the mock executor makes empty.
@@ -183,13 +183,12 @@ catalog/tmweiskittel__tmw_align_emseq	unsupported (decision 16)	While it is plan
 catalog/trickovicmatija__kingfisher_workflow	missing	Needs the config file ../config/default_config.yaml, which is not in its repository.
 catalog/vkpat__short-read-mapping-and-QC-snakemake-pipeline	missing	Needs the config file config.yaml, which is not in its repository.
 catalog/vollgerlab__DSA-phasing	invalid	Its config does not match the workflow's own config schema.
-catalog/wharvey31__denovo_sv_validation	missing	Needs the Python packages biopython and pybedtools, which are not in its repository.
+catalog/wharvey31__denovo_sv_validation	invalid	The shell command of rule make_multi_fa names {ids}, which the rule does not have; it means {wildcards.ids}.
 catalog/ylab-hi__ScanNeo2	missing	Needs sequence files for its samples, which are not in its repository.
 catalog/zavolanlab__mirflowz	missing	Needs the config file workflow/../test/config_lint.yaml, which is not in its repository.
 catalog/zhongmicai__mosaicatcher-pipeline	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 catalog/zjnolen__PopGLen	missing	Reads path/to/ref.fa, which is not in its repository.
 tests/test_cloud_checkpoints_issue574	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
-tests/test_conda_global	missing	Needs the Python package PIL, which is not in its repository.
 tests/test_convert_to_cwl	invalid	Has Snakefile code that Snakemake cannot parse.
 tests/test_envvars	missing	Needs environment variables that are not set, which the workflow asks for with envvars.
 tests/test_expand_flag	invalid	Snakemake's own tests expect it to fail.
@@ -198,7 +197,7 @@ tests/test_generate_unit_tests	missing	Needs the config file config/config.json,
 tests/test_github_issue1062	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 tests/test_github_issue2154	invalid	Gives the runtime 00:30:00, which Snakemake cannot read as minutes.
 tests/test_google_lifesciences	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
-tests/test_gs_requester_pays	missing	Needs the Python package google, which is not in its repository.
+tests/test_gs_requester_pays	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 tests/test_issue1085	invalid	Snakemake's own tests expect it to fail.
 tests/test_issue1256	invalid	Has Snakefile code that Snakemake cannot parse.
 tests/test_issue2574	invalid	Reads the config key 'unexisting_key', which its config does not have.
@@ -213,7 +212,7 @@ tests/test_params_outdated_code	invalid	Its first rule has wildcards, so it has 
 tests/test_pathvars_cycle	invalid	Snakemake's own tests expect it to fail.
 tests/test_remote_auto	invalid	Imports AUTO from snakemake.remote, which Snakemake 9.27 does not have.
 tests/test_remote_azure	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
-tests/test_remote_gs	missing	Needs the Python package google, which is not in its repository.
+tests/test_remote_gs	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 tests/test_remote_irods	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 tests/test_remote_log	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 tests/test_remote_ncbi	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.

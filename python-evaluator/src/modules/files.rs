@@ -1,5 +1,5 @@
-//! Stand-ins for `fileinput` and `filecmp`, which read files that exist while a workflow is
-//! planned.
+//! Stand-ins for `fileinput`, `filecmp` and `tarfile.is_tarfile`, which read files that exist
+//! while a workflow is planned.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -52,4 +52,34 @@ pub fn filecmp() -> Vec<(&'static str, Value)> {
             Ok(Value::Bool(same))
         }),
     )]
+}
+
+/// `tarfile.is_tarfile(name)`: whether a file is a tar archive, plain or compressed with
+/// gzip, by the `ustar` mark of its first header, as the archives of today have it.
+fn is_tarfile(interpreter: &mut Interpreter, args: Args) -> Result<Value, Error> {
+    let name = args.get(0).cloned().unwrap_or(Value::None);
+    let path = path_text(interpreter, &name)?;
+    let resolved = interpreter.host.resolve(&path);
+    let bytes = interpreter
+        .host
+        .read(&resolved)
+        .map_err(|error| Error::os_error(&error, &path))?;
+    let header = if bytes.starts_with(&[0x1f, 0x8b]) {
+        let mut header = Vec::new();
+        let decoder = flate2::read::MultiGzDecoder::new(bytes.as_slice());
+        std::io::Read::read_to_end(&mut std::io::Read::take(decoder, 512), &mut header)
+            .unwrap_or_default();
+        header
+    } else if bytes.starts_with(b"BZh") || bytes.starts_with(&[0xfd, b'7', b'z', b'X', b'Z', 0]) {
+        return Err(Error::unsupported(
+            "tarfile.is_tarfile of a file compressed with bzip2 or xz",
+        ));
+    } else {
+        bytes
+    };
+    Ok(Value::Bool(header.get(257..262) == Some(b"ustar")))
+}
+
+pub fn tarfile() -> Vec<(&'static str, Value)> {
+    vec![("is_tarfile", function("is_tarfile", is_tarfile))]
 }

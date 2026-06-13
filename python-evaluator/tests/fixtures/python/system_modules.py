@@ -34,3 +34,5 @@ fileinput.close()
 print(len(lines) > 10, lines[0] == open("containers.out").readline().strip())
 print(filecmp.cmp("containers.out", "containers.out"), filecmp.cmp("containers.out", "numbers.out"))
 print(type(pwd.getpwuid(0)[0]).__name__)
+import tarfile
+print(tarfile.is_tarfile("archive.tar.gz"), tarfile.is_tarfile("containers.out"))

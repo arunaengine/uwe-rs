@@ -505,6 +505,9 @@ pub fn path_text(interpreter: &mut Interpreter, value: &Value) -> Result<String,
         Value::Native(object) if object.type_name() == "PosixPath" || object.instance_of("str") => {
             interpreter.to_str(value)
         }
+        Value::Native(_) if let Some(path) = crate::packages::fspath(interpreter, value)? => {
+            Ok(path)
+        }
         Value::Instance(_) => match interpreter.lookup_special(value, "__fspath__") {
             Some(method) => {
                 let text = interpreter.call(&method, Args::default())?;

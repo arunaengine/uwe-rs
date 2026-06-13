@@ -354,3 +354,22 @@ fn except_clauses_catch_exceptions_by_classes_of_the_package() {
         "caught Missing\nother no\n"
     );
 }
+
+#[test]
+fn path_like_objects_of_packages_are_paths() {
+    let mut test = interpreter(
+        vec![
+            handle(1, "module", false),
+            handle(2, "PosixUPath", false),
+            handle(3, "method", true),
+            value(json!("/data/sample.txt")),
+        ],
+        None,
+    );
+    let output = run(
+        &mut test,
+        "import os\nimport toy\nprint(os.fspath(toy.path))\n",
+    )
+    .expect("runs");
+    assert_eq!(output, "/data/sample.txt\n");
+}

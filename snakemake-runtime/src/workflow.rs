@@ -1159,8 +1159,16 @@ impl Hook {
                     items.add_name(name);
                 }
             }
-            Value::Native(object) if object.type_name() == "PosixPath" => {
-                let text = retag(value, Value::str(interpreter.to_str(value)?));
+            // Paths, also of Python packages, like `upath.UPath`, as Snakemake takes them.
+            Value::Native(object)
+                if object.type_name() == "PosixPath"
+                    || python_evaluator::packages::fspath(interpreter, value)?.is_some() =>
+            {
+                let text = match python_evaluator::packages::fspath(interpreter, value)? {
+                    Some(path) => path,
+                    None => interpreter.to_str(value)?,
+                };
+                let text = retag(value, Value::str(text));
                 let modified = self.state.borrow().modify_path(&text, property, skips);
                 items.push(apply_pathvars(pathvars, &modified)?);
                 if let Some(name) = name {

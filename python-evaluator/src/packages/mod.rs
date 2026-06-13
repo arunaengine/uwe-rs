@@ -217,6 +217,22 @@ impl Drop for Packages {
     }
 }
 
+/// The path of an object of a package that is path-like, like `upath.UPath`: what its
+/// `__fspath__` gives, or `None` for another value.
+pub fn fspath(interpreter: &mut Interpreter, value: &Value) -> Result<Option<String>, Error> {
+    if value.as_native::<PackageObject>().is_none() {
+        return Ok(None);
+    }
+    let method = match interpreter.find_attribute(value, "__fspath__") {
+        Ok(Some(method)) => method,
+        Ok(None) => return Ok(None),
+        Err(error) if error.is("AttributeError") => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    let path = interpreter.call(&method, crate::value::Args::default())?;
+    interpreter.to_str(&path).map(Some)
+}
+
 impl Interpreter {
     /// Imports a module of a package without a stand-in in the Python process.
     pub(crate) fn import_package(&mut self, name: &str) -> Result<Value, Error> {

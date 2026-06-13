@@ -42,6 +42,7 @@ def handle_of(value):
     handle = {"handle": number, "type": type(value).__name__, "callable": callable(value)}
     if isinstance(value, type):
         handle["name"] = value.__qualname__
+        handle["module"] = value.__module__
     return handle
 
 
@@ -221,6 +222,11 @@ def describe(error):
         "type": kind.__name__,
         "module": kind.__module__,
         "bases": [base.__name__ for base in kind.__mro__[1:] if issubclass(base, BaseException)],
+        "classes": [
+            f"{base.__module__}.{base.__qualname__}"
+            for base in kind.__mro__
+            if issubclass(base, BaseException)
+        ],
         "message": str(error),
         "args": [arg if isinstance(arg, plain) else repr(arg) for arg in error.args],
     }

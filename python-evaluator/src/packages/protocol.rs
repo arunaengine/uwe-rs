@@ -194,6 +194,10 @@ fn malformed(json: &Json) -> Error {
     ))
 }
 
+/// The attribute of a class of exceptions of a package that names it and its bases, like
+/// `pyfaidx.FastaIndexingError`, for `except` clauses with classes of the package.
+pub const CLASSES: &str = "__package_classes__";
+
 /// The exception of an error reply: its builtin class, or a class of the package whose base
 /// is the nearest builtin class among its bases.
 pub fn exception(error: &Json) -> Error {
@@ -241,7 +245,23 @@ pub fn exception(error: &Json) -> Error {
             .iter()
             .find(|base| types::exception_class(base).is_some())
             .map_or("Exception", String::as_str);
-        types::library_exception(&name, &module, base)
+        let class = types::library_exception(&name, &module, base);
+        let classes: Vec<Value> = error
+            .get("classes")
+            .and_then(Json::as_array)
+            .map(|classes| {
+                classes
+                    .iter()
+                    .filter_map(Json::as_str)
+                    .map(Value::str)
+                    .collect()
+            })
+            .unwrap_or_default();
+        class
+            .dict
+            .borrow_mut()
+            .insert(CLASSES.into(), Value::tuple(classes));
+        class
     });
     Error::from_value(crate::error::exception(&class, args))
 }

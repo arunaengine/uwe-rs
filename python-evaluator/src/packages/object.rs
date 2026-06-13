@@ -21,8 +21,9 @@ pub struct PackageObject {
     generation: u64,
     handle: u64,
     type_name: String,
-    /// The name of the class, when the object is a class.
+    /// The name of the class and of its module, when the object is a class.
     class_name: Option<String>,
+    class_module: Option<String>,
     callable: bool,
 }
 
@@ -45,6 +46,10 @@ impl PackageObject {
                 .unwrap_or("object")
                 .to_owned(),
             class_name: fields.get("name").and_then(Json::as_str).map(str::to_owned),
+            class_module: fields
+                .get("module")
+                .and_then(Json::as_str)
+                .map(str::to_owned),
             callable: fields
                 .get("callable")
                 .and_then(Json::as_bool)
@@ -55,6 +60,22 @@ impl PackageObject {
     /// The name of the class, when the object is a class.
     pub fn class_name(&self) -> Option<&str> {
         self.class_name.as_deref()
+    }
+
+    /// Whether the object is a class of exceptions of the package that an exception of the
+    /// package is, or derives from, so that `except package.Error:` catches it.
+    pub fn catches(&self, exception: &Value) -> bool {
+        let (Some(module), Some(name)) = (&self.class_module, &self.class_name) else {
+            return false;
+        };
+        let wanted = format!("{module}.{name}");
+        let classes = crate::types::class_of(exception).lookup(super::protocol::CLASSES);
+        match classes {
+            Some(Value::Tuple(classes)) => classes
+                .iter()
+                .any(|class| class.as_str() == Some(wanted.as_str())),
+            _ => false,
+        }
     }
 
     /// The handle as the process takes it back, while its process runs.

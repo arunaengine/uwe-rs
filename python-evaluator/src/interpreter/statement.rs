@@ -407,6 +407,13 @@ impl Interpreter {
     fn exception_matches(&mut self, exception: &Value, kind: &Value) -> Result<bool, Error> {
         match kind.plain() {
             Value::Class(class) => Ok(types::is_instance(exception, class)),
+            Value::Native(object)
+                if let Some(class) = object
+                    .as_any()
+                    .downcast_ref::<crate::packages::PackageObject>() =>
+            {
+                Ok(class.catches(exception))
+            }
             Value::Tuple(kinds) => {
                 for kind in kinds.iter() {
                     if self.exception_matches(exception, kind)? {

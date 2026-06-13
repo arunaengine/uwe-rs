@@ -327,3 +327,30 @@ fn folders_of_the_workflow_are_not_packages() {
     assert_eq!(output, "No module named 'src'\n");
     assert!(test.seen.borrow().starts.is_empty());
 }
+
+#[test]
+fn except_clauses_catch_exceptions_by_classes_of_the_package() {
+    let raised = |kind: &str| {
+        json!({"error": {"type": kind, "module": "toy.errors", "bases": ["Exception", "BaseException"],
+            "classes": [format!("toy.errors.{kind}"), "toy.errors.ToyError", "builtins.Exception", "builtins.BaseException"],
+            "message": "no", "args": ["no"]}})
+    };
+    let class = |number: u64, name: &str| json!({"value": {"handle": number, "type": "type", "callable": true, "name": name, "module": "toy.errors"}});
+    let mut test = interpreter(
+        vec![
+            handle(1, "module", false),
+            handle(2, "function", true),
+            raised("Missing"),
+            class(3, "ToyError"),
+            handle(4, "function", true),
+            raised("Other"),
+            class(5, "Missing"),
+        ],
+        None,
+    );
+    let code = "import toy\ntry:\n    toy.fail()\nexcept toy.ToyError as error:\n    print('caught', type(error).__name__)\ntry:\n    toy.fail()\nexcept toy.Missing:\n    print('wrong')\nexcept Exception as error:\n    print('other', error)\n";
+    assert_eq!(
+        run(&mut test, code).expect("runs"),
+        "caught Missing\nother no\n"
+    );
+}

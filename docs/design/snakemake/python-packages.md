@@ -87,7 +87,7 @@ A reply is `{"value": V}` or `{"error": E}`. `E` has the exception's `type`, its
 | `list`, `tuple`, `set` | `{"list": [...]}`, `{"tuple": [...]}`, `{"set": [...]}` |
 | `dict` | `{"dict": [[key, value], ...]}` |
 | a path | `{"path": "/a/b"}` |
-| any other object | `{"handle": 7, "type": "SeqRecord", "callable": false}` |
+| any other object | `{"handle": 7, "type": "SeqRecord", "callable": false}`, and for a class also its `name` and `module` |
 
 The server sends subclasses of `int`, `float`, `str`, `list` and `dict` as the plain type, and numbers of numpy as `int` or `float`. A named tuple stays a handle, so that its fields keep their names.
 
@@ -123,7 +123,7 @@ At most one container runs per run. Runs of the test workflows start at most fou
 
 ## 7. Errors
 
-- An exception of the package becomes a Python exception in the interpreter. A builtin exception, like `KeyError`, keeps its class. Another class, like `pyfaidx.FastaIndexingError`, becomes a class of that name and module whose base is the nearest builtin class of its bases, so that `except ValueError` catches it when Python would.
+- An exception of the package becomes a Python exception in the interpreter. A builtin exception, like `KeyError`, keeps its class. Another class, like `pyfaidx.FastaIndexingError`, becomes a class of that name and module whose base is the nearest builtin class of its bases, so that `except ValueError` catches it when Python would. An `except` clause with a class of the package, like `except pyfaidx.FastaNotFoundError:`, catches the exceptions of that class and of the classes that derive from it: the error reply names all classes of the exception (`classes`), and a handle of a class names its module and its name.
 - A package that uv cannot install from PyPI is a `ModuleNotFoundError` whose message names the package and gives the first lines of uv's error, so `try: import x` / `except ImportError:` works as in Python. So is an import that still fails after the install.
 - No starter, or a starter that cannot start the container (no container engine, an engine that does not run), stops the run with an error that `except` does not catch: "the workflow imports the Python package pyfaidx, which has no stand-in in iunctus; it runs in a Python container (decision 19), but ...", followed by the reason.
 - A process that ends while the interpreter waits for a reply stops the run with the last lines of its standard error.

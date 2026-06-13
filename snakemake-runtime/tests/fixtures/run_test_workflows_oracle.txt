@@ -5,7 +5,7 @@
 # the workflow, the launch (plain, ci, catalog or tests.py), the exit code, `evaluated`
 # when Snakemake evaluated the Snakefile and began to plan the jobs, else `failed`, and
 # the first error line.
-catalog/AToL-Bioinformatics__genome-launcher-workflow	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 8: No module named 'giturlparse'
+catalog/AToL-Bioinformatics__genome-launcher-workflow	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 11: No module named 'yaml_manifest'
 catalog/Addimator__compare_meth	plain	1	failed	FileNotFoundError in file "workflow/rules/common.smk", line 7: [Errno 2] No such file or directory: '/projects/koesterlab/benchmark-methylation/data_analysis_jochen/compare_meth/config/sample.tsv'
 catalog/Albinam1__bioinformatics_school	plain	1	failed	RuleException in file "workflow/rules/mapping.smk", line 34: Not all output, log and benchmark files of rule map_reads_with_minimap contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
 catalog/AllenInstitute__Bulk-RNA-Snakeline	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 11: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-upv2hemq/config/config.yaml).
@@ -29,8 +29,8 @@ catalog/EichlerLab__ONT_pipelines	plain	1	failed	NameError in file "workflow/Sna
 catalog/EichlerLab__ONT_pipelines	ci	1	failed	NameError in file "workflow/Snakefile", line 11: name 'srcdir' is not defined
 catalog/GArcho44__snvs-annotation-pipeline	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 5: Workflow defines configfile ../config/config.yml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-a6rrdl0u/config/config.yml).
 catalog/GArcho44__snvs-annotation-pipeline	ci	1	failed	RuleException in file "workflow/Snakefile", line 22: Input and output files have to be specified as strings or lists of strings.
-catalog/GooglingTheCancerGenome__sv-callers	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 7: No module named 'yatiml'
-catalog/GooglingTheCancerGenome__sv-gen	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 1: No module named 'pyfaidx'
+catalog/GooglingTheCancerGenome__sv-callers	plain	1	failed	AttributeError in file "workflow/Snakefile", line 7: module 'yatiml' has no attribute 'Loader'
+catalog/GooglingTheCancerGenome__sv-gen	plain	1	failed	FileNotFoundError in file "workflow/Snakefile", line 1: [Errno 2] No such file or directory: '../config/analysis.yaml'
 catalog/IKIM-Essen__uncovar	plain	1	evaluated	MissingInputException in rule fastp_pe in file "workflow/rules/read_trimming.smk", line 7: Missing input files for rule fastp_pe:
 catalog/IKIM-Essen__uncovar	ci	1	evaluated	MissingInputException in rule fastp_pe in file "workflow/rules/read_trimming.smk", line 7: Missing input files for rule fastp_pe:
 catalog/JeremyTournayre__Pipeline-Holoruminant-Meta	plain	1	failed	KeyError in file "workflow/Snakefile", line 22: 'params-file'
@@ -51,14 +51,14 @@ catalog/Ovewh__Climaso	plain	1	evaluated	InputFunctionException in rule calculat
 catalog/Phlya__distill-reorder-C	plain	1	failed	KeyError in file "https://raw.githubusercontent.com/open2c/distiller-sm/master/workflow/Snakefile", line 18: 'output'
 catalog/Phlya__tagmap	plain	1	evaluated	WorkflowError: MissingInputException: Missing input files for rule merge_fastq:
 catalog/Phlya__tagmap	ci	0	evaluated
-catalog/PyPSA__grid-builder	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 8: No module named 'earth_osm'
+catalog/PyPSA__grid-builder	plain	1	evaluated	WorkflowError: Error running conda info. Is conda installed and accessible? Error: Command 'conda info --json' returned non-zero exit status 127.
 catalog/SamBryce-Smith__LAPA_snakemake	plain	1	failed	KeyError in file "workflow/Snakefile", line 4: 'lapa_disable_internal_priming_filter'
 catalog/SarahSaadain__Single_Copy_Gene_Selector	plain	1	failed	KeyError in file "workflow/rules/initialize_pipeline.smk", line 126: 'CONDA_DEFAULT_ENV'
 catalog/SarahSaadain__pastForward	plain	1	failed	WorkflowError in file "workflow/rules/initialize.smk", line 42: The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:
 catalog/SilasK__Metagenome-Profile	plain	1	failed	FileNotFoundError in file "workflow/rules/sample_table.smk", line 12: [Errno 2] No such file or directory: 'samples.csv'
 catalog/SilasK__Metagenome-QC	plain	1	failed	KeyError in file "workflow/Snakefile", line 18: 'database_dir'
 catalog/SilasK__Snakebread	plain	1	failed	FileNotFoundError in file "workflow/rules/sample_table.smk", line 16: Sample table not found. Please provide a 'samples.csv' or 'samples.tsv' file.
-catalog/TRON-Bioinformatics__neorasp	plain	1	failed	ModuleNotFoundError in file "workflow/rules/common.smk", line 2: No module named 'magic'
+catalog/TRON-Bioinformatics__neorasp	plain	0	evaluated
 catalog/TRON-Bioinformatics__oblx	plain	0	evaluated
 catalog/Xavster838__assembly_validation	plain	1	failed	NameError in file "workflow/Snakefile", line 8: name 'srcdir' is not defined
 catalog/Xavster838__assembly_validation	ci	1	failed	NameError in file "workflow/Snakefile", line 8: name 'srcdir' is not defined
@@ -153,12 +153,12 @@ catalog/johnne__map_metaT	plain	1	failed	FileNotFoundError in file "workflow/rul
 catalog/juliawiggeshoff__AugusMake	plain	1	failed	TokenError: ('unexpected character after line continuation character', (17, 81))
 catalog/karltayeb__laplace-bfs	plain	1	failed	FileNotFoundError in file "workflow/rules/single_causal_glm_simulations.smk", line 61: [Errno 2] No such file or directory: 'output/single_variable_selection/'
 catalog/kevinrue__snakemake-cncb-ensembl-2024	plain	1	evaluated	MissingInputException in rule simpleaf_quant in file "workflow/rules/simpleaf.smk", line 41: Missing input files for rule simpleaf_quant:
-catalog/khanlab__SPIMprep	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 2: No module named 'upath'
-catalog/knutdrand__bionumpy-benchmarks	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 5: No module named 'bionumpy'
+catalog/khanlab__SPIMprep	plain	1	evaluated	InputFunctionException in rule imaris_to_metadata in file "workflow/rules/imaris.smk", line 1: Error:
+catalog/knutdrand__bionumpy-benchmarks	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 6: No module named 'bionumpy.intervals'
 catalog/koesterlab__rossi-ips-dmr	plain	1	failed	FileNotFoundError in file "workflow/Snakefile", line 68: [Errno 2] No such file or directory: 'workflow/../../rna-seq-kallisto-sleuth/workflow/Snakefile'
 catalog/lasyaa418__control-of-latent-dynamics	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 7: No module named 'src'
-catalog/liezeltamon__single-cell-preprocess	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 12: No module named 'utils'
-catalog/liezeltamon__single-cell-preprocess	ci	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 12: No module named 'utils'
+catalog/liezeltamon__single-cell-preprocess	plain	1	failed	ImportError in file "workflow/Snakefile", line 12: cannot import name 'params_to_cli_args' from 'utils'
+catalog/liezeltamon__single-cell-preprocess	ci	1	failed	ImportError in file "workflow/Snakefile", line 12: cannot import name 'params_to_cli_args' from 'utils'
 catalog/loganylchen__NanoInsight	plain	1	evaluated	MissingInputException in rule filtering_genome_and_annotation in file "workflow/rules/prepare_reference.smk", line 34: Missing input files for rule filtering_genome_and_annotation:
 catalog/loganylchen__prep-bonito-training-data	plain	1	failed	KeyError in file "workflow/rules/common.smk", line 13: "None of ['SampleName'] are in the columns"
 catalog/loganylchen__prep_public_nanoporeDRS_data	plain	1	failed	KeyError in file "workflow/rules/common.smk", line 32: 'project'
@@ -181,8 +181,8 @@ catalog/moiexpositoalonsolab__grenepipe	plain	1	failed	AttributeError in file "w
 catalog/monagrland__MB_Pipeline	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 4: Error validating config file.
 catalog/mrvollger__sd-divergence	plain	1	failed	NameError in file "workflow/Snakefile", line 10: name 'srcdir' is not defined
 catalog/mrvollger__sd-divergence	ci	1	failed	NameError in file "workflow/Snakefile", line 10: name 'srcdir' is not defined
-catalog/mukherjeelab__CLIPs4U	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 11: No module named 'wget'
-catalog/mynameisdidit__UTS_Bioinformatika_SV-Callers	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 7: No module named 'yatiml'
+catalog/mukherjeelab__CLIPs4U	plain	1	failed	ValueError in file "workflow/Snakefile", line 42: three_prime_adapter must be provided in config file
+catalog/mynameisdidit__UTS_Bioinformatika_SV-Callers	plain	1	failed	AttributeError in file "workflow/Snakefile", line 7: module 'yatiml' has no attribute 'Loader'
 catalog/nate-d-olson__giab-stvar-curation-table	plain	1	failed	KeyError in file "workflow/Snakefile", line 244: 'liftover'
 catalog/ncbench__ncbench-workflow	plain	1	evaluated	InputFunctionException in rule download_zenodo in file "workflow/Snakefile", line 30: Error:
 catalog/ncbench__ncbench-workflow	ci	0	evaluated
@@ -227,7 +227,7 @@ catalog/panguangze__trio_call_phase_pipeline	plain	1	failed	KeyError in file "wo
 catalog/plycrsk__rna-seq-star-deseq2	plain	1	failed	NotImplementedError in file "workflow/rules/common.smk", line 7: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 catalog/plycrsk__rna-seq-star-deseq2	ci	1	failed	NotImplementedError in file "workflow/rules/common.smk", line 7: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 catalog/poloarol__snakemake-methylseq	plain	1	failed	WorkflowError in file "workflow/Snakefile", line 11: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /tmp/iunctus-oracle-ra699a3q/config/config.yaml).
-catalog/rabiafidan__pure-faf	plain	1	failed	ModuleNotFoundError in file "workflow/rules/common.smk", line 5: No module named 'cyvcf2'
+catalog/rabiafidan__pure-faf	plain	1	failed	OSError in file "workflow/rules/common.smk", line 63: Error opening /nemo/project/proj-tracerX/working/CRENAL/fidanr/Mutect2/temp/or_flagged_K1058_HB005_D02.vcf.gz
 catalog/rabiafidan__pure-faf	ci	1	failed	WorkflowError in file "workflow/Snakefile", line 6: Workflow defines configfile config/config.yaml but it is not present or accessible (full checked path: .test/config/config.yaml).
 catalog/regulatory-genomics__hic_sm	plain	1	failed	FileNotFoundError in file "workflow/rules/common.smk", line 38: [Errno 2] No such file or directory: 'pep/../config/20260119_hic_sample_2.csv'
 catalog/richardstoeckl__QCforSeqCode	plain	0	evaluated
@@ -296,8 +296,8 @@ catalog/votti__snakemake-renv-quarto	plain	1	failed	RuleException in file "workf
 catalog/votti__snakemake-renv-quarto	ci	1	failed	RuleException in file "workflow/rules/quarto_examples.smk", line 10: Standard resource specified with invalid type, got error:
 catalog/westerdijk-wm__smkwf-bwa-gatk-snpeff	plain	1	failed	OSError in file "workflow/Snakefile", line 26: [Errno 39] Directory not empty: '/home/beavis/.cache/snakemake/snakemake/source-cache/snakemake-git-cache/github.com/b-brankovics/bwa-gatk-fasttree-smkwf.htn4pg4o' -> '/home/beavis/.cache/snakemake/snakemake/source-cache/snakemake-git-cache/github.com/b
 catalog/westerdijk-wm__smkwf-bwa-gatk-snpeff	ci	0	evaluated
-catalog/wharvey31__denovo_sv_validation	plain	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 5: No module named 'pybedtools'
-catalog/wharvey31__denovo_sv_validation	ci	1	failed	ModuleNotFoundError in file "workflow/Snakefile", line 5: No module named 'pybedtools'
+catalog/wharvey31__denovo_sv_validation	plain	1	evaluated	MissingInputException in rule subseq_tab_window_single in file "workflow/rules/subseq.smk", line 114: Missing input files for rule subseq_tab_window_single:
+catalog/wharvey31__denovo_sv_validation	ci	1	evaluated	InputFunctionException in rule combine_ids in file "workflow/rules/msa.smk", line 172: Error:
 catalog/xin-huang__selscape	plain	1	failed	KeyError in file "workflow/rules/common.smk", line 33: 'selscan_config'
 catalog/xin-huang__selscape	ci	0	evaluated
 catalog/xin-huang__selscape	catalog	1	evaluated	MissingInputException in rule extract_biallelic_snps in file "workflow/rules/2_preprocess.smk", line 21: Missing input files for rule extract_biallelic_snps:
@@ -310,7 +310,7 @@ catalog/zifornd__arrays	ci	0	evaluated
 catalog/zjnolen__PopGLen	plain	1	failed	FileNotFoundError in file "workflow/rules/common.smk", line 54: [Errno 2] No such file or directory: 'path/to/ref.fa'
 tests/test_censored_path	plain	1	failed	InvalidPluginException in file "Snakefile", line 1: Error loading Snakemake plugin xrootd: The package snakemake-storage-plugin-xrootd is not installed.
 tests/test_cloud_checkpoints_issue574	plain	1	failed	NotImplementedError in file "Snakefile", line 6: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
-tests/test_conda_global	plain	1	failed	ModuleNotFoundError in file "Snakefile", line 10: No module named 'PIL'
+tests/test_conda_global	plain	0	evaluated
 tests/test_conda_named	plain	1	failed	CalledProcessError in file "Snakefile", line 6: Command 'set -euo pipefail;  conda create -y -n xxx-test-env -c conda-forge --override-channels ripgrep==13.0.0' returned non-zero exit status 127.
 tests/test_conditional	tests.py	0	evaluated
 tests/test_convert_to_cwl	plain	1	failed	SyntaxError in file "Snakefile", line 31: Keyword version is deprecated. Use conda or container directive instead :
@@ -327,7 +327,7 @@ tests/test_github_issue_4039_runtime_profile	tests.py	0	evaluated
 tests/test_google_lifesciences	plain	1	failed	NotImplementedError in file "Snakefile", line 5: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_groupid_expand	plain	0	evaluated
 tests/test_groupid_expand_cluster	plain	0	evaluated
-tests/test_gs_requester_pays	plain	1	failed	ModuleNotFoundError in file "Snakefile", line 2: No module named 'google'
+tests/test_gs_requester_pays	plain	1	failed	NotImplementedError in file "Snakefile", line 4: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_immediate_submit	plain	0	evaluated
 tests/test_issue1085	tests.py	1	evaluated	WorkflowError in rule test in file "Snakefile", line 6: unpack() is not allowed with params. Simply return a dictionary which can be directly .used, e.g. via {params[mykey]}. (rule test, line 6, Snakefile)
 tests/test_issue1256	plain	1	failed	SyntaxError in file "Snakefile", line 9: cannot assign to literal here. Maybe you meant '==' instead of '='?:
@@ -350,7 +350,7 @@ tests/test_profile_double_dash	tests.py	0	evaluated
 tests/test_python_import_from_github_module	plain	1	failed	WorkflowError in file "Snakefile", line 18: Failed to get mtime of git source file f4d5854841d79e0393d118745c7dbe856268ed59:tests/test_python_import_from_github_module/minimal_module/Snakefile
 tests/test_remote_auto	plain	1	failed	ImportError in file "Snakefile", line 4: cannot import name 'AUTO' from 'snakemake.remote' (/home/beavis/.cache/uv/archive-v0/BytD8Vi5erkz6OTu/lib/python3.13/site-packages/snakemake/remote/__init__.py)
 tests/test_remote_azure	plain	1	failed	NotImplementedError in file "Snakefile", line 9: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
-tests/test_remote_gs	plain	1	failed	ModuleNotFoundError in file "Snakefile", line 2: No module named 'google'
+tests/test_remote_gs	plain	1	failed	NotImplementedError in file "Snakefile", line 4: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_remote_irods	plain	1	failed	NotImplementedError in file "Snakefile", line 3: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_remote_log	plain	1	failed	NotImplementedError in file "Snakefile", line 8: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_remote_ncbi	plain	1	failed	NotImplementedError in file "Snakefile", line 2: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).

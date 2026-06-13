@@ -15,6 +15,17 @@
 # their lines in the oracle file, keeping them even when Snakemake evaluates their first
 # launch: the evidence for the workflows that iunctus cannot run.
 #
+# The workflows of run_test_workflows_containers.txt import Python packages that run in the
+# Python container of decision 19. Their evidence comes from a run with those packages too:
+#
+#     grep -v '^#' snakemake-runtime/tests/fixtures/run_test_workflows_containers.txt \
+#         | cut -d' ' -f1 > /tmp/containers.txt
+#     uv run -q --with snakemake==9.27.0 ... (the packages above) --with giturlparse \
+#         --with yatiml --with pyfaidx --with earth-osm --with pydantic --with python-magic \
+#         --with universal-pathlib --with snakebids --with bionumpy --with wget --with cyvcf2 \
+#         --with pybedtools --with google-auth --with pillow --with utils \
+#         python snakemake-runtime/tests/fixtures/oracle.py --only /tmp/containers.txt
+#
 # Snakemake is only the reference here; iunctus never runs it (decision 1).
 #
 # Copyright (c) 2026 The iunctus Contributors
@@ -68,6 +79,8 @@ def first_error(output, copy):
     for index, line in enumerate(lines):
         if re.search(r"(Error|Exception)\b", line) and not line.startswith("Traceback"):
             text = " ".join(lines[index:index + 2])
+            # Paths of installed packages differ between machines.
+            text = re.sub(r" \(/[^)]*site-packages/[^)]*\)", "", text)
             return text.replace(copy + "/", "").replace(copy, ".")[:300]
     return (lines[-1] if lines else "").replace(copy, ".")[:300]
 

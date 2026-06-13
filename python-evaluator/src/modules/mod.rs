@@ -448,6 +448,7 @@ pub fn native(interpreter: &mut Interpreter, name: &str) -> Result<Option<Value>
         "pickle" => system::pickle(),
         "fileinput" => files::fileinput(),
         "filecmp" => files::filecmp(),
+        "tarfile" => files::tarfile(),
         "urllib.parse" => urllib::parse(),
         "urllib.error" => urllib::error(),
         "urllib.request" => urllib::request(),

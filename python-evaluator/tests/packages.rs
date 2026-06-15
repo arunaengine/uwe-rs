@@ -373,3 +373,17 @@ fn path_like_objects_of_packages_are_paths() {
     .expect("runs");
     assert_eq!(output, "/data/sample.txt\n");
 }
+
+#[test]
+fn the_versions_that_the_workflow_pins_are_installed() {
+    let mut test = interpreter(vec![handle(1, "module", false)], None);
+    test.interpreter
+        .packages
+        .set_pins(vec!["snakemake==9.27.0".into(), "Toy==1.0".into()]);
+    run(&mut test, "import toy\n").expect("runs");
+    assert_eq!(test.seen.borrow().starts[0].packages, ["Toy==1.0"]);
+    assert_eq!(
+        requests(&test)[0],
+        json!({"op": "import", "module": "toy", "packages": ["Toy==1.0"]})
+    );
+}

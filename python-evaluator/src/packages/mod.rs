@@ -7,10 +7,12 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod object;
+pub mod pins;
 mod protocol;
 mod pypi;
 
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -31,7 +33,8 @@ pub const SERVER: &str = include_str!("server.py");
 pub struct PythonStart {
     /// The server script, which the process runs with `python -u`.
     pub script: &'static str,
-    /// The PyPI packages of the first import, to install before the script runs.
+    /// The PyPI packages of the first import, to install before the script runs, with the
+    /// versions that the workflow pins, like `yatiml==0.7`.
     pub packages: Vec<String>,
     /// The working directory of the interpreter, where the process runs.
     pub cwd: PathBuf,
@@ -65,11 +68,22 @@ pub struct Packages {
     /// The full dotted name that an import asks for while its packages are imported, so that
     /// `google.auth` installs `google-auth`, not `google`.
     wanted: RefCell<Option<String>>,
+    /// The requirements of the workflow's own environment file by package name, like
+    /// `yatiml==0.7`, which are installed instead of the newest version.
+    pins: RefCell<HashMap<String, String>>,
 }
 
 impl Packages {
     pub fn set_starter(&self, starter: Rc<dyn PythonStarter>) {
         *self.starter.borrow_mut() = Some(starter);
+    }
+
+    /// Takes the requirements of the workflow's own environment file, like `yatiml==0.7`.
+    pub fn set_pins(&self, requirements: Vec<String>) {
+        let mut pins = self.pins.borrow_mut();
+        for requirement in requirements {
+            pins.insert(pins::normalized(pins::name_of(&requirement)), requirement);
+        }
     }
 
     pub fn is_running(&self) -> bool {
@@ -120,7 +134,16 @@ impl Packages {
         let full = wanted
             .filter(|wanted| wanted.starts_with(&format!("{module}.")))
             .unwrap_or_else(|| module.to_owned());
-        let packages = pypi_packages(&full);
+        let packages: Vec<String> = pypi_packages(&full)
+            .into_iter()
+            .map(|package| {
+                self.pins
+                    .borrow()
+                    .get(&pins::normalized(&package))
+                    .cloned()
+                    .unwrap_or(package)
+            })
+            .collect();
         if !self.is_running() {
             let starter = self.starter.borrow().clone();
             let top = module.split('.').next().unwrap_or(module);

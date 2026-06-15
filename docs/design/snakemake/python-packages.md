@@ -109,6 +109,8 @@ Before the container starts, uv installs the PyPI packages of the first import i
 
 uv installs the packages together, and when that fails, one by one. It keeps the error of each package that it cannot install, like one that PyPI does not have. A later import of another missing package installs it with uv into a folder of the running container, which the next run does not keep.
 
+Where the workflow pins a version in its own environment file, that version is installed: an `environment.yaml`, `environment.yml` or `requirements.txt` in the folder of the Snakefile, its parent or the target folder, if it lists snakemake (files that do not are the environments of rules). A conda pin like `tabulate=0.8.10` becomes `tabulate==0.8.10`; a pip pin like `yatiml==0.7` goes to uv as it is. The pins are part of the key of the kept environment, since they are part of the packages it installs.
+
 Import names differ from PyPI package names. A table maps them, like `PIL` to `pillow`, `Bio` to `biopython`, `yaml` to `pyyaml`, `sklearn` to `scikit-learn` and `cv2` to `opencv-python-headless`. Other names map to the name of their top package.
 
 A user can give an image with `iunctus run -python-image <image>`. It must have `python3` with the packages the workflow imports; iunctus installs nothing into it unless it has uv. Every Python container runs with `--ulimit core=0`: a tool that crashes inside it gives iunctus nothing to use from a core dump.
@@ -130,7 +132,8 @@ At most one container runs per run. Runs of the test workflows start at most fou
 
 ## 8. Limits
 
-- Code of the package that calls back into workflow code, like a key function, is not supported: functions cannot cross.
+- Classes defined in workflow code cannot be used by a package, as a base class or as an argument, as decision 19 says; neither can functions, so code of the package that calls back into workflow code, like a key function, is not supported.
+- A package that needs a system library beyond the slim image, like python-magic with libmagic, works only with an image that the user gives (`-python-image`).
 - The container reads files; writes into the workflow's folder fail, since it is mounted read-only. The native interpreter keeps writes in memory, which the container does not see.
 - In mock runs, files that tasks make are empty placeholders that only the driver knows; the container does not see them.
 

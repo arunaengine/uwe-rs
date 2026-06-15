@@ -86,6 +86,22 @@ impl Interpreter<'_> {
                 }
                 out.push('}');
             }
+            // Groovy writes the properties of these objects, as of Java beans.
+            Value::MemoryUnit(bytes) => out.push_str(&format!(
+                "{{\"bytes\":{bytes},\"giga\":{},\"kilo\":{},\"mega\":{}}}",
+                bytes >> 30,
+                bytes >> 10,
+                bytes >> 20
+            )),
+            Value::Duration(millis) => out.push_str(&format!(
+                "{{\"durationInMillis\":{millis},\"days\":{},\"hours\":{},\"millis\":{millis},\
+                 \"minutes\":{},\"seconds\":{},\
+                 \"units\":[\"DAYS\",\"HOURS\",\"MINUTES\",\"SECONDS\",\"MILLIS\"]}}",
+                millis / 86_400_000,
+                millis / 3_600_000,
+                millis / 60_000,
+                millis / 1000
+            )),
             other => {
                 let message = format!("JSON output of a {}", other.class_name());
                 return Err(unsupported(message, span));

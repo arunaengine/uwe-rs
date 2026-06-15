@@ -93,3 +93,15 @@ fn slurper_of_empty_text() {
          number, array, or object"
     );
 }
+
+/// Memory units and durations as JSON, as nf-core/quantms dumps its params; Groovy 4 writes
+/// the properties of the objects.
+#[test]
+fn units_as_json() {
+    assert_eq!(
+        eval("groovy.json.JsonOutput.toJson([m: 6.GB, d: 6.h])").unwrap(),
+        "{\"m\":{\"bytes\":6442450944,\"giga\":6,\"kilo\":6291456,\"mega\":6144},\
+         \"d\":{\"durationInMillis\":21600000,\"days\":0,\"hours\":6,\"millis\":21600000,\
+         \"minutes\":360,\"seconds\":21600,\"units\":[\"DAYS\",\"HOURS\",\"MINUTES\",\"SECONDS\",\"MILLIS\"]}}"
+    );
+}

@@ -403,6 +403,12 @@ impl Session {
         if target.is_dir() {
             folders.push(target);
         }
+        if let Some(project) = self.snakefile.parent().and_then(Path::parent) {
+            folders.push(project.to_path_buf());
+        }
+        self.interpreter
+            .packages
+            .set_pins(crate::python::workflow_pins(&folders));
         self.interpreter
             .packages
             .set_starter(Rc::new(ContainerStarter::new(settings, folders)));

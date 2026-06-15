@@ -48,6 +48,26 @@ impl ContainerStarter {
     }
 }
 
+/// The files where a workflow names the packages it runs with.
+const ENVIRONMENT_FILES: &[&str] = &["environment.yaml", "environment.yml", "requirements.txt"];
+
+/// The version pins of the workflow's own environment files in its folders, like
+/// `yatiml==0.7`; files that do not list snakemake are the environments of rules instead.
+pub fn workflow_pins(folders: &[PathBuf]) -> Vec<String> {
+    let mut pins = Vec::new();
+    let mut folders = folders.to_vec();
+    folders.sort();
+    folders.dedup();
+    for folder in &folders {
+        for name in ENVIRONMENT_FILES {
+            if let Ok(text) = std::fs::read_to_string(folder.join(name)) {
+                pins.extend(python_evaluator::packages::pins::requirements(name, &text));
+            }
+        }
+    }
+    pins
+}
+
 /// The folders without the ones inside another, which the container sees already.
 fn outermost(mut folders: Vec<PathBuf>) -> Vec<PathBuf> {
     folders.sort();

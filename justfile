@@ -30,9 +30,9 @@ test-workflows:
 		git -C "$work" fetch -q --depth 1 --filter=blob:limit=1m origin "$commit"
 		git -C "$work" sparse-checkout set --no-cone '*.nf' '*.config' '*.groovy' 'nextflow_schema.json' '/CITATIONS.md'
 		git -C "$work" checkout -q FETCH_HEAD
-		# The files of assets/, bin/, docs/images/, tests/ and templates/ that runs read; files
+		# The files of assets/, bin/, conf/, docs/images/, tests/ and templates/ that runs read; files
 		# over 1 MiB are not downloaded and stay empty, so that they exist.
-		git -C "$work" ls-tree -r -l FETCH_HEAD | grep -E $'\t(assets|bin|docs/images|tests)/|/templates/' | while IFS=$'\t' read -r meta path; do
+		git -C "$work" ls-tree -r -l FETCH_HEAD | grep -E $'\t(assets|bin|conf|docs/images|tests)/|/templates/' | while IFS=$'\t' read -r meta path; do
 			read -r mode type sha size <<< "$meta"
 			[ "$type" = blob ] || continue
 			mkdir -p "$(dirname "$work/$path")"

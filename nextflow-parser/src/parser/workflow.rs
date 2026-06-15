@@ -114,6 +114,13 @@ impl Parser<'_> {
             }
             WorkflowSection::Publish => {
                 let (publishers, last) = self.item_list(true, is_label, Self::named_output);
+                // Legacy syntax: the publish statements of Nextflow 24.10, like `ch >> 'name'`,
+                // which named workflows may have too.
+                let preview = !publishers.is_empty()
+                    && publishers.iter().all(|publisher| {
+                        matches!(publisher, NamedOutput::Statement(statement)
+                            if preview_publisher(statement).is_some())
+                    });
                 let publishers: Vec<NamedOutput> = publishers
                     .into_iter()
                     .map(|publisher| {
@@ -135,7 +142,12 @@ impl Parser<'_> {
                     .collect();
                 if !entry {
                     let message = "Named workflow cannot have a publish section";
-                    self.error_at(message, start.to(last));
+                    match preview {
+                        true => self.legacy.push(Diagnostic::new(message, start.to(last))),
+                        false => {
+                            self.error_at(message, start.to(last));
+                        }
+                    }
                 }
                 let found = !publishers.is_empty();
                 workflow.publishers.extend(publishers);

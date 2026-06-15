@@ -291,3 +291,22 @@ fn include_params() {
         ]
     );
 }
+
+/// The publish statements of Nextflow 24.10, like `ch >> 'name'`, in a named workflow, as
+/// nf-core/references has; Nextflow 24.10.1, the release it names, runs it.
+#[test]
+fn preview_publish_sections_of_named_workflows() {
+    let parsed = nextflow_parser::parse_script(
+        "workflow W {\n    main:\n    ch = channel.of(1)\n    publish:\n    ch >> 'reference'\n}\n",
+    );
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let legacy: Vec<String> = parsed
+        .legacy
+        .into_iter()
+        .map(|error| error.message)
+        .collect();
+    assert!(
+        legacy.contains(&"Named workflow cannot have a publish section".to_owned()),
+        "{legacy:?}"
+    );
+}

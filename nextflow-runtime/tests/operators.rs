@@ -410,6 +410,16 @@ fn collect_file_writes_files_at_the_end() {
     );
 }
 
+/// A local closure with the name of an operator is called, as nf-core/references calls its
+/// `def reduce = { ... }`; Nextflow 24.10.1, the release it names, runs it.
+#[test]
+fn local_closures_with_operator_names() {
+    assert_eq!(
+        lines("def reduce = { m -> m + 1 }\nchannel.of(1).map { reduce(it) }.view()"),
+        ["2"]
+    );
+}
+
 /// The records of a large CSV text go out in batches, in order, with their tuple.
 #[test]
 fn large_csv_texts_split_in_order() {

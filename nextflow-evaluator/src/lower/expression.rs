@@ -459,6 +459,22 @@ impl Lowering<'_> {
                 );
             }
             Function::Definition(name.into())
+        } else if self.in_workflow
+            && OPERATORS.contains(&name)
+            && let Some(place) = self.scopes.resolve(name)
+        {
+            // Legacy syntax: a variable with the name of an operator, like `def reduce = { ... }`
+            // of nf-core/references, holds a closure that the call runs, as Nextflow 24.10 does.
+            if self.scopes.in_closure() {
+                self.legacy("Operators cannot be called from within a closure", span);
+            }
+            return Kind::CallValue {
+                callee: Box::new(Expression {
+                    kind: Kind::Variable(place),
+                    span,
+                }),
+                arguments,
+            };
         } else if self.in_workflow && OPERATORS.contains(&name) {
             if self.scopes.in_closure() {
                 self.error("Operators cannot be called from within a closure", span);

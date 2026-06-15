@@ -58,6 +58,19 @@ fn assignments_blocks_and_selectors() {
     assert_eq!(get(&["env"]), "[:]");
 }
 
+/// A block replaces a null setting of its name, as Nextflow 26.04.6 and 21.10.3 do for
+/// `params.x = null` and then `params { x { y = 1 } }`.
+#[test]
+fn blocks_replace_null_settings() {
+    let config =
+        load_text("params.x = null\nparams {\n    x {\n        y = 1\n    }\n}\n").expect("loads");
+    assert_eq!(
+        nextflow_evaluator::value::tree::get(&config.tree, &["params", "x", "y"])
+            .map(|value| value.to_string()),
+        Some("1".into())
+    );
+}
+
 #[test]
 fn writing_below_a_value_is_an_error() {
     let error = load_text("process.ext = 'x'\nprocess.ext.args = 'y'\n").unwrap_err();

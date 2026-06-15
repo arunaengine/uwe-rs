@@ -264,6 +264,14 @@ impl<'a> Evaluator<'a> {
                 ConfigStatement::Block { name, body, .. } => {
                     let mut inner = prefix.to_vec();
                     inner.push(name.text.as_str().into());
+                    // A block replaces a null setting of its name with its settings, as the
+                    // legacy parser does, like `spot_interval_beds { ... }` of nf-core/ssds
+                    // after `spot_interval_beds = null`.
+                    let names: Vec<&str> = inner.iter().map(|name| &**name).collect();
+                    if let Some(Value::Null) = tree::get(&file.tree, &names) {
+                        tree::assign(&file.tree, &inner, tree::map())
+                            .expect("the parents are maps");
+                    }
                     self.block(file, body, &inner, false)?;
                 }
                 ConfigStatement::Apply { name, calls, span } => {

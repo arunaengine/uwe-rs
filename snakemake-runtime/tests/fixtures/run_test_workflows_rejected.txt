@@ -17,8 +17,8 @@ catalog/DavideBrex__SpikeFlow	unsupported (decision 16)	While it is planned, the
 catalog/ETH-NEXUS__gExcite_pipeline	invalid	Its sample map config/samplemap is an empty file.
 catalog/EichlerLab__ONT_pipelines	invalid	Calls srcdir(), which Snakemake 8 removed.
 catalog/GArcho44__snvs-annotation-pipeline	missing	Needs the config file ../config/config.yml, which is not in its repository.
-catalog/GooglingTheCancerGenome__sv-callers	unsupported (decision 19)	Needs yatiml 0.7, which its environment.yaml pins, but the Python container of decision 19 installs the newest yatiml, which has no yatiml.Loader.
-catalog/GooglingTheCancerGenome__sv-gen	unsupported (decision 19)	Its validator passes its own classes to the package yatiml, which runs in the Python container of decision 19, where classes of workflow code cannot go.
+catalog/GooglingTheCancerGenome__sv-callers	unsupported (decision 19)	Its validator derives a class from yatiml.Loader, and decision 19 says that classes defined in workflow code cannot be used by a package that runs in the Python container.
+catalog/GooglingTheCancerGenome__sv-gen	unsupported (decision 19)	Its validator passes its own classes to yatiml, and decision 19 says that classes defined in workflow code cannot be used by a package that runs in the Python container.
 catalog/IKIM-Essen__uncovar	missing	Needs input data that is not in its repository.
 catalog/JeremyTournayre__Pipeline-Holoruminant-Meta	invalid	Reads the config key 'params-file', which its config does not have.
 catalog/JoseFcoMH__af3_screening	missing	Needs conda while it is planned and a config.yaml with out_dir, and neither is in its repository.
@@ -31,14 +31,14 @@ catalog/NeuroGranberg__NODDIpipeline	invalid	Uses snakemake.io.Wildcards, which 
 catalog/Ovewh__Climaso	missing	Needs input data that is not in its repository; Snakemake's input function for rule calculate_SW_ERF fails the same way.
 catalog/Phlya__distill-reorder-C	invalid	Reads the config key 'output', which its config does not have.
 catalog/Phlya__tagmap	unsupported (decision 16)	While it is planned, the workflow reads the primer positions that a job writes to a JSON file, which the mock executor makes empty.
-catalog/PyPSA__grid-builder	unsupported (decision 19)	Its schema derives classes from BaseModel of the package pydantic, which runs in the Python container of decision 19, where classes of workflow code cannot go.
+catalog/PyPSA__grid-builder	unsupported (decision 19)	Its schema derives classes from BaseModel of pydantic, and decision 19 says that classes defined in workflow code cannot be used by a package that runs in the Python container.
 catalog/SamBryce-Smith__LAPA_snakemake	invalid	Reads the config key 'lapa_disable_internal_priming_filter', which its config does not have.
 catalog/SarahSaadain__Single_Copy_Gene_Selector	missing	Reads the environment variable CONDA_DEFAULT_ENV, which is set only inside a conda environment.
 catalog/SarahSaadain__pastForward	missing	Needs environment variables that are not set, which the workflow asks for with envvars.
 catalog/SilasK__Metagenome-Profile	missing	Reads samples.csv, which is not in its repository.
 catalog/SilasK__Metagenome-QC	invalid	Reads the config key 'database_dir', which its config does not have.
 catalog/SilasK__Snakebread	missing	Needs a sample table samples.csv or samples.tsv, which is not in its repository.
-catalog/TRON-Bioinformatics__neorasp	unsupported (decision 19)	The package python-magic needs the system library libmagic, which the slim Python image of decision 19 does not have.
+catalog/TRON-Bioinformatics__neorasp	unsupported (decision 19)	The package python-magic needs the system library libmagic, and decision 19 says that such a package works only with an image that the user gives.
 catalog/TRON-Bioinformatics__oblx	unsupported (decision 16)	While it is planned, the workflow reads the UniProt release that a checkpoint writes, which the mock executor makes empty.
 catalog/Xavster838__assembly_validation	invalid	Calls srcdir(), which Snakemake 8 removed.
 catalog/Xavster838__coreDupGraph	invalid	Calls srcdir(), which Snakemake 8 removed.
@@ -118,7 +118,7 @@ catalog/moiexpositoalonsolab__grenepipe	invalid	Reads logger.mode, which the log
 catalog/monagrland__MB_Pipeline	invalid	Its config does not match the workflow's own config schema.
 catalog/mrvollger__sd-divergence	invalid	Calls srcdir(), which Snakemake 8 removed.
 catalog/mukherjeelab__CLIPs4U	invalid	Reads the config key three_prime_adapter, which its config does not have.
-catalog/mynameisdidit__UTS_Bioinformatika_SV-Callers	unsupported (decision 19)	Needs yatiml 0.7, which its environment.yaml pins, but the Python container of decision 19 installs the newest yatiml, which has no yatiml.Loader.
+catalog/mynameisdidit__UTS_Bioinformatika_SV-Callers	unsupported (decision 19)	Its validator derives a class from yatiml.Loader, and decision 19 says that classes defined in workflow code cannot be used by a package that runs in the Python container.
 catalog/nate-d-olson__giab-stvar-curation-table	invalid	Reads the config key 'liftover', which its config does not have.
 catalog/ncherric__Iliad	invalid	Gives the runtime 03:00:00, which Snakemake cannot read as minutes.
 catalog/niekwit__atac-seq	missing	Needs FASTQ files that are not in its repository.

@@ -309,3 +309,15 @@ def twice(value) {
     assert_eq!(get(&config, &["process", "time"]), "2");
     assert_eq!(call(&config, &["process", "cpus"]), "2");
 }
+
+/// Settings without a value before a setting with one form a chain like `a = b = 5`, and
+/// Nextflow 26.04.6 with the legacy parser sets each of them to 5.
+#[test]
+fn chained_assignments_set_each_setting() {
+    let config = load_text("params {\n  a =\n  b =\n  c = 5\n}\nprocess.x = params.y = 'z'\n");
+    assert_eq!(get(&config, &["params", "a"]), "5");
+    assert_eq!(get(&config, &["params", "b"]), "5");
+    assert_eq!(get(&config, &["params", "c"]), "5");
+    assert_eq!(get(&config, &["process", "x"]), "z");
+    assert_eq!(get(&config, &["params", "y"]), "z");
+}

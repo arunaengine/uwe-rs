@@ -73,10 +73,34 @@ impl Interpreter<'_> {
                     Value::string(text)
                 }
             }
-            Kind::List(items) => Value::list(self.expressions(frame, items)?),
+            Kind::List(items) => {
+                let mut values = Vec::with_capacity(items.len());
+                for item in items {
+                    match &item.kind {
+                        // Legacy syntax: `*items` puts the elements of a list into this one.
+                        Kind::Spread(items) => match self.expression(frame, items)? {
+                            Value::List(list) => values.extend(list.borrow().items.iter().cloned()),
+                            Value::Set(set) => {
+                                values.extend(set.borrow().items.iter().map(|key| key.0.clone()))
+                            }
+                            other => values.push(other),
+                        },
+                        _ => values.push(self.expression(frame, item)?),
+                    }
+                }
+                Value::list(values)
+            }
             Kind::Map(entries) => {
                 let mut values = Vec::with_capacity(entries.len());
                 for (key, value) in entries {
+                    // Legacy syntax: `*: map` puts the entries of a map into this one.
+                    if let Kind::Spread(map) = &key.kind {
+                        if let Value::Map(map) = self.expression(frame, map)? {
+                            let entries = map.borrow().entries.clone();
+                            values.extend(entries.into_iter().map(|(key, value)| (key.0, value)));
+                        }
+                        continue;
+                    }
                     let key = self.expression(frame, key)?;
                     values.push((key, self.expression(frame, value)?));
                 }

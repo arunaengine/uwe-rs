@@ -313,3 +313,13 @@ fn array_classes_and_assignable_classes() {
     assert_eq!(value(&format!("{check}\nf.call([1])")), "true");
     assert_eq!(value(&format!("{check}\nf.call('x')")), "false");
 }
+
+/// Legacy syntax: `*items` in a list and `*: map` in a map put their elements in; Nextflow
+/// 26.04.6 prints `[1, 2, 3]` and `[a:1, b:2]`.
+#[test]
+fn spread_elements_and_entries() {
+    assert_eq!(
+        value("def b = [2, 3]\ndef m = [a: 1]\n[[1, *b], [*:m, b: 2]]"),
+        "[[1, 2, 3], [a:1, b:2]]"
+    );
+}

@@ -39,6 +39,17 @@ impl Lowering<'_> {
                         let key = match &entry.key {
                             MapKey::Name(name) => literal_string(&name.text, name.span),
                             MapKey::Expression(key) => self.expression(key),
+                            // Legacy syntax: `*: map`, whose entries go into the map.
+                            MapKey::Spread => {
+                                let value = self.expression(&entry.value);
+                                let span = value.span;
+                                let spread = Kind::Spread(Box::new(value));
+                                let null = Kind::Literal(Value::Null);
+                                return (
+                                    Expression { kind: spread, span },
+                                    Expression { kind: null, span },
+                                );
+                            }
                         };
                         (key, self.expression(&entry.value))
                     })

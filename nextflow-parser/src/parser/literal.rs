@@ -201,7 +201,11 @@ impl Parser<'_> {
             } else if parser.at_map_entry() {
                 ExpressionKind::Map(parser.map_entries()?)
             } else {
-                ExpressionKind::List(parser.expression_list()?)
+                let mut items = vec![parser.list_element()?];
+                while parser.next_list_item() {
+                    items.push(parser.list_element()?);
+                }
+                ExpressionKind::List(items)
             })
         })?;
         if self.at(TokenKind::Comma) {
@@ -212,8 +216,25 @@ impl Parser<'_> {
         Ok(kind)
     }
 
+    /// A list element. Legacy syntax: `*items` puts the elements of a list into this one.
+    fn list_element(&mut self) -> Parse<Expression> {
+        if !self.at(TokenKind::Multiply) {
+            return self.expression();
+        }
+        let start = self.bump().span;
+        self.legacy_at("Unexpected input: '*'", start);
+        let items = self.expression()?;
+        Ok(Expression {
+            span: self.span_from(start),
+            kind: ExpressionKind::Spread(Box::new(items)),
+        })
+    }
+
     fn at_map_entry(&mut self) -> bool {
         if (self.at_name() || is_keyword(self.peek())) && self.nth(1) == TokenKind::Colon {
+            return true;
+        }
+        if self.at(TokenKind::Multiply) && self.nth(1) == TokenKind::Colon {
             return true;
         }
         self.lookahead(|parser| {
@@ -229,16 +250,21 @@ impl Parser<'_> {
     fn map_entries(&mut self) -> Parse<Vec<MapEntry>> {
         let mut entries = Vec::new();
         loop {
-            let key =
-                if (self.at_name() || is_keyword(self.peek())) && self.nth(1) == TokenKind::Colon {
-                    let token = self.bump();
-                    MapKey::Name(Name {
-                        text: self.text(token).to_owned(),
-                        span: token.span,
-                    })
-                } else {
-                    MapKey::Expression(self.primary()?)
-                };
+            let key = if self.at(TokenKind::Multiply) && self.nth(1) == TokenKind::Colon {
+                // Legacy syntax: `*: map` puts the entries of a map into this one.
+                let span = self.bump().span;
+                self.legacy_at("Unexpected input: '*'", span);
+                MapKey::Spread
+            } else if (self.at_name() || is_keyword(self.peek())) && self.nth(1) == TokenKind::Colon
+            {
+                let token = self.bump();
+                MapKey::Name(Name {
+                    text: self.text(token).to_owned(),
+                    span: token.span,
+                })
+            } else {
+                MapKey::Expression(self.primary()?)
+            };
             self.expect(TokenKind::Colon, "':' after the map key")?;
             let value = self.expression()?;
             entries.push(MapEntry { key, value });

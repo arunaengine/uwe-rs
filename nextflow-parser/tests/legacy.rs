@@ -346,3 +346,18 @@ fn statements_in_interpolations() {
     ));
     assert_eq!(legacy, ["Unexpected input: '{'"]);
 }
+
+/// `assert condition, message`, as the Polygenic Score Catalog Calculator writes it; Nextflow
+/// 26.04.6 runs it like `assert condition : message`.
+#[test]
+fn asserts_with_a_comma() {
+    let parsed = nextflow_parser::parse_script("assert 1 == 1, 'bad'\n");
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let Item::Statement(statement) = &parsed.tree.items[0] else {
+        panic!("a statement");
+    };
+    assert!(matches!(
+        &statement.kind,
+        nextflow_parser::ast::StatementKind::Assert { message: Some(_), .. }
+    ));
+}

@@ -229,6 +229,12 @@ impl Parser<'_> {
             self.bump();
             self.skip_newlines();
             Some(self.expression()?)
+        } else if self.at(TokenKind::Comma) {
+            // Legacy syntax: Groovy also takes `assert condition, message`.
+            let comma = self.bump().span;
+            self.legacy_at("Unexpected input: ','", comma);
+            self.skip_newlines();
+            Some(self.expression()?)
         } else {
             None
         };

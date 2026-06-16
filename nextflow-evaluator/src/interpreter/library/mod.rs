@@ -6,6 +6,14 @@
 pub(super) mod bytes;
 mod config_slurper;
 mod format;
+
+/// Java's `String.format`, for `sprintf` and `printf`.
+pub(super) fn format_text(
+    pattern: &str,
+    arguments: &[crate::value::Value],
+) -> Result<String, crate::exception::Exception> {
+    format::format(pattern, arguments)
+}
 pub(super) mod groovy_methods;
 mod iterable;
 mod json;

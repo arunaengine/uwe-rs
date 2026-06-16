@@ -59,6 +59,8 @@ impl Interpreter<'_> {
             ("stripLeading", []) => Value::string(text.trim_start()),
             ("stripTrailing", []) => Value::string(text.trim_end()),
             ("stripIndent", []) => Value::string(strip_indent(text)),
+            // Groovy's `stripIndent(forceGroovyBehavior)`.
+            ("stripIndent", [Value::Boolean(_)]) => Value::string(strip_indent(text)),
             ("toLowerCase", []) => Value::string(text.to_lowercase()),
             ("toUpperCase", []) => Value::string(text.to_uppercase()),
             ("capitalize", []) => {

@@ -293,3 +293,12 @@ fn statements_in_interpolations() {
         "v many end"
     );
 }
+
+/// Groovy's `sprintf` and `stripIndent(true)`; Nextflow 26.04.6 gives `a-b` and `a\nb`.
+#[test]
+fn sprintf_and_strip_indent_with_an_argument() {
+    assert_eq!(
+        value("[sprintf('%s-%s', 'a', 'b'), '  a\\n  b'.stripIndent(true)]"),
+        "[a-b, a\nb]"
+    );
+}

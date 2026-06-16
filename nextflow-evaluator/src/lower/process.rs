@@ -170,6 +170,18 @@ impl Lowering<'_> {
         match input {
             ProcessInput::Statement(statement) => match call(statement) {
                 Some((name, arguments, span)) => self.input_call(name, arguments, span),
+                // Legacy syntax: the legacy parser ignores a string among the inputs.
+                None if matches!(
+                    &statement.kind,
+                    ast::StatementKind::Expression(ast::Expression {
+                        kind: Syntax::Literal(ast::Literal::String(_)) | Syntax::GString(_),
+                        ..
+                    })
+                ) =>
+                {
+                    self.legacy("Invalid process input", statement.span);
+                    None
+                }
                 None => {
                     self.error("Invalid process input", statement.span);
                     None

@@ -108,8 +108,14 @@ impl Parser<'_> {
     pub(super) fn gstring(&mut self) -> Parse<ExpressionKind> {
         let begin = self.bump();
         let slashy = self.text(begin).starts_with('/');
+        let dollar_slashy = self.text(begin).starts_with("$/");
         if slashy {
             let message = "Slashy strings with interpolations are not supported";
+            self.legacy
+                .push(crate::Diagnostic::new(message, begin.span));
+        }
+        if dollar_slashy {
+            let message = "Unexpected character: '$'";
             self.legacy
                 .push(crate::Diagnostic::new(message, begin.span));
         }
@@ -123,9 +129,10 @@ impl Parser<'_> {
                 }
                 TokenKind::GStringText => {
                     self.bump();
-                    let text = match slashy {
-                        true => decode_slashy(self.text(token)),
-                        false => self.gstring_text(token),
+                    let text = match (slashy, dollar_slashy) {
+                        (true, _) => decode_slashy(self.text(token)),
+                        (_, true) => decode_dollar_slashy(self.text(token)),
+                        _ => self.gstring_text(token),
                     };
                     match parts.last_mut() {
                         Some(GStringPart::Text(previous)) => previous.push_str(&text),
@@ -240,6 +247,22 @@ impl Parser<'_> {
             }
         }
     }
+}
+
+/// Dollar slashy strings only replace `$$` by `$` and `$/` by `/`, as in Groovy.
+fn decode_dollar_slashy(text: &str) -> String {
+    let mut decoded = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match (c, chars.peek()) {
+            ('$', Some(&next @ ('$' | '/'))) => {
+                decoded.push(next);
+                chars.next();
+            }
+            _ => decoded.push(c),
+        }
+    }
+    decoded
 }
 
 /// Slashy strings only replace `\/`, line escapes and unicode escapes, as in Groovy.

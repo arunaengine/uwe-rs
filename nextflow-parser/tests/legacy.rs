@@ -310,3 +310,22 @@ fn preview_publish_sections_of_named_workflows() {
         "{legacy:?}"
     );
 }
+
+/// Dollar slashy strings, `$/.../$`, as sanger-tol/treeval writes scripts; Nextflow 26.04.6
+/// prints `a x `b` $ c /` for `$/a $f `b` $$ c $//$`.
+#[test]
+fn dollar_slashy_strings() {
+    let (kind, legacy) = expression("$/a $f `b` $$ c $//$\n");
+    let ExpressionKind::GString(parts) = kind else {
+        panic!("a GString: {kind:?}");
+    };
+    let texts: Vec<String> = parts
+        .iter()
+        .filter_map(|part| match part {
+            nextflow_parser::ast::GStringPart::Text(text) => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(texts, ["a ", " `b` $ c /"]);
+    assert_eq!(legacy, ["Unexpected character: '$'"]);
+}

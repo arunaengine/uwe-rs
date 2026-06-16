@@ -355,6 +355,7 @@ impl Lowering<'_> {
                         name: parameter.name.text.as_str().into(),
                         slot,
                         default,
+                        varargs: super::is_array(parameter),
                     }
                 })
                 .collect(),

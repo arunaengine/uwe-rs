@@ -431,6 +431,7 @@ impl<'a> Lowering<'a> {
                     name: parameter.name.text.as_str().into(),
                     slot,
                     default,
+                    varargs: is_array(parameter),
                 }
             })
             .collect();
@@ -838,4 +839,13 @@ fn item_span(item: &Item) -> Span {
         Item::Class(class) => class.span,
         Item::Statement(statement) => statement.span,
     }
+}
+
+/// Whether a parameter has an array type, like `String[] rest` or `... rest`, which takes the
+/// remaining arguments when it is the last one.
+pub(super) fn is_array(parameter: &ast::Parameter) -> bool {
+    parameter
+        .annotation
+        .as_ref()
+        .is_some_and(|annotation| annotation.dimensions > 0)
 }

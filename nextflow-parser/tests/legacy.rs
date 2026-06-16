@@ -358,6 +358,9 @@ fn asserts_with_a_comma() {
     };
     assert!(matches!(
         &statement.kind,
-        nextflow_parser::ast::StatementKind::Assert { message: Some(_), .. }
+        nextflow_parser::ast::StatementKind::Assert {
+            message: Some(_),
+            ..
+        }
     ));
 }

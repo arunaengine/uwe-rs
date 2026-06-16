@@ -227,3 +227,14 @@ fn upto_and_downto() {
         "{error}"
     );
 }
+
+/// Groovy reads the private field `value` of a boxed Boolean or primitive number; Nextflow
+/// 26.04.6 gives `[true, 3, 3, 1.5]`, and a `BigDecimal` has no such property.
+#[test]
+fn value_field_of_booleans_and_numbers() {
+    assert_eq!(
+        value("[true.value, 3.value, 3L.value, 1.5d.value]"),
+        "[true, 3, 3, 1.5]"
+    );
+    assert!(eval("1.5.value").is_err());
+}

@@ -113,14 +113,23 @@ impl Lowering<'_> {
             }
             directives.extend(self.directive(directive));
         }
-        let outputs = process
-            .outputs
-            .iter()
-            .filter(|output| {
-                !matches!(output, NamedOutput::Statement(statement) if statement.is_variable_statement())
-            })
-            .filter_map(|output| self.output(output))
-            .collect();
+        // Legacy syntax: a directive among the outputs, like `publishDir`, is a directive, as
+        // the legacy parser runs it on the process config.
+        let mut outputs = Vec::new();
+        for output in &process.outputs {
+            match output {
+                NamedOutput::Statement(statement) if statement.is_variable_statement() => {}
+                NamedOutput::Statement(statement)
+                    if call(statement).is_some_and(|(name, _, _)| {
+                        DIRECTIVES.contains(&name) && !OUTPUT_QUALIFIERS.contains(&name)
+                    }) =>
+                {
+                    self.legacy("Invalid process output", statement.span);
+                    directives.extend(self.directive(statement));
+                }
+                _ => outputs.extend(self.output(output)),
+            }
+        }
         self.in_process = false;
         let layout = self.scopes.pop_frame();
         let section_variables = layout.names[section_names].to_vec();
@@ -498,6 +507,11 @@ fn call(statement: &ast::Statement) -> Option<(&str, &[Argument], Span)> {
         _ => None,
     }
 }
+
+/// The qualifiers of process outputs, which are not directives there.
+const OUTPUT_QUALIFIERS: &[&str] = &[
+    "val", "path", "file", "env", "stdout", "tuple", "set", "eval",
+];
 
 /// Legacy syntax: the directives inside the `if` statements of a process, each with the
 /// condition under which it applies. False when a branch holds anything but directives.

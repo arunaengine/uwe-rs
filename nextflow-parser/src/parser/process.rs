@@ -325,6 +325,10 @@ impl Parser<'_> {
                 end
             }
             ProcessSection::When => {
+                // Legacy syntax: the legacy parser ignores an empty `when:` section.
+                if is_label(self) || self.at(TokenKind::RightBrace) {
+                    return (0, start);
+                }
                 let condition = self.expression();
                 if condition.is_err() || self.line_end().is_err() {
                     self.skip_section(is_label);

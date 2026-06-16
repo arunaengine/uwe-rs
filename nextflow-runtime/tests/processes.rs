@@ -664,3 +664,13 @@ fn void_functions() {
     let (_, printed) = run(source, &Options::default()).expect("runs");
     assert_eq!(printed, "hi\n");
 }
+
+/// Legacy syntax: an empty `when:` section and a slashy string among the inputs, which
+/// Nextflow 26.04.6 ignores, running the shell script `echo 1`.
+#[test]
+fn empty_when_and_strings_among_inputs() {
+    let source = "process P {\n    input:\n    val x\n    /tuple val(a), path(\"\") /\n    output:\n    stdout\n    \
+                  when:\n\n    shell:\n    '''\n    echo !{x}\n    '''\n}\nworkflow {\n    P(1)\n}\n";
+    let (tasks, _) = run(source, &Options::default()).expect("runs");
+    assert_eq!(tasks[0].script, "#!/bin/bash -ue\necho 1\n");
+}

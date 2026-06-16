@@ -329,3 +329,20 @@ fn dollar_slashy_strings() {
     assert_eq!(texts, ["a ", " `b` $ c /"]);
     assert_eq!(legacy, ["Unexpected character: '$'"]);
 }
+
+/// Statements in an interpolation, like `${ if (...) { ... } else { ... } }` of Pipeface, run
+/// as a closure; Nextflow 26.04.6 prints `v many end` for this string.
+#[test]
+fn statements_in_interpolations() {
+    let (kind, legacy) =
+        expression("\"\"\"v ${\n  if (x.size() > 1) { 'many' } else { 'one' }\n} end\"\"\"\n");
+    let ExpressionKind::GString(parts) = kind else {
+        panic!("a GString: {kind:?}");
+    };
+    assert!(matches!(
+        &parts[1],
+        nextflow_parser::ast::GStringPart::Value(value)
+            if matches!(value.kind, ExpressionKind::Call { .. })
+    ));
+    assert_eq!(legacy, ["Unexpected input: '{'"]);
+}

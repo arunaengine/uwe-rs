@@ -281,3 +281,15 @@ fn file_separators() {
     assert_eq!(value("'/a/b'.lastIndexOf(File.separator)"), "2");
     assert_eq!(value("File.pathSeparator"), ":");
 }
+
+/// Statements in an interpolation run as a closure, whose last value goes into the string;
+/// Nextflow 26.04.6 prints `v many end`.
+#[test]
+fn statements_in_interpolations() {
+    assert_eq!(
+        value(
+            "def x = [1, 2]\n\"\"\"v ${\n  if (x.size() > 1) { 'many' } else { 'one' }\n} end\"\"\""
+        ),
+        "v many end"
+    );
+}

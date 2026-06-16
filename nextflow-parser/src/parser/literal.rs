@@ -144,8 +144,39 @@ impl Parser<'_> {
                     parts.push(GStringPart::Value(self.gstring_path(token.span)));
                 }
                 TokenKind::InterpolationStart => {
-                    self.bump();
-                    let value = self.in_braces(Self::expression)?;
+                    let start = self.bump().span;
+                    let value = self.speculate(|parser| {
+                        let value = parser.in_braces(Self::expression)?;
+                        parser.skip_newlines();
+                        match parser.at(TokenKind::RightBrace) {
+                            true => Ok(value),
+                            false => Err(Failed),
+                        }
+                    });
+                    let value = match value {
+                        Some(value) => value,
+                        // Legacy syntax: statements, like an `if`, whose last value goes into
+                        // the string, as Groovy runs them as a closure.
+                        None => {
+                            let statements = self.in_braces(|parser| parser.closure_body(false))?;
+                            self.legacy_at("Unexpected input: '{'", start);
+                            let span = self.span_from(start);
+                            let closure = crate::ast::Closure {
+                                parameters: Some(Vec::new()),
+                                body: crate::ast::Block { statements, span },
+                            };
+                            Expression {
+                                kind: ExpressionKind::Call {
+                                    callee: Box::new(Expression {
+                                        kind: ExpressionKind::Closure(Box::new(closure)),
+                                        span,
+                                    }),
+                                    arguments: Vec::new(),
+                                },
+                                span,
+                            }
+                        }
+                    };
                     self.expect(TokenKind::RightBrace, "'}' to close the interpolation")?;
                     parts.push(GStringPart::Value(value));
                 }

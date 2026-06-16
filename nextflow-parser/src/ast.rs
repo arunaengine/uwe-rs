@@ -544,6 +544,9 @@ pub enum MapKey {
     Name(Name),
     /// Any other primary expression, like `'a'`, `1` or `(key)`.
     Expression(Expression),
+    /// `*:`, whose value is a map whose entries go into this map, which only the legacy parser
+    /// accepts.
+    Spread,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

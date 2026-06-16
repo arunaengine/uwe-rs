@@ -628,3 +628,15 @@ fn shell_sections_interpolate_placeholders() {
     let (tasks, _) = run(source, &Options::default()).expect("runs");
     assert_eq!(tasks[0].script, "#!/bin/bash -ue\necho 1 $HOME 2 !x \\n\n");
 }
+
+/// Legacy syntax: a workflow may emit several channels without names, which its caller reads
+/// by position, and have its sections in any order, as Nextflow 26.04.6 runs them.
+#[test]
+fn unnamed_emits_and_sections_in_any_order() {
+    let source = "workflow A {\n    take:\n    x\n    emit:\n    x.map { it + 1 }\n    x.map { it + 2 }\n    \
+                  main:\n    println('main')\n}\n\
+                  workflow B { main: println('b') }\n\
+                  workflow {\n    A(channel.of(1))\n    A.out[1].view()\n    B()\n}";
+    let (_, printed) = run(source, &Options::default()).expect("runs");
+    assert_eq!(printed, "main\nb\n3\n");
+}

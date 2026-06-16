@@ -640,3 +640,19 @@ fn unnamed_emits_and_sections_in_any_order() {
     let (_, printed) = run(source, &Options::default()).expect("runs");
     assert_eq!(printed, "main\nb\n3\n");
 }
+
+/// Legacy syntax: a directive among the outputs, like the `publishDir` of MetaGT, is a
+/// directive, as Nextflow 26.04.6 runs it.
+#[test]
+fn directives_among_outputs() {
+    let source = "process P {\n    output:\n    path 'a.txt', emit: a\n\n    publishDir 'out', mode: 'copy'\n\n    \
+                  script:\n    'touch a.txt'\n}\nworkflow {\n    P().a.view { it.name }\n}\n";
+    let (tasks, printed) = run(source, &Options::default()).expect("runs");
+    assert!(
+        tasks[0]
+            .directives
+            .iter()
+            .any(|directive| &*directive.name == "publishDir")
+    );
+    assert_eq!(printed, "a.txt\n");
+}

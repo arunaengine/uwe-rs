@@ -323,3 +323,17 @@ fn spread_elements_and_entries() {
         "[[1, 2, 3], [a:1, b:2]]"
     );
 }
+
+/// A last parameter of an array type takes the remaining arguments, like `... tail` of the
+/// Swedish Earth Biogenome Project; Nextflow 26.04.6 prints `[1, 2, [3, 4]]`.
+#[test]
+fn varargs_parameters() {
+    assert_eq!(
+        value("def r = { key, clip, ... tail -> [key, clip, tail.toList()] }\nr(1, 2, 3, 4)"),
+        "[1, 2, [3, 4]]"
+    );
+    assert_eq!(
+        value("def g = { String a, String... rest -> [a, rest.size()] }\ng('x', 'y', 'z')"),
+        "[x, 2]"
+    );
+}

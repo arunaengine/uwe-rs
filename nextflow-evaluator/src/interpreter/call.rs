@@ -279,8 +279,17 @@ fn accepts(code: &Code, count: usize) -> bool {
     (required..=code.parameters.len()).contains(&count)
 }
 
-/// Groovy's argument adaptation: the arguments as given, else the elements of one list.
-fn adapt(code: &Code, arguments: Vec<Value>) -> Option<Vec<Value>> {
+/// Groovy's argument adaptation: the arguments as given, else the elements of one list. A last
+/// parameter of an array type takes the remaining arguments as a list.
+fn adapt(code: &Code, mut arguments: Vec<Value>) -> Option<Vec<Value>> {
+    if code.parameters.last().is_some_and(|last| last.varargs)
+        && arguments.len() + 1 >= code.parameters.len()
+        && !code.implicit_parameter
+    {
+        let rest = arguments.split_off(code.parameters.len() - 1);
+        arguments.push(Value::list(rest));
+        return Some(arguments);
+    }
     if accepts(code, arguments.len()) {
         return Some(arguments);
     }

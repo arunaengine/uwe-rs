@@ -304,6 +304,9 @@ pub struct Parameter {
     pub name: Rc<str>,
     pub slot: Slot,
     pub default: Option<Expression>,
+    /// Whether the parameter takes the remaining arguments as a list, as Groovy does for a last
+    /// parameter of an array type, like `String... rest` or `... rest`.
+    pub varargs: bool,
 }
 
 #[derive(Debug)]

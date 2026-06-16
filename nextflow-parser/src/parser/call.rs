@@ -114,8 +114,40 @@ impl Parser<'_> {
 
     fn parameter(&mut self) -> Parse<Parameter> {
         self.eat(TokenKind::Def);
+        // Legacy syntax: `... name` takes the remaining arguments, as an array of objects.
+        if self.at(TokenKind::RangeInclusive) && self.nth(1) == TokenKind::Dot {
+            let start = self.bump().span;
+            self.bump();
+            self.legacy_at("Unexpected input: '...'", start);
+            let name = self.variable_name()?;
+            let span = start.to(name.span);
+            let object = crate::ast::QualifiedName {
+                parts: vec![Name {
+                    text: "Object".into(),
+                    span,
+                }],
+            };
+            let annotation = Some(crate::ast::Type {
+                name: object,
+                arguments: Vec::new(),
+                nullable: false,
+                dimensions: 1,
+                span,
+            });
+            return Ok(Parameter {
+                name,
+                annotation,
+                default: None,
+            });
+        }
         let legacy = self.speculate(|parser| {
-            let legacy = parser.legacy_type()?;
+            let mut legacy = parser.legacy_type()?;
+            // Legacy syntax: `Type... name` takes the remaining arguments, as an array.
+            if parser.at(TokenKind::RangeInclusive) && parser.nth(1) == TokenKind::Dot {
+                parser.bump();
+                parser.bump();
+                legacy.dimensions += 1;
+            }
             if parser.at_name() {
                 Ok(legacy)
             } else {

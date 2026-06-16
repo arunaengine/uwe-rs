@@ -211,6 +211,7 @@ impl Lowering<'_> {
                 name: parameter.name.text.as_str().into(),
                 slot,
                 default,
+                varargs: super::is_array(parameter),
             });
         }
         let body = self.statements(&function.body.statements);
@@ -247,6 +248,7 @@ impl Lowering<'_> {
             name: "this".into(),
             slot: self.declare(&name),
             default: None,
+            varargs: false,
         }
     }
 

@@ -42,6 +42,7 @@ pub(super) const SCRIPT_FUNCTIONS: &[&str] = &[
     "println",
     "record",
     "sendMail",
+    "sprintf",
     "sleep",
     "tuple",
 ];

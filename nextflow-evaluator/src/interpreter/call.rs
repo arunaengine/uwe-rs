@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use nextflow_parser::Span;
 
-use super::{Error, Frame, Interpreter, thrown, unsupported};
+use super::{AtSpan, Error, Frame, Interpreter, thrown, unsupported};
 use crate::exception::Exception;
 use crate::lowered::{Arguments, Code, Module, Place};
 use crate::value::{Closure, List, ListKind, PathValue, Value};
@@ -135,6 +135,20 @@ impl Interpreter<'_> {
             ("println", []) => self.host.print("\n"),
             ("println", [value]) => self.host.print(&format!("{value}\n")),
             ("print", [value]) => self.host.print(&value.to_string()),
+            // Groovy's `sprintf` and `printf`: Java's `String.format`.
+            ("sprintf" | "printf", [pattern, rest @ ..]) => {
+                let rest = match rest {
+                    [Value::List(list)] if list.borrow().kind == ListKind::Array => {
+                        list.borrow().items.clone()
+                    }
+                    rest => rest.to_vec(),
+                };
+                let text = super::library::format_text(&pattern.to_string(), &rest).at(span)?;
+                if name == "sprintf" {
+                    return Ok(Value::string(text));
+                }
+                self.host.print(&text);
+            }
             ("tuple", [Value::List(list)]) => {
                 let items = list.borrow().items.clone();
                 return Ok(tuple(items));

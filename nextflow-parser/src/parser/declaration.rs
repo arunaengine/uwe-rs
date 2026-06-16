@@ -477,7 +477,30 @@ impl Parser<'_> {
     pub(super) fn function_head(&mut self) -> Parse<(Option<Type>, Name)> {
         let def = self.eat(TokenKind::Def);
         let mut return_type = None;
-        if !def || !self.at_name() || self.nth(1) != TokenKind::LeftParen {
+        // Legacy syntax: `void name(...)`, a function without a result.
+        if !def
+            && self.at_name()
+            && self.text(self.current()) == "void"
+            && is_name(self.nth(1))
+            && self.nth(2) == TokenKind::LeftParen
+        {
+            let token = self.bump();
+            self.legacy_at(
+                "`void` is not allowed as an identifier because it is a Groovy keyword",
+                token.span,
+            );
+            let void = Name {
+                text: "void".into(),
+                span: token.span,
+            };
+            return_type = Some(Type {
+                name: crate::ast::QualifiedName { parts: vec![void] },
+                arguments: Vec::new(),
+                nullable: false,
+                dimensions: 0,
+                span: token.span,
+            });
+        } else if !def || !self.at_name() || self.nth(1) != TokenKind::LeftParen {
             return_type = Some(self.legacy_type()?);
         }
         let name = self.name()?;

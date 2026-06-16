@@ -656,3 +656,11 @@ fn directives_among_outputs() {
     );
     assert_eq!(printed, "a.txt\n");
 }
+
+/// Legacy syntax: `void name(...)` declares a function without a result.
+#[test]
+fn void_functions() {
+    let source = "void hello() { println('hi') }\nworkflow {\n    hello()\n}\n";
+    let (_, printed) = run(source, &Options::default()).expect("runs");
+    assert_eq!(printed, "hi\n");
+}

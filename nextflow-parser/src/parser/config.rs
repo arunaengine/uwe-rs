@@ -63,6 +63,8 @@ impl Parser<'_> {
                 self.bump();
                 self.skip_newlines();
                 let value = self.expression()?;
+                // Legacy syntax: a chain like `a = b = 5`.
+                let value = self.assignment_chain(value)?;
                 let span = self.span_from(start);
                 Ok(ConfigStatement::Assign { path, value, span })
             }

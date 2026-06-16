@@ -14,7 +14,10 @@ use nextflow_evaluator::lower::{
 use nextflow_evaluator::lowered::{Code, Link, Module};
 use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{PathValue, Value};
-use nextflow_parser::ast::{ConfigCatch, ConfigStatement, Expression, Literal, Statement};
+use nextflow_parser::ast::{
+    Access, AssignOperator, ConfigCatch, ConfigStatement, Expression, ExpressionKind, Literal,
+    Name, Statement,
+};
 use nextflow_parser::{Diagnostic, LineIndex, Span, parse_config};
 
 use crate::tree;
@@ -235,26 +238,7 @@ impl<'a> Evaluator<'a> {
                     self.include(file, path, prefix)?;
                 }
                 ConfigStatement::Assign { path, value, span } => {
-                    let mut full: Vec<Rc<str>> = prefix.to_vec();
-                    full.extend(path.iter().map(|name| Rc::from(name.text.as_str())));
-                    let process = process_scope(&full);
-                    // Legacy syntax: assigning a local variable.
-                    if let [name] = path.as_slice()
-                        && file.variable(&name.text).is_some()
-                    {
-                        let value = self.value(file, value, prefix, process)?;
-                        file.set_variable(&name.text, &value);
-                        continue;
-                    }
-                    let value = match self.cli_param(&full) {
-                        Some(cli) => {
-                            let config = self.value(file, value, prefix, process)?;
-                            convert(&cli, &config)
-                        }
-                        None => self.value(file, value, prefix, process)?,
-                    };
-                    tree::assign(&file.tree, &full, value)
-                        .map_err(|message| invalid(file, &message, *span))?;
+                    self.assign(file, path, value, prefix, *span)?;
                 }
                 ConfigStatement::Block { name, body, .. }
                     if name.text == "profiles" && prefix.is_empty() =>
@@ -368,6 +352,46 @@ impl<'a> Evaluator<'a> {
 
     /// Runs the first `catch` clause that takes the exception of a failed `try` body. Only a
     /// thrown exception can be caught, never a feature that iunctus does not support.
+    /// `path = value`, which gives the value. Legacy syntax sets each setting of a chain like
+    /// `a = b = 5` to the value of the last one.
+    fn assign(
+        &mut self,
+        file: &mut File,
+        path: &[Name],
+        value: &Expression,
+        prefix: &[Rc<str>],
+        span: Span,
+    ) -> Result<Value, ConfigError> {
+        let mut full: Vec<Rc<str>> = prefix.to_vec();
+        full.extend(path.iter().map(|name| Rc::from(name.text.as_str())));
+        let process = process_scope(&full);
+        let config = match &value.kind {
+            ExpressionKind::Assign {
+                target,
+                operator: AssignOperator::Assign,
+                value: last,
+            } if chained_path(target).is_some() => {
+                let names = chained_path(target).unwrap_or_default();
+                self.assign(file, &names, last, prefix, span)?
+            }
+            _ => self.value(file, value, prefix, process)?,
+        };
+        // Legacy syntax: assigning a local variable.
+        if let [name] = path
+            && file.variable(&name.text).is_some()
+        {
+            file.set_variable(&name.text, &config);
+            return Ok(config);
+        }
+        let setting = match self.cli_param(&full) {
+            Some(cli) => convert(&cli, &config),
+            None => config.clone(),
+        };
+        tree::assign(&file.tree, &full, setting)
+            .map_err(|message| invalid(file, &message, span))?;
+        Ok(config)
+    }
+
     fn catch(
         &mut self,
         file: &mut File,
@@ -539,6 +563,26 @@ impl<'a> Evaluator<'a> {
 }
 
 /// Whether settings below `path` belong to the `process` scope.
+/// The setting path of a target in an assignment chain, like `b` or `a.b` in `x = a.b = 5`.
+fn chained_path(target: &Expression) -> Option<Vec<Name>> {
+    match &target.kind {
+        ExpressionKind::Variable(name) => Some(vec![Name {
+            text: name.clone(),
+            span: target.span,
+        }]),
+        ExpressionKind::Property {
+            target: inner,
+            name,
+            access: Access::Normal,
+        } => {
+            let mut path = chained_path(inner)?;
+            path.push(name.clone());
+            Some(path)
+        }
+        _ => None,
+    }
+}
+
 fn process_scope(path: &[Rc<str>]) -> bool {
     path.first().is_some_and(|scope| &**scope == "process")
 }

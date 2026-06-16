@@ -105,6 +105,12 @@ impl Interpreter<'_> {
                 "" => Value::Null,
                 message => Value::string(message),
             },
+            // Groovy reads the private field `value` of a boxed Boolean or primitive number, which
+            // is the value itself. `BigInteger` and `BigDecimal` have no such field.
+            Value::Boolean(_)
+            | Value::Number(
+                Number::Integer(_) | Number::Long(_) | Number::Double(_) | Number::Float(_),
+            ) if name == "value" => object.clone(),
             // A Java array, like the result of `split`, has a `length`.
             Value::List(list) if name == "length" && list.borrow().kind == ListKind::Array => {
                 Value::integer(list.borrow().items.len() as i32)

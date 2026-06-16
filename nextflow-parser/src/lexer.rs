@@ -41,6 +41,8 @@ enum Mode {
     },
     /// A slashy string with interpolations, which strict syntax does not have.
     Slashy,
+    /// A dollar slashy string, `$/.../$`, which strict syntax does not have.
+    DollarSlashy,
 }
 
 struct Lexer<'a> {
@@ -63,12 +65,13 @@ impl Lexer<'_> {
                 Mode::Default => self.default_token(),
                 Mode::GString { triple } => self.gstring_token(triple),
                 Mode::Slashy => self.slashy_token(),
+                Mode::DollarSlashy => self.dollar_slashy_token(),
             }
         }
         if self
             .modes
             .iter()
-            .any(|m| matches!(m, Mode::GString { .. } | Mode::Slashy))
+            .any(|m| matches!(m, Mode::GString { .. } | Mode::Slashy | Mode::DollarSlashy))
         {
             let end = self.bytes.len();
             self.error("Unterminated string", end, end);
@@ -136,6 +139,16 @@ impl Lexer<'_> {
             b'"' => self.double_quoted(),
             b'\'' => self.single_quoted(),
             b'/' if self.regex_allowed() && self.slashy() => {}
+            // Legacy syntax: a dollar slashy string, which the parser reports.
+            b'$' if self.peek(1) == b'/' && self.regex_allowed() => {
+                self.position += 2;
+                self.push(
+                    TokenKind::GStringBegin { triple: true },
+                    start,
+                    self.position,
+                );
+                self.modes.push(Mode::DollarSlashy);
+            }
             b'0'..=b'9' => self.number(),
             b'.' if self.peek(1).is_ascii_digit() => self.number(),
             _ => match self.char_at(start) {
@@ -502,6 +515,37 @@ impl Lexer<'_> {
                         b'\\' if self.byte(i + 1) == b'/' => i += 2,
                         b'$' if i > start && self.starts_interpolation(i + 1) => break,
                         b'/' => break,
+                        _ => i += 1,
+                    }
+                }
+                self.position = i.max(start + 1).min(self.bytes.len());
+                self.push(TokenKind::GStringText, start, self.position);
+            }
+        }
+    }
+
+    /// The next token inside a dollar slashy string: `/$` ends it, `$$` and `$/` stand for `$`
+    /// and `/`, and a backslash is text.
+    fn dollar_slashy_token(&mut self) {
+        let start = self.position;
+        match (self.peek(0), self.peek(1)) {
+            (b'/', b'$') => {
+                self.position += 2;
+                self.end_gstring(start);
+            }
+            (b'$', b'{') => {
+                self.position += 2;
+                self.push(TokenKind::InterpolationStart, start, self.position);
+                self.modes.push(Mode::Default);
+            }
+            (b'$', _) if self.starts_interpolation(start + 1) => self.gstring_path(),
+            _ => {
+                let mut i = start;
+                while i < self.bytes.len() {
+                    match (self.byte(i), self.byte(i + 1)) {
+                        (b'$', b'$' | b'/') => i += 2,
+                        (b'/', b'$') => break,
+                        (b'$', _) if i > start && self.starts_interpolation(i + 1) => break,
                         _ => i += 1,
                     }
                 }

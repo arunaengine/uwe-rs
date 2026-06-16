@@ -23,7 +23,7 @@ createpanelrefs ok
 createtaxdb ok
 crisprseq ok
 crisprvar 1 Unknown configuration profile: 'test'
-cutandrun 1 workflows/../subworkflows/local/../../modules/local/for_patch/trimgalore/main.nf:18:5: Invalid process output
+cutandrun ok
 daamicrobiome 1 subworkflows/local/utils_nfcore_daamicrobiome_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
 dartseq 1 subworkflows/local/utils_nfcore_dartseq_pipeline/main.nf:104:19: SchemaValidationException: The following errors have been detected in assets/samplesheet_4samples_local.csv:
 datasync ok
@@ -113,13 +113,13 @@ proteinfold ok
 proteogenomicsdb 33 main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 proteomicslfq 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 provenancereport ok
-quantms 1 workflows/../modules/local/msstatstmt/main.nf:18:5: Invalid process output
+quantms ok
 radseq 1 workflows/radseq.nf:38:11: Invalid include source: 'workflows/../subworkflows/local/fastq_fastp.nf'
 rangeland 1 workflows/rangeland.nf:88:19: NoSuchFileException: No files match pattern `<cache>/iunctus/scratch/mock-tes/<run>/work/3/Landsat_data/*/*`
 raredisease ok
 rarevariantburden ok
 readsimulator ok
-references 1 workflows/references/main.nf:152:5: Named workflow cannot have a publish section
+references ok
 reportho ok
 ribomsqc ok
 riboseq ok
@@ -144,7 +144,7 @@ sopa ok
 spatialaxe 1 workflows/spatialaxe.nf:212:13: AbortOperationException: ❌ Missing required file(s) in xenium bundle '<cache>/iunctus/scratch/mock-tes/<run>/work/1/test_run': [cell_boundaries.csv.gz, cell_boundaries.parquet, cell_feature_matrix.h5, cell_feature_matrix.zarr.zip, cells.csv.gz, cells.parquet, cells.zarr.zip, experiment.xenium, gene_panel.json, metrics_summary.csv, morphology.ome.tif, morphology_focus/, nucleus_boundaries.csv.gz, nucleus_boundaries.parquet, transcripts.parquet, transcripts.zarr.zip]
 spatialvi 1 workflows/../subworkflows/local/input_check/main.nf:144:9: AbortOperationException: No `fastq_dir` specified or no samples found in folder.
 spinningjenny ok
-ssds 1 WARNING: CONFIG NOT FOUND: https://raw.githubusercontent.com/nf-core/test-datasets/ssds/intervals/spot_intervals.config
+ssds ok
 stableexpression ok
 taxmarker ok
 taxprofiler ok

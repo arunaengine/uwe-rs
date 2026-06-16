@@ -410,6 +410,17 @@ fn collect_file_writes_files_at_the_end() {
     );
 }
 
+/// Legacy syntax: a Java lambda with parameters in parentheses is a closure, as in the
+/// `.map((sample_info, path) -> ...)` of an RNA sequencing workflow; Nextflow 26.04.6 prints
+/// `[2, 1]`.
+#[test]
+fn lambdas_with_parameters() {
+    assert_eq!(
+        lines("channel.of([1, 2]).map((a, b) -> [b, a]).view()"),
+        ["[2, 1]"]
+    );
+}
+
 /// A local closure with the name of an operator is called, as nf-core/references calls its
 /// `def reduce = { ... }`; Nextflow 24.10.1, the release it names, runs it.
 #[test]

@@ -442,6 +442,11 @@ impl Parser<'_> {
                 ExpressionKind::New { class, arguments }
             }
             TokenKind::LeftParen if self.at_soft_cast() => return self.soft_cast(),
+            // Legacy syntax: a Java lambda with parameters in parentheses, like `(a, b) -> a`.
+            TokenKind::LeftParen if self.lookahead(Self::lambda_parameters) => {
+                let parameters = self.lambda_parameters()?;
+                self.lambda_body(parameters)?
+            }
             TokenKind::LeftParen => {
                 self.bump();
                 let inner = self.in_brackets(|parser| {
@@ -467,6 +472,30 @@ impl Parser<'_> {
     /// with one parameter.
     fn lambda(&mut self) -> Parse<ExpressionKind> {
         let name = self.variable_name()?;
+        let parameter = Parameter {
+            name,
+            annotation: None,
+            default: None,
+        };
+        self.lambda_body(vec![parameter])
+    }
+
+    /// The parameters of a Java lambda in parentheses, up to its arrow.
+    fn lambda_parameters(&mut self) -> Parse<Vec<Parameter>> {
+        self.expect(TokenKind::LeftParen, "'('")?;
+        let mut parameters = Vec::new();
+        if !self.at(TokenKind::RightParen) {
+            parameters = self.parameters()?;
+        }
+        self.expect(TokenKind::RightParen, "')'")?;
+        if !self.at(TokenKind::Arrow) {
+            return Err(self.error_here("Expected '->'"));
+        }
+        Ok(parameters)
+    }
+
+    /// The arrow and the body of a Java lambda, which Groovy reads as a closure.
+    fn lambda_body(&mut self, parameters: Vec<Parameter>) -> Parse<ExpressionKind> {
         let arrow = self.bump().span;
         self.legacy
             .push(crate::Diagnostic::new("Unexpected input: '->'", arrow));
@@ -484,13 +513,8 @@ impl Parser<'_> {
                 span,
             }
         };
-        let parameter = Parameter {
-            name,
-            annotation: None,
-            default: None,
-        };
         Ok(ExpressionKind::Closure(Box::new(Closure {
-            parameters: Some(vec![parameter]),
+            parameters: Some(parameters),
             body,
         })))
     }

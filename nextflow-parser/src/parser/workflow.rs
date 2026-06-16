@@ -40,7 +40,10 @@ impl Parser<'_> {
             span: start,
         };
         // Unlike a main block without label, the first label needs a separator after the brace.
-        let mut valid = self.skip_separators() || self.workflow_label().is_none();
+        // Legacy syntax: the legacy parser takes a label on the line of the brace, and the
+        // sections in any order.
+        let mut legacy = !(self.skip_separators() || self.workflow_label().is_none());
+        let mut valid = true;
         let mut order = LabelOrder::new();
         let mut sections = Vec::new();
         let mut implicit = false;
@@ -52,7 +55,8 @@ impl Parser<'_> {
                 workflow.main = self.labeled_block(Self::at_workflow_label);
                 continue;
             };
-            valid &= order.accept([section as u8]) && !implicit;
+            legacy |= !order.accept([section as u8]);
+            valid &= !implicit;
             let label = self.bump().span;
             self.bump();
             self.skip_newlines();
@@ -70,7 +74,7 @@ impl Parser<'_> {
             "Invalid workflow definition -- check for missing or out-of-order section labels";
         if !valid || (!sections.is_empty() && !required) {
             self.error_at(message, workflow.span);
-        } else if empty {
+        } else if empty || legacy {
             // Legacy syntax: a section may be empty, like `take:` right before `main:`.
             self.legacy.push(Diagnostic::new(message, workflow.span));
         }
@@ -223,9 +227,11 @@ impl Parser<'_> {
                 }
             }
         }
+        // Legacy syntax: the legacy parser takes several emits without names, which a caller
+        // reads by position.
         if unnamed && count > 1 {
             let message = "Every emit must be assigned to a name when there are multiple emits";
-            self.error_at(message, span);
+            self.legacy.push(Diagnostic::new(message, span));
         }
     }
 

@@ -364,3 +364,11 @@ fn asserts_with_a_comma() {
         }
     ));
 }
+
+/// `void name(...)`, as VariantCaller_GATK3.6 declares functions; Nextflow 26.04.6 runs them.
+#[test]
+fn void_functions() {
+    let parsed = nextflow_parser::parse_script("void hello() { println 'hi' }\nhello()\n");
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    assert!(matches!(parsed.tree.items[0], Item::Function(_)));
+}

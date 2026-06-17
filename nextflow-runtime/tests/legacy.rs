@@ -277,6 +277,35 @@ fn includes_add_strings_to_a_directory_variable() {
     assert_eq!(output.0, "shown\n");
 }
 
+/// An include inside a workflow, as in bactmap 1.0.0, links and runs the included script
+/// when the workflow runs, with the params it adds; Nextflow 21.04.0 prints `show loaded 5`
+/// and `show 5`, and without `addParams` `show loaded 1` and `show 1`.
+#[test]
+fn includes_inside_workflows() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    write(
+        root.path(),
+        "show.nf",
+        "params.x = 1\nprintln \"show loaded ${params.x}\"\nworkflow SHOW {\n    main:\n    println(\"show ${params.x}\")\n}\n",
+    );
+    for (params, printed) in [
+        (" addParams(x: 5)", "show loaded 5\nshow 5\n"),
+        ("", "show loaded 1\nshow 1\n"),
+    ] {
+        write(
+            root.path(),
+            "main.nf",
+            &format!("workflow {{\n    include {{ SHOW }} from './show'{params}\n    SHOW()\n}}\n"),
+        );
+        let module = Loader::default()
+            .load(&root.path().join("main.nf"))
+            .expect("loads");
+        let mut output = Output::default();
+        nextflow_runtime::run(&module, &mut output).expect("runs");
+        assert_eq!(output.0, printed);
+    }
+}
+
 /// A class that a script defines, which closures of the script use, as
 /// multiplesequencealign's `Utils` in a subworkflow script.
 #[test]

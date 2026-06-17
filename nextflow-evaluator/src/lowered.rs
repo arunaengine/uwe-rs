@@ -74,6 +74,8 @@ pub struct Module {
     /// Legacy syntax: the params of a script that an include with `addParams(...)` or
     /// `params(...)` loads, set when the include runs; `None` for the params of the run.
     pub params: std::cell::RefCell<Option<Value>>,
+    /// Whether the statements of the script ran, which they do once.
+    pub started: std::cell::Cell<bool>,
 }
 
 /// A Groovy class or enum, which only the legacy parser accepts.
@@ -376,9 +378,13 @@ pub enum StatementKind {
     },
     Break,
     Continue,
-    /// Legacy syntax: an include inside an `if` of the script, which links the includes with
-    /// these indexes in `Module::includes` when it runs.
-    Include(Vec<usize>),
+    /// Legacy syntax: an include inside an `if` of the script or inside a workflow, which
+    /// links the includes with these indexes in `Module::includes` when it runs. With
+    /// `addParams(...)`, `params` is the `IncludeParams` statement that runs first.
+    Include {
+        indexes: Vec<usize>,
+        params: Option<Box<Statement>>,
+    },
     /// Legacy syntax: `params.a.b = value` among the statements of a script, which sets the
     /// param when nothing, like the config or the command line, set it before.
     SetParam {

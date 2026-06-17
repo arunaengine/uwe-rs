@@ -307,11 +307,13 @@ fn includes_inside_workflows() {
 }
 
 /// An include source with an extension other than `.nf`, like `lib/utils.groovy` in the
-/// MGnify pipelines, names that file, as Nextflow's `realModulePath` finds it.
+/// MGnify pipelines, names that file, and a directory with a slash at the end, as in pacvar,
+/// its `main.nf`, as Nextflow's `realModulePath` finds them.
 #[test]
 fn includes_of_groovy_files() {
     let root = tempfile::tempdir().expect("a temporary directory");
     std::fs::create_dir(root.path().join("lib")).expect("creates lib");
+    std::fs::create_dir(root.path().join("sub")).expect("creates sub");
     write(
         root.path(),
         "lib/utils.groovy",
@@ -319,15 +321,21 @@ fn includes_of_groovy_files() {
     );
     write(
         root.path(),
+        "sub/main.nf",
+        "def there() {\n    'there'\n}\n",
+    );
+    write(
+        root.path(),
         "main.nf",
-        "include { hello } from './lib/utils.groovy'\nworkflow {\n    println(hello())\n}\n",
+        "include { hello } from './lib/utils.groovy'\ninclude { there } from './sub/'\n\
+         workflow {\n    println(hello() + ' ' + there())\n}\n",
     );
     let module = Loader::default()
         .load(&root.path().join("main.nf"))
         .expect("loads");
     let mut output = Output::default();
     nextflow_runtime::run(&module, &mut output).expect("runs");
-    assert_eq!(output.0, "hello\n");
+    assert_eq!(output.0, "hello there\n");
 }
 
 /// A class that a script defines, which closures of the script use, as

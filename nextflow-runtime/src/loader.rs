@@ -318,7 +318,8 @@ fn include_path(project: &Path, directory: &Path, source: &str) -> Option<PathBu
         source = source.replace(&format!("${{{name}}}"), &value.to_string_lossy());
     }
     let path = directory.join(&source);
-    let extended = PathBuf::from(format!("{}.nf", path.display()));
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let extended = path.with_file_name(format!("{name}.nf"));
     let path = if !source.ends_with(".nf") && (extended.exists() || !path.exists()) {
         extended
     } else if path.is_dir() {

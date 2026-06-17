@@ -88,6 +88,12 @@ impl Interpreter<'_> {
             ("JsonOutput", "prettyPrint", [text]) => {
                 Value::string(json::pretty_print(&text.to_string()).at(span)?)
             }
+            // `System.exit(code)` ends the run with the code, as the legacy `exit code` does.
+            ("System", "exit", [code @ Value::Number(_)]) => {
+                return self
+                    .call_builtin("exit", vec![code.clone()], span)
+                    .map(Some);
+            }
             ("System", "getenv", [variable]) => self
                 .host
                 .environment(&variable.to_string())

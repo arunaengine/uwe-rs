@@ -164,6 +164,7 @@ pub(super) const CLASSES: &[&str] = &[
     "Duration",
     "Exception",
     "File",
+    "FileReader",
     "FileType",
     "Files",
     "FilesEx",

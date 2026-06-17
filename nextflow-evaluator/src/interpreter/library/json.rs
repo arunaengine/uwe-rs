@@ -242,6 +242,13 @@ impl Interpreter<'_> {
                         let bytes = self.host.read(path).map_err(|error| error.or_at(span))?;
                         String::from_utf8_lossy(&bytes).into_owned()
                     }
+                    // A reader, like `new FileReader(path)`, from its position on.
+                    Value::Object(stream) if matches!(stream.borrow().state, State::Stream(..)) => {
+                        let State::Stream(bytes, position) = &stream.borrow().state else {
+                            unreachable!("a stream")
+                        };
+                        String::from_utf8_lossy(&bytes[(*position).min(bytes.len())..]).into_owned()
+                    }
                     other => other.to_string(),
                 };
                 super::yaml::load(&text).at(span)?

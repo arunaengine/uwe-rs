@@ -433,8 +433,10 @@ impl<'a> Evaluator<'a> {
                     defined.insert(&name.text, body);
                     self.declared_profiles.insert(name.text.clone());
                 }
+                // Legacy syntax: the legacy parser includes the file as at the top, with its
+                // profiles.
+                ConfigStatement::Include { path, .. } => self.include(file, path, &[])?,
                 ConfigStatement::Assign { span, .. }
-                | ConfigStatement::Include { span, .. }
                 | ConfigStatement::Apply { span, .. }
                 | ConfigStatement::Selector { span, .. }
                 | ConfigStatement::If { span, .. }

@@ -332,3 +332,32 @@ fn runtime_processors() {
     assert_eq!(get(&config, &["params", "a"]), processors.to_string());
     assert_eq!(get(&config, &["params", "b"]), processors.to_string());
 }
+
+/// `includeConfig` inside `profiles` includes the file as at the top, with its profiles, as
+/// Nextflow 26.04.6 with the legacy parser sets `top` and `partition` for `-profile local`,
+/// and `top` and `s` without a profile.
+#[test]
+fn includes_inside_profiles() {
+    let directory = tempfile::tempdir().unwrap();
+    let main =
+        "profiles {\n  standard {\n    params.s = 1\n  }\n  includeConfig 'local.config'\n}\n";
+    let local = "profiles {\n  local {\n    params.partition = 'local'\n  }\n}\nparams.top = 2\n";
+    std::fs::write(directory.path().join("nextflow.config"), main).unwrap();
+    std::fs::write(directory.path().join("local.config"), local).unwrap();
+    for (profiles, expected) in [
+        (Some(vec!["local".to_owned()]), ["partition", "local"]),
+        (None, ["s", "1"]),
+    ] {
+        let options = Options {
+            profiles,
+            params: Value::map([]),
+            project_dir: directory.path().to_string_lossy().into_owned(),
+            launch_dir: directory.path().to_string_lossy().into_owned(),
+        };
+        let mut host = Recorder::default();
+        let files = [directory.path().join("nextflow.config")];
+        let config = load(&files, &options, &mut host).unwrap();
+        assert_eq!(get(&config, &["params", "top"]), "2");
+        assert_eq!(get(&config, &["params", expected[0]]), expected[1]);
+    }
+}

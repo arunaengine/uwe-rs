@@ -85,6 +85,7 @@ pub(in crate::parser) fn render(expression: &Expression) -> String {
                     MapKey::Expression(key) => {
                         format!("({}): {}", render(key), render(&entry.value))
                     }
+                    MapKey::Spread => format!("*: {}", render(&entry.value)),
                 })
                 .collect();
             format!("[{}]", entries.join(", "))
@@ -581,7 +582,9 @@ fn rejects_incomplete_expressions() {
     assert!(fails("a +"));
     assert!(fails("foo(a"));
     assert!(fails("[a: ]"));
-    assert!(fails("\"${}\""));
+    // Legacy syntax: `"${}"` holds null, which strict syntax rejects.
+    let mut parser = Parser::new("\"${}\"", Dialect::Script);
+    assert!(parser.expression().is_ok() && !parser.legacy.is_empty());
 }
 
 #[test]

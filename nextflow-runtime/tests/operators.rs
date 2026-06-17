@@ -125,6 +125,11 @@ fn exit_ends_the_run() {
         run("exit 1, 'bad samplesheet'").unwrap_err(),
         "AbortOperationException: bad samplesheet"
     );
+    // `System.exit(1)` ends the run with its code too, as in the help checks of some pipelines.
+    assert_eq!(
+        run("System.exit(1)").unwrap_err(),
+        "AbortOperationException: the run exits with code 1"
+    );
 }
 
 #[test]

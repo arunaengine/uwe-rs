@@ -684,3 +684,17 @@ fn empty_when_and_strings_among_inputs() {
     let (tasks, _) = run(source, &Options::default()).expect("runs");
     assert_eq!(tasks[0].script, "#!/bin/bash -ue\necho 1\n");
 }
+
+/// As in Nextflow 26.04.6, an empty script or one with comments only does nothing, and a
+/// script with named workflows only fails.
+#[test]
+fn scripts_without_an_entry_workflow() {
+    let (tasks, printed) = run("// a placeholder\n", &Options::default()).expect("runs");
+    assert!(tasks.is_empty() && printed.is_empty());
+    let error = run(
+        "workflow W {\n    main:\n    println(1)\n}\n",
+        &Options::default(),
+    )
+    .unwrap_err();
+    assert!(error.ends_with("No entry workflow specified"), "{error}");
+}

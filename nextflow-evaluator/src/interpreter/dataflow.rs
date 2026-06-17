@@ -15,7 +15,9 @@ use crate::lowered::{Module, Place, Workflow};
 use crate::value::{ChannelOut, DefinitionRef, Value};
 
 impl Interpreter<'_> {
-    /// Runs the entry workflow of a script, which builds the dataflow network.
+    /// Runs the entry workflow of a script, which builds the dataflow network. As in Nextflow,
+    /// a script with named workflows only fails, and one without workflows and processes, like
+    /// an empty script, does nothing.
     pub fn run_entry(&mut self, module: &Rc<Module>) -> Result<(), Error> {
         let entry = module
             .workflows
@@ -26,6 +28,12 @@ impl Interpreter<'_> {
             Some(workflow) => self
                 .call_workflow(module, &workflow, Vec::new(), workflow.span)
                 .map(drop),
+            None if !module.workflows.is_empty() => {
+                let message = "No entry workflow specified";
+                let exception = Exception::new("AbortOperationException", message);
+                Err(thrown(exception, Span::default()))
+            }
+            None if module.processes.is_empty() => Ok(()),
             None => Err(unsupported(
                 "scripts without an entry workflow",
                 Span::default(),

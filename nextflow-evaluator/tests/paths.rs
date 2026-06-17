@@ -291,6 +291,19 @@ fn output_globs_have_choices_and_classes() {
     assert!(matches("**.txt", "sub/a.txt"));
 }
 
+/// `new Yaml().load(new FileReader(name))` reads the file, as TreeVal reads its input YAML.
+#[test]
+fn yaml_loads_a_file_reader() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let dir = directory.path().display();
+    let body = format!(
+        "def f = new File('{dir}/in.yaml')\n\
+         f.text = 'a: 1\\nb: [x, y]\\n'\n\
+         new org.yaml.snakeyaml.Yaml().load(new FileReader(f.toString()))"
+    );
+    assert_eq!(value(&body), "[a:1, b:[x, y]]");
+}
+
 #[test]
 fn yaml_anchors_aliases_and_merge_keys() {
     let text = "base: &base\n  a: 1\n  b: two\nmore: &more\n  <<: *base\n  c: 3\ns: &s hello\n\

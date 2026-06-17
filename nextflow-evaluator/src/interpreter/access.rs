@@ -709,6 +709,15 @@ impl Interpreter<'_> {
                 );
                 Ok(super::library::uri(&text))
             }
+            // A `FileReader` reads the file, relative to the launch directory, as a stream.
+            (None, [path]) if class == "FileReader" => {
+                let file = match path {
+                    Value::Path(path) => (**path).clone(),
+                    other => PathValue::parse(&other.to_string(), &self.host.launch_dir()),
+                };
+                let bytes = self.host.read(&file).map_err(|error| error.or_at(span))?;
+                Ok(super::library::stream(bytes))
+            }
             // Readers read the stream they wrap.
             (None, [stream @ Value::Object(_), ..])
                 if matches!(class, "InputStreamReader" | "BufferedReader") =>

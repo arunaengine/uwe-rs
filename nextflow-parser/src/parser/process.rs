@@ -97,10 +97,9 @@ impl Parser<'_> {
                     _ => false,
                 },
                 StatementKind::Empty => true,
-                // Legacy syntax: `name = value` sets a variable of the script, not a directive.
-                StatementKind::Assign { target, .. }
-                    if matches!(target.kind, ExpressionKind::Variable(_)) =>
-                {
+                // Legacy syntax: `name = value` or `def name = value` sets a variable of the
+                // script, not a directive.
+                _ if statement.is_variable_statement() => {
                     self.legacy_at(message, statement.span);
                     true
                 }

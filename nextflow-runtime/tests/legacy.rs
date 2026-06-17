@@ -306,6 +306,30 @@ fn includes_inside_workflows() {
     }
 }
 
+/// An include source with an extension other than `.nf`, like `lib/utils.groovy` in the
+/// MGnify pipelines, names that file, as Nextflow's `realModulePath` finds it.
+#[test]
+fn includes_of_groovy_files() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    std::fs::create_dir(root.path().join("lib")).expect("creates lib");
+    write(
+        root.path(),
+        "lib/utils.groovy",
+        "def hello() {\n    'hello'\n}\n",
+    );
+    write(
+        root.path(),
+        "main.nf",
+        "include { hello } from './lib/utils.groovy'\nworkflow {\n    println(hello())\n}\n",
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let mut output = Output::default();
+    nextflow_runtime::run(&module, &mut output).expect("runs");
+    assert_eq!(output.0, "hello\n");
+}
+
 /// A class that a script defines, which closures of the script use, as
 /// multiplesequencealign's `Utils` in a subworkflow script.
 #[test]

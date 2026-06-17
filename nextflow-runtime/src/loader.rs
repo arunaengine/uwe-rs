@@ -298,9 +298,11 @@ impl Loader {
     }
 }
 
-/// The file an include source names: relative to the including script, with `.nf` added, or
-/// `main.nf` for a directory. Plugins have no file. A legacy source may start with the
-/// directory of the project or of the including script, like `${projectDir}/modules/x`.
+/// The file an include source names, relative to the including script, as Nextflow's
+/// `realModulePath` finds it: the name with `.nf` added when that file exists, else `main.nf`
+/// of a directory, else the name itself, like `lib/utils.groovy`. Plugins have no file. A
+/// legacy source may start with the directory of the project or of the including script,
+/// like `${projectDir}/modules/x`.
 fn include_path(project: &Path, directory: &Path, source: &str) -> Option<PathBuf> {
     if source.starts_with("plugin/") {
         return None;
@@ -315,13 +317,14 @@ fn include_path(project: &Path, directory: &Path, source: &str) -> Option<PathBu
     ] {
         source = source.replace(&format!("${{{name}}}"), &value.to_string_lossy());
     }
-    let path = directory.join(source);
-    let path = if path.is_dir() {
+    let path = directory.join(&source);
+    let extended = PathBuf::from(format!("{}.nf", path.display()));
+    let path = if !source.ends_with(".nf") && (extended.exists() || !path.exists()) {
+        extended
+    } else if path.is_dir() {
         path.join("main.nf")
-    } else if path.extension().is_some_and(|extension| extension == "nf") {
-        path
     } else {
-        path.with_extension("nf")
+        path
     };
     Some(std::path::absolute(&path).unwrap_or(path))
 }

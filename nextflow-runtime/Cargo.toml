@@ -18,6 +18,7 @@ nextflow-config.workspace = true
 nextflow-evaluator.workspace = true
 nextflow-parser.workspace = true
 nextflow-plugins.workspace = true
+regex.workspace = true
 workflow-graph.workspace = true
 
 [dev-dependencies]

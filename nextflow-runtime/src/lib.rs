@@ -10,6 +10,7 @@ mod keyed;
 mod loader;
 mod network;
 mod operator;
+mod pairs;
 mod process;
 mod route;
 mod session;

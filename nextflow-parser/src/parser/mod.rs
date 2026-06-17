@@ -79,6 +79,9 @@ struct Parser<'a> {
     brackets: usize,
     /// Whether the code is a Groovy class, where `include` is a plain name.
     groovy: bool,
+    /// Legacy syntax: script variables set to a directory or string before an include, like
+    /// `PROJECT_DIR = workflow.projectDir`, with their include source text.
+    include_variables: std::collections::HashMap<String, String>,
 }
 
 impl<'a> Parser<'a> {
@@ -93,6 +96,7 @@ impl<'a> Parser<'a> {
             legacy: lexed.legacy,
             brackets: 0,
             groovy: false,
+            include_variables: std::collections::HashMap::new(),
         }
     }
 

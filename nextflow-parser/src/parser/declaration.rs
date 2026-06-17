@@ -4,8 +4,9 @@
 
 use super::{Failed, Parse, Parser, is_name};
 use crate::ast::{
-    Expression, ExpressionKind, Function, GStringPart, Include, IncludeName, IncludeParams, Item,
-    Name, ParameterDeclaration, Script, Statement, StatementKind, Type, TypedName,
+    AssignOperator, BinaryOperator, Expression, ExpressionKind, Function, GStringPart, Include,
+    IncludeName, IncludeParams, Item, Literal, Name, ParameterDeclaration, Script, Statement,
+    StatementKind, Type, TypedName,
 };
 use crate::token::TokenKind;
 use crate::{Diagnostic, Span};
@@ -254,7 +255,11 @@ impl Parser<'_> {
                 let start = self.current().span;
                 match self.speculate(Self::function_head) {
                     Some(head) => self.function(start, head),
-                    None => Ok(Item::Statement(self.statement()?)),
+                    None => {
+                        let statement = self.statement()?;
+                        self.remember_include_variable(&statement);
+                        Ok(Item::Statement(statement))
+                    }
                 }
             }
         }
@@ -319,8 +324,8 @@ impl Parser<'_> {
         }
         self.expect(TokenKind::From, "`from`")?;
         let source = match self.peek() {
-            TokenKind::GStringBegin { .. } => self.legacy_include_source()?,
-            _ => self.string_name()?,
+            TokenKind::StringLiteral if self.nth(1) != TokenKind::Add => self.string_name()?,
+            _ => self.legacy_include_source()?,
         };
         // Legacy syntax: `addParams(...)` or `params(...)` gives the included script params.
         let params = match self.at_name() && self.nth(1) == TokenKind::LeftParen {
@@ -349,32 +354,67 @@ impl Parser<'_> {
         })
     }
 
-    /// Legacy syntax: an include source with the variables of the script's directories, like
-    /// `"${projectDir}/modules/x"`. The text keeps `${name}` for each, which the loader fills.
+    /// Legacy syntax: an include source made of strings and the directories of the script,
+    /// like `"${projectDir}/modules/x"` or `PROJECT_DIR + '/x.nf'`. The text keeps `${name}`
+    /// for each directory, which the loader fills.
     fn legacy_include_source(&mut self) -> Parse<Name> {
         let start = self.current().span;
-        let expression = self.primary()?;
+        let expression = self.expression()?;
         let span = self.span_from(start);
-        let ExpressionKind::GString(parts) = expression.kind else {
-            return Err(self.error_here("Expected a string"));
+        let Some(text) = self.include_text(&expression) else {
+            return Err(self.error_at("Expected a string", span));
         };
-        let mut text = String::new();
-        for part in parts {
-            match part {
-                GStringPart::Text(part) => text.push_str(&part),
-                GStringPart::Value(Expression {
-                    kind: ExpressionKind::Variable(name),
-                    ..
-                }) if INCLUDE_VARIABLES.contains(&name.as_str()) => {
-                    text.push_str(&format!("${{{name}}}"));
-                }
-                GStringPart::Value(value) => {
-                    self.error_at("Expected a string", value.span);
-                }
-            }
-        }
         self.legacy_at("Expected a string", span);
         Ok(Name { text, span })
+    }
+
+    /// The include source text of an expression, if it is made of strings, the variables of
+    /// the script's directories, `workflow.projectDir` and remembered script variables.
+    fn include_text(&self, expression: &Expression) -> Option<String> {
+        match &expression.kind {
+            ExpressionKind::Literal(Literal::String(text)) => Some(text.clone()),
+            ExpressionKind::GString(parts) => {
+                let mut text = String::new();
+                for part in parts {
+                    match part {
+                        GStringPart::Text(part) => text.push_str(part),
+                        GStringPart::Value(value) => text.push_str(&self.include_text(value)?),
+                    }
+                }
+                Some(text)
+            }
+            ExpressionKind::Variable(name) if INCLUDE_VARIABLES.contains(&name.as_str()) => {
+                Some(format!("${{{name}}}"))
+            }
+            ExpressionKind::Variable(name) => self.include_variables.get(name).cloned(),
+            ExpressionKind::Property { target, name, .. }
+                if matches!(&target.kind, ExpressionKind::Variable(workflow) if workflow == "workflow")
+                    && matches!(name.text.as_str(), "projectDir" | "launchDir") =>
+            {
+                Some(format!("${{{}}}", name.text))
+            }
+            ExpressionKind::Binary {
+                operator: BinaryOperator::Add,
+                left,
+                right,
+            } => Some(self.include_text(left)? + &self.include_text(right)?),
+            _ => None,
+        }
+    }
+
+    /// Remembers a script variable that a later include source may use, like
+    /// `PROJECT_DIR = workflow.projectDir`.
+    fn remember_include_variable(&mut self, statement: &Statement) {
+        if let StatementKind::Assign {
+            target,
+            operator: AssignOperator::Assign,
+            value,
+        } = &statement.kind
+            && let ExpressionKind::Variable(name) = &target.kind
+            && let Some(text) = self.include_text(value)
+        {
+            self.include_variables.insert(name.clone(), text);
+        }
     }
 
     /// The `paramsDef` rule: `params { ... }`.

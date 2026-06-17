@@ -254,6 +254,29 @@ fn includes_read_the_project_directory() {
     assert_eq!(output.0, "shown\n");
 }
 
+/// A legacy include source may add strings to a script variable that holds the project
+/// directory, as in ProGFASTAGen, which Nextflow 26.04.6 runs.
+#[test]
+fn includes_add_strings_to_a_directory_variable() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    write(
+        root.path(),
+        "show.nf",
+        "workflow SHOW {\n    main:\n    println('shown')\n}\n",
+    );
+    write(
+        root.path(),
+        "main.nf",
+        "PROJECT_DIR = workflow.projectDir\ninclude { SHOW } from PROJECT_DIR + '/show.nf'\nworkflow {\n    SHOW()\n}\n",
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let mut output = Output::default();
+    nextflow_runtime::run(&module, &mut output).expect("runs");
+    assert_eq!(output.0, "shown\n");
+}
+
 /// A class that a script defines, which closures of the script use, as
 /// multiplesequencealign's `Utils` in a subworkflow script.
 #[test]

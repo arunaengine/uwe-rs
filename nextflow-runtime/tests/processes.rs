@@ -698,3 +698,13 @@ fn scripts_without_an_entry_workflow() {
     .unwrap_err();
     assert!(error.ends_with("No entry workflow specified"), "{error}");
 }
+
+/// Legacy syntax: a `def` before the first section of a process declares a variable that the
+/// script reads, as Nextflow 26.04.6 runs pipeface's `mosdepth`.
+#[test]
+fn declarations_before_the_sections_of_a_process() {
+    let source = "process P {\n    def sw = 'mosdepth'\n    input:\n    val x\n    output:\n    stdout\n    \
+                  script:\n    \"echo ${sw} ${x}\"\n}\nworkflow {\n    P(1)\n}\n";
+    let (tasks, _) = run(source, &Options::default()).expect("runs");
+    assert_eq!(tasks[0].script, "#!/bin/bash -ue\necho mosdepth 1\n");
+}

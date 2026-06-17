@@ -390,6 +390,33 @@ fn from_and_from_path() {
     );
 }
 
+/// `fromFilePairs` groups the files by the start of their names; Nextflow 26.04.6 gives the
+/// same tuples for these files.
+#[test]
+fn from_file_pairs() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    for name in ["s_a_R1.fq", "s_a_R2.fq", "b_1.fq", "b_2.fq", "c_1.fq"] {
+        std::fs::write(directory.path().join(name), "").expect("writes a file");
+    }
+    let d = directory.path().display();
+    let names = "map { k, fs -> [k, fs*.name] }";
+    let sorted = "toSortedList { a, b -> a[0] <=> b[0] }";
+    assert_eq!(
+        lines(&format!(
+            "channel.fromFilePairs('{d}/*_{{1,2}}.fq').{names}.view()\n\
+             channel.fromFilePairs('{d}/*_R{{1,2}}.fq', flat: true).map {{ it.collect {{ v -> v instanceof Path ? v.name : v }} }}.view()\n\
+             channel.fromFilePairs('{d}/*.fq', size: 1).{names}.{sorted}.view()\n\
+             channel.fromFilePairs('{d}/*_{{1,2}}.fq', size: -1).{names}.{sorted}.view()"
+        )),
+        [
+            "[b, [b_1.fq, b_2.fq]]",
+            "[s_a, s_a_R1.fq, s_a_R2.fq]",
+            "[[b_1, [b_1.fq]], [b_2, [b_2.fq]], [c_1, [c_1.fq]], [s_a_R1, [s_a_R1.fq]], [s_a_R2, [s_a_R2.fq]]]",
+            "[[b, [b_1.fq, b_2.fq]], [c, [c_1.fq]]]",
+        ]
+    );
+}
+
 #[test]
 fn collect_file_writes_files_at_the_end() {
     let directory = tempfile::tempdir().expect("a temporary directory");

@@ -1868,6 +1868,7 @@ dependencies = [
  "nextflow-evaluator",
  "nextflow-parser",
  "nextflow-plugins",
+ "regex",
  "tempfile",
  "workflow-graph",
 ]

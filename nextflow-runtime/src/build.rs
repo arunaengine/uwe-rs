@@ -214,6 +214,13 @@ impl Host for Builder<'_> {
                 }
                 Err(error) => return Err(error),
             },
+            ("channel", "fromFilePairs", [.., _]) => match self.file_pair_values(&arguments) {
+                Ok(values) => (values, false, true),
+                Err(failure @ Error::Thrown { .. }) => {
+                    return Ok(Some(self.failing_factory(name, failure)));
+                }
+                Err(error) => return Err(error),
+            },
             ("channel", "from", [single @ (Value::List(_) | Value::Set(_))]) => {
                 (elements(single), false, true)
             }
@@ -611,6 +618,32 @@ impl Builder<'_> {
         };
         self.network.add(name, &[], Box::new(factory));
         Value::Channel(output)
+    }
+
+    /// The tuples of `channel.fromFilePairs(pattern, [options])`: the files of each pattern,
+    /// found as `fromPath` finds them, grouped by the start of their names.
+    fn file_pair_values(&mut self, arguments: &[Value]) -> Result<Vec<Value>, Error> {
+        let (options, patterns) = match arguments {
+            [options @ Value::Map(_), patterns] => (Some(options.clone()), patterns),
+            [patterns] => (None, patterns),
+            _ => return Err(thrown("Missing `fromFilePairs` parameter".into())),
+        };
+        let mut found = Vec::new();
+        for pattern in elements(patterns) {
+            let text = match &pattern {
+                Value::Path(path) => path.uri(),
+                other => other.to_string(),
+            };
+            let mut arguments: Vec<Value> = options.iter().cloned().collect();
+            arguments.push(pattern);
+            found.push((text, self.path_values(&arguments)?));
+        }
+        let size = option(&options, "size").and_then(|size| match size {
+            Value::Number(size) => Some(size.to_i64()),
+            _ => None,
+        });
+        let flat = matches!(option(&options, "flat"), Some(Value::Boolean(true)));
+        crate::pairs::file_pairs(found, size, flat)
     }
 
     /// The paths of `channel.fromPath(pattern, [options])`: each pattern in turn, a glob

@@ -321,3 +321,14 @@ fn chained_assignments_set_each_setting() {
     assert_eq!(get(&config, &["process", "x"]), "z");
     assert_eq!(get(&config, &["params", "y"]), "z");
 }
+
+/// `Runtime.runtime.availableProcessors()` gives the processors of this machine, as Java does.
+#[test]
+fn runtime_processors() {
+    let config = load_text(
+        "params.a = Runtime.runtime.availableProcessors()\nparams.b = Runtime.getRuntime().availableProcessors()\n",
+    );
+    let processors = std::thread::available_parallelism().map_or(1, usize::from);
+    assert_eq!(get(&config, &["params", "a"]), processors.to_string());
+    assert_eq!(get(&config, &["params", "b"]), processors.to_string());
+}

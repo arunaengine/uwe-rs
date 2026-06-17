@@ -320,6 +320,8 @@ pub(crate) struct Lowering<'a> {
     definitions: HashMap<Rc<str>, DefinitionKind>,
     /// Whether the code is the body of a workflow, where processes and workflows can be called.
     in_workflow: bool,
+    /// Whether the code is a statement of the script outside workflows and functions.
+    in_initializer: bool,
     /// Whether the code being lowered is inside the `${...}` of a GString.
     in_gstring: bool,
     /// Whether GStrings escape staged file names: in a process `script:` or `stub:`.
@@ -364,6 +366,7 @@ impl<'a> Lowering<'a> {
             functions: HashSet::new(),
             definitions: HashMap::new(),
             in_workflow: false,
+            in_initializer: false,
             in_gstring: false,
             escape_paths: false,
             in_process: false,
@@ -579,7 +582,9 @@ impl<'a> Lowering<'a> {
         for item in items {
             match item {
                 Item::Statement(statement) => {
+                    self.in_initializer = true;
                     body.extend(self.statement(&script_assignment(statement)));
+                    self.in_initializer = false;
                 }
                 Item::Include(include) => {
                     let Some(params) = &include.params else {
@@ -711,8 +716,8 @@ impl<'a> Lowering<'a> {
 }
 
 /// The variables of the script that a top-level statement declares with `def`, or assigns
-/// outside closures, as Groovy's script binding keeps them. A top-level `ch.set { x }` also
-/// assigns `x`, as Nextflow's `set` sets the variable in the binding.
+/// outside closures, as Groovy's script binding keeps them. A `ch.set { x }` outside closures
+/// also assigns `x`, as Nextflow's `set` sets the variable in the binding.
 fn script_variables(statement: &ast::Statement, top: bool, names: &mut Vec<String>) {
     use ast::StatementKind as Kind;
     let mut add = |name: &str| {
@@ -762,7 +767,7 @@ fn script_variables(statement: &ast::Statement, top: bool, names: &mut Vec<Strin
             }
         }
         Kind::Labeled { statement, .. } => script_variables(statement, top, names),
-        Kind::Expression(_) if top => {
+        Kind::Expression(_) => {
             if let Some((_, name, _)) = workflow::set_parts(statement) {
                 add(name);
             }

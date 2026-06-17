@@ -505,10 +505,16 @@ impl<'a> Lowering<'a> {
                     continue;
                 }
                 Item::Process(process) => (&process.name, DefinitionKind::Process),
-                Item::Workflow(workflow) => match &workflow.name {
-                    Some(name) => (name, DefinitionKind::Workflow),
-                    None => continue,
-                },
+                Item::Workflow(workflow) => {
+                    // Legacy syntax: includes inside the body, which Nextflow 21.04 takes.
+                    for statement in &workflow.main.statements {
+                        self.declare_conditional_includes(statement, imports, module);
+                    }
+                    match &workflow.name {
+                        Some(name) => (name, DefinitionKind::Workflow),
+                        None => continue,
+                    }
+                }
                 Item::Include(include) => {
                     self.declare_include(include, false, imports, module);
                     continue;
@@ -669,7 +675,8 @@ impl<'a> Lowering<'a> {
         indexes
     }
 
-    /// Legacy syntax: declares the includes inside the `if` statements of the script.
+    /// Legacy syntax: declares the includes inside the `if` statements of the script or of a
+    /// workflow body.
     fn declare_conditional_includes(
         &mut self,
         statement: &ast::Statement,

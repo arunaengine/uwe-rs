@@ -193,10 +193,22 @@ impl Lowering<'_> {
                 self.error("Unexpected input: 'process'", process.span);
                 return None;
             }
-            // Legacy syntax: an include inside an `if` of the script; elsewhere Nextflow's
-            // legacy parser does not take it either.
-            Kind::Include(include) => match self.conditional_includes.get(&include.span) {
-                Some(indexes) => StatementKind::Include(indexes.clone()),
+            // Legacy syntax: an include inside an `if` of the script, or inside a workflow as
+            // Nextflow 21.04 takes it; elsewhere the legacy parser does not take it either.
+            Kind::Include(include) => match self.conditional_includes.get(&include.span).cloned() {
+                Some(indexes) => {
+                    let params = include.params.as_ref().map(|params| {
+                        Box::new(Statement {
+                            kind: StatementKind::IncludeParams {
+                                indexes: indexes.clone(),
+                                add: params.add,
+                                arguments: self.arguments(&params.arguments),
+                            },
+                            span: params.span,
+                        })
+                    });
+                    StatementKind::Include { indexes, params }
+                }
                 None => {
                     self.error("Unexpected input: 'include'", span);
                     return None;

@@ -245,7 +245,7 @@ impl Interpreter<'_> {
                 }
                 value
             }
-            StatementKind::Include(indexes) => {
+            StatementKind::Include { indexes, params } => {
                 let module = frame.module.clone();
                 for index in indexes {
                     let link = module.conditional_links.borrow().get(index).cloned();
@@ -253,8 +253,15 @@ impl Interpreter<'_> {
                         module
                             .links
                             .borrow_mut()
-                            .insert(include.alias.clone(), link);
+                            .insert(include.alias.clone(), link.clone());
+                        // The included script runs when the include does.
+                        if params.is_none() {
+                            self.start_statements(&link.module)?;
+                        }
                     }
+                }
+                if let Some(params) = params {
+                    self.statement(frame, params)?;
                 }
                 Value::Null
             }

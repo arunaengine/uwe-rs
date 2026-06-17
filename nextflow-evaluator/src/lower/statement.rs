@@ -26,7 +26,8 @@ impl Lowering<'_> {
 
     pub(super) fn statement(&mut self, statement: &ast::Statement) -> Option<Statement> {
         let span = statement.span;
-        if self.in_workflow
+        // Nextflow's `set` sets the variable in the binding, also in a block of the script.
+        if (self.in_workflow || self.in_initializer)
             && !self.scopes.in_closure()
             && let Some(set) = self.set_statement(statement)
         {

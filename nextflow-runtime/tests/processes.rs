@@ -580,6 +580,16 @@ fn a_set_at_the_top_assigns_a_script_variable() {
     assert_eq!(printed, "4\n");
 }
 
+/// A `set` in an `if` of the script also assigns a variable of the script, as in the
+/// TronFlow alignment pipeline, which Nextflow 26.04.6 runs.
+#[test]
+fn a_set_in_a_block_of_the_script_assigns_a_script_variable() {
+    let source = "if (true) {\n    Channel.of(3).set { ch_b }\n} else {\n    Channel.of(4).set { ch_b }\n}\n\
+                  workflow {\n    ch_b.view()\n}";
+    let (_, printed) = run(source, &Options::default()).expect("runs");
+    assert_eq!(printed, "3\n");
+}
+
 /// An error of a completion handler is logged and the run still succeeds, as in Nextflow
 /// 26.04.6, which prints "Failed to invoke `workflow.onComplete` event handler".
 #[test]

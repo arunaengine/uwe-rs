@@ -94,6 +94,7 @@ impl Interpreter<'_> {
                     .call_builtin("exit", vec![code.clone()], span)
                     .map(Some);
             }
+            ("Runtime", "getRuntime", []) => Value::Namespace("Runtime.runtime".into()),
             ("System", "getenv", [variable]) => self
                 .host
                 .environment(&variable.to_string())
@@ -151,6 +152,7 @@ impl Interpreter<'_> {
             }
             // `System.out` and `System.err` print through the host.
             ("System", "out" | "err") => Some(Value::Namespace(format!("System.{name}").into())),
+            ("Runtime", "runtime") => Some(Value::Namespace("Runtime.runtime".into())),
             (_, "name") => crate::value::qualified_class_name(class).map(Value::string),
             (_, "simpleName") => {
                 crate::value::qualified_class_name(class).map(|_| Value::string(class))

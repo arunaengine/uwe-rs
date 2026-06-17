@@ -281,6 +281,11 @@ impl Interpreter<'_> {
         arguments: Vec<Value>,
         span: Span,
     ) -> Result<Value, Error> {
+        // The Java runtime of `Runtime.runtime`, whose processors are those of this machine.
+        if namespace == "Runtime.runtime" && name == "availableProcessors" && arguments.is_empty() {
+            let processors = std::thread::available_parallelism().map_or(1, usize::from);
+            return Ok(Value::integer(processors as i32));
+        }
         let result = self.host.namespace_method(namespace, name, arguments);
         match result.map_err(|error| error.or_at(span))? {
             Some(value) => Ok(value),

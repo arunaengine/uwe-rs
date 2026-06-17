@@ -190,6 +190,7 @@ pub(super) const CLASSES: &[&str] = &[
     "Pattern",
     "Random",
     "Record",
+    "Runtime",
     "RuntimeException",
     "Set",
     "SplitterEx",

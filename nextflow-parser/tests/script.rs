@@ -670,14 +670,16 @@ fn implicit_workflow_main() {
 
 #[test]
 fn rejects_workflow_order() {
+    // Legacy syntax: the legacy parser takes the sections in any order.
     let reordered = "workflow FLOW {\n    main:\n    FOO()\n\n    take:\n    x\n}\n";
-    assert_eq!(messages(reordered), [INVALID_WORKFLOW]);
+    assert_eq!(legacy(reordered), [INVALID_WORKFLOW]);
     // Legacy syntax: the legacy parser accepts an empty section.
     let empty_main = "workflow FLOW {\n    take:\n    x\n\n    main:\n\n    emit:\n    y = x\n}\n";
-    let legacy = parse_script(empty_main).legacy;
-    assert_eq!(legacy[0].message, INVALID_WORKFLOW);
+    let empty = parse_script(empty_main).legacy;
+    assert_eq!(empty[0].message, INVALID_WORKFLOW);
+    // Legacy syntax: a label on the line of the brace.
     let one_line = "workflow FLOW { main: FOO() }\n";
-    assert_eq!(messages(one_line), [INVALID_WORKFLOW]);
+    assert_eq!(legacy(one_line), [INVALID_WORKFLOW]);
     let take_only = "workflow FLOW {\n    take:\n    x\n}\n";
     assert_eq!(messages(take_only), [INVALID_WORKFLOW]);
 }
@@ -699,9 +701,10 @@ fn rejects_misplaced_sections() {
 
 #[test]
 fn rejects_unnamed_emits() {
+    // Legacy syntax: Nextflow 26.04.6 runs several emits without a name.
     let source = "workflow HELLO {\n    emit:\n    'hello'\n    target = 'world'\n}\n";
     assert_eq!(
-        messages(source),
+        legacy(source),
         ["Every emit must be assigned to a name when there are multiple emits"]
     );
     let assignment = "workflow HELLO {\n    emit:\n    target <<= 'world'\n}\n";

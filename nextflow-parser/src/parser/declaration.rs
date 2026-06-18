@@ -398,21 +398,40 @@ impl Parser<'_> {
                 left,
                 right,
             } => Some(self.include_text(left)? + &self.include_text(right)?),
+            // `file(text)`, whose text names the file.
+            ExpressionKind::MethodCall {
+                target: None,
+                name,
+                arguments,
+                ..
+            } if name.text == "file" && arguments.len() == 1 && arguments[0].name.is_none() => {
+                self.include_text(&arguments[0].value)
+            }
             _ => None,
         }
     }
 
     /// Remembers a script variable that a later include source may use, like
-    /// `PROJECT_DIR = workflow.projectDir`.
+    /// `PROJECT_DIR = workflow.projectDir` or `def local_modules = file("$baseDir/x.nf")`.
     fn remember_include_variable(&mut self, statement: &Statement) {
-        if let StatementKind::Assign {
-            target,
-            operator: AssignOperator::Assign,
-            value,
-        } = &statement.kind
-            && let ExpressionKind::Variable(name) = &target.kind
-            && let Some(text) = self.include_text(value)
-        {
+        let (name, value) = match &statement.kind {
+            StatementKind::Assign {
+                target,
+                operator: AssignOperator::Assign,
+                value,
+            } => match &target.kind {
+                ExpressionKind::Variable(name) => (name, value),
+                _ => return,
+            },
+            StatementKind::Declaration {
+                names,
+                initializer: Some(value),
+                destructure: false,
+                ..
+            } if names.len() == 1 => (&names[0].name.text, value),
+            _ => return,
+        };
+        if let Some(text) = self.include_text(value) {
             self.include_variables.insert(name.clone(), text);
         }
     }

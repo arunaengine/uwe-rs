@@ -58,6 +58,34 @@ impl Parser<'_> {
         loop {
             let newlines = self.newline_count();
             let Some(operator) = self.operator_at(newlines) else {
+                // Legacy syntax: a command chain with a logical method of Boolean, like
+                // `a.contains(x) and !b`, which Groovy reads as `a.contains(x).and(!b)`.
+                if minimum == 0
+                    && newlines == 0
+                    && self.at(TokenKind::Identifier)
+                    && matches!(self.word(0), "and" | "or" | "xor" | "implies")
+                    && super::types::starts_expression(self.nth(1))
+                {
+                    let token = self.bump();
+                    let name = Name {
+                        text: self.text(token).to_owned(),
+                        span: token.span,
+                    };
+                    self.legacy_at(format!("Unexpected input: '{}'", name.text), name.span);
+                    let value = self.expression()?;
+                    let span = left.span.to(value.span);
+                    left = Expression {
+                        kind: ExpressionKind::MethodCall {
+                            target: Some(Box::new(left)),
+                            name,
+                            access: Access::Normal,
+                            arguments: vec![Argument { name: None, value }],
+                            parentheses: false,
+                        },
+                        span,
+                    };
+                    continue;
+                }
                 // Legacy syntax: inside brackets, an assignment is a value, as in `f(x = 1)`.
                 if minimum == 0 && self.brackets > 0 && newlines == 0 {
                     return self.assignment_chain(left);

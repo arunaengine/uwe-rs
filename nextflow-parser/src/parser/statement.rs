@@ -36,6 +36,13 @@ impl Parser<'_> {
                 StatementKind::Empty
             }
             TokenKind::Def => self.declaration()?,
+            // Legacy syntax: `final x = value` declares a variable, like `def`.
+            TokenKind::Identifier if self.word(0) == "final" && is_name(self.nth(1)) => {
+                let message =
+                    "`final` is not allowed as an identifier because it is a Groovy keyword";
+                self.legacy_at(message, start);
+                self.declaration()?
+            }
             TokenKind::Process
                 if is_name(self.nth(1)) && self.kind_after(2) == TokenKind::LeftBrace =>
             {

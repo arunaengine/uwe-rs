@@ -575,6 +575,16 @@ impl Interpreter<'_> {
         if matches!(value, Value::Null) || instance_of(&value, class) && class != "String" {
             return Ok(value);
         }
+        // A Java array of the elements, each cast to the class of the array.
+        if let (Some(element), Value::List(_) | Value::Set(_)) = (class.strip_suffix("[]"), &value)
+        {
+            let mut items = Vec::new();
+            for item in super::library::elements(&value) {
+                items.push(self.cast(item, element, span)?);
+            }
+            let list = crate::value::List::new(ListKind::Array, items);
+            return Ok(Value::List(Rc::new(std::cell::RefCell::new(list))));
+        }
         if let Some(converted) = super::library::convert(&value, class) {
             return converted.at(span);
         }

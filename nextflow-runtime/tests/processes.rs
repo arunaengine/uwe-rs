@@ -740,3 +740,13 @@ fn workflow_statements_before_the_first_label() {
     let (_, printed) = run(source, &Options::default()).expect("runs");
     assert_eq!(printed, "2\n");
 }
+
+/// Legacy syntax: modifiers like `public static` before a function of the script, and
+/// `final` declarations; Nextflow 26.04.6 prints `[5, true]`.
+#[test]
+fn modifiers_and_final_declarations() {
+    let source = "public static boolean hasExt(String s, String[] extn) {\n    return extn.any { s.endsWith(it) }\n}\n\
+                  workflow {\n    final x = 5\n    println([x, hasExt('a.txt', ['.txt'] as String[])])\n}\n";
+    let (_, printed) = run(source, &Options::default()).expect("runs");
+    assert_eq!(printed, "[5, true]\n");
+}

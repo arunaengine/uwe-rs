@@ -167,6 +167,16 @@ impl Parser<'_> {
     /// follow, even on the next line, and else marks a nullable type, as in `x as Map? + y`.
     fn operand_type(&mut self) -> Parse<Type> {
         let mut target = self.type_annotation()?;
+        // Legacy syntax: an array type, like `x as String[]`.
+        while !target.nullable
+            && self.at(TokenKind::LeftBracket)
+            && self.nth(1) == TokenKind::RightBracket
+        {
+            let span = self.bump().span;
+            self.bump();
+            self.legacy_at("Unexpected input: '['", span);
+            target.dimensions += 1;
+        }
         let conditional = |parser: &mut Self| {
             parser.expect(TokenKind::Question, "'?'")?;
             parser.skip_newlines();

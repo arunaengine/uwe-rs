@@ -636,7 +636,8 @@ impl Lowering<'_> {
             .iter()
             .map(|part| part.text.as_str())
             .collect();
-        names.join(".").into()
+        let dimensions = "[]".repeat(class.dimensions as usize);
+        format!("{}{dimensions}", names.join(".")).into()
     }
 
     fn binary(&mut self, operator: B, left: &ast::Expression, right: &ast::Expression) -> Kind {

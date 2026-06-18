@@ -95,6 +95,7 @@ impl Interpreter<'_> {
                     .map(Some);
             }
             ("Runtime", "getRuntime", []) => Value::Namespace("Runtime.runtime".into()),
+            ("String", "valueOf", [value]) => Value::string(value.to_string()),
             ("System", "getenv", [variable]) => self
                 .host
                 .environment(&variable.to_string())

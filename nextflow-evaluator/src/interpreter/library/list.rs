@@ -313,6 +313,18 @@ impl Interpreter<'_> {
                 Value::Null
             }
             ("set", [_, _]) => return self.set_list_item(list, arguments, span),
+            // Groovy's `plus(index, element)`: a new list with the element inserted.
+            ("plus", [Value::Number(index), element]) if index.to_i64() >= 0 => {
+                let index = index.to_i64() as usize;
+                if index > items.len() {
+                    let message = format!("Index: {index}, Size: {}", items.len());
+                    let exception = Exception::new("IndexOutOfBoundsException", message);
+                    return Err(super::super::thrown(exception, span));
+                }
+                let mut items = items;
+                items.insert(index, element.clone());
+                Value::list(items)
+            }
             _ => return Ok(None),
         }))
     }

@@ -273,6 +273,15 @@ impl Interpreter<'_> {
                 let right = self.expression(frame, right)?;
                 Value::Boolean(left.compare_equal(&right).at(span)? != *negated)
             }
+            Kind::Identical {
+                negated,
+                left,
+                right,
+            } => {
+                let left = self.expression(frame, left)?;
+                let right = self.expression(frame, right)?;
+                Value::Boolean(left.identical(&right) != *negated)
+            }
             Kind::Spaceship { left, right } => {
                 let left = self.expression(frame, left)?;
                 let right = self.expression(frame, right)?;

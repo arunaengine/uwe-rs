@@ -118,6 +118,10 @@ pub enum TokenKind {
     LessEqual,
     GreaterEqual,
     NotEqual,
+    /// Legacy syntax: `===`, which strict syntax does not have.
+    Identical,
+    /// Legacy syntax: `!==`.
+    NotIdentical,
     And,
     Or,
     Add,
@@ -166,6 +170,8 @@ pub(crate) const OPERATORS: &[(&str, TokenKind)] = {
     &[
         (">>>=", UnsignedShiftAssign),
         ("..<", RangeExclusiveRight),
+        ("===", Identical),
+        ("!==", NotIdentical),
         ("==~", RegexMatch),
         ("<=>", Spaceship),
         ("<<=", LeftShiftAssign),

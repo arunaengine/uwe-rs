@@ -70,6 +70,12 @@ fn missing_files_fail_when_the_factory_starts() {
     assert_eq!(output.0, "after\n");
     let printed = run("channel.fromPath('/nonexistent/x.fa')\nprintln('after')").unwrap();
     assert_eq!(printed, "after\n");
+    // A null pattern fails at once, before the statements after it.
+    let error = run("channel.fromPath(null, checkIfExists: true)\nprintln('after')").unwrap_err();
+    assert_eq!(
+        error,
+        "AbortOperationException: Missing `fromPath` parameter"
+    );
 }
 
 /// `buffer` with sizes, skips and criteria, as Nextflow 26.04.6 gives them.

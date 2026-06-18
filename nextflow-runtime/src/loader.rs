@@ -223,7 +223,10 @@ impl Loader {
         };
         let parsed = parse_script(source);
         if !parsed.errors.is_empty() {
-            self.errors.extend(parsed.errors.iter().map(located));
+            match nextflow_evaluator::lower::dsl1_error(&parsed.tree) {
+                Some(error) => self.errors.push(located(&error)),
+                None => self.errors.extend(parsed.errors.iter().map(located)),
+            }
             return None;
         }
         let mut imports = Includes {

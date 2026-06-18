@@ -264,17 +264,23 @@ fn includes_add_strings_to_a_directory_variable() {
         "show.nf",
         "workflow SHOW {\n    main:\n    println('shown')\n}\n",
     );
-    write(
-        root.path(),
-        "main.nf",
-        "PROJECT_DIR = workflow.projectDir\ninclude { SHOW } from PROJECT_DIR + '/show.nf'\nworkflow {\n    SHOW()\n}\n",
-    );
-    let module = Loader::default()
-        .load(&root.path().join("main.nf"))
-        .expect("loads");
-    let mut output = Output::default();
-    nextflow_runtime::run(&module, &mut output).expect("runs");
-    assert_eq!(output.0, "shown\n");
+    // The second one, as in MoP, gives the file to a GString; Nextflow 26.04.6 runs both.
+    for head in [
+        "PROJECT_DIR = workflow.projectDir\ninclude { SHOW } from PROJECT_DIR + '/show.nf'",
+        "def m = file(\"$baseDir/show.nf\")\ninclude { SHOW } from \"${m}\"",
+    ] {
+        write(
+            root.path(),
+            "main.nf",
+            &format!("{head}\nworkflow {{\n    SHOW()\n}}\n"),
+        );
+        let module = Loader::default()
+            .load(&root.path().join("main.nf"))
+            .expect("loads");
+        let mut output = Output::default();
+        nextflow_runtime::run(&module, &mut output).expect("runs");
+        assert_eq!(output.0, "shown\n");
+    }
 }
 
 /// An include inside a workflow, as in bactmap 1.0.0, links and runs the included script

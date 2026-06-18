@@ -48,6 +48,14 @@ impl RangeClass {
 impl Value {
     /// `from..to` or `from..<to`. A range counts down when `from` is larger.
     pub fn range(from: Value, to: Value, exclusive: bool) -> Result<Value, Exception> {
+        // Groovy's messages for a range with a null end.
+        for (end, name) in [(&from, "from"), (&to, "to")] {
+            if matches!(end, Value::Null) {
+                let message =
+                    format!("Must specify a non-null value for the '{name}' index in a Range");
+                return Err(Exception::illegal_argument(message));
+            }
+        }
         let class = match (&from, &to) {
             _ if exclusive && from.compare_equal(&to)? => RangeClass::Empty,
             (Value::Number(Number::Integer(_)), Value::Number(Number::Integer(_))) => {

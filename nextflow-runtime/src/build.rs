@@ -205,6 +205,14 @@ impl Host for Builder<'_> {
             ("channel", "topic", [topic]) => {
                 return Ok(Some(Value::Channel(self.network.topic(&topic.to_string()))));
             }
+            // A pattern that is null or empty fails at once, as Nextflow checks it first.
+            ("channel", "fromPath", [.., pattern]) if !pattern.truth() => {
+                let message = "Missing `fromPath` parameter";
+                return Err(Error::Thrown {
+                    exception: Rc::new(Exception::new("AbortOperationException", message)),
+                    span: Default::default(),
+                });
+            }
             // A missing file fails the run when the factory starts, as in Nextflow, so that
             // errors of the workflow body come first.
             ("channel", "fromPath", [.., _]) => match self.path_values(&arguments) {

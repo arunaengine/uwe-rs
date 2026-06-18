@@ -141,3 +141,16 @@ fn config_slurper() {
     );
     assert_eq!(value(&body), "[[:]/foo, --quiet, [:], [:]]");
 }
+
+/// Legacy syntax: the safe index `m?[key]`, as in sarek's `controlfreec` module; Nextflow
+/// 26.04.6 gives `[yes, no, [b:1]]`.
+#[test]
+fn safe_index() {
+    assert_eq!(
+        value(
+            "def m = [a: [b: 1]]\ndef n = null\n\
+             [m?[\"a\"]?[\"b\"] ? 'yes' : 'no', n?[\"a\"]?[\"b\"] ? 'yes' : 'no', m?['a']]"
+        ),
+        "[yes, no, [b:1]]"
+    );
+}

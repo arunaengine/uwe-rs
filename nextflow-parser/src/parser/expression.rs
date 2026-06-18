@@ -5,8 +5,8 @@
 use super::call::append_closure;
 use super::{Parse, Parser, is_keyword, is_name};
 use crate::ast::{
-    Access, AssignOperator, BinaryOperator, Block, Closure, Expression, ExpressionKind, Literal,
-    Name, Parameter, Statement, StatementKind, Type, UnaryOperator,
+    Access, Argument, AssignOperator, BinaryOperator, Block, Closure, Expression, ExpressionKind,
+    Literal, Name, Parameter, Statement, StatementKind, Type, UnaryOperator,
 };
 use crate::token::{Dialect, TokenKind};
 
@@ -380,6 +380,30 @@ impl Parser<'_> {
                     ExpressionKind::Index {
                         target: Box::new(expression),
                         index,
+                    }
+                }
+                // Legacy syntax: Groovy's safe index `target?[index]`, written without spaces,
+                // which is `target?.getAt(index)`.
+                TokenKind::Question
+                    if self.nth(1) == TokenKind::LeftBracket
+                        && expression.span.end == self.current().span.start
+                        && self.current().span.end == self.tokens[self.position + 1].span.start =>
+                {
+                    let question = self.bump().span;
+                    self.legacy_at("Unexpected input: '?'", question);
+                    let index = self.index_list()?;
+                    ExpressionKind::MethodCall {
+                        target: Some(Box::new(expression)),
+                        name: Name {
+                            text: "getAt".into(),
+                            span: question,
+                        },
+                        access: Access::Safe,
+                        arguments: index
+                            .into_iter()
+                            .map(|value| Argument { name: None, value })
+                            .collect(),
+                        parentheses: true,
                     }
                 }
                 TokenKind::Add | TokenKind::Subtract => match self.postfix_step(expression) {

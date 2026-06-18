@@ -680,6 +680,9 @@ fn rejects_workflow_order() {
     // Legacy syntax: a label on the line of the brace.
     let one_line = "workflow FLOW { main: FOO() }\n";
     assert_eq!(legacy(one_line), [INVALID_WORKFLOW]);
+    // Legacy syntax: statements before the first label are the main block.
+    let unlabeled_main = "workflow FLOW {\n    FOO()\n    emit:\n    x = 1\n}\n";
+    assert_eq!(legacy(unlabeled_main), [INVALID_WORKFLOW]);
     let take_only = "workflow FLOW {\n    take:\n    x\n}\n";
     assert_eq!(messages(take_only), [INVALID_WORKFLOW]);
 }

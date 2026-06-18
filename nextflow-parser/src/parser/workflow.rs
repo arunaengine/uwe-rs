@@ -55,8 +55,15 @@ impl Parser<'_> {
                 workflow.main = self.labeled_block(Self::at_workflow_label);
                 continue;
             };
+            if implicit && sections.is_empty() {
+                // Legacy syntax: the statements before the first label are the main block.
+                legacy |= !order.accept([WorkflowSection::Main as u8]);
+                sections.push(WorkflowSection::Main);
+                legacy = true;
+            } else {
+                valid &= !implicit;
+            }
             legacy |= !order.accept([section as u8]);
-            valid &= !implicit;
             let label = self.bump().span;
             self.bump();
             self.skip_newlines();

@@ -730,3 +730,13 @@ fn number_and_date_formats() {
     let (_, printed) = run(source, &Options::default()).expect("runs");
     assert_eq!(printed, "[1234567, 12.5, -3, 15]\n");
 }
+
+/// Legacy syntax: the statements of a workflow before `emit:` are its main block, as in
+/// assemblyeval; Nextflow 26.04.6 prints `2`.
+#[test]
+fn workflow_statements_before_the_first_label() {
+    let source = "workflow W {\n    x = channel.of(1)\n    y = x.map { it + 1 }\n    emit:\n    y\n    z = x\n}\n\
+                  workflow {\n    W().y.view()\n}\n";
+    let (_, printed) = run(source, &Options::default()).expect("runs");
+    assert_eq!(printed, "2\n");
+}

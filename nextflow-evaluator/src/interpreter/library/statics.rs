@@ -40,6 +40,15 @@ impl Interpreter<'_> {
             ("String", "format", [pattern, rest @ ..]) => {
                 Value::string(format::format(&pattern.to_string(), rest).at(span)?)
             }
+            // `java.text.NumberFormat` of a locale, and `java.time.format.DateTimeFormatter` of a
+            // pattern, which formats in the local time zone whatever zone is given.
+            ("NumberFormat", "getInstance" | "getNumberInstance", [] | [_]) => {
+                text_object("java.text.NumberFormat", "en_US")
+            }
+            ("DateTimeFormatter", "ofPattern", [pattern]) => {
+                text_object("java.time.format.DateTimeFormatter", &pattern.to_string())
+            }
+            ("ZoneId", "systemDefault", []) => text_object("java.time.ZoneId", "system"),
             ("MessageDigest", "getInstance", [algorithm]) => {
                 super::bytes::message_digest(&algorithm.to_string()).at(span)?
             }
@@ -237,4 +246,14 @@ fn math1(name: &str, a: &Number) -> Option<Value> {
         _ => return None,
     };
     Some(Value::Number(number))
+}
+
+/// An object of a Java class that is known by its text, like the pattern of a formatter.
+fn text_object(class: &'static str, text: &str) -> Value {
+    Value::Object(std::rc::Rc::new(std::cell::RefCell::new(
+        crate::value::Object {
+            class,
+            state: State::Text(text.into()),
+        },
+    )))
 }

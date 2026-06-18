@@ -578,6 +578,10 @@ pub enum BinaryOperator {
     NotIn,
     Equal,
     NotEqual,
+    /// Legacy syntax: `===`, whether both are the same object.
+    Identical,
+    /// Legacy syntax: `!==`.
+    NotIdentical,
     Spaceship,
     RegexFind,
     RegexMatch,

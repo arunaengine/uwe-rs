@@ -83,6 +83,13 @@ impl Parser<'_> {
             }
             let before = self.position;
             self.position += newlines;
+            if let Infix::Binary(BinaryOperator::Identical | BinaryOperator::NotIdentical) =
+                operator.infix
+            {
+                // Legacy syntax: strict syntax reads `===` as `==` and then `=`.
+                let span = self.current().span;
+                self.legacy_at("Unexpected input: '='", span);
+            }
             for _ in 0..operator.tokens {
                 self.bump();
             }
@@ -238,6 +245,8 @@ impl Parser<'_> {
             NotIn => binary(B::NotIn, RELATIONAL, true),
             Equal => binary(B::Equal, EQUALITY, true),
             NotEqual => binary(B::NotEqual, EQUALITY, true),
+            Identical => binary(B::Identical, EQUALITY, true),
+            NotIdentical => binary(B::NotIdentical, EQUALITY, true),
             Spaceship => binary(B::Spaceship, EQUALITY, true),
             RegexFind => binary(B::RegexFind, REGEX, true),
             RegexMatch => binary(B::RegexMatch, REGEX, true),

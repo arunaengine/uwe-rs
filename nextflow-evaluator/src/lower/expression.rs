@@ -687,6 +687,11 @@ impl Lowering<'_> {
                 left,
                 right,
             },
+            B::Identical | B::NotIdentical => Kind::Identical {
+                negated: operator == B::NotIdentical,
+                left,
+                right,
+            },
             B::Spaceship => Kind::Spaceship { left, right },
             B::In | B::NotIn => Kind::In {
                 negated: operator == B::NotIn,

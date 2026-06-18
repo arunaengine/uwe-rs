@@ -30,6 +30,21 @@ impl Hash for Key {
 }
 
 impl Value {
+    /// Java's identity, as `===` and `is` test it: the same object for lists, maps, sets,
+    /// closures, exceptions and other objects; `equals` for the other values, which here have
+    /// no identity of their own.
+    pub fn identical(&self, other: &Value) -> bool {
+        match (self, other) {
+            (Value::List(left), Value::List(right)) => Rc::ptr_eq(left, right),
+            (Value::Map(left), Value::Map(right)) => Rc::ptr_eq(left, right),
+            (Value::Set(left), Value::Set(right)) => Rc::ptr_eq(left, right),
+            (Value::Closure(left), Value::Closure(right)) => Rc::ptr_eq(left, right),
+            (Value::Exception(left), Value::Exception(right)) => Rc::ptr_eq(left, right),
+            (Value::Object(left), Value::Object(right)) => Rc::ptr_eq(left, right),
+            _ => self.java_equals(other),
+        }
+    }
+
     /// Java's `equals`: the same class and the same content. Lists of any kind but arrays are
     /// equal when their elements are; maps and sets ignore order.
     pub fn java_equals(&self, other: &Value) -> bool {

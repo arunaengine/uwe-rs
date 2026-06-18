@@ -708,3 +708,13 @@ fn declarations_before_the_sections_of_a_process() {
     let (tasks, _) = run(source, &Options::default()).expect("runs");
     assert_eq!(tasks[0].script, "#!/bin/bash -ue\necho mosdepth 1\n");
 }
+
+/// Legacy syntax: `===` and `!==` test identity, and Groovy's `String.valueOf` and
+/// `plus(index, element)`; Nextflow 26.04.6 prints `[true, true, false, null, 5, [1, 9, 2]]`.
+#[test]
+fn identity_value_of_and_insertion() {
+    let source = "workflow {\n    def m = [a: 1]\n    \
+                  println([m !== [a: 1], m === m, [1] === [1], String.valueOf(null), String.valueOf(5), [1, 2].plus(1, 9)])\n}\n";
+    let (_, printed) = run(source, &Options::default()).expect("runs");
+    assert_eq!(printed, "[true, true, false, null, 5, [1, 9, 2]]\n");
+}

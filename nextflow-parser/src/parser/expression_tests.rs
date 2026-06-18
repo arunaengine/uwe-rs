@@ -403,6 +403,8 @@ fn binary_text(operator: BinaryOperator) -> &'static str {
         NotIn => "!in",
         Equal => "==",
         NotEqual => "!=",
+        Identical => "===",
+        NotIdentical => "!==",
         Spaceship => "<=>",
         RegexFind => "=~",
         RegexMatch => "==~",

@@ -528,6 +528,12 @@ pub enum ExpressionKind {
         left: Box<Expression>,
         right: Box<Expression>,
     },
+    /// Legacy syntax: `left === right`, Java's identity, or `!==` when `negated`.
+    Identical {
+        negated: bool,
+        left: Box<Expression>,
+        right: Box<Expression>,
+    },
     Spaceship {
         left: Box<Expression>,
         right: Box<Expression>,

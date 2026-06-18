@@ -159,6 +159,13 @@ pub const DSL1: &str = "DSL1 scripts are not supported (decision 14): this scrip
                         that read `from` channels and write `into` channels, which only DSL1 \
                         has, and Nextflow 22.12 and later do not run it either";
 
+/// The error for a DSL1 script, if the script is one. The loader asks it also of a script that
+/// did not parse, as DSL1 output lines like `val x into ch` may not.
+pub fn dsl1_error(script: &ast::Script) -> Option<Diagnostic> {
+    let span = script.items.first().map(item_span).unwrap_or_default();
+    dsl1::is_dsl1(script).then(|| Diagnostic::new(DSL1, span))
+}
+
 /// Lowers a script: functions, processes, workflows, includes and `params.x = value`.
 /// A script of statements only is the entry workflow; the parser rejects other mixes.
 pub fn lower_script(
@@ -166,9 +173,8 @@ pub fn lower_script(
     source: &str,
     imports: &mut dyn Imports,
 ) -> Result<Module, Vec<Diagnostic>> {
-    if dsl1::is_dsl1(script) {
-        let span = script.items.first().map(item_span).unwrap_or_default();
-        return Err(vec![Diagnostic::new(DSL1, span)]);
+    if let Some(error) = dsl1_error(script) {
+        return Err(vec![error]);
     }
     let mut lowering = Lowering::new(source);
     let mut module = Module::default();

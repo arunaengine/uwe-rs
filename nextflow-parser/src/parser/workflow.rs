@@ -57,7 +57,7 @@ impl Parser<'_> {
             };
             if implicit && sections.is_empty() {
                 // Legacy syntax: the statements before the first label are the main block.
-                legacy |= !order.accept([WorkflowSection::Main as u8]);
+                order.accept([WorkflowSection::Main as u8]);
                 sections.push(WorkflowSection::Main);
                 legacy = true;
             } else {

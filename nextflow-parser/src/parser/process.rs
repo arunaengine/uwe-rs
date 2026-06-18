@@ -338,7 +338,18 @@ impl Parser<'_> {
             ProcessSection::Body(kind) => {
                 let block = self.labeled_block(is_label);
                 let end = section_end(&block.statements, start);
-                process.body = Some(ProcessBody { kind, block });
+                match &mut process.body {
+                    // Legacy syntax: a second `script:` goes on with the first, as in the
+                    // legacy parser, where a label only marks a statement.
+                    Some(body) if body.kind == kind => {
+                        let message = "Invalid process definition -- check for missing or \
+                                       out-of-order section labels";
+                        self.legacy_at(message, block.span);
+                        body.block.statements.extend(block.statements);
+                        body.block.span = body.block.span.to(block.span);
+                    }
+                    _ => process.body = Some(ProcessBody { kind, block }),
+                }
                 end
             }
             ProcessSection::Stub => {

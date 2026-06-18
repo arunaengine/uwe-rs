@@ -8,7 +8,7 @@ use crate::ast::{Class, Function, Item, Member, Name, Parameter, QualifiedName};
 use crate::token::TokenKind;
 
 /// Modifiers of classes and their members, which change nothing here but `static`.
-const MODIFIERS: &[&str] = &[
+pub(super) const MODIFIERS: &[&str] = &[
     "public",
     "private",
     "protected",

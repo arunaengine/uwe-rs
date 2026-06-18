@@ -534,6 +534,16 @@ impl Parser<'_> {
 
     /// The start of the `functionDef` rule: `def`, a return type or both, then a name and `(`.
     pub(super) fn function_head(&mut self) -> Parse<(Option<Type>, Name)> {
+        // Legacy syntax: modifiers like `public static`, which change nothing for a function of
+        // a script.
+        while self.at(TokenKind::Identifier) && super::class::MODIFIERS.contains(&self.word(0)) {
+            let token = self.bump();
+            let message = format!(
+                "`{}` is not allowed as an identifier because it is a Groovy keyword",
+                self.text(token)
+            );
+            self.legacy_at(message, token.span);
+        }
         let def = self.eat(TokenKind::Def);
         let mut return_type = None;
         // Legacy syntax: `void name(...)`, a function without a result.

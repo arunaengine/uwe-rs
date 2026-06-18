@@ -229,14 +229,9 @@ impl<'a> Evaluator<'a> {
     ) -> Result<(), ConfigError> {
         for statement in statements {
             match statement {
-                ConfigStatement::Include { path, span } => {
-                    if !prefix.is_empty() {
-                        let message =
-                            "Config includes are only allowed at the top-level or in a profile";
-                        return Err(invalid(file, message, *span));
-                    }
-                    self.include(file, path, prefix)?;
-                }
+                // Legacy syntax: an include inside a block, whose settings the legacy parser puts
+                // into the block.
+                ConfigStatement::Include { path, .. } => self.include(file, path, prefix)?,
                 ConfigStatement::Assign { path, value, span } => {
                     self.assign(file, path, value, prefix, *span)?;
                 }
@@ -466,7 +461,7 @@ impl<'a> Evaluator<'a> {
     }
 
     /// `includeConfig path`: the file runs with a copy of the current params, and its tree
-    /// merges into this one.
+    /// merges into this one, inside the block `prefix`.
     fn include(
         &mut self,
         file: &mut File,
@@ -489,7 +484,13 @@ impl<'a> Evaluator<'a> {
             false => base.join(&text),
         };
         let params = tree::get(&file.tree, &["params"]).unwrap_or_else(tree::map);
-        let tree = self.file(&included, tree::deep_copy(&params), Some(file))?;
+        let mut tree = self.file(&included, tree::deep_copy(&params), Some(file))?;
+        if !prefix.is_empty() {
+            let nested = tree::map();
+            tree::assign(&nested, prefix, tree)
+                .map_err(|message| invalid(file, &message, path.span))?;
+            tree = nested;
+        }
         tree::deep_merge(&file.tree, &tree);
         Ok(())
     }

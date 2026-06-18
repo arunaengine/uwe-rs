@@ -361,3 +361,19 @@ fn includes_inside_profiles() {
         assert_eq!(get(&config, &["params", expected[0]]), expected[1]);
     }
 }
+
+/// `includeConfig` inside a block puts the settings of the file into the block, as Nextflow
+/// 26.04.6 with the legacy parser gives `singularity.params.q = 1` for this config.
+#[test]
+fn includes_inside_blocks() {
+    let main = "profiles {\n  standard {\n    singularity {\n      enabled = true\n      includeConfig 'c.config'\n    }\n  }\n}\n";
+    let (config, _) = load_files(&[
+        ("nextflow.config", main),
+        ("c.config", "params.q = 1\nx.y = 2\n"),
+    ]);
+    let config = config.unwrap();
+    assert_eq!(get(&config, &["singularity", "enabled"]), "true");
+    assert_eq!(get(&config, &["singularity", "params", "q"]), "1");
+    assert_eq!(get(&config, &["singularity", "x", "y"]), "2");
+    assert!(config.get(&["params", "q"]).is_none());
+}

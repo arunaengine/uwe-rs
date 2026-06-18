@@ -337,3 +337,16 @@ fn varargs_parameters() {
         "[x, 2]"
     );
 }
+
+/// Legacy syntax: `a and b` is the command chain `a.and(b)` of Groovy's Boolean methods, as
+/// in the `if` statements of eisca's config; Nextflow 26.04.6 gives `[true, false, false]`.
+#[test]
+fn logical_command_chains() {
+    assert_eq!(
+        value(
+            "def a = ['x', 'y']\n\
+             [(a.contains('x') and !a.contains('z')), (a.contains('x') and a.contains('z')), true.and(false)]"
+        ),
+        "[true, false, false]"
+    );
+}

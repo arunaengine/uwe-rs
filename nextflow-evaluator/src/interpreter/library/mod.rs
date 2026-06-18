@@ -120,6 +120,16 @@ impl Interpreter<'_> {
             },
             Value::Boolean(value) => match (name, arguments) {
                 ("toBoolean" | "booleanValue", []) => Some(Value::Boolean(*value)),
+                // Groovy's logical methods, whose argument counts by its Groovy truth.
+                ("and" | "or" | "xor" | "implies", [other]) => {
+                    let other = other.truth();
+                    Some(Value::Boolean(match name {
+                        "and" => *value && other,
+                        "or" => *value || other,
+                        "xor" => *value != other,
+                        _ => !*value || other,
+                    }))
+                }
                 _ => None,
             },
             Value::Date(millis) => match (name, arguments) {

@@ -115,7 +115,7 @@ fn is_package_part(kind: TokenKind) -> bool {
 }
 
 /// Tokens that begin an expression, used to tell a nullable marker from a conditional.
-fn starts_expression(kind: TokenKind) -> bool {
+pub(super) fn starts_expression(kind: TokenKind) -> bool {
     use TokenKind::*;
     is_name(kind)
         || matches!(

@@ -96,3 +96,17 @@ fn indexing_with_ranges() {
         "UnsupportedOperationException: "
     );
 }
+
+/// A range with a null end fails with Groovy's message, as Nextflow 26.04.6 shows it for
+/// `1..params.repetitions` without the param.
+#[test]
+fn null_ends() {
+    assert_eq!(
+        run("1..null").0.unwrap_err(),
+        "IllegalArgumentException: Must specify a non-null value for the 'to' index in a Range"
+    );
+    assert_eq!(
+        run("null..1").0.unwrap_err(),
+        "IllegalArgumentException: Must specify a non-null value for the 'from' index in a Range"
+    );
+}

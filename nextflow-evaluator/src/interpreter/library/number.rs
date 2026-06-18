@@ -211,3 +211,35 @@ pub(in crate::interpreter) fn convert(
         _ => return None,
     })
 }
+
+/// `NumberFormat.parse(text)` of the US locale: the number at the start of the text, with
+/// commas between groups of digits, as a `Long`, or a `Double` when it has a fraction.
+pub(super) fn parse_grouped(text: &str) -> Result<Value, Exception> {
+    let mut number = String::new();
+    let mut fraction = false;
+    for (index, character) in text.char_indices() {
+        match character {
+            '-' if index == 0 => number.push('-'),
+            '0'..='9' => number.push(character),
+            ',' if !fraction && number.chars().any(|c| c.is_ascii_digit()) => {}
+            '.' if !fraction => {
+                fraction = true;
+                number.push('.');
+            }
+            _ => break,
+        }
+    }
+    let unparseable =
+        || Exception::new("ParseException", format!("Unparseable number: \"{text}\""));
+    if !number.chars().any(|c| c.is_ascii_digit()) {
+        return Err(unparseable());
+    }
+    let number = number.trim_end_matches('.');
+    match number.parse::<i64>() {
+        Ok(long) if !number.contains('.') => Ok(Value::Number(Number::Long(long))),
+        _ => number
+            .parse::<f64>()
+            .map(|double| Value::Number(Number::Double(double)))
+            .map_err(|_| unparseable()),
+    }
+}

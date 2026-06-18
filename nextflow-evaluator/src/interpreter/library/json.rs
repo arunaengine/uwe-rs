@@ -166,6 +166,27 @@ impl Interpreter<'_> {
             }
             _ => {}
         }
+        let class = object.borrow().class;
+        let text = match &object.borrow().state {
+            State::Text(text) => Some(text.clone()),
+            _ => None,
+        };
+        match (class, name, arguments, text) {
+            ("java.time.format.DateTimeFormatter", "withZone", [_], _) => {
+                return Ok(Some(Value::Object(object.clone())));
+            }
+            ("java.time.format.DateTimeFormatter", "format", [Value::Date(millis)], Some(text)) => {
+                return Ok(Some(Value::string(
+                    crate::date::format(*millis, &text).at(span)?,
+                )));
+            }
+            ("java.text.NumberFormat", "parse", [source], _) => {
+                return Ok(Some(
+                    super::number::parse_grouped(&source.to_string()).at(span)?,
+                ));
+            }
+            _ => {}
+        }
         let builder = object.borrow().class == "groovy.json.JsonGenerator$Options";
         let slurper = object.borrow().class == "groovy.yaml.YamlSlurper";
         let mut target = object.borrow_mut();

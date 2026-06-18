@@ -718,3 +718,15 @@ fn identity_value_of_and_insertion() {
     let (_, printed) = run(source, &Options::default()).expect("runs");
     assert_eq!(printed, "[true, true, false, null, 5, [1, 9, 2]]\n");
 }
+
+/// `java.text.NumberFormat` parses grouped numbers and `DateTimeFormatter` formats the start of
+/// the run, as in pathogensurveillance and taxodactyl; Nextflow 26.04.6 prints
+/// `[1234567, 12.5, -3, 15]`.
+#[test]
+fn number_and_date_formats() {
+    let source = "workflow {\n    def nf = java.text.NumberFormat.getInstance(Locale.US)\n    \
+                  def f = java.time.format.DateTimeFormatter.ofPattern('yyyyMMdd HHmmss').withZone(java.time.ZoneId.systemDefault())\n    \
+                  println([nf.parse('1,234,567').intValue(), nf.parse('12.5x'), nf.parse('-3'), f.format(workflow.start).size()])\n}\n";
+    let (_, printed) = run(source, &Options::default()).expect("runs");
+    assert_eq!(printed, "[1234567, 12.5, -3, 15]\n");
+}

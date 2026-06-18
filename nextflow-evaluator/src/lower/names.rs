@@ -160,6 +160,7 @@ pub(super) const CLASSES: &[&str] = &[
     "Closure",
     "Collection",
     "Date",
+    "DateTimeFormatter",
     "Double",
     "Duration",
     "Exception",
@@ -185,6 +186,7 @@ pub(super) const CLASSES: &[&str] = &[
     "MessageDigest",
     "Nextflow",
     "Number",
+    "NumberFormat",
     "Object",
     "Path",
     "Paths",
@@ -204,4 +206,5 @@ pub(super) const CLASSES: &[&str] = &[
     "VersionNumber",
     "Yaml",
     "YamlSlurper",
+    "ZoneId",
 ];

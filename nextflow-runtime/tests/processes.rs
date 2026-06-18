@@ -750,3 +750,13 @@ fn modifiers_and_final_declarations() {
     let (_, printed) = run(source, &Options::default()).expect("runs");
     assert_eq!(printed, "[5, true]\n");
 }
+
+/// Legacy syntax: a second `script:` goes on with the first, as in pgsc_calc's
+/// MATCH_COMBINE; Nextflow 26.04.6 runs `echo --a`.
+#[test]
+fn repeated_script_sections() {
+    let source = "process P {\n    input:\n    val x\n    output:\n    stdout\n    script:\n    def ambig = x ? '--a' : ''\n\n    \
+                  script:\n    if (x == 1)\n        \"echo ${ambig}\"\n    else\n        'echo no'\n}\nworkflow {\n    P(1)\n}\n";
+    let (tasks, _) = run(source, &Options::default()).expect("runs");
+    assert_eq!(tasks[0].script, "#!/bin/bash -ue\necho --a\n");
+}

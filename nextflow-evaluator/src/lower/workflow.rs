@@ -39,13 +39,21 @@ impl Lowering<'_> {
                     let name = &target.name;
                     let value = match value {
                         // Legacy syntax: `name = value` also sets the variable, which later
-                        // emits may read, as in `sample_size = meta.count()`.
+                        // emits may read, as in `sample_size = meta.count()`. A variable of
+                        // the body with that name keeps its value, for the closures that read
+                        // it later.
                         Some(value) => {
                             let span = value.span;
                             let value = self.expression(value);
-                            self.implicit_declarations = true;
-                            let place = self.assigned_variable(&name.text, name.span);
-                            self.implicit_declarations = false;
+                            let place = match self.scopes.resolve(&name.text) {
+                                Some(_) => None,
+                                None => {
+                                    self.implicit_declarations = true;
+                                    let place = self.assigned_variable(&name.text, name.span);
+                                    self.implicit_declarations = false;
+                                    place
+                                }
+                            };
                             match place {
                                 Some(place) => Expression {
                                     kind: ExpressionKind::Assign {

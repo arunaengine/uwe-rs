@@ -212,7 +212,16 @@ pub(super) fn summary(
     workflow: &Value,
     context: &mut Context,
 ) -> Result<Value, Error> {
-    let schema = parameters_schema(options, context)?;
+    // nf-validation reads the schema in a `try`, and without one it goes on with the core
+    // options only, as for a pipeline that has no nextflow_schema.json.
+    let tree = match parameters_schema(options, context) {
+        Ok(schema) => schema.tree,
+        Err(error) => {
+            let message = format!("Could not read parameters settings from JSON. {error}");
+            context.host.print(&format!("WARN: {message}\n"));
+            Value::map([])
+        }
+    };
     let mut core = Vec::new();
     let mut add = |name: &str, only_set: bool| {
         let value = get(workflow, name).unwrap_or(Value::Null);
@@ -237,7 +246,7 @@ pub(super) fn summary(
     core.push((Value::string("configFiles"), Value::string(files)));
     let outdir = get(&context.params, "outdir").map_or("null".into(), |o| o.to_string());
     let mut summary = vec![(Value::string("Core Nextflow options"), Value::map(core))];
-    for (title, properties) in groups(&schema.tree) {
+    for (title, properties) in groups(&tree) {
         let mut changed = Vec::new();
         for (name, definition) in properties {
             let Some(value) = get(&context.params, &name) else {

@@ -44,6 +44,67 @@ test-workflows:
 		mv "$work" "$target"
 	done
 
+# Fetches the Nextflow workflows of WorkflowHub at the versions of
+# iunctus/tests/fixtures/workflowhub_revisions.txt: the files that runs read, as for the nf-core
+# test workflows, and also the files at the top, the files of folders of test data and
+# examples, and text files of data and settings, at any depth, from the RO-Crate of each
+# version, else from its git repository, else from the git tree that WorkflowHub keeps; files
+# over 1 MiB stay empty.
+workflowhub-test-workflows:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	root="${WORKFLOWHUB_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nextflow-workflowhub}"
+	mkdir -p "$root"
+	wanted='(^|/)(nextflow_schema\.json|ro-crate-metadata\.json|CITATIONS\.md)$|\.(nf|config|groovy|ya?ml|json|csv|tsv|txt)$|^[^/]+$|(^|/)(assets|bin|conf|data|examples?|tests?|test_?data|templates)/|^docs/images/'
+	# The paths of the files below a folder of the git tree of a WorkflowHub entry version.
+	workflowhub_tree() {
+		curl -sfL --retry 3 -H 'Accept: application/json' "$1/tree/$2" | jq -r '.tree[] | .type + " " + .path' \
+			| while read -r type name; do
+				if [ "$type" = tree ]; then workflowhub_tree "$1" "$name"; else printf '%s\n' "$name"; fi
+			done
+	}
+	grep -v '^#' iunctus/tests/fixtures/workflowhub_revisions.txt | while read -r id version commit remote title; do
+		target="$root/$id"
+		[ -d "$target" ] && continue
+		work="$(mktemp -d "$root/.fetch.XXXXXX")"
+		if curl -sfL --retry 3 -o "$work.zip" "https://workflowhub.eu/workflows/$id/ro_crate?version=$version" \
+			&& unzip -tqq "$work.zip" >/dev/null 2>&1; then
+			unzip -Z1 "$work.zip" | grep -E "$wanted" | grep -v '/$' \
+				| xargs -r -d '\n' unzip -qo "$work.zip" -d "$work" || true
+			# The files that extracted links point to, like `params.config -> params.config.test`.
+			find "$work" -xtype l | while IFS= read -r link; do
+				linked="$(realpath -m --relative-to="$work" "$(dirname "$link")/$(readlink "$link")")"
+				unzip -qo "$work.zip" "$linked" -d "$work" 2>/dev/null || true
+			done
+		elif [ "$remote" != - ] && git -C "$work" init -q && git -C "$work" remote add origin "$remote" \
+			&& git -C "$work" fetch -q --depth 1 --filter=blob:limit=1m origin "$commit"; then
+			git -C "$work" ls-tree -r --name-only FETCH_HEAD | grep -E "$wanted" \
+				| while IFS= read -r path; do
+					mkdir -p "$(dirname "$work/$path")"
+					git -C "$work" cat-file blob "FETCH_HEAD:$path" > "$work/$path" 2>/dev/null || : > "$work/$path"
+				done
+			rm -rf "$work/.git"
+		else
+			rm -rf "$work"
+			mkdir -p "$work"
+			tree="https://workflowhub.eu/workflows/$id/git/$version"
+			workflowhub_tree "$tree" "" | grep -E "$wanted" | while IFS= read -r path; do
+				mkdir -p "$(dirname "$work/$path")"
+				curl -sfL --retry 3 -o "$work/$path" "$tree/raw/${path// /%20}" || rm -f "$work/$path"
+			done || true
+		fi
+		rm -f "$work.zip"
+		if [ -z "$(ls -A "$work")" ]; then
+			echo "skipped $id: WorkflowHub gives none of its files" >&2
+			rm -rf "$work"
+			continue
+		fi
+		find "$work" -type f -size +1M -exec truncate -s 0 {} +
+		# RO-Crates keep no file modes, and Nextflow runs the scripts of bin/ folders.
+		find "$work" -type f -path '*/bin/*' -exec chmod +x {} +
+		mv "$work" "$target"
+	done
+
 # Parses the nf-core test workflows, compares the result with `nextflow lint`, and lowers every
 # module.
 test-workflows-test:

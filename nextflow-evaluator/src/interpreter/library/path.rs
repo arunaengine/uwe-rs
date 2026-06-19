@@ -83,6 +83,8 @@ pub(super) fn path_method(path: &Rc<PathValue>, name: &str, arguments: &[Value])
         ("toAbsolutePath" | "normalize" | "toRealPath" | "toPath" | "toFile", []) => {
             Some(Value::Path(path.clone()))
         }
+        // `java.io.File.getAbsolutePath()`: the text of the absolute path.
+        ("getAbsolutePath", []) => Some(Value::string(path.uri())),
         ("isAbsolute", []) => Some(Value::Boolean(path.is_absolute())),
         ("resolve", [other]) => path_value(path.resolve(&text(other)?)),
         ("resolveSibling", [other]) => path_value(path.resolve_sibling(&text(other)?)),

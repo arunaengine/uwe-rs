@@ -138,6 +138,13 @@ impl Host for Builder<'_> {
         if !self.network.is_value(*source) {
             return Ok(None);
         }
+        // `getVal()` of a value channel that is bound already gives its value, as Nextflow's
+        // `DataflowVariable` does while the workflow is built.
+        if matches!(name, "val" | "value")
+            && let Some(value) = self.network.bound(*source)
+        {
+            return Ok(Some(value));
+        }
         let output = self.network.channel(true);
         let node = Invoke {
             output,

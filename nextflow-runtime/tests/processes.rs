@@ -760,3 +760,13 @@ fn repeated_script_sections() {
     let (tasks, _) = run(source, &Options::default()).expect("runs");
     assert_eq!(tasks[0].script, "#!/bin/bash -ue\necho --a\n");
 }
+
+/// `.value` of a plain value that a workflow emits gives the value while the workflow is
+/// built, as in spatialvpt's `report_only.value`; Nextflow 26.04.6 prints `false` and `no`.
+#[test]
+fn value_of_an_emitted_plain_value() {
+    let source = "workflow W {\n    take:\n    flag\n    main:\n    println(flag)\n    emit:\n    flag = flag\n}\n\
+                  workflow {\n    W(false)\n    def f = W.out.flag\n    if (f.value) { println('yes') } else { println('no') }\n}\n";
+    let (_, printed) = run(source, &Options::default()).expect("runs");
+    assert_eq!(printed, "false\nno\n");
+}

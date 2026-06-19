@@ -153,6 +153,11 @@ pub fn load(
     }
     let params = tree::get(&merged, &["params"]).unwrap_or_else(tree::map);
     tree::deep_merge(&params, &options.params);
+    if let Value::Map(params) = &params {
+        for value in params.borrow().entries.values() {
+            config_maps(value);
+        }
+    }
     Ok(Config { tree: merged })
 }
 
@@ -162,4 +167,23 @@ fn unknown_profile(name: &str, declared: &BTreeSet<String>) -> String {
         "Unknown configuration profile: '{name}'\n\nAvailable config profiles: {}",
         names.join(", ")
     )
+}
+
+/// Makes the maps in a value of the config, also those in lists, `nextflow.config.ConfigMap`,
+/// as Nextflow gives them to scripts.
+fn config_maps(value: &Value) {
+    match value {
+        Value::Map(map) => {
+            map.borrow_mut().kind = nextflow_evaluator::value::MapKind::Config;
+            for value in map.borrow().entries.values() {
+                config_maps(value);
+            }
+        }
+        Value::List(list) => {
+            for item in &list.borrow().items {
+                config_maps(item);
+            }
+        }
+        _ => {}
+    }
 }

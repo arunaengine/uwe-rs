@@ -167,6 +167,8 @@ pub enum MapKind {
     /// `nextflow.processor.LazyMap`, the `task.ext` map: reading a closure value calls it
     /// with the task's variables in scope.
     Lazy,
+    /// `nextflow.config.ConfigMap`, a `LinkedHashMap` of the config, like a map in params.
+    Config,
 }
 
 #[derive(Clone, Debug)]
@@ -268,6 +270,7 @@ impl Value {
                 MapKind::Record => "RecordMap",
                 MapKind::TreeMap => "TreeMap",
                 MapKind::Lazy => "LazyMap",
+                MapKind::Config => "ConfigMap",
             },
             Value::Set(set) => match set.borrow().kind {
                 SetKind::LinkedHashSet => "LinkedHashSet",
@@ -324,6 +327,7 @@ impl Value {
                 MapKind::Record => "nextflow.util.RecordMap",
                 MapKind::TreeMap => "java.util.TreeMap",
                 MapKind::Lazy => "nextflow.processor.LazyMap",
+                MapKind::Config => "nextflow.config.ConfigMap",
             },
             Value::Set(set) => match set.borrow().kind {
                 SetKind::LinkedHashSet => "java.util.LinkedHashSet",

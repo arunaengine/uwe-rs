@@ -115,6 +115,7 @@ pub fn assignable(to: &str, from: &str) -> bool {
         "java.util.LinkedHashMap" | "nextflow.util.RecordMap" | "java.util.TreeMap" => {
             &["java.util.Map"]
         }
+        "nextflow.config.ConfigMap" => &["java.util.LinkedHashMap", "java.util.Map"],
         "java.lang.String" | "org.codehaus.groovy.runtime.GStringImpl" => {
             &["java.lang.CharSequence"]
         }

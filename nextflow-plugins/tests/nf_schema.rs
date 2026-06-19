@@ -362,3 +362,14 @@ fn ignored_parameters_that_the_schema_knows_are_validated() {
         "{error}"
     );
 }
+
+/// All params are checked, also when the groups of the schema are below `defs`, which
+/// nf-schema does not take for groups, as Nextflow 26.04.6 runs nf-synteny.
+#[test]
+fn params_outside_the_groups_are_checked() {
+    let options = Value::map([(
+        Value::string("parameters_schema"),
+        Value::string("schema_defs.json"),
+    )]);
+    assert!(params_call("validateParameters", params(&[]), vec![options]).is_ok());
+}

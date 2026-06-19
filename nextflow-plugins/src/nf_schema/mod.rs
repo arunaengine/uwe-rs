@@ -69,7 +69,7 @@ fn validate(
         .is_none_or(|exit| exit.truth());
     let schema = schema(schema_path, context)?;
     let instance = json(input);
-    let validator = paths::validator(&schema.json, &instance, context)
+    let validator = paths::validator(&schema.json, &instance, context, false)
         .map_err(|error| thrown(format!("Invalid JSON schema: {error}")))?;
     let errors: Vec<String> = errors(&validator, &instance, "object", lenient(context))
         .into_iter()

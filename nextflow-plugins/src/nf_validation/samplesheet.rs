@@ -160,7 +160,7 @@ pub(super) fn validate_file(
             })
             .collect();
     let instance = serde_json::Value::Array(rows);
-    let validator = paths::validator(&schema.json, &instance, context)
+    let validator = paths::validator(&schema.json, &instance, context, true)
         .map_err(|error| thrown(format!("Invalid samplesheet schema: {error}")))?;
     let problems: Vec<String> = everit::problems(&validator, &instance)
         .into_iter()

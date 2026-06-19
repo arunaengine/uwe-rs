@@ -132,7 +132,7 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
             .filter_map(|(name, value)| Some((name, json(&cleaned(&value)?))))
             .collect(),
     );
-    let validator = paths::validator(&schema.json, &instance, context)
+    let validator = paths::validator(&schema.json, &instance, context, true)
         .map_err(|error| thrown(format!("Invalid parameters schema: {error}")))?;
     for problem in everit::problems(&validator, &instance) {
         problems.push(match problem {

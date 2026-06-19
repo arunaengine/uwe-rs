@@ -413,7 +413,7 @@ fn check(
     file: &PathValue,
     context: &mut Context,
 ) -> Result<(), Error> {
-    let validator = super::paths::validator(schema, instance, context)
+    let validator = super::paths::validator(schema, instance, context, false)
         .map_err(|error| thrown(format!("Invalid samplesheet schema: {error}")))?;
     let errors: Vec<String> = errors(&validator, instance, "field", super::lenient(context))
         .into_iter()

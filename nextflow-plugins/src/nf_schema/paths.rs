@@ -29,10 +29,13 @@ enum Named {
 type Lookup = Arc<HashMap<String, Named>>;
 
 /// A validator with nf-schema's path keywords. Other formats are not checked, as before.
+/// With `path_exists`, `exists` only checks values whose format is a path, as nf-validation
+/// 1.1.3 does.
 pub(crate) fn validator(
     schema: &Json,
     instance: &Json,
     context: &mut Context,
+    path_exists: bool,
 ) -> Result<jsonschema::Validator, String> {
     let mut names = HashSet::new();
     path_properties(schema, &mut names);
@@ -60,9 +63,14 @@ pub(crate) fn validator(
                 lookup: formats.clone(),
             }))
         })
-        .with_keyword("exists", move |_, value, _| {
+        .with_keyword("exists", move |parent, value, _| {
+            let format = parent
+                .get("format")
+                .and_then(Json::as_str)
+                .unwrap_or_default();
+            let checked = !path_exists || ["file-path", "directory-path", "path"].contains(&format);
             Ok(Box::new(Exists {
-                wanted: value.as_bool(),
+                wanted: value.as_bool().filter(|_| checked),
                 lookup: lookup.clone(),
             }))
         })

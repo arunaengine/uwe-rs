@@ -28,12 +28,11 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
             .iter()
             .flat_map(|(_, properties)| properties)
             .any(|(property, _)| *property == name);
-        if !known {
-            if !ignored.contains(&name) {
-                unknown.push(format!("* --{name}: {value}"));
-            }
-            continue;
+        if !known && !ignored.contains(&name) {
+            unknown.push(format!("* --{name}: {value}"));
         }
+        // As in nf-schema, all params are checked, also those the groups do not name, like
+        // the params of a schema whose groups are not below `$defs` or `definitions`.
         instance.insert(name, json(&value));
     }
     if !unknown.is_empty() {

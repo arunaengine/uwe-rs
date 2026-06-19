@@ -88,6 +88,11 @@ impl Parser<'_> {
             let valid = match &statement.kind {
                 StatementKind::Expression(expression) => match &expression.kind {
                     ExpressionKind::Variable(_) => true,
+                    // Legacy syntax: a string, like a description of the process, does nothing.
+                    ExpressionKind::Literal(Literal::String(_)) | ExpressionKind::GString(_) => {
+                        self.legacy_at(message, statement.span);
+                        true
+                    }
                     ExpressionKind::MethodCall { target, .. } => target.is_none(),
                     ExpressionKind::Binary {
                         operator: BinaryOperator::Subtract,

@@ -264,7 +264,22 @@ impl Interpreter<'_> {
                 {
                     continue;
                 }
-                let arguments = match this.arguments(&mut task.frame, &directive.arguments) {
+                // A closure, like `tag { x }`, gives its value, as Nextflow's `TaskConfig`
+                // calls it for the task.
+                let resolved = this
+                    .arguments(&mut task.frame, &directive.arguments)
+                    .and_then(|arguments| {
+                        arguments
+                            .into_iter()
+                            .map(|argument| match argument {
+                                Value::Closure(closure) => {
+                                    this.call_closure_value(&closure, Vec::new(), directive.span)
+                                }
+                                other => Ok(other),
+                            })
+                            .collect::<Result<Vec<Value>, Error>>()
+                    });
+                let arguments = match resolved {
                     Ok(arguments) => arguments,
                     // Nextflow reads the tag only to name the task, and ignores its errors.
                     Err(error) if &*directive.name == "tag" && error.exception().is_some() => {

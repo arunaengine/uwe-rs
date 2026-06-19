@@ -780,3 +780,13 @@ fn emits_read_earlier_emits() {
     let (_, printed) = run(source, &Options::default()).expect("runs");
     assert_eq!(printed, "2\n");
 }
+
+/// Legacy syntax: a string among the directives of a process, like a description, does
+/// nothing, as Nextflow 26.04.6 runs the `RENAME_FASTA_CONTIGS` of 2105.
+#[test]
+fn strings_among_directives() {
+    let source = "process P {\n    '''\n    Some docs\n    '''\n    tag { x }\n    input:\n    val x\n    output:\n    stdout\n    \
+                  script:\n    \"echo ${x}\"\n}\nworkflow {\n    P(1)\n}\n";
+    let (tasks, _) = run(source, &Options::default()).expect("runs");
+    assert_eq!(tasks[0].name, "P (1)");
+}

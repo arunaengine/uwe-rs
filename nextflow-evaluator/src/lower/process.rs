@@ -96,6 +96,14 @@ impl Lowering<'_> {
             if directive.is_variable_statement() {
                 continue;
             }
+            // Legacy syntax: a string among the directives, like a description, does nothing.
+            if let StatementKind::Expression(ast::Expression {
+                kind: Syntax::Literal(ast::Literal::String(_)) | Syntax::GString(_),
+                ..
+            }) = &directive.kind
+            {
+                continue;
+            }
             if let StatementKind::If { .. } = directive.kind {
                 self.legacy("Invalid process directive", directive.span);
                 let mut guarded = Vec::new();

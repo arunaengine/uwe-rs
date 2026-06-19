@@ -845,7 +845,9 @@ pub(super) fn instance_of(value: &Value, class: &str) -> bool {
         }
         Value::List(_) => &["List", "Collection", "Iterable"],
         Value::Set(_) => &["HashSet", "Set", "Collection", "Iterable"],
-        Value::Map(map) if map.borrow().kind == MapKind::Record => &["LinkedHashMap", "Map"],
+        Value::Map(map) if matches!(map.borrow().kind, MapKind::Record | MapKind::Config) => {
+            &["LinkedHashMap", "Map"]
+        }
         Value::Map(_) => &["Map"],
         Value::MemoryUnit(_) | Value::Duration(_) | Value::Date(_) => &["Comparable"],
         Value::Exception(exception) => return class == "Object" || exception.is_instance(class),

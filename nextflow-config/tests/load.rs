@@ -144,3 +144,28 @@ fn process_selectors_apply_in_order() {
         .unwrap();
     assert_eq!(show(&settings.selected), "cpus=4");
 }
+
+/// The maps of params, also those in lists, are `nextflow.config.ConfigMap`, as Nextflow
+/// 26.04.6 gives them to scripts; old nf-core schema checks tell them from `LinkedHashMap`.
+#[test]
+fn param_maps_are_config_maps() {
+    let config = load_text("params.m = [a: [b: 1], l: [[c: 1]]]\n").expect("loads");
+    let class = |path: &[&str]| {
+        nextflow_evaluator::value::tree::get(&config.tree, path)
+            .map(|value| value.java_class_name())
+    };
+    assert_eq!(class(&["params", "m"]), Some("nextflow.config.ConfigMap"));
+    assert_eq!(
+        class(&["params", "m", "a"]),
+        Some("nextflow.config.ConfigMap")
+    );
+    let Some(Value::List(list)) =
+        nextflow_evaluator::value::tree::get(&config.tree, &["params", "m", "l"])
+    else {
+        panic!("a list");
+    };
+    assert_eq!(
+        list.borrow().items[0].java_class_name(),
+        "nextflow.config.ConfigMap"
+    );
+}

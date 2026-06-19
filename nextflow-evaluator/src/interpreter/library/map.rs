@@ -50,6 +50,9 @@ impl Interpreter<'_> {
                 Some(value) => value,
                 None => self.default_value(map, key, span)?,
             },
+            // Nextflow's `Bolts.deepMerge`: a copy with the entries of the other map, merging
+            // the maps that both have under one key.
+            ("deepMerge", [other @ Value::Map(_)]) => deep_merge(&object, other),
             ("withDefault", [Value::Closure(f)]) => {
                 let copy = super::copy_map(&object);
                 if let Value::Map(copy) = &copy {
@@ -302,4 +305,22 @@ fn parameter_count(f: &Closure) -> usize {
     } else {
         f.code.parameters.len()
     }
+}
+
+/// A copy of `target` with the entries of `source`; where both hold a map under a key, the
+/// merge of the two.
+fn deep_merge(target: &Value, source: &Value) -> Value {
+    let result = super::copy_map(target);
+    if let (Value::Map(result), Value::Map(source)) = (&result, source) {
+        let entries: Vec<(Key, Value)> = source.borrow().entries.clone().into_iter().collect();
+        for (key, value) in entries {
+            let existing = result.borrow().entries.get(&key).cloned();
+            let merged = match (existing, &value) {
+                (Some(existing @ Value::Map(_)), Value::Map(_)) => deep_merge(&existing, &value),
+                _ => value,
+            };
+            result.borrow_mut().entries.insert(key, merged);
+        }
+    }
+    result
 }

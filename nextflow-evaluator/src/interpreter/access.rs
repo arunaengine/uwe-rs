@@ -187,6 +187,8 @@ impl Interpreter<'_> {
                 self.call_method(object, "setText", vec![value], span)?;
                 Ok(())
             }
+            // A method added to a metaclass, like `Map.metaClass.deepMerge = { ... }`.
+            Value::Namespace(namespace) if namespace.starts_with("metaClass:") => Ok(()),
             _ => {
                 let class = object.class_name();
                 Err(unsupported(

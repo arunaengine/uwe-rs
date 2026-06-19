@@ -32,6 +32,7 @@ pub(super) const SCRIPT_FUNCTIONS: &[&str] = &[
     "branchCriteria",
     "env",
     "error",
+    "evaluate",
     "exit",
     "file",
     "files",

@@ -135,6 +135,39 @@ impl Interpreter<'_> {
             ("println", []) => self.host.print("\n"),
             ("println", [value]) => self.host.print(&format!("{value}\n")),
             ("print", [value]) => self.host.print(&value.to_string()),
+            // Groovy's `evaluate(file)`: runs the statements of a Groovy script, like the
+            // `Map.metaClass` additions of lib/MapExtended.groovy.
+            ("evaluate", [file @ (Value::Path(_) | Value::String(_) | Value::GString(_))]) => {
+                let path = match file {
+                    Value::Path(path) => (**path).clone(),
+                    other => PathValue::parse(&other.to_string(), &self.host.launch_dir()),
+                };
+                let bytes = self.host.read(&path).map_err(|error| error.or_at(span))?;
+                let source = String::from_utf8_lossy(&bytes).into_owned();
+                let parsed = nextflow_parser::parse_script(&source);
+                let lowered = match parsed.errors.first() {
+                    None => crate::lower::lower_module(&parsed.tree, &source).map_err(|errors| {
+                        errors
+                            .first()
+                            .map(|e| e.message.clone())
+                            .unwrap_or_default()
+                    }),
+                    Some(error) => Err(error.message.clone()),
+                };
+                let module = match lowered {
+                    Ok(module) => Rc::new(module),
+                    Err(message) => {
+                        let message = format!("{}: {message}", path.text());
+                        return Err(thrown(
+                            Exception::new("MultipleCompilationErrorsException", message),
+                            span,
+                        ));
+                    }
+                };
+                *module.source.borrow_mut() = Some(source.into());
+                *module.path.borrow_mut() = Some(path.text().into());
+                self.run_entry(&module)?;
+            }
             // Groovy's `sprintf` and `printf`: Java's `String.format`.
             ("sprintf" | "printf", [pattern, rest @ ..]) => {
                 let rest = match rest {

@@ -427,3 +427,19 @@ fn staged_names_in_folders() {
     assert_eq!(path.simple_name(), "a");
     assert_eq!(path.extension(), "gz");
 }
+
+/// Legacy syntax: `try (resource = ...) { ... }` declares the resource for its body, as
+/// pgsc_calc's `count_scores` does; Nextflow 26.04.6 gives `a`.
+#[test]
+fn try_with_resources() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let dir = directory.path().display();
+    let body = format!(
+        "def f = new File('{dir}/r.txt')\n\
+         f.text = 'a\\nb'\n\
+         def line = null\n\
+         try (def r = new BufferedReader(new FileReader(f.toString()))) {{\n    line = r.readLine()\n}}\n\
+         line"
+    );
+    assert_eq!(value(&body), "a");
+}

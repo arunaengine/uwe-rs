@@ -443,3 +443,12 @@ fn try_with_resources() {
     );
     assert_eq!(value(&body), "a");
 }
+
+/// `getAbsolutePath()` of a `java.io.File` gives the text of its absolute path, as nf-synteny
+/// uses it; Groovy gives `/tmp/a.fa` and the launch directory with `a.fa` for these.
+#[test]
+fn absolute_paths_of_files() {
+    let body = "[new File('/tmp/a.fa').getAbsolutePath(), new File('a.fa').getAbsolutePath().endsWith('/a.fa'), \
+                new File('a.fa').getAbsolutePath() instanceof String]";
+    assert_eq!(value(body), "[/tmp/a.fa, true, true]");
+}

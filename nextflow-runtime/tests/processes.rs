@@ -770,3 +770,13 @@ fn value_of_an_emitted_plain_value() {
     let (_, printed) = run(source, &Options::default()).expect("runs");
     assert_eq!(printed, "false\nno\n");
 }
+
+/// Legacy syntax: an emit assignment sets its variable, which later emits read, as in
+/// metabiomx's CHECK_INPUT; Nextflow 26.04.6 prints `2`.
+#[test]
+fn emits_read_earlier_emits() {
+    let source = "workflow W {\n    main:\n    ch = channel.of(1, 2)\n    emit:\n    meta = ch\n    n = meta.count()\n}\n\
+                  workflow {\n    W().n.view()\n}\n";
+    let (_, printed) = run(source, &Options::default()).expect("runs");
+    assert_eq!(printed, "2\n");
+}

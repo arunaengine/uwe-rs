@@ -7,7 +7,7 @@ use nextflow_parser::ast::{
 };
 
 use super::Lowering;
-use crate::lowered::{Expression, Statement, StatementKind, Target, Workflow};
+use crate::lowered::{Expression, ExpressionKind, Statement, StatementKind, Target, Workflow};
 
 impl Lowering<'_> {
     /// Lowers a workflow as Nextflow's `visitWorkflow` checks it: the takes are declared, the
@@ -38,7 +38,26 @@ impl Lowering<'_> {
                 NamedOutput::Named { target, value } => {
                     let name = &target.name;
                     let value = match value {
-                        Some(value) => self.expression(value),
+                        // Legacy syntax: `name = value` also sets the variable, which later
+                        // emits may read, as in `sample_size = meta.count()`.
+                        Some(value) => {
+                            let span = value.span;
+                            let value = self.expression(value);
+                            self.implicit_declarations = true;
+                            let place = self.assigned_variable(&name.text, name.span);
+                            self.implicit_declarations = false;
+                            match place {
+                                Some(place) => Expression {
+                                    kind: ExpressionKind::Assign {
+                                        target: Box::new(Target::Variable(place)),
+                                        update: None,
+                                        value: Box::new(value),
+                                    },
+                                    span,
+                                },
+                                None => value,
+                            }
+                        }
                         None => Expression {
                             kind: self.variable(&name.text, name.span),
                             span: name.span,

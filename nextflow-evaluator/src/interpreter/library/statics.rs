@@ -163,6 +163,9 @@ impl Interpreter<'_> {
             // `System.out` and `System.err` print through the host.
             ("System", "out" | "err") => Some(Value::Namespace(format!("System.{name}").into())),
             ("Runtime", "runtime") => Some(Value::Namespace("Runtime.runtime".into())),
+            // The metaclass of a class, whose new methods here reach no values, as Groovy's
+            // metaclass of an interface like `Map` does not reach its objects.
+            (_, "metaClass") => Some(Value::Namespace(format!("metaClass:{class}").into())),
             (_, "name") => crate::value::qualified_class_name(class).map(Value::string),
             (_, "simpleName") => {
                 crate::value::qualified_class_name(class).map(|_| Value::string(class))

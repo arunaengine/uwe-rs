@@ -344,6 +344,35 @@ fn includes_of_groovy_files() {
     assert_eq!(output.0, "hello there\n");
 }
 
+/// `evaluate(file)` runs a Groovy script, like the `Map.metaClass` addition of the Swedish
+/// Earth Biogenome Project's lib/MapExtended.groovy, which reaches no maps, and `deepMerge` is
+/// Nextflow's own; Nextflow 26.04.6 prints `[x:1, n:[p:1, q:3, r:4], z:null, y:2]`.
+#[test]
+fn evaluate_runs_a_groovy_script() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    write(
+        root.path(),
+        "extend.groovy",
+        "Map.metaClass.deepMerge = { Map rhs ->\n    def lhs = delegate\n    lhs + rhs\n}\n",
+    );
+    let extend = root.path().join("extend.groovy");
+    write(
+        root.path(),
+        "main.nf",
+        &format!(
+            "evaluate(new File('{}'))\nworkflow {{\n    def a = [x: 1, n: [p: 1, q: 2], z: 5]\n    \
+             println(a.deepMerge([n: [q: 3, r: 4], y: 2, z: null]))\n}}\n",
+            extend.display()
+        ),
+    );
+    let module = Loader::default()
+        .load(&root.path().join("main.nf"))
+        .expect("loads");
+    let mut output = Output::default();
+    nextflow_runtime::run(&module, &mut output).expect("runs");
+    assert_eq!(output.0, "[x:1, n:[p:1, q:3, r:4], z:null, y:2]\n");
+}
+
 /// A class that a script defines, which closures of the script use, as
 /// multiplesequencealign's `Utils` in a subworkflow script.
 #[test]

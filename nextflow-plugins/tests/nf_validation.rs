@@ -171,3 +171,57 @@ fn samplesheets_become_rows_with_meta_maps() {
         "{error}"
     );
 }
+
+/// `exists` only checks values whose format is a path, as nf-validation 1.1.3 with Nextflow
+/// 26.04.6 reports only `other` for this samplesheet.
+#[test]
+fn exists_needs_a_path_format() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let dir = directory.path();
+    std::fs::write(
+        dir.join("sheet.csv"),
+        "sample,data,other\ns1,/nonexistent/dir,/nonexistent/f.txt\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("schema_input.json"),
+        r#"{"type": "array", "items": {"type": "object", "properties": {
+            "sample": {"type": "string"},
+            "data": {"type": "string", "format": "directory", "exists": true},
+            "other": {"type": "string", "format": "file-path", "exists": true}}}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("nextflow_schema.json"),
+        r##"{"type": "object", "definitions": {"io": {"title": "IO", "type": "object",
+            "properties": {"input": {"type": "string", "format": "file-path",
+            "schema": "schema_input.json"}}}}, "allOf": [{"$ref": "#/definitions/io"}]}"##,
+    )
+    .unwrap();
+    let text = dir.to_string_lossy().into_owned();
+    let mut host = Fixtures(text.clone());
+    let config = Config::default();
+    let params = Value::map([(
+        Value::string("input"),
+        Value::string(format!("{text}/sheet.csv")),
+    )]);
+    let mut context = Context {
+        host: &mut host,
+        config: &config,
+        params,
+        project_dir: &text,
+    };
+    let error = call(
+        "nf-validation",
+        "fromSamplesheet",
+        vec![Value::string("input")],
+        &mut context,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        error.contains("other: the file or directory '/nonexistent/f.txt' does not exist"),
+        "{error}"
+    );
+    assert!(!error.contains("/nonexistent/dir"), "{error}");
+}

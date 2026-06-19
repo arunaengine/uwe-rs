@@ -117,6 +117,19 @@ fn summaries_put_the_core_options_first() {
          userName:beavis, profile:standard, configFiles:], Input/output options:[input:sheet.csv, \
          outdir:res], Generic options:[:]]"
     );
+    // Without a schema file, nf-validation warns and gives the core options only, as
+    // Nextflow 26.04.6 runs metataxonx.
+    let options = Value::map([(
+        Value::string("parameters_schema"),
+        Value::string("missing.json"),
+    )]);
+    let core = run(
+        "paramsSummaryMap",
+        params(&[]),
+        vec![options, workflow.clone()],
+    )
+    .unwrap();
+    assert!(core.ends_with("profile:standard, configFiles:]]"), "{core}");
     let log = run("paramsSummaryLog", params(&[]), vec![workflow]).unwrap();
     let expected = [
         "Core Nextflow options",

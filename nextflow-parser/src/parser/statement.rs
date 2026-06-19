@@ -191,7 +191,14 @@ impl Parser<'_> {
     fn try_statement(&mut self) -> Parse<StatementKind> {
         self.bump();
         self.skip_newlines();
-        let body = self.statement_or_block()?;
+        let resources = match self.at(TokenKind::LeftParen) {
+            true => self.try_resources()?,
+            false => Vec::new(),
+        };
+        let mut body = self.statement_or_block()?;
+        if !resources.is_empty() {
+            body.statements.splice(0..0, resources);
+        }
         let mut catches = Vec::new();
         while self.peek_past_newlines() == TokenKind::Catch {
             self.skip_newlines();
@@ -218,6 +225,50 @@ impl Parser<'_> {
             catches.push(Catch { name, types, body });
         }
         Ok(StatementKind::Try { body, catches })
+    }
+
+    /// Legacy syntax: the resources of `try (reader = open(); ...)`, which the body declares
+    /// first. Nothing closes them here.
+    fn try_resources(&mut self) -> Parse<Vec<Statement>> {
+        let open = self.bump().span;
+        self.legacy_at("Unexpected input: '('", open);
+        let mut resources = Vec::new();
+        loop {
+            self.skip_newlines();
+            let start = self.current().span;
+            self.eat(TokenKind::Def);
+            let legacy_type = self.speculate(|parser| {
+                let legacy = parser.legacy_type()?;
+                if parser.at_name() {
+                    Ok(legacy)
+                } else {
+                    Err(Failed)
+                }
+            });
+            let name = self.variable_name()?;
+            self.expect(TokenKind::Assign, "`=`")?;
+            self.skip_newlines();
+            let initializer = Some(self.expression()?);
+            let kind = StatementKind::Declaration {
+                names: vec![TypedName {
+                    name,
+                    annotation: None,
+                }],
+                legacy_type,
+                initializer,
+                destructure: false,
+            };
+            let span = self.span_from(start);
+            resources.push(Statement { kind, span });
+            self.skip_newlines();
+            if !self.eat(TokenKind::Semicolon) || self.at(TokenKind::RightParen) {
+                break;
+            }
+        }
+        self.skip_newlines();
+        self.expect(TokenKind::RightParen, "`)`")?;
+        self.skip_newlines();
+        Ok(resources)
     }
 
     pub(super) fn catch_types(&mut self) -> Parse<Vec<QualifiedName>> {

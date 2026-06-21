@@ -317,3 +317,153 @@ viralrecon
 = invalid: the stubs of FREYJA_UPDATE and FASTP make no `usher_barcodes.feather` and an empty JSON report, which the pipeline needs, so a stub run fails; a real run is not affected
 $ NXF_SYNTAX_PARSER=v1 nextflow run viralrecon -profile test -stub-run --outdir <out>
 >   Missing output file(s) `freyja_db/usher_barcodes.feather` expected by process `NFCORE_VIRALRECON:VIRALRECON:BAM_VARIANT_DEMIX_BOOT_FREYJA:FREYJA_UPDATE (freyja_db)`
+
+workflowhub/1000
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/1000 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No such file or directory: <pipeline>/docs/output.md
+
+workflowhub/1002
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/1002 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Cannot invoke method into() on null object
+
+workflowhub/1004
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/1004 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No signature of method: groovyx.gpars.dataflow.DataflowBroadcast.into() is applicable for argument types: (_nf_script_<hash>$_runScript_closure4) values: [_nf_script_<hash>$_runScript_closure4@<address>]
+
+workflowhub/1005
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/1005 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Missing --id option. Expression: params.id
+
+workflowhub/1008
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/1008 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ BUG! exception in phase 'semantic analysis' in source unit '_nf_script_<hash>' The lookup for NfcoreSchema caused a failed compilation. There should not have been any compilation from this call.
+
+workflowhub/1012
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/1012 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No such file or directory: <pipeline>/docs/output.md
+
+workflowhub/1022
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/1022 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Cannot invoke method from() on null object
+
+workflowhub/104
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/104/nanopore_nextflow.nf -stub-run --outdir <out>
+> [ERROR] ERROR ~ Cannot invoke method from() on null object
+
+workflowhub/105
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/105/workflow.nf -stub-run --outdir <out>
+> [ERROR] ERROR ~ No signature of method: groovyx.gpars.dataflow.DataflowBroadcast.into() is applicable for argument types: (_nf_script_<hash>$_runScript_closure1) values: [_nf_script_<hash>$_runScript_closure1@<address>]
+
+workflowhub/106
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/106/nextflow.nf -stub-run --outdir <out>
+> [ERROR] ERROR ~ Cannot get property 'referencegenome' on null object
+
+workflowhub/119
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/119/nextflow.nf -stub-run --outdir <out>
+> [ERROR] ERROR ~ Argument of `file()` function cannot be null
+
+workflowhub/156
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/156 -stub-run --outdir <out>
+> [ERROR] ERROR ~ No such file or directory: <pipeline>/conf/base.config
+
+workflowhub/19
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/19 -stub-run --outdir <out>
+> [ERROR] ERROR ~ Input samplesheet file not specified!
+
+workflowhub/20
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/20 -stub-run --outdir <out>
+> [ERROR] ERROR ~ ====================================================
+
+workflowhub/2205
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/2205 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ BUG! exception in phase 'semantic analysis' in source unit '_nf_script_<hash>' The lookup for NfcoreSchema caused a failed compilation. There should not have been any compilation from this call.
+
+workflowhub/244
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/244 -stub-run --outdir <out>
+> [ERROR] ERROR ~ Argument of `file()` function cannot be null
+
+workflowhub/416
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/416/Nextflow/Genome-downloader.nf -stub-run --outdir <out>
+> [ERROR] ERROR ~ RefSeq group mandatory
+
+workflowhub/435
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/435 -stub-run --outdir <out>
+> [ERROR] ERROR ~ Cannot invoke method from() on null object
+
+workflowhub/436
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/436 -stub-run --outdir <out>
+> [ERROR] ERROR ~ Cannot invoke method from() on null object
+
+workflowhub/57
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/57 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ BUG! exception in phase 'semantic analysis' in source unit '_nf_script_<hash>' The lookup for NfcoreSchema caused a failed compilation. There should not have been any compilation from this call.
+
+workflowhub/965
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/965 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No signature of method: groovyx.gpars.dataflow.DataflowBroadcast.into() is applicable for argument types: (_nf_script_<hash>$_runScript_closure5) values: [_nf_script_<hash>$_runScript_closure5@<address>]
+
+workflowhub/969
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/969 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No signature of method: groovyx.gpars.dataflow.DataflowBroadcast.into() is applicable for argument types: (_nf_script_<hash>$_runScript_closure7) values: [_nf_script_<hash>$_runScript_closure7@<address>]
+
+workflowhub/971
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/971 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No such file or directory: <pipeline>/docs/output.md
+
+workflowhub/973
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/973 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ BUG! exception in phase 'semantic analysis' in source unit '_nf_script_<hash>' The lookup for NfcoreSchema caused a failed compilation. There should not have been any compilation from this call.
+
+workflowhub/980
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/980 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No such file or directory: <pipeline>/docs/output.md
+
+workflowhub/982
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/982 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No such file or directory: <pipeline>/docs/output.md
+
+workflowhub/983
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/983 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No signature of method: groovyx.gpars.dataflow.DataflowBroadcast.into() is applicable for argument types: (_nf_script_<hash>$_runScript_closure3) values: [_nf_script_<hash>$_runScript_closure3@<address>]
+
+workflowhub/989
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/989 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Unknown method invocation `Channel.create` on Object type
+
+workflowhub/992
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/992 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No such file or directory: <pipeline>/docs/output.md
+
+workflowhub/994
+= unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/994 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No signature of method: groovyx.gpars.dataflow.DataflowBroadcast.into() is applicable for argument types: (_nf_script_<hash>$_runScript_closure47) values: [_nf_script_<hash>$_runScript_closure47@<address>]

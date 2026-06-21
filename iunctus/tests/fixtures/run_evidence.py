@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 # Records how Nextflow 26.04.6 fails on the nf-core pipelines that fail in
-# run_test_workflows.txt, into run_evidence.txt next to this script. The run test checks that
-# every pipeline that fails there is listed here, so a pipeline may only fail when Nextflow
-# fails on it too, or when iunctus leaves the feature out on purpose.
+# run_test_workflows.txt and on the WorkflowHub workflows that fail in run_workflowhub.txt,
+# into run_evidence.txt next to this script. The run test checks that every pipeline that fails
+# there is listed here, so a pipeline may only fail when Nextflow fails on it too, or when
+# iunctus leaves the feature out on purpose.
 #
 # Run it from the repository root: iunctus/tests/fixtures/run_evidence.py [pipeline...]
 # With pipelines, it records only their cases and keeps the other records. It reads the
-# pipelines of `just test-workflows` (NF_CORE_TEST_WORKFLOWS) and needs `nextflow` 26.04.6 on
+# pipelines of `just test-workflows` (NF_CORE_TEST_WORKFLOWS) and the workflows of `just
+# workflowhub-test-workflows` (WORKFLOWHUB_TEST_WORKFLOWS), and needs `nextflow` 26.04.6 on
 # the PATH. Each pipeline runs in a copy, from another folder, as the run test runs it:
 # `nextflow run <pipeline> -profile test -stub-run --outdir <out>`. The machine has none of
 # the tools of the pipelines, so a shell function stands in for each missing command: it
@@ -34,11 +36,13 @@ OUTPUT = Path(__file__).with_name("run_evidence.txt")
 # The Java libraries that Nextflow releases before 24 shipped, which the `lib/` classes of older
 # pipelines use, like `NfcoreSchema` with org.json and everit (decision 14).
 JARS = Path.home() / ".nextflow/plugins/nf-validation-1.1.3/lib"
-# Earlier Nextflow releases, for pipelines that name one: the launcher runs the release of
-# NXF_VER, which it downloads into a folder of its own below this one (NXF_HOME). Releases
-# before 23.10 need Java 17 or earlier, from JAVA17_HOME.
+# Earlier Nextflow releases, for pipelines that name one: the launcher of the release runs the
+# release of NXF_VER, which it downloads into a folder of its own below this one (NXF_HOME). Releases
+# before 23.10 need Java 17 or earlier, from JAVA17_HOME, and releases before 21.10 Java 11,
+# from JAVA11_HOME.
 RELEASES = Path(os.environ.get("NXF_RELEASES") or "/tmp/nextflow-releases")
 JAVA17 = os.environ.get("JAVA17_HOME")
+JAVA11 = os.environ.get("JAVA11_HOME")
 VERSION = "26.04.6"
 TIMEOUT = 1200
 JOBS = 4
@@ -561,7 +565,7 @@ def command(case, pipeline):
         words += ["nextflow", "run", shown]
         if case.get("profile", True):
             words += ["-profile", "test"]
-        words += ["-stub-run", "--outdir", "<out>"]
+        words += stub_run(case) + ["--outdir", "<out>"]
         words += [
             argument.replace("{launch}", "<launch>").replace("{pipeline}", "<pipeline>")
             for argument in case.get("args", [])
@@ -588,15 +592,38 @@ def source(pipeline):
 
 
 def main_script(pipeline):
-    """The main script of a WorkflowHub workflow, which its RO-Crate names, when it is a script
-    other than main.nf; `None` for the others."""
-    metadata = source(pipeline) / "ro-crate-metadata.json"
+    """The main script of a WorkflowHub workflow that runs no project folder, as the run test
+    picks it: the script that its RO-Crate names, when the folder has no main.nf and names no
+    `manifest.mainScript`; `None` for the others."""
+    folder = source(pipeline)
+    metadata = folder / "ro-crate-metadata.json"
     if not pipeline.startswith("workflowhub/") or not metadata.exists():
+        return None
+    config = folder / "nextflow.config"
+    if (folder / "main.nf").exists() or (config.exists() and "mainScript" in config.read_text()):
         return None
     graph = json.loads(metadata.read_text())["@graph"]
     root = next(entity for entity in graph if entity.get("@id") == "./")
     main = root.get("mainEntity", {}).get("@id", "main.nf").removeprefix("./")
-    return None if main == "main.nf" or not main.endswith(".nf") else main
+    return main if main.endswith(".nf") else None
+
+
+def stub_run(case):
+    """`-stub-run`, which releases before 20.11 do not have; they run the scripts."""
+    release = tuple(map(int, case.get("release", VERSION).split(".")[:2]))
+    return ["-stub-run"] if release >= (20, 11) else []
+
+
+def launcher(version):
+    """The launcher of a Nextflow release, which the older releases need, as the launcher of
+    26.04 needs Java 17; downloaded when missing."""
+    path = RELEASES / f"nextflow-{version}"
+    if not path.exists():
+        RELEASES.mkdir(parents=True, exist_ok=True)
+        url = f"https://github.com/nextflow-io/nextflow/releases/download/v{version}/nextflow"
+        subprocess.run(["curl", "-sfL", "-o", str(path), url], check=True)
+        path.chmod(0o755)
+    return path
 
 
 def execute(case):
@@ -634,7 +661,7 @@ def execute(case):
             arguments = ["nextflow", "run", str(copy if main is None else copy / main)]
             if case.get("profile", True):
                 arguments += ["-profile", "test"]
-            arguments += ["-stub-run", "--outdir", str(out)] + extra
+            arguments += stub_run(case) + ["--outdir", str(out)] + extra
             if "config" in case:
                 config = temporary / "extra.config"
                 config.write_text(case["config"])
@@ -644,9 +671,12 @@ def execute(case):
         if "release" in case:
             environment["NXF_VER"] = case["release"]
             environment["NXF_HOME"] = str(RELEASES / f"home-{case['release']}")
-            if tuple(map(int, case["release"].split(".")[:2])) < (23, 10) and JAVA17:
-                environment["JAVA_HOME"] = JAVA17
-                environment["NXF_JAVA_HOME"] = JAVA17
+            arguments[0] = str(launcher(case["release"]))
+            version = tuple(map(int, case["release"].split(".")[:2]))
+            java = JAVA11 if version < (21, 10) else JAVA17 if version < (23, 10) else None
+            if java:
+                environment["JAVA_HOME"] = java
+                environment["NXF_JAVA_HOME"] = java
         environment["NXF_SYNTAX_PARSER"] = case.get("parser", "v1")
         environment["BASH_ENV"] = str(environment_file)
         environment["PATH"] = f"{folder}:{environment['PATH']}"
@@ -735,8 +765,9 @@ def main():
             except SystemExit as error:
                 failed.append(str(error))
     header = (
-        "# Why each nf-core pipeline that fails in run_test_workflows.txt cannot run, and how\n"
-        f"# Nextflow {VERSION} fails on it, recorded by run_evidence.py. Each block gives the\n"
+        "# Why each nf-core pipeline that fails in run_test_workflows.txt, and each WorkflowHub\n"
+        "# workflow that fails in run_workflowhub.txt, cannot run, and how Nextflow\n"
+        f"# {VERSION} fails on it, recorded by run_evidence.py. Each block gives the\n"
         "# pipelines, then `=`, the kind (`invalid`, `missing` or `unsupported (decision N)`)\n"
         "# and why in one plain sentence, then what Nextflow was asked (`$`, with `NXF_VER` for\n"
         "# the earlier release that a pipeline names) and the lines of its output that show it\n"

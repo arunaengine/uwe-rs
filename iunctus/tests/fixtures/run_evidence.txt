@@ -1,5 +1,6 @@
-# Why each nf-core pipeline that fails in run_test_workflows.txt cannot run, and how
-# Nextflow 26.04.6 fails on it, recorded by run_evidence.py. Each block gives the
+# Why each nf-core pipeline that fails in run_test_workflows.txt, and each WorkflowHub
+# workflow that fails in run_workflowhub.txt, cannot run, and how Nextflow
+# 26.04.6 fails on it, recorded by run_evidence.py. Each block gives the
 # pipelines, then `=`, the kind (`invalid`, `missing` or `unsupported (decision N)`)
 # and why in one plain sentence, then what Nextflow was asked (`$`, with `NXF_VER` for
 # the earlier release that a pipeline names) and the lines of its output that show it

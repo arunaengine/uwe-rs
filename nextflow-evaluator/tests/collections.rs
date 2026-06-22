@@ -350,3 +350,15 @@ fn logical_command_chains() {
         "[true, false, false]"
     );
 }
+
+/// Groovy's `findResult`: the first result that is not null, else the default; Nextflow 26.04.6
+/// gives `[20, null, d]`.
+#[test]
+fn find_result() {
+    assert_eq!(
+        value(
+            "[[1, 2, 3].findResult { it > 1 ? it * 10 : null }, [1].findResult { null }, [1].findResult('d') { null }]"
+        ),
+        "[20, null, d]"
+    );
+}

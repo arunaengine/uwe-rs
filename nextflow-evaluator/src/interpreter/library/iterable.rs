@@ -98,6 +98,21 @@ impl Interpreter<'_> {
                     .filter(|other| other.coerced_equals(item))
                     .count() as i32,
             ),
+            // The first result of the closure that is not null, else the default or null.
+            ("findResult", [Value::Closure(f)] | [_, Value::Closure(f)]) => {
+                let mut found = match arguments {
+                    [default, _] => default.clone(),
+                    _ => Value::Null,
+                };
+                for item in items {
+                    let result = self.call_closure_value(f, vec![item.clone()], span)?;
+                    if !matches!(result, Value::Null) {
+                        found = result;
+                        break;
+                    }
+                }
+                found
+            }
             ("findResults", [Value::Closure(f)]) => {
                 let results = self.map_items(items, f, span)?;
                 Value::list(

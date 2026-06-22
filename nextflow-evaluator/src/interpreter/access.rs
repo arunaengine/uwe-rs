@@ -743,9 +743,18 @@ impl Interpreter<'_> {
                         span,
                     ));
                 };
+                // As Java reads the header first: nothing is the end of the stream, and other
+                // bytes than those of gzip are no gzip.
+                let rest = &bytes[(*position).min(bytes.len())..];
+                if rest.is_empty() {
+                    return Err(thrown(Exception::new("EOFException", ""), span));
+                }
+                if !rest.starts_with(&[0x1f, 0x8b]) {
+                    let exception = Exception::new("ZipException", "Not in GZIP format");
+                    return Err(thrown(exception, span));
+                }
                 let mut decoded = Vec::new();
-                let mut decoder =
-                    flate2::read::MultiGzDecoder::new(&bytes[(*position).min(bytes.len())..]);
+                let mut decoder = flate2::read::MultiGzDecoder::new(rest);
                 std::io::Read::read_to_end(&mut decoder, &mut decoded).map_err(|error| {
                     thrown(Exception::new("ZipException", error.to_string()), span)
                 })?;

@@ -123,6 +123,29 @@ const CLASSES: &[(&str, &str, &str)] = &[
         "java.nio.file.NoSuchFileException",
         "IOException",
     ),
+    ("EOFException", "java.io.EOFException", "IOException"),
+    ("ZipException", "java.util.zip.ZipException", "IOException"),
+    ("ParseException", "java.text.ParseException", "Exception"),
+    (
+        "JsonException",
+        "groovy.json.JsonException",
+        "RuntimeException",
+    ),
+    (
+        "YAMLException",
+        "org.yaml.snakeyaml.error.YAMLException",
+        "RuntimeException",
+    ),
+    (
+        "SchemaValidationException",
+        "nextflow.validation.exceptions.SchemaValidationException",
+        "Exception",
+    ),
+    (
+        "MultipleCompilationErrorsException",
+        "org.codehaus.groovy.control.MultipleCompilationErrorsException",
+        "GroovyRuntimeException",
+    ),
     (
         "UnsupportedOperationException",
         "java.lang.UnsupportedOperationException",

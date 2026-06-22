@@ -153,7 +153,7 @@ tfactivity ok
 troughgraph ok
 tumourevo ok
 variantbenchmarking ok
-variantcatalogue 1 workflows/variantcatalogue.nf:14:50: NoSuchFileException: No such file or directory: <cache>/assets/samplesheet.csv
+variantcatalogue ok
 variantprioritization ok
 vipr 1 Unknown configuration profile: 'test'
 viralintegration ok

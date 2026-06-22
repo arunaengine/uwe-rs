@@ -14,7 +14,7 @@ workflowhub/106 33 nextflow.nf:4:1: DSL1 scripts are not supported (decision 14)
 workflowhub/114 ok
 workflowhub/119 33 nextflow.nf:3:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 workflowhub/136 ok
-workflowhub/140 1 NoSuchFileException: No such file or directory: <cache>/null
+workflowhub/140 1 NoSuchFileException: No such file or directory: null
 workflowhub/156 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 workflowhub/192 1 main.nf:28:15: Unexpected character: '`'
 workflowhub/240 1 main.nf:47:13: Invalid include source: 'workflow/samtools.nf'
@@ -27,7 +27,7 @@ workflowhub/393 1 main.nf:68:15: AbortOperationException: the run exits with cod
 workflowhub/402 1 action.nf:182:2: IllegalArgumentException: A process input channel evaluates to null
 workflowhub/416 33 Nextflow/Genome-downloader.nf:19:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 workflowhub/417 1 main.nf:201:5: AbortOperationException: the run exits with code 1
-workflowhub/418 1 NoSuchFileException: <cache>/test_data/test_input_paired.txt
+workflowhub/418 ok
 workflowhub/419 1 main.nf:98:13: AbortOperationException: the run exits with code 1
 workflowhub/431 1 main.nf:77:2: AbortOperationException: the run exits with code 1
 workflowhub/435 33 sqtlseeker2.nf:26:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
@@ -38,7 +38,7 @@ workflowhub/442 ok
 workflowhub/444 1 workflow/main.nf:21:1: MissingPropertyException: No such variable: WorkflowMain
 workflowhub/450 1 workflow/../subworkflows/../modules/mapseq.nf:31:1: Expected an expression
 workflowhub/452 1 workflows/mobilomeannotation.nf:54:5: SchemaValidationException: The following invalid input values have been detected:
-workflowhub/453 1 iunctus: /home/beavis/.cache/iunctus/test-workflows/nextflow-workflowhub/453 holds no workflow iunctus knows: no main.nf, nextflow.config, Snakefile or .smk file; name the workflow file
+workflowhub/453 1 iunctus: <cache>/workflow holds no workflow iunctus knows: no main.nf, nextflow.config, Snakefile or .smk file; name the workflow file
 workflowhub/454 ok
 workflowhub/462 1 workflows/genomes_annotation.nf:6:18: AbortOperationException: Missing `fromPath` parameter
 workflowhub/480 1 Workflow/NextFlow/covid19_pilot.nf:21:68: IllegalArgumentException: Must specify a non-null value for the 'to' index in a Range
@@ -54,7 +54,7 @@ workflowhub/668 1 workflows/../subworkflows/local/../../modules/nf-core/custom/g
 workflowhub/683 ok
 workflowhub/691 1 main.nf:76:2: AbortOperationException: the run exits with code 1
 workflowhub/737 ok
-workflowhub/813 1 subworkflows/local/utils_nfcore_treeval_pipeline/../yaml_input/main.nf:55:62: NoSuchFileException: No such file or directory: <cache>/busco/subset
+workflowhub/813 1 subworkflows/local/utils_nfcore_treeval_pipeline/../yaml_input/main.nf:55:62: NoSuchFileException: No such file or directory: busco/subset
 workflowhub/836 1 main.nf:72:2: AbortOperationException: the run exits with code 1
 workflowhub/837 1 main_workflow_precursor_specific_fasta.nf:37:17: AbortOperationException: Missing `fromPath` parameter
 workflowhub/874 1 ERROR: Could not load config/Not_Specified.config check that you are using a valid workflow name
@@ -123,11 +123,11 @@ workflowhub/1058 ok
 workflowhub/1069 1 main.nf:31:5: SchemaValidationException: The following invalid input values have been detected:
 workflowhub/1100 1 workflows/../subworkflows/nf-core/fastq_trim_fastp_fastqc/main.nf:15:26: IllegalArgumentException: Text must not be null or empty
 workflowhub/1106 33 subworkflows/local/prepare_input/main.nf:130:21: Not supported yet: reading remote files like ftp://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz
-workflowhub/1160 1 NoSuchFileException: <cache>/params_ccrcc.csv
+workflowhub/1160 ok
 workflowhub/1178 ok
 workflowhub/1179 ok
 workflowhub/1217 ok
-workflowhub/1222 1 main.nf:89:9: RuntimeException: Reference FASTA index file not found, expected at: <cache>/null.fai
+workflowhub/1222 1 main.nf:89:9: RuntimeException: Reference FASTA index file not found, expected at: null.fai
 workflowhub/1226 1 workflows/chrcheck/function.nf:46:13: AbortOperationException: Contig names: [chr21, chr22] absent from file: https://raw.githubusercontent.com/nf-core/test-datasets/phaseimpute/hum_data/individuals/NA12878/NA12878.s.1x.bam and cannot be solved by adding or removing the `chr` prefix.
 workflowhub/1236 ok
 workflowhub/1250 1 workflows/rangeland.nf:88:19: NoSuchFileException: No files match pattern `<cache>/iunctus/scratch/mock-tes/<run>/work/3/Landsat_data/*/*`
@@ -140,12 +140,12 @@ workflowhub/1320 1 workflows/curationpretext_allf.nf:14:50: NoSuchFileException:
 workflowhub/1321 1 workflows/curationpretext_allf.nf:14:50: NoSuchFileException: No such file or directory: TreeValTinyData/genomic_data/pacbio
 workflowhub/1330 1 workflows/annoaudit.nf:20:5: AbortOperationException: Input genome is not specified!
 workflowhub/1360 1 ProcessFailedException: Process `NFCORE_METHYLONG:METHYLONG:ONT:ONT_TRIM_REPAIR:PORECHOP_PORECHOP (homo_sapiens)` terminated with an error exit status (2)
-workflowhub/1727 1 iunctus: /home/beavis/.cache/iunctus/test-workflows/nextflow-workflowhub/1727 holds no workflow iunctus knows: no main.nf, nextflow.config, Snakefile or .smk file; name the workflow file
+workflowhub/1727 1 iunctus: <cache>/workflow holds no workflow iunctus knows: no main.nf, nextflow.config, Snakefile or .smk file; name the workflow file
 workflowhub/1735 ok
 workflowhub/1742 ok
-workflowhub/1757 1 workflows/../subworkflows/local/fastq_fasta_mash_screen/../../../modules/nf-core/cat/cat/main.nf:59:55: StringIndexOutOfBoundsException: begin -1, end 19, length 19
+workflowhub/1757 1 workflows/../subworkflows/local/fastq_fasta_mash_screen/../../../modules/nf-core/cat/cat/main.nf:59:55: StringIndexOutOfBoundsException: begin -1, end 1, length 1
 workflowhub/1763 1 workflows/pathogensurveillance.nf:38:5: NoSuchFileException: assets/.pathogensurveillance_output.json
-workflowhub/1769 1 NoSuchFileException: <cache>/params_ccrcc.csv
+workflowhub/1769 1 NoSuchFileException: params_ccrcc.csv
 workflowhub/1782 1 subworkflows/local/utils_nfcore_taxodactyl_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:39:13: SchemaValidationException: The following invalid input values have been detected:
 workflowhub/1787 ok
 workflowhub/1795 1 WARNING: Could not load nf-core/config/eisca profiles: https://raw.githubusercontent.com/nf-core/configs/master/pipeline/eisca.config
@@ -157,13 +157,13 @@ workflowhub/1864 1 main.nf:222:35: AbortOperationException: Error: Missing refer
 workflowhub/1865 ok
 workflowhub/1871 1 modules/qc.nf:69:13: AbortOperationException: |-- ERROR- No Chromosome(s) found not in target(s) dataset(s)! The pipeline will exit.
 workflowhub/1888 1 pipeface.nf:1882:9: AbortOperationException: In data csv file does not exist, 'in_data = null' provided.
-workflowhub/1950 1 iunctus: /home/beavis/.cache/iunctus/test-workflows/nextflow-workflowhub/1950 holds no workflow iunctus knows: no main.nf, nextflow.config, Snakefile or .smk file; name the workflow file
+workflowhub/1950 1 iunctus: <cache>/workflow holds no workflow iunctus knows: no main.nf, nextflow.config, Snakefile or .smk file; name the workflow file
 workflowhub/1954 ok
 workflowhub/1960 1 main.nf:35:3: NoSuchFileException: data/samples.tsv
-workflowhub/2033 1 NoSuchFileException: No such file or directory: <cache>/tests/data/minimal_data/images
+workflowhub/2033 1 IllegalStateException: Error while parsing JSON content - cause: JsonException: Invalid JSON: unexpected end
 workflowhub/2037 1 ProcessUnrecoverableException: Path value cannot be null
 workflowhub/2040 1 WARNING: Could not load nf-core/config/eista profiles: https://raw.githubusercontent.com/nf-core/configs/master/pipeline/eista.config
-workflowhub/2053 1 iunctus: /home/beavis/.cache/iunctus/test-workflows/nextflow-workflowhub/2053 holds no workflow iunctus knows: no main.nf, nextflow.config, Snakefile or .smk file; name the workflow file
+workflowhub/2053 1 iunctus: <cache>/workflow holds no workflow iunctus knows: no main.nf, nextflow.config, Snakefile or .smk file; name the workflow file
 workflowhub/2054 ok
 workflowhub/2080 1 main.nf:89:16: AbortOperationException: No files found matching the pattern reads/*_R{1,2}.fastq.gz
 workflowhub/2105 1 subworkflows/local/prepare_genome.nf:62:53: NoSuchFileException: No such file or directory: /data/CCBR_Pipeliner/db/PipeDB/Indices/hg38_basic/indexes/hg38.blacklist_v3.chrM.chr_rDNA.fa
@@ -183,10 +183,10 @@ workflowhub/2205 33 main.nf:13:1: DSL1 scripts are not supported (decision 14): 
 workflowhub/2209 ok
 workflowhub/2211 1 main.nf:50:9: AbortOperationException: 
 workflowhub/2212 1 MissingMethodException: No signature of method: java.util.ArrayList.tokenize() is applicable for argument types: (String) values: [.]
-workflowhub/2217 1 workflows/../subworkflows/local/prepare_input.nf:219:29: NoSuchFileException: <cache>/assets/chla_test_input_channels.yaml
+workflowhub/2217 1 workflows/../subworkflows/local/completeness.nf:32:33: MissingMethodException: No signature of method: groovy.lang.Closure.doCall() is applicable for argument types: (ArrayList) values: [[Closure@<address>, [id:Ctrachomatis, kmer_size:21, ploidy:1, organism_domain:prok, taxid:315277, busco_lineages:[chlamydia_odb12], single_end:false], [data_test/mason_R1_001.fastq.gz, data_test/mason_R2_001.fastq.gz]]]
 workflowhub/2239 1 subworkflows/local/utils_nfcore_ascc_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
 workflowhub/2244 ok
-workflowhub/2246 1 subworkflows/local/utils_nfcore_fspassemblypipeline_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
+workflowhub/2246 ok
 workflowhub/2251 1 main.nf:39:9: AbortOperationException: the run exits with code 1
 workflowhub/2302 1 tasks/prepare.nf:15:5: IllegalArgumentException: Argument of `file()` function cannot be null
 workflowhub/2317 1 main.nf:33:36: AbortOperationException: Missing `fromPath` parameter

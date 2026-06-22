@@ -742,6 +742,205 @@ CASES += [
         "fails; a real run is not affected",
         ["No such variable: outformat", "Check script .*cutadapt/main.nf"],
     ),
+    workflowhub(
+        [970],
+        "SEQKIT_SPLIT2 has no stub, so a stub run gives it no split reads, which the workflow "
+        "needs; a real run is not affected",
+        [r"Missing output file\(s\) `\*\*/\*\.gz` expected by process .*SEQKIT_SPLIT2"],
+    ),
+    workflowhub(
+        [974],
+        "DAMAGEPROFILER has no stub and the stub of SOURCEPREDICT makes no report, so a stub run "
+        "fails; a real run is not affected",
+        [r"Error executing process > .*DAMAGEPROFILER"],
+    ),
+    workflowhub(
+        [988],
+        "the test samplesheet has no `input1` column, which the workflow requires, so the test "
+        "run fails; runs with their own inputs are not affected",
+        ["a column named input1 with either fastq or bam/cram input is mandatory"],
+        jars=True,
+    ),
+    workflowhub(
+        [1003],
+        "the stub of CREATE_ANNOTATED_TABLES makes mqc.tsv, where its output needs files that "
+        "end in `_mqc.tsv`, so a stub run fails; a real run is not affected",
+        [r"Missing output file\(s\) `\*_mqc\.tsv`"],
+    ),
+    workflowhub(
+        [1013],
+        NO_INPUTS.format("it requires `--input` and `--database`"),
+        ["Missing required parameter: --input"],
+        profile=False,
+        jars=True,
+    ),
+    workflowhub(
+        [1015, 1069],
+        "the test profile gives no `--input`, which the schema requires, so the test run "
+        "fails; runs with their own inputs are not affected",
+        ["Missing required parameter: --input"],
+    ),
+    workflowhub(
+        [1021],
+        "STAR_ALIGN has no stub, and the stubs of other steps make empty versions.yml files, "
+        "which processVersionsFromYAML reads as null, so a stub run fails; a real run is not "
+        "affected",
+        [r"Missing output file\(s\) `\*d\.out\.bam` expected by process .*STAR_ALIGN"],
+    ),
+    workflowhub(
+        [1023],
+        "FORMAT_MATURE has no stub, and the stub of the Bowtie index makes no `.1.ebwt` file, "
+        "whose name the workflow reads, so a stub run fails; a real run is not affected",
+        [r"Missing output file\(s\) `\*_idx\.fa` expected by process .*FORMAT_MATURE"],
+    ),
+    workflowhub(
+        [1027],
+        "the stub of FREYJA_UPDATE makes usher_barcodes.csv, where its output needs "
+        "usher_barcodes.feather, and the stub of FASTP makes an empty report, so a stub run "
+        "fails; a real run is not affected",
+        [r"Missing output file\(s\) `freyja_db/usher_barcodes\.feather`"],
+    ),
+    workflowhub(
+        [1030],
+        "the workflow reads the outputs of FASTP, which the test run does not call, so the test "
+        "run fails; runs that trim their reads are not affected",
+        ["Access to 'FASTP.out' is undefined"],
+    ),
+    workflowhub(
+        [1100],
+        "the stub of FASTP makes an empty JSON report, whose text the workflow parses, so a stub "
+        "run fails; a real run is not affected",
+        ["Text must not be null or empty"],
+    ),
+    workflowhub(
+        [1106],
+        "the test YAML gives no `sample.name`, which the workflow changes with `replace`, so "
+        "the test run fails; runs with their own inputs are not affected",
+        [r"Cannot invoke method replace\(\) on null object"],
+    ),
+    workflowhub(
+        [1160, 1769],
+        NO_INPUTS.format("it reads params_ccrcc.csv from the launch folder, where it is not"),
+        [r"No such file or directory: <launch>/params_ccrcc.csv"],
+        profile=False,
+    ),
+    workflowhub(
+        [1222],
+        "the config sets `params.nci_project` inside a `process` block, which Nextflow 24.10.1 "
+        "of its time rejects, so the run fails",
+        [r"Unknown config attribute `process.params.nci_project`"],
+        release="24.10.1",
+        profile=False,
+    ),
+    workflowhub(
+        [1226],
+        "the stub of BAMCHREXTRACT makes an empty list of contigs, which the workflow checks "
+        "against its panel, so a stub run fails; a real run is not affected",
+        [r"Contig names: \[chr21, chr22\] absent from file"],
+        release="25.04.0",
+    ),
+    workflowhub([1263], HELP, ["O N T - B A C P A C K"], profile=False),
+    workflowhub(
+        [27],
+        "WorkflowHub gives only virify.nf of this workflow, whose includes need its "
+        "nextflow/modules folder, so the run fails, as Nextflow 20.04.1 of its time shows",
+        ["Can't find a matching module file for include: ./nextflow/modules/pprmeta"],
+        kind="missing",
+        release="20.04.1",
+        profile=False,
+    ),
+    workflowhub(
+        [967],
+        "the test genome that the test profile names is no longer in nf-core/test-datasets, so "
+        "the test run fails, as Nextflow 21.04.0 of its time shows; runs with their own inputs "
+        "are not affected",
+        ["No such file: https://raw.githubusercontent.com/nf-core/test-datasets/bactmap/genome"],
+        release="21.04.0",
+        jars=True,
+    ),
+    workflowhub(
+        [996],
+        "the test profile names the genome R64-1-1, which the config of the pipeline does not "
+        "have, so it stops, as Nextflow 21.04.0 of its time shows; runs with their own inputs "
+        "are not affected",
+        ["Genome 'R64-1-1' not found in any config files"],
+        release="21.04.0",
+        jars=True,
+    ),
+    workflowhub(
+        [1019],
+        "the SAMTOOLS_SORT of the transcriptome gets `[[:], []]` for its fasta and index, which "
+        "does not match its input declaration, and Nextflow 25.10.4, the release the pipeline "
+        "names, fails on it too",
+        [
+            r"Error executing process > .*BAM_SORT_STATS_SAMTOOLS_TRANSCRIPTOME:SAMTOOLS_SORT",
+            "Path value cannot be null",
+        ],
+        release="25.10.4",
+        tools={"STAR": "versionGenome 2.7.4a"},
+    ),
+    workflowhub(
+        [1250],
+        "the stub of UNTAR makes an empty folder, where the workflow looks for its Landsat "
+        "data, so a stub run fails; a real run is not affected",
+        [r"Error executing process > .*UNTAR_WVDB"],
+    ),
+    workflowhub(
+        [1306],
+        "the processes have no stubs, so a stub run gives them no real outputs, and the "
+        "workflow parses a JSON file that one of them makes; a real run is not affected",
+        [r"Error executing process > 'fullWf:"],
+    ),
+    workflowhub(
+        [1320, 1321],
+        "the test profile reads TreeValTinyData/, test data that the repository does not hold "
+        "and that users download first, so the test run fails",
+        [r"No such file or directory: <pipeline>/TreeValTinyData/genomic_data/pacbio"],
+        kind="missing",
+        jars=True,
+    ),
+    workflowhub(
+        [1360],
+        "the stub of PORECHOP_PORECHOP runs `gzip` on a file whose `.gz` file it made before, "
+        "so a stub run fails; a real run is not affected",
+        [r"Error executing process > .*PORECHOP_PORECHOP", "already exists"],
+    ),
+    workflowhub(
+        [1757],
+        "PRINSEQ_READS has no stub, and the stubs of other steps make files without the "
+        "extensions that CAT_CAT reads from their names, so a stub run fails; a real run is not "
+        "affected",
+        [r"Missing output file\(s\) `\*_good_out\*` expected by process .*PRINSEQ_READS"],
+    ),
+    workflowhub(
+        [1763],
+        "the RO-Crate that WorkflowHub gives leaves out assets/.pathogensurveillance_output.json, "
+        "which the workflow reads, so the run fails",
+        [r"No such file or directory: <pipeline>/assets/.pathogensurveillance_output.json"],
+        kind="missing",
+    ),
+    workflowhub(
+        [1782],
+        "the schema requires `--ncbi_user_email`, `--ncbi_api_key` and `--taxdb`, an NCBI "
+        "account and a database that the test profile does not give, so the test run fails",
+        [r"Missing required parameter\(s\): ncbi_user_email, ncbi_api_key, taxdb"],
+        kind="missing",
+    ),
+    workflowhub(
+        [1795],
+        "WorkflowHub gives no lib/ folder of this workflow, whose class Utils the workflow uses, "
+        "so the run fails",
+        ["No such variable: Utils"],
+        kind="missing",
+    ),
+    workflowhub(
+        [1841],
+        "conf/module.config adds text to a closure, as in "
+        "`{ params.out_dir } + \"/registered_stacks/\"`, which Groovy cannot do, so the config "
+        "fails, as Nextflow 25.04.0 of its time shows",
+        ["plus"],
+        release="25.04.0",
+    ),
 ]
 
 

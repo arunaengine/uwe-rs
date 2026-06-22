@@ -567,6 +567,184 @@ CASES += [
 ]
 
 
+# The Nextflow workflows of WorkflowHub (decision 4) that fail, named `workflowhub/<id>`. Those
+# without a `test` profile run without one, as the run test runs them.
+def workflowhub(numbers, why, expect, **extra):
+    """A case of WorkflowHub workflows."""
+    return {
+        "pipelines": [f"workflowhub/{number}" for number in numbers],
+        "why": why,
+        "expect": expect,
+        **extra,
+    }
+
+
+NO_INPUTS = (
+    "the workflow has no `test` profile, and {}, so a run without its inputs fails; runs "
+    "with their own inputs are not affected"
+)
+HELP = NO_INPUTS.format("without its inputs it prints its help and exits with code 1")
+CASES += [
+    workflowhub([140], NO_INPUTS.format("it reads a file named after a param that is null"),
+                [r"No such file or directory: <launch>/null"], profile=False),
+    workflowhub(
+        [192],
+        "WorkflowHub gives a web page as its main.nf, not the Nextflow script, so the run fails",
+        ["Script compilation error", "<!DOCTYPE html>"],
+        kind="missing",
+        profile=False,
+    ),
+    workflowhub(
+        [240],
+        "the workflow includes its modules inside the workflow body, which Nextflow 21.10.3 of "
+        "its time does not take, and WorkflowHub does not give its workflow/ folder, so the run "
+        "fails",
+        ["Missing process or function with name 'include'"],
+        release="21.10.3",
+        profile=False,
+    ),
+    workflowhub(
+        [340],
+        "the config sets `params.bam_folder` inside a `params` block, which Nextflow 22.04.5 of "
+        "its time rejects, and the help text reads `param`, which is not defined, so the run "
+        "fails",
+        [r"Unknown config attribute `params.params.bam_folder`"],
+        release="22.04.5",
+        profile=False,
+    ),
+    workflowhub([393], HELP, ["I N D E X"], profile=False),
+    workflowhub([402], NO_INPUTS.format("without `--output_dir_plots` a process input is null"),
+                ["A process input channel evaluates to null"], profile=False),
+    workflowhub(
+        [417],
+        "the test profile gives none of the input files, so the workflow stops with `missing "
+        "some input data`; runs with their own inputs are not affected",
+        ["missing some input data"],
+    ),
+    workflowhub(
+        [418],
+        "the test profile names test_data/ relative to the launch folder, where it is not, so "
+        "the test run fails; runs from the folder of the workflow or with their own inputs are "
+        "not affected",
+        [r"No such file or directory: <launch>/test_data/test_input_paired.txt"],
+    ),
+    workflowhub(
+        [419],
+        "the test profile gives a reference file that does not exist, so the workflow stops, "
+        "as Nextflow 22.10.8 of its time shows; runs with their own inputs are not affected",
+        ["--reference points to a non existing file"],
+        release="22.10.8",
+    ),
+    workflowhub([431], HELP, ["G E R M L I N E"], profile=False),
+    workflowhub(
+        [438],
+        "the workflow includes BioNextflow, a git submodule that WorkflowHub and its repository "
+        "do not give, and evaluates ../outdirs.nf from the launch folder, so the run fails",
+        [r"dirs\.nf"],
+        kind="missing",
+        profile=False,
+    ),
+    workflowhub(
+        [440],
+        "config/standard.config has a closing brace too many, so the config does not parse, "
+        "as Nextflow 20.07.1, which the workflow names, shows",
+        ["Unable to parse config file"],
+        release="20.07.1",
+        profile=False,
+    ),
+    workflowhub(
+        [444],
+        "WorkflowHub gives no lib/ folder of this workflow, whose classes like WorkflowMain the "
+        "script uses, and names no git repository, so the run fails",
+        ["No such variable: WorkflowMain"],
+        kind="missing",
+        profile=False,
+    ),
+    workflowhub(
+        [450],
+        "modules/mapseq.nf holds the markers of a git merge conflict, so no release can parse "
+        "it, and without inputs the run stops even earlier at a missing path",
+        ["Missing `fromPath` parameter"],
+        profile=False,
+    ),
+    workflowhub(
+        [452],
+        "the test profile gives no `--input`, which the schema requires, so the test run "
+        "fails; runs with their own inputs are not affected",
+        [r"Missing required parameter\(s\): input"],
+    ),
+    workflowhub(
+        [453],
+        "WorkflowHub names the shell script batchconvert as the main file, which runs the "
+        "Nextflow scripts itself, and there is no main.nf, so a Nextflow run fails",
+        ["Missing project main script"],
+        kind="missing",
+        profile=False,
+    ),
+    workflowhub([462], NO_INPUTS.format("without `--ena_genomes` it has no genomes to read"),
+                ["Missing `fromPath` parameter"], profile=False),
+    workflowhub(
+        [480],
+        NO_INPUTS.format("without `--repetitions` its range `1..params.repetitions` has no end"),
+        ["Must specify a non-null value for the 'to' index in a Range"],
+        profile=False,
+    ),
+    workflowhub(
+        [556],
+        "PLINK2_RELABELPVAR has no stub, and the stubs of the scoring steps make empty score "
+        "files, which the workflow reads, so a stub run fails; a real run is not affected",
+        [r"Error executing process > .*PLINK2_RELABELPVAR"],
+    ),
+    workflowhub([560], HELP, ["Please provide path to bam files"], profile=False),
+    workflowhub(
+        [654, 1330],
+        NO_INPUTS.format("without `--genome` it stops with `Input genome is not specified!`"),
+        ["Input genome is not specified!"],
+        profile=False,
+    ),
+    workflowhub(
+        [668],
+        "the test profile names files below /lustre of the Sanger cluster, so the test run "
+        "fails; runs with their own inputs are not affected",
+        ["No such file or directory: /lustre/"],
+        kind="missing",
+        jars=True,
+    ),
+    workflowhub([691], HELP, ["Usage:  nextflow run main.nf --input"], profile=False),
+    workflowhub(
+        [813],
+        "the test profile names busco/subset relative to the launch folder, where it is not, "
+        "so the test run fails; runs with their own inputs are not affected",
+        [r"No such file or directory: <launch>/busco/subset"],
+    ),
+    workflowhub([836], HELP, ["Parabricks-Genomics-nf"], profile=False),
+    workflowhub(
+        [837],
+        NO_INPUTS.format("without `--main_sp_embl_file` it has no SP-EMBL file to read"),
+        ["Missing `fromPath` parameter"],
+        profile=False,
+    ),
+    workflowhub(
+        [874],
+        "the config loads the config file of the workflow that `--workflow` names, which the "
+        "test run does not give, so it stops; runs that name a workflow are not affected",
+        ["Could not load config/Not_Specified.config"],
+    ),
+    workflowhub(
+        [884],
+        NO_INPUTS.format("it requires `--samplesheet` or `--ena_raw_reads_study_accession`"),
+        [r"Missing required parameter\(s\): ena_raw_reads_study_accession"],
+        profile=False,
+    ),
+    workflowhub(
+        [964],
+        "an output of CUTADAPT reads `outformat`, which only its script sets, so a stub run "
+        "fails; a real run is not affected",
+        ["No such variable: outformat", "Check script .*cutadapt/main.nf"],
+    ),
+]
+
+
 def stand_ins(directory, case):
     """A file for BASH_ENV that stands in for every missing command, and a folder of the
     commands of the case."""

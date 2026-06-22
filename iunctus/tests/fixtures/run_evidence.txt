@@ -373,6 +373,11 @@ workflowhub/119
 $ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/119/nextflow.nf -stub-run --outdir <out>
 > [ERROR] ERROR ~ Argument of `file()` function cannot be null
 
+workflowhub/140
+= invalid: the workflow has no `test` profile, and it reads a file named after a param that is null, so a run without its inputs fails; runs with their own inputs are not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/140 -stub-run --outdir <out>
+> [ERROR] ERROR ~ No such file or directory: <launch>/null
+
 workflowhub/156
 = unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
 $ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/156 -stub-run --outdir <out>
@@ -382,6 +387,12 @@ workflowhub/19
 = unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
 $ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/19 -stub-run --outdir <out>
 > [ERROR] ERROR ~ Input samplesheet file not specified!
+
+workflowhub/192
+= missing: WorkflowHub gives a web page as its main.nf, not the Nextflow script, so the run fails
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/192 -stub-run --outdir <out>
+> [ERROR] ERROR ~ Script compilation error
+>    <!DOCTYPE html>
 
 workflowhub/20
 = unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
@@ -393,15 +404,55 @@ workflowhub/2205
 $ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/2205 -profile test -stub-run --outdir <out>
 > [ERROR] ERROR ~ BUG! exception in phase 'semantic analysis' in source unit '_nf_script_<hash>' The lookup for NfcoreSchema caused a failed compilation. There should not have been any compilation from this call.
 
+workflowhub/240
+= invalid: the workflow includes its modules inside the workflow body, which Nextflow 21.10.3 of its time does not take, and WorkflowHub does not give its workflow/ folder, so the run fails
+$ NXF_VER=21.10.3 nextflow run workflowhub/240 -stub-run --outdir <out>
+> Missing process or function with name 'include'
+
 workflowhub/244
 = unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
 $ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/244 -stub-run --outdir <out>
 > [ERROR] ERROR ~ Argument of `file()` function cannot be null
 
+workflowhub/340
+= invalid: the config sets `params.bam_folder` inside a `params` block, which Nextflow 22.04.5 of its time rejects, and the help text reads `param`, which is not defined, so the run fails
+$ NXF_VER=22.04.5 nextflow run workflowhub/340/hifi_assembly.nf -stub-run --outdir <out>
+> Unknown config attribute `params.params.bam_folder` -- check config file: <pipeline>/nextflow.config
+
+workflowhub/393
+= invalid: the workflow has no `test` profile, and without its inputs it prints its help and exits with code 1, so a run without its inputs fails; runs with their own inputs are not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/393 -stub-run --outdir <out>
+>       I N D E X  R E F E R E N C E  F A S T A - N F
+
+workflowhub/402
+= invalid: the workflow has no `test` profile, and without `--output_dir_plots` a process input is null, so a run without its inputs fails; runs with their own inputs are not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/402 -stub-run --outdir <out>
+> [ERROR] ERROR ~ A process input channel evaluates to null -- Invalid declaration `path output_dir_plots`
+
 workflowhub/416
 = unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
 $ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/416/Nextflow/Genome-downloader.nf -stub-run --outdir <out>
 > [ERROR] ERROR ~ RefSeq group mandatory
+
+workflowhub/417
+= invalid: the test profile gives none of the input files, so the workflow stops with `missing some input data`; runs with their own inputs are not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/417 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ missing some input data
+
+workflowhub/418
+= invalid: the test profile names test_data/ relative to the launch folder, where it is not, so the test run fails; runs from the folder of the workflow or with their own inputs are not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/418 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No such file or directory: <launch>/test_data/test_input_paired.txt
+
+workflowhub/419
+= invalid: the test profile gives a reference file that does not exist, so the workflow stops, as Nextflow 22.10.8 of its time shows; runs with their own inputs are not affected
+$ NXF_VER=22.10.8 nextflow run workflowhub/419 -profile test -stub-run --outdir <out>
+> --reference points to a non existing file
+
+workflowhub/431
+= invalid: the workflow has no `test` profile, and without its inputs it prints its help and exits with code 1, so a run without its inputs fails; runs with their own inputs are not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/431 -stub-run --outdir <out>
+> G E R M L I N E  S T R U C T U R A L  V - N F
 
 workflowhub/435
 = unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
@@ -413,10 +464,107 @@ workflowhub/436
 $ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/436 -stub-run --outdir <out>
 > [ERROR] ERROR ~ Cannot invoke method from() on null object
 
+workflowhub/438
+= missing: the workflow includes BioNextflow, a git submodule that WorkflowHub and its repository do not give, and evaluates ../outdirs.nf from the launch folder, so the run fails
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/438/mop_preprocess/mop_preprocess.nf -stub-run --outdir <out>
+> [ERROR] ERROR ~ <out>dirs.nf (<out>dirs.nf)
+
+workflowhub/440
+= invalid: config/standard.config has a closing brace too many, so the config does not parse, as Nextflow 20.07.1, which the workflow names, shows
+$ NXF_VER=20.07.1 nextflow run workflowhub/440 --outdir <out>
+> Unable to parse config file: '<pipeline>/nextflow.config'
+
+workflowhub/444
+= missing: WorkflowHub gives no lib/ folder of this workflow, whose classes like WorkflowMain the script uses, and names no git repository, so the run fails
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/444/workflow/main.nf -stub-run --outdir <out>
+> [ERROR] ERROR ~ No such variable: WorkflowMain
+
+workflowhub/450
+= invalid: modules/mapseq.nf holds the markers of a git merge conflict, so no release can parse it, and without inputs the run stops even earlier at a missing path
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/450 -stub-run --outdir <out>
+> Missing `fromPath` parameter -- Check script '<pipeline>/workflow/pipeline.nf' at line: 7 or see '.nextflow.log' file for more details
+
+workflowhub/452
+= invalid: the test profile gives no `--input`, which the schema requires, so the test run fails; runs with their own inputs are not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/452 -profile test -stub-run --outdir <out>
+> * Missing required parameter(s): input
+
+workflowhub/453
+= missing: WorkflowHub names the shell script batchconvert as the main file, which runs the Nextflow scripts itself, and there is no main.nf, so a Nextflow run fails
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/453 -stub-run --outdir <out>
+> Missing project main script: <pipeline>/main.nf
+
+workflowhub/462
+= invalid: the workflow has no `test` profile, and without `--ena_genomes` it has no genomes to read, so a run without its inputs fails; runs with their own inputs are not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/462 -stub-run --outdir <out>
+> Missing `fromPath` parameter -- Check script '<pipeline>/workflows/genomes_annotation.nf' at line: 6 or see '.nextflow.log' file for more details
+
+workflowhub/480
+= invalid: the workflow has no `test` profile, and without `--repetitions` its range `1..params.repetitions` has no end, so a run without its inputs fails; runs with their own inputs are not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/480/Workflow/NextFlow/covid19_pilot.nf -stub-run --outdir <out>
+> [ERROR] ERROR ~ Must specify a non-null value for the 'to' index in a Range
+
+workflowhub/556
+= invalid: PLINK2_RELABELPVAR has no stub, and the stubs of the scoring steps make empty score files, which the workflow reads, so a stub run fails; a real run is not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/556 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ Error executing process > 'PGSCATALOG_PGSCCALC:PGSCCALC:MAKE_COMPATIBLE:PLINK2_RELABELPVAR (cineca chromosome 22)'
+
+workflowhub/560
+= invalid: the workflow has no `test` profile, and without its inputs it prints its help and exits with code 1, so a run without its inputs fails; runs with their own inputs are not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/560 -stub-run --outdir <out>
+> Please provide path to bam files
+
 workflowhub/57
 = unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either
 $ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/57 -profile test -stub-run --outdir <out>
 > [ERROR] ERROR ~ BUG! exception in phase 'semantic analysis' in source unit '_nf_script_<hash>' The lookup for NfcoreSchema caused a failed compilation. There should not have been any compilation from this call.
+
+workflowhub/654
+workflowhub/1330
+= invalid: the workflow has no `test` profile, and without `--genome` it stops with `Input genome is not specified!`, so a run without its inputs fails; runs with their own inputs are not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/654 -stub-run --outdir <out>
+> [ERROR] Input genome is not specified!
+
+workflowhub/668
+= missing: the test profile names files below /lustre of the Sanger cluster, so the test run fails; runs with their own inputs are not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/668 -profile test -stub-run --outdir <out>  # with the Java libraries of nf-validation 1.1.3 in lib/
+> [ERROR] ERROR ~ No such file or directory: /lustre/scratch123/tol/resources/treeval/gene_alignment_data/nematode/csv_data/Gae_host.Gae-data.csv
+
+workflowhub/691
+= invalid: the workflow has no `test` profile, and without its inputs it prints its help and exits with code 1, so a run without its inputs fails; runs with their own inputs are not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/691 -stub-run --outdir <out>
+>   Usage:  nextflow run main.nf --input <samples.tsv>
+
+workflowhub/813
+= invalid: the test profile names busco/subset relative to the launch folder, where it is not, so the test run fails; runs with their own inputs are not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/813 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No such file or directory: <launch>/busco/subset
+
+workflowhub/836
+= invalid: the workflow has no `test` profile, and without its inputs it prints its help and exits with code 1, so a run without its inputs fails; runs with their own inputs are not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/836 -stub-run --outdir <out>
+> Genomics001: Parabricks-Genomics-nf
+
+workflowhub/837
+= invalid: the workflow has no `test` profile, and without `--main_sp_embl_file` it has no SP-EMBL file to read, so a run without its inputs fails; runs with their own inputs are not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/837/main_workflow_precursor_specific_fasta.nf -stub-run --outdir <out>
+> Missing `fromPath` parameter -- Check script '<pipeline>/main_workflow_precursor_specific_fasta.nf' at line: 37 or see '.nextflow.log' file for more details
+
+workflowhub/874
+= invalid: the config loads the config file of the workflow that `--workflow` names, which the test run does not give, so it stops; runs that name a workflow are not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/874 -profile test -stub-run --outdir <out>
+> ERROR: Could not load config/Not_Specified.config check that you are using a valid workflow name
+
+workflowhub/884
+= invalid: the workflow has no `test` profile, and it requires `--samplesheet` or `--ena_raw_reads_study_accession`, so a run without its inputs fails; runs with their own inputs are not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/884 -stub-run --outdir <out>
+> * Missing required parameter(s): ena_raw_reads_study_accession
+
+workflowhub/964
+= invalid: an output of CUTADAPT reads `outformat`, which only its script sets, so a stub run fails; a real run is not affected
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/964 -profile test -stub-run --outdir <out>
+> [ERROR] ERROR ~ No such variable: outformat
+>  -- Check script '<pipeline>/modules/nf-core/cutadapt/main.nf' at line: 14 or see '.nextflow.log' file for more details
 
 workflowhub/965
 = unsupported (decision 14): the pipeline is a DSL1 script, whose processes read `from` and write `into` channels, which iunctus leaves out and Nextflow 26.04.6 does not run either

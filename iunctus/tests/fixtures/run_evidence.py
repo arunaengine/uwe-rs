@@ -59,10 +59,20 @@ JOBS = 4
 # True` to put the old Java libraries into `lib/`, `args` for more arguments of the run, where
 # `{launch}` and `{pipeline}` name the folders of the run, `profile: False` to run a workflow
 # that has no `test` profile without one, `config` for settings of an extra config file
-# (`-c extra.config`), and `tools` for commands that print a given text, like a version that a
-# stub reads. A case whose failure Nextflow does not reach, because it stops earlier at a tool
-# that this machine lacks, gives `reproduce`: the files of a small script with the failing part
-# of the pipeline, which Nextflow runs instead.
+# (`-c extra.config`), `tools` for commands that print a given text, like a version that a
+# stub reads, and `stubs` for stand-in stub scripts, so that Nextflow reaches the point where
+# iunctus fails: for processes that have no stub, which a stub run of Nextflow runs for real,
+# and for stubs that fail before that point. A stand-in makes the files that the mock executor
+# of iunctus makes for the process, or the files that the process makes. A case whose failure
+# Nextflow does not reach, because it stops earlier at a tool that this machine lacks, gives
+# `reproduce`: the files of a small script with the failing part of the pipeline, which
+# Nextflow runs instead.
+
+# The versions.yml that a stand-in stub writes.
+VERSIONS = "printf '\"${task.process}\": {stub: \"1.0\"}\\n' > versions.yml"
+# Writes an empty gzip file, as the mock executor does for a name that ends in `.gz`.
+EMPTY_GZIP = 'printf "" | gzip > '
+
 CASES = [
     {
         "pipelines": ["alleleexpression"],
@@ -216,12 +226,15 @@ CASES = [
     {
         "pipelines": ["callingcards", "workflowhub/970"],
         "kind": "unsupported (decision 16)",
-        "why": "SEQKIT_SPLIT2 has no stub, so it needs seqkit to split the reads into the files "
-        "whose names the pipeline reads, and the mock executor only makes up one file",
-        "expect": [
-            "Error executing process > .*SEQKIT_SPLIT2",
-            r"Missing output file\(s\) `\*\*/\*.gz`",
-        ],
+        "why": "SEQKIT_SPLIT2 and DEMULTIPLEX have no stubs, so they need seqkit and "
+        "callingcardstools to write the reads whose names the pipeline reads, and the mock "
+        "executor only makes up one file with another name (Nextflow fails in the same way with "
+        "stand-ins that make the files of the mock executor)",
+        "stubs": {
+            "SEQKIT_SPLIT2": "mkdir mock; " + EMPTY_GZIP + "mock/mock.gz; " + VERSIONS,
+            "DEMULTIPLEX": "touch mock.fq mock.pickle; " + VERSIONS,
+        },
+        "expect": [r"index is out of range 0\.\.-1 \(index = 0\)"],
     },
     {
         "pipelines": ["chipseq", "pathogensurveillance"],
@@ -261,7 +274,7 @@ workflow {
         "expect": [r"Missing output file\(s\) `mirna.targets.tsv`"],
     },
     {
-        "pipelines": ["coproid"],
+        "pipelines": ["coproid", "workflowhub/974"],
         "why": "the stub of SOURCEPREDICT makes `*.sourcepredict.csv`, not the "
         "`*.report.sourcepredict.csv` that the process declares, so a stub run fails; a real run "
         "is not affected (shown with a small script, as Nextflow first stops at DAMAGEPROFILER, "
@@ -298,7 +311,15 @@ workflow {
         ],
     },
     {
-        "pipelines": ["demultiplex", "rangeland", "smrnaseq", "spatialaxe", "spatialvi"],
+        "pipelines": [
+            "demultiplex",
+            "rangeland",
+            "smrnaseq",
+            "spatialaxe",
+            "spatialvi",
+            "workflowhub/1023",
+            "workflowhub/1250",
+        ],
         "kind": "unsupported (decision 16)",
         "why": "the UNTAR stub lists the files of the real archive with `tar -tf` and makes "
         "them, which the mock executor cannot do, and the pipeline then reads those files",
@@ -320,10 +341,35 @@ workflow {
         ],
     },
     {
-        "pipelines": ["drop"],
+        "pipelines": ["drop", "workflowhub/2200"],
         "why": "the stub of SAMTOOLS_IDXSTATS makes an empty file, and the pipeline reads the "
-        "read counts of its first line, so a stub run fails; a real run is not affected",
-        "tools": {"tabix": "Version: 1.21"},
+        "read counts of its first line, so a stub run fails; a real run is not affected (shown "
+        "with a small script, as Nextflow may first stop at one of the steps whose stubs need "
+        "R)",
+        "reproduce": {
+            "main.nf": """// The stub of SAMTOOLS_IDXSTATS and the reading of its output in
+// subworkflows/local/bam_stats_idxstats_merge/main.nf of nf-core/drop.
+process SAMTOOLS_IDXSTATS {
+    input:
+    val meta
+    output:
+    tuple val(meta), path("*.idxstats"), emit: idxstats
+    script:
+    'true'
+    stub:
+    "touch ${meta.id}.idxstats"
+}
+
+workflow {
+    SAMTOOLS_IDXSTATS([id: 'HG00126']).idxstats
+        .map { meta, idxstats ->
+            def split_idxstats = idxstats.splitCsv(header: false, sep: "\\t")
+            split_idxstats[0][0].startsWith("chr")
+        }
+        .view()
+}
+""",
+        },
         "expect": [r"Cannot invoke method getAt\(\) on null object"],
     },
     {
@@ -354,11 +400,21 @@ workflow {
         "expect": ["fastq_fastp"],
     },
     {
-        "pipelines": ["viralrecon"],
-        "why": "the stubs of FREYJA_UPDATE and FASTP make no `usher_barcodes.feather` and an "
-        "empty JSON report, which the pipeline needs, so a stub run fails; a real run is not "
-        "affected",
-        "expect": [r"Missing output file\(s\) `freyja_db/usher_barcodes.feather`"],
+        "pipelines": ["viralrecon", "workflowhub/1027"],
+        "why": "the stub of FASTP makes an empty JSON report, which the pipeline parses, so a "
+        "stub run fails; a real run is not affected (Nextflow first stops at the stubs of "
+        "FREYJA_UPDATE and CUSTOM_GETCHROMSIZES, which make no `usher_barcodes.feather` and an "
+        "empty genome index, and reaches the same point with stand-ins for them)",
+        "stubs": {
+            "FREYJA_UPDATE": "mkdir $db_name; touch ${db_name}/usher_barcodes.feather "
+            "${db_name}/lineages.yml ${db_name}/curated_lineages.json; " + VERSIONS,
+            "CUSTOM_GETCHROMSIZES": 'printf "MN908947.3\\t29903\\n" > ${fasta}.fai; '
+            'printf "MN908947.3\\t29903\\n" > ${fasta}.sizes; ' + VERSIONS,
+        },
+        "expect": [
+            "Text must not be null or empty",
+            "Check script .*fastq_trim_fastp_fastqc/main.nf' at line: 15",
+        ],
     },
     {
         "pipelines": ["crisprvar", "vipr"],
@@ -455,7 +511,7 @@ workflow {
         ],
     },
     {
-        "pipelines": ["scrnaseq"],
+        "pipelines": ["scrnaseq", "workflowhub/1021"],
         "why": "the stub of MTX_TO_H5AD makes an empty versions.yml, which "
         "processVersionsFromYAML reads as null, so a stub run fails; a real run is not affected "
         "(shown with a small script, as Nextflow first stops at STAR_ALIGN, which has no stub and "
@@ -714,9 +770,44 @@ CASES += [
     ),
     workflowhub(
         [556],
-        "PLINK2_RELABELPVAR has no stub, and the stubs of the scoring steps make empty score "
-        "files, which the workflow reads, so a stub run fails; a real run is not affected",
-        [r"Error executing process > .*PLINK2_RELABELPVAR"],
+        "MATCH_COMBINE has no stub, so it needs its script to write the score file whose first "
+        "line the workflow reads, and the mock executor only makes up an empty file (Nextflow "
+        "fails in the same way with stand-ins that make the files of the mock executor)",
+        [
+            r"Unexpected error \[InvocationTargetException\]",
+            r"Cannot invoke method split\(\) on null object",
+        ],
+        kind="unsupported (decision 16)",
+        stubs={
+            "COMBINE_SCOREFILES": EMPTY_GZIP + "scorefiles.txt.gz; touch log_scorefiles.json; "
+            + VERSIONS,
+            "PLINK2_RELABELPVAR": '''output = "mock"
+    """
+    touch mock.pgen mock.pvar.zst mock.psam
+    ''' + EMPTY_GZIP + "mock.vmiss.gz; " + EMPTY_GZIP + "mock.afreq.gz; " + VERSIONS + '''
+    """''',
+            "MATCH_VARIANTS": '''scoremeta = [:]
+    scoremeta.id = "$meta.id"
+    """
+    touch mock.ipc.zst
+    ''' + VERSIONS + '''
+    """''',
+            "MATCH_COMBINE": '''scoremeta = [:]
+    scoremeta.id = "$meta.id"
+    """
+    ''' + EMPTY_GZIP + '''mock.scorefile.gz
+    touch mock_summary.csv
+    ''' + EMPTY_GZIP + '''mock_log.csv.gz
+    ''' + VERSIONS + '''
+    """''',
+        },
+    ),
+    workflowhub(
+        [560],
+        needs("`--bam_folder`", HELP),
+        ["Please provide path to bam files"],
+        kind="missing",
+        profile=False,
     ),
     workflowhub(
         [654, 1330],
@@ -786,18 +877,6 @@ CASES += [
         ["No such variable: outformat", "Check script .*cutadapt/main.nf"],
     ),
     workflowhub(
-        [970],
-        "SEQKIT_SPLIT2 has no stub, so a stub run gives it no split reads, which the workflow "
-        "needs; a real run is not affected",
-        [r"Missing output file\(s\) `\*\*/\*\.gz` expected by process .*SEQKIT_SPLIT2"],
-    ),
-    workflowhub(
-        [974],
-        "DAMAGEPROFILER has no stub and the stub of SOURCEPREDICT makes no report, so a stub run "
-        "fails; a real run is not affected",
-        [r"Error executing process > .*DAMAGEPROFILER"],
-    ),
-    workflowhub(
         [988],
         "the test samplesheet has no `input1` column, which the workflow requires, so the test "
         "run fails; runs with their own inputs are not affected",
@@ -823,26 +902,6 @@ CASES += [
         "the test profile gives no `--input`, which the schema requires, so the test run "
         "fails; runs with their own inputs are not affected",
         ["Missing required parameter: --input"],
-    ),
-    workflowhub(
-        [1021],
-        "STAR_ALIGN has no stub, and the stubs of other steps make empty versions.yml files, "
-        "which processVersionsFromYAML reads as null, so a stub run fails; a real run is not "
-        "affected",
-        [r"Missing output file\(s\) `\*d\.out\.bam` expected by process .*STAR_ALIGN"],
-    ),
-    workflowhub(
-        [1023],
-        "FORMAT_MATURE has no stub, and the stub of the Bowtie index makes no `.1.ebwt` file, "
-        "whose name the workflow reads, so a stub run fails; a real run is not affected",
-        [r"Missing output file\(s\) `\*_idx\.fa` expected by process .*FORMAT_MATURE"],
-    ),
-    workflowhub(
-        [1027],
-        "the stub of FREYJA_UPDATE makes usher_barcodes.csv, where its output needs "
-        "usher_barcodes.feather, and the stub of FASTP makes an empty report, so a stub run "
-        "fails; a real run is not affected",
-        [r"Missing output file\(s\) `freyja_db/usher_barcodes\.feather`"],
     ),
     workflowhub(
         [1030],
@@ -931,16 +990,14 @@ CASES += [
         tools={"STAR": "versionGenome 2.7.4a"},
     ),
     workflowhub(
-        [1250],
-        "the stub of UNTAR makes an empty folder, where the workflow looks for its Landsat "
-        "data, so a stub run fails; a real run is not affected",
-        [r"Error executing process > .*UNTAR_WVDB"],
-    ),
-    workflowhub(
         [1306],
-        "the processes have no stubs, so a stub run gives them no real outputs, and the "
-        "workflow parses a JSON file that one of them makes; a real run is not affected",
-        [r"Error executing process > 'fullWf:"],
+        "preprocessFullMetadata has no stub, so it needs its script to write the settings that "
+        "the workflow parses as JSON, and the mock executor only makes up an empty file "
+        "(Nextflow fails in the same way with a stand-in that makes the file of the mock "
+        "executor)",
+        ["Error while parsing JSON content"],
+        kind="unsupported (decision 16)",
+        stubs={"preprocessFullMetadata": "touch processed_full.config"},
     ),
     workflowhub(
         [1320, 1321],
@@ -958,10 +1015,13 @@ CASES += [
     ),
     workflowhub(
         [1757],
-        "PRINSEQ_READS has no stub, and the stubs of other steps make files without the "
-        "extensions that CAT_CAT reads from their names, so a stub run fails; a real run is not "
-        "affected",
-        [r"Missing output file\(s\) `\*_good_out\*` expected by process .*PRINSEQ_READS"],
+        "PRINSEQ_READS has no stub, so it needs prinseq++ to write the reads, and the mock "
+        "executor only makes up one file where paired reads give two; for one file, the stub "
+        "of CAT_CAT reads the extension from the folder it is staged in, so it fails (Nextflow "
+        "fails in the same way with a stand-in that makes the file of the mock executor)",
+        [r"Check script 'modules/nf-core/cat/cat/main.nf' at line: 59"],
+        kind="unsupported (decision 16)",
+        stubs={"PRINSEQPLUSPLUS": "touch mock_good_outmock mock.log; " + VERSIONS},
     ),
     workflowhub(
         [1763],
@@ -1024,18 +1084,30 @@ CASES += [
     ),
     workflowhub(
         [2033],
-        "the test profile names tests/data/ relative to the launch folder, where it is not, so "
-        "the test run fails; runs from the folder of the workflow or with their own inputs are "
-        "not affected",
-        [r"No such file or directory: <launch>/tests/data/minimal_data"],
+        "the stub of VIZGENPOSTPROCESSING_PREPARESEGMENTATION makes an empty JSON file, which the "
+        "workflow parses, so a stub run fails; a real run is not affected",
+        ["Error while parsing JSON content"],
     ),
     workflowhub(
         [2037],
-        "DIAMOND_MAKEDB has no stub, so a stub run gives it no database, which the alignment "
-        "needs; a real run is not affected",
-        [r"Missing output file\(s\) `protein\.faa\.gz\.dmnd` expected by process "
-         r".*DIAMOND_MAKEDB"],
+        "SAMPLESHEET_CHECK has no stub, so it needs its script to write the sample sheet that "
+        "the workflow reads, and the mock executor only makes up an empty file, which iunctus "
+        "reads as no samples, where Nextflow stops at the missing header; with no samples, "
+        "MULTIQC gets a null path, as in Nextflow with stand-ins that write a sample sheet of "
+        "only its header",
+        [r"Error executing process > 'EURYALE:MULTIQC'", "Path value cannot be null"],
         jars=True,
+        kind="unsupported (decision 16)",
+        stubs={
+            "SAMPLESHEET_CHECK": 'printf "sample,fastq_1,fastq_2,single_end\\n" > '
+            "samplesheet.valid.csv; " + VERSIONS,
+            "BOWTIE2_BUILD": "mkdir bowtie2; " + VERSIONS,
+            "DIAMOND_MAKEDB": "touch ${fasta}.dmnd; " + VERSIONS,
+            "CREATE_DB": "mkdir annotate_db; " + VERSIONS,
+            "CREATE_DICTIONARY": "touch NR2GO.txt; " + VERSIONS,
+            "CUSTOM_DUMPSOFTWAREVERSIONS": "touch software_versions.yml "
+            "software_versions_mqc.yml; " + VERSIONS,
+        },
     ),
     workflowhub(
         [2080],
@@ -1105,10 +1177,36 @@ CASES += [
     ),
     workflowhub(
         [2217],
-        "the test profile names assets/chla_test_input_channels.yaml relative to the launch "
-        "folder, where it is not, so the test run fails; runs from the folder of the workflow "
-        "or with their own inputs are not affected",
-        [r"<launch>/assets/chla_test_input_channels.yaml \(No such file or directory\)"],
+        "the closures of COMPLETENESS_ASM put their bodies in a second pair of braces: the "
+        "legacy parser runs those as blocks, and the strict parser, which decision 14 makes the "
+        "reference of iunctus for code that both parsers take, reads them as closures that the "
+        "map returns, so the next map fails (shown with a small script, as the strict parser "
+        "rejects the config and the scripts of the workflow)",
+        [r"Invalid method invocation `call` with arguments: \[.*closure\d+@<address>, "
+         r"\[id:Ctrachomatis\]"],
+        kind="unsupported (decision 14)",
+        parser="v2",
+        reproduce={
+            "main.nf": """// The closures of COMPLETENESS_ASM of workflowhub/2217.
+workflow {
+    reference = channel.of([[id: 'Ctrachomatis', build: 'ref'], [pri_asm: 'asm.fa']])
+    reads_ch = channel.of([[id: 'Ctrachomatis'], ['R1.fastq.gz', 'R2.fastq.gz']])
+
+    reference.map{ meta, assemblies -> {
+        def meta_new = meta.clone();
+        meta_new.put("id", meta.get("id")+"_"+meta.get("build"));
+        [ meta_new, assemblies['pri_asm'] ]
+     } }.set{ reference_ch }
+
+    reference_ch.combine(reads_ch).map{ meta_asm, asm, meta_reads, reads -> {
+        def meta_cor_reads = meta_reads.clone();
+        meta_cor_reads.put("id", meta_asm.get("id"));
+        [ meta_cor_reads, reads, meta_asm, asm ]
+    }
+    }.view()
+}
+""",
+        },
     ),
     workflowhub(
         [2239],
@@ -1181,29 +1279,63 @@ workflow {
     ),
     workflowhub(
         [1871],
-        "qc_dupl and the other quality steps have no stubs, so a stub run gives them no real "
-        "files, in which the workflow then finds no chromosomes; a real run is not affected",
-        [r"Error executing process > 'preprocess:qc_dupl"],
+        "qc_dupl, get_chromosome and the other quality steps have no stubs, so they need "
+        "bcftools to write the files that the workflow reads, and the mock executor only makes "
+        "up empty files, in which the workflow finds no chromosomes (Nextflow fails in the same "
+        "way with stand-ins that make the files of the mock executor)",
+        ["No Chromosome\\(s\\) found not in target\\(s\\) dataset\\(s\\)"],
+        kind="unsupported (decision 16)",
+        stubs={
+            "qc_dupl": '''base = file(dataset_vcf.baseName).baseName
+    dataset_qc_vcf = "${base}_${chrm}_${start}_${end}_qc.bcf"
+    """
+    touch ${dataset_qc_vcf}
+    """''',
+            "split_multi_allelic": '''base = file(vcf.baseName).baseName
+    vcf_out = "${base}.norm.bcf"
+    """
+    touch ${vcf_out}
+    """''',
+            "fill_tags_vcf": '''vcf_out = "${vcf.baseName}_af.bcf"
+    """
+    touch ${vcf_out}
+    """''',
+            "filter_min_ac": '''base = file(vcf.baseName).baseName
+    vcf_out = "${base}_ac.bcf"
+    map_file = "${base}_ac.chrom.txt"
+    """
+    touch ${vcf_out} ${map_file}
+    """''',
+            "get_chromosome": '''base = file(dataset_vcf.baseName).baseName
+    chrom_file = "${base}_chromosomes.txt"
+    """
+    touch ${chrom_file}
+    """''',
+        },
     ),
     workflowhub(
         [2040],
-        "VPT_QUANTIFICATION has no stub, and the stub of SPATIAL_TO_H5AD makes its h5ad file in "
-        "a folder where its output does not look, so a stub run fails; a real run is not "
-        "affected",
-        [r"Error executing process > .*VPT_QUANTIFICATION"],
-    ),
-    workflowhub(
-        [2200],
-        "the stub of SAMTOOLS_IDXSTATS makes an empty file, whose first line the workflow "
-        "reads, so a stub run fails; a real run is not affected",
-        [r"Cannot invoke method getAt\(\) on null object"],
-        tools={"tabix": "Version: 1.20"},
+        "the stub of SPATIAL_TO_H5AD makes its h5ad file in a folder where its output does not "
+        "look, so a stub run fails; a real run is not affected (Nextflow first stops at "
+        "VPT_QUANTIFICATION, which has no stub, and reaches the same point with a stand-in for "
+        "it)",
+        [r"Missing output file\(s\) `\*\.h5ad` expected by process .*SPATIAL_TO_H5AD"],
+        stubs={
+            "VPT_QUANTIFICATION": "touch cellpose_micron_space.parquet cell_by_gene.csv "
+            "detected_transcripts.csv cell_metadata.csv sum_signals.csv "
+            "micron_to_mosaic_pixel_transform.csv; " + VERSIONS
+        },
     ),
     workflowhub(
         [1266],
-        "HPAM_SPLIT has no stub, so a stub run gives it no hyperparameter files, which the "
-        "workflow needs; a real run is not affected",
-        [r"Missing output file\(s\) `\*\.yaml` expected by process .*HPAM_SPLIT"],
+        "the stub of UNZIP makes an empty folder, so a stub run has no response data and no "
+        "results, and VISUALIZE_RESULTS then gets 2 of its 4 files, so it fails; a real run is "
+        "not affected (Nextflow first stops at HPAM_SPLIT, which has no stub, and fails in the "
+        "same way with a stand-in for it and the strict parser, whose check of input tuples "
+        "iunctus has)",
+        [r"Input tuple does not match tuple declaration in process .*VISUALIZE_RESULTS"],
+        parser="v2",
+        stubs={"HPAM_SPLIT": "touch mock.yaml; " + VERSIONS},
     ),
 ]
 
@@ -1220,6 +1352,32 @@ def stand_ins(directory, case):
         tool.write_text(f"#!/bin/sh\ncat <<'END'\n{text}\nEND\n")
         tool.chmod(0o755)
     return environment, folder
+
+
+def add_stubs(copy, stubs):
+    """Gives each process that `stubs` names the stub script there, in the copy of the pipeline,
+    so that a stub run passes a process without a stub, as the mock of iunctus does, or one
+    whose stub is broken. A stub with `\"\"\"` is the whole stub section, with the statements
+    before its script."""
+    for name, script in stubs.items():
+        for path in sorted(copy.rglob("*.nf")):
+            text = path.read_text(errors="replace")
+            start = re.search(rf"(?m)^process {re.escape(name)}\s*\{{", text)
+            if start is None:
+                continue
+            # The process ends at the last brace before the next declaration, as its brace may
+            # be indented.
+            after = re.compile(r"(?m)^(process|workflow|def|include)\b").search(text, start.end())
+            end = text.rindex("}", start.end(), after.start() if after else len(text))
+            body = script if '"""' in script else '"""\n    ' + script + '\n    """'
+            stub = "    stub:\n    " + body + "\n"
+            # A stub that the process has already gives way.
+            old = re.compile(r"(?m)^\s*stub:").search(text, start.end(), end)
+            cut = old.start() if old else end
+            path.write_text(text[:cut] + stub + text[end:])
+            break
+        else:
+            raise SystemExit(f"no process {name} to give a stub")
 
 
 def command(case, pipeline):
@@ -1251,6 +1409,9 @@ def command(case, pipeline):
         notes.append("with the Java libraries of nf-validation 1.1.3 in lib/")
     for name, output in case.get("tools", {}).items():
         notes.append(f"with a `{name}` that prints {output!r}")
+    for name, script in case.get("stubs", {}).items():
+        # The record has one line for the command.
+        notes.append(f"with the stub `{' '.join(script.split())}` for {name}")
     if notes:
         text += "  # " + ", ".join(notes)
     return text

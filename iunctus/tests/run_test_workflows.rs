@@ -1,12 +1,13 @@
 //! Runs every nf-core pipeline of the test workflows with `-profile test` and the mock TES
 //! executor, and compares the outcome with `tests/fixtures/run_test_workflows.txt`: `ok`, or the
-//! exit code and the first line of the error. The runs are stub runs, as pipelines then do not
-//! read the content of the outputs that the mock makes up, and up to 8 tasks finish in a seeded
-//! shuffled order, so that the Nextflow driver cannot depend on the order of outcomes. The
-//! execution graph of each run that succeeds must be valid. A pipeline may only fail with a
-//! record in `tests/fixtures/run_evidence.txt` of why it cannot run, and a record is only kept
-//! while its pipeline fails. Run with `just run-test-workflows-test`; on a difference the test
-//! prints the lines of the new fixture.
+//! exit code and the first line of the error. The Nextflow workflows of WorkflowHub run the same
+//! way, and compare with `tests/fixtures/run_workflowhub.txt`. The runs are stub runs, as
+//! pipelines then do not read the content of the outputs that the mock makes up, and up to 8
+//! tasks finish in a seeded shuffled order, so that the Nextflow driver cannot depend on the
+//! order of outcomes. The execution graph of each run that succeeds must be valid. A workflow
+//! may only fail with a record in `tests/fixtures/run_evidence.txt` of why it cannot run, and a
+//! record is only kept while its workflow fails. Run with `just run-test-workflows-test`; on a
+//! difference the test prints the lines of the new fixture.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -77,15 +78,21 @@ fn valid(reason: &str) -> bool {
 
 /// The outcome of one run: `ok`, or the exit code and the first error line without the
 /// parts that differ between machines and runs. A run that takes more than ten minutes is
-/// stopped with exit code 124. A run that succeeds
-/// with an invalid graph is `graph` and the problem.
-fn outcome(test_workflows: &Path, pipeline: &str, cache: &Path) -> String {
+/// stopped with exit code 124. A run that succeeds with an invalid graph is `graph` and the
+/// problem. `target` is the folder of the workflow, or its main script, and `project` its
+/// folder; `profile` runs it with `-profile test`.
+fn outcome(target: &Path, project: &Path, cache: &Path, profile: bool) -> String {
     let graph = cache.join("graph.json");
     let _ = std::fs::remove_file(&graph);
-    let output = Command::new("timeout")
+    let mut command = Command::new("timeout");
+    command
         .args(["600", env!("CARGO_BIN_EXE_iunctus")])
-        .args(["run", &test_workflows.join(pipeline).to_string_lossy()])
-        .args(["-profile", "test", "-stub-run"])
+        .args(["run", &target.to_string_lossy()]);
+    if profile {
+        command.args(["-profile", "test"]);
+    }
+    let output = command
+        .arg("-stub-run")
         .args(["-max-pending", "8", "-order", "shuffled:1"])
         .args(["-graph", &graph.to_string_lossy()])
         .args(["--outdir", &cache.join("out").to_string_lossy()])
@@ -106,7 +113,7 @@ fn outcome(test_workflows: &Path, pipeline: &str, cache: &Path) -> String {
     }
     let error = String::from_utf8_lossy(&output.stderr);
     let first = error.lines().next().unwrap_or_default();
-    let prefix = format!("{}/", test_workflows.join(pipeline).display());
+    let prefix = format!("{}/", project.display());
     let first = first
         .replace(&prefix, "")
         .replace(&cache.display().to_string(), "<cache>");
@@ -129,13 +136,6 @@ fn pipelines_run_as_recorded() {
         std::env::var("NF_CORE_TEST_WORKFLOWS").expect("NF_CORE_TEST_WORKFLOWS is set"),
     )
     .join("pipelines");
-    let fixture =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/run_test_workflows.txt");
-    let expected = std::fs::read_to_string(&fixture).expect("reads the fixture");
-    let expected: Vec<&str> = expected
-        .lines()
-        .filter(|line| !line.starts_with('#'))
-        .collect();
     let mut pipelines: Vec<String> = std::fs::read_dir(&test_workflows)
         .expect("reads the test workflows")
         .map(|entry| {
@@ -147,6 +147,78 @@ fn pipelines_run_as_recorded() {
         })
         .collect();
     pipelines.sort();
+    let targets = pipelines
+        .into_iter()
+        .map(|pipeline| {
+            let folder = test_workflows.join(&pipeline);
+            (pipeline, folder.clone(), folder)
+        })
+        .collect();
+    runs_as_recorded(targets, "run_test_workflows.txt", false);
+}
+
+/// The Nextflow workflows of WorkflowHub (decision 4), by `workflowhub/<id>`: each runs its
+/// folder as a project, with `manifest.mainScript` or `main.nf`, or else the main script that
+/// its RO-Crate names; with `-profile test`, or without a profile when it has no `test` profile.
+#[test]
+#[ignore = "needs the WorkflowHub test workflows and the network; run `just run-test-workflows-test`"]
+fn workflowhub_workflows_run_as_recorded() {
+    let test_workflows = PathBuf::from(
+        std::env::var("WORKFLOWHUB_TEST_WORKFLOWS").expect("WORKFLOWHUB_TEST_WORKFLOWS is set"),
+    );
+    let mut ids: Vec<String> = std::fs::read_dir(&test_workflows)
+        .expect("reads the test workflows")
+        .map(|entry| {
+            entry
+                .expect("an entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .filter(|name| !name.starts_with('.'))
+        .collect();
+    ids.sort_by_key(|id| id.parse::<u64>().unwrap_or(u64::MAX));
+    let targets = ids
+        .into_iter()
+        .map(|id| {
+            let folder = test_workflows.join(&id);
+            let config = std::fs::read_to_string(folder.join("nextflow.config"));
+            let project = folder.join("main.nf").exists()
+                || config.is_ok_and(|text| text.contains("mainScript"));
+            let target = match main_entity(&folder) {
+                Some(main) if !project && main.ends_with(".nf") => folder.join(main),
+                _ => folder.clone(),
+            };
+            (format!("workflowhub/{id}"), target, folder)
+        })
+        .collect();
+    runs_as_recorded(targets, "run_workflowhub.txt", true);
+}
+
+/// The main script that the RO-Crate of a WorkflowHub entry names, relative to its folder.
+fn main_entity(folder: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(folder.join("ro-crate-metadata.json")).ok()?;
+    let crate_: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let graph = crate_.get("@graph")?.as_array()?;
+    let root = graph
+        .iter()
+        .find(|entity| entity.get("@id").and_then(|id| id.as_str()) == Some("./"))?;
+    let main = root.get("mainEntity")?.get("@id")?.as_str()?;
+    Some(main.trim_start_matches("./").to_owned())
+}
+
+/// Runs each target, by name, main script or folder, and project folder, and compares the
+/// outcomes with a fixture of `tests/fixtures`. With `fallback`, a workflow without a `test`
+/// profile runs without one.
+fn runs_as_recorded(targets: Vec<(String, PathBuf, PathBuf)>, fixture: &str, fallback: bool) {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(fixture);
+    let expected = std::fs::read_to_string(&fixture).expect("reads the fixture");
+    let expected: Vec<&str> = expected
+        .lines()
+        .filter(|line| !line.starts_with('#'))
+        .collect();
     // Each run has a cache of its own. Downloads are shared with the user's cache, so that
     // runs do not fetch them again.
     let cache = tempfile::tempdir().expect("a temporary directory");
@@ -155,12 +227,16 @@ fn pipelines_run_as_recorded() {
         .expect("HOME is set");
     let downloads = home.join(".cache/iunctus/downloads");
     std::fs::create_dir_all(&downloads).expect("creates the downloads directory");
-    let run = |pipeline: &String| {
-        let cache = cache.path().join(pipeline);
+    let run = |(name, target, project): &(String, PathBuf, PathBuf)| {
+        let cache = cache.path().join(name);
         std::fs::create_dir_all(cache.join("iunctus")).expect("creates the cache");
         std::os::unix::fs::symlink(&downloads, cache.join("iunctus/downloads"))
             .expect("links the downloads");
-        format!("{pipeline} {}", outcome(&test_workflows, pipeline, &cache))
+        let mut outcome = outcome(target, project, &cache, true);
+        if fallback && outcome.ends_with("Unknown configuration profile: 'test'") {
+            outcome = self::outcome(target, project, &cache, false);
+        }
+        format!("{name} {outcome}")
     };
     // The runs go in parallel, `IUNCTUS_TEST_WORKFLOWS_JOBS` at a time (4 by default).
     let jobs: usize = std::env::var("IUNCTUS_TEST_WORKFLOWS_JOBS")
@@ -168,16 +244,16 @@ fn pipelines_run_as_recorded() {
         .and_then(|jobs| jobs.parse().ok())
         .unwrap_or(4);
     let next = AtomicUsize::new(0);
-    let outcomes = Mutex::new(vec![String::new(); pipelines.len()]);
+    let outcomes = Mutex::new(vec![String::new(); targets.len()]);
     std::thread::scope(|scope| {
         for _ in 0..jobs.max(1) {
             scope.spawn(|| {
                 loop {
                     let index = next.fetch_add(1, Ordering::Relaxed);
-                    let Some(pipeline) = pipelines.get(index) else {
+                    let Some(target) = targets.get(index) else {
                         break;
                     };
-                    let line = run(pipeline);
+                    let line = run(target);
                     outcomes.lock().expect("no run panicked")[index] = line;
                 }
             });

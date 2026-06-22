@@ -1,0 +1,193 @@
+# The outcome of `iunctus run <workflow> -profile test -stub-run -max-pending 8
+# -order shuffled:1` with the mock TES executor for every Nextflow workflow of WorkflowHub of
+# the test workflows (without `-profile test` for a workflow without that profile): `ok` (with
+# a valid execution graph), or the exit code and the first line of the error (33 for
+# unsupported features). run_evidence.txt says why each workflow that fails cannot run.
+workflowhub/19 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/20 33 main.nf:15:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/27 1 virify.nf:90:9: Expected `{`
+workflowhub/44 ok
+workflowhub/57 33 main.nf:11:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/104 33 nanopore_nextflow.nf:9:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/105 33 workflow.nf:3:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/106 33 nextflow.nf:4:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/114 ok
+workflowhub/119 33 nextflow.nf:3:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/136 ok
+workflowhub/140 1 NoSuchFileException: No such file or directory: <cache>/null
+workflowhub/156 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/192 1 main.nf:28:15: Unexpected character: '`'
+workflowhub/240 1 main.nf:47:13: Invalid include source: 'workflow/samtools.nf'
+workflowhub/244 33 main.nf:3:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/264 ok
+workflowhub/300 ok
+workflowhub/340 1 hifi_assembly.nf:18:76: MissingPropertyException: No such variable: param
+workflowhub/383 ok
+workflowhub/393 1 main.nf:68:15: AbortOperationException: the run exits with code 1
+workflowhub/402 1 action.nf:182:2: IllegalArgumentException: A process input channel evaluates to null
+workflowhub/416 33 Nextflow/Genome-downloader.nf:19:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/417 1 main.nf:201:5: AbortOperationException: the run exits with code 1
+workflowhub/418 1 NoSuchFileException: <cache>/test_data/test_input_paired.txt
+workflowhub/419 1 main.nf:98:13: AbortOperationException: the run exits with code 1
+workflowhub/431 1 main.nf:77:2: AbortOperationException: the run exits with code 1
+workflowhub/435 33 sqtlseeker2.nf:26:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/436 33 mvgwas.nf:24:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/438 1 mop_preprocess/mop_preprocess.nf:151:11: Invalid include source: 'mop_preprocess/../BioNextflow/subworkflows/basecalling/guppy.nf'
+workflowhub/440 1 config/standard.config:16:1: Expected `}`
+workflowhub/442 ok
+workflowhub/444 1 workflow/main.nf:21:1: MissingPropertyException: No such variable: WorkflowMain
+workflowhub/450 1 workflow/../subworkflows/../modules/mapseq.nf:31:1: Expected an expression
+workflowhub/452 1 workflows/mobilomeannotation.nf:54:5: SchemaValidationException: The following invalid input values have been detected:
+workflowhub/453 1 iunctus: /home/beavis/.cache/iunctus/test-workflows/nextflow-workflowhub/453 holds no workflow iunctus knows: no main.nf, nextflow.config, Snakefile or .smk file; name the workflow file
+workflowhub/454 ok
+workflowhub/462 1 workflows/genomes_annotation.nf:6:18: AbortOperationException: Missing `fromPath` parameter
+workflowhub/480 1 Workflow/NextFlow/covid19_pilot.nf:21:68: IllegalArgumentException: Must specify a non-null value for the 'to' index in a Range
+workflowhub/556 1 workflows/../subworkflows/local/apply_score.nf:227:24: NullPointerException: Cannot invoke method split() on null object
+workflowhub/560 1 main.nf:86:6: AbortOperationException: the run exits with code 1
+workflowhub/638 ok
+workflowhub/654 1 workflows/annotato.nf:36:5: AbortOperationException: Input genome is not specified!
+workflowhub/664 ok
+workflowhub/665 ok
+workflowhub/666 ok
+workflowhub/667 ok
+workflowhub/668 1 workflows/../subworkflows/local/../../modules/nf-core/custom/getchromsizes/main.nf:44:22: MissingPropertyException: No such variable: prefix
+workflowhub/683 ok
+workflowhub/691 1 main.nf:76:2: AbortOperationException: the run exits with code 1
+workflowhub/737 ok
+workflowhub/813 1 subworkflows/local/utils_nfcore_treeval_pipeline/../yaml_input/main.nf:55:62: NoSuchFileException: No such file or directory: <cache>/busco/subset
+workflowhub/836 1 main.nf:72:2: AbortOperationException: the run exits with code 1
+workflowhub/837 1 main_workflow_precursor_specific_fasta.nf:37:17: AbortOperationException: Missing `fromPath` parameter
+workflowhub/874 1 ERROR: Could not load config/Not_Specified.config check that you are using a valid workflow name
+workflowhub/884 1 subworkflows/local/../nf-core/utils_nfschema_plugin/main.nf:39:13: SchemaValidationException: The following invalid input values have been detected:
+workflowhub/964 1 workflows/../subworkflows/local/../../modules/nf-core/cutadapt/main.nf:14:37: MissingPropertyException: No such variable: outformat
+workflowhub/965 33 main.nf:20:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/966 ok
+workflowhub/967 1 workflows/bactmap.nf:12:50: NoSuchFileException: No such file or directory: https://raw.githubusercontent.com/nf-core/test-datasets/bactmap/genome/NCTC13799.fna
+workflowhub/968 ok
+workflowhub/969 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/970 1 workflows/../subworkflows/local/yeast/prepare_reads.nf:211:17: IndexOutOfBoundsException: index is out of range 0..-1 (index = 0)
+workflowhub/971 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/972 ok
+workflowhub/973 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/974 1 MissingFileException: Missing output file(s) `*.report.sourcepredict.csv` expected by process `NFCORE_COPROID:COPROID:KRAKEN2_CLASSIFICATION:SOURCEPREDICT (samples_combined)`
+workflowhub/975 ok
+workflowhub/976 ok
+workflowhub/979 ok
+workflowhub/980 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/981 ok
+workflowhub/982 33 main.nf:28:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/983 33 main.nf:16:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/985 ok
+workflowhub/987 ok
+workflowhub/988 1 workflows/hgtseq.nf:281:9: AbortOperationException: ERROR: Please check input samplesheet -> a column named input1 with either fastq or bam/cram input is mandatory!
+workflowhub/989 33 main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/990 ok
+workflowhub/991 ok
+workflowhub/992 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/993 ok
+workflowhub/994 33 main.nf:14:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/996 1 lib/WorkflowMarsseq.groovy:56:13: AbortOperationException: the run exits with code 1
+workflowhub/997 ok
+workflowhub/998 ok
+workflowhub/999 ok
+workflowhub/1000 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/1001 ok
+workflowhub/1002 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/1003 1 MissingFileException: Missing output file(s) `*_mqc.tsv` expected by process `NFCORE_NANOSTRING:NANOSTRING:CREATE_ANNOTATED_TABLES (samplesheet_test.csv)`
+workflowhub/1004 33 main.nf:51:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/1005 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/1006 1 workflows/../subworkflows/local/prepare_reference/main.nf:312:12: NoSuchFileException: No such file or directory: <cache>/iunctus/scratch/mock-tes/<run>/work/4/hmf_pipeline_resources.38_v2.3.0--2/dna/copy_number/AmberGermlineSites.38.tsv.gz
+workflowhub/1007 ok
+workflowhub/1008 33 main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/1009 ok
+workflowhub/1010 ok
+workflowhub/1011 ok
+workflowhub/1012 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/1013 1 lib/NfcoreSchema.groovy:181:13: AbortOperationException: the run exits with code 1
+workflowhub/1014 ok
+workflowhub/1015 1 main.nf:43:5: SchemaValidationException: The following invalid input values have been detected:
+workflowhub/1016 ok
+workflowhub/1017 ok
+workflowhub/1018 ok
+workflowhub/1019 1 ProcessUnrecoverableException: Input tuple does not match tuple declaration in process `NFCORE_RNAVAR:RNAVAR:FASTQ_ALIGN_STAR:BAM_SORT_STATS_SAMTOOLS_TRANSCRIPTOME:SAMTOOLS_SORT` -- offending value: [[:], []]
+workflowhub/1021 1 workflows/../subworkflows/nf-core/utils_nfcore_pipeline/main.nf:82:20: NullPointerException: Cannot invoke method collectEntries() on null object
+workflowhub/1022 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/1023 1 subworkflows/local/prepare_genome/main.nf:32:9: Exception: Unable to extract the prefix from the Bowtie index files. No file with the '.1.ebwt' extension was found. Please ensure that the correct files are in the specified path.
+workflowhub/1025 ok
+workflowhub/1026 ok
+workflowhub/1027 1 workflows/../subworkflows/local/fastq_trim_fastp_fastqc/main.nf:15:26: IllegalArgumentException: Text must not be null or empty
+workflowhub/1030 1 workflows/sarek/main.nf:870:25: IllegalStateException: Access to 'FASTP.out' is undefined since the process 'FASTP' has not been invoked before accessing the output attribute
+workflowhub/1041 ok
+workflowhub/1055 ok
+workflowhub/1058 ok
+workflowhub/1069 1 main.nf:31:5: SchemaValidationException: The following invalid input values have been detected:
+workflowhub/1100 1 workflows/../subworkflows/nf-core/fastq_trim_fastp_fastqc/main.nf:15:26: IllegalArgumentException: Text must not be null or empty
+workflowhub/1106 33 subworkflows/local/prepare_input/main.nf:130:21: Not supported yet: reading remote files like ftp://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz
+workflowhub/1160 1 NoSuchFileException: <cache>/params_ccrcc.csv
+workflowhub/1178 ok
+workflowhub/1179 ok
+workflowhub/1217 ok
+workflowhub/1222 1 main.nf:89:9: RuntimeException: Reference FASTA index file not found, expected at: <cache>/null.fai
+workflowhub/1226 1 workflows/chrcheck/function.nf:46:13: AbortOperationException: Contig names: [chr21, chr22] absent from file: https://raw.githubusercontent.com/nf-core/test-datasets/phaseimpute/hum_data/individuals/NA12878/NA12878.s.1x.bam and cannot be solved by adding or removing the `chr` prefix.
+workflowhub/1236 ok
+workflowhub/1250 1 workflows/rangeland.nf:88:19: NoSuchFileException: No files match pattern `<cache>/iunctus/scratch/mock-tes/<run>/work/3/Landsat_data/*/*`
+workflowhub/1263 1 main.nf:103:2: AbortOperationException: the run exits with code 1
+workflowhub/1266 1 ProcessUnrecoverableException: Input tuple does not match tuple declaration in process `NFCORE_DRUGRESPONSEEVAL:DRUGRESPONSEEVAL:MODEL_TESTING:VISUALIZE_RESULTS` -- offending value: [assets/NO_FILE, assets/NO_FILE]
+workflowhub/1293 ok
+workflowhub/1306 1 IllegalStateException: Error while parsing JSON content - cause: JsonException: Invalid JSON: unexpected end
+workflowhub/1307 ok
+workflowhub/1320 1 workflows/curationpretext_allf.nf:14:50: NoSuchFileException: No such file or directory: TreeValTinyData/genomic_data/pacbio
+workflowhub/1321 1 workflows/curationpretext_allf.nf:14:50: NoSuchFileException: No such file or directory: TreeValTinyData/genomic_data/pacbio
+workflowhub/1330 1 workflows/annoaudit.nf:20:5: AbortOperationException: Input genome is not specified!
+workflowhub/1360 1 ProcessFailedException: Process `NFCORE_METHYLONG:METHYLONG:ONT:ONT_TRIM_REPAIR:PORECHOP_PORECHOP (homo_sapiens)` terminated with an error exit status (2)
+workflowhub/1727 1 iunctus: /home/beavis/.cache/iunctus/test-workflows/nextflow-workflowhub/1727 holds no workflow iunctus knows: no main.nf, nextflow.config, Snakefile or .smk file; name the workflow file
+workflowhub/1735 ok
+workflowhub/1742 ok
+workflowhub/1757 1 workflows/../subworkflows/local/fastq_fasta_mash_screen/../../../modules/nf-core/cat/cat/main.nf:59:55: StringIndexOutOfBoundsException: begin -1, end 19, length 19
+workflowhub/1763 1 workflows/pathogensurveillance.nf:38:5: NoSuchFileException: assets/.pathogensurveillance_output.json
+workflowhub/1769 1 NoSuchFileException: <cache>/params_ccrcc.csv
+workflowhub/1782 1 subworkflows/local/utils_nfcore_taxodactyl_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:39:13: SchemaValidationException: The following invalid input values have been detected:
+workflowhub/1787 ok
+workflowhub/1795 1 WARNING: Could not load nf-core/config/eisca profiles: https://raw.githubusercontent.com/nf-core/configs/master/pipeline/eisca.config
+workflowhub/1814 ok
+workflowhub/1841 1 Unable to parse config file: 'conf/module.config'
+workflowhub/1846 ok
+workflowhub/1862 1 NoSuchFileException: No such file or directory: /mnt/tblab/yolanda/CBRA_new_modules/CBRA/assets/gene_list.csv
+workflowhub/1864 1 main.nf:222:35: AbortOperationException: Error: Missing reference fasta file definition.
+workflowhub/1865 ok
+workflowhub/1871 1 modules/qc.nf:69:13: AbortOperationException: |-- ERROR- No Chromosome(s) found not in target(s) dataset(s)! The pipeline will exit.
+workflowhub/1888 1 pipeface.nf:1882:9: AbortOperationException: In data csv file does not exist, 'in_data = null' provided.
+workflowhub/1950 1 iunctus: /home/beavis/.cache/iunctus/test-workflows/nextflow-workflowhub/1950 holds no workflow iunctus knows: no main.nf, nextflow.config, Snakefile or .smk file; name the workflow file
+workflowhub/1954 ok
+workflowhub/1960 1 main.nf:35:3: NoSuchFileException: data/samples.tsv
+workflowhub/2033 1 NoSuchFileException: No such file or directory: <cache>/tests/data/minimal_data/images
+workflowhub/2037 1 ProcessUnrecoverableException: Path value cannot be null
+workflowhub/2040 1 WARNING: Could not load nf-core/config/eista profiles: https://raw.githubusercontent.com/nf-core/configs/master/pipeline/eista.config
+workflowhub/2053 1 iunctus: /home/beavis/.cache/iunctus/test-workflows/nextflow-workflowhub/2053 holds no workflow iunctus knows: no main.nf, nextflow.config, Snakefile or .smk file; name the workflow file
+workflowhub/2054 ok
+workflowhub/2080 1 main.nf:89:16: AbortOperationException: No files found matching the pattern reads/*_R{1,2}.fastq.gz
+workflowhub/2105 1 subworkflows/local/prepare_genome.nf:62:53: NoSuchFileException: No such file or directory: /data/CCBR_Pipeliner/db/PipeDB/Indices/hg38_basic/indexes/hg38.blacklist_v3.chrM.chr_rDNA.fa
+workflowhub/2110 1 quantify_and_align.nf:26:10: Invalid include source: 'include/xic-extractor/main.nf'
+workflowhub/2141 1 IllegalArgumentException: Parameter `input` is required but was not specified on the command line, params file, or config
+workflowhub/2153 1 main.nf:82:2: IllegalArgumentException: A process input channel evaluates to null
+workflowhub/2154 ok
+workflowhub/2160 1 main.nf:118:9: AbortOperationException: the run exits with code 1
+workflowhub/2177 1 subworkflows/local/utils_nfcore_envident_pipeline/main.nf:76:19: SchemaValidationException: The following errors have been detected in https://raw.githubusercontent.com/nf-core/test-datasets/viralrecon/samplesheet/samplesheet_test_illumina_amplicon.csv:
+workflowhub/2190 ok
+workflowhub/2197 1 main.nf:80:23: NoSuchFileException: /path/to/sample_sheet.csv
+workflowhub/2199 ok
+workflowhub/2200 1 workflows/../subworkflows/local/aberrantexpression/../bam_stats_idxstats_merge/main.nf:27:29: NullPointerException: Cannot invoke method getAt() on null object
+workflowhub/2203 ok
+workflowhub/2204 ok
+workflowhub/2205 33 main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+workflowhub/2209 ok
+workflowhub/2211 1 main.nf:50:9: AbortOperationException: 
+workflowhub/2212 1 MissingMethodException: No signature of method: java.util.ArrayList.tokenize() is applicable for argument types: (String) values: [.]
+workflowhub/2217 1 workflows/../subworkflows/local/prepare_input.nf:219:29: NoSuchFileException: <cache>/assets/chla_test_input_channels.yaml
+workflowhub/2239 1 subworkflows/local/utils_nfcore_ascc_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
+workflowhub/2244 ok
+workflowhub/2246 1 subworkflows/local/utils_nfcore_fspassemblypipeline_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
+workflowhub/2251 1 main.nf:39:9: AbortOperationException: the run exits with code 1
+workflowhub/2302 1 tasks/prepare.nf:15:5: IllegalArgumentException: Argument of `file()` function cannot be null
+workflowhub/2317 1 main.nf:33:36: AbortOperationException: Missing `fromPath` parameter
+workflowhub/2318 1 main.nf:653:9: AbortOperationException: ERROR: At least one sequence must be provided

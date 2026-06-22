@@ -452,3 +452,24 @@ fn absolute_paths_of_files() {
                 new File('a.fa').getAbsolutePath() instanceof String]";
     assert_eq!(value(body), "[/tmp/a.fa, true, true]");
 }
+
+/// `GZIPInputStream` reads the header first, as Java does: an empty file is the end of the
+/// stream, and other bytes are no gzip; Nextflow 26.04.6 gives `[java.io.EOFException,
+/// java.util.zip.ZipException: Not in GZIP format]`, and `catch (IOException e)` takes both.
+#[test]
+fn gzip_headers() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let dir = directory.path().display();
+    let body = format!(
+        "new File('{dir}/e.gz').text = ''\n\
+         new File('{dir}/t.gz').text = 'abc'\n\
+         ['e.gz', 't.gz'].collect {{ n ->\n\
+             try {{ new java.util.zip.GZIPInputStream(file(\"{dir}/\" + n).newInputStream()); 'ok' }}\n\
+             catch (IOException e) {{ e.toString() }}\n\
+         }}"
+    );
+    assert_eq!(
+        value(&body),
+        "[java.io.EOFException, java.util.zip.ZipException: Not in GZIP format]"
+    );
+}

@@ -411,7 +411,7 @@ workflow {
         "expect": [r"Contig names: \[chr21\] absent from file"],
     },
     {
-        "pipelines": ["rnadnavar"],
+        "pipelines": ["rnadnavar", "workflowhub/2212"],
         "why": "the stub of STAR_ALIGN makes three files that `*d.out.bam` matches, and the "
         "`ext.prefix` of SAMTOOLS_SORT then calls `tokenize` on the list of their names, so a "
         "stub run fails; a real run is not affected (shown with a small script, as Nextflow first "
@@ -940,6 +940,198 @@ CASES += [
         "fails, as Nextflow 25.04.0 of its time shows",
         ["plus"],
         release="25.04.0",
+    ),
+    workflowhub(
+        [1862],
+        "the test profile names files below /mnt/tblab of the cluster of its authors, so the "
+        "test run fails; runs with their own inputs are not affected",
+        ["No such file or directory: /mnt/tblab/"],
+        kind="missing",
+    ),
+    workflowhub(
+        [1864],
+        "the config sets `params.highcpu` and other params inside a `params` block of a "
+        "`process` block, which Nextflow 21.10.6, which the workflow names, rejects, so the run "
+        "fails",
+        [r"Unknown config attribute `params.highcpu`"],
+        release="21.10.6",
+        profile=False,
+    ),
+    workflowhub([1888], NO_INPUTS.format("without `--in_data` it stops"),
+                ["In data csv file does not exist"], profile=False),
+    workflowhub(
+        [1960],
+        NO_INPUTS.format("it reads data/samples.tsv, which its repository does not have"),
+        [r"<pipeline>/data/samples.tsv \(No such file or directory\)"],
+        profile=False,
+    ),
+    workflowhub(
+        [2033],
+        "the test profile names tests/data/ relative to the launch folder, where it is not, so "
+        "the test run fails; runs from the folder of the workflow or with their own inputs are "
+        "not affected",
+        [r"No such file or directory: <launch>/tests/data/minimal_data"],
+    ),
+    workflowhub(
+        [2037],
+        "DIAMOND_MAKEDB has no stub, so a stub run gives it no database, which the alignment "
+        "needs; a real run is not affected",
+        [r"Missing output file\(s\) `protein\.faa\.gz\.dmnd` expected by process "
+         r".*DIAMOND_MAKEDB"],
+        jars=True,
+    ),
+    workflowhub(
+        [2080],
+        NO_INPUTS.format("it reads reads/*_R{1,2}.fastq.gz from the launch folder"),
+        [r"No files found matching the pattern reads/\*_R\{1,2\}\.fastq\.gz"],
+        profile=False,
+    ),
+    workflowhub(
+        [2105],
+        "the test profile names files below /data/CCBR_Pipeliner of the cluster of its "
+        "authors, so the test run fails; runs with their own inputs are not affected",
+        ["No such file or directory: /data/CCBR_Pipeliner/"],
+        kind="missing",
+    ),
+    workflowhub(
+        [2110],
+        "the workflow includes ProGFASTAGen and xic-extractor, git submodules that WorkflowHub "
+        "and its repository do not give, so the run fails",
+        ["Can't find a matching module file for include"],
+        kind="missing",
+        profile=False,
+    ),
+    workflowhub(
+        [2141],
+        NO_INPUTS.format("it requires `--input`"),
+        [r"--input \(samplesheet CSV\) is required"],
+        parser="v2",
+        profile=False,
+    ),
+    workflowhub(
+        [2153],
+        "an output of modules/snf.nf is `file(...) optional true`, which Nextflow 25.10.4 of "
+        "its time cannot read, so the run fails",
+        ["Cannot invoke method optional\\(\\) on null object"],
+        release="25.10.4",
+        profile=False,
+    ),
+    workflowhub([2160], HELP, ["ORBiT - ONT RNAseq Bioinformatics Toolkit"], profile=False),
+    workflowhub(
+        [2177],
+        "the viralrecon samplesheet that the test profile names has no `single_end` column, "
+        "which the schema of this workflow requires, so the test run fails; runs with their "
+        "own inputs are not affected",
+        [r"Missing required field\(s\): single_end"],
+    ),
+    workflowhub(
+        [2197],
+        NO_INPUTS.format("it reads the placeholder samplesheet /path/to/sample_sheet.csv"),
+        ["Samplesheet file /path/to/sample_sheet.csv does not exist"],
+        profile=False,
+    ),
+    workflowhub(
+        [2211],
+        "the workflow needs `--workflow`, and without it the script lists its workflows and "
+        "stops, so the run fails; runs that name a workflow are not affected",
+        ["Invalid workflow specified: 'null'"],
+        profile=False,
+    ),
+    workflowhub(
+        [2217],
+        "the test profile names assets/chla_test_input_channels.yaml relative to the launch "
+        "folder, where it is not, so the test run fails; runs from the folder of the workflow "
+        "or with their own inputs are not affected",
+        [r"<launch>/assets/chla_test_input_channels.yaml \(No such file or directory\)"],
+    ),
+    workflowhub(
+        [2239],
+        "the test profile names files below /lustre of the Sanger cluster, so the test run "
+        "fails; runs with their own inputs are not affected",
+        ["the file or directory '/lustre/"],
+        kind="missing",
+    ),
+    workflowhub(
+        [2246],
+        "the test profile names ./assets/samplesheet_preprocessing_and_assembly.csv relative to "
+        "the launch folder, where it is not, so the test run fails; runs from the folder of the "
+        "workflow or with their own inputs are not affected (shown with the strict parser, "
+        "which takes the escapes in the strings of modules/local/fqstat/main.nf)",
+        [r"the file or directory './assets/samplesheet_preprocessing_and_assembly.csv' does not"],
+        parser="v2",
+    ),
+    workflowhub(
+        [2251],
+        "the test profile gives no `--input`, and without it the workflow prints its help and "
+        "exits with code 1, so the test run fails; runs with their own inputs are not affected",
+        ["Usage: nextflow run main.nf --input"],
+    ),
+    workflowhub([2302], NO_INPUTS.format("a param that it gives `file()` is null"),
+                [r"Argument of `file\(\)` function cannot be null"], profile=False),
+    workflowhub([2317], NO_INPUTS.format("without its inputs `fromPath` has no pattern"),
+                ["Missing `fromPath` parameter"], profile=False),
+    workflowhub([2318], NO_INPUTS.format("it needs at least one sequence"),
+                ["At least one sequence must be provided"], profile=False),
+    workflowhub(
+        [1006],
+        "the stub of CUSTOM_EXTRACTTARBALL makes an empty folder of hmf_pipeline_resources, "
+        "whose files prepare_reference reads, so a stub run fails; a real run is not affected "
+        "(shown with a small script, as the test run first downloads references of many "
+        "gigabytes)",
+        [r"No such file or directory: <task>/hmf_pipeline_resources/dna/copy_number"],
+        reproduce={
+            "main.nf": """// The stub of CUSTOM_EXTRACTTARBALL of nf-core/oncoanalyser, and the check of
+// getRefdataFile in subworkflows/local/prepare_reference/main.nf.
+process CUSTOM_EXTRACTTARBALL {
+    output:
+    path 'hmf_pipeline_resources/'
+    script:
+    'true'
+    stub:
+    'mkdir -p hmf_pipeline_resources/'
+}
+
+workflow {
+    CUSTOM_EXTRACTTARBALL()
+        .map { dir -> file("${dir}/dna/copy_number/AmberGermlineSites.38.tsv.gz", checkIfExists: true) }
+        .view()
+}
+""",
+        },
+    ),
+    workflowhub(
+        [1727, 1950, 2053],
+        "WorkflowHub names a web page of the repository as the main file of the workflow and "
+        "gives no Nextflow script, so the run fails",
+        ["Missing project main script"],
+        kind="missing",
+        profile=False,
+    ),
+    workflowhub(
+        [1871],
+        "qc_dupl and the other quality steps have no stubs, so a stub run gives them no real "
+        "files, in which the workflow then finds no chromosomes; a real run is not affected",
+        [r"Error executing process > 'preprocess:qc_dupl"],
+    ),
+    workflowhub(
+        [2040],
+        "VPT_QUANTIFICATION has no stub, and the stub of SPATIAL_TO_H5AD makes its h5ad file in "
+        "a folder where its output does not look, so a stub run fails; a real run is not "
+        "affected",
+        [r"Error executing process > .*VPT_QUANTIFICATION"],
+    ),
+    workflowhub(
+        [2200],
+        "the stub of SAMTOOLS_IDXSTATS makes an empty file, whose first line the workflow "
+        "reads, so a stub run fails; a real run is not affected",
+        [r"Cannot invoke method getAt\(\) on null object"],
+        tools={"tabix": "Version: 1.20"},
+    ),
+    workflowhub(
+        [1266],
+        "HPAM_SPLIT has no stub, so a stub run gives it no hyperparameter files, which the "
+        "workflow needs; a real run is not affected",
+        [r"Missing output file\(s\) `\*\.yaml` expected by process .*HPAM_SPLIT"],
     ),
 ]
 

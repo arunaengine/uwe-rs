@@ -285,6 +285,18 @@ fn staged_names_expand_wildcards() {
     assert_eq!(staged("*", two), "a.txt b.txt");
 }
 
+/// A staged input iterates the parts of its staged name, as the stub of CAT_CAT reads them:
+/// Nextflow 26.04.6 gives `[[1, a.txt], [b.txt]]`.
+#[test]
+fn staged_inputs_iterate_their_names() {
+    let process = "process P {\n    input:\n    path x, stageAs: '?/*'\n    path y\n    script:\n    \
+                   println([x.collect { it.toString() }, y.collect { it.toString() }])\n    \
+                   'true'\n}\n";
+    let source = format!("{process}workflow {{\n    P(file('/d/a.txt'), file('/d/b.txt'))\n}}");
+    let (_, printed) = run(&source, &Options::default()).expect("runs");
+    assert_eq!(printed, "[[1, a.txt], [b.txt]]\n");
+}
+
 /// A staged name may use a `val` input declared after it, as atacseq's IGV process does.
 #[test]
 fn staged_names_read_later_values() {

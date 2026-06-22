@@ -128,10 +128,11 @@ config-test-workflows-test:
 	IUNCTUS_CONFIG_ORACLE="${IUNCTUS_CONFIG_ORACLE:-$HOME/.cache/iunctus/oracle/config}" \
 	cargo test --release --locked -p iunctus --test config_test_workflows -- --ignored
 
-# Runs every nf-core pipeline of the test workflows with the mock executor and compares the
-# outcomes.
+# Runs every nf-core pipeline and every Nextflow workflow of WorkflowHub of the test workflows
+# with the mock executor and compares the outcomes.
 run-test-workflows-test:
 	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" \
+	WORKFLOWHUB_TEST_WORKFLOWS="${WORKFLOWHUB_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nextflow-workflowhub}" \
 	cargo test --release --locked -p iunctus --test run_test_workflows -- --ignored
 
 # Records the stub scripts of the pipelines in iunctus/tests/fixtures/oracle/stub with Nextflow

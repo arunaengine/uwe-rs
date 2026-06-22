@@ -4,10 +4,11 @@
 //! way, and compare with `tests/fixtures/run_workflowhub.txt`. The runs are stub runs, as
 //! pipelines then do not read the content of the outputs that the mock makes up, and up to 8
 //! tasks finish in a seeded shuffled order, so that the Nextflow driver cannot depend on the
-//! order of outcomes. The execution graph of each run that succeeds must be valid. A workflow
-//! may only fail with a record in `tests/fixtures/run_evidence.txt` of why it cannot run, and a
-//! record is only kept while its workflow fails. Run with `just run-test-workflows-test`; on a
-//! difference the test prints the lines of the new fixture.
+//! order of outcomes. Each run starts from a copy of the folder of its workflow, as a user runs
+//! a workflow after a clone. The execution graph of each run that succeeds must be valid. A
+//! workflow may only fail with a record in `tests/fixtures/run_evidence.txt` of why it cannot
+//! run, and a record is only kept while its workflow fails. Run with
+//! `just run-test-workflows-test`; on a difference the test prints the lines of the new fixture.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -80,7 +81,7 @@ fn valid(reason: &str) -> bool {
 /// parts that differ between machines and runs. A run that takes more than ten minutes is
 /// stopped with exit code 124. A run that succeeds with an invalid graph is `graph` and the
 /// problem. `target` is the folder of the workflow, or its main script, and `project` its
-/// folder; `profile` runs it with `-profile test`.
+/// folder, which the run starts from; `profile` runs it with `-profile test`.
 fn outcome(target: &Path, project: &Path, cache: &Path, profile: bool) -> String {
     let graph = cache.join("graph.json");
     let _ = std::fs::remove_file(&graph);
@@ -97,7 +98,7 @@ fn outcome(target: &Path, project: &Path, cache: &Path, profile: bool) -> String
         .args(["-graph", &graph.to_string_lossy()])
         .args(["--outdir", &cache.join("out").to_string_lossy()])
         .env("XDG_CACHE_HOME", cache)
-        .current_dir(cache)
+        .current_dir(project)
         .output()
         .expect("runs iunctus");
     let code = output.status.code().unwrap_or(-1);
@@ -232,10 +233,19 @@ fn runs_as_recorded(targets: Vec<(String, PathBuf, PathBuf)>, fixture: &str, fal
         std::fs::create_dir_all(cache.join("iunctus")).expect("creates the cache");
         std::os::unix::fs::symlink(&downloads, cache.join("iunctus/downloads"))
             .expect("links the downloads");
-        let mut outcome = outcome(target, project, &cache, true);
+        // The run starts from a copy of the folder of the workflow, as a clone of a user, so
+        // that what it writes there, like `work/`, stays out of the test workflows.
+        let copy = cache.join("workflow");
+        copy_folder(project, &copy);
+        let target = match target.strip_prefix(project) {
+            Ok(script) if !script.as_os_str().is_empty() => copy.join(script),
+            _ => copy.clone(),
+        };
+        let mut outcome = outcome(&target, &copy, &cache, true);
         if fallback && outcome.ends_with("Unknown configuration profile: 'test'") {
-            outcome = self::outcome(target, project, &cache, false);
+            outcome = self::outcome(&target, &copy, &cache, false);
         }
+        let _ = std::fs::remove_dir_all(&copy);
         format!("{name} {outcome}")
     };
     // The runs go in parallel, `IUNCTUS_TEST_WORKFLOWS_JOBS` at a time (4 by default).
@@ -302,4 +312,22 @@ fn runs_as_recorded(targets: Vec<(String, PathBuf, PathBuf)>, fixture: &str, fal
             .collect::<Vec<_>>()
             .join("\n")
     );
+}
+
+/// Copies a folder with its files, links and modes.
+fn copy_folder(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).expect("creates the copy");
+    for entry in std::fs::read_dir(from).expect("reads the folder") {
+        let entry = entry.expect("an entry");
+        let target = to.join(entry.file_name());
+        let kind = entry.file_type().expect("a file type");
+        if kind.is_symlink() {
+            let link = std::fs::read_link(entry.path()).expect("reads the link");
+            std::os::unix::fs::symlink(link, &target).expect("copies the link");
+        } else if kind.is_dir() {
+            copy_folder(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), &target).expect("copies the file");
+        }
+    }
 }

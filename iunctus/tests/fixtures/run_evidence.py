@@ -9,7 +9,7 @@
 # With pipelines, it records only their cases and keeps the other records. It reads the
 # pipelines of `just test-workflows` (NF_CORE_TEST_WORKFLOWS) and the workflows of `just
 # workflowhub-test-workflows` (WORKFLOWHUB_TEST_WORKFLOWS), and needs `nextflow` 26.04.6 on
-# the PATH. Each pipeline runs in a copy, from another folder, as the run test runs it:
+# the PATH. Each pipeline runs in a copy, from the folder of the copy, as the run test runs it:
 # `nextflow run <pipeline> -profile test -stub-run --outdir <out>`. The machine has none of
 # the tools of the pipelines, so a shell function stands in for each missing command: it
 # prints `1.0`, which stubs take for a version, and succeeds. `SHOW=1` prints the whole output
@@ -214,14 +214,7 @@ CASES = [
         ],
     },
     {
-        "pipelines": ["variantcatalogue"],
-        "jars": True,
-        "why": "the test profile names assets/samplesheet.csv relative to the folder where the "
-        "run starts, so the test run fails; runs with their own inputs are not affected",
-        "expect": ["No such file or directory: <launch>/assets/samplesheet.csv"],
-    },
-    {
-        "pipelines": ["callingcards"],
+        "pipelines": ["callingcards", "workflowhub/970"],
         "kind": "unsupported (decision 16)",
         "why": "SEQKIT_SPLIT2 has no stub, so it needs seqkit to split the reads into the files "
         "whose names the pipeline reads, and the mock executor only makes up one file",
@@ -408,7 +401,7 @@ workflow {
         "why": "the stub of BAMCHREXTRACT makes an empty list of contigs, which the pipeline "
         "checks against its panel, so a stub run fails; a real run is not affected",
         "release": "25.04.0",
-        "expect": [r"Contig names: \[chr21\] absent from file"],
+        "expect": [r"Contig names: \[chr2[12](, chr22)?\] absent from file"],
     },
     {
         "pipelines": ["rnadnavar", "workflowhub/2212"],
@@ -622,13 +615,6 @@ CASES += [
         ["missing some input data"],
     ),
     workflowhub(
-        [418],
-        "the test profile names test_data/ relative to the launch folder, where it is not, so "
-        "the test run fails; runs from the folder of the workflow or with their own inputs are "
-        "not affected",
-        [r"No such file or directory: <launch>/test_data/test_input_paired.txt"],
-    ),
-    workflowhub(
         [419],
         "the test profile gives a reference file that does not exist, so the workflow stops, "
         "as Nextflow 22.10.8 of its time shows; runs with their own inputs are not affected",
@@ -836,7 +822,7 @@ CASES += [
         [1226],
         "the stub of BAMCHREXTRACT makes an empty list of contigs, which the workflow checks "
         "against its panel, so a stub run fails; a real run is not affected",
-        [r"Contig names: \[chr21, chr22\] absent from file"],
+        [r"Contig names: \[chr2[12](, chr22)?\] absent from file"],
         release="25.04.0",
     ),
     workflowhub([1263], HELP, ["O N T - B A C P A C K"], profile=False),
@@ -1052,15 +1038,6 @@ CASES += [
         kind="missing",
     ),
     workflowhub(
-        [2246],
-        "the test profile names ./assets/samplesheet_preprocessing_and_assembly.csv relative to "
-        "the launch folder, where it is not, so the test run fails; runs from the folder of the "
-        "workflow or with their own inputs are not affected (shown with the strict parser, "
-        "which takes the escapes in the strings of modules/local/fqstat/main.nf)",
-        [r"the file or directory './assets/samplesheet_preprocessing_and_assembly.csv' does not"],
-        parser="v2",
-    ),
-    workflowhub(
         [2251],
         "the test profile gives no `--input`, and without it the workflow prints its help and "
         "exits with code 1, so the test run fails; runs with their own inputs are not affected",
@@ -1252,7 +1229,9 @@ def execute(case):
                 (copy / "lib").mkdir(exist_ok=True)
                 for jar in JARS.glob("*.jar"):
                     shutil.copy(jar, copy / "lib")
-            launch.mkdir()
+            add_stubs(copy, case.get("stubs", {}))
+            # The run starts from the folder of the copy, as a user runs a workflow after a clone.
+            launch = copy
             extra = [
                 argument.replace("{launch}", str(launch)).replace("{pipeline}", str(copy))
                 for argument in case.get("args", [])
@@ -1301,7 +1280,8 @@ def execute(case):
         text = re.sub(r"(?<=\S)(\[(PROCESS|ERROR|WARN|PIPELINE|WORKDIR|SUCCESS|FAILED)\b)", r"\n\1", text)
         text = re.sub(r"(?<=\S)(Staging foreign file: )", r"\n\1", text)
         text = text.replace(str(launch / "work"), "<work>")
-        text = text.replace(str(launch), "<launch>")
+        if "reproduce" in case:
+            text = text.replace(str(launch), "<launch>")
         text = text.replace(str(out), "<out>")
         text = text.replace(str(copy), "<pipeline>")
         text = text.replace(str(temporary), "<tmp>")
@@ -1371,8 +1351,8 @@ def main():
         "# pipelines, then `=`, the kind (`invalid`, `missing` or `unsupported (decision N)`)\n"
         "# and why in one plain sentence, then what Nextflow was asked (`$`, with `NXF_VER` for\n"
         "# the earlier release that a pipeline names) and the lines of its output that show it\n"
-        "# (`>`). Tools that the pipelines call are stood in by a shell function that prints\n"
-        "# `1.0`.\n"
+        "# (`>`). Each pipeline runs from its own folder, as after a clone. Tools that the\n"
+        "# pipelines call are stood in by a shell function that prints `1.0`.\n"
     )
     records = "\n".join(blocks[name] for name in sorted(blocks))
     OUTPUT.write_text(header + "\n" + records)

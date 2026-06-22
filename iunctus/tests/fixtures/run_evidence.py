@@ -362,7 +362,8 @@ workflow {
     },
     {
         "pipelines": ["crisprvar", "vipr"],
-        "why": "the pipeline has no `test` profile",
+        "kind": "missing",
+        "why": "the pipeline has no `test` profile, which the test run needs",
         "expect": ["Unknown configuration profile: 'test'"],
     },
     {
@@ -572,14 +573,24 @@ def workflowhub(numbers, why, expect, **extra):
     }
 
 
-NO_INPUTS = (
-    "the workflow has no `test` profile, and {}, so a run without its inputs fails; runs "
-    "with their own inputs are not affected"
-)
-HELP = NO_INPUTS.format("without its inputs it prints its help and exits with code 1")
+def needs(what, then):
+    """Why a workflow without a `test` profile fails without its inputs, which is no fault of the
+    workflow: its record is `missing`."""
+    return (
+        f"the workflow has no `test` profile and needs {what}, which its repository does not "
+        f"give, so {then}"
+    )
+
+
+HELP = "it prints its help and exits with code 1"
 CASES += [
-    workflowhub([140], NO_INPUTS.format("it reads a file named after a param that is null"),
-                [r"No such file or directory: <launch>/null"], profile=False),
+    workflowhub(
+        [140],
+        needs("its input files", "it reads a file named `null`"),
+        [r"No such file or directory: <pipeline>/null"],
+        kind="missing",
+        profile=False,
+    ),
     workflowhub(
         [192],
         "WorkflowHub gives a web page as its main.nf, not the Nextflow script, so the run fails",
@@ -605,9 +616,20 @@ CASES += [
         release="22.04.5",
         profile=False,
     ),
-    workflowhub([393], HELP, ["I N D E X"], profile=False),
-    workflowhub([402], NO_INPUTS.format("without `--output_dir_plots` a process input is null"),
-                ["A process input channel evaluates to null"], profile=False),
+    workflowhub(
+        [393],
+        needs("`--ref`", HELP),
+        ["I N D E X"],
+        kind="missing",
+        profile=False,
+    ),
+    workflowhub(
+        [402],
+        needs("`--output_dir_plots` and its other inputs", "a process input is null"),
+        ["A process input channel evaluates to null"],
+        kind="missing",
+        profile=False,
+    ),
     workflowhub(
         [417],
         "the test profile gives none of the input files, so the workflow stops with `missing "
@@ -621,7 +643,13 @@ CASES += [
         ["--reference points to a non existing file"],
         release="22.10.8",
     ),
-    workflowhub([431], HELP, ["G E R M L I N E"], profile=False),
+    workflowhub(
+        [431],
+        needs("`--input` and `--ref`", HELP),
+        ["G E R M L I N E"],
+        kind="missing",
+        profile=False,
+    ),
     workflowhub(
         [438],
         "the workflow includes BioNextflow, a git submodule that WorkflowHub and its repository "
@@ -667,12 +695,21 @@ CASES += [
         kind="missing",
         profile=False,
     ),
-    workflowhub([462], NO_INPUTS.format("without `--ena_genomes` it has no genomes to read"),
-                ["Missing `fromPath` parameter"], profile=False),
+    workflowhub(
+        [462],
+        needs("`--ena_genomes` and its other inputs", "`fromPath` has no pattern"),
+        ["Missing `fromPath` parameter"],
+        kind="missing",
+        profile=False,
+    ),
     workflowhub(
         [480],
-        NO_INPUTS.format("without `--repetitions` its range `1..params.repetitions` has no end"),
+        needs(
+            "`--repetitions` and its other inputs",
+            "its range `1..params.repetitions` has no end",
+        ),
         ["Must specify a non-null value for the 'to' index in a Range"],
+        kind="missing",
         profile=False,
     ),
     workflowhub(
@@ -681,11 +718,14 @@ CASES += [
         "files, which the workflow reads, so a stub run fails; a real run is not affected",
         [r"Error executing process > .*PLINK2_RELABELPVAR"],
     ),
-    workflowhub([560], HELP, ["Please provide path to bam files"], profile=False),
     workflowhub(
         [654, 1330],
-        NO_INPUTS.format("without `--genome` it stops with `Input genome is not specified!`"),
+        needs(
+            "`--genome` and its other inputs",
+            "it stops with `Input genome is not specified!`",
+        ),
         ["Input genome is not specified!"],
+        kind="missing",
         profile=False,
     ),
     workflowhub(
@@ -696,18 +736,32 @@ CASES += [
         kind="missing",
         jars=True,
     ),
-    workflowhub([691], HELP, ["Usage:  nextflow run main.nf --input"], profile=False),
+    workflowhub(
+        [691],
+        needs("`--input`", HELP),
+        ["Usage:  nextflow run main.nf --input"],
+        kind="missing",
+        profile=False,
+    ),
     workflowhub(
         [813],
-        "the test profile names busco/subset relative to the launch folder, where it is not, "
-        "so the test run fails; runs with their own inputs are not affected",
-        [r"No such file or directory: <launch>/busco/subset"],
+        "the test profile reads BUSCO lineages from busco/subset, which its repository does not "
+        "have, so the test run fails",
+        [r"No such file or directory: .*busco/subset"],
+        kind="missing",
     ),
-    workflowhub([836], HELP, ["Parabricks-Genomics-nf"], profile=False),
+    workflowhub(
+        [836],
+        needs("`--input` and `--ref`", HELP),
+        ["Parabricks-Genomics-nf"],
+        kind="missing",
+        profile=False,
+    ),
     workflowhub(
         [837],
-        NO_INPUTS.format("without `--main_sp_embl_file` it has no SP-EMBL file to read"),
+        needs("`--main_sp_embl_file` and its other inputs", "`fromPath` has no pattern"),
         ["Missing `fromPath` parameter"],
+        kind="missing",
         profile=False,
     ),
     workflowhub(
@@ -718,8 +772,11 @@ CASES += [
     ),
     workflowhub(
         [884],
-        NO_INPUTS.format("it requires `--samplesheet` or `--ena_raw_reads_study_accession`"),
+        needs(
+            "`--samplesheet` or `--ena_raw_reads_study_accession`", "its schema check fails"
+        ),
         [r"Missing required parameter\(s\): ena_raw_reads_study_accession"],
+        kind="missing",
         profile=False,
     ),
     workflowhub(
@@ -755,10 +812,11 @@ CASES += [
     ),
     workflowhub(
         [1013],
-        NO_INPUTS.format("it requires `--input` and `--database`"),
+        needs("`--input` and `--database`", "its schema check fails"),
         ["Missing required parameter: --input"],
-        profile=False,
         jars=True,
+        kind="missing",
+        profile=False,
     ),
     workflowhub(
         [1015, 1069],
@@ -805,9 +863,10 @@ CASES += [
         [r"Cannot invoke method replace\(\) on null object"],
     ),
     workflowhub(
-        [1160, 1769],
-        NO_INPUTS.format("it reads params_ccrcc.csv from the launch folder, where it is not"),
-        [r"No such file or directory: <launch>/params_ccrcc.csv"],
+        [1769],
+        needs("`--sim`", "it reads ./params_ccrcc.csv, which its repository does not have"),
+        [r"No such file or directory: <pipeline>/params_ccrcc.csv"],
+        kind="missing",
         profile=False,
     ),
     workflowhub(
@@ -825,7 +884,13 @@ CASES += [
         [r"Contig names: \[chr2[12](, chr22)?\] absent from file"],
         release="25.04.0",
     ),
-    workflowhub([1263], HELP, ["O N T - B A C P A C K"], profile=False),
+    workflowhub(
+        [1263],
+        needs("`--sequencing_summary` and its reads", HELP),
+        ["O N T - B A C P A C K"],
+        kind="missing",
+        profile=False,
+    ),
     workflowhub(
         [27],
         "WorkflowHub gives only virify.nf of this workflow, whose includes need its "
@@ -943,12 +1008,18 @@ CASES += [
         release="21.10.6",
         profile=False,
     ),
-    workflowhub([1888], NO_INPUTS.format("without `--in_data` it stops"),
-                ["In data csv file does not exist"], profile=False),
+    workflowhub(
+        [1888],
+        needs("`--in_data`", "it stops"),
+        ["In data csv file does not exist"],
+        kind="missing",
+        profile=False,
+    ),
     workflowhub(
         [1960],
-        NO_INPUTS.format("it reads data/samples.tsv, which its repository does not have"),
+        needs("its sample sheet data/samples.tsv", "the run fails"),
         [r"<pipeline>/data/samples.tsv \(No such file or directory\)"],
+        kind="missing",
         profile=False,
     ),
     workflowhub(
@@ -968,8 +1039,9 @@ CASES += [
     ),
     workflowhub(
         [2080],
-        NO_INPUTS.format("it reads reads/*_R{1,2}.fastq.gz from the launch folder"),
+        needs("its reads in reads/", "no files match `reads/*_R{1,2}.fastq.gz`"),
         [r"No files found matching the pattern reads/\*_R\{1,2\}\.fastq\.gz"],
+        kind="missing",
         profile=False,
     ),
     workflowhub(
@@ -989,9 +1061,10 @@ CASES += [
     ),
     workflowhub(
         [2141],
-        NO_INPUTS.format("it requires `--input`"),
+        needs("`--input`", "it stops"),
         [r"--input \(samplesheet CSV\) is required"],
         parser="v2",
+        kind="missing",
         profile=False,
     ),
     workflowhub(
@@ -1002,7 +1075,13 @@ CASES += [
         release="25.10.4",
         profile=False,
     ),
-    workflowhub([2160], HELP, ["ORBiT - ONT RNAseq Bioinformatics Toolkit"], profile=False),
+    workflowhub(
+        [2160],
+        needs("its inputs", HELP),
+        ["ORBiT - ONT RNAseq Bioinformatics Toolkit"],
+        kind="missing",
+        profile=False,
+    ),
     workflowhub(
         [2177],
         "the viralrecon samplesheet that the test profile names has no `single_end` column, "
@@ -1012,15 +1091,16 @@ CASES += [
     ),
     workflowhub(
         [2197],
-        NO_INPUTS.format("it reads the placeholder samplesheet /path/to/sample_sheet.csv"),
+        needs("a samplesheet", "it reads the placeholder /path/to/sample_sheet.csv"),
         ["Samplesheet file /path/to/sample_sheet.csv does not exist"],
+        kind="missing",
         profile=False,
     ),
     workflowhub(
         [2211],
-        "the workflow needs `--workflow`, and without it the script lists its workflows and "
-        "stops, so the run fails; runs that name a workflow are not affected",
+        needs("`--workflow`", "it lists its workflows and stops"),
         ["Invalid workflow specified: 'null'"],
+        kind="missing",
         profile=False,
     ),
     workflowhub(
@@ -1043,12 +1123,27 @@ CASES += [
         "exits with code 1, so the test run fails; runs with their own inputs are not affected",
         ["Usage: nextflow run main.nf --input"],
     ),
-    workflowhub([2302], NO_INPUTS.format("a param that it gives `file()` is null"),
-                [r"Argument of `file\(\)` function cannot be null"], profile=False),
-    workflowhub([2317], NO_INPUTS.format("without its inputs `fromPath` has no pattern"),
-                ["Missing `fromPath` parameter"], profile=False),
-    workflowhub([2318], NO_INPUTS.format("it needs at least one sequence"),
-                ["At least one sequence must be provided"], profile=False),
+    workflowhub(
+        [2302],
+        needs("its inputs", "`file()` gets a param that is null"),
+        [r"Argument of `file\(\)` function cannot be null"],
+        kind="missing",
+        profile=False,
+    ),
+    workflowhub(
+        [2317],
+        needs("its inputs", "`fromPath` has no pattern"),
+        ["Missing `fromPath` parameter"],
+        kind="missing",
+        profile=False,
+    ),
+    workflowhub(
+        [2318],
+        needs("its sequences", "it stops with `At least one sequence must be provided`"),
+        ["At least one sequence must be provided"],
+        kind="missing",
+        profile=False,
+    ),
     workflowhub(
         [1006],
         "the stub of CUSTOM_EXTRACTTARBALL makes an empty folder of hmf_pipeline_resources, "

@@ -229,15 +229,18 @@ pub(in crate::interpreter) fn copy_map(map: &Value) -> Value {
     }
 }
 
-/// The elements Groovy iterates for a path: a staged input file is one element, itself, as
-/// Nextflow's task paths are; another path gives its name parts.
+/// The elements Groovy iterates for a path: its name parts. A staged input file gives the parts
+/// of the name it is staged under, as Nextflow's task paths do, so a name without a folder is
+/// one element, the file itself.
 pub(in crate::interpreter) fn path_items(
     path: &std::rc::Rc<crate::value::PathValue>,
 ) -> Vec<Value> {
-    if path.staged.is_some() {
-        return vec![Value::Path(path.clone())];
-    }
-    path.path
+    let names = match &path.staged {
+        Some(staged) if !staged.contains('/') => return vec![Value::Path(path.clone())],
+        Some(staged) => staged,
+        None => &path.path,
+    };
+    names
         .split('/')
         .filter(|part| !part.is_empty())
         .map(|part| {

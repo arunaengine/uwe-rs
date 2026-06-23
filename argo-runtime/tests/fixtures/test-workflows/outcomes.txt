@@ -1,5 +1,5 @@
-# Outcomes of the Argo test-workflows test: `ok` and the number of tasks of a run with the mock TES
-# executor, `valid` for a document without an entrypoint that passes Argo's checks, or the
+# Outcomes of the Argo test-workflows test: `ok` and the number of tasks of a run with the simulator,
+# `valid` for a document without an entrypoint that passes Argo's checks, or the
 # exit code (33 for unsupported features) and the first error. A tab ends the path, which may
 # hold spaces.
 Hybrid-Argo-Workflows/Examples/QC-Alignment-WF.yaml	ok 5

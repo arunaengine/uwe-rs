@@ -1,4 +1,4 @@
-# Commands that run while the workflow is planned become tasks of their own. The mock gives
+# Commands that run while the workflow is planned become tasks of their own. The simulator gives
 # them no output, so the version is empty.
 shell("mkdir -p logs")
 version = shell("tool --version", read=True).strip()

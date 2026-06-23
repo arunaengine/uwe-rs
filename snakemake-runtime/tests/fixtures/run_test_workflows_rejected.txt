@@ -13,7 +13,7 @@ catalog/CSB-IG__GSE167150_HiC_matrices	invalid	Has a rule whose output, log and 
 catalog/Cesconlab__ExomeSeq	missing	Works in /cluster, a folder of its authors' machines that cannot be made here.
 catalog/ClavelLab__genome-assembly	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 catalog/Crollo95__survhive-workflow	missing	Needs the config file config/config.yaml, which is not in its repository.
-catalog/DavideBrex__SpikeFlow	unsupported (decision 16)	While it is planned, the workflow reads the scaling factor of each sample from the log of a job, which the mock executor makes empty.
+catalog/DavideBrex__SpikeFlow	unsupported (decision 16)	While it is planned, the workflow reads the scaling factor of each sample from the log of a job, which the simulator makes empty.
 catalog/ETH-NEXUS__gExcite_pipeline	invalid	Its sample map config/samplemap is an empty file.
 catalog/EichlerLab__ONT_pipelines	invalid	Calls srcdir(), which Snakemake 8 removed.
 catalog/GArcho44__snvs-annotation-pipeline	missing	Needs the config file ../config/config.yml, which is not in its repository.
@@ -30,7 +30,7 @@ catalog/NCI-CGR__TriosCompass_v2	missing	Needs the config file workflow/../confi
 catalog/NeuroGranberg__NODDIpipeline	invalid	Uses snakemake.io.Wildcards, which Snakemake 9.27 does not have.
 catalog/Ovewh__Climaso	missing	Needs input data that is not in its repository; Snakemake's input function for rule calculate_SW_ERF fails the same way.
 catalog/Phlya__distill-reorder-C	invalid	Reads the config key 'output', which its config does not have.
-catalog/Phlya__tagmap	unsupported (decision 16)	While it is planned, the workflow reads the primer positions that a job writes to a JSON file, which the mock executor makes empty.
+catalog/Phlya__tagmap	unsupported (decision 16)	While it is planned, the workflow reads the primer positions that a job writes to a JSON file, which the simulator makes empty.
 catalog/PyPSA__grid-builder	unsupported (decision 19)	Its schema derives classes from BaseModel of pydantic, and decision 19 says that classes defined in workflow code cannot be used by a package that runs in the Python container.
 catalog/SamBryce-Smith__LAPA_snakemake	invalid	Reads the config key 'lapa_disable_internal_priming_filter', which its config does not have.
 catalog/SarahSaadain__Single_Copy_Gene_Selector	missing	Reads the environment variable CONDA_DEFAULT_ENV, which is set only inside a conda environment.
@@ -39,7 +39,7 @@ catalog/SilasK__Metagenome-Profile	missing	Reads samples.csv, which is not in it
 catalog/SilasK__Metagenome-QC	invalid	Reads the config key 'database_dir', which its config does not have.
 catalog/SilasK__Snakebread	missing	Needs a sample table samples.csv or samples.tsv, which is not in its repository.
 catalog/TRON-Bioinformatics__neorasp	unsupported (decision 19)	The package python-magic needs the system library libmagic, and decision 19 says that such a package works only with an image that the user gives.
-catalog/TRON-Bioinformatics__oblx	unsupported (decision 16)	While it is planned, the workflow reads the UniProt release that a checkpoint writes, which the mock executor makes empty.
+catalog/TRON-Bioinformatics__oblx	unsupported (decision 16)	While it is planned, the workflow reads the UniProt release that a checkpoint writes, which the simulator makes empty.
 catalog/Xavster838__assembly_validation	invalid	Calls srcdir(), which Snakemake 8 removed.
 catalog/Xavster838__coreDupGraph	invalid	Calls srcdir(), which Snakemake 8 removed.
 catalog/Xavster838__downstream_isoseq_process	invalid	Calls srcdir(), which Snakemake 8 removed.
@@ -59,9 +59,9 @@ catalog/cbg-ethz__V-pipe	invalid	Imports load_configfile from snakemake.io, whic
 catalog/clami66__AF_server	invalid	Reads workflow.use_env_modules, which Snakemake 9 does not have.
 catalog/clarajegousse__hanoxy	missing	Reads /hpchome/cat3/project/hanoxy/data/info/samples.txt, a file on its authors' machines.
 catalog/crs4__fair-crcc-get-data	invalid	Imports AbstractRemoteProvider from snakemake.remote, which Snakemake 9.27 does not have.
-catalog/daspacio9__pooledpremiumpcrpipeline2	unsupported (decision 16)	While it is planned, the workflow reads the read counts that a checkpoint writes, which the mock executor makes empty.
+catalog/daspacio9__pooledpremiumpcrpipeline2	unsupported (decision 16)	While it is planned, the workflow reads the read counts that a checkpoint writes, which the simulator makes empty.
 catalog/davelunt__mmseqs	invalid	Has Snakefile code that Snakemake cannot parse.
-catalog/dlaehnemann__create-ecdna-testing-data	unsupported (decision 16)	While it is planned, the workflow reads a table that a job writes, which the mock executor makes empty.
+catalog/dlaehnemann__create-ecdna-testing-data	unsupported (decision 16)	While it is planned, the workflow reads a table that a job writes, which the simulator makes empty.
 catalog/dlaehnemann__create-sv-ci-testing-dataset	missing	Needs input data that is not in its repository.
 catalog/dlaehnemann__wgs-mosdepth-maftools-copy-numbers	invalid	Its sample table lacks the column sample_name that the workflow indexes by.
 catalog/drifter089__pypsa-workflow	invalid	Imports load_configfile from snakemake.io, which Snakemake 9.27 does not have.
@@ -127,7 +127,7 @@ catalog/niekwit__crispr-screens	missing	Needs FASTQ files that are not in its re
 catalog/niekwit__cut_and_run	missing	Needs FASTQ files that are not in its repository.
 catalog/niekwit__damid-seq	missing	Needs FASTQ files that are not in its repository.
 catalog/niekwit__methyl-seq	missing	Needs FASTQ files that are not in its repository.
-catalog/niekwit__partridge-workflow	unsupported (decision 16)	While it is planned, the workflow reads the output of `conda --version`, which the mock executor does not give.
+catalog/niekwit__partridge-workflow	unsupported (decision 16)	While it is planned, the workflow reads the output of `conda --version`, which the simulator does not give.
 catalog/niekwit__rna-seq-salmon-deseq2	invalid	Its sample table does not match the workflow's own schema.
 catalog/niekwit__rna-seq-star-rmats	missing	Needs input data that is not in its repository.
 catalog/niekwit__rna-seq-star-tetranscripts	missing	Needs FASTQ files that are not in its repository.
@@ -144,7 +144,7 @@ catalog/plycrsk__rna-seq-star-deseq2	invalid	Uses a remote provider of Snakemake
 catalog/poloarol__snakemake-methylseq	missing	Needs the config file ../config/config.yaml, which is not in its repository.
 catalog/rabiafidan__pure-faf	missing	Reads /nemo/project/proj-tracerX/working/CRENAL/fidanr/Mutect2/temp/or_flagged_K1058_HB005_D02.vcf.gz, a file on its authors' machines.
 catalog/regulatory-genomics__hic_sm	missing	Reads pep/../config/20260119_hic_sample_2.csv, which is not in its repository.
-catalog/richardstoeckl__QCforSeqCode	unsupported (decision 16)	While it is planned, the workflow reads a table that a checkpoint writes, which the mock executor makes empty.
+catalog/richardstoeckl__QCforSeqCode	unsupported (decision 16)	While it is planned, the workflow reads a table that a checkpoint writes, which the simulator makes empty.
 catalog/richardstoeckl__basecallNanopore	missing	Needs a config file given at launch, which its repository does not name.
 catalog/rmFlynn__snakemake_example	invalid	Imports its folder workflow as a Python package, which is not on the Python path when Snakemake runs.
 catalog/rnsherpa__TLand-predict	missing	Reads /path/to/your/runs_table.tsv, a placeholder path of its example config.
@@ -158,9 +158,9 @@ catalog/simonmoulds__uk-decadal-flood-prediction	missing	Reads resources/station
 catalog/sims-lab__snakemake-cncb-genetic-demultiplexing	missing	Needs input files that are not in its repository.
 catalog/snakemake-workflows__cellranger-count	missing	Needs environment variables that are not set, which the workflow asks for with envvars.
 catalog/snakemake-workflows__cellranger-multi	missing	Needs environment variables that are not set, which the workflow asks for with envvars.
-catalog/snakemake-workflows__dna-seq-benchmark	unsupported (decision 16)	While it is planned, the workflow reads a JSON file that a checkpoint writes, which the mock executor makes empty.
-catalog/snakemake-workflows__dna-seq-gatk-variant-calling	unsupported (decision 16)	The mock run gets past the checkpoint genome_faidx, where Snakemake's dry run stops; after it the workflow calls pandas.read_table with squeeze, which pandas 3 removed.
-catalog/snakemake-workflows__dna-seq-mtb	unsupported (decision 16)	While it is planned, the workflow reads the calling scenario that a job renders, which the mock executor makes empty.
+catalog/snakemake-workflows__dna-seq-benchmark	unsupported (decision 16)	While it is planned, the workflow reads a JSON file that a checkpoint writes, which the simulator makes empty.
+catalog/snakemake-workflows__dna-seq-gatk-variant-calling	unsupported (decision 16)	The simulated run gets past the checkpoint genome_faidx, where Snakemake's dry run stops; after it the workflow calls pandas.read_table with squeeze, which pandas 3 removed.
+catalog/snakemake-workflows__dna-seq-mtb	unsupported (decision 16)	While it is planned, the workflow reads the calling scenario that a job renders, which the simulator makes empty.
 catalog/snakemake-workflows__dna-seq-varlociraptor	missing	Needs input data that is not in its repository.
 catalog/snakemake-workflows__microsatellite-instability-detection-with-msisensor-pro	invalid	Its config gives two kinds of aliases for normal samples at once, which the workflow rejects.
 catalog/snakemake-workflows__rna-longseq-de-isoform	missing	Needs the config file config/config.yml, which is not in its repository.
@@ -170,7 +170,7 @@ catalog/solida-core__dima	invalid	Its config lacks the section paths that its ru
 catalog/spjuhel__BoARIO-MRIOT-Tools	missing	Needs the Python package boario_tools, which is neither in its repository nor on PyPI.
 catalog/spjuhel__BoARIO-Sensitivity	missing	Reads /home/sjuhel/Repos/BoARIO-MRIOT-Tools/workflow/Snakefile, a file on its authors' machines.
 catalog/spjuhel__Climada_TC_TCSurge_Generation	invalid	Reads the config key 'start', which its config does not have.
-catalog/tahiri-lab__aPhyloGeo-pipeline	unsupported (decision 16)	While it is planned, the workflow reads a table that a job writes, which the mock executor makes empty.
+catalog/tahiri-lab__aPhyloGeo-pipeline	unsupported (decision 16)	While it is planned, the workflow reads a table that a job writes, which the simulator makes empty.
 catalog/tdayris__fair_bowtie2_mapping	invalid	Uses snakemake.io.Wildcards, which Snakemake 9.27 does not have.
 catalog/tdayris__fair_cnv_facets	invalid	Uses snakemake.io.Wildcards, which Snakemake 9.27 does not have.
 catalog/tdayris__fair_fastqc_multiqc	invalid	Uses snakemake.io.Wildcards, which Snakemake 9.27 does not have.
@@ -179,7 +179,7 @@ catalog/tdayris__fair_genome_indexer	invalid	Uses snakemake.io.Wildcards, which 
 catalog/tdayris__fair_macs2_calling	invalid	Uses snakemake.io.Wildcards, which Snakemake 9.27 does not have.
 catalog/tdayris__fair_rnaseq_salmon_quant	invalid	Uses snakemake.io.Wildcards, which Snakemake 9.27 does not have.
 catalog/thomasbtf__sars-cov-2-wbe	missing	Needs environment variables that are not set, which the workflow asks for with envvars.
-catalog/tmweiskittel__tmw_align_emseq	unsupported (decision 16)	While it is planned, the workflow reads the sample sheet that a checkpoint downloads, which the mock executor makes empty.
+catalog/tmweiskittel__tmw_align_emseq	unsupported (decision 16)	While it is planned, the workflow reads the sample sheet that a checkpoint downloads, which the simulator makes empty.
 catalog/trickovicmatija__kingfisher_workflow	missing	Needs the config file ../config/default_config.yaml, which is not in its repository.
 catalog/vkpat__short-read-mapping-and-QC-snakemake-pipeline	missing	Needs the config file config.yaml, which is not in its repository.
 catalog/vollgerlab__DSA-phasing	invalid	Its config does not match the workflow's own config schema.

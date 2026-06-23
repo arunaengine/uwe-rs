@@ -6,7 +6,7 @@
 
 As of 2026-09-30.
 
-iunctus reads and plans the workflows of four languages in one Rust binary, but it does not run a single task for real yet. Every test workflow either runs through the mock executor or has a record of why it cannot, backed by the output of the reference tool. What stands between iunctus and a real engine is the execution layer (section 3), a few language features that only real runs need (section 2), and the features that should make iunctus better than the native engines, not just equal to them (section 4).
+iunctus reads and plans the workflows of four languages in one Rust binary, but it does not run a single task for real yet. Every test workflow either runs through the mock executor or has a record of why it cannot, backed by the output of the reference tool. What stands between iunctus and a real engine is the execution layer (section 3), a few language features that only real runs need (section 2), and the features that should make iunctus better than the native engines, not just equal to them: deeper insight into runs, higher reproducibility, better efficiency and storage across several providers (section 4).
 
 | Language | Test workflows | Run with the mock | Work natively, not in iunctus |
 | --- | --- | --- | --- |
@@ -82,7 +82,7 @@ The largest gaps are the same in every language: results are not delivered, and 
 
 ## 3. The execution layer
 
-No task runs for real yet, except one at a time through the simple local executor. Ten steps are planned in [the engine](design/engine.md), section 8; six more are missing from that plan.
+No task runs for real yet, except one at a time through the simple local executor. Ten steps are planned in [the engine](design/engine.md), section 8; seven more are missing from that plan.
 
 **Planned, in the order they build on each other:**
 
@@ -100,47 +100,71 @@ No task runs for real yet, except one at a time through the simple local executo
 **Missing from the plan:**
 
 11. **Delivering results** to the place each language expects (section 2), from the store, as copies or links.
-12. **The run database** (decision 10): the task graph, the event log, attempts and log locations in one SQLite file next to the store ([Nextflow runtime](design/nextflow/runtime.md), section 5). Resume, `iunctus log` and status views read it.
+12. **The run database** (decision 10): the task graph, the event log, attempts and log locations in one SQLite file next to the store ([Nextflow runtime](design/nextflow/runtime.md), section 5). Resume, status views and the insight features of section 4 read it.
 13. **Preparing images:** tags pinned to digests (done for the local executor), images built from Conda environments (decision 12), and one image for a whole workflow (decision 13).
 14. **The context of embedded code:** the `snakemake` object for scripts, wrappers and notebooks, the Snakefile's functions for `run:` blocks, and Nextflow `exec:` sections in the native interpreter.
 15. **Logs and reports:** standard output and error of each task, live progress, and trace, timeline and benchmark files.
-16. **Secrets and credentials** for stores and remote inputs, kept out of task descriptions and cache keys.
+16. **Secrets and credentials** for each storage provider and remote input, kept out of task descriptions and cache keys.
+17. **Several storage providers:** a map from buckets and address prefixes to endpoints and credentials, used by the store, remote inputs and delivering results. The store connects to one S3 bucket today, with credentials from the environment.
 
-## 4. Unique features to build
+## 4. Better than the native engines: insight, reproducibility, efficiency
 
-The biggest advantage of iunctus is that every task of every language is described the same way, and every file is known by its digest. Everything below builds on that. No native engine can offer these features without changing its core.
+iunctus describes every task of every language the same way, and it knows every file by its digest. Three things follow that no native engine can offer without changing its core: deeper insight into what a run did, higher reproducibility, and better efficiency. Storage across several providers and runs that move between machines build on the same base. Each table says what the user gets, what the native engines do today, and what the feature builds on.
 
-### Storage and reuse
+### Insight: see what a run did and why
+
+| Feature | What the user gets | Native engines today | Builds on |
+| --- | --- | --- | --- |
+| **One record of every run** | Every task, attempt, input and output file, image, time and resource use of every run, in one SQLite database and in the same form for all four languages. Users can query it with SQL | Nextflow's trace file and `nextflow log`, Snakemake's `.snakemake` folder and report, Argo's workflow status: each with its own fields | The run database |
+| **Why a task ran again** | For each task that did not come from the cache, the part of its description that changed: the image, the command, an input file or a parameter | Nextflow needs `-dump-hashes` and a manual comparison of two logs. Snakemake names the kind of change (code, params, input), not the change | Cache keys (done), the run database |
+| **Where a file came from** | For any output, the chain of tasks, commands, images and inputs that made it, back to the raw data, also across runs, because files are known by digest | Nextflow and Snakemake know only the task folder or rule of the last run | The store, the run database |
+| **Where the time went** | The chain of tasks that set the length of the run, the time tasks waited versus ran, and the steps that used the most CPU, memory or money | Nextflow's timeline shows tasks, not the chain that set the length | Logs and reports (section 3) |
+| **Comparing two runs** | Which tasks, parameters, images and outputs differ between two runs of a workflow, or between two versions of it | No engine compares runs | The run database |
+| **Replay one task anywhere** | Any task, also a failed one, runs again alone on another machine from its description, with the same image and the same inputs by digest | Nextflow's `.command.run` works only in its task folder, on the same file system | Task descriptions (done), the store |
+| **Live view and export** | Progress per step, cache hits, running and failed tasks, in the terminal and through the WES API. Traces go out in the OpenTelemetry format to existing dashboards | Nextflow and Snakemake print progress in the terminal; more needs a separate platform | The run database |
+
+### Reproducibility: the same run gives the same results, now and years later
+
+| Feature | What the user gets | Native engines today | Builds on |
+| --- | --- | --- | --- |
+| **Everything pinned** | Each run records the Git revision of the workflow, the digest of every image and remote input, and every parameter and config value, so the same run can be repeated years later. A remote file or image tag that changed since is reported | Nextflow and Snakemake resolve image tags and remote files again at each run, so a moved tag changes results without notice | Preparing images, remote inputs, the run database |
+| **Containers only, images by digest** | Every task runs in a container from an image pinned to its digest, never on the host. Conda environments are locked and built into images (decisions 11 and 12) | Nextflow, Snakemake and cwltool run a step on the host when it names no container; Conda environments are solved again on each machine | Preparing images |
+| **Tasks without network by default** | A task that needs no network gets none, so it cannot fetch anything that is not in its description. The workflow or the user says which steps may download | Nextflow, Snakemake and Argo give each task the full network; only CWL turns it off by default | The network field (section 3, step 6) |
+| **Reproducibility check** | A sample of cached tasks runs again and the output digests are compared. Tools that do not give the same bytes are marked, and their results are not shared | No engine checks this | The global cache |
+| **Order check** | A run with task results in a shuffled order finds steps whose output depends on which task finished first, like a file list collected in completion order. This check already runs on all test workflows | No engine offers it | The shuffled order of the engine (done) |
+| **Provenance for every language** | A Workflow Run RO-Crate for each run, with the digest of every input, output and image, in the same form for all four languages | nf-prov for Nextflow, CWLProv for cwltool, `--report` for Snakemake, each different | The run database, the store |
+
+### Efficiency: less compute, less storage, less waiting
 
 | Feature | What the user gets | Native engines today | Builds on |
 | --- | --- | --- | --- |
 | **Global cache** | A result is reused by any run, pipeline, user or language that asks for the same task: the same image digest, command, inputs and environment. The same nf-core module in two pipelines runs once | Nextflow's task hash holds the session id and the process name, so only `-resume` of the same run reuses results. Snakemake shares only rules marked `cache:`; cwltool only with `--cachedir` on one machine | Cache keys and the S3 store (done) |
+| **The same task at the same time runs once** | Two runs that ask for the same task at the same moment share one execution | Both runs compute it | The global cache |
 | **No work folder** | Tasks run in scratch folders that are deleted at once. The store keeps each file once, by digest, so a reference genome used by 50 runs takes its space once | Nextflow's `work/` grows with every run and needs `nextflow clean`. Snakemake writes into the workflow folder | The store (done), delivering results (section 3) |
 | **Clean-up by rule** | Keep what was used in the last 90 days, what a named run needs, or what is expensive to make again. The rest is removed safely, because the store knows what refers to what | After Nextflow's `work/` is deleted, everything runs again | The run database |
 | **Remote files downloaded once** | An `s3://`, `https://` or FTP file is fetched once, checked by digest and shared by all later runs | Nextflow downloads remote files again for each new run | Remote inputs, the store |
+| **Preview before the run** | Before any compute is spent, a preview shows which tasks come from the cache and which will run, also past Snakemake checkpoints | Snakemake's dry run stops at checkpoints; Nextflow's `-preview` skips every process, so it lists no tasks | The mock executor (done), the cache |
+| **Right-sized resources** | The measured CPU and memory of each step, by input size, set the requests of the next run, so more tasks fit on a machine and fewer fail for lack of memory | Nextflow and Snakemake use what the workflow says, or retry with more | The run database, reports |
+| **The longest chain first** | The engine starts the tasks on the longest remaining chain first, using the times of earlier runs, so the run ends sooner on the same machines | Nextflow starts tasks as they become ready; Snakemake weighs the priorities that the workflow sets | The run database |
+| **Short tasks together** | Many short tasks with the same image run in one container or one TES task, which saves the start-up time of each | Nextflow's `array` directive and Snakemake's job groups, where the workflow sets them | The TES executor |
 
-### Runs that survive anything
+### Storage across providers
+
+| Feature | What the user gets | Native engines today | Builds on |
+| --- | --- | --- | --- |
+| **Several storage providers in one run** | Each bucket or address prefix has its own endpoint, region and credentials: AWS S3, MinIO, Ceph, Cloudflare R2 or another S3-compatible service, Google Cloud Storage, Azure Blob Storage, HTTPS, FTP and local disks. Inputs can come from one provider, the store can live on a second, and results can go to a third | Nextflow takes one S3 endpoint and one set of credentials for the whole run. Snakemake 8 can name several storage providers, but the Snakefile must declare them | The store (one S3 bucket today, credentials from the environment), remote inputs |
+| **Storage settings outside the workflow** | The user or the site says which endpoint and credentials serve which bucket, so the same workflow runs on any site without changes | Nextflow needs a config profile per site; Snakemake storage settings sit in the Snakefile or on the command line | Several storage providers |
+| **Copies checked by digest** | Data that moves between providers is checked end to end, a file that is already at the target is not copied again, and a run can move its store, for example from a local disk to S3, without running any task again | Nextflow copies files with `publishDir` and does not check their content | The store |
+| **A cache in layers** | A fast local disk in front of a shared S3 store: reads try the local disk first, and new results go to both | No engine has this | The store, several storage providers |
+| **Tasks near their data** | With several providers and TES servers, a task goes to the site that holds its inputs, instead of the data going to the task | No engine chooses a site by where the data is | The TES executor, several storage providers |
+
+### Runs that move and reach further
 
 | Feature | What the user gets | Native engines today | Builds on |
 | --- | --- | --- | --- |
 | **Resume from a database** | A stopped run continues from its event log, also on another machine or with another executor: start on a laptop, finish on a TES cluster | Nextflow resumes only in the same launch folder with its `work/`. Snakemake decides by file times and its `.snakemake` folder | The run database, the S3 store |
 | **No shared file system** | Tasks get their inputs from the store and send their outputs back, so a cluster needs no NFS | Nextflow and Snakemake need a shared folder or a special storage setup | The TES executor, the store |
-| **Preview before the run** | `iunctus plan` shows which tasks are cached and which will run, also past Snakemake checkpoints | Snakemake's dry run stops at checkpoints; Nextflow's `-preview` skips every process, so it lists no tasks | The mock executor (done), the cache |
 | **One entry point for all languages** | A GA4GH WES service that accepts Nextflow, Snakemake, CWL and Argo workflows, with one API for status and results | Each engine has its own server or platform | The run database |
-
-### Trust and reproducibility
-
-| Feature | What the user gets | Native engines today | Builds on |
-| --- | --- | --- | --- |
-| **Provenance for every language** | A Workflow Run RO-Crate for each run, with the digest of every input, output and image, in the same form for all four languages | nf-prov for Nextflow, CWLProv for cwltool, `--report` for Snakemake, each different | The run database, the store |
-| **Reproducibility check** | Run a sample of cached tasks again and compare output digests. Tools that do not give the same bytes are marked, and their results are not shared | No engine checks this | The global cache |
-| **Tasks without network by default** | A task that needs no network gets none, which makes it safer and its result shareable; the workflow says which steps may download | Nextflow, Snakemake and Argo give each task the full network; only CWL turns it off by default | The network field (section 3, step 6) |
-| **Right-sized resources** | The measured CPU and memory of each step, by input size, suggest the resources of the next run, in every language | Nextflow and Snakemake use what the workflow says, or retry with more | The run database, reports |
-
-### Across languages
-
-| Feature | What the user gets | Native engines today | Builds on |
-| --- | --- | --- | --- |
 | **Mixed-language runs** | One run that calls a CWL tool from Snakemake, a Snakemake workflow from Nextflow, or an nf-core module from Argo, with files handed over by digest | Snakemake can call CWL tools; nothing else crosses languages | The execution graph (done) |
 | **One check for all languages** | `iunctus check` lists every unsupported feature, missing file and broken reference before a run, with the same exit codes everywhere | Each engine has its own linter, if any | The drivers (done) |
 
@@ -151,11 +175,12 @@ Each phase ends with a gate that shows it works. Language gaps (section 2) are c
 1. **Real runs on one machine.** The async executor interface, `Launch.mock`, the `Files` service, the parallel local executor, retries and cancellation, delivering results, the context of embedded code, images from Conda environments, and logs.
     - Gate: the `test` profiles of nf-core/demo and 20 more nf-core pipelines, and a sample of Snakemake, CWL and Argo test workflows, run for real. Their output files match those of the native tool. This needs a real-run version of the evidence scripts, which run both tools and compare output names and digests.
     - Gate: the 208 CWL conformance tests that only run through today pass for real.
-2. **The run database and the global cache.** The run database, resume, `iunctus plan`, output locations as strings, remote inputs downloaded once, and clean-up by rule.
-    - Gate: a run that is stopped halfway resumes without running a finished task again. A second pipeline that uses the same nf-core module reuses its results.
-3. **TES and no shared file system.** The TES executor, secrets, the network field, Argo container sets, and the store on S3 across machines.
+2. **The run database, the global cache and first insights.** The run database, resume, the preview, output locations as strings, several storage providers, remote inputs downloaded once, clean-up by rule, everything pinned, why a task ran again, and where a file came from.
+    - Gate: a run that is stopped halfway resumes without running a finished task again. A second pipeline that uses the same nf-core module reuses its results. After a changed parameter, the run names each task that ran again and the parameter that made it.
+    - Gate: one run reads its inputs from AWS S3 and a MinIO server, keeps its store on a third provider, and delivers its results to a local disk.
+3. **TES and no shared file system.** The TES executor, secrets, the network field, Argo container sets, short tasks together, and the store on S3 across machines.
     - Gate: a pipeline started on a laptop finishes on a TES server, from the same run database.
-4. **Trust and reach.** Provenance, the reproducibility check, tasks without network by default, right-sized resources, the WES service, mixed-language runs and `iunctus check`.
+4. **Deeper insight, trust and reach.** Where the time went, comparing two runs, replaying one task, the live view and export, provenance, the reproducibility and order checks, tasks without network by default, right-sized resources, the longest chain first, a cache in layers, tasks near their data, the WES service, mixed-language runs and `iunctus check`.
     - Gate: one RO-Crate format for runs of all four languages; a mixed-language run of a Snakemake workflow that calls a CWL tool.
 
 ## 6. Open questions
@@ -164,4 +189,5 @@ Each phase ends with a gate that shows it works. Language gaps (section 2) are c
 2. **Network by default.** Should tasks run without network unless the workflow says otherwise, or only when the user asks for it? Nextflow and Snakemake workflows never declare network use, so a default of "off" would break the steps that download.
 3. **Trust in a shared cache.** A cache on S3 that several users share means trusting each other's results. Options: one cache namespace per team (the namespace is already part of the cache key), or signed cache entries.
 4. **How results are delivered.** Copies are safe; links from the store save space but make the store's files editable by accident. Which is the default?
-5. **How a mixed-language run is written.** It can use what each language already has, like Snakemake's `cwl:` action, or a small new file that joins workflows. The second needs a decision on its format first.
+5. **Where storage settings live.** Which endpoint and credentials serve which bucket could be set in a user config file, in environment variables per provider, or both. Site administrators may also want to set them for all users.
+6. **How a mixed-language run is written.** It can use what each language already has, like Snakemake's `cwl:` action, or a small new file that joins workflows. The second needs a decision on its format first.

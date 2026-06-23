@@ -269,7 +269,7 @@ impl Run {
         match status.trim() {
             "" => {
                 self.warn(format!(
-                    "executor plugin {plugin}: the reply is not known, as in a mock run; the node succeeds"
+                    "executor plugin {plugin}: the reply is not known, as in a simulated run; the node succeeds"
                 ));
                 self.nodes[index].outputs =
                     declared_outputs(&processed.template, &mut |message| self.warn(message));

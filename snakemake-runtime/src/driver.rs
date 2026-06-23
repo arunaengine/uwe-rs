@@ -149,7 +149,7 @@ impl Session {
         let mut error = driver_error(error, &self.workdir);
         // Files on the web by their address rather than their local copy.
         error.message = self.state.borrow().mirrors.describe(&error.message);
-        // A mock run goes on without the input files that do not exist; say so, as the error
+        // A simulated run goes on without the input files that do not exist; say so, as the error
         // may come from that.
         let assumed = self
             .planner
@@ -158,18 +158,18 @@ impl Session {
             .unwrap_or_default();
         if let Some(first) = assumed.first() {
             error.message.push_str(&format!(
-                " (the mock run assumed {} input files that do not exist and that no rule makes, like {first}; a real run needs them)",
+                " (the simulated run assumed {} input files that do not exist and that no rule makes, like {first}; a real run needs them)",
                 assumed.len()
             ));
         }
-        // Code that reads what a task made gets empty files from the mock executors.
+        // Code that reads what a task made gets empty files from the simulator.
         let read = self.files.last_output_read.borrow().clone();
         if self.launch.assume_inputs
             && let Some(read) = read
         {
             let shown = read.strip_prefix(&self.workdir).unwrap_or(&read);
             error.message.push_str(&format!(
-                " (the workflow read {}, a task output that the mock run made without its content)",
+                " (the workflow read {}, a task output that the simulator made without its content)",
                 shown.display()
             ));
         }
@@ -472,7 +472,7 @@ impl Session {
                 outcome.exit_code
             )));
         }
-        // An executor may give an absolute output without its leading `/`, as the mocks do.
+        // An executor may give an absolute output without its leading `/`, as the simulator does.
         let declared = self
             .planner
             .as_ref()

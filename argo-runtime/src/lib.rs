@@ -67,7 +67,7 @@ pub struct Options {
     /// The creation time of the workflow; the time of the run when not set.
     pub now: Option<jiff::Timestamp>,
     /// Give workflow parameters without a value, and the inputs of the entrypoint that nothing
-    /// supplies, placeholders, as a mock run does (`Launch.assume_inputs`). Without it, a run
+    /// supplies, placeholders, as a simulated run does (`Launch.assume_inputs`). Without it, a run
     /// needs them, as `argo submit` does.
     pub assume_inputs: bool,
 }

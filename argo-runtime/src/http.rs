@@ -73,7 +73,7 @@ pub(crate) fn http_script(http: &HttpTemplate, secrets: &BTreeMap<String, String
 
 /// What the response of an HTTP template makes of its node.
 pub(crate) enum Verdict {
-    /// The status is not known, as in a mock run.
+    /// The status is not known, as in a simulated run.
     Unknown,
     Succeeded,
     Failed(String),

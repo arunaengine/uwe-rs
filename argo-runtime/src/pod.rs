@@ -252,7 +252,7 @@ impl Run {
             ..Default::default()
         };
         // Output files by the path the task asked for; paths the executor spelled
-        // differently, like literal braces a mock reads as a glob, by their position.
+        // differently, like literal braces the simulator reads as a glob, by their position.
         let asked: Vec<String> = self.emitted_outputs(index, first + slot);
         let file = |path: &str| {
             let clean = |text: &str| {
@@ -288,8 +288,8 @@ impl Run {
                         if text.ends_with('\n') {
                             text.pop();
                         }
-                        // The mock executor makes up empty files for outputs that it cannot
-                        // simulate, so a mock run takes the default of such an output.
+                        // The simulator makes up empty files for outputs that it cannot
+                        // simulate, so a simulated run takes the default of such an output.
                         let made_up = text.is_empty() && self.options.assume_inputs;
                         (!made_up || default.is_none()).then_some(text)
                     }
@@ -390,7 +390,7 @@ impl Run {
             self.nodes[index].outputs.result = Some(body.clone());
             match http_verdict(http, &body, &read(RESPONSE_STATUS)) {
                 Verdict::Unknown => self.warn(format!(
-                    "HTTP template {}: the response status is not known, as in a mock run; its success condition is not checked",
+                    "HTTP template {}: the response status is not known, as in a simulated run; its success condition is not checked",
                     template.name
                 )),
                 Verdict::Succeeded => {}
@@ -575,7 +575,7 @@ fn output_paths(template: &Template) -> Vec<String> {
     outputs
 }
 
-/// The script of a command like `sh -c '...'`, which the mock executor reads.
+/// The script of a command like `sh -c '...'`, which the simulator reads.
 fn shell_script(command: &[String]) -> Option<String> {
     let program = command.first()?;
     let program = program.rsplit('/').next().unwrap_or(program);

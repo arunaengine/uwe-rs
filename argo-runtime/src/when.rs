@@ -4,7 +4,7 @@
 //!
 //! One rule is iunctus's own: a missing operand, as a tag that substitution left empty makes
 //! it (` == heads`), is not known, and every comparison with it is false, `!=` too. govaluate
-//! fails on such conditions; the rule lets runs whose outputs are empty, like mock runs,
+//! fails on such conditions; the rule lets runs whose outputs are empty, like simulated runs,
 //! decide their conditions instead of failing, and ends recursions that wait for an output.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0

@@ -14,7 +14,7 @@ use crate::run::{Failure, Result, Run, scalar_text};
 impl Run {
     /// The environment of a container: `envFrom` first, then `env`, which wins, as in
     /// Kubernetes. Fields of the pod get the run's values (`fields`), ConfigMaps come from the
-    /// loaded documents, and Secrets give placeholders in a mock run.
+    /// loaded documents, and Secrets give placeholders in a simulated run.
     pub(crate) fn environment(
         &mut self,
         container: &Container,
@@ -95,7 +95,7 @@ impl Run {
                 }
                 None if reference.optional => {}
                 None if self.options.assume_inputs => self.warn(format!(
-                    "envFrom reads ConfigMap {}, which none of the loaded documents holds; a mock run leaves it out",
+                    "envFrom reads ConfigMap {}, which none of the loaded documents holds; a simulated run leaves it out",
                     reference.name
                 )),
                 None => {
@@ -114,7 +114,7 @@ impl Run {
                 )));
             }
             self.warn(format!(
-                "envFrom reads Secret {}, whose keys only a secret store knows; a mock run leaves it out",
+                "envFrom reads Secret {}, whose keys only a secret store knows; a simulated run leaves it out",
                 reference.name
             ));
         }

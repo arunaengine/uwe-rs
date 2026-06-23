@@ -386,7 +386,7 @@ pub(crate) fn add_outputs(scope: &mut Scope, prefix: &str, outputs: &NodeOutputs
 
 /// A step or task that a reference or expression reads and whose outputs are not known: it
 /// was skipped or omitted, like both branches of a condition that a run with empty outputs
-/// decides neither way, or it left an output empty, as a mock run does.
+/// decides neither way, or it left an output empty, as a simulated run does.
 fn skipped_reference(scope: &Scope, source: &str) -> Option<String> {
     let reads = |kind: &str, step: &str| {
         [

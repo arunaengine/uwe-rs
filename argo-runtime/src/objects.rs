@@ -1,6 +1,7 @@
 //! The Kubernetes objects that tasks read, without a cluster (decision 18). ConfigMaps come from
 //! the loaded documents: the workflow file, the configs and the repository. Secrets have no
-//! store: their values never enter a task, a mock run gives placeholders, and a real run stops.
+//! store: their values never enter a task, a simulated run gives placeholders, and a real run
+//! stops.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -69,7 +70,7 @@ fn word(text: &str) -> String {
         .collect()
 }
 
-/// What stands for a ConfigMap key that no loaded document holds: a placeholder in a mock run,
+/// What stands for a ConfigMap key that no loaded document holds: a placeholder in a simulated run,
 /// with a warning, or an error in a real run. `what` names the reader, like `parameter x`.
 pub(crate) fn missing_config_map(
     what: &str,
@@ -90,13 +91,13 @@ pub(crate) fn missing_config_map(
         word(&reference.key)
     );
     warnings.push(format!(
-        "{what} reads {place}; a mock run uses `{placeholder}`"
+        "{what} reads {place}; a simulated run uses `{placeholder}`"
     ));
     Ok(placeholder)
 }
 
 impl Run {
-    /// What stands for a key of a Secret: a placeholder in a mock run, with a warning. A real
+    /// What stands for a key of a Secret: a placeholder in a simulated run, with a warning. A real
     /// run stops, because iunctus has no secret store yet and secret values never enter a task.
     pub(crate) fn secret(&mut self, what: &str, reference: &KeyRef) -> Result<String> {
         let place = format!("key {} of Secret {}", reference.key, reference.name);
@@ -111,7 +112,7 @@ impl Run {
             word(&reference.key)
         );
         self.warn(format!(
-            "{what} reads {place}; a mock run uses `{placeholder}`"
+            "{what} reads {place}; a simulated run uses `{placeholder}`"
         ));
         Ok(placeholder)
     }

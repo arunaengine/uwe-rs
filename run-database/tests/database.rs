@@ -139,6 +139,46 @@ fn a_run_is_read_back_with_its_logs_and_events() {
 }
 
 #[test]
+fn tasks_are_read_back_with_their_files_and_edges() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    record(&path, directory.path()).expect("records the run");
+    let database = Database::open(&path).expect("opens again");
+
+    let tasks = database.tasks("run-1").expect("lists tasks");
+    let states: Vec<(u64, &str, Option<i32>)> = tasks
+        .iter()
+        .map(|task| (task.id, task.state.as_str(), task.exit_code))
+        .collect();
+    assert_eq!(
+        states,
+        [
+            (1, "succeeded", Some(0)),
+            (2, "failed", Some(1)),
+            (3, "stopped", None)
+        ]
+    );
+
+    let detail = database.task("run-1", 2).expect("reads").expect("a task");
+    assert_eq!(detail.description.step, "USE");
+    assert_eq!(detail.attempts.len(), 1);
+    assert_eq!(detail.inputs.len(), 1);
+    assert_eq!(detail.inputs[0].size, Some(4));
+    assert_eq!(detail.outputs.len(), 1);
+    // The output of the failed task does not exist, so its size is unknown.
+    assert_eq!(detail.outputs[0].size, None);
+
+    let edges = database.edges("run-1").expect("lists edges");
+    assert_eq!((edges[0].source, edges[0].target), (1, 2));
+    assert_eq!(edges[0].path.as_deref(), Some("in.txt"));
+
+    let made = directory.path().join("made.txt");
+    let producers = database.producers(&made.to_string_lossy()).expect("finds");
+    assert_eq!(producers.len(), 1);
+    assert_eq!((producers[0].0.as_str(), producers[0].1.task), ("run-1", 1));
+}
+
+#[test]
 fn a_database_of_a_newer_version_is_refused() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");

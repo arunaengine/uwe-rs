@@ -105,7 +105,7 @@ No task runs for real yet, except one at a time through the simple local executo
 14. **The context of embedded code:** the `snakemake` object for scripts, wrappers and notebooks, the Snakefile's functions for `run:` blocks, and Nextflow `exec:` sections in the native interpreter.
 15. **Logs and reports:** standard output and error of each task, live progress, and trace, timeline and benchmark files.
 16. **Secrets and credentials** for each storage provider and remote input, kept out of task descriptions and cache keys.
-17. **Several storage providers:** a map from buckets and address prefixes to endpoints and credentials, used by the store, remote inputs and delivering results. The store connects to one S3 bucket today, with credentials from the environment.
+17. **Several storage providers:** a config file that maps buckets and address prefixes to endpoints and credentials, with secrets as references to environment variables (decision 20), used by the store, remote inputs and delivering results. The store connects to one S3 bucket today, with credentials from the environment.
 
 ## 4. Better than the native engines: insight, reproducibility, efficiency
 
@@ -153,7 +153,7 @@ iunctus describes every task of every language the same way, and it knows every 
 | Feature | What the user gets | Native engines today | Builds on |
 | --- | --- | --- | --- |
 | **Several storage providers in one run** | Each bucket or address prefix has its own endpoint, region and credentials: AWS S3, MinIO, Ceph, Cloudflare R2 or another S3-compatible service, Google Cloud Storage, Azure Blob Storage, HTTPS, FTP and local disks. Inputs can come from one provider, the store can live on a second, and results can go to a third | Nextflow takes one S3 endpoint and one set of credentials for the whole run. Snakemake 8 can name several storage providers, but the Snakefile must declare them | The store (one S3 bucket today, credentials from the environment), remote inputs |
-| **Storage settings outside the workflow** | The user or the site says which endpoint and credentials serve which bucket, so the same workflow runs on any site without changes | Nextflow needs a config profile per site; Snakemake storage settings sit in the Snakefile or on the command line | Several storage providers |
+| **Storage settings outside the workflow** | A config file of the user or the site says which endpoint and credentials serve which bucket, with secrets taken from environment variables (decision 20), so the same workflow runs on any site without changes | Nextflow needs a config profile per site; Snakemake storage settings sit in the Snakefile or on the command line | Several storage providers |
 | **Copies checked by digest** | Data that moves between providers is checked end to end, a file that is already at the target is not copied again, and a run can move its store, for example from a local disk to S3, without running any task again | Nextflow copies files with `publishDir` and does not check their content | The store |
 | **A cache in layers** | A fast local disk in front of a shared S3 store: reads try the local disk first, and new results go to both | No engine has this | The store, several storage providers |
 | **Tasks near their data** | With several providers and TES servers, a task goes to the site that holds its inputs, instead of the data going to the task | No engine chooses a site by where the data is | The TES executor, several storage providers |
@@ -189,5 +189,4 @@ Each phase ends with a gate that shows it works. Language gaps (section 2) are c
 2. **Network by default.** Should tasks run without network unless the workflow says otherwise, or only when the user asks for it? Nextflow and Snakemake workflows never declare network use, so a default of "off" would break the steps that download.
 3. **Trust in a shared cache.** A cache on S3 that several users share means trusting each other's results. Options: one cache namespace per team (the namespace is already part of the cache key), or signed cache entries.
 4. **How results are delivered.** Copies are safe; links from the store save space but make the store's files editable by accident. Which is the default?
-5. **Where storage settings live.** Which endpoint and credentials serve which bucket could be set in a user config file, in environment variables per provider, or both. Site administrators may also want to set them for all users.
-6. **How a mixed-language run is written.** It can use what each language already has, like Snakemake's `cwl:` action, or a small new file that joins workflows. The second needs a decision on its format first.
+5. **How a mixed-language run is written.** It can use what each language already has, like Snakemake's `cwl:` action, or a small new file that joins workflows. The second needs a decision on its format first.

@@ -1,0 +1,24 @@
+# Manifest of run-database, the SQLite record of every run: tasks, attempts, files and events.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "run-database"
+description = "The run database: every run, task, attempt, file, edge, log and event in one SQLite file"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+task-model.workspace = true
+thiserror.workspace = true
+workflow-graph.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

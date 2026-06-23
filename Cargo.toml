@@ -4,7 +4,7 @@
 
 [workspace]
 resolver = "3"
-members = ["argo-parser", "argo-runtime", "content-store", "cwl-parser", "cwl-runtime", "executor", "iunctus", "nextflow-config", "nextflow-evaluator", "nextflow-parser", "nextflow-plugins", "nextflow-runtime", "python-evaluator", "snakemake-parser", "snakemake-runtime", "task-model", "task-runner", "workflow-graph"]
+members = ["argo-parser", "argo-runtime", "content-store", "cwl-parser", "cwl-runtime", "executor", "iunctus", "nextflow-config", "nextflow-evaluator", "nextflow-parser", "nextflow-plugins", "nextflow-runtime", "python-evaluator", "run-database", "snakemake-parser", "snakemake-runtime", "task-model", "task-runner", "workflow-graph"]
 
 [workspace.package]
 version = "0.1.0"
@@ -27,6 +27,7 @@ nextflow-parser = { path = "nextflow-parser" }
 nextflow-plugins = { path = "nextflow-plugins" }
 nextflow-runtime = { path = "nextflow-runtime" }
 python-evaluator = { path = "python-evaluator" }
+run-database = { path = "run-database" }
 snakemake-parser = { path = "snakemake-parser" }
 snakemake-runtime = { path = "snakemake-runtime" }
 task-model = { path = "task-model" }
@@ -58,6 +59,7 @@ reqwest = { version = "0.13.5", default-features = false, features = ["blocking"
 ruff_python_ast = "=0.0.15"
 ruff_python_parser = "=0.0.15"
 ruff_text_size = "=0.0.15"
+rusqlite = { version = "0.40.2", features = ["bundled", "fallible_uint"] }
 saphyr-parser = "0.1.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_jcs = "0.2.0"

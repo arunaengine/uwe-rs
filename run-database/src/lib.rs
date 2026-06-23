@@ -14,6 +14,7 @@
 
 mod fingerprint;
 mod recorder;
+mod runs;
 mod schema;
 
 use std::path::Path;
@@ -23,6 +24,7 @@ use rusqlite::Connection;
 
 pub use fingerprint::{InputState, fingerprint, input_states};
 pub use recorder::{LOG_LIMIT, Recorder, RunStart};
+pub use runs::{Event, Log, Run};
 pub use schema::VERSION;
 
 /// The name of the database file in the cache directory, next to the default store.

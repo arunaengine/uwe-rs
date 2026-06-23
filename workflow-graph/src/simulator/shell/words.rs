@@ -1,4 +1,4 @@
-//! Word expansions of the shell for the simulation of the mock executors: variables, brace
+//! Word expansions of the shell for the simulator: variables, brace
 //! expansion, the escapes of `echo -e` and `printf`, and paths relative to the working
 //! directory.
 // Copyright (c) 2026 The iunctus Contributors

@@ -306,9 +306,9 @@ pub fn names(message: &str, name: &str) -> bool {
     })
 }
 
-/// Whether a value holds a file whose content is not real: one that a placeholder or a mock
-/// task made, as its location starts with one of `prefixes`, or one that is not on disk, as
-/// the data of a job file often is not in a mock run.
+/// Whether a value holds a file whose content is not real: one that a placeholder or a
+/// simulated task made, as its location starts with one of `prefixes`, or one that is not on
+/// disk, as the data of a job file often is not in a simulated run.
 pub fn is_fake(value: &Value, prefixes: &[String]) -> bool {
     match value {
         Value::List(items) => items.iter().any(|item| is_fake(item, prefixes)),

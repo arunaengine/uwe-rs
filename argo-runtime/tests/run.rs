@@ -1,4 +1,4 @@
-//! Runs small Argo workflows through the engine and the mock TES executor, and checks the
+//! Runs small Argo workflows through the engine and the simulator, and checks the
 //! execution graphs: steps, DAGs, loops, conditions, outputs, artifacts, templates of other
 //! documents, exit handlers, retries and hooks.
 // Copyright (c) 2026 The iunctus Contributors
@@ -9,12 +9,12 @@ use std::rc::Rc;
 
 use argo_runtime::{ArgoDriver, Library, Options, load_file};
 use workflow_graph::{
-    EdgeKind, ExecuteError, Execution, Executor, MockTes, Outcome, Task, TaskId, execute,
+    EdgeKind, ExecuteError, Execution, Executor, Outcome, Simulator, Task, TaskId, execute,
 };
 
-/// The mock executor, with standard output, exit codes and file contents chosen per template.
+/// The simulator, with standard output, exit codes and file contents chosen per template.
 struct Scripted {
-    mock: MockTes,
+    simulator: Simulator,
     /// Standard output of the calls of a template, in order; the last one repeats.
     stdout: HashMap<&'static str, Vec<&'static str>>,
     exit: HashMap<&'static str, Vec<i32>>,
@@ -27,7 +27,7 @@ struct Scripted {
 
 impl Executor for Scripted {
     fn execute(&mut self, task: &Task) -> Result<Outcome, ExecuteError> {
-        let mut outcome = self.mock.execute(task)?;
+        let mut outcome = self.simulator.execute(task)?;
         let call = self.calls.entry(task.step.clone()).or_default();
         fn pick<T: Clone>(list: Option<&Vec<T>>, call: usize) -> Option<T> {
             list.and_then(|list| list.get(call).or(list.last()).cloned())
@@ -164,7 +164,7 @@ fn run_with(workflow: &str, setup: Setup) -> Ran {
     };
     let mut driver = ArgoDriver::new(document, Rc::new(library), options);
     let mut executor = Scripted {
-        mock: MockTes::new(directory.path().join("mock")),
+        simulator: Simulator::new(directory.path().join("simulator")),
         stdout: setup.stdout.into_iter().collect(),
         exit: setup.exit.into_iter().collect(),
         files: setup.files.into_iter().collect(),
@@ -331,7 +331,7 @@ fn when_decides_with_outputs() {
     );
     ran.succeeded();
     assert_eq!(ran.names(), ["[0].flip", "[1].heads"]);
-    // Mock output is empty, which decides neither branch.
+    // Simulated output is empty, which decides neither branch.
     let ran = run(&workflow(coinflip));
     ran.succeeded();
     assert_eq!(ran.names(), ["[0].flip"]);
@@ -798,7 +798,7 @@ fn leaf_kinds_become_tasks() {
         ["[0].set (first)", "[0].set (main)", "[0].http"]
     );
     assert_eq!(ran.upstream("[0].set (main)"), ["[0].set (first)"]);
-    // Pods get made-up fields, and Secrets placeholders in a mock run.
+    // Pods get made-up fields, and Secrets placeholders in a simulated run.
     let environment = &ran.task("[0].set (first)").environment;
     assert!(environment["POD"].starts_with("test-"), "{environment:?}");
     assert_eq!(environment["TOKEN"], "placeholder_secret_s_k");
@@ -868,7 +868,7 @@ fn plugin_config_map(name: &'static str, image: &str) -> &'static str {
 
 #[test]
 fn plugin_templates_call_executor_plugins() {
-    // Workflow-level plugins; a mock run does not know the reply.
+    // Workflow-level plugins; a simulated run does not know the reply.
     let plugins = "  executorPlugins:\n  - metadata: {name: hello}\n    spec:\n      sidecar:\n        container: {name: hello, image: python:alpine, command: [python, -c], args: [serve], ports: [{containerPort: 4356}]}\n";
     let ran = run(&plugin_workflow(plugins));
     ran.succeeded();
@@ -995,7 +995,7 @@ fn volumes_share_files_between_steps() {
     );
     assert!(read.outputs.is_empty(), "a read-only mount is no output");
     assert_eq!(ran.upstream("[1].read"), ["[0].write"]);
-    // A host path is read on the machine that runs iunctus; a mock run needs no such folder.
+    // A host path is read on the machine that runs iunctus; a simulated run needs no such folder.
     let host = ran.task("[2].host");
     assert!(
         host.inputs
@@ -1050,7 +1050,7 @@ fn parameters_read_config_maps_of_the_loaded_documents() {
     let ran = run(&with_documents(SETTINGS, templates));
     ran.succeeded();
     assert_eq!(ran.task("[0].show").command, ["echo", "hg38 dflt"]);
-    // Without the ConfigMap, a mock run uses a placeholder and a real run stops.
+    // Without the ConfigMap, a simulated run uses a placeholder and a real run stops.
     let missing = templates.replace("name: settings, key: genome", "name: absent, key: genome");
     let ran = run(&with_documents(SETTINGS, &missing));
     assert_eq!(
@@ -1376,7 +1376,10 @@ fn host_paths_are_written_back_in_a_real_run() {
     );
     let written = host.path().join("a.txt");
     run(&workflow(&templates)).succeeded();
-    assert!(!written.exists(), "a mock run never writes to a host path");
+    assert!(
+        !written.exists(),
+        "a simulated run never writes to a host path"
+    );
     run_with(&workflow(&templates), real()).succeeded();
     assert!(written.exists(), "a real run writes the file back");
     std::fs::remove_file(&written).expect("the file is removed");
@@ -1386,7 +1389,7 @@ fn host_paths_are_written_back_in_a_real_run() {
 }
 
 #[test]
-fn a_mock_run_takes_the_default_of_an_empty_output() {
+fn a_simulated_run_takes_the_default_of_an_empty_output() {
     let templates = r#"
   - name: main
     steps:

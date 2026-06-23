@@ -1,4 +1,4 @@
-//! The programs that the simulation of the mock executors follows, like `touch`, `echo`,
+//! The programs that the simulator follows in a script, like `touch`, `echo`,
 //! `cat`, `cp` and `gzip`; any other program makes the simulation incomplete.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0

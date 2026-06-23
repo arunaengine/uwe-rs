@@ -1,7 +1,7 @@
 //! Runs every test of the CWL conformance suites v1.0, v1.1 and v1.2 through the driver and
-//! the mock TES executor, and compares the outcome with `tests/fixtures/conformance.txt`.
+//! the simulator, and compares the outcome with `tests/fixtures/conformance.txt`.
 //!
-//! The mock runs no tool, so a test checks its expected output only where the output does
+//! The simulator runs no tool, so a test checks its expected output only where the output does
 //! not depend on a real run: runs of expression tools, parameter references and command
 //! lines. For that the executor here simulates the few commands whose effect is known, like
 //! `echo`, `cat` of staged files, and the conformance suite's `args.py`, which writes its
@@ -21,7 +21,7 @@
 use std::path::{Path, PathBuf};
 
 use cwl_runtime::{CwlDriver, Options, Value};
-use workflow_graph::{ExecuteError, Executor, Launch, MockTes, Outcome, Task, execute};
+use workflow_graph::{ExecuteError, Executor, Launch, Outcome, Simulator, Task, execute};
 
 const SUITES: [(&str, &str); 3] = [
     ("v1.0", "conformance/v1.0/v1.0/conformance_test_v1.0.yaml"),
@@ -78,8 +78,8 @@ fn outcome(test: &Test) -> String {
         scratch: directory.path().to_path_buf(),
         ..Launch::default()
     };
-    let mut executor = Simulator {
-        mock: MockTes::new(directory.path().join("mock")),
+    let mut executor = KnownCommands {
+        simulator: Simulator::new(directory.path().join("simulator")),
         unsimulated: 0,
     };
     let result = CwlDriver::new(&launch, Options::default()).and_then(|mut driver| {
@@ -350,16 +350,16 @@ fn compare_file(
     Ok(())
 }
 
-/// The mock TES executor, plus the effect of commands whose effect is known.
-struct Simulator {
-    mock: MockTes,
+/// The simulator, plus the effect of commands whose effect is known.
+struct KnownCommands {
+    simulator: Simulator,
     unsimulated: usize,
 }
 
-impl Executor for Simulator {
+impl Executor for KnownCommands {
     fn execute(&mut self, task: &Task) -> Result<Outcome, ExecuteError> {
-        let mut outcome = self.mock.execute(task)?;
-        let work = self.mock.work_directory(task);
+        let mut outcome = self.simulator.execute(task)?;
+        let work = self.simulator.work_directory(task);
         // Inputs in the working directory, like InitialWorkDir entries, are there before the
         // command runs, so outputs that name them hold their content.
         let mut staged = Vec::new();
@@ -379,7 +379,7 @@ impl Executor for Simulator {
             };
         }
         match simulate(task, &work) {
-            // Known commands make only their own files, not every output the mock made.
+            // Known commands make only their own files, not every output the simulator made.
             Some(Simulated { made, exit_code }) => {
                 outcome.exit_code = exit_code;
                 outcome.files.retain(|file| {
@@ -387,7 +387,7 @@ impl Executor for Simulator {
                         || staged.iter().any(|path| {
                             file.path == *path || file.path.starts_with(&format!("{path}/"))
                         });
-                    // A file the mock made that no command made is gone from disk too, so
+                    // A file the simulator made that no command made is gone from disk too, so
                     // that a glob into a folder does not find it.
                     if !kept && file.location.is_file() {
                         let _ = std::fs::remove_file(&file.location);

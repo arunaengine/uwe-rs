@@ -1,10 +1,10 @@
-//! Runs Nextflow scripts through the engine of `workflow-graph` with the mock TES executor.
+//! Runs Nextflow scripts through the engine of `workflow-graph` with the simulator.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;
 
-use workflow_graph::{EdgeKind, ExecutionGraph, Launch, MockTes, execute};
+use workflow_graph::{EdgeKind, ExecutionGraph, Launch, Simulator, execute};
 
 const PIPELINE: &str = r#"
 process GREET {
@@ -42,7 +42,7 @@ const CONFIG: &str = "params.greeting = 'hi'\nparams.count = 1\nenv {\n    MODE 
 /// Runs the pipeline in `directory` and returns its graph.
 fn run(directory: &Path, launch: Launch) -> ExecutionGraph {
     let mut driver = nextflow_runtime::driver(&launch).expect("a driver");
-    let mut executor = MockTes::new(directory.join("mock"));
+    let mut executor = Simulator::new(directory.join("simulator"));
     execute("main.nf", driver.as_mut(), &mut executor)
         .into_result()
         .expect("the run succeeds")
@@ -81,7 +81,9 @@ fn tasks_and_their_files_make_the_graph() {
             path: "world.txt".into()
         }
     );
-    let document = directory.path().join(format!("mock/tes/{}.json", greet.id));
+    let document = directory
+        .path()
+        .join(format!("simulator/tes/{}.json", greet.id));
     assert!(document.is_file());
 }
 
@@ -114,11 +116,11 @@ fn entry_workflows_are_not_supported_yet() {
     assert!(error.unsupported);
 }
 
-/// In a mock run, an output that a stub surely does not make is left out, as in Nextflow's
+/// In a simulated run, an output that a stub surely does not make is left out, as in Nextflow's
 /// stub run: an optional one is then missing, and a required one fails the task with
 /// Nextflow's message.
 #[test]
-fn mock_runs_leave_out_outputs_that_stubs_do_not_make() {
+fn simulated_runs_leave_out_outputs_that_stubs_do_not_make() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let pipeline = r#"
 process SPLIT {
@@ -171,7 +173,7 @@ workflow {
     assert!(pipeline.contains("mkdir -p db"));
     std::fs::write(directory.path().join("main.nf"), pipeline).expect("writes the script");
     let mut driver = nextflow_runtime::driver(&launch).expect("a driver");
-    let mut executor = MockTes::new(directory.path().join("mock2"));
+    let mut executor = Simulator::new(directory.path().join("simulator2"));
     let error = execute("main.nf", driver.as_mut(), &mut executor)
         .into_result()
         .expect_err("the run fails");

@@ -1,11 +1,11 @@
-//! A toy driver runs through the engine and the mock TES executor, and the graph links tasks by
-//! the files they pass. The mocks make the files that a task's script names.
+//! A toy driver runs through the engine and the simulator, and the graph links tasks by
+//! the files they pass. The simulator makes the files that a task's script names.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use workflow_graph::mock::{EMPTY_GZIP, file_name, glob_matches};
+use workflow_graph::simulator::{EMPTY_GZIP, file_name, glob_matches};
 use workflow_graph::{
-    Driver, DriverError, EdgeKind, Executor, Input, Language, Mock, MockTes, Outcome, Task, TaskId,
+    Driver, DriverError, EdgeKind, Executor, Input, Language, Outcome, Simulator, Task, TaskId,
     execute,
 };
 
@@ -74,7 +74,7 @@ impl Driver for Toy {
 #[test]
 fn the_graph_links_tasks_by_their_files() {
     let directory = tempfile::tempdir().expect("a temporary directory");
-    let mut executor = MockTes::new(directory.path());
+    let mut executor = Simulator::new(directory.path());
     let graph = execute("toy", &mut Toy::default(), &mut executor)
         .into_result()
         .expect("the run succeeds");
@@ -116,7 +116,7 @@ fn globs_match_like_a_shell() {
 }
 
 #[test]
-fn mocks_make_the_files_that_the_script_names() {
+fn simulated_tasks_make_the_files_that_the_script_names() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = "touch s_1.fq s_2.fq\nmkdir -p db\ntouch db/x.txt\ncp in.txt copy.txt\n\
                   echo v > versions.yml";
@@ -144,7 +144,7 @@ fn mocks_make_the_files_that_the_script_names() {
         .to_vec(),
         ..Task::default()
     };
-    let outcome = Mock::new(directory.path())
+    let outcome = Simulator::new(directory.path())
         .execute(&task)
         .expect("an outcome");
     let paths: Vec<&str> = outcome
@@ -165,7 +165,7 @@ fn mocks_make_the_files_that_the_script_names() {
             "report"
         ]
     );
-    let work = directory.path().join("7");
+    let work = directory.path().join("work/7");
     assert!(work.join("db/x.txt").is_file());
     assert!(outcome.files[2].directory);
     let read = |name: &str| std::fs::read(work.join(name)).expect("reads a file");
@@ -179,7 +179,7 @@ fn mocks_make_the_files_that_the_script_names() {
         script: Some("tool --out result\ntouch s_1.fq".into()),
         ..task
     };
-    let outcome = Mock::new(directory.path())
+    let outcome = Simulator::new(directory.path())
         .execute(&task)
         .expect("an outcome");
     let paths: Vec<&str> = outcome
@@ -198,7 +198,7 @@ fn mocks_make_the_files_that_the_script_names() {
             "report"
         ]
     );
-    let work = directory.path().join("8");
+    let work = directory.path().join("work/8");
     assert_eq!(
         std::fs::read(work.join("mock.vcf.gz")).expect("reads"),
         EMPTY_GZIP
@@ -207,7 +207,7 @@ fn mocks_make_the_files_that_the_script_names() {
 }
 
 #[test]
-fn mocks_write_the_text_of_stub_scripts() {
+fn simulated_tasks_write_the_text_of_stub_scripts() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = "cat <<-END > s.flagstat\n900 + 0 mapped (90.00% : N/A)\nEND\n\
                   touch s.lf.{drp,drs}\necho '' | gzip > s.fq.gz\ntouch versions.yml";
@@ -225,7 +225,7 @@ fn mocks_write_the_text_of_stub_scripts() {
         .to_vec(),
         ..Task::default()
     };
-    let outcome = Mock::new(directory.path())
+    let outcome = Simulator::new(directory.path())
         .execute(&task)
         .expect("an outcome");
     let paths: Vec<&str> = outcome
@@ -244,7 +244,7 @@ fn mocks_write_the_text_of_stub_scripts() {
             "versions.yml"
         ]
     );
-    let work = directory.path().join("9");
+    let work = directory.path().join("work/9");
     let read = |name: &str| std::fs::read(work.join(name)).expect("reads a file");
     assert_eq!(read("s.flagstat"), b"900 + 0 mapped (90.00% : N/A)\n");
     // A versions file that the stub touches stays empty, as in Nextflow.
@@ -259,7 +259,7 @@ fn mocks_write_the_text_of_stub_scripts() {
 }
 
 #[test]
-fn mocks_of_commands_without_a_script_make_the_files_the_arguments_name() {
+fn simulated_tasks_of_commands_without_a_script_make_the_files_the_arguments_name() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let command = [
         "abra",
@@ -275,7 +275,7 @@ fn mocks_of_commands_without_a_script_make_the_files_the_arguments_name() {
         outputs: ["*_IR.bam", "*.log", "*.txt"].map(String::from).to_vec(),
         ..Task::default()
     };
-    let outcome = Mock::new(directory.path())
+    let outcome = Simulator::new(directory.path())
         .execute(&task)
         .expect("an outcome");
     let paths: Vec<&str> = outcome
@@ -286,10 +286,10 @@ fn mocks_of_commands_without_a_script_make_the_files_the_arguments_name() {
     assert_eq!(paths, ["a_IR.bam", "b_IR.bam", "run.log", "mock.txt"]);
 }
 
-/// A script that surely fails, like one that gzips a file onto its input, ends so: the mock
+/// A script that surely fails, like one that gzips a file onto its input, ends so: the simulator
 /// gives the exit status and message of the command, and no files.
 #[test]
-fn mocks_of_scripts_that_fail_give_the_failure() {
+fn simulated_tasks_of_scripts_that_fail_give_the_failure() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let task = Task {
         id: TaskId(4),
@@ -303,7 +303,7 @@ fn mocks_of_scripts_that_fail_give_the_failure() {
         outputs: ["*.fastq.gz", "*.log"].map(String::from).to_vec(),
         ..Task::default()
     };
-    let outcome = Mock::new(directory.path())
+    let outcome = Simulator::new(directory.path())
         .execute(&task)
         .expect("an outcome");
     assert_eq!(outcome.exit_code, 2);
@@ -318,7 +318,7 @@ fn mocks_of_scripts_that_fail_give_the_failure() {
 /// tool that match its pattern, as the tool would name it, and is a directory when the pattern
 /// ends with `/`. A folder argument like `res/` names no file.
 #[test]
-fn mocks_name_the_outputs_of_tools_after_their_arguments() {
+fn simulated_tasks_name_the_outputs_of_tools_after_their_arguments() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let task = Task {
         id: TaskId(5),
@@ -338,7 +338,7 @@ fn mocks_name_the_outputs_of_tools_after_their_arguments() {
             .to_vec(),
         ..Task::default()
     };
-    let outcome = Mock::new(directory.path())
+    let outcome = Simulator::new(directory.path())
         .execute(&task)
         .expect("an outcome");
     let paths: Vec<&str> = outcome

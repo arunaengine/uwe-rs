@@ -196,7 +196,7 @@ fn a_file_on_disk_needs_its_secondary_files_on_disk() {
     assert!(missing.is_err_and(|error| error.contains("genome.fa.fai")));
     std::fs::write(folder.path().join("genome.fa.fai"), "").expect("writes the index");
     assert!(prepare(&tool, job(&url), &setting).is_ok());
-    // A file that is not on disk, as in a mock run, counts as present with its neighbours.
+    // A file that is not on disk, as in a simulated run, counts as present with its neighbours.
     assert!(prepare(&tool, job("file:///nowhere/genome.fa"), &setting).is_ok());
 }
 

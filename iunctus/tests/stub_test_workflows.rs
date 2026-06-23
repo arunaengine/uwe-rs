@@ -1,4 +1,4 @@
-//! Runs nf-core pipelines of the test workflows with `-stub` and the mock TES executor, and compares
+//! Runs nf-core pipelines of the test workflows with `-stub` and the simulator, and compares
 //! each task's script in the execution graph with the one Nextflow wrote, as
 //! `tests/fixtures/oracle/stub/record.sh` recorded them. Run with `just stub-test-workflows-test`.
 // Copyright (c) 2026 The iunctus Contributors

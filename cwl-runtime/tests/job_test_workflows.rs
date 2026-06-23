@@ -1,6 +1,6 @@
 //! Runs the real-world CWL documents of the test workflows from `just cwl-test-workflows` with
-//! their example job files, as `iunctus run <document> -inputs <job>` does with the mock TES
-//! executor, and compares the outcomes with `tests/fixtures/job_test_workflows.txt`: per
+//! their example job files, as `iunctus run <document> -inputs <job>` does with the
+//! simulator, and compares the outcomes with `tests/fixtures/job_test_workflows.txt`: per
 //! document and job file, `ok` and the number of tasks, or the error.
 //! `fixtures/job_test_workflows.py` finds the pairs; a pair may only fail when
 //! `fixtures/job_evidence.txt` has a record of it: why it cannot run, and that cwltool rejects
@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
 
-use workflow_graph::{ExecuteError, Launch, MockTes, execute_with};
+use workflow_graph::{ExecuteError, Launch, Simulator, execute_with};
 
 mod order;
 #[path = "../../cwl-parser/tests/records/mod.rs"]
@@ -68,7 +68,7 @@ fn run(target: PathBuf, inputs: PathBuf) -> Result<usize, String> {
         format!("{kind}: {}", error.message)
     };
     let mut driver = cwl_runtime::driver(&launch).map_err(describe)?;
-    let mut executor = MockTes::new(directory.path().join("mock"));
+    let mut executor = Simulator::new(directory.path().join("simulator"));
     let execution = execute_with(
         &target.to_string_lossy(),
         driver.as_mut(),

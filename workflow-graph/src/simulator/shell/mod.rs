@@ -1,4 +1,4 @@
-//! A small simulation of the shell scripts of tasks, for the mock executors: which files a
+//! A small simulation of the shell scripts of tasks, for the simulator: which files a
 //! script makes and what text it writes into them. It follows the commands that stub scripts
 //! use to make their files, like `touch`, `mkdir`, `echo`, `printf`, `cat` with a here
 //! document, `cp`, `mv`, `gzip`, `for` loops over words and `if` statements whose condition

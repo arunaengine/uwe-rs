@@ -1,5 +1,5 @@
 # The outcome of `iunctus run <pipeline> -profile test -stub-run -max-pending 8
-# -order shuffled:1` with the mock TES executor for every pipeline of the test workflows:
+# -order shuffled:1` with the simulator for every pipeline of the test workflows:
 # `ok` (with a valid execution graph), or the exit code and the first line of the error (33
 # for unsupported features). run_evidence.txt says why each pipeline that fails cannot run.
 abotyper ok
@@ -32,7 +32,7 @@ deepmodeloptim 1 workflows/../subworkflows/local/tune/../../../modules/local/cus
 deepmutscan ok
 deepvariant 33 main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 demo ok
-demultiplex 1 workflows/../subworkflows/nf-core/bcl_demultiplex/main.nf:65:23: NoSuchFileException: No files match pattern `<cache>/iunctus/scratch/mock-tes/<run>/work/1/220422_M11111_0222_000000000-K9H97/*.xml`
+demultiplex 1 workflows/../subworkflows/nf-core/bcl_demultiplex/main.nf:65:23: NoSuchFileException: No files match pattern `<cache>/iunctus/scratch/simulator/<run>/work/1/220422_M11111_0222_000000000-K9H97/*.xml`
 denovohybrid 33 main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 denovotranscript 1 workflows/../subworkflows/nf-core/fastq_trim_fastp_fastqc/main.nf:15:26: IllegalArgumentException: Text must not be null or empty
 detaxizer ok
@@ -94,7 +94,7 @@ nascent ok
 ncrnannotator ok
 neutronstar 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 omicsgenetraitassociation ok
-oncoanalyser 1 workflows/../subworkflows/local/prepare_reference/main.nf:290:12: NoSuchFileException: No such file or directory: <cache>/iunctus/scratch/mock-tes/<run>/work/4/hmf_pipeline_resources.38_v3.0.0--8/dna/copy_number/AmberGermlineSites.38.tsv.gz
+oncoanalyser 1 workflows/../subworkflows/local/prepare_reference/main.nf:290:12: NoSuchFileException: No such file or directory: <cache>/iunctus/scratch/simulator/<run>/work/4/hmf_pipeline_resources.38_v3.0.0--8/dna/copy_number/AmberGermlineSites.38.tsv.gz
 pacsomatic ok
 pacvar ok
 pairgenomealign 1 MissingFileException: Missing output file(s) `*.matrix.txt` expected by process `NFCORE_PAIRGENOMEALIGN:PAIRGENOMEALIGN:PAIRALIGN_M2O:ALIGNMENT_SPLIT_O2O (MT192765___contigs)`
@@ -115,7 +115,7 @@ proteomicslfq 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): thi
 provenancereport ok
 quantms ok
 radseq 1 workflows/radseq.nf:38:11: Invalid include source: 'workflows/../subworkflows/local/fastq_fastp.nf'
-rangeland 1 workflows/rangeland.nf:88:19: NoSuchFileException: No files match pattern `<cache>/iunctus/scratch/mock-tes/<run>/work/3/Landsat_data/*/*`
+rangeland 1 workflows/rangeland.nf:88:19: NoSuchFileException: No files match pattern `<cache>/iunctus/scratch/simulator/<run>/work/3/Landsat_data/*/*`
 raredisease ok
 rarevariantburden ok
 readsimulator ok
@@ -141,7 +141,7 @@ slamseq 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this scri
 smartseq2 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 smrnaseq 1 subworkflows/local/prepare_genome/main.nf:32:9: Exception: Unable to extract the prefix from the Bowtie index files. No file with the '.1.ebwt' extension was found. Please ensure that the correct files are in the specified path.
 sopa ok
-spatialaxe 1 workflows/spatialaxe.nf:212:13: AbortOperationException: ❌ Missing required file(s) in xenium bundle '<cache>/iunctus/scratch/mock-tes/<run>/work/1/test_run': [cell_boundaries.csv.gz, cell_boundaries.parquet, cell_feature_matrix.h5, cell_feature_matrix.zarr.zip, cells.csv.gz, cells.parquet, cells.zarr.zip, experiment.xenium, gene_panel.json, metrics_summary.csv, morphology.ome.tif, morphology_focus/, nucleus_boundaries.csv.gz, nucleus_boundaries.parquet, transcripts.parquet, transcripts.zarr.zip]
+spatialaxe 1 workflows/spatialaxe.nf:212:13: AbortOperationException: ❌ Missing required file(s) in xenium bundle '<cache>/iunctus/scratch/simulator/<run>/work/1/test_run': [cell_boundaries.csv.gz, cell_boundaries.parquet, cell_feature_matrix.h5, cell_feature_matrix.zarr.zip, cells.csv.gz, cells.parquet, cells.zarr.zip, experiment.xenium, gene_panel.json, metrics_summary.csv, morphology.ome.tif, morphology_focus/, nucleus_boundaries.csv.gz, nucleus_boundaries.parquet, transcripts.parquet, transcripts.zarr.zip]
 spatialvi 1 workflows/../subworkflows/local/input_check/main.nf:144:9: AbortOperationException: No `fastq_dir` specified or no samples found in folder.
 spinningjenny ok
 ssds ok

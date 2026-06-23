@@ -1,8 +1,8 @@
-//! Runs every nf-core pipeline of the test workflows with `-profile test` and the mock TES
-//! executor, and compares the outcome with `tests/fixtures/run_test_workflows.txt`: `ok`, or the
+//! Runs every nf-core pipeline of the test workflows with `-profile test` and the simulator,
+//! and compares the outcome with `tests/fixtures/run_test_workflows.txt`: `ok`, or the
 //! exit code and the first line of the error. The Nextflow workflows of WorkflowHub run the same
 //! way, and compare with `tests/fixtures/run_workflowhub.txt`. The runs are stub runs, as
-//! pipelines then do not read the content of the outputs that the mock makes up, and up to 8
+//! pipelines then do not read the content of the outputs that the simulator makes up, and up to 8
 //! tasks finish in a seeded shuffled order, so that the Nextflow driver cannot depend on the
 //! order of outcomes. Each run starts from a copy of the folder of its workflow, as a user runs
 //! a workflow after a clone. The execution graph of each run that succeeds must be valid. A

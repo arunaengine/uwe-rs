@@ -108,13 +108,13 @@ fn runs_write_the_graph_and_tes_documents() {
     assert_eq!(code, 0, "{stderr}");
     assert_eq!(
         stdout,
-        "[mock tes] GREET\n[mock tes] SHOUT\nmade shout.txt\n"
+        "[simulated] GREET\n[simulated] SHOUT\nmade shout.txt\n"
     );
     let text = std::fs::read_to_string(directory.path().join("graph.json")).expect("the graph");
     let graph: ExecutionGraph = serde_json::from_str(&text).expect("the graph as JSON");
     check(&graph);
-    // The mock TES executor keeps one task document per task under the scratch directory.
-    let runs = directory.path().join("cache/iunctus/scratch/mock-tes");
+    // The simulator keeps one task document per task under the scratch directory.
+    let runs = directory.path().join("cache/iunctus/scratch/simulator");
     let run = std::fs::read_dir(&runs)
         .expect("reads the runs")
         .next()

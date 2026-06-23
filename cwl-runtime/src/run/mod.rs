@@ -121,7 +121,7 @@ pub struct Run {
     /// The folder URL of placeholder files, in a run on placeholder inputs.
     placeholders: Option<String>,
     /// Location prefixes of files whose content is not real: the work folders of tasks in a
-    /// mock run, and the placeholder folder.
+    /// simulated run, and the placeholder folder.
     fake: Vec<String>,
     /// Whether the documents name ontologies in `$schemas`.
     ontologies: bool,
@@ -195,7 +195,7 @@ impl Run {
         let State::Task(pending) = state else {
             return Err(format!("task {} belongs to no command", outcome.id));
         };
-        if self.options.mock
+        if self.options.simulated
             && let Some(folder) = tool::workdir(outcome)
         {
             let prefix = format!("{}/", iri::file_url(std::path::Path::new(&folder)));
@@ -328,8 +328,8 @@ impl Run {
             Class::CommandLineTool(_) | Class::Operation => {
                 let task_id = TaskId(self.next_task);
                 self.next_task += 1;
-                let fake =
-                    self.options.mock && placeholder::is_fake(&Value::Map(job.clone()), &self.fake);
+                let fake = self.options.simulated
+                    && placeholder::is_fake(&Value::Map(job.clone()), &self.fake);
                 let (task, pending) = tool::task(
                     process,
                     job,
@@ -349,7 +349,7 @@ impl Run {
                 let inputs = Value::Map(job);
                 // Over files whose content is not real, an expression may fail or give values
                 // of the wrong type; its outputs are then placeholders.
-                let fake = self.options.mock && placeholder::is_fake(&inputs, &self.fake);
+                let fake = self.options.simulated && placeholder::is_fake(&inputs, &self.fake);
                 let value = evaluator.evaluate(
                     &tool.expression,
                     Variables {

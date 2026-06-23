@@ -50,14 +50,14 @@ fn resolves_locations_against_the_job() {
 }
 
 #[test]
-fn absent_files_count_as_empty_in_a_mock_run() {
+fn absent_files_count_as_empty_in_a_simulated_run() {
     let mut file = Value::parse("{class: File, location: 'file:///nowhere/x'}").expect("YAML");
     let map = file.as_map_mut().expect("a map");
-    let mock = Access {
+    let simulated = Access {
         assume_present: true,
     };
-    mock.load_contents(map).expect("contents");
-    mock.add_size(map);
+    simulated.load_contents(map).expect("contents");
+    simulated.add_size(map);
     assert_eq!(map.get("contents"), Some(&Value::string("")));
     assert_eq!(map.get("size"), Some(&Value::Integer(0)));
     assert!(Access::default().read(map, None).is_err());

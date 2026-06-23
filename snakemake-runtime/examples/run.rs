@@ -1,9 +1,9 @@
-//! Runs a Snakemake workflow with the mock TES executor and prints the execution graph:
+//! Runs a Snakemake workflow with the simulator and prints the execution graph:
 //! `run <workflow folder or Snakefile> [target...]`.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use workflow_graph::{Launch, MockTes, execute};
+use workflow_graph::{Launch, Simulator, execute};
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -26,7 +26,7 @@ fn main() {
             std::process::exit(if error.unsupported { 33 } else { 1 });
         }
     };
-    let mut executor = MockTes::new(scratch.join("mock"));
+    let mut executor = Simulator::new(scratch.join("simulator"));
     let execution = execute(&target, driver.as_mut(), &mut executor);
     print!("{}", execution.graph.summary());
     let _ = std::fs::remove_dir_all(&scratch);

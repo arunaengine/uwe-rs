@@ -4,7 +4,7 @@
 
 [package]
 name = "workflow-graph"
-description = "Language-neutral tasks, the driver interface, the execution graph and a mock TES executor"
+description = "Language-neutral tasks, the driver interface, the execution graph and the simulator"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

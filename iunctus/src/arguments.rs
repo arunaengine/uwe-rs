@@ -26,7 +26,7 @@ pub struct Arguments {
     pub inputs: Option<PathBuf>,
     /// `-entry name` and the arguments after the target, like Snakemake targets.
     pub targets: Vec<String>,
-    /// `-executor mock-tes|mock|local`; `None` for the default.
+    /// `-executor simulator|local`; `None` for the default.
     pub executor: Option<String>,
     /// `-graph file`: where to write the execution graph.
     pub graph: Option<PathBuf>,

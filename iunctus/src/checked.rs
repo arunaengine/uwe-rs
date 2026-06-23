@@ -1,7 +1,7 @@
 //! What every real executor checks before it starts a task. A task that does nothing finishes
 //! at once, and a task without a container image gets the default image or is an error, since
-//! every task runs in a container (decision 11). The mock executors need neither check: they
-//! pretend every task, so that a mock run still gets the files its driver expects.
+//! every task runs in a container (decision 11). The simulator needs neither check: it
+//! pretends every task, so that a simulated run still gets the files its driver expects.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

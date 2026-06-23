@@ -95,16 +95,16 @@ fn record_fields_get_the_format_they_declare() {
 }
 
 #[test]
-fn files_of_mock_tasks_placeholders_and_absent_data_are_fake() {
+fn files_of_simulated_tasks_placeholders_and_absent_data_are_fake() {
     let file = |location: &str| {
         let mut map = Map::new();
         map.insert("class".into(), Value::string("File"));
         map.insert("location".into(), Value::string(location));
         Value::Map(map)
     };
-    let prefixes = ["file:///scratch/mock/work/1/".to_owned()];
+    let prefixes = ["file:///scratch/simulator/work/1/".to_owned()];
     assert!(is_fake(
-        &file("file:///scratch/mock/work/1/out.bam"),
+        &file("file:///scratch/simulator/work/1/out.bam"),
         &prefixes
     ));
     assert!(is_fake(

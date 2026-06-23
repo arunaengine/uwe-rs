@@ -1,5 +1,5 @@
-//! Reads the shell script of a task into lines, words and commands, for the simulation of
-//! the mock executors: continued lines, here documents, quotes, variables and redirects.
+//! Reads the shell script of a task into lines, words and commands, for the simulator:
+//! continued lines, here documents, quotes, variables and redirects.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

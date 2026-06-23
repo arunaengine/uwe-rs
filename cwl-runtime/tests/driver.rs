@@ -1,4 +1,4 @@
-//! Runs small CWL documents through the driver and the mock TES executor without a job file,
+//! Runs small CWL documents through the driver and the simulator without a job file,
 //! so on placeholder inputs, as `iunctus run` and the graph test-workflows test do.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -6,7 +6,7 @@
 use std::path::Path;
 
 use cwl_runtime::{CwlDriver, Options};
-use workflow_graph::{ExecuteError, Executor, Launch, MockTes, Outcome, Task, execute};
+use workflow_graph::{ExecuteError, Executor, Launch, Outcome, Simulator, Task, execute};
 
 /// Writes the files into a temporary folder, runs `main.cwl` and gives the task count or the
 /// error.
@@ -22,7 +22,7 @@ fn run(files: &[(&str, &str)]) -> Result<usize, String> {
         ..Launch::default()
     };
     let mut driver = CwlDriver::new(&launch, Options::default()).map_err(|error| error.message)?;
-    let mut executor = MockTes::new(Path::new(&launch.scratch).join("mock"));
+    let mut executor = Simulator::new(Path::new(&launch.scratch).join("simulator"));
     let execution = execute(&main.to_string_lossy(), &mut driver, &mut executor);
     match execution.error {
         Some(error) => Err(error.to_string()),
@@ -100,7 +100,7 @@ fn outputs_of_abstract_steps_bring_their_secondary_files() {
 }
 
 #[test]
-fn mock_files_of_bare_wildcards_take_the_extension_the_output_suggests() {
+fn simulated_files_of_bare_wildcards_take_the_extension_the_output_suggests() {
     let extract = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: extract\ninputs: []\n\
         outputs:\n  fastq_file: {type: File, outputBinding: {glob: '*'}}\n";
     let check = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: check\n\
@@ -136,7 +136,7 @@ fn only_a_launch_that_assumes_its_inputs_takes_absent_files_as_present() {
             ..Launch::default()
         };
         let mut driver = cwl_runtime::driver(&launch).map_err(|error| error.message)?;
-        let mut executor = MockTes::new(folder.path().join("mock"));
+        let mut executor = Simulator::new(folder.path().join("simulator"));
         match execute("main", driver.as_mut(), &mut executor).error {
             Some(error) => Err(error.to_string()),
             None => Ok(()),
@@ -178,7 +178,7 @@ fn expression_tools_over_absent_data_give_placeholders_for_null_outputs() {
         ..Launch::default()
     };
     let mut driver = cwl_runtime::driver(&launch).expect("a driver");
-    let mut executor = MockTes::new(folder.path().join("mock"));
+    let mut executor = Simulator::new(folder.path().join("simulator"));
     let execution = execute("main", driver.as_mut(), &mut executor);
     assert!(execution.error.is_none(), "{:?}", execution.error);
     assert_eq!(execution.graph.nodes.len(), 1);
@@ -209,7 +209,7 @@ fn errors_of_expressions_say_where_the_expression_is() {
 }
 
 #[test]
-fn a_mock_run_says_when_a_scatter_needs_real_data() {
+fn a_simulated_run_says_when_a_scatter_needs_real_data() {
     let folder = tempfile::tempdir().expect("a temporary folder");
     let find = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: find\n\
         inputs: {data: File}\noutputs: {peaks: 'Any[]?'}\n";
@@ -232,24 +232,24 @@ fn a_mock_run_says_when_a_scatter_needs_real_data() {
         ..Launch::default()
     };
     let mut driver = cwl_runtime::driver(&launch).expect("a driver");
-    let mut executor = MockTes::new(folder.path().join("mock"));
+    let mut executor = Simulator::new(folder.path().join("simulator"));
     let error = execute("main", driver.as_mut(), &mut executor)
         .error
         .expect("the scatter fails")
         .to_string();
     assert!(
         error.ends_with(
-            "pick: the scattered input `peak` is null, not a list; the mock run has no real \
-             data to fill it"
+            "pick: the scattered input `peak` is null, not a list; the simulated run has no \
+             real data to fill it"
         ),
         "{error}"
     );
 }
 
 /// Finishes the tasks that do nothing at once and without files, as real executors do, and
-/// pretends the others like the mock.
+/// pretends the others like the simulator.
 struct Real {
-    mock: MockTes,
+    simulator: Simulator,
 }
 
 impl Executor for Real {
@@ -260,7 +260,7 @@ impl Executor for Real {
                 ..Outcome::default()
             });
         }
-        self.mock.execute(task)
+        self.simulator.execute(task)
     }
 }
 
@@ -279,7 +279,7 @@ fn run_for_real(files: &[(&str, &str)]) -> Result<usize, String> {
     };
     let mut driver = cwl_runtime::driver(&launch).map_err(|error| error.message)?;
     let mut executor = Real {
-        mock: MockTes::new(folder.path().join("mock")),
+        simulator: Simulator::new(folder.path().join("simulator")),
     };
     let execution = execute("main", driver.as_mut(), &mut executor);
     match execution.error {

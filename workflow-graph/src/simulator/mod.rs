@@ -1,7 +1,8 @@
-//! The mock executors: a task does not run, it only makes the files it would make. The mock TES
-//! executor also writes the GA4GH TES v1.1 task document that a TES server would receive. So a
-//! whole workflow runs through without containers or a server, and the TES documents can be
-//! checked or sent later.
+//! The simulator: a task does not run, it only makes the files it would make, and the simulator
+//! writes the GA4GH TES v1.1 task document that a TES server would receive. So a whole workflow
+//! runs through without containers or a server, and the TES documents can be checked or sent
+//! later. The files are made up, so a simulated run gives a simulated graph, not a prediction
+//! of a real run (decision 21).
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -14,17 +15,17 @@ use serde_json::{Value, json};
 use crate::{ExecuteError, Executor, Outcome, OutputFile, Task};
 use shell::{Failure, Made};
 
-/// The mock TES executor.
-pub struct MockTes {
+/// The simulator, the executor of simulated runs.
+pub struct Simulator {
     /// Holds `tes/<id>.json` and `work/<id>/`, the outputs of each task.
     pub directory: PathBuf,
     /// Prints one line per task when set.
     pub verbose: bool,
 }
 
-impl MockTes {
+impl Simulator {
     pub fn new(directory: impl Into<PathBuf>) -> Self {
-        MockTes {
+        Simulator {
             directory: directory.into(),
             verbose: false,
         }
@@ -36,7 +37,7 @@ impl MockTes {
     }
 }
 
-impl Executor for MockTes {
+impl Executor for Simulator {
     fn execute(&mut self, task: &Task) -> Result<Outcome, ExecuteError> {
         let failed = |error: std::io::Error| ExecuteError::Executor {
             task: task.name.clone(),
@@ -50,42 +51,9 @@ impl Executor for MockTes {
         let text = serde_json::to_string_pretty(&document).unwrap_or_default();
         std::fs::write(tes.join(format!("{}.json", task.id)), text).map_err(failed)?;
         if self.verbose {
-            println!("[mock tes] {}", task.name);
+            println!("[simulated] {}", task.name);
         }
         let run = pretend_run(task, &work).map_err(failed)?;
-        Ok(outcome(task, run))
-    }
-}
-
-/// The mock executor without TES documents: each task only makes its files in
-/// `<directory>/<id>/`.
-pub struct Mock {
-    pub directory: PathBuf,
-    /// Prints one line per task when set.
-    pub verbose: bool,
-}
-
-impl Mock {
-    pub fn new(directory: impl Into<PathBuf>) -> Self {
-        Mock {
-            directory: directory.into(),
-            verbose: false,
-        }
-    }
-}
-
-impl Executor for Mock {
-    fn execute(&mut self, task: &Task) -> Result<Outcome, ExecuteError> {
-        let work = self.directory.join(task.id.to_string());
-        if self.verbose {
-            println!("[mock] {}", task.name);
-        }
-        let run = std::fs::create_dir_all(&work)
-            .and_then(|()| pretend_run(task, &work))
-            .map_err(|error| ExecuteError::Executor {
-                task: task.name.clone(),
-                message: error.to_string(),
-            })?;
         Ok(outcome(task, run))
     }
 }
@@ -377,11 +345,6 @@ fn placeholder(path: &str) -> Made {
         gzip: false,
         copy_of: None,
     }
-}
-
-/// The same as [`pretend`], by the name of the first version of this module.
-pub fn make_outputs(task: &Task, work: &Path) -> std::io::Result<Vec<OutputFile>> {
-    pretend(task, work)
 }
 
 /// Whether a relative path stays inside the working directory.

@@ -133,7 +133,7 @@ fn outcomes_carry_env_and_eval_values() {
     assert_eq!(result.eval, ["1.0"]);
     assert_eq!(result.env["FOO"], "a b");
     assert_eq!(result.stdout, "said\n");
-    // A mock writes no values; they are empty.
+    // The simulator writes no values; they are empty.
     let outcome = Outcome {
         id: workflow_graph::TaskId(1),
         ..Outcome::default()

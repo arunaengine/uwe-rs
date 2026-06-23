@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use workflow_graph::{
-    Driver, DriverError, ExecuteError, Execution, ExecutionGraph, Executor, Language, Launch, Mock,
-    MockTes, RunOptions,
+    Driver, DriverError, ExecuteError, Execution, ExecutionGraph, Executor, Language, Launch,
+    RunOptions, Simulator,
 };
 
 use crate::arguments::Arguments;
@@ -98,8 +98,8 @@ fn run(arguments: &Arguments) -> Result<(), Failure> {
     Ok(())
 }
 
-/// `iunctus graph`: runs the workflow, with the mock TES executor unless `-executor` says
-/// otherwise, and prints its graph. What the workflow prints goes to standard error.
+/// `iunctus graph`: runs the workflow, with the simulator unless `-executor` says otherwise,
+/// and prints its graph. What the workflow prints goes to standard error.
 fn graph(arguments: &Arguments) -> Result<(), Failure> {
     let format = arguments.format.as_deref().unwrap_or("summary");
     if !["json", "dot", "summary"].contains(&format) {
@@ -184,21 +184,16 @@ fn config(arguments: &Arguments) -> Result<(), Failure> {
     Ok(())
 }
 
-/// The executor that `-executor` names: `mock-tes` (the default) writes a TES task document
-/// for each task and makes empty outputs, `mock` only makes the outputs, `local` runs each
-/// task in a container. The mocks keep their files in the scratch directory of the cache. A
-/// real executor gets its tasks through the checks of [`checked::Checked`].
+/// The executor that `-executor` names: `simulator` (the default) writes a TES task document
+/// for each task and makes up its outputs, `local` runs each task in a container. The
+/// simulator keeps its files in the scratch directory of the cache. A real executor gets its
+/// tasks through the checks of [`checked::Checked`].
 fn executor(arguments: &Arguments, run: &str, verbose: bool) -> Result<Box<dyn Executor>, Failure> {
     let cache = cache_directory();
     let scratch = cache.join("scratch");
-    match arguments.executor.as_deref().unwrap_or("mock-tes") {
-        "mock-tes" => {
-            let mut executor = MockTes::new(scratch.join("mock-tes").join(run));
-            executor.verbose = verbose;
-            Ok(Box::new(executor))
-        }
-        "mock" => {
-            let mut executor = Mock::new(scratch.join("mock").join(run));
+    match arguments.executor.as_deref().unwrap_or("simulator") {
+        "simulator" => {
+            let mut executor = Simulator::new(scratch.join("simulator").join(run));
             executor.verbose = verbose;
             Ok(Box::new(executor))
         }
@@ -211,7 +206,7 @@ fn executor(arguments: &Arguments, run: &str, verbose: bool) -> Result<Box<dyn E
             Ok(Box::new(checked::Checked::new(executor, default_image)))
         }
         other => Err(failure(format!(
-            "iunctus: unknown executor `{other}`; use `mock-tes`, `mock` or `local`"
+            "iunctus: unknown executor `{other}`; use `simulator` or `local`"
         ))),
     }
 }
@@ -227,8 +222,8 @@ fn launch(arguments: &Arguments, target: PathBuf) -> Launch {
         targets: arguments.targets.clone(),
         scratch: cache_directory().join("scratch"),
         stub: arguments.stub,
-        // A mock run makes up the outputs of tasks, so it also assumes that the source files
-        // of the workflow exist, as the graph needs them rather than their content.
+        // A simulated run makes up the outputs of tasks, so it also assumes that the source
+        // files of the workflow exist, as the graph needs them rather than their content.
         assume_inputs: arguments.executor.as_deref() != Some("local"),
     }
 }
@@ -261,7 +256,8 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
 
 options:
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it
-  -executor mock-tes|mock|local       mock-tes (the default) writes TES task documents
+  -executor simulator|local           simulator (the default) writes TES task documents
+                                      and makes up the outputs; local runs containers
   -graph <file>                       writes the execution graph, as DOT for a .dot file
   -max-pending <n>                    lets up to n tasks be pending at once (default 1)
   -order asked|reversed|shuffled[:<seed>]

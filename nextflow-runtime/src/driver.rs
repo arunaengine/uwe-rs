@@ -179,7 +179,7 @@ impl Driver for Nextflow {
     }
 }
 
-/// In a mock run, a task only pretends to run, and the mock makes up the outputs that a
+/// In a simulated run, a task only pretends to run, and the simulator makes up the outputs that a
 /// script does not tell how it makes. An output that a script, like a stub, surely does not
 /// make is left out, as Nextflow's stub run finds no file for it: an optional output is then
 /// missing and a required one fails the task, so the run takes the same path. An output that
@@ -191,7 +191,7 @@ fn drop_made_up_outputs(request: &TaskRequest, outcome: &mut Outcome) {
         .iter()
         .map(|(_, name)| name.as_str())
         .collect();
-    let simulation = workflow_graph::mock::shell::simulate(&request.script, &inputs);
+    let simulation = workflow_graph::simulator::shell::simulate(&request.script, &inputs);
     if !simulation.complete {
         return;
     }
@@ -415,7 +415,7 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
 
 /// What the network reads of the outcome of a task: its output files, its standard output, and
 /// the values of its `env` and `eval` outputs from `.command.env`. A value that a task did not
-/// write, as with a mock executor, is empty.
+/// write, as with the simulator, is empty.
 pub fn task_outcome(request: &TaskRequest, outcome: Outcome) -> Result<TaskOutcome, DriverError> {
     let mut result = TaskOutcome {
         id: request.id,

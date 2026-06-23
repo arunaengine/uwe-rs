@@ -54,7 +54,7 @@ pub struct Task {
     pub command: Vec<String>,
     /// The shell script of the task as the workflow wrote it, when there is one. The command
     /// runs it, possibly with code of the driver around it, like Nextflow's capture of `env`
-    /// outputs. The mock executors read it to find the files the task makes.
+    /// outputs. The simulator reads it to find the files the task makes.
     pub script: Option<String>,
     /// The working directory inside the container; `None` for the executor's default.
     pub workdir: Option<String>,

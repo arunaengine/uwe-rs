@@ -7,7 +7,8 @@ use crate::queue::Queue;
 use crate::recorder::Recorder;
 use crate::{Driver, DriverError, ExecutionGraph, Outcome, RunOptions, Task, TaskId};
 
-/// Runs tasks, one call per task. Real executors (TES, local containers) and the mock share it.
+/// Runs tasks, one call per task. Real executors (TES, local containers) and the simulator
+/// share it.
 pub trait Executor {
     fn execute(&mut self, task: &Task) -> Result<Outcome, ExecuteError>;
 }

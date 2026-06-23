@@ -1,4 +1,4 @@
-//! Runs every workflow of the Snakemake test workflows with the mock executor and compares the
+//! Runs every workflow of the Snakemake test workflows with the simulator and compares the
 //! outcome with `tests/fixtures/run_test_workflows.txt`: `ok` and the number of tasks, or the exit
 //! code (33 for unsupported features) and the first line of the error. Each workflow runs
 //! the way `tests/fixtures/run_test_workflows_launches.txt` says, which `launches.py` next to it
@@ -26,7 +26,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use snakemake_runtime::{PythonContainers, Settings};
-use workflow_graph::{Launch, MockTes, Order, RunOptions, execute_with};
+use workflow_graph::{Launch, Order, RunOptions, Simulator, execute_with};
 
 const LAUNCHES: &str = include_str!("fixtures/run_test_workflows_launches.txt");
 
@@ -192,7 +192,7 @@ fn run(folder: &Path, launching: &Launching, scratch: &Path) -> String {
         Ok(driver) => driver,
         Err(error) => return format!("{} {error}", if error.unsupported { 33 } else { 1 }),
     };
-    let mut executor = MockTes::new(scratch.join("mock"));
+    let mut executor = Simulator::new(scratch.join("simulator"));
     // Up to eight tasks finish in a shuffled order, as tasks of a real run may.
     let options = RunOptions {
         max_pending: 8,
@@ -458,9 +458,9 @@ fn workflows_run_as_recorded() {
         .map(|(name, outcome)| format!("{name} {outcome}"))
         .collect();
     let header = if containers() {
-        "# The outcome of each workflow of the Snakemake test workflows that imports a Python package\n# without a stand-in while it is planned, with the Python container of decision 19 and the\n# mock executor: `ok` and the number of tasks, or the exit code and the first line of the\n# error. Without a container runtime, these workflows stop with an error that says so."
+        "# The outcome of each workflow of the Snakemake test workflows that imports a Python package\n# without a stand-in while it is planned, with the Python container of decision 19 and the\n# simulator: `ok` and the number of tasks, or the exit code and the first line of the\n# error. Without a container runtime, these workflows stop with an error that says so."
     } else {
-        "# The outcome of each workflow of the Snakemake test workflows with the mock executor: `ok` and\n# the number of tasks, or the exit code (33 for unsupported features) and the first line\n# of the error."
+        "# The outcome of each workflow of the Snakemake test workflows with the simulator: `ok` and the\n# number of tasks, or the exit code (33 for unsupported features) and the first line\n# of the error."
     };
     if std::env::var_os("UPDATE_FIXTURE").is_some() {
         std::fs::write(&fixture, format!("{header}\n{}\n", lines.join("\n")))

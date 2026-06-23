@@ -1,4 +1,4 @@
-//! Runs each workflow of `tests/fixtures/workflows` with the mock executor and compares the
+//! Runs each workflow of `tests/fixtures/workflows` with the simulator and compares the
 //! graph and the tasks with the folder's `expected.txt`. A folder may have a `targets` file
 //! with one target per line, and a `snakemake.txt` with the shell commands that
 //! `snakemake --dry-run --printshellcmds` (Snakemake 9.27.0) prints for it, which the tasks
@@ -9,7 +9,7 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
-use workflow_graph::{Launch, MockTes, execute};
+use workflow_graph::{Launch, Simulator, execute};
 
 /// The graph of a run, and for each task its image, command, inputs and outputs.
 fn describe(folder: &Path) -> String {
@@ -34,7 +34,7 @@ fn describe(folder: &Path) -> String {
         Ok(driver) => driver,
         Err(error) => return format!("error: {error}\n"),
     };
-    let mut executor = MockTes::new(scratch.path().join("mock"));
+    let mut executor = Simulator::new(scratch.path().join("simulator"));
     let execution = execute(&folder.to_string_lossy(), driver.as_mut(), &mut executor);
     text.push_str(&execution.graph.summary());
     for node in &execution.graph.nodes {

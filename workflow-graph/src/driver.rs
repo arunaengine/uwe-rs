@@ -30,7 +30,7 @@ pub struct Launch {
     /// Run the stubs of tasks instead of their scripts, where the language has stubs.
     pub stub: bool,
     /// Treat input files that no task makes and that do not exist as present, so that a
-    /// workflow plans all its tasks without its data, as a mock run does. Drivers log the
+    /// workflow plans all its tasks without its data, as a simulated run does. Drivers log the
     /// files they assume.
     pub assume_inputs: bool,
 }

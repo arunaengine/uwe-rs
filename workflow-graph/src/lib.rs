@@ -11,16 +11,16 @@
 mod driver;
 mod engine;
 mod graph;
-pub mod mock;
 mod options;
 mod pending;
 mod queue;
 mod recorder;
+pub mod simulator;
 mod task;
 
 pub use driver::{Driver, DriverError, Launch};
 pub use engine::{ExecuteError, Execution, Executor, execute, execute_with};
 pub use graph::{Edge, EdgeKind, ExecutionGraph, Node};
-pub use mock::{Mock, MockTes};
 pub use options::{Order, RunOptions};
+pub use simulator::Simulator;
 pub use task::{Input, Language, Outcome, OutputFile, Resources, Task, TaskId};

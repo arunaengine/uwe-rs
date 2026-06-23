@@ -1,6 +1,6 @@
 //! Builds the execution graph of every CWL document of the test workflows from
 //! `just cwl-test-workflows` that `cwltool --validate` accepts, with placeholder inputs and the
-//! mock TES executor, and compares the outcome with `tests/fixtures/graph_test_workflows.txt`:
+//! simulator, and compares the outcome with `tests/fixtures/graph_test_workflows.txt`:
 //! `ok` and the number of tasks, or the error. Documents of the fixture that the test workflows
 //! lack, like those of a host the network could not reach, are left out. A document may only
 //! fail when `tests/fixtures/graph_evidence.txt` has a record of it: why it cannot run, and
@@ -20,7 +20,7 @@ use std::time::Duration;
 use cwl_parser::source::Web;
 use cwl_parser::{Loader, Node, Value, yaml};
 use cwl_runtime::{CwlDriver, Options};
-use workflow_graph::{ExecuteError, Launch, MockTes, execute_with};
+use workflow_graph::{ExecuteError, Launch, Simulator, execute_with};
 
 mod order;
 #[path = "../../cwl-parser/tests/records/mod.rs"]
@@ -107,7 +107,7 @@ fn graph_with(reference: &str, options: Options) -> Result<usize, String> {
         ..Launch::default()
     };
     let mut driver = CwlDriver::new(&launch, options).map_err(|error| describe(&error))?;
-    let mut executor = MockTes::new(directory.path().join("mock"));
+    let mut executor = Simulator::new(directory.path().join("simulator"));
     let execution = execute_with(reference, &mut driver, &mut executor, &order::run_options());
     if let Some(error) = execution.error {
         return Err(match error {

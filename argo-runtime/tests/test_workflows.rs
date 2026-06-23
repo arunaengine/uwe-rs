@@ -1,5 +1,5 @@
 //! Reads every Argo document of the test workflows from `just argo-test-workflows`. Documents
-//! with an entrypoint run with the mock TES executor; the others, like libraries of
+//! with an entrypoint run with the simulator; the others, like libraries of
 //! WorkflowTemplates, get the checks Argo makes when they are created. The outcomes are compared
 //! with tests/fixtures/test-workflows/outcomes.txt: `ok` and the number of tasks, `valid`, or the
 //! exit code (33 for unsupported features) and the first error. Each document that does not pass
@@ -17,7 +17,7 @@ use std::rc::Rc;
 
 use argo_runtime::library::collect_files;
 use argo_runtime::{ArgoDriver, Document, Kind, Library, Options, load_file, validate};
-use workflow_graph::{MockTes, Order, RunOptions, execute_with};
+use workflow_graph::{Order, RunOptions, Simulator, execute_with};
 
 const FIXTURE: &str = "tests/fixtures/test-workflows/outcomes.txt";
 
@@ -93,7 +93,7 @@ impl TestWorkflows {
         library
     }
 
-    /// Runs a document with the mock TES executor: `ok` and the number of tasks, or the exit
+    /// Runs a document with the simulator: `ok` and the number of tasks, or the exit
     /// code and the error.
     fn run(&self, relative: &str, document: &Rc<Document>, library: Library) -> String {
         let options = Options {
@@ -103,9 +103,9 @@ impl TestWorkflows {
             ..Options::default()
         };
         let mut driver = ArgoDriver::new(Rc::clone(document), Rc::new(library), options);
-        let work = self.scratch.path().join("mock");
+        let work = self.scratch.path().join("simulator");
         let _ = std::fs::remove_dir_all(&work);
-        let mut executor = MockTes::new(&work);
+        let mut executor = Simulator::new(&work);
         let execution = execute_with(relative, &mut driver, &mut executor, &self.options);
         let outcome = match &execution.error {
             None => {
@@ -428,7 +428,7 @@ fn write_fixture(
         }
     }
     let mut text = String::from(
-        "# Outcomes of the Argo test-workflows test: `ok` and the number of tasks of a run with the mock TES\n# executor, `valid` for a document without an entrypoint that passes Argo's checks, or the\n# exit code (33 for unsupported features) and the first error. A tab ends the path, which may\n# hold spaces.\n",
+        "# Outcomes of the Argo test-workflows test: `ok` and the number of tasks of a run with the simulator,\n# `valid` for a document without an entrypoint that passes Argo's checks, or the\n# exit code (33 for unsupported features) and the first error. A tab ends the path, which may\n# hold spaces.\n",
     );
     for (document, outcome) in &outcomes {
         text.push_str(&format!("{document}\t{outcome}\n"));

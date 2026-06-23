@@ -47,8 +47,8 @@ pub const OUTPUT_JSON: &str = "cwl.output.json";
 pub struct Options {
     /// Take absent files as present and empty, and give outputs that the executor cannot
     /// make (like the content of `cwl.output.json`) placeholder values of their type. This
-    /// is what the mock executor needs, and the default while it is the only executor.
-    pub mock: bool,
+    /// is what the simulator needs, and the default while it is the only executor.
+    pub simulated: bool,
     /// The image of tools without `DockerRequirement`.
     pub image: String,
     /// On placeholder inputs, give the optional inputs of the process the run starts with
@@ -60,7 +60,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Options {
-            mock: true,
+            simulated: true,
             image: DEFAULT_IMAGE.into(),
             fill_optional: false,
         }
@@ -70,7 +70,7 @@ impl Default for Options {
 impl Options {
     pub fn access(&self) -> Access {
         Access {
-            assume_present: self.mock,
+            assume_present: self.simulated,
         }
     }
 }
@@ -95,7 +95,7 @@ pub struct Pending {
 }
 
 /// Makes the task of a command line tool (or of an abstract `Operation`) for a prepared
-/// input object. `fake` says that its files are placeholders or outputs of the mock executor,
+/// input object. `fake` says that its files are placeholders or outputs of the simulator,
 /// whose content is not real.
 pub fn task(
     process: &Arc<Process>,
@@ -293,7 +293,7 @@ pub fn task(
             ) {
                 Ok(value) => value,
                 // An argument made from the content of files whose content is not real, as in
-                // a mock run, cannot be made; it becomes a marker, so the task still exists.
+                // a simulated run, cannot be made; it becomes a marker, so the task still exists.
                 Err(_) if fake && reads_contents(expression) => Value::string(FAKE_ARGUMENT),
                 Err(error) => return Err(format!("the command line: {error}")),
             },
@@ -617,7 +617,7 @@ fn stream(
 }
 
 /// The argument in place of one made from the content of files that are not real.
-pub const FAKE_ARGUMENT: &str = "<made from the content of mock files>";
+pub const FAKE_ARGUMENT: &str = "<made from the content of simulated files>";
 
 /// Whether an expression reads the `contents` of files.
 fn reads_contents(expression: &Expression) -> bool {

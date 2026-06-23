@@ -1,6 +1,6 @@
 //! Collecting the outputs of a finished task, as cwltool's `collect_output` does: from
-//! `cwl.output.json`, or from the files that the globs of the output bindings match; in a mock
-//! run, outputs the executor could not make get placeholders.
+//! `cwl.output.json`, or from the files that the globs of the output bindings match; in a
+//! simulated run, outputs the executor could not make get placeholders.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -11,7 +11,7 @@ use cwl_parser::model::{
     Class, Dynamic, Expression, LoadListing, OutputBinding, OutputParameter, SecondaryFile, Type,
     short_name,
 };
-use workflow_graph::mock::glob_matches;
+use workflow_graph::simulator::glob_matches;
 use workflow_graph::{Outcome, OutputFile};
 
 use super::outputs::{classes, globs};
@@ -48,8 +48,8 @@ impl Pending {
                 let text = std::fs::read_to_string(&file.location).unwrap_or_default();
                 match Value::parse(&text) {
                     Ok(Value::Map(map)) => Some(map),
-                    // The mock makes an empty file, which gives no outputs.
-                    _ if self.options.mock => None,
+                    // The simulator makes an empty file, which gives no outputs.
+                    _ if self.options.simulated => None,
                     Ok(_) => return Err(format!("{OUTPUT_JSON} must hold an object")),
                     Err(error) => return Err(format!("{OUTPUT_JSON}: {error}")),
                 }
@@ -82,7 +82,7 @@ impl Pending {
                         Type::Stdout | Type::Stderr | Type::Record(_)
                     )
                 {
-                    // Only cwl.output.json gives this output; a mock run has none.
+                    // Only cwl.output.json gives this output; a simulated run has none.
                     Ok(Value::Null)
                 } else {
                     collector.output(
@@ -101,7 +101,7 @@ impl Pending {
             let name = short_name(&output.id).to_owned();
             let value = outputs.get(&name).cloned().unwrap_or(Value::Null);
             if !self.types.matches(&output.value_type, &value) {
-                if self.options.mock {
+                if self.options.simulated {
                     let placeholder = self.placeholder(output, &collector);
                     outputs.insert(name, placeholder);
                 } else {
@@ -283,7 +283,7 @@ impl Collector<'_> {
                         "the output `{path}` is outside the output directory"
                     ));
                 } else {
-                    // A path from the host, such as a file in a mock work folder.
+                    // A path from the host, such as a file in a work folder of the simulator.
                     iri::file_url(Path::new(&absolute))
                 };
                 map.insert("location".into(), Value::String(location));
@@ -315,7 +315,7 @@ impl Collector<'_> {
     }
 
     /// The value of an output of an `Operation`: the file named after it, or a placeholder in
-    /// a mock run. A real run makes no files for an `Operation`, which is a task that does
+    /// a simulated run. A real run makes no files for an `Operation`, which is a task that does
     /// nothing, so its outputs are null, and an error when their type does not allow null.
     fn operation(&self, output: &OutputParameter) -> Result<Value, String> {
         let name = short_name(&output.id);
@@ -329,7 +329,9 @@ impl Collector<'_> {
         };
         let mut file = match found.first() {
             Some(file) => self.file_object(file, &binding)?,
-            None if self.pending.options.mock => return Ok(self.pending.placeholder(output, self)),
+            None if self.pending.options.simulated => {
+                return Ok(self.pending.placeholder(output, self));
+            }
             None if types.optional(&output.value_type) => return Ok(Value::Null),
             None => {
                 return Err(
@@ -445,7 +447,7 @@ impl Collector<'_> {
                 }
                 self.check_link(&file)?;
                 let mut object = self.file_object(&file, &binding)?;
-                self.mock_extension(&mut object, &file, pattern, name, format, secondary);
+                self.simulated_extension(&mut object, &file, pattern, name, format, secondary);
                 found.push(object);
             }
         }
@@ -462,7 +464,7 @@ impl Collector<'_> {
         let mut result = match &binding.output_eval {
             Some(expression) => match self.evaluate(expression, &Value::List(found)) {
                 Ok(value) => value,
-                // Expressions that read the files of a mock run read empty files and may
+                // Expressions that read the files of a simulated run read empty files and may
                 // fail; the output then gets a placeholder, as when it does not fit its type.
                 Err(_) if self.access.assume_present && reads_self(expression) => Value::Null,
                 Err(error) => return Err(error),
@@ -502,7 +504,7 @@ impl Collector<'_> {
                 }
                 let value = match self.evaluate(format, primary) {
                     Ok(value) => value,
-                    // The format is metadata; over the inputs of a mock run it may not exist.
+                    // The format is metadata; over the inputs of a simulated run it may not exist.
                     Err(_) if self.access.assume_present => Value::Null,
                     Err(error) => return Err(error),
                 };
@@ -562,9 +564,10 @@ impl Collector<'_> {
         found
     }
 
-    /// In a mock run, the file that the mock names after a bare wildcard, like `mock` for `*`,
-    /// has no extension; its name takes the one the output suggests, as the tool's file has.
-    fn mock_extension(
+    /// In a simulated run, the file that the simulator names after a bare wildcard, like `mock`
+    /// for `*`, has no extension; its name takes the one the output suggests, as the tool's
+    /// file has.
+    fn simulated_extension(
         &self,
         object: &mut Value,
         file: &OutputFile,
@@ -573,7 +576,7 @@ impl Collector<'_> {
         format: Option<&Expression>,
         secondary: &[SecondaryFile],
     ) {
-        let generic = workflow_graph::mock::file_name(pattern);
+        let generic = workflow_graph::simulator::file_name(pattern);
         let bare = generic != pattern && files::split_extension(&generic).1.is_empty();
         if !self.access.assume_present || !bare || file.path != generic {
             return;

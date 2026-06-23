@@ -1,4 +1,4 @@
-//! Runs `iunctus run` on small scripts with the mock executor, and with Docker in the ignored
+//! Runs `iunctus run` on small scripts with the simulator, and with Docker in the ignored
 //! test, which needs the `debian:stable-slim` image; run it with
 //! `cargo test -p iunctus --test run -- --ignored`.
 // Copyright (c) 2026 The iunctus Contributors
@@ -157,19 +157,31 @@ const GREETER_CONFIG: &str =
     "params.greeting = 'hi'\nprofiles {\n    loud { params.greeting = 'HI' }\n}\n";
 
 #[test]
-fn mock_runs_use_the_config_and_the_command_line() {
+fn simulated_runs_use_the_config_and_the_command_line() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), GREETER).expect("writes the script");
     std::fs::write(directory.path().join("nextflow.config"), GREETER_CONFIG)
         .expect("writes the config");
-    let arguments = ["run", "main.nf", "-executor", "mock", "-profile", "loud"];
+    let arguments = [
+        "run",
+        "main.nf",
+        "-executor",
+        "simulator",
+        "-profile",
+        "loud",
+    ];
     let (code, output) = iunctus(directory.path(), &arguments);
     assert_eq!(code, 0, "{output}");
     let mut lines: Vec<&str> = output.lines().collect();
     lines.sort_unstable();
     assert_eq!(
         lines,
-        ["[mock] SAY (1)", "[mock] SAY (2)", "a.txt: HI", "b.txt: HI"]
+        [
+            "[simulated] SAY (1)",
+            "[simulated] SAY (2)",
+            "a.txt: HI",
+            "b.txt: HI"
+        ]
     );
     let arguments = ["config", "-profile", "loud", "--greeting", "hey"];
     let (code, output) = iunctus(directory.path(), &arguments);
@@ -178,22 +190,25 @@ fn mock_runs_use_the_config_and_the_command_line() {
 }
 
 #[test]
-fn mock_outputs_include_directories() {
+fn simulated_outputs_include_directories() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = "process P {\n    output:\n    path 'db/', emit: db\n    path 'db/x.txt', emit: x\n    \
                   path '*.{csv,tsv}', emit: table\n    script:\n    'tool'\n}\n\
                   workflow {\n    P()\n    P.out.db.view { d -> \"${d.name} ${d.isDirectory()}\" }\n    \
                   P.out.x.view { f -> f.name }\n    P.out.table.view { f -> f.name }\n}\n";
     std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
-    let (code, output) = iunctus(directory.path(), &["run", "main.nf", "-executor", "mock"]);
+    let (code, output) = iunctus(
+        directory.path(),
+        &["run", "main.nf", "-executor", "simulator"],
+    );
     assert_eq!(code, 0, "{output}");
     let mut lines: Vec<&str> = output.lines().collect();
     lines.sort_unstable();
-    assert_eq!(lines, ["[mock] P", "db true", "mock.csv", "x.txt"]);
+    assert_eq!(lines, ["[simulated] P", "db true", "mock.csv", "x.txt"]);
 }
 
 #[test]
-fn mock_outputs_are_the_names_in_the_script() {
+fn simulated_outputs_are_the_names_in_the_script() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = "process P {\n    input:\n    val x\n    output:\n    path '*.fq', emit: reads\n    \
                   path x, emit: db\n    path '*cluster', emit: c\n    \
@@ -204,7 +219,7 @@ fn mock_outputs_are_the_names_in_the_script() {
                   P.out.db.view { d -> \"${d.name} ${d.isDirectory()} ${d.list()}\" }\n    \
                   P.out.c.view { f -> f.name }\n}\n";
     std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
-    let arguments = ["run", "main.nf", "-stub-run", "-executor", "mock"];
+    let arguments = ["run", "main.nf", "-stub-run", "-executor", "simulator"];
     let (code, output) = iunctus(directory.path(), &arguments);
     assert_eq!(code, 0, "{output}");
     let mut lines: Vec<&str> = output.lines().collect();
@@ -212,8 +227,8 @@ fn mock_outputs_are_the_names_in_the_script() {
     assert_eq!(
         lines,
         [
-            "[mock] P",
             "[s_1.fq, s_2.fq]",
+            "[simulated] P",
             "s true [a.txt]",
             "s.cluster"
         ]

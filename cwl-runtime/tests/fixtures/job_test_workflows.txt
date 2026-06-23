@@ -1,5 +1,5 @@
 # Real-world CWL documents of the test workflows with their example job files, found by
-# job_test_workflows.py, and the outcome of running each pair with the mock TES executor: `ok`
+# job_test_workflows.py, and the outcome of running each pair with the simulator: `ok`
 # and the number of tasks, or `fail:`, `unsupported:` or `timeout` with the first line of the error.
 realworld/collections/github.com__Barski-lab__workflows/devel/miraldi/atacseq-pe-star.cwl realworld/collections/github.com__Barski-lab__workflows/devel/miraldi/atacseq-pe-star.json ok 35
 realworld/collections/github.com__Barski-lab__workflows/devel/ucscbuild/SetUpCb.cwl realworld/collections/github.com__Barski-lab__workflows/devel/ucscbuild/input_run.json ok 1
@@ -1304,7 +1304,7 @@ realworld/sources/github.com__yonesora56__plant2human/Workflow/plant2human_v3_st
 realworld/sources/github.com__yonesora56__plant2human/Workflow/plant2human_v3_stringent.cwl realworld/sources/github.com__yonesora56__plant2human/job/plant2human_v3_stringent_example_os100.yml ok 13
 realworld/sources/github.com__yonesora56__plant2human/Workflow/plant2human_v3_stringent.cwl realworld/sources/github.com__yonesora56__plant2human/job/plant2human_v3_stringent_example_sl100.yml ok 13
 realworld/sources/github.com__yonesora56__plant2human/Workflow/plant2human_v3_stringent.cwl realworld/sources/github.com__yonesora56__plant2human/job/plant2human_v3_stringent_example_zm100.yml ok 13
-realworld/sources/github.com__zmahnoor14__MAW/cwl/maw.cwl realworld/sources/github.com__zmahnoor14__MAW/cwl/maw-inputs-mutiple_ara.yaml fail: analysis[0]/metfrag: the scattered input `PeakList` is null, not a list; the mock run has no real data to fill it
+realworld/sources/github.com__zmahnoor14__MAW/cwl/maw.cwl realworld/sources/github.com__zmahnoor14__MAW/cwl/maw-inputs-mutiple_ara.yaml fail: analysis[0]/metfrag: the scattered input `PeakList` is null, not a list; the simulated run has no real data to fill it
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/indexing_bed.cwl realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/subworkflows/indexing_bed.yaml ok 2
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/workflow.cwl realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/workflow.yaml ok 132
 realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/workflow.cwl realworld/sources/gitlab.bsc.es__lrodrig1__structuralvariants_poc/structuralvariants/cwl/workflow_idxs.yaml ok 132
@@ -1514,7 +1514,7 @@ realworld/workflowhub/474/src/utils/cat.cwl realworld/workflowhub/474/src/utils/
 realworld/workflowhub/474/src/utils/count_fastq.cwl realworld/workflowhub/474/src/utils/count_fastq.yml ok 1
 realworld/workflowhub/474/src/workflows/post_assembly_qc.cwl realworld/workflowhub/474/src/workflows/post_assembly_qc.yml ok 4
 realworld/workflowhub/488/workflow.cwl realworld/workflowhub/488/workflow_input_descriptions.yml ok 40
-realworld/workflowhub/510/cwl/maw.cwl realworld/workflowhub/510/cwl/maw-inputs-mutiple_ara.yaml fail: analysis[0]/metfrag: the scattered input `PeakList` is null, not a list; the mock run has no real data to fill it
+realworld/workflowhub/510/cwl/maw.cwl realworld/workflowhub/510/cwl/maw-inputs-mutiple_ara.yaml fail: analysis[0]/metfrag: the scattered input `PeakList` is null, not a list; the simulated run has no real data to fill it
 realworld/workflowhub/549/workflow.cwl realworld/workflowhub/549/workflow_input_descriptions.yml ok 6
 realworld/workflowhub/552/workflow.cwl realworld/workflowhub/552/workflow_input_descriptions.yml ok 29
 realworld/workflowhub/776/workflow.cwl realworld/workflowhub/776/workflow_input_descriptions.yml ok 18

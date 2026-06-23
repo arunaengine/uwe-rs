@@ -14,6 +14,7 @@
 
 mod fingerprint;
 mod recorder;
+mod resume;
 mod runs;
 mod schema;
 mod tasks;
@@ -25,6 +26,7 @@ use rusqlite::Connection;
 
 pub use fingerprint::{InputState, fingerprint, input_states};
 pub use recorder::{LOG_LIMIT, Recorder, RunStart};
+pub use resume::Reusable;
 pub use runs::{Event, Log, Run};
 pub use schema::VERSION;
 pub use tasks::{Attempt, EdgeRow, FileRow, TaskDetail, TaskRow};

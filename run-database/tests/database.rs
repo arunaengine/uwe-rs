@@ -179,6 +179,50 @@ fn tasks_are_read_back_with_their_files_and_edges() {
 }
 
 #[test]
+fn a_resumed_run_joins_the_lineage_and_finds_finished_tasks() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    record(&path, directory.path()).expect("records the run");
+    let database = Database::open(&path).expect("opens again");
+    let last = database.last_run("/work/main.nf", false).expect("finds");
+    assert_eq!(last.map(|run| run.id), Some("run-1".to_owned()));
+    // The run was simulated, so there is no real run to resume.
+    assert_eq!(
+        database.last_run("/work/main.nf", true).expect("finds"),
+        None
+    );
+
+    let reusable = database.reusable(&["run-1".to_owned()]).expect("finds");
+    // Only the first task succeeded.
+    assert_eq!(reusable.len(), 1);
+    let (fingerprint, found) = reusable.iter().next().expect("one task");
+    assert_eq!(found.outcome.stdout, "hello\n");
+    assert_eq!(found.outcome.files[0].path, "out.txt");
+    let detail = database.task("run-1", 1).expect("reads").expect("a task");
+    assert_eq!(&detail.fingerprint, fingerprint);
+
+    let recorder = database
+        .record(&start("run-2", Some("run-1")))
+        .expect("starts");
+    recorder.close().expect("closes");
+    let database = Database::open(&path).expect("opens again");
+    let run = database.run("run-2").expect("reads").expect("a run");
+    assert_eq!(
+        (run.lineage.as_str(), run.resumes.as_deref()),
+        ("run-1", Some("run-1"))
+    );
+    assert_eq!(
+        database.lineage("run-1").expect("lists"),
+        ["run-2", "run-1"]
+    );
+    // Its process is this test, which still runs.
+    assert_eq!(run.state, "running");
+
+    let unknown = database.record(&start("run-3", Some("run-9")));
+    assert!(matches!(unknown, Err(DatabaseError::UnknownRun(_))));
+}
+
+#[test]
 fn a_database_of_a_newer_version_is_refused() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");

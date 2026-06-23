@@ -16,6 +16,7 @@ mod fingerprint;
 mod recorder;
 mod runs;
 mod schema;
+mod tasks;
 
 use std::path::Path;
 use std::time::Duration;
@@ -26,6 +27,7 @@ pub use fingerprint::{InputState, fingerprint, input_states};
 pub use recorder::{LOG_LIMIT, Recorder, RunStart};
 pub use runs::{Event, Log, Run};
 pub use schema::VERSION;
+pub use tasks::{Attempt, EdgeRow, FileRow, TaskDetail, TaskRow};
 
 /// The name of the database file in the cache directory, next to the default store.
 pub const FILE_NAME: &str = "runs.sqlite";

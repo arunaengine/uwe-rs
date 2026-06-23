@@ -39,7 +39,7 @@ Crates are named for what they are and sit at the workspace root, like `nextflow
 | `content-store` | The cache directory on a file system or in S3, imports from HTTPS | Shared |
 | `executor` | The executor interface, the wrapper script, the result manifest, the TES executor and the local container executor | Shared |
 | `task-runner` | The scheduler, cache lookups, the run database, resume, publishing | Shared |
-| `workflow-graph` | Language-neutral tasks, the driver interface, the execution graph and the mock executors ([engine](../engine.md)) | Shared |
+| `workflow-graph` | Language-neutral tasks, the driver interface, the execution graph and the simulator ([engine](../engine.md)) | Shared |
 | `iunctus` | The binary: command line, settings, wiring | Binary |
 | `nextflow-conformance` | Development harness for oracle runs and snapshot comparison. Never linked into the binary. | Development |
 

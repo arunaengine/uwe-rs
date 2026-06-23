@@ -6,7 +6,7 @@
 
 As of 2026-09-30.
 
-iunctus reads and plans the workflows of four languages in one Rust binary, but it does not run a single task for real yet. Every test workflow either runs through the simulator (the mock executor until now, decision 21) or has a record of why it cannot, backed by the output of the reference tool. What stands between iunctus and a real engine is the execution layer (section 3), a few language features that only real runs need (section 2), and the features that should make iunctus better than the native engines, not just equal to them: deeper insight into runs, higher reproducibility, better efficiency and storage across several providers (section 4).
+iunctus reads and plans the workflows of four languages in one Rust binary, but it does not run a single task for real yet. Every test workflow either runs through the simulator (decision 21) or has a record of why it cannot, backed by the output of the reference tool. What stands between iunctus and a real engine is the execution layer (section 3), a few language features that only real runs need (section 2), and the features that should make iunctus better than the native engines, not just equal to them: deeper insight into runs, higher reproducibility, better efficiency and storage across several providers (section 4).
 
 | Language | Test workflows | Run in the simulator | Work natively, not in iunctus |
 | --- | --- | --- | --- |
@@ -89,7 +89,7 @@ No task runs for real yet, except one at a time through the simple local executo
 1. **An async executor interface.** Executors run tasks on Tokio; the driver loop stays on one thread, and the engine keeps up to `max_pending` tasks running.
 2. **Output locations as strings, with size and digest,** so an output can live in S3 and not only on the local disk.
 3. **A shared `Files` service** that makes a location local when a driver must read it, like a Nextflow `.command.env` or a CWL `cwl.output.json`.
-4. **A switch for simulated runs** (`Launch.mock` in the engine design), so that the workarounds of the simulator apply only to simulated runs.
+4. **A switch for simulated runs** in `Launch`, so that the workarounds of the simulator apply only to simulated runs.
 5. **Retries and cancellation:** attempt numbers, Nextflow `errorStrategy`, Snakemake `retries`, Argo `retryStrategy`. The engine retries failures of the machine; the driver decides about failures of the tool.
 6. **Two new task fields:** whether a task may use the network, and whether an input must be writable.
 7. **The TES executor** (decision 8): one TES task per task, with the wrapper as a staged input. TES servers such as Funnel also reach HPC schedulers.
@@ -176,7 +176,7 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 
 ### Simulator and graphs
 
-- [ ] Rename the mock executors to one `simulator` (decision 21), and say "simulated" in code, docs, failure records and messages.
+- [x] Rename the mock executors to one `simulator` (decision 21), and say "simulated" in code, docs, failure records and messages.
 - [ ] Every simulated run and graph says that it is a simulation with made-up files, which a run with real data refines.
 - [ ] Mark the points of a simulated graph where real data can add or remove tasks: a glob that can match more files, a task output whose content the workflow reads, a Snakemake checkpoint, a CWL scatter or an Argo `withParam` over a task output.
 - [ ] A graph with one node per step (process, rule, step or template), next to the graph with one node per task.

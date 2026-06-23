@@ -651,7 +651,7 @@ These are my own conclusions, not measured facts.
 
 ## 7. Running the test workflows
 
-`just snakemake-run-test-workflows-test` runs every workflow of the test workflows with the mock TES executor (`snakemake-runtime/tests/run_test_workflows.rs`). Each workflow runs in a child process with a timeout of two minutes. Up to eight tasks are pending at once and finish in a shuffled order (seed 1, or `SNAKEMAKE_TEST_WORKFLOWS_SEED`), as tasks of a real run may. Input files that no rule makes and that do not exist are assumed to exist. `run_test_workflows.txt` records the outcome of each workflow: `ok` and the number of tasks, or the exit code and the first line of the error.
+`just snakemake-run-test-workflows-test` runs every workflow of the test workflows with the simulator (`snakemake-runtime/tests/run_test_workflows.rs`). Each workflow runs in a child process with a timeout of two minutes. Up to eight tasks are pending at once and finish in a shuffled order (seed 1, or `SNAKEMAKE_TEST_WORKFLOWS_SEED`), as tasks of a real run may. Input files that no rule makes and that do not exist are assumed to exist. `run_test_workflows.txt` records the outcome of each workflow: `ok` and the number of tasks, or the exit code and the first line of the error.
 
 ### 7.1 How a workflow is launched
 
@@ -665,11 +665,11 @@ These are my own conclusions, not measured facts.
 
 Every workflow that does not run has a record in `run_test_workflows_rejected.txt`: `invalid` when Snakemake fails the same way because the workflow is broken, `missing` when it needs something that is not in its repository (data, a config file, a Python package, environment variables), or `unsupported (decision N)`. The run test fails for a failing workflow without a record, for a record whose workflow runs, and for an `invalid` or `missing` record without a failing dry run of Snakemake in the oracle file.
 
-A mock run cannot know the content of task outputs. Some workflows read that content while they are planned, like a sample list that a checkpoint downloads; the mock executor makes these files empty, so their input functions fail. A real run gives the content. Errors of mock runs say which task output the workflow read, and which input files the run assumed to exist.
+A simulated run cannot know the content of task outputs. Some workflows read that content while they are planned, like a sample list that a checkpoint downloads; the simulator makes these files empty, so their input functions fail. A real run gives the content. Errors of simulated runs say which task output the workflow read, and which input files the run assumed to exist.
 
 ### 7.4 Commands while the workflow is planned
 
-Workflow code may run commands while it is planned: `shell()`, `subprocess`, `os.system` and `os.popen`. They never run on the machine of iunctus (decision 11). Each becomes a task of its own: the image is the workflow's global `container:`, else `debian:stable-slim`, and the working directory of the workflow is its input. The driver hands the task to the engine as the answer to the request it is handling and waits for its outcome; outcomes of other tasks that come meanwhile wait until the request is done. The mock executors give such a command no output and exit code 0. Files that a command writes are not kept yet.
+Workflow code may run commands while it is planned: `shell()`, `subprocess`, `os.system` and `os.popen`. They never run on the machine of iunctus (decision 11). Each becomes a task of its own: the image is the workflow's global `container:`, else `debian:stable-slim`, and the working directory of the workflow is its input. The driver hands the task to the engine as the answer to the request it is handling and waits for its outcome; outcomes of other tasks that come meanwhile wait until the request is done. The simulator gives such a command no output and exit code 0. Files that a command writes are not kept yet.
 
 ### 7.5 Files on the web and in storage
 

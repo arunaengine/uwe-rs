@@ -12,7 +12,7 @@ Status: implemented in the crate `argo-runtime`, 2026-09-28. The reference is th
 2. **Templates come from a library of documents.** The workflow file, the files given as configs and the repository of the workflow file are searched, in that order, for `templateRef` and `workflowTemplateRef`.
 3. **Substitution follows Argo's phases.** Globals and the local scope are substituted first, inputs second. Tags that cannot be resolved yet stay in place for a later phase, as in Argo.
 4. **The expression languages are implemented in the crate.** expr-lang with Argo's helpers and a Sprig subset, govaluate for `when`, and JSONPath. Values keep Go's model: JSON numbers are float64, maps print with sorted keys, and results print the way Go prints them.
-5. **A mock run always makes a full graph when Argo would.** Data that is not known in a mock run (empty stdout, placeholder parameters) never stops the run. Where Argo would read that data, the runtime takes the path that keeps the graph whole and logs a warning.
+5. **A simulated run always makes a full graph when Argo would.** Data that is not known in a simulated run (empty stdout, placeholder parameters) never stops the run. Where Argo would read that data, the runtime takes the path that keeps the graph whole and logs a warning.
 6. **No Kubernetes, the common scientific subset (decision 18).** Templates that need a cluster, like `resource` and `data` templates, sidecars and daemons, stop the run before its first task. Fields that only tell Kubernetes how to run a pod are left out with a warning. ConfigMaps and volumes map onto task inputs, outputs and files; secret values never enter a task (section 11).
 7. **Unsupported features fail loudly.** They stop the run with exit code 33 (`DriverError::unsupported`) and an error that names the decision.
 8. **Executor plugins run in their own containers.** A plugin template becomes a task in the image of the plugin, which calls the plugin's server as Argo's agent does (section 8.1).
@@ -133,11 +133,11 @@ The Sprig subset covers what the test workflows use and what is cheap to add alo
 |---|---|
 | `steps` | Step groups run one after another, the steps of a group in parallel. A group waits for every step. |
 | `dag` | Tasks start when their `dependencies` or `depends` hold. `depends` is translated to an expression over task results, as Argo does. The phase of the DAG follows `assessDAGPhase`: the phases of the branches that end the DAG. |
-| `when` | Decided after substitution. A condition that still holds a tag, as a mock run leaves some, cannot be decided: the step is skipped with a warning. |
+| `when` | Decided after substitution. A condition that still holds a tag, as a simulated run leaves some, cannot be decided: the step is skipped with a warning. |
 | Loops | `withItems`, `withParam` and `withSequence` give one node per item, named `name(index:description)`. An empty loop gives a skipped node. A `withParam` that does not parse is ignored when `when` is false. |
 | `continueOn` | `failed` and `error` let the run go on after a failed step or task. |
 | `failFast` | Only changes the assessment of the DAG, as in Argo. |
-| Retries | A retry node holds attempts named `name(n)`. The policy, the limit and the retry expression decide whether another attempt runs. Backoff is not waited for. With `MockTes` every task succeeds, so each retry node has one attempt. |
+| Retries | A retry node holds attempts named `name(n)`. The policy, the limit and the retry expression decide whether another attempt runs. Backoff is not waited for. With the simulator every task succeeds, so each retry node has one attempt. |
 | Exit handlers | `onExit` of the workflow and the `exit` hook run after the entrypoint, with `workflow.status` and `workflow.failures`. The exit hooks of steps and tasks run after their node. |
 | Lifecycle hooks | Hooks of the workflow and of steps and tasks run when their `expression` holds. |
 | `suspend` | Completes at once, as if `argo resume` came. Supplied output parameters take their default, or the first `enum` value, or stay empty with a warning. |
@@ -152,7 +152,7 @@ Outputs of steps and DAG templates read the scope (`valueFrom.parameter`, `expre
 | `script` | The command runs the file `/argo/staging/script`, which the task gets as an `Input` with the source as its content, as Argo's executor writes it. |
 | `containerSet` | One task per container, ordered by their `dependencies` with `Order` edges. The main container (named `main`, or the last one) gets the outputs. |
 | `resource` | Not supported (decision 18), except for a PersistentVolumeClaim, which becomes a volume of the run (section 11.4). |
-| `http` | The image `curlimages/curl` runs curl, which writes the response body and status code to files. The status code decides `successCondition`. When the status is not known, as in a mock run, the node succeeds with a warning. |
+| `http` | The image `curlimages/curl` runs curl, which writes the response body and status code to files. The status code decides `successCondition`. When the status is not known, as in a simulated run, the node succeeds with a warning. |
 | `data` | Not supported (decision 18). |
 | `plugin` | One call of an executor plugin per task, in the plugin's image (section 8.1). |
 
@@ -167,7 +167,7 @@ iunctus has no agent pod. Each call of a plugin is a task in the plugin's own im
 - The command is a POSIX shell script. It starts the plugin's server from the command and arguments of the sidecar, and posts `/argo/plugin/request.json`: the name, namespace and uid of the workflow and the template, as the agent sends them. It sends the token of `/var/run/argo/token`, which Argo also mounts for the plugin. It writes the reply to `/argo/plugin/reply.json` and its HTTP status to `/argo/plugin/status`. It uses `curl`, or `wget` where the image has no curl, as in `python:alpine`.
 - The plugins are those of `spec.executorPlugins`, which replace the installed plugins as in Argo. Otherwise they are the plugin ConfigMaps of the library (label `workflows.argoproj.io/configmap-type: ExecutorPlugin`, as `argo executor-plugin build` makes them). Plugins whose name holds a key of the template's `plugin` field are tried first.
 - The reply gives the node its phase, message and output parameters. A plugin that answers 404 or replies without a node passes the template on to the next plugin. When no plugin is left, the node fails with Argo's error `no plugin executed the template`.
-- In a mock run the reply is not known. The first plugin runs the template, and the node succeeds with a warning. Declared output parameters get their value or default.
+- In a simulated run the reply is not known. The first plugin runs the template, and the node succeeds with a warning. Declared output parameters get their value or default.
 
 Limits: the image of a plugin needs `sh` and `curl` or `wget`. A reply with the phase `Running` or `Pending` ends the node with an error, because iunctus does not call a plugin again later.
 
@@ -183,17 +183,17 @@ Output artifacts and output parameters with a `path` become the task's outputs. 
 - An output artifact is the file or directory. A later step that reads it, by `from` or by the same S3 key, gets that file.
 - `globalName` makes an output a workflow output (`workflow.outputs.parameters.<name>`).
 
-## 10. Mock runs
+## 10. Simulated runs
 
-A mock run gives empty stdout and no files. Real workflows read that data, so the runtime has rules that keep the graph whole where Argo would stop or requeue. The placeholders of the first two rules apply only when `Launch.assume_inputs` is set, as the binary does for the mock executors (`Options.assume_inputs`); a real run needs the values, as `argo submit` does, and stops with Argo's message, like `spec.arguments.sample.value or spec.arguments.sample.valueFrom is required`.
+A simulated run gives empty stdout and no files. Real workflows read that data, so the runtime has rules that keep the graph whole where Argo would stop or requeue. The placeholders of the first two rules apply only when `Launch.assume_inputs` is set, as the binary does for the simulator (`Options.assume_inputs`); a real run needs the values, as `argo submit` does, and stops with Argo's message, like `spec.arguments.sample.value or spec.arguments.sample.valueFrom is required`.
 
 - A workflow parameter without a value takes the first `enum` value, or a placeholder like `placeholder_sample_fastq`, with a warning. The same holds for the inputs of the entrypoint. A placeholder is one word, so that `when` reads it as a string.
-- Only what a user gives when submitting gets a placeholder: workflow parameters, and the inputs and input artifacts of the entrypoint. A step or task that does not supply an input of the template it calls stays an error, because Argo rejects such a workflow when it is submitted (section 4.1). This matches the other drivers: a mock run assumes the data a user gives (`Launch.assume_inputs`, the placeholder inputs of the CWL graph test), not what the workflow itself must pass on.
+- Only what a user gives when submitting gets a placeholder: workflow parameters, and the inputs and input artifacts of the entrypoint. A step or task that does not supply an input of the template it calls stays an error, because Argo rejects such a workflow when it is submitted (section 4.1). This matches the other drivers: a simulated run assumes the data a user gives (`Launch.assume_inputs`, the placeholder inputs of the CWL graph test), not what the workflow itself must pass on.
 - A `withParam` that is empty, still holds a tag or is a placeholder gives a loop without items, with a warning. So does a `withSequence` bound that is not known.
 - An item that is empty text leaves the tags that read its fields in place.
 - An output of a steps or DAG template that reads a skipped step, or a step whose output is empty, is empty, with a warning.
 - A `when` that still holds a tag skips the step, with a warning.
-- An output parameter whose file is empty takes its `default`, if it has one: the mock executor makes up empty files for outputs that it cannot simulate. KFP-compiled workflows need this: their driver writes `cached-decision`, and the executor step runs only when that is not `true`. This rule too applies only with `Options.assume_inputs`.
+- An output parameter whose file is empty takes its `default`, if it has one: the simulator makes up empty files for outputs that it cannot simulate. KFP-compiled workflows need this: their driver writes `cached-decision`, and the executor step runs only when that is not `true`. This rule too applies only with `Options.assume_inputs`.
 
 A real executor gives real data, and these rules then do not apply.
 
@@ -203,7 +203,7 @@ iunctus runs Argo workflows without a Kubernetes cluster. It supports what scien
 
 ### 11.1 Templates that need a cluster
 
-These stop the run before its first task, with an error that names the template and decision 18, and exit code 33, in mock runs too:
+These stop the run before its first task, with an error that names the template and decision 18, and exit code 33, in simulated runs too:
 
 - `resource` templates, which create or change Kubernetes objects like Deployments, Services or Jobs. The exceptions are a PersistentVolumeClaim (section 11.4) and an Argo Workflow, which runs as part of the same run (section 11.7).
 - `data` templates, which list an artifact repository from inside the cluster.
@@ -226,7 +226,7 @@ ConfigMaps come from the same documents as templates: the workflow file, the con
 - environment variables with `valueFrom.configMapKeyRef`, and every key of an `envFrom` `configMapRef`;
 - volumes of type `configMap`: each key, or each entry of `items`, becomes a file input with its text.
 
-When no loaded document holds the ConfigMap or the key, a parameter takes its `valueFrom.default`, as Argo does, and an environment variable or volume marked `optional` is left out. Otherwise a mock run uses a placeholder with a warning, and a real run stops with an error that names the ConfigMap and the key.
+When no loaded document holds the ConfigMap or the key, a parameter takes its `valueFrom.default`, as Argo does, and an environment variable or volume marked `optional` is left out. Otherwise a simulated run uses a placeholder with a warning, and a real run stops with an error that names the ConfigMap and the key.
 
 ### 11.4 Volumes as shared files
 
@@ -243,15 +243,15 @@ Volumes that several steps mount act as a shared file system. The run keeps the 
 
 - A task that mounts it gets the host folder (or file, for `type: File`) as an input, and on top of it the files that earlier tasks of the run wrote there.
 - Unless the mount is `readOnly` or of `type: File`, the files that the task writes there go into the volume, as for other volumes. In a real run the driver also writes them back to the host path when the task ends, into the folders of `subPath`, over files of the same name. A file that cannot be written back ends the node with an error.
-- A mock run never writes to a host path, and a host path that does not exist is no error there.
+- A simulated run never writes to a host path, and a host path that does not exist is no error there.
 
-The driver writes back from the local paths of the task's output files, which the local executor and the mock give it. An executor that keeps outputs elsewhere, like TES with S3, needs the Files service of the execution layer (docs/design/engine.md): the driver then asks it for each file and writes the bytes to the host path. Writing back stays in the driver, because only the driver knows which output belongs to a host path.
+The driver writes back from the local paths of the task's output files, which the local executor and the simulator give it. An executor that keeps outputs elsewhere, like TES with S3, needs the Files service of the execution layer (docs/design/engine.md): the driver then asks it for each file and writes the bytes to the host path. Writing back stays in the driver, because only the driver knows which output belongs to a host path.
 
 ### 11.5 Secrets
 
 Secret values never enter a task, because a task is written into TES documents, logs and cache keys. This holds for environment variables and HTTP headers from `secretKeyRef`, for `envFrom` with `secretRef`, and for volumes of type `secret`:
 
-- A mock run gives a placeholder like `placeholder_secret_<name>_<key>`, with a warning. A secret volume holds a placeholder file for each of its `items`.
+- A simulated run gives a placeholder like `placeholder_secret_<name>_<key>`, with a warning. A secret volume holds a placeholder file for each of its `items`.
 - A real run stops before its first task with an error that names the Secret, because iunctus has no secret store yet.
 
 The execution layer must supply that store. It maps a Secret's name and key to a value from the user's own store, like a local file or a vault. It gives the value to the container only when the container runs, as an environment variable or a file, and keeps it out of task documents, logs and cache keys, which name only the Secret and the key. The credentials of artifact repositories, like `accessKeySecret` of S3 artifacts, belong to the execution layer's storage, not to tasks.
@@ -279,11 +279,11 @@ Init containers run as their own tasks before the task they belong to, one after
 
 - Each init container is a task with its image, command, arguments, environment and resources, named after the node and the container, like `wf.step (init launcher)`. Its mounts are its own `volumeMounts`, and with `mirrorVolumeMounts` also those of the main container.
 - The next task starts when the one before ends; the main task, or the tasks of a container set, come last and have the init tasks in `after`. The files that an init container writes to a mounted volume, like an `emptyDir` of the pod, are inputs of the tasks that mount it later, as for any volume (section 11.4). KFP-compiled workflows use this: an init container copies the KFP launcher into an `emptyDir` that the main container runs.
-- An init container that fails fails the node, as a failed pod does in Argo. In a mock run an init task gets pretended outputs like any task.
+- An init container that fails fails the node, as a failed pod does in Argo. In a simulated run an init task gets pretended outputs like any task.
 
 ## 12. Deliberate differences from Argo
 
-- Tags of `tasks.` and `steps.` that stay unresolved in a mock run stay literal. Argo would requeue the node until they resolve, or fail it.
+- Tags of `tasks.` and `steps.` that stay unresolved in a simulated run stay literal. Argo would requeue the node until they resolve, or fail it.
 - A `when` that cannot be decided skips the step instead of failing it.
 - `suspend` never waits.
 - Retries do not wait for their backoff.
@@ -293,7 +293,7 @@ Init containers run as their own tasks before the task they belong to, one after
 
 `just argo-test-workflows` fetches the 19 repositories of research question Q6 at the commits in `argo-parser/tests/fixtures/test-workflows/revisions.txt` into `~/.cache/iunctus/test-workflows/argo`, and argoproj-labs/argo-workflows-hello-executor-plugin, whose plugin the talk-demos examples of plugin templates install. gennext-workflows has no license: it is fetched for research only and never copied into this repository.
 
-`just argo-test-workflows-test` runs the ignored test `argo-runtime/tests/test_workflows.rs`. It reads every Argo document of the test workflows. A document with an entrypoint runs through `MockTes`; the others, like libraries of WorkflowTemplates and executor plugin ConfigMaps, get the checks of section 4.1. The outcomes are compared with `argo-runtime/tests/fixtures/test-workflows/outcomes.txt`: `ok` and the number of tasks, `valid`, or the exit code and the error (its end, when it is long). Every document that does not pass needs a record in `argo-runtime/tests/fixtures/test-workflows/rejected.txt` that names its kind and why, in one sentence: `invalid` (the workflow itself is broken) or `missing` (it calls a WorkflowTemplate that is in no repository of the test workflows), each with the output of `argo lint`, which rejects it the same way (or accepts a workflow that would wait forever in Argo, section 11.7), or `unsupported (decision 18)`. The test fails on a document without a record, on a record of the wrong kind (exit code 33 is `unsupported`), and on a record for a document that passes. `rejected.py` next to the records writes them; it runs `argo lint` and never runs as part of iunctus.
+`just argo-test-workflows-test` runs the ignored test `argo-runtime/tests/test_workflows.rs`. It reads every Argo document of the test workflows. A document with an entrypoint runs through the simulator; the others, like libraries of WorkflowTemplates and executor plugin ConfigMaps, get the checks of section 4.1. The outcomes are compared with `argo-runtime/tests/fixtures/test-workflows/outcomes.txt`: `ok` and the number of tasks, `valid`, or the exit code and the error (its end, when it is long). Every document that does not pass needs a record in `argo-runtime/tests/fixtures/test-workflows/rejected.txt` that names its kind and why, in one sentence: `invalid` (the workflow itself is broken) or `missing` (it calls a WorkflowTemplate that is in no repository of the test workflows), each with the output of `argo lint`, which rejects it the same way (or accepts a workflow that would wait forever in Argo, section 11.7), or `unsupported (decision 18)`. The test fails on a document without a record, on a record of the wrong kind (exit code 33 is `unsupported`), and on a record for a document that passes. `rejected.py` next to the records writes them; it runs `argo lint` and never runs as part of iunctus.
 
 Some documents get directories as configs, as `-c` gives them: Hera's copies of Argo's examples get Argo's `examples`, because Hera does not copy all the WorkflowTemplates they refer to; the talk-demos plugin examples get the hello executor plugin; and the talk-demos copy of pipekit's CI workflow gets the WorkflowTemplates of pipekit/argo-workflows-ci-example. `ARGO_TEST_WORKFLOWS_UPDATE=1` records new outcomes, `ARGO_TEST_WORKFLOWS_FILTER` runs only matching paths, `ARGO_TEST_WORKFLOWS_VERBOSE=1` prints the warnings, and `ARGO_TEST_WORKFLOWS_ORDER=shuffled:<seed>` lets up to 8 tasks be pending and finish in a random order. With seeds 1 and 2 the outcomes stay the same, so the driver does not depend on the order of outcomes.
 

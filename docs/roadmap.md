@@ -6,9 +6,9 @@
 
 As of 2026-09-30.
 
-iunctus reads and plans the workflows of four languages in one Rust binary, but it does not run a single task for real yet. Every test workflow either runs through the mock executor or has a record of why it cannot, backed by the output of the reference tool. What stands between iunctus and a real engine is the execution layer (section 3), a few language features that only real runs need (section 2), and the features that should make iunctus better than the native engines, not just equal to them: deeper insight into runs, higher reproducibility, better efficiency and storage across several providers (section 4).
+iunctus reads and plans the workflows of four languages in one Rust binary, but it does not run a single task for real yet. Every test workflow either runs through the simulator (the mock executor until now, decision 21) or has a record of why it cannot, backed by the output of the reference tool. What stands between iunctus and a real engine is the execution layer (section 3), a few language features that only real runs need (section 2), and the features that should make iunctus better than the native engines, not just equal to them: deeper insight into runs, higher reproducibility, better efficiency and storage across several providers (section 4).
 
-| Language | Test workflows | Run with the mock | Work natively, not in iunctus |
+| Language | Test workflows | Run in the simulator | Work natively, not in iunctus |
 | --- | --- | --- | --- |
 | Nextflow (nf-core and WorkflowHub) | 345 | 163 | 48: 47 DSL1 scripts that current Nextflow refuses too, 1 parser difference |
 | Snakemake | 892 | 667 | 5: Python classes handed to packages in a container |
@@ -26,12 +26,12 @@ The rest fail in the native tool too: the workflow is broken (`invalid`) or need
 | Argo without Kubernetes | Steps, DAGs, loops, artifacts, plugins and child workflows run on one machine (decision 18) | Argo runs only inside a cluster |
 | Content-addressed store | Files live by SHA-256 digest in a store on disk or S3 (`cas/`, `trees/`, `ac/`). The cache key is the digest of a canonical task description | Nextflow and Snakemake key their cache on a work folder or on file times |
 | No work folder | A task runs in a scratch folder that is deleted afterwards; its outputs go to the store | Nextflow keeps every task folder in `work/`, Snakemake writes next to the workflow |
-| Dry runs that go further | The mock executor reads each task's shell script and makes files that look right, so a dry run goes past Snakemake checkpoints | Snakemake's dry run stops at the first checkpoint; Nextflow's stub run still runs the real script of every process without a stub |
+| Dry runs that go further | The simulator reads each task's shell script and makes files that look right, so a dry run goes past Snakemake checkpoints | Snakemake's dry run stops at the first checkpoint; Nextflow's stub run still runs the real script of every process without a stub |
 | Checked against the reference tools | About 8,800 test workflows and 828 CWL conformance tests each run, or have a record with the reference tool's own error. Tests also run tasks in a shuffled order to catch order bugs | No engine checks itself against another |
 
 ## 2. Gaps to parity with the native engines
 
-The largest gaps are the same in every language: results are not delivered, and steps without a container image cannot run. Per language, the mock runs hide a few features that only real runs reach. "Decided" marks a limit set on purpose in [decisions](decisions.md); "not built" marks work still to do.
+The largest gaps are the same in every language: results are not delivered, and steps without a container image cannot run. Per language, the simulated runs hide a few features that only real runs reach. "Decided" marks a limit set on purpose in [decisions](decisions.md); "not built" marks work still to do.
 
 ### All languages
 
@@ -52,7 +52,7 @@ The largest gaps are the same in every language: results are not delivered, and 
 | Running a pipeline by its Git name and revision (`nf-core/rnaseq -r 3.14`), and remote modules | Users who never clone | Not built |
 | `-entry` | Pipelines with several named workflows | Not built |
 | Plugins other than nf-schema, nf-validation, nf-anndata and nf-fgbio | Pipelines that use other plugins | Not built |
-| An empty CSV with `header: true` gives no rows, where Nextflow stops with an error | Real runs must follow Nextflow again | Mock workaround |
+| An empty CSV with `header: true` gives no rows, where Nextflow stops with an error | Real runs must follow Nextflow again | Simulator workaround |
 | DSL1 scripts | 47 test workflows; Nextflow 26.04 refuses them too | Decided (decision 14) |
 
 ### Snakemake
@@ -89,7 +89,7 @@ No task runs for real yet, except one at a time through the simple local executo
 1. **An async executor interface.** Executors run tasks on Tokio; the driver loop stays on one thread, and the engine keeps up to `max_pending` tasks running.
 2. **Output locations as strings, with size and digest,** so an output can live in S3 and not only on the local disk.
 3. **A shared `Files` service** that makes a location local when a driver must read it, like a Nextflow `.command.env` or a CWL `cwl.output.json`.
-4. **`Launch.mock`,** so that mock workarounds apply only to mock runs.
+4. **A switch for simulated runs** (`Launch.mock` in the engine design), so that the workarounds of the simulator apply only to simulated runs.
 5. **Retries and cancellation:** attempt numbers, Nextflow `errorStrategy`, Snakemake `retries`, Argo `retryStrategy`. The engine retries failures of the machine; the driver decides about failures of the tool.
 6. **Two new task fields:** whether a task may use the network, and whether an input must be writable.
 7. **The TES executor** (decision 8): one TES task per task, with the wrapper as a staged input. TES servers such as Funnel also reach HPC schedulers.
@@ -121,7 +121,7 @@ iunctus describes every task of every language the same way, and it knows every 
 | **Where the time went** | The chain of tasks that set the length of the run, the time tasks waited versus ran, and the steps that used the most CPU, memory or money | Nextflow's timeline shows tasks, not the chain that set the length | Logs and reports (section 3) |
 | **Comparing two runs** | Which tasks, parameters, images and outputs differ between two runs of a workflow, or between two versions of it | No engine compares runs | The run database |
 | **Replay one task anywhere** | Any task, also a failed one, runs again alone on another machine from its description, with the same image and the same inputs by digest | Nextflow's `.command.run` works only in its task folder, on the same file system | Task descriptions (done), the store |
-| **Live view and export** | Progress per step, cache hits, running and failed tasks, in the terminal and through the WES API. Traces go out in the OpenTelemetry format to existing dashboards | Nextflow and Snakemake print progress in the terminal; more needs a separate platform | The run database |
+| **Live view and export** | Progress per step, cache hits, running and failed tasks, in the terminal, on a web page served by the binary (decision 23) and through the WES API. Traces go out in the OpenTelemetry format to existing dashboards | Nextflow and Snakemake print progress in the terminal; more needs a separate platform | The run database |
 
 ### Reproducibility: the same run gives the same results, now and years later
 
@@ -132,7 +132,7 @@ iunctus describes every task of every language the same way, and it knows every 
 | **Tasks without network by default** | A task that needs no network gets none, so it cannot fetch anything that is not in its description. The workflow or the user says which steps may download | Nextflow, Snakemake and Argo give each task the full network; only CWL turns it off by default | The network field (section 3, step 6) |
 | **Reproducibility check** | A sample of cached tasks runs again and the output digests are compared. Tools that do not give the same bytes are marked, and their results are not shared | No engine checks this | The global cache |
 | **Order check** | A run with task results in a shuffled order finds steps whose output depends on which task finished first, like a file list collected in completion order. This check already runs on all test workflows | No engine offers it | The shuffled order of the engine (done) |
-| **Provenance for every language** | A Workflow Run RO-Crate for each run, with the digest of every input, output and image, in the same form for all four languages | nf-prov for Nextflow, CWLProv for cwltool, `--report` for Snakemake, each different | The run database, the store |
+| **Provenance for every language** | A Workflow Run RO-Crate of the Provenance Run Crate profile for each run (decision 25): the provenance graph with the digest of every input, output and image, in the same form for all four languages | nf-prov for Nextflow, CWLProv for cwltool, `--report` for Snakemake, each different | The run database, the store |
 
 ### Efficiency: less compute, less storage, less waiting
 
@@ -143,7 +143,7 @@ iunctus describes every task of every language the same way, and it knows every 
 | **No work folder** | Tasks run in scratch folders that are deleted at once. The store keeps each file once, by digest, so a reference genome used by 50 runs takes its space once | Nextflow's `work/` grows with every run and needs `nextflow clean`. Snakemake writes into the workflow folder | The store (done), delivering results (section 3) |
 | **Clean-up by rule** | Keep what was used in the last 90 days, what a named run needs, or what is expensive to make again. The rest is removed safely, because the store knows what refers to what | After Nextflow's `work/` is deleted, everything runs again | The run database |
 | **Remote files downloaded once** | An `s3://`, `https://` or FTP file is fetched once, checked by digest and shared by all later runs | Nextflow downloads remote files again for each new run | Remote inputs, the store |
-| **Preview before the run** | Before any compute is spent, a preview shows which tasks come from the cache and which will run, also past Snakemake checkpoints | Snakemake's dry run stops at checkpoints; Nextflow's `-preview` skips every process, so it lists no tasks | The mock executor (done), the cache |
+| **Preview before the run** | Before any compute is spent, a preview shows which tasks come from the cache and which will run, also past Snakemake checkpoints | Snakemake's dry run stops at checkpoints; Nextflow's `-preview` skips every process, so it lists no tasks | The simulator (done), the cache |
 | **Right-sized resources** | The measured CPU and memory of each step, by input size, set the requests of the next run, so more tasks fit on a machine and fewer fail for lack of memory | Nextflow and Snakemake use what the workflow says, or retry with more | The run database, reports |
 | **The longest chain first** | The engine starts the tasks on the longest remaining chain first, using the times of earlier runs, so the run ends sooner on the same machines | Nextflow starts tasks as they become ready; Snakemake weighs the priorities that the workflow sets | The run database |
 | **Short tasks together** | Many short tasks with the same image run in one container or one TES task, which saves the start-up time of each | Nextflow's `array` directive and Snakemake's job groups, where the workflow sets them | The TES executor |
@@ -158,30 +158,74 @@ iunctus describes every task of every language the same way, and it knows every 
 | **A cache in layers** | A fast local disk in front of a shared S3 store: reads try the local disk first, and new results go to both | No engine has this | The store, several storage providers |
 | **Tasks near their data** | With several providers and TES servers, a task goes to the site that holds its inputs, instead of the data going to the task | No engine chooses a site by where the data is | The TES executor, several storage providers |
 
-### Runs that move and reach further
+### Flexibility and reach
 
 | Feature | What the user gets | Native engines today | Builds on |
 | --- | --- | --- | --- |
+| **Runs anywhere** | The same workflow runs on a laptop with Docker or Podman, on any TES server, on Kubernetes, or on a SLURM cluster with Apptainer or Podman (decision 22) | Each engine has its own list of executors; Argo needs Kubernetes | The execution layer |
+| **Checked inputs for every workflow** | One JSON Schema of the inputs of each workflow, in all four languages, checked before any task starts; forms and help are made from it (decision 24) | nf-core and Snakemake check params with a schema where the workflow has one; CWL checks its types; Argo only enums | Each driver's input checks (done) |
 | **Resume from a database** | A stopped run continues from its event log, also on another machine or with another executor: start on a laptop, finish on a TES cluster | Nextflow resumes only in the same launch folder with its `work/`. Snakemake decides by file times and its `.snakemake` folder | The run database, the S3 store |
 | **No shared file system** | Tasks get their inputs from the store and send their outputs back, so a cluster needs no NFS | Nextflow and Snakemake need a shared folder or a special storage setup | The TES executor, the store |
 | **One entry point for all languages** | A GA4GH WES service that accepts Nextflow, Snakemake, CWL and Argo workflows, with one API for status and results | Each engine has its own server or platform | The run database |
 | **Mixed-language runs** | One run that calls a CWL tool from Snakemake, a Snakemake workflow from Nextflow, or an nf-core module from Argo, with files handed over by digest | Snakemake can call CWL tools; nothing else crosses languages | The execution graph (done) |
 | **One check for all languages** | `iunctus check` lists every unsupported feature, missing file and broken reference before a run, with the same exit codes everywhere | Each engine has its own linter, if any | The drivers (done) |
 
-## 5. Order of work
+## 5. To-do list
 
-Each phase ends with a gate that shows it works. Language gaps (section 2) are closed along the way, in the order of how many test workflows they unlock.
+The goal: iunctus is easy to set up, gives much better results than the native engines, and is far more flexible. Work runs in workstreams, at most three at a time; each item names its decision or section. Language gaps (section 2) are closed along the way, in the order of how many test workflows they unlock.
 
-1. **Real runs on one machine.** The async executor interface, `Launch.mock`, the `Files` service, the parallel local executor, retries and cancellation, delivering results, the context of embedded code, images from Conda environments, and logs.
-    - Gate: the `test` profiles of nf-core/demo and 20 more nf-core pipelines, and a sample of Snakemake, CWL and Argo test workflows, run for real. Their output files match those of the native tool. This needs a real-run version of the evidence scripts, which run both tools and compare output names and digests.
-    - Gate: the 208 CWL conformance tests that only run through today pass for real.
-2. **The run database, the global cache and first insights.** The run database, resume, the preview, output locations as strings, several storage providers, remote inputs downloaded once, clean-up by rule, everything pinned, why a task ran again, and where a file came from.
-    - Gate: a run that is stopped halfway resumes without running a finished task again. A second pipeline that uses the same nf-core module reuses its results. After a changed parameter, the run names each task that ran again and the parameter that made it.
-    - Gate: one run reads its inputs from AWS S3 and a MinIO server, keeps its store on a third provider, and delivers its results to a local disk.
-3. **TES and no shared file system.** The TES executor, secrets, the network field, Argo container sets, short tasks together, and the store on S3 across machines.
-    - Gate: a pipeline started on a laptop finishes on a TES server, from the same run database.
-4. **Deeper insight, trust and reach.** Where the time went, comparing two runs, replaying one task, the live view and export, provenance, the reproducibility and order checks, tasks without network by default, right-sized resources, the longest chain first, a cache in layers, tasks near their data, the WES service, mixed-language runs and `iunctus check`.
-    - Gate: one RO-Crate format for runs of all four languages; a mixed-language run of a Snakemake workflow that calls a CWL tool.
+### Simulator and graphs
+
+- [ ] Rename the mock executors to one `simulator` (decision 21), and say "simulated" in code, docs, failure records and messages.
+- [ ] Every simulated run and graph says that it is a simulation with made-up files, which a run with real data refines.
+- [ ] Mark the points of a simulated graph where real data can add or remove tasks: a glob that can match more files, a task output whose content the workflow reads, a Snakemake checkpoint, a CWL scatter or an Argo `withParam` over a task output.
+- [ ] A graph with one node per step (process, rule, step or template), next to the graph with one node per task.
+- [ ] SVG output of both graphs, drawn by iunctus itself, with no Graphviz needed.
+- Done when: `iunctus graph` gives both graphs as JSON, DOT, summary and SVG for all four languages, with the uncertain points marked.
+
+### Real execution
+
+- [ ] The async executor interface (section 3, step 1).
+- [ ] Output locations as strings, the `Files` service, and a switch for simulated runs (section 3, steps 2 to 4).
+- [ ] Retries and cancellation (section 3, step 5).
+- [ ] Delivering results (section 3, step 11).
+- [ ] The parallel local executor on Docker or Podman, found without any config (decision 22).
+- [ ] The context of embedded code: the `snakemake` object, `run:` blocks, Nextflow `exec:` sections (section 3, step 14).
+- [ ] Images built from Conda environments (decision 12).
+- [ ] The TES executor, tested with Funnel and TESK (decision 22).
+- [ ] The SLURM executor with Apptainer or Podman (decision 22).
+- [ ] The Kubernetes executor, one Kubernetes Job per task (decision 22).
+- [ ] The network and writable-input fields, remote inputs, Argo container sets (section 3, steps 6, 9 and 10).
+- [ ] Several storage providers from a config file, secrets from environment variables (decision 20).
+- Done when: the `test` profiles of nf-core/demo and 20 more nf-core pipelines, and a sample of Snakemake, CWL and Argo test workflows, run for real on each executor, and their outputs match those of the native tool. This needs a real-run version of the evidence scripts. The 208 CWL conformance tests that only run through today pass for real.
+
+### Run database, web page and provenance
+
+- [ ] The run database (decision 10), filled by every run, simulated or real.
+- [ ] Resume from the run database.
+- [ ] The web page (decision 23): the graph as it grows, the state of each step, logs and outputs, for the current run or any past run.
+- [ ] Workflow Run RO-Crate with the provenance graph (decision 25).
+- [ ] Insight: why a task ran again, where a file came from, where the time went, comparing two runs, replaying one task, OpenTelemetry export (section 4).
+- Done when: a real run can be followed live on the page, and its RO-Crate passes the checks of the Provenance Run Crate profile.
+
+### Inputs
+
+- [ ] One JSON Schema of the inputs of each workflow in all four languages (decision 24).
+- [ ] Check every run against it before any task starts, with the same errors in every language.
+- [ ] Warn where the schema and the parameters that the workflow reads differ.
+- [ ] The same for outputs, so that one workflow can feed another.
+
+### Cache, efficiency and reproducibility
+
+- [ ] The global cache by default, the same task at the same time run once, clean-up by rule, remote files downloaded once, a cache in layers (section 4).
+- [ ] The preview before a run, right-sized resources, the longest chain first, short tasks together, tasks near their data (section 4).
+- [ ] Everything pinned, tasks without network by default, the reproducibility check, the order check for users (section 4).
+
+### Easy setup
+
+- [ ] A laptop needs nothing but the binary and Docker or Podman.
+- [ ] One config file for executors and storage, with secrets from environment variables.
+- [ ] Clear errors that say what to install or set, in the same form for every language.
 
 ## 6. Open questions
 

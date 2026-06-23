@@ -3,7 +3,140 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use run_database::{Database, VERSION};
+use std::path::{Path, PathBuf};
+
+use run_database::{Database, DatabaseError, LOG_LIMIT, RunStart, VERSION};
+use workflow_graph::{Edge, EdgeKind, Input, Language, Outcome, OutputFile, Task, TaskId};
+
+fn start(id: &str, resumes: Option<&str>) -> RunStart {
+    RunStart {
+        id: id.into(),
+        resumes: resumes.map(str::to_owned),
+        workflow: "/work/main.nf".into(),
+        language: Language::Nextflow,
+        revision: Some("0123abc".into()),
+        arguments: vec!["run".into(), "main.nf".into()],
+        parameters: vec![("outdir".into(), "results".into())],
+        executor: "simulator".into(),
+        simulated: true,
+        store: None,
+    }
+}
+
+fn task(id: u64, step: &str, inputs: Vec<Input>) -> Task {
+    Task {
+        id: TaskId(id),
+        name: format!("{step} ({id})"),
+        step: step.into(),
+        image: Some("debian:stable-slim".into()),
+        command: vec!["bash".into(), "-ue".into(), ".command.sh".into()],
+        inputs,
+        outputs: vec!["out.txt".into()],
+        ..Task::default()
+    }
+}
+
+fn input(source: &Path) -> Input {
+    Input {
+        path: "in.txt".into(),
+        source: source.to_string_lossy().into_owned(),
+        directory: false,
+        content: None,
+    }
+}
+
+fn outcome(id: u64, location: PathBuf, stdout: &str) -> Outcome {
+    Outcome {
+        id: TaskId(id),
+        exit_code: 0,
+        files: vec![OutputFile {
+            path: "out.txt".into(),
+            location,
+            directory: false,
+        }],
+        stdout: stdout.into(),
+        stderr: String::new(),
+    }
+}
+
+/// Records a run of two tasks, where the second reads the output of the first and fails.
+fn record(path: &Path, directory: &Path) -> Result<(), DatabaseError> {
+    let data = directory.join("data.txt");
+    std::fs::write(&data, "raw").expect("writes the data");
+    let made = directory.join("made.txt");
+    std::fs::write(&made, "made").expect("writes an output");
+    let mut recorder = Database::open(path)?.record(&start("run-1", None))?;
+    let first = task(1, "MAKE", vec![input(&data)]);
+    recorder.requested(&first, &[]);
+    recorder.started(TaskId(1), 1);
+    recorder.finished(&outcome(1, made.clone(), "hello\n"), 1, false);
+    let second = task(2, "USE", vec![input(&made)]);
+    let edge = Edge {
+        from: TaskId(1),
+        to: TaskId(2),
+        kind: EdgeKind::File {
+            path: "in.txt".into(),
+        },
+    };
+    recorder.requested(&second, &[edge]);
+    recorder.started(TaskId(2), 1);
+    let failed = Outcome {
+        exit_code: 1,
+        stderr: format!("{}\nlast line", "x".repeat(LOG_LIMIT)),
+        ..outcome(2, directory.join("never.txt"), "")
+    };
+    recorder.finished(&failed, 1, false);
+    recorder.requested(&task(3, "LATER", Vec::new()), &[]);
+    recorder.ended(Some("task USE (2) failed"));
+    recorder.close()
+}
+
+#[test]
+fn a_run_is_read_back_with_its_logs_and_events() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("cache/runs.sqlite");
+    record(&path, directory.path()).expect("records the run");
+    let database = Database::open(&path).expect("opens again");
+
+    let runs = database.runs(10).expect("lists runs");
+    assert_eq!(runs.len(), 1);
+    let run = &runs[0];
+    assert_eq!((run.id.as_str(), run.lineage.as_str()), ("run-1", "run-1"));
+    assert_eq!(run.state, "failed");
+    assert_eq!(run.error.as_deref(), Some("task USE (2) failed"));
+    assert!(run.simulated);
+    assert_eq!(
+        run.parameters,
+        [("outdir".to_owned(), "results".to_owned())]
+    );
+    assert_eq!(run.arguments, ["run", "main.nf"]);
+    let counts: Vec<(&str, u64)> = run.tasks.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+    assert_eq!(counts, [("failed", 1), ("stopped", 1), ("succeeded", 1)]);
+
+    let log = database.log("run-1", 1, 1, "stdout").expect("reads");
+    let log = log.expect("a log");
+    assert_eq!((log.text.as_str(), log.whole), ("hello\n", true));
+    let log = database.log("run-1", 2, 1, "stderr").expect("reads");
+    let log = log.expect("a log");
+    assert!(!log.whole && log.text.ends_with("last line"));
+    assert_eq!(log.size as usize, LOG_LIMIT + "\nlast line".len());
+    assert_eq!(database.log("run-1", 1, 1, "stderr").expect("reads"), None);
+
+    let events = database.events("run-1", 0, 100).expect("lists events");
+    let kinds: Vec<&str> = events.iter().map(|event| event.kind.as_str()).collect();
+    let expected = [
+        "requested",
+        "started",
+        "finished",
+        "requested",
+        "started",
+        "finished",
+        "requested",
+        "ended",
+    ];
+    assert_eq!(kinds, expected);
+    assert_eq!(database.events("run-1", 7, 100).expect("lists").len(), 1);
+}
 
 #[test]
 fn a_database_of_a_newer_version_is_refused() {

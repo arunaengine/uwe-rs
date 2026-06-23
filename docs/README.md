@@ -21,6 +21,7 @@ iunctus config [<Nextflow project>] [-profile <names>]
 ## Start here
 
 - [Decisions](decisions.md): what has been decided so far. It replaces the report's plan where they differ.
+- [Roadmap](roadmap.md): what is still missing for real runs and parity with the native engines, and the features that native engines cannot offer.
 - [Feasibility report](feasibility-report.md): verdict per language, proposed architecture, phased plan, open decisions and next steps.
 
 ## Design

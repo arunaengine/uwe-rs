@@ -120,7 +120,7 @@ config-test-workflows-test:
 	cargo test --release --locked -p iunctus --test config_test_workflows -- --ignored
 
 # Runs every nf-core pipeline and every Nextflow workflow of WorkflowHub of the test workflows
-# with the mock executor and compares the outcomes.
+# with the simulator and compares the outcomes.
 run-test-workflows-test:
 	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" \
 	WORKFLOWHUB_TEST_WORKFLOWS="${WORKFLOWHUB_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nextflow-workflowhub}" \
@@ -131,7 +131,7 @@ run-test-workflows-test:
 stub-oracle +pipelines:
 	iunctus/tests/fixtures/oracle/stub/record.sh "${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}/pipelines" {{pipelines}}
 
-# Runs the recorded pipelines with -stub and the mock executor and compares the task scripts.
+# Runs the recorded pipelines with -stub and the simulator and compares the task scripts.
 stub-test-workflows-test:
 	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" \
 	cargo test --release --locked -p iunctus --test stub_test_workflows -- --ignored
@@ -260,7 +260,7 @@ cwl-conformance-data:
 	            os.chmod(target, 0o755)
 	    repo.close()
 
-# Runs every CWL conformance test through the driver and the mock executor and compares the
+# Runs every CWL conformance test through the driver and the simulator and compares the
 # outcomes with the recorded ones; `just cwl-conformance-data` fetches the test data first.
 cwl-conformance-test:
 	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/cwl}" \
@@ -272,8 +272,8 @@ cwl-conformance-test:
 cwl-graph-test-workflows-test:
 	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test graph_test_workflows -- --ignored
 
-# Runs the real-world CWL test workflows with their example job files, with the mock
-# TES executor, and compares the outcomes with cwl-runtime/tests/fixtures/job_test_workflows.txt.
+# Runs the real-world CWL test workflows with their example job files, with the
+# simulator, and compares the outcomes with cwl-runtime/tests/fixtures/job_test_workflows.txt.
 cwl-job-test-workflows-test:
 	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test job_test_workflows -- --ignored
 
@@ -361,7 +361,7 @@ snakemake-test-workflows-data:
 snakemake-test-workflows-test:
 	SNAKEMAKE_TEST_WORKFLOWS="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/snakemake}" cargo test --release --locked -p snakemake-parser --test test_workflows -- --ignored --nocapture
 
-# Runs every Snakemake test workflow with the mock executor and compares the outcomes
+# Runs every Snakemake test workflow with the simulator and compares the outcomes
 # with snakemake-runtime/tests/fixtures/run_test_workflows.txt; `UPDATE_FIXTURE=1` rewrites the fixture.
 snakemake-run-test-workflows-test:
 	SNAKEMAKE_TEST_WORKFLOWS="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/snakemake}" cargo test --release --locked -p snakemake-runtime --test run_test_workflows -- --ignored --exact workflows_run_as_recorded
@@ -399,7 +399,7 @@ argo-test-workflows:
 		mv "$work" "$target"
 	done
 
-# Runs every Argo document of the test workflows that has an entrypoint with the mock executor, checks
+# Runs every Argo document of the test workflows that has an entrypoint with the simulator, checks
 # the others as Argo does when they are created, and compares the outcomes with
 # argo-runtime/tests/fixtures/test-workflows/outcomes.txt.
 argo-test-workflows-test:

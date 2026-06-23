@@ -62,7 +62,7 @@ JOBS = 4
 # (`-c extra.config`), `tools` for commands that print a given text, like a version that a
 # stub reads, and `stubs` for stand-in stub scripts, so that Nextflow reaches the point where
 # iunctus fails: for processes that have no stub, which a stub run of Nextflow runs for real,
-# and for stubs that fail before that point. A stand-in makes the files that the mock executor
+# and for stubs that fail before that point. A stand-in makes the files that the simulator
 # of iunctus makes for the process, or the files that the process makes. A case whose failure
 # Nextflow does not reach, because it stops earlier at a tool that this machine lacks, gives
 # `reproduce`: the files of a small script with the failing part of the pipeline, which
@@ -70,7 +70,7 @@ JOBS = 4
 
 # The versions.yml that a stand-in stub writes.
 VERSIONS = "printf '\"${task.process}\": {stub: \"1.0\"}\\n' > versions.yml"
-# Writes an empty gzip file, as the mock executor does for a name that ends in `.gz`.
+# Writes an empty gzip file, as the simulator does for a name that ends in `.gz`.
 EMPTY_GZIP = 'printf "" | gzip > '
 
 CASES = [
@@ -227,9 +227,9 @@ CASES = [
         "pipelines": ["callingcards", "workflowhub/970"],
         "kind": "unsupported (decision 16)",
         "why": "SEQKIT_SPLIT2 and DEMULTIPLEX have no stubs, so they need seqkit and "
-        "callingcardstools to write the reads whose names the pipeline reads, and the mock "
-        "executor only makes up one file with another name (Nextflow fails in the same way with "
-        "stand-ins that make the files of the mock executor)",
+        "callingcardstools to write the reads whose names the pipeline reads, and the simulator "
+        "only makes up one file with another name (Nextflow fails in the same way with "
+        "stand-ins that make the files of the simulator)",
         "stubs": {
             "SEQKIT_SPLIT2": "mkdir mock; " + EMPTY_GZIP + "mock/mock.gz; " + VERSIONS,
             "DEMULTIPLEX": "touch mock.fq mock.pickle; " + VERSIONS,
@@ -240,7 +240,7 @@ CASES = [
         "pipelines": ["chipseq", "pathogensurveillance"],
         "kind": "unsupported (decision 16)",
         "why": "SAMPLESHEET_CHECK has no stub, so it needs its script to write the samplesheet "
-        "that the pipeline reads, and the mock executor only makes up an empty file",
+        "that the pipeline reads, and the simulator only makes up an empty file",
         "tools": {"python3": "1.0", "Rscript": "1.0"},
         "expect": [
             "Error executing process > .*SAMPLESHEET_CHECK",
@@ -322,7 +322,7 @@ workflow {
         ],
         "kind": "unsupported (decision 16)",
         "why": "the UNTAR stub lists the files of the real archive with `tar -tf` and makes "
-        "them, which the mock executor cannot do, and the pipeline then reads those files",
+        "them, which the simulator cannot do, and the pipeline then reads those files",
         "expect": [
             r"\[PROCESS .*UNTAR_FLOWCELL",
             r"\[PROCESS .*MULTIQCSAV",
@@ -333,7 +333,7 @@ workflow {
         "kind": "unsupported (decision 16)",
         "parser": "v2",
         "why": "GRAPHTOOLPARSER and TOPOLOGY have no stubs, so they need their Python scripts to "
-        "write the files that the pipeline reads, and the mock executor only makes up empty ones",
+        "write the files that the pipeline reads, and the simulator only makes up empty ones",
         "tools": {"python": "1.0"},
         "expect": [
             "Error executing process > .*GRAPHTOOLPARSER",
@@ -771,8 +771,8 @@ CASES += [
     workflowhub(
         [556],
         "MATCH_COMBINE has no stub, so it needs its script to write the score file whose first "
-        "line the workflow reads, and the mock executor only makes up an empty file (Nextflow "
-        "fails in the same way with stand-ins that make the files of the mock executor)",
+        "line the workflow reads, and the simulator only makes up an empty file (Nextflow "
+        "fails in the same way with stand-ins that make the files of the simulator)",
         [
             r"Unexpected error \[InvocationTargetException\]",
             r"Cannot invoke method split\(\) on null object",
@@ -992,9 +992,9 @@ CASES += [
     workflowhub(
         [1306],
         "preprocessFullMetadata has no stub, so it needs its script to write the settings that "
-        "the workflow parses as JSON, and the mock executor only makes up an empty file "
-        "(Nextflow fails in the same way with a stand-in that makes the file of the mock "
-        "executor)",
+        "the workflow parses as JSON, and the simulator only makes up an empty file "
+        "(Nextflow fails in the same way with a stand-in that makes the file of the "
+        "simulator)",
         ["Error while parsing JSON content"],
         kind="unsupported (decision 16)",
         stubs={"preprocessFullMetadata": "touch processed_full.config"},
@@ -1015,10 +1015,10 @@ CASES += [
     ),
     workflowhub(
         [1757],
-        "PRINSEQ_READS has no stub, so it needs prinseq++ to write the reads, and the mock "
-        "executor only makes up one file where paired reads give two; for one file, the stub "
+        "PRINSEQ_READS has no stub, so it needs prinseq++ to write the reads, and the simulator "
+        "only makes up one file where paired reads give two; for one file, the stub "
         "of CAT_CAT reads the extension from the folder it is staged in, so it fails (Nextflow "
-        "fails in the same way with a stand-in that makes the file of the mock executor)",
+        "fails in the same way with a stand-in that makes the file of the simulator)",
         [r"Check script 'modules/nf-core/cat/cat/main.nf' at line: 59"],
         kind="unsupported (decision 16)",
         stubs={"PRINSEQPLUSPLUS": "touch mock_good_outmock mock.log; " + VERSIONS},
@@ -1091,7 +1091,7 @@ CASES += [
     workflowhub(
         [2037],
         "SAMPLESHEET_CHECK has no stub, so it needs its script to write the sample sheet that "
-        "the workflow reads, and the mock executor only makes up an empty file, which iunctus "
+        "the workflow reads, and the simulator only makes up an empty file, which iunctus "
         "reads as no samples, where Nextflow stops at the missing header; with no samples, "
         "MULTIQC gets a null path, as in Nextflow with stand-ins that write a sample sheet of "
         "only its header",
@@ -1280,9 +1280,9 @@ workflow {
     workflowhub(
         [1871],
         "qc_dupl, get_chromosome and the other quality steps have no stubs, so they need "
-        "bcftools to write the files that the workflow reads, and the mock executor only makes "
+        "bcftools to write the files that the workflow reads, and the simulator only makes "
         "up empty files, in which the workflow finds no chromosomes (Nextflow fails in the same "
-        "way with stand-ins that make the files of the mock executor)",
+        "way with stand-ins that make the files of the simulator)",
         ["No Chromosome\\(s\\) found not in target\\(s\\) dataset\\(s\\)"],
         kind="unsupported (decision 16)",
         stubs={
@@ -1356,7 +1356,7 @@ def stand_ins(directory, case):
 
 def add_stubs(copy, stubs):
     """Gives each process that `stubs` names the stub script there, in the copy of the pipeline,
-    so that a stub run passes a process without a stub, as the mock of iunctus does, or one
+    so that a stub run passes a process without a stub, as the simulator of iunctus does, or one
     whose stub is broken. A stub with `\"\"\"` is the whole stub section, with the statements
     before its script."""
     for name, script in stubs.items():

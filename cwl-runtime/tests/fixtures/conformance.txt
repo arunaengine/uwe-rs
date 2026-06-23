@@ -1,5 +1,5 @@
-# The outcome of every test of the CWL conformance suites through the driver and the mock TES
-# executor, by suite and test id: `pass` (the output equals the expected one, or a
+# The outcome of every test of the CWL conformance suites through the driver and the simulator,
+# by suite and test id: `pass` (the output equals the expected one, or a
 # `should_fail` test fails), `ran` (the graph was built, but the output needs a real run of a
 # tool), or `fail:` and `unsupported:` with the reason.
 v1.0 cl_basic_generation pass

@@ -1,5 +1,5 @@
-# The outcome of each workflow of the Snakemake test workflows with the mock executor: `ok` and
-# the number of tasks, or the exit code (33 for unsupported features) and the first line
+# The outcome of each workflow of the Snakemake test workflows with the simulator: `ok` and the
+# number of tasks, or the exit code (33 for unsupported features) and the first line
 # of the error.
 catalog/3d-omics__hg_genotype ok 61
 catalog/AToL-Bioinformatics__genome-launcher-workflow 1 workflow/Snakefile:8: the workflow imports the Python package giturlparse, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
@@ -22,9 +22,9 @@ catalog/ChaissonLab__SegDupAnnotation2 ok 50
 catalog/ClavelLab__genome-assembly 1 workflow/rules/common.smk:7: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 catalog/Crollo95__survhive-workflow 1 workflow/Snakefile:18: WorkflowError: Workflow defines configfile config/config.yaml but it is not present or accessible (full checked path: config/config.yaml).
 catalog/DSiB-G2__G2-CovPipeline ok 50
-catalog/DavideBrex__SpikeFlow 1 workflow/rules/common.smk:661: WorkflowError: InputFunctionException in rule bam2bigwig_general (wildcards: id=H3K4me3_EGF-rep1): ValueError: could not convert string to float: '' (the workflow read results/logs/spike/H3K4me3_EGF-rep1.normFactor, a task output that the mock run made without its co
+catalog/DavideBrex__SpikeFlow 1 workflow/rules/common.smk:661: WorkflowError: InputFunctionException in rule bam2bigwig_general (wildcards: id=H3K4me3_EGF-rep1): ValueError: could not convert string to float: '' (the workflow read results/logs/spike/H3K4me3_EGF-rep1.normFactor, a task output that the simulator made without its c
 catalog/DustinMathia__aradopsis-drive ok 1
-catalog/ETH-NEXUS__gExcite_pipeline 1 workflow/rules/misc_snake.smk:152: WorkflowError: InputFunctionException in rule CITE_seq_Count (wildcards: sample_set=PBMC_D1): FileNotFoundError: [Errno 2] No such file or directory: 'fastqs/adt/PBMC_D1/' (the mock run assumed 3 input files that do not exist and that no rule makes, like fastqs/a
+catalog/ETH-NEXUS__gExcite_pipeline 1 workflow/rules/misc_snake.smk:152: WorkflowError: InputFunctionException in rule CITE_seq_Count (wildcards: sample_set=PBMC_D1): FileNotFoundError: [Errno 2] No such file or directory: 'fastqs/adt/PBMC_D1/' (the simulated run assumed 3 input files that do not exist and that no rule makes, like fas
 catalog/EichlerLab__ONT_pipelines 1 workflow/Snakefile:11: NameError: name 'srcdir' is not defined
 catalog/EloiseEsox__snakemake ok 0
 catalog/EloiseIsobelPearce__snakemake-example ok 10
@@ -41,7 +41,7 @@ catalog/IHGGM-Aachen__CNVand ok 17
 catalog/IKIM-Essen__QC_pre_NextSeq ok 15
 catalog/IKIM-Essen__ResMAG ok 122
 catalog/IKIM-Essen__RiboSnake ok 59
-catalog/IKIM-Essen__uncovar 1 workflow/rules/common.smk:284: WorkflowError: InputFunctionException in rule cat_genomes (wildcards: date=SEQUENCING_DATE): EmptyDataError: No columns to parse from file (the mock run assumed 17 input files that do not exist and that no rule makes, like PATH/TO/fq1; a real run needs them) (the wor
+catalog/IKIM-Essen__uncovar 1 workflow/rules/common.smk:284: WorkflowError: InputFunctionException in rule cat_genomes (wildcards: date=SEQUENCING_DATE): EmptyDataError: No columns to parse from file (the simulated run assumed 17 input files that do not exist and that no rule makes, like PATH/TO/fq1; a real run needs them) (th
 catalog/IMS-Bio2Core-Facility__GTExSnake ok 4
 catalog/IMS-Bio2Core-Facility__polya_liftover ok 19
 catalog/IMS-Bio2Core-Facility__single_snake_sequencing ok 16
@@ -52,7 +52,7 @@ catalog/JoseFcoMH__af3_screening 1 workflow/Snakefile:35: KeyError: 'out_dir'
 catalog/JoyceS13__BEP_pipeline 1 workflow/Snakefile:101: SyntaxError: unindent does not match any outer indentation level
 catalog/KasperSkytte__snakemake_savont ok 14
 catalog/KasperSkytte__snakemake_usearch ok 14
-catalog/KonstantinBurkin__cbai 1 workflow/rules/common.smk:45: WorkflowError: InputFunctionException in rule merge_variants (wildcards: ): TypeError: read_table() got an unexpected keyword argument 'squeeze' (the mock run assumed 3 input files that do not exist and that no rule makes, like results/mapped/A-1.sorted.minimap.bam; a
+catalog/KonstantinBurkin__cbai 1 workflow/rules/common.smk:45: WorkflowError: InputFunctionException in rule merge_variants (wildcards: ): TypeError: read_table() got an unexpected keyword argument 'squeeze' (the simulated run assumed 3 input files that do not exist and that no rule makes, like results/mapped/A-1.sorted.minimap.b
 catalog/Kratzcomycete__Fungal-Genome-Processing-Snakemake ok 2
 catalog/LET19__snakemake-template ok 0
 catalog/LiaOb21__FSP_assembly_benchmarking ok 1
@@ -79,7 +79,7 @@ catalog/Ovewh__Climaso 1 workflow/Snakefile:139: WorkflowError: InputFunctionExc
 catalog/PathoGenOmics-Lab__VIPERA ok 217
 catalog/Phlya__C-integration-mapping ok 0
 catalog/Phlya__distill-reorder-C 1 https://raw.githubusercontent.com/open2c/distiller-sm/master/workflow/Snakefile:18: KeyError: 'output'
-catalog/Phlya__tagmap 1 workflow/rules/common.smk:265: WorkflowError: InputFunctionException in rule stats (wildcards: sample=clone1): JSONDecodeError: Expecting value: line 1 char 0 (the workflow read results/primer_positions.json, a task output that the mock run made without its content)
+catalog/Phlya__tagmap 1 workflow/rules/common.smk:265: WorkflowError: InputFunctionException in rule stats (wildcards: sample=clone1): JSONDecodeError: Expecting value: line 1 char 0 (the workflow read results/primer_positions.json, a task output that the simulator made without its content)
 catalog/Princeton-LSI-ResearchComputing__hifi-assembly ok 0
 catalog/PyPSA__grid-builder 1 workflow/scripts/_schema.py:14: the workflow imports the Python package earth_osm, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/RaphaelAngerbauer__snakemake_template ok 0
@@ -105,7 +105,7 @@ catalog/SveTho__bcl2fastq2_workflow ok 0
 catalog/SveTho__merge_fastqs ok 3
 catalog/TLenfers__multispecies_mitochondrial_variant_analysis ok 25
 catalog/TRON-Bioinformatics__neorasp 1 workflow/rules/common.smk:2: the workflow imports the Python package magic, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
-catalog/TRON-Bioinformatics__oblx 1 workflow/rules/common.smk:275: WorkflowError: InputFunctionException in rule download_uniprot_snapshot (wildcards: ): IndexError: list index out of range (the workflow read resources/uniprot/uniprot_release.txt, a task output that the mock run made without its content)
+catalog/TRON-Bioinformatics__oblx 1 workflow/rules/common.smk:275: WorkflowError: InputFunctionException in rule download_uniprot_snapshot (wildcards: ): IndexError: list index out of range (the workflow read resources/uniprot/uniprot_release.txt, a task output that the simulator made without its content)
 catalog/TidballLab__SNP-Cas13d-Selector ok 10
 catalog/UpalabdhaD__snakemake_wf_skeleton ok 0
 catalog/WHops__triopull-asm ok 7
@@ -162,7 +162,7 @@ catalog/cmc-aau__nanopore_16Samp ok 17
 catalog/cmc-aau__snakemake_project_template ok 7
 catalog/cmkobel__smktest ok 0
 catalog/crs4__fair-crcc-get-data 1 workflow/rules/common.smk:8: ImportError: cannot import name 'AbstractRemoteProvider' from 'snakemake.remote'
-catalog/daspacio9__pooledpremiumpcrpipeline2 1 workflow/rules/common.smk:47: WorkflowError: InputFunctionException in rule medaka_consensus_from_subreads (wildcards: ): StopIteration:  (the workflow read demux_stats.csv, a task output that the mock run made without its content)
+catalog/daspacio9__pooledpremiumpcrpipeline2 1 workflow/rules/common.smk:47: WorkflowError: InputFunctionException in rule medaka_consensus_from_subreads (wildcards: ): StopIteration:  (the workflow read demux_stats.csv, a task output that the simulator made without its content)
 catalog/davelunt__NemaTree ok 10
 catalog/davelunt__badseqs ok 0
 catalog/davelunt__mmseqs 1 workflow/Snakefile:15: SyntaxError: Expected name or colon after rule or checkpoint keyword. The keyword rule has a special meaning in Snakemake. If you named a variable or function like this, please rename it to avoid the conflict.
@@ -173,7 +173,7 @@ catalog/dbespiatykh__TBvar ok 22
 catalog/delpropo__TidballLab-SNP-Cas13d-Selector ok 10
 catalog/dlaehnemann__create-ecdna-testing-data 1 workflow/rules/common.smk:42: WorkflowError: InputFunctionException in rule simulate_nanopore_reads (wildcards: circle=c01, model_files=human_NA12878_DNA_FAB49712_guppy/training, coverage=10, mean_nuc=2300): EmptyDataError: No columns to parse from file (the workflow read results/circles/c01/c01.s
 catalog/dlaehnemann__create-quant-seq-testing-dataset ok 51
-catalog/dlaehnemann__create-sv-ci-testing-dataset 1 workflow/rules/downsampling.smk:39: WorkflowError: InputFunctionException in rule samtools_view_downsample (wildcards: sample=HCC1395BL, chr=full_genome, depth=0.1): EmptyDataError: No columns to parse from file (the mock run assumed 1 input files that do not exist and that no rule makes, like res
+catalog/dlaehnemann__create-sv-ci-testing-dataset 1 workflow/rules/downsampling.smk:39: WorkflowError: InputFunctionException in rule samtools_view_downsample (wildcards: sample=HCC1395BL, chr=full_genome, depth=0.1): EmptyDataError: No columns to parse from file (the simulated run assumed 1 input files that do not exist and that no rule makes, lik
 catalog/dlaehnemann__demo-standardized-workflow ok 0
 catalog/dlaehnemann__evaluate_varlociraptor_purity_estimation ok 0
 catalog/dlaehnemann__rna-seq-conservative-fold-change-without-replicates ok 23
@@ -244,7 +244,7 @@ catalog/karltayeb__laplace-bfs 1 workflow/rules/single_causal_glm_simulations.sm
 catalog/kevinrue__snakemake-cellranger-count ok 3
 catalog/kevinrue__snakemake-cncb-2024 ok 48
 catalog/kevinrue__snakemake-cncb-3 ok 3
-catalog/kevinrue__snakemake-cncb-ensembl-2024 1 workflow/rules/r.smk:36: WorkflowError: InputFunctionException in rule simpleaf_lower_umi_per_sample (wildcards: sample=_all): KeyError: '_all' (the mock run assumed 218 input files that do not exist and that no rule makes, like /project/cncb/shared/proj140/analyses/novogene_sequencing/single_cell
+catalog/kevinrue__snakemake-cncb-ensembl-2024 1 workflow/rules/r.smk:36: WorkflowError: InputFunctionException in rule simpleaf_lower_umi_per_sample (wildcards: sample=_all): KeyError: '_all' (the simulated run assumed 218 input files that do not exist and that no rule makes, like /project/cncb/shared/proj140/analyses/novogene_sequencing/single
 catalog/khanlab__SPIMprep 1 workflow/Snakefile:2: the workflow imports the Python package upath, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/khersameesh24__snakemake-workflow-template ok 0
 catalog/kircherlab__MPRAsnakeflow ok 120
@@ -258,7 +258,7 @@ catalog/lacklab__MuSTARRd ok 56
 catalog/lacklab__epens-snakemake ok 187
 catalog/lasyaa418__control-of-latent-dynamics 1 workflow/Snakefile:7: ModuleNotFoundError: No module named 'src'
 catalog/liezeltamon__single-cell-preprocess 1 workflow/Snakefile:12: the workflow imports the Python package utils, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
-catalog/loganylchen__NanoInsight 1 WorkflowError: RuleException in rule merge_ref_and_fusions_aeron in file workflow/rules/fusion/aeron.smk, line 195: AttributeError: 'InputFiles' object has no attribute 'fusions', when formatting the shell command (the mock run assumed 3 input files that do not exist and that no rule makes, like r
+catalog/loganylchen__NanoInsight 1 WorkflowError: RuleException in rule merge_ref_and_fusions_aeron in file workflow/rules/fusion/aeron.smk, line 195: AttributeError: 'InputFiles' object has no attribute 'fusions', when formatting the shell command (the simulated run assumed 3 input files that do not exist and that no rule makes, l
 catalog/loganylchen__NanoRNAMod ok 21
 catalog/loganylchen__RNA-seq-analysis-pipeline ok 12
 catalog/loganylchen__prep-bonito-training-data 1 workflow/rules/common.smk:12: KeyError: "None of ['SampleName'] are in the columns"
@@ -356,7 +356,7 @@ catalog/recervictory__rna-seq-test ok 0
 catalog/regevs__tadpoles ok 0
 catalog/regulatory-genomics__hic_sm 1 workflow/rules/common.smk:38: FileNotFoundError: [Errno 2] No such file or directory: 'pep/../config/20260119_hic_sample_2.csv'
 catalog/rglez__bflow-smk ok 10
-catalog/richardstoeckl__QCforSeqCode 1 workflow/Snakefile:153: WorkflowError: InputFunctionException in rule infernal (wildcards: sampleID=Pfu): EmptyDataError: No columns to parse from file (the workflow read results/seqkit-stats/Pfu_assembly.tsv, a task output that the mock run made without its content)
+catalog/richardstoeckl__QCforSeqCode 1 workflow/Snakefile:153: WorkflowError: InputFunctionException in rule infernal (wildcards: sampleID=Pfu): EmptyDataError: No columns to parse from file (the workflow read results/seqkit-stats/Pfu_assembly.tsv, a task output that the simulator made without its content)
 catalog/richardstoeckl__basecallNanopore 1 workflow/Snakefile:21: WorkflowError: A configuration file is required; use --configfile FILE.yaml
 catalog/rmFlynn__DRAM_testing_pipline ok 0
 catalog/rmFlynn__dram_validataion_pipline ok 0
@@ -390,11 +390,11 @@ catalog/sims-lab__snakemake-cncb-index-ensembl-genome ok 8
 catalog/snakemake-workflows__cellranger-count 1 workflow/Snakefile:20: WorkflowError: The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:
 catalog/snakemake-workflows__cellranger-multi 1 workflow/Snakefile:20: WorkflowError: The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:
 catalog/snakemake-workflows__cyrcular-calling ok 1
-catalog/snakemake-workflows__dna-seq-benchmark 1 workflow/rules/common.smk:456: WorkflowError: InputFunctionException in rule all (wildcards: ): JSONDecodeError: Expecting value: line 1 char 0 (the workflow read results/variants/giab-na12878-exome.truth.cov-lc_low.stats.json, a task output that the mock run made without its content)
-catalog/snakemake-workflows__dna-seq-gatk-variant-calling 1 workflow/rules/common.smk:44: WorkflowError: InputFunctionException in rule merge_variants (wildcards: ): TypeError: read_table() got an unexpected keyword argument 'squeeze' (the workflow read resources/genome.fasta.fai, a task output that the mock run made without its content)
+catalog/snakemake-workflows__dna-seq-benchmark 1 workflow/rules/common.smk:456: WorkflowError: InputFunctionException in rule all (wildcards: ): JSONDecodeError: Expecting value: line 1 char 0 (the workflow read results/variants/giab-na12878-exome.truth.cov-lc_low.stats.json, a task output that the simulator made without its content)
+catalog/snakemake-workflows__dna-seq-gatk-variant-calling 1 workflow/rules/common.smk:44: WorkflowError: InputFunctionException in rule merge_variants (wildcards: ): TypeError: read_table() got an unexpected keyword argument 'squeeze' (the workflow read resources/genome.fasta.fai, a task output that the simulator made without its content)
 catalog/snakemake-workflows__dna-seq-mtb 1 https://raw.githubusercontent.com/snakemake-workflows/dna-seq-varlociraptor/v6.10.1/workflow/rules/common.smk:1309: WorkflowError: InputFunctionException in rule vembrane_table (wildcards: group=patient-a, event=somatic_or_germline_pathogenic_risk_factor_drug_response, calling_type=variants): Type
 catalog/snakemake-workflows__dna-seq-short-read-circle-map ok 1
-catalog/snakemake-workflows__dna-seq-varlociraptor 1 workflow/rules/common.smk:1318: WorkflowError: InputFunctionException in rule vembrane_table (wildcards: group=SRR702070_group, event=some_id, calling_type=variants): TypeError: 'NoneType' object is not subscriptable (the mock run assumed 2 input files that do not exist and that no rule makes, lik
+catalog/snakemake-workflows__dna-seq-varlociraptor 1 workflow/rules/common.smk:1318: WorkflowError: InputFunctionException in rule vembrane_table (wildcards: group=SRR702070_group, event=some_id, calling_type=variants): TypeError: 'NoneType' object is not subscriptable (the simulated run assumed 2 input files that do not exist and that no rule makes
 catalog/snakemake-workflows__effect-size-estimation ok 11
 catalog/snakemake-workflows__microsatellite-instability-detection-with-msisensor-pro 1 workflow/rules/common.smk:76: WorkflowError: InputFunctionException in rule all (wildcards: ): KeyError: 'The configfile specifies both `aliases: matched_normal:` and `aliases: baseline:`. You must specify exactly one of these, and comment out the other, to clearly determine the mode the workflow
 catalog/snakemake-workflows__read-alignment-pangenome ok 22
@@ -415,7 +415,7 @@ catalog/spjuhel__BoARIO-Sensitivity 1 workflow/Snakefile:34: FileNotFoundError: 
 catalog/spjuhel__Climada_TC_TCSurge_Generation 1 workflow/Snakefile:27: KeyError: 'start'
 catalog/spraeger__mutational-patterns-analysis ok 10
 catalog/t-i-r__snakemake-workflow-template ok 0
-catalog/tahiri-lab__aPhyloGeo-pipeline 1 workflow/rules/common.smk:75: WorkflowError: InputFunctionException in rule all (wildcards: ): EmptyDataError: No columns to parse from file (the workflow read results/rf_phyML.csv, a task output that the mock run made without its content)
+catalog/tahiri-lab__aPhyloGeo-pipeline 1 workflow/rules/common.smk:75: WorkflowError: InputFunctionException in rule all (wildcards: ): EmptyDataError: No columns to parse from file (the workflow read results/rf_phyML.csv, a task output that the simulator made without its content)
 catalog/tavareshugo__smk-indexer ok 137
 catalog/tbenavi1__RetroDetector ok 66
 catalog/tdayris__fair_bowtie2_mapping 1 https://raw.githubusercontent.com/tdayris/fair_genome_indexer/3.9.7/workflow/rules/common.smk:120: AttributeError: module 'snakemake.io' has no attribute 'Wildcards'
@@ -428,7 +428,7 @@ catalog/tdayris__fair_rnaseq_salmon_quant 1 workflow/rules/common.smk:106: Attri
 catalog/thomasbtf__sars-cov-2-wbe 1 workflow/Snakefile:7: WorkflowError: The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:
 catalog/thomasmulvaney__snakemake-gromacs-workflow ok 10
 catalog/tmweiskittel__serpent-methylation-pipeline-cloud ok 23
-catalog/tmweiskittel__tmw_align_emseq 1 workflow/Snakefile:70: WorkflowError: InputFunctionException in rule all (wildcards: ): TypeError: 'NoneType' object is not iterable (the workflow read /home/jupyter/data/samples.csv, a task output that the mock run made without its content)
+catalog/tmweiskittel__tmw_align_emseq 1 workflow/Snakefile:70: WorkflowError: InputFunctionException in rule all (wildcards: ): TypeError: 'NoneType' object is not iterable (the workflow read /home/jupyter/data/samples.csv, a task output that the simulator made without its content)
 catalog/tmweiskittel__tmw_analysis_emseq ok 244
 catalog/trickovicmatija__kingfisher_workflow 1 workflow/Snakefile:3: WorkflowError: Workflow defines configfile ../config/default_config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/default_config.yaml).
 catalog/tucca-cellag__tucca-rna-seq ok 90

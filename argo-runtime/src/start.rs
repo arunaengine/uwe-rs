@@ -211,9 +211,9 @@ pub(crate) struct Given {
 }
 
 /// The workflow parameters of a run: those of the spec, overridden by the command line and the
-/// parameter file, and the inputs of the entrypoint (`entry`), which `-p` supplies too. In a mock
-/// run, parameters without a value get placeholders, and the input artifacts of the entrypoint
-/// that nothing supplies are listed for placeholders too.
+/// parameter file, and the inputs of the entrypoint (`entry`), which `-p` supplies too. In a
+/// simulated run, parameters without a value get placeholders, and the input artifacts of the
+/// entrypoint that nothing supplies are listed for placeholders too.
 pub(crate) fn workflow_parameters(
     spec: &WorkflowSpec,
     entry: Option<&Node>,

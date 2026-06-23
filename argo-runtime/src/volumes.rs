@@ -3,7 +3,7 @@
 //! that mount it later. A volume is a claim (`persistentVolumeClaim` or `volumeClaimTemplates`),
 //! a host path, or the `emptyDir` of one pod. In a real run, the files that tasks write into a
 //! host path go back to that path on this machine. ConfigMaps become files with their text, and
-//! Secrets placeholders in a mock run.
+//! Secrets placeholders in a simulated run.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -259,7 +259,7 @@ impl Run {
                             if !self.options.assume_inputs {
                                 return Err(Failure::error(message));
                             }
-                            self.warn(format!("{message}; a mock run mounts an empty folder"));
+                            self.warn(format!("{message}; a simulated run mounts an empty folder"));
                         }
                         task.inputs.push(empty(&path));
                         continue;
@@ -320,7 +320,7 @@ impl Run {
     }
 
     /// Takes the files that the tasks of a node wrote into their volumes. In a real run, the
-    /// files written into a host path go back to that path on this machine; a mock run never
+    /// files written into a host path go back to that path on this machine; a simulated run never
     /// writes there.
     pub(crate) fn keep_written(&mut self, index: usize) -> std::result::Result<(), String> {
         let written = self.nodes[index].written.clone();

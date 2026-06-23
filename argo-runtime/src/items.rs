@@ -301,7 +301,7 @@ pub(crate) fn substitute_item(
     Ok(node)
 }
 
-/// Whether an item is not known, as the empty text of a mock run's output is.
+/// Whether an item is not known, as the empty text of a simulated run's output is.
 pub(crate) fn unknown_item(item: &Value) -> bool {
     matches!(item, Value::String(text) if text.is_empty())
 }

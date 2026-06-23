@@ -13,6 +13,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod fingerprint;
+mod recorder;
 mod schema;
 
 use std::path::Path;
@@ -21,6 +22,7 @@ use std::time::Duration;
 use rusqlite::Connection;
 
 pub use fingerprint::{InputState, fingerprint, input_states};
+pub use recorder::{LOG_LIMIT, Recorder, RunStart};
 pub use schema::VERSION;
 
 /// The name of the database file in the cache directory, next to the default store.
@@ -77,6 +79,11 @@ impl Database {
         Ok(self
             .connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))?)
+    }
+
+    /// Starts recording a run. The recorder owns the connection from now on.
+    pub fn record(self, run: &RunStart) -> Result<Recorder, DatabaseError> {
+        Recorder::start(self.connection, run)
     }
 }
 

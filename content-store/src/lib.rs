@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub mod layout;
+mod local;
 mod store;
 
-pub use store::{S3Options, Store, StoreError};
+pub use store::{S3Options, Store, StoreError, StoredOutput, hash_file};

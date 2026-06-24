@@ -122,6 +122,41 @@ async fn uploads_large_files() {
     assert_eq!(std::fs::read(stored).expect("read"), content);
 }
 
+#[tokio::test]
+async fn adopts_outputs() {
+    let root = tempfile::tempdir().expect("temporary directory");
+    let file = root.path().join("out.txt");
+    let adopt = |store: Store| {
+        let file = file.clone();
+        async move {
+            std::fs::write(&file, "made\n").expect("write output");
+            let stored = store
+                .adopt_output("run1", "task-1", 2, "sub/out.txt", &file)
+                .await
+                .expect("adopts");
+            assert_eq!(stored.location, "runs/run1/task-1/2/work/sub/out.txt");
+            assert_eq!(stored.size, 5);
+            assert_eq!(
+                store.get_content(&stored.digest).await.expect("get"),
+                Bytes::from_static(b"made\n")
+            );
+            let object = store.get_object(&stored.location).await.expect("get");
+            assert_eq!(object, Bytes::from_static(b"made\n"));
+        }
+    };
+    // A local store moves the file in and links its content.
+    let local = Store::local(&root.path().join("store")).expect("local store");
+    adopt(local.clone()).await;
+    assert!(!file.exists());
+    let stored = local
+        .local_path("runs/run1/task-1/2/work/sub/out.txt")
+        .expect("a local store");
+    let links = std::os::unix::fs::MetadataExt::nlink(&std::fs::metadata(stored).expect("stat"));
+    assert_eq!(links, 2);
+    adopt(Store::memory().expect("memory store")).await;
+    assert!(file.exists());
+}
+
 #[test]
 fn rejects_bad_locations() {
     let key = Digest::sha256(b"task");

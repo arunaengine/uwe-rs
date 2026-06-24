@@ -4,14 +4,18 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod braces;
+pub mod engine;
 pub mod local;
 pub mod manifest;
+mod pool;
 pub mod process;
 pub mod wrapper;
 
 use task_model::TaskSpec;
 
+pub use engine::{ContainerEngine, EngineKind, NoEngine};
 pub use local::{ExecutorError, Finished, Staged, Staging};
+pub use pool::{Pool, Share};
 
 /// Runs tasks, one call per task.
 pub trait Executor {

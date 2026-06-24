@@ -10,6 +10,7 @@
 
 mod driver;
 mod engine;
+mod events;
 mod graph;
 mod options;
 mod pending;
@@ -19,7 +20,8 @@ pub mod simulator;
 mod task;
 
 pub use driver::{Driver, DriverError, Launch};
-pub use engine::{ExecuteError, Execution, Executor, execute, execute_with};
+pub use engine::{Engine, ExecuteError, Execution, Executor, execute, execute_with};
+pub use events::{Event, Observer};
 pub use graph::{Edge, EdgeKind, ExecutionGraph, Node};
 pub use options::{Order, RunOptions};
 pub use simulator::Simulator;

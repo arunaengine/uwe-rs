@@ -5,7 +5,9 @@
 use crate::pending::Pending;
 use crate::queue::Queue;
 use crate::recorder::Recorder;
-use crate::{Driver, DriverError, ExecutionGraph, Outcome, RunOptions, Task, TaskId};
+use crate::{
+    Driver, DriverError, Event, ExecutionGraph, Observer, Outcome, RunOptions, Task, TaskId,
+};
 
 /// Runs tasks, one call per task. Real executors (TES, local containers) and the simulator
 /// share it.
@@ -60,7 +62,7 @@ impl Execution {
 /// returns the graph of what ran. A task starts only when the tasks in its `after` list have
 /// finished. On an error the graph so far is kept, so that a failed run can still be shown.
 pub fn execute(workflow: &str, driver: &mut dyn Driver, executor: &mut dyn Executor) -> Execution {
-    execute_with(workflow, driver, executor, &RunOptions::default())
+    Engine::new(executor).run(workflow, driver)
 }
 
 /// Runs the driver to its end like [`execute`], with up to `max_pending` tasks pending at once
@@ -71,44 +73,110 @@ pub fn execute_with(
     executor: &mut dyn Executor,
     options: &RunOptions,
 ) -> Execution {
-    let mut recorder = Recorder::new(workflow, driver.language());
-    let result = run(driver, executor, options, &mut recorder);
-    Execution {
-        graph: recorder.graph,
-        error: result.err(),
-    }
+    Engine::new(executor)
+        .options(*options)
+        .run(workflow, driver)
 }
 
-/// Starts the tasks that can start, up to the limit, then hands one outcome to the driver and
-/// queues the tasks it asks for, until no task is left.
-fn run(
-    driver: &mut dyn Driver,
-    executor: &mut dyn Executor,
-    options: &RunOptions,
-    recorder: &mut Recorder,
-) -> Result<(), ExecuteError> {
-    let mut queue = Queue::default();
-    let mut pending = Pending::new(options.order);
-    for task in driver.start()? {
-        recorder.add(&task)?;
+/// A run of a driver against an executor, with its options and an observer that hears what
+/// happens, like the run database.
+pub struct Engine<'a> {
+    executor: &'a mut dyn Executor,
+    options: RunOptions,
+    observer: Option<&'a mut dyn Observer>,
+}
+
+impl<'a> Engine<'a> {
+    /// A run with the default options and no observer.
+    pub fn new(executor: &'a mut dyn Executor) -> Self {
+        Engine {
+            executor,
+            options: RunOptions::default(),
+            observer: None,
+        }
+    }
+
+    pub fn options(mut self, options: RunOptions) -> Self {
+        self.options = options;
+        self
+    }
+
+    pub fn observer(mut self, observer: &'a mut dyn Observer) -> Self {
+        self.observer = Some(observer);
+        self
+    }
+
+    /// Runs the driver to its end and returns the graph of what ran, and the error that
+    /// stopped the run if there is one. The observer hears the end of every run.
+    pub fn run(mut self, workflow: &str, driver: &mut dyn Driver) -> Execution {
+        let mut recorder = Recorder::new(workflow, driver.language());
+        let result = self.drive(driver, &mut recorder);
+        let error = result.err();
+        self.report(Event::Ended {
+            error: error.as_ref(),
+        });
+        Execution {
+            graph: recorder.graph,
+            error,
+        }
+    }
+
+    fn report(&mut self, event: Event<'_>) {
+        if let Some(observer) = self.observer.as_deref_mut() {
+            observer.event(event);
+        }
+    }
+
+    /// Records a task that the driver asked for and queues it.
+    fn request(
+        &mut self,
+        task: Task,
+        recorder: &mut Recorder,
+        queue: &mut Queue,
+    ) -> Result<(), ExecuteError> {
+        let edges = recorder.add(&task)?;
+        self.report(Event::Requested { task: &task, edges });
         queue.push(task);
+        Ok(())
     }
-    loop {
-        while pending.len() < options.max_pending.max(1)
-            && let Some(task) = queue.next()
-        {
-            pending.push(executor.execute(&task)?);
+
+    /// Starts the tasks that can start, up to the limit, then hands one outcome to the driver
+    /// and queues the tasks it asks for, until no task is left.
+    fn drive(
+        &mut self,
+        driver: &mut dyn Driver,
+        recorder: &mut Recorder,
+    ) -> Result<(), ExecuteError> {
+        let mut queue = Queue::default();
+        let mut pending = Pending::new(self.options.order);
+        for task in driver.start()? {
+            self.request(task, recorder, &mut queue)?;
         }
-        let Some(outcome) = pending.take() else {
-            break;
-        };
-        recorder.finished(&outcome);
-        queue.finished(outcome.id);
-        for next in driver.complete(outcome)? {
-            recorder.add(&next)?;
-            queue.push(next);
+        loop {
+            while pending.len() < self.options.max_pending.max(1)
+                && let Some(task) = queue.next()
+            {
+                self.report(Event::Started {
+                    task: task.id,
+                    attempt: 1,
+                });
+                pending.push(self.executor.execute(&task)?);
+            }
+            let Some(outcome) = pending.take() else {
+                break;
+            };
+            recorder.finished(&outcome);
+            self.report(Event::Finished {
+                outcome: &outcome,
+                attempt: 1,
+                retried: false,
+            });
+            queue.finished(outcome.id);
+            for next in driver.complete(outcome)? {
+                self.request(next, recorder, &mut queue)?;
+            }
         }
+        driver.finish()?;
+        Ok(())
     }
-    driver.finish()?;
-    Ok(())
 }

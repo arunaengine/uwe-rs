@@ -33,8 +33,9 @@ impl Recorder {
 
     /// Adds a task that the driver asked for, with an edge from each task that made one of its
     /// input files and from each task in its `after` list. Each task in that list must have
-    /// been asked for before, so that no task waits for one that never comes.
-    pub(crate) fn add(&mut self, task: &Task) -> Result<(), ExecuteError> {
+    /// been asked for before, so that no task waits for one that never comes. The result is
+    /// the edges into the task.
+    pub(crate) fn add(&mut self, task: &Task) -> Result<&[Edge], ExecuteError> {
         if self.seen.contains(&task.id) {
             return Err(ExecuteError::DuplicateTask(task.id));
         }
@@ -70,13 +71,14 @@ impl Recorder {
                 });
             }
         }
+        let first = self.graph.edges.len();
         self.graph.edges.extend(edges);
         self.positions.insert(task.id, self.graph.nodes.len());
         self.graph.nodes.push(Node {
             task: task.clone(),
             exit_code: None,
         });
-        Ok(())
+        Ok(&self.graph.edges[first..])
     }
 
     /// The task that made a path, or a directory that holds it.

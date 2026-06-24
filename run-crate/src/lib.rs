@@ -9,8 +9,10 @@
 
 mod data;
 mod entities;
+mod files;
 mod ids;
 mod image;
+mod metadata;
 
 use std::path::PathBuf;
 

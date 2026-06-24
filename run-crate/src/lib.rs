@@ -8,6 +8,9 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod data;
+mod entities;
+mod ids;
+mod image;
 
 use std::path::PathBuf;
 

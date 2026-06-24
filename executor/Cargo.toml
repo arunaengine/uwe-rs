@@ -4,7 +4,7 @@
 
 [package]
 name = "executor"
-description = "The task wrapper, the result manifest and the executors that run tasks"
+description = "The task wrapper, the result manifest and the backends that run tasks"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,6 +15,9 @@ publish.workspace = true
 serde_json.workspace = true
 task-model.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["process", "time", "sync"] }
+tokio-util.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+tokio = { workspace = true, features = ["process", "time", "sync", "rt"] }

@@ -10,6 +10,7 @@ pub mod local;
 pub mod manifest;
 mod pool;
 pub mod process;
+mod stage;
 pub mod wrapper;
 
 use task_model::TaskSpec;

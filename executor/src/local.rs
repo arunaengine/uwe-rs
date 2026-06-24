@@ -2,15 +2,16 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use task_model::TaskSpec;
 
-use crate::job::{CONTROL, ExecutorError, Finished, MOUNTS, Staging, WORK};
+use crate::job::{CONTROL, ExecutorError, Finished, Staging, WORK};
 use crate::manifest::parse;
-use crate::wrapper::{EXIT, MANIFEST, STDIN, wrapper};
+use crate::stage::place;
+use crate::wrapper::{EXIT, MANIFEST, wrapper};
 
 /// The local container executor.
 pub struct LocalContainer {
@@ -35,33 +36,10 @@ impl LocalContainer {
         staging: &Staging,
     ) -> Result<Finished, ExecutorError> {
         let image = spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
-        std::fs::create_dir_all(&self.scratch)?;
         let root = self.scratch.join(name);
-        std::fs::create_dir(&root)?;
+        let mounts = place(&root, staging)?;
         let work = root.join(WORK);
         let control = root.join(CONTROL);
-        std::fs::create_dir_all(&work)?;
-        std::fs::create_dir_all(&control)?;
-        let place = |path: &str| match path.strip_prefix('/') {
-            Some(inside) => root.join(MOUNTS).join(inside),
-            None => work.join(path),
-        };
-        for directory in &staging.directories {
-            std::fs::create_dir_all(place(directory))?;
-        }
-        for input in &staging.inputs {
-            let target = place(&input.path);
-            if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::copy(&input.source, &target)?;
-            if input.executable {
-                std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755))?;
-            }
-        }
-        if let Some(stdin) = &staging.stdin {
-            std::fs::copy(stdin, control.join(STDIN))?;
-        }
         let mut spec = spec.clone();
         if spec.arguments.is_empty() {
             spec.arguments = self.default_command(&image.reference)?;
@@ -78,13 +56,10 @@ impl LocalContainer {
         if spec.workdir.is_some() {
             command.args(["--volume", &format!("{}:{inside}", text(&work))]);
         }
-        for input in spec
-            .inputs
-            .iter()
-            .filter(|input| input.path.starts_with('/'))
-        {
-            let path = input.path.trim_end_matches('/');
-            command.args(["--volume", &format!("{}:{path}", text(&place(path)))]);
+        for mount in &mounts {
+            let mode = if mount.read_only { ":ro" } else { "" };
+            let volume = format!("{}:{}{mode}", text(&mount.source), mount.target);
+            command.args(["--volume", &volume]);
         }
         command.args(["--workdir", &inside]);
         if let Some(platform) = &image.platform {

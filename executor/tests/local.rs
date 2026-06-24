@@ -5,7 +5,8 @@
 
 use std::collections::BTreeMap;
 
-use executor::local::{ExecutorError, LocalContainer, Staged, Staging};
+use executor::local::LocalContainer;
+use executor::{ExecutorError, Staged, Staging};
 use task_model::{Digest, FORMAT, FileKind, Image, InputFile, OutputRule, TaskSpec};
 
 fn spec(image: Option<&str>, outputs: &[&str]) -> TaskSpec {
@@ -30,9 +31,9 @@ fn spec(image: Option<&str>, outputs: &[&str]) -> TaskSpec {
     }
 }
 
-fn staging(files: Vec<Staged>) -> Staging {
+fn staging(inputs: Vec<Staged>) -> Staging {
     Staging {
-        files,
+        inputs,
         ..Staging::default()
     }
 }
@@ -43,6 +44,8 @@ fn stage(root: &std::path::Path, name: &str, text: &str) -> Staged {
     Staged {
         path: name.to_owned(),
         source,
+        directory: false,
+        copy: true,
         executable: false,
     }
 }
@@ -156,7 +159,7 @@ fn runs_in_the_workdir_with_absolute_paths_and_standard_input() {
     let stdin = root.path().join("stdin");
     std::fs::write(&stdin, "piped\n").expect("writes the standard input");
     let staged = Staging {
-        files: vec![stage(root.path(), "/data/in.txt", "in\n")],
+        inputs: vec![stage(root.path(), "/data/in.txt", "in\n")],
         directories: Vec::new(),
         stdin: Some(stdin),
     };

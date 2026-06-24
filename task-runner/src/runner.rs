@@ -201,9 +201,11 @@ impl<E: Executor> Runner<E> {
         let mut staging = Staging::default();
         for input in &spec.inputs {
             if input.kind == FileKind::File {
-                staging.files.push(Staged {
+                staging.inputs.push(Staged {
                     path: input.path.clone(),
                     source: self.local_content(&input.digest)?,
+                    directory: false,
+                    copy: true,
                     executable: input.executable,
                 });
                 continue;
@@ -221,9 +223,11 @@ impl<E: Executor> Runner<E> {
                 match entry {
                     TreeEntry::File {
                         digest, executable, ..
-                    } => staging.files.push(Staged {
+                    } => staging.inputs.push(Staged {
                         path,
                         source: self.local_content(&digest)?,
+                        directory: false,
+                        copy: true,
                         executable,
                     }),
                     TreeEntry::EmptyDirectory { .. } => staging.directories.push(path),

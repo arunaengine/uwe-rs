@@ -1,0 +1,267 @@
+rocrate-validator 0.12.0
+                                                                                
+  ─────────────────────  ROCrate Validator (ver. 0.12.0) ─────────────────────  
+                                                                                
+                                                                                
+ ╭────────────────────────── - Validation Report - ───────────────────────────╮ 
+ │                                                                            │ 
+ │                                                                            │ 
+ │  RO-Crate: simulated                         │ 
+ │  Target Profile: provenance-run-crate-0.5                                  │ 
+ │  Validation Severity: Severity.REQUIRED                                    │ 
+ │                                                                            │ 
+ │  ╭─────────────────── Requirements Checks Validation ───────────────────╮  │ 
+ │  │                                                                      │  │ 
+ │  │ ╭─ Severity: REQUIRE─╮╭─ Severity: RECOMMEN─╮╭─ Severity: OPTIONAL─╮ │  │ 
+ │  │ │                    ││                     ││                     │ │  │ 
+ │  │ │         83         ││          0          ││          0          │ │  │ 
+ │  │ │                    ││                     ││                     │ │  │ 
+ │  │ ╰────────────────────╯╰─────────────────────╯╰─────────────────────╯ │  │ 
+ │  │ ╭── PASSED Checks ───╮╭─── FAILED Checks ───╮╭── SKIPPED Checks ───╮ │  │ 
+ │  │ │                    ││                     ││                     │ │  │ 
+ │  │ │         83         ││          0          ││          0          │ │  │ 
+ │  │ │                    ││                     ││                     │ │  │ 
+ │  │ ╰────────────────────╯╰─────────────────────╯╰─────────────────────╯ │  │ 
+ │  │                                                                      │  │ 
+ │  ╰──────────────────────────────────────────────────────────────────────╯  │ 
+ │  ╭────────────────────────── Overall Progress ──────────────────────────╮  │ 
+ │  │ Profiles            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5/5   0:00:00 │  │ 
+ │  │ Requirements        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 34/34 0:00:00 │  │ 
+ │  │ Requirements Checks ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 83/83 0:00:00 │  │ 
+ │  ╰──────────────────────────────────────────────────────────────────────╯  │ 
+ │                                                                            │ 
+ ╰────────────────────────────────────────────────────────────────────────────╯ 
+                                                                                
+  ───────── [OK] RO-Crate is a valid provenance-run-crate-0.5 !!!   ──────────  
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+  ─────────────────────  ROCrate Validator (ver. 0.12.0) ─────────────────────  
+                                                                                
+                                                                                
+ ╭────────────────────────── - Validation Report - ───────────────────────────╮ 
+ │                                                                            │ 
+ │                                                                            │ 
+ │  RO-Crate: simulated                         │ 
+ │  Target Profile: provenance-run-crate-0.5                                  │ 
+ │  Validation Severity: Severity.RECOMMENDED                                 │ 
+ │                                                                            │ 
+ │  ╭─────────────────── Requirements Checks Validation ───────────────────╮  │ 
+ │  │                                                                      │  │ 
+ │  │ ╭─ Severity: REQUIRE─╮╭─ Severity: RECOMMEN─╮╭─ Severity: OPTIONAL─╮ │  │ 
+ │  │ │                    ││                     ││                     │ │  │ 
+ │  │ │         83         ││         98          ││          0          │ │  │ 
+ │  │ │                    ││                     ││                     │ │  │ 
+ │  │ ╰────────────────────╯╰─────────────────────╯╰─────────────────────╯ │  │ 
+ │  │ ╭── PASSED Checks ───╮╭─── FAILED Checks ───╮╭── SKIPPED Checks ───╮ │  │ 
+ │  │ │                    ││                     ││                     │ │  │ 
+ │  │ │        174         ││          6          ││          0          │ │  │ 
+ │  │ │                    ││                     ││                     │ │  │ 
+ │  │ ╰────────────────────╯╰─────────────────────╯╰─────────────────────╯ │  │ 
+ │  │                                                                      │  │ 
+ │  ╰──────────────────────────────────────────────────────────────────────╯  │ 
+ │  ╭────────────────────────── Overall Progress ──────────────────────────╮  │ 
+ │  │ Profiles            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5/5     0:00:00 │  │ 
+ │  │ Requirements        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 76/76   0:00:00 │  │ 
+ │  │ Requirements Checks ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╸ 180/181 0:00:00 │  │ 
+ │  ╰──────────────────────────────────────────────────────────────────────╯  │ 
+ │                                                                            │ 
+ ╰────────────────────────────────────────────────────────────────────────────╯ 
+                                                                                
+  ────── [FAILED] RO-Crate is not a valid provenance-run-crate-0.5 !!!  ──────  
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+  The following requirements have not been met:                                 
+                                                                                
+                                                [profile: Process Run Crate 0.5]
+     [ process-run-crate-0.5_5 ]: ProcRC SoftwareApplication ID                 
+                                                                                
+      Process Run Crate SoftwareApplication ID                                  
+                                                                                
+          Failed checks                                                         
+                                                                                
+                                                                                
+        [ process-run-crate-0.5_5.1 ] SoftwareApplication id:                   
+                                      The SoftwareApplication id SHOULD be an   
+                                      absolute URI                              
+         Detected issues                                                        
+         - [Violation of                                                        
+         nda6ac59a7dca4eb5bf27a39382411574b16="file:///tmp/iunctus-crat         
+         e-validation/simulated/main.nf"  on                                    
+         <https://bioschemas.org/ComputationalWorkflow>]: The                   
+         SoftwareApplication id SHOULD be an absolute URI                       
+                                                                                
+                                                                                
+                                                                                
+         - [Violation of                                                        
+         nda6ac59a7dca4eb5bf27a39382411574b16="file:///tmp/iunctus-crat         
+         e-validation/simulated/#tool/COUNT"  on                                
+         <http://schema.org/SoftwareApplication>]: The                          
+         SoftwareApplication id SHOULD be an absolute URI                       
+                                                                                
+                                                                                
+                                                                                
+         - [Violation of                                                        
+         nda6ac59a7dca4eb5bf27a39382411574b16="file:///tmp/iunctus-crat         
+         e-validation/simulated/#tool/UPPER"  on                                
+         <http://schema.org/SoftwareApplication>]: The                          
+         SoftwareApplication id SHOULD be an absolute URI                       
+                                                                                
+                                                                                
+                                                                                
+         - [Violation of                                                        
+         nda6ac59a7dca4eb5bf27a39382411574b16="file:///tmp/iunctus-crat         
+         e-validation/simulated/main.nf"  on                                    
+         <http://schema.org/SoftwareSourceCode>]: The                           
+         SoftwareApplication id SHOULD be an absolute URI                       
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                [profile: Process Run Crate 0.5]
+     [ process-run-crate-0.5_8 ]: Process Run Crate Action SHOULD               
+                                                                                
+      Recommended properties of the Process Run Crate Action                    
+                                                                                
+          Failed checks                                                         
+                                                                                
+                                                                                
+        [ process-run-crate-0.5_8.6 ] Action agent:                             
+                                      The Action SHOULD have an agent that is a 
+                                      Person or Organization                    
+         Detected issues                                                        
+         - [Violation on <./#task/1>]: The Action SHOULD have an agent          
+         that is a Person or Organization                                       
+                                                                                
+                                                                                
+                                                                                
+         - [Violation on <./#run/fixture-run>]: The Action SHOULD have          
+         an agent that is a Person or Organization                              
+                                                                                
+                                                                                
+                                                                                
+         - [Violation on <./#task/2>]: The Action SHOULD have an agent          
+         that is a Person or Organization                                       
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                  [profile: RO-Crate Metadata Specification 1.1]
+     [ ro-crate-1.1_22 ]: RO-Crate Root Data Entity RECOMMENDED properties      
+                                                                                
+      The Root Data Entity SHOULD have the properties name, description         
+      and license defined as described in the RO-Crate specification            
+      https://www.researchobject.org/ro-crate/1.1/root-data-entity.html         
+                                                                                
+          Failed checks                                                         
+                                                                                
+                                                                                
+        [ ro-crate-1.1_22.2 ] Root Data Entity: `author` property:              
+                              Check if the Root Data Entity includes a author   
+                              property (as specified by schema.org) to provide  
+                              information about its author.                     
+         Detected issues                                                        
+         - [Violation on <./>]: The Root Data Entity SHOULD have a link         
+         to a Contextual Entity representing the `author` of the                
+         RO-Crate                                                               
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+        [ ro-crate-1.1_22.3 ] Root Data Entity: `publisher` property:           
+                              Check if the Root Data Entity has a publisher     
+                              property of type Organization.                    
+         Detected issues                                                        
+         - [Violation on <./>]: The `publisher` property of a `Root             
+         Data Entity` SHOULD be an `Organization`                               
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                  [profile: RO-Crate Metadata Specification 1.1]
+     [ ro-crate-1.1_27 ]: File Data Entity: RECOMMENDED properties              
+                                                                                
+      A File Data Entity SHOULD have detailed descriptions encodings            
+      through the encodingFormat property                                       
+                                                                                
+          Failed checks                                                         
+                                                                                
+                                                                                
+        [ ro-crate-1.1_27.1 ] File Data Entity: RECOMMENDED                     
+        `encodingFormat` property:                                              
+                              Check if the File Data Entity has a detailed      
+                              description of encodings through the              
+                              encodingFormat property. The encodingFormat       
+                              property SHOULD be a PRONOM identifier (e.g.,     
+                              application/pdf) or, to add more detail, SHOULD be
+                              linked using a PRONOM to  a Contextual Entity of  
+                              type WebSite (see Adding detailed descriptions of 
+                              encodings).                                       
+         Detected issues                                                        
+         - [Violation on                                                        
+         <./data/5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2         
+         e846f6be03>]: Missing or invalid `encodingFormat` linked to            
+         the `File Data Entity`                                                 
+                                                                                
+                                                                                
+                                                                                
+         - [Violation on                                                        
+         <./data/4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a         
+         27460dd865>]: Missing or invalid `encodingFormat` linked to            
+         the `File Data Entity`                                                 
+                                                                                
+                                                                                
+                                                                                
+         - [Violation on <./main.nf>]: Missing or invalid                       
+         `encodingFormat` linked to the `File Data Entity`                      
+                                                                                
+                                                                                
+                                                                                
+         - [Violation on <./#absent//data/reference.fa>]: Missing or            
+         invalid `encodingFormat` linked to the `File Data Entity`              
+                                                                                
+                                                                                
+                                                                                
+         - [Violation on                                                        
+         <./data/3b09aeb6f5f5336beb205d7f720371bc927cd46c21922e334d47ba         
+         264acb5ba4>]: Missing or invalid `encodingFormat` linked to            
+         the `File Data Entity`                                                 
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                         [profile: Workflow RO-Crate Metadata Specification 1.0]
+     [ workflow-ro-crate-1.0_8 ]: Main Workflow recommended properties          
+                                                                                
+      Main Workflow properties defined as SHOULD                                
+                                                                                
+          Failed checks                                                         
+                                                                                
+                                                                                
+        [ workflow-ro-crate-1.0_8.1 ] Main Workflow Bioschemas                  
+        compliance:                                                             
+                                      The Main Workflow SHOULD comply with      
+                                      Bioschemas ComputationalWorkflow profile  
+                                      version 1.0 or later                      
+         Detected issues                                                        
+         - [Violation on <./main.nf>]: The Main Workflow SHOULD comply          
+         with Bioschemas ComputationalWorkflow profile version 1.0 or           
+         later                                                                  
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                

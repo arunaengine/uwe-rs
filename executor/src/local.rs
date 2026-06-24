@@ -8,14 +8,9 @@ use std::process::Command;
 
 use task_model::TaskSpec;
 
-use crate::manifest::{Collected, ManifestError, parse};
-use crate::wrapper::{EXIT, MANIFEST, ROOT, STDERR, STDIN, STDOUT, wrapper};
-
-/// The folders of a task's scratch directory: the work directory, the control files of the
-/// wrapper, and the inputs at absolute paths, which are mounted where the task sees them.
-const WORK: &str = "work";
-const CONTROL: &str = "control";
-const MOUNTS: &str = "mounts";
+use crate::job::{CONTROL, ExecutorError, Finished, MOUNTS, Staging, WORK};
+use crate::manifest::parse;
+use crate::wrapper::{EXIT, MANIFEST, STDIN, wrapper};
 
 /// The local container executor.
 pub struct LocalContainer {
@@ -23,72 +18,6 @@ pub struct LocalContainer {
     pub engine: String,
     /// Where each task gets its scratch directory.
     pub scratch: PathBuf,
-}
-
-/// A file placed before the task starts.
-#[derive(Clone, Debug)]
-pub struct Staged {
-    /// A path relative to the work directory, or an absolute path inside the container.
-    pub path: String,
-    /// The local file whose content it gets.
-    pub source: PathBuf,
-    pub executable: bool,
-}
-
-/// What an executor places before a task starts.
-#[derive(Clone, Debug, Default)]
-pub struct Staging {
-    pub files: Vec<Staged>,
-    /// Directories to make, like the empty directories of a directory input.
-    pub directories: Vec<String>,
-    /// The local file that the task reads on standard input.
-    pub stdin: Option<PathBuf>,
-}
-
-/// What a task left behind in its scratch directory.
-#[derive(Debug)]
-pub struct Finished {
-    /// The tool's exit code; `None` when the wrapper was killed before it recorded one.
-    pub exit_code: Option<i32>,
-    /// The collected outputs, by the paths the task named them with.
-    pub files: Vec<Collected>,
-    /// The scratch directory, which the caller removes once it has the outputs.
-    pub root: PathBuf,
-}
-
-impl Finished {
-    /// Where an output is on the host: a relative path in the work directory, an absolute one
-    /// where the wrapper copied it.
-    pub fn local_path(&self, path: &str) -> PathBuf {
-        match path.strip_prefix('/') {
-            Some(inside) => self.root.join(CONTROL).join(ROOT).join(inside),
-            None => self.root.join(WORK).join(path),
-        }
-    }
-
-    /// The file that captured standard output.
-    pub fn stdout(&self) -> PathBuf {
-        self.root.join(CONTROL).join(STDOUT)
-    }
-
-    /// The file that captured standard error.
-    pub fn stderr(&self) -> PathBuf {
-        self.root.join(CONTROL).join(STDERR)
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum ExecutorError {
-    #[error("the task has no container image; every task runs in a container")]
-    NoImage,
-    #[error("the task has no command, and the image {0} has no default command")]
-    NoCommand(String),
-    #[error("cannot prepare the task directory: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("{engine} could not run the task: {message}")]
-    Engine { engine: String, message: String },
-    #[error(transparent)]
-    Manifest(#[from] ManifestError),
 }
 
 impl LocalContainer {
@@ -120,13 +49,13 @@ impl LocalContainer {
         for directory in &staging.directories {
             std::fs::create_dir_all(place(directory))?;
         }
-        for file in &staging.files {
-            let target = place(&file.path);
+        for input in &staging.inputs {
+            let target = place(&input.path);
             if let Some(parent) = target.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            std::fs::copy(&file.source, &target)?;
-            if file.executable {
+            std::fs::copy(&input.source, &target)?;
+            if input.executable {
                 std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755))?;
             }
         }

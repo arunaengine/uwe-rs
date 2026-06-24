@@ -5,6 +5,7 @@
 
 mod braces;
 pub mod engine;
+mod job;
 pub mod local;
 pub mod manifest;
 mod pool;
@@ -14,7 +15,7 @@ pub mod wrapper;
 use task_model::TaskSpec;
 
 pub use engine::{ContainerEngine, EngineKind, NoEngine};
-pub use local::{ExecutorError, Finished, Staged, Staging};
+pub use job::{ExecutorError, Finished, Job, Staged, Staging};
 pub use pool::{Pool, Share};
 
 /// Runs tasks, one call per task.

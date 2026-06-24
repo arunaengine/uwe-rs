@@ -39,7 +39,7 @@ impl Executor for Fake {
         std::fs::create_dir_all(finished.root.join("work"))?;
         std::fs::create_dir_all(finished.root.join("control"))?;
         std::fs::write(finished.stdout(), "said\n")?;
-        let input = match staging.files.first() {
+        let input = match staging.inputs.first() {
             Some(file) => std::fs::read_to_string(&file.source)?,
             None => String::new(),
         };
@@ -197,7 +197,7 @@ fn directories_travel_as_one_entry() {
     let staged = runner.executor().staged.borrow();
     let staging = staged.last().expect("a staging");
     let files: Vec<&str> = staging
-        .files
+        .inputs
         .iter()
         .map(|file| file.path.as_str())
         .collect();

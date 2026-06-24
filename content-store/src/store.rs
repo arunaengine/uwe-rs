@@ -10,7 +10,7 @@ use sha2::{Digest as _, Sha256};
 use task_model::{Digest, SpecError, Tree};
 use tokio::io::AsyncReadExt;
 
-use crate::layout;
+use crate::{layout, local};
 
 /// Files are read and uploaded in parts of this size, so they never sit in memory as a whole.
 const PART_SIZE: usize = 8 * 1024 * 1024;
@@ -39,6 +39,14 @@ pub struct S3Options {
     pub prefix: Option<String>,
     pub endpoint: Option<String>,
     pub region: Option<String>,
+}
+
+/// An output of a task attempt in the store: where it is, and its digest and size.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StoredOutput {
+    pub location: String,
+    pub digest: Digest,
+    pub size: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -101,14 +109,52 @@ impl Store {
         Ok(digest)
     }
 
-    /// Hashes a local file, then uploads it in parts unless the store already has its content.
+    /// Hashes a local file, then stores it unless the store already has its content: a local
+    /// store copies it, other stores get it uploaded in parts.
     pub async fn put_file(&self, file: &std::path::Path) -> Result<(Digest, u64), StoreError> {
         let (digest, size) = hash_file(file).await?;
         let location = layout::content(&digest);
-        if !self.operator.exists(&location).await? {
-            self.upload(&location, file).await?;
+        match self.local_path(&location) {
+            Some(target) => local::copy_absent(file, &target).await?,
+            None if !self.operator.exists(&location).await? => {
+                self.upload(&location, file).await?;
+            }
+            None => {}
         }
         Ok((digest, size))
+    }
+
+    /// Stores an output file of a task attempt under its original path and by its content. A
+    /// local store moves the file there and hard-links its content, so nothing is copied; the
+    /// file is gone from where it was. Other stores get it uploaded.
+    pub async fn adopt_output(
+        &self,
+        run: &str,
+        task: &str,
+        attempt: u32,
+        path: &str,
+        file: &std::path::Path,
+    ) -> Result<StoredOutput, StoreError> {
+        let location = layout::output(run, task, attempt, path)?;
+        let (digest, size) = hash_file(file).await?;
+        let content = layout::content(&digest);
+        match (self.local_path(&location), self.local_path(&content)) {
+            (Some(target), Some(stored)) => {
+                local::move_file(file, &target).await?;
+                local::link_absent(&target, &stored).await?;
+            }
+            _ => {
+                self.upload(&location, file).await?;
+                if !self.operator.exists(&content).await? {
+                    self.upload(&content, file).await?;
+                }
+            }
+        }
+        Ok(StoredOutput {
+            location,
+            digest,
+            size,
+        })
     }
 
     /// Uploads a local file in parts to a location.
@@ -241,7 +287,8 @@ impl Store {
     }
 }
 
-async fn hash_file(file: &std::path::Path) -> Result<(Digest, u64), StoreError> {
+/// The digest and size of a local file, read in parts.
+pub async fn hash_file(file: &std::path::Path) -> Result<(Digest, u64), StoreError> {
     let mut reader = tokio::fs::File::open(file).await?;
     let mut hasher = Sha256::new();
     let mut buffer = vec![0; PART_SIZE];

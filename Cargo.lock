@@ -2912,6 +2912,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "run-crate"
+version = "0.1.0"
+dependencies = [
+ "jiff",
+ "run-database",
+ "serde_json",
+ "sha2",
+ "task-model",
+ "tempfile",
+ "thiserror",
+ "workflow-graph",
+]
+
+[[package]]
 name = "run-database"
 version = "0.1.0"
 dependencies = [

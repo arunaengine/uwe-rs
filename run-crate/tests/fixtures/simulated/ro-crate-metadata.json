@@ -1,0 +1,396 @@
+{
+  "@context": [
+    "https://w3id.org/ro/crate/1.1/context",
+    "https://w3id.org/ro/terms/workflow-run/context"
+  ],
+  "@graph": [
+    {
+      "@id": "ro-crate-metadata.json",
+      "@type": "CreativeWork",
+      "about": {
+        "@id": "./"
+      },
+      "conformsTo": [
+        {
+          "@id": "https://w3id.org/ro/crate/1.1"
+        },
+        {
+          "@id": "https://w3id.org/workflowhub/workflow-ro-crate/1.0"
+        }
+      ]
+    },
+    {
+      "@id": "./",
+      "@type": "Dataset",
+      "additionalProperty": {
+        "@id": "#simulated"
+      },
+      "conformsTo": [
+        {
+          "@id": "https://w3id.org/ro/wfrun/process/0.5"
+        },
+        {
+          "@id": "https://w3id.org/ro/wfrun/workflow/0.5"
+        },
+        {
+          "@id": "https://w3id.org/ro/wfrun/provenance/0.5"
+        },
+        {
+          "@id": "https://w3id.org/workflowhub/workflow-ro-crate/1.0"
+        }
+      ],
+      "datePublished": "2026-09-30T09:50:28.142+00:00",
+      "description": "Simulated run: iunctus did not run the tasks. Its simulator made up their output files, so the files, digests and times in this crate are not results of the tools. A run with real data gives the real results. Simulated run fixture-run of the nextflow workflow /work/main.nf by iunctus, with the provenance of each task.",
+      "hasPart": [
+        {
+          "@id": "main.nf"
+        },
+        {
+          "@id": "README.md"
+        },
+        {
+          "@id": "data/3b09aeb6f5f5336beb205d7f720371bc927cd46c21922e334d47ba264acb5ba4"
+        },
+        {
+          "@id": "data/4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+        },
+        {
+          "@id": "data/5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03"
+        }
+      ],
+      "license": {
+        "@id": "#license"
+      },
+      "mainEntity": {
+        "@id": "main.nf"
+      },
+      "mentions": [
+        {
+          "@id": "#run/fixture-run"
+        },
+        {
+          "@id": "#task/1"
+        },
+        {
+          "@id": "#task/2"
+        }
+      ],
+      "name": "Simulated run fixture-run of main.nf"
+    },
+    {
+      "@id": "https://w3id.org/ro/wfrun/process/0.5",
+      "@type": "CreativeWork",
+      "name": "Process Run Crate",
+      "version": "0.5"
+    },
+    {
+      "@id": "https://w3id.org/ro/wfrun/workflow/0.5",
+      "@type": "CreativeWork",
+      "name": "Workflow Run Crate",
+      "version": "0.5"
+    },
+    {
+      "@id": "https://w3id.org/ro/wfrun/provenance/0.5",
+      "@type": "CreativeWork",
+      "name": "Provenance Run Crate",
+      "version": "0.5"
+    },
+    {
+      "@id": "https://w3id.org/workflowhub/workflow-ro-crate/1.0",
+      "@type": "CreativeWork",
+      "name": "Workflow RO-Crate",
+      "version": "1.0"
+    },
+    {
+      "@id": "README.md",
+      "@type": "File",
+      "about": {
+        "@id": "./"
+      },
+      "encodingFormat": "text/markdown",
+      "name": "README.md"
+    },
+    {
+      "@id": "#license",
+      "@type": "CreativeWork",
+      "description": "The user who made this crate did not name a license for it.",
+      "name": "No license given"
+    },
+    {
+      "@id": "#simulated",
+      "@type": "PropertyValue",
+      "description": "Simulated run: iunctus did not run the tasks. Its simulator made up their output files, so the files, digests and times in this crate are not results of the tools. A run with real data gives the real results.",
+      "name": "simulated",
+      "value": "true"
+    },
+    {
+      "@id": "main.nf",
+      "@type": [
+        "File",
+        "SoftwareSourceCode",
+        "ComputationalWorkflow",
+        "HowTo"
+      ],
+      "hasPart": [
+        {
+          "@id": "#tool/UPPER"
+        },
+        {
+          "@id": "#tool/COUNT"
+        }
+      ],
+      "name": "main.nf",
+      "programmingLanguage": {
+        "@id": "https://w3id.org/workflowhub/workflow-ro-crate#nextflow"
+      },
+      "step": [
+        {
+          "@id": "#step/UPPER"
+        },
+        {
+          "@id": "#step/COUNT"
+        }
+      ],
+      "url": "file:///work/main.nf",
+      "version": "4f3c2a1"
+    },
+    {
+      "@id": "https://w3id.org/workflowhub/workflow-ro-crate#nextflow",
+      "@type": "ComputerLanguage",
+      "identifier": {
+        "@id": "https://www.nextflow.io/"
+      },
+      "name": "Nextflow",
+      "url": {
+        "@id": "https://www.nextflow.io/"
+      }
+    },
+    {
+      "@id": "#step/UPPER",
+      "@type": "HowToStep",
+      "name": "UPPER",
+      "position": "0",
+      "workExample": {
+        "@id": "#tool/UPPER"
+      }
+    },
+    {
+      "@id": "#tool/UPPER",
+      "@type": "SoftwareApplication",
+      "name": "UPPER",
+      "url": {
+        "@id": "main.nf"
+      },
+      "version": "4f3c2a1"
+    },
+    {
+      "@id": "#step/COUNT",
+      "@type": "HowToStep",
+      "name": "COUNT",
+      "position": "1",
+      "workExample": {
+        "@id": "#tool/COUNT"
+      }
+    },
+    {
+      "@id": "#tool/COUNT",
+      "@type": "SoftwareApplication",
+      "name": "COUNT",
+      "url": {
+        "@id": "main.nf"
+      },
+      "version": "4f3c2a1"
+    },
+    {
+      "@id": "https://github.com/arunaengine/iunctus",
+      "@type": "SoftwareApplication",
+      "description": "Runs Nextflow, Snakemake, CWL and Argo workflows in containers",
+      "name": "iunctus",
+      "softwareVersion": "0.1.0",
+      "url": "https://github.com/arunaengine/iunctus"
+    },
+    {
+      "@id": "#engine/fixture-run",
+      "@type": "OrganizeAction",
+      "actionStatus": "http://schema.org/CompletedActionStatus",
+      "description": "iunctus run main.nf --greeting hello",
+      "endTime": "2026-09-30T09:50:28.138+00:00",
+      "instrument": {
+        "@id": "https://github.com/arunaengine/iunctus"
+      },
+      "name": "Run of iunctus 0.1.0",
+      "object": [
+        {
+          "@id": "#control/UPPER"
+        },
+        {
+          "@id": "#control/COUNT"
+        }
+      ],
+      "result": {
+        "@id": "#run/fixture-run"
+      },
+      "startTime": "2026-09-30T09:50:28.137+00:00"
+    },
+    {
+      "@id": "#run/fixture-run",
+      "@type": "CreateAction",
+      "actionStatus": "http://schema.org/CompletedActionStatus",
+      "description": "Simulated run: iunctus did not run the tasks. Its simulator made up their output files, so the files, digests and times in this crate are not results of the tools. A run with real data gives the real results.",
+      "endTime": "2026-09-30T09:50:28.138+00:00",
+      "instrument": {
+        "@id": "main.nf"
+      },
+      "name": "Simulated run fixture-run of main.nf",
+      "object": [
+        {
+          "@id": "data/5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03"
+        },
+        {
+          "@id": "#absent//data/reference.fa"
+        },
+        {
+          "@id": "#parameter/greeting"
+        }
+      ],
+      "result": {
+        "@id": "data/4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+      },
+      "startTime": "2026-09-30T09:50:28.137+00:00"
+    },
+    {
+      "@id": "#parameter/greeting",
+      "@type": "PropertyValue",
+      "name": "greeting",
+      "value": "hello"
+    },
+    {
+      "@id": "#control/UPPER",
+      "@type": "ControlAction",
+      "instrument": {
+        "@id": "#step/UPPER"
+      },
+      "name": "orchestrate UPPER",
+      "object": {
+        "@id": "#task/1"
+      }
+    },
+    {
+      "@id": "#control/COUNT",
+      "@type": "ControlAction",
+      "instrument": {
+        "@id": "#step/COUNT"
+      },
+      "name": "orchestrate COUNT",
+      "object": {
+        "@id": "#task/2"
+      }
+    },
+    {
+      "@id": "#task/1",
+      "@type": "CreateAction",
+      "actionStatus": "http://schema.org/CompletedActionStatus",
+      "containerImage": {
+        "@id": "#image/0"
+      },
+      "description": "Simulated, not run. /bin/bash -ue .command.sh\n\ntr a-z A-Z < in.txt > upper.txt",
+      "endTime": "2026-09-30T09:50:28.138+00:00",
+      "environment": {
+        "@id": "#task/1/environment/LC_ALL"
+      },
+      "instrument": {
+        "@id": "#tool/UPPER"
+      },
+      "name": "UPPER (1)",
+      "object": [
+        {
+          "@id": "data/5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03"
+        },
+        {
+          "@id": "#absent//data/reference.fa"
+        }
+      ],
+      "result": {
+        "@id": "data/3b09aeb6f5f5336beb205d7f720371bc927cd46c21922e334d47ba264acb5ba4"
+      },
+      "startTime": "2026-09-30T09:50:28.138+00:00"
+    },
+    {
+      "@id": "#task/1/environment/LC_ALL",
+      "@type": "PropertyValue",
+      "name": "LC_ALL",
+      "value": "C"
+    },
+    {
+      "@id": "#task/2",
+      "@type": "CreateAction",
+      "actionStatus": "http://schema.org/CompletedActionStatus",
+      "containerImage": {
+        "@id": "#image/0"
+      },
+      "description": "Simulated, not run. /bin/bash -ue .command.sh\n\ntr a-z A-Z < in.txt > count.txt",
+      "endTime": "2026-09-30T09:50:28.138+00:00",
+      "environment": {
+        "@id": "#task/2/environment/LC_ALL"
+      },
+      "instrument": {
+        "@id": "#tool/COUNT"
+      },
+      "name": "COUNT (2)",
+      "object": {
+        "@id": "data/3b09aeb6f5f5336beb205d7f720371bc927cd46c21922e334d47ba264acb5ba4"
+      },
+      "result": {
+        "@id": "data/4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+      },
+      "startTime": "2026-09-30T09:50:28.138+00:00"
+    },
+    {
+      "@id": "#task/2/environment/LC_ALL",
+      "@type": "PropertyValue",
+      "name": "LC_ALL",
+      "value": "C"
+    },
+    {
+      "@id": "#image/0",
+      "@type": "ContainerImage",
+      "additionalType": {
+        "@id": "https://w3id.org/ro/terms/workflow-run#DockerImage"
+      },
+      "name": "library/debian",
+      "registry": "docker.io",
+      "tag": "stable-slim"
+    },
+    {
+      "@id": "data/5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03",
+      "@type": "File",
+      "alternateName": "in.txt",
+      "contentSize": "6",
+      "name": "in.txt",
+      "sha256": "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03"
+    },
+    {
+      "@id": "#absent//data/reference.fa",
+      "@type": "File",
+      "alternateName": "reference.fa",
+      "description": "Not in this crate: /data/reference.fa was not there when the crate was made.",
+      "name": "reference.fa"
+    },
+    {
+      "@id": "data/3b09aeb6f5f5336beb205d7f720371bc927cd46c21922e334d47ba264acb5ba4",
+      "@type": "File",
+      "alternateName": "in.txt",
+      "contentSize": "6",
+      "name": "in.txt",
+      "sha256": "3b09aeb6f5f5336beb205d7f720371bc927cd46c21922e334d47ba264acb5ba4"
+    },
+    {
+      "@id": "data/4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "@type": "File",
+      "alternateName": "count.txt",
+      "contentSize": "2",
+      "name": "count.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    }
+  ]
+}

@@ -1,4 +1,7 @@
-//! Exports a small simulated run and checks its crate.
+//! Exports a small simulated run and compares its crate with the fixture crate in
+//! `tests/fixtures/simulated/`, which the Provenance Run Crate validator checked
+//! (`tests/fixtures/validate.sh` writes the fixture again and records the validator's report in
+//! `tests/fixtures/validation.txt`).
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -136,7 +139,13 @@ fn a_simulated_run_becomes_a_provenance_run_crate() {
     let database = record(directory.path());
     let workflow = directory.path().join("main.nf");
     std::fs::write(&workflow, WORKFLOW).expect("writes the workflow");
-    let output = directory.path().join("crate");
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simulated");
+    let output = if std::env::var_os("RUN_CRATE_WRITE_FIXTURE").is_some() {
+        let _ = std::fs::remove_dir_all(&fixture);
+        fixture.clone()
+    } else {
+        directory.path().join("crate")
+    };
     let options = Options {
         workflow,
         license: None,
@@ -185,4 +194,12 @@ fn a_simulated_run_becomes_a_provenance_run_crate() {
     assert_eq!(run["object"].as_array().map(Vec::len), Some(3));
     let count = format!("data/{}", task_model::Digest::sha256(b"1\n").hex());
     assert_eq!(run["result"]["@id"], count.as_str());
+
+    let recorded = std::fs::read_to_string(fixture.join(METADATA)).expect("reads the fixture");
+    assert_eq!(
+        metadata,
+        normalized(&recorded),
+        "the crate differs from the fixture; run run-crate/tests/fixtures/validate.sh to write \
+         and check it again"
+    );
 }

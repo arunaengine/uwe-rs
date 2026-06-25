@@ -4,9 +4,13 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
-use executor::{ContainerEngine, ExecutorError, LocalContainer, Pool, Staged, Staging};
-use task_model::{Digest, FORMAT, FileKind, Image, InputFile, OutputRule, TaskSpec};
+use executor::{
+    Backend, ContainerEngine, ExecutorError, Finished, Job, LocalContainer, Pool, Staged, Staging,
+};
+use task_model::{Digest, FORMAT, FileKind, Image, InputFile, OutputRule, Placement, TaskSpec};
+use tokio_util::sync::CancellationToken;
 
 fn spec(image: Option<&str>, outputs: &[&str]) -> TaskSpec {
     TaskSpec {
@@ -30,14 +34,6 @@ fn spec(image: Option<&str>, outputs: &[&str]) -> TaskSpec {
     }
 }
 
-fn executor(root: &std::path::Path) -> LocalContainer {
-    LocalContainer {
-        engine: ContainerEngine::docker("docker"),
-        scratch: root.join("scratch"),
-        pool: Pool::new(2, 1 << 30),
-    }
-}
-
 fn staging(inputs: Vec<Staged>) -> Staging {
     Staging {
         inputs,
@@ -45,16 +41,57 @@ fn staging(inputs: Vec<Staged>) -> Staging {
     }
 }
 
-fn stage(root: &std::path::Path, name: &str, text: &str) -> Staged {
-    let source = root.join(format!("source-{}", name.replace('/', "-")));
+/// An input with this text, linked from a folder of its own.
+fn stage(root: &Path, name: &str, text: &str) -> Staged {
+    let folder = root.join(format!("source-{}", name.replace('/', "-")));
+    std::fs::create_dir_all(&folder).expect("makes the folder");
+    let source = folder.join("content");
     std::fs::write(&source, text).expect("writes the input");
     Staged {
         path: name.to_owned(),
         source,
         directory: false,
-        copy: true,
+        copy: false,
         executable: false,
     }
+}
+
+fn executor(root: &Path) -> LocalContainer {
+    LocalContainer {
+        engine: ContainerEngine::docker("docker"),
+        scratch: root.join("scratch"),
+        pool: Pool::new(2, 1 << 30),
+    }
+}
+
+/// Runs a job to its end.
+fn run(
+    executor: &LocalContainer,
+    name: &str,
+    spec: &TaskSpec,
+    staging: &Staging,
+) -> Result<Finished, ExecutorError> {
+    run_with(executor, name, spec, staging, &Placement::default())
+}
+
+fn run_with(
+    executor: &LocalContainer,
+    name: &str,
+    spec: &TaskSpec,
+    staging: &Staging,
+    placement: &Placement,
+) -> Result<Finished, ExecutorError> {
+    let job = Job {
+        name,
+        spec,
+        staging,
+        placement,
+    };
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("a runtime");
+    runtime.block_on(Backend::run(executor, job, &CancellationToken::new()))
 }
 
 #[test]
@@ -70,13 +107,13 @@ fn runs_a_task_in_a_container() {
         ),
         stage(root.path(), "in/data.txt", "hello\n"),
     ]);
-    let finished = executor
-        .run(
-            "task-1",
-            &spec(Some("debian:stable-slim"), &["out.txt"]),
-            &staged,
-        )
-        .expect("runs");
+    let finished = run(
+        &executor,
+        "task-1",
+        &spec(Some("debian:stable-slim"), &["out.txt"]),
+        &staged,
+    )
+    .expect("runs");
     assert_eq!(finished.exit_code, Some(0));
     let paths: Vec<&str> = finished
         .files
@@ -105,27 +142,26 @@ fn reports_failures() {
         ".command.sh",
         "echo broken >&2\nexit 4\n",
     )]);
-    let finished = executor
-        .run(
-            "task-2",
-            &spec(Some("debian:stable-slim"), &["out.txt"]),
-            &staged,
-        )
-        .expect("runs");
+    let finished = run(
+        &executor,
+        "task-2",
+        &spec(Some("debian:stable-slim"), &["out.txt"]),
+        &staged,
+    )
+    .expect("runs");
     assert_eq!(finished.exit_code, Some(4));
     let error = std::fs::read_to_string(finished.stderr()).expect("reads the log");
     assert_eq!(error, "broken\n");
-    let missing = executor
-        .run("task-3", &spec(None, &[]), &Staging::default())
-        .unwrap_err();
+    let missing = run(&executor, "task-3", &spec(None, &[]), &Staging::default()).unwrap_err();
     assert!(matches!(missing, ExecutorError::NoImage));
-    let error = executor
-        .run(
-            "task-4",
-            &spec(Some("iunctus.invalid/none:0"), &[]),
-            &staged,
-        )
-        .unwrap_err();
+    let error = run(
+        &executor,
+        "task-4",
+        &spec(Some("iunctus.invalid/none:0"), &[]),
+        &staged,
+    )
+    .unwrap_err();
+    assert!(error.retryable(), "{error}");
     assert!(
         error
             .to_string()
@@ -161,7 +197,7 @@ fn runs_in_the_workdir_with_absolute_paths_and_standard_input() {
         directories: Vec::new(),
         stdin: Some(stdin),
     };
-    let finished = executor.run("task-5", &task, &staged).expect("runs");
+    let finished = run(&executor, "task-5", &task, &staged).expect("runs");
     assert_eq!(finished.exit_code, Some(0));
     let read = |path: &str| std::fs::read_to_string(finished.local_path(path)).expect("reads");
     assert_eq!(read("here.txt"), "/var/spool/task\n");
@@ -170,23 +206,58 @@ fn runs_in_the_workdir_with_absolute_paths_and_standard_input() {
     // Without arguments, the task runs the image's default command, `bash` for Debian.
     let mut default = spec(Some("debian:stable-slim"), &[]);
     default.arguments.clear();
-    let finished = executor
-        .run("task-6", &default, &Staging::default())
-        .expect("runs");
+    let finished = run(&executor, "task-6", &default, &Staging::default()).expect("runs");
     assert_eq!(finished.exit_code, Some(0));
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn linked_inputs_are_read_only_and_limits_hold() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let executor = executor(root.path());
+    let mut task = spec(Some("debian:stable-slim"), &["out.txt"]);
+    task.arguments = vec![
+        "/bin/bash".into(),
+        "-c".into(),
+        "cat in.txt > out.txt; echo changed >> in.txt || echo refused >> out.txt".into(),
+    ];
+    let staged = staging(vec![stage(root.path(), "in.txt", "kept\n")]);
+    let finished = run(&executor, "task-7", &task, &staged).expect("runs");
+    assert_eq!(finished.exit_code, Some(0));
+    let read = std::fs::read_to_string(finished.local_path("out.txt")).expect("reads");
+    assert_eq!(read, "kept\nrefused\n");
+    let source = &staged.inputs[0].source;
+    assert_eq!(std::fs::read_to_string(source).expect("reads"), "kept\n");
+    // A task that runs longer than its time is stopped, and says so.
+    task.arguments = vec!["/bin/bash".into(), "-c".into(), "sleep 30".into()];
+    let placement = Placement {
+        cpus: 1,
+        memory_bytes: Some(64 << 20),
+        time_seconds: Some(1),
+        ..Placement::default()
+    };
+    let finished =
+        run_with(&executor, "task-8", &task, &Staging::default(), &placement).expect("runs");
+    assert_ne!(finished.exit_code, Some(0));
+    let said = std::fs::read_to_string(finished.stderr()).expect("reads");
+    assert!(said.contains("longer than its time"), "{said}");
 }
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
 fn pins_images_to_digests() {
     let executor = executor(&std::env::temp_dir());
-    let pinned = executor
-        .pin("debian:stable-slim")
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("a runtime");
+    let pinned = runtime
+        .block_on(Backend::pin(&executor, "debian:stable-slim"))
         .expect("inspects")
         .expect("a digest");
     assert!(pinned.starts_with("debian@sha256:"), "{pinned}");
-    assert_eq!(
-        executor.pin(&pinned).expect("keeps it"),
-        Some(pinned.clone())
-    );
+    let again = runtime
+        .block_on(Backend::pin(&executor, &pinned))
+        .expect("keeps it");
+    assert_eq!(again, Some(pinned.clone()));
 }

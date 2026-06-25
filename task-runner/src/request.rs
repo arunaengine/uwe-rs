@@ -13,36 +13,54 @@ use task_model::{
 };
 use workflow_graph::{Input, Task};
 
-use crate::runner::segment;
+use crate::runner::{Prepared, Source, segment};
 use crate::{Runner, RunnerError};
 
 /// The longest step name that an identity keeps, so that it stays a short path segment.
 const STEP_LENGTH: usize = 100;
 
 impl<B: Backend> Runner<B> {
-    /// The request of a task whose image is `image`, pinned to a digest where possible. The
-    /// inputs and the standard input of the task go into the store.
+    /// The request of a task whose image is `image`, pinned to a digest where possible, for
+    /// its first attempt. The standard input and literal inputs go into the store; local
+    /// inputs are hashed, and stored too when the runner imports inputs.
     pub async fn request(
         &self,
         task: &Task,
         image: Option<String>,
-    ) -> Result<TaskRequest, RunnerError> {
+    ) -> Result<Prepared, RunnerError> {
         let mut inputs = Vec::new();
+        let mut sources = Vec::new();
         for input in &task.inputs {
-            inputs.push(self.input(input).await?);
+            let (file, source) = self.input(input).await?;
+            inputs.push(file);
+            sources.push(source);
         }
         let stdin = match &task.stdin {
             Some(text) => Some(self.import_bytes(text.as_bytes()).await?),
             None => None,
         };
-        Ok(request(task, image, inputs, stdin))
+        Ok(Prepared {
+            request: request(task, image, inputs, stdin),
+            sources,
+        })
     }
 
-    /// An input in the store: literal content, a local directory or a local file.
-    async fn input(&self, input: &Input) -> Result<InputFile, RunnerError> {
+    /// An input by its digest, and where its content comes from: literal content, a local
+    /// directory or a local file. A local path is taken with its links resolved, so that a
+    /// container that sees the folder of the path sees the content.
+    async fn input(&self, input: &Input) -> Result<(InputFile, Source), RunnerError> {
         let source = Path::new(&input.source);
-        let (kind, digest) = match &input.content {
-            Some(content) => (FileKind::File, self.import_bytes(content.as_bytes()).await?),
+        let local = || -> Result<Source, RunnerError> {
+            Ok(Source::Local(std::fs::canonicalize(source).map_err(
+                |error| std::io::Error::new(error.kind(), format!("{}: {error}", source.display())),
+            )?))
+        };
+        let (kind, digest, from) = match &input.content {
+            Some(content) => (
+                FileKind::File,
+                self.import_bytes(content.as_bytes()).await?,
+                Source::Content,
+            ),
             None if input.source.contains("://") => {
                 return Err(RunnerError::Remote(input.source.clone()));
             }
@@ -50,19 +68,29 @@ impl<B: Backend> Runner<B> {
             None if input.directory && input.source.is_empty() => (
                 FileKind::Directory,
                 self.import_tree(&Tree::default()).await?,
+                Source::Stored,
             ),
-            None if input.directory || source.is_dir() => {
-                (FileKind::Directory, self.import_directory(source).await?.0)
+            None if input.directory || source.is_dir() => (
+                FileKind::Directory,
+                self.import_directory(source).await?.0,
+                local()?,
+            ),
+            None => {
+                let (digest, _) = match self.settings.import_inputs {
+                    true => self.import(source).await?,
+                    false => content_store::hash_file(source).await?,
+                };
+                (FileKind::File, digest, local()?)
             }
-            None => (FileKind::File, self.import(source).await?.0),
         };
-        Ok(InputFile {
+        let file = InputFile {
             path: input.path.clone(),
             kind,
             digest,
             executable: false,
             writable: false,
-        })
+        };
+        Ok((file, from))
     }
 }
 

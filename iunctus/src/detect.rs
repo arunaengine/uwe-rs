@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use workflow_graph::Language;
 
@@ -58,6 +58,31 @@ pub fn language(target: &Path) -> Result<Language, String> {
     found.ok_or(format!(
         "cannot tell the language of {shown}; choose one with `-lang`"
     ))
+}
+
+/// The main file of a workflow: the target itself when it is a file; in a project directory,
+/// `main.nf` for Nextflow and the Snakefile for Snakemake, else the first file with the
+/// language's extension.
+pub fn main_file(target: &Path, language: Language) -> Option<PathBuf> {
+    if target.is_file() {
+        return Some(target.to_owned());
+    }
+    let (names, extension): (&[&str], &str) = match language {
+        Language::Nextflow => (&["main.nf"], "nf"),
+        Language::Snakemake => (&SNAKEFILES, "smk"),
+        Language::Cwl | Language::Argo => return None,
+    };
+    if let Some(name) = names.iter().find(|name| target.join(name).is_file()) {
+        return Some(target.join(name));
+    }
+    let mut files: Vec<PathBuf> = std::fs::read_dir(target)
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file() && path.extension().is_some_and(|found| found == extension))
+        .collect();
+    files.sort();
+    files.into_iter().next()
 }
 
 /// Whether a directory holds a file with the extension.
@@ -168,5 +193,29 @@ mod tests {
     #[test]
     fn missing_targets_are_errors() {
         assert!(language(Path::new("/no/such/workflow.nf")).is_err());
+    }
+
+    #[test]
+    fn main_files_of_projects() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        let project = root.path();
+        std::fs::create_dir_all(project.join("workflow")).expect("makes a directory");
+        std::fs::write(project.join("workflow/Snakefile"), "").expect("writes a file");
+        let found = main_file(project, Language::Snakemake);
+        assert_eq!(found, Some(project.join("workflow/Snakefile")));
+        std::fs::write(project.join("b.nf"), "").expect("writes a file");
+        std::fs::write(project.join("a.nf"), "").expect("writes a file");
+        assert_eq!(
+            main_file(project, Language::Nextflow),
+            Some(project.join("a.nf"))
+        );
+        std::fs::write(project.join("main.nf"), "").expect("writes a file");
+        assert_eq!(
+            main_file(project, Language::Nextflow),
+            Some(project.join("main.nf"))
+        );
+        let file = project.join("main.nf");
+        assert_eq!(main_file(&file, Language::Nextflow), Some(file.clone()));
+        assert_eq!(main_file(project, Language::Cwl), None);
     }
 }

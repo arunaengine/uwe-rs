@@ -125,6 +125,19 @@ CREATE TABLE edges (
 );
 CREATE INDEX edges_run ON edges (run, target);
 
+CREATE TABLE markers (
+    run         TEXT NOT NULL,
+    -- The task whose outputs decide the tasks after it: a run with real data can have more
+    -- or fewer tasks there than a simulated run.
+    task        INTEGER NOT NULL,
+    -- `content`, `wildcard` or `checkpoint`.
+    kind        TEXT NOT NULL,
+    -- Why, in one short sentence.
+    reason      TEXT NOT NULL,
+    FOREIGN KEY (run, task) REFERENCES tasks (run, id)
+);
+CREATE INDEX markers_run ON markers (run, task);
+
 CREATE TABLE logs (
     run         TEXT NOT NULL,
     task        INTEGER NOT NULL,
@@ -146,7 +159,7 @@ CREATE TABLE events (
     -- Counts from 1 in each run, in the order the engine saw the events.
     sequence    INTEGER NOT NULL,
     time        INTEGER NOT NULL,
-    -- `requested`, `started` or `finished` for a task, `ended` for the run.
+    -- `requested`, `started`, `finished` or `marked` for a task, `ended` for the run.
     kind        TEXT NOT NULL,
     task        INTEGER,
     attempt     INTEGER,

@@ -8,8 +8,8 @@ use std::sync::Mutex;
 use content_store::Store;
 use executor::manifest::Collected;
 use executor::{Backend, ExecutorError, Finished, Job, Staging};
-use task_model::{FileKind, TaskRequest};
-use task_runner::{Runner, TaskResult};
+use task_model::FileKind;
+use task_runner::{Prepared, Runner, Settings, TaskResult};
 use tokio_util::sync::CancellationToken;
 use workflow_graph::{Input, Task, TaskId};
 
@@ -76,15 +76,11 @@ fn runner(root: &Path, exit_code: i32) -> Runner<Fake> {
         staged: Mutex::new(Vec::new()),
         exit_code,
     };
-    Runner::new(store, fake, "run1", &root.join("downloads"))
-}
-
-fn block_on<T>(future: impl std::future::Future<Output = T>) -> T {
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("a runtime")
-        .block_on(future)
+    let settings = Settings {
+        downloads: root.join("downloads"),
+        import_inputs: false,
+    };
+    Runner::new(store, fake, "run1", settings)
 }
 
 /// Task 1 of step `P`, which reads `input.txt` and writes `out.txt`.
@@ -108,12 +104,20 @@ fn task(root: &Path, command: &str) -> Task {
     }
 }
 
-fn request(runner: &Runner<Fake>, task: &Task) -> TaskRequest {
+fn block_on<T>(future: impl std::future::Future<Output = T>) -> T {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("a runtime")
+        .block_on(future)
+}
+
+fn request(runner: &Runner<Fake>, task: &Task) -> Prepared {
     block_on(runner.request(task, Some("debian@sha256:00".into()))).expect("a request")
 }
 
-fn execute(runner: &Runner<Fake>, request: &TaskRequest) -> TaskResult {
-    block_on(runner.execute(request, &CancellationToken::new())).expect("runs")
+fn execute(runner: &Runner<Fake>, prepared: &Prepared) -> TaskResult {
+    block_on(runner.execute(prepared, &CancellationToken::new())).expect("runs")
 }
 
 #[test]
@@ -138,6 +142,18 @@ fn reuses_shared_results() {
     let third = execute(&runner, &request(&runner, &task(root.path(), "b")));
     assert!(!third.reused);
     assert_eq!(runner.backend().runs.lock().unwrap().len(), 2);
+    // The input was linked where it is, not copied into the store.
+    let staged = runner.backend().staged.lock().unwrap();
+    let source = &staged[0].inputs[0].source;
+    assert_eq!(
+        source,
+        &root.path().canonicalize().unwrap().join("input.txt")
+    );
+    assert!(!staged[0].inputs[0].copy);
+    drop(staged);
+    // Images are pinned once per run.
+    let pinned = block_on(runner.pin("debian")).expect("pins");
+    assert_eq!(pinned, "debian@sha256:00");
     // Each run removes its scratch directory.
     assert!(!root.path().join("scratch/run1-P-1-1").exists());
 }
@@ -189,23 +205,25 @@ fn directories_travel_as_one_entry() {
         content: None,
     });
     second.stdin = Some("text\n".into());
-    let request = request(&runner, &second);
-    let kinds: Vec<FileKind> = request.spec.inputs.iter().map(|input| input.kind).collect();
+    let prepared = request(&runner, &second);
+    let spec = &prepared.request.spec;
+    let kinds: Vec<FileKind> = spec.inputs.iter().map(|input| input.kind).collect();
     assert_eq!(
         kinds,
         [FileKind::File, FileKind::Directory, FileKind::Directory]
     );
-    assert_eq!(request.spec.inputs[1].digest, db.digest);
-    execute(&runner, &request);
+    assert_eq!(spec.inputs[1].digest, db.digest);
+    execute(&runner, &prepared);
     let staged = runner.backend().staged.lock().unwrap();
     let staging = staged.last().expect("a staging");
-    let files: Vec<&str> = staging
+    let inputs: Vec<(&str, bool)> = staging
         .inputs
         .iter()
-        .map(|file| file.path.as_str())
+        .map(|input| (input.path.as_str(), input.directory))
         .collect();
-    assert_eq!(files, ["input.txt", "in/a.txt"]);
-    assert_eq!(staging.directories, ["in", "in/empty", "made"]);
+    // The directory made by the task is shown as itself; the one the workflow makes is made.
+    assert_eq!(inputs, [("input.txt", false), ("in", true)]);
+    assert_eq!(staging.directories, ["made"]);
     let stdin = staging.stdin.as_ref().expect("a standard input");
     assert_eq!(std::fs::read_to_string(stdin).expect("reads"), "text\n");
 }

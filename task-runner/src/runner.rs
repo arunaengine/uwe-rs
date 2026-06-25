@@ -2,14 +2,16 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
 use content_store::{Store, StoreError};
 use executor::{Backend, ExecutorError, Job};
 use serde::{Deserialize, Serialize};
 use task_model::{Digest, ReuseScope, SpecError, TaskRequest, Tree, TreeEntry};
+use tokio::sync::OnceCell;
 
 use tokio_util::sync::CancellationToken;
 
@@ -85,13 +87,45 @@ impl RunnerError {
     }
 }
 
+/// How a runner treats the inputs of tasks.
+#[derive(Clone, Debug)]
+pub struct Settings {
+    /// Where inputs of a remote store are downloaded before a task.
+    pub downloads: PathBuf,
+    /// Whether local input files are copied into the store, as tasks on another machine
+    /// need. A backend on this machine reads them where they are, so their digests are enough.
+    pub import_inputs: bool,
+}
+
+/// Where the content of an input comes from, for staging.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Source {
+    /// A local file or directory, which a backend on this machine shows as it is.
+    Local(PathBuf),
+    /// Literal content of the workflow, which the task gets a copy of.
+    Content,
+    /// Only the store has it.
+    Stored,
+}
+
+/// A task request, with where the content of each input comes from.
+#[derive(Clone, Debug)]
+pub struct Prepared {
+    pub request: TaskRequest,
+    /// One per input of the specification, in its order.
+    pub(crate) sources: Vec<Source>,
+}
+
+/// An image pinned to its digest once per run, or `None` without one.
+type Pinned = OnceCell<Option<String>>;
+
 /// The runner of a run. Its clones share the backend, so that tasks run at the same time.
 pub struct Runner<B> {
     pub(crate) store: Store,
     backend: Arc<B>,
     run: String,
-    /// Where inputs of a remote store are downloaded before a task.
-    pub(crate) downloads: PathBuf,
+    pub(crate) settings: Settings,
+    pinned: Arc<Mutex<HashMap<String, Arc<Pinned>>>>,
 }
 
 impl<B> Clone for Runner<B> {
@@ -100,20 +134,35 @@ impl<B> Clone for Runner<B> {
             store: self.store.clone(),
             backend: self.backend.clone(),
             run: self.run.clone(),
-            downloads: self.downloads.clone(),
+            settings: self.settings.clone(),
+            pinned: self.pinned.clone(),
         }
     }
 }
 
 impl<B: Backend> Runner<B> {
     /// A runner for the run `run`, whose outputs go to `runs/<run>/` in the store.
-    pub fn new(store: Store, backend: B, run: &str, downloads: &Path) -> Self {
+    pub fn new(store: Store, backend: B, run: &str, settings: Settings) -> Self {
         Runner {
             store,
             backend: Arc::new(backend),
             run: run.to_owned(),
-            downloads: downloads.to_owned(),
+            settings,
+            pinned: Arc::default(),
         }
+    }
+
+    /// The image pinned to its digest where it has one, found once per run.
+    pub async fn pin(&self, image: &str) -> Result<String, RunnerError> {
+        let cell = {
+            let mut pinned = self
+                .pinned
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner());
+            pinned.entry(image.to_owned()).or_default().clone()
+        };
+        let digest = cell.get_or_try_init(|| self.backend.pin(image)).await?;
+        Ok(digest.clone().unwrap_or_else(|| image.to_owned()))
     }
 
     /// Stores a local file by its content, for tasks that take it as input.
@@ -129,10 +178,34 @@ impl<B: Backend> Runner<B> {
             .await?)
     }
 
-    /// Stores the files of a local directory by their content, and the manifest of the
-    /// directory; the result has the digest of the manifest and the size of the files.
+    /// The manifest of a local directory, which is stored, and the size of its files. The
+    /// files are stored by their content too when the runner imports inputs.
     pub async fn import_directory(&self, directory: &Path) -> Result<(Digest, u64), RunnerError> {
-        self.put_directory(directory).await
+        let mut entries = Vec::new();
+        for found in outputs::walk(directory).await? {
+            entries.push(match found {
+                Found::File {
+                    relative,
+                    path,
+                    executable,
+                } => {
+                    let (digest, size) = match self.settings.import_inputs {
+                        true => self.store.put_file(&path).await?,
+                        false => content_store::hash_file(&path).await?,
+                    };
+                    TreeEntry::File {
+                        path: relative,
+                        digest,
+                        size,
+                        executable,
+                    }
+                }
+                Found::EmptyDirectory { relative } => TreeEntry::EmptyDirectory { path: relative },
+            });
+        }
+        let tree = Tree { entries };
+        let size = tree.size();
+        Ok((self.store.put_tree(&tree).await?, size))
     }
 
     /// Stores a directory manifest, like the one of an empty directory.
@@ -164,9 +237,10 @@ impl<B: Backend> Runner<B> {
     /// task stops when `cancel` fires.
     pub async fn execute(
         &self,
-        request: &TaskRequest,
+        prepared: &Prepared,
         cancel: &CancellationToken,
     ) -> Result<TaskResult, RunnerError> {
+        let request = &prepared.request;
         let key = request.spec.cache_key()?;
         let namespace = request.spec.namespace.as_str();
         if request.scope == ReuseScope::Shared
@@ -186,7 +260,7 @@ impl<B: Backend> Runner<B> {
             });
         }
         let task = segment(&request.identity);
-        let staging = self.stage(&request.spec).await?;
+        let staging = self.stage(prepared).await?;
         let name = format!("{}-{task}-{}", self.run, request.attempt);
         let job = Job {
             name: &name,
@@ -214,33 +288,6 @@ impl<B: Backend> Runner<B> {
             self.store.put_entry(namespace, &key, bytes.into()).await?;
         }
         Ok(result)
-    }
-
-    /// Stores the files of a local directory by their content and returns the digest of its
-    /// manifest and the size of its files.
-    async fn put_directory(&self, directory: &Path) -> Result<(Digest, u64), RunnerError> {
-        let mut entries = Vec::new();
-        for found in outputs::walk(directory).await? {
-            entries.push(match found {
-                Found::File {
-                    relative,
-                    path,
-                    executable,
-                } => {
-                    let (digest, size) = self.store.put_file(&path).await?;
-                    TreeEntry::File {
-                        path: relative,
-                        digest,
-                        size,
-                        executable,
-                    }
-                }
-                Found::EmptyDirectory { relative } => TreeEntry::EmptyDirectory { path: relative },
-            });
-        }
-        let tree = Tree { entries };
-        let size = tree.size();
-        Ok((self.store.put_tree(&tree).await?, size))
     }
 }
 

@@ -6,10 +6,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bytes::Bytes;
-use content_store::{Store, StoreError, layout};
-use executor::{Backend, ExecutorError, Job, Staged, Staging};
+use content_store::{Store, StoreError};
+use executor::{Backend, ExecutorError, Job};
 use serde::{Deserialize, Serialize};
-use task_model::{Digest, FileKind, ReuseScope, SpecError, TaskRequest, TaskSpec, Tree, TreeEntry};
+use task_model::{Digest, ReuseScope, SpecError, TaskRequest, Tree, TreeEntry};
 
 use tokio_util::sync::CancellationToken;
 
@@ -87,11 +87,11 @@ impl RunnerError {
 
 /// The runner of a run. Its clones share the backend, so that tasks run at the same time.
 pub struct Runner<B> {
-    store: Store,
+    pub(crate) store: Store,
     backend: Arc<B>,
     run: String,
     /// Where inputs of a remote store are downloaded before a task.
-    downloads: PathBuf,
+    pub(crate) downloads: PathBuf,
 }
 
 impl<B> Clone for Runner<B> {
@@ -214,72 +214,6 @@ impl<B: Backend> Runner<B> {
             self.store.put_entry(namespace, &key, bytes.into()).await?;
         }
         Ok(result)
-    }
-
-    /// What the executor places for a specification: each input file, the files and empty
-    /// directories of each directory input, and the standard input.
-    async fn stage(&self, spec: &TaskSpec) -> Result<Staging, RunnerError> {
-        let mut staging = Staging::default();
-        for input in &spec.inputs {
-            if input.kind == FileKind::File {
-                staging.inputs.push(Staged {
-                    path: input.path.clone(),
-                    source: self.local_content(&input.digest).await?,
-                    directory: false,
-                    copy: true,
-                    executable: input.executable,
-                });
-                continue;
-            }
-            let base = input.path.trim_end_matches('/');
-            staging.directories.push(base.to_owned());
-            let tree = self.store.get_tree(&input.digest).await?;
-            for entry in tree.entries {
-                let path = entry.path();
-                let escapes = path.starts_with('/') || path.split('/').any(|part| part == "..");
-                if path.is_empty() || escapes {
-                    return Err(RunnerError::Tree(input.path.clone()));
-                }
-                let path = format!("{base}/{path}");
-                match entry {
-                    TreeEntry::File {
-                        digest, executable, ..
-                    } => staging.inputs.push(Staged {
-                        path,
-                        source: self.local_content(&digest).await?,
-                        directory: false,
-                        copy: true,
-                        executable,
-                    }),
-                    TreeEntry::EmptyDirectory { .. } => staging.directories.push(path),
-                }
-            }
-        }
-        if let Some(digest) = &spec.stdin {
-            staging.stdin = Some(self.local_content(digest).await?);
-        }
-        Ok(staging)
-    }
-
-    /// A local file with the content of a digest: the store's own file for a local store, else
-    /// a download.
-    async fn local_content(&self, digest: &Digest) -> Result<PathBuf, RunnerError> {
-        if let Some(path) = self.store.local_path(&layout::content(digest)) {
-            return Ok(path);
-        }
-        let path = self.downloads.join(digest.hex());
-        if !tokio::fs::try_exists(&path).await? {
-            tokio::fs::create_dir_all(&self.downloads).await?;
-            let bytes = self.store.get_content(digest).await?;
-            // A name of this process first, then a rename, so that another run that downloads
-            // the same content never reads half a file.
-            let part = self
-                .downloads
-                .join(format!("{}.{}", digest.hex(), std::process::id()));
-            tokio::fs::write(&part, bytes).await?;
-            tokio::fs::rename(&part, &path).await?;
-        }
-        Ok(path)
     }
 
     /// Stores the files of a local directory by their content and returns the digest of its

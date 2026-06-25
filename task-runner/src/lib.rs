@@ -6,6 +6,7 @@
 mod outputs;
 mod request;
 mod runner;
+mod staging;
 
 pub use request::{identity, request};
 pub use runner::{Runner, RunnerError, StoredFile, TaskResult};

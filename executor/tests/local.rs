@@ -5,8 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use executor::local::LocalContainer;
-use executor::{ExecutorError, Staged, Staging};
+use executor::{ContainerEngine, ExecutorError, LocalContainer, Pool, Staged, Staging};
 use task_model::{Digest, FORMAT, FileKind, Image, InputFile, OutputRule, TaskSpec};
 
 fn spec(image: Option<&str>, outputs: &[&str]) -> TaskSpec {
@@ -28,6 +27,14 @@ fn spec(image: Option<&str>, outputs: &[&str]) -> TaskSpec {
             })
             .collect(),
         stdin: None,
+    }
+}
+
+fn executor(root: &std::path::Path) -> LocalContainer {
+    LocalContainer {
+        engine: ContainerEngine::docker("docker"),
+        scratch: root.join("scratch"),
+        pool: Pool::new(2, 1 << 30),
     }
 }
 
@@ -54,10 +61,7 @@ fn stage(root: &std::path::Path, name: &str, text: &str) -> Staged {
 #[ignore = "needs Docker and the debian:stable-slim image"]
 fn runs_a_task_in_a_container() {
     let root = tempfile::tempdir().expect("a temporary directory");
-    let executor = LocalContainer {
-        engine: "docker".into(),
-        scratch: root.path().join("scratch"),
-    };
+    let executor = executor(root.path());
     let staged = staging(vec![
         stage(
             root.path(),
@@ -95,10 +99,7 @@ fn runs_a_task_in_a_container() {
 #[ignore = "needs Docker and the debian:stable-slim image"]
 fn reports_failures() {
     let root = tempfile::tempdir().expect("a temporary directory");
-    let executor = LocalContainer {
-        engine: "docker".into(),
-        scratch: root.path().join("scratch"),
-    };
+    let executor = executor(root.path());
     let staged = staging(vec![stage(
         root.path(),
         ".command.sh",
@@ -137,10 +138,7 @@ fn reports_failures() {
 #[ignore = "needs Docker and the debian:stable-slim image"]
 fn runs_in_the_workdir_with_absolute_paths_and_standard_input() {
     let root = tempfile::tempdir().expect("a temporary directory");
-    let executor = LocalContainer {
-        engine: "docker".into(),
-        scratch: root.path().join("scratch"),
-    };
+    let executor = executor(root.path());
     let mut task = spec(Some("debian:stable-slim"), &["here.txt", "/tmp/out/"]);
     task.workdir = Some("/var/spool/task".into());
     task.arguments = vec![
@@ -181,10 +179,7 @@ fn runs_in_the_workdir_with_absolute_paths_and_standard_input() {
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
 fn pins_images_to_digests() {
-    let executor = LocalContainer {
-        engine: "docker".into(),
-        scratch: std::env::temp_dir(),
-    };
+    let executor = executor(&std::env::temp_dir());
     let pinned = executor
         .pin("debian:stable-slim")
         .expect("inspects")

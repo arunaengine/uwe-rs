@@ -199,7 +199,7 @@ fn executor(arguments: &Arguments, run: &str, verbose: bool) -> Result<Box<dyn E
         }
         "local" => {
             let store = (arguments.store.clone()).unwrap_or_else(|| cache.join("store"));
-            let mut executor = local::Local::new(&store, &engine(), &scratch, run)
+            let mut executor = local::Local::new(&store, &scratch, run)
                 .map_err(|message| failure(format!("iunctus: {message}")))?;
             executor.verbose = verbose;
             let default_image = arguments.default_image.clone();

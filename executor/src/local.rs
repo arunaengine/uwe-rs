@@ -8,17 +8,22 @@ use std::process::Command;
 
 use task_model::TaskSpec;
 
+use crate::engine::ContainerEngine;
+use crate::image;
 use crate::job::{CONTROL, ExecutorError, Finished, Staging, WORK};
 use crate::manifest::parse;
+use crate::pool::Pool;
 use crate::stage::place;
 use crate::wrapper::{EXIT, MANIFEST, wrapper};
 
 /// The local container executor.
+#[derive(Debug)]
 pub struct LocalContainer {
-    /// The container engine command, `docker` or `podman`.
-    pub engine: String,
+    pub engine: ContainerEngine,
     /// Where each task gets its scratch directory.
     pub scratch: PathBuf,
+    /// The CPUs and memory that tasks share.
+    pub pool: Pool,
 }
 
 impl LocalContainer {
@@ -48,7 +53,7 @@ impl LocalContainer {
         let script = control.join("wrapper.sh");
         std::fs::write(&script, wrapper(&spec, &inside, &text(&control)))?;
         let owner = std::fs::metadata(&root)?;
-        let mut command = Command::new(&self.engine);
+        let mut command = Command::new(&self.engine.program);
         command
             .args(["run", "--rm", "--entrypoint", "/bin/bash"])
             .args(["--user", &format!("{}:{}", owner.uid(), owner.gid())])
@@ -67,12 +72,12 @@ impl LocalContainer {
         }
         command.arg(&image.reference).arg(text(&script));
         let output = command.output().map_err(|error| ExecutorError::Engine {
-            engine: self.engine.clone(),
+            engine: self.engine.program.clone(),
             message: error.to_string(),
         })?;
         if !output.status.success() {
             return Err(ExecutorError::Engine {
-                engine: self.engine.clone(),
+                engine: self.engine.program.clone(),
                 message: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
             });
         }
@@ -87,83 +92,24 @@ impl LocalContainer {
 
     /// The default command of an image: its entrypoint, then its command.
     fn default_command(&self, reference: &str) -> Result<Vec<String>, ExecutorError> {
-        let format = "{{json .Config.Entrypoint}}\n{{json .Config.Cmd}}";
-        let engine_error = |message: String| ExecutorError::Engine {
-            engine: self.engine.clone(),
-            message,
-        };
-        let output = Command::new(&self.engine)
-            .args(["image", "inspect", "--format", format, reference])
-            .output()
-            .map_err(|error| engine_error(error.to_string()))?;
-        if !output.status.success() {
-            return Err(engine_error(
-                String::from_utf8_lossy(&output.stderr).trim().to_owned(),
-            ));
-        }
-        let mut command = Vec::new();
-        for line in String::from_utf8_lossy(&output.stdout).lines() {
-            let part: Option<Vec<String>> =
-                serde_json::from_str(line).map_err(|error| engine_error(error.to_string()))?;
-            command.extend(part.unwrap_or_default());
-        }
-        if command.is_empty() {
-            return Err(ExecutorError::NoCommand(reference.to_owned()));
-        }
-        Ok(command)
+        block_on(image::default_command(&self.engine, reference))
     }
-}
 
-impl LocalContainer {
     /// The image pinned to its digest, like `debian@sha256:...`, pulling it first when it is
     /// not local. `None` for an image without a registry digest, such as one built locally.
     pub fn pin(&self, reference: &str) -> Result<Option<String>, ExecutorError> {
-        if reference.contains("@sha256:") {
-            return Ok(Some(reference.to_owned()));
-        }
-        let inspect = |engine: &str| {
-            Command::new(engine)
-                .args([
-                    "image",
-                    "inspect",
-                    "--format",
-                    "{{json .RepoDigests}}",
-                    reference,
-                ])
-                .output()
-        };
-        let engine_error = |message: String| ExecutorError::Engine {
-            engine: self.engine.clone(),
-            message,
-        };
-        let mut output = inspect(&self.engine).map_err(|error| engine_error(error.to_string()))?;
-        if !output.status.success() {
-            let pull = Command::new(&self.engine)
-                .args(["pull", "--quiet", reference])
-                .output()
-                .map_err(|error| engine_error(error.to_string()))?;
-            if !pull.status.success() {
-                return Err(engine_error(
-                    String::from_utf8_lossy(&pull.stderr).trim().to_owned(),
-                ));
-            }
-            output = inspect(&self.engine).map_err(|error| engine_error(error.to_string()))?;
-        }
-        // The digests look like `["debian@sha256:..."]`; the repository of the first is kept.
-        let digests = String::from_utf8_lossy(&output.stdout);
-        let first = digests
-            .split('"')
-            .nth(1)
-            .filter(|digest| digest.contains("@sha256:"));
-        Ok(first.map(|digest| {
-            let hash = digest.split_once('@').map_or(digest, |(_, hash)| hash);
-            let name = reference
-                .rsplit_once(':')
-                .filter(|(_, tag)| !tag.contains('/'));
-            let name = name.map_or(reference, |(name, _)| name);
-            format!("{name}@{hash}")
-        }))
+        block_on(image::pin(&self.engine, reference))
     }
+}
+
+/// Runs a future to its end on a runtime of its own, until the task runner runs on Tokio.
+fn block_on<T>(
+    future: impl std::future::Future<Output = Result<T, ExecutorError>>,
+) -> Result<T, ExecutorError> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?
+        .block_on(future)
 }
 
 fn text(path: &Path) -> String {

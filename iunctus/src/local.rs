@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use content_store::Store;
-use executor::local::LocalContainer;
+use executor::{ContainerEngine, LocalContainer, Pool};
 use task_model::Digest;
 use task_runner::{Runner, RunnerError};
 use workflow_graph::{ExecuteError, Executor, Outcome, OutputFile, Task};
@@ -21,12 +21,15 @@ pub struct Local {
 }
 
 impl Local {
-    /// An executor whose results go to the store and whose tasks run in `scratch`.
-    pub fn new(store: &Path, engine: &str, scratch: &Path, run: &str) -> Result<Self, String> {
+    /// An executor whose results go to the store and whose tasks run in `scratch`, with the
+    /// container engine of this machine.
+    pub fn new(store: &Path, scratch: &Path, run: &str) -> Result<Self, String> {
+        let engine = ContainerEngine::find().map_err(|error| error.to_string())?;
         let store = Store::local(store).map_err(|error| error.to_string())?;
         let executor = LocalContainer {
-            engine: engine.to_owned(),
+            engine,
             scratch: scratch.to_owned(),
+            pool: Pool::of_this_machine(),
         };
         let runner = Runner::new(store, executor, run, &scratch.join("downloads"))
             .map_err(|error| error.to_string())?;

@@ -14,14 +14,34 @@ pub mod process;
 mod stage;
 pub mod wrapper;
 
+use std::future::Future;
+
 use task_model::TaskSpec;
+use tokio_util::sync::CancellationToken;
 
 pub use engine::{ContainerEngine, EngineKind, NoEngine};
 pub use job::{ExecutorError, Finished, Job, Staged, Staging};
 pub use local::LocalContainer;
 pub use pool::{Pool, Share};
 
-/// Runs tasks, one call per task.
+/// Runs the attempts of tasks in containers: on this machine, on a TES server or on a cluster.
+pub trait Backend: Send + Sync + 'static {
+    /// The image pinned to its digest, like `debian@sha256:...`; `None` for an image without
+    /// one, such as one built locally.
+    fn pin(
+        &self,
+        image: &str,
+    ) -> impl Future<Output = Result<Option<String>, ExecutorError>> + Send;
+
+    /// Runs one attempt of a task with its inputs in place, and stops it when `cancel` fires.
+    fn run(
+        &self,
+        job: Job<'_>,
+        cancel: &CancellationToken,
+    ) -> impl Future<Output = Result<Finished, ExecutorError>> + Send;
+}
+
+/// Runs tasks, one call per task, until the task runner runs on Tokio.
 pub trait Executor {
     /// Runs a task in a scratch directory called `name`, a name no other task uses, with the
     /// staged files in place.

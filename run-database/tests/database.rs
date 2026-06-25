@@ -86,6 +86,11 @@ fn record(path: &Path, directory: &Path) -> Result<(), DatabaseError> {
         ..outcome(2, directory.join("never.txt"), "")
     };
     recorder.finished(&failed, 1, false);
+    recorder.marked(
+        TaskId(1),
+        "content",
+        "the workflow read made.txt while it planned",
+    );
     recorder.requested(&task(3, "LATER", Vec::new()), &[]);
     recorder.ended(Some("task USE (2) failed"));
     recorder.close()
@@ -131,11 +136,12 @@ fn a_run_is_read_back_with_its_logs_and_events() {
         "requested",
         "started",
         "finished",
+        "marked",
         "requested",
         "ended",
     ];
     assert_eq!(kinds, expected);
-    assert_eq!(database.events("run-1", 7, 100).expect("lists").len(), 1);
+    assert_eq!(database.events("run-1", 8, 100).expect("lists").len(), 1);
 }
 
 #[test]
@@ -167,6 +173,10 @@ fn tasks_are_read_back_with_their_files_and_edges() {
     assert_eq!(detail.outputs.len(), 1);
     // The output of the failed task does not exist, so its size is unknown.
     assert_eq!(detail.outputs[0].size, None);
+
+    let markers = database.markers("run-1").expect("lists markers");
+    assert_eq!(markers.len(), 1);
+    assert_eq!((markers[0].task, markers[0].kind.as_str()), (1, "content"));
 
     let edges = database.edges("run-1").expect("lists edges");
     assert_eq!((edges[0].source, edges[0].target), (1, 2));

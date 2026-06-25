@@ -257,6 +257,20 @@ impl Recorder {
         });
     }
 
+    /// The driver found that the tasks after a task depend on its outputs, so that a run with
+    /// real data can have more or fewer tasks there. `kind` is `content`, `wildcard` or
+    /// `checkpoint`.
+    pub fn marked(&mut self, task: TaskId, kind: &str, reason: &str) {
+        self.write(|connection, run, sequence| {
+            connection
+                .prepare_cached(
+                    "INSERT INTO markers (run, task, kind, reason) VALUES (?1, ?2, ?3, ?4)",
+                )?
+                .execute(params![run, task.0, kind, reason])?;
+            event(connection, run, sequence, "marked", Some(task), None)
+        });
+    }
+
     /// The run ended, with the error that stopped it if one did. Tasks that did not finish are
     /// marked as stopped, and everything is committed.
     pub fn ended(&mut self, error: Option<&str>) {

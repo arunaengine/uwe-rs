@@ -59,6 +59,14 @@ pub struct EdgeRow {
     pub path: Option<String>,
 }
 
+/// A point where real data can change the tasks after a task.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct MarkerRow {
+    pub task: u64,
+    pub kind: String,
+    pub reason: String,
+}
+
 /// Everything about one task.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct TaskDetail {
@@ -169,6 +177,23 @@ impl Database {
             .query_map([location], |row| Ok((row.get(8)?, file_row(row)?)))?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(files)
+    }
+
+    /// The markers of a run, in the order they were found.
+    pub fn markers(&self, run: &str) -> Result<Vec<MarkerRow>, DatabaseError> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT task, kind, reason FROM markers WHERE run = ?1 ORDER BY rowid")?;
+        let markers = statement
+            .query_map([run], |row| {
+                Ok(MarkerRow {
+                    task: row.get(0)?,
+                    kind: row.get(1)?,
+                    reason: row.get(2)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(markers)
     }
 
     pub fn edges(&self, run: &str) -> Result<Vec<EdgeRow>, DatabaseError> {

@@ -7,13 +7,16 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use content_store::Store;
-use executor::{ContainerEngine, LocalContainer, Pool};
+use executor::{Backend, ContainerEngine, LocalContainer, Pool};
 use task_model::Digest;
 use task_runner::{Runner, RunnerError};
+use tokio_util::sync::CancellationToken;
 use workflow_graph::{ExecuteError, Executor, Outcome, OutputFile, Task};
 
 pub struct Local {
     runner: Runner<LocalContainer>,
+    /// Runs the runner until the engine runs on Tokio.
+    runtime: tokio::runtime::Runtime,
     /// The digest of each image, or `None` for an image without one, as found once per run.
     pinned: HashMap<String, Option<String>>,
     /// Prints one line per task when set.
@@ -31,10 +34,14 @@ impl Local {
             scratch: scratch.to_owned(),
             pool: Pool::of_this_machine(),
         };
-        let runner = Runner::new(store, executor, run, &scratch.join("downloads"))
+        let runner = Runner::new(store, executor, run, &scratch.join("downloads"));
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
             .map_err(|error| error.to_string())?;
         Ok(Local {
             runner,
+            runtime,
             pinned: HashMap::new(),
             verbose: true,
         })
@@ -43,10 +50,8 @@ impl Local {
     /// The image pinned to its digest when it has one.
     fn pin(&mut self, image: &str) -> Result<String, String> {
         if !self.pinned.contains_key(image) {
-            let digest = self
-                .runner
-                .executor()
-                .pin(image)
+            let digest = (self.runtime)
+                .block_on(self.runner.backend().pin(image))
                 .map_err(|error| error.to_string())?;
             self.pinned.insert(image.to_owned(), digest);
         }
@@ -66,16 +71,16 @@ impl Executor for Local {
             })?),
             None => None,
         };
-        let request = self.runner.request(task, image).map_err(failed)?;
-        let result = self.runner.execute(&request).map_err(failed)?;
+        let runtime = &self.runtime;
+        let request = (runtime.block_on(self.runner.request(task, image))).map_err(failed)?;
+        let cancel = CancellationToken::new();
+        let result = (runtime.block_on(self.runner.execute(&request, &cancel))).map_err(failed)?;
         if self.verbose {
             let state = if result.reused { "cached" } else { "done" };
             println!("[{state}] {}", task.name);
         }
         let text = |digest: &Option<Digest>| match digest {
-            Some(digest) => self
-                .runner
-                .read_content(digest)
+            Some(digest) => (runtime.block_on(self.runner.read_content(digest)))
                 .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
                 .map_err(failed),
             None => Ok(String::new()),

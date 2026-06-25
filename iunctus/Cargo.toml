@@ -24,6 +24,8 @@ sha2.workspace = true
 snakemake-runtime.workspace = true
 task-model.workspace = true
 task-runner.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
 workflow-graph.workspace = true
 
 [dev-dependencies]

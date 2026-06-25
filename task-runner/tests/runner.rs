@@ -2,14 +2,15 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::cell::RefCell;
 use std::path::Path;
+use std::sync::Mutex;
 
 use content_store::Store;
 use executor::manifest::Collected;
-use executor::{Executor, ExecutorError, Finished, Staging};
-use task_model::{FileKind, TaskRequest, TaskSpec};
-use task_runner::Runner;
+use executor::{Backend, ExecutorError, Finished, Job, Staging};
+use task_model::{FileKind, TaskRequest};
+use task_runner::{Runner, TaskResult};
+use tokio_util::sync::CancellationToken;
 use workflow_graph::{Input, Task, TaskId};
 
 /// Writes each output pattern as a file with the first staged file's content, or for a pattern
@@ -17,33 +18,36 @@ use workflow_graph::{Input, Task, TaskId};
 /// remembers each run and what it staged.
 struct Fake {
     scratch: std::path::PathBuf,
-    runs: RefCell<Vec<String>>,
-    staged: RefCell<Vec<Staging>>,
+    runs: Mutex<Vec<String>>,
+    staged: Mutex<Vec<Staging>>,
     exit_code: i32,
 }
 
-impl Executor for Fake {
-    fn run(
+impl Backend for Fake {
+    async fn pin(&self, image: &str) -> Result<Option<String>, ExecutorError> {
+        Ok(Some(format!("{image}@sha256:00")))
+    }
+
+    async fn run(
         &self,
-        name: &str,
-        spec: &TaskSpec,
-        staging: &Staging,
+        job: Job<'_>,
+        _cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
-        self.runs.borrow_mut().push(name.to_owned());
-        self.staged.borrow_mut().push(staging.clone());
+        self.runs.lock().unwrap().push(job.name.to_owned());
+        self.staged.lock().unwrap().push(job.staging.clone());
         let mut finished = Finished {
             exit_code: Some(self.exit_code),
             files: Vec::new(),
-            root: self.scratch.join(name),
+            root: self.scratch.join(job.name),
         };
         std::fs::create_dir_all(finished.root.join("work"))?;
         std::fs::create_dir_all(finished.root.join("control"))?;
         std::fs::write(finished.stdout(), "said\n")?;
-        let input = match staging.inputs.first() {
+        let input = match job.staging.inputs.first() {
             Some(file) => std::fs::read_to_string(&file.source)?,
             None => String::new(),
         };
-        for rule in &spec.outputs {
+        for rule in &job.spec.outputs {
             let path = rule.pattern.trim_end_matches('/').to_owned();
             let local = finished.local_path(&path);
             let directory = rule.pattern.ends_with('/');
@@ -68,11 +72,19 @@ fn runner(root: &Path, exit_code: i32) -> Runner<Fake> {
     let store = Store::local(&root.join("store")).expect("a store");
     let fake = Fake {
         scratch: root.join("scratch"),
-        runs: RefCell::new(Vec::new()),
-        staged: RefCell::new(Vec::new()),
+        runs: Mutex::new(Vec::new()),
+        staged: Mutex::new(Vec::new()),
         exit_code,
     };
-    Runner::new(store, fake, "run1", &root.join("downloads")).expect("a runner")
+    Runner::new(store, fake, "run1", &root.join("downloads"))
+}
+
+fn block_on<T>(future: impl std::future::Future<Output = T>) -> T {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("a runtime")
+        .block_on(future)
 }
 
 /// Task 1 of step `P`, which reads `input.txt` and writes `out.txt`.
@@ -97,18 +109,18 @@ fn task(root: &Path, command: &str) -> Task {
 }
 
 fn request(runner: &Runner<Fake>, task: &Task) -> TaskRequest {
-    runner
-        .request(task, Some("debian@sha256:00".into()))
-        .expect("a request")
+    block_on(runner.request(task, Some("debian@sha256:00".into()))).expect("a request")
+}
+
+fn execute(runner: &Runner<Fake>, request: &TaskRequest) -> TaskResult {
+    block_on(runner.execute(request, &CancellationToken::new())).expect("runs")
 }
 
 #[test]
 fn reuses_shared_results() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);
-    let first = runner
-        .execute(&request(&runner, &task(root.path(), "a")))
-        .expect("runs");
+    let first = execute(&runner, &request(&runner, &task(root.path(), "a")));
     assert!(!first.reused);
     let [output] = first.files.as_slice() else {
         panic!("one output")
@@ -116,21 +128,16 @@ fn reuses_shared_results() {
     assert_eq!(output.location, "runs/run1/P-1/1/work/out.txt");
     let stored = runner.local_path(&output.location).expect("a local store");
     assert_eq!(std::fs::read_to_string(stored).expect("reads"), "data\n");
-    let said = runner
-        .read_content(first.stdout.as_ref().expect("a standard output"))
+    let said = block_on(runner.read_content(first.stdout.as_ref().expect("a standard output")))
         .expect("reads");
     assert_eq!(said, "said\n");
-    let second = runner
-        .execute(&request(&runner, &task(root.path(), "a")))
-        .expect("runs");
+    let second = execute(&runner, &request(&runner, &task(root.path(), "a")));
     assert!(second.reused);
     assert_eq!(second.files, first.files);
     assert_eq!(second.stdout, first.stdout);
-    let third = runner
-        .execute(&request(&runner, &task(root.path(), "b")))
-        .expect("runs");
+    let third = execute(&runner, &request(&runner, &task(root.path(), "b")));
     assert!(!third.reused);
-    assert_eq!(runner.executor().runs.borrow().len(), 2);
+    assert_eq!(runner.backend().runs.lock().unwrap().len(), 2);
     // Each run removes its scratch directory.
     assert!(!root.path().join("scratch/run1-P-1-1").exists());
 }
@@ -139,13 +146,9 @@ fn reuses_shared_results() {
 fn failures_are_not_cached() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 3);
-    let first = runner
-        .execute(&request(&runner, &task(root.path(), "a")))
-        .expect("runs");
+    let first = execute(&runner, &request(&runner, &task(root.path(), "a")));
     assert_eq!(first.exit_code, Some(3));
-    let second = runner
-        .execute(&request(&runner, &task(root.path(), "a")))
-        .expect("runs");
+    let second = execute(&runner, &request(&runner, &task(root.path(), "a")));
     assert!(!second.reused);
 }
 
@@ -155,7 +158,7 @@ fn directories_travel_as_one_entry() {
     let runner = runner(root.path(), 0);
     let mut first = task(root.path(), "a");
     first.outputs = vec!["db/".into(), "/tmp/result.txt".into()];
-    let result = runner.execute(&request(&runner, &first)).expect("runs");
+    let result = execute(&runner, &request(&runner, &first));
     let [db, absolute] = result.files.as_slice() else {
         panic!("two outputs")
     };
@@ -193,8 +196,8 @@ fn directories_travel_as_one_entry() {
         [FileKind::File, FileKind::Directory, FileKind::Directory]
     );
     assert_eq!(request.spec.inputs[1].digest, db.digest);
-    runner.execute(&request).expect("runs");
-    let staged = runner.executor().staged.borrow();
+    execute(&runner, &request);
+    let staged = runner.backend().staged.lock().unwrap();
     let staging = staged.last().expect("a staging");
     let files: Vec<&str> = staging
         .inputs
@@ -213,6 +216,6 @@ fn remote_inputs_are_not_supported_yet() {
     let runner = runner(root.path(), 0);
     let mut remote = task(root.path(), "a");
     remote.inputs[0].source = "s3://bucket/input.txt".into();
-    let error = runner.request(&remote, None).unwrap_err();
+    let error = block_on(runner.request(&remote, None)).unwrap_err();
     assert!(error.unsupported(), "{error}");
 }

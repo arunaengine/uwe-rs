@@ -3,12 +3,15 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use bytes::Bytes;
 use content_store::{Store, StoreError, layout};
-use executor::{Executor, ExecutorError, Staged, Staging};
+use executor::{Backend, ExecutorError, Job, Staged, Staging};
 use serde::{Deserialize, Serialize};
 use task_model::{Digest, FileKind, ReuseScope, SpecError, TaskRequest, TaskSpec, Tree, TreeEntry};
+
+use tokio_util::sync::CancellationToken;
 
 use crate::outputs::{self, Found};
 
@@ -75,73 +78,81 @@ impl RunnerError {
     pub fn unsupported(&self) -> bool {
         matches!(self, RunnerError::Remote(_))
     }
+
+    /// Whether the machine failed rather than the task, so that another attempt may work.
+    pub fn retryable(&self) -> bool {
+        matches!(self, RunnerError::Executor(error) if error.retryable())
+    }
 }
 
-pub struct Runner<E> {
+/// The runner of a run. Its clones share the backend, so that tasks run at the same time.
+pub struct Runner<B> {
     store: Store,
-    executor: E,
-    runtime: tokio::runtime::Runtime,
+    backend: Arc<B>,
     run: String,
     /// Where inputs of a remote store are downloaded before a task.
     downloads: PathBuf,
 }
 
-impl<E: Executor> Runner<E> {
+impl<B> Clone for Runner<B> {
+    fn clone(&self) -> Self {
+        Runner {
+            store: self.store.clone(),
+            backend: self.backend.clone(),
+            run: self.run.clone(),
+            downloads: self.downloads.clone(),
+        }
+    }
+}
+
+impl<B: Backend> Runner<B> {
     /// A runner for the run `run`, whose outputs go to `runs/<run>/` in the store.
-    pub fn new(
-        store: Store,
-        executor: E,
-        run: &str,
-        downloads: &Path,
-    ) -> Result<Self, RunnerError> {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()?;
-        Ok(Self {
+    pub fn new(store: Store, backend: B, run: &str, downloads: &Path) -> Self {
+        Runner {
             store,
-            executor,
-            runtime,
+            backend: Arc::new(backend),
             run: run.to_owned(),
             downloads: downloads.to_owned(),
-        })
+        }
     }
 
     /// Stores a local file by its content, for tasks that take it as input.
-    pub fn import(&self, file: &Path) -> Result<(Digest, u64), RunnerError> {
-        Ok(self.runtime.block_on(self.store.put_file(file))?)
+    pub async fn import(&self, file: &Path) -> Result<(Digest, u64), RunnerError> {
+        Ok(self.store.put_file(file).await?)
     }
 
     /// Stores bytes by their content, like a task script.
-    pub fn import_bytes(&self, bytes: &[u8]) -> Result<Digest, RunnerError> {
+    pub async fn import_bytes(&self, bytes: &[u8]) -> Result<Digest, RunnerError> {
         Ok(self
-            .runtime
-            .block_on(self.store.put_content(Bytes::copy_from_slice(bytes)))?)
+            .store
+            .put_content(Bytes::copy_from_slice(bytes))
+            .await?)
     }
 
     /// Stores the files of a local directory by their content, and the manifest of the
     /// directory; the result has the digest of the manifest and the size of the files.
-    pub fn import_directory(&self, directory: &Path) -> Result<(Digest, u64), RunnerError> {
-        self.put_directory(directory)
+    pub async fn import_directory(&self, directory: &Path) -> Result<(Digest, u64), RunnerError> {
+        self.put_directory(directory).await
     }
 
     /// Stores a directory manifest, like the one of an empty directory.
-    pub fn import_tree(&self, tree: &Tree) -> Result<Digest, RunnerError> {
-        Ok(self.runtime.block_on(self.store.put_tree(tree))?)
+    pub async fn import_tree(&self, tree: &Tree) -> Result<Digest, RunnerError> {
+        Ok(self.store.put_tree(tree).await?)
     }
 
     /// Reads an object of the store, like a stored output.
-    pub fn read(&self, location: &str) -> Result<Bytes, RunnerError> {
-        Ok(self.runtime.block_on(self.store.get_object(location))?)
+    pub async fn read(&self, location: &str) -> Result<Bytes, RunnerError> {
+        Ok(self.store.get_object(location).await?)
     }
 
     /// Reads content by its digest, like a captured standard output.
-    pub fn read_content(&self, digest: &Digest) -> Result<Bytes, RunnerError> {
-        Ok(self.runtime.block_on(self.store.get_content(digest))?)
+    pub async fn read_content(&self, digest: &Digest) -> Result<Bytes, RunnerError> {
+        Ok(self.store.get_content(digest).await?)
     }
 
-    /// The executor that runs the tasks.
-    pub fn executor(&self) -> &E {
-        &self.executor
+    /// The backend that runs the tasks.
+    pub fn backend(&self) -> &B {
+        &self.backend
     }
 
     /// Where an object is on disk, for a local store.
@@ -149,14 +160,17 @@ impl<E: Executor> Runner<E> {
         self.store.local_path(location)
     }
 
-    /// Runs a request, unless the cache has a result for it that the reuse scope allows.
-    pub fn execute(&self, request: &TaskRequest) -> Result<TaskResult, RunnerError> {
+    /// Runs a request, unless the cache has a result for it that the reuse scope allows. The
+    /// task stops when `cancel` fires.
+    pub async fn execute(
+        &self,
+        request: &TaskRequest,
+        cancel: &CancellationToken,
+    ) -> Result<TaskResult, RunnerError> {
         let key = request.spec.cache_key()?;
         let namespace = request.spec.namespace.as_str();
         if request.scope == ReuseScope::Shared
-            && let Some(bytes) = self
-                .runtime
-                .block_on(self.store.get_entry(namespace, &key))?
+            && let Some(bytes) = self.store.get_entry(namespace, &key).await?
         {
             let entry: Entry =
                 serde_json::from_slice(&bytes).map_err(|error| RunnerError::Entry {
@@ -172,17 +186,18 @@ impl<E: Executor> Runner<E> {
             });
         }
         let task = segment(&request.identity);
-        let staging = self.stage(&request.spec)?;
+        let staging = self.stage(&request.spec).await?;
         let name = format!("{}-{task}-{}", self.run, request.attempt);
-        let finished = self.executor.run(&name, &request.spec, &staging)?;
-        let stored = self.runtime.block_on(outputs::store_outputs(
-            &self.store,
-            &self.run,
-            &finished,
-            &task,
-            request.attempt,
-        ));
-        std::fs::remove_dir_all(&finished.root)?;
+        let job = Job {
+            name: &name,
+            spec: &request.spec,
+            staging: &staging,
+            placement: &request.placement,
+        };
+        let finished = self.backend.run(job, cancel).await?;
+        let stored =
+            outputs::store_outputs(&self.store, &self.run, &finished, &task, request.attempt).await;
+        tokio::fs::remove_dir_all(&finished.root).await?;
         let result = stored?;
         if result.exit_code == Some(0) && request.scope != ReuseScope::None {
             let entry = Entry {
@@ -196,21 +211,20 @@ impl<E: Executor> Runner<E> {
                 key: key.clone(),
                 message: error.to_string(),
             })?;
-            self.runtime
-                .block_on(self.store.put_entry(namespace, &key, bytes.into()))?;
+            self.store.put_entry(namespace, &key, bytes.into()).await?;
         }
         Ok(result)
     }
 
     /// What the executor places for a specification: each input file, the files and empty
     /// directories of each directory input, and the standard input.
-    fn stage(&self, spec: &TaskSpec) -> Result<Staging, RunnerError> {
+    async fn stage(&self, spec: &TaskSpec) -> Result<Staging, RunnerError> {
         let mut staging = Staging::default();
         for input in &spec.inputs {
             if input.kind == FileKind::File {
                 staging.inputs.push(Staged {
                     path: input.path.clone(),
-                    source: self.local_content(&input.digest)?,
+                    source: self.local_content(&input.digest).await?,
                     directory: false,
                     copy: true,
                     executable: input.executable,
@@ -219,7 +233,7 @@ impl<E: Executor> Runner<E> {
             }
             let base = input.path.trim_end_matches('/');
             staging.directories.push(base.to_owned());
-            let tree = self.runtime.block_on(self.store.get_tree(&input.digest))?;
+            let tree = self.store.get_tree(&input.digest).await?;
             for entry in tree.entries {
                 let path = entry.path();
                 let escapes = path.starts_with('/') || path.split('/').any(|part| part == "..");
@@ -232,7 +246,7 @@ impl<E: Executor> Runner<E> {
                         digest, executable, ..
                     } => staging.inputs.push(Staged {
                         path,
-                        source: self.local_content(&digest)?,
+                        source: self.local_content(&digest).await?,
                         directory: false,
                         copy: true,
                         executable,
@@ -242,44 +256,44 @@ impl<E: Executor> Runner<E> {
             }
         }
         if let Some(digest) = &spec.stdin {
-            staging.stdin = Some(self.local_content(digest)?);
+            staging.stdin = Some(self.local_content(digest).await?);
         }
         Ok(staging)
     }
 
     /// A local file with the content of a digest: the store's own file for a local store, else
     /// a download.
-    fn local_content(&self, digest: &Digest) -> Result<PathBuf, RunnerError> {
+    async fn local_content(&self, digest: &Digest) -> Result<PathBuf, RunnerError> {
         if let Some(path) = self.store.local_path(&layout::content(digest)) {
             return Ok(path);
         }
         let path = self.downloads.join(digest.hex());
-        if !path.exists() {
-            std::fs::create_dir_all(&self.downloads)?;
-            let bytes = self.runtime.block_on(self.store.get_content(digest))?;
+        if !tokio::fs::try_exists(&path).await? {
+            tokio::fs::create_dir_all(&self.downloads).await?;
+            let bytes = self.store.get_content(digest).await?;
             // A name of this process first, then a rename, so that another run that downloads
             // the same content never reads half a file.
             let part = self
                 .downloads
                 .join(format!("{}.{}", digest.hex(), std::process::id()));
-            std::fs::write(&part, bytes)?;
-            std::fs::rename(&part, &path)?;
+            tokio::fs::write(&part, bytes).await?;
+            tokio::fs::rename(&part, &path).await?;
         }
         Ok(path)
     }
 
     /// Stores the files of a local directory by their content and returns the digest of its
     /// manifest and the size of its files.
-    fn put_directory(&self, directory: &Path) -> Result<(Digest, u64), RunnerError> {
+    async fn put_directory(&self, directory: &Path) -> Result<(Digest, u64), RunnerError> {
         let mut entries = Vec::new();
-        for found in self.runtime.block_on(outputs::walk(directory))? {
+        for found in outputs::walk(directory).await? {
             entries.push(match found {
                 Found::File {
                     relative,
                     path,
                     executable,
                 } => {
-                    let (digest, size) = self.runtime.block_on(self.store.put_file(&path))?;
+                    let (digest, size) = self.store.put_file(&path).await?;
                     TreeEntry::File {
                         path: relative,
                         digest,
@@ -292,7 +306,7 @@ impl<E: Executor> Runner<E> {
         }
         let tree = Tree { entries };
         let size = tree.size();
-        Ok((self.runtime.block_on(self.store.put_tree(&tree))?, size))
+        Ok((self.store.put_tree(&tree).await?, size))
     }
 }
 

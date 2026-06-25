@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use executor::Executor;
+use executor::Backend;
 use task_model::{
     Digest, EnvironmentValue, FORMAT, FileKind, Image, InputFile, OutputRule, Placement,
     ReuseScope, TaskRequest, TaskSpec, Tree,
@@ -19,38 +19,42 @@ use crate::{Runner, RunnerError};
 /// The longest step name that an identity keeps, so that it stays a short path segment.
 const STEP_LENGTH: usize = 100;
 
-impl<E: Executor> Runner<E> {
+impl<B: Backend> Runner<B> {
     /// The request of a task whose image is `image`, pinned to a digest where possible. The
     /// inputs and the standard input of the task go into the store.
-    pub fn request(&self, task: &Task, image: Option<String>) -> Result<TaskRequest, RunnerError> {
-        let inputs = task
-            .inputs
-            .iter()
-            .map(|input| self.input(input))
-            .collect::<Result<Vec<_>, _>>()?;
+    pub async fn request(
+        &self,
+        task: &Task,
+        image: Option<String>,
+    ) -> Result<TaskRequest, RunnerError> {
+        let mut inputs = Vec::new();
+        for input in &task.inputs {
+            inputs.push(self.input(input).await?);
+        }
         let stdin = match &task.stdin {
-            Some(text) => Some(self.import_bytes(text.as_bytes())?),
+            Some(text) => Some(self.import_bytes(text.as_bytes()).await?),
             None => None,
         };
         Ok(request(task, image, inputs, stdin))
     }
 
     /// An input in the store: literal content, a local directory or a local file.
-    fn input(&self, input: &Input) -> Result<InputFile, RunnerError> {
+    async fn input(&self, input: &Input) -> Result<InputFile, RunnerError> {
         let source = Path::new(&input.source);
         let (kind, digest) = match &input.content {
-            Some(content) => (FileKind::File, self.import_bytes(content.as_bytes())?),
+            Some(content) => (FileKind::File, self.import_bytes(content.as_bytes()).await?),
             None if input.source.contains("://") => {
                 return Err(RunnerError::Remote(input.source.clone()));
             }
             // A directory that the workflow makes itself, like an empty CWL `Directory` literal.
-            None if input.directory && input.source.is_empty() => {
-                (FileKind::Directory, self.import_tree(&Tree::default())?)
-            }
+            None if input.directory && input.source.is_empty() => (
+                FileKind::Directory,
+                self.import_tree(&Tree::default()).await?,
+            ),
             None if input.directory || source.is_dir() => {
-                (FileKind::Directory, self.import_directory(source)?.0)
+                (FileKind::Directory, self.import_directory(source).await?.0)
             }
-            None => (FileKind::File, self.import(source)?.0),
+            None => (FileKind::File, self.import(source).await?.0),
         };
         Ok(InputFile {
             path: input.path.clone(),

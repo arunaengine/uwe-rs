@@ -16,7 +16,6 @@ pub mod wrapper;
 
 use std::future::Future;
 
-use task_model::TaskSpec;
 use tokio_util::sync::CancellationToken;
 
 pub use engine::{ContainerEngine, EngineKind, NoEngine};
@@ -39,27 +38,4 @@ pub trait Backend: Send + Sync + 'static {
         job: Job<'_>,
         cancel: &CancellationToken,
     ) -> impl Future<Output = Result<Finished, ExecutorError>> + Send;
-}
-
-/// Runs tasks, one call per task, until the task runner runs on Tokio.
-pub trait Executor {
-    /// Runs a task in a scratch directory called `name`, a name no other task uses, with the
-    /// staged files in place.
-    fn run(
-        &self,
-        name: &str,
-        spec: &TaskSpec,
-        staging: &Staging,
-    ) -> Result<Finished, ExecutorError>;
-}
-
-impl Executor for local::LocalContainer {
-    fn run(
-        &self,
-        name: &str,
-        spec: &TaskSpec,
-        staging: &Staging,
-    ) -> Result<Finished, ExecutorError> {
-        local::LocalContainer::run(self, name, spec, staging)
-    }
 }

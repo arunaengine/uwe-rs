@@ -1561,6 +1561,8 @@ dependencies = [
  "task-model",
  "task-runner",
  "tempfile",
+ "tokio",
+ "tokio-util",
  "workflow-graph",
 ]
 
@@ -3493,6 +3495,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-util",
  "workflow-graph",
 ]
 

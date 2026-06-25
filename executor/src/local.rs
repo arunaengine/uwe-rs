@@ -7,13 +7,12 @@ use std::path::{Path, PathBuf};
 use std::process::{Output, Stdio};
 use std::time::Duration;
 
-use task_model::{Placement, TaskSpec};
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
 use crate::engine::ContainerEngine;
 use crate::image;
-use crate::job::{CONTROL, ExecutorError, Finished, Job, Staging, WORK};
+use crate::job::{CONTROL, ExecutorError, Finished, Job, WORK};
 use crate::manifest::parse;
 use crate::pool::Pool;
 use crate::stage::place;
@@ -120,29 +119,6 @@ impl crate::Backend for LocalContainer {
 }
 
 impl LocalContainer {
-    /// Runs a task like [`Backend::run`](crate::Backend::run), with the default placement,
-    /// until the task runner runs on Tokio.
-    pub fn run(
-        &self,
-        name: &str,
-        spec: &TaskSpec,
-        staging: &Staging,
-    ) -> Result<Finished, ExecutorError> {
-        let job = Job {
-            name,
-            spec,
-            staging,
-            placement: &Placement::default(),
-        };
-        block_on(crate::Backend::run(self, job, &CancellationToken::new()))
-    }
-
-    /// The image pinned to its digest, like [`Backend::pin`](crate::Backend::pin), until the
-    /// task runner runs on Tokio.
-    pub fn pin(&self, reference: &str) -> Result<Option<String>, ExecutorError> {
-        block_on(image::pin(&self.engine, reference))
-    }
-
     /// Runs the container to its end, stopping it when `cancel` fires or its time is up.
     async fn wait(
         &self,
@@ -227,16 +203,6 @@ impl LocalContainer {
             root,
         })
     }
-}
-
-/// Runs a future to its end on a runtime of its own, until the task runner runs on Tokio.
-fn block_on<T>(
-    future: impl std::future::Future<Output = Result<T, ExecutorError>>,
-) -> Result<T, ExecutorError> {
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?
-        .block_on(future)
 }
 
 async fn append(path: &Path, text: &str) -> std::io::Result<()> {

@@ -142,6 +142,8 @@ fn a_run_is_read_back_with_its_logs_and_events() {
     ];
     assert_eq!(kinds, expected);
     assert_eq!(database.events("run-1", 8, 100).expect("lists").len(), 1);
+    assert_eq!(database.last_event("run-1").expect("reads"), 9);
+    assert_eq!(database.last_event("run-9").expect("reads"), 0);
 }
 
 #[test]

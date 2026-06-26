@@ -98,6 +98,13 @@ fn the_page_shows_runs_tasks_logs_and_files() {
     let url = server.url().to_owned();
     assert!(url.starts_with("http://127.0.0.1:"), "{url}");
 
+    let (status, page) = get(&format!("{url}/runs/finished-run/tasks/4"));
+    assert_eq!(status, 200);
+    assert!(page.contains("/page.js"), "{page}");
+    let (status, script) = get(&format!("{url}/page.js"));
+    assert_eq!(status, 200);
+    assert!(script.contains("DOMContentLoaded"));
+
     let runs = get_json(&format!("{url}/api/runs"));
     assert_eq!(runs.as_array().map(Vec::len), Some(2));
     let run = get_json(&format!("{url}/api/runs/finished-run"));

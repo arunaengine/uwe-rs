@@ -251,3 +251,62 @@ fn a_database_of_a_newer_version_is_refused() {
     let error = Database::open(&path).err().expect("refused");
     assert!(error.to_string().contains("newer iunctus"), "{error}");
 }
+
+#[test]
+fn why_a_task_ran_again_names_what_changed() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    let data = directory.path().join("data.txt");
+    let made = directory.path().join("made.txt");
+    std::fs::write(&made, "made").expect("writes an output");
+    // Each run asks for the same task; between the runs the input and the script change.
+    let run = |id: &str, resumes: Option<&str>, text: Option<&str>, script: &str| {
+        if let Some(text) = text {
+            std::fs::write(&data, text).expect("writes the data");
+        }
+        let mut recorder = Database::open(&path)
+            .expect("opens")
+            .record(&start(id, resumes))
+            .expect("starts");
+        let mut first = task(1, "MAKE", vec![input(&data)]);
+        first.script = Some(script.into());
+        recorder.requested(&first, &[]);
+        recorder.started(TaskId(1), 1);
+        recorder.finished(&outcome(1, made.clone(), ""), 1, false);
+        recorder.ended(None);
+        recorder.close().expect("closes");
+    };
+    run("run-1", None, Some("raw"), "cat in.txt");
+    run("run-2", Some("run-1"), Some("rawer"), "cat in.txt");
+    run("run-3", Some("run-2"), Some("raws!"), "sort in.txt");
+    // The same task with the same input, in a run that resumes nothing.
+    run("run-4", None, None, "sort in.txt");
+    let database = Database::open(&path).expect("opens again");
+
+    assert_eq!(database.why("run-1", 1).expect("reads"), None);
+    let why = database
+        .why("run-2", 1)
+        .expect("reads")
+        .expect("an earlier task");
+    assert_eq!((why.run.as_str(), why.task), ("run-1", 1));
+    assert_eq!(
+        why.changes,
+        ["the input `in.txt` changed: 3 bytes before, 5 bytes now"]
+    );
+    let why = database
+        .why("run-3", 1)
+        .expect("reads")
+        .expect("an earlier task");
+    // The same size, so only the script and the time of the input tell the runs apart.
+    assert_eq!(why.changes, ["the script changed"]);
+    let why = database
+        .why("run-4", 1)
+        .expect("reads")
+        .expect("an earlier task");
+    assert_eq!(why.run, "run-3");
+    assert!(
+        why.changes[0].contains("did not resume"),
+        "{:?}",
+        why.changes
+    );
+}

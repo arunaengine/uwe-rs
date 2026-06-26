@@ -159,7 +159,7 @@ CREATE TABLE events (
     -- Counts from 1 in each run, in the order the engine saw the events.
     sequence    INTEGER NOT NULL,
     time        INTEGER NOT NULL,
-    -- `requested`, `started`, `finished` or `marked` for a task, `ended` for the run.
+    -- `requested`, `started`, `finished`, `reused` or `marked` for a task, `ended` for the run.
     kind        TEXT NOT NULL,
     task        INTEGER,
     attempt     INTEGER,

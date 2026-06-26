@@ -2,11 +2,14 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::{Arc, Mutex, PoisonError};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use rusqlite::{Connection, OptionalExtension, params};
 use task_model::Digest;
-use workflow_graph::{Edge, EdgeKind, Language, Outcome, Task, TaskId};
+use workflow_graph::{Edge, EdgeKind, Event, Language, Observer, Outcome, Task, TaskId};
 
 use crate::fingerprint::{fingerprint, input_states};
 use crate::{DatabaseError, now};
@@ -17,6 +20,8 @@ pub const LOG_LIMIT: usize = 64 * 1024;
 
 /// How long writes gather in one transaction before they are committed. Readers, like the web
 /// page, see a run at most this much later; a run of many short tasks commits far less often.
+/// A thread commits an open transaction after this time even when no write follows, so that a
+/// long task never holds the write lock that other iunctus processes wait for.
 const BATCH: Duration = Duration::from_millis(250);
 
 /// What is known of a run when it starts.
@@ -44,8 +49,15 @@ pub struct RunStart {
 /// Records one run. A failed write does not stop the run: the recorder keeps the first error,
 /// skips later writes, and [`Recorder::close`] returns the error.
 pub struct Recorder {
-    connection: Connection,
+    writer: Arc<Mutex<Writer>>,
     run: String,
+    /// Stops the thread that commits, and waits for it.
+    flusher: Option<(mpsc::Sender<()>, JoinHandle<()>)>,
+}
+
+/// The connection and the open transaction, shared with the thread that commits.
+struct Writer {
+    connection: Connection,
     /// The number of the last event.
     sequence: i64,
     /// When the open transaction began; `None` when no transaction is open.
@@ -84,12 +96,25 @@ impl Recorder {
                 now(),
             ],
         )?;
-        Ok(Recorder {
+        let writer = Arc::new(Mutex::new(Writer {
             connection,
-            run: run.id.clone(),
             sequence: 0,
             batch: None,
             error: None,
+        }));
+        let (stop, stopped) = mpsc::channel::<()>();
+        let shared = Arc::clone(&writer);
+        let thread = std::thread::Builder::new()
+            .name("iunctus-recorder".into())
+            .spawn(move || {
+                while let Err(RecvTimeoutError::Timeout) = stopped.recv_timeout(BATCH) {
+                    lock(&shared).commit_if_old();
+                }
+            })?;
+        Ok(Recorder {
+            writer,
+            run: run.id.clone(),
+            flusher: Some((stop, thread)),
         })
     }
 
@@ -257,6 +282,26 @@ impl Recorder {
         });
     }
 
+    /// The result of an attempt came from elsewhere, not from running it: `source` is `cache`
+    /// for the store, or the id of the earlier run that a resumed run took it from.
+    pub fn reused(&mut self, task: TaskId, attempt: u32, source: &str) {
+        self.write(|connection, run, sequence| {
+            connection
+                .prepare_cached(
+                    "UPDATE attempts SET reused = ?4 WHERE run = ?1 AND task = ?2 AND number = ?3",
+                )?
+                .execute(params![run, task.0, attempt, source])?;
+            event(
+                connection,
+                run,
+                sequence,
+                "reused",
+                Some(task),
+                Some(attempt),
+            )
+        });
+    }
+
     /// The driver found that the tasks after a task depend on its outputs, so that a run with
     /// real data can have more or fewer tasks there. `kind` is `content`, `wildcard` or
     /// `checkpoint`.
@@ -296,17 +341,40 @@ impl Recorder {
 
     /// Commits what is left and returns the first error of any write.
     pub fn close(mut self) -> Result<(), DatabaseError> {
-        self.commit();
-        match self.error.take() {
+        self.stop();
+        match lock(&self.writer).error.take() {
             Some(error) => Err(error),
             None => Ok(()),
         }
     }
 
-    /// Runs one write inside the open transaction, opening one when needed, and commits when
-    /// the transaction is older than [`BATCH`]. The write gets the connection, the run id and
-    /// the number of its event.
+    /// Runs one write, with the connection, the run id and the number of its event.
     fn write(&mut self, action: impl FnOnce(&Connection, &str, i64) -> rusqlite::Result<()>) {
+        lock(&self.writer).write(&self.run, action);
+    }
+
+    fn commit(&mut self) {
+        lock(&self.writer).commit();
+    }
+
+    /// Stops the thread that commits and commits what is left.
+    fn stop(&mut self) {
+        if let Some((stop, thread)) = self.flusher.take() {
+            drop(stop);
+            let _ = thread.join();
+        }
+        self.commit();
+    }
+}
+
+impl Writer {
+    /// Runs one write inside the open transaction, opening one when needed, and commits when
+    /// the transaction is older than [`BATCH`].
+    fn write(
+        &mut self,
+        run: &str,
+        action: impl FnOnce(&Connection, &str, i64) -> rusqlite::Result<()>,
+    ) {
         if self.error.is_some() {
             return;
         }
@@ -318,10 +386,14 @@ impl Recorder {
             self.batch = Some(Instant::now());
         }
         self.sequence += 1;
-        if let Err(error) = action(&self.connection, &self.run, self.sequence) {
+        if let Err(error) = action(&self.connection, run, self.sequence) {
             self.error = Some(error.into());
             return;
         }
+        self.commit_if_old();
+    }
+
+    fn commit_if_old(&mut self) {
         if self.batch.is_some_and(|began| began.elapsed() >= BATCH) {
             self.commit();
         }
@@ -337,9 +409,30 @@ impl Recorder {
     }
 }
 
+/// The writer, also after a thread panicked while it held it: the writes before are whole.
+fn lock(writer: &Mutex<Writer>) -> std::sync::MutexGuard<'_, Writer> {
+    writer.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 impl Drop for Recorder {
     fn drop(&mut self) {
-        self.commit();
+        self.stop();
+    }
+}
+
+/// The engine tells the recorder each step of the run.
+impl Observer for Recorder {
+    fn event(&mut self, event: Event<'_>) {
+        match event {
+            Event::Requested { task, edges } => self.requested(task, edges),
+            Event::Started { task, attempt } => self.started(task, attempt),
+            Event::Finished {
+                outcome,
+                attempt,
+                retried,
+            } => self.finished(outcome, attempt, retried),
+            Event::Ended { error } => self.ended(error.map(ToString::to_string).as_deref()),
+        }
     }
 }
 

@@ -70,6 +70,7 @@ fn record(path: &Path, directory: &Path) -> Result<(), DatabaseError> {
     recorder.requested(&first, &[]);
     recorder.started(TaskId(1), 1);
     recorder.finished(&outcome(1, made.clone(), "hello\n"), 1, false);
+    recorder.reused(TaskId(1), 1, "run-0");
     let second = task(2, "USE", vec![input(&made)]);
     let edge = Edge {
         from: TaskId(1),
@@ -133,6 +134,7 @@ fn a_run_is_read_back_with_its_logs_and_events() {
         "requested",
         "started",
         "finished",
+        "reused",
         "requested",
         "started",
         "finished",
@@ -141,8 +143,8 @@ fn a_run_is_read_back_with_its_logs_and_events() {
         "ended",
     ];
     assert_eq!(kinds, expected);
-    assert_eq!(database.events("run-1", 8, 100).expect("lists").len(), 1);
-    assert_eq!(database.last_event("run-1").expect("reads"), 9);
+    assert_eq!(database.events("run-1", 9, 100).expect("lists").len(), 1);
+    assert_eq!(database.last_event("run-1").expect("reads"), 10);
     assert_eq!(database.last_event("run-9").expect("reads"), 0);
 }
 

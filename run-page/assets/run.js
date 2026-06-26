@@ -75,7 +75,7 @@ function drawSummary() {
   const facts = [
     ["Run", run.id],
     ["Language", run.language],
-    ["Executor", run.simulated ? `${run.executor} (simulated)` : run.executor],
+    ["Executor", run.executor],
     ["Started", when(run.started)],
     ["Ended", run.ended ? when(run.ended) : ""],
     ["Time", ended ? duration(ended - run.started) : ""],
@@ -271,13 +271,14 @@ function drawRows() {
     ? el("button", { onclick: () => { view.shown += ROWS; drawRows(); } },
       `show more (${found.length - view.shown} left)`)
     : null;
+  const tail = found.length ? more : el("p", { class: "quiet" }, "No task matches.");
   view.taskTable.replaceChildren(
     el("table", {},
       el("thead", {}, el("tr", {}, el("th", { class: "number" }, "#"), el("th", {}, "Task"),
         el("th", {}, "Step"), el("th", {}, "State"), el("th", { class: "number" }, "Exit"),
         el("th", { class: "number" }, "Attempts"), el("th", { class: "number" }, "Time"))),
       el("tbody", {}, rows)),
-    found.length ? more : el("p", { class: "quiet" }, "No task matches."));
+    ...(tail ? [tail] : []));
 }
 
 function taskPath(task) {

@@ -100,7 +100,8 @@ th { color: var(--quiet); font-weight: 600; font-size: 0.8rem; position: sticky;
 td.number, th.number { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 tr.pick { cursor: pointer; }
 tr.pick:hover td { background: var(--code); }
-tr.chosen td { background: var(--code); box-shadow: inset 3px 0 0 var(--link); }
+tr.chosen td { background: var(--code); }
+tr.chosen td:first-child { box-shadow: inset 3px 0 0 var(--link); }
 
 .tools { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.6rem; }
 input[type=search], select { font: inherit; padding: 0.3rem 0.5rem; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--text); }

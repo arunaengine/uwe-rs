@@ -41,6 +41,12 @@ pub struct Arguments {
     /// `-python-image image`: the image of the Python container of decision 19, with the
     /// Python packages that the workflow imports.
     pub python_image: Option<String>,
+    /// `-database file`: the run database, instead of the one in the cache directory.
+    pub database: Option<PathBuf>,
+    /// `-output folder`: where `iunctus export` writes the crate.
+    pub output: Option<PathBuf>,
+    /// `-license url`: the license of an exported crate.
+    pub license: Option<String>,
 }
 
 /// Reads the options after the command name.
@@ -87,6 +93,9 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
             "-format" => parsed.format = Some(value()?),
             "-default-image" => parsed.default_image = Some(value()?),
             "-python-image" => parsed.python_image = Some(value()?),
+            "-database" => parsed.database = Some(value()?.into()),
+            "-output" => parsed.output = Some(value()?.into()),
+            "-license" => parsed.license = Some(value()?),
             "-max-pending" => {
                 let number = value()?;
                 parsed.max_pending = Some(number.parse().ok().filter(|n| *n > 0).ok_or(
@@ -253,6 +262,19 @@ mod tests {
             let arguments = wrong.map(str::to_owned);
             assert!(parse(&arguments).is_err(), "{wrong:?}");
         }
+    }
+
+    #[test]
+    fn run_database_options() {
+        let parsed = parse_all(&["19a2b-3c", "-database", "runs.sqlite", "-output", "crate"]);
+        assert_eq!(parsed.target, Some(PathBuf::from("19a2b-3c")));
+        assert_eq!(parsed.database, Some(PathBuf::from("runs.sqlite")));
+        assert_eq!(parsed.output, Some(PathBuf::from("crate")));
+        let parsed = parse_all(&["19a2b-3c", "-license", "https://spdx.org/licenses/MIT"]);
+        assert_eq!(
+            parsed.license.as_deref(),
+            Some("https://spdx.org/licenses/MIT")
+        );
     }
 
     #[test]

@@ -1,6 +1,7 @@
 //! The `iunctus` command: `iunctus run` runs a workflow in any language iunctus knows,
-//! `iunctus graph` prints the execution graph of a run, and `iunctus config` prints the config
-//! of a Nextflow project.
+//! `iunctus graph` prints the execution graph of a run, `iunctus config` prints the config of a
+//! Nextflow project, `iunctus runs` lists the runs of the run database, and `iunctus export`
+//! writes the RO-Crate of a run.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -10,6 +11,7 @@ mod detect;
 mod local;
 mod nextflow;
 mod remote;
+mod runs;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -72,6 +74,8 @@ fn main() -> ExitCode {
         "run" => run(&arguments),
         "graph" => graph(&arguments),
         "config" => config(&arguments),
+        "runs" => runs::list(&arguments),
+        "export" => runs::export(&arguments),
         _ => return usage(),
     };
     match result {
@@ -253,6 +257,8 @@ const USAGE: &str = "\
 usage: iunctus run <workflow file or directory> [<targets>] [options]
        iunctus graph <workflow file or directory> [-format json|dot|summary] [options]
        iunctus config [<project>] [-profile <names>] [-c <config>] [--<param> <value>]
+       iunctus runs
+       iunctus export <run> [-output <folder>] [-license <url>]
 
 options:
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it
@@ -271,7 +277,10 @@ options:
   -entry <name>                       the entry workflow or target
   -configfile <file>                  a Snakemake config file
   --config <name>=<value>...          Snakemake config values
-  --<param> <value>                   a workflow parameter";
+  --<param> <value>                   a workflow parameter
+  -database <file>                    the run database (default: runs.sqlite in the cache)
+  -output <folder>                    where `export` writes the RO-Crate (default: <run>-crate)
+  -license <url>                      the license of the exported crate";
 
 /// `$XDG_CACHE_HOME/iunctus`, else `~/.cache/iunctus`.
 fn cache_directory() -> PathBuf {

@@ -11,7 +11,7 @@ Status: implemented for Nextflow, Snakemake, CWL and Argo, 2026-09-29. This appl
 1. It finds the language of the target (section 2).
 2. It turns the command line into a `Launch`, the options all languages share.
 3. It asks the language's crate for a `Driver` for that launch.
-4. `workflow_graph::execute_with` runs the driver against an `Executor` with the run options (section 5) and records the execution graph (section 6).
+4. `workflow_graph::Engine` runs the driver against an `Executor` with the run options (section 5) and records the execution graph (section 6). It tells an observer each step of the run; the binary's observer records the run in the run database ([runs](runs.md)).
 5. With `-graph <file>` it writes the graph; `iunctus graph <target>` prints it.
 
 The engine, the driver interface, the graph and the simulator live in the `workflow-graph` crate, which knows no language. Language crates depend on it, never the other way round. The local executor lives in the crates `task-model`, `content-store`, `executor` and `task-runner` (section 4).
@@ -35,6 +35,9 @@ The engine, the driver interface, the graph and the simulator live in the `workf
 | `-order asked\|reversed\|shuffled[:<seed>]` | the order in which pending tasks finish; `asked` by default | |
 | `-graph <file>` | write the graph, as DOT for a `.dot` name, else JSON | |
 | `-format json\|dot\|summary` | the output of `iunctus graph`; `summary` by default | |
+| `-resume [<run>]` | continue a run without running its finished tasks again ([runs](runs.md), section 3) | |
+| `-page` | serve the web page of the run ([runs](runs.md), section 4) | |
+| `-database <file>` | the run database; `runs.sqlite` in the cache directory by default | |
 
 Parameter names reach the driver as written; Nextflow turns `--max-cpus` into `params.maxCpus`, as `nextflow run` does. `iunctus config` stays Nextflow only.
 

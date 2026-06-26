@@ -111,6 +111,14 @@ fn the_page_shows_runs_tasks_logs_and_files() {
     assert_eq!(task["stdout"]["text"], "done\n");
     assert_eq!(task["stderr"], Value::Null);
     assert_eq!(task["outputs"][0]["path"], "out.txt");
+    let (status, content) = get(&format!("{url}/api/runs/finished-run/tasks/4/outputs/0"));
+    assert_eq!((status, content.as_str()), (200, "RAW\n"));
+    let (status, log) = get(&format!(
+        "{url}/api/runs/finished-run/tasks/4/logs/1/stdout"
+    ));
+    assert_eq!((status, log.as_str()), (200, "done\n"));
+    let (status, _) = get(&format!("{url}/api/runs/finished-run/tasks/4/outputs/1"));
+    assert_eq!(status, 404);
     let (status, _) = get(&format!("{url}/api/runs/no-such-run"));
     assert_eq!(status, 404);
 

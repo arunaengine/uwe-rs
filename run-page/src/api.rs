@@ -11,7 +11,7 @@ use axum::routing::get;
 use run_database::{Log, MarkerRow, Run, TaskDetail, TaskRow};
 use serde::Serialize;
 
-use crate::{Failure, Shared, live, query};
+use crate::{Failure, Shared, files, live, query};
 
 /// How many runs the list of runs shows.
 const RUNS: u32 = 200;
@@ -22,6 +22,14 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/api/runs/{run}", get(run))
         .route("/api/runs/{run}/events", get(live::events))
         .route("/api/runs/{run}/tasks/{task}", get(task))
+        .route(
+            "/api/runs/{run}/tasks/{task}/logs/{attempt}/{stream}",
+            get(files::log),
+        )
+        .route(
+            "/api/runs/{run}/tasks/{task}/{role}/{index}",
+            get(files::file),
+        )
         .with_state(state)
 }
 

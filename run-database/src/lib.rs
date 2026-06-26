@@ -18,6 +18,7 @@ mod resume;
 mod runs;
 mod schema;
 mod tasks;
+mod why;
 
 use std::path::Path;
 use std::time::Duration;
@@ -30,6 +31,7 @@ pub use resume::Reusable;
 pub use runs::{Event, Log, Run};
 pub use schema::VERSION;
 pub use tasks::{Attempt, EdgeRow, FileRow, MarkerRow, TaskDetail, TaskRow};
+pub use why::Why;
 
 /// The name of the database file in the cache directory, next to the default store.
 pub const FILE_NAME: &str = "runs.sqlite";

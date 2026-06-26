@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::io::Read;
 use std::path::Path;
 
 use run_database::{Database, RunStart};
@@ -112,6 +113,25 @@ fn the_page_shows_runs_tasks_logs_and_files() {
     assert_eq!(task["outputs"][0]["path"], "out.txt");
     let (status, _) = get(&format!("{url}/api/runs/no-such-run"));
     assert_eq!(status, 404);
+
+    // The stream of a finished run sends one update with the whole state and ends.
+    let mut response =
+        reqwest::blocking::get(format!("{url}/api/runs/finished-run/events?after=0"))
+            .expect("the stream answers");
+    let mut stream = String::new();
+    response
+        .read_to_string(&mut stream)
+        .expect("reads the stream");
+    assert!(stream.contains("event: update"), "{stream}");
+    assert!(stream.contains("id: 4"), "{stream}");
+    let data = stream
+        .lines()
+        .find_map(|line| line.strip_prefix("data: "))
+        .expect("a data line");
+    let update: Value = serde_json::from_str(data).expect("JSON");
+    assert_eq!(update["run"]["state"], "succeeded");
+    assert_eq!(update["tasks"].as_array().map(Vec::len), Some(1));
+    assert_eq!(update["graph"], true);
 
     server.stop();
 }

@@ -7,6 +7,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod api;
+mod assets;
 mod files;
 mod live;
 

@@ -1615,6 +1615,7 @@ dependencies = [
  "reqwest",
  "run-crate",
  "run-database",
+ "run-page",
  "serde_json",
  "sha2",
  "snakemake-runtime",

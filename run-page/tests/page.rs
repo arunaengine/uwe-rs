@@ -101,9 +101,9 @@ fn the_page_shows_runs_tasks_logs_and_files() {
     let (status, page) = get(&format!("{url}/runs/finished-run/tasks/4"));
     assert_eq!(status, 200);
     assert!(page.contains("/page.js"), "{page}");
-    let (status, script) = get(&format!("{url}/page.js"));
+    let (status, script) = get(&format!("{url}/run.js"));
     assert_eq!(status, 200);
-    assert!(script.contains("DOMContentLoaded"));
+    assert!(script.contains("EventSource"));
 
     let runs = get_json(&format!("{url}/api/runs"));
     assert_eq!(runs.as_array().map(Vec::len), Some(2));

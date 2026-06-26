@@ -8,6 +8,7 @@ use axum::response::IntoResponse;
 const PAGE: &str = include_str!("../assets/index.html");
 const STYLE: &str = include_str!("../assets/page.css");
 const SCRIPT: &str = include_str!("../assets/page.js");
+const RUN_SCRIPT: &str = include_str!("../assets/run.js");
 
 /// The same page for every view; its script shows the view that the address names.
 pub(crate) async fn page() -> impl IntoResponse {
@@ -21,6 +22,11 @@ pub(crate) async fn style() -> impl IntoResponse {
 /// The helpers, the navigation and the list of runs.
 pub(crate) async fn script() -> impl IntoResponse {
     javascript(SCRIPT)
+}
+
+/// The view of one run.
+pub(crate) async fn run_script() -> impl IntoResponse {
+    javascript(RUN_SCRIPT)
 }
 
 fn javascript(text: &'static str) -> impl IntoResponse {

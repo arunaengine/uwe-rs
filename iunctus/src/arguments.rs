@@ -47,6 +47,17 @@ pub struct Arguments {
     pub output: Option<PathBuf>,
     /// `-license url`: the license of an exported crate.
     pub license: Option<String>,
+    /// `-resume [run]`: continue a run, by default the last run of the workflow.
+    pub resume: Option<Resume>,
+}
+
+/// Which run `-resume` continues.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Resume {
+    /// The last run of the same workflow.
+    Last,
+    /// The run with this id.
+    Run(String),
 }
 
 /// Reads the options after the command name.
@@ -96,6 +107,18 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
             "-database" => parsed.database = Some(value()?.into()),
             "-output" => parsed.output = Some(value()?.into()),
             "-license" => parsed.license = Some(value()?),
+            "-resume" => {
+                // The run is optional: the next argument is taken only when it looks like a run.
+                parsed.resume = Some(
+                    match arguments.get(index).filter(|next| looks_like_run(next)) {
+                        Some(run) => {
+                            index += 1;
+                            Resume::Run(run.clone())
+                        }
+                        None => Resume::Last,
+                    },
+                );
+            }
             "-max-pending" => {
                 let number = value()?;
                 parsed.max_pending = Some(number.parse().ok().filter(|n| *n > 0).ok_or(
@@ -146,6 +169,15 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
         }
     }
     Ok(parsed)
+}
+
+/// Whether a word is a run id as iunctus makes them: two hexadecimal numbers joined by `-`, the
+/// time in milliseconds and the process id.
+fn looks_like_run(text: &str) -> bool {
+    text.split_once('-').is_some_and(|(time, process)| {
+        let hex = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_hexdigit());
+        hex(time) && hex(process)
+    })
 }
 
 /// A language by its name, as `-lang` takes it.
@@ -275,6 +307,18 @@ mod tests {
             parsed.license.as_deref(),
             Some("https://spdx.org/licenses/MIT")
         );
+    }
+
+    #[test]
+    fn resume_takes_a_run_when_one_follows() {
+        let parsed = parse_all(&["main.nf", "-resume"]);
+        assert_eq!(parsed.resume, Some(Resume::Last));
+        let parsed = parse_all(&["main.nf", "-resume", "19a8f3c2b10-1a2b", "-stub"]);
+        assert_eq!(parsed.resume, Some(Resume::Run("19a8f3c2b10-1a2b".into())));
+        assert!(parsed.stub);
+        let parsed = parse_all(&["-resume", "main.nf"]);
+        assert_eq!(parsed.resume, Some(Resume::Last));
+        assert_eq!(parsed.target, Some(PathBuf::from("main.nf")));
     }
 
     #[test]

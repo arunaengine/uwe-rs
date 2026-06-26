@@ -10,15 +10,18 @@ mod checked;
 mod detect;
 mod local;
 mod nextflow;
+mod record;
 mod remote;
+mod revision;
 mod runs;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use run_database::Recorder;
 use workflow_graph::{
-    Driver, DriverError, ExecuteError, Execution, ExecutionGraph, Executor, Language, Launch,
-    RunOptions, Simulator,
+    Driver, DriverError, Engine, ExecuteError, Execution, ExecutionGraph, Executor, Language,
+    Launch, RunOptions, Simulator,
 };
 
 use crate::arguments::Arguments;
@@ -121,8 +124,8 @@ fn graph(arguments: &Arguments) -> Result<(), Failure> {
     Ok(())
 }
 
-/// Runs the target with its language's driver and the chosen executor. `quiet` keeps standard
-/// output free for the graph.
+/// Runs the target with its language's driver and the chosen executor, and records the run
+/// in the run database. `quiet` keeps standard output free for the graph.
 fn execute(arguments: &Arguments, quiet: bool) -> Result<Execution, Failure> {
     let Some(target) = &arguments.target else {
         return Err(failure(
@@ -137,19 +140,47 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<Execution, Failure> {
     };
     let launch = launch(arguments, target.clone());
     let run = run_id();
-    let mut executor = executor(arguments, &run, !quiet)?;
-    let mut driver = driver(language, &launch, &run, quiet, arguments)?;
-    let workflow = target.to_string_lossy();
+    let name = arguments.executor.as_deref().unwrap_or("simulator");
+    let store = store(arguments);
+    let started = record::Started {
+        id: &run,
+        target,
+        language,
+        executor: name,
+        simulated: name == "simulator",
+        store: (name == "local").then_some(store.as_path()),
+    };
+    let record::Recording { mut recorder, .. } = record::start(arguments, &started)?;
+    let prepared = executor(arguments, &run, !quiet).and_then(|executor| {
+        let driver = driver(language, &launch, &run, quiet, arguments)?;
+        Ok((executor, driver))
+    });
+    let (mut executor, mut driver) = match prepared {
+        Ok(prepared) => prepared,
+        Err(failure) => {
+            recorder.ended(Some(&failure.message));
+            close(recorder);
+            return Err(failure);
+        }
+    };
     let options = RunOptions {
         max_pending: arguments.max_pending.unwrap_or(1),
         order: arguments.order.unwrap_or_default(),
     };
-    Ok(workflow_graph::execute_with(
-        &workflow,
-        driver.as_mut(),
-        executor.as_mut(),
-        &options,
-    ))
+    let workflow = target.to_string_lossy();
+    let execution = Engine::new(executor.as_mut())
+        .options(options)
+        .observer(&mut recorder)
+        .run(&workflow, driver.as_mut());
+    close(recorder);
+    Ok(execution)
+}
+
+/// Ends the record of a run. A run goes on when the database fails; it only says so.
+fn close(recorder: Recorder) {
+    if let Err(error) = recorder.close() {
+        eprintln!("iunctus: the run database did not record the whole run: {error}");
+    }
 }
 
 /// The driver of a language.
@@ -202,8 +233,7 @@ fn executor(arguments: &Arguments, run: &str, verbose: bool) -> Result<Box<dyn E
             Ok(Box::new(executor))
         }
         "local" => {
-            let store = (arguments.store.clone()).unwrap_or_else(|| cache.join("store"));
-            let mut executor = local::Local::new(&store, &scratch, run)
+            let mut executor = local::Local::new(&store(arguments), &scratch, run)
                 .map_err(|message| failure(format!("iunctus: {message}")))?;
             executor.verbose = verbose;
             let default_image = arguments.default_image.clone();
@@ -213,6 +243,11 @@ fn executor(arguments: &Arguments, run: &str, verbose: bool) -> Result<Box<dyn E
             "iunctus: unknown executor `{other}`; use `simulator` or `local`"
         ))),
     }
+}
+
+/// The store of the local executor: `-store`, else `store` in the cache directory.
+fn store(arguments: &Arguments) -> PathBuf {
+    (arguments.store.clone()).unwrap_or_else(|| cache_directory().join("store"))
 }
 
 /// What the command line asks to run, in the terms all languages share.
@@ -278,6 +313,8 @@ options:
   -configfile <file>                  a Snakemake config file
   --config <name>=<value>...          Snakemake config values
   --<param> <value>                   a workflow parameter
+  -resume [<run>]                     continues a run, by default the last one of the workflow,
+                                      without running its finished tasks again
   -database <file>                    the run database (default: runs.sqlite in the cache)
   -output <folder>                    where `export` writes the RO-Crate (default: <run>-crate)
   -license <url>                      the license of the exported crate";

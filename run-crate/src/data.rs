@@ -48,13 +48,17 @@ impl Data {
         }
     }
 
-    /// The files and directories copied so far, and their size.
+    /// The distinct files and directories copied so far, and their size.
     pub(crate) fn totals(&self) -> (usize, u64) {
-        let copied = self.placed.values().filter_map(|placed| match placed {
-            Placed::Copied { size, .. } => Some(*size),
-            _ => None,
-        });
-        copied.fold((0, 0), |(count, total), size| (count + 1, total + size))
+        let copied: std::collections::BTreeMap<&str, u64> = self
+            .placed
+            .values()
+            .filter_map(|placed| match placed {
+                Placed::Copied { id, size, .. } => Some((id.as_str(), *size)),
+                _ => None,
+            })
+            .collect();
+        (copied.len(), copied.values().sum())
     }
 
     /// Places the file or directory at a location, once per location.
@@ -234,6 +238,10 @@ mod tests {
             data.place(url).expect("places"),
             Placed::Remote { url: url.into() }
         );
+        // The same content at a second place is copied once.
+        let copy = root.path().join("copy.txt");
+        std::fs::write(&copy, "a").expect("writes");
+        data.place(&copy.to_string_lossy()).expect("places");
         assert_eq!(data.totals(), (2, 2));
         let names: Vec<String> = std::fs::read_dir(crate_root.join("data"))
             .expect("lists")

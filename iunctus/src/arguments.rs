@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::net::IpAddr;
 use std::path::PathBuf;
 
 use workflow_graph::{Language, Order};
@@ -49,6 +50,12 @@ pub struct Arguments {
     pub license: Option<String>,
     /// `-resume [run]`: continue a run, by default the last run of the workflow.
     pub resume: Option<Resume>,
+    /// `-page`: serve the web page of the run while it goes on.
+    pub page: bool,
+    /// `-address ip`: where the web page listens; only this machine by default.
+    pub address: Option<IpAddr>,
+    /// `-port number`: the port of the web page; a free one by default.
+    pub port: Option<u16>,
 }
 
 /// Which run `-resume` continues.
@@ -117,6 +124,20 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
                         }
                         None => Resume::Last,
                     },
+                );
+            }
+            "-page" => parsed.page = true,
+            "-address" => {
+                let text = value()?;
+                parsed.address = Some(text.parse().map_err(|_| {
+                    format!("`-address` needs an IP address like 127.0.0.1, not `{text}`")
+                })?);
+            }
+            "-port" => {
+                let text = value()?;
+                parsed.port = Some(
+                    text.parse()
+                        .map_err(|_| format!("`-port` needs a port number, not `{text}`"))?,
                 );
             }
             "-max-pending" => {
@@ -313,12 +334,16 @@ mod tests {
     fn resume_takes_a_run_when_one_follows() {
         let parsed = parse_all(&["main.nf", "-resume"]);
         assert_eq!(parsed.resume, Some(Resume::Last));
-        let parsed = parse_all(&["main.nf", "-resume", "19a8f3c2b10-1a2b", "-stub"]);
+        let parsed = parse_all(&["main.nf", "-resume", "19a8f3c2b10-1a2b", "-page"]);
         assert_eq!(parsed.resume, Some(Resume::Run("19a8f3c2b10-1a2b".into())));
-        assert!(parsed.stub);
+        assert!(parsed.page);
         let parsed = parse_all(&["-resume", "main.nf"]);
         assert_eq!(parsed.resume, Some(Resume::Last));
         assert_eq!(parsed.target, Some(PathBuf::from("main.nf")));
+        let parsed = parse_all(&["-address", "0.0.0.0", "-port", "8080"]);
+        assert_eq!(parsed.address, Some("0.0.0.0".parse().expect("an address")));
+        assert_eq!(parsed.port, Some(8080));
+        assert!(parse(&["-port".to_owned(), "web".to_owned()]).is_err());
     }
 
     #[test]

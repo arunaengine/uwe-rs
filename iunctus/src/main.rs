@@ -1,7 +1,7 @@
 //! The `iunctus` command: `iunctus run` runs a workflow in any language iunctus knows,
 //! `iunctus graph` prints the execution graph of a run, `iunctus config` prints the config of a
-//! Nextflow project, `iunctus runs` lists the runs of the run database, and `iunctus export`
-//! writes the RO-Crate of a run.
+//! Nextflow project, `iunctus runs` lists the runs of the run database, `iunctus export`
+//! writes the RO-Crate of a run, and `iunctus page` serves the web page of the runs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -10,6 +10,7 @@ mod checked;
 mod detect;
 mod local;
 mod nextflow;
+mod page;
 mod record;
 mod remote;
 mod resume;
@@ -20,6 +21,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use run_database::Recorder;
+use run_page::Server;
 use workflow_graph::{
     Driver, DriverError, Engine, ExecuteError, Execution, ExecutionGraph, Executor, Language,
     Launch, RunOptions, Simulator,
@@ -80,6 +82,7 @@ fn main() -> ExitCode {
         "config" => config(&arguments),
         "runs" => runs::list(&arguments),
         "export" => runs::export(&arguments),
+        "page" => page::command(&arguments),
         _ => return usage(),
     };
     match result {
@@ -91,16 +94,21 @@ fn main() -> ExitCode {
     }
 }
 
-/// `iunctus run`: runs the workflow and writes its graph to `-graph` if given.
+/// `iunctus run`: runs the workflow and writes its graph to `-graph` if given. With `-page`,
+/// the page of the run stays open after the run until Ctrl-C.
 fn run(arguments: &Arguments) -> Result<(), Failure> {
     if arguments.format.is_some() {
         return Err(failure(
             "iunctus: `-format` is an option of `iunctus graph`",
         ));
     }
-    let execution = execute(arguments, false)?;
+    let (execution, page) = execute(arguments, false)?;
     if let Some(file) = &arguments.graph {
         write_graph(file, &execution.graph)?;
+    }
+    if let Some(page) = page {
+        eprintln!("iunctus: the run has ended; the page stays open until you press Ctrl-C");
+        page.serve_until_interrupted();
     }
     execution.into_result()?;
     Ok(())
@@ -115,7 +123,10 @@ fn graph(arguments: &Arguments) -> Result<(), Failure> {
             "iunctus: unknown graph format `{format}`; use json, dot or summary"
         )));
     }
-    let execution = execute(arguments, true)?;
+    if arguments.page {
+        return Err(failure("iunctus: `-page` is an option of `iunctus run`"));
+    }
+    let (execution, _) = execute(arguments, true)?;
     if let Some(file) = &arguments.graph {
         write_graph(file, &execution.graph)?;
     }
@@ -126,8 +137,9 @@ fn graph(arguments: &Arguments) -> Result<(), Failure> {
 }
 
 /// Runs the target with its language's driver and the chosen executor, and records the run
-/// in the run database. `quiet` keeps standard output free for the graph.
-fn execute(arguments: &Arguments, quiet: bool) -> Result<Execution, Failure> {
+/// in the run database. `quiet` keeps standard output free for the graph. With `-page`, the
+/// page of the run serves from the start; the result holds it.
+fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Server>), Failure> {
     let Some(target) = &arguments.target else {
         return Err(failure(
             "iunctus: name a workflow file or a project directory to run",
@@ -155,6 +167,10 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<Execution, Failure> {
         mut recorder,
         reusable,
     } = record::start(arguments, &started)?;
+    let page = match arguments.page {
+        true => Some(page::start(arguments, &format!("/runs/{run}"))?),
+        false => None,
+    };
     let prepared = executor(arguments, &run, !quiet).and_then(|executor| {
         let driver = driver(language, &launch, &run, quiet, arguments)?;
         Ok((executor, driver))
@@ -186,7 +202,7 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<Execution, Failure> {
         .observer(&mut observer)
         .run(&workflow, driver.as_mut());
     close(recorder);
-    Ok(execution)
+    Ok((execution, page))
 }
 
 /// Ends the record of a run. A run goes on when the database fails; it only says so.
@@ -306,6 +322,7 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
        iunctus graph <workflow file or directory> [-format json|dot|summary] [options]
        iunctus config [<project>] [-profile <names>] [-c <config>] [--<param> <value>]
        iunctus runs
+       iunctus page [<run>] [-address <ip>] [-port <number>]
        iunctus export <run> [-output <folder>] [-license <url>]
 
 options:
@@ -328,6 +345,8 @@ options:
   --<param> <value>                   a workflow parameter
   -resume [<run>]                     continues a run, by default the last one of the workflow,
                                       without running its finished tasks again
+  -page                               serves the web page of the run while it goes on
+  -address <ip>, -port <number>       where the page listens (default: 127.0.0.1, a free port)
   -database <file>                    the run database (default: runs.sqlite in the cache)
   -output <folder>                    where `export` writes the RO-Crate (default: <run>-crate)
   -license <url>                      the license of the exported crate";

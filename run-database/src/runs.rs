@@ -112,6 +112,16 @@ impl Database {
         Ok(log)
     }
 
+    /// The number of the last event of a run; 0 before the first.
+    pub fn last_event(&self, run: &str) -> Result<i64, DatabaseError> {
+        let sequence = self.connection.query_row(
+            "SELECT COALESCE(MAX(sequence), 0) FROM events WHERE run = ?1",
+            [run],
+            |row| row.get(0),
+        )?;
+        Ok(sequence)
+    }
+
     /// The events of a run after the one numbered `after`, at most `limit` of them.
     pub fn events(&self, run: &str, after: i64, limit: u32) -> Result<Vec<Event>, DatabaseError> {
         let mut statement = self.connection.prepare_cached(

@@ -1,5 +1,6 @@
-//! Every `iunctus run` records itself in the run database: `iunctus runs` lists it, and
-//! `iunctus export` writes its RO-Crate. The runs use the simulator, so they need no container engine.
+//! Every `iunctus run` records itself in the run database: `iunctus runs` lists it, `-resume`
+//! continues it without running its finished tasks again, and `iunctus export` writes its
+//! RO-Crate. The runs use the simulator, so they need no container engine.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -52,8 +53,19 @@ fn iunctus(directory: &Path, arguments: &[&str]) -> (i32, String) {
     )
 }
 
+/// The lines of a run that name tasks, sorted, like `[resumed] COUNT (1) ...`.
+fn tasks(output: &str) -> Vec<String> {
+    let mut lines: Vec<String> = output
+        .lines()
+        .filter(|line| line.starts_with('['))
+        .map(|line| line.split(" (from run").next().unwrap_or(line).to_owned())
+        .collect();
+    lines.sort();
+    lines
+}
+
 #[test]
-fn runs_are_recorded_and_exported() {
+fn runs_are_recorded_resumed_and_exported() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path();
     std::fs::write(path.join("main.nf"), SCRIPT).expect("writes the script");
@@ -76,6 +88,29 @@ fn runs_are_recorded_and_exported() {
         lines[1].contains("succeeded") && lines[1].contains("simulated"),
         "{output}"
     );
+
+    // Nothing changed, so every task comes from the first run.
+    let (code, output) = iunctus(path, &["run", "main.nf", "-resume", &first]);
+    assert_eq!(code, 0, "{output}");
+    let expected = [
+        "[resumed] COUNT (1)",
+        "[resumed] COUNT (2)",
+        "[resumed] UPPER (1)",
+        "[resumed] UPPER (2)",
+    ];
+    assert_eq!(tasks(&output), expected, "{output}");
+
+    // A changed input runs its task and the task after it again.
+    std::fs::write(path.join("b.txt"), "four\nfive\n").expect("changes an input");
+    let (code, output) = iunctus(path, &["run", "main.nf", "-resume"]);
+    assert_eq!(code, 0, "{output}");
+    let expected = [
+        "[resumed] COUNT (1)",
+        "[resumed] UPPER (1)",
+        "[simulated] COUNT (2)",
+        "[simulated] UPPER (2)",
+    ];
+    assert_eq!(tasks(&output), expected, "{output}");
 
     let (code, output) = iunctus(path, &["runs"]);
     assert_eq!(code, 0, "{output}");

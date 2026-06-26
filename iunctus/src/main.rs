@@ -12,6 +12,7 @@ mod local;
 mod nextflow;
 mod record;
 mod remote;
+mod resume;
 mod revision;
 mod runs;
 
@@ -150,12 +151,15 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<Execution, Failure> {
         simulated: name == "simulator",
         store: (name == "local").then_some(store.as_path()),
     };
-    let record::Recording { mut recorder, .. } = record::start(arguments, &started)?;
+    let record::Recording {
+        mut recorder,
+        reusable,
+    } = record::start(arguments, &started)?;
     let prepared = executor(arguments, &run, !quiet).and_then(|executor| {
         let driver = driver(language, &launch, &run, quiet, arguments)?;
         Ok((executor, driver))
     });
-    let (mut executor, mut driver) = match prepared {
+    let (executor, mut driver) = match prepared {
         Ok(prepared) => prepared,
         Err(failure) => {
             recorder.ended(Some(&failure.message));
@@ -163,14 +167,23 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<Execution, Failure> {
             return Err(failure);
         }
     };
+    let taken = resume::Taken::default();
+    let mut executor = match reusable {
+        Some(reusable) => {
+            let resumed = resume::Resumed::new(executor, reusable, taken.clone(), !quiet);
+            Box::new(resumed)
+        }
+        None => executor,
+    };
     let options = RunOptions {
         max_pending: arguments.max_pending.unwrap_or(1),
         order: arguments.order.unwrap_or_default(),
     };
     let workflow = target.to_string_lossy();
+    let mut observer = resume::Noting::new(&mut recorder, taken);
     let execution = Engine::new(executor.as_mut())
         .options(options)
-        .observer(&mut recorder)
+        .observer(&mut observer)
         .run(&workflow, driver.as_mut());
     close(recorder);
     Ok(execution)

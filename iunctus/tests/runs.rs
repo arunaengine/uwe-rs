@@ -144,6 +144,10 @@ fn runs_are_recorded_resumed_and_exported() {
     assert_eq!(actions, 5);
     assert!(path.join("crate/main.nf").is_file());
 
+    let (code, output) = iunctus(path, &["origin", "no-such-file"]);
+    assert_eq!(code, 0, "{output}");
+    assert!(output.starts_with("no run made"), "{output}");
+
     let (code, output) = iunctus(path, &["export", "no-such-run"]);
     assert_eq!(code, 1, "{output}");
     assert!(output.contains("no run `no-such-run`"), "{output}");

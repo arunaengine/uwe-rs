@@ -13,6 +13,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod fingerprint;
+mod origin;
 mod recorder;
 mod resume;
 mod runs;
@@ -26,6 +27,7 @@ use std::time::Duration;
 use rusqlite::Connection;
 
 pub use fingerprint::{InputState, fingerprint, input_states};
+pub use origin::Origin;
 pub use recorder::{LOG_LIMIT, Recorder, RunStart};
 pub use resume::Reusable;
 pub use runs::{Event, Log, Run};

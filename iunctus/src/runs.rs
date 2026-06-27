@@ -1,6 +1,7 @@
 //! The commands that read the run database: `iunctus runs` lists the runs,
 //! `iunctus export <run>` writes the Workflow Run RO-Crate of a run, and
-//! `iunctus why <run> <task>` tells why a task ran instead of taking an earlier result.
+//! `iunctus why <run> <task>` tells why a task ran instead of taking an earlier result, and
+//! `iunctus origin <file>` tells where a file came from.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -129,9 +130,22 @@ pub fn why(arguments: &Arguments) -> Result<(), Failure> {
         ));
     };
     let database = open(arguments)?;
-    let why = database
-        .why(&run, task)
-        .map_err(|error| failure(error.to_string()))?;
+    let broken = |error: run_database::DatabaseError| failure(error.to_string());
+    let Some(row) = database.task_row(&run, task).map_err(broken)? else {
+        return Err(failure(format!("iunctus: run {run} has no task {task}")));
+    };
+    match row.reused.as_deref() {
+        Some("cache") => {
+            println!("task {task} did not run: the cache of the store had its result");
+            return Ok(());
+        }
+        Some(earlier) => {
+            println!("task {task} did not run: its result came from run {earlier}");
+            return Ok(());
+        }
+        None => {}
+    }
+    let why = database.why(&run, task).map_err(broken)?;
     match why {
         None => println!("no earlier run of the workflow has this task"),
         Some(why) => {
@@ -139,6 +153,55 @@ pub fn why(arguments: &Arguments) -> Result<(), Failure> {
             for change in why.changes {
                 println!("- {change}");
             }
+        }
+    }
+    Ok(())
+}
+
+/// `iunctus origin <file>`: the tasks that made a file, back to the data that no task made. The
+/// file is a path, or a digest like `sha256:<hex>`.
+pub fn origin(arguments: &Arguments) -> Result<(), Failure> {
+    let Some(file) = &arguments.target else {
+        return Err(failure(
+            "iunctus: name a file that a run made, or its digest as sha256:<hex>",
+        ));
+    };
+    let text = file.to_string_lossy();
+    let file = if text.starts_with("sha256:") {
+        text.into_owned()
+    } else {
+        let absolute = std::path::absolute(file).unwrap_or_else(|_| file.clone());
+        absolute.to_string_lossy().into_owned()
+    };
+    let chain = open(arguments)?
+        .origin(&file)
+        .map_err(|error| failure(error.to_string()))?;
+    if chain.is_empty() {
+        println!("no run made {file}");
+        return Ok(());
+    }
+    println!("{file} was made by:");
+    for step in chain {
+        let indent = "  ".repeat(step.depth);
+        let image = step.image.map(|image| format!(", image {image}"));
+        println!(
+            "{indent}task {} {} of run {}{}",
+            step.task,
+            step.name,
+            step.run,
+            image.unwrap_or_default()
+        );
+        for data in step.data {
+            let source = match data.location.as_str() {
+                "" => "the workflow's own text".to_owned(),
+                location => location.to_owned(),
+            };
+            let size = data.size.map(|size| format!(", {size} bytes"));
+            println!(
+                "{indent}  reads {} from {source}{}, which no task made",
+                data.path,
+                size.unwrap_or_default()
+            );
         }
     }
     Ok(())

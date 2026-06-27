@@ -187,6 +187,21 @@ fn tasks_are_read_back_with_their_files_and_edges() {
     assert_eq!(edges[0].path.as_deref(), Some("in.txt"));
 
     let made = directory.path().join("made.txt");
+    // Task 1 made the file from the data, which no task made.
+    let origin = database.origin(&made.to_string_lossy()).expect("finds");
+    assert_eq!(origin.len(), 1);
+    assert_eq!((origin[0].depth, origin[0].task), (0, 1));
+    assert_eq!(origin[0].data.len(), 1);
+    assert!(origin[0].data[0].location.ends_with("data.txt"));
+    assert!(database.origin("/no/such/file").expect("finds").is_empty());
+    // Task 2 read the file of task 1, so its output goes back two tasks.
+    let never = directory.path().join("never.txt");
+    let origin = database.origin(&never.to_string_lossy()).expect("finds");
+    let chain: Vec<(usize, u64, usize)> = origin
+        .iter()
+        .map(|step| (step.depth, step.task, step.data.len()))
+        .collect();
+    assert_eq!(chain, [(0, 2, 0), (1, 1, 1)]);
     let producers = database.producers(&made.to_string_lossy()).expect("finds");
     assert_eq!(producers.len(), 1);
     assert_eq!((producers[0].0.as_str(), producers[0].1.task), ("run-1", 1));

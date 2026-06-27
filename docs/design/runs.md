@@ -11,6 +11,7 @@ Every `iunctus run` and `iunctus graph` records itself in one SQLite file, the r
 - **Resume:** `iunctus run <workflow> -resume` continues the last run of the workflow without running its finished tasks again.
 - **The web page:** `iunctus run -page` shows the run live in the browser, and `iunctus page` shows any past run.
 - **RO-Crate:** `iunctus export <run>` writes a Workflow Run RO-Crate of the Provenance Run Crate profile, with the digest of every file.
+- **Insight:** `iunctus why <run> <task>` tells why a task ran again, and `iunctus origin <file>` where a file came from.
 
 | Crate | What it is |
 |---|---|
@@ -26,6 +27,8 @@ Every `iunctus run` and `iunctus graph` records itself in one SQLite file, the r
 | `iunctus runs` | lists the latest 50 runs: id, start, state, executor, number of tasks and failures, workflow |
 | `iunctus page [<run>]` | serves the page of all runs, or opens one run, until Ctrl-C |
 | `iunctus export <run>` | writes the RO-Crate of a run to `-output <folder>`, by default `<run>-crate` |
+| `iunctus why <run> <task>` | what changed since the same task ran before, or where its result came from when it did not run (section 6) |
+| `iunctus origin <file>` | the tasks that made a file, back to the data that no task made; the file is a path or `sha256:<hex>` (section 6) |
 | `-resume [<run>]` | continues a run; without an id, the last run of the same workflow |
 | `-page` | serves the page of the run that `iunctus run` starts; it stays open after the run until Ctrl-C |
 | `-address <ip>`, `-port <number>` | where the page listens: `127.0.0.1` and a free port by default |
@@ -128,9 +131,15 @@ A crate of a simulated run says so in the description of the crate, of the workf
 
 Not yet: the formal parameters of the workflow (they come with the JSON Schema of inputs, decision 24), resource use, and a zip file.
 
-## 6. Checks
+## 6. Insight
 
-- `run-database/tests/database.rs`: a run is recorded and read back with its logs, events, tasks, files, edges and markers; a resumed run joins the lineage and finds the finished tasks; a database of a newer version is refused. Unit tests cover the fingerprint and the end of long logs.
+**Why a task ran again** (`Database::why`, `iunctus why`, and a section of the task on the page). The task is compared with the task of the same step and name in the run that this run resumes, or else in the latest earlier run of the same workflow. The answer names each difference in plain words: the image, the command, the script, the standard input, the work directory, the outputs, each environment variable, the text of a file that the workflow writes, and each input: new, gone, of another size or digest, or a new output of a task that ran again. When nothing differs, it says why the result was not taken: the task failed before, an input was written again with the same size, the run did not resume the earlier one, or the earlier files were gone. A task that did not run says where its result came from.
+
+**Where a file came from** (`Database::origin`, `iunctus origin`). From a file, by its location or its digest, the answer walks back: the task that made it in the latest run that did, then the tasks that made that task's inputs, down to the data that no task made. Since a resumed run reads the files of the runs before it, the chain crosses runs. Once outputs carry digests (section 2), the same content made by another run is found by its digest too. On the page, each input links to the task that made it.
+
+## 7. Checks
+
+- `run-database/tests/database.rs`: a run is recorded and read back with its logs, events, tasks, files, edges and markers; a resumed run joins the lineage and finds the finished tasks; why a task ran again, and where a file came from; a database of a newer version is refused. Unit tests cover the fingerprint and the end of long logs.
 - `run-crate/tests/export.rs` and its fixture; unit tests cover image references and the copies by digest.
 - `run-page/tests/page.rs`: the page, the JSON, a download, a log and the stream of a finished run.
-- `iunctus/tests/runs.rs`: `iunctus runs`, `-resume` with nothing changed and with a changed input, `iunctus export`, and a real run that may not resume a simulated one. Unit tests cover the new options, the Git revision and the main file of a project.
+- `iunctus/tests/runs.rs`: `iunctus runs`, `-resume` with nothing changed and with a changed input, `iunctus why` on the tasks that ran again, `iunctus origin`, `iunctus export`, and a real run that may not resume a simulated one. Unit tests cover the new options, the Git revision and the main file of a project.

@@ -100,7 +100,7 @@ No task runs for real yet, except one at a time through the simple local executo
 **Missing from the plan:**
 
 11. **Delivering results** to the place each language expects (section 2), from the store, as copies or links.
-12. **The run database** (decision 10): the task graph, the event log, attempts and log locations in one SQLite file next to the store ([Nextflow runtime](design/nextflow/runtime.md), section 5). Resume, status views and the insight features of section 4 read it.
+12. **The run database** (decision 10): the task graph, the event log, attempts and log locations in one SQLite file next to the store. Done: see [runs](design/runs.md); resume, the web page, the RO-Crate export and the first insight features read it.
 13. **Preparing images:** tags pinned to digests (done for the local executor), images built from Conda environments (decision 12), and one image for a whole workflow (decision 13).
 14. **The context of embedded code:** the `snakemake` object for scripts, wrappers and notebooks, the Snakefile's functions for `run:` blocks, and Nextflow `exec:` sections in the native interpreter.
 15. **Logs and reports:** standard output and error of each task, live progress, and trace, timeline and benchmark files.
@@ -201,11 +201,11 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 
 ### Run database, web page and provenance
 
-- [ ] The run database (decision 10), filled by every run, simulated or real.
-- [ ] Resume from the run database.
-- [ ] The web page (decision 23): the graph as it grows, the state of each step, logs and outputs, for the current run or any past run.
-- [ ] Workflow Run RO-Crate with the provenance graph (decision 25).
-- [ ] Insight: why a task ran again, where a file came from, where the time went, comparing two runs, replaying one task, OpenTelemetry export (section 4).
+- [x] The run database (decision 10), filled by every run, simulated or real ([runs](design/runs.md)).
+- [x] Resume from the run database, for every executor.
+- [ ] The web page (decision 23): the graph as it grows, the state of each step, logs and outputs, for the current run or any past run. Done except the drawing of the graph, which waits for the SVG renderer.
+- [x] Workflow Run RO-Crate with the provenance graph (decision 25): valid at the level REQUIRED of the Provenance Run Crate profile 0.5.
+- [ ] Insight: why a task ran again (done), where a file came from (done), where the time went, comparing two runs, replaying one task, OpenTelemetry export (section 4).
 - Done when: a real run can be followed live on the page, and its RO-Crate passes the checks of the Provenance Run Crate profile.
 
 ### Inputs

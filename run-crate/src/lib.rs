@@ -112,12 +112,19 @@ pub fn export(
         }
     }
     let published = ids::time(run_database::now());
+    let version = match &record.revision {
+        Some(revision) => Some(revision.clone()),
+        None => std::fs::read(&options.workflow)
+            .ok()
+            .map(|bytes| task_model::Digest::sha256(&bytes).to_string()),
+    };
     let graph = Record {
         run: &record,
         workflow: &workflow,
         tasks: &tasks,
         placed: &placed,
         published,
+        version,
         license: options.license.as_deref(),
     }
     .graph();

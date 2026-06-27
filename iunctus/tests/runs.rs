@@ -1,6 +1,7 @@
 //! Every `iunctus run` records itself in the run database: `iunctus runs` lists it, `-resume`
 //! continues it without running its finished tasks again, and `iunctus export` writes its
-//! RO-Crate. The runs use the simulator, so they need no container engine.
+//! RO-Crate. The runs use the simulator, so they need no container engine, except the ignored
+//! test of resume with real containers: `cargo test -p iunctus --test runs -- --ignored`.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -178,4 +179,31 @@ fn a_real_run_cannot_resume_a_simulated_one() {
     let (code, output) = iunctus(path, &arguments);
     assert_eq!(code, 1, "{output}");
     assert!(output.contains("was simulated"), "{output}");
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn real_runs_resume_in_containers() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path();
+    let script = SCRIPT.replace(
+        "    input:\n",
+        "    container 'debian:stable-slim'\n    input:\n",
+    );
+    std::fs::write(path.join("main.nf"), script).expect("writes the script");
+    std::fs::write(path.join("a.txt"), "one\ntwo\n").expect("writes an input");
+    std::fs::write(path.join("b.txt"), "three\n").expect("writes an input");
+    let arguments = ["run", "main.nf", "-executor", "local", "-resume"];
+    let (code, output) = iunctus(path, &arguments);
+    assert_eq!(code, 0, "{output}");
+    std::fs::write(path.join("b.txt"), "four\nfive\n").expect("changes an input");
+    let (code, output) = iunctus(path, &arguments);
+    assert_eq!(code, 0, "{output}");
+    let expected = [
+        "[done] COUNT (2)",
+        "[done] UPPER (2)",
+        "[resumed] COUNT (1)",
+        "[resumed] UPPER (1)",
+    ];
+    assert_eq!(tasks(&output), expected, "{output}");
 }

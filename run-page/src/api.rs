@@ -8,7 +8,7 @@ use axum::Json;
 use axum::Router;
 use axum::extract::{Path, State};
 use axum::routing::get;
-use run_database::{Log, MarkerRow, Run, TaskDetail, TaskRow};
+use run_database::{Log, MarkerRow, Run, TaskDetail, TaskRow, Why};
 use serde::Serialize;
 
 use crate::{Failure, Shared, assets, files, live, query};
@@ -28,6 +28,7 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/api/runs/{run}", get(run))
         .route("/api/runs/{run}/events", get(live::events))
         .route("/api/runs/{run}/tasks/{task}", get(task))
+        .route("/api/runs/{run}/tasks/{task}/why", get(why))
         .route(
             "/api/runs/{run}/tasks/{task}/logs/{attempt}/{stream}",
             get(files::log),
@@ -121,4 +122,13 @@ async fn task(
     })
     .await?;
     Ok(Json(view))
+}
+
+/// Why a task ran instead of taking the result of an earlier run; `null` without an earlier run.
+async fn why(
+    State(state): State<Shared>,
+    Path((id, task)): Path<(String, u64)>,
+) -> Result<Json<Option<Why>>, Failure> {
+    let why = query(&state, move |database| Ok(database.why(&id, task)?)).await?;
+    Ok(Json(why))
 }

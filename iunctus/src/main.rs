@@ -1,7 +1,8 @@
 //! The `iunctus` command: `iunctus run` runs a workflow in any language iunctus knows,
 //! `iunctus graph` prints the execution graph of a run, `iunctus config` prints the config of a
 //! Nextflow project, `iunctus runs` lists the runs of the run database, `iunctus export`
-//! writes the RO-Crate of a run, and `iunctus page` serves the web page of the runs.
+//! writes the RO-Crate of a run, `iunctus page` serves the web page of the runs, and
+//! `iunctus why` tells why a task ran again.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -83,6 +84,7 @@ fn main() -> ExitCode {
         "runs" => runs::list(&arguments),
         "export" => runs::export(&arguments),
         "page" => page::command(&arguments),
+        "why" => runs::why(&arguments),
         _ => return usage(),
     };
     match result {
@@ -324,6 +326,7 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
        iunctus runs
        iunctus page [<run>] [-address <ip>] [-port <number>]
        iunctus export <run> [-output <folder>] [-license <url>]
+       iunctus why <run> <task>
 
 options:
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it

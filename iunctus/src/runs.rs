@@ -1,5 +1,6 @@
-//! The commands that read the run database: `iunctus runs` lists the runs, and
-//! `iunctus export <run>` writes the Workflow Run RO-Crate of a run.
+//! The commands that read the run database: `iunctus runs` lists the runs,
+//! `iunctus export <run>` writes the Workflow Run RO-Crate of a run, and
+//! `iunctus why <run> <task>` tells why a task ran instead of taking an earlier result.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -111,6 +112,35 @@ pub fn export(arguments: &Arguments) -> Result<(), Failure> {
         summary.files,
         summary.bytes
     );
+    Ok(())
+}
+
+/// `iunctus why <run> <task>`: what changed since the same task ran before.
+pub fn why(arguments: &Arguments) -> Result<(), Failure> {
+    let run = arguments.target.as_ref().map(|run| run.to_string_lossy());
+    let task = arguments
+        .targets
+        .first()
+        .and_then(|task| task.parse::<u64>().ok());
+    let (Some(run), Some(task)) = (run, task) else {
+        return Err(failure(
+            "iunctus: name a run and the number of one of its tasks, like `iunctus why \
+             1a0f1cc4c10-3a2487 4`; `iunctus runs` lists the runs",
+        ));
+    };
+    let database = open(arguments)?;
+    let why = database
+        .why(&run, task)
+        .map_err(|error| failure(error.to_string()))?;
+    match why {
+        None => println!("no earlier run of the workflow has this task"),
+        Some(why) => {
+            println!("compared with task {} of run {}:", why.task, why.run);
+            for change in why.changes {
+                println!("- {change}");
+            }
+        }
+    }
     Ok(())
 }
 

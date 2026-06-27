@@ -119,6 +119,16 @@ fn runs_are_recorded_resumed_and_exported() {
         .nth(1)
         .and_then(|line| line.split_whitespace().next());
     let last = last.expect("a run id").to_owned();
+    // Why the two tasks ran again: the changed input, and the task that ran before them.
+    let answers: Vec<String> = (1..=4)
+        .map(|task| iunctus(path, &["why", &last, &task.to_string()]).1)
+        .collect();
+    let text = answers.join("");
+    assert!(
+        text.contains("the input `b.txt` changed: 6 bytes before, 10 bytes now"),
+        "{text}"
+    );
+    assert!(text.contains("which ran again"), "{text}");
     let (code, output) = iunctus(path, &["export", &last, "-output", "crate"]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("4 tasks"), "{output}");

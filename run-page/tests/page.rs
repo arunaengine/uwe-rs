@@ -118,6 +118,9 @@ fn the_page_shows_runs_tasks_logs_and_files() {
     assert_eq!(task["stdout"]["text"], "done\n");
     assert_eq!(task["stderr"], Value::Null);
     assert_eq!(task["outputs"][0]["path"], "out.txt");
+    // No earlier run has the task, so there is nothing to compare.
+    let why = get_json(&format!("{url}/api/runs/finished-run/tasks/4/why"));
+    assert_eq!(why, Value::Null);
     let (status, content) = get(&format!("{url}/api/runs/finished-run/tasks/4/outputs/0"));
     assert_eq!((status, content.as_str()), (200, "RAW\n"));
     let (status, log) = get(&format!(

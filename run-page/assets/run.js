@@ -340,6 +340,7 @@ async function drawDetail(task) {
     parts.push(el("h3", {}, "Command"), el("pre", {}, description.command.join(" ")));
   }
   if (description.script) parts.push(el("h3", {}, "Script"), el("pre", {}, description.script));
+  if (!row.reused && row.attempts > 0) parts.push(whyPart(id, task));
   parts.push(logPart("Standard output", data.stdout, id, task, last, "stdout"));
   parts.push(logPart("Standard error", data.stderr, id, task, last, "stderr"));
   parts.push(el("h3", {}, "Inputs"), filesTable(data.inputs, "inputs", id, task, data.producers));
@@ -361,6 +362,22 @@ async function drawDetail(task) {
   }
   parts.push(el("p", { class: "quiet mono" }, `fingerprint ${data.fingerprint}`));
   detail.replaceChildren(...parts);
+}
+
+// Why the task ran instead of taking the result of an earlier run, filled when it is known.
+function whyPart(id, task) {
+  const part = el("div", {});
+  json(`/api/runs/${encodeURIComponent(id)}/tasks/${task}/why`)
+    .then((why) => {
+      if (!why) return;
+      const earlier = link(`/runs/${encodeURIComponent(why.run)}/tasks/${why.task}`,
+        `task ${why.task} of run ${why.run}`);
+      part.replaceChildren(el("h3", {}, "Why it ran"),
+        el("p", { class: "quiet" }, "Compared with ", earlier, ":"),
+        el("ul", {}, why.changes.map((change) => el("li", {}, change))));
+    })
+    .catch(() => {});
+  return part;
 }
 
 function logPart(title, log, id, task, attempt, stream) {

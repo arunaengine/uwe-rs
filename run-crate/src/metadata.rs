@@ -59,6 +59,8 @@ pub(crate) struct Record<'a> {
     pub placed: &'a HashMap<String, Placed>,
     /// When the crate was made, in ISO 8601.
     pub published: String,
+    /// The version of the workflow: its Git revision, else the digest of its main file.
+    pub version: Option<String>,
     pub license: Option<&'a str>,
 }
 
@@ -117,8 +119,8 @@ impl Record<'_> {
                 "name": step,
                 "url": {"@id": self.workflow}
             });
-            if let Some(revision) = &self.run.revision {
-                tool["version"] = json!(revision);
+            if let Some(version) = &self.version {
+                tool["version"] = json!(version);
             }
             graph.push(tool);
         }
@@ -245,8 +247,8 @@ impl Record<'_> {
             "step": one_or_many(steps.iter().map(|step| json!({"@id": step_id(step)}))),
             "url": format!("file://{}", run.workflow)
         });
-        if let Some(revision) = &run.revision {
-            workflow["version"] = json!(revision);
+        if let Some(version) = &self.version {
+            workflow["version"] = json!(version);
         }
         workflow
     }
@@ -306,9 +308,10 @@ impl Record<'_> {
             "result": one_or_many(results.into_iter().flatten()),
             "startTime": time(run.started)
         });
-        if run.simulated {
-            action["description"] = json!(SIMULATED);
-        }
+        action["description"] = match run.simulated {
+            true => json!(SIMULATED),
+            false => json!(format!("iunctus {}", run.arguments.join(" "))),
+        };
         status(&mut action, run.ended, &run.state, run.error.as_deref());
         action
     }

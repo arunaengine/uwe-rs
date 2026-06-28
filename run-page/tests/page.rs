@@ -58,7 +58,7 @@ fn record(directory: &Path) -> std::path::PathBuf {
             directory: false,
         }],
         stdout: "done\n".into(),
-        stderr: String::new(),
+        ..Outcome::default()
     };
     let mut recorder = Database::open(&path)
         .expect("opens")

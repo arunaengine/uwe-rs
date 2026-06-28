@@ -68,8 +68,8 @@ fn outcome(task: &Task, run: Result<Vec<OutputFile>, Failure>) -> Outcome {
         id: task.id,
         exit_code,
         files,
-        stdout: String::new(),
         stderr,
+        ..Outcome::default()
     }
 }
 

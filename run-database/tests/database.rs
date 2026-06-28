@@ -55,7 +55,7 @@ fn outcome(id: u64, location: PathBuf, stdout: &str) -> Outcome {
             directory: false,
         }],
         stdout: stdout.into(),
-        stderr: String::new(),
+        ..Outcome::default()
     }
 }
 

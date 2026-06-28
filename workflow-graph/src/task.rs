@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 
@@ -104,15 +105,25 @@ pub struct Resources {
     pub gpus: Option<u32>,
 }
 
-/// What came of a task.
+/// What came of an attempt of a task.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Outcome {
     pub id: TaskId,
+    /// Which attempt of the task this was, counting from 1; the engine sets it.
+    pub attempt: u32,
     pub exit_code: i32,
     /// The output files, by the path the driver asked for and the local path that holds them.
     pub files: Vec<OutputFile>,
     pub stdout: String,
     pub stderr: String,
+    /// Whether an earlier result answered the task, so that it did not run.
+    pub cached: bool,
+    /// The image as the task ran in it, pinned to its digest where it has one; `None` when no
+    /// container ran, as in a simulated run.
+    pub image: Option<String>,
+    /// When the attempt started and ended. The engine fills in what the executor leaves out.
+    pub started: Option<SystemTime>,
+    pub ended: Option<SystemTime>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

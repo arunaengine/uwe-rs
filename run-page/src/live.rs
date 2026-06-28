@@ -36,7 +36,8 @@ pub(crate) struct Update {
     /// The number of the last event this update covers.
     sequence: i64,
     run: Run,
-    /// The tasks that were asked for, started or finished since the last update.
+    /// The tasks that were asked for, started or finished since the last update, and at the
+    /// end of the run the tasks it stopped.
     tasks: Vec<TaskRow>,
     /// All markers of the run, when a new one came.
     markers: Option<Vec<MarkerRow>>,
@@ -117,8 +118,13 @@ fn update(database: &Database, run: &str, after: i64) -> Result<Option<(Update, 
     };
     let touched: BTreeSet<u64> = events.iter().filter_map(|event| event.task).collect();
     let mut tasks = Vec::with_capacity(touched.len());
-    for task in touched {
-        tasks.extend(database.task_row(run, task)?);
+    for task in &touched {
+        tasks.extend(database.task_row(run, *task)?);
+    }
+    // At its end a run stops the tasks that had not finished, without an event for each.
+    if events.iter().any(|event| event.kind == "ended") {
+        let stopped = database.tasks(run)?.into_iter();
+        tasks.extend(stopped.filter(|task| task.state == "stopped" && !touched.contains(&task.id)));
     }
     let marked = events.iter().any(|event| event.kind == "marked");
     let graph = events

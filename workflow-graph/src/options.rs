@@ -34,4 +34,7 @@ pub enum Order {
     Reversed,
     /// A random pending task finishes first. The same seed gives the same order again.
     Shuffled { seed: u64 },
+    /// Tasks finish when their attempts end, as real executors run them. Unlike the other
+    /// orders, it depends on how long tasks take.
+    Finished,
 }

@@ -2,9 +2,11 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::SystemTime;
 
-use crate::pending::Pending;
+use crate::pending::{End, Pending, Slot, Take};
 use crate::queue::Queue;
 use crate::recorder::Recorder;
 use crate::{
@@ -31,6 +33,13 @@ pub enum ExecuteError {
     /// A task is to run after a task that the driver did not ask for before it.
     #[error("task {task} is to run after task {after}, which the driver did not ask for before it")]
     UnknownAfter { task: TaskId, after: TaskId },
+    /// The machine failed, not the task: the container engine, the TES server or the cluster.
+    /// The engine runs the task again, a few times.
+    #[error("task {task}: {message}")]
+    Machine { task: String, message: String },
+    /// The run was stopped, like with Ctrl-C.
+    #[error("the run was stopped")]
+    Cancelled,
 }
 
 impl ExecuteError {
@@ -40,6 +49,11 @@ impl ExecuteError {
             ExecuteError::Unsupported { .. } => true,
             _ => false,
         }
+    }
+
+    /// Whether the machine failed rather than the task, so that another attempt may work.
+    pub fn retryable(&self) -> bool {
+        matches!(self, ExecuteError::Machine { .. })
     }
 }
 
@@ -80,21 +94,30 @@ pub fn execute_with(
         .run(workflow, driver)
 }
 
+/// How often the engine runs a task again after the machine failed, by default.
+const MACHINE_RETRIES: u32 = 2;
+
 /// A run of a driver against an executor, with its options and an observer that hears what
 /// happens, like the run database.
 pub struct Engine<'a> {
     executor: &'a mut dyn Executor,
     options: RunOptions,
     observer: Option<&'a mut dyn Observer>,
+    retries: u32,
+    /// The number of attempts of each task so far.
+    attempts: HashMap<TaskId, u32>,
 }
 
 impl<'a> Engine<'a> {
-    /// A run with the default options and no observer.
+    /// A run with the default options, no observer, and two retries after failures of the
+    /// machine.
     pub fn new(executor: &'a mut dyn Executor) -> Self {
         Engine {
             executor,
             options: RunOptions::default(),
             observer: None,
+            retries: MACHINE_RETRIES,
+            attempts: HashMap::new(),
         }
     }
 
@@ -108,11 +131,18 @@ impl<'a> Engine<'a> {
         self
     }
 
+    /// How often a task runs again after the machine failed.
+    pub fn retries(mut self, retries: u32) -> Self {
+        self.retries = retries;
+        self
+    }
+
     /// Runs the driver to its end and returns the graph of what ran, and the error that
     /// stopped the run if there is one. The observer hears the end of every run.
     pub fn run(mut self, workflow: &str, driver: &mut dyn Driver) -> Execution {
         let mut recorder = Recorder::new(workflow, driver.language());
-        let result = self.drive(driver, &mut recorder);
+        let mut pending = Pending::new(self.options.order);
+        let result = self.drive(driver, &mut recorder, &mut pending);
         let error = result.err();
         self.report(Event::Ended {
             error: error.as_ref(),
@@ -148,9 +178,9 @@ impl<'a> Engine<'a> {
         &mut self,
         driver: &mut dyn Driver,
         recorder: &mut Recorder,
+        pending: &mut Pending,
     ) -> Result<(), ExecuteError> {
         let mut queue = Queue::default();
-        let mut pending = Pending::new(self.options.order);
         for task in driver.start()? {
             self.request(task, recorder, &mut queue)?;
         }
@@ -158,32 +188,98 @@ impl<'a> Engine<'a> {
             while pending.len() < self.options.max_pending.max(1)
                 && let Some(task) = queue.next()
             {
-                self.report(Event::Started {
-                    task: task.id,
-                    attempt: 1,
-                });
-                let started = SystemTime::now();
-                let mut outcome = self.executor.execute(&task)?;
-                outcome.attempt = 1;
-                outcome.started.get_or_insert(started);
-                outcome.ended.get_or_insert_with(SystemTime::now);
-                pending.push(outcome);
+                self.start(Arc::new(task), pending);
             }
-            let Some(outcome) = pending.take() else {
-                break;
+            let slot = match pending.take() {
+                Take::Empty => break,
+                // Each attempt ends when it starts.
+                Take::Wait => {
+                    return Err(ExecuteError::Executor {
+                        task: String::new(),
+                        message: "an attempt did not end".into(),
+                    });
+                }
+                Take::Ended(slot) => slot,
             };
+            let Slot {
+                task,
+                attempt,
+                started,
+                end,
+            } = slot;
+            let Some(End { result, time, .. }) = end else {
+                continue;
+            };
+            let mut outcome = match result {
+                Ok(outcome) => outcome,
+                Err(error) if error.retryable() && attempt <= self.retries => {
+                    let outcome = failed(&task, &error, attempt, started, time);
+                    self.report(Event::Finished {
+                        outcome: &outcome,
+                        attempt,
+                        retried: true,
+                    });
+                    self.start(task, pending);
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
+            outcome.id = task.id;
+            outcome.attempt = attempt;
+            outcome.started.get_or_insert(started);
+            outcome.ended.get_or_insert(time);
             recorder.finished(&outcome);
             self.report(Event::Finished {
                 outcome: &outcome,
-                attempt: 1,
+                attempt,
                 retried: false,
             });
-            queue.finished(outcome.id);
-            for next in driver.complete(outcome)? {
-                self.request(next, recorder, &mut queue)?;
+            let id = outcome.id;
+            let next = driver.complete(outcome)?;
+            // A driver that asks for the task again retries it; the tasks after it wait.
+            let again = next.iter().any(|task| task.id == id);
+            for task in next {
+                self.request(task, recorder, &mut queue)?;
+            }
+            if !again {
+                queue.finished(id);
             }
         }
         driver.finish()?;
         Ok(())
+    }
+
+    /// Runs the next attempt of a task.
+    fn start(&mut self, task: Arc<Task>, pending: &mut Pending) {
+        let number = self.attempts.entry(task.id).or_insert(0);
+        *number += 1;
+        let number = *number;
+        self.report(Event::Started {
+            task: task.id,
+            attempt: number,
+        });
+        pending.start(task.clone(), number);
+        let result = self.executor.execute(&task);
+        pending.end(task.id, number, result);
+    }
+}
+
+/// The outcome of an attempt that failed without one, for the observer: exit code -1 and the
+/// error as its standard error.
+fn failed(
+    task: &Task,
+    error: &ExecuteError,
+    attempt: u32,
+    started: SystemTime,
+    ended: SystemTime,
+) -> Outcome {
+    Outcome {
+        id: task.id,
+        attempt,
+        exit_code: -1,
+        stderr: error.to_string(),
+        started: Some(started),
+        ended: Some(ended),
+        ..Outcome::default()
     }
 }

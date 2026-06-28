@@ -35,7 +35,8 @@ pub struct Arguments {
     pub format: Option<String>,
     /// `-max-pending n`: how many tasks may be pending at once.
     pub max_pending: Option<usize>,
-    /// `-order asked|reversed|shuffled[:seed]`: the order in which pending tasks finish.
+    /// `-order asked|reversed|finished|shuffled[:seed]`: the order in which pending tasks
+    /// finish.
     pub order: Option<Order>,
     /// `-default-image image`: the container image of tasks that name none, for real executors.
     pub default_image: Option<String>,
@@ -149,7 +150,7 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
             "-order" => {
                 let name = value()?;
                 parsed.order = Some(order(&name).ok_or(format!(
-                    "unknown order `{name}`; use asked, reversed or shuffled[:<seed>]"
+                    "unknown order `{name}`; use asked, reversed, finished or shuffled[:<seed>]"
                 ))?);
             }
             // Snakemake's `--config a=1 b=2` sets several params.
@@ -212,12 +213,13 @@ fn language(name: &str) -> Option<Language> {
     })
 }
 
-/// An order by its name, as `-order` takes it: `asked`, `reversed`, `shuffled` or
+/// An order by its name, as `-order` takes it: `asked`, `reversed`, `finished`, `shuffled` or
 /// `shuffled:<seed>`; the seed is 0 when not given.
 fn order(name: &str) -> Option<Order> {
     match name.split_once(':') {
         None if name == "asked" => Some(Order::AsAsked),
         None if name == "reversed" => Some(Order::Reversed),
+        None if name == "finished" => Some(Order::Finished),
         None if name == "shuffled" => Some(Order::Shuffled { seed: 0 }),
         Some(("shuffled", seed)) => seed.parse().ok().map(|seed| Order::Shuffled { seed }),
         _ => None,
@@ -306,6 +308,7 @@ mod tests {
         assert_eq!(parsed.max_pending, Some(4));
         assert_eq!(parsed.order, Some(Order::Shuffled { seed: 7 }));
         assert_eq!(order("reversed"), Some(Order::Reversed));
+        assert_eq!(order("finished"), Some(Order::Finished));
         assert_eq!(order("shuffled"), Some(Order::Shuffled { seed: 0 }));
         for wrong in [
             ["-order", "random"],

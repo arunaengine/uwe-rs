@@ -153,3 +153,77 @@ fn the_page_shows_runs_tasks_logs_and_files() {
 
     server.stop();
 }
+
+#[test]
+fn a_running_run_updates_the_page_live() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    let start = RunStart {
+        id: "live-run".into(),
+        resumes: None,
+        workflow: "/work/main.nf".into(),
+        language: Language::Nextflow,
+        revision: None,
+        arguments: Vec::new(),
+        parameters: Vec::new(),
+        executor: "simulator".into(),
+        simulated: true,
+        store: None,
+    };
+    let mut recorder = Database::open(&path)
+        .expect("opens")
+        .record(&start)
+        .expect("starts");
+    let task = |id: u64| Task {
+        id: TaskId(id),
+        name: format!("P ({id})"),
+        step: "P".into(),
+        ..Task::default()
+    };
+    recorder.requested(&task(1), &[]);
+    let server = Server::start(&Settings::new(path)).expect("starts");
+    let url = format!("{}/api/runs/live-run/events?after=0", server.url());
+    // The stream stays open while the run goes on, so it is read on a thread of its own.
+    let reader = std::thread::spawn(move || {
+        let mut response = reqwest::blocking::get(url).expect("the stream answers");
+        let mut stream = String::new();
+        response
+            .read_to_string(&mut stream)
+            .expect("reads the stream");
+        stream
+    });
+    std::thread::sleep(std::time::Duration::from_millis(1200));
+    recorder.started(TaskId(1), 1);
+    let outcome = Outcome {
+        id: TaskId(1),
+        ..Outcome::default()
+    };
+    recorder.finished(&outcome, 1, false);
+    recorder.requested(&task(2), &[]);
+    // Let the page see task 2 waiting before the run ends and stops it.
+    std::thread::sleep(std::time::Duration::from_millis(1200));
+    recorder.ended(Some("stopped by the test"));
+    recorder.close().expect("closes");
+    let stream = reader.join().expect("the reader ends");
+    let updates: Vec<Value> = stream
+        .lines()
+        .filter_map(|line| line.strip_prefix("data: "))
+        .map(|data| serde_json::from_str(data).expect("JSON"))
+        .collect();
+    assert!(updates.len() >= 2, "{stream}");
+    // The first update has the task that was asked for, the last one the end of the run.
+    assert_eq!(updates[0]["tasks"][0]["state"], "waiting");
+    let last = updates.last().expect("an update");
+    assert_eq!(last["run"]["state"], "failed");
+    let states: Vec<&Value> = updates
+        .iter()
+        .flat_map(|update| update["tasks"].as_array().into_iter().flatten())
+        .map(|task| &task["state"])
+        .collect();
+    assert!(states.contains(&&Value::from("succeeded")), "{stream}");
+    assert!(states.contains(&&Value::from("waiting")), "{stream}");
+    let stopped = last["tasks"].as_array().into_iter().flatten();
+    let stopped: Vec<&Value> = stopped.map(|task| &task["state"]).collect();
+    assert_eq!(stopped, [&Value::from("stopped")], "{stream}");
+    server.stop();
+}

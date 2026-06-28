@@ -2,6 +2,8 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::time::SystemTime;
+
 use crate::pending::Pending;
 use crate::queue::Queue;
 use crate::recorder::Recorder;
@@ -160,7 +162,12 @@ impl<'a> Engine<'a> {
                     task: task.id,
                     attempt: 1,
                 });
-                pending.push(self.executor.execute(&task)?);
+                let started = SystemTime::now();
+                let mut outcome = self.executor.execute(&task)?;
+                outcome.attempt = 1;
+                outcome.started.get_or_insert(started);
+                outcome.ended.get_or_insert_with(SystemTime::now);
+                pending.push(outcome);
             }
             let Some(outcome) = pending.take() else {
                 break;

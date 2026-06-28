@@ -112,6 +112,7 @@ impl Database {
             files,
             stdout,
             stderr,
+            ..Outcome::default()
         }))
     }
 }

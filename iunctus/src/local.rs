@@ -68,7 +68,7 @@ async fn outcome(
         Some(image) => Some(runner.pin(image).await.map_err(failed)?),
         None => None,
     };
-    let prepared = runner.request(task, image).await.map_err(failed)?;
+    let prepared = runner.request(task, image.clone()).await.map_err(failed)?;
     let cancel = CancellationToken::new();
     let result = runner.execute(&prepared, &cancel).await.map_err(failed)?;
     let text = async |digest: &Option<Digest>| match digest {
@@ -95,6 +95,9 @@ async fn outcome(
         files,
         stdout: text(&result.stdout).await?,
         stderr: text(&result.stderr).await?,
+        cached: result.reused,
+        image,
+        ..Outcome::default()
     };
     Ok((outcome, result.reused))
 }

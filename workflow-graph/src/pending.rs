@@ -29,7 +29,7 @@ pub(crate) enum Take {
     Empty,
     /// The attempt that finishes next has not ended yet.
     Wait,
-    Ended(Slot),
+    Ended(Box<Slot>),
 }
 
 /// Attempts in the order they started, handed out in the order of the run options.
@@ -98,7 +98,7 @@ impl Pending {
     /// Takes any attempt that has ended, whatever the order, as when the run stopped.
     pub(crate) fn take_any(&mut self) -> Take {
         match self.slots.iter().position(|slot| slot.end.is_some()) {
-            Some(index) => Take::Ended(self.slots.remove(index)),
+            Some(index) => Take::Ended(Box::new(self.slots.remove(index))),
             None => Take::Empty,
         }
     }
@@ -113,7 +113,7 @@ impl Pending {
                 .filter_map(|(index, slot)| Some((slot.end.as_ref()?.arrival, index)))
                 .min();
             return match first {
-                Some((_, index)) => Take::Ended(self.slots.remove(index)),
+                Some((_, index)) => Take::Ended(Box::new(self.slots.remove(index))),
                 None => Take::Wait,
             };
         }
@@ -141,7 +141,7 @@ impl Pending {
             return Take::Wait;
         }
         self.chosen = None;
-        Take::Ended(self.slots.remove(index))
+        Take::Ended(Box::new(self.slots.remove(index)))
     }
 }
 

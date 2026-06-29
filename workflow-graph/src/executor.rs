@@ -48,11 +48,11 @@ impl Running {
         Running(State::Ended(Some(result)))
     }
 
-    /// The outcome of an attempt that ended when it started, else the attempt.
-    pub(crate) fn into_ended(self) -> Result<Result<Outcome, ExecuteError>, Running> {
-        match self.0 {
-            State::Ended(Some(result)) => Ok(result),
-            state => Err(Running(state)),
+    /// Takes the outcome of an attempt that ended when it started.
+    pub(crate) fn take_ended(&mut self) -> Option<Result<Outcome, ExecuteError>> {
+        match &mut self.0 {
+            State::Ended(result) => result.take(),
+            State::Future(_) => None,
         }
     }
 }

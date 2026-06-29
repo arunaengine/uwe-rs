@@ -38,17 +38,14 @@ impl Attempts {
 
     /// Lets an attempt run. One that ended when it started is its end at once; the others
     /// report their end to [`Attempts::next`].
-    pub(crate) fn start(&self, id: TaskId, attempt: u32, running: Running) -> Option<Ended> {
-        let running = match running.into_ended() {
-            Ok(result) => {
-                return Some(Ended {
-                    id,
-                    attempt,
-                    result,
-                });
-            }
-            Err(running) => running,
-        };
+    pub(crate) fn start(&self, id: TaskId, attempt: u32, mut running: Running) -> Option<Ended> {
+        if let Some(result) = running.take_ended() {
+            return Some(Ended {
+                id,
+                attempt,
+                result,
+            });
+        }
         let sender = self.sender.clone();
         self.runtime.spawn(async move {
             let result = running.await;

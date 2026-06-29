@@ -39,8 +39,16 @@ pub(crate) fn status(action: &mut Value, ended: Option<i64>, state: &str, error:
     }
 }
 
-pub(crate) fn image_entity(id: &str, reference: &str) -> Value {
-    let image = ImageReference::parse(reference);
+/// A container image by the reference it ran as. A reference pinned to a digest keeps no tag,
+/// so the tag comes from the reference the workflow named, when both name the same image.
+pub(crate) fn image_entity(id: &str, reference: &str, named: Option<&str>) -> Value {
+    let mut image = ImageReference::parse(reference);
+    if image.tag.is_none()
+        && let Some(named) = named.map(ImageReference::parse)
+        && (named.registry == image.registry && named.name == image.name)
+    {
+        image.tag = named.tag;
+    }
     let mut entity = json!({
         "@id": id,
         "@type": "ContainerImage",

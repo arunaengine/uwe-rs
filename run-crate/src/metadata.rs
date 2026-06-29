@@ -157,24 +157,26 @@ impl Record<'_> {
                 "object": one_or_many(actions)
             }));
         }
-        let mut images: BTreeMap<String, String> = BTreeMap::new();
+        // Each image by the reference it ran as, pinned to a digest, and the one the workflow
+        // named, which may hold the tag.
+        let mut images: BTreeMap<(String, Option<String>), String> = BTreeMap::new();
         for task in self.tasks {
-            let image = task
+            let named = task.description.image.clone();
+            let ran = task
                 .attempts
                 .last()
                 .and_then(|attempt| attempt.image.clone());
-            let image = image.or_else(|| task.description.image.clone());
-            let image_id = image.map(|image| {
+            let image_id = ran.or_else(|| named.clone()).map(|image| {
                 let count = images.len();
                 images
-                    .entry(image)
+                    .entry((image, named))
                     .or_insert_with(|| format!("#image/{count}"))
                     .clone()
             });
             graph.extend(self.task_action(task, image_id.as_deref(), simulated));
         }
-        for (reference, id) in &images {
-            graph.push(image_entity(id, reference));
+        for ((reference, named), id) in &images {
+            graph.push(image_entity(id, reference, named.as_deref()));
         }
         graph.extend(self.file_entities());
         graph

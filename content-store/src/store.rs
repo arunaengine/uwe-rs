@@ -102,11 +102,21 @@ impl Store {
 
     pub async fn put_content(&self, bytes: Bytes) -> Result<Digest, StoreError> {
         let digest = Digest::sha256(&bytes);
-        let location = layout::content(&digest);
-        if !self.operator.exists(&location).await? {
-            self.operator.write(&location, bytes).await?;
-        }
+        self.put_absent(&layout::content(&digest), bytes).await?;
         Ok(digest)
+    }
+
+    /// Writes an object unless it exists. A local store writes a temporary file and renames
+    /// it, so that tasks that store the same content at the same moment do not collide.
+    async fn put_absent(&self, location: &str, bytes: Bytes) -> Result<(), StoreError> {
+        match self.local_path(location) {
+            Some(target) => local::write_absent(&target, &bytes).await?,
+            None if !self.operator.exists(location).await? => {
+                self.operator.write(location, bytes).await?;
+            }
+            None => {}
+        }
+        Ok(())
     }
 
     /// Hashes a local file, then stores it unless the store already has its content: a local
@@ -179,10 +189,8 @@ impl Store {
     pub async fn put_tree(&self, tree: &Tree) -> Result<Digest, StoreError> {
         let canonical = tree.canonical()?;
         let digest = Digest::sha256(&canonical);
-        let location = layout::tree(&digest);
-        if !self.operator.exists(&location).await? {
-            self.operator.write(&location, canonical).await?;
-        }
+        self.put_absent(&layout::tree(&digest), canonical.into())
+            .await?;
         Ok(digest)
     }
 

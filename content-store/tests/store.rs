@@ -122,6 +122,22 @@ async fn uploads_large_files() {
     assert_eq!(std::fs::read(stored).expect("read"), content);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn stores_the_same_content_at_the_same_time() {
+    let root = tempfile::tempdir().expect("temporary directory");
+    let store = Store::local(root.path()).expect("local store");
+    let writes = (0..16).map(|_| {
+        let store = store.clone();
+        tokio::spawn(async move { store.put_content(Bytes::from_static(b"sleep 60\n")).await })
+    });
+    for write in writes {
+        write.await.expect("the task ends").expect("stores");
+    }
+    let digest = Digest::sha256(b"sleep 60\n");
+    let read = store.get_content(&digest).await.expect("get");
+    assert_eq!(read, Bytes::from_static(b"sleep 60\n"));
+}
+
 #[tokio::test]
 async fn adopts_outputs() {
     let root = tempfile::tempdir().expect("temporary directory");

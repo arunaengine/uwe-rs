@@ -38,6 +38,17 @@ pub(crate) async fn copy_absent(source: &Path, target: &Path) -> std::io::Result
     tokio::fs::rename(&part, target).await
 }
 
+/// Writes bytes to `target` unless it exists, through a temporary name.
+pub(crate) async fn write_absent(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    if tokio::fs::try_exists(target).await? {
+        return Ok(());
+    }
+    create_parent(target).await?;
+    let part = temporary(target);
+    tokio::fs::write(&part, bytes).await?;
+    tokio::fs::rename(&part, target).await
+}
+
 /// Moves a file to `target`, replacing what is there. A symbolic link is replaced by a copy of
 /// what it points to, and a move to another file system becomes a copy.
 pub(crate) async fn move_file(source: &Path, target: &Path) -> std::io::Result<()> {

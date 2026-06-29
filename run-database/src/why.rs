@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use rusqlite::{OptionalExtension, params};
 use serde::Serialize;
@@ -14,7 +14,7 @@ use crate::{Database, DatabaseError, FileRow, TaskDetail};
 /// What differs between a task and the same task of an earlier run.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Why {
-    /// The earlier run, and the task there with the same step and name.
+    /// The earlier run, and the same task there.
     pub run: String,
     pub task: u64,
     /// One sentence per difference, like "the input `b.txt` changed: 6 bytes before, 10 now".
@@ -22,9 +22,9 @@ pub struct Why {
 }
 
 impl Database {
-    /// Why a task of a run ran: what differs from the task with the same step and name in the
-    /// run that this run resumes, or else in the latest earlier run of the same workflow.
-    /// `None` when no earlier run has such a task.
+    /// Why a task of a run ran: what differs from the same task in the run that this run
+    /// resumes, or else in the latest earlier run of the same workflow. `None` when no earlier
+    /// run has a task of the same step.
     pub fn why(&self, run: &str, task: u64) -> Result<Option<Why>, DatabaseError> {
         let Some(now) = self.task(run, task)? else {
             return Ok(None);
@@ -47,22 +47,61 @@ impl Database {
         }))
     }
 
-    /// The task with the same step and name in the run this one resumes, or else in the
-    /// latest run of the same workflow that started before it.
+    /// The same task in the run this one resumes, or else in the latest earlier run of the
+    /// same workflow: of the tasks of the same step there, the one with the same fingerprint,
+    /// else the one with the most inputs from the same places, else the one with the same
+    /// name. Names alone can mislead, since some hold a number in the order tasks finished.
     fn earlier(&self, run: &str, now: &TaskDetail) -> Result<Option<(String, u64)>, DatabaseError> {
-        let found = self
+        let step = &now.row.step;
+        let earlier: Option<String> = self
             .connection
             .query_row(
-                "SELECT t.run, t.id FROM runs r JOIN runs e ON e.workflow = r.workflow
-                    JOIN tasks t ON t.run = e.id
+                "SELECT e.id FROM runs r JOIN runs e ON e.workflow = r.workflow
                  WHERE r.id = ?1 AND e.id != r.id AND e.started <= r.started
-                    AND t.step = ?2 AND t.name = ?3
-                 ORDER BY e.id = r.resumes DESC, e.started DESC, t.rowid LIMIT 1",
-                params![run, now.row.step, now.row.name],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                    AND EXISTS (SELECT 1 FROM tasks t WHERE t.run = e.id AND t.step = ?2)
+                 ORDER BY e.id = r.resumes DESC, e.started DESC, e.rowid DESC LIMIT 1",
+                params![run, step],
+                |row| row.get(0),
             )
             .optional()?;
-        Ok(found)
+        let Some(earlier) = earlier else {
+            return Ok(None);
+        };
+        let sources: HashSet<(&str, &str)> = now
+            .description
+            .inputs
+            .iter()
+            .map(|input| (input.path.as_str(), input.source.as_str()))
+            .collect();
+        let mut statement = self.connection.prepare(
+            "SELECT id, name, description, fingerprint FROM tasks
+             WHERE run = ?1 AND step = ?2 ORDER BY rowid",
+        )?;
+        let candidates = statement.query_map(params![earlier, step], |row| {
+            Ok((
+                row.get::<_, u64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?;
+        let mut best: Option<(u64, usize)> = None;
+        for candidate in candidates {
+            let (id, name, description, fingerprint) = candidate?;
+            let task: Task = serde_json::from_str(&description)?;
+            let shared = task
+                .inputs
+                .iter()
+                .filter(|input| sources.contains(&(input.path.as_str(), input.source.as_str())))
+                .count();
+            let score = usize::from(fingerprint == now.fingerprint) * 1_000_000
+                + shared * 10
+                + usize::from(name == now.row.name);
+            if best.is_none_or(|(_, top)| score > top) {
+                best = Some((id, score));
+            }
+        }
+        Ok(best.map(|(id, _)| (earlier, id)))
     }
 
     /// Whether a run is in the lineage of an earlier run, so that it could take its results.

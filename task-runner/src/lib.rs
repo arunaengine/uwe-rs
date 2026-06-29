@@ -3,10 +3,12 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod executor;
 mod outputs;
 mod request;
 mod runner;
 mod staging;
 
+pub use executor::RunnerExecutor;
 pub use request::{identity, request};
 pub use runner::{Prepared, Runner, RunnerError, Settings, StoredFile, TaskResult};

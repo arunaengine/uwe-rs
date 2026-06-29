@@ -7,8 +7,8 @@
 use std::collections::HashMap;
 
 use workflow_graph::{
-    Driver, DriverError, EdgeKind, ExecuteError, Executor, Language, Order, Outcome, RunOptions,
-    Task, TaskId, execute, execute_with,
+    Attempt, Driver, DriverError, EdgeKind, ExecuteError, Executor, Language, Order, Outcome,
+    RunOptions, Running, Task, TaskId, execute, execute_with,
 };
 
 /// Asks for fixed tasks: some at the start, others when a given task finishes. It notes the
@@ -46,6 +46,12 @@ struct Log {
 }
 
 impl Executor for Log {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        Running::ended(self.execute(&attempt.task))
+    }
+}
+
+impl Log {
     fn execute(&mut self, task: &Task) -> Result<Outcome, ExecuteError> {
         self.started.push(task.id);
         Ok(Outcome {

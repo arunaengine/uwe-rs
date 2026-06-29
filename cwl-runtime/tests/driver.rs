@@ -6,7 +6,9 @@
 use std::path::Path;
 
 use cwl_runtime::{CwlDriver, Options};
-use workflow_graph::{ExecuteError, Executor, Launch, Outcome, Simulator, Task, execute};
+use workflow_graph::{
+    Attempt, ExecuteError, Executor, Launch, Outcome, Running, Simulator, Task, execute,
+};
 
 /// Writes the files into a temporary folder, runs `main.cwl` and gives the task count or the
 /// error.
@@ -253,6 +255,12 @@ struct Real {
 }
 
 impl Executor for Real {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        Running::ended(self.execute(&attempt.task))
+    }
+}
+
+impl Real {
     fn execute(&mut self, task: &Task) -> Result<Outcome, ExecuteError> {
         if task.is_no_op() {
             return Ok(Outcome {
@@ -260,7 +268,7 @@ impl Executor for Real {
                 ..Outcome::default()
             });
         }
-        self.simulator.execute(task)
+        self.simulator.simulate(task)
     }
 }
 

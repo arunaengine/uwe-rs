@@ -5,8 +5,7 @@
 
 use workflow_graph::simulator::{EMPTY_GZIP, file_name, glob_matches};
 use workflow_graph::{
-    Driver, DriverError, EdgeKind, Executor, Input, Language, Outcome, Simulator, Task, TaskId,
-    execute,
+    Driver, DriverError, EdgeKind, Input, Language, Outcome, Simulator, Task, TaskId, execute,
 };
 
 /// Two `split` tasks, then one `merge` task that reads both outputs.
@@ -145,7 +144,7 @@ fn simulated_tasks_make_the_files_that_the_script_names() {
         ..Task::default()
     };
     let outcome = Simulator::new(directory.path())
-        .execute(&task)
+        .simulate(&task)
         .expect("an outcome");
     let paths: Vec<&str> = outcome
         .files
@@ -180,7 +179,7 @@ fn simulated_tasks_make_the_files_that_the_script_names() {
         ..task
     };
     let outcome = Simulator::new(directory.path())
-        .execute(&task)
+        .simulate(&task)
         .expect("an outcome");
     let paths: Vec<&str> = outcome
         .files
@@ -226,7 +225,7 @@ fn simulated_tasks_write_the_text_of_stub_scripts() {
         ..Task::default()
     };
     let outcome = Simulator::new(directory.path())
-        .execute(&task)
+        .simulate(&task)
         .expect("an outcome");
     let paths: Vec<&str> = outcome
         .files
@@ -276,7 +275,7 @@ fn simulated_tasks_of_commands_without_a_script_make_the_files_the_arguments_nam
         ..Task::default()
     };
     let outcome = Simulator::new(directory.path())
-        .execute(&task)
+        .simulate(&task)
         .expect("an outcome");
     let paths: Vec<&str> = outcome
         .files
@@ -304,7 +303,7 @@ fn simulated_tasks_of_scripts_that_fail_give_the_failure() {
         ..Task::default()
     };
     let outcome = Simulator::new(directory.path())
-        .execute(&task)
+        .simulate(&task)
         .expect("an outcome");
     assert_eq!(outcome.exit_code, 2);
     assert_eq!(
@@ -339,7 +338,7 @@ fn simulated_tasks_name_the_outputs_of_tools_after_their_arguments() {
         ..Task::default()
     };
     let outcome = Simulator::new(directory.path())
-        .execute(&task)
+        .simulate(&task)
         .expect("an outcome");
     let paths: Vec<&str> = outcome
         .files

@@ -62,6 +62,11 @@ impl Pending {
         self.slots.len()
     }
 
+    /// Whether an attempt has not ended yet.
+    pub(crate) fn running(&self) -> bool {
+        self.slots.iter().any(|slot| slot.end.is_none())
+    }
+
     pub(crate) fn start(&mut self, task: Arc<Task>, attempt: u32) {
         self.slots.push(Slot {
             task,
@@ -87,6 +92,14 @@ impl Pending {
                 time: SystemTime::now(),
                 arrival: self.arrivals,
             });
+        }
+    }
+
+    /// Takes any attempt that has ended, whatever the order, as when the run stopped.
+    pub(crate) fn take_any(&mut self) -> Take {
+        match self.slots.iter().position(|slot| slot.end.is_some()) {
+            Some(index) => Take::Ended(self.slots.remove(index)),
+            None => Take::Empty,
         }
     }
 

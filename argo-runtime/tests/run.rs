@@ -9,7 +9,8 @@ use std::rc::Rc;
 
 use argo_runtime::{ArgoDriver, Library, Options, load_file};
 use workflow_graph::{
-    EdgeKind, ExecuteError, Execution, Executor, Outcome, Simulator, Task, TaskId, execute,
+    Attempt, EdgeKind, ExecuteError, Execution, Executor, Outcome, Running, Simulator, Task,
+    TaskId, execute,
 };
 
 /// The simulator, with standard output, exit codes and file contents chosen per template.
@@ -26,8 +27,14 @@ struct Scripted {
 }
 
 impl Executor for Scripted {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        Running::ended(self.execute(&attempt.task))
+    }
+}
+
+impl Scripted {
     fn execute(&mut self, task: &Task) -> Result<Outcome, ExecuteError> {
-        let mut outcome = self.simulator.execute(task)?;
+        let mut outcome = self.simulator.simulate(task)?;
         let call = self.calls.entry(task.step.clone()).or_default();
         fn pick<T: Clone>(list: Option<&Vec<T>>, call: usize) -> Option<T> {
             list.and_then(|list| list.get(call).or(list.last()).cloned())

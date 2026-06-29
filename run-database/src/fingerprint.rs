@@ -7,7 +7,7 @@ use std::time::UNIX_EPOCH;
 
 use sha2::{Digest as _, Sha256};
 use task_model::Digest;
-use workflow_graph::{Task, TaskId};
+use workflow_graph::{Resources, Task, TaskId};
 
 /// The size and modification time of a local input when the task was asked for, as Nextflow's
 /// standard cache mode compares them.
@@ -37,12 +37,17 @@ pub fn input_states(task: &Task) -> Vec<Option<InputState>> {
         .collect()
 }
 
-/// The SHA-256 of the task as the driver described it, without its id and its `after` list
-/// (ids differ between runs), and of the state of each local input. Outputs of earlier tasks
-/// are inputs by their location, so a task after a task that ran again has a new fingerprint.
+/// The SHA-256 of the task as the driver described it, and of the state of each local input.
+/// What differs between runs of the same task is left out: its id and `after` list, its name
+/// for people, which can hold a number in the order tasks finished, like Nextflow's
+/// `COUNT (2)`, and its resources, as Nextflow leaves them out of its hash. Outputs of earlier
+/// tasks are inputs by their location, so a task after a task that ran again has a new
+/// fingerprint.
 pub fn fingerprint(task: &Task, states: &[Option<InputState>]) -> String {
     let described = Task {
         id: TaskId(0),
+        name: String::new(),
+        resources: Resources::default(),
         after: Vec::new(),
         ..task.clone()
     };
@@ -88,6 +93,8 @@ mod tests {
         let first = task(1, &source);
         let mut second = task(7, &source);
         second.after = vec![TaskId(3)];
+        second.name = "P (7)".into();
+        second.resources.cpus = Some(4.0);
         let states = input_states(&first);
         assert_eq!(states.len(), 1);
         assert_eq!(states[0].map(|state| state.size), Some(3));

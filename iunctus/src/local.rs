@@ -10,7 +10,7 @@ use executor::{ContainerEngine, LocalContainer, Pool};
 use task_model::Digest;
 use task_runner::{Runner, RunnerError, Settings};
 use tokio_util::sync::CancellationToken;
-use workflow_graph::{ExecuteError, Executor, Outcome, OutputFile, Task};
+use workflow_graph::{Attempt, ExecuteError, Executor, Outcome, OutputFile, Running, Task};
 
 pub struct Local {
     runner: Runner<LocalContainer>,
@@ -47,6 +47,13 @@ impl Local {
 }
 
 impl Executor for Local {
+    /// Runs the task at once, one after the other, until the task runner runs as the executor.
+    fn run(&mut self, attempt: Attempt) -> Running {
+        Running::ended(self.execute(&attempt.task))
+    }
+}
+
+impl Local {
     fn execute(&mut self, task: &Task) -> Result<Outcome, ExecuteError> {
         let (outcome, reused) = self.runtime.block_on(outcome(&self.runner, task))?;
         if self.verbose {

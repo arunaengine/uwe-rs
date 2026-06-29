@@ -21,7 +21,9 @@
 use std::path::{Path, PathBuf};
 
 use cwl_runtime::{CwlDriver, Options, Value};
-use workflow_graph::{ExecuteError, Executor, Launch, Outcome, Simulator, Task, execute};
+use workflow_graph::{
+    Attempt, ExecuteError, Executor, Launch, Outcome, Running, Simulator, Task, execute,
+};
 
 const SUITES: [(&str, &str); 3] = [
     ("v1.0", "conformance/v1.0/v1.0/conformance_test_v1.0.yaml"),
@@ -357,8 +359,14 @@ struct KnownCommands {
 }
 
 impl Executor for KnownCommands {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        Running::ended(self.execute(&attempt.task))
+    }
+}
+
+impl KnownCommands {
     fn execute(&mut self, task: &Task) -> Result<Outcome, ExecuteError> {
-        let mut outcome = self.simulator.execute(task)?;
+        let mut outcome = self.simulator.simulate(task)?;
         let work = self.simulator.work_directory(task);
         // Inputs in the working directory, like InitialWorkDir entries, are there before the
         // command runs, so outputs that name them hold their content.

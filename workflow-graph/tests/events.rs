@@ -4,8 +4,8 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use workflow_graph::{
-    Driver, DriverError, Engine, Event, ExecuteError, Executor, Language, Observer, Outcome, Task,
-    TaskId,
+    Attempt, Driver, DriverError, Engine, Event, ExecuteError, Executor, Language, Observer,
+    Outcome, Running, Task, TaskId,
 };
 
 /// Asks for task 1, then for task 2 after task 1, which reads a file of task 1.
@@ -50,6 +50,12 @@ fn task(id: u64, after: &[u64]) -> Task {
 struct Succeed;
 
 impl Executor for Succeed {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        Running::ended(self.execute(&attempt.task))
+    }
+}
+
+impl Succeed {
     fn execute(&mut self, task: &Task) -> Result<Outcome, ExecuteError> {
         Ok(Outcome {
             id: task.id,

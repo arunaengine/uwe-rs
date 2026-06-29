@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-use crate::{ExecuteError, Executor, Outcome, OutputFile, Task};
+use crate::{Attempt, ExecuteError, Executor, Outcome, OutputFile, Running, Task};
 use shell::{Failure, Made};
 
 /// The simulator, the executor of simulated runs.
@@ -38,7 +38,16 @@ impl Simulator {
 }
 
 impl Executor for Simulator {
-    fn execute(&mut self, task: &Task) -> Result<Outcome, ExecuteError> {
+    /// Simulates the task on the thread of the driver, so that simulated runs keep the order
+    /// in which the engine starts tasks.
+    fn run(&mut self, attempt: Attempt) -> Running {
+        Running::ended(self.simulate(&attempt.task))
+    }
+}
+
+impl Simulator {
+    /// Simulates a task: writes its TES document and makes the files it would make.
+    pub fn simulate(&self, task: &Task) -> Result<Outcome, ExecuteError> {
         let failed = |error: std::io::Error| ExecuteError::Executor {
             task: task.name.clone(),
             message: error.to_string(),

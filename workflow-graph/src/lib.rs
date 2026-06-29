@@ -8,9 +8,11 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod attempts;
 mod driver;
 mod engine;
 mod events;
+mod executor;
 mod graph;
 mod options;
 mod pending;
@@ -20,8 +22,9 @@ pub mod simulator;
 mod task;
 
 pub use driver::{Driver, DriverError, Launch};
-pub use engine::{Engine, ExecuteError, Execution, Executor, execute, execute_with};
+pub use engine::{Engine, ExecuteError, Execution, execute, execute_with};
 pub use events::{Event, Observer};
+pub use executor::{Attempt, CancellationToken, Executor, Running};
 pub use graph::{Edge, EdgeKind, ExecutionGraph, Node};
 pub use options::{Order, RunOptions};
 pub use simulator::Simulator;

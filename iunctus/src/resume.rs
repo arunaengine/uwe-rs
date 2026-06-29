@@ -11,7 +11,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use run_database::{Recorder, Reusable, fingerprint, input_states};
-use workflow_graph::{Event, ExecuteError, Executor, Observer, Outcome, Task, TaskId};
+use workflow_graph::{Attempt, Event, Executor, Observer, Outcome, Running, TaskId};
 
 /// The tasks whose results came from an earlier run, and that run, until the recorder hears of
 /// them.
@@ -57,7 +57,8 @@ impl Resumed {
 }
 
 impl Executor for Resumed {
-    fn execute(&mut self, task: &Task) -> Result<Outcome, ExecuteError> {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        let task = &attempt.task;
         let key = fingerprint(task, &input_states(task));
         // A result whose files are gone cannot be taken.
         let found = self.reusable.get(&key).filter(|found| {
@@ -65,16 +66,16 @@ impl Executor for Resumed {
             files.iter().all(|file| Path::new(&file.location).exists())
         });
         let Some(found) = found else {
-            return self.executor.execute(task);
+            return self.executor.run(attempt);
         };
         if self.verbose {
             println!("[resumed] {} (from run {})", task.name, found.run);
         }
         self.taken.note(task.id, &found.run);
-        Ok(Outcome {
+        Running::ended(Ok(Outcome {
             id: task.id,
             ..found.outcome.clone()
-        })
+        }))
     }
 }
 

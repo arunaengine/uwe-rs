@@ -4,20 +4,16 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 
+use crate::attempts::Attempts;
+use crate::executor::{Attempt, CancellationToken, Executor};
 use crate::pending::{End, Pending, Slot, Take};
 use crate::queue::Queue;
 use crate::recorder::Recorder;
 use crate::{
     Driver, DriverError, Event, ExecutionGraph, Observer, Outcome, RunOptions, Task, TaskId,
 };
-
-/// Runs tasks, one call per task. Real executors (TES, local containers) and the simulator
-/// share it.
-pub trait Executor {
-    fn execute(&mut self, task: &Task) -> Result<Outcome, ExecuteError>;
-}
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExecuteError {
@@ -97,12 +93,16 @@ pub fn execute_with(
 /// How often the engine runs a task again after the machine failed, by default.
 const MACHINE_RETRIES: u32 = 2;
 
+/// How long the engine waits for the attempts in flight to stop when a run stops.
+const STOP_GRACE: Duration = Duration::from_secs(60);
+
 /// A run of a driver against an executor, with its options and an observer that hears what
 /// happens, like the run database.
 pub struct Engine<'a> {
     executor: &'a mut dyn Executor,
     options: RunOptions,
     observer: Option<&'a mut dyn Observer>,
+    cancel: CancellationToken,
     retries: u32,
     /// The number of attempts of each task so far.
     attempts: HashMap<TaskId, u32>,
@@ -116,6 +116,7 @@ impl<'a> Engine<'a> {
             executor,
             options: RunOptions::default(),
             observer: None,
+            cancel: CancellationToken::new(),
             retries: MACHINE_RETRIES,
             attempts: HashMap::new(),
         }
@@ -131,6 +132,13 @@ impl<'a> Engine<'a> {
         self
     }
 
+    /// Stops the run when the token fires, like on Ctrl-C: the attempts in flight stop, and the
+    /// run ends with [`ExecuteError::Cancelled`].
+    pub fn cancel(mut self, cancel: CancellationToken) -> Self {
+        self.cancel = cancel;
+        self
+    }
+
     /// How often a task runs again after the machine failed.
     pub fn retries(mut self, retries: u32) -> Self {
         self.retries = retries;
@@ -138,11 +146,18 @@ impl<'a> Engine<'a> {
     }
 
     /// Runs the driver to its end and returns the graph of what ran, and the error that
-    /// stopped the run if there is one. The observer hears the end of every run.
+    /// stopped the run if there is one. On an error, the attempts in flight stop and the engine
+    /// waits for them a while. The observer hears the end of every run.
     pub fn run(mut self, workflow: &str, driver: &mut dyn Driver) -> Execution {
         let mut recorder = Recorder::new(workflow, driver.language());
-        let mut pending = Pending::new(self.options.order);
-        let result = self.drive(driver, &mut recorder, &mut pending);
+        let result = Attempts::new(self.cancel.clone()).and_then(|mut attempts| {
+            let mut pending = Pending::new(self.options.order);
+            let result = self.drive(driver, &mut recorder, &mut pending, &mut attempts);
+            if result.is_err() {
+                self.stop(&mut pending, &mut attempts);
+            }
+            result
+        });
         let error = result.err();
         self.report(Event::Ended {
             error: error.as_ref(),
@@ -179,6 +194,7 @@ impl<'a> Engine<'a> {
         driver: &mut dyn Driver,
         recorder: &mut Recorder,
         pending: &mut Pending,
+        attempts: &mut Attempts,
     ) -> Result<(), ExecuteError> {
         let mut queue = Queue::default();
         for task in driver.start()? {
@@ -188,16 +204,14 @@ impl<'a> Engine<'a> {
             while pending.len() < self.options.max_pending.max(1)
                 && let Some(task) = queue.next()
             {
-                self.start(Arc::new(task), pending);
+                self.start(Arc::new(task), pending, attempts);
             }
             let slot = match pending.take() {
                 Take::Empty => break,
-                // Each attempt ends when it starts.
                 Take::Wait => {
-                    return Err(ExecuteError::Executor {
-                        task: String::new(),
-                        message: "an attempt did not end".into(),
-                    });
+                    let ended = attempts.next()?;
+                    pending.end(ended.id, ended.attempt, ended.result);
+                    continue;
                 }
                 Take::Ended(slot) => slot,
             };
@@ -219,7 +233,7 @@ impl<'a> Engine<'a> {
                         attempt,
                         retried: true,
                     });
-                    self.start(task, pending);
+                    self.start(task, pending, attempts);
                     continue;
                 }
                 Err(error) => return Err(error),
@@ -249,8 +263,8 @@ impl<'a> Engine<'a> {
         Ok(())
     }
 
-    /// Runs the next attempt of a task.
-    fn start(&mut self, task: Arc<Task>, pending: &mut Pending) {
+    /// Starts the next attempt of a task.
+    fn start(&mut self, task: Arc<Task>, pending: &mut Pending, attempts: &mut Attempts) {
         let number = self.attempts.entry(task.id).or_insert(0);
         *number += 1;
         let number = *number;
@@ -259,8 +273,38 @@ impl<'a> Engine<'a> {
             attempt: number,
         });
         pending.start(task.clone(), number);
-        let result = self.executor.execute(&task);
-        pending.end(task.id, number, result);
+        let attempt = Attempt {
+            task: task.clone(),
+            number,
+            cancel: attempts.cancel.clone(),
+        };
+        if let Some(ended) = attempts.start(task.id, number, self.executor.run(attempt)) {
+            pending.end(ended.id, ended.attempt, ended.result);
+        }
+    }
+
+    /// Stops the attempts in flight and waits a while for them to end. The observer hears how
+    /// each one ended; the driver does not.
+    fn stop(&mut self, pending: &mut Pending, attempts: &mut Attempts) {
+        attempts.cancel.cancel();
+        let deadline = Instant::now() + STOP_GRACE;
+        while pending.running()
+            && let Some(ended) = attempts.next_until(deadline)
+        {
+            pending.end(ended.id, ended.attempt, ended.result);
+        }
+        while let Take::Ended(slot) = pending.take_any() {
+            let Some(end) = &slot.end else { continue };
+            let outcome = match &end.result {
+                Ok(outcome) => outcome.clone(),
+                Err(error) => failed(&slot.task, error, slot.attempt, slot.started, end.time),
+            };
+            self.report(Event::Finished {
+                outcome: &outcome,
+                attempt: slot.attempt,
+                retried: false,
+            });
+        }
     }
 }
 

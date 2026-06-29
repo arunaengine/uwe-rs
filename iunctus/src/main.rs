@@ -214,11 +214,14 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Serv
     };
     let workflow = target.to_string_lossy();
     let mut observer = resume::Noting::new(&mut recorder, taken);
+    let interrupt = stop_on_interrupt();
     let execution = Engine::new(executor.as_mut())
         .options(options)
         .observer(&mut observer)
-        .cancel(stop_on_interrupt())
+        .cancel(interrupt.clone())
         .run(&workflow, driver.as_mut());
+    // The run is over: a later Ctrl-C, like the one that closes the page, stops nothing.
+    interrupt.cancel();
     close(recorder);
     Ok((execution, page))
 }
@@ -243,7 +246,7 @@ fn stop_on_interrupt() -> CancellationToken {
             return;
         };
         runtime.block_on(async {
-            if tokio::signal::ctrl_c().await.is_ok() {
+            if tokio::signal::ctrl_c().await.is_ok() && !stop.is_cancelled() {
                 eprintln!("iunctus: stopping the running tasks; press Ctrl-C again to quit now");
                 stop.cancel();
             }

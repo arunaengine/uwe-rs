@@ -23,8 +23,8 @@ use std::process::ExitCode;
 use run_database::Recorder;
 use run_page::Server;
 use workflow_graph::{
-    Driver, DriverError, Engine, ExecuteError, Execution, ExecutionGraph, Executor, Language,
-    Launch, RunOptions, Simulator,
+    CancellationToken, Driver, DriverError, Engine, ExecuteError, Execution, ExecutionGraph,
+    Executor, Language, Launch, Order, RunOptions, Simulator,
 };
 
 use crate::arguments::Arguments;
@@ -33,25 +33,33 @@ use crate::arguments::Arguments;
 /// CWL runners use it for unsupported requirements.
 const UNSUPPORTED: u8 = 33;
 
-/// Why a command failed, and whether the cause is a feature iunctus does not support yet.
+/// The exit code of a run stopped with Ctrl-C, as shells give it.
+const INTERRUPTED: u8 = 130;
+
+/// Why a command failed, and its exit code.
 struct Failure {
     message: String,
-    unsupported: bool,
+    code: u8,
 }
 
 impl From<DriverError> for Failure {
     fn from(error: DriverError) -> Self {
         Failure {
+            code: if error.unsupported { UNSUPPORTED } else { 1 },
             message: error.message,
-            unsupported: error.unsupported,
         }
     }
 }
 
 impl From<ExecuteError> for Failure {
     fn from(error: ExecuteError) -> Self {
+        let code = match &error {
+            ExecuteError::Cancelled => INTERRUPTED,
+            error if error.unsupported() => UNSUPPORTED,
+            _ => 1,
+        };
         Failure {
-            unsupported: error.unsupported(),
+            code,
             message: error.to_string(),
         }
     }
@@ -60,7 +68,7 @@ impl From<ExecuteError> for Failure {
 fn failure(message: impl Into<String>) -> Failure {
     Failure {
         message: message.into(),
-        unsupported: false,
+        code: 1,
     }
 }
 
@@ -91,7 +99,7 @@ fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(failure) => {
             eprintln!("{}", failure.message);
-            ExitCode::from(if failure.unsupported { UNSUPPORTED } else { 1 })
+            ExitCode::from(failure.code)
         }
     }
 }
@@ -193,15 +201,23 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Serv
         }
         None => executor,
     };
+    // A real executor runs every task that can run, and the pool of its machine or cluster
+    // sets how many run at once. The simulator runs one at a time, in the order asked.
+    let real = name != "simulator";
     let options = RunOptions {
-        max_pending: arguments.max_pending.unwrap_or(1),
-        order: arguments.order.unwrap_or_default(),
+        max_pending: (arguments.max_pending).unwrap_or(if real { usize::MAX } else { 1 }),
+        order: (arguments.order).unwrap_or(if real {
+            Order::Finished
+        } else {
+            Order::AsAsked
+        }),
     };
     let workflow = target.to_string_lossy();
     let mut observer = resume::Noting::new(&mut recorder, taken);
     let execution = Engine::new(executor.as_mut())
         .options(options)
         .observer(&mut observer)
+        .cancel(stop_on_interrupt())
         .run(&workflow, driver.as_mut());
     close(recorder);
     Ok((execution, page))
@@ -212,6 +228,31 @@ fn close(recorder: Recorder) {
     if let Err(error) = recorder.close() {
         eprintln!("iunctus: the run database did not record the whole run: {error}");
     }
+}
+
+/// A token that fires on Ctrl-C, so that the run stops its tasks cleanly. A second Ctrl-C ends
+/// iunctus at once.
+fn stop_on_interrupt() -> CancellationToken {
+    let token = CancellationToken::new();
+    let stop = token.clone();
+    std::thread::spawn(move || {
+        let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        else {
+            return;
+        };
+        runtime.block_on(async {
+            if tokio::signal::ctrl_c().await.is_ok() {
+                eprintln!("iunctus: stopping the running tasks; press Ctrl-C again to quit now");
+                stop.cancel();
+            }
+            if tokio::signal::ctrl_c().await.is_ok() {
+                std::process::exit(INTERRUPTED.into());
+            }
+        });
+    });
+    token
 }
 
 /// The driver of a language.
@@ -333,9 +374,11 @@ options:
   -executor simulator|local           simulator (the default) writes TES task documents
                                       and makes up the outputs; local runs containers
   -graph <file>                       writes the execution graph, as DOT for a .dot file
-  -max-pending <n>                    lets up to n tasks be pending at once (default 1)
-  -order asked|reversed|shuffled[:<seed>]
-                                      the order in which pending tasks finish
+  -max-pending <n>                    lets up to n tasks be pending at once (default 1 for
+                                      the simulator, no limit for real executors)
+  -order asked|reversed|finished|shuffled[:<seed>]
+                                      the order in which pending tasks finish (default
+                                      asked for the simulator, finished for real executors)
   -store <directory>                  the cache of the local executor
   -default-image <image>              the image of tasks that name none, for real executors
   -python-image <image>               the image of the Python packages without a stand-in

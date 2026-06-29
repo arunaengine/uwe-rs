@@ -69,6 +69,55 @@ fn runs_and_reuses_tasks() {
     assert!(output.starts_with("[cached] UPPER (1)\n"), "{output}");
 }
 
+/// Two processes that sleep for a minute each.
+const SLEEPERS: &str = r#"
+process SLEEP {
+    container 'debian:stable-slim'
+    input:
+    val n
+    script:
+    """
+    sleep 60
+    """
+}
+
+workflow {
+    SLEEP(channel.of(1, 2))
+}
+"#;
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn ctrl_c_stops_the_running_tasks() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    std::fs::write(directory.path().join("main.nf"), SLEEPERS).expect("writes the script");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_iunctus"))
+        .args(["run", "main.nf", "-executor", "local"])
+        .current_dir(directory.path())
+        .env("XDG_CACHE_HOME", directory.path().join("cache"))
+        .spawn()
+        .expect("runs iunctus");
+    std::thread::sleep(std::time::Duration::from_secs(4));
+    let begin = std::time::Instant::now();
+    let interrupt = Command::new("kill")
+        .args(["-INT", &child.id().to_string()])
+        .status()
+        .expect("sends Ctrl-C");
+    assert!(interrupt.success());
+    let status = child.wait().expect("iunctus ends");
+    assert_eq!(status.code(), Some(130));
+    // Both containers stopped at once, long before their minute.
+    assert!(begin.elapsed() < std::time::Duration::from_secs(30));
+    let scratch = directory.path().join("cache/iunctus/scratch");
+    let left = std::fs::read_dir(&scratch).map_or(0, |entries| entries.count());
+    assert_eq!(
+        left,
+        0,
+        "scratch directories are left in {}",
+        scratch.display()
+    );
+}
+
 #[test]
 fn real_runs_need_an_image_for_each_task() {
     let directory = tempfile::tempdir().expect("a temporary directory");

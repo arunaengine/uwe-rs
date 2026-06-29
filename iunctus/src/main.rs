@@ -7,7 +7,6 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod arguments;
-mod checked;
 mod detect;
 mod local;
 mod nextflow;
@@ -253,8 +252,7 @@ fn config(arguments: &Arguments) -> Result<(), Failure> {
 
 /// The executor that `-executor` names: `simulator` (the default) writes a TES task document
 /// for each task and makes up its outputs, `local` runs each task in a container. The
-/// simulator keeps its files in the scratch directory of the cache. A real executor gets its
-/// tasks through the checks of [`checked::Checked`].
+/// simulator keeps its files in the scratch directory of the cache.
 fn executor(arguments: &Arguments, run: &str, verbose: bool) -> Result<Box<dyn Executor>, Failure> {
     let cache = cache_directory();
     let scratch = cache.join("scratch");
@@ -265,11 +263,11 @@ fn executor(arguments: &Arguments, run: &str, verbose: bool) -> Result<Box<dyn E
             Ok(Box::new(executor))
         }
         "local" => {
-            let mut executor = local::Local::new(&store(arguments), &scratch, run)
+            let default_image = arguments.default_image.clone();
+            let mut executor = local::executor(&store(arguments), &scratch, run, default_image)
                 .map_err(|message| failure(format!("iunctus: {message}")))?;
             executor.verbose = verbose;
-            let default_image = arguments.default_image.clone();
-            Ok(Box::new(checked::Checked::new(executor, default_image)))
+            Ok(Box::new(executor))
         }
         other => Err(failure(format!(
             "iunctus: unknown executor `{other}`; use `simulator` or `local`"

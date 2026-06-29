@@ -5,7 +5,7 @@
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use rusqlite::{Connection, OptionalExtension, params};
 use task_model::Digest;
@@ -212,18 +212,25 @@ impl Recorder {
     pub fn finished(&mut self, outcome: &Outcome, attempt: u32, retried: bool) {
         self.write(|connection, run, sequence| {
             let task = outcome.id.0;
+            // The executor knows the times best; a result from the cache ran nowhere.
+            let time = |at: Option<SystemTime>| at.map(milliseconds);
+            let reused = outcome.cached.then_some("cache");
             connection
                 .prepare_cached(
-                    "UPDATE attempts SET ended = ?4, exit_code = ?5, retried = ?6
+                    "UPDATE attempts SET ended = ?4, exit_code = ?5, retried = ?6, image = ?7,
+                        reused = COALESCE(?8, reused), started = COALESCE(?9, started)
                      WHERE run = ?1 AND task = ?2 AND number = ?3",
                 )?
                 .execute(params![
                     run,
                     task,
                     attempt,
-                    now(),
+                    time(outcome.ended).unwrap_or_else(now),
                     outcome.exit_code,
-                    retried
+                    retried,
+                    outcome.image,
+                    reused,
+                    time(outcome.started),
                 ])?;
             let state = match (retried, outcome.exit_code) {
                 (true, _) => "running",
@@ -458,6 +465,13 @@ fn event(
             attempt
         ])?;
     Ok(())
+}
+
+/// A time as milliseconds since the Unix epoch.
+fn milliseconds(time: SystemTime) -> i64 {
+    time.duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as i64)
+        .unwrap_or_default()
 }
 
 /// The end of a text, at most [`LOG_LIMIT`] bytes, cut at a character boundary.

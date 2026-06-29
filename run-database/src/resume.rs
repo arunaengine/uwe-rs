@@ -106,12 +106,20 @@ impl Database {
                 directory: file.directory,
             })
             .collect();
+        let image: Option<String> = self.connection.query_row(
+            "SELECT image FROM attempts WHERE run = ?1 AND task = ?2 AND number = ?3",
+            params![run, task, attempt],
+            |row| row.get(0),
+        )?;
+        // The result of an earlier run answers the task, so it does not run.
         Ok(Some(Outcome {
             id: TaskId(task),
             exit_code: 0,
             files,
             stdout,
             stderr,
+            cached: true,
+            image,
             ..Outcome::default()
         }))
     }

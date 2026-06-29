@@ -220,7 +220,7 @@ impl<'a> Engine<'a> {
                 attempt,
                 started,
                 end,
-            } = slot;
+            } = *slot;
             let Some(End { result, time, .. }) = end else {
                 continue;
             };

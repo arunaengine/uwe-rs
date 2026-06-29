@@ -14,7 +14,8 @@ use crate::engine::ContainerEngine;
 use crate::image;
 use crate::job::{CONTROL, ExecutorError, Finished, Job, WORK};
 use crate::manifest::parse;
-use crate::pool::Pool;
+use crate::pool::{Pool, Share};
+use crate::process::Mount;
 use crate::stage::place;
 use crate::wrapper::{EXIT, MANIFEST, STDERR, wrapper};
 
@@ -45,7 +46,8 @@ impl crate::Backend for LocalContainer {
 
     /// Runs a task in `<scratch>/<name>`, a name that must not be in use: stages its inputs,
     /// runs the wrapper in the task's image as the current user, and reads the control files.
-    /// The directory stays for the caller to take the outputs from.
+    /// The directory stays for the caller to take the outputs from, unless the attempt fails
+    /// or is cancelled.
     ///
     /// The task waits for its share of CPUs and memory, and its container gets no more. The
     /// work directory is mounted at the task's `workdir` when it has one. A task without
@@ -56,21 +58,46 @@ impl crate::Backend for LocalContainer {
         job: Job<'_>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
-        let spec = job.spec;
-        let image = spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
         let placement = job.placement;
         let share = tokio::select! {
             share = self.pool.share(placement.cpus, placement.memory_bytes) => share,
             () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
         };
         let root = self.scratch.join(job.name);
-        let mounts = {
+        let placed = {
             let (root, staging) = (root.clone(), job.staging.clone());
             tokio::task::spawn_blocking(move || place(&root, &staging))
                 .await
-                .map_err(|error| std::io::Error::other(error.to_string()))??
+                .map_err(|error| std::io::Error::other(error.to_string()))?
         };
-        let mut spec = spec.clone();
+        let result = match placed {
+            // Another attempt has this name; its directory is not ours to remove.
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                return Err(error.into());
+            }
+            Err(error) => Err(error.into()),
+            Ok(mounts) => self.contain(job, &root, &mounts, &share, cancel).await,
+        };
+        drop(share);
+        if result.is_err() {
+            let _ = tokio::fs::remove_dir_all(&root).await;
+        }
+        result
+    }
+}
+
+impl LocalContainer {
+    /// Runs the container of a staged task to its end, within its share of the pool.
+    async fn contain(
+        &self,
+        job: Job<'_>,
+        root: &Path,
+        mounts: &[Mount],
+        share: &Share<'_>,
+        cancel: &CancellationToken,
+    ) -> Result<Finished, ExecutorError> {
+        let image = job.spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
+        let mut spec = job.spec.clone();
         if spec.arguments.is_empty() {
             spec.arguments = image::default_command(&self.engine, &image.reference).await?;
         }
@@ -79,7 +106,7 @@ impl crate::Backend for LocalContainer {
         let inside = spec.workdir.clone().unwrap_or_else(|| text(&work));
         let script = control.join("wrapper.sh");
         tokio::fs::write(&script, wrapper(&spec, &inside, &text(&control))).await?;
-        let owner = tokio::fs::metadata(&root).await?;
+        let owner = tokio::fs::metadata(root).await?;
         let container = format!("iunctus-{}", job.name);
         let mut command = Command::new(&self.engine.program);
         command
@@ -92,11 +119,11 @@ impl crate::Backend for LocalContainer {
                 "/bin/bash",
             ])
             .args(self.engine.user_options(owner.uid(), owner.gid()))
-            .args(["--volume", &format!("{0}:{0}", text(&root))]);
+            .args(["--volume", &format!("{0}:{0}", text(root))]);
         if spec.workdir.is_some() {
             command.args(["--volume", &format!("{}:{inside}", text(&work))]);
         }
-        for mount in &mounts {
+        for mount in mounts {
             let mode = if mount.read_only { ":ro" } else { "" };
             let volume = format!("{}:{}{mode}", text(&mount.source), mount.target);
             command.args(["--volume", &volume]);
@@ -111,14 +138,10 @@ impl crate::Backend for LocalContainer {
         }
         command.arg(&image.reference).arg(text(&script));
         command.stdin(Stdio::null());
-        let time = placement.time_seconds.map(Duration::from_secs);
+        let time = job.placement.time_seconds.map(Duration::from_secs);
         let ending = self.wait(command, &container, time, cancel).await?;
-        drop(share);
-        self.finish(ending, root).await
+        self.finish(ending, root.to_owned()).await
     }
-}
-
-impl LocalContainer {
     /// Runs the container to its end, stopping it when `cancel` fires or its time is up.
     async fn wait(
         &self,

@@ -6,7 +6,7 @@
 use std::path::Path;
 use std::process::Command;
 
-use workflow_graph::{EdgeKind, ExecutionGraph, Language};
+use workflow_graph::{EdgeKind, ExecutionGraph, Language, SIMULATION, StepGraph};
 
 /// Two processes: `SHOUT` reads the file that `GREET` makes.
 const PIPELINE: &str = r#"
@@ -86,8 +86,10 @@ fn graph_prints_the_tasks_and_their_files() {
     assert_eq!(code, 0, "{stderr}");
     let graph: ExecutionGraph = serde_json::from_str(&stdout).expect("the graph as JSON");
     check(&graph);
-    // What the workflow prints goes to standard error, so that the graph stays readable.
-    assert_eq!(stderr, "made shout.txt\n");
+    assert_eq!(graph.simulation.as_deref(), Some(SIMULATION));
+    // What the workflow prints goes to standard error, so that the graph stays readable, and
+    // so does the note that the run is simulated.
+    assert_eq!(stderr, format!("made shout.txt\niunctus: {SIMULATION}\n"));
     let (code, stdout, _) = iunctus(directory.path(), &["graph", ".", "-format", "dot"]);
     assert_eq!(code, 0);
     assert!(stdout.starts_with("digraph workflow {"), "{stdout}");
@@ -95,7 +97,7 @@ fn graph_prints_the_tasks_and_their_files() {
     let (code, stdout, _) = iunctus(directory.path(), &["graph", "main.nf"]);
     assert_eq!(code, 0);
     assert!(
-        stdout.starts_with("2 tasks, 2 steps, 1 edges\n"),
+        stdout.starts_with(&format!("{SIMULATION}\n2 tasks, 2 steps, 1 edges\n")),
         "{stdout}"
     );
 }
@@ -166,7 +168,7 @@ fn languages_can_be_named() {
     let arguments = ["graph", "pipeline.groovy", "-lang", "nextflow"];
     let (code, stdout, stderr) = iunctus(directory.path(), &arguments);
     assert_eq!(code, 0, "{stderr}");
-    assert!(stdout.starts_with("2 tasks"), "{stdout}");
+    assert!(stdout.contains("\n2 tasks"), "{stdout}");
 }
 
 #[test]
@@ -175,7 +177,33 @@ fn unknown_executors_and_formats_are_errors() {
     let (code, _, stderr) = iunctus(directory.path(), &["run", "main.nf", "-executor", "slurm"]);
     assert_eq!(code, 1);
     assert!(stderr.contains("unknown executor `slurm`"), "{stderr}");
-    let (code, _, stderr) = iunctus(directory.path(), &["graph", "main.nf", "-format", "svg"]);
-    assert_eq!(code, 1);
-    assert!(stderr.contains("unknown graph format `svg`"), "{stderr}");
+    let (code, _, stderr) = iunctus(directory.path(), &["graph", "main.nf", "-format", "png"]);
+    assert_eq!(code, 2);
+    assert!(stderr.contains("unknown graph format `png`"), "{stderr}");
+    let (code, _, stderr) = iunctus(directory.path(), &["graph", "main.nf", "-view", "nodes"]);
+    assert_eq!(code, 2);
+    assert!(stderr.contains("unknown graph view `nodes`"), "{stderr}");
+}
+
+#[test]
+fn graphs_have_a_step_view() {
+    let directory = pipeline();
+    let arguments = ["graph", "main.nf", "-view", "steps"];
+    let (code, stdout, stderr) = iunctus(directory.path(), &arguments);
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(
+        stdout,
+        format!(
+            "{SIMULATION}\n2 steps, 1 edges, 2 tasks\nGREET: 1 task <- []\nSHOUT: 1 task <- [GREET]\n"
+        )
+    );
+    let arguments = ["graph", "main.nf", "-view", "steps", "-format", "json"];
+    let (code, stdout, stderr) = iunctus(directory.path(), &arguments);
+    assert_eq!(code, 0, "{stderr}");
+    let steps: StepGraph = serde_json::from_str(&stdout).expect("the step graph as JSON");
+    assert_eq!(steps.steps.len(), 2);
+    assert_eq!(
+        (steps.edges[0].from.as_str(), steps.edges[0].to.as_str()),
+        ("GREET", "SHOUT")
+    );
 }

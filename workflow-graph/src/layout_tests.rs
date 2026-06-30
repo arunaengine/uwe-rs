@@ -1,0 +1,155 @@
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use super::*;
+
+fn sizes(count: usize) -> Vec<Size> {
+    (0..count)
+        .map(|index| Size {
+            width: 40.0 + (index % 7) as f64 * 15.0,
+            height: 28.0 + (index % 2) as f64 * 16.0,
+        })
+        .collect()
+}
+
+/// A graph like a pipeline: a few samples, each through a chain of steps, and steps that
+/// collect all samples, with a seeded choice of extra edges.
+fn pipeline(samples: usize, steps: usize) -> (Vec<Size>, Vec<(usize, usize)>) {
+    let mut edges = Vec::new();
+    let mut seed: u64 = 7;
+    let mut next = |limit: usize| {
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (seed >> 33) as usize % limit.max(1)
+    };
+    let node = |sample: usize, step: usize| sample * steps + step;
+    for sample in 0..samples {
+        for step in 1..steps {
+            edges.push((node(sample, step - 1), node(sample, step)));
+            if next(4) == 0 && step >= 2 {
+                edges.push((node(sample, next(step - 1)), node(sample, step)));
+            }
+        }
+    }
+    let collect = samples * steps;
+    for sample in 0..samples {
+        edges.push((node(sample, next(steps)), collect));
+    }
+    (sizes(collect + 1), edges)
+}
+
+/// Checks that no two nodes overlap: in each layer the nodes keep a gap, and layers do not
+/// share their vertical band.
+fn assert_no_overlap(sizes: &[Size], layout: &Layout) {
+    let mut by_layer: std::collections::BTreeMap<usize, Vec<usize>> = Default::default();
+    for (node, &layer) in layout.layers.iter().enumerate() {
+        by_layer.entry(layer).or_default().push(node);
+    }
+    for nodes in by_layer.values() {
+        let mut spans: Vec<(f64, f64)> = nodes
+            .iter()
+            .map(|&node| {
+                let half = sizes[node].width / 2.0;
+                (layout.nodes[node].x - half, layout.nodes[node].x + half)
+            })
+            .collect();
+        spans.sort_by(|a, b| a.0.total_cmp(&b.0));
+        for pair in spans.windows(2) {
+            assert!(pair[0].1 + GAP - 1e-6 <= pair[1].0, "overlap: {pair:?}");
+        }
+    }
+    for (a, &layer_a) in layout.layers.iter().enumerate() {
+        for (b, &layer_b) in layout.layers.iter().enumerate() {
+            if layer_a < layer_b {
+                let bottom = layout.nodes[a].y + sizes[a].height / 2.0;
+                let top = layout.nodes[b].y - sizes[b].height / 2.0;
+                assert!(bottom < top, "layers {layer_a} and {layer_b} overlap");
+            }
+        }
+    }
+    for (node, point) in layout.nodes.iter().enumerate() {
+        assert!(point.x - sizes[node].width / 2.0 >= MARGIN - 1e-6);
+        assert!(point.x + sizes[node].width / 2.0 <= layout.width + 1e-6);
+        assert!(point.y + sizes[node].height / 2.0 <= layout.height + 1e-6);
+    }
+}
+
+#[test]
+fn nodes_do_not_overlap() {
+    let (sizes, edges) = pipeline(6, 8);
+    let layout = layout(&sizes, &edges);
+    assert_no_overlap(&sizes, &layout);
+}
+
+#[test]
+fn the_same_graph_gives_the_same_layout() {
+    let (sizes, edges) = pipeline(9, 6);
+    assert_eq!(layout(&sizes, &edges), layout(&sizes, &edges));
+}
+
+#[test]
+fn edges_go_down_through_their_layers() {
+    // 0 -> 1 -> 2 -> 3, and 0 -> 3 passes layers 1 and 2.
+    let sizes = sizes(4);
+    let edges = [(0, 1), (1, 2), (2, 3), (0, 3)];
+    let layout = layout(&sizes, &edges);
+    assert_eq!(layout.layers, [0, 1, 2, 3]);
+    let long = &layout.edges[3];
+    assert_eq!(long.len(), 4, "a point in each layer between: {long:?}");
+    assert!(long.windows(2).all(|pair| pair[0].y < pair[1].y));
+    // It starts at the bottom of node 0 and ends at the top of node 3.
+    assert_eq!(long[0].y, layout.nodes[0].y + sizes[0].height / 2.0);
+    assert_eq!(long[3].y, layout.nodes[3].y - sizes[3].height / 2.0);
+}
+
+#[test]
+fn nodes_without_predecessors_sit_above_their_first_successor() {
+    // 0 -> 2 -> 3 -> 4, and 1 -> 4: node 1 moves down to layer 2.
+    let layout = layout(&sizes(5), &[(0, 2), (2, 3), (3, 4), (1, 4)]);
+    assert_eq!(layout.layers, [0, 2, 1, 2, 3]);
+}
+
+#[test]
+fn edges_that_point_back_are_drawn_from_their_first_node() {
+    // 1 -> 0 points back: node 0 stays above node 1, and the route runs from 1 up to 0.
+    let sizes = sizes(3);
+    let layout = layout(&sizes, &[(0, 2), (1, 0), (1, 1)]);
+    assert!(layout.layers[0] < layout.layers[1]);
+    let back = &layout.edges[1];
+    assert!(back.first().expect("points").y > back.last().expect("points").y);
+    assert!(layout.edges[2].is_empty(), "no route for an edge to itself");
+}
+
+#[test]
+fn barycenter_sweeps_remove_crossings() {
+    // Two chains whose second layers start out crossed: 0 -> 3, 1 -> 2.
+    let layout = layout(&sizes(4), &[(0, 3), (1, 2)]);
+    let (x0, x1) = (layout.nodes[0].x, layout.nodes[1].x);
+    let (x2, x3) = (layout.nodes[2].x, layout.nodes[3].x);
+    assert_eq!(x0 < x1, x3 < x2, "the edges do not cross");
+}
+
+#[test]
+fn large_graphs_stay_fast() {
+    let (sizes, edges) = pipeline(200, 25);
+    let start = std::time::Instant::now();
+    let layout = layout(&sizes, &edges);
+    assert_eq!(layout.nodes.len(), 5001);
+    assert!(start.elapsed().as_secs() < 20, "{:?}", start.elapsed());
+    assert_no_overlap(&sizes, &layout);
+}
+
+#[test]
+fn inversions_count_pairs_out_of_order() {
+    assert_eq!(inversions(&[0, 1, 2], 3), 0);
+    assert_eq!(inversions(&[2, 1, 0], 3), 3);
+    assert_eq!(inversions(&[1, 1, 0], 2), 2);
+}
+
+#[test]
+fn isotonic_fits_keep_the_order() {
+    assert_eq!(isotonic(&[1.0, 2.0, 3.0]), [1.0, 2.0, 3.0]);
+    assert_eq!(isotonic(&[3.0, 1.0, 2.0]), [2.0, 2.0, 2.0]);
+    assert_eq!(isotonic(&[0.0, 4.0, 2.0]), [0.0, 3.0, 3.0]);
+}

@@ -111,7 +111,7 @@ fn globs_match_like_a_shell() {
     assert!(glob_matches("*.{html,zip}", "r.zip"));
     assert!(glob_matches("s[0-9].bam", "s3.bam"));
     // The name of a placeholder file matches its pattern, which for `**/` needs a directory.
-    assert_eq!(file_name("**/*.gz"), "mock/mock.gz");
+    assert_eq!(file_name("**/*.gz"), "simulated/simulated.gz");
     assert!(glob_matches("**/*.gz", &file_name("**/*.gz")));
 }
 
@@ -161,7 +161,7 @@ fn simulated_tasks_make_the_files_that_the_script_names() {
             "db",
             "copy.txt",
             "versions.yml",
-            "mock.vcf.gz",
+            "simulated.vcf.gz",
             "report"
         ]
     );
@@ -169,7 +169,10 @@ fn simulated_tasks_make_the_files_that_the_script_names() {
     assert!(work.join("db/x.txt").is_file());
     assert!(outcome.files[2].directory);
     let read = |name: &str| std::fs::read(work.join(name)).expect("reads a file");
-    assert_eq!(read("versions.yml"), b"\"NFCORE:TOOL\":\n    mock: 1.0.0\n");
+    assert_eq!(
+        read("versions.yml"),
+        b"\"NFCORE:TOOL\":\n    simulated: 1.0.0\n"
+    );
     // Inputs with content are written, as a TES server places them.
     assert_eq!(read(".command.sh"), b"true\n");
     assert!(!work.join("in.txt").exists());
@@ -194,13 +197,13 @@ fn simulated_tasks_make_the_files_that_the_script_names() {
             "db",
             "copy.txt",
             "versions.yml",
-            "mock.vcf.gz",
+            "simulated.vcf.gz",
             "report"
         ]
     );
     let work = directory.path().join("work/8");
     assert_eq!(
-        std::fs::read(work.join("mock.vcf.gz")).expect("reads"),
+        std::fs::read(work.join("simulated.vcf.gz")).expect("reads"),
         EMPTY_GZIP
     );
     assert!(outcome.files[5].directory);
@@ -240,7 +243,7 @@ fn simulated_tasks_write_the_text_of_stub_scripts() {
             "s.lf.drp",
             "s.lf.drs",
             "s.fq.gz",
-            "mock.unaligned.fasta",
+            "simulated.unaligned.fasta",
             "versions.yml"
         ]
     );
@@ -283,7 +286,7 @@ fn simulated_tasks_of_commands_without_a_script_make_the_files_the_arguments_nam
         .iter()
         .map(|file| file.path.as_str())
         .collect();
-    assert_eq!(paths, ["a_IR.bam", "b_IR.bam", "run.log", "mock.txt"]);
+    assert_eq!(paths, ["a_IR.bam", "b_IR.bam", "run.log", "simulated.txt"]);
 }
 
 /// A script that surely fails, like one that gzips a file onto its input, ends so: the simulator
@@ -348,7 +351,12 @@ fn simulated_tasks_name_the_outputs_of_tools_after_their_arguments() {
         .collect();
     assert_eq!(
         paths,
-        ["output/s.featureXML", "mock.log", "report", "res/mock"]
+        [
+            "output/s.featureXML",
+            "simulated.log",
+            "report",
+            "res/simulated"
+        ]
     );
     assert!(outcome.files[2].directory);
 }

@@ -564,8 +564,8 @@ impl Collector<'_> {
         found
     }
 
-    /// In a simulated run, the file that the simulator names after a bare wildcard, like `mock`
-    /// for `*`, has no extension; its name takes the one the output suggests, as the tool's
+    /// In a simulated run, the file that the simulator names after a bare wildcard, like
+    /// `simulated` for `*`, has no extension; its name takes the one the output suggests, as the tool's
     /// file has.
     fn simulated_extension(
         &self,

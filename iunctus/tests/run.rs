@@ -257,7 +257,10 @@ fn simulated_outputs_include_directories() {
     assert_eq!(code, 0, "{output}");
     let mut lines: Vec<&str> = output.lines().collect();
     lines.sort_unstable();
-    assert_eq!(lines, ["[simulated] P", "db true", "mock.csv", "x.txt"]);
+    assert_eq!(
+        lines,
+        ["[simulated] P", "db true", "simulated.csv", "x.txt"]
+    );
 }
 
 #[test]

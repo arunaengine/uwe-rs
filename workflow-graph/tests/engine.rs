@@ -463,4 +463,9 @@ fn notes_of_the_driver_mark_the_tasks_whose_outputs_they_concern() {
         (1, 3)
     );
     assert_eq!((steps.edges.len(), steps.edges[0].tasks), (1, 2));
+    let dot = graph.to_dot();
+    assert!(dot.contains("t1 -> m1 [style=dashed];"), "{dot}");
+    // A graph of a run that was not simulated keeps its markers, but has no open points.
+    graph.simulation = None;
+    assert!(!graph.to_dot().contains("m1"));
 }

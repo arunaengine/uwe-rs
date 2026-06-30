@@ -32,7 +32,7 @@ pub struct Arguments {
     pub executor: Option<String>,
     /// `-graph file`: where to write the execution graph.
     pub graph: Option<PathBuf>,
-    /// `-format json|dot|summary` of `iunctus graph`.
+    /// `-format json|dot|summary|svg` of `iunctus graph`.
     pub format: Option<Format>,
     /// `-view tasks|steps`: the graph with one node per task, or one node per step.
     pub view: Option<View>,
@@ -115,7 +115,7 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
             "-format" => {
                 let name = value()?;
                 parsed.format = Some(Format::parse(&name).ok_or(format!(
-                    "unknown graph format `{name}`; use json, dot or summary"
+                    "unknown graph format `{name}`; use json, dot, summary or svg"
                 ))?);
             }
             "-view" => {

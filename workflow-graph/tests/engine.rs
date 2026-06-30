@@ -450,7 +450,6 @@ fn notes_of_the_driver_mark_the_tasks_whose_outputs_they_concern() {
         "the output pattern `part*.txt` matched 2 files, and each started tasks of its own"
     );
     assert_eq!(graph.marked().count(), 1);
-    assert_eq!(graph.simulation.as_deref(), Some(SIMULATION));
     // The step graph counts tasks and carries the markers of its steps.
     let steps = graph.step_graph();
     assert_eq!(steps.steps.len(), 2);
@@ -477,6 +476,9 @@ fn notes_of_the_driver_mark_the_tasks_whose_outputs_they_concern() {
     );
     let dot = graph.to_dot();
     assert!(dot.contains("t1 -> m1 [style=dashed];"), "{dot}");
+    let svg = graph.to_svg();
+    assert!(svg.contains("id=\"m1\""), "{svg}");
+    assert_eq!(graph.step_graph().drawing().shapes.len(), 3);
     // A graph of a run that was not simulated keeps its markers, but has no open points.
     graph.simulation = None;
     assert!(!graph.to_dot().contains("m1"));

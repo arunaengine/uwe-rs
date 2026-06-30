@@ -1,14 +1,18 @@
 //! Pictures and texts of a graph. The graph with one node per task or one node per step
 //! becomes a [`Drawing`]: boxes with text and a state, and lines between them. [`dot`] writes
-//! a drawing as Graphviz DOT. [`render`] gives a graph in each view and format.
+//! a drawing as Graphviz DOT, and [`svg`] draws it as SVG with the layered layout of
+//! [`crate::layout`], with no program besides iunctus. The web page of runs can draw any graph
+//! the same way. [`render`] gives a graph in each view and format.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod dot;
 mod drawing;
 mod summary;
+mod svg;
 
 pub use dot::dot;
+pub use svg::svg;
 
 use crate::ExecutionGraph;
 
@@ -124,24 +128,27 @@ pub enum Format {
     Dot,
     #[default]
     Summary,
+    Svg,
 }
 
 impl Format {
-    /// The format that `-format` names: `json`, `dot` or `summary`.
+    /// The format that `-format` names: `json`, `dot`, `summary` or `svg`.
     pub fn parse(text: &str) -> Option<Format> {
         match text {
             "json" => Some(Format::Json),
             "dot" => Some(Format::Dot),
             "summary" => Some(Format::Summary),
+            "svg" => Some(Format::Svg),
             _ => None,
         }
     }
 
-    /// The format a file name asks for by its extension: DOT for `.dot`, a summary for
-    /// `.txt`, else JSON.
+    /// The format a file name asks for by its extension: DOT for `.dot`, SVG for `.svg`,
+    /// a summary for `.txt`, else JSON.
     pub fn of_file(path: &std::path::Path) -> Format {
         match path.extension().and_then(|extension| extension.to_str()) {
             Some("dot") => Format::Dot,
+            Some("svg") => Format::Svg,
             Some("txt") => Format::Summary,
             _ => Format::Json,
         }
@@ -154,9 +161,11 @@ pub fn render(graph: &ExecutionGraph, view: View, format: Format) -> String {
         (View::Tasks, Format::Json) => json(graph),
         (View::Tasks, Format::Dot) => dot(&graph.drawing()),
         (View::Tasks, Format::Summary) => summary::tasks(graph),
+        (View::Tasks, Format::Svg) => svg(&graph.drawing()),
         (View::Steps, Format::Json) => json(&graph.step_graph()),
         (View::Steps, Format::Dot) => dot(&graph.step_graph().drawing()),
         (View::Steps, Format::Summary) => summary::steps(&graph.step_graph()),
+        (View::Steps, Format::Svg) => svg(&graph.step_graph().drawing()),
     }
 }
 
@@ -169,6 +178,11 @@ impl ExecutionGraph {
     /// The graph in Graphviz DOT form, one node per task.
     pub fn to_dot(&self) -> String {
         dot(&self.drawing())
+    }
+
+    /// The graph as SVG, one node per task.
+    pub fn to_svg(&self) -> String {
+        svg(&self.drawing())
     }
 
     /// A short text: the note of a simulation, counts, then one line per task with its

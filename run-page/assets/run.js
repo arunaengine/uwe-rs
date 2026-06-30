@@ -23,7 +23,7 @@ async function showRun(id, task) {
     tasks: new Map(data.tasks.map((row) => [row.id, row])),
     markers: data.markers,
     sequence: data.sequence,
-    filter: { text: "", state: "", step: "" },
+    filter: { text: "", state: "", step: "", order: "asked" },
     shown: ROWS,
     chosen: null,
     events: null,
@@ -220,6 +220,11 @@ function matching() {
     if (text && !task.name.toLowerCase().includes(text) && String(task.id) !== text) continue;
     found.push(task);
   }
+  if (filter.order === "longest") {
+    // Tasks that have not started come last.
+    const time = (task) => (task.started ? (task.ended || Date.now()) - task.started : -1);
+    found.sort((a, b) => time(b) - time(a));
+  }
   return found;
 }
 
@@ -235,8 +240,14 @@ function drawTasks() {
       drawRows();
     } }, el("option", { value: "" }, "every state"),
       STATES.map((name) => el("option", { value: name }, LABELS[name])));
+    const order = el("select", { onchange: (event) => {
+      view.filter.order = event.target.value;
+      view.shown = ROWS;
+      drawRows();
+    } }, el("option", { value: "asked" }, "in the order asked"),
+      el("option", { value: "longest" }, "longest first"));
     view.stepChip = el("span", {});
-    view.taskTools = el("div", { class: "tools" }, search, state, view.stepChip);
+    view.taskTools = el("div", { class: "tools" }, search, state, order, view.stepChip);
     view.taskTable = el("div", {});
     part.replaceChildren(el("h2", {}, "Tasks"), view.taskTools, view.taskTable);
   }

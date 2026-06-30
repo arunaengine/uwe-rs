@@ -451,4 +451,16 @@ fn notes_of_the_driver_mark_the_tasks_whose_outputs_they_concern() {
     );
     assert_eq!(graph.marked().count(), 1);
     assert_eq!(graph.simulation.as_deref(), Some(SIMULATION));
+    // The step graph counts tasks and carries the markers of its steps.
+    let steps = graph.step_graph();
+    assert_eq!(steps.steps.len(), 2);
+    assert_eq!(
+        (steps.steps[1].name.as_str(), steps.steps[1].tasks),
+        ("COUNT", 2)
+    );
+    assert_eq!(
+        (steps.steps[0].marked, steps.steps[0].markers.len()),
+        (1, 3)
+    );
+    assert_eq!((steps.edges.len(), steps.edges[0].tasks), (1, 2));
 }

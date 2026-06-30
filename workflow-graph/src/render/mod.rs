@@ -1,11 +1,12 @@
-//! Pictures of a graph. The graph with one node per task or one node per step becomes a
-//! [`Drawing`]: boxes with text and a state, and lines between them. [`dot`] writes a drawing
-//! as Graphviz DOT.
+//! Pictures and texts of a graph. The graph with one node per task or one node per step
+//! becomes a [`Drawing`]: boxes with text and a state, and lines between them. [`dot`] writes
+//! a drawing as Graphviz DOT. [`render`] gives a graph in each view and format.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod dot;
 mod drawing;
+mod summary;
 
 pub use dot::dot;
 
@@ -97,9 +98,82 @@ impl State {
     }
 }
 
+/// Which graph to show: one node per task, or one node per step.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum View {
+    #[default]
+    Tasks,
+    Steps,
+}
+
+impl View {
+    /// The view that `-view` names: `tasks` or `steps`.
+    pub fn parse(text: &str) -> Option<View> {
+        match text {
+            "tasks" => Some(View::Tasks),
+            "steps" => Some(View::Steps),
+            _ => None,
+        }
+    }
+}
+
+/// How to write a graph.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Format {
+    Json,
+    Dot,
+    #[default]
+    Summary,
+}
+
+impl Format {
+    /// The format that `-format` names: `json`, `dot` or `summary`.
+    pub fn parse(text: &str) -> Option<Format> {
+        match text {
+            "json" => Some(Format::Json),
+            "dot" => Some(Format::Dot),
+            "summary" => Some(Format::Summary),
+            _ => None,
+        }
+    }
+
+    /// The format a file name asks for by its extension: DOT for `.dot`, a summary for
+    /// `.txt`, else JSON.
+    pub fn of_file(path: &std::path::Path) -> Format {
+        match path.extension().and_then(|extension| extension.to_str()) {
+            Some("dot") => Format::Dot,
+            Some("txt") => Format::Summary,
+            _ => Format::Json,
+        }
+    }
+}
+
+/// A graph in a view and a format.
+pub fn render(graph: &ExecutionGraph, view: View, format: Format) -> String {
+    match (view, format) {
+        (View::Tasks, Format::Json) => json(graph),
+        (View::Tasks, Format::Dot) => dot(&graph.drawing()),
+        (View::Tasks, Format::Summary) => summary::tasks(graph),
+        (View::Steps, Format::Json) => json(&graph.step_graph()),
+        (View::Steps, Format::Dot) => dot(&graph.step_graph().drawing()),
+        (View::Steps, Format::Summary) => summary::steps(&graph.step_graph()),
+    }
+}
+
+/// Pretty JSON of either graph, with a line end.
+fn json(value: &impl serde::Serialize) -> String {
+    serde_json::to_string_pretty(value).unwrap_or_default() + "\n"
+}
+
 impl ExecutionGraph {
     /// The graph in Graphviz DOT form, one node per task.
     pub fn to_dot(&self) -> String {
         dot(&self.drawing())
+    }
+
+    /// A short text: the note of a simulation, counts, then one line per task with its
+    /// upstream tasks and its markers.
+    pub fn summary(&self) -> String {
+        summary::tasks(self)
     }
 }

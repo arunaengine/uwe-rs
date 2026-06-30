@@ -5,7 +5,7 @@
 
 use workflow_graph::simulator::{EMPTY_GZIP, file_name, glob_matches};
 use workflow_graph::{
-    Driver, DriverError, EdgeKind, Input, Language, Marker, MarkerKind, Note, Outcome,
+    Driver, DriverError, EdgeKind, Input, Language, MORE_TASKS, Marker, MarkerKind, Note, Outcome,
     SIMULATION, Simulator, Task, TaskId, execute,
 };
 
@@ -463,9 +463,26 @@ fn notes_of_the_driver_mark_the_tasks_whose_outputs_they_concern() {
         (1, 3)
     );
     assert_eq!((steps.edges.len(), steps.edges[0].tasks), (1, 2));
+    // Every format says that the graph is simulated and shows the open point after SPLIT.
+    let summary = graph.summary();
+    assert!(summary.starts_with(SIMULATION), "{summary}");
+    assert!(
+        summary
+            .contains("3 tasks, 2 steps, 2 edges, 1 point where real data can add or remove tasks"),
+        "{summary}"
+    );
+    assert!(
+        summary.contains(&format!("      {MORE_TASKS}: a checkpoint\n")),
+        "{summary}"
+    );
     let dot = graph.to_dot();
     assert!(dot.contains("t1 -> m1 [style=dashed];"), "{dot}");
     // A graph of a run that was not simulated keeps its markers, but has no open points.
     graph.simulation = None;
     assert!(!graph.to_dot().contains("m1"));
+    assert!(
+        graph
+            .summary()
+            .contains("the next tasks depend on its outputs: a checkpoint")
+    );
 }

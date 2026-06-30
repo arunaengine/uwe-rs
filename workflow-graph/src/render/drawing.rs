@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 
 use super::{Drawing, Link, Shape, State};
+use crate::steps::{StepGraph, StepNode};
 use crate::{EdgeKind, ExecutionGraph, Language, MORE_TASKS, Marker, TaskId};
 
 /// The most characters of a label in a box; longer names keep their end.
@@ -84,6 +85,73 @@ impl ExecutionGraph {
     }
 }
 
+impl StepGraph {
+    /// The drawing with one box per step, which counts its tasks.
+    pub fn drawing(&self) -> Drawing {
+        let simulated = self.is_simulated();
+        let tasks: usize = self.steps.iter().map(|step| step.tasks).sum();
+        let mut drawing = Drawing {
+            title: title(
+                &self.workflow,
+                self.language,
+                &format!(
+                    "{} with {}",
+                    count(self.steps.len(), "step"),
+                    count(tasks, "task")
+                ),
+                self.simulation.as_deref(),
+                simulated && self.steps.iter().any(|step| step.marked > 0),
+            ),
+            ..Drawing::default()
+        };
+        let mut index: HashMap<&str, usize> = HashMap::new();
+        for (position, step) in self.steps.iter().enumerate() {
+            index.insert(&step.name, position);
+            let mut detail = count(step.tasks, "task");
+            if step.failed > 0 {
+                detail.push_str(&format!(", {} failed", step.failed));
+            }
+            let mut tooltip = vec![step.name.clone(), detail.clone()];
+            if step.marked > 0 {
+                tooltip.push(format!("{} with markers", count(step.marked, "task")));
+            }
+            tooltip.extend(step.markers.iter().map(|marker| marker.reason.clone()));
+            drawing.shapes.push(Shape {
+                id: format!("s{position}"),
+                lines: vec![shorten(&last_parts(&step.name, 2)), detail],
+                tooltip: tooltip.join("\n"),
+                state: step_state(step, simulated),
+            });
+        }
+        for edge in &self.edges {
+            let (Some(&from), Some(&to)) =
+                (index.get(edge.from.as_str()), index.get(edge.to.as_str()))
+            else {
+                continue;
+            };
+            drawing.links.push(Link {
+                from,
+                to,
+                dashed: !edge.files,
+                label: Some(count(edge.tasks, "task edge")),
+            });
+        }
+        if simulated {
+            for (position, step) in self.steps.iter().enumerate() {
+                if step.marked > 0 {
+                    open_point(
+                        &mut drawing,
+                        position,
+                        format!("m{position}"),
+                        &step.markers,
+                    );
+                }
+            }
+        }
+        drawing
+    }
+}
+
 /// The lines above a graph: the workflow and its size, the note of a simulation, and what the
 /// dashed boxes mean when there are any.
 fn title(
@@ -141,6 +209,18 @@ fn task_state(exit_code: Option<i32>, simulated: bool) -> State {
         Some(0) => State::Succeeded,
         Some(_) => State::Failed,
         None => State::Waiting,
+    }
+}
+
+fn step_state(step: &StepNode, simulated: bool) -> State {
+    if step.failed > 0 {
+        State::Failed
+    } else if step.succeeded < step.tasks {
+        State::Waiting
+    } else if simulated {
+        State::Simulated
+    } else {
+        State::Succeeded
     }
 }
 

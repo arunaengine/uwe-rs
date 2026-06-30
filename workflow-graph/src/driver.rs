@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use crate::{Language, Outcome, Task};
+use crate::{Language, Note, Outcome, Task};
 
 /// What a user asks to run, in the terms all languages share. Each language crate exposes
 /// `pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError>`.
@@ -76,4 +76,11 @@ pub trait Driver {
     /// Ends the run: an error when the workflow failed or waits for something that will not
     /// come.
     fn finish(&mut self) -> Result<(), DriverError>;
+
+    /// What the driver noticed since the last call while it planned tasks, like reads of task
+    /// outputs, for the markers of the graph. The engine asks after `start` and after each
+    /// `complete`. The default notices nothing.
+    fn notes(&mut self) -> Vec<Note> {
+        Vec::new()
+    }
 }

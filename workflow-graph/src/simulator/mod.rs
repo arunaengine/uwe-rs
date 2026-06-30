@@ -309,7 +309,7 @@ fn write_made(task: &Task, work: &Path, made: &Made) -> std::io::Result<()> {
     // A versions file gets the entry that nf-core code reads, unless the script makes it
     // empty, as `touch versions.yml` does.
     if made.path == "versions.yml" && made.content.as_deref() != Some("") {
-        return std::fs::write(&path, format!("\"{}\":\n    mock: 1.0.0\n", task.step));
+        return std::fs::write(&path, format!("\"{}\":\n    simulated: 1.0.0\n", task.step));
     }
     // A copy of a local input file has its bytes.
     let source = made.copy_of.as_ref().and_then(|copied| {
@@ -411,8 +411,8 @@ fn has_literal(pattern: &str) -> bool {
         .any(|c| !matches!(c, '*' | '?' | '[' | ']' | '{' | '}' | ',' | '/'))
 }
 
-/// A file name that a glob matches: `*` becomes `mock`, `?` becomes `x`, and a group like
-/// `{html,zip}` or `[ab]` its first choice. `**/` is one directory, `mock/`, as a Java glob
+/// A file name that a glob matches: `*` becomes `simulated`, `?` becomes `x`, and a group like
+/// `{html,zip}` or `[ab]` its first choice. `**/` is one directory, `simulated/`, as a Java glob
 /// needs one.
 pub fn file_name(pattern: &str) -> String {
     let mut name = String::new();
@@ -422,10 +422,10 @@ pub fn file_name(pattern: &str) -> String {
             '*' => {
                 let double = characters.next_if_eq(&'*').is_some();
                 if double && characters.next_if_eq(&'/').is_some() {
-                    name.push_str("mock/");
+                    name.push_str("simulated/");
                     continue;
                 }
-                name.push_str("mock");
+                name.push_str("simulated");
             }
             '?' => name.push('x'),
             '{' => {

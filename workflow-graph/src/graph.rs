@@ -105,37 +105,6 @@ impl ExecutionGraph {
         Ok(())
     }
 
-    /// The graph in Graphviz DOT form, one node per task, labelled with its name.
-    pub fn to_dot(&self) -> String {
-        let mut dot = String::from("digraph workflow {\n  rankdir=TB;\n  node [shape=box];\n");
-        for node in &self.nodes {
-            let _ = writeln!(
-                dot,
-                "  t{} [label=\"{}\"];",
-                node.task.id,
-                escape(&node.task.name)
-            );
-        }
-        for edge in &self.edges {
-            match &edge.kind {
-                EdgeKind::File { path } => {
-                    let _ = writeln!(
-                        dot,
-                        "  t{} -> t{} [label=\"{}\"];",
-                        edge.from,
-                        edge.to,
-                        escape(path)
-                    );
-                }
-                EdgeKind::Order => {
-                    let _ = writeln!(dot, "  t{} -> t{} [style=dashed];", edge.from, edge.to);
-                }
-            }
-        }
-        dot.push_str("}\n");
-        dot
-    }
-
     /// A short text summary: counts, then one line per task with its upstream tasks.
     pub fn summary(&self) -> String {
         let mut text = format!(
@@ -162,8 +131,4 @@ impl ExecutionGraph {
         }
         text
     }
-}
-
-fn escape(text: &str) -> String {
-    text.replace('\\', "\\\\").replace('"', "\\\"")
 }

@@ -20,6 +20,7 @@ mod options;
 mod pending;
 mod queue;
 mod recorder;
+pub mod render;
 pub mod simulator;
 mod steps;
 mod task;

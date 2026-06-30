@@ -160,9 +160,30 @@ function drawGraph() {
         box.replaceChildren(el("p", { class: "quiet" }, "The graph cannot be drawn."));
         return;
       }
-      box.replaceChildren(document.importNode(root, true));
+      const drawn = document.importNode(root, true);
+      drawn.addEventListener("click", (event) => chooseShape(event.target));
+      box.replaceChildren(drawn);
     })
     .catch((error) => box.replaceChildren(el("p", { class: "error" }, error.message)));
+}
+
+// A click on a box of the graph: `t<id>` opens the task, `s<n>` shows the tasks of the n-th
+// step, counted from 0 in the order of their first task, as the renderer numbers them.
+function chooseShape(target) {
+  const shape = target.closest("[id]");
+  const id = shape ? shape.getAttribute("id") : "";
+  if (/^t\d+$/.test(id)) {
+    go(taskPath(Number(id.slice(1))));
+  } else if (/^s\d+$/.test(id)) {
+    const steps = [...new Set([...view.tasks.values()].map((task) => task.step))];
+    const step = steps[Number(id.slice(1))];
+    if (step === undefined) return;
+    view.filter.step = step;
+    view.shown = ROWS;
+    drawSteps();
+    drawTasks();
+    view.parts.tasks.scrollIntoView({ behavior: "smooth" });
+  }
 }
 
 // Draws the graph again soon, but not more often than every few seconds.

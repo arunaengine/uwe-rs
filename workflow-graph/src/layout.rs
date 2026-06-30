@@ -448,3 +448,7 @@ fn isotonic(targets: &[f64]) -> Vec<f64> {
         .flat_map(|(mean, count)| std::iter::repeat_n(mean, count))
         .collect()
 }
+
+#[cfg(test)]
+#[path = "layout_tests.rs"]
+mod tests;

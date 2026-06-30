@@ -22,9 +22,10 @@ use std::process::ExitCode;
 
 use run_database::Recorder;
 use run_page::Server;
+use workflow_graph::render::{Format, View, render};
 use workflow_graph::{
     CancellationToken, Driver, DriverError, Engine, ExecuteError, Execution, ExecutionGraph,
-    Executor, Language, Launch, Order, RunOptions, Simulator,
+    Executor, Language, Launch, Order, RunOptions, SIMULATION, Simulator,
 };
 
 use crate::arguments::Arguments;
@@ -40,6 +41,8 @@ const INTERRUPTED: u8 = 130;
 struct Failure {
     message: String,
     code: u8,
+    /// Lines for standard error after the message, like the note of a simulated run.
+    after: Vec<String>,
 }
 
 impl From<DriverError> for Failure {
@@ -47,6 +50,7 @@ impl From<DriverError> for Failure {
         Failure {
             code: if error.unsupported { UNSUPPORTED } else { 1 },
             message: error.message,
+            after: Vec::new(),
         }
     }
 }
@@ -61,6 +65,7 @@ impl From<ExecuteError> for Failure {
         Failure {
             code,
             message: error.to_string(),
+            after: Vec::new(),
         }
     }
 }
@@ -69,6 +74,7 @@ fn failure(message: impl Into<String>) -> Failure {
     Failure {
         message: message.into(),
         code: 1,
+        after: Vec::new(),
     }
 }
 
@@ -99,6 +105,9 @@ fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(failure) => {
             eprintln!("{}", failure.message);
+            for line in &failure.after {
+                eprintln!("{line}");
+            }
             ExitCode::from(failure.code)
         }
     }
@@ -114,36 +123,68 @@ fn run(arguments: &Arguments) -> Result<(), Failure> {
     }
     let (execution, page) = execute(arguments, false)?;
     if let Some(file) = &arguments.graph {
-        write_graph(file, &execution.graph)?;
+        write_graph(file, &execution.graph, arguments.view.unwrap_or_default())?;
     }
     if let Some(page) = page {
         eprintln!("iunctus: the run has ended; the page stays open until you press Ctrl-C");
         page.serve_until_interrupted();
     }
-    execution.into_result()?;
-    Ok(())
+    finish(execution)
 }
 
 /// `iunctus graph`: runs the workflow, with the simulator unless `-executor` says otherwise,
 /// and prints its graph. What the workflow prints goes to standard error.
 fn graph(arguments: &Arguments) -> Result<(), Failure> {
-    let format = arguments.format.as_deref().unwrap_or("summary");
-    if !["json", "dot", "summary"].contains(&format) {
-        return Err(failure(format!(
-            "iunctus: unknown graph format `{format}`; use json, dot or summary"
-        )));
-    }
     if arguments.page {
         return Err(failure("iunctus: `-page` is an option of `iunctus run`"));
     }
+    let view = arguments.view.unwrap_or_default();
     let (execution, _) = execute(arguments, true)?;
     if let Some(file) = &arguments.graph {
-        write_graph(file, &execution.graph)?;
+        write_graph(file, &execution.graph, view)?;
     }
     // A failed run still shows the graph so far.
-    print!("{}", render(&execution.graph, format));
-    execution.into_result()?;
-    Ok(())
+    let format = arguments.format.unwrap_or_default();
+    print!("{}", render(&execution.graph, view, format));
+    finish(execution)
+}
+
+/// Ends a command with its run: the error of a failed run comes first, so that it is the first
+/// line on standard error, then the note of a simulated run.
+fn finish(execution: Execution) -> Result<(), Failure> {
+    let notes = simulation_notes(&execution.graph);
+    match execution.into_result() {
+        Ok(_) => {
+            for note in notes {
+                eprintln!("{note}");
+            }
+            Ok(())
+        }
+        Err(error) => {
+            let mut failure = Failure::from(error);
+            failure.after = notes;
+            Err(failure)
+        }
+    }
+}
+
+/// What a simulated run says on standard error, which keeps standard output free for the
+/// graph: that it is a simulation, and how many points of its graph are marked.
+fn simulation_notes(graph: &ExecutionGraph) -> Vec<String> {
+    if !graph.is_simulated() {
+        return Vec::new();
+    }
+    let mut notes = vec![format!("iunctus: {SIMULATION}")];
+    match graph.marked().count() {
+        0 => {}
+        1 => notes.push(
+            "iunctus: the graph marks 1 point where real data can add or remove tasks.".into(),
+        ),
+        count => notes.push(format!(
+            "iunctus: the graph marks {count} points where real data can add or remove tasks."
+        )),
+    }
+    notes
 }
 
 /// Runs the target with its language's driver and the chosen executor, and records the run
@@ -215,11 +256,14 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Serv
     let workflow = target.to_string_lossy();
     let mut observer = resume::Noting::new(&mut recorder, taken);
     let interrupt = stop_on_interrupt();
-    let execution = Engine::new(executor.as_mut())
+    let mut execution = Engine::new(executor.as_mut())
         .options(options)
         .observer(&mut observer)
         .cancel(interrupt.clone())
         .run(&workflow, driver.as_mut());
+    if !real {
+        execution.graph.simulate();
+    }
     // The run is over: a later Ctrl-C, like the one that closes the page, stops nothing.
     interrupt.cancel();
     close(recorder);
@@ -341,20 +385,12 @@ fn launch(arguments: &Arguments, target: PathBuf) -> Launch {
     }
 }
 
-/// Writes the graph as DOT when the file name ends with `.dot`, else as JSON.
-fn write_graph(file: &Path, graph: &ExecutionGraph) -> Result<(), Failure> {
-    let dot = file.extension().is_some_and(|extension| extension == "dot");
-    let text = render(graph, if dot { "dot" } else { "json" });
+/// Writes the graph in the format that the file name asks for: DOT for `.dot`, a summary for
+/// `.txt`, else JSON.
+fn write_graph(file: &Path, graph: &ExecutionGraph, view: View) -> Result<(), Failure> {
+    let text = render(graph, view, Format::of_file(file));
     std::fs::write(file, text)
         .map_err(|error| failure(format!("iunctus: cannot write {}: {error}", file.display())))
-}
-
-fn render(graph: &ExecutionGraph, format: &str) -> String {
-    match format {
-        "dot" => graph.to_dot(),
-        "summary" => graph.summary(),
-        _ => serde_json::to_string_pretty(graph).unwrap_or_default() + "\n",
-    }
 }
 
 fn usage() -> ExitCode {
@@ -364,7 +400,7 @@ fn usage() -> ExitCode {
 
 const USAGE: &str = "\
 usage: iunctus run <workflow file or directory> [<targets>] [options]
-       iunctus graph <workflow file or directory> [-format json|dot|summary] [options]
+       iunctus graph <workflow file or directory> [-format json|dot|summary] [-view tasks|steps] [options]
        iunctus config [<project>] [-profile <names>] [-c <config>] [--<param> <value>]
        iunctus runs
        iunctus page [<run>] [-address <ip>] [-port <number>]
@@ -376,7 +412,9 @@ options:
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it
   -executor simulator|local           simulator (the default) writes TES task documents
                                       and makes up the outputs; local runs containers
-  -graph <file>                       writes the execution graph, as DOT for a .dot file
+  -graph <file>                       writes the execution graph: DOT for .dot, a summary
+                                      for .txt, else JSON
+  -view tasks|steps                   one node per task (the default) or one per step
   -max-pending <n>                    lets up to n tasks be pending at once (default 1 for
                                       the simulator, no limit for real executors)
   -order asked|reversed|finished|shuffled[:<seed>]

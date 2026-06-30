@@ -6,6 +6,7 @@
 use std::net::IpAddr;
 use std::path::PathBuf;
 
+use workflow_graph::render::{Format, View};
 use workflow_graph::{Language, Order};
 
 /// The options of a command.
@@ -32,7 +33,9 @@ pub struct Arguments {
     /// `-graph file`: where to write the execution graph.
     pub graph: Option<PathBuf>,
     /// `-format json|dot|summary` of `iunctus graph`.
-    pub format: Option<String>,
+    pub format: Option<Format>,
+    /// `-view tasks|steps`: the graph with one node per task, or one node per step.
+    pub view: Option<View>,
     /// `-max-pending n`: how many tasks may be pending at once.
     pub max_pending: Option<usize>,
     /// `-order asked|reversed|finished|shuffled[:seed]`: the order in which pending tasks
@@ -109,7 +112,19 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
             }
             "-executor" => parsed.executor = Some(value()?),
             "-graph" => parsed.graph = Some(value()?.into()),
-            "-format" => parsed.format = Some(value()?),
+            "-format" => {
+                let name = value()?;
+                parsed.format = Some(Format::parse(&name).ok_or(format!(
+                    "unknown graph format `{name}`; use json, dot or summary"
+                ))?);
+            }
+            "-view" => {
+                let name = value()?;
+                parsed.view = Some(
+                    View::parse(&name)
+                        .ok_or(format!("unknown graph view `{name}`; use tasks or steps"))?,
+                );
+            }
             "-default-image" => parsed.default_image = Some(value()?),
             "-python-image" => parsed.python_image = Some(value()?),
             "-database" => parsed.database = Some(value()?.into()),

@@ -7,6 +7,8 @@
 use std::path::Path;
 use std::process::Command;
 
+use workflow_graph::SIMULATION;
+
 const SCRIPT: &str = r#"
 process UPPER {
     container 'debian:stable-slim'
@@ -32,7 +34,8 @@ workflow {
 }
 "#;
 
-/// Runs the binary in `directory`; the result has the exit code and the standard output.
+/// Runs the binary in `directory`; the result has the exit code and the standard output and
+/// error, without the note of a simulated run, which `tests/graph.rs` checks.
 fn iunctus(directory: &Path, arguments: &[&str]) -> (i32, String) {
     let output = Command::new(env!("CARGO_BIN_EXE_iunctus"))
         .args(arguments)
@@ -42,6 +45,7 @@ fn iunctus(directory: &Path, arguments: &[&str]) -> (i32, String) {
         .expect("runs iunctus");
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = stderr.replace(&format!("iunctus: {SIMULATION}\n"), "");
     (
         output.status.code().unwrap_or(-1),
         format!("{stdout}{stderr}"),

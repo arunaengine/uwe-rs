@@ -14,6 +14,7 @@ mod engine;
 mod events;
 mod executor;
 mod graph;
+pub mod layout;
 mod options;
 mod pending;
 mod queue;

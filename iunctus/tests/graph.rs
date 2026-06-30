@@ -186,7 +186,7 @@ fn unknown_executors_and_formats_are_errors() {
 }
 
 #[test]
-fn graphs_have_a_step_view() {
+fn graphs_have_a_step_view_and_svg() {
     let directory = pipeline();
     let arguments = ["graph", "main.nf", "-view", "steps"];
     let (code, stdout, stderr) = iunctus(directory.path(), &arguments);
@@ -205,5 +205,21 @@ fn graphs_have_a_step_view() {
     assert_eq!(
         (steps.edges[0].from.as_str(), steps.edges[0].to.as_str()),
         ("GREET", "SHOUT")
+    );
+    let (code, stdout, stderr) = iunctus(directory.path(), &["graph", "main.nf", "-format", "svg"]);
+    assert_eq!(code, 0, "{stderr}");
+    assert!(stdout.starts_with("<svg"), "{stdout}");
+    assert!(
+        stdout.contains(&format!(">{SIMULATION}</text>")),
+        "{stdout}"
+    );
+    assert!(stdout.contains("id=\"t1\""), "{stdout}");
+    let arguments = ["run", "main.nf", "-graph", "steps.svg", "-view", "steps"];
+    let (code, _, stderr) = iunctus(directory.path(), &arguments);
+    assert_eq!(code, 0, "{stderr}");
+    let svg = std::fs::read_to_string(directory.path().join("steps.svg")).expect("the SVG");
+    assert!(
+        svg.contains(">GREET</text>") && svg.contains(">1 task</text>"),
+        "{svg}"
     );
 }

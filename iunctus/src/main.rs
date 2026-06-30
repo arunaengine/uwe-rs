@@ -385,8 +385,8 @@ fn launch(arguments: &Arguments, target: PathBuf) -> Launch {
     }
 }
 
-/// Writes the graph in the format that the file name asks for: DOT for `.dot`, a summary for
-/// `.txt`, else JSON.
+/// Writes the graph in the format that the file name asks for: DOT for `.dot`, SVG for
+/// `.svg`, a summary for `.txt`, else JSON.
 fn write_graph(file: &Path, graph: &ExecutionGraph, view: View) -> Result<(), Failure> {
     let text = render(graph, view, Format::of_file(file));
     std::fs::write(file, text)
@@ -400,7 +400,7 @@ fn usage() -> ExitCode {
 
 const USAGE: &str = "\
 usage: iunctus run <workflow file or directory> [<targets>] [options]
-       iunctus graph <workflow file or directory> [-format json|dot|summary] [-view tasks|steps] [options]
+       iunctus graph <workflow file or directory> [-format json|dot|summary|svg] [-view tasks|steps] [options]
        iunctus config [<project>] [-profile <names>] [-c <config>] [--<param> <value>]
        iunctus runs
        iunctus page [<run>] [-address <ip>] [-port <number>]
@@ -412,8 +412,8 @@ options:
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it
   -executor simulator|local           simulator (the default) writes TES task documents
                                       and makes up the outputs; local runs containers
-  -graph <file>                       writes the execution graph: DOT for .dot, a summary
-                                      for .txt, else JSON
+  -graph <file>                       writes the execution graph: DOT for .dot, SVG for .svg,
+                                      a summary for .txt, else JSON
   -view tasks|steps                   one node per task (the default) or one per step
   -max-pending <n>                    lets up to n tasks be pending at once (default 1 for
                                       the simulator, no limit for real executors)

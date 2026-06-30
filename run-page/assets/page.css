@@ -112,5 +112,6 @@ button[aria-pressed=true] { background: var(--text); color: var(--card); }
 
 .graph { overflow: auto; max-height: 70vh; border: 1px solid var(--line); border-radius: 6px; background: var(--ground); padding: 0.5rem; }
 .graph svg { display: block; max-width: none; height: auto; }
+.graph svg [id^="t"], .graph svg [id^="s"] { cursor: pointer; }
 details > summary { cursor: pointer; color: var(--quiet); margin: 0.4rem 0; }
 .marker { border-left: 3px solid var(--notice-line); padding-left: 0.6rem; margin: 0.3rem 0; }

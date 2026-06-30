@@ -84,7 +84,7 @@ impl Host for Console {
             };
         }
         match remote::https_url(path) {
-            Some(url) => remote::metadata(path, &url).map_err(io_error),
+            Some(url) => remote::metadata(path, &url, &self.downloads).map_err(io_error),
             None => Err(Error::Unsupported {
                 message: format!("reading remote files like {}", path.uri()),
                 span: Default::default(),

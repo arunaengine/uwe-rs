@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use nextflow_evaluator::interpreter::FileMetadata;
 use nextflow_evaluator::value::PathValue;
@@ -116,27 +117,46 @@ fn raw_github(uri: &str) -> Option<String> {
         .then(|| format!("https://raw.githubusercontent.com/{owner}/{repository}/{file}"))
 }
 
-fn client() -> Result<reqwest::blocking::Client, String> {
-    reqwest::blocking::Client::builder()
-        .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
-        .build()
-        .map_err(|error| error.to_string())
+/// The client for small requests. It is made once per process and shared, so that requests to
+/// the same host reuse their connection and do not look up the host's address again.
+fn client() -> Result<&'static reqwest::blocking::Client, String> {
+    static CLIENT: OnceLock<Result<reqwest::blocking::Client, String>> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::blocking::Client::builder()
+                .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
+                .build()
+                .map_err(|error| error.to_string())
+        })
+        .as_ref()
+        .map_err(Clone::clone)
 }
 
-/// A client for downloads, which may take long for large files.
-fn download_client() -> Result<reqwest::blocking::Client, String> {
-    reqwest::blocking::Client::builder()
-        .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
-        .connect_timeout(std::time::Duration::from_secs(30))
-        .timeout(std::time::Duration::from_secs(30 * 60))
-        .build()
-        .map_err(|error| error.to_string())
+/// The client for downloads, which may take long for large files; shared like [`client`].
+fn download_client() -> Result<&'static reqwest::blocking::Client, String> {
+    static CLIENT: OnceLock<Result<reqwest::blocking::Client, String>> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::blocking::Client::builder()
+                .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
+                .connect_timeout(std::time::Duration::from_secs(30))
+                .timeout(std::time::Duration::from_secs(30 * 60))
+                .build()
+                .map_err(|error| error.to_string())
+        })
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+/// The name of the local copy of a remote file in the downloads directory.
+fn local_name(url: &str) -> String {
+    let digest = Sha256::digest(url.as_bytes());
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// A local copy of a remote file, downloaded once into `downloads`.
 pub fn download(url: &str, downloads: &Path) -> Result<PathBuf, String> {
-    let digest = Sha256::digest(url.as_bytes());
-    let name: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    let name = local_name(url);
     let local = downloads.join(&name);
     if local.is_file() {
         return Ok(local);
@@ -204,9 +224,62 @@ fn take_over(downloads: &Path, name: &str, partial: &Path) -> u64 {
     0
 }
 
-/// Whether a remote file exists, and its size, from a `HEAD` request. A key of an S3 bucket
-/// that is a prefix of other keys is a directory.
-pub fn metadata(path: &PathValue, url: &str) -> Result<Option<FileMetadata>, String> {
+/// Whether a remote file exists, and its size. A file that an earlier run downloaded or found
+/// is known from `downloads`, without a request. Otherwise a `HEAD` request asks, and a file
+/// that exists is noted in `downloads` for later runs. A key of an S3 bucket that is a prefix
+/// of other keys is a directory.
+pub fn metadata(
+    path: &PathValue,
+    url: &str,
+    downloads: &Path,
+) -> Result<Option<FileMetadata>, String> {
+    if let Some(known) = known(url, downloads) {
+        return Ok(Some(known));
+    }
+    let found = ask(path, url)?;
+    if let Some(found) = &found {
+        note(url, downloads, found);
+    }
+    Ok(found)
+}
+
+/// What `downloads` knows of a remote file: the size of its copy, or what an earlier run noted.
+fn known(url: &str, downloads: &Path) -> Option<FileMetadata> {
+    let local = downloads.join(local_name(url));
+    if let Some(copy) = std::fs::metadata(&local).ok().filter(|copy| copy.is_file()) {
+        return Some(FileMetadata {
+            directory: false,
+            size: copy.len(),
+        });
+    }
+    let noted = std::fs::read_to_string(local.with_extension("metadata")).ok()?;
+    match noted.trim().split_once(' ') {
+        Some(("file", size)) => Some(FileMetadata {
+            directory: false,
+            size: size.parse().ok()?,
+        }),
+        None if noted.trim() == "directory" => Some(FileMetadata {
+            directory: true,
+            size: 0,
+        }),
+        _ => None,
+    }
+}
+
+/// Notes in `downloads` that a remote file exists, for later runs. The note is only a
+/// shortcut, so a note that cannot be written is left out.
+fn note(url: &str, downloads: &Path, found: &FileMetadata) {
+    let text = match found.directory {
+        true => "directory\n".to_owned(),
+        false => format!("file {}\n", found.size),
+    };
+    let noted = downloads.join(local_name(url)).with_extension("metadata");
+    let _ = std::fs::create_dir_all(downloads).and_then(|()| std::fs::write(noted, text));
+}
+
+/// Whether a remote file exists, and its size, from a `HEAD` request, or for a directory of a
+/// bucket from a listing.
+fn ask(path: &PathValue, url: &str) -> Result<Option<FileMetadata>, String> {
     let client = client()?;
     let response = client
         .head(url)
@@ -258,6 +331,28 @@ mod tests {
                     <CommonPrefixes><Prefix>a/c&amp;d/</Prefix></CommonPrefixes></ListBucketResult>";
         assert_eq!(elements(text, "Key"), ["a/b.csv"]);
         assert_eq!(elements(text, "Prefix"), ["a/c&d/"]);
+    }
+
+    #[test]
+    fn known_files_need_no_request() {
+        let downloads = tempfile::tempdir().expect("a temporary directory");
+        let (copied, found, folder) = ("https://a/copied", "https://a/found", "s3://b/folder");
+        assert!(known(copied, downloads.path()).is_none());
+        std::fs::write(downloads.path().join(local_name(copied)), "12345").expect("writes");
+        let size = |metadata: Option<FileMetadata>| metadata.map(|m| (m.directory, m.size));
+        assert_eq!(size(known(copied, downloads.path())), Some((false, 5)));
+        let file = FileMetadata {
+            directory: false,
+            size: 42,
+        };
+        note(found, downloads.path(), &file);
+        assert_eq!(size(known(found, downloads.path())), Some((false, 42)));
+        let directory = FileMetadata {
+            directory: true,
+            size: 0,
+        };
+        note(folder, downloads.path(), &directory);
+        assert_eq!(size(known(folder, downloads.path())), Some((true, 0)));
     }
 
     #[test]

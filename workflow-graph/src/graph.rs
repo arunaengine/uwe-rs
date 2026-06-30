@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{HashMap, HashSet};
-use std::fmt::Write as _;
 
 use serde::{Deserialize, Serialize};
 
@@ -103,32 +102,5 @@ impl ExecutionGraph {
             }
         }
         Ok(())
-    }
-
-    /// A short text summary: counts, then one line per task with its upstream tasks.
-    pub fn summary(&self) -> String {
-        let mut text = format!(
-            "{} tasks, {} steps, {} edges\n",
-            self.nodes.len(),
-            self.steps().len(),
-            self.edges.len()
-        );
-        for node in &self.nodes {
-            let mut upstream: Vec<String> = self
-                .edges
-                .iter()
-                .filter(|edge| edge.to == node.task.id)
-                .map(|edge| edge.from.to_string())
-                .collect();
-            upstream.dedup();
-            let _ = writeln!(
-                text,
-                "{:>5} {} <- [{}]",
-                node.task.id,
-                node.task.name,
-                upstream.join(", ")
-            );
-        }
-        text
     }
 }

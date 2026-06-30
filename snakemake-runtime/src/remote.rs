@@ -9,6 +9,7 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
+use std::sync::OnceLock;
 
 /// A local folder that mirrors a place on the web.
 struct Mirror {
@@ -193,16 +194,23 @@ impl Mirrors {
     }
 }
 
-/// The content at a web address, or `None` when the server does not have it.
+/// The content at a web address, or `None` when the server does not have it. All downloads
+/// share one client, so that a host's address is looked up once and its connection reused.
 fn download(url: &str) -> std::io::Result<Option<Vec<u8>>> {
+    static CLIENT: OnceLock<Result<reqwest::blocking::Client, String>> = OnceLock::new();
     let failed =
         |error: reqwest::Error| std::io::Error::other(format!("cannot download {url}: {error}"));
-    let client = reqwest::blocking::Client::builder()
-        .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
-        .connect_timeout(std::time::Duration::from_secs(30))
-        .timeout(std::time::Duration::from_secs(120))
-        .build()
-        .map_err(failed)?;
+    let client = CLIENT
+        .get_or_init(|| {
+            reqwest::blocking::Client::builder()
+                .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
+                .connect_timeout(std::time::Duration::from_secs(30))
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .map_err(|error| error.to_string())
+        })
+        .as_ref()
+        .map_err(|error| std::io::Error::other(format!("cannot download {url}: {error}")))?;
     let response = client.get(url).send().map_err(failed)?;
     if response.status() == reqwest::StatusCode::NOT_FOUND {
         return Ok(None);

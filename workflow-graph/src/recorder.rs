@@ -5,13 +5,20 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use crate::{Edge, EdgeKind, ExecuteError, ExecutionGraph, Language, Node, Outcome, Task, TaskId};
+use crate::simulator::glob_matches;
+use crate::{
+    Edge, EdgeKind, ExecuteError, ExecutionGraph, Language, Marker, MarkerKind, Node, Note,
+    Outcome, Task, TaskId,
+};
 
 /// The graph so far, and what it needs to link later tasks to earlier ones.
 pub(crate) struct Recorder {
     pub(crate) graph: ExecutionGraph,
-    /// The task that made each output file, by its normalized local path.
-    producers: HashMap<PathBuf, TaskId>,
+    /// The task that made each output file, and the path the task gave it, by its normalized
+    /// local path.
+    producers: HashMap<PathBuf, (TaskId, String)>,
+    /// The paths of the output files of each finished task.
+    outputs: HashMap<TaskId, Vec<String>>,
     seen: HashSet<TaskId>,
     /// The position of each task's node in the graph, so that a run of many tasks stays fast.
     positions: HashMap<TaskId, usize>,
@@ -26,6 +33,7 @@ impl Recorder {
                 ..ExecutionGraph::default()
             },
             producers: HashMap::new(),
+            outputs: HashMap::new(),
             seen: HashSet::new(),
             positions: HashMap::new(),
         }
@@ -58,7 +66,7 @@ impl Recorder {
         let mut edges: Vec<Edge> = Vec::new();
         // An input with literal content comes from no task.
         for input in task.inputs.iter().filter(|input| input.content.is_none()) {
-            if let Some(from) = self.producer(Path::new(&input.source)) {
+            if let Some((from, _)) = self.producer(Path::new(&input.source)) {
                 let edge = Edge {
                     from,
                     to: task.id,
@@ -86,15 +94,86 @@ impl Recorder {
         self.graph.nodes.push(Node {
             task: task.clone(),
             exit_code: None,
+            markers: Vec::new(),
         });
         Ok(&self.graph.edges[first..])
     }
 
-    /// The task that made a path, or a directory that holds it.
-    fn producer(&self, path: &Path) -> Option<TaskId> {
+    /// The task that made a path, or a directory that holds it, and the path the task gave
+    /// the file.
+    fn producer(&self, path: &Path) -> Option<(TaskId, String)> {
         let path = normalize(path);
-        path.ancestors()
-            .find_map(|ancestor| self.producers.get(ancestor).copied())
+        path.ancestors().find_map(|ancestor| {
+            let (task, output) = self.producers.get(ancestor)?;
+            let relative = match path.strip_prefix(ancestor) {
+                Ok(rest) if !rest.as_os_str().is_empty() => {
+                    Path::new(output).join(rest).to_string_lossy().into_owned()
+                }
+                _ => output.clone(),
+            };
+            Some((*task, relative))
+        })
+    }
+
+    /// Turns what the driver noticed while it planned into markers on the tasks that made the
+    /// files, once per task, kind and reason.
+    pub(crate) fn note(&mut self, notes: Vec<Note>) {
+        for note in notes {
+            let marked = match note {
+                Note::Read(path) => self.read(&path),
+                Note::Spread(path) => self.spread(&path),
+                Note::Mark(task, marker) => Some((task, marker)),
+            };
+            let Some((task, marker)) = marked else {
+                continue;
+            };
+            if let Some(node) = self
+                .positions
+                .get(&task)
+                .and_then(|position| self.graph.nodes.get_mut(*position))
+                && !node.markers.contains(&marker)
+            {
+                node.markers.push(marker);
+            }
+        }
+    }
+
+    /// The marker of a read of a task output; none for a file that no task made.
+    fn read(&self, path: &Path) -> Option<(TaskId, Marker)> {
+        let (task, relative) = self.producer(path)?;
+        let what = if path.is_dir() {
+            format!("listed the folder `{relative}`")
+        } else {
+            format!("read `{relative}`")
+        };
+        let reason = format!("the workflow {what}, an output of this task, to plan the next tasks");
+        Some((task, Marker::new(MarkerKind::Content, reason)))
+    }
+
+    /// The marker of a task output that started tasks of its own, when an output pattern with
+    /// a wildcard matched it; a pattern without one names exactly one file.
+    fn spread(&self, path: &Path) -> Option<(TaskId, Marker)> {
+        let (task, relative) = self.producer(path)?;
+        let node = self.graph.nodes.get(*self.positions.get(&task)?)?;
+        let pattern = node.task.outputs.iter().find(|pattern| {
+            let pattern = bare(pattern);
+            pattern.contains(['*', '?', '[', '{'])
+                && Path::new(&relative)
+                    .ancestors()
+                    .any(|path| glob_matches(pattern, &path.to_string_lossy()))
+        })?;
+        let count = self.outputs.get(&task).map_or(0, |outputs| {
+            outputs
+                .iter()
+                .filter(|output| glob_matches(bare(pattern), output))
+                .count()
+        });
+        let files = if count == 1 { "file" } else { "files" };
+        let reason = format!(
+            "the output pattern `{pattern}` matched {count} {files}, and each started tasks of \
+             its own"
+        );
+        Some((task, Marker::new(MarkerKind::Wildcard, reason)))
     }
 
     /// Notes the exit code of a task and the files it made.
@@ -107,9 +186,21 @@ impl Recorder {
             node.exit_code = Some(outcome.exit_code);
         }
         for file in &outcome.files {
-            self.producers.insert(normalize(&file.location), outcome.id);
+            let path = file.path.trim_start_matches('/').to_owned();
+            self.producers
+                .insert(normalize(&file.location), (outcome.id, path.clone()));
+            self.outputs.entry(outcome.id).or_default().push(path);
         }
     }
+}
+
+/// An output pattern without a leading `/` or `./` and a trailing `/`, as the paths of output
+/// files are.
+fn bare(pattern: &str) -> &str {
+    pattern
+        .trim_start_matches("./")
+        .trim_start_matches('/')
+        .trim_end_matches('/')
 }
 
 /// An absolute path without `.` and `..`, so that the same file is found under both spellings.

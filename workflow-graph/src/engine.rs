@@ -197,7 +197,10 @@ impl<'a> Engine<'a> {
         attempts: &mut Attempts,
     ) -> Result<(), ExecuteError> {
         let mut queue = Queue::default();
-        for task in driver.start()? {
+        // Notes count also when the driver fails, as a failure may come from what it read.
+        let first = driver.start();
+        recorder.note(driver.notes());
+        for task in first? {
             self.request(task, recorder, &mut queue)?;
         }
         loop {
@@ -249,7 +252,9 @@ impl<'a> Engine<'a> {
                 retried: false,
             });
             let id = outcome.id;
-            let next = driver.complete(outcome)?;
+            let next = driver.complete(outcome);
+            recorder.note(driver.notes());
+            let next = next?;
             // A driver that asks for the task again retries it; the tasks after it wait.
             let again = next.iter().any(|task| task.id == id);
             for task in next {

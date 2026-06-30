@@ -5,7 +5,8 @@
 
 use workflow_graph::simulator::{EMPTY_GZIP, file_name, glob_matches};
 use workflow_graph::{
-    Driver, DriverError, EdgeKind, Input, Language, Outcome, Simulator, Task, TaskId, execute,
+    Driver, DriverError, EdgeKind, Input, Language, Marker, MarkerKind, Note, Outcome,
+    SIMULATION, Simulator, Task, TaskId, execute,
 };
 
 /// Two `split` tasks, then one `merge` task that reads both outputs.
@@ -350,4 +351,104 @@ fn simulated_tasks_name_the_outputs_of_tools_after_their_arguments() {
         ["output/s.featureXML", "mock.log", "report", "res/mock"]
     );
     assert!(outcome.files[2].directory);
+}
+
+/// One task that makes `part1.txt`, `part2.txt` and `list.csv`; its driver reads `list.csv`,
+/// spreads the parts into one task each, and marks the task itself.
+#[derive(Default)]
+struct Noting {
+    notes: Vec<Note>,
+}
+
+impl Driver for Noting {
+    fn language(&self) -> Language {
+        Language::Nextflow
+    }
+
+    fn start(&mut self) -> Result<Vec<Task>, DriverError> {
+        Ok(vec![Task {
+            id: TaskId(1),
+            name: "SPLIT".into(),
+            step: "SPLIT".into(),
+            script: Some("echo a > part1.txt\necho b > part2.txt\necho x > list.csv".into()),
+            outputs: vec!["part*.txt".into(), "list.csv".into()],
+            ..Task::default()
+        }])
+    }
+
+    fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
+        if outcome.id != TaskId(1) {
+            return Ok(Vec::new());
+        }
+        let location = |name: &str| {
+            let file = outcome.files.iter().find(|file| file.path == name);
+            file.expect("an output").location.clone()
+        };
+        self.notes = vec![
+            Note::Read(location("list.csv")),
+            // A literal output names one file, and a file of no task marks nothing.
+            Note::Spread(location("list.csv")),
+            Note::Read("/data/samples.csv".into()),
+            Note::Spread(location("part1.txt")),
+            Note::Spread(location("part2.txt")),
+            Note::Mark(
+                TaskId(1),
+                Marker::new(MarkerKind::Checkpoint, "a checkpoint"),
+            ),
+        ];
+        Ok(["part1.txt", "part2.txt"]
+            .iter()
+            .enumerate()
+            .map(|(index, name)| Task {
+                id: TaskId(2 + index as u64),
+                name: format!("COUNT ({name})"),
+                step: "COUNT".into(),
+                inputs: vec![Input {
+                    path: (*name).into(),
+                    source: location(name).to_string_lossy().into_owned(),
+                    directory: false,
+                    content: None,
+                }],
+                ..Task::default()
+            })
+            .collect())
+    }
+
+    fn finish(&mut self) -> Result<(), DriverError> {
+        Ok(())
+    }
+
+    fn notes(&mut self) -> Vec<Note> {
+        std::mem::take(&mut self.notes)
+    }
+}
+
+#[test]
+fn notes_of_the_driver_mark_the_tasks_whose_outputs_they_concern() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let mut executor = Simulator::new(directory.path());
+    let mut graph = execute("noting", &mut Noting::default(), &mut executor)
+        .into_result()
+        .expect("the run succeeds");
+    graph.simulate();
+    let split = graph.node(TaskId(1)).expect("the first task");
+    let kinds: Vec<MarkerKind> = split.markers.iter().map(|marker| marker.kind).collect();
+    assert_eq!(
+        kinds,
+        [
+            MarkerKind::Content,
+            MarkerKind::Wildcard,
+            MarkerKind::Checkpoint
+        ]
+    );
+    assert_eq!(
+        split.markers[0].reason,
+        "the workflow read `list.csv`, an output of this task, to plan the next tasks"
+    );
+    assert_eq!(
+        split.markers[1].reason,
+        "the output pattern `part*.txt` matched 2 files, and each started tasks of its own"
+    );
+    assert_eq!(graph.marked().count(), 1);
+    assert_eq!(graph.simulation.as_deref(), Some(SIMULATION));
 }

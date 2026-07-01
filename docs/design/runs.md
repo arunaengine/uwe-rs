@@ -91,13 +91,13 @@ The page is one HTML file, its style and two scripts (`page.js` for the helpers,
 
 **Live.** A running run keeps an EventSource open (Server-Sent Events). The server reads new events from the database twice a second and sends one update with the tasks that changed, so a run of thousands of short tasks sends few messages; the page redraws the graph at most every three seconds. A browser that reconnects says which event it saw last, and the stream ends after the update that shows the run has ended.
 
-**Routes.** `/`, `/runs/<run>` and `/runs/<run>/tasks/<task>` serve the page; `/api/runs`, `/api/runs/<run>`, `/api/runs/<run>/tasks/<task>`, `/api/runs/<run>/events`, `/api/runs/<run>/tasks/<task>/logs/<attempt>/<stream>` and `/api/runs/<run>/tasks/<task>/{inputs,outputs}/<n>` serve JSON, logs and files.
+**Routes.** `/`, `/runs/<run>` and `/runs/<run>/tasks/<task>` serve the page; `/api/runs`, `/api/runs/<run>`, `/api/runs/<run>/tasks/<task>`, `/api/runs/<run>/events`, `/api/runs/<run>/graph.svg`, `/api/runs/<run>/tasks/<task>/why`, `/api/runs/<run>/tasks/<task>/logs/<attempt>/<stream>` and `/api/runs/<run>/tasks/<task>/{inputs,outputs}/<n>` serve JSON, logs and files.
 
 **Safety.** The page listens on `127.0.0.1` unless `-address` says otherwise, and then warns that everyone who can reach the machine sees the runs. It serves only the files that the database lists for a task, by their place in the list, never a path that a request names; a file inside a directory output must stay inside it, also through links.
 
-**Fast on large runs.** The first view reads all task rows once; the task table shows 300 rows and more on request; runs with more than 2000 tasks start with the graph of steps.
+**Fast on large runs.** The first view reads all task rows once; the task table shows 300 rows and more on request, in the order asked or the longest first; runs with more than 2000 tasks start with the graph of steps. A run of 10,000 simulated tasks records itself in 2.4 seconds in all, into 19 MB, and its first view is 1.7 MB of JSON.
 
-**The graph** comes from the renderer of the `graph` agent (`workflow_graph::render`), from the tasks, edges and markers of the database, so the page and `iunctus graph` draw the same graph. Until that renderer is on main, the graph panel says that it cannot be drawn.
+**The graph** is drawn by the renderer of `iunctus graph` (`workflow_graph::render`, as SVG), from the tasks, exit codes, edges and markers of the database (`Database::graph`), so the page and `iunctus graph` draw the same graph, with the note of a simulation and the open points after marked tasks. `/api/runs/<run>/graph.svg?view=tasks|steps` serves it. A click on a box opens the task, or shows the tasks of the step. With 10,000 tasks, both views take well under a second.
 
 ## 5. The RO-Crate
 

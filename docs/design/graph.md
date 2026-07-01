@@ -79,7 +79,7 @@ Labels are short: a name qualified with `:`, like Nextflow's `NFCORE_RNASEQ:RNAS
 
 `layout::layout` places the boxes in layers from top to bottom, in the steps of Sugiyama's method:
 
-1. Edges point from a node to a later one; an edge that points back is laid out turned round, so the order of the nodes is a topological order. The graph of tasks never has such edges.
+1. The nodes are put in a depth-first order (the reverse postorder of a search that starts at the nodes in their order), in which every edge points from a node to a later one, except the edges that close a cycle. Those are laid out turned round. The graph of tasks has no cycles; the graph of steps can have them.
 2. Layers by the longest path from a node without predecessors; then each node with successors moves down to just above the first of them, which shortens long edges.
 3. An edge that spans several layers gets a point in each layer between, so that it passes between the boxes there. Beyond 200,000 such points, edges over more than 16 layers go straight.
 4. The order in each layer: sweeps down and up sort each layer by the mean position of its neighbours (the barycenter), at most 12 times, keeping the order with the fewest crossings, which a Fenwick tree counts.

@@ -1,8 +1,8 @@
 //! A layered layout that draws a graph from top to bottom, as Graphviz `dot` does, in the
 //! steps of Sugiyama's method:
 //!
-//! 1. Edges point from a node to a later one; an edge that points back is laid out turned
-//!    round, so the order of the nodes is a topological order.
+//! 1. The nodes are put in a depth-first order, in which every edge points from a node to a
+//!    later one, except the edges that close a cycle. Those are laid out turned round.
 //! 2. Layers by the longest path from a node without predecessors. Then each node that has
 //!    successors moves down to just above the first of them, which shortens long edges.
 //! 3. An edge that spans several layers gets a point in each layer between, so that it can
@@ -64,6 +64,71 @@ pub struct Layout {
 /// Lays out nodes of the given sizes and edges between them, by their positions in `sizes`.
 /// Edges that name no node are left without points.
 pub fn layout(sizes: &[Size], edges: &[(usize, usize)]) -> Layout {
+    let count = sizes.len();
+    let edges: Vec<(usize, usize)> = (edges.iter().copied())
+        .filter(|&(from, to)| from < count && to < count)
+        .collect();
+    // The rank of each node in the depth-first order, and the graph with nodes by rank.
+    let order = depth_first(count, &edges);
+    let mut rank = vec![0; count];
+    for (position, &node) in order.iter().enumerate() {
+        rank[node] = position;
+    }
+    let ranked_sizes: Vec<Size> = order.iter().map(|&node| sizes[node]).collect();
+    let ranked_edges: Vec<(usize, usize)> = (edges.iter())
+        .map(|&(from, to)| (rank[from], rank[to]))
+        .collect();
+    let ranked = ordered(&ranked_sizes, &ranked_edges);
+    Layout {
+        width: ranked.width,
+        height: ranked.height,
+        nodes: (0..count).map(|node| ranked.nodes[rank[node]]).collect(),
+        edges: ranked.edges,
+        layers: (0..count).map(|node| ranked.layers[rank[node]]).collect(),
+    }
+}
+
+/// The nodes in reverse postorder of a depth-first search that starts at the nodes in their
+/// order and follows the edges in theirs: a topological order when the graph has no cycle.
+fn depth_first(count: usize, edges: &[(usize, usize)]) -> Vec<usize> {
+    let mut successors: Vec<Vec<usize>> = vec![Vec::new(); count];
+    for &(from, to) in edges {
+        if from != to {
+            successors[from].push(to);
+        }
+    }
+    let mut visited = vec![false; count];
+    let mut postorder = Vec::with_capacity(count);
+    for start in 0..count {
+        if visited[start] {
+            continue;
+        }
+        visited[start] = true;
+        // Each entry is a node and how many of its successors were looked at.
+        let mut stack = vec![(start, 0)];
+        while let Some((node, next)) = stack.last_mut() {
+            let node = *node;
+            match successors[node].get(*next) {
+                Some(&successor) => {
+                    *next += 1;
+                    if !visited[successor] {
+                        visited[successor] = true;
+                        stack.push((successor, 0));
+                    }
+                }
+                None => {
+                    postorder.push(node);
+                    stack.pop();
+                }
+            }
+        }
+    }
+    postorder.reverse();
+    postorder
+}
+
+/// The layout of a graph whose node order is already a depth-first order.
+fn ordered(sizes: &[Size], edges: &[(usize, usize)]) -> Layout {
     let count = sizes.len();
     // Edges from an earlier node to a later one, once each.
     let mut forward: Vec<(usize, usize)> = edges

@@ -41,6 +41,8 @@ pub struct Splitter {
     pub by: Option<usize>,
     /// The most records to read of each text.
     pub limit: Option<usize>,
+    /// Whether the run is simulated, so that a CSV text may lack its header line.
+    pub simulated: bool,
 }
 
 impl Splitter {
@@ -99,6 +101,7 @@ impl Splitter {
             format,
             by: positive(options, "by"),
             limit: positive(options, "limit"),
+            simulated: false,
         }
     }
 
@@ -106,7 +109,7 @@ impl Splitter {
     /// maps, or the joined text of `by` records for the other formats.
     pub fn chunks(&self, text: &str) -> Result<Vec<Value>, Exception> {
         let mut records = match &self.format {
-            Format::Csv { .. } => self.csv(text),
+            Format::Csv { .. } => self.csv(text)?,
             Format::Text { .. } => text.split_inclusive('\n').map(Value::string).collect(),
             Format::Fasta(_) => records(text, |line, _| line.starts_with('>')),
             Format::Fastq(_) => records(text, |_, index| index % 4 == 0),
@@ -178,7 +181,7 @@ impl Splitter {
         Some(csv::Records::new(text, &options))
     }
 
-    fn csv(&self, text: &str) -> Vec<Value> {
+    fn csv(&self, text: &str) -> Result<Vec<Value>, Exception> {
         let Format::Csv {
             separator,
             quote,
@@ -187,7 +190,7 @@ impl Splitter {
             strip,
         } = &self.format
         else {
-            return Vec::new();
+            return Ok(Vec::new());
         };
         let options = CsvOptions {
             separator: *separator,
@@ -196,7 +199,7 @@ impl Splitter {
             skip: *skip,
             strip: *strip,
         };
-        csv::records(text, &options)
+        csv::records(text, &options, self.simulated)
     }
 }
 

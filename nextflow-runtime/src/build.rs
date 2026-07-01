@@ -95,6 +95,10 @@ impl Host for Builder<'_> {
         self.base.print(text);
     }
 
+    fn simulated(&self) -> bool {
+        self.base.simulated()
+    }
+
     fn launch_dir(&self) -> String {
         self.base.launch_dir()
     }
@@ -919,7 +923,8 @@ impl Builder<'_> {
                 // The count operators give the number of records in a value channel.
                 let counting = name.starts_with("count");
                 let output = self.network.channel(counting);
-                let splitter = Splitter::new(name, options.as_ref());
+                let mut splitter = Splitter::new(name, options.as_ref());
+                splitter.simulated = self.base.simulated();
                 let launch = self.base.launch_dir();
                 let files = option(&options, "file")
                     .filter(|value| value.truth())

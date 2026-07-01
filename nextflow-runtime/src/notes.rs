@@ -37,6 +37,10 @@ impl Host for Noting<'_> {
         self.host.print(text);
     }
 
+    fn simulated(&self) -> bool {
+        self.host.simulated()
+    }
+
     fn launch_dir(&self) -> String {
         self.host.launch_dir()
     }

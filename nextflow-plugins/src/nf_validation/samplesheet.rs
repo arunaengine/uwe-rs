@@ -100,7 +100,8 @@ fn read_sheet(sheet: &Value, schema_path: &Value, context: &mut Context) -> Resu
                 skip: 0,
                 strip: true,
             };
-            csv::records(&text, &options)
+            // The plugin reads the sheet itself; an empty sheet has no rows.
+            csv::Records::new(text.clone(), &options).collect()
         }
     };
     Ok(Sheet {

@@ -140,6 +140,7 @@ impl Driver for Nextflow {
         let profiles = &self.launch.profiles;
         let options = Options {
             stub: self.launch.stub,
+            simulated: self.launch.simulated,
             container_engine: self.settings.container_engine.clone(),
             config,
             profile: if profiles.is_empty() {

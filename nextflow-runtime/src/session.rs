@@ -24,6 +24,10 @@ impl Host for Session<'_> {
         self.base.print(text);
     }
 
+    fn simulated(&self) -> bool {
+        self.options.simulated || self.base.simulated()
+    }
+
     fn launch_dir(&self) -> String {
         self.base.launch_dir()
     }

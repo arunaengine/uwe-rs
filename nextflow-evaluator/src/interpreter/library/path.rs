@@ -117,7 +117,10 @@ impl Interpreter<'_> {
                     bytes = decoded;
                 }
                 let text = String::from_utf8_lossy(&bytes);
-                return Ok(Some(super::csv_records(&text, arguments.first())));
+                let simulated = self.host.simulated();
+                return super::csv_records(&text, arguments.first(), simulated)
+                    .map(Some)
+                    .map_err(|exception| super::super::thrown(exception, span));
             }
             // The records of a file, as the operators of these names read them. With
             // `file: true`, or a folder, each chunk is a file.
@@ -134,7 +137,9 @@ impl Interpreter<'_> {
                         .map_err(|exception| super::super::thrown(exception, span))?;
                 }
                 let text = String::from_utf8_lossy(&bytes);
-                let chunks = Splitter::new(name, options)
+                let mut splitter = Splitter::new(name, options);
+                splitter.simulated = self.host.simulated();
+                let chunks = splitter
                     .chunks(&text)
                     .map_err(|exception| super::super::thrown(exception, span))?;
                 if name.starts_with("count") {

@@ -18,6 +18,34 @@ impl Host for Output {
     }
 }
 
+/// A host of a simulated run, whose files are made up.
+#[derive(Default)]
+struct Simulated(String);
+
+impl Host for Simulated {
+    fn print(&mut self, text: &str) {
+        self.0.push_str(text);
+    }
+
+    fn simulated(&self) -> bool {
+        true
+    }
+}
+
+#[test]
+fn csv_without_its_header_fails_unless_simulated() {
+    let body = "channel.of('').splitCsv(header: true).view()\n\
+                channel.of('\\n').splitCsv(header: true, by: 2).view()";
+    let error = run(body).unwrap_err();
+    assert!(error.contains("Missing 'header' in CSV file"), "{error}");
+    let source = format!("workflow {{\n{body}\n}}");
+    let parsed = parse_script(&source);
+    let module = Rc::new(lower_module(&parsed.tree, &source).expect("lowers"));
+    let mut output = Simulated::default();
+    nextflow_runtime::run(&module, &mut output).expect("a simulated run reads no rows");
+    assert_eq!(output.0, "");
+}
+
 /// What the entry workflow prints, or the error.
 fn run(body: &str) -> Result<String, String> {
     let source = format!("workflow {{\n{body}\n}}");

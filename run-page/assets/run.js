@@ -487,7 +487,9 @@ function listen() {
     if (update.run.state !== "running") {
       events.close();
       liveMark.hidden = true;
-      graphChanged();
+      // The run is over: draw its whole graph now, without waiting.
+      if (view.graphTimer) clearTimeout(view.graphTimer);
+      drawGraph();
     }
   });
 }

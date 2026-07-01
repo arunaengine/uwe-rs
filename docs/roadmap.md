@@ -27,6 +27,8 @@ The rest fail in the native tool too: the workflow is broken (`invalid`) or need
 | Content-addressed store | Files live by SHA-256 digest in a store on disk or S3 (`cas/`, `trees/`, `ac/`). The cache key is the digest of a canonical task description | Nextflow and Snakemake key their cache on a work folder or on file times |
 | No work folder | A task runs in a scratch folder that is deleted afterwards; its outputs go to the store | Nextflow keeps every task folder in `work/`, Snakemake writes next to the workflow |
 | Dry runs that go further | The simulator reads each task's shell script and makes files that look right, so a dry run goes past Snakemake checkpoints | Snakemake's dry run stops at the first checkpoint; Nextflow's stub run still runs the real script of every process without a stub |
+| Simulated graphs that say where they can change | A simulated run says that it is one, and marks each task whose outputs decide how many tasks follow: a file that the workflow reads while it plans, files that a wildcard matched and that each start tasks, a Snakemake checkpoint, a CWL scatter or an Argo `withParam` or `when` over task outputs. A fan-out over a real sample sheet is not marked, as it is exact | No native dry run tells where real data can add or remove tasks |
+| Graphs of tasks and of steps, drawn by the binary | The graph with one node per task or one node per step, as a summary, JSON, DOT or an SVG that iunctus lays out itself | Nextflow and Snakemake write DAG files that need Graphviz or a browser to draw; Nextflow draws processes, not tasks |
 | Checked against the reference tools | About 8,800 test workflows and 828 CWL conformance tests each run, or have a record with the reference tool's own error. Tests also run tasks in a shuffled order to catch order bugs | No engine checks itself against another |
 
 ## 2. Gaps to parity with the native engines
@@ -177,10 +179,10 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 ### Simulator and graphs
 
 - [x] Rename the mock executors to one `simulator` (decision 21), and say "simulated" in code, docs, failure records and messages.
-- [ ] Every simulated run and graph says that it is a simulation with made-up files, which a run with real data refines.
-- [ ] Mark the points of a simulated graph where real data can add or remove tasks: a glob that can match more files, a task output whose content the workflow reads, a Snakemake checkpoint, a CWL scatter or an Argo `withParam` over a task output.
-- [ ] A graph with one node per step (process, rule, step or template), next to the graph with one node per task.
-- [ ] SVG output of both graphs, drawn by iunctus itself, with no Graphviz needed.
+- [x] Every simulated run and graph says that it is a simulation with made-up files, which a run with real data refines.
+- [x] Mark the points of a simulated graph where real data can add or remove tasks: a glob that can match more files, a task output whose content the workflow reads, a Snakemake checkpoint, a CWL scatter or an Argo `withParam` over a task output.
+- [x] A graph with one node per step (process, rule, step or template), next to the graph with one node per task.
+- [x] SVG output of both graphs, drawn by iunctus itself, with no Graphviz needed.
 - Done when: `iunctus graph` gives both graphs as JSON, DOT, summary and SVG for all four languages, with the uncertain points marked.
 
 ### Real execution

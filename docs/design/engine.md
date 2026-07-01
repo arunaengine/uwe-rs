@@ -12,7 +12,7 @@ Status: implemented for Nextflow, Snakemake, CWL and Argo, 2026-09-29; tasks run
 2. It turns the command line into a `Launch`, the options all languages share.
 3. It asks the language's crate for a `Driver` for that launch.
 4. `workflow_graph::Engine` runs the driver against an `Executor` with the run options (section 5) and records the execution graph (section 6). It tells an observer each step of the run (section 5); the binary's observer records the run in the run database ([runs](runs.md)).
-5. With `-graph <file>` it writes the graph; `iunctus graph <target>` prints it.
+5. With `-graph <file>` it writes the graph; `iunctus graph <target>` prints it. A simulated run says so on standard error, and its graph says so too ([the graphs of a run](graph.md)).
 
 The engine, the driver interface, the executor interface, the graph and the simulator live in the `workflow-graph` crate, which knows no language. Language crates depend on it, never the other way round. The real executors live in the crates `task-model`, `content-store`, `executor` and `task-runner` (section 4).
 
@@ -33,8 +33,9 @@ The engine, the driver interface, the executor interface, the graph and the simu
 | `-default-image <image>` | the image of tasks that name none, for real executors (section 5) | |
 | `-max-pending <n>` | how many tasks may be pending at once; 1 for the simulator, no limit for real executors (section 5) | |
 | `-order asked\|reversed\|finished\|shuffled[:<seed>]` | the order in which pending tasks finish; `asked` for the simulator, `finished` for real executors | |
-| `-graph <file>` | write the graph, as DOT for a `.dot` name, else JSON | |
-| `-format json\|dot\|summary` | the output of `iunctus graph`; `summary` by default | |
+| `-graph <file>` | write the graph: DOT for a `.dot` name, SVG for `.svg`, a summary for `.txt`, else JSON | |
+| `-format json\|dot\|summary\|svg` | the output of `iunctus graph`; `summary` by default | |
+| `-view tasks\|steps` | the graph with one node per task (the default) or one node per step | |
 | `-resume [<run>]` | continue a run without running its finished tasks again ([runs](runs.md), section 3) | |
 | `-page` | serve the web page of the run ([runs](runs.md), section 4) | |
 | `-database <file>` | the run database; `runs.sqlite` in the cache directory by default | |
@@ -56,7 +57,7 @@ A directory with both a Nextflow and a Snakemake workflow, or a file that matche
 
 ## 3. Drivers
 
-A driver is a state machine (`workflow_graph::Driver`): `start` loads the workflow and returns the first tasks, `complete(outcome)` returns the tasks that can run now, and `finish` checks that nothing waits for input that never comes. Each language crate exposes
+A driver is a state machine (`workflow_graph::Driver`): `start` loads the workflow and returns the first tasks, `complete(outcome)` returns the tasks that can run now, and `finish` checks that nothing waits for input that never comes. `notes` gives what the driver noticed while it planned, like reads of task outputs, which the graph turns into markers ([the graphs of a run](graph.md), section 3). Each language crate exposes
 
 ```rust
 pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError>
@@ -129,7 +130,9 @@ The engine starts an attempt of each task that can start, up to `max_pending`, a
 
 The engine records each task when the driver asks for it, so the graph grows during the run. A node is the task and its exit code. An edge is `file` when a task reads a file (or a file inside a directory) that an earlier task made, found by the local path of the output, or `order` for the tasks a task lists in `after`. `ExecutionGraph::check` confirms that every edge joins known tasks and points forward. A run that fails keeps the graph so far; `-graph` still writes it and `iunctus graph` still prints it.
 
-`iunctus graph` sends what the workflow prints to standard error, so standard output holds only the graph. The formats are the JSON of `ExecutionGraph`, Graphviz DOT, and a summary with one line per task and its upstream tasks.
+After `start` and after each `complete`, also when they fail, the engine records the tasks that the driver asked for, then the driver's notes, which become markers on the tasks whose outputs they concern: points where a run with real data can have more or fewer tasks ([the graphs of a run](graph.md), section 3). A graph of the simulator says that it is simulated (`ExecutionGraph.simulation`).
+
+`iunctus graph` sends what the workflow prints to standard error, so standard output holds only the graph. The graph with one node per task and the graph with one node per step come as JSON, Graphviz DOT, SVG drawn by iunctus itself, and a summary ([the graphs of a run](graph.md), sections 4 and 5).
 
 ## 7. Checks
 
@@ -137,7 +140,7 @@ The engine records each task when the driver asks for it, so the graph grows dur
 - `workflow-graph/tests/order.rs`: the `after` rule, and pending tasks that finish as asked, reversed or shuffled.
 - `workflow-graph/tests/attempts.rs`: attempts that run at the same time and finish as they end, deterministic orders, retries after failures of the machine and by the driver, and a cancelled run; `workflow-graph/tests/events.rs`: what an observer hears.
 - `nextflow-runtime/tests/driver.rs`: a two-process pipeline through the engine, the `env` scope, the params file.
-- `iunctus/tests/graph.rs`: `iunctus graph` and `iunctus run -graph` on a two-process pipeline, also with `-max-pending` and `-order`; unit tests in `iunctus/src/detect.rs` cover detection and those in `task-runner/src/executor.rs` the no-op rule and the image check.
+- `iunctus/tests/graph.rs`: `iunctus graph` and `iunctus run -graph` on a two-process pipeline, also with `-max-pending` and `-order`, the step view, SVG and the note of a simulated run; unit tests in `iunctus/src/detect.rs` cover detection and those in `task-runner/src/executor.rs` the no-op rule and the image check.
 - `iunctus/tests/run.rs`: a task without an image fails with the local executor; with Docker (ignored by default), a pipeline runs in containers and its second run is answered from the cache, and Ctrl-C stops two running tasks at once.
 - `task-model/tests/cache_key.rs`, `content-store/tests/store.rs`, `executor/tests/wrapper.rs` and `task-runner/tests/runner.rs`: the cache key, the store (also the same content stored by tasks at the same moment, and outputs taken over), the wrapper, and the runner with a fake backend. Unit tests in `executor` cover the pool, staging and the engine options. `executor/tests/local.rs` runs containers with Docker (ignored by default): read-only links, time limits, absolute paths and failures; `just s3-test` runs the store on S3.
 - The test-workflows tests of each language run every test workflow with the simulator: `just run-test-workflows-test` (Nextflow), `just snakemake-run-test-workflows-test`, `just cwl-graph-test-workflows-test` and `just cwl-conformance-test`, and the Argo test in `argo-runtime/tests/`.

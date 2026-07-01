@@ -12,14 +12,14 @@ This folder holds the research and the design behind the code. The research was 
 
 ```sh
 iunctus run <workflow file or directory> [-graph graph.json] [-executor simulator|local] [--<param> <value>]
-iunctus graph <workflow file or directory> [-format json|dot|summary]
+iunctus graph <workflow file or directory> [-format json|dot|summary|svg] [-view tasks|steps]
 iunctus config [<Nextflow project>] [-profile <names>]
 iunctus runs
 iunctus page [<run>]
 iunctus export <run> [-output <folder>]
 ```
 
-`iunctus run` finds the language of its target, or takes it from `-lang`. The default executor is the simulator, which writes the TES task document of each task and makes up its outputs, so any workflow runs through without containers. A simulated run gives a simulated graph, not a prediction of a real run (decision 21). All four languages run: Nextflow, Snakemake, CWL and Argo. The local executor runs tasks in Docker or Podman instead. See [the engine](design/engine.md).
+`iunctus run` finds the language of its target, or takes it from `-lang`. The default executor is the simulator, which writes the TES task document of each task and makes up its outputs, so any workflow runs through without containers. A simulated run gives a simulated graph, not a prediction of a real run (decision 21). All four languages run: Nextflow, Snakemake, CWL and Argo. The local executor runs tasks in Docker or Podman instead. See [the engine](design/engine.md). `iunctus graph` prints the graph of a run with one node per task or one node per step, as a summary, JSON, DOT or an SVG drawn by iunctus itself, and marks the points where a run with real data can add or remove tasks; see [the graphs of a run](design/graph.md).
 
 Every run records itself in the run database. `iunctus runs` lists the runs, `-resume` continues one without running its finished tasks again, `iunctus run -page` and `iunctus page` show runs live on a web page, and `iunctus export` writes the RO-Crate of a run with its provenance. See [runs](design/runs.md).
 
@@ -33,6 +33,7 @@ Every run records itself in the run database. `iunctus runs` lists the runs, `-r
 
 - [Engine](design/engine.md): how `iunctus run` finds the language, the driver interface every language implements, how tasks run, the execution graph, the executors, and the next steps for the execution layer.
 - [Runs](design/runs.md): the run database that every run fills, resume, the web page of runs and the Workflow Run RO-Crate of a run.
+- [The graphs of a run](design/graph.md): the graph of tasks and the graph of steps, what a simulated graph says about itself, the markers where real data can add or remove tasks, the formats, and the SVG layout.
 - [Nextflow runtime](design/nextflow/runtime.md): the chosen design of the Nextflow evaluator, the dataflow runtime and the shared task layer, with milestones.
 - [Argo runtime](design/argo/runtime.md): how `argo-runtime` runs Argo Workflows documents as tasks: the template library, substitution, the expression languages, control flow, leaf templates, simulated runs and the results on its test workflows.
 - [Python packages in a container](design/snakemake/python-packages.md): how Snakemake workflows use Python packages without a stand-in, which run in one container per run (decision 19): the interface, the protocol, handles, the image and the errors.

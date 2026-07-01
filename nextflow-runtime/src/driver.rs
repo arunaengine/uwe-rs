@@ -11,8 +11,9 @@ use std::rc::Rc;
 use nextflow_config::{Config, tree};
 use nextflow_evaluator::interpreter::{Error, Host, parse_json, parse_yaml};
 use nextflow_evaluator::value::{PathValue, Value};
-use workflow_graph::{Driver, DriverError, Input, Language, Launch, Outcome, Task};
+use workflow_graph::{Driver, DriverError, Input, Language, Launch, Note, Outcome, Task};
 
+use crate::notes::Noting;
 use crate::process::glob_matches;
 use crate::task::{
     ENVIRONMENT, SCRIPT, command, command_script, container, read_environment, resources,
@@ -67,6 +68,8 @@ pub struct Nextflow {
     requests: HashMap<TaskId, TaskRequest>,
     /// The variables of the config's `env` scope, which every task gets.
     environment: BTreeMap<String, String>,
+    /// What the run noted since the engine last asked: files it read, listed or spread.
+    notes: Vec<Note>,
 }
 
 impl Nextflow {
@@ -82,6 +85,7 @@ impl Nextflow {
             run: None,
             requests: HashMap::new(),
             environment: BTreeMap::new(),
+            notes: Vec::new(),
         })
     }
 
@@ -151,7 +155,11 @@ impl Driver for Nextflow {
                 .collect(),
             command_line: self.settings.command_line.clone(),
         };
-        let (run, requests) = Run::start(&module, &options, host).map_err(error)?;
+        let mut host = Noting {
+            host,
+            notes: &mut self.notes,
+        };
+        let (run, requests) = Run::start(&module, &options, &mut host).map_err(error)?;
         self.run = Some(run);
         Ok(self.tasks(requests))
     }
@@ -167,15 +175,21 @@ impl Driver for Nextflow {
         }
         let outcome = task_outcome(&request, outcome)?;
         let run = self.run.as_mut().ok_or_else(not_started)?;
-        let requests = run
-            .complete(outcome, self.settings.host.as_mut())
-            .map_err(error)?;
+        let mut host = Noting {
+            host: self.settings.host.as_mut(),
+            notes: &mut self.notes,
+        };
+        let requests = run.complete(outcome, &mut host).map_err(error)?;
         Ok(self.tasks(requests))
     }
 
     fn finish(&mut self) -> Result<(), DriverError> {
         let run = self.run.as_mut().ok_or_else(not_started)?;
         run.finish(self.settings.host.as_mut()).map_err(error)
+    }
+
+    fn notes(&mut self) -> Vec<Note> {
+        std::mem::take(&mut self.notes)
     }
 }
 

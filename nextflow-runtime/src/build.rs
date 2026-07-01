@@ -119,6 +119,10 @@ impl Host for Builder<'_> {
         self.base.delete(path)
     }
 
+    fn spread(&mut self, path: &PathValue) {
+        self.base.spread(path);
+    }
+
     fn validate_json(&mut self, schema: &str, instance: &str) -> Result<Option<String>, Error> {
         self.base.validate_json(schema, instance)
     }

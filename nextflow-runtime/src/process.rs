@@ -155,6 +155,9 @@ impl ProcessNode {
             return self.start_task(context, values);
         }
         let lists: Vec<Value> = each.iter().map(|index| values[*index].clone()).collect();
+        for list in &lists {
+            crate::notes::spread(context.interpreter.host(), list);
+        }
         for combination in nextflow_evaluator::interpreter::combinations(&lists) {
             let mut values = values.clone();
             for (index, value) in each.iter().zip(combination) {

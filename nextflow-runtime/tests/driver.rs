@@ -184,3 +184,73 @@ workflow {
         "{error}"
     );
 }
+
+/// A process whose outputs decide the next tasks: `splitText` reads one, and `flatten` spreads
+/// the files of a wildcard pattern. A sample sheet of the user decides tasks too, but exactly.
+const PLANNED: &str = r#"
+process SPLIT {
+    output:
+    path 'rows.txt', emit: rows
+    path 'chunk_*.txt', emit: chunks
+    path 'report.txt', emit: report
+    script:
+    """
+    printf 'a\\nb\\n' > rows.txt
+    touch chunk_1.txt chunk_2.txt report.txt
+    """
+}
+
+process ROW {
+    input:
+    val row
+    script:
+    "echo ${row}"
+}
+
+process CHUNK {
+    input:
+    path chunk
+    script:
+    "cat ${chunk}"
+}
+
+workflow {
+    channel.fromPath("${projectDir}/samples.txt").splitText().map { line -> line.trim() }.view()
+    SPLIT()
+    ROW(SPLIT.out.rows.splitText().map { line -> line.trim() })
+    CHUNK(SPLIT.out.chunks.flatten())
+    SPLIT.out.report.flatten().view { file -> file.name }
+}
+"#;
+
+#[test]
+fn outputs_that_decide_the_next_tasks_mark_their_task() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    std::fs::write(directory.path().join("main.nf"), PLANNED).expect("writes the script");
+    std::fs::write(directory.path().join("samples.txt"), "s1\ns2\n").expect("writes the sheet");
+    let launch = Launch {
+        target: directory.path().join("main.nf"),
+        ..Launch::default()
+    };
+    let graph = run(directory.path(), launch);
+    let steps: Vec<&str> = graph
+        .nodes
+        .iter()
+        .map(|node| node.task.step.as_str())
+        .collect();
+    assert_eq!(steps, ["SPLIT", "CHUNK", "CHUNK", "ROW", "ROW"]);
+    let reasons: Vec<&str> = graph.nodes[0]
+        .markers
+        .iter()
+        .map(|marker| marker.reason.as_str())
+        .collect();
+    assert_eq!(
+        reasons,
+        [
+            "the workflow read `rows.txt`, an output of this task, to plan the next tasks",
+            "the output pattern `chunk_*.txt` matched 2 files, and each started tasks of its own",
+        ]
+    );
+    // Only the first task made files that decide tasks.
+    assert_eq!(graph.marked().count(), 1);
+}

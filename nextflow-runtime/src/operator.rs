@@ -4,11 +4,12 @@
 
 use std::rc::Rc;
 
-use nextflow_evaluator::interpreter::Error;
+use nextflow_evaluator::interpreter::{Error, Host};
 use nextflow_evaluator::value::{ChannelId, Closure, Value};
 
 use crate::channel::Message;
 use crate::network::{Behaviour, Context, State};
+use crate::notes::spread;
 
 /// `channel.of`, `channel.fromList` and `channel.empty`: emits its values at ignition, then
 /// closes. `channel.value(v)` binds its value channel; without a value it stays unbound.
@@ -123,6 +124,7 @@ impl Behaviour for Single {
                         None => value,
                     };
                     for item in elements(result) {
+                        spread(context.interpreter.host(), &item);
                         context.emit(self.output, item);
                     }
                 }
@@ -134,6 +136,7 @@ impl Behaviour for Single {
                     let mut leaves = Vec::new();
                     flatten(value, &mut leaves);
                     for leaf in leaves {
+                        spread(context.interpreter.host(), &leaf);
                         context.emit(self.output, leaf);
                     }
                 }
@@ -194,6 +197,7 @@ impl Behaviour for Single {
                     context.emit(self.output, value);
                 }
                 Each::Transpose { by, remainder } => {
+                    spread_transposed(context.interpreter.host(), &value, by.as_deref());
                     for tuple in transposed(&value, by.as_deref(), *remainder)? {
                         context.emit(self.output, tuple);
                     }
@@ -201,6 +205,20 @@ impl Behaviour for Single {
             }
         }
         Ok(State::Running)
+    }
+}
+
+/// Tells the host of the files that `transpose` turns into items of their own: those at the
+/// positions it transposes, or without `by` those at any position, since a file alone in a
+/// simulated run may be one of a list in a real run.
+fn spread_transposed(host: &mut dyn Host, value: &Value, by: Option<&[usize]>) {
+    let Value::List(list) = value else {
+        return;
+    };
+    for (index, item) in list.borrow().items.iter().enumerate() {
+        if by.is_none_or(|by| by.contains(&index)) {
+            spread(host, item);
+        }
     }
 }
 

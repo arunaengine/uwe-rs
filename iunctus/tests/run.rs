@@ -285,6 +285,8 @@ fn simulated_outputs_are_the_names_in_the_script() {
         [
             "[s_1.fq, s_2.fq]",
             "[simulated] P",
+            // `d.list()` lists a made-up folder, which a real run may fill with other files.
+            "iunctus: the graph marks 1 point where real data can add or remove tasks.",
             "s true [a.txt]",
             "s.cluster"
         ]

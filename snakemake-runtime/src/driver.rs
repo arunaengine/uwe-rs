@@ -178,7 +178,7 @@ impl Session {
         }
         // Code that reads what a task made gets empty files from the simulator.
         let read = self.files.last_output_read.borrow().clone();
-        if self.launch.assume_inputs
+        if self.launch.simulated
             && let Some(read) = read
         {
             let shown = read.strip_prefix(&self.workdir).unwrap_or(&read);
@@ -285,7 +285,7 @@ impl Session {
             self.planner = Some(Planner::new(
                 state.rules.clone(),
                 state.ruleorder.clone(),
-                self.launch.assume_inputs,
+                self.launch.simulated,
             ));
         }
         let targets: Vec<String> = if self.launch.targets.is_empty() {

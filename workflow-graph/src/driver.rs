@@ -29,10 +29,12 @@ pub struct Launch {
     pub scratch: PathBuf,
     /// Run the stubs of tasks instead of their scripts, where the language has stubs.
     pub stub: bool,
-    /// Treat input files that no task makes and that do not exist as present, so that a
-    /// workflow plans all its tasks without its data, as a simulated run does. Drivers log the
-    /// files they assume.
-    pub assume_inputs: bool,
+    /// Whether the run is simulated: tasks make up their files (decision 21). Drivers then take
+    /// input files that no task makes and that do not exist as present, so that a workflow
+    /// plans all its tasks without its data, and log the files they assume. Other workarounds
+    /// for made-up files hold only in simulated runs too, like placeholders for missing
+    /// values; a real run follows the reference tool.
+    pub simulated: bool,
 }
 
 /// Why a driver cannot go on.

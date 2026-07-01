@@ -104,7 +104,7 @@ impl CwlDriver {
 /// assumes its inputs, as for the simulator.
 pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
     let options = Options {
-        simulated: launch.assume_inputs,
+        simulated: launch.simulated,
         ..Options::default()
     };
     Ok(Box::new(CwlDriver::new(launch, options)?))

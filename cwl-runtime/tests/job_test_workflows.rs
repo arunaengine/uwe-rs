@@ -56,7 +56,7 @@ fn run(target: PathBuf, inputs: PathBuf) -> Result<usize, String> {
         target: target.clone(),
         inputs: Some(inputs),
         scratch: directory.path().to_path_buf(),
-        assume_inputs: true,
+        simulated: true,
         ..Launch::default()
     };
     let describe = |error: workflow_graph::DriverError| {

@@ -129,12 +129,12 @@ fn only_a_launch_that_assumes_its_inputs_takes_absent_files_as_present() {
     std::fs::write(&main, tool).expect("writes the tool");
     let job = folder.path().join("job.yml");
     std::fs::write(&job, "text: {class: File, location: absent.txt}\n").expect("writes the job");
-    let outcome = |assume_inputs: bool| {
+    let outcome = |simulated: bool| {
         let launch = Launch {
             target: main.clone(),
             inputs: Some(job.clone()),
             scratch: folder.path().join("scratch"),
-            assume_inputs,
+            simulated,
             ..Launch::default()
         };
         let mut driver = cwl_runtime::driver(&launch).map_err(|error| error.message)?;
@@ -176,7 +176,7 @@ fn expression_tools_over_absent_data_give_placeholders_for_null_outputs() {
         target: folder.path().join("main.cwl"),
         inputs: Some(job),
         scratch: folder.path().join("scratch"),
-        assume_inputs: true,
+        simulated: true,
         ..Launch::default()
     };
     let mut driver = cwl_runtime::driver(&launch).expect("a driver");
@@ -230,7 +230,7 @@ fn a_simulated_run_says_when_a_scatter_needs_real_data() {
         target: folder.path().join("main.cwl"),
         inputs: Some(job),
         scratch: folder.path().join("scratch"),
-        assume_inputs: true,
+        simulated: true,
         ..Launch::default()
     };
     let mut driver = cwl_runtime::driver(&launch).expect("a driver");
@@ -328,7 +328,7 @@ fn run_for_real(files: &[(&str, &str)]) -> Result<usize, String> {
     let launch = Launch {
         target: folder.path().join("main.cwl"),
         scratch: folder.path().join("scratch"),
-        assume_inputs: false,
+        simulated: false,
         ..Launch::default()
     };
     let mut driver = cwl_runtime::driver(&launch).map_err(|error| error.message)?;

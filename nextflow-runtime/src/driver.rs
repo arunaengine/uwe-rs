@@ -170,7 +170,7 @@ impl Driver for Nextflow {
             DriverError::new(format!("the task {} was not asked for", outcome.id))
         })?;
         let mut outcome = outcome;
-        if self.launch.assume_inputs {
+        if self.launch.simulated {
             drop_made_up_outputs(&request, &mut outcome);
         }
         let outcome = task_outcome(&request, outcome)?;

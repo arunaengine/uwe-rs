@@ -154,7 +154,7 @@ workflow {
     let launch = Launch {
         target: directory.path().to_owned(),
         stub: true,
-        assume_inputs: true,
+        simulated: true,
         ..Launch::default()
     };
     let graph = run(directory.path(), launch.clone());

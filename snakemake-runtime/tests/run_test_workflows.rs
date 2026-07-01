@@ -137,7 +137,7 @@ impl Launching {
                 })
                 .collect(),
             scratch: scratch.to_path_buf(),
-            assume_inputs: true,
+            simulated: true,
             ..Launch::default()
         }
     }

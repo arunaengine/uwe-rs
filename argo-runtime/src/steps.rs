@@ -245,6 +245,7 @@ impl Run {
                 .and_then(Node::as_str)
                 .unwrap_or("")
                 .to_owned();
+            self.note_deciding_outputs(step, &format!("step `{step_name}`"), scope);
             let mut node = step.clone();
             if let Err(message) = replace_node(&mut node, &variables, true) {
                 expanded.push(Expanded::error(step_name, message));

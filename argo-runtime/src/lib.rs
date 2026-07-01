@@ -25,6 +25,7 @@ mod inputs;
 mod items;
 pub mod jsonpath;
 pub mod library;
+mod marks;
 mod merge;
 mod node;
 mod objects;
@@ -48,7 +49,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use argo_parser::{Node, Value as Yaml, parse_yaml};
-use workflow_graph::{Driver, DriverError, Language, Launch, Outcome, Task};
+use workflow_graph::{Driver, DriverError, Language, Launch, Note, Outcome, Task};
 
 pub use library::{Document, Kind, Library, load_file, repository_of};
 pub use validate::{Rejection, validate};
@@ -142,6 +143,12 @@ impl Driver for ArgoDriver {
             return Err(DriverError::new("the run has not started"));
         };
         run.result().map_err(DriverError::new)
+    }
+
+    fn notes(&mut self) -> Vec<Note> {
+        (self.run.as_mut())
+            .map(|run| std::mem::take(&mut run.notes))
+            .unwrap_or_default()
     }
 }
 

@@ -13,7 +13,7 @@ use argo_parser::model::{
 };
 use argo_parser::{Node, Position, Value as Yaml, decode};
 use jiff::Timestamp;
-use workflow_graph::{Outcome, Task, TaskId};
+use workflow_graph::{Note, Outcome, Task, TaskId};
 
 use crate::Options;
 use crate::checks::cluster_only;
@@ -192,6 +192,8 @@ pub(crate) struct Run {
     pub nesting: usize,
     /// The tasks that the root waits for: those before the resource node of a child.
     pub inbound: Vec<TaskId>,
+    /// The markers found since the engine last asked, for the graph.
+    pub notes: Vec<Note>,
 }
 
 impl Run {
@@ -283,6 +285,7 @@ impl Run {
             emitted: Vec::new(),
             changed: false,
             warnings: Vec::new(),
+            notes: Vec::new(),
             store: HashMap::new(),
             volumes: Volumes::new(),
             claims: BTreeSet::new(),

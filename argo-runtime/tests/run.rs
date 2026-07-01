@@ -96,6 +96,17 @@ impl Ran {
             .unwrap_or_else(|| panic!("no task {name} in {:?}", self.names()))
     }
 
+    /// The reasons of the markers of a task.
+    fn markers(&self, name: &str) -> Vec<&str> {
+        let node = (self.execution.graph.nodes.iter())
+            .find(|node| short(&node.task.name) == name)
+            .unwrap_or_else(|| panic!("no task {name} in {:?}", self.names()));
+        node.markers
+            .iter()
+            .map(|marker| marker.reason.as_str())
+            .collect()
+    }
+
     fn succeeded(&self) {
         if let Some(error) = &self.execution.error {
             panic!("the run fails: {error}");
@@ -307,6 +318,13 @@ fn loops_expand_items_params_and_sequences() {
     );
     // The results of the loop, in order, as a JSON list; texts that are not JSON stay texts.
     assert_eq!(ran.task("[2].all").command, ["echo", r#"["r3","r4"]"#]);
+    // The loop over the output of `gen` decides how many tasks follow it; the argument of
+    // `all` decides none.
+    assert_eq!(
+        ran.markers("[0].gen"),
+        ["the `withParam` of step `params` reads the outputs of this task"]
+    );
+    assert_eq!(ran.execution.graph.marked().count(), 1);
 }
 
 #[test]
@@ -338,10 +356,17 @@ fn when_decides_with_outputs() {
     );
     ran.succeeded();
     assert_eq!(ran.names(), ["[0].flip", "[1].heads"]);
-    // Simulated output is empty, which decides neither branch.
+    // Simulated output is empty, which decides neither branch; a real run takes one.
     let ran = run(&workflow(coinflip));
     ran.succeeded();
     assert_eq!(ran.names(), ["[0].flip"]);
+    assert_eq!(
+        ran.markers("[0].flip"),
+        [
+            "the `when` of step `heads` reads the outputs of this task",
+            "the `when` of step `tails` reads the outputs of this task"
+        ]
+    );
 }
 
 #[test]

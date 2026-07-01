@@ -12,7 +12,7 @@ use crate::pending::{End, Pending, Slot, Take};
 use crate::queue::Queue;
 use crate::recorder::Recorder;
 use crate::{
-    Driver, DriverError, Event, ExecutionGraph, Observer, Outcome, RunOptions, Task, TaskId,
+    Driver, DriverError, Event, ExecutionGraph, Note, Observer, Outcome, RunOptions, Task, TaskId,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -187,6 +187,24 @@ impl<'a> Engine<'a> {
         Ok(())
     }
 
+    /// Records and queues the tasks that one call of the driver asked for, then the notes of
+    /// that call, which may name those tasks. The notes count also when the call failed, as
+    /// the failure may come from what the driver read.
+    fn asked(
+        &mut self,
+        asked: Result<Vec<Task>, DriverError>,
+        notes: Vec<Note>,
+        recorder: &mut Recorder,
+        queue: &mut Queue,
+    ) -> Result<(), ExecuteError> {
+        let first = recorder.graph.nodes.len();
+        let result = asked.map_err(ExecuteError::from).and_then(|tasks| {
+            (tasks.into_iter()).try_for_each(|task| self.request(task, recorder, queue))
+        });
+        recorder.note(notes, first);
+        result
+    }
+
     /// Starts the tasks that can start, up to the limit, then hands one outcome to the driver
     /// and queues the tasks it asks for, until no task is left.
     fn drive(
@@ -197,12 +215,9 @@ impl<'a> Engine<'a> {
         attempts: &mut Attempts,
     ) -> Result<(), ExecuteError> {
         let mut queue = Queue::default();
-        // Notes count also when the driver fails, as a failure may come from what it read.
         let first = driver.start();
-        recorder.note(driver.notes());
-        for task in first? {
-            self.request(task, recorder, &mut queue)?;
-        }
+        let notes = driver.notes();
+        self.asked(first, notes, recorder, &mut queue)?;
         loop {
             while pending.len() < self.options.max_pending.max(1)
                 && let Some(task) = queue.next()
@@ -253,13 +268,10 @@ impl<'a> Engine<'a> {
             });
             let id = outcome.id;
             let next = driver.complete(outcome);
-            recorder.note(driver.notes());
-            let next = next?;
+            let notes = driver.notes();
             // A driver that asks for the task again retries it; the tasks after it wait.
-            let again = next.iter().any(|task| task.id == id);
-            for task in next {
-                self.request(task, recorder, &mut queue)?;
-            }
+            let again = (next.as_ref()).is_ok_and(|next| next.iter().any(|task| task.id == id));
+            self.asked(next, notes, recorder, &mut queue)?;
             if !again {
                 queue.finished(id);
             }

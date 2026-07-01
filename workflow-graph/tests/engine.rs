@@ -5,8 +5,8 @@
 
 use workflow_graph::simulator::{EMPTY_GZIP, file_name, glob_matches};
 use workflow_graph::{
-    Driver, DriverError, EdgeKind, Input, Language, MORE_TASKS, Marker, MarkerKind, Note, Outcome,
-    SIMULATION, Simulator, Task, TaskId, execute,
+    Driver, DriverError, EdgeKind, Engine, Event, Input, Language, MORE_TASKS, Marker, MarkerKind,
+    Note, Observer, Outcome, SIMULATION, Simulator, Task, TaskId, execute,
 };
 
 /// Two `split` tasks, then one `merge` task that reads both outputs.
@@ -436,13 +436,35 @@ impl Driver for Noting {
     }
 }
 
+/// The markers that the engine reports to an observer.
+#[derive(Default)]
+struct Marks(Vec<(TaskId, MarkerKind)>);
+
+impl Observer for Marks {
+    fn event(&mut self, event: Event<'_>) {
+        if let Event::Marked { task, marker } = event {
+            self.0.push((task, marker.kind));
+        }
+    }
+}
+
 #[test]
 fn notes_of_the_driver_mark_the_tasks_whose_outputs_they_concern() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let mut executor = Simulator::new(directory.path());
-    let mut graph = execute("noting", &mut Noting::default(), &mut executor)
+    let mut marks = Marks::default();
+    let mut graph = Engine::new(&mut executor)
+        .observer(&mut marks)
+        .run("noting", &mut Noting::default())
         .into_result()
         .expect("the run succeeds");
+    // The observer hears each new marker once.
+    let kinds = [
+        MarkerKind::Content,
+        MarkerKind::Wildcard,
+        MarkerKind::Checkpoint,
+    ];
+    assert_eq!(marks.0, kinds.map(|kind| (TaskId(1), kind)));
     graph.simulate();
     let split = graph.node(TaskId(1)).expect("the first task");
     let kinds: Vec<MarkerKind> = split.markers.iter().map(|marker| marker.kind).collect();

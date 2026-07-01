@@ -60,6 +60,17 @@ pub enum Note {
     Mark(TaskId, Marker),
 }
 
+impl MarkerKind {
+    /// The name of the kind, as JSON writes it: `content`, `wildcard` or `checkpoint`.
+    pub fn name(self) -> &'static str {
+        match self {
+            MarkerKind::Content => "content",
+            MarkerKind::Wildcard => "wildcard",
+            MarkerKind::Checkpoint => "checkpoint",
+        }
+    }
+}
+
 impl Marker {
     pub fn new(kind: MarkerKind, reason: impl Into<String>) -> Self {
         Marker {

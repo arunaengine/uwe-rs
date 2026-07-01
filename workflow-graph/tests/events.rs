@@ -76,6 +76,7 @@ impl Observer for Notes {
             Event::Finished {
                 outcome, retried, ..
             } => format!("finished {} {retried}", outcome.id),
+            Event::Marked { task, marker } => format!("marked {task} {}", marker.kind.name()),
             Event::Ended { error } => format!("ended {}", error.is_some()),
         });
     }

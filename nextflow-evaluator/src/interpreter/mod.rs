@@ -35,6 +35,13 @@ pub trait Host {
     /// Writes text to standard output, as `print` and `println` do.
     fn print(&mut self, text: &str);
 
+    /// Whether the run is simulated, so that its files are made up. Rules that Nextflow
+    /// enforces on the content of files then let such files pass, like a CSV file without a
+    /// header line.
+    fn simulated(&self) -> bool {
+        false
+    }
+
     /// The directory the run started in, which relative paths in `file()` start from.
     fn launch_dir(&self) -> String {
         std::env::current_dir()

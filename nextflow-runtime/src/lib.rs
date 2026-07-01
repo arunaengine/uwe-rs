@@ -39,6 +39,8 @@ use session::Session;
 pub struct Options {
     /// Run the `stub:` section of processes instead of their script.
     pub stub: bool,
+    /// Whether the run is simulated, so that its files are made up (`Launch.simulated`).
+    pub simulated: bool,
     /// The container engine, like `docker`, which `workflow.containerEngine` gives.
     pub container_engine: Option<String>,
     /// The merged config, with the params of the command line.
@@ -195,6 +197,7 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             stub: false,
+            simulated: false,
             container_engine: None,
             config: Config::default(),
             profile: "standard".into(),

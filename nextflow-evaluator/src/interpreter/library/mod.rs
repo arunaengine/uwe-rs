@@ -407,8 +407,12 @@ pub(in crate::interpreter) fn stream(bytes: Vec<u8>) -> Value {
 }
 
 /// `splitCsv` of a file: its records as a list, with the options `sep`, `quote`,
-/// `header`, `skip`, `strip` and `limit`.
-pub(in crate::interpreter) fn csv_records(text: &str, options: Option<&Value>) -> Value {
+/// `header`, `skip`, `strip` and `limit`. A file of a simulated run may lack its header line.
+pub(in crate::interpreter) fn csv_records(
+    text: &str,
+    options: Option<&Value>,
+    simulated: bool,
+) -> Result<Value, crate::exception::Exception> {
     let option = |name: &str| match options {
         Some(Value::Map(map)) => map
             .borrow()
@@ -437,9 +441,9 @@ pub(in crate::interpreter) fn csv_records(text: &str, options: Option<&Value>) -
         skip: number("skip").unwrap_or(0),
         strip: option("strip").is_some_and(|value| value.truth()),
     };
-    let mut records = crate::csv::records(text, &csv_options);
+    let mut records = crate::csv::records(text, &csv_options, simulated)?;
     if let Some(limit) = number("limit") {
         records.truncate(limit);
     }
-    Value::list(records)
+    Ok(Value::list(records))
 }

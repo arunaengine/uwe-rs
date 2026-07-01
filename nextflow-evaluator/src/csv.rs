@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use indexmap::IndexMap;
 
+use crate::exception::Exception;
 use crate::value::{Key, Map, MapKind, Value};
 
 /// How to read CSV text.
@@ -23,9 +24,14 @@ pub struct CsvOptions {
 }
 
 /// The records of a text: a list of fields per line, or with a header a map of them. Blank
-/// lines are left out.
-pub fn records(text: &str, options: &CsvOptions) -> Vec<Value> {
-    Records::new(text.to_owned(), options).collect()
+/// lines are left out. A text without the header line it should have is an error, as in
+/// Nextflow, unless the run is `simulated`, whose files are made up.
+pub fn records(text: &str, options: &CsvOptions, simulated: bool) -> Result<Vec<Value>, Exception> {
+    let records = Records::new(text.to_owned(), options);
+    if records.missing_header() && !simulated {
+        return Err(missing_header());
+    }
+    Ok(records.collect())
 }
 
 /// The records of a text one by one, so that a large file need not be in records all at once.
@@ -40,6 +46,13 @@ pub struct Records {
     /// A map of the names, which each record copies, so that its keys are hashed once. Names
     /// that repeat have none, and each record hashes its keys.
     template: Option<IndexMap<Key, Value>>,
+    /// Whether the first line was to be the header, but the text has no line.
+    missing_header: bool,
+}
+
+/// The error of Nextflow for a CSV text without the header line it should have.
+pub fn missing_header() -> Exception {
+    Exception::new("IllegalStateException", "Missing 'header' in CSV file")
 }
 
 impl Records {
@@ -52,14 +65,17 @@ impl Records {
             strip: options.strip,
             names: None,
             template: None,
+            missing_header: false,
         };
         for _ in 0..options.skip {
             records.line();
         }
         records.names = match &options.header {
-            Some(None) => records
-                .line()
-                .map(|names| names.into_iter().map(Value::string).collect()),
+            Some(None) => {
+                let names = records.line();
+                records.missing_header = names.is_none();
+                names.map(|names| names.into_iter().map(Value::string).collect())
+            }
             Some(Some(names)) => Some(names.clone()),
             None => None,
         };
@@ -70,6 +86,12 @@ impl Records {
             (template.len() == names.len()).then_some(template)
         });
         records
+    }
+
+    /// Whether the first line was to be the header, but the text has no line. Nextflow then
+    /// stops with [`missing_header`].
+    pub fn missing_header(&self) -> bool {
+        self.missing_header
     }
 
     /// Whether the whole text is read.

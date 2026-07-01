@@ -104,6 +104,13 @@ impl Behaviour for Split {
             };
             if self.total.is_none() && self.files.is_none() && self.splitter.streams() {
                 if let Some(records) = self.splitter.csv_records(text) {
+                    if records.missing_header() && !self.splitter.simulated {
+                        let exception = nextflow_evaluator::csv::missing_header();
+                        return Err(Error::Thrown {
+                            exception: Rc::new(exception),
+                            span: Default::default(),
+                        });
+                    }
                     self.pending = Some((records, tuple, position));
                 }
                 continue;

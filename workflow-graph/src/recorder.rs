@@ -116,12 +116,13 @@ impl Recorder {
     }
 
     /// Turns what the driver noticed while it planned into markers on the tasks that made the
-    /// files, once per task, kind and reason.
-    pub(crate) fn note(&mut self, notes: Vec<Note>) {
+    /// files, once per task, kind and reason. The tasks from position `asked` on are those
+    /// that the driver asked for in the same call.
+    pub(crate) fn note(&mut self, notes: Vec<Note>, asked: usize) {
         for note in notes {
             let marked = match note {
                 Note::Read(path) => self.read(&path),
-                Note::Spread(path) => self.spread(&path),
+                Note::Spread(path) => self.spread(&path, asked),
                 Note::Mark(task, marker) => Some((task, marker)),
             };
             let Some((task, marker)) = marked else {
@@ -151,8 +152,20 @@ impl Recorder {
     }
 
     /// The marker of a task output that started tasks of its own, when an output pattern with
-    /// a wildcard matched it; a pattern without one names exactly one file.
-    fn spread(&self, path: &Path) -> Option<(TaskId, Marker)> {
+    /// a wildcard matched it; a pattern without one names exactly one file. A task asked for in
+    /// the same call must read the file, else the spread items went on to be collected, as for
+    /// a report of all files, and the number of tasks does not change.
+    fn spread(&self, path: &Path, asked: usize) -> Option<(TaskId, Marker)> {
+        let file = normalize(path);
+        let asked = self.graph.nodes.get(asked..).unwrap_or_default();
+        let started = asked.iter().any(|node| {
+            node.task.inputs.iter().any(|input| {
+                input.content.is_none() && file.starts_with(normalize(Path::new(&input.source)))
+            })
+        });
+        if !started {
+            return None;
+        }
         let (task, relative) = self.producer(path)?;
         let node = self.graph.nodes.get(*self.positions.get(&task)?)?;
         let pattern = node.task.outputs.iter().find(|pattern| {

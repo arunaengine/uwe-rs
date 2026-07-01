@@ -361,8 +361,9 @@ fn simulated_tasks_name_the_outputs_of_tools_after_their_arguments() {
     assert!(outcome.files[2].directory);
 }
 
-/// One task that makes `part1.txt`, `part2.txt` and `list.csv`; its driver reads `list.csv`,
-/// spreads the parts into one task each, and marks the task itself.
+/// One task that makes `part1.txt`, `part2.txt`, `list.csv` and `log1.txt`; its driver reads
+/// `list.csv`, spreads the parts into one task each, spreads the log into no task, and marks
+/// the task itself.
 #[derive(Default)]
 struct Noting {
     notes: Vec<Note>,
@@ -378,8 +379,10 @@ impl Driver for Noting {
             id: TaskId(1),
             name: "SPLIT".into(),
             step: "SPLIT".into(),
-            script: Some("echo a > part1.txt\necho b > part2.txt\necho x > list.csv".into()),
-            outputs: vec!["part*.txt".into(), "list.csv".into()],
+            script: Some(
+                "echo a > part1.txt\necho b > part2.txt\necho x > list.csv\ntouch log1.txt".into(),
+            ),
+            outputs: vec!["part*.txt".into(), "list.csv".into(), "log*.txt".into()],
             ..Task::default()
         }])
     }
@@ -399,6 +402,8 @@ impl Driver for Noting {
             Note::Read("/data/samples.csv".into()),
             Note::Spread(location("part1.txt")),
             Note::Spread(location("part2.txt")),
+            // No task of this call reads the log, as when all logs go into one report.
+            Note::Spread(location("log1.txt")),
             Note::Mark(
                 TaskId(1),
                 Marker::new(MarkerKind::Checkpoint, "a checkpoint"),

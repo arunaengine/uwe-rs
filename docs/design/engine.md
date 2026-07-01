@@ -63,7 +63,7 @@ A driver is a state machine (`workflow_graph::Driver`): `start` loads the workfl
 pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError>
 ```
 
-and the binary picks one in `driver` in `iunctus/src/main.rs`, a single match on `Language`: `nextflow_runtime::driver` (through `iunctus/src/nextflow.rs`), `snakemake_runtime::driver`, `cwl_runtime::driver` and `argo_runtime::driver`. A `DriverError` with `unsupported` set ends the command with exit code 33. With the simulator the binary sets `Launch.assume_inputs`, so that a workflow plans all its tasks without its data; drivers log the files they assume.
+and the binary picks one in `driver` in `iunctus/src/main.rs`, a single match on `Language`: `nextflow_runtime::driver` (through `iunctus/src/nextflow.rs`), `snakemake_runtime::driver`, `cwl_runtime::driver` and `argo_runtime::driver`. A `DriverError` with `unsupported` set ends the command with exit code 33. With the simulator the binary sets `Launch.simulated`, so that a workflow plans all its tasks without its data; drivers log the files they assume.
 
 Drivers look up outcomes by task id, so they must not depend on the order in which tasks finish. How the Argo driver works is in [the Argo runtime](argo/runtime.md).
 

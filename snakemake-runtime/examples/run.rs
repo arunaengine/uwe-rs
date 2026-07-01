@@ -16,7 +16,7 @@ fn main() {
         target: target.clone().into(),
         targets: args.collect(),
         scratch: scratch.clone(),
-        assume_inputs: true,
+        simulated: true,
         ..Launch::default()
     };
     let mut driver = match snakemake_runtime::driver(&launch) {

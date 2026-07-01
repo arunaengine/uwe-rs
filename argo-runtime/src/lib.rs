@@ -68,7 +68,7 @@ pub struct Options {
     /// The creation time of the workflow; the time of the run when not set.
     pub now: Option<jiff::Timestamp>,
     /// Give workflow parameters without a value, and the inputs of the entrypoint that nothing
-    /// supplies, placeholders, as a simulated run does (`Launch.assume_inputs`). Without it, a run
+    /// supplies, placeholders, as a simulated run does (`Launch.simulated`). Without it, a run
     /// needs them, as `argo submit` does.
     pub assume_inputs: bool,
 }
@@ -194,7 +194,7 @@ pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
         scratch: launch.scratch.clone(),
         print_warnings: true,
         now: None,
-        assume_inputs: launch.assume_inputs,
+        assume_inputs: launch.simulated,
     };
     Ok(Box::new(ArgoDriver::new(
         document,

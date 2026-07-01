@@ -26,7 +26,7 @@ fn describe(folder: &Path) -> String {
         target: folder.to_path_buf(),
         targets,
         scratch: scratch.path().to_path_buf(),
-        assume_inputs: true,
+        simulated: true,
         ..Launch::default()
     };
     let mut text = String::new();

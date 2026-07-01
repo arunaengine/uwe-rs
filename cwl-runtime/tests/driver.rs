@@ -235,16 +235,62 @@ fn a_simulated_run_says_when_a_scatter_needs_real_data() {
     };
     let mut driver = cwl_runtime::driver(&launch).expect("a driver");
     let mut executor = Simulator::new(folder.path().join("simulator"));
-    let error = execute("main", driver.as_mut(), &mut executor)
-        .error
-        .expect("the scatter fails")
-        .to_string();
+    let execution = execute("main", driver.as_mut(), &mut executor);
+    let error = execution.error.expect("the scatter fails").to_string();
     assert!(
         error.ends_with(
             "pick: the scattered input `peak` is null, not a list; the simulated run has no \
              real data to fill it"
         ),
         "{error}"
+    );
+    // The graph marks the task whose output the scatter needs.
+    let find = &execution.graph.nodes[0];
+    let reasons: Vec<&str> = find.markers.iter().map(|m| m.reason.as_str()).collect();
+    assert_eq!(
+        reasons,
+        ["the scatter of step `pick` over `peak` follows the outputs of this task"]
+    );
+}
+
+#[test]
+fn a_scatter_over_the_files_of_a_glob_marks_the_task_that_made_them() {
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    let split = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: split\n\
+        inputs: []\noutputs: {parts: {type: 'File[]', outputBinding: {glob: 'part_*.txt'}}, \
+        table: {type: 'File[]', outputBinding: {glob: table.txt}}}\n";
+    let count = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: wc\n\
+        inputs: {part: File}\noutputs: []\n";
+    let main = "cwlVersion: v1.2\nclass: Workflow\n\
+        requirements: {ScatterFeatureRequirement: {}}\ninputs: []\noutputs: []\n\
+        steps:\n  split: {run: split.cwl, in: [], out: [parts, table]}\n  \
+        count: {run: count.cwl, in: {part: split/parts}, out: [], scatter: part}\n  \
+        rows: {run: count.cwl, in: {part: {source: split/table}}, out: [], \
+        scatter: part}\n";
+    for (name, text) in [
+        ("split.cwl", split),
+        ("count.cwl", count),
+        ("main.cwl", main),
+    ] {
+        std::fs::write(folder.path().join(name), text).expect("writes a document");
+    }
+    let launch = Launch {
+        target: folder.path().join("main.cwl"),
+        scratch: folder.path().join("scratch"),
+        assume_inputs: true,
+        ..Launch::default()
+    };
+    let mut driver = cwl_runtime::driver(&launch).expect("a driver");
+    let mut executor = Simulator::new(folder.path().join("simulator"));
+    let execution = execute("main", driver.as_mut(), &mut executor);
+    let graph = execution.graph;
+    let split = &graph.nodes[0];
+    let reasons: Vec<&str> = split.markers.iter().map(|m| m.reason.as_str()).collect();
+    assert_eq!(
+        reasons,
+        ["the output pattern `part_*.txt` matched 1 file, and each started tasks of its own"],
+        "{}",
+        graph.summary()
     );
 }
 

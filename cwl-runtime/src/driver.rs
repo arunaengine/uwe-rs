@@ -9,7 +9,7 @@ use std::sync::Arc;
 use cwl_parser::iri;
 use cwl_parser::model::{Process, Type, short_name};
 use cwl_parser::salad::context::Namespaces;
-use workflow_graph::{Driver, DriverError, Language, Launch, Outcome, Task};
+use workflow_graph::{Driver, DriverError, Language, Launch, Note, Outcome, Task};
 
 use crate::files;
 use crate::run::Run;
@@ -141,6 +141,10 @@ impl Driver for CwlDriver {
 
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
         self.run.complete(&outcome).map_err(error)
+    }
+
+    fn notes(&mut self) -> Vec<Note> {
+        self.run.take_notes()
     }
 
     fn finish(&mut self) -> Result<(), DriverError> {

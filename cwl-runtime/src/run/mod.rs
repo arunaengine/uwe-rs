@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use cwl_parser::iri;
 use cwl_parser::model::{Class, Process, short_name};
-use workflow_graph::{Outcome, Task, TaskId};
+use workflow_graph::{Note, Outcome, Task, TaskId};
 
 use crate::expression::Variables;
 use crate::files;
@@ -20,6 +20,7 @@ use crate::tool::{self, OUTDIR, Options, Pending, TMPDIR};
 use crate::value::{Map, Value};
 
 mod links;
+mod marks;
 mod step;
 
 use links::{assemble, check_sources, gather, workflow_outputs};
@@ -130,6 +131,10 @@ pub struct Run {
     assumed: Vec<String>,
     /// The strings that the placeholders of the main process hold.
     placeholder_strings: HashSet<String>,
+    /// The task of each job of a tool, also after it finished.
+    task_of_job: HashMap<JobId, TaskId>,
+    /// The markers found since the engine last asked, for the graph.
+    notes: Vec<Note>,
 }
 
 impl Run {
@@ -147,7 +152,14 @@ impl Run {
             ontologies: false,
             assumed: Vec::new(),
             placeholder_strings: HashSet::new(),
+            task_of_job: HashMap::new(),
+            notes: Vec::new(),
         }
+    }
+
+    /// The markers found since the last call.
+    pub fn take_notes(&mut self) -> Vec<Note> {
+        std::mem::take(&mut self.notes)
     }
 
     /// Notes that the documents name ontologies in `$schemas`, which iunctus does not read, so
@@ -342,6 +354,7 @@ impl Run {
                 .map_err(at)?;
                 self.ready.push(task);
                 self.tasks.insert(task_id, id);
+                self.task_of_job.insert(id, task_id);
                 self.jobs[id].state = State::Task(Box::new(pending));
             }
             Class::ExpressionTool(tool) => {

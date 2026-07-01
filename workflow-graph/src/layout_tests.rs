@@ -111,14 +111,33 @@ fn nodes_without_predecessors_sit_above_their_first_successor() {
 }
 
 #[test]
-fn edges_that_point_back_are_drawn_from_their_first_node() {
-    // 1 -> 0 points back: node 0 stays above node 1, and the route runs from 1 up to 0.
+fn a_chain_given_backwards_is_drawn_from_the_top() {
+    // 2 -> 1 -> 0: node 2 comes first in the depth-first order, so every edge points down.
+    let layout = layout(&sizes(3), &[(2, 1), (1, 0)]);
+    assert_eq!(layout.layers, [2, 1, 0]);
+    for route in &layout.edges {
+        assert!(
+            route.windows(2).all(|pair| pair[0].y < pair[1].y),
+            "{route:?}"
+        );
+    }
+}
+
+#[test]
+fn only_the_edge_that_closes_a_cycle_points_up() {
+    // 0 -> 1 -> 2 -> 0, and an edge from a node to itself.
     let sizes = sizes(3);
-    let layout = layout(&sizes, &[(0, 2), (1, 0), (1, 1)]);
-    assert!(layout.layers[0] < layout.layers[1]);
-    let back = &layout.edges[1];
+    let layout = layout(&sizes, &[(0, 1), (1, 2), (2, 0), (1, 1)]);
+    assert_eq!(layout.layers, [0, 1, 2]);
+    let back = &layout.edges[2];
     assert!(back.first().expect("points").y > back.last().expect("points").y);
-    assert!(layout.edges[2].is_empty(), "no route for an edge to itself");
+    assert!(layout.edges[3].is_empty(), "no route for an edge to itself");
+}
+
+#[test]
+fn depth_first_order_is_topological_without_cycles() {
+    assert_eq!(depth_first(4, &[(3, 1), (1, 0), (2, 0)]), [3, 2, 1, 0]);
+    assert_eq!(depth_first(3, &[(0, 1), (0, 2)]), [0, 2, 1]);
 }
 
 #[test]

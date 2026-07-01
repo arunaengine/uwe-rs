@@ -60,6 +60,10 @@ impl Host for Session<'_> {
         self.base.list(directory)
     }
 
+    fn spread(&mut self, path: &PathValue) {
+        self.base.spread(path);
+    }
+
     fn namespace_method(
         &mut self,
         namespace: &str,

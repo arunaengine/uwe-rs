@@ -90,6 +90,11 @@ pub trait Host {
         list_local(directory)
     }
 
+    /// Notes that a file becomes an item of its own, as `flatten` makes one of each file in a
+    /// list, so that the number of such files decides how many tasks follow. The engine marks
+    /// the task that made the file when a wildcard matched it. The default does nothing.
+    fn spread(&mut self, _path: &PathValue) {}
+
     /// Writes a file, creating its directory. The default writes local files.
     fn write(&mut self, path: &PathValue, bytes: &[u8]) -> Result<(), Error> {
         let local = local_path(path)?;

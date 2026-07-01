@@ -9,6 +9,7 @@ mod files;
 mod keyed;
 mod loader;
 mod network;
+mod notes;
 mod operator;
 mod pairs;
 mod process;

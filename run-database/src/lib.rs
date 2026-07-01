@@ -13,6 +13,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod fingerprint;
+mod graph;
 mod origin;
 mod recorder;
 mod resume;

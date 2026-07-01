@@ -6,10 +6,13 @@ use std::collections::BTreeMap;
 
 use axum::Json;
 use axum::Router;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
+use axum::http::header;
+use axum::response::IntoResponse;
 use axum::routing::get;
 use run_database::{Log, MarkerRow, Run, TaskDetail, TaskRow, Why};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use workflow_graph::render::{Format, View, render};
 
 use crate::{Failure, Shared, assets, files, live, query};
 
@@ -27,6 +30,7 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/api/runs", get(runs))
         .route("/api/runs/{run}", get(run))
         .route("/api/runs/{run}/events", get(live::events))
+        .route("/api/runs/{run}/graph.svg", get(graph))
         .route("/api/runs/{run}/tasks/{task}", get(task))
         .route("/api/runs/{run}/tasks/{task}/why", get(why))
         .route(
@@ -131,4 +135,32 @@ async fn why(
 ) -> Result<Json<Option<Why>>, Failure> {
     let why = query(&state, move |database| Ok(database.why(&id, task)?)).await?;
     Ok(Json(why))
+}
+
+#[derive(Deserialize)]
+struct GraphView {
+    /// `tasks` or `steps`; `tasks` by default.
+    view: Option<String>,
+}
+
+/// The graph of a run as SVG, drawn by the same renderer as `iunctus graph`: one box per task
+/// or one per step, with the states of the tasks and the markers of a simulated run.
+async fn graph(
+    State(state): State<Shared>,
+    Path(id): Path<String>,
+    Query(GraphView { view }): Query<GraphView>,
+) -> Result<impl IntoResponse, Failure> {
+    let view = match view.as_deref() {
+        None => View::Tasks,
+        Some(name) => View::parse(name)
+            .ok_or_else(|| Failure::bad_request("the view of a graph is `tasks` or `steps`"))?,
+    };
+    let svg = query(&state, move |database| {
+        let Some(graph) = database.graph(&id)? else {
+            return Err(Failure::not_found(format!("no run `{id}`")));
+        };
+        Ok(render(&graph, view, Format::Svg))
+    })
+    .await?;
+    Ok(([(header::CONTENT_TYPE, "image/svg+xml")], svg))
 }

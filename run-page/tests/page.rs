@@ -118,6 +118,14 @@ fn the_page_shows_runs_tasks_logs_and_files() {
     assert_eq!(task["stdout"]["text"], "done\n");
     assert_eq!(task["stderr"], Value::Null);
     assert_eq!(task["outputs"][0]["path"], "out.txt");
+    let (status, svg) = get(&format!("{url}/api/runs/finished-run/graph.svg"));
+    assert_eq!(status, 200, "{svg}");
+    assert!(svg.contains("<svg") && svg.contains("id=\"t4\""), "{svg}");
+    let (status, svg) = get(&format!("{url}/api/runs/finished-run/graph.svg?view=steps"));
+    assert_eq!(status, 200, "{svg}");
+    assert!(svg.contains("upper"), "{svg}");
+    let (status, _) = get(&format!("{url}/api/runs/finished-run/graph.svg?view=files"));
+    assert_eq!(status, 400);
     // No earlier run has the task, so there is nothing to compare.
     let why = get_json(&format!("{url}/api/runs/finished-run/tasks/4/why"));
     assert_eq!(why, Value::Null);

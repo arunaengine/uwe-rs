@@ -201,7 +201,12 @@ impl<'a> Engine<'a> {
         let result = asked.map_err(ExecuteError::from).and_then(|tasks| {
             (tasks.into_iter()).try_for_each(|task| self.request(task, recorder, queue))
         });
-        recorder.note(notes, first);
+        for (task, marker) in recorder.note(notes, first) {
+            self.report(Event::Marked {
+                task,
+                marker: &marker,
+            });
+        }
         result
     }
 

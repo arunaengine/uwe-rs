@@ -117,8 +117,9 @@ impl Recorder {
 
     /// Turns what the driver noticed while it planned into markers on the tasks that made the
     /// files, once per task, kind and reason. The tasks from position `asked` on are those
-    /// that the driver asked for in the same call.
-    pub(crate) fn note(&mut self, notes: Vec<Note>, asked: usize) {
+    /// that the driver asked for in the same call. Gives the markers that are new.
+    pub(crate) fn note(&mut self, notes: Vec<Note>, asked: usize) -> Vec<(TaskId, Marker)> {
+        let mut added = Vec::new();
         for note in notes {
             let marked = match note {
                 Note::Read(path) => self.read(&path),
@@ -134,9 +135,11 @@ impl Recorder {
                 .and_then(|position| self.graph.nodes.get_mut(*position))
                 && !node.markers.contains(&marker)
             {
-                node.markers.push(marker);
+                node.markers.push(marker.clone());
+                added.push((task, marker));
             }
         }
+        added
     }
 
     /// The marker of a read of a task output; none for a file that no task made.

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use crate::{Edge, ExecuteError, Outcome, Task, TaskId};
+use crate::{Edge, ExecuteError, Marker, Outcome, Task, TaskId};
 
 /// One step of a run. The engine reports each one before its effect: a task before it is
 /// queued, an attempt before the executor gets it, an outcome before the driver hears it.
@@ -20,6 +20,9 @@ pub enum Event<'a> {
         attempt: u32,
         retried: bool,
     },
+    /// A task got a marker: the tasks that follow it depend on its outputs, so a run with real
+    /// data can have more or fewer tasks there. Once per new marker of a task.
+    Marked { task: TaskId, marker: &'a Marker },
     /// The run ended, with the error that stopped it if there is one.
     Ended { error: Option<&'a ExecuteError> },
 }

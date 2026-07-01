@@ -616,6 +616,7 @@ impl Run {
         scope: &Scope,
     ) -> Expansion {
         let source = expanded_source(processed, &task.name);
+        self.note_deciding_outputs(&source, &format!("task `{}`", task.name), scope);
         let mut node = source.clone();
         let variables = self.variables(scope);
         if let Err(message) = replace_node(&mut node, &variables, true) {

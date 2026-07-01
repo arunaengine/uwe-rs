@@ -19,6 +19,8 @@ use crate::value::Value;
 pub(crate) struct Scope {
     pub values: BTreeMap<String, String>,
     pub artifacts: BTreeMap<String, ArtifactValue>,
+    /// The nodes whose outputs a prefix like `steps.hello` names, for the markers of the graph.
+    pub nodes: BTreeMap<String, Vec<usize>>,
 }
 
 impl Scope {
@@ -105,6 +107,7 @@ impl Run {
         {
             node = &self.nodes[last];
         }
+        scope.nodes.insert(prefix.to_owned(), vec![index]);
         let values = &mut scope.values;
         values.insert(format!("{prefix}.id"), node.id.clone());
         values.insert(format!("{prefix}.status"), node.phase.name().to_owned());
@@ -125,6 +128,7 @@ impl Run {
         if children.is_empty() {
             return;
         }
+        scope.nodes.insert(prefix.to_owned(), children.to_vec());
         let mut children: Vec<usize> = children.to_vec();
         children.sort_by_key(|&child| loop_index(&self.nodes[child].name));
         let mut results = Vec::new();

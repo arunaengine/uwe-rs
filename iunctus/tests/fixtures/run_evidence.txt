@@ -32,7 +32,7 @@ $ NXF_SYNTAX_PARSER=v1 nextflow run cageseq -profile test -stub-run --outdir <ou
 callingcards
 workflowhub/970
 = unsupported (decision 16): SEQKIT_SPLIT2 and DEMULTIPLEX have no stubs, so they need seqkit and callingcardstools to write the reads whose names the pipeline reads, and the simulator only makes up one file with another name (Nextflow fails in the same way with stand-ins that make the files of the simulator)
-$ NXF_SYNTAX_PARSER=v1 nextflow run callingcards -profile test -stub-run --outdir <out>  # with the stub `mkdir mock; printf "" | gzip > mock/mock.gz; printf '"${task.process}": {stub: "1.0"}\n' > versions.yml` for SEQKIT_SPLIT2, with the stub `touch mock.fq mock.pickle; printf '"${task.process}": {stub: "1.0"}\n' > versions.yml` for DEMULTIPLEX
+$ NXF_SYNTAX_PARSER=v1 nextflow run callingcards -profile test -stub-run --outdir <out>  # with the stub `mkdir simulated; printf "" | gzip > simulated/simulated.gz; printf '"${task.process}": {stub: "1.0"}\n' > versions.yml` for SEQKIT_SPLIT2, with the stub `touch simulated.fq simulated.pickle; printf '"${task.process}": {stub: "1.0"}\n' > versions.yml` for DEMULTIPLEX
 > [ERROR] ERROR ~ index is out of range 0..-1 (index = 0)
 
 chipseq
@@ -435,7 +435,7 @@ $ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/1263 -stub-run --outdir <out>
 
 workflowhub/1266
 = invalid: the stub of UNZIP makes an empty folder, so a stub run has no response data and no results, and VISUALIZE_RESULTS then gets 2 of its 4 files, so it fails; a real run is not affected (Nextflow first stops at HPAM_SPLIT, which has no stub, and fails in the same way with a stand-in for it and the strict parser, whose check of input tuples iunctus has)
-$ nextflow run workflowhub/1266 -profile test -stub-run --outdir <out>  # with the stub `touch mock.yaml; printf '"${task.process}": {stub: "1.0"}\n' > versions.yml` for HPAM_SPLIT
+$ nextflow run workflowhub/1266 -profile test -stub-run --outdir <out>  # with the stub `touch simulated.yaml; printf '"${task.process}": {stub: "1.0"}\n' > versions.yml` for HPAM_SPLIT
 >   error [nextflow.exception.ProcessUnrecoverableException]: Input tuple does not match tuple declaration in process `NFCORE_DRUGRESPONSEEVAL:DRUGRESPONSEEVAL:MODEL_TESTING:VISUALIZE_RESULTS` -- offending value: [<pipeline>/assets/NO_FILE, <pipeline>/assets/NO_FILE]
 
 workflowhub/1306
@@ -474,7 +474,7 @@ $ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/1727 -stub-run --outdir <out>
 
 workflowhub/1757
 = unsupported (decision 16): PRINSEQ_READS has no stub, so it needs prinseq++ to write the reads, and the simulator only makes up one file where paired reads give two; for one file, the stub of CAT_CAT reads the extension from the folder it is staged in, so it fails (Nextflow fails in the same way with a stand-in that makes the file of the simulator)
-$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/1757 -profile test -stub-run --outdir <out>  # with the stub `touch mock_good_outmock mock.log; printf '"${task.process}": {stub: "1.0"}\n' > versions.yml` for PRINSEQPLUSPLUS
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/1757 -profile test -stub-run --outdir <out>  # with the stub `touch simulated_good_outsimulated simulated.log; printf '"${task.process}": {stub: "1.0"}\n' > versions.yml` for PRINSEQPLUSPLUS
 >   Range [-1, 1) out of bounds for length 1 -- Check script 'modules/nf-core/cat/cat/main.nf' at line: 59
 
 workflowhub/1763
@@ -741,7 +741,7 @@ $ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/480/Workflow/NextFlow/covid19_pi
 
 workflowhub/556
 = unsupported (decision 16): MATCH_COMBINE has no stub, so it needs its script to write the score file whose first line the workflow reads, and the simulator only makes up an empty file (Nextflow fails in the same way with stand-ins that make the files of the simulator)
-$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/556 -profile test -stub-run --outdir <out>  # with the stub `printf "" | gzip > scorefiles.txt.gz; touch log_scorefiles.json; printf '"${task.process}": {stub: "1.0"}\n' > versions.yml` for COMBINE_SCOREFILES, with the stub `output = "mock" """ touch mock.pgen mock.pvar.zst mock.psam printf "" | gzip > mock.vmiss.gz; printf "" | gzip > mock.afreq.gz; printf '"${task.process}": {stub: "1.0"}\n' > versions.yml """` for PLINK2_RELABELPVAR, with the stub `scoremeta = [:] scoremeta.id = "$meta.id" """ touch mock.ipc.zst printf '"${task.process}": {stub: "1.0"}\n' > versions.yml """` for MATCH_VARIANTS, with the stub `scoremeta = [:] scoremeta.id = "$meta.id" """ printf "" | gzip > mock.scorefile.gz touch mock_summary.csv printf "" | gzip > mock_log.csv.gz printf '"${task.process}": {stub: "1.0"}\n' > versions.yml """` for MATCH_COMBINE
+$ NXF_SYNTAX_PARSER=v1 nextflow run workflowhub/556 -profile test -stub-run --outdir <out>  # with the stub `printf "" | gzip > scorefiles.txt.gz; touch log_scorefiles.json; printf '"${task.process}": {stub: "1.0"}\n' > versions.yml` for COMBINE_SCOREFILES, with the stub `output = "simulated" """ touch simulated.pgen simulated.pvar.zst simulated.psam printf "" | gzip > simulated.vmiss.gz; printf "" | gzip > simulated.afreq.gz; printf '"${task.process}": {stub: "1.0"}\n' > versions.yml """` for PLINK2_RELABELPVAR, with the stub `scoremeta = [:] scoremeta.id = "$meta.id" """ touch simulated.ipc.zst printf '"${task.process}": {stub: "1.0"}\n' > versions.yml """` for MATCH_VARIANTS, with the stub `scoremeta = [:] scoremeta.id = "$meta.id" """ printf "" | gzip > simulated.scorefile.gz touch simulated_summary.csv printf "" | gzip > simulated_log.csv.gz printf '"${task.process}": {stub: "1.0"}\n' > versions.yml """` for MATCH_COMBINE
 > [ERROR] ERROR ~ Unexpected error [InvocationTargetException]
 > Caused by: java.lang.NullPointerException: Cannot invoke method split() on null object
 

@@ -231,8 +231,8 @@ CASES = [
         "only makes up one file with another name (Nextflow fails in the same way with "
         "stand-ins that make the files of the simulator)",
         "stubs": {
-            "SEQKIT_SPLIT2": "mkdir mock; " + EMPTY_GZIP + "mock/mock.gz; " + VERSIONS,
-            "DEMULTIPLEX": "touch mock.fq mock.pickle; " + VERSIONS,
+            "SEQKIT_SPLIT2": "mkdir simulated; " + EMPTY_GZIP + "simulated/simulated.gz; " + VERSIONS,
+            "DEMULTIPLEX": "touch simulated.fq simulated.pickle; " + VERSIONS,
         },
         "expect": [r"index is out of range 0\.\.-1 \(index = 0\)"],
     },
@@ -781,23 +781,23 @@ CASES += [
         stubs={
             "COMBINE_SCOREFILES": EMPTY_GZIP + "scorefiles.txt.gz; touch log_scorefiles.json; "
             + VERSIONS,
-            "PLINK2_RELABELPVAR": '''output = "mock"
+            "PLINK2_RELABELPVAR": '''output = "simulated"
     """
-    touch mock.pgen mock.pvar.zst mock.psam
-    ''' + EMPTY_GZIP + "mock.vmiss.gz; " + EMPTY_GZIP + "mock.afreq.gz; " + VERSIONS + '''
+    touch simulated.pgen simulated.pvar.zst simulated.psam
+    ''' + EMPTY_GZIP + "simulated.vmiss.gz; " + EMPTY_GZIP + "simulated.afreq.gz; " + VERSIONS + '''
     """''',
             "MATCH_VARIANTS": '''scoremeta = [:]
     scoremeta.id = "$meta.id"
     """
-    touch mock.ipc.zst
+    touch simulated.ipc.zst
     ''' + VERSIONS + '''
     """''',
             "MATCH_COMBINE": '''scoremeta = [:]
     scoremeta.id = "$meta.id"
     """
-    ''' + EMPTY_GZIP + '''mock.scorefile.gz
-    touch mock_summary.csv
-    ''' + EMPTY_GZIP + '''mock_log.csv.gz
+    ''' + EMPTY_GZIP + '''simulated.scorefile.gz
+    touch simulated_summary.csv
+    ''' + EMPTY_GZIP + '''simulated_log.csv.gz
     ''' + VERSIONS + '''
     """''',
         },
@@ -1021,7 +1021,7 @@ CASES += [
         "fails in the same way with a stand-in that makes the file of the simulator)",
         [r"Check script 'modules/nf-core/cat/cat/main.nf' at line: 59"],
         kind="unsupported (decision 16)",
-        stubs={"PRINSEQPLUSPLUS": "touch mock_good_outmock mock.log; " + VERSIONS},
+        stubs={"PRINSEQPLUSPLUS": "touch simulated_good_outsimulated simulated.log; " + VERSIONS},
     ),
     workflowhub(
         [1763],
@@ -1335,7 +1335,7 @@ workflow {
         "iunctus has)",
         [r"Input tuple does not match tuple declaration in process .*VISUALIZE_RESULTS"],
         parser="v2",
-        stubs={"HPAM_SPLIT": "touch mock.yaml; " + VERSIONS},
+        stubs={"HPAM_SPLIT": "touch simulated.yaml; " + VERSIONS},
     ),
 ]
 

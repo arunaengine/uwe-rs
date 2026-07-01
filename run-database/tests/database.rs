@@ -182,6 +182,19 @@ fn tasks_are_read_back_with_their_files_and_edges() {
     assert_eq!(markers.len(), 1);
     assert_eq!((markers[0].task, markers[0].kind.as_str()), (1, "content"));
 
+    // The graph as the engine built it, for the renderer of the page.
+    let graph = database.graph("run-1").expect("reads").expect("a graph");
+    let nodes: Vec<(u64, Option<i32>, usize)> = graph
+        .nodes
+        .iter()
+        .map(|node| (node.task.id.0, node.exit_code, node.markers.len()))
+        .collect();
+    assert_eq!(nodes, [(1, Some(0), 1), (2, Some(1), 0), (3, None, 0)]);
+    assert_eq!(graph.edges.len(), 1);
+    assert!(graph.simulation.is_some());
+    assert_eq!(graph.language, Some(Language::Nextflow));
+    assert!(database.graph("run-9").expect("reads").is_none());
+
     let edges = database.edges("run-1").expect("lists edges");
     assert_eq!((edges[0].source, edges[0].target), (1, 2));
     assert_eq!(edges[0].path.as_deref(), Some("in.txt"));

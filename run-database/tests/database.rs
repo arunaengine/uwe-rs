@@ -51,8 +51,8 @@ fn outcome(id: u64, location: PathBuf, stdout: &str) -> Outcome {
         exit_code: 0,
         files: vec![OutputFile {
             path: "out.txt".into(),
-            location,
-            directory: false,
+            location: location.to_string_lossy().into_owned(),
+            ..OutputFile::default()
         }],
         stdout: stdout.into(),
         ..Outcome::default()

@@ -54,8 +54,8 @@ fn record(directory: &Path) -> std::path::PathBuf {
         exit_code: 0,
         files: vec![OutputFile {
             path: "out.txt".into(),
-            location: output,
-            directory: false,
+            location: output.to_string_lossy().into_owned(),
+            ..OutputFile::default()
         }],
         stdout: "done\n".into(),
         ..Outcome::default()

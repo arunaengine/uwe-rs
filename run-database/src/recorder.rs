@@ -254,7 +254,7 @@ impl Recorder {
                     task,
                     attempt,
                     file.path,
-                    file.location.to_string_lossy(),
+                    file.location,
                     file.directory,
                     size
                 ])?;

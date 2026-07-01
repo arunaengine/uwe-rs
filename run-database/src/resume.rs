@@ -4,7 +4,6 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 use rusqlite::{OptionalExtension, params};
 use workflow_graph::{Outcome, OutputFile, TaskId};
@@ -102,8 +101,9 @@ impl Database {
             .filter(|file| file.attempt == Some(attempt))
             .map(|file| OutputFile {
                 path: file.path,
-                location: PathBuf::from(file.location),
+                location: file.location,
                 directory: file.directory,
+                ..OutputFile::default()
             })
             .collect();
         let image: Option<String> = self.connection.query_row(

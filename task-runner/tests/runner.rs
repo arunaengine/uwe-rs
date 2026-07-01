@@ -237,3 +237,27 @@ fn remote_inputs_are_not_supported_yet() {
     let error = block_on(runner.request(&remote, None)).unwrap_err();
     assert!(error.unsupported(), "{error}");
 }
+
+#[test]
+fn outcomes_give_the_stored_files_with_size_and_digest() {
+    use task_runner::RunnerExecutor;
+    use workflow_graph::{Attempt, Executor};
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let mut executor = RunnerExecutor::new(runner(root.path(), 0), None);
+    let attempt = Attempt {
+        task: std::sync::Arc::new(task(root.path(), "a")),
+        number: 2,
+        cancel: CancellationToken::new(),
+    };
+    let outcome = block_on(executor.run(attempt)).expect("an outcome");
+    assert_eq!((outcome.attempt, outcome.exit_code), (2, 0));
+    assert_eq!(outcome.image.as_deref(), Some("debian@sha256:00"));
+    let [file] = outcome.files.as_slice() else {
+        panic!("one output")
+    };
+    let stored = root.path().join("store/runs/run1/P-1/2/work/out.txt");
+    assert_eq!(file.location, stored.to_string_lossy());
+    assert_eq!(file.size, Some(5));
+    let digest = task_model::Digest::sha256(b"data\n").to_string();
+    assert_eq!(file.digest.as_deref(), Some(digest.as_str()));
+}

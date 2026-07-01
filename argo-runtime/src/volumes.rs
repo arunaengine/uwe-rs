@@ -373,7 +373,7 @@ fn directory_of(outcome: &Outcome, path: &str) -> Option<PathBuf> {
         .files
         .iter()
         .find(|file| file.path.trim_matches('/') == wanted && file.directory)
-        .map(|file| file.location.clone())
+        .map(|file| PathBuf::from(&file.location))
 }
 
 /// The files below a directory, by their path relative to `root`.

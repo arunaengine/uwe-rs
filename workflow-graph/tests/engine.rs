@@ -50,7 +50,7 @@ impl Driver for Toy {
             .flat_map(|outcome| &outcome.files)
             .map(|file| Input {
                 path: file.path.clone(),
-                source: file.location.to_string_lossy().into_owned(),
+                source: file.location.clone(),
                 directory: false,
                 content: None,
             })
@@ -393,7 +393,7 @@ impl Driver for Noting {
         }
         let location = |name: &str| {
             let file = outcome.files.iter().find(|file| file.path == name);
-            file.expect("an output").location.clone()
+            std::path::PathBuf::from(&file.expect("an output").location)
         };
         self.notes = vec![
             Note::Read(location("list.csv")),

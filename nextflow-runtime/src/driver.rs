@@ -443,8 +443,7 @@ pub fn task_outcome(request: &TaskRequest, outcome: Outcome) -> Result<TaskOutco
             let text = std::fs::read_to_string(&file.location).map_err(|error| {
                 DriverError::new(format!(
                     "{}: cannot read {}: {error}",
-                    request.name,
-                    file.location.display()
+                    request.name, file.location
                 ))
             })?;
             variables = read_environment(&text);
@@ -453,7 +452,7 @@ pub fn task_outcome(request: &TaskRequest, outcome: Outcome) -> Result<TaskOutco
                 continue;
             }
         }
-        let path = PathValue::parse(&file.location.to_string_lossy(), "/");
+        let path = PathValue::parse(&file.location, "/");
         result.files.push((file.path, path));
     }
     for index in 0..request.eval.len() {

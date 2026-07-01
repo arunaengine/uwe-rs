@@ -397,7 +397,7 @@ impl KnownCommands {
                         });
                     // A file the simulator made that no command made is gone from disk too, so
                     // that a glob into a folder does not find it.
-                    if !kept && file.location.is_file() {
+                    if !kept && Path::new(&file.location).is_file() {
                         let _ = std::fs::remove_file(&file.location);
                     }
                     kept
@@ -405,9 +405,10 @@ impl KnownCommands {
                 for path in made {
                     if !outcome.files.iter().any(|file| file.path == path) {
                         outcome.files.push(workflow_graph::OutputFile {
-                            location: work.join(&path),
+                            location: work.join(&path).to_string_lossy().into_owned(),
                             directory: work.join(&path).is_dir(),
                             path,
+                            ..Default::default()
                         });
                     }
                 }

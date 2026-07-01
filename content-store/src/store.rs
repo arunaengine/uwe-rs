@@ -54,6 +54,8 @@ pub struct Store {
     operator: Operator,
     /// The directory of a local store.
     root: Option<std::path::PathBuf>,
+    /// The URL of the store's root for others, like `s3://bucket/prefix`.
+    base: Option<String>,
 }
 
 impl Store {
@@ -85,7 +87,23 @@ impl Store {
         if let Some(region) = &options.region {
             builder = builder.region(region);
         }
-        Self::with(Operator::new(builder)?)
+        let mut store = Self::with(Operator::new(builder)?)?;
+        let prefix = options.prefix.as_deref().unwrap_or("").trim_matches('/');
+        store.base = Some(match prefix.is_empty() {
+            true => format!("s3://{}", options.bucket),
+            false => format!("s3://{}/{prefix}", options.bucket),
+        });
+        Ok(store)
+    }
+
+    /// Where an object is for others: its path for a local store, its URL for S3, else the
+    /// location in the store.
+    pub fn url(&self, location: &str) -> String {
+        match (&self.root, &self.base) {
+            (Some(root), _) => root.join(location).to_string_lossy().into_owned(),
+            (None, Some(base)) => format!("{base}/{location}"),
+            (None, None) => location.to_owned(),
+        }
     }
 
     /// A store that lives in memory, for tests and dry runs.
@@ -97,6 +115,7 @@ impl Store {
         Ok(Self {
             operator: operator.layer(RetryLayer::new()),
             root: None,
+            base: None,
         })
     }
 

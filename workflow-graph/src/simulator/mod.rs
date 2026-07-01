@@ -286,7 +286,8 @@ pub fn pretend_run(task: &Task, work: &Path) -> std::io::Result<Result<Vec<Outpu
             files.push(OutputFile {
                 directory: location.is_dir(),
                 path: name,
-                location,
+                location: location.to_string_lossy().into_owned(),
+                ..OutputFile::default()
             });
         }
     }

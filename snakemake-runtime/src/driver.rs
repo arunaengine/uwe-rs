@@ -9,10 +9,13 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use python_evaluator::{Error, Interpreter, Value};
-use workflow_graph::{Driver, DriverError, Language, Launch, Outcome, Task, TaskId};
+use workflow_graph::{
+    Driver, DriverError, Language, Launch, Marker, MarkerKind, Note, Outcome, Task, TaskId,
+};
 
 use crate::commands::{Channel, CommandRunner, Reply, Request};
 use crate::files::{Produced, WorkflowFiles};
@@ -73,6 +76,8 @@ pub struct Session {
     dependents: HashMap<usize, Vec<usize>>,
     /// How many jobs that must run each job still waits for.
     remaining: HashMap<usize, usize>,
+    /// The markers found since the engine last asked, like the tasks of checkpoints.
+    notes: Vec<Note>,
 }
 
 impl Session {
@@ -142,7 +147,16 @@ impl Session {
             position: HashMap::new(),
             dependents: HashMap::new(),
             remaining: HashMap::new(),
+            notes: Vec::new(),
         })
+    }
+
+    /// What the session noted since the last call: task outputs that workflow code read or
+    /// listed, and the tasks of checkpoints.
+    fn take_notes(&mut self) -> Vec<Note> {
+        let mut notes = std::mem::take(&mut self.notes);
+        notes.append(&mut self.files.notes.borrow_mut());
+        notes
     }
 
     fn error(&self, error: &Error) -> DriverError {
@@ -360,6 +374,14 @@ impl Session {
             self.next_task.set(id.0 + 1);
             let rule = planner.rules[entry.rule].clone();
             let entry = entry.clone();
+            if rule.checkpoint {
+                let reason = format!(
+                    "rule `{}` is a checkpoint: Snakemake plans the workflow again after it",
+                    rule.name
+                );
+                let marker = Marker::new(MarkerKind::Checkpoint, reason);
+                self.notes.push(Note::Mark(id, marker));
+            }
             let task = {
                 let state = self.state.borrow();
                 let setting = crate::task::TaskSetting {
@@ -545,6 +567,8 @@ struct SnakemakeDriver {
     requests: Sender<Request>,
     replies: Receiver<Reply>,
     worker: Option<JoinHandle<()>>,
+    /// The notes of the session, which it adds before each reply.
+    notes: Arc<Mutex<Vec<Note>>>,
 }
 
 impl SnakemakeDriver {
@@ -569,6 +593,13 @@ impl Driver for SnakemakeDriver {
 
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
         self.ask(Request::Complete(Box::new(outcome)))
+    }
+
+    fn notes(&mut self) -> Vec<Note> {
+        self.notes
+            .lock()
+            .map(|mut notes| std::mem::take(&mut *notes))
+            .unwrap_or_default()
     }
 
     fn finish(&mut self) -> Result<(), DriverError> {
@@ -609,6 +640,8 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
     let (requests, incoming) = channel::<Request>();
     let (outgoing, replies) = channel::<Reply>();
     let launch = launch.clone();
+    let notes: Arc<Mutex<Vec<Note>>> = Arc::default();
+    let session_notes = notes.clone();
     let worker = std::thread::Builder::new()
         .name("snakemake".into())
         .stack_size(512 << 20)
@@ -661,6 +694,9 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
                     Ok(tasks)
                 });
                 session.stop_python_when_done();
+                if let Ok(mut notes) = session_notes.lock() {
+                    notes.extend(session.take_notes());
+                }
                 if channel.replies.send(reply).is_err() {
                     break;
                 }
@@ -673,5 +709,6 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
         requests,
         replies,
         worker: Some(worker),
+        notes,
     }))
 }

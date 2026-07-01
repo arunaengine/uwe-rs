@@ -10,6 +10,7 @@ use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
 
 use python_evaluator::{Command, CommandOutcome, Error, FileKind, Host, LocalHost, Stat};
+use workflow_graph::Note;
 
 use crate::commands::CommandRunner;
 use crate::remote::Mirrors;
@@ -33,6 +34,9 @@ pub struct WorkflowFiles {
     commands: RefCell<Option<Rc<CommandRunner>>>,
     /// The last output of a task that workflow code read.
     pub last_output_read: RefCell<Option<PathBuf>>,
+    /// The outputs of tasks that workflow code read or listed since the engine last asked,
+    /// by their location, for the markers of the graph.
+    pub notes: RefCell<Vec<Note>>,
 }
 
 impl WorkflowFiles {
@@ -44,6 +48,7 @@ impl WorkflowFiles {
             messages: RefCell::new(Vec::new()),
             commands: RefCell::new(None),
             last_output_read: RefCell::new(None),
+            notes: RefCell::new(Vec::new()),
         }
     }
 
@@ -88,6 +93,7 @@ impl Host for WorkflowFiles {
         match self.location(path) {
             Some((location, _)) => {
                 *self.last_output_read.borrow_mut() = Some(path.to_owned());
+                self.notes.borrow_mut().push(Note::Read(location.clone()));
                 std::fs::read(location)
             }
             None => {
@@ -131,6 +137,7 @@ impl Host for WorkflowFiles {
         let mut names: BTreeSet<String> = BTreeSet::new();
         let mut found = false;
         if let Some((location, _)) = self.location(path) {
+            self.notes.borrow_mut().push(Note::Read(location.clone()));
             for entry in std::fs::read_dir(location)?.flatten() {
                 names.insert(entry.file_name().to_string_lossy().into_owned());
             }

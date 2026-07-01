@@ -1,5 +1,7 @@
-3 tasks, 3 steps, 2 edges
+3 tasks, 3 steps, 2 edges, 1 marked
 1 split <- []
+      the next tasks depend on its outputs: rule `split` is a checkpoint: Snakemake plans the workflow again after it
+      the next tasks depend on its outputs: the workflow listed the folder `chunks`, an output of this task, to plan the next tasks
 2 aggregate <- [1]
 3 all <- [2]
 task 1: -

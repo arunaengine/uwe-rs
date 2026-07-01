@@ -1,7 +1,9 @@
-7 tasks, 5 steps, 4 edges
+7 tasks, 5 steps, 4 edges, 1 marked
 1 command set -euo pipefail;  mkdir -p logs <- []
 2 command set -euo pipefail;  tool --version <- []
 3 split <- []
+      the next tasks depend on its outputs: rule `split` is a checkpoint: Snakemake plans the workflow again after it
+      the next tasks depend on its outputs: the workflow listed the folder `chunks`, an output of this task, to plan the next tasks
 4 other <- []
 5 command set -euo pipefail;  ls chunks <- []
 6 aggregate <- [3]

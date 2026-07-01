@@ -80,6 +80,7 @@ impl Run {
                 }
             }
         }
+        self.note_scatter(workflow, step, &keys, &gathered);
         // In a simulated run over files without real content, a null is what real data would
         // fill.
         let simulated = self.options.simulated

@@ -342,7 +342,7 @@ impl Run {
             let value = ArtifactValue {
                 name: artifact.name.clone(),
                 path: artifact.path.clone(),
-                location: Some(Location::File(found.location.clone())),
+                location: Some(Location::File(found.location.clone().into())),
                 optional: artifact.optional,
                 directory: found.directory,
             };
@@ -350,7 +350,7 @@ impl Run {
             if let Ok(declared) = self.artifact_value(artifact)
                 && let Some(Location::Url(url)) = declared.location
             {
-                self.store.insert(url, found.location.clone());
+                self.store.insert(url, found.location.clone().into());
             }
             if !artifact.global_name.is_empty() {
                 self.global_artifacts.insert(

@@ -110,8 +110,8 @@ fn outcomes_carry_env_and_eval_values() {
         std::fs::write(&location, text).expect("writes a file");
         OutputFile {
             path: name.into(),
-            location,
-            directory: false,
+            location: location.to_string_lossy().into_owned(),
+            ..OutputFile::default()
         }
     };
     let files = vec![

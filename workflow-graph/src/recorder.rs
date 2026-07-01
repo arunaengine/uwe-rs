@@ -203,8 +203,10 @@ impl Recorder {
         }
         for file in &outcome.files {
             let path = file.path.trim_start_matches('/').to_owned();
-            self.producers
-                .insert(normalize(&file.location), (outcome.id, path.clone()));
+            self.producers.insert(
+                normalize(Path::new(&file.location)),
+                (outcome.id, path.clone()),
+            );
             self.outputs.entry(outcome.id).or_default().push(path);
         }
     }

@@ -514,7 +514,7 @@ impl Session {
             self.files.add_output(
                 &path,
                 Produced {
-                    location: file.location.clone(),
+                    location: PathBuf::from(&file.location),
                     directory: file.directory,
                 },
             );

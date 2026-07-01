@@ -6,7 +6,6 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use executor::{Backend, ExecutorError};
@@ -122,9 +121,13 @@ async fn outcome<B: Backend>(
         .iter()
         .map(|file| OutputFile {
             path: file.path.clone(),
-            location: (runner.local_path(&file.location))
-                .unwrap_or_else(|| PathBuf::from(&file.location)),
+            location: match runner.local_path(&file.location) {
+                Some(path) => path.to_string_lossy().into_owned(),
+                None => runner.store.url(&file.location),
+            },
             directory: file.directory,
+            size: Some(file.size),
+            digest: Some(file.digest.to_string()),
         })
         .collect();
     Ok(Outcome {

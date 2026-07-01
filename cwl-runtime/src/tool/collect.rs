@@ -138,7 +138,7 @@ impl Pending {
             .iter()
             .find(|file| file.path == OUTPUT_JSON)
         {
-            let location = iri::file_url(&json.location);
+            let location = iri::file_url(Path::new(&json.location));
             files::visit_files(&mut value, &mut |file| {
                 if file.get("class").and_then(Value::as_str) == Some("File") {
                     let name = file
@@ -171,8 +171,7 @@ impl Pending {
 /// The folder the executor put the task's outputs in, from any output file.
 pub fn workdir(outcome: &Outcome) -> Option<String> {
     outcome.files.iter().find_map(|file| {
-        let location = file.location.to_string_lossy();
-        location
+        file.location
             .strip_suffix(file.path.trim_end_matches('/'))
             .map(|folder| folder.trim_end_matches('/').to_owned())
     })
@@ -531,8 +530,9 @@ impl Collector<'_> {
             return match &self.workdir {
                 Some(folder) => vec![OutputFile {
                     path: ".".into(),
-                    location: folder.into(),
+                    location: folder.clone(),
                     directory: true,
+                    ..OutputFile::default()
                 }],
                 None => Vec::new(),
             };
@@ -540,20 +540,22 @@ impl Collector<'_> {
         let mut found: Vec<OutputFile> = Vec::new();
         for file in &self.outcome.files {
             let path = file.path.trim_end_matches('/');
+            let local = Path::new(&file.location);
             if glob_matches(pattern, path) {
                 found.push(OutputFile {
                     path: path.to_owned(),
-                    location: file.location.clone(),
-                    directory: file.directory || file.location.is_dir(),
+                    directory: file.directory || local.is_dir(),
+                    ..file.clone()
                 });
-            } else if file.directory || file.location.is_dir() {
+            } else if file.directory || local.is_dir() {
                 // A folder the executor gave back may hold what the pattern names.
-                for (relative, location, directory) in walk(&file.location, path) {
+                for (relative, location, directory) in walk(local, path) {
                     if glob_matches(pattern, &relative) {
                         found.push(OutputFile {
                             path: relative,
-                            location,
+                            location: location.to_string_lossy().into_owned(),
                             directory,
+                            ..OutputFile::default()
                         });
                     }
                 }
@@ -636,12 +638,12 @@ impl Collector<'_> {
         let name = Path::new(&file.path)
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| files::basename_of(&file.location.to_string_lossy()));
+            .unwrap_or_else(|| files::basename_of(&file.location));
         let mut map = Map::new();
         map.insert("class".into(), Value::string(class));
         map.insert(
             "location".into(),
-            Value::String(iri::file_url(&file.location)),
+            Value::String(iri::file_url(Path::new(&file.location))),
         );
         let path = if file.path == "." {
             self.pending.outdir.clone()

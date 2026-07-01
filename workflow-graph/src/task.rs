@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
@@ -126,11 +125,17 @@ pub struct Outcome {
     pub ended: Option<SystemTime>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutputFile {
     /// The path relative to the working directory, as the task made it.
     pub path: String,
-    /// Where the file is now.
-    pub location: PathBuf,
+    /// Where the file is now: a path on this machine, or a URL like `s3://bucket/key` of a
+    /// store elsewhere.
+    pub location: String,
     pub directory: bool,
+    /// The size of the file, or of all files in a directory, when the executor knows it.
+    pub size: Option<u64>,
+    /// The digest of the file, or of the manifest of a directory, like `sha256:<hex>`, when
+    /// the executor knows it.
+    pub digest: Option<String>,
 }

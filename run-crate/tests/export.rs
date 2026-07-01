@@ -45,8 +45,8 @@ fn finished(id: u64, path: &str, location: PathBuf) -> Outcome {
         exit_code: 0,
         files: vec![OutputFile {
             path: path.into(),
-            location,
-            directory: false,
+            location: location.to_string_lossy().into_owned(),
+            ..OutputFile::default()
         }],
         ..Outcome::default()
     }

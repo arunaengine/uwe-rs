@@ -12,6 +12,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+serde_json.workspace = true
 # JavaScript for CWL expressions. Of the pure Rust engines, Boa builds as fast as tsrun and
 # passes the expressions tsrun fails (named function expressions, key order); nova_vm pulls
 # in about 200 crates. Annex B brings `substr` and other legacy methods real documents use.

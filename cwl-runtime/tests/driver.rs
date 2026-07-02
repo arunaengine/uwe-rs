@@ -380,3 +380,38 @@ fn operations_do_nothing_in_a_real_run() {
         "{error}"
     );
 }
+
+/// Notes the targets of deliveries.
+struct Targets(Vec<std::path::PathBuf>);
+
+impl workflow_graph::Observer for Targets {
+    fn event(&mut self, event: workflow_graph::Event<'_>) {
+        if let workflow_graph::Event::Delivered { delivery } = event {
+            self.0.push(delivery.target.clone());
+        }
+    }
+}
+
+#[test]
+fn real_runs_deliver_the_output_files_to_the_output_folder() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: [touch, out.txt]\n\
+                inputs: []\noutputs:\n  made: {type: File, outputBinding: {glob: out.txt}}\n";
+    std::fs::write(folder.path().join("main.cwl"), tool).expect("writes the tool");
+    let launch = Launch {
+        target: folder.path().join("main.cwl"),
+        scratch: folder.path().join("scratch"),
+        output_dir: Some(folder.path().join("results")),
+        ..Launch::default()
+    };
+    let mut driver = cwl_runtime::driver(&launch).expect("a driver");
+    let mut executor = Real {
+        simulator: Simulator::new(folder.path().join("simulator")),
+    };
+    let mut targets = Targets(Vec::new());
+    let execution = workflow_graph::Engine::new(&mut executor)
+        .observer(&mut targets)
+        .run("main", driver.as_mut());
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    assert_eq!(targets.0, [folder.path().join("results/out.txt")]);
+}

@@ -197,6 +197,20 @@ pub(crate) struct Run {
 }
 
 impl Run {
+    /// The output artifacts that the steps of the run made as files, by the name of the step's
+    /// node and the name of the artifact.
+    pub(crate) fn output_artifacts(&self) -> Vec<(&str, &str, &std::path::Path)> {
+        let mut found = Vec::new();
+        for node in self.nodes.iter().filter(|node| node.kind == NodeKind::Pod) {
+            for artifact in &node.outputs.artifacts {
+                if let Some(Location::File(path)) = &artifact.location {
+                    found.push((node.name.as_str(), artifact.name.as_str(), path.as_path()));
+                }
+            }
+        }
+        found
+    }
+
     pub fn new(
         document: Rc<Document>,
         library: Rc<Library>,

@@ -34,6 +34,7 @@ The engine, the driver interface, the executor interface, the graph and the simu
 | `-max-pending <n>` | how many tasks may be pending at once; 1 for the simulator, no limit for real executors (section 5) | |
 | `-order asked\|reversed\|finished\|shuffled[:<seed>]` | the order in which pending tasks finish; `asked` for the simulator, `finished` for real executors | |
 | `-graph <file>` | write the graph: DOT for a `.dot` name, SVG for `.svg`, a summary for `.txt`, else JSON | |
+| `-output-dir <folder>` | where CWL outputs (the current directory by default), Argo output artifacts and the Nextflow `output` block (`results` by default) go | `output_dir` |
 | `-format json\|dot\|summary\|svg` | the output of `iunctus graph`; `summary` by default | |
 | `-view tasks\|steps` | the graph with one node per task (the default) or one node per step | |
 | `-resume [<run>]` | continue a run without running its finished tasks again ([runs](runs.md), section 3) | |

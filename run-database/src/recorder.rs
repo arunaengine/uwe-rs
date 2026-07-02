@@ -440,6 +440,8 @@ impl Observer for Recorder {
             } => self.finished(outcome, attempt, retried),
             Event::Marked { task, marker } => self.marked(task, marker.kind.name(), &marker.reason),
             Event::Ended { error } => self.ended(error.map(ToString::to_string).as_deref()),
+            // Delivered results are not recorded yet.
+            Event::Delivered { .. } => {}
         }
     }
 }

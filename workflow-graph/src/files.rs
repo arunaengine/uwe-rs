@@ -1,0 +1,171 @@
+//! The files that tasks made: reading them on this machine, and delivering them to where a
+//! language expects its results, like Nextflow's `publishDir`, the working directory of
+//! Snakemake, or the output folder of a CWL run.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::io;
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+
+/// How a delivered file reaches its target.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeliveryMode {
+    /// A copy of its own, which file systems like btrfs and XFS make without copying blocks.
+    #[default]
+    Copy,
+    /// A symbolic link to the stored file, by its absolute path.
+    Link,
+    /// A symbolic link to the stored file, by a path relative to the target.
+    RelativeLink,
+    /// A hard link to the stored file; a copy where no hard link is possible.
+    HardLink,
+}
+
+/// A file or directory that a task made, and where it goes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Delivery {
+    /// The location of the output, as its outcome gives it.
+    pub location: String,
+    /// Where it goes on this machine. What is there is replaced.
+    pub target: PathBuf,
+    pub mode: DeliveryMode,
+}
+
+/// The files that the tasks of a run made, wherever the executor keeps them.
+pub trait Files: Send + Sync {
+    /// A local path with the content of a location.
+    fn local(&self, location: &str) -> io::Result<PathBuf>;
+
+    /// Delivers a file or a directory to its target.
+    fn deliver(&self, delivery: &Delivery) -> io::Result<()>;
+}
+
+/// Files whose locations are paths on this machine, as in a local store.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LocalFiles;
+
+impl Files for LocalFiles {
+    fn local(&self, location: &str) -> io::Result<PathBuf> {
+        Ok(PathBuf::from(location))
+    }
+
+    fn deliver(&self, delivery: &Delivery) -> io::Result<()> {
+        let source = Path::new(&delivery.location);
+        let target = &delivery.target;
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        remove(target)?;
+        match delivery.mode {
+            DeliveryMode::Copy => copy(source, target),
+            DeliveryMode::Link => std::os::unix::fs::symlink(source, target),
+            DeliveryMode::RelativeLink => {
+                let base = target.parent().unwrap_or(Path::new("/"));
+                std::os::unix::fs::symlink(relative(source, base), target)
+            }
+            DeliveryMode::HardLink => hard_link(source, target),
+        }
+    }
+}
+
+/// Removes a file, a link or a directory, if there is one.
+fn remove(path: &Path) -> io::Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_dir() => std::fs::remove_dir_all(path),
+        Ok(_) => std::fs::remove_file(path),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+/// Copies a file or a directory with all it holds.
+fn copy(source: &Path, target: &Path) -> io::Result<()> {
+    if !std::fs::metadata(source)?.is_dir() {
+        return std::fs::copy(source, target).map(|_| ());
+    }
+    std::fs::create_dir_all(target)?;
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        copy(&entry.path(), &target.join(entry.file_name()))?;
+    }
+    Ok(())
+}
+
+/// Hard-links a file, or each file of a directory; copies where no hard link is possible.
+fn hard_link(source: &Path, target: &Path) -> io::Result<()> {
+    if !std::fs::metadata(source)?.is_dir() {
+        return std::fs::hard_link(source, target).or_else(|_| copy(source, target));
+    }
+    std::fs::create_dir_all(target)?;
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        hard_link(&entry.path(), &target.join(entry.file_name()))?;
+    }
+    Ok(())
+}
+
+/// The path of `path` seen from the folder `base`; both are absolute.
+fn relative(path: &Path, base: &Path) -> PathBuf {
+    let path: Vec<_> = path.components().collect();
+    let base: Vec<_> = base.components().collect();
+    let common = path.iter().zip(&base).take_while(|(a, b)| a == b).count();
+    let mut relative = PathBuf::new();
+    for _ in common..base.len() {
+        relative.push("..");
+    }
+    for component in &path[common..] {
+        relative.push(component);
+    }
+    relative
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn relative_paths_climb_to_the_common_folder() {
+        let path = relative(Path::new("/s/runs/a/out.txt"), Path::new("/home/results/x"));
+        assert_eq!(path, PathBuf::from("../../../s/runs/a/out.txt"));
+        let path = relative(Path::new("/r/a/b.txt"), Path::new("/r"));
+        assert_eq!(path, PathBuf::from("a/b.txt"));
+    }
+
+    #[test]
+    fn deliveries_replace_what_is_there() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let stored = folder.path().join("store/out.txt");
+        std::fs::create_dir_all(stored.parent().unwrap()).unwrap();
+        std::fs::write(&stored, "made\n").unwrap();
+        let tree = folder.path().join("store/db");
+        std::fs::create_dir_all(tree.join("sub")).unwrap();
+        std::fs::write(tree.join("sub/a.txt"), "a\n").unwrap();
+        let deliver = |location: &Path, target: &str, mode| {
+            let delivery = Delivery {
+                location: location.to_string_lossy().into_owned(),
+                target: folder.path().join(target),
+                mode,
+            };
+            LocalFiles.deliver(&delivery).expect("delivers");
+            folder.path().join(target)
+        };
+        let copied = deliver(&stored, "results/out.txt", DeliveryMode::Copy);
+        assert_eq!(std::fs::read_to_string(&copied).unwrap(), "made\n");
+        // A second delivery to the same target replaces the first.
+        let linked = deliver(&stored, "results/out.txt", DeliveryMode::Link);
+        assert_eq!(std::fs::read_link(&linked).unwrap(), stored);
+        let relative = deliver(&stored, "results/rel.txt", DeliveryMode::RelativeLink);
+        assert_eq!(
+            std::fs::read_link(&relative).unwrap(),
+            PathBuf::from("../store/out.txt")
+        );
+        let tree_copy = deliver(&tree, "results/db", DeliveryMode::HardLink);
+        assert_eq!(
+            std::fs::read_to_string(tree_copy.join("sub/a.txt")).unwrap(),
+            "a\n"
+        );
+    }
+}

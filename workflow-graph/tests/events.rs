@@ -4,13 +4,17 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use workflow_graph::{
-    Attempt, Driver, DriverError, Engine, Event, ExecuteError, Executor, Language, Observer,
-    Outcome, Running, Task, TaskId,
+    Attempt, Delivery, DeliveryMode, Driver, DriverError, Engine, Event, ExecuteError, Executor,
+    Files, Language, LocalFiles, Observer, Outcome, Running, Task, TaskId,
 };
 
-/// Asks for task 1, then for task 2 after task 1, which reads a file of task 1.
+/// Asks for task 1, then for task 2 after task 1, which reads a file of task 1. After task 1
+/// it asks to deliver `delivered`, when given.
+#[derive(Default)]
 struct Chain {
     fail_at_finish: bool,
+    delivered: Option<std::path::PathBuf>,
+    asked: Vec<Delivery>,
 }
 
 impl Driver for Chain {
@@ -24,9 +28,22 @@ impl Driver for Chain {
 
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
         Ok(match outcome.id {
-            TaskId(1) => vec![task(2, &[1])],
+            TaskId(1) => {
+                if let Some(source) = &self.delivered {
+                    self.asked.push(Delivery {
+                        location: source.to_string_lossy().into_owned(),
+                        target: source.with_extension("delivered"),
+                        mode: DeliveryMode::Copy,
+                    });
+                }
+                vec![task(2, &[1])]
+            }
             _ => Vec::new(),
         })
+    }
+
+    fn deliveries(&mut self) -> Vec<Delivery> {
+        std::mem::take(&mut self.asked)
     }
 
     fn finish(&mut self) -> Result<(), DriverError> {
@@ -77,6 +94,7 @@ impl Observer for Notes {
                 outcome, retried, ..
             } => format!("finished {} {retried}", outcome.id),
             Event::Marked { task, marker } => format!("marked {task} {}", marker.kind.name()),
+            Event::Delivered { delivery } => format!("delivered {}", delivery.location),
             Event::Ended { error } => format!("ended {}", error.is_some()),
         });
     }
@@ -86,9 +104,7 @@ impl Observer for Notes {
 fn observers_hear_each_step() {
     let mut notes = Notes::default();
     let mut executor = Succeed;
-    let mut driver = Chain {
-        fail_at_finish: false,
-    };
+    let mut driver = Chain::default();
     let execution = Engine::new(&mut executor)
         .observer(&mut notes)
         .run("chain", &mut driver);
@@ -110,10 +126,54 @@ fn observers_hear_the_end_of_a_failed_run() {
     let mut notes = Notes::default();
     let mut driver = Chain {
         fail_at_finish: true,
+        ..Chain::default()
     };
     let execution = Engine::new(&mut Succeed)
         .observer(&mut notes)
         .run("chain", &mut driver);
     assert!(execution.error.is_some());
     assert_eq!(notes.0.last().map(String::as_str), Some("ended true"));
+}
+
+/// Succeeds at once, with the files of this machine.
+struct Real;
+
+impl Executor for Real {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        Running::ended(Ok(Outcome {
+            id: attempt.task.id,
+            ..Outcome::default()
+        }))
+    }
+
+    fn files(&self) -> Option<std::sync::Arc<dyn Files>> {
+        Some(std::sync::Arc::new(LocalFiles))
+    }
+}
+
+#[test]
+fn real_executors_deliver_what_drivers_ask_for() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let made = folder.path().join("out.txt");
+    std::fs::write(&made, "made\n").expect("writes");
+    let chain = || Chain {
+        delivered: Some(made.clone()),
+        ..Chain::default()
+    };
+    let mut notes = Notes::default();
+    let execution = Engine::new(&mut Succeed)
+        .observer(&mut notes)
+        .run("chain", &mut chain());
+    assert!(execution.error.is_none());
+    let delivered = format!("delivered {}", made.display());
+    assert_eq!(
+        notes.0[4], delivered,
+        "after the tasks that task 1 made the driver ask for"
+    );
+    // The simulator delivers nothing; a real executor does.
+    let target = made.with_extension("delivered");
+    assert!(!target.exists());
+    let execution = Engine::new(&mut Real).run("chain", &mut chain());
+    assert!(execution.error.is_none());
+    assert_eq!(std::fs::read_to_string(target).expect("reads"), "made\n");
 }

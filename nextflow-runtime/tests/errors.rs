@@ -9,12 +9,14 @@ use workflow_graph::{
     Attempt, Engine, ExecuteError, Executor, Launch, Order, Outcome, RunOptions, Running,
 };
 
-/// Fails the attempts it is told to with their exit codes, and notes the step, attempt and
-/// memory of each attempt.
+/// The step, the attempt and the memory in GiB of an attempt.
+type Ran = (String, u32, Option<u64>);
+
+/// Fails the attempts it is told to with their exit codes, and notes each attempt.
 #[derive(Default)]
 struct Scripted {
     exit_codes: HashMap<(String, u32), i32>,
-    ran: Vec<(String, u32, Option<u64>)>,
+    ran: Vec<Ran>,
 }
 
 impl Executor for Scripted {
@@ -56,10 +58,7 @@ workflow {
 
 /// Runs the pipeline with this config and these failures; the result has the error and what
 /// ran.
-fn run(
-    config: &str,
-    failures: &[(&str, u32, i32)],
-) -> (Option<String>, Vec<(String, u32, Option<u64>)>) {
+fn run(config: &str, failures: &[(&str, u32, i32)]) -> (Option<String>, Vec<Ran>) {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), PIPELINE).expect("writes the script");
     std::fs::write(directory.path().join("nextflow.config"), config).expect("writes the config");

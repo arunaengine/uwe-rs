@@ -1,0 +1,10 @@
+# Real runs of iunctus against the native tool, by the names and digests of the delivered files; written by real_runs.py.
+
+## nf-core-demo: nf-core/demo 555d145, -profile test
+native: exit 0 and 0, 76 files, 34 of them differ between two native runs
+iunctus: exit 0, 72 files: 41 with the same digest, 31 of the varying ones by name, 0 differ, 4 missing, 0 extra
+notes: Nextflow's own reports (execution_report, execution_timeline, execution_trace, pipeline_dag) are not built yet.
+missing: pipeline_info/execution_report_<time>.html
+missing: pipeline_info/execution_timeline_<time>.html
+missing: pipeline_info/execution_trace_<time>.txt
+missing: pipeline_info/pipeline_dag_<time>.html

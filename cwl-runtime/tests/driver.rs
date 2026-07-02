@@ -277,7 +277,7 @@ fn a_scatter_over_the_files_of_a_glob_marks_the_task_that_made_them() {
     let launch = Launch {
         target: folder.path().join("main.cwl"),
         scratch: folder.path().join("scratch"),
-        assume_inputs: true,
+        simulated: true,
         ..Launch::default()
     };
     let mut driver = cwl_runtime::driver(&launch).expect("a driver");

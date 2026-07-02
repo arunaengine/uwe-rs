@@ -11,7 +11,8 @@ use std::sync::Arc;
 use executor::{Backend, ExecutorError};
 use task_model::Digest;
 use workflow_graph::{
-    Attempt, CancellationToken, ExecuteError, Executor, Outcome, OutputFile, Running, Task,
+    Attempt, CancellationToken, ExecuteError, Executor, Files, LocalFiles, Outcome, OutputFile,
+    Running, Task,
 };
 
 use crate::{Runner, RunnerError};
@@ -65,6 +66,12 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
             }
             result
         })
+    }
+
+    /// The files of a local store are files of this machine. Other stores deliver nothing yet.
+    fn files(&self) -> Option<Arc<dyn Files>> {
+        let local = self.runner.local_path("").is_some();
+        local.then(|| Arc::new(LocalFiles) as Arc<dyn Files>)
     }
 }
 

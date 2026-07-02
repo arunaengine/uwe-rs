@@ -12,7 +12,8 @@ use crate::pending::{End, Pending, Slot, Take};
 use crate::queue::Queue;
 use crate::recorder::Recorder;
 use crate::{
-    Driver, DriverError, Event, ExecutionGraph, Note, Observer, Outcome, RunOptions, Task, TaskId,
+    Driver, DriverError, Event, ExecutionGraph, Files, Note, Observer, Outcome, RunOptions, Task,
+    TaskId,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -36,6 +37,13 @@ pub enum ExecuteError {
     /// The run was stopped, like with Ctrl-C.
     #[error("the run was stopped")]
     Cancelled,
+    /// A result could not be delivered to where the language expects it.
+    #[error("cannot deliver {location} to {target}: {message}")]
+    Delivery {
+        location: String,
+        target: String,
+        message: String,
+    },
 }
 
 impl ExecuteError {
@@ -220,9 +228,11 @@ impl<'a> Engine<'a> {
         attempts: &mut Attempts,
     ) -> Result<(), ExecuteError> {
         let mut queue = Queue::default();
+        let files = self.executor.files();
         let first = driver.start();
         let notes = driver.notes();
         self.asked(first, notes, recorder, &mut queue)?;
+        self.deliver(driver, files.as_deref())?;
         loop {
             while pending.len() < self.options.max_pending.max(1)
                 && let Some(task) = queue.next()
@@ -280,8 +290,32 @@ impl<'a> Engine<'a> {
             if !again {
                 queue.finished(id);
             }
+            self.deliver(driver, files.as_deref())?;
         }
         driver.finish()?;
+        self.deliver(driver, files.as_deref())
+    }
+
+    /// Delivers the files that the driver asks for, when the executor has real files.
+    fn deliver(
+        &mut self,
+        driver: &mut dyn Driver,
+        files: Option<&dyn Files>,
+    ) -> Result<(), ExecuteError> {
+        for delivery in driver.deliveries() {
+            self.report(Event::Delivered {
+                delivery: &delivery,
+            });
+            if let Some(files) = files {
+                files
+                    .deliver(&delivery)
+                    .map_err(|error| ExecuteError::Delivery {
+                        location: delivery.location.clone(),
+                        target: delivery.target.display().to_string(),
+                        message: error.to_string(),
+                    })?;
+            }
+        }
         Ok(())
     }
 

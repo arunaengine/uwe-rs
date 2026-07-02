@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use crate::{Language, Note, Outcome, Task};
+use crate::{Delivery, Language, Note, Outcome, Task};
 
 /// What a user asks to run, in the terms all languages share. Each language crate exposes
 /// `pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError>`.
@@ -78,6 +78,13 @@ pub trait Driver {
     /// Ends the run: an error when the workflow failed or waits for something that will not
     /// come.
     fn finish(&mut self) -> Result<(), DriverError>;
+
+    /// The files to deliver to where the language expects its results, like the files of a
+    /// Nextflow `publishDir`, since the last call. The engine asks after `start`, each
+    /// `complete` and `finish`, and a real executor delivers them from its store.
+    fn deliveries(&mut self) -> Vec<Delivery> {
+        Vec::new()
+    }
 
     /// What the driver noticed since the last call while it planned tasks, like reads of task
     /// outputs, for the markers of the graph. The engine asks after `start` and after each

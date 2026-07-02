@@ -12,7 +12,7 @@ use std::task::{Context, Poll};
 
 pub use tokio_util::sync::CancellationToken;
 
-use crate::{ExecuteError, Outcome, Task};
+use crate::{ExecuteError, Files, Outcome, Task};
 
 /// One attempt of a task.
 #[derive(Clone, Debug)]
@@ -77,6 +77,12 @@ impl Future for Running {
 /// future it returns on Tokio, so that many attempts run at the same time.
 pub trait Executor {
     fn run(&mut self, attempt: Attempt) -> Running;
+
+    /// The files that the tasks made, to deliver them. `None` for an executor whose files are
+    /// made up, like the simulator: a simulated run delivers nothing.
+    fn files(&self) -> Option<Arc<dyn Files>> {
+        None
+    }
 }
 
 /// The Tokio runtime that drives the attempts of all runs in this process.

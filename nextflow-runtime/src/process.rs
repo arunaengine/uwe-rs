@@ -76,6 +76,13 @@ pub(crate) struct ProcessNode {
     pub pending: HashMap<TaskId, InFlight>,
 }
 
+/// The output files of a finished task: the names it staged its inputs under, which globs do
+/// not match, and the files that its outputs took, which `publishDir` publishes.
+pub(crate) struct Bound<'a> {
+    staged: Vec<&'a str>,
+    files: Vec<(String, PathValue)>,
+}
+
 /// A task in flight, with what the process needs when it ends.
 pub(crate) struct InFlight {
     name: String,
@@ -142,8 +149,15 @@ impl Behaviour for ProcessNode {
         // `eval` results come in the order of the `eval` parts over all outputs.
         let mut values = Vec::new();
         let mut eval_index = 0;
+        let staged: Vec<&str> = (flight.frame.staged.iter())
+            .map(|(_, name)| name.as_str())
+            .collect();
+        let mut bound = Bound {
+            staged,
+            files: Vec::new(),
+        };
         for output in outputs {
-            values.push(self.output_value(output, &outcome, task, &mut eval_index)?);
+            values.push(self.output_value(output, &outcome, task, &mut eval_index, &mut bound)?);
         }
         let interpreter = &mut *context.interpreter;
         let deliveries = publish::deliveries(
@@ -151,7 +165,7 @@ impl Behaviour for ProcessNode {
             &flight.frame,
             &flight.task,
             &flight.publish,
-            &outcome.files,
+            &bound.files,
         )?;
         context.deliver(deliveries);
         for (channel, value) in self.outputs.clone().into_iter().zip(values) {
@@ -264,6 +278,7 @@ impl ProcessNode {
         outcome: &TaskOutcome,
         task: &str,
         eval_index: &mut usize,
+        bound: &mut Bound,
     ) -> Result<Option<Value>, Error> {
         let mut parts = Vec::new();
         for part in &output.parts {
@@ -284,20 +299,43 @@ impl ProcessNode {
                 }
                 RenderedPart::Path { patterns, options } => {
                     let mut files: Vec<Value> = Vec::new();
+                    // As Nextflow, a glob does not match the staged inputs, unless the output
+                    // includes them; a name without wildcards may name one.
+                    let inputs = option(options, "includeInputs").is_some_and(|v| v.truth());
                     for pattern in patterns {
-                        let found: Vec<Value> = outcome
+                        let glob = pattern.contains(['*', '?', '[', '{']);
+                        let found: Vec<&(String, PathValue)> = outcome
                             .files
                             .iter()
                             .filter(|(name, _)| glob_matches(pattern, name))
-                            .map(|(_, path)| Value::Path(Rc::new(path.clone())))
+                            .filter(|(name, _)| {
+                                inputs || !glob || !bound.staged.contains(&name.as_str())
+                            })
                             .collect();
                         if found.is_empty() && !output.optional {
+                            let excluded = glob
+                                && !inputs
+                                && (outcome.files.iter())
+                                    .any(|(name, _)| glob_matches(pattern, name));
+                            let note = match excluded {
+                                true => {
+                                    " (note: input files are not included in the default \
+                                         matching set)"
+                                }
+                                false => "",
+                            };
                             let message = format!(
-                                "Missing output file(s) `{pattern}` expected by process `{task}`"
+                                "Missing output file(s) `{pattern}` expected by process \
+                                 `{task}`{note}"
                             );
                             return Err(thrown(Exception::new("MissingFileException", message)));
                         }
-                        files.extend(found);
+                        for (name, path) in found {
+                            files.push(Value::Path(Rc::new(path.clone())));
+                            if !bound.files.iter().any(|(known, _)| known == name) {
+                                bound.files.push((name.clone(), path.clone()));
+                            }
+                        }
                     }
                     let arity = option(options, "arity");
                     match (files.as_slice(), arity) {

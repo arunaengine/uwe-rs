@@ -102,3 +102,70 @@ fn outputs_go_where_publish_dir_says() {
         .collect();
     assert_eq!(deliveries.0, expected);
 }
+
+/// Gives each task back its inputs and a file `made.txt`, as a glob in a real work directory
+/// finds them.
+struct WithInputs(std::path::PathBuf);
+
+impl workflow_graph::Executor for WithInputs {
+    fn run(&mut self, attempt: workflow_graph::Attempt) -> workflow_graph::Running {
+        let task = &attempt.task;
+        let mut files = Vec::new();
+        let names = task.inputs.iter().map(|input| input.path.clone());
+        for name in names.chain(["made.txt".to_owned()]) {
+            let location = self.0.join(format!("{}-{name}", task.id));
+            std::fs::write(&location, "x").expect("writes");
+            files.push(workflow_graph::OutputFile {
+                path: name,
+                location: location.to_string_lossy().into_owned(),
+                ..Default::default()
+            });
+        }
+        workflow_graph::Running::ended(Ok(workflow_graph::Outcome {
+            id: task.id,
+            files,
+            ..Default::default()
+        }))
+    }
+}
+
+#[test]
+fn globs_leave_out_the_staged_inputs() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let script = r#"
+process TAKE {
+    publishDir 'published', mode: 'copy'
+    input:
+    path text
+    output:
+    path '*.txt'
+    path 'in.txt', emit: named
+    script:
+    "touch made.txt"
+}
+
+workflow {
+    TAKE(file('in.txt'))
+}
+"#;
+    std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
+    std::fs::write(directory.path().join("in.txt"), "in\n").expect("writes the input");
+    let launch = Launch {
+        target: directory.path().join("main.nf"),
+        ..Launch::default()
+    };
+    let mut driver = nextflow_runtime::driver(&launch).expect("a driver");
+    let mut executor = WithInputs(directory.path().to_owned());
+    let mut deliveries = Deliveries(Vec::new(), std::env::current_dir().expect("a directory"));
+    let execution = Engine::new(&mut executor)
+        .observer(&mut deliveries)
+        .run("main.nf", driver.as_mut());
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    // The glob takes only what the task made; the name of an input takes it.
+    let targets: Vec<&str> = deliveries
+        .0
+        .iter()
+        .map(|(target, _)| target.as_str())
+        .collect();
+    assert_eq!(targets, ["published/made.txt", "published/in.txt"]);
+}

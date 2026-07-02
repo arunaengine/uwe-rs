@@ -71,6 +71,9 @@ pub struct Network {
     requests: Vec<TaskRequest>,
     /// Files that nodes asked to deliver, like those of a `publishDir`.
     deliveries: Vec<Delivery>,
+    /// The failure of a task whose error strategy is `finish`: no more tasks start, and the
+    /// run ends with it once the running tasks have ended.
+    failure: Option<Error>,
     /// The node that requested each task in flight.
     owners: HashMap<TaskId, usize>,
     next_task: u64,
@@ -87,6 +90,7 @@ pub(crate) struct Context<'n, 'i, 'h> {
     written: Vec<ChannelId>,
     requests: Vec<TaskRequest>,
     deliveries: Vec<Delivery>,
+    failure: Option<Error>,
     next_task: &'n mut u64,
     pub interpreter: &'i mut Interpreter<'h>,
     /// Whether the node has more to do without new input, and runs again after the nodes
@@ -150,6 +154,11 @@ impl Context<'_, '_, '_> {
     /// Asks for a task to run.
     pub fn request(&mut self, request: TaskRequest) {
         self.requests.push(request);
+    }
+
+    /// Ends the run with a failure once the running tasks have ended, and starts no more.
+    pub fn fail(&mut self, error: Error) {
+        self.failure.get_or_insert(error);
     }
 
     /// Asks to deliver files that a task made.
@@ -274,6 +283,11 @@ impl Network {
         std::mem::take(&mut self.requests)
     }
 
+    /// The failure that ends the run once the running tasks have ended, if there is one.
+    pub fn take_failure(&mut self) -> Option<Error> {
+        self.failure.take()
+    }
+
     /// The files that nodes asked to deliver since the last call.
     pub fn take_deliveries(&mut self) -> Vec<Delivery> {
         std::mem::take(&mut self.deliveries)
@@ -327,6 +341,7 @@ impl Network {
             written: Vec::new(),
             requests: Vec::new(),
             deliveries: Vec::new(),
+            failure: None,
             next_task: &mut self.next_task,
             interpreter,
             again: false,
@@ -337,7 +352,14 @@ impl Network {
             Step::Complete(outcome) => behaviour.complete(&mut context, outcome),
         };
         let written = std::mem::take(&mut context.written);
-        let requests = std::mem::take(&mut context.requests);
+        let mut requests = std::mem::take(&mut context.requests);
+        if let Some(failure) = context.failure.take() {
+            self.failure.get_or_insert(failure);
+        }
+        // After a failure that ends the run once the running tasks end, no task starts.
+        if self.failure.is_some() {
+            requests.clear();
+        }
         let again = context.again;
         for request in &requests {
             self.owners.insert(request.id, index);

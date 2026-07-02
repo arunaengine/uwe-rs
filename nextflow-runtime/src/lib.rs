@@ -17,6 +17,7 @@ mod publish;
 mod route;
 mod session;
 mod split;
+mod strategy;
 pub mod task;
 mod workflow;
 
@@ -147,6 +148,9 @@ impl Run {
     /// run and no step may wait for input: a run that would wait forever in Nextflow is an
     /// error here.
     pub fn finish(&mut self, host: &mut dyn Host) -> Result<(), Error> {
+        if let Some(failure) = self.network.take_failure() {
+            return Err(failure);
+        }
         let waiting = self.network.running();
         if waiting.is_empty() && !self.network.has_tasks() {
             workflow::finish(&self.workflow, true, self.succeeded);

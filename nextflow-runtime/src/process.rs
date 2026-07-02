@@ -18,6 +18,7 @@ use nextflow_evaluator::value::{ChannelId, Key, MapKind, PathValue, Value};
 use crate::channel::Message;
 use crate::network::{Behaviour, Context, State};
 use crate::publish;
+use crate::strategy::{self, Strategy};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TaskId(pub u64);
@@ -86,6 +87,10 @@ pub(crate) struct Bound<'a> {
 /// A task in flight, with what the process needs when it ends.
 pub(crate) struct InFlight {
     name: String,
+    /// The input values, the index and the attempt of the task, to run it again.
+    values: Vec<Value>,
+    index: u32,
+    attempt: u32,
     outputs: Vec<RenderedOutput>,
     /// The frame and the `task` object of the task, for the closures of `publishDir`.
     frame: TaskFrame,
@@ -137,14 +142,10 @@ impl Behaviour for ProcessNode {
         let Some(flight) = self.pending.remove(&outcome.id) else {
             return Ok(State::Running);
         };
-        let (task, outputs) = (&flight.name, &flight.outputs);
         if outcome.exit_status != 0 {
-            let message = format!(
-                "Process `{task}` terminated with an error exit status ({})",
-                outcome.exit_status
-            );
-            return Err(thrown(Exception::new("ProcessFailedException", message)));
+            return self.failed(context, flight, &outcome);
         }
+        let (task, outputs) = (&flight.name, &flight.outputs);
         // All outputs of a task bind together, in declaration order.
         // `eval` results come in the order of the `eval` parts over all outputs.
         let mut values = Vec::new();
@@ -207,17 +208,21 @@ impl ProcessNode {
     /// and asks for it to run unless `when:` skips it.
     fn start_task(&mut self, context: &mut Context, values: Vec<Value>) -> Result<(), Error> {
         self.tasks += 1;
-        let index = self.tasks;
-        let interpreter = &mut *context.interpreter;
-        let mut frame =
-            interpreter.bind_task_as(&self.module, &self.process, &self.name, &values)?;
-        let ext = ext_map(&self.settings);
-        let base = task_object(&self.name, index, &[], &ext);
-        let mut directives = interpreter.directives(&mut frame, &self.process, &base)?;
-        // Selectors replace the process's own directives; plain settings fill in the rest.
+        self.launch(context, values, self.tasks, None, 1)
+    }
+
+    /// The directives of a task: its process's own, then those of the config, where selectors
+    /// replace the process's own and plain settings fill in the rest.
+    fn directives(
+        &self,
+        interpreter: &mut Interpreter,
+        frame: &mut TaskFrame,
+        base: &Value,
+    ) -> Result<Vec<TaskDirective>, Error> {
+        let mut directives = interpreter.directives(frame, &self.process, base)?;
         for (name, value) in &self.settings.selected {
             if &**name != "ext" {
-                let value = setting(interpreter, &frame, name, value, &base)?;
+                let value = setting(interpreter, frame, name, value, base)?;
                 directives.retain(|directive| directive.name != *name);
                 directives.extend(value);
             }
@@ -225,19 +230,38 @@ impl ProcessNode {
         for (name, value) in &self.settings.defaults {
             let current = directives.iter().find(|directive| directive.name == *name);
             if &**name != "ext" && current.is_none_or(built_in_default) {
-                let value = setting(interpreter, &frame, name, value, &base)?;
+                let value = setting(interpreter, frame, name, value, base)?;
                 directives.retain(|directive| directive.name != *name);
                 directives.extend(value);
             }
         }
         limit_resources(&mut directives);
-        let task = task_object(&self.name, index, &directives, &ext);
+        Ok(directives)
+    }
+
+    /// Asks for an attempt of a task: the first gets a new id, a retry keeps the id of the
+    /// task and counts its attempt up.
+    fn launch(
+        &mut self,
+        context: &mut Context,
+        values: Vec<Value>,
+        index: u32,
+        id: Option<TaskId>,
+        attempt: u32,
+    ) -> Result<(), Error> {
+        let interpreter = &mut *context.interpreter;
+        let mut frame =
+            interpreter.bind_task_as(&self.module, &self.process, &self.name, &values)?;
+        let ext = ext_map(&self.settings);
+        let base = task_object(&self.name, index, attempt, None, &[], &ext);
+        let directives = self.directives(interpreter, &mut frame, &base)?;
+        let task = task_object(&self.name, index, attempt, None, &directives, &ext);
         let rendered = interpreter.render(&mut frame, &self.process, &task, self.stub)?;
         if !rendered.run {
             return Ok(());
         }
         let publish = publish::rules(interpreter, &frame, &task, &directives)?;
-        let id = context.task_id();
+        let id = id.unwrap_or_else(|| context.task_id());
         let mut request = TaskRequest {
             id,
             process: self.name.clone(),
@@ -261,6 +285,9 @@ impl ProcessNode {
         }
         let flight = InFlight {
             name: request.name.clone(),
+            values,
+            index,
+            attempt,
             outputs: rendered.outputs,
             frame,
             task,
@@ -269,6 +296,54 @@ impl ProcessNode {
         self.pending.insert(id, flight);
         context.request(request);
         Ok(())
+    }
+
+    /// What happens after a task failed, by its error strategy, which is evaluated now, with
+    /// the task's exit status: a retry of the task, going on without its outputs, or the end
+    /// of the run, at once or once the running tasks have ended.
+    fn failed(
+        &mut self,
+        context: &mut Context,
+        flight: InFlight,
+        outcome: &TaskOutcome,
+    ) -> Result<State, Error> {
+        let InFlight {
+            name,
+            values,
+            index,
+            attempt,
+            mut frame,
+            ..
+        } = flight;
+        let interpreter = &mut *context.interpreter;
+        let ext = ext_map(&self.settings);
+        let status = Some(outcome.exit_status);
+        let base = task_object(&self.name, index, attempt, status, &[], &ext);
+        let directives = self.directives(interpreter, &mut frame, &base)?;
+        let (strategy, retries) = strategy::of(&directives);
+        let failure = format!(
+            "Process `{name}` terminated with an error exit status ({})",
+            outcome.exit_status
+        );
+        let error = || thrown(Exception::new("ProcessFailedException", failure.clone()));
+        match strategy {
+            Strategy::Retry if attempt <= retries => {
+                interpreter.print(&format!(
+                    "NOTE: {failure} -- Execution is retried ({attempt})\n"
+                ));
+                self.launch(context, values, index, Some(outcome.id), attempt + 1)?;
+                Ok(State::Running)
+            }
+            Strategy::Ignore => {
+                interpreter.print(&format!("NOTE: {failure} -- Error is ignored\n"));
+                self.finish_if_done(context)
+            }
+            Strategy::Finish => {
+                context.fail(error());
+                self.finish_if_done(context)
+            }
+            Strategy::Terminate | Strategy::Retry => Err(error()),
+        }
     }
 
     /// The value one output binds for a task; `None` when an optional output is missing.
@@ -435,12 +510,20 @@ fn built_in_default(directive: &TaskDirective) -> bool {
     }
 }
 
-/// The `task` object of a task: the directives' values, with Nextflow's defaults.
-fn task_object(process: &str, index: u32, directives: &[TaskDirective], ext: &Value) -> Value {
+/// The `task` object of a task: the directives' values, with Nextflow's defaults, its attempt,
+/// and after a failure its exit status.
+fn task_object(
+    process: &str,
+    index: u32,
+    attempt: u32,
+    exit_status: Option<i32>,
+    directives: &[TaskDirective],
+    ext: &Value,
+) -> Value {
     let mut entries: Vec<(Value, Value)> = vec![
         (Value::string("process"), Value::string(process)),
         (Value::string("index"), Value::integer(index as i32)),
-        (Value::string("attempt"), Value::integer(1)),
+        (Value::string("attempt"), Value::integer(attempt as i32)),
         (Value::string("cpus"), Value::integer(1)),
         (Value::string("ext"), ext.clone()),
         (
@@ -448,6 +531,9 @@ fn task_object(process: &str, index: u32, directives: &[TaskDirective], ext: &Va
             Value::list(vec![Value::string("/bin/bash"), Value::string("-ue")]),
         ),
     ];
+    if let Some(status) = exit_status {
+        entries.push((Value::string("exitStatus"), Value::integer(status)));
+    }
     for directive in directives {
         let value = match (directive.name.as_ref(), directive.arguments.as_slice()) {
             ("memory" | "disk", [Value::String(text)]) => parse_memory(text)

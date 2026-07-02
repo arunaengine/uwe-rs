@@ -316,6 +316,23 @@ impl Interpreter<'_> {
         }
     }
 
+    /// Calls a closure of a directive for a task, like the `saveAs` of `publishDir`, with the
+    /// task's variables and `task` in scope. Another value is its own result.
+    pub fn call_in_task(
+        &mut self,
+        task: &TaskFrame,
+        task_object: &Value,
+        closure: &Value,
+        arguments: Vec<Value>,
+    ) -> Result<Value, Error> {
+        let Value::Closure(closure) = closure else {
+            return Ok(closure.clone());
+        };
+        self.with_task(task.variables.clone(), task_object, |this| {
+            this.call_closure_value(closure, arguments, Span::default())
+        })
+    }
+
     /// Runs `f` with `task` and the task's variables in scope.
     fn with_task<T>(
         &mut self,

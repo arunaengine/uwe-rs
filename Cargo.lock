@@ -731,6 +731,7 @@ dependencies = [
  "boa_engine",
  "cwl-parser",
  "indexmap",
+ "serde_json",
  "sha1",
  "tempfile",
  "workflow-graph",

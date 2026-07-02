@@ -9,9 +9,10 @@ use std::sync::Arc;
 use cwl_parser::iri;
 use cwl_parser::model::{Process, Type, short_name};
 use cwl_parser::salad::context::Namespaces;
-use workflow_graph::{Driver, DriverError, Language, Launch, Note, Outcome, Task};
+use workflow_graph::{Delivery, Driver, DriverError, Language, Launch, Note, Outcome, Task};
 
 use crate::files;
+use crate::results;
 use crate::run::Run;
 use crate::tool::{Options, UNSUPPORTED};
 use crate::types::Types;
@@ -20,6 +21,10 @@ use crate::value::{Map, Value};
 /// Runs one CWL document with one input object.
 pub struct CwlDriver {
     launch: Launch,
+    /// Whether the run is simulated, so that its output object names made-up files.
+    simulated: bool,
+    /// The files of the output object to deliver, once the run finished for real.
+    deliveries: Vec<Delivery>,
     process: Arc<Process>,
     /// The `$namespaces` of the document, which expand prefixed formats of the job file.
     namespaces: Namespaces,
@@ -38,10 +43,13 @@ impl CwlDriver {
         }
         let document = cwl_parser::load_file(&reference)
             .map_err(|error| DriverError::new(error.to_string()))?;
+        let simulated = options.simulated;
         let mut run = Run::new(options);
         run.name_ontologies(!document.schemas.is_empty());
         Ok(CwlDriver {
             launch: launch.clone(),
+            simulated,
+            deliveries: Vec::new(),
             run,
             namespaces: Namespaces::default().extend(document.namespaces),
             process: document.process,
@@ -147,8 +155,23 @@ impl Driver for CwlDriver {
         self.run.take_notes()
     }
 
+    fn deliveries(&mut self) -> Vec<Delivery> {
+        std::mem::take(&mut self.deliveries)
+    }
+
+    /// A real run delivers the files of the output object to the output folder and prints
+    /// the object, which then names them there, as `cwltool --outdir` does.
     fn finish(&mut self) -> Result<(), DriverError> {
-        if self.run.outputs().is_some() {
+        if let Some(outputs) = self.run.outputs() {
+            if !self.simulated {
+                let folder = match &self.launch.output_dir {
+                    Some(folder) => std::path::absolute(folder).unwrap_or(folder.clone()),
+                    None => std::env::current_dir().unwrap_or_default(),
+                };
+                let mut outputs = outputs.clone();
+                self.deliveries = results::deliver(&mut outputs, &folder);
+                println!("{}", pretty(&Value::Map(outputs)));
+            }
             return Ok(());
         }
         let waiting = self.run.waiting();
@@ -160,6 +183,15 @@ impl Driver for CwlDriver {
                 waiting.join(", ")
             )
         }))
+    }
+}
+
+/// A value as indented JSON, as cwltool prints the output object.
+fn pretty(value: &Value) -> String {
+    let text = value.to_json();
+    match serde_json::from_str::<serde_json::Value>(&text) {
+        Ok(json) => serde_json::to_string_pretty(&json).unwrap_or(text),
+        Err(_) => text,
     }
 }
 

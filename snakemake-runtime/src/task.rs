@@ -136,12 +136,13 @@ pub fn build(
     rule: &Rule,
     job: &Job,
     id: TaskId,
+    attempt: u32,
 ) -> Result<Task, Error> {
     let wildcards = NamedList::wildcards(&job.wildcards);
     let input = plain(&job.input, "InputFiles");
     let output = plain(&job.output, "OutputFiles");
     let log = plain(&job.log, "Log");
-    let attempt = Value::Int(1);
+    let attempt = Value::Int(attempt as i64);
     let rulename = Value::str(rule.name.as_str());
     let threads_value = match &rule.threads {
         Some(value) => evaluate(

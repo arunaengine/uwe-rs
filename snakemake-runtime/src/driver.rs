@@ -9,12 +9,13 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender, channel};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 
 use python_evaluator::{Error, Interpreter, Value};
 use workflow_graph::{
-    Driver, DriverError, Language, Launch, Marker, MarkerKind, Note, Outcome, Task, TaskId,
+    Delivery, DeliveryMode, Driver, DriverError, Language, Launch, Marker, MarkerKind, Note,
+    Outcome, Task, TaskId,
 };
 
 use crate::commands::{Channel, CommandRunner, Reply, Request};
@@ -78,6 +79,10 @@ pub struct Session {
     remaining: HashMap<usize, usize>,
     /// The markers found since the engine last asked, like the tasks of checkpoints.
     notes: Vec<Note>,
+    /// The attempt of each job whose task was asked for, from 1.
+    attempts: HashMap<usize, u32>,
+    /// The outputs to deliver to the working directory, which the driver hands to the engine.
+    pub deliveries: Arc<Mutex<Vec<Delivery>>>,
 }
 
 impl Session {
@@ -148,6 +153,8 @@ impl Session {
             dependents: HashMap::new(),
             remaining: HashMap::new(),
             notes: Vec::new(),
+            attempts: HashMap::new(),
+            deliveries: Arc::default(),
         })
     }
 
@@ -389,7 +396,7 @@ impl Session {
                     files: &self.files,
                     workdir: &self.workdir,
                 };
-                crate::task::build(&mut self.interpreter, &setting, &rule, &entry, id)
+                crate::task::build(&mut self.interpreter, &setting, &rule, &entry, id, 1)
             }
             .map_err(|error| self.error(&error))?;
             let mut task = task;
@@ -407,6 +414,7 @@ impl Session {
             }
             self.planner.as_mut().expect("a planner").fixed.insert(job);
             self.tasks.insert(job, id);
+            self.attempts.insert(job, 1);
             self.jobs_of_tasks.insert(id, job);
             self.outstanding += 1;
             tasks.push(task);
@@ -483,6 +491,11 @@ impl Session {
         self.outstanding = self.outstanding.saturating_sub(1);
         // Only reads while this outcome is handled explain an error of it.
         *self.files.last_output_read.borrow_mut() = None;
+        if outcome.exit_code != 0
+            && let Some(task) = self.retry(job, outcome.id)?
+        {
+            return Ok(vec![task]);
+        }
         if outcome.exit_code != 0 {
             let name = self
                 .planner
@@ -494,6 +507,11 @@ impl Session {
                 outcome.exit_code
             )));
         }
+        // The outputs go to the working directory, as Snakemake leaves them there, except the
+        // temporary ones.
+        let temporary = (self.planner.as_ref())
+            .map(|planner| planner.jobs[job].temporary_files())
+            .unwrap_or_default();
         // An executor may give an absolute output without its leading `/`, as the simulator does.
         let declared = self
             .planner
@@ -511,6 +529,20 @@ impl Session {
                 Some(output) => PathBuf::from(output.trim_end_matches('/')),
                 None => self.interpreter.host.resolve(&file.path),
             };
+            if !temporary
+                .iter()
+                .any(|output| self.interpreter.host.resolve(output) == path)
+            {
+                let mut deliveries = self
+                    .deliveries
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner);
+                deliveries.push(Delivery {
+                    location: file.location.clone(),
+                    target: path.clone(),
+                    mode: DeliveryMode::Copy,
+                });
+            }
             self.files.add_output(
                 &path,
                 Produced {
@@ -537,6 +569,46 @@ impl Session {
             return self.ready_tasks(None);
         }
         self.ready_tasks(Some(job))
+    }
+
+    /// The next attempt of a failed job, while its rule's `retries` allow one, with its
+    /// resources evaluated for that attempt, as Snakemake runs it.
+    fn retry(&mut self, job: usize, id: TaskId) -> Result<Option<Task>, DriverError> {
+        let planner = self.planner.as_ref().expect("a planner");
+        let rule = planner.rules[planner.jobs[job].rule].clone();
+        let entry = planner.jobs[job].clone();
+        let attempt = self.attempts.get(&job).copied().unwrap_or(1);
+        let retries = (rule.retries.as_ref())
+            .and_then(Value::as_int)
+            .map_or(0, |retries| retries.max(0) as u32);
+        if attempt > retries {
+            return Ok(None);
+        }
+        eprintln!(
+            "Trying to restart job of rule {} (attempt {}).",
+            rule.name,
+            attempt + 1
+        );
+        let task = {
+            let state = self.state.borrow();
+            let setting = crate::task::TaskSetting {
+                state: &state,
+                files: &self.files,
+                workdir: &self.workdir,
+            };
+            crate::task::build(
+                &mut self.interpreter,
+                &setting,
+                &rule,
+                &entry,
+                id,
+                attempt + 1,
+            )
+        }
+        .map_err(|error| self.error(&error))?;
+        self.attempts.insert(job, attempt + 1);
+        self.outstanding += 1;
+        Ok(Some(task))
     }
 
     pub fn finish(&mut self) -> Result<(), DriverError> {
@@ -569,6 +641,8 @@ struct SnakemakeDriver {
     worker: Option<JoinHandle<()>>,
     /// The notes of the session, which it adds before each reply.
     notes: Arc<Mutex<Vec<Note>>>,
+    /// The outputs that the session asked to deliver.
+    deliveries: Arc<Mutex<Vec<Delivery>>>,
 }
 
 impl SnakemakeDriver {
@@ -600,6 +674,14 @@ impl Driver for SnakemakeDriver {
             .lock()
             .map(|mut notes| std::mem::take(&mut *notes))
             .unwrap_or_default()
+    }
+
+    fn deliveries(&mut self) -> Vec<Delivery> {
+        let mut deliveries = self
+            .deliveries
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        std::mem::take(&mut deliveries)
     }
 
     fn finish(&mut self) -> Result<(), DriverError> {
@@ -642,6 +724,8 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
     let launch = launch.clone();
     let notes: Arc<Mutex<Vec<Note>>> = Arc::default();
     let session_notes = notes.clone();
+    let deliveries: Arc<Mutex<Vec<Delivery>>> = Arc::default();
+    let shared = deliveries.clone();
     let worker = std::thread::Builder::new()
         .name("snakemake".into())
         .stack_size(512 << 20)
@@ -664,6 +748,7 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
             let Some(session) = session.as_mut() else {
                 return;
             };
+            session.deliveries = shared;
             if let Some(python) = settings.python {
                 session.use_python_containers(python);
             }
@@ -710,5 +795,6 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
         replies,
         worker: Some(worker),
         notes,
+        deliveries,
     }))
 }

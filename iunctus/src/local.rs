@@ -24,8 +24,9 @@ pub fn executor(
         scratch: scratch.to_owned(),
         pool: Pool::of_this_machine(),
     };
+    // Remote inputs share the folder of downloads with the files that workflow code reads.
     let settings = Settings {
-        downloads: scratch.join("downloads"),
+        downloads: crate::cache_directory().join("downloads"),
         import_inputs: false,
     };
     let runner = Runner::new(store, backend, run, settings);

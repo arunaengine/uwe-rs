@@ -67,8 +67,14 @@ pub enum RunnerError {
     Io(#[from] std::io::Error),
     #[error("cannot read the cache entry {key}: {message}")]
     Entry { key: Digest, message: String },
-    #[error("remote input files are not supported yet: {0}")]
+    #[error(
+        "the input {0} is not supported yet; iunctus reads http and https addresses, and \
+         files of public s3 and gs buckets"
+    )]
     Remote(String),
+    /// A remote input could not be downloaded; another attempt may work.
+    #[error("cannot download {url}: {message}")]
+    Download { url: String, message: String },
     #[error("the name of `{0}` is not UTF-8")]
     Name(PathBuf),
     #[error("the directory manifest of the input `{0}` names a path outside the directory")]
@@ -83,14 +89,18 @@ impl RunnerError {
 
     /// Whether the machine failed rather than the task, so that another attempt may work.
     pub fn retryable(&self) -> bool {
-        matches!(self, RunnerError::Executor(error) if error.retryable())
+        match self {
+            RunnerError::Executor(error) => error.retryable(),
+            RunnerError::Download { .. } => true,
+            _ => false,
+        }
     }
 }
 
 /// How a runner treats the inputs of tasks.
 #[derive(Clone, Debug)]
 pub struct Settings {
-    /// Where inputs of a remote store are downloaded before a task.
+    /// Where remote inputs, and inputs of a remote store, are downloaded before a task.
     pub downloads: PathBuf,
     /// Whether local input files are copied into the store, as tasks on another machine
     /// need. A backend on this machine reads them where they are, so their digests are enough.

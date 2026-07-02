@@ -5,6 +5,7 @@
 
 mod executor;
 mod outputs;
+mod remote;
 mod request;
 mod runner;
 mod staging;

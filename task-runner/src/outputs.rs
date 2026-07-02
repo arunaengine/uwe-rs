@@ -10,6 +10,7 @@ use content_store::{Store, layout};
 use executor::Finished;
 use task_model::{Digest, Tree, TreeEntry};
 
+use crate::runner::at;
 use crate::{RunnerError, StoredFile, TaskResult};
 
 /// Stores the outputs of a finished attempt of `task` in the run `run`, and its captured
@@ -42,7 +43,7 @@ pub(crate) async fn store_outputs(
         });
     }
     let log = async |file: PathBuf| -> Result<Option<Digest>, RunnerError> {
-        if !tokio::fs::try_exists(&file).await? {
+        if !tokio::fs::try_exists(&file).await.map_err(at(&file))? {
             return Ok(None);
         }
         Ok(Some(store.put_file(&file).await?.0))
@@ -74,7 +75,7 @@ async fn store_directory(
 ) -> Result<(Digest, u64), RunnerError> {
     let Place { run, task, attempt } = *place;
     if let Some(path) = store.local_path(&layout::output(run, task, attempt, base)?) {
-        tokio::fs::create_dir_all(path).await?;
+        tokio::fs::create_dir_all(&path).await.map_err(at(&path))?;
     }
     let mut entries = Vec::new();
     for found in walk(directory).await? {
@@ -98,7 +99,7 @@ async fn store_directory(
             Found::EmptyDirectory { relative } => {
                 let location = layout::output(run, task, attempt, &inside)?;
                 if let Some(path) = store.local_path(&location) {
-                    tokio::fs::create_dir_all(path).await?;
+                    tokio::fs::create_dir_all(&path).await.map_err(at(&path))?;
                 }
                 entries.push(TreeEntry::EmptyDirectory { path: relative });
             }
@@ -145,7 +146,7 @@ fn walk_now(root: &Path) -> Result<Vec<Found>, RunnerError> {
     let mut pending = vec![(root.to_owned(), String::new())];
     while let Some((directory, prefix)) = pending.pop() {
         let mut empty = true;
-        for entry in std::fs::read_dir(&directory)? {
+        for entry in std::fs::read_dir(&directory).map_err(at(&directory))? {
             let entry = entry?;
             empty = false;
             let name = entry

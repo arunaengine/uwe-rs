@@ -12,6 +12,7 @@ use sha2::{Digest as _, Sha256};
 use tokio::io::AsyncWriteExt;
 
 use crate::RunnerError;
+use crate::runner::at;
 
 /// The HTTPS address of a remote file: `http` and `https` as they are, `s3://bucket/key` and
 /// `gs://bucket/key` at the bucket's public address. `None` for other schemes.
@@ -48,10 +49,10 @@ pub async fn download(source: &str, downloads: &Path) -> Result<PathBuf, RunnerE
         .map(|byte| format!("{byte:02x}"))
         .collect();
     let local = downloads.join(&name);
-    if tokio::fs::try_exists(&local).await? {
+    if tokio::fs::try_exists(&local).await.map_err(at(&local))? {
         return Ok(local);
     }
-    tokio::fs::create_dir_all(downloads).await?;
+    (tokio::fs::create_dir_all(downloads).await).map_err(at(downloads))?;
     let failed = |error: reqwest::Error| RunnerError::Download {
         url: url.clone(),
         message: error.to_string(),
@@ -66,13 +67,13 @@ pub async fn download(source: &str, downloads: &Path) -> Result<PathBuf, RunnerE
         .and_then(|response| response.error_for_status())
         .map_err(failed)?;
     let partial = local.with_extension(format!("{}.partial", std::process::id()));
-    let mut file = tokio::fs::File::create(&partial).await?;
+    let mut file = (tokio::fs::File::create(&partial).await).map_err(at(&partial))?;
     while let Some(chunk) = response.chunk().await.map_err(failed)? {
-        file.write_all(&chunk).await?;
+        file.write_all(&chunk).await.map_err(at(&partial))?;
     }
-    file.flush().await?;
+    file.flush().await.map_err(at(&partial))?;
     drop(file);
-    tokio::fs::rename(&partial, &local).await?;
+    (tokio::fs::rename(&partial, &local).await).map_err(at(&local))?;
     Ok(local)
 }
 

@@ -49,7 +49,9 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use argo_parser::{Node, Value as Yaml, parse_yaml};
-use workflow_graph::{Driver, DriverError, Language, Launch, Note, Outcome, Task};
+use workflow_graph::{
+    Delivery, DeliveryMode, Driver, DriverError, Language, Launch, Note, Outcome, Task,
+};
 
 pub use library::{Document, Kind, Library, load_file, repository_of};
 pub use validate::{Rejection, validate};
@@ -80,6 +82,10 @@ pub struct ArgoDriver {
     options: Options,
     run: Option<run::Run>,
     warnings: Vec<String>,
+    /// The folder that the output artifacts of the steps go to, as
+    /// `<folder>/<step>/<artifact>`, in a real run; `None` keeps them in the store.
+    pub results: Option<PathBuf>,
+    deliveries: Vec<Delivery>,
 }
 
 impl ArgoDriver {
@@ -90,6 +96,8 @@ impl ArgoDriver {
             options,
             run: None,
             warnings: Vec::new(),
+            results: None,
+            deliveries: Vec::new(),
         }
     }
 
@@ -138,11 +146,26 @@ impl Driver for ArgoDriver {
         run.complete(outcome).map_err(driver_error)
     }
 
+    /// Ends the run, and delivers the output artifacts of its steps to the results folder.
     fn finish(&mut self) -> Result<(), DriverError> {
         let Some(run) = &self.run else {
             return Err(DriverError::new("the run has not started"));
         };
-        run.result().map_err(DriverError::new)
+        let result = run.result().map_err(DriverError::new);
+        if let Some(folder) = &self.results {
+            for (step, artifact, location) in run.output_artifacts() {
+                self.deliveries.push(Delivery {
+                    location: location.to_string_lossy().into_owned(),
+                    target: folder.join(step).join(artifact),
+                    mode: DeliveryMode::Copy,
+                });
+            }
+        }
+        result
+    }
+
+    fn deliveries(&mut self) -> Vec<Delivery> {
+        std::mem::take(&mut self.deliveries)
     }
 
     fn notes(&mut self) -> Vec<Note> {
@@ -196,11 +219,15 @@ pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
         now: None,
         assume_inputs: launch.simulated,
     };
-    Ok(Box::new(ArgoDriver::new(
-        document,
-        Rc::new(library),
-        options,
-    )))
+    let mut driver = ArgoDriver::new(document, Rc::new(library), options);
+    if !launch.simulated {
+        let folder = launch
+            .output_dir
+            .clone()
+            .unwrap_or_else(|| "results".into());
+        driver.results = Some(std::path::absolute(&folder).unwrap_or(folder));
+    }
+    Ok(Box::new(driver))
 }
 
 /// The parameters of a parameter file, a YAML or JSON mapping, as `argo submit

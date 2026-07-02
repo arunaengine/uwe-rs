@@ -229,11 +229,39 @@ fn directories_travel_as_one_entry() {
 }
 
 #[test]
-fn remote_inputs_are_not_supported_yet() {
+fn remote_inputs_are_downloaded_once() {
+    use std::io::{Read, Write};
+    // A small server that answers each request with the same text, and counts them.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+    let address = listener.local_addr().expect("an address");
+    let served = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count = served.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { break };
+            let mut request = [0; 1024];
+            let _ = stream.read(&mut request);
+            count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let body = "data\n";
+            let answer = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(answer.as_bytes());
+        }
+    });
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);
     let mut remote = task(root.path(), "a");
-    remote.inputs[0].source = "s3://bucket/input.txt".into();
+    remote.inputs[0].source = format!("http://{address}/input.txt");
+    for _ in 0..2 {
+        let prepared = request(&runner, &remote);
+        let digest = &prepared.request.spec.inputs[0].digest;
+        assert_eq!(digest, &task_model::Digest::sha256(b"data\n"));
+    }
+    assert_eq!(served.load(std::sync::atomic::Ordering::SeqCst), 1);
+    // Other schemes are not supported yet.
+    remote.inputs[0].source = "ftp://host/input.txt".into();
     let error = block_on(runner.request(&remote, None)).unwrap_err();
     assert!(error.unsupported(), "{error}");
 }

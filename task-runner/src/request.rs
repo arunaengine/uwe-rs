@@ -13,6 +13,7 @@ use task_model::{
 };
 use workflow_graph::{Input, Task};
 
+use crate::remote;
 use crate::runner::{Prepared, Source, segment};
 use crate::{Runner, RunnerError};
 
@@ -62,7 +63,15 @@ impl<B: Backend> Runner<B> {
                 Source::Content,
             ),
             None if input.source.contains("://") => {
-                return Err(RunnerError::Remote(input.source.clone()));
+                if input.directory {
+                    return Err(RunnerError::Remote(input.source.clone()));
+                }
+                let local = remote::download(&input.source, &self.settings.downloads).await?;
+                let (digest, _) = match self.settings.import_inputs {
+                    true => self.import(&local).await?,
+                    false => content_store::hash_file(&local).await?,
+                };
+                (FileKind::File, digest, Source::Local(local))
             }
             // A directory that the workflow makes itself, like an empty CWL `Directory` literal.
             None if input.directory && input.source.is_empty() => (

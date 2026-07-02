@@ -17,6 +17,7 @@ use crate::notes::Noting;
 use crate::process::glob_matches;
 use crate::task::{
     ENVIRONMENT, SCRIPT, command, command_script, container, read_environment, resources,
+    with_registry,
 };
 use crate::{LoadError, Loader, Options, Run, TaskId, TaskOutcome, TaskRequest};
 
@@ -70,6 +71,8 @@ pub struct Nextflow {
     environment: BTreeMap<String, String>,
     /// What the run noted since the engine last asked: files it read, listed or spread.
     notes: Vec<Note>,
+    /// The registry of the container engine, like `docker.registry`, for images without one.
+    registry: Option<String>,
 }
 
 impl Nextflow {
@@ -86,6 +89,7 @@ impl Nextflow {
             requests: HashMap::new(),
             environment: BTreeMap::new(),
             notes: Vec::new(),
+            registry: None,
         })
     }
 
@@ -94,7 +98,9 @@ impl Nextflow {
         requests
             .into_iter()
             .map(|request| {
-                let task = task(&request, &self.environment);
+                let mut task = task(&request, &self.environment);
+                let registry = self.registry.as_deref();
+                task.image = (task.image).map(|image| with_registry(&image, registry));
                 self.requests.insert(request.id, request);
                 task
             })
@@ -131,6 +137,14 @@ impl Driver for Nextflow {
         };
         let module = Loader::default().load(&script).map_err(load_error)?;
         self.environment = environment(&config);
+        let engine = self
+            .settings
+            .container_engine
+            .as_deref()
+            .unwrap_or("docker");
+        self.registry = config
+            .get(&[engine, "registry"])
+            .map(|registry| registry.to_string());
         let text = |path: &Path| {
             std::path::absolute(path)
                 .unwrap_or_else(|_| path.to_owned())

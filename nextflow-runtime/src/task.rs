@@ -73,6 +73,23 @@ pub fn container(request: &TaskRequest) -> Option<String> {
     }
 }
 
+/// An image with the registry of the container engine in front, as Nextflow puts it before
+/// images without a registry of their own: `biocontainers/fastqc` becomes
+/// `quay.io/biocontainers/fastqc` with `docker.registry = 'quay.io'`. An image names its own
+/// registry when its first part holds a `.` or a `:`, like `community.wave.seqera.io/...`.
+pub fn with_registry(image: &str, registry: Option<&str>) -> String {
+    let Some(registry) = registry.filter(|registry| !registry.is_empty()) else {
+        return image.to_owned();
+    };
+    let own = image
+        .split_once('/')
+        .is_some_and(|(first, _)| first.contains(['.', ':']));
+    match own {
+        true => image.to_owned(),
+        false => format!("{}/{image}", registry.trim_end_matches('/')),
+    }
+}
+
 /// The resources a task asks for with its `cpus`, `memory`, `disk`, `time` and `accelerator`
 /// directives. Text like `'2 GB'` or `'1h'` counts as Nextflow reads it.
 pub fn resources(request: &TaskRequest) -> Resources {
@@ -137,4 +154,26 @@ pub fn read_environment(text: &str) -> HashMap<String, (String, i32)> {
         }
     }
     variables
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn images_get_the_registry_of_the_engine() {
+        let quay = Some("quay.io");
+        assert_eq!(
+            with_registry("biocontainers/fastqc:0.12.1", quay),
+            "quay.io/biocontainers/fastqc:0.12.1"
+        );
+        assert_eq!(with_registry("ubuntu:24.04", quay), "quay.io/ubuntu:24.04");
+        let wave = "community.wave.seqera.io/library/fastqc:0.12.1";
+        assert_eq!(with_registry(wave, quay), wave);
+        assert_eq!(
+            with_registry("localhost:5000/tool", quay),
+            "localhost:5000/tool"
+        );
+        assert_eq!(with_registry("biocontainers/x", None), "biocontainers/x");
+    }
 }

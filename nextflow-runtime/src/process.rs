@@ -82,6 +82,8 @@ pub(crate) struct ProcessNode {
 pub(crate) struct Bound<'a> {
     staged: Vec<&'a str>,
     files: Vec<(String, PathValue)>,
+    /// Whether the run is simulated, where made-up names of outputs can be those of inputs.
+    simulated: bool,
 }
 
 /// A task in flight, with what the process needs when it ends.
@@ -156,6 +158,7 @@ impl Behaviour for ProcessNode {
         let mut bound = Bound {
             staged,
             files: Vec::new(),
+            simulated: context.interpreter.host().simulated(),
         };
         for output in outputs {
             values.push(self.output_value(output, &outcome, task, &mut eval_index, &mut bound)?);
@@ -379,14 +382,19 @@ impl ProcessNode {
                     let inputs = option(options, "includeInputs").is_some_and(|v| v.truth());
                     for pattern in patterns {
                         let glob = pattern.contains(['*', '?', '[', '{']);
-                        let found: Vec<&(String, PathValue)> = outcome
-                            .files
-                            .iter()
-                            .filter(|(name, _)| glob_matches(pattern, name))
+                        let matching = || {
+                            (outcome.files.iter()).filter(|(name, _)| glob_matches(pattern, name))
+                        };
+                        let mut found: Vec<&(String, PathValue)> = matching()
                             .filter(|(name, _)| {
                                 inputs || !glob || !bound.staged.contains(&name.as_str())
                             })
                             .collect();
+                        // The simulator names outputs after their patterns, so the made-up
+                        // output of a step can have the name of the made-up input it read.
+                        if found.is_empty() && bound.simulated {
+                            found = matching().collect();
+                        }
                         if found.is_empty() && !output.optional {
                             let excluded = glob
                                 && !inputs

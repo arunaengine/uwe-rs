@@ -378,6 +378,7 @@ fn launch(arguments: &Arguments, target: PathBuf) -> Launch {
         configs: arguments.configs.clone(),
         targets: arguments.targets.clone(),
         scratch: cache_directory().join("scratch"),
+        output_dir: arguments.output_dir.clone(),
         stub: arguments.stub,
         // The simulator makes up the outputs of tasks, so its runs also assume that the
         // source files of the workflow exist, as the graph needs them rather than their content.
@@ -415,6 +416,7 @@ options:
   -graph <file>                       writes the execution graph: DOT for .dot, SVG for .svg,
                                       a summary for .txt, else JSON
   -view tasks|steps                   one node per task (the default) or one per step
+  -output-dir <folder>                where CWL outputs and Argo artifacts go
   -max-pending <n>                    lets up to n tasks be pending at once (default 1 for
                                       the simulator, no limit for real executors)
   -order asked|reversed|finished|shuffled[:<seed>]

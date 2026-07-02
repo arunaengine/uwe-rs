@@ -32,6 +32,8 @@ pub struct Arguments {
     pub executor: Option<String>,
     /// `-graph file`: where to write the execution graph.
     pub graph: Option<PathBuf>,
+    /// `-output-dir folder`: where results go that the workflow gives no place of its own.
+    pub output_dir: Option<PathBuf>,
     /// `-format json|dot|summary|svg` of `iunctus graph`.
     pub format: Option<Format>,
     /// `-view tasks|steps`: the graph with one node per task, or one node per step.
@@ -112,6 +114,7 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
             }
             "-executor" => parsed.executor = Some(value()?),
             "-graph" => parsed.graph = Some(value()?.into()),
+            "-output-dir" => parsed.output_dir = Some(value()?.into()),
             "-format" => {
                 let name = value()?;
                 parsed.format = Some(Format::parse(&name).ok_or(format!(
@@ -317,6 +320,8 @@ mod tests {
     fn orders_and_pending_limits() {
         let parsed = parse_all(&["main.nf", "-max-pending", "4", "-order", "shuffled:7"]);
         assert_eq!(parsed.default_image, None);
+        let parsed = parse_all(&["tool.cwl", "-output-dir", "out"]);
+        assert_eq!(parsed.output_dir, Some(PathBuf::from("out")));
         let parsed = parse_all(&["Snakefile", "-python-image", "python:3.12"]);
         assert_eq!(parsed.python_image.as_deref(), Some("python:3.12"));
         let parsed = parse_all(&["main.nf", "-max-pending", "4", "-order", "shuffled:7"]);

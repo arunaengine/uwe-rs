@@ -27,6 +27,11 @@ pub struct Launch {
     pub targets: Vec<String>,
     /// Where the run keeps files of its own, like downloads.
     pub scratch: PathBuf,
+    /// Where the results go of languages that have no place of their own for them, from
+    /// `-output-dir`: the files of the CWL output object, as `cwltool --outdir` puts them, the
+    /// current directory by default; Argo's output artifacts, `results` by default; the
+    /// Nextflow `output` block, `results` by default.
+    pub output_dir: Option<PathBuf>,
     /// Run the stubs of tasks instead of their scripts, where the language has stubs.
     pub stub: bool,
     /// Whether the run is simulated: tasks make up their files (decision 21). Drivers then take

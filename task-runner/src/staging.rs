@@ -8,7 +8,7 @@ use content_store::layout;
 use executor::{Backend, Staged, Staging};
 use task_model::{Digest, FileKind, TreeEntry};
 
-use crate::runner::{Prepared, Source};
+use crate::runner::{Prepared, Source, at};
 use crate::{Runner, RunnerError};
 
 impl<B: Backend> Runner<B> {
@@ -87,14 +87,14 @@ impl<B: Backend> Runner<B> {
         }
         let downloads = &self.settings.downloads;
         let path = downloads.join(digest.hex());
-        if !tokio::fs::try_exists(&path).await? {
-            tokio::fs::create_dir_all(downloads).await?;
+        if !tokio::fs::try_exists(&path).await.map_err(at(&path))? {
+            (tokio::fs::create_dir_all(downloads).await).map_err(at(downloads))?;
             let bytes = self.store.get_content(digest).await?;
             // A name of this process first, then a rename, so that another run that downloads
             // the same content never reads half a file.
             let part = downloads.join(format!("{}.{}", digest.hex(), std::process::id()));
-            tokio::fs::write(&part, bytes).await?;
-            tokio::fs::rename(&part, &path).await?;
+            (tokio::fs::write(&part, bytes).await).map_err(at(&part))?;
+            (tokio::fs::rename(&part, &path).await).map_err(at(&path))?;
         }
         Ok(path)
     }

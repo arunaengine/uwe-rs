@@ -65,6 +65,12 @@ pub enum RunnerError {
     Spec(#[from] SpecError),
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    /// A file of this machine could not be read or written.
+    #[error("{}: {error}", path.display())]
+    File {
+        path: PathBuf,
+        error: std::io::Error,
+    },
     #[error("cannot read the cache entry {key}: {message}")]
     Entry { key: Digest, message: String },
     #[error(
@@ -281,7 +287,7 @@ impl<B: Backend> Runner<B> {
         let finished = self.backend.run(job, cancel).await?;
         let stored =
             outputs::store_outputs(&self.store, &self.run, &finished, &task, request.attempt).await;
-        tokio::fs::remove_dir_all(&finished.root).await?;
+        (tokio::fs::remove_dir_all(&finished.root).await).map_err(at(&finished.root))?;
         let result = stored?;
         if result.exit_code == Some(0) && request.scope != ReuseScope::None {
             let entry = Entry {
@@ -298,6 +304,14 @@ impl<B: Backend> Runner<B> {
             self.store.put_entry(namespace, &key, bytes.into()).await?;
         }
         Ok(result)
+    }
+}
+
+/// An error of a file operation on this machine, with the path of the file.
+pub(crate) fn at(path: &Path) -> impl FnOnce(std::io::Error) -> RunnerError + '_ {
+    move |error| RunnerError::File {
+        path: path.to_owned(),
+        error,
     }
 }
 

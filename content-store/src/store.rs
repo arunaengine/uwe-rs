@@ -21,6 +21,12 @@ pub enum StoreError {
     Backend(#[from] opendal::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    /// A file of this machine could not be read or written.
+    #[error("{}: {error}", path.display())]
+    File {
+        path: std::path::PathBuf,
+        error: std::io::Error,
+    },
     #[error("stored content of {expected} has digest {actual}; the store is corrupt")]
     Corrupt { expected: Digest, actual: Digest },
     #[error("{0}")]
@@ -129,7 +135,9 @@ impl Store {
     /// it, so that tasks that store the same content at the same moment do not collide.
     async fn put_absent(&self, location: &str, bytes: Bytes) -> Result<(), StoreError> {
         match self.local_path(location) {
-            Some(target) => local::write_absent(&target, &bytes).await?,
+            Some(target) => local::write_absent(&target, &bytes)
+                .await
+                .map_err(at(&target))?,
             None if !self.operator.exists(location).await? => {
                 self.operator.write(location, bytes).await?;
             }
@@ -144,7 +152,9 @@ impl Store {
         let (digest, size) = hash_file(file).await?;
         let location = layout::content(&digest);
         match self.local_path(&location) {
-            Some(target) => local::copy_absent(file, &target).await?,
+            Some(target) => local::copy_absent(file, &target)
+                .await
+                .map_err(at(&target))?,
             None if !self.operator.exists(&location).await? => {
                 self.upload(&location, file).await?;
             }
@@ -169,8 +179,10 @@ impl Store {
         let content = layout::content(&digest);
         match (self.local_path(&location), self.local_path(&content)) {
             (Some(target), Some(stored)) => {
-                local::move_file(file, &target).await?;
-                local::link_absent(&target, &stored).await?;
+                local::move_file(file, &target).await.map_err(at(file))?;
+                local::link_absent(&target, &stored)
+                    .await
+                    .map_err(at(&stored))?;
             }
             _ => {
                 self.upload(&location, file).await?;
@@ -188,7 +200,7 @@ impl Store {
 
     /// Uploads a local file in parts to a location.
     async fn upload(&self, location: &str, file: &std::path::Path) -> Result<(), StoreError> {
-        let mut reader = tokio::fs::File::open(file).await?;
+        let mut reader = tokio::fs::File::open(file).await.map_err(at(file))?;
         let mut writer = self.operator.writer_with(location).chunk(PART_SIZE).await?;
         let mut buffer = vec![0; PART_SIZE];
         loop {
@@ -329,4 +341,12 @@ pub async fn hash_file(file: &std::path::Path) -> Result<(Digest, u64), StoreErr
         size += read as u64;
     }
     Ok((Digest::from_sha256(&hasher.finalize()), size))
+}
+
+/// An error of a file operation on this machine, with the path of the file.
+fn at(path: &std::path::Path) -> impl FnOnce(std::io::Error) -> StoreError + '_ {
+    move |error| StoreError::File {
+        path: path.to_owned(),
+        error,
+    }
 }

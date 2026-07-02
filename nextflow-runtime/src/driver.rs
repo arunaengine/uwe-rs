@@ -11,7 +11,7 @@ use std::rc::Rc;
 use nextflow_config::{Config, tree};
 use nextflow_evaluator::interpreter::{Error, Host, parse_json, parse_yaml};
 use nextflow_evaluator::value::{PathValue, Value};
-use workflow_graph::{Driver, DriverError, Input, Language, Launch, Note, Outcome, Task};
+use workflow_graph::{Delivery, Driver, DriverError, Input, Language, Launch, Note, Outcome, Task};
 
 use crate::notes::Noting;
 use crate::process::glob_matches;
@@ -191,6 +191,13 @@ impl Driver for Nextflow {
 
     fn notes(&mut self) -> Vec<Note> {
         std::mem::take(&mut self.notes)
+    }
+
+    fn deliveries(&mut self) -> Vec<Delivery> {
+        match self.run.as_mut() {
+            Some(run) => run.take_deliveries(),
+            None => Vec::new(),
+        }
     }
 }
 

@@ -10,6 +10,8 @@ use nextflow_evaluator::interpreter::{Error, Interpreter};
 use nextflow_evaluator::value::{ChannelId, Value};
 
 use crate::channel::{Channel, Cursor, Message};
+use workflow_graph::Delivery;
+
 use crate::process::{TaskId, TaskOutcome, TaskRequest};
 
 /// Why a node runs.
@@ -67,6 +69,8 @@ pub struct Network {
     queued: Vec<bool>,
     /// Tasks that nodes requested and that were not handed out yet.
     requests: Vec<TaskRequest>,
+    /// Files that nodes asked to deliver, like those of a `publishDir`.
+    deliveries: Vec<Delivery>,
     /// The node that requested each task in flight.
     owners: HashMap<TaskId, usize>,
     next_task: u64,
@@ -82,6 +86,7 @@ pub(crate) struct Context<'n, 'i, 'h> {
     inputs: &'n mut [Input],
     written: Vec<ChannelId>,
     requests: Vec<TaskRequest>,
+    deliveries: Vec<Delivery>,
     next_task: &'n mut u64,
     pub interpreter: &'i mut Interpreter<'h>,
     /// Whether the node has more to do without new input, and runs again after the nodes
@@ -145,6 +150,11 @@ impl Context<'_, '_, '_> {
     /// Asks for a task to run.
     pub fn request(&mut self, request: TaskRequest) {
         self.requests.push(request);
+    }
+
+    /// Asks to deliver files that a task made.
+    pub fn deliver(&mut self, deliveries: Vec<Delivery>) {
+        self.deliveries.extend(deliveries);
     }
 
     pub fn write(&mut self, channel: ChannelId, message: Message) {
@@ -264,6 +274,11 @@ impl Network {
         std::mem::take(&mut self.requests)
     }
 
+    /// The files that nodes asked to deliver since the last call.
+    pub fn take_deliveries(&mut self) -> Vec<Delivery> {
+        std::mem::take(&mut self.deliveries)
+    }
+
     /// Whether tasks are in flight.
     pub fn has_tasks(&self) -> bool {
         !self.owners.is_empty()
@@ -311,6 +326,7 @@ impl Network {
             inputs: &mut node.inputs,
             written: Vec::new(),
             requests: Vec::new(),
+            deliveries: Vec::new(),
             next_task: &mut self.next_task,
             interpreter,
             again: false,
@@ -327,6 +343,7 @@ impl Network {
             self.owners.insert(request.id, index);
         }
         self.requests.extend(requests);
+        self.deliveries.append(&mut context.deliveries);
         node.behaviour = Some(behaviour);
         node.state = result?;
         for channel in written {

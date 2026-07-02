@@ -17,6 +17,7 @@ use nextflow_evaluator::value::{ChannelId, Key, MapKind, PathValue, Value};
 
 use crate::channel::Message;
 use crate::network::{Behaviour, Context, State};
+use crate::publish;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TaskId(pub u64);
@@ -71,8 +72,18 @@ pub(crate) struct ProcessNode {
     pub tasks: u32,
     /// Whether an input closed, so no more rounds start.
     pub poisoned: bool,
-    /// The tasks in flight: the name of each, and its outputs.
-    pub pending: HashMap<TaskId, (String, Vec<RenderedOutput>)>,
+    /// The tasks in flight.
+    pub pending: HashMap<TaskId, InFlight>,
+}
+
+/// A task in flight, with what the process needs when it ends.
+pub(crate) struct InFlight {
+    name: String,
+    outputs: Vec<RenderedOutput>,
+    /// The frame and the `task` object of the task, for the closures of `publishDir`.
+    frame: TaskFrame,
+    task: Value,
+    publish: Vec<publish::Rule>,
 }
 
 impl Behaviour for ProcessNode {
@@ -116,9 +127,10 @@ impl Behaviour for ProcessNode {
     }
 
     fn complete(&mut self, context: &mut Context, outcome: TaskOutcome) -> Result<State, Error> {
-        let Some((task, outputs)) = self.pending.remove(&outcome.id) else {
+        let Some(flight) = self.pending.remove(&outcome.id) else {
             return Ok(State::Running);
         };
+        let (task, outputs) = (&flight.name, &flight.outputs);
         if outcome.exit_status != 0 {
             let message = format!(
                 "Process `{task}` terminated with an error exit status ({})",
@@ -130,9 +142,18 @@ impl Behaviour for ProcessNode {
         // `eval` results come in the order of the `eval` parts over all outputs.
         let mut values = Vec::new();
         let mut eval_index = 0;
-        for output in &outputs {
-            values.push(self.output_value(output, &outcome, &task, &mut eval_index)?);
+        for output in outputs {
+            values.push(self.output_value(output, &outcome, task, &mut eval_index)?);
         }
+        let interpreter = &mut *context.interpreter;
+        let deliveries = publish::deliveries(
+            interpreter,
+            &flight.frame,
+            &flight.task,
+            &flight.publish,
+            &outcome.files,
+        )?;
+        context.deliver(deliveries);
         for (channel, value) in self.outputs.clone().into_iter().zip(values) {
             if let Some(value) = value {
                 context.emit(channel, value);
@@ -201,6 +222,7 @@ impl ProcessNode {
         if !rendered.run {
             return Ok(());
         }
+        let publish = publish::rules(interpreter, &frame, &task, &directives)?;
         let id = context.task_id();
         let mut request = TaskRequest {
             id,
@@ -223,8 +245,14 @@ impl ProcessNode {
                 RenderedPart::Value(_) | RenderedPart::Stdout => {}
             }
         }
-        self.pending
-            .insert(id, (request.name.clone(), rendered.outputs));
+        let flight = InFlight {
+            name: request.name.clone(),
+            outputs: rendered.outputs,
+            frame,
+            task,
+            publish,
+        };
+        self.pending.insert(id, flight);
         context.request(request);
         Ok(())
     }

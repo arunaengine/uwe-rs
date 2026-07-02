@@ -13,6 +13,7 @@ mod notes;
 mod operator;
 mod pairs;
 mod process;
+mod publish;
 mod route;
 mod session;
 mod split;
@@ -135,6 +136,11 @@ impl Run {
             .complete(outcome, &mut interpreter)
             .map_err(|error| interpreter.locate(error))?;
         Ok(self.network.take_requests())
+    }
+
+    /// The files to deliver since the last call, like those of a `publishDir`.
+    pub fn take_deliveries(&mut self) -> Vec<workflow_graph::Delivery> {
+        self.network.take_deliveries()
     }
 
     /// Checks that the run ended, then runs the `workflow.onComplete` handlers. No task may

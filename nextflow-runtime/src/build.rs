@@ -88,6 +88,8 @@ pub(crate) struct Builder<'a> {
     /// Whether tasks run their `stub:` section.
     pub stub: bool,
     pub config: &'a Config,
+    /// The output directory of the workflow outputs from `-output-dir`, over `outputDir`.
+    pub output_dir: Option<String>,
 }
 
 impl Host for Builder<'_> {
@@ -185,22 +187,45 @@ impl Host for Builder<'_> {
         self.base.plugin_function(plugin, name, arguments)
     }
 
-    /// A workflow output reads its channel to the end. Files are not copied yet.
-    fn publish(
-        &mut self,
-        name: &str,
-        channel: Value,
-        _options: OutputOptions,
-    ) -> Result<(), Error> {
+    /// A workflow output publishes the files of the values of its channel, with the options
+    /// of the `output { }` block over those of the config's `workflow.output` scope.
+    fn publish(&mut self, name: &str, channel: Value, options: OutputOptions) -> Result<(), Error> {
         let Value::Channel(channel) = channel else {
             return Err(thrown(format!("Invalid workflow output `{name}`")));
         };
-        let node = Subscribe {
-            on_next: None,
-            on_complete: None,
+        let setting = |option: &str| {
+            (options.get(option).cloned())
+                .or_else(|| self.config.get(&["workflow", "output", option]))
         };
-        self.network
-            .add(&format!("output {name}"), &[channel], Box::new(node));
+        let label = format!("output {name}");
+        if setting("enabled").is_some_and(|enabled| !enabled.truth()) {
+            let node = Subscribe {
+                on_next: None,
+                on_complete: None,
+            };
+            self.network.add(&label, &[channel], Box::new(node));
+            return Ok(());
+        }
+        let mode = match setting("mode") {
+            Some(mode) => crate::publish::mode_of(&mode.to_string())?,
+            None => workflow_graph::DeliveryMode::Link,
+        };
+        let overwrite = setting("overwrite").is_none_or(|overwrite| overwrite.truth());
+        let configured = (self.output_dir.clone()).or_else(|| {
+            self.config
+                .get(&["outputDir"])
+                .map(|folder| folder.to_string())
+        });
+        let launch = std::path::PathBuf::from(self.base.launch_dir());
+        let node = crate::outputs::Publish {
+            name: name.into(),
+            options,
+            directory: crate::outputs::output_directory(configured.as_deref(), &launch),
+            mode,
+            overwrite,
+            published: Vec::new(),
+        };
+        self.network.add(&label, &[channel], Box::new(node));
         Ok(())
     }
 

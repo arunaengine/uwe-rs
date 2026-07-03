@@ -122,7 +122,7 @@ pub(crate) fn deliveries(
 
 /// How a mode of `publishDir` delivers. A move becomes a copy, since the store keeps the file,
 /// and a copy that does not follow links is a copy, since stored files are no links.
-fn mode_of(mode: &str) -> Result<DeliveryMode, Error> {
+pub(crate) fn mode_of(mode: &str) -> Result<DeliveryMode, Error> {
     Ok(match mode {
         "symlink" => DeliveryMode::Link,
         "rellink" => DeliveryMode::RelativeLink,

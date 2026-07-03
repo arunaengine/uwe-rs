@@ -147,6 +147,7 @@ impl Behaviour for ProcessNode {
         if outcome.exit_status != 0 {
             return self.failed(context, flight, &outcome);
         }
+        context.remember_task_files(&outcome.files);
         let (task, outputs) = (&flight.name, &flight.outputs);
         // All outputs of a task bind together, in declaration order.
         // `eval` results come in the order of the `eval` parts over all outputs.

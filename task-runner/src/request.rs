@@ -48,10 +48,15 @@ impl<B: Backend> Runner<B> {
 
     /// An input by its digest, and where its content comes from: literal content, a local
     /// directory or a local file. A local path is taken with its links resolved, so that a
-    /// container that sees the folder of the path sees the content.
+    /// container that sees the folder of the path sees the content. When the runner imports
+    /// inputs, the backend takes them from the store instead.
     async fn input(&self, input: &Input) -> Result<(InputFile, Source), RunnerError> {
         let source = Path::new(&input.source);
+        let imported = self.settings.import_inputs;
         let local = || -> Result<Source, RunnerError> {
+            if imported {
+                return Ok(Source::Stored);
+            }
             Ok(Source::Local(std::fs::canonicalize(source).map_err(
                 |error| std::io::Error::new(error.kind(), format!("{}: {error}", source.display())),
             )?))
@@ -67,11 +72,13 @@ impl<B: Backend> Runner<B> {
                     return Err(RunnerError::Remote(input.source.clone()));
                 }
                 let local = remote::download(&input.source, &self.settings.downloads).await?;
-                let (digest, _) = match self.settings.import_inputs {
-                    true => self.import(&local).await?,
-                    false => content_store::hash_file(&local).await?,
-                };
-                (FileKind::File, digest, Source::Local(local))
+                match imported {
+                    true => (FileKind::File, self.import(&local).await?.0, Source::Stored),
+                    false => {
+                        let (digest, _) = content_store::hash_file(&local).await?;
+                        (FileKind::File, digest, Source::Local(local))
+                    }
+                }
             }
             // A directory that the workflow makes itself, like an empty CWL `Directory` literal.
             None if input.directory && input.source.is_empty() => (

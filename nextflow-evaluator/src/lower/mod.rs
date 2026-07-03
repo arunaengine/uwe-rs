@@ -8,6 +8,7 @@ mod criteria;
 mod dsl1;
 mod expression;
 mod names;
+mod output;
 mod process;
 mod scope;
 mod statement;
@@ -261,12 +262,12 @@ pub fn lower_script(
                     }
                 }
             }
-            // The directives of the outputs are not read yet: iunctus does not publish files.
             Item::Output { targets, .. } => {
                 for target in targets {
                     match target {
-                        ast::OutputTarget::Target { name, .. } => {
-                            module.output_names.push(name.text.as_str().into());
+                        ast::OutputTarget::Target { name, body, .. } => {
+                            let output = lowering.output_declaration(&name.text, body);
+                            module.outputs.push(output);
                         }
                         ast::OutputTarget::Statement(statement) => {
                             lowering.error("Invalid output declaration", statement.span);

@@ -630,7 +630,7 @@ fn published_outputs_are_read_to_the_end() {
     let parsed = parse_script(source);
     assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
     let module = Rc::new(lower_module(&parsed.tree, source).expect("lowers"));
-    assert_eq!(&*module.output_names[0], "doubled");
+    assert_eq!(&*module.outputs[0].name, "doubled");
     let mut output = Output::default();
     nextflow_runtime::run(&module, &mut output).expect("runs");
     assert_eq!(output.0, "2\n4\n");

@@ -9,9 +9,12 @@ mod dataflow;
 mod expression;
 pub mod glob;
 mod library;
+mod output;
 mod statement;
 mod task;
 mod template;
+
+pub use output::OutputOptions;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -157,8 +160,14 @@ pub trait Host {
         Ok(None)
     }
 
-    /// Publishes a channel as a workflow output, from the `publish:` section.
-    fn publish(&mut self, name: &str, _channel: Value) -> Result<(), Error> {
+    /// Publishes a channel as a workflow output, from the `publish:` section, with the options
+    /// that the `output { }` block gives it.
+    fn publish(
+        &mut self,
+        name: &str,
+        _channel: Value,
+        _options: OutputOptions,
+    ) -> Result<(), Error> {
         let message = format!("publishing the workflow output `{name}`");
         Err(unsupported(message, Span::default()))
     }
@@ -325,6 +334,9 @@ pub struct Interpreter<'h> {
     task_variables: Vec<(Rc<str>, Rc<RefCell<Value>>)>,
     /// The script of the statement where the error that is being raised happened.
     error_module: Option<Rc<Module>>,
+    /// While the `path` closure of a workflow output runs: its publish statements, like
+    /// `file >> 'fastq/'`, each as its source and target.
+    publishing: Option<Vec<(Value, String)>>,
 }
 
 impl<'h> Interpreter<'h> {
@@ -336,6 +348,7 @@ impl<'h> Interpreter<'h> {
             workflow_path: Vec::new(),
             task_variables: Vec::new(),
             error_module: None,
+            publishing: None,
         }
     }
 

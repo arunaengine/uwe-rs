@@ -9,7 +9,7 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
+use nextflow_evaluator::interpreter::{Error, FileMetadata, Host, OutputOptions};
 use nextflow_evaluator::lowered::{Module, Process};
 use nextflow_evaluator::value::{PathValue, Value};
 use workflow_graph::Note;
@@ -108,8 +108,8 @@ impl Host for Noting<'_> {
         self.host.operator(source, name, arguments)
     }
 
-    fn publish(&mut self, name: &str, channel: Value) -> Result<(), Error> {
-        self.host.publish(name, channel)
+    fn publish(&mut self, name: &str, channel: Value, options: OutputOptions) -> Result<(), Error> {
+        self.host.publish(name, channel, options)
     }
 
     fn plugin_function(

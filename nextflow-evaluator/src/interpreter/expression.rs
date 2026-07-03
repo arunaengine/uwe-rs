@@ -223,6 +223,13 @@ impl Interpreter<'_> {
             } => {
                 let left = self.expression(frame, left)?;
                 let right = self.expression(frame, right)?;
+                // In the `path` closure of a workflow output, `file >> 'dir/'` publishes.
+                if *operator == Operator::RightShift
+                    && let Some(statements) = self.publishing.as_mut()
+                {
+                    statements.push((left, right.to_string()));
+                    return Ok(Value::Null);
+                }
                 match (operator, &left, &right) {
                     (
                         Operator::BitOr,

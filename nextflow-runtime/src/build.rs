@@ -8,7 +8,7 @@ use std::rc::Rc;
 use nextflow_config::Config;
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::glob::{FileType, GlobOptions, glob, is_glob, no_match};
-use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
+use nextflow_evaluator::interpreter::{Error, FileMetadata, Host, OutputOptions};
 use nextflow_evaluator::lowered::{Expression, ExpressionKind, Input, Module, Process};
 use nextflow_evaluator::split::{Splitter, positive};
 use nextflow_evaluator::value::{ChannelId, ChannelOut, ListKind, PathValue, Value};
@@ -186,7 +186,12 @@ impl Host for Builder<'_> {
     }
 
     /// A workflow output reads its channel to the end. Files are not copied yet.
-    fn publish(&mut self, name: &str, channel: Value) -> Result<(), Error> {
+    fn publish(
+        &mut self,
+        name: &str,
+        channel: Value,
+        _options: OutputOptions,
+    ) -> Result<(), Error> {
         let Value::Channel(channel) = channel else {
             return Err(thrown(format!("Invalid workflow output `{name}`")));
         };

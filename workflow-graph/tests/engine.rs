@@ -5,8 +5,9 @@
 
 use workflow_graph::simulator::{EMPTY_GZIP, file_name, glob_matches};
 use workflow_graph::{
-    Driver, DriverError, EdgeKind, Engine, Event, Input, Language, MORE_TASKS, Marker, MarkerKind,
-    Note, Observer, Outcome, SIMULATION, Simulator, Task, TaskId, execute,
+    Attempt, Driver, DriverError, EdgeKind, Engine, Event, Executor, Input, Language, MORE_TASKS,
+    Marker, MarkerKind, Note, Observer, Outcome, Running, SIMULATION, Simulator, Task, TaskId,
+    execute,
 };
 
 /// Two `split` tasks, then one `merge` task that reads both outputs.
@@ -101,6 +102,34 @@ fn the_graph_links_tasks_by_their_files() {
     .expect("JSON");
     assert_eq!(tes["executors"][0]["image"], "ubuntu:24.04");
     assert!(graph.to_dot().contains("t1 -> t3"));
+}
+
+/// The simulator, except that an earlier result answers task 2.
+struct Reusing(Simulator);
+
+impl Executor for Reusing {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        let cached = attempt.task.id == TaskId(2);
+        let outcome = self.0.simulate(&attempt.task);
+        Running::ended(outcome.map(|outcome| Outcome { cached, ..outcome }))
+    }
+}
+
+#[test]
+fn the_graph_notes_the_tasks_that_reused_an_earlier_result() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let mut executor = Reusing(Simulator::new(directory.path()));
+    let graph = execute("toy", &mut Toy::default(), &mut executor)
+        .into_result()
+        .expect("the run succeeds");
+    let reused: Vec<bool> = graph.nodes.iter().map(|node| node.reused).collect();
+    assert_eq!(reused, [false, true, false]);
+    let json = serde_json::to_string(&graph).expect("JSON");
+    assert_eq!(json.matches("\"reused\":true").count(), 1, "{json}");
+    assert!(
+        !json.contains("\"reused\":false"),
+        "only reused tasks name it: {json}"
+    );
 }
 
 #[test]

@@ -54,6 +54,7 @@ impl Recorder {
                 .ok_or(ExecuteError::DuplicateTask(task.id))?;
             node.task = task.clone();
             node.exit_code = None;
+            node.reused = false;
             return Ok(&[]);
         }
         if let Some(&after) = task.after.iter().find(|id| !self.seen.contains(id)) {
@@ -94,6 +95,7 @@ impl Recorder {
         self.graph.nodes.push(Node {
             task: task.clone(),
             exit_code: None,
+            reused: false,
             markers: Vec::new(),
         });
         Ok(&self.graph.edges[first..])
@@ -192,7 +194,8 @@ impl Recorder {
         Some((task, Marker::new(MarkerKind::Wildcard, reason)))
     }
 
-    /// Notes the exit code of a task and the files it made.
+    /// Notes the exit code of a task, whether an earlier result answered it, and the files it
+    /// made.
     pub(crate) fn finished(&mut self, outcome: &Outcome) {
         if let Some(node) = self
             .positions
@@ -200,6 +203,7 @@ impl Recorder {
             .and_then(|position| self.graph.nodes.get_mut(*position))
         {
             node.exit_code = Some(outcome.exit_code);
+            node.reused = outcome.cached;
         }
         for file in &outcome.files {
             let path = file.path.trim_start_matches('/').to_owned();

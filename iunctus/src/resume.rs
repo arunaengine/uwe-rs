@@ -74,6 +74,7 @@ impl Executor for Resumed {
         self.taken.note(task.id, &found.run);
         Running::ended(Ok(Outcome {
             id: task.id,
+            cached: true,
             ..found.outcome.clone()
         }))
     }

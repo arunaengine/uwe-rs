@@ -26,6 +26,10 @@ pub struct ExecutionGraph {
 pub struct Node {
     pub task: Task,
     pub exit_code: Option<i32>,
+    /// Whether an earlier result answered the task, from the cache store or from an earlier
+    /// run, so that it did not run.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub reused: bool,
     /// The points where the tasks that follow depend on the outputs of this task, so that a
     /// run with real data can have more or fewer tasks after it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -46,6 +50,10 @@ pub enum EdgeKind {
     File { path: String },
     /// `to` waits for `from` without reading its files.
     Order,
+}
+
+fn is_false(flag: &bool) -> bool {
+    !flag
 }
 
 impl ExecutionGraph {

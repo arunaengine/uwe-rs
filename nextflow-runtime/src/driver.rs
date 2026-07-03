@@ -155,6 +155,8 @@ impl Driver for Nextflow {
         let options = Options {
             stub: self.launch.stub,
             simulated: self.launch.simulated,
+            output_dir: (self.launch.output_dir.as_ref())
+                .map(|folder| folder.to_string_lossy().into_owned()),
             container_engine: self.settings.container_engine.clone(),
             config,
             profile: if profiles.is_empty() {

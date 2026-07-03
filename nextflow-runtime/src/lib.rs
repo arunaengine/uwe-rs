@@ -11,6 +11,7 @@ mod loader;
 mod network;
 mod notes;
 mod operator;
+mod outputs;
 mod pairs;
 mod process;
 mod publish;
@@ -43,6 +44,8 @@ pub struct Options {
     pub stub: bool,
     /// Whether the run is simulated, so that its files are made up (`Launch.simulated`).
     pub simulated: bool,
+    /// The output directory of the workflow outputs, from `-output-dir`.
+    pub output_dir: Option<String>,
     /// The container engine, like `docker`, which `workflow.containerEngine` gives.
     pub container_engine: Option<String>,
     /// The merged config, with the params of the command line.
@@ -92,6 +95,7 @@ impl Run {
                 base: &mut session,
                 stub: options.stub,
                 config: &options.config,
+                output_dir: options.output_dir.clone(),
             };
             let mut interpreter = Interpreter::new(&mut builder);
             set_globals(&mut interpreter, options, &workflow);
@@ -208,6 +212,7 @@ impl Default for Options {
         Self {
             stub: false,
             simulated: false,
+            output_dir: None,
             container_engine: None,
             config: Config::default(),
             profile: "standard".into(),

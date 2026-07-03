@@ -77,6 +77,9 @@ pub struct Network {
     /// The node that requested each task in flight.
     owners: HashMap<TaskId, usize>,
     next_task: u64,
+    /// The name of each file that a finished task made, relative to its work directory, by
+    /// its location, for the workflow outputs.
+    task_files: HashMap<String, String>,
     /// Topics by name: the channel of `channel.topic(name)`, if a script reads it, and the
     /// process outputs that write to the topic.
     topics: indexmap::IndexMap<Rc<str>, (Option<ChannelId>, Vec<ChannelId>)>,
@@ -92,6 +95,7 @@ pub(crate) struct Context<'n, 'i, 'h> {
     deliveries: Vec<Delivery>,
     failure: Option<Error>,
     next_task: &'n mut u64,
+    task_files: &'n mut HashMap<String, String>,
     pub interpreter: &'i mut Interpreter<'h>,
     /// Whether the node has more to do without new input, and runs again after the nodes
     /// that read what it wrote.
@@ -159,6 +163,21 @@ impl Context<'_, '_, '_> {
     /// Ends the run with a failure once the running tasks have ended, and starts no more.
     pub fn fail(&mut self, error: Error) {
         self.failure.get_or_insert(error);
+    }
+
+    /// Notes the files that a finished task made, by their names in its work directory.
+    pub fn remember_task_files(
+        &mut self,
+        files: &[(String, nextflow_evaluator::value::PathValue)],
+    ) {
+        for (name, location) in files {
+            self.task_files.insert(location.path.clone(), name.clone());
+        }
+    }
+
+    /// The name of a file in the work directory of the task that made it, when a task made it.
+    pub fn task_file(&self, location: &str) -> Option<String> {
+        self.task_files.get(location).cloned()
     }
 
     /// Asks to deliver files that a task made.
@@ -343,6 +362,7 @@ impl Network {
             deliveries: Vec::new(),
             failure: None,
             next_task: &mut self.next_task,
+            task_files: &mut self.task_files,
             interpreter,
             again: false,
         };

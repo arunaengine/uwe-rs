@@ -34,6 +34,8 @@ pub struct Arguments {
     pub graph: Option<PathBuf>,
     /// `-output-dir folder`: where results go that the workflow gives no place of its own.
     pub output_dir: Option<PathBuf>,
+    /// `-tes-server address`: the TES server of `-executor tes`.
+    pub tes_server: Option<String>,
     /// `-format json|dot|summary|svg` of `iunctus graph`.
     pub format: Option<Format>,
     /// `-view tasks|steps`: the graph with one node per task, or one node per step.
@@ -115,6 +117,7 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
             "-executor" => parsed.executor = Some(value()?),
             "-graph" => parsed.graph = Some(value()?.into()),
             "-output-dir" => parsed.output_dir = Some(value()?.into()),
+            "-tes-server" => parsed.tes_server = Some(value()?),
             "-format" => {
                 let name = value()?;
                 parsed.format = Some(Format::parse(&name).ok_or(format!(

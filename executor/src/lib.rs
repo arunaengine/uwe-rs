@@ -5,6 +5,7 @@
 
 mod braces;
 pub mod engine;
+pub mod http;
 mod image;
 mod job;
 pub mod local;

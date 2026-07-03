@@ -140,7 +140,7 @@ struct Created {
 pub struct Client {
     /// The address of the API, like `http://localhost:8000/ga4gh/tes/v1`.
     base: String,
-    http: reqwest::Client,
+    http: &'static reqwest::Client,
     /// A bearer token for the server, when it needs one.
     token: Option<String>,
 }
@@ -154,15 +154,10 @@ impl Client {
             true => server.to_owned(),
             false => format!("{server}/ga4gh/tes/v1"),
         };
-        let http = reqwest::Client::builder()
-            .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
-            .connect_timeout(Duration::from_secs(30))
-            .timeout(Duration::from_secs(120))
-            .build()
-            .map_err(|error| TesError::Request {
-                url: base.clone(),
-                message: error.to_string(),
-            })?;
+        let http = executor::http::client().map_err(|message| TesError::Request {
+            url: base.clone(),
+            message,
+        })?;
         Ok(Client { base, http, token })
     }
 
@@ -198,6 +193,7 @@ impl Client {
         mut request: reqwest::RequestBuilder,
         url: &str,
     ) -> Result<T, TesError> {
+        request = request.timeout(Duration::from_secs(120));
         if let Some(token) = &self.token {
             request = request.bearer_auth(token);
         }

@@ -16,6 +16,7 @@ mod remote;
 mod resume;
 mod revision;
 mod runs;
+mod tes;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -357,8 +358,17 @@ fn executor(arguments: &Arguments, run: &str, verbose: bool) -> Result<Box<dyn E
             executor.verbose = verbose;
             Ok(Box::new(executor))
         }
+        "tes" => {
+            let default_image = arguments.default_image.clone();
+            let server = (arguments.tes_server.as_deref()).unwrap_or(tes::DEFAULT_SERVER);
+            let mut executor =
+                tes::executor(&store(arguments), &scratch, run, default_image, server)
+                    .map_err(|message| failure(format!("iunctus: {message}")))?;
+            executor.verbose = verbose;
+            Ok(Box::new(executor))
+        }
         other => Err(failure(format!(
-            "iunctus: unknown executor `{other}`; use `simulator` or `local`"
+            "iunctus: unknown executor `{other}`; use `simulator`, `local` or `tes`"
         ))),
     }
 }
@@ -411,12 +421,15 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
 
 options:
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it
-  -executor simulator|local           simulator (the default) writes TES task documents
-                                      and makes up the outputs; local runs containers
+  -executor simulator|local|tes       simulator (the default) writes TES task documents
+                                      and makes up the outputs; local runs containers on
+                                      this machine, tes on a TES server
   -graph <file>                       writes the execution graph: DOT for .dot, SVG for .svg,
                                       a summary for .txt, else JSON
   -view tasks|steps                   one node per task (the default) or one per step
   -output-dir <folder>                where CWL outputs and Argo artifacts go
+  -tes-server <address>               the TES server of -executor tes; Funnel's
+                                      http://localhost:8000 by default
   -max-pending <n>                    lets up to n tasks be pending at once (default 1 for
                                       the simulator, no limit for real executors)
   -order asked|reversed|finished|shuffled[:<seed>]

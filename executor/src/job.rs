@@ -7,8 +7,8 @@ use std::path::PathBuf;
 
 use task_model::{Placement, TaskSpec};
 
-use crate::manifest::{Collected, ManifestError};
-use crate::wrapper::{ROOT, STDERR, STDOUT};
+use crate::manifest::{Collected, ManifestError, parse};
+use crate::wrapper::{EXIT, MANIFEST, ROOT, STDERR, STDOUT};
 
 /// The folders of a task's scratch directory: the work directory, the control files of the
 /// wrapper, and copies of inputs at absolute paths, which are mounted where the task sees them.
@@ -73,6 +73,24 @@ impl Finished {
             Some(inside) => self.root.join(CONTROL).join(ROOT).join(inside),
             None => self.root.join(WORK).join(path),
         }
+    }
+
+    /// What the wrapper left in the control folder of a scratch directory: the tool's exit
+    /// code, and after a success the manifest of its outputs. For backends whose server gives
+    /// the control folder back, like TES.
+    pub fn from_control(root: PathBuf) -> Result<Finished, ExecutorError> {
+        let control = root.join(CONTROL);
+        let read = |name: &str| std::fs::read_to_string(control.join(name)).ok();
+        let exit_code = read(EXIT).and_then(|text| text.trim().parse().ok());
+        let files = match exit_code {
+            Some(0) => parse(&read(MANIFEST).unwrap_or_default())?,
+            _ => Vec::new(),
+        };
+        Ok(Finished {
+            exit_code,
+            files,
+            root,
+        })
     }
 
     /// The file that captured standard output.

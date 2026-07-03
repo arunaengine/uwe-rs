@@ -6,7 +6,6 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use sha2::{Digest as _, Sha256};
 use tokio::io::AsyncWriteExt;
@@ -57,12 +56,10 @@ pub async fn download(source: &str, downloads: &Path) -> Result<PathBuf, RunnerE
         url: url.clone(),
         message: error.to_string(),
     };
-    let client = reqwest::Client::builder()
-        .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
-        .connect_timeout(Duration::from_secs(30))
-        .read_timeout(Duration::from_secs(300))
-        .build()
-        .map_err(failed)?;
+    let client = executor::http::client().map_err(|message| RunnerError::Download {
+        url: url.clone(),
+        message,
+    })?;
     let mut response = (client.get(&url).send().await)
         .and_then(|response| response.error_for_status())
         .map_err(failed)?;

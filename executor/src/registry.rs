@@ -18,6 +18,9 @@ const MANIFESTS: &str = "application/vnd.oci.image.index.v1+json, \
      application/vnd.oci.image.manifest.v1+json, \
      application/vnd.docker.distribution.manifest.v2+json";
 
+/// How long a request to a registry may take.
+const TIMEOUT: Duration = Duration::from_secs(60);
+
 /// An image reference split into its registry, repository and tag or digest.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Reference {
@@ -78,17 +81,13 @@ pub async fn pin(reference: &str) -> Result<Option<String>, ExecutorError> {
         engine: parsed.registry.clone(),
         message,
     };
-    let client = reqwest::Client::builder()
-        .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
-        .timeout(Duration::from_secs(60))
-        .build()
-        .map_err(|error| failed(error.to_string()))?;
+    let client = crate::http::client().map_err(failed)?;
     let url = format!(
         "https://{}/v2/{}/manifests/{}",
         parsed.registry, parsed.repository, parsed.tag
     );
     let head = |token: Option<String>| {
-        let mut request = client.head(&url).header(ACCEPT, MANIFESTS);
+        let mut request = (client.head(&url).header(ACCEPT, MANIFESTS)).timeout(TIMEOUT);
         if let Some(token) = token {
             request = request.header(AUTHORIZATION, format!("Bearer {token}"));
         }
@@ -102,7 +101,7 @@ pub async fn pin(reference: &str) -> Result<Option<String>, ExecutorError> {
             .and_then(|value| value.to_str().ok())
             .unwrap_or_default()
             .to_owned();
-        let token = token(&client, &challenge).await.map_err(failed)?;
+        let token = token(client, &challenge).await.map_err(failed)?;
         response = head(Some(token))
             .await
             .map_err(|error| failed(error.to_string()))?;
@@ -141,7 +140,7 @@ async fn token(client: &reqwest::Client, challenge: &str) -> Result<String, Stri
             url.push_str(&format!("{separator}{name}={}", encode(&value)));
         }
     }
-    let text = (client.get(&url).send().await)
+    let text = (client.get(&url).timeout(TIMEOUT).send().await)
         .and_then(|response| response.error_for_status())
         .map_err(|error| error.to_string())?
         .text()

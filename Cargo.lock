@@ -3619,6 +3619,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "tes-executor"
+version = "0.1.0"
+dependencies = [
+ "executor",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "task-model",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "thin-vec"
 version = "0.2.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"

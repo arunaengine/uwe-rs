@@ -1624,6 +1624,7 @@ dependencies = [
  "task-model",
  "task-runner",
  "tempfile",
+ "tes-executor",
  "tokio",
  "workflow-graph",
 ]

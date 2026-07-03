@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Output, Stdio};
 use std::time::Duration;
 
+use task_model::Image;
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
@@ -86,6 +87,68 @@ impl crate::Backend for LocalContainer {
     }
 }
 
+/// How a container runs the wrapper of a task staged in its scratch directory.
+#[derive(Clone, Copy, Debug)]
+pub struct ContainerRun<'a> {
+    /// The name of the container.
+    pub name: &'a str,
+    pub image: &'a Image,
+    /// The scratch directory, which the container sees at the same path.
+    pub root: &'a Path,
+    /// Where the container sees the work directory, when the task names a place for it.
+    pub workdir: Option<&'a str>,
+    /// What the container sees besides the scratch directory.
+    pub mounts: &'a [Mount],
+    /// The user and group that the task runs as, so that its files belong to them.
+    pub owner: (u32, u32),
+    /// The CPUs and bytes of memory that the container may use.
+    pub cpus: u32,
+    pub memory: Option<u64>,
+}
+
+impl ContainerRun<'_> {
+    /// Where the container sees the work directory.
+    pub fn inside(&self) -> String {
+        (self.workdir.map(str::to_owned)).unwrap_or_else(|| text(&self.root.join(WORK)))
+    }
+
+    /// The wrapper in the control folder, which the container runs.
+    pub fn script(&self) -> String {
+        text(&self.root.join(CONTROL).join("wrapper.sh"))
+    }
+
+    /// The arguments of the engine's command that run the wrapper with Bash in the image.
+    pub fn arguments(&self, engine: &ContainerEngine) -> Vec<String> {
+        let root = text(self.root);
+        let mut arguments: Vec<String> = ["run", "--rm", "--name", self.name]
+            .into_iter()
+            .chain(["--entrypoint", "/bin/bash"])
+            .map(str::to_owned)
+            .collect();
+        arguments.extend(engine.user_options(self.owner.0, self.owner.1));
+        arguments.extend(["--volume".into(), format!("{root}:{root}")]);
+        if let Some(workdir) = self.workdir {
+            let work = text(&self.root.join(WORK));
+            arguments.extend(["--volume".into(), format!("{work}:{workdir}")]);
+        }
+        for mount in self.mounts {
+            let mode = if mount.read_only { ":ro" } else { "" };
+            let volume = format!("{}:{}{mode}", text(&mount.source), mount.target);
+            arguments.extend(["--volume".into(), volume]);
+        }
+        arguments.extend(["--workdir".into(), self.inside()]);
+        arguments.extend(["--cpus".into(), self.cpus.to_string()]);
+        if let Some(memory) = self.memory {
+            arguments.extend(["--memory".into(), memory.to_string()]);
+        }
+        if let Some(platform) = &self.image.platform {
+            arguments.extend(["--platform".into(), platform.clone()]);
+        }
+        arguments.extend([self.image.reference.clone(), self.script()]);
+        arguments
+    }
+}
+
 impl LocalContainer {
     /// Runs the container of a staged task to its end, within its share of the pool.
     async fn contain(
@@ -101,42 +164,22 @@ impl LocalContainer {
         if spec.arguments.is_empty() {
             spec.arguments = image::default_command(&self.engine, &image.reference).await?;
         }
-        let work = root.join(WORK);
-        let control = root.join(CONTROL);
-        let inside = spec.workdir.clone().unwrap_or_else(|| text(&work));
-        let script = control.join("wrapper.sh");
-        tokio::fs::write(&script, wrapper(&spec, &inside, &text(&control))).await?;
         let owner = tokio::fs::metadata(root).await?;
         let container = format!("iunctus-{}", job.name);
+        let run = ContainerRun {
+            name: &container,
+            image,
+            root,
+            workdir: spec.workdir.as_deref(),
+            mounts,
+            owner: (owner.uid(), owner.gid()),
+            cpus: share.cpus,
+            memory: share.memory,
+        };
+        let control = root.join(CONTROL);
+        tokio::fs::write(run.script(), wrapper(&spec, &run.inside(), &text(&control))).await?;
         let mut command = Command::new(&self.engine.program);
-        command
-            .args([
-                "run",
-                "--rm",
-                "--name",
-                &container,
-                "--entrypoint",
-                "/bin/bash",
-            ])
-            .args(self.engine.user_options(owner.uid(), owner.gid()))
-            .args(["--volume", &format!("{0}:{0}", text(root))]);
-        if spec.workdir.is_some() {
-            command.args(["--volume", &format!("{}:{inside}", text(&work))]);
-        }
-        for mount in mounts {
-            let mode = if mount.read_only { ":ro" } else { "" };
-            let volume = format!("{}:{}{mode}", text(&mount.source), mount.target);
-            command.args(["--volume", &volume]);
-        }
-        command.args(["--workdir", &inside]);
-        command.args(["--cpus", &share.cpus.to_string()]);
-        if let Some(memory) = share.memory {
-            command.args(["--memory", &memory.to_string()]);
-        }
-        if let Some(platform) = &image.platform {
-            command.args(["--platform", platform]);
-        }
-        command.arg(&image.reference).arg(text(&script));
+        command.args(run.arguments(&self.engine));
         command.stdin(Stdio::null());
         let time = job.placement.time_seconds.map(Duration::from_secs);
         let ending = self.wait(command, &container, time, cancel).await?;

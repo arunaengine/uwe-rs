@@ -17,7 +17,7 @@ use crate::wrapper::STDIN;
 /// source read-only at the same path. A copy is the task's own. A linked input at an absolute
 /// path is mounted there read-only; a copy and a made directory at an absolute path are made
 /// in `mounts/` and mounted there.
-pub(crate) fn place(root: &Path, staging: &Staging) -> std::io::Result<Vec<Mount>> {
+pub fn place(root: &Path, staging: &Staging) -> std::io::Result<Vec<Mount>> {
     let work = root.join(WORK);
     let control = root.join(CONTROL);
     if let Some(scratch) = root.parent() {

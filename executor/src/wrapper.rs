@@ -29,11 +29,19 @@ pub const ROOT: &str = "root";
 /// that the logs of a failed tool are kept. Outputs at absolute paths are copied below `root`
 /// in the control directory, so that they outlive the container.
 pub fn wrapper(spec: &TaskSpec, work: &str, control: &str) -> String {
+    wrapper_with_outbox(spec, work, control, "")
+}
+
+/// The wrapper, which also copies each output in the work directory to the same path in the
+/// `outbox` directory, for servers that give back only the directories a task names, like TES.
+/// An empty `outbox` copies nothing.
+pub fn wrapper_with_outbox(spec: &TaskSpec, work: &str, control: &str, outbox: &str) -> String {
     let mut script = String::from("#!/bin/bash\n# The iunctus task wrapper.\nset -u\n");
     script.push_str(&format!(
-        "work={}\ncontrol={}\n",
+        "work={}\ncontrol={}\noutbox={}\n",
         quote(work),
-        quote(control)
+        quote(control),
+        quote(outbox)
     ));
     script.push_str("mkdir -p \"$work\" \"$control\"\ncd \"$work\" || exit 1\n");
     for (name, value) in &spec.environment {
@@ -80,7 +88,8 @@ pub fn wrapper(spec: &TaskSpec, work: &str, control: &str) -> String {
 /// Adds each file and directory that a pattern matches to the manifest, as
 /// `file <size> <path>` or `directory <path>`. Bash expands the pattern with `globstar`,
 /// `nullglob` and `dotglob`. A match at an absolute path is copied below `root` in the control
-/// directory.
+/// directory, and one in the work directory to the outbox, when there is one; the copies hold
+/// what links point to.
 const COLLECT: &str = r#"shopt -s globstar nullglob dotglob
 collect() {
     local IFS=$'\n' match
@@ -89,6 +98,9 @@ collect() {
         case $match in
             /*) [ -e "$control/root$match" ] || {
                     mkdir -p "$control/root${match%/*}" && cp -a "$match" "$control/root$match"
+                } ;;
+            *) [ -z "$outbox" ] || [ -e "$outbox/$match" ] || {
+                    mkdir -p "$outbox/$(dirname "$match")" && cp -RL "$match" "$outbox/$match"
                 } ;;
         esac
         if [ -d "$match" ]; then

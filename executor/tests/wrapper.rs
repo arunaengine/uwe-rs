@@ -148,3 +148,33 @@ fn manifest_errors() {
         "line 1 of the result manifest is not `file <size> <path>` or `directory <path>`: 12 a.txt"
     );
 }
+
+#[test]
+fn outputs_go_to_the_outbox_too() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let work = root.path().join("work");
+    let control = root.path().join("control");
+    let outbox = root.path().join("outbox");
+    std::fs::create_dir_all(&work).expect("creates the work directory");
+    std::fs::write(root.path().join("input.txt"), "in\n").expect("writes the input");
+    let script = "mkdir -p dir/a && echo b > dir/a/b.txt\nln -s ../input.txt linked.txt\n";
+    std::fs::write(work.join("task script.sh"), script).expect("writes the script");
+    let spec = spec(&["dir/", "linked.txt"]);
+    let text = executor::wrapper::wrapper_with_outbox(
+        &spec,
+        &work.to_string_lossy(),
+        &control.to_string_lossy(),
+        &outbox.to_string_lossy(),
+    );
+    let status = Command::new("bash").arg("-c").arg(text).status();
+    assert_eq!(status.expect("runs bash").code(), Some(0));
+    assert_eq!(read(&outbox.join("dir/a/b.txt")), "b\n");
+    // A link becomes a copy of what it points to.
+    let linked = outbox.join("linked.txt");
+    assert!(
+        !std::fs::symlink_metadata(&linked)
+            .expect("exists")
+            .is_symlink()
+    );
+    assert_eq!(read(&linked), "in\n");
+}

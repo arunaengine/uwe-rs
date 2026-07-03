@@ -1,0 +1,25 @@
+# Manifest of tes-executor, which runs tasks on a GA4GH TES server, like Funnel or TESK.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "tes-executor"
+description = "Runs tasks on a GA4GH TES server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+executor.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+task-model.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["time", "fs"] }
+tokio-util.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

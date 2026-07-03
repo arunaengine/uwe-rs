@@ -189,8 +189,8 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 
 - [x] The async executor interface (section 3, step 1).
 - [x] Output locations as strings, the `Files` service, and a switch for simulated runs (section 3, steps 2 to 4).
-- [ ] Retries and cancellation (section 3, step 5).
-- [ ] Delivering results (section 3, step 11).
+- [x] Retries and cancellation (section 3, step 5).
+- [x] Delivering results (section 3, step 11).
 - [x] The parallel local executor on Docker or Podman, found without any config (decision 22).
 - [ ] The context of embedded code: the `snakemake` object, `run:` blocks, Nextflow `exec:` sections (section 3, step 14).
 - [ ] Images built from Conda environments (decision 12).

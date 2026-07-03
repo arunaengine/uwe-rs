@@ -21,9 +21,10 @@ use std::future::Future;
 use tokio_util::sync::CancellationToken;
 
 pub use engine::{ContainerEngine, EngineKind, NoEngine};
-pub use job::{ExecutorError, Finished, Job, Staged, Staging};
-pub use local::LocalContainer;
+pub use job::{CONTROL, ExecutorError, Finished, Job, Staged, Staging, WORK};
+pub use local::{ContainerRun, LocalContainer};
 pub use pool::{Pool, Share};
+pub use stage::place;
 
 /// Runs the attempts of tasks in containers: on this machine, on a TES server or on a cluster.
 pub trait Backend: Send + Sync + 'static {

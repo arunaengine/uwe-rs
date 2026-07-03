@@ -12,8 +12,8 @@ use crate::wrapper::{EXIT, MANIFEST, ROOT, STDERR, STDOUT};
 
 /// The folders of a task's scratch directory: the work directory, the control files of the
 /// wrapper, and copies of inputs at absolute paths, which are mounted where the task sees them.
-pub(crate) const WORK: &str = "work";
-pub(crate) const CONTROL: &str = "control";
+pub const WORK: &str = "work";
+pub const CONTROL: &str = "control";
 pub(crate) const MOUNTS: &str = "mounts";
 
 /// One attempt of a task.

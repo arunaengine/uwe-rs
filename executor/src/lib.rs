@@ -11,6 +11,7 @@ pub mod local;
 pub mod manifest;
 mod pool;
 pub mod process;
+pub mod registry;
 mod stage;
 pub mod wrapper;
 

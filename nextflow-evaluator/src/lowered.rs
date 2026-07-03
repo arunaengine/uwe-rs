@@ -39,8 +39,8 @@ pub struct Module {
     pub parameters: Vec<(Vec<Rc<str>>, Rc<Code>)>,
     /// The typed `params { }` block, in order.
     pub typed_parameters: Vec<TypedParameter>,
-    /// The names that the `output { }` block declares.
-    pub output_names: Vec<Rc<str>>,
+    /// The workflow outputs that the `output { }` block declares.
+    pub outputs: Vec<OutputDeclaration>,
     /// What each include refers to: the included script and the name there. The module loader
     /// fills this in once the included scripts are loaded.
     pub links: std::cell::RefCell<HashMap<Rc<str>, Link>>,
@@ -219,6 +219,16 @@ pub struct Process {
     /// some profiles, which run for each task before the directives.
     pub setup: Vec<Statement>,
     pub span: Span,
+}
+
+/// A workflow output of the `output { }` block, with its options, like `path`, `mode` and
+/// `enabled`, each as code that gives its value.
+#[derive(Debug)]
+pub struct OutputDeclaration {
+    pub name: Rc<str>,
+    pub options: Vec<(Rc<str>, Rc<Code>)>,
+    /// The options of its `index { }` section, like `path`, `header` and `sep`.
+    pub index: Vec<(Rc<str>, Rc<Code>)>,
 }
 
 /// A process directive, like `cpus 2` or `tag "${meta.id}"`, evaluated for each task.

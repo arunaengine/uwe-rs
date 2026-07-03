@@ -148,8 +148,9 @@ impl Interpreter<'_> {
                 value @ Value::Channel(_) => value,
                 plain => self.namespace_call("channel", "value", vec![plain], expression.span)?,
             };
+            let options = self.output_options(module, name)?;
             self.host
-                .publish(name, value)
+                .publish(name, value, options)
                 .map_err(|error| error.or_at(expression.span))?;
         }
         let mut values = Vec::new();

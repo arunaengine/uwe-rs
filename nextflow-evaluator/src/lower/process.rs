@@ -512,7 +512,7 @@ fn single(part: OutputPart, span: Span) -> Output {
 }
 
 /// The name and arguments of a statement that is a call without a receiver, like `cpus 2`.
-fn call(statement: &ast::Statement) -> Option<(&str, &[Argument], Span)> {
+pub(super) fn call(statement: &ast::Statement) -> Option<(&str, &[Argument], Span)> {
     match &statement.kind {
         StatementKind::Expression(ast::Expression {
             kind:

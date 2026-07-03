@@ -169,3 +169,94 @@ workflow {
         .collect();
     assert_eq!(targets, ["published/made.txt", "published/in.txt"]);
 }
+
+const OUTPUTS: &str = r#"
+process MAKE {
+    input:
+    val id
+    output:
+    tuple val(id), path("${id}.txt"), path("${id}.log")
+    script:
+    "touch ${id}.txt ${id}.log"
+}
+
+workflow {
+    main:
+    made = MAKE(channel.of('a'))
+    publish:
+    texts = made.map { id, text, log -> [id: id, text: text] }
+    logs = made
+}
+
+output {
+    texts {
+        path 'texts'
+        index {
+            path 'texts.csv'
+            header true
+        }
+    }
+    logs {
+        path { id, text, log -> log >> "logs/${id}/" }
+    }
+}
+"#;
+
+/// Makes each output of a task as a file named after it.
+struct Maker(std::path::PathBuf);
+
+impl workflow_graph::Executor for Maker {
+    fn run(&mut self, attempt: workflow_graph::Attempt) -> workflow_graph::Running {
+        let task = &attempt.task;
+        let files = (task.outputs.iter())
+            .map(|name| {
+                let location = self.0.join(name);
+                std::fs::write(&location, "x").expect("writes");
+                workflow_graph::OutputFile {
+                    path: name.clone(),
+                    location: location.to_string_lossy().into_owned(),
+                    ..Default::default()
+                }
+            })
+            .collect();
+        workflow_graph::Running::ended(Ok(workflow_graph::Outcome {
+            id: task.id,
+            files,
+            ..Default::default()
+        }))
+    }
+}
+
+#[test]
+fn workflow_outputs_go_below_the_output_directory() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    std::fs::write(directory.path().join("main.nf"), OUTPUTS).expect("writes the script");
+    let results = directory.path().join("results");
+    let launch = Launch {
+        target: directory.path().join("main.nf"),
+        output_dir: Some(results.clone()),
+        ..Launch::default()
+    };
+    let made = directory.path().join("made");
+    std::fs::create_dir(&made).expect("makes the folder");
+    let mut driver = nextflow_runtime::driver(&launch).expect("a driver");
+    let mut deliveries = Deliveries(Vec::new(), results.clone());
+    let execution = Engine::new(&mut Maker(made))
+        .observer(&mut deliveries)
+        .run("main.nf", driver.as_mut());
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    let mut targets: Vec<&str> = deliveries
+        .0
+        .iter()
+        .map(|(target, _)| target.as_str())
+        .collect();
+    targets.sort_unstable();
+    assert_eq!(targets, ["logs/a/a.log", "texts/a.txt"]);
+    // The index names the files at their new places.
+    let index = std::fs::read_to_string(results.join("texts.csv")).expect("an index");
+    let text = results.join("texts/a.txt");
+    assert_eq!(
+        index,
+        format!("\"id\",\"text\"\n\"a\",\"{}\"\n", text.display())
+    );
+}

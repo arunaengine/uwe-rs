@@ -38,6 +38,7 @@ impl ExecutionGraph {
                 node.task.name.clone(),
                 format!("step {}", node.task.step),
                 match node.exit_code {
+                    Some(0) if node.reused => "reused an earlier result".to_owned(),
                     Some(0) if simulated => "simulated".to_owned(),
                     Some(code) => format!("exit code {code}"),
                     None => "not finished".to_owned(),
@@ -48,7 +49,7 @@ impl ExecutionGraph {
                 id: format!("t{}", node.task.id),
                 lines: vec![shorten(&last_parts(&node.task.name, 1))],
                 tooltip: tooltip.join("\n"),
-                state: task_state(node.exit_code, simulated),
+                state: task_state(node.exit_code, node.reused, simulated),
             });
         }
         for edge in &self.edges {
@@ -203,8 +204,9 @@ fn open_point(drawing: &mut Drawing, after: usize, id: String, markers: &[Marker
     });
 }
 
-fn task_state(exit_code: Option<i32>, simulated: bool) -> State {
+fn task_state(exit_code: Option<i32>, reused: bool, simulated: bool) -> State {
     match exit_code {
+        Some(0) if reused => State::FromCache,
         Some(0) if simulated => State::Simulated,
         Some(0) => State::Succeeded,
         Some(_) => State::Failed,

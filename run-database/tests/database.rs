@@ -184,12 +184,23 @@ fn tasks_are_read_back_with_their_files_and_edges() {
 
     // The graph as the engine built it, for the renderer of the page.
     let graph = database.graph("run-1").expect("reads").expect("a graph");
-    let nodes: Vec<(u64, Option<i32>, usize)> = graph
+    let nodes: Vec<(u64, Option<i32>, bool, usize)> = graph
         .nodes
         .iter()
-        .map(|node| (node.task.id.0, node.exit_code, node.markers.len()))
+        .map(|node| {
+            let id = node.task.id.0;
+            (id, node.exit_code, node.reused, node.markers.len())
+        })
         .collect();
-    assert_eq!(nodes, [(1, Some(0), 1), (2, Some(1), 0), (3, None, 0)]);
+    // Task 1 took the result of run-0.
+    assert_eq!(
+        nodes,
+        [
+            (1, Some(0), true, 1),
+            (2, Some(1), false, 0),
+            (3, None, false, 0)
+        ]
+    );
     assert_eq!(graph.edges.len(), 1);
     assert!(graph.simulation.is_some());
     assert_eq!(graph.language, Some(Language::Nextflow));

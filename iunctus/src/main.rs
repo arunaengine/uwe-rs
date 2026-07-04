@@ -214,7 +214,7 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Serv
         language,
         executor: name,
         simulated: name == "simulator",
-        store: (name == "local").then_some(store.as_path()),
+        store: (name != "simulator").then_some(store.as_path()),
     };
     let record::Recording {
         mut recorder,

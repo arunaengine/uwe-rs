@@ -16,6 +16,7 @@ mod remote;
 mod resume;
 mod revision;
 mod runs;
+mod slurm;
 mod tes;
 
 use std::path::{Path, PathBuf};
@@ -340,8 +341,9 @@ fn config(arguments: &Arguments) -> Result<(), Failure> {
 }
 
 /// The executor that `-executor` names: `simulator` (the default) writes a TES task document
-/// for each task and makes up its outputs, `local` runs each task in a container. The
-/// simulator keeps its files in the scratch directory of the cache.
+/// for each task and makes up its outputs, `local` runs each task in a container, `tes` on a
+/// TES server and `slurm` as a SLURM batch job. The simulator keeps its files in the scratch
+/// directory of the cache.
 fn executor(arguments: &Arguments, run: &str, verbose: bool) -> Result<Box<dyn Executor>, Failure> {
     let cache = cache_directory();
     let scratch = cache.join("scratch");
@@ -367,8 +369,23 @@ fn executor(arguments: &Arguments, run: &str, verbose: bool) -> Result<Box<dyn E
             executor.verbose = verbose;
             Ok(Box::new(executor))
         }
+        "slurm" => {
+            let default_image = arguments.default_image.clone();
+            let container = slurm::container(arguments.slurm_container.as_deref())
+                .map_err(|message| failure(format!("iunctus: {message}")))?;
+            let options = (arguments.slurm_options.as_deref().unwrap_or_default())
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect();
+            let store = store(arguments);
+            let mut executor =
+                slurm::executor(&store, &scratch, run, default_image, container, options)
+                    .map_err(|message| failure(format!("iunctus: {message}")))?;
+            executor.verbose = verbose;
+            Ok(Box::new(executor))
+        }
         other => Err(failure(format!(
-            "iunctus: unknown executor `{other}`; use `simulator`, `local` or `tes`"
+            "iunctus: unknown executor `{other}`; use `simulator`, `local`, `tes` or `slurm`"
         ))),
     }
 }
@@ -421,15 +438,19 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
 
 options:
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it
-  -executor simulator|local|tes       simulator (the default) writes TES task documents
+  -executor simulator|local|tes|slurm simulator (the default) writes TES task documents
                                       and makes up the outputs; local runs containers on
-                                      this machine, tes on a TES server
+                                      this machine, tes on a TES server, slurm as SLURM
+                                      batch jobs
   -graph <file>                       writes the execution graph: DOT for .dot, SVG for .svg,
                                       a summary for .txt, else JSON
   -view tasks|steps                   one node per task (the default) or one per step
   -output-dir <folder>                where CWL outputs and Argo artifacts go
   -tes-server <address>               the TES server of -executor tes; Funnel's
                                       http://localhost:8000 by default
+  -slurm-container <runtime>          how the nodes of -executor slurm run containers:
+                                      apptainer (the default), singularity, podman or docker
+  -slurm-options '<options>'          more options of sbatch, like '--account=lab'
   -max-pending <n>                    lets up to n tasks be pending at once (default 1 for
                                       the simulator, no limit for real executors)
   -order asked|reversed|finished|shuffled[:<seed>]

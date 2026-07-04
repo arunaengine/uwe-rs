@@ -36,6 +36,11 @@ pub struct Arguments {
     pub output_dir: Option<PathBuf>,
     /// `-tes-server address`: the TES server of `-executor tes`.
     pub tes_server: Option<String>,
+    /// `-slurm-container apptainer|singularity|podman|docker`: how the nodes of
+    /// `-executor slurm` run containers.
+    pub slurm_container: Option<String>,
+    /// `-slurm-options 'options'`: more options of `sbatch`, like `--account=lab`.
+    pub slurm_options: Option<String>,
     /// `-format json|dot|summary|svg` of `iunctus graph`.
     pub format: Option<Format>,
     /// `-view tasks|steps`: the graph with one node per task, or one node per step.
@@ -118,6 +123,8 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
             "-graph" => parsed.graph = Some(value()?.into()),
             "-output-dir" => parsed.output_dir = Some(value()?.into()),
             "-tes-server" => parsed.tes_server = Some(value()?),
+            "-slurm-container" => parsed.slurm_container = Some(value()?),
+            "-slurm-options" => parsed.slurm_options = Some(value()?),
             "-format" => {
                 let name = value()?;
                 parsed.format = Some(Format::parse(&name).ok_or(format!(
@@ -316,6 +323,24 @@ mod tests {
         assert_eq!(
             parsed.params,
             [("config".to_owned(), "file.txt".to_owned())]
+        );
+    }
+
+    #[test]
+    fn slurm_options() {
+        let parsed = parse_all(&[
+            "main.nf",
+            "-executor",
+            "slurm",
+            "-slurm-container",
+            "podman",
+            "-slurm-options",
+            "--account=lab --qos=low",
+        ]);
+        assert_eq!(parsed.slurm_container.as_deref(), Some("podman"));
+        assert_eq!(
+            parsed.slurm_options.as_deref(),
+            Some("--account=lab --qos=low")
         );
     }
 

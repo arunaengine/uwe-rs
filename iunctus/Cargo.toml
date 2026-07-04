@@ -28,6 +28,7 @@ sha2.workspace = true
 snakemake-runtime.workspace = true
 task-model.workspace = true
 task-runner.workspace = true
+slurm-executor.workspace = true
 tes-executor.workspace = true
 tokio = { workspace = true, features = ["signal"] }
 workflow-graph.workspace = true

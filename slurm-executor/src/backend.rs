@@ -326,3 +326,31 @@ fn machine(message: String) -> ExecutorError {
         message,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn jobs_end_tasks_or_fail_the_machine() {
+        let done = |status| Ended::Done(status);
+        let stopped = |state: &str| Ended::Stopped(Some(state.to_owned()));
+        assert_eq!(outcome(Some(3), &done(0), None), Ok((3, None)));
+        assert!(outcome(None, &done(0), None).is_err());
+        assert_eq!(
+            outcome(None, &done(137), None).map(|(code, _)| code),
+            Ok(137)
+        );
+        assert!(outcome(None, &done(255), None).is_err());
+        assert!(outcome(Some(0), &done(125), None).is_err());
+        let timeout = outcome(Some(0), &stopped("TIMEOUT"), Some(60)).expect("an end");
+        assert_eq!(timeout.0, 143);
+        assert!(timeout.1.expect("a note").contains("60 seconds"));
+        let memory = outcome(None, &stopped("OUT_OF_MEMORY"), None);
+        assert_eq!(memory.map(|(code, _)| code), Ok(137));
+        for state in ["NODE_FAIL", "PREEMPTED", "BOOT_FAIL", "CANCELLED", "FAILED"] {
+            assert!(outcome(None, &stopped(state), None).is_err(), "{state}");
+        }
+        assert!(outcome(None, &Ended::Stopped(None), None).is_err());
+    }
+}

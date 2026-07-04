@@ -1620,6 +1620,7 @@ dependencies = [
  "run-page",
  "serde_json",
  "sha2",
+ "slurm-executor",
  "snakemake-runtime",
  "task-model",
  "task-runner",

@@ -28,8 +28,11 @@ The engine, the driver interface, the executor interface, the graph and the simu
 | `-profile <names>` | Nextflow profiles | `profiles` |
 | `-c <file>`, `-configfile <file>` | extra config files | `configs` |
 | `-stub` | run the stubs of tasks | `stub` |
-| `-executor simulator\|local` | the executor (section 4) | (chooses the executor) |
-| `-store <directory>` | the cache store of the local executor | |
+| `-executor simulator\|local\|tes\|slurm` | the executor (section 4) | (chooses the executor) |
+| `-store <directory>` | the cache store of the real executors | |
+| `-tes-server <address>` | the TES server of `-executor tes`; `http://localhost:8000` by default ([executors](executors.md), section 3) | |
+| `-slurm-container apptainer\|singularity\|podman\|docker` | how the nodes of `-executor slurm` run containers; `apptainer` by default ([executors](executors.md), section 4) | |
+| `-slurm-options '<options>'` | more options of `sbatch`, like `--account=lab` | |
 | `-default-image <image>` | the image of tasks that name none, for real executors (section 5) | |
 | `-max-pending <n>` | how many tasks may be pending at once; 1 for the simulator, no limit for real executors (section 5) | |
 | `-order asked\|reversed\|finished\|shuffled[:<seed>]` | the order in which pending tasks finish; `asked` for the simulator, `finished` for real executors | |
@@ -87,6 +90,10 @@ A finished task's outputs are published by its `publishDir` directives (section 
 |---|---|
 | `simulator` (default) | Writes the TES v1.1 task document of each task to `<cache>/scratch/simulator/<run>/tes/<id>.json` and pretends to run it in `work/<id>/` (decision 21). |
 | `local` | Runs each task in Docker or Podman through the task runner, which reuses results from the cache store (`-store`). |
+| `tes` | Runs each task as a task on a GA4GH TES server (`-tes-server`). |
+| `slurm` | Runs each task as a SLURM batch job, with Apptainer, Singularity, Podman or Docker on the nodes (`-slurm-container`, `-slurm-options`). |
+
+How the real executors work, and how to set each one up: [executors](executors.md).
 
 An executor implements `workflow_graph::Executor`:
 
@@ -165,11 +172,11 @@ After `start` and after each `complete`, also when they fail, the engine records
 
 ## 8. Next steps for the execution layer
 
-The execution layer runs tasks in parallel, on a local container engine and later on GA4GH TES, SLURM and Kubernetes (decision 22). Done so far: the async executor interface, the parallel local executor, output locations as strings, delivering results, remote inputs, the switch for simulated runs (sections 4 and 5), retries and cancellation in the engine, Nextflow's error strategies and Snakemake's retries, and delivering results in all four languages. These are the next changes, in the order they build on each other.
+The execution layer runs tasks in parallel, on a local container engine, on GA4GH TES and on SLURM, and later on Kubernetes (decision 22). Done so far: the async executor interface, the parallel local executor, output locations as strings, delivering results, remote inputs, the switch for simulated runs (sections 4 and 5), retries and cancellation in the engine, Nextflow's error strategies and Snakemake's retries, delivering results in all four languages, and the TES and SLURM executors ([executors](executors.md)). These are the next changes, in the order they build on each other.
 
 1. **Reading from a store elsewhere.** Drivers read the files that tasks made, like a Nextflow `.command.env` or a CWL `cwl.output.json`, at their locations, which are local paths while the store is local. With a store on S3 they must read through `Files::local`, which downloads on demand.
 2. **Nextflow's own reports:** the trace, timeline, report and DAG files that nf-core configs ask for in `pipeline_info/`.
 3. **What a task cannot say yet:** whether it may use the network (CWL `NetworkAccess`), and whether an input must be writable or updated in place (CWL `InitialWorkDir` with `writable`, `inplaceUpdate`). `TaskSpec` already has `writable`.
-4. **The TES executor.** It maps a `TaskSpec` onto one TES task with one executor and the wrapper as a staged input ([TES research](../research/tes-and-executors.md), section 8), marks directory inputs and outputs as `DIRECTORY`, and reads the manifest, the exit code and the captured streams back as outputs. TES needs a command, so a task without one needs the image's default command from the registry, and image pinning needs a registry lookup too.
+4. **Tests on real servers and clusters.** The TES executor is tested against a fake server and the SLURM executor against a simulated SLURM. Next: Funnel and TESK for TES, and a SLURM cluster in containers. TES and SLURM need a command, so a task without one needs the image's default command from the registry.
 5. **Remote inputs for TES**: remote inputs should pass through to a TES server as URLs, instead of a download. Downloads from a remote store read whole objects into memory today.
 6. **Argo container sets** share one pod and its volumes. They need to run as one task, or on one machine with a shared directory.

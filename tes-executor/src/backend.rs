@@ -217,11 +217,19 @@ fn machine(error: crate::TesError) -> ExecutorError {
     }
 }
 
-/// A task that the server could not finish, with what its logs say.
+/// A task that the server could not finish, with what its logs say: the lines about errors,
+/// or else the last lines.
 fn failure(status: &crate::client::Status, message: &str) -> ExecutorError {
-    let logs: Vec<&str> = (status.logs.iter())
+    let all: Vec<&str> = (status.logs.iter())
         .flat_map(|log| log.system_logs.iter().map(String::as_str))
         .collect();
+    let errors: Vec<&str> = (all.iter().copied())
+        .filter(|line| line.to_lowercase().contains("error"))
+        .collect();
+    let logs = match errors.is_empty() {
+        true => &all[all.len().saturating_sub(5)..],
+        false => &errors[..],
+    };
     ExecutorError::Engine {
         engine: "TES".into(),
         message: match logs.is_empty() {

@@ -14,16 +14,17 @@ mod blocking;
 mod downloads;
 mod error;
 mod folder;
+mod objects;
 mod public;
 pub mod settings;
 mod web;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use config_file::{ConfigError, ConfigFile};
 
-use backend::{Connection, Source};
+use backend::{Backend, Connection, Source};
 use error::Problem;
 
 pub use blocking::Blocking;
@@ -44,6 +45,14 @@ pub struct Metadata {
 pub struct Entry {
     pub name: String,
     pub directory: bool,
+}
+
+/// Where a cache store lives.
+pub enum StoreLocation {
+    /// A folder on this machine.
+    Folder(PathBuf),
+    /// A place in an object store, as an operator whose paths start there.
+    Objects(opendal::Operator),
 }
 
 /// The storage providers of a process. Clones share the providers and their clients.
@@ -228,6 +237,30 @@ impl Storage {
         }
         let done = served.connection.upload(file, served.prefix, target).await;
         done.map_err(|problem| served.failed("write", target, problem))
+    }
+
+    /// Where a cache store at `location` lives: a local path, a `file://` address, or an
+    /// address in an object store or a folder provider.
+    pub fn store(&self, location: &str) -> Result<StoreLocation, StorageError> {
+        if address::scheme(location).is_none() {
+            return Ok(StoreLocation::Folder(PathBuf::from(location)));
+        }
+        let served = self.serve(location)?;
+        match &served.connection.backend {
+            Backend::Folder(folder) => folder
+                .path(served.prefix, location)
+                .map(StoreLocation::Folder)
+                .map_err(|problem| served.failed("keep the store at", location, problem)),
+            Backend::Objects(objects) => objects
+                .at(location)
+                .map(StoreLocation::Objects)
+                .map_err(|problem| served.failed("keep the store at", location, problem)),
+            _ => Err(StorageError::Unsupported(format!(
+                "cannot keep the store at {location}: {} only reads; name a storage provider \
+                 of the config file that can write there",
+                served.provider.source.describe()
+            ))),
+        }
     }
 
     /// The same requests for code that does not run on Tokio, like drivers.

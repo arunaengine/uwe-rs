@@ -10,6 +10,8 @@
 
 pub mod address;
 mod backend;
+mod blocking;
+mod downloads;
 mod error;
 mod folder;
 mod public;
@@ -24,6 +26,8 @@ use config_file::{ConfigError, ConfigFile};
 use backend::{Connection, Source};
 use error::Problem;
 
+pub use blocking::Blocking;
+pub use downloads::download_name;
 pub use error::StorageError;
 pub use settings::Settings;
 
@@ -199,7 +203,7 @@ impl Storage {
 
     /// Downloads a file into `file`, from `offset` on where the provider can; returns whether
     /// it appended to what `file` held.
-    async fn download_from(
+    pub(crate) async fn download_from(
         &self,
         target: &str,
         file: &Path,
@@ -224,6 +228,11 @@ impl Storage {
         }
         let done = served.connection.upload(file, served.prefix, target).await;
         done.map_err(|problem| served.failed("write", target, problem))
+    }
+
+    /// The same requests for code that does not run on Tokio, like drivers.
+    pub fn blocking(&self) -> Blocking {
+        Blocking::new(self.clone())
     }
 }
 

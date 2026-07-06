@@ -108,6 +108,14 @@ impl Problem {
     }
 }
 
+/// An error of a local file at `path`.
+pub(crate) fn local(path: &Path) -> impl Fn(std::io::Error) -> StorageError + '_ {
+    move |source| StorageError::Local {
+        path: path.to_owned(),
+        source,
+    }
+}
+
 /// A text with each of the secrets replaced, so that a message of a server or a library can
 /// be shown.
 pub(crate) fn redact(text: &str, secrets: &[String]) -> String {

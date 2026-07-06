@@ -3532,6 +3532,8 @@ dependencies = [
  "base64",
  "config-file",
  "reqwest",
+ "sha2",
+ "tempfile",
  "thiserror",
  "tokio",
 ]

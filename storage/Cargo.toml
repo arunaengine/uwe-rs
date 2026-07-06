@@ -15,5 +15,9 @@ publish.workspace = true
 base64.workspace = true
 config-file.workspace = true
 reqwest.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -1,0 +1,16 @@
+# Manifest of storage, the storage providers that the config file names.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "storage"
+description = "Storage providers: S3 and S3-compatible services, Google Cloud Storage, Azure Blob Storage, HTTPS, FTP and local folders"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+config-file.workspace = true
+thiserror.workspace = true

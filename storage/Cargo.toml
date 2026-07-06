@@ -12,6 +12,8 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+base64.workspace = true
 config-file.workspace = true
+reqwest.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

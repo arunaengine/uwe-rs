@@ -86,6 +86,14 @@ impl Problem {
         }
     }
 
+    /// A problem that another try may fix, as after a network error.
+    pub fn passing(message: impl Into<String>) -> Problem {
+        Problem {
+            retryable: true,
+            ..Problem::fixed(message)
+        }
+    }
+
     /// The file is not there.
     pub fn missing() -> Problem {
         Problem {

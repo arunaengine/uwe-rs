@@ -405,6 +405,20 @@ argo-test-workflows:
 argo-test-workflows-test:
 	ARGO_TEST_WORKFLOWS="${ARGO_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/argo}" cargo test --release --locked -p argo-runtime --test test_workflows -- --ignored --nocapture
 
+# Runs Funnel (a GA4GH TES server) from ~/.cache/iunctus/tools/funnel in the foreground, at
+# http://localhost:18000, with the config of the TES tests: tasks get a memory limit and no
+# network, and images are never pulled. It may read and write /tmp and the cache of iunctus.
+funnel-server:
+	mkdir -p /tmp/iunctus-funnel
+	cd /tmp/iunctus-funnel && ~/.cache/iunctus/tools/funnel/funnel server run \
+		--config {{justfile_directory()}}/tes-executor/tests/fixtures/funnel.yaml \
+		--BoltDB.Path /tmp/iunctus-funnel/funnel.db --Worker.WorkDir /tmp/iunctus-funnel/work \
+		--LocalStorage.AllowedDirs /tmp --LocalStorage.AllowedDirs "$HOME/.cache/iunctus"
+
+# Runs the TES tests against the server from `just funnel-server`.
+tes-test:
+	IUNCTUS_TES_SERVER=http://localhost:18000 cargo test -p tes-executor --test funnel -- --ignored
+
 # Starts a local RustFS (S3-compatible) with the bucket `iunctus-test` for the S3 tests.
 # `docker stop iunctus-s3` ends it.
 s3-server:

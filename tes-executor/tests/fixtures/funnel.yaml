@@ -1,0 +1,28 @@
+# Funnel for the tests of iunctus, started by `just funnel-server`: tasks run in Docker with a
+# memory limit and without network, and images are never pulled (`--pull never`, and `image
+# inspect` in place of `pull`), so a task needs an image that is on this machine already. Other
+# storage than local folders is off.
+Server:
+  HostName: localhost
+  HTTPPort: "18000"
+  RPCPort: "19090"
+Compute: local
+Node:
+  Resources:
+    Cpus: 4
+    RamGb: 4
+AmazonS3:
+  Disabled: true
+GoogleStorage:
+  Disabled: true
+Swift:
+  Disabled: true
+HTTPStorage:
+  Disabled: true
+FTPStorage:
+  Disabled: true
+Worker:
+  Container:
+    DriverCommand: docker
+    RunCommand: run -i --read-only --pull never --memory 1g --network none {{if .RemoveContainer}}--rm{{end}} {{.GetEnvArgs}} {{range $k, $v := .Tags}}--label {{$k}}={{$v}} {{end}} {{if .Name}}--name {{.Name}}{{end}} {{if .Workdir}}--workdir {{.Workdir}}{{end}} {{range .Volumes}}--volume {{.HostPath}}:{{.ContainerPath}}:{{if .Readonly}}ro{{else}}rw{{end}} {{end}} {{.Image}} {{.Command}}
+    PullCommand: image inspect {{.Image}}

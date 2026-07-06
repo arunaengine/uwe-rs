@@ -51,7 +51,7 @@ Each attempt becomes one TES v1.1 task with the wrapper as its one executor. Its
 - A task without a command fails: TES needs one, and the default command of the image is not known without its engine.
 - The state `SYSTEM_ERROR` and failed requests are failures of the machine. A cancelled run cancels its TES tasks.
 
-The TES backend is tested against a small fake TES server (`tes-executor/tests/fake_server.rs`). A test with Funnel is still to come.
+The TES backend is tested against a small fake TES server (`tes-executor/tests/fake_server.rs`) and against Funnel 0.11.14 on this machine: `just funnel-server` starts Funnel from `~/.cache/iunctus/tools/funnel` with the config of the tests (`tes-executor/tests/fixtures/funnel.yaml`: a memory limit and no network for tasks, and images are never pulled), and `just tes-test` runs the tests against it. A whole Nextflow workflow ran on it too: two processes with an input file and `publishDir`, Ctrl-C cancelled the TES tasks, and a task whose image was missing failed as a failure of the machine, twice retried. A test with TESK is still to come.
 
 ## 4. SLURM
 

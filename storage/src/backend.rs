@@ -13,6 +13,7 @@ use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
 
 use crate::error::Problem;
 use crate::folder::Folder;
+use crate::objects::{Objects, Service};
 use crate::public::PublicBuckets;
 use crate::settings::{self, Kind, ProviderSettings};
 use crate::web::Web;
@@ -46,6 +47,7 @@ impl Source {
 pub(crate) enum Backend {
     Web(Web),
     PublicBuckets(PublicBuckets),
+    Objects(Objects),
     Folder(Folder),
 }
 
@@ -67,6 +69,33 @@ impl Connection {
                 root: PathBuf::from("/"),
             }),
             Source::Configured(settings) => match &settings.kind {
+                Kind::S3(s3) => {
+                    let service = s3_service(s3, settings, &mut secrets)?;
+                    Backend::Objects(Objects::new(service).map_err(failed)?)
+                }
+                Kind::GoogleCloudStorage(gcs) => {
+                    let service = Service::GoogleCloudStorage {
+                        endpoint: gcs.endpoint.clone(),
+                        credential_file: gcs.credential_file.clone(),
+                        token: secrets.reveal(&gcs.token)?,
+                        anonymous: gcs.anonymous,
+                    };
+                    Backend::Objects(Objects::new(service).map_err(failed)?)
+                }
+                Kind::AzureBlobStorage(azure) => {
+                    let endpoint = match (&azure.endpoint, &azure.account) {
+                        (Some(endpoint), _) => endpoint.clone(),
+                        (None, Some(account)) => format!("https://{account}.blob.core.windows.net"),
+                        (None, None) => String::new(),
+                    };
+                    let service = Service::AzureBlobStorage {
+                        endpoint,
+                        account: azure.account.clone(),
+                        key: secrets.reveal(&azure.key)?,
+                        sas_token: secrets.reveal(&azure.sas_token)?,
+                    };
+                    Backend::Objects(Objects::new(service).map_err(failed)?)
+                }
                 Kind::Https(https) => {
                     let headers = headers(https, &settings.origin, &mut secrets)?;
                     Backend::Web(Web::with_headers(headers).map_err(failed)?)
@@ -74,10 +103,7 @@ impl Connection {
                 Kind::Folder(folder) => Backend::Folder(Folder {
                     root: folder.path.clone(),
                 }),
-                Kind::S3(_)
-                | Kind::GoogleCloudStorage(_)
-                | Kind::AzureBlobStorage(_)
-                | Kind::Ftp(_) => {
+                Kind::Ftp(_) => {
                     return Err(StorageError::Unsupported(format!(
                         "iunctus cannot use the storage provider `{}` yet",
                         settings.name
@@ -98,13 +124,14 @@ impl Connection {
 
     /// Whether the provider can write files.
     pub fn writes(&self) -> bool {
-        matches!(self.backend, Backend::Folder(_))
+        matches!(self.backend, Backend::Objects(_) | Backend::Folder(_))
     }
 
     pub async fn stat(&self, prefix: &str, target: &str) -> Result<Option<Metadata>, Problem> {
         match &self.backend {
             Backend::Web(web) => web.stat(target).await,
             Backend::PublicBuckets(buckets) => buckets.stat(target).await,
+            Backend::Objects(objects) => objects.stat(target).await,
             Backend::Folder(folder) => folder.stat(&folder.path(prefix, target)?).await,
         }
     }
@@ -113,6 +140,7 @@ impl Connection {
         match &self.backend {
             Backend::Web(_) => Err(Problem::fixed("web servers cannot list their files")),
             Backend::PublicBuckets(buckets) => buckets.list(target).await,
+            Backend::Objects(objects) => objects.list(target).await,
             Backend::Folder(folder) => folder.list(&folder.path(prefix, target)?).await,
         }
     }
@@ -129,12 +157,14 @@ impl Connection {
         match &self.backend {
             Backend::Web(web) => web.download(target, file, offset).await,
             Backend::PublicBuckets(buckets) => buckets.download(target, file, offset).await,
+            Backend::Objects(objects) => objects.download(target, file, offset).await,
             Backend::Folder(folder) => folder.download(&folder.path(prefix, target)?, file).await,
         }
     }
 
     pub async fn upload(&self, file: &Path, prefix: &str, target: &str) -> Result<(), Problem> {
         match &self.backend {
+            Backend::Objects(objects) => objects.upload(file, target).await,
             Backend::Folder(folder) => folder.upload(file, &folder.path(prefix, target)?).await,
             _ => Err(Problem::fixed("the provider only reads")),
         }
@@ -154,6 +184,47 @@ impl Revealed {
         self.0.push(value.clone());
         Ok(Some(value))
     }
+}
+
+fn s3_service(
+    s3: &settings::S3,
+    settings: &ProviderSettings,
+    secrets: &mut Revealed,
+) -> Result<Service, StorageError> {
+    let from_environment = || {
+        ["AWS_REGION", "AWS_DEFAULT_REGION"]
+            .iter()
+            .find_map(|name| std::env::var(name).ok().filter(|region| !region.is_empty()))
+    };
+    // Services other than AWS mostly ignore the region, but requests must name one.
+    let region = (s3.region.clone())
+        .or_else(from_environment)
+        .or_else(|| s3.endpoint.as_ref().map(|_| "us-east-1".to_owned()))
+        .ok_or_else(|| {
+            ConfigError::at(
+                &settings.origin,
+                format!(
+                    "the storage provider `{}` needs `region`, the AWS region of its buckets, \
+                     like region = \"eu-central-1\", or the environment variable AWS_REGION",
+                    settings.name
+                ),
+            )
+        })?;
+    let keys = match (&s3.access_key_id, &s3.secret_access_key) {
+        (Some(id), Some(secret)) => {
+            let id = secrets.reveal(&Some(id.clone()))?.unwrap_or_default();
+            let secret = secrets.reveal(&Some(secret.clone()))?.unwrap_or_default();
+            Some((id, secret, secrets.reveal(&s3.session_token)?))
+        }
+        _ => None,
+    };
+    Ok(Service::S3 {
+        endpoint: s3.endpoint.clone(),
+        region,
+        virtual_host: !s3.path_style.unwrap_or(s3.endpoint.is_some()),
+        keys,
+        anonymous: s3.anonymous,
+    })
 }
 
 /// The headers that a web provider sends with every request, all marked as sensitive, so that

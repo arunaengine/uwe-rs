@@ -13,7 +13,13 @@ publish.workspace = true
 
 [dependencies]
 base64.workspace = true
+bytes.workspace = true
 config-file.workspace = true
+futures-util.workspace = true
+opendal.workspace = true
+opendal-http-transport-reqwest.workspace = true
+opendal-service-azblob.workspace = true
+opendal-service-gcs.workspace = true
 reqwest.workspace = true
 sha2.workspace = true
 thiserror.workspace = true

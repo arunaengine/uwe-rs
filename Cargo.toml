@@ -4,7 +4,7 @@
 
 [workspace]
 resolver = "3"
-members = ["argo-parser", "argo-runtime", "content-store", "cwl-parser", "cwl-runtime", "executor", "iunctus", "nextflow-config", "nextflow-evaluator", "nextflow-parser", "nextflow-plugins", "nextflow-runtime", "python-evaluator", "run-crate", "run-database", "run-page", "slurm-executor", "snakemake-parser", "snakemake-runtime", "task-model", "task-runner", "tes-executor", "workflow-graph"]
+members = ["argo-parser", "argo-runtime", "config-file", "content-store", "cwl-parser", "cwl-runtime", "executor", "iunctus", "nextflow-config", "nextflow-evaluator", "nextflow-parser", "nextflow-plugins", "nextflow-runtime", "python-evaluator", "run-crate", "run-database", "run-page", "slurm-executor", "snakemake-parser", "snakemake-runtime", "task-model", "task-runner", "tes-executor", "workflow-graph"]
 
 [workspace.package]
 version = "0.1.0"
@@ -17,6 +17,7 @@ publish = false
 # Workspace crates
 argo-parser = { path = "argo-parser" }
 argo-runtime = { path = "argo-runtime" }
+config-file = { path = "config-file" }
 content-store = { path = "content-store" }
 cwl-parser = { path = "cwl-parser" }
 cwl-runtime = { path = "cwl-runtime" }
@@ -76,3 +77,4 @@ thiserror = "2.0.21"
 tempfile = "3.27.0"
 tokio = { version = "1.53.1", features = ["fs", "io-util", "macros", "rt-multi-thread"] }
 tokio-util = "0.7.19"
+toml = { version = "1.1.6", default-features = false, features = ["parse", "std"] }

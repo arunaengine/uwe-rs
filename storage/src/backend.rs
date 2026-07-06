@@ -13,6 +13,7 @@ use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
 
 use crate::error::Problem;
 use crate::folder::Folder;
+use crate::ftp::Ftp;
 use crate::objects::{Objects, Service};
 use crate::public::PublicBuckets;
 use crate::settings::{self, Kind, ProviderSettings};
@@ -49,6 +50,7 @@ pub(crate) enum Backend {
     PublicBuckets(PublicBuckets),
     Objects(Objects),
     Folder(Folder),
+    Ftp(Ftp),
 }
 
 /// A provider's client and the secrets that its messages must not show.
@@ -100,15 +102,13 @@ impl Connection {
                     let headers = headers(https, &settings.origin, &mut secrets)?;
                     Backend::Web(Web::with_headers(headers).map_err(failed)?)
                 }
+                Kind::Ftp(ftp) => {
+                    let password = secrets.reveal(&ftp.password)?;
+                    Backend::Ftp(Ftp::new(ftp.user.clone(), password))
+                }
                 Kind::Folder(folder) => Backend::Folder(Folder {
                     root: folder.path.clone(),
                 }),
-                Kind::Ftp(_) => {
-                    return Err(StorageError::Unsupported(format!(
-                        "iunctus cannot use the storage provider `{}` yet",
-                        settings.name
-                    )));
-                }
             },
         };
         Ok(Connection {
@@ -133,6 +133,7 @@ impl Connection {
             Backend::PublicBuckets(buckets) => buckets.stat(target).await,
             Backend::Objects(objects) => objects.stat(target).await,
             Backend::Folder(folder) => folder.stat(&folder.path(prefix, target)?).await,
+            Backend::Ftp(ftp) => ftp.stat(target).await,
         }
     }
 
@@ -142,6 +143,7 @@ impl Connection {
             Backend::PublicBuckets(buckets) => buckets.list(target).await,
             Backend::Objects(objects) => objects.list(target).await,
             Backend::Folder(folder) => folder.list(&folder.path(prefix, target)?).await,
+            Backend::Ftp(ftp) => ftp.list(target).await,
         }
     }
 
@@ -159,6 +161,7 @@ impl Connection {
             Backend::PublicBuckets(buckets) => buckets.download(target, file, offset).await,
             Backend::Objects(objects) => objects.download(target, file, offset).await,
             Backend::Folder(folder) => folder.download(&folder.path(prefix, target)?, file).await,
+            Backend::Ftp(ftp) => ftp.download(target, file, offset).await,
         }
     }
 

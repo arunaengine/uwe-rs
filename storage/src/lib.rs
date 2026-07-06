@@ -14,6 +14,7 @@ mod blocking;
 mod downloads;
 mod error;
 mod folder;
+mod ftp;
 mod objects;
 mod public;
 pub mod settings;

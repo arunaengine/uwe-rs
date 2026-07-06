@@ -8,6 +8,7 @@ mod common;
 use std::path::Path;
 
 use common::WebServer;
+use common::ftp::FtpServer;
 use config_file::ConfigFile;
 use storage::settings::Kind;
 use storage::{Entry, Metadata, Settings, Storage, StorageError, StoreLocation};
@@ -369,4 +370,81 @@ fn drivers_wait_for_requests() {
         error.to_string(),
         format!("{address} does not exist (the web, without credentials)")
     );
+}
+
+#[tokio::test]
+async fn ftp_servers_serve_inputs() {
+    let server = FtpServer::start(
+        &[
+            ("/pub/data/a.txt", "alpha"),
+            ("/pub/data/sub/b.txt", "beta"),
+        ],
+        "reader",
+        "ftp-secret-3318",
+    );
+    let with = |password: &str| {
+        storage(&format!(
+            "[storage.archive]\ntype = \"ftp\"\nprefixes = [\"{}/pub/\"]\nuser = \"reader\"\n\
+             password = \"{password}\"\n",
+            server.address
+        ))
+    };
+    let storage = with("ftp-secret-3318");
+    let file = format!("{}/pub/data/a.txt", server.address);
+    let folder = format!("{}/pub/data", server.address);
+    assert_eq!(
+        storage.stat(&file).await.unwrap(),
+        Some(Metadata {
+            directory: false,
+            size: 5
+        })
+    );
+    assert_eq!(
+        storage.stat(&folder).await.unwrap(),
+        Some(Metadata {
+            directory: true,
+            size: 0
+        })
+    );
+    let missing = format!("{}/pub/none.txt", server.address);
+    assert_eq!(storage.stat(&missing).await.unwrap(), None);
+    assert_eq!(
+        storage.list(&folder).await.unwrap(),
+        [
+            Entry {
+                name: "a.txt".into(),
+                directory: false
+            },
+            Entry {
+                name: "sub".into(),
+                directory: true
+            }
+        ]
+    );
+    let downloads = tempfile::tempdir().expect("a folder");
+    let copy = storage.fetch(&file, downloads.path()).await.unwrap();
+    assert_eq!(std::fs::read_to_string(copy).unwrap(), "alpha");
+    // A stopped download continues where it ended.
+    let other = format!("{}/pub/data/sub/b.txt", server.address);
+    let name = storage::download_name(&other);
+    std::fs::write(
+        downloads.path().join(format!("{name}.4294967295.partial")),
+        "be",
+    )
+    .unwrap();
+    let copy = storage.fetch(&other, downloads.path()).await.unwrap();
+    assert_eq!(std::fs::read_to_string(copy).unwrap(), "beta");
+    // A wrong password is an error that shows no password.
+    let error = with("wrong-3318").stat(&file).await.unwrap_err();
+    let message = error.to_string();
+    assert!(message.starts_with(&format!(
+        "cannot find {file} (storage provider `archive`): "
+    )));
+    assert!(
+        !message.contains("wrong-3318") && !message.contains("ftp-secret-3318"),
+        "{message}"
+    );
+    // FTP servers need a provider of the config file.
+    let error = Storage::default().stat(&file).await.unwrap_err();
+    assert!(matches!(error, StorageError::NoProvider { .. }));
 }

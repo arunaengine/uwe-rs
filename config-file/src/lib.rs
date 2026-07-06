@@ -8,6 +8,7 @@
 
 mod error;
 mod node;
+mod secret;
 mod table;
 
 use std::collections::BTreeMap;
@@ -15,9 +16,16 @@ use std::path::{Path, PathBuf};
 
 pub use error::ConfigError;
 pub use node::Origin;
+pub use secret::Secret;
 pub use table::Table;
 
 use node::Node;
+
+/// The name of the config file in each folder.
+pub const FILE_NAME: &str = "config.toml";
+
+/// The folder of the site-wide config file, which every user of the machine reads.
+pub const SITE_FOLDER: &str = "/etc/iunctus";
 
 /// The merged settings of the config files.
 #[derive(Clone, Debug)]
@@ -40,6 +48,16 @@ impl Default for ConfigFile {
 }
 
 impl ConfigFile {
+    /// The site-wide file and the user's file where they exist, then `named`, which must exist.
+    pub fn load(named: Option<&Path>) -> Result<ConfigFile, ConfigError> {
+        let mut files: Vec<PathBuf> = default_files()
+            .into_iter()
+            .filter(|file| file.is_file())
+            .collect();
+        files.extend(named.map(Path::to_owned));
+        ConfigFile::read(&files)
+    }
+
     /// Reads these files in order; a later file wins key by key.
     pub fn read(files: &[PathBuf]) -> Result<ConfigFile, ConfigError> {
         let mut config = ConfigFile::default();
@@ -85,4 +103,20 @@ impl ConfigFile {
     pub fn section(&self, name: &str) -> Result<Option<Table<'_>>, ConfigError> {
         self.root().table(name)
     }
+}
+
+/// The site-wide file and the user's file, in the order they merge.
+pub fn default_files() -> Vec<PathBuf> {
+    let site = Path::new(SITE_FOLDER).join(FILE_NAME);
+    std::iter::once(site).chain(user_file()).collect()
+}
+
+/// The user's file: `$XDG_CONFIG_HOME/iunctus/config.toml`, else
+/// `~/.config/iunctus/config.toml`.
+pub fn user_file() -> Option<PathBuf> {
+    let folder = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|folder| !folder.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))?;
+    Some(folder.join("iunctus").join(FILE_NAME))
 }

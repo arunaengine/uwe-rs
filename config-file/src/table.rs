@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use crate::node::{Node, Value};
-use crate::{ConfigError, Origin};
+use crate::{ConfigError, Origin, Secret};
 
 /// A table of settings and its full name, like `storage.lab`.
 #[derive(Clone, Debug)]
@@ -15,6 +15,9 @@ pub struct Table<'a> {
     entries: &'a BTreeMap<String, Node>,
     origin: &'a Origin,
 }
+
+/// The key that names the environment variable of a secret.
+const ENVIRONMENT: &str = "environment";
 
 impl<'a> Table<'a> {
     pub(crate) fn root(entries: &'a BTreeMap<String, Node>, origin: &'a Origin) -> Table<'a> {
@@ -135,6 +138,36 @@ impl<'a> Table<'a> {
             Value::Integer(number) => Ok(Some(*number as f64)),
             Value::Float(number) => Ok(Some(*number)),
             other => Err(self.wrong(key, node, "a number", other)),
+        }
+    }
+
+    /// The secret `key`: the secret as text, or `{ environment = "NAME" }` for the name of the
+    /// environment variable that holds it.
+    pub fn secret(&self, key: &str) -> Result<Option<Secret>, ConfigError> {
+        let Some(node) = self.get(key) else {
+            return Ok(None);
+        };
+        let origin = node.origin.clone();
+        match &node.value {
+            Value::Text(text) => Ok(Some(Secret::written(text.clone(), origin))),
+            Value::Table(entries) => {
+                let reference = self.as_table(key, node)?;
+                reference.only(&[ENVIRONMENT])?;
+                match entries.get(ENVIRONMENT).map(|name| &name.value) {
+                    Some(Value::Text(name)) if !name.is_empty() => {
+                        Ok(Some(Secret::environment(name.clone(), origin)))
+                    }
+                    _ => Err(ConfigError::at(
+                        &origin,
+                        format!(
+                            "`{}` needs the name of an environment variable, like \
+                             {key} = {{ environment = \"NAME\" }}",
+                            self.full(key)
+                        ),
+                    )),
+                }
+            }
+            other => Err(self.wrong(key, node, "text or { environment = \"NAME\" }", other)),
         }
     }
 

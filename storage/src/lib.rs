@@ -12,7 +12,9 @@ pub mod address;
 mod backend;
 mod error;
 mod folder;
+mod public;
 pub mod settings;
+mod web;
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -111,6 +113,12 @@ impl Served<'_> {
     }
 }
 
+impl Default for Storage {
+    fn default() -> Self {
+        Storage::new(Settings::default())
+    }
+}
+
 impl Storage {
     pub fn new(settings: Settings) -> Storage {
         let configured = settings
@@ -124,6 +132,8 @@ impl Storage {
         let prefixes =
             |prefixes: &[&str]| prefixes.iter().map(|&prefix| prefix.to_owned()).collect();
         let built_in = vec![
+            Provider::new(Source::Web, prefixes(&["http://", "https://"])),
+            Provider::new(Source::PublicBuckets, prefixes(&["s3://", "gs://"])),
             Provider::new(Source::Files, prefixes(&["file://"])),
         ];
         Storage {

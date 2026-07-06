@@ -2,9 +2,12 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use config_file::ConfigError;
+
+/// What replaces a secret in a message.
+const HIDDEN: &str = "[secret]";
 
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
@@ -59,5 +62,65 @@ impl StorageError {
             self,
             StorageError::Unsupported(_) | StorageError::NoProvider { .. }
         )
+    }
+}
+
+/// Why a request of a provider failed, before the provider names the address and hides its
+/// secrets.
+#[derive(Debug)]
+pub(crate) struct Problem {
+    pub message: String,
+    /// Whether another try may work, as after a network error.
+    pub retryable: bool,
+    /// Whether the file is not there.
+    pub missing: bool,
+}
+
+impl Problem {
+    /// A problem that another try does not fix.
+    pub fn fixed(message: impl Into<String>) -> Problem {
+        Problem {
+            message: message.into(),
+            retryable: false,
+            missing: false,
+        }
+    }
+
+    /// The file is not there.
+    pub fn missing() -> Problem {
+        Problem {
+            missing: true,
+            ..Problem::fixed("it does not exist")
+        }
+    }
+
+    /// A local file failed.
+    pub fn local(path: &Path, error: std::io::Error) -> Problem {
+        Problem::fixed(format!("{}: {error}", path.display()))
+    }
+}
+
+/// A text with each of the secrets replaced, so that a message of a server or a library can
+/// be shown.
+pub(crate) fn redact(text: &str, secrets: &[String]) -> String {
+    let mut text = text.to_owned();
+    for secret in secrets.iter().filter(|secret| !secret.is_empty()) {
+        text = text.replace(secret.as_str(), HIDDEN);
+    }
+    text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn secrets_are_hidden_in_messages() {
+        let secrets = ["s3cr3t".to_owned(), String::new()];
+        assert_eq!(
+            redact("signature s3cr3t does not match s3cr3t", &secrets),
+            "signature [secret] does not match [secret]"
+        );
+        assert_eq!(redact("nothing here", &secrets), "nothing here");
     }
 }

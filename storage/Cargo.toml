@@ -14,3 +14,4 @@ publish.workspace = true
 [dependencies]
 config-file.workspace = true
 thiserror.workspace = true
+tokio.workspace = true

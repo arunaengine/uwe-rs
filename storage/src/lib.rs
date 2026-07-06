@@ -10,5 +10,7 @@
 
 pub mod address;
 mod error;
+pub mod settings;
 
 pub use error::StorageError;
+pub use settings::Settings;

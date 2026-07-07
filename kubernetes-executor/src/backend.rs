@@ -305,3 +305,25 @@ fn machine(message: String) -> ExecutorError {
         message,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn containers_end_tasks_or_fail_the_machine() {
+        let exited = |status, reason: &str| Ended::Exited(status, reason.to_owned());
+        assert_eq!(
+            outcome(Some(3), &exited(0, "Completed"), None),
+            Ok((3, None))
+        );
+        assert!(outcome(None, &exited(0, "Completed"), None).is_err());
+        let memory = outcome(None, &exited(137, "OOMKilled"), None).expect("an end");
+        assert_eq!(memory.0, 137);
+        assert!(memory.1.expect("a note").contains("lack of memory"));
+        assert!(outcome(None, &exited(127, "Error"), None).is_err());
+        let late = Ended::Stopped("DeadlineExceeded".into());
+        assert_eq!(outcome(None, &late, Some(9)).map(|(code, _)| code), Ok(143));
+        assert!(outcome(None, &Ended::Stopped("Evicted".into()), None).is_err());
+    }
+}

@@ -12,7 +12,6 @@ mod local;
 mod nextflow;
 mod page;
 mod record;
-mod remote;
 mod resume;
 mod revision;
 mod runs;
@@ -228,7 +227,7 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Serv
         false => None,
     };
     let prepared = executor(arguments, &setup, &run, !quiet).and_then(|executor| {
-        let driver = driver(language, &launch, &run, quiet, arguments)?;
+        let driver = driver(language, &launch, &run, quiet, arguments, &setup)?;
         Ok((executor, driver))
     });
     let (executor, mut driver) = match prepared {
@@ -314,9 +313,10 @@ fn driver(
     run: &str,
     quiet: bool,
     arguments: &Arguments,
+    setup: &Setup,
 ) -> Result<Box<dyn Driver>, DriverError> {
     match language {
-        Language::Nextflow => nextflow::driver(launch, run, quiet),
+        Language::Nextflow => nextflow::driver(launch, run, quiet, &setup.storage),
         Language::Snakemake => snakemake_runtime::driver_with(launch, snakemake(arguments)),
         Language::Cwl => cwl_runtime::driver(launch),
         Language::Argo => argo_runtime::driver(launch),
@@ -338,9 +338,9 @@ fn snakemake(arguments: &Arguments) -> snakemake_runtime::Settings {
 
 /// `iunctus config`: the config of a Nextflow project, by default the launch directory.
 fn config(arguments: &Arguments) -> Result<(), Failure> {
-    Setup::load(arguments)?;
+    let setup = Setup::load(arguments)?;
     let project = arguments.target.clone().unwrap_or_else(|| ".".into());
-    nextflow::print_config(&launch(arguments, project))?;
+    nextflow::print_config(&launch(arguments, project), &setup.storage)?;
     Ok(())
 }
 

@@ -1,0 +1,24 @@
+# Manifest of kubernetes-executor, which runs tasks as Kubernetes Jobs.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "kubernetes-executor"
+description = "Runs tasks as Kubernetes Jobs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+executor.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio = { workspace = true, features = ["fs", "io-util", "process", "sync", "time"] }
+tokio-util.workspace = true
+
+[dev-dependencies]
+task-model.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }

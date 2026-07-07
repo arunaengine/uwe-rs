@@ -4,7 +4,7 @@
 
 [workspace]
 resolver = "3"
-members = ["argo-parser", "argo-runtime", "config-file", "content-store", "cwl-parser", "cwl-runtime", "executor", "iunctus", "nextflow-config", "nextflow-evaluator", "nextflow-parser", "nextflow-plugins", "nextflow-runtime", "python-evaluator", "run-crate", "run-database", "run-page", "slurm-executor", "snakemake-parser", "snakemake-runtime", "storage", "task-model", "task-runner", "tes-executor", "workflow-graph"]
+members = ["argo-parser", "argo-runtime", "config-file", "content-store", "cwl-parser", "cwl-runtime", "executor", "iunctus", "kubernetes-executor", "nextflow-config", "nextflow-evaluator", "nextflow-parser", "nextflow-plugins", "nextflow-runtime", "python-evaluator", "run-crate", "run-database", "run-page", "slurm-executor", "snakemake-parser", "snakemake-runtime", "storage", "task-model", "task-runner", "tes-executor", "workflow-graph"]
 
 [workspace.package]
 version = "0.1.0"
@@ -22,6 +22,7 @@ content-store = { path = "content-store" }
 cwl-parser = { path = "cwl-parser" }
 cwl-runtime = { path = "cwl-runtime" }
 executor = { path = "executor" }
+kubernetes-executor = { path = "kubernetes-executor" }
 nextflow-config = { path = "nextflow-config" }
 nextflow-evaluator = { path = "nextflow-evaluator" }
 nextflow-parser = { path = "nextflow-parser" }

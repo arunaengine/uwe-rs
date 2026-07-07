@@ -102,6 +102,15 @@ impl Store {
         Ok(store)
     }
 
+    /// A store in an object store, through an operator whose paths start at the store's root,
+    /// like one of a storage provider. `base` is the address of that root for others, like
+    /// `s3://bucket/prefix`.
+    pub fn remote(operator: Operator, base: &str) -> Result<Self, StoreError> {
+        let mut store = Self::with(operator)?;
+        store.base = Some(base.trim_end_matches('/').to_owned());
+        Ok(store)
+    }
+
     /// Where an object is for others: its path for a local store, its URL for S3, else the
     /// location in the store.
     pub fn url(&self, location: &str) -> String {

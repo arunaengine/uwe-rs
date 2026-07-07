@@ -71,6 +71,15 @@ async fn memory_contract() {
 }
 
 #[tokio::test]
+async fn remote_stores_name_their_objects_by_address() {
+    let operator = opendal::Operator::new(opendal::services::Memory::default()).expect("memory");
+    let store = Store::remote(operator, "s3://cache/iunctus/").expect("a store");
+    check_contract(&store).await;
+    assert_eq!(store.url("cas/x"), "s3://cache/iunctus/cas/x");
+    assert_eq!(store.local_path("cas/x"), None);
+}
+
+#[tokio::test]
 async fn local_contract() {
     let root = tempfile::tempdir().expect("temporary directory");
     let store = Store::local(root.path()).expect("local store");

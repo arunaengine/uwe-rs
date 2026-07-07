@@ -13,7 +13,6 @@ use task_model::{
 };
 use workflow_graph::{Input, Task};
 
-use crate::remote;
 use crate::runner::{Prepared, Source, segment};
 use crate::{Runner, RunnerError};
 
@@ -71,7 +70,9 @@ impl<B: Backend> Runner<B> {
                 if input.directory {
                     return Err(RunnerError::Remote(input.source.clone()));
                 }
-                let local = remote::download(&input.source, &self.settings.downloads).await?;
+                let local = (self.settings.storage)
+                    .fetch(&input.source, &self.settings.downloads)
+                    .await?;
                 match imported {
                     true => (FileKind::File, self.import(&local).await?.0, Source::Stored),
                     false => {

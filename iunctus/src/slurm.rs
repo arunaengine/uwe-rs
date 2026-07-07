@@ -9,6 +9,7 @@ use std::path::Path;
 use content_store::Store;
 use executor::{ContainerEngine, EngineKind};
 use slurm_executor::{Container, SlurmBackend};
+use storage::Storage;
 use task_runner::{Runner, RunnerExecutor, Settings};
 
 /// The container runtime of the nodes that `-slurm-container` names: `apptainer` (the
@@ -32,20 +33,21 @@ pub fn container(name: Option<&str>) -> Result<Container, String> {
 /// An executor that submits each task as a batch job with the `sbatch` options `options`,
 /// whose job runs the task with `container`. Tasks without an image get `default_image`.
 pub fn executor(
-    store: &Path,
+    store: Store,
     scratch: &Path,
     run: &str,
     default_image: Option<String>,
+    storage: Storage,
     container: Container,
     options: Vec<String>,
 ) -> Result<RunnerExecutor<SlurmBackend>, String> {
-    let store = Store::local(store).map_err(|error| error.to_string())?;
     let mut backend = SlurmBackend::new(scratch.join("slurm"), container);
     backend.options = options;
     // The nodes read the inputs from the store, so they are copied there.
     let settings = Settings {
         downloads: crate::cache_directory().join("downloads"),
         import_inputs: true,
+        storage,
     };
     let runner = Runner::new(store, backend, run, settings);
     Ok(RunnerExecutor::new(runner, default_image))

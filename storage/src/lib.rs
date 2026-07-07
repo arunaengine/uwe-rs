@@ -20,6 +20,7 @@ mod public;
 pub mod settings;
 mod web;
 
+use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -124,6 +125,20 @@ impl Served<'_> {
             message: error::redact(&problem.message, &self.connection.secrets),
             retryable: problem.retryable,
         }
+    }
+}
+
+/// Shows the providers by name and prefix, never their settings, which may hold secrets.
+impl fmt::Debug for Storage {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let providers: Vec<(String, &[String])> = (self.inner.configured.iter())
+            .map(|provider| (provider.source.describe(), provider.prefixes.as_slice()))
+            .collect();
+        formatter
+            .debug_struct("Storage")
+            .field("providers", &providers)
+            .field("store", &self.inner.store)
+            .finish()
     }
 }
 

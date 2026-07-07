@@ -34,7 +34,9 @@ pub fn wrapper(spec: &TaskSpec, work: &str, control: &str) -> String {
 
 /// The wrapper, which also copies each output in the work directory to the same path in the
 /// `outbox` directory, for servers that give back only the directories a task names, like TES.
-/// An empty `outbox` copies nothing.
+/// An empty `outbox` copies nothing. With an outbox, the wrapper at last lets every user change
+/// what the task made, since such a server may run the container as root and then cannot remove
+/// the folders that the task made.
 pub fn wrapper_with_outbox(spec: &TaskSpec, work: &str, control: &str, outbox: &str) -> String {
     let mut script = String::from("#!/bin/bash\n# The iunctus task wrapper.\nset -u\n");
     script.push_str(&format!(
@@ -80,6 +82,9 @@ pub fn wrapper_with_outbox(spec: &TaskSpec, work: &str, control: &str, outbox: &
             }
         }
         script.push_str("fi\n");
+    }
+    if !outbox.is_empty() {
+        script.push_str("chmod -R a+rwX \"$work\" \"$outbox\" \"$control\" 2> /dev/null\n");
     }
     script.push_str("exit 0\n");
     script

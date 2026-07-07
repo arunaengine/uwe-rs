@@ -11,6 +11,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -46,6 +47,8 @@ const UNKNOWN: &str = "-";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Kind {
     Trace,
+    Timeline,
+    Report,
     Dag,
 }
 
@@ -56,6 +59,8 @@ pub(crate) struct Reports {
     fields: Vec<String>,
     separator: String,
     workflow: String,
+    /// When the run started, in milliseconds since 1970.
+    started: i64,
     /// Each attempt that ended, in the order they ended.
     rows: Vec<Row>,
     /// Each task asked for, with when it was last asked for.
@@ -90,6 +95,8 @@ impl Reports {
         let mut wanted = Vec::new();
         for (kind, scope, default) in [
             (Kind::Trace, "trace", format!("trace-{stamp}.txt")),
+            (Kind::Timeline, "timeline", format!("timeline-{stamp}.html")),
+            (Kind::Report, "report", format!("report-{stamp}.html")),
             (Kind::Dag, "dag", format!("dag-{stamp}.html")),
         ] {
             if !config
@@ -121,6 +128,7 @@ impl Reports {
             fields,
             separator,
             workflow: workflow.to_owned(),
+            started,
             rows: Vec::new(),
             asked: HashMap::new(),
             order: Vec::new(),
@@ -171,6 +179,8 @@ impl Reports {
         for (kind, target) in &self.wanted {
             let text = match kind {
                 Kind::Trace => self.trace(),
+                Kind::Timeline => self.timeline(),
+                Kind::Report => self.report(),
                 Kind::Dag => self.dag(),
             };
             let name = target
@@ -199,6 +209,82 @@ impl Reports {
             text.push('\n');
         }
         text
+    }
+
+    /// The timeline: a bar per attempt, from its start to its end.
+    fn timeline(&self) -> String {
+        let end = (self.rows.iter())
+            .filter_map(|row| row.complete)
+            .max()
+            .unwrap_or(self.started);
+        let span = (end - self.started).max(1) as f64;
+        let (width, height) = (1000.0, 22 * self.rows.len() + 10);
+        let mut bars = String::new();
+        let mut rows: Vec<&Row> = self.rows.iter().collect();
+        rows.sort_by_key(|row| row.start.unwrap_or(row.submit));
+        for (index, row) in rows.iter().enumerate() {
+            let x = |time: i64| 300.0 + (time - self.started) as f64 / span * (width - 320.0);
+            let (from, to) = (
+                x(row.start.unwrap_or(row.submit)),
+                x(row.complete.unwrap_or(end)),
+            );
+            let y = 22 * index + 5;
+            let color = if row.exit == 0 { "#4c9f70" } else { "#c0392b" };
+            let _ = writeln!(
+                bars,
+                "<text x=\"0\" y=\"{}\">{}</text><rect x=\"{from:.1}\" y=\"{y}\" \
+                 width=\"{:.1}\" height=\"16\" fill=\"{color}\"><title>{}</title></rect>",
+                y + 13,
+                escape(&row.task.name),
+                (to - from).max(1.0),
+                escape(&format!("{} ({})", row.status(), duration(row.realtime()))),
+            );
+        }
+        let body = format!(
+            "<p>Started {}, {} task attempts over {}.</p>\n<svg xmlns=\"http://www.w3.org/2000/svg\" \
+             width=\"{width}\" height=\"{height}\" font-family=\"sans-serif\" \
+             font-size=\"12\">\n{bars}</svg>\n",
+            escape(&stamp(self.started)),
+            self.rows.len(),
+            duration(Some(end - self.started)),
+        );
+        page("Timeline", &self.workflow, &body)
+    }
+
+    /// The report: a summary of the run, then a table of the attempts.
+    fn report(&self) -> String {
+        let count = |status: &str| {
+            self.rows
+                .iter()
+                .filter(|row| row.status() == status)
+                .count()
+        };
+        let end = self.rows.iter().filter_map(|row| row.complete).max();
+        let mut body = format!(
+            "<p>Started {}, ran for {}: {} completed, {} cached, {} failed.</p>\n<table>\n<tr>",
+            escape(&stamp(self.started)),
+            duration(end.map(|end| end - self.started)),
+            count("COMPLETED"),
+            count("CACHED"),
+            count("FAILED"),
+        );
+        let fields = ["task_id", "name", "status", "exit", "attempt", "container"];
+        let fields = fields
+            .iter()
+            .chain(&["submit", "start", "duration", "realtime"]);
+        for field in fields.clone() {
+            let _ = write!(body, "<th>{field}</th>");
+        }
+        body.push_str("</tr>\n");
+        for row in &self.rows {
+            body.push_str("<tr>");
+            for field in fields.clone() {
+                let _ = write!(body, "<td>{}</td>", escape(&row.value(field)));
+            }
+            body.push_str("</tr>\n");
+        }
+        body.push_str("</table>\n");
+        page("Execution report", &self.workflow, &body)
     }
 
     /// The graph of the processes, with the files between their tasks, drawn as SVG.

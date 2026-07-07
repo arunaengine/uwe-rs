@@ -438,8 +438,9 @@ s3-test:
 	cargo test -p content-store --test store -- --ignored
 
 # Runs the tests of two S3 storage providers against two local RustFS servers, one for inputs
-# (bucket `inputs`) and one for the store (bucket `cache`), each with its own credentials. The
-# servers use only the local image and stop at the end.
+# (bucket `inputs`) and one for the store (bucket `cache`), each with its own credentials, and
+# a real run with Docker that reads its inputs from the first and keeps its store on the
+# second. The servers use only the local image and stop at the end.
 storage-test:
 	#!/usr/bin/env bash
 	set -euo pipefail
@@ -450,9 +451,17 @@ storage-test:
 	serve() {
 		docker run -d --rm --pull=never --name "iunctus-storage-$1" --memory 1g -p "127.0.0.1:$2:9000" \
 			-e RUSTFS_ACCESS_KEY="$3" -e RUSTFS_SECRET_KEY="$4" rustfs/rustfs:latest >/dev/null
-		for _ in $(seq 60); do curl -sf "http://127.0.0.1:$2/health" >/dev/null && break; sleep 1; done
-		curl -sf --aws-sigv4 aws:amz:us-east-1:s3 --user "$3:$4" -X PUT "http://127.0.0.1:$2/$5" >/dev/null
+		# The server answers its health check before it takes requests, so the bucket is made
+		# once it can be.
+		for _ in $(seq 60); do
+			curl -sf --aws-sigv4 aws:amz:us-east-1:s3 --user "$3:$4" -X PUT \
+				"http://127.0.0.1:$2/$5" >/dev/null 2>&1 && return
+			sleep 1
+		done
+		echo "the RustFS server $1 did not start" >&2
+		return 1
 	}
 	serve inputs 9100 "$IUNCTUS_TEST_INPUTS_KEY" "$IUNCTUS_TEST_INPUTS_SECRET" inputs
 	serve store 9101 "$IUNCTUS_TEST_STORE_KEY" "$IUNCTUS_TEST_STORE_SECRET" cache
 	cargo test --locked -p storage --test s3 -- --ignored
+	cargo test --locked -p iunctus --test storage -- --ignored

@@ -26,7 +26,7 @@ pub struct Started<'a> {
     pub language: Language,
     pub executor: &'a str,
     pub simulated: bool,
-    pub store: Option<&'a Path>,
+    pub store: Option<&'a str>,
 }
 
 /// Opens the run database and starts the record of a run. With `-resume`, the run joins the
@@ -59,7 +59,7 @@ pub fn start(arguments: &Arguments, run: &Started) -> Result<Recording, Failure>
         parameters: arguments.params.clone(),
         executor: run.executor.to_owned(),
         simulated: run.simulated,
-        store: run.store.map(|store| store.to_string_lossy().into_owned()),
+        store: run.store.map(str::to_owned),
     };
     let recorder = database.record(&start).map_err(broken)?;
     Ok(Recording { recorder, reusable })

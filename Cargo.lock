@@ -1773,6 +1773,7 @@ name = "iunctus"
 version = "0.1.0"
 dependencies = [
  "argo-runtime",
+ "config-file",
  "content-store",
  "cwl-runtime",
  "executor",
@@ -1788,6 +1789,7 @@ dependencies = [
  "sha2 0.11.0",
  "slurm-executor",
  "snakemake-runtime",
+ "storage",
  "task-model",
  "task-runner",
  "tempfile",
@@ -4113,10 +4115,9 @@ dependencies = [
  "bytes",
  "content-store",
  "executor",
- "reqwest",
  "serde",
  "serde_json",
- "sha2 0.11.0",
+ "storage",
  "task-model",
  "tempfile",
  "thiserror",

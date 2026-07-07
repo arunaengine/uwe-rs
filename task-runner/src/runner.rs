@@ -10,6 +10,7 @@ use bytes::Bytes;
 use content_store::{Store, StoreError};
 use executor::{Backend, ExecutorError, Job};
 use serde::{Deserialize, Serialize};
+use storage::{Storage, StorageError};
 use task_model::{Digest, ReuseScope, SpecError, TaskRequest, Tree, TreeEntry};
 use tokio::sync::OnceCell;
 
@@ -73,14 +74,11 @@ pub enum RunnerError {
     },
     #[error("cannot read the cache entry {key}: {message}")]
     Entry { key: Digest, message: String },
-    #[error(
-        "the input {0} is not supported yet; iunctus reads http and https addresses, and \
-         files of public s3 and gs buckets"
-    )]
+    #[error("the input {0} is a remote directory, which iunctus cannot read yet")]
     Remote(String),
-    /// A remote input could not be downloaded; another attempt may work.
-    #[error("cannot download {url}: {message}")]
-    Download { url: String, message: String },
+    /// A remote input could not be read through the storage providers.
+    #[error(transparent)]
+    Storage(#[from] StorageError),
     #[error("the name of `{0}` is not UTF-8")]
     Name(PathBuf),
     #[error("the directory manifest of the input `{0}` names a path outside the directory")]
@@ -90,14 +88,18 @@ pub enum RunnerError {
 impl RunnerError {
     /// Whether the cause is a feature that the runner does not support yet.
     pub fn unsupported(&self) -> bool {
-        matches!(self, RunnerError::Remote(_))
+        match self {
+            RunnerError::Remote(_) => true,
+            RunnerError::Storage(error) => error.unsupported(),
+            _ => false,
+        }
     }
 
     /// Whether the machine failed rather than the task, so that another attempt may work.
     pub fn retryable(&self) -> bool {
         match self {
             RunnerError::Executor(error) => error.retryable(),
-            RunnerError::Download { .. } => true,
+            RunnerError::Storage(error) => error.retryable(),
             _ => false,
         }
     }
@@ -111,6 +113,8 @@ pub struct Settings {
     /// Whether local input files are copied into the store, as tasks on another machine
     /// need. A backend on this machine reads them where they are, so their digests are enough.
     pub import_inputs: bool,
+    /// The storage providers that remote inputs come from.
+    pub storage: Storage,
 }
 
 /// Where the content of an input comes from, for staging.

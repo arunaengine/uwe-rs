@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use config_file::{ConfigError, ConfigFile, Origin, Secret, Table};
 
@@ -129,7 +129,17 @@ impl Settings {
         let store = match config.section("store")? {
             Some(store) => {
                 store.only(&["location"])?;
-                store.text("location")?
+                let location = store.text("location")?;
+                let relative = location.as_deref().is_some_and(|location| {
+                    address::scheme(location).is_none() && !Path::new(location).is_absolute()
+                });
+                if relative {
+                    return Err(store.invalid(
+                        "location",
+                        "must be an absolute folder or an address, like \"s3://my-bucket/iunctus\"",
+                    ));
+                }
+                location
             }
             None => None,
         };

@@ -79,6 +79,7 @@ fn runner(root: &Path, exit_code: i32) -> Runner<Fake> {
     let settings = Settings {
         downloads: root.join("downloads"),
         import_inputs: false,
+        storage: storage::Storage::default(),
     };
     Runner::new(store, fake, "run1", settings)
 }
@@ -260,8 +261,8 @@ fn remote_inputs_are_downloaded_once() {
         assert_eq!(digest, &task_model::Digest::sha256(b"data\n"));
     }
     assert_eq!(served.load(std::sync::atomic::Ordering::SeqCst), 1);
-    // Other schemes are not supported yet.
-    remote.inputs[0].source = "ftp://host/input.txt".into();
+    // An address that no storage provider serves is not supported.
+    remote.inputs[0].source = "az://container/input.txt".into();
     let error = block_on(runner.request(&remote, None)).unwrap_err();
     assert!(error.unsupported(), "{error}");
 }

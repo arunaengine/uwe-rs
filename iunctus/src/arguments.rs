@@ -17,7 +17,11 @@ pub struct Arguments {
     /// `-lang name`; else the language is found from the target.
     pub language: Option<Language>,
     pub stub: bool,
-    pub store: Option<PathBuf>,
+    /// `-store folder|address`: where the cache store lives; a folder is made absolute.
+    pub store: Option<String>,
+    /// `-iunctus-config file`: a config file of iunctus, read after the site-wide file and
+    /// the user's file.
+    pub config_file: Option<PathBuf>,
     /// `-profile a,b`
     pub profiles: Option<Vec<String>>,
     /// `-c file`, `-configfile file`
@@ -97,9 +101,14 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
         match argument.as_str() {
             "-stub" | "-stub-run" => parsed.stub = true,
             "-store" => {
-                let directory = value()?;
-                parsed.store = Some(std::path::absolute(&directory).unwrap_or(directory.into()));
+                let place = value()?;
+                parsed.store = Some(match storage::address::scheme(&place) {
+                    Some(_) => place,
+                    None => std::path::absolute(&place)
+                        .map_or(place, |folder| folder.to_string_lossy().into_owned()),
+                });
             }
+            "-iunctus-config" => parsed.config_file = Some(value()?.into()),
             "-profile" => {
                 // Groovy's `tokenize(',')`: empty names are dropped, spaces are kept.
                 let names = value()?;
@@ -324,6 +333,16 @@ mod tests {
             parsed.params,
             [("config".to_owned(), "file.txt".to_owned())]
         );
+    }
+
+    #[test]
+    fn stores_are_folders_or_addresses() {
+        let parsed = parse_all(&["main.nf", "-store", "s3://cache/iunctus"]);
+        assert_eq!(parsed.store.as_deref(), Some("s3://cache/iunctus"));
+        let parsed = parse_all(&["main.nf", "-store", "cache", "-iunctus-config", "lab.toml"]);
+        let folder = std::path::absolute("cache").expect("an absolute path");
+        assert_eq!(parsed.store, Some(folder.to_string_lossy().into_owned()));
+        assert_eq!(parsed.config_file, Some(PathBuf::from("lab.toml")));
     }
 
     #[test]

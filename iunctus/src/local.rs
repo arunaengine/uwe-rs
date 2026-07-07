@@ -7,18 +7,19 @@ use std::path::Path;
 
 use content_store::Store;
 use executor::{ContainerEngine, LocalContainer, Pool};
+use storage::Storage;
 use task_runner::{Runner, RunnerExecutor, Settings};
 
 /// An executor whose results go to the store and whose tasks run in `scratch`, with the
 /// container engine of this machine. Tasks without an image get `default_image`.
 pub fn executor(
-    store: &Path,
+    store: Store,
     scratch: &Path,
     run: &str,
     default_image: Option<String>,
+    storage: Storage,
 ) -> Result<RunnerExecutor<LocalContainer>, String> {
     let engine = ContainerEngine::find().map_err(|error| error.to_string())?;
-    let store = Store::local(store).map_err(|error| error.to_string())?;
     let backend = LocalContainer {
         engine,
         scratch: scratch.to_owned(),
@@ -28,6 +29,7 @@ pub fn executor(
     let settings = Settings {
         downloads: crate::cache_directory().join("downloads"),
         import_inputs: false,
+        storage,
     };
     let runner = Runner::new(store, backend, run, settings);
     Ok(RunnerExecutor::new(runner, default_image))

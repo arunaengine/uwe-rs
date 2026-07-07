@@ -16,6 +16,7 @@ mod remote;
 mod resume;
 mod revision;
 mod runs;
+mod setup;
 mod slurm;
 mod tes;
 
@@ -31,6 +32,7 @@ use workflow_graph::{
 };
 
 use crate::arguments::Arguments;
+use crate::setup::Setup;
 
 /// The exit code for a feature that a workflow language supports but iunctus does not yet, as
 /// CWL runners use it for unsupported requirements.
@@ -207,14 +209,15 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Serv
     let launch = launch(arguments, target.clone());
     let run = run_id();
     let name = arguments.executor.as_deref().unwrap_or("simulator");
-    let store = store(arguments);
+    let setup = Setup::load(arguments)?;
+    let store = setup.store_location(arguments);
     let started = record::Started {
         id: &run,
         target,
         language,
         executor: name,
         simulated: name == "simulator",
-        store: (name != "simulator").then_some(store.as_path()),
+        store: (name != "simulator").then_some(store.as_str()),
     };
     let record::Recording {
         mut recorder,
@@ -224,7 +227,7 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Serv
         true => Some(page::start(arguments, &format!("/runs/{run}"))?),
         false => None,
     };
-    let prepared = executor(arguments, &run, !quiet).and_then(|executor| {
+    let prepared = executor(arguments, &setup, &run, !quiet).and_then(|executor| {
         let driver = driver(language, &launch, &run, quiet, arguments)?;
         Ok((executor, driver))
     });
@@ -335,6 +338,7 @@ fn snakemake(arguments: &Arguments) -> snakemake_runtime::Settings {
 
 /// `iunctus config`: the config of a Nextflow project, by default the launch directory.
 fn config(arguments: &Arguments) -> Result<(), Failure> {
+    Setup::load(arguments)?;
     let project = arguments.target.clone().unwrap_or_else(|| ".".into());
     nextflow::print_config(&launch(arguments, project))?;
     Ok(())
@@ -344,7 +348,12 @@ fn config(arguments: &Arguments) -> Result<(), Failure> {
 /// for each task and makes up its outputs, `local` runs each task in a container, `tes` on a
 /// TES server and `slurm` as a SLURM batch job. The simulator keeps its files in the scratch
 /// directory of the cache.
-fn executor(arguments: &Arguments, run: &str, verbose: bool) -> Result<Box<dyn Executor>, Failure> {
+fn executor(
+    arguments: &Arguments,
+    setup: &Setup,
+    run: &str,
+    verbose: bool,
+) -> Result<Box<dyn Executor>, Failure> {
     let cache = cache_directory();
     let scratch = cache.join("scratch");
     match arguments.executor.as_deref().unwrap_or("simulator") {
@@ -355,7 +364,9 @@ fn executor(arguments: &Arguments, run: &str, verbose: bool) -> Result<Box<dyn E
         }
         "local" => {
             let default_image = arguments.default_image.clone();
-            let mut executor = local::executor(&store(arguments), &scratch, run, default_image)
+            let store = setup.store(arguments)?;
+            let storage = setup.storage.clone();
+            let mut executor = local::executor(store, &scratch, run, default_image, storage)
                 .map_err(|message| failure(format!("iunctus: {message}")))?;
             executor.verbose = verbose;
             Ok(Box::new(executor))
@@ -363,9 +374,10 @@ fn executor(arguments: &Arguments, run: &str, verbose: bool) -> Result<Box<dyn E
         "tes" => {
             let default_image = arguments.default_image.clone();
             let server = (arguments.tes_server.as_deref()).unwrap_or(tes::DEFAULT_SERVER);
-            let mut executor =
-                tes::executor(&store(arguments), &scratch, run, default_image, server)
-                    .map_err(|message| failure(format!("iunctus: {message}")))?;
+            let store = setup.store(arguments)?;
+            let storage = setup.storage.clone();
+            let mut executor = tes::executor(store, &scratch, run, default_image, storage, server)
+                .map_err(|message| failure(format!("iunctus: {message}")))?;
             executor.verbose = verbose;
             Ok(Box::new(executor))
         }
@@ -377,10 +389,18 @@ fn executor(arguments: &Arguments, run: &str, verbose: bool) -> Result<Box<dyn E
                 .split_whitespace()
                 .map(str::to_owned)
                 .collect();
-            let store = store(arguments);
-            let mut executor =
-                slurm::executor(&store, &scratch, run, default_image, container, options)
-                    .map_err(|message| failure(format!("iunctus: {message}")))?;
+            let store = setup.store(arguments)?;
+            let storage = setup.storage.clone();
+            let mut executor = slurm::executor(
+                store,
+                &scratch,
+                run,
+                default_image,
+                storage,
+                container,
+                options,
+            )
+            .map_err(|message| failure(format!("iunctus: {message}")))?;
             executor.verbose = verbose;
             Ok(Box::new(executor))
         }
@@ -388,11 +408,6 @@ fn executor(arguments: &Arguments, run: &str, verbose: bool) -> Result<Box<dyn E
             "iunctus: unknown executor `{other}`; use `simulator`, `local`, `tes` or `slurm`"
         ))),
     }
-}
-
-/// The store of the local executor: `-store`, else `store` in the cache directory.
-fn store(arguments: &Arguments) -> PathBuf {
-    (arguments.store.clone()).unwrap_or_else(|| cache_directory().join("store"))
 }
 
 /// What the command line asks to run, in the terms all languages share.
@@ -456,7 +471,11 @@ options:
   -order asked|reversed|finished|shuffled[:<seed>]
                                       the order in which pending tasks finish (default
                                       asked for the simulator, finished for real executors)
-  -store <directory>                  the cache of the local executor
+  -store <folder or address>          the cache store of real executors, in a folder or at an
+                                      address of a storage provider, like s3://bucket/cache
+  -iunctus-config <file>              a config file of iunctus, read after
+                                      /etc/iunctus/config.toml and
+                                      ~/.config/iunctus/config.toml
   -default-image <image>              the image of tasks that name none, for real executors
   -python-image <image>               the image of the Python packages without a stand-in
   -stub                               runs the stubs of tasks

@@ -1976,6 +1976,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "kubernetes-executor"
+version = "0.1.0"
+dependencies = [
+ "executor",
+ "serde_json",
+ "sha2 0.11.0",
+ "task-model",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "lazy-regex"
 version = "3.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

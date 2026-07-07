@@ -1,5 +1,5 @@
-//! The Nextflow side of the command: the driver with a host that downloads remote files into
-//! the cache, and `iunctus config`.
+//! The Nextflow side of the command: the driver with a host that reads remote files through
+//! the storage providers and keeps them in the cache, and `iunctus config`.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -10,15 +10,15 @@ use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
 use nextflow_evaluator::value::{PathValue, Value};
 use nextflow_runtime::driver::{Nextflow, Settings};
+use storage::{Blocking, Storage, StorageError};
 use workflow_graph::{Driver, DriverError, Launch};
-
-use crate::remote;
 
 /// Prints what the workflow prints, and downloads remote files into a cache.
 struct Console {
     downloads: PathBuf,
     /// Prints to standard error instead of standard output, which then holds only the graph.
     quiet: bool,
+    storage: Blocking,
 }
 
 impl Host for Console {
@@ -47,21 +47,25 @@ impl Host for Console {
     }
 
     fn download(&mut self, path: &PathValue) -> Result<PathBuf, Error> {
-        let Some(url) = remote::https_url(path) else {
-            return Err(Error::Unsupported {
-                message: format!("reading remote files like {}", path.uri()),
-                span: Default::default(),
-            });
-        };
-        remote::download(&url, &self.downloads).map_err(io_error)
+        let uri = path.uri();
+        (self.storage.fetch(&uri, &self.downloads)).map_err(|error| storage_error(&uri, error))
     }
 
-    /// Local directories, and directories of public S3 and Google Cloud Storage buckets.
+    /// Local directories, and directories of storage providers that can list them, like
+    /// buckets.
     fn list(&mut self, directory: &PathValue) -> Result<Vec<(String, bool)>, Error> {
-        if directory.prefix.is_some() {
-            return remote::list(directory).map_err(io_error);
+        if directory.prefix.is_none() {
+            return nextflow_evaluator::interpreter::list_local(directory);
         }
-        nextflow_evaluator::interpreter::list_local(directory)
+        let uri = directory.uri();
+        let entries = self
+            .storage
+            .list(&uri)
+            .map_err(|error| storage_error(&uri, error))?;
+        Ok(entries
+            .into_iter()
+            .map(|entry| (entry.name, entry.directory))
+            .collect())
     }
 
     fn metadata(&mut self, path: &PathValue) -> Result<Option<FileMetadata>, Error> {
@@ -83,13 +87,26 @@ impl Host for Console {
                 Err(error) => Err(io_error(format!("{}: {error}", path.path))),
             };
         }
-        match remote::https_url(path) {
-            Some(url) => remote::metadata(path, &url, &self.downloads).map_err(io_error),
-            None => Err(Error::Unsupported {
-                message: format!("reading remote files like {}", path.uri()),
-                span: Default::default(),
-            }),
-        }
+        let uri = path.uri();
+        let found = (self.storage.metadata(&uri, &self.downloads))
+            .map_err(|error| storage_error(&uri, error))?;
+        Ok(found.map(|found| FileMetadata {
+            directory: found.directory,
+            size: found.size,
+        }))
+    }
+}
+
+/// An error of storage as an error of the workflow: an address that no storage provider
+/// serves is not supported, as before there were providers; other errors are Java's
+/// `IOException`.
+fn storage_error(uri: &str, error: StorageError) -> Error {
+    match error {
+        StorageError::NoProvider { .. } => Error::Unsupported {
+            message: format!("reading remote files like {uri}"),
+            span: Default::default(),
+        },
+        error => io_error(error.to_string()),
     }
 }
 
@@ -101,17 +118,23 @@ fn io_error(message: String) -> Error {
 }
 
 /// The host of a run; remote files are cached in `downloads` of the cache directory.
-fn console(quiet: bool) -> Console {
+fn console(quiet: bool, storage: &Storage) -> Console {
     Console {
         downloads: crate::cache_directory().join("downloads"),
         quiet,
+        storage: storage.blocking(),
     }
 }
 
 /// The Nextflow driver of a launch. `quiet` sends what the workflow prints to standard error.
-pub fn driver(launch: &Launch, run: &str, quiet: bool) -> Result<Box<dyn Driver>, DriverError> {
+pub fn driver(
+    launch: &Launch,
+    run: &str,
+    quiet: bool,
+    storage: &Storage,
+) -> Result<Box<dyn Driver>, DriverError> {
     let settings = Settings {
-        host: Box::new(console(quiet)),
+        host: Box::new(console(quiet, storage)),
         container_engine: Some(crate::engine()),
         run_name: run.to_owned(),
         command_line: std::env::args().collect::<Vec<_>>().join(" "),
@@ -120,8 +143,9 @@ pub fn driver(launch: &Launch, run: &str, quiet: bool) -> Result<Box<dyn Driver>
 }
 
 /// `iunctus config`: the config of a project in the flat form of `nextflow config -flat`.
-pub fn print_config(launch: &Launch) -> Result<(), DriverError> {
-    let config = nextflow_runtime::driver::config(&launch.target, launch, &mut console(false))?;
+pub fn print_config(launch: &Launch, storage: &Storage) -> Result<(), DriverError> {
+    let mut console = console(false, storage);
+    let config = nextflow_runtime::driver::config(&launch.target, launch, &mut console)?;
     print!("{}", config.flat());
     Ok(())
 }

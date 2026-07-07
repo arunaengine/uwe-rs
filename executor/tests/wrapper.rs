@@ -177,4 +177,11 @@ fn outputs_go_to_the_outbox_too() {
             .is_symlink()
     );
     assert_eq!(read(&linked), "in\n");
+    // Every user may change what the task made, also when the task ran as root.
+    use std::os::unix::fs::PermissionsExt;
+    let mode = std::fs::metadata(outbox.join("dir/a"))
+        .expect("exists")
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o777);
 }

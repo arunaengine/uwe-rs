@@ -15,6 +15,7 @@ use workflow_graph::{Delivery, Driver, DriverError, Input, Language, Launch, Not
 
 use crate::notes::Noting;
 use crate::process::glob_matches;
+use crate::reports::Reports;
 use crate::task::{
     ENVIRONMENT, SCRIPT, command, command_script, container, read_environment, resources,
     with_registry,
@@ -73,6 +74,10 @@ pub struct Nextflow {
     notes: Vec<Note>,
     /// The registry of the container engine, like `docker.registry`, for images without one.
     registry: Option<String>,
+    /// The reports that the config turns on, like the trace, in a real run.
+    reports: Option<Reports>,
+    /// The deliveries of the reports, once they are written.
+    report_deliveries: Vec<Delivery>,
 }
 
 impl Nextflow {
@@ -90,6 +95,8 @@ impl Nextflow {
             environment: BTreeMap::new(),
             notes: Vec::new(),
             registry: None,
+            reports: None,
+            report_deliveries: Vec::new(),
         })
     }
 
@@ -101,6 +108,9 @@ impl Nextflow {
                 let mut task = task(&request, &self.environment);
                 let registry = self.registry.as_deref();
                 task.image = (task.image).map(|image| with_registry(&image, registry));
+                if let Some(reports) = &mut self.reports {
+                    reports.asked(&task);
+                }
                 self.requests.insert(request.id, request);
                 task
             })
@@ -145,6 +155,11 @@ impl Driver for Nextflow {
         self.registry = config
             .get(&[engine, "registry"])
             .map(|registry| registry.to_string());
+        if !self.launch.simulated {
+            let launch_dir = std::env::current_dir().unwrap_or_default();
+            let reports = Reports::of(&config, &launch_dir, &script.to_string_lossy());
+            self.reports = Some(reports).filter(|reports| !reports.is_empty());
+        }
         let text = |path: &Path| {
             std::path::absolute(path)
                 .unwrap_or_else(|_| path.to_owned())
@@ -186,6 +201,9 @@ impl Driver for Nextflow {
         let request = self.requests.remove(&id).ok_or_else(|| {
             DriverError::new(format!("the task {} was not asked for", outcome.id))
         })?;
+        if let Some(reports) = &mut self.reports {
+            reports.ended(&outcome);
+        }
         let mut outcome = outcome;
         if self.launch.simulated {
             drop_made_up_outputs(&request, &mut outcome);
@@ -202,7 +220,16 @@ impl Driver for Nextflow {
 
     fn finish(&mut self) -> Result<(), DriverError> {
         let run = self.run.as_mut().ok_or_else(not_started)?;
-        run.finish(self.settings.host.as_mut()).map_err(error)
+        run.finish(self.settings.host.as_mut()).map_err(error)?;
+        if let Some(reports) = &self.reports {
+            // The reports go to a folder of this run, from where the engine delivers them.
+            let run = format!("{}-{}", std::process::id(), self.settings.run_name);
+            let folder = self.launch.scratch.join("nextflow-reports").join(run);
+            self.report_deliveries = reports.write(&folder).map_err(|error| {
+                DriverError::new(format!("cannot write the reports of the run: {error}"))
+            })?;
+        }
+        Ok(())
     }
 
     fn notes(&mut self) -> Vec<Note> {
@@ -210,10 +237,12 @@ impl Driver for Nextflow {
     }
 
     fn deliveries(&mut self) -> Vec<Delivery> {
-        match self.run.as_mut() {
+        let mut deliveries = match self.run.as_mut() {
             Some(run) => run.take_deliveries(),
             None => Vec::new(),
-        }
+        };
+        deliveries.append(&mut self.report_deliveries);
+        deliveries
     }
 }
 

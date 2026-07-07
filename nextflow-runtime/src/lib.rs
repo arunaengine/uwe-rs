@@ -15,6 +15,7 @@ mod outputs;
 mod pairs;
 mod process;
 mod publish;
+mod reports;
 mod route;
 mod session;
 mod split;

@@ -5,8 +5,10 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod backend;
 mod manifest;
 mod pods;
 
+pub use backend::KubernetesBackend;
 pub use manifest::{LABEL, Limits, job, job_name};
 pub use pods::{Kubectl, Look, Pods};

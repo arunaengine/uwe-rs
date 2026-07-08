@@ -8,6 +8,7 @@
 
 mod arguments;
 mod detect;
+mod kubernetes;
 mod local;
 mod nextflow;
 mod page;
@@ -346,8 +347,8 @@ fn config(arguments: &Arguments) -> Result<(), Failure> {
 
 /// The executor that `-executor` names: `simulator` (the default) writes a TES task document
 /// for each task and makes up its outputs, `local` runs each task in a container, `tes` on a
-/// TES server and `slurm` as a SLURM batch job. The simulator keeps its files in the scratch
-/// directory of the cache.
+/// TES server, `slurm` as a SLURM batch job and `kubernetes` as a Kubernetes Job. The simulator
+/// keeps its files in the scratch directory of the cache.
 fn executor(
     arguments: &Arguments,
     setup: &Setup,
@@ -404,8 +405,28 @@ fn executor(
             executor.verbose = verbose;
             Ok(Box::new(executor))
         }
+        "kubernetes" => {
+            let default_image = arguments.default_image.clone();
+            let kubeconfig = arguments.kubeconfig.as_deref();
+            let namespace = arguments.kubernetes_namespace.clone();
+            let store = setup.store(arguments)?;
+            let storage = setup.storage.clone();
+            let mut executor = kubernetes::executor(
+                store,
+                &scratch,
+                run,
+                default_image,
+                storage,
+                kubeconfig,
+                namespace,
+            )
+            .map_err(|message| failure(format!("iunctus: {message}")))?;
+            executor.verbose = verbose;
+            Ok(Box::new(executor))
+        }
         other => Err(failure(format!(
-            "iunctus: unknown executor `{other}`; use `simulator`, `local`, `tes` or `slurm`"
+            "iunctus: unknown executor `{other}`; use `simulator`, `local`, `tes`, `slurm` or \
+             `kubernetes`"
         ))),
     }
 }
@@ -453,10 +474,10 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
 
 options:
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it
-  -executor simulator|local|tes|slurm simulator (the default) writes TES task documents
+  -executor <executor>                simulator (the default) writes TES task documents
                                       and makes up the outputs; local runs containers on
                                       this machine, tes on a TES server, slurm as SLURM
-                                      batch jobs
+                                      batch jobs, kubernetes as Kubernetes Jobs
   -graph <file>                       writes the execution graph: DOT for .dot, SVG for .svg,
                                       a summary for .txt, else JSON
   -view tasks|steps                   one node per task (the default) or one per step
@@ -466,6 +487,9 @@ options:
   -slurm-container <runtime>          how the nodes of -executor slurm run containers:
                                       apptainer (the default), singularity, podman or docker
   -slurm-options '<options>'          more options of sbatch, like '--account=lab'
+  -kubeconfig <file>                  the kubeconfig of the cluster of -executor kubernetes;
+                                      iunctus never takes the default one
+  -kubernetes-namespace <name>        the namespace of the Jobs; the kubeconfig's by default
   -max-pending <n>                    lets up to n tasks be pending at once (default 1 for
                                       the simulator, no limit for real executors)
   -order asked|reversed|finished|shuffled[:<seed>]

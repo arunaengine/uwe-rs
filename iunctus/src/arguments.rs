@@ -32,7 +32,7 @@ pub struct Arguments {
     pub inputs: Option<PathBuf>,
     /// `-entry name` and the arguments after the target, like Snakemake targets.
     pub targets: Vec<String>,
-    /// `-executor simulator|local`; `None` for the default.
+    /// `-executor simulator|local|tes|slurm|kubernetes`; `None` for the default.
     pub executor: Option<String>,
     /// `-graph file`: where to write the execution graph.
     pub graph: Option<PathBuf>,
@@ -45,6 +45,10 @@ pub struct Arguments {
     pub slurm_container: Option<String>,
     /// `-slurm-options 'options'`: more options of `sbatch`, like `--account=lab`.
     pub slurm_options: Option<String>,
+    /// `-kubeconfig file`: the kubeconfig of the cluster of `-executor kubernetes`.
+    pub kubeconfig: Option<PathBuf>,
+    /// `-kubernetes-namespace name`: the namespace of the Jobs of `-executor kubernetes`.
+    pub kubernetes_namespace: Option<String>,
     /// `-format json|dot|summary|svg` of `iunctus graph`.
     pub format: Option<Format>,
     /// `-view tasks|steps`: the graph with one node per task, or one node per step.
@@ -134,6 +138,8 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
             "-tes-server" => parsed.tes_server = Some(value()?),
             "-slurm-container" => parsed.slurm_container = Some(value()?),
             "-slurm-options" => parsed.slurm_options = Some(value()?),
+            "-kubeconfig" => parsed.kubeconfig = Some(value()?.into()),
+            "-kubernetes-namespace" => parsed.kubernetes_namespace = Some(value()?),
             "-format" => {
                 let name = value()?;
                 parsed.format = Some(Format::parse(&name).ok_or(format!(
@@ -361,6 +367,20 @@ mod tests {
             parsed.slurm_options.as_deref(),
             Some("--account=lab --qos=low")
         );
+    }
+
+    #[test]
+    fn kubernetes_options() {
+        let arguments = [
+            "main.nf",
+            "-kubeconfig",
+            "kind.yaml",
+            "-kubernetes-namespace",
+            "x",
+        ];
+        let parsed = parse_all(&arguments);
+        assert_eq!(parsed.kubeconfig, Some(PathBuf::from("kind.yaml")));
+        assert_eq!(parsed.kubernetes_namespace.as_deref(), Some("x"));
     }
 
     #[test]

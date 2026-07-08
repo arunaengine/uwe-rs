@@ -3,15 +3,17 @@
 //!
 //! 1. The nodes are put in a depth-first order, in which every edge points from a node to a
 //!    later one, except the edges that close a cycle. Those are laid out turned round.
-//! 2. Layers by the longest path from a node without predecessors. Then each node that has
-//!    successors moves down to just above the first of them, which shortens long edges.
+//! 2. Layers by the longest path from a node without predecessors. Then each node with more
+//!    successors than predecessors, like a node without predecessors, moves down to just above
+//!    the first of its successors, which shortens more edges than it lengthens.
 //! 3. An edge that spans several layers gets a point in each layer between, so that it can
 //!    pass between the nodes there.
 //! 4. The order in each layer: sweeps down and up that sort each layer by the mean position of
 //!    its neighbours (the barycenter), a bounded number of times, keeping the order with the
 //!    fewest crossings.
 //! 5. The places in each layer: each node moves towards the mean place of its neighbours, as
-//!    close as the order and the gaps between nodes allow (an isotonic regression).
+//!    close as the order and the gaps between nodes allow (an isotonic regression). The points
+//!    of long edges weigh more than nodes, so that long edges run straight and nodes make way.
 //!
 //! A node can sit beside another one instead of in a layer of its own, like the open point
 //! after a marked task: it takes room after that node in its layer. A layout from left to
@@ -32,6 +34,8 @@ const LAYER_GAP: f64 = 48.0;
 const MARGIN: f64 = 16.0;
 /// The width that an edge takes where it passes a layer.
 const PASSING: f64 = 8.0;
+/// How much more a point in passing weighs than a node when the places are fitted.
+const PASSING_WEIGHT: f64 = 4.0;
 /// How many times the order of the layers is swept down and up at most.
 const SWEEPS: usize = 12;
 /// How many times the places are moved towards the neighbours.
@@ -364,13 +368,15 @@ fn ordered(rooms: &[Room], edges: &[(usize, usize)]) -> Layout {
     graph.finish(rooms, edges)
 }
 
-/// The layer of each node: the longest path from a node without predecessors, then moved down
-/// to just above its first successor.
+/// The layer of each node: the longest path from a node without predecessors; then a node
+/// with more successors than predecessors moves down to just above its first successor.
 fn layers(count: usize, forward: &[(usize, usize)]) -> Vec<usize> {
     let mut layer = vec![0usize; count];
+    let mut predecessors = vec![0usize; count];
     for &(from, to) in forward {
         // Sorted by `from`, and `from < to`, so each `from` is final when it is read.
         layer[to] = layer[to].max(layer[from] + 1);
+        predecessors[to] += 1;
     }
     // Later nodes first, so that a node moves after the nodes below it have moved.
     let mut successors: Vec<Vec<usize>> = vec![Vec::new(); count];
@@ -378,6 +384,9 @@ fn layers(count: usize, forward: &[(usize, usize)]) -> Vec<usize> {
         successors[from].push(to);
     }
     for node in (0..count).rev() {
+        if predecessors[node] >= successors[node].len() {
+            continue;
+        }
         if let Some(lowest) = successors[node].iter().map(|&to| layer[to]).min() {
             layer[node] = layer[node].max(lowest.saturating_sub(1));
         }
@@ -391,6 +400,8 @@ struct Layered {
     /// first, then the points in passing.
     left: Vec<f64>,
     right: Vec<f64>,
+    /// How much each node counts when the places are fitted.
+    weight: Vec<f64>,
     /// The layer of each node.
     layer: Vec<usize>,
     /// The nodes of each layer, in their order.
@@ -412,6 +423,7 @@ impl Layered {
     fn new(rooms: &[Room], layer: &[usize], forward: &[(usize, usize)]) -> Self {
         let mut left: Vec<f64> = rooms.iter().map(|room| room.left).collect();
         let mut right: Vec<f64> = rooms.iter().map(|room| room.right).collect();
+        let mut weight = vec![1.0; rooms.len()];
         let mut layer = layer.to_vec();
         let passing: usize = forward
             .iter()
@@ -425,6 +437,7 @@ impl Layered {
                 for step in 1..span {
                     left.push(PASSING / 2.0);
                     right.push(PASSING / 2.0);
+                    weight.push(PASSING_WEIGHT);
                     layer.push(layer[from] + step);
                     chain.push(left.len() - 1);
                 }
@@ -455,6 +468,7 @@ impl Layered {
         Layered {
             left,
             right,
+            weight,
             layer,
             layers,
             up,
@@ -584,8 +598,8 @@ impl Layered {
     }
 
     /// Moves the nodes of a layer as close to the mean place of their neighbours as their
-    /// order and the gaps allow: the least squares fit under order constraints, found by
-    /// pooling adjacent violators.
+    /// order and the gaps allow: the weighted least squares fit under order constraints, found
+    /// by pooling adjacent violators.
     fn place_layer(&mut self, index: usize, from_above: bool) {
         let nodes = &self.layers[index];
         if nodes.is_empty() {
@@ -622,7 +636,8 @@ impl Layered {
             .zip(&offset)
             .map(|(want, offset)| want - offset)
             .collect();
-        let fitted = isotonic(&targets);
+        let weights: Vec<f64> = nodes.iter().map(|&node| self.weight[node]).collect();
+        let fitted = isotonic(&targets, &weights);
         for (place, &node) in nodes.iter().enumerate() {
             self.x[node] = fitted[place] + offset[place];
         }
@@ -712,29 +727,29 @@ fn inversions(values: &[usize], limit: usize) -> usize {
     count
 }
 
-/// The non-decreasing sequence closest to `targets` in least squares, by pooling adjacent
-/// violators.
-fn isotonic(targets: &[f64]) -> Vec<f64> {
-    // Blocks of equal value: their mean and how many targets they hold.
-    let mut blocks: Vec<(f64, usize)> = Vec::with_capacity(targets.len());
-    for &target in targets {
-        blocks.push((target, 1));
+/// The non-decreasing sequence closest to `targets` in least squares, each target counting
+/// with its weight, by pooling adjacent violators.
+fn isotonic(targets: &[f64], weights: &[f64]) -> Vec<f64> {
+    // Blocks of equal value: their weighted mean, their weight and how many targets they hold.
+    let mut blocks: Vec<(f64, f64, usize)> = Vec::with_capacity(targets.len());
+    for (&target, &weight) in targets.iter().zip(weights) {
+        blocks.push((target, weight, 1));
         while blocks.len() > 1 {
-            let (last, last_count) = blocks[blocks.len() - 1];
-            let (before, before_count) = blocks[blocks.len() - 2];
+            let (last, last_weight, last_count) = blocks[blocks.len() - 1];
+            let (before, before_weight, before_count) = blocks[blocks.len() - 2];
             if before <= last {
                 break;
             }
-            let count = last_count + before_count;
-            let mean = (before * before_count as f64 + last * last_count as f64) / count as f64;
+            let weight = before_weight + last_weight;
+            let mean = (before * before_weight + last * last_weight) / weight;
             blocks.pop();
             let end = blocks.len() - 1;
-            blocks[end] = (mean, count);
+            blocks[end] = (mean, weight, before_count + last_count);
         }
     }
     blocks
         .into_iter()
-        .flat_map(|(mean, count)| std::iter::repeat_n(mean, count))
+        .flat_map(|(mean, _, count)| std::iter::repeat_n(mean, count))
         .collect()
 }
 

@@ -4125,6 +4125,7 @@ name = "task-runner"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "config-file",
  "content-store",
  "executor",
  "serde",

@@ -1779,6 +1779,7 @@ dependencies = [
  "executor",
  "fancy-regex",
  "jiff",
+ "kubernetes-executor",
  "nextflow-evaluator",
  "nextflow-runtime",
  "run-crate",

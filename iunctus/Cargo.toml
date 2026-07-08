@@ -28,6 +28,7 @@ snakemake-runtime.workspace = true
 storage.workspace = true
 task-model.workspace = true
 task-runner.workspace = true
+kubernetes-executor.workspace = true
 slurm-executor.workspace = true
 tes-executor.workspace = true
 tokio = { workspace = true, features = ["signal"] }

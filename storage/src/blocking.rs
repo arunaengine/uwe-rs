@@ -37,6 +37,18 @@ impl Blocking {
         run(async move { storage.metadata(&target, &downloads).await })
     }
 
+    /// Whether a file exists, and its size; see [`Storage::stat`].
+    pub fn stat(&self, target: &str) -> Result<Option<Metadata>, StorageError> {
+        let (storage, target) = (self.storage.clone(), target.to_owned());
+        run(async move { storage.stat(&target).await })
+    }
+
+    /// Downloads a file, whole; see [`Storage::download`].
+    pub fn download(&self, target: &str, file: &Path) -> Result<(), StorageError> {
+        let (storage, target, file) = self.owned(target, file);
+        run(async move { storage.download(&target, &file).await })
+    }
+
     /// The entries of a directory; see [`Storage::list`].
     pub fn list(&self, target: &str) -> Result<Vec<Entry>, StorageError> {
         let (storage, target) = (self.storage.clone(), target.to_owned());

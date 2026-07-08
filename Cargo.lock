@@ -3911,14 +3911,15 @@ dependencies = [
 name = "snakemake-runtime"
 version = "0.1.0"
 dependencies = [
+ "config-file",
  "executor",
  "fancy-regex",
  "indexmap",
  "jsonschema",
  "python-evaluator",
- "reqwest",
  "serde_json",
  "snakemake-parser",
+ "storage",
  "tempfile",
  "workflow-graph",
 ]

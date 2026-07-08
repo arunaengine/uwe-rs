@@ -56,6 +56,7 @@ fn settings() -> Settings {
             cache: root.join("python-cache"),
             show_output: false,
         }),
+        ..Settings::default()
     }
 }
 

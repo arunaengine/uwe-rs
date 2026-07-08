@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 
 use python_evaluator::{Error, Interpreter, Value};
+use storage::Storage;
 use workflow_graph::{
     Delivery, DeliveryMode, Driver, DriverError, Language, Launch, Marker, MarkerKind, Note,
     Outcome, Task, TaskId,
@@ -86,7 +87,7 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new(launch: &Launch) -> Result<Session, DriverError> {
+    pub fn new(launch: &Launch, storage: &Storage) -> Result<Session, DriverError> {
         // Config files are relative to where the run starts, as Snakemake takes them.
         let mut launch = launch.clone();
         for path in launch.configs.iter_mut().chain(launch.inputs.iter_mut()) {
@@ -111,6 +112,7 @@ impl Session {
         };
         let mirrors = Rc::new(Mirrors::new(
             launch.scratch.join("downloads").join("snakemake"),
+            storage,
         ));
         let files = Rc::new(WorkflowFiles::new(&workdir, mirrors.clone()));
         let mut interpreter = Interpreter::new(files.clone());
@@ -709,6 +711,9 @@ pub struct Settings {
     /// The Python container of decision 19; without it, an import of a package without a
     /// stand-in stops the run.
     pub python: Option<PythonContainers>,
+    /// The storage providers that files of the workflow on the web come from, like modules
+    /// from a private server; the built-in ones without it.
+    pub storage: Storage,
 }
 
 /// The driver of a Snakemake workflow: `launch.target` is a Snakefile, or a folder with a
@@ -731,7 +736,7 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
         .stack_size(512 << 20)
         .spawn(move || {
             let channel = Rc::new(Channel::new(incoming, outgoing));
-            let mut session = match Session::new(&launch) {
+            let mut session = match Session::new(&launch, &settings.storage) {
                 Ok(session) => Some(session),
                 Err(error) => {
                     // Every request gets the error of the setup.

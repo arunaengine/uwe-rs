@@ -60,22 +60,36 @@ impl Observer for Targets {
     }
 }
 
-#[test]
-fn output_artifacts_go_to_the_results_folder() {
-    let folder = tempfile::tempdir().expect("a temporary directory");
-    let file = folder.path().join("workflow.yaml");
+/// The targets of the deliveries of a real run of the workflow with this results folder.
+fn delivered(folder: &std::path::Path, results: std::path::PathBuf) -> Vec<std::path::PathBuf> {
+    let file = folder.join("workflow.yaml");
     std::fs::write(&file, WORKFLOW).expect("writes the workflow");
     let launch = Launch {
         target: file,
-        scratch: folder.path().join("scratch"),
-        output_dir: Some(folder.path().join("results")),
+        scratch: folder.join("scratch"),
+        output_dir: Some(results),
         ..Launch::default()
     };
     let mut driver = argo_runtime::driver(&launch).expect("a driver");
     let mut targets = Targets(Vec::new());
-    let execution = Engine::new(&mut Maker(folder.path().to_owned()))
+    let execution = Engine::new(&mut Maker(folder.to_owned()))
         .observer(&mut targets)
         .run("workflow.yaml", driver.as_mut());
     assert!(execution.error.is_none(), "{:?}", execution.error);
-    assert_eq!(targets.0, [folder.path().join("results/artifacts/hello")]);
+    targets.0
+}
+
+#[test]
+fn output_artifacts_go_to_the_results_folder() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let targets = delivered(folder.path(), folder.path().join("results"));
+    assert_eq!(targets, [folder.path().join("results/artifacts/hello")]);
+    // An address of a storage provider stays as it is.
+    let targets = delivered(folder.path(), "s3://bucket/results".into());
+    assert_eq!(
+        targets,
+        [std::path::PathBuf::from(
+            "s3://bucket/results/artifacts/hello"
+        )]
+    );
 }

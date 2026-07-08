@@ -229,7 +229,12 @@ pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
             .output_dir
             .clone()
             .unwrap_or_else(|| "results".into());
-        driver.results = Some(std::path::absolute(&folder).unwrap_or(folder));
+        // An address of a storage provider, like `s3://bucket/results`, stays as it is.
+        let address = folder.to_string_lossy().contains("://");
+        driver.results = Some(match address {
+            true => folder,
+            false => std::path::absolute(&folder).unwrap_or(folder),
+        });
     }
     Ok(Box::new(driver))
 }

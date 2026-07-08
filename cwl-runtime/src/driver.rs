@@ -165,6 +165,8 @@ impl Driver for CwlDriver {
         if let Some(outputs) = self.run.outputs() {
             if !self.simulated {
                 let folder = match &self.launch.output_dir {
+                    // An address of a storage provider, like `s3://bucket/out`, stays as it is.
+                    Some(folder) if folder.to_string_lossy().contains("://") => folder.clone(),
                     Some(folder) => std::path::absolute(folder).unwrap_or(folder.clone()),
                     None => std::env::current_dir().unwrap_or_default(),
                 };

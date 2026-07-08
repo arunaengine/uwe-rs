@@ -113,6 +113,24 @@ fn edges_go_down_through_their_layers() {
 }
 
 #[test]
+fn nodes_with_more_successors_than_predecessors_sit_above_their_first_successor() {
+    // 0 -> 1 -> 2 -> 3 -> 4; 1 -> 5 -> 4: node 5, one in and one out, stays below node 1, while
+    // node 6, which feeds 3 and 4, moves down to just above 3.
+    let edges = [
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 4),
+        (1, 5),
+        (5, 4),
+        (6, 3),
+        (6, 4),
+    ];
+    let layout = lay(&sizes(7), &edges);
+    assert_eq!(layout.layers, [0, 1, 2, 3, 4, 2, 2]);
+}
+
+#[test]
 fn nodes_without_predecessors_sit_above_their_first_successor() {
     // 0 -> 2 -> 3 -> 4, and 1 -> 4: node 1 moves down to layer 2.
     let layout = lay(&sizes(5), &[(0, 2), (2, 3), (3, 4), (1, 4)]);
@@ -166,6 +184,20 @@ fn large_graphs_stay_fast() {
     assert_eq!(layout.nodes.len(), 5001);
     assert!(start.elapsed().as_secs() < 20, "{:?}", start.elapsed());
     assert_no_overlap(&sizes, &layout);
+}
+
+#[test]
+fn long_edges_run_straight() {
+    // A chain of five nodes, and an edge from the first to the last beside it.
+    let sizes = sizes(5);
+    let layout = lay(&sizes, &[(0, 1), (1, 2), (2, 3), (3, 4), (0, 4)]);
+    let long = &layout.edges[4];
+    assert_eq!(long.len(), 5);
+    let inner: Vec<f64> = long[1..4].iter().map(|point| point.x).collect();
+    assert!(
+        inner.windows(2).all(|pair| (pair[0] - pair[1]).abs() < 0.5),
+        "{inner:?}"
+    );
 }
 
 #[test]
@@ -255,7 +287,10 @@ fn inversions_count_pairs_out_of_order() {
 
 #[test]
 fn isotonic_fits_keep_the_order() {
-    assert_eq!(isotonic(&[1.0, 2.0, 3.0]), [1.0, 2.0, 3.0]);
-    assert_eq!(isotonic(&[3.0, 1.0, 2.0]), [2.0, 2.0, 2.0]);
-    assert_eq!(isotonic(&[0.0, 4.0, 2.0]), [0.0, 3.0, 3.0]);
+    let ones = [1.0; 3];
+    assert_eq!(isotonic(&[1.0, 2.0, 3.0], &ones), [1.0, 2.0, 3.0]);
+    assert_eq!(isotonic(&[3.0, 1.0, 2.0], &ones), [2.0, 2.0, 2.0]);
+    assert_eq!(isotonic(&[0.0, 4.0, 2.0], &ones), [0.0, 3.0, 3.0]);
+    // A heavier target moves less.
+    assert_eq!(isotonic(&[3.0, 1.0], &[3.0, 1.0]), [2.5, 2.5]);
 }

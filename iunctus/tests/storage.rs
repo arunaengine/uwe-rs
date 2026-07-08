@@ -1,8 +1,8 @@
 //! Storage providers of the config file in whole runs: a private web server whose token comes
 //! from an environment variable, and whose secret shows nowhere, not in the output, the run
 //! database, the RO-Crate, the files of the simulator or the cache. The ignored test reads the
-//! inputs of a real run from one S3 server and keeps the store on another, as
-//! `just storage-test` starts them.
+//! inputs of a real run from one S3 server, keeps the store on another, as `just storage-test`
+//! starts them, and publishes the results to a third provider, a folder.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -210,6 +210,7 @@ process COUNT {
 
 process TOTAL {
     container 'debian:stable-slim'
+    publishDir 's3://results/run', mode: 'copy'
     input:
     path counts
     output:
@@ -239,9 +240,11 @@ fn inputs_and_the_store_on_two_s3_providers() {
          secret_access_key = {{ environment = \"IUNCTUS_TEST_INPUTS_SECRET\" }}\n\
          [storage.store]\ntype = \"s3\"\nprefixes = [\"s3://cache/\"]\nendpoint = \"{}\"\n\
          access_key_id = {{ environment = \"IUNCTUS_TEST_STORE_KEY\" }}\n\
-         secret_access_key = {{ environment = \"IUNCTUS_TEST_STORE_SECRET\" }}\n",
+         secret_access_key = {{ environment = \"IUNCTUS_TEST_STORE_SECRET\" }}\n\
+         [storage.results]\ntype = \"folder\"\nprefixes = [\"s3://results/\"]\npath = \"{}\"\n",
         variable("IUNCTUS_TEST_INPUTS_ENDPOINT"),
         variable("IUNCTUS_TEST_STORE_ENDPOINT"),
+        path.join("results").display(),
     );
     std::fs::write(path.join("iunctus.toml"), &config).expect("writes the config file");
     // The inputs go to the server of the inputs first.
@@ -286,6 +289,11 @@ fn inputs_and_the_store_on_two_s3_providers() {
     let (code, first) = iunctus(path, "cache", &environment, &run);
     assert_eq!(code, 0, "{first}");
     assert!(first.contains("[done] TOTAL"), "{first}");
+    // The results went to the third provider.
+    let total = std::fs::read_to_string(path.join("results/run/total.txt")).expect("results");
+    let mut counts: Vec<&str> = total.lines().map(str::trim).collect();
+    counts.sort();
+    assert_eq!(counts, ["4", "8"]);
     // The store lives on the second server: it holds the contents of the outputs.
     let stored = runtime
         .block_on(storage.list("s3://cache/iunctus/"))

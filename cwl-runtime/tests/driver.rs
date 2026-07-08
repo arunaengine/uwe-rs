@@ -398,20 +398,30 @@ fn real_runs_deliver_the_output_files_to_the_output_folder() {
     let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: [touch, out.txt]\n\
                 inputs: []\noutputs:\n  made: {type: File, outputBinding: {glob: out.txt}}\n";
     std::fs::write(folder.path().join("main.cwl"), tool).expect("writes the tool");
-    let launch = Launch {
-        target: folder.path().join("main.cwl"),
-        scratch: folder.path().join("scratch"),
-        output_dir: Some(folder.path().join("results")),
-        ..Launch::default()
+    let delivered = |results: std::path::PathBuf| {
+        let launch = Launch {
+            target: folder.path().join("main.cwl"),
+            scratch: folder.path().join("scratch"),
+            output_dir: Some(results),
+            ..Launch::default()
+        };
+        let mut driver = cwl_runtime::driver(&launch).expect("a driver");
+        let mut executor = Real {
+            simulator: Simulator::new(folder.path().join("simulator")),
+        };
+        let mut targets = Targets(Vec::new());
+        let execution = workflow_graph::Engine::new(&mut executor)
+            .observer(&mut targets)
+            .run("main", driver.as_mut());
+        assert!(execution.error.is_none(), "{:?}", execution.error);
+        targets.0
     };
-    let mut driver = cwl_runtime::driver(&launch).expect("a driver");
-    let mut executor = Real {
-        simulator: Simulator::new(folder.path().join("simulator")),
-    };
-    let mut targets = Targets(Vec::new());
-    let execution = workflow_graph::Engine::new(&mut executor)
-        .observer(&mut targets)
-        .run("main", driver.as_mut());
-    assert!(execution.error.is_none(), "{:?}", execution.error);
-    assert_eq!(targets.0, [folder.path().join("results/out.txt")]);
+    let targets = delivered(folder.path().join("results"));
+    assert_eq!(targets, [folder.path().join("results/out.txt")]);
+    // An address of a storage provider stays as it is.
+    let targets = delivered("s3://bucket/out".into());
+    assert_eq!(
+        targets,
+        [std::path::PathBuf::from("s3://bucket/out/out.txt")]
+    );
 }

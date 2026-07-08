@@ -111,7 +111,8 @@ pub(crate) fn deliveries(
                 continue;
             }
             deliveries.push(Delivery {
-                location: location.path.clone(),
+                // The address of a remote file, like one in a store on S3.
+                location: location.uri(),
                 target: target.to_string_lossy().into_owned(),
                 mode: rule.mode,
             });
@@ -140,14 +141,20 @@ fn option_of(options: &Value, name: &str) -> Option<Value> {
 }
 
 /// The text of a path value: the path of a `Path`, else the string.
+/// The text of a path: its address for a remote path, like `s3://bucket/results`.
 fn path_text(value: &Value) -> String {
     match value {
-        Value::Path(path) => path.path.clone(),
+        Value::Path(path) => path.uri(),
         other => other.to_string(),
     }
 }
 
+/// A local path taken from the launch directory; an address, like `s3://bucket/results`, as
+/// it is, for a storage provider.
 fn absolute(path: &str) -> PathBuf {
+    if path.contains("://") {
+        return PathBuf::from(path);
+    }
     std::path::absolute(Path::new(path)).unwrap_or_else(|_| PathBuf::from(path))
 }
 

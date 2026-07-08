@@ -93,7 +93,7 @@ impl Publish {
                 continue;
             }
             deliveries.push(Delivery {
-                location: file.path.clone(),
+                location: file.uri(),
                 target: place.to_string_lossy().into_owned(),
                 mode: self.mode,
             });
@@ -340,6 +340,9 @@ fn thrown(message: String) -> Error {
 /// The output directory of a run: `outputDir` of the config, else `-output-dir`, else
 /// `results`, relative to the launch directory.
 pub(crate) fn output_directory(configured: Option<&str>, launch: &Path) -> PathBuf {
-    let folder = configured.unwrap_or("results");
-    launch.join(folder)
+    match configured.unwrap_or("results") {
+        // An address of a storage provider, like `s3://bucket/results`, stays as it is.
+        address if address.contains("://") => PathBuf::from(address),
+        folder => launch.join(folder),
+    }
 }

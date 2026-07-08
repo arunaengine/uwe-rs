@@ -4,7 +4,7 @@
 
 # Executors
 
-An executor runs the tasks of a run. The simulator only pretends ([the engine](engine.md), section 4). The real executors run each task in a container: on this machine, on a GA4GH TES server, or as SLURM batch jobs. A Kubernetes executor is planned (decision 22). This page tells how each one works and how to set it up.
+An executor runs the tasks of a run. The simulator only pretends ([the engine](engine.md), section 4). The real executors run each task in a container: on this machine, on a GA4GH TES server, as SLURM batch jobs, or as Kubernetes Jobs (decision 22). This page tells how each one works and how to set it up.
 
 ## 1. What all real executors share
 
@@ -84,4 +84,34 @@ The tests run the backend against a simulated SLURM on this machine (`slurm-exec
 
 ## 5. Kubernetes
 
-Planned (decision 22): one Kubernetes Job per task, with the store and the scratch directories on volumes that the pods share. Tests will use only a local `kind` cluster with a kubeconfig of its own, never the kubeconfig of the user.
+```sh
+iunctus run main.nf -executor kubernetes -kubeconfig kind.kubeconfig [-kubernetes-namespace <name>]
+```
+
+Each attempt becomes one Kubernetes Job with one pod (`kubernetes-executor`). The backend places the inputs in the scratch directory and writes the wrapper, then creates the Job with `kubectl`. The pod runs the wrapper in the task's image as the user who owns the scratch directory, with the scratch directory, the work directory and the other mounts as `hostPath` volumes at the same paths. So the nodes must see the store and the scratch directories (`scratch/kubernetes` in the cache directory) at the same paths: one node that mounts them, like `kind`, or nodes with a shared file system. Inputs are copied into the store first.
+
+Every call of `kubectl` names the kubeconfig that `-kubeconfig` gives, also through `KUBECONFIG`. iunctus never takes the default kubeconfig, so that no run reaches a cluster by accident; without `-kubeconfig` the run stops at once. The Jobs go to `-kubernetes-namespace`, else to the namespace of the kubeconfig's context.
+
+The pod asks for the CPUs and memory of the task, and gets the memory as its limit and the GPUs as `nvidia.com/gpu`. The time of the task is the pod's `activeDeadlineSeconds`, which counts from the start of the pod, so that waiting for a node does not count. A Job has no retries of its own (`backoffLimit: 0`), since the engine retries failures of the machine, and the backend deletes it once it ended; `ttlSecondsAfterFinished` removes it too.
+
+The backend asks `kubectl get pods` about the pods of all Jobs of the run at once, by a label, at most every 5 seconds. How the container ends decides the outcome, as for the other executors: the exit code that the wrapper recorded; a container killed for lack of memory (`OOMKilled`) or by a signal ends the task with its own exit code and a note; a pod past its time (`DeadlineExceeded`) ends it with 143. A pod whose image cannot be pulled, a Job without a pod, each for 2 minutes, an evicted pod, and a container that could not run the wrapper are failures of the machine, which the engine retries. A cancelled run deletes its Jobs and waits until their pods are gone.
+
+A local cluster with `kind`, whose node sees the cache of iunctus at the same path:
+
+```sh
+cat > kind.yaml <<END
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  extraMounts:
+  - hostPath: $HOME/.cache/iunctus
+    containerPath: $HOME/.cache/iunctus
+END
+kind create cluster --name iunctus --config kind.yaml --kubeconfig kind.kubeconfig
+kind load docker-image debian:stable-slim --name iunctus   # images already on this machine
+iunctus run main.nf -executor kubernetes -kubeconfig kind.kubeconfig
+kind delete cluster --name iunctus --kubeconfig kind.kubeconfig
+```
+
+The tests run the backend against a simulated `kubectl` on this machine (`kubernetes-executor/tests/simulated_cluster.rs`), which runs the command of the container without a container and fails every call that does not name the kubeconfig of the test. A test on a `kind` cluster is still to come.

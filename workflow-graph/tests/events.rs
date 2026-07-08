@@ -32,7 +32,10 @@ impl Driver for Chain {
                 if let Some(source) = &self.delivered {
                     self.asked.push(Delivery {
                         location: source.to_string_lossy().into_owned(),
-                        target: source.with_extension("delivered"),
+                        target: source
+                            .with_extension("delivered")
+                            .to_string_lossy()
+                            .into_owned(),
                         mode: DeliveryMode::Copy,
                     });
                 }

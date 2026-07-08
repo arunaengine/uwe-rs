@@ -70,10 +70,8 @@ struct Targets(Vec<String>, std::path::PathBuf);
 impl Observer for Targets {
     fn event(&mut self, event: Event<'_>) {
         if let Event::Delivered { delivery } = event {
-            let target = delivery
-                .target
-                .strip_prefix(&self.1)
-                .unwrap_or(&delivery.target);
+            let target = std::path::Path::new(&delivery.target);
+            let target = target.strip_prefix(&self.1).unwrap_or(target);
             self.0.push(target.display().to_string());
         }
     }

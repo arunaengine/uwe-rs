@@ -387,7 +387,7 @@ struct Targets(Vec<std::path::PathBuf>);
 impl workflow_graph::Observer for Targets {
     fn event(&mut self, event: workflow_graph::Event<'_>) {
         if let workflow_graph::Event::Delivered { delivery } = event {
-            self.0.push(delivery.target.clone());
+            self.0.push(delivery.target.clone().into());
         }
     }
 }

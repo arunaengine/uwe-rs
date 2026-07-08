@@ -190,7 +190,7 @@ impl Reports {
             std::fs::write(&written, text)?;
             deliveries.push(Delivery {
                 location: written.to_string_lossy().into_owned(),
-                target: target.clone(),
+                target: target.to_string_lossy().into_owned(),
                 mode: DeliveryMode::Copy,
             });
         }

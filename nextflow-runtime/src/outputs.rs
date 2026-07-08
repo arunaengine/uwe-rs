@@ -94,7 +94,7 @@ impl Publish {
             }
             deliveries.push(Delivery {
                 location: file.path.clone(),
-                target: place,
+                target: place.to_string_lossy().into_owned(),
                 mode: self.mode,
             });
         }

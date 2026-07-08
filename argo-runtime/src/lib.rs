@@ -156,7 +156,11 @@ impl Driver for ArgoDriver {
             for (step, artifact, location) in run.output_artifacts() {
                 self.deliveries.push(Delivery {
                     location: location.to_string_lossy().into_owned(),
-                    target: folder.join(step).join(artifact),
+                    target: folder
+                        .join(step)
+                        .join(artifact)
+                        .to_string_lossy()
+                        .into_owned(),
                     mode: DeliveryMode::Copy,
                 });
             }

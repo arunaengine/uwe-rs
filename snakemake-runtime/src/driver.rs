@@ -539,7 +539,7 @@ impl Session {
                     .unwrap_or_else(PoisonError::into_inner);
                 deliveries.push(Delivery {
                     location: file.location.clone(),
-                    target: path.clone(),
+                    target: path.to_string_lossy().into_owned(),
                     mode: DeliveryMode::Copy,
                 });
             }

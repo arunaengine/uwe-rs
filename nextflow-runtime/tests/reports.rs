@@ -87,8 +87,9 @@ fn real_runs_deliver_the_reports_that_the_config_turns_on() {
     let launch_dir = std::env::current_dir().expect("a current directory");
     let targets: Vec<String> = (deliveries.iter())
         .map(|delivery| {
-            let target = delivery.target.strip_prefix(&launch_dir);
-            target.unwrap_or(&delivery.target).display().to_string()
+            let target = std::path::Path::new(&delivery.target);
+            let target = target.strip_prefix(&launch_dir).unwrap_or(target);
+            target.display().to_string()
         })
         .collect();
     let expected = [

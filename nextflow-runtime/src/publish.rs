@@ -112,7 +112,7 @@ pub(crate) fn deliveries(
             }
             deliveries.push(Delivery {
                 location: location.path.clone(),
-                target,
+                target: target.to_string_lossy().into_owned(),
                 mode: rule.mode,
             });
         }

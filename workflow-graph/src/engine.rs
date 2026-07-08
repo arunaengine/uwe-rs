@@ -311,7 +311,7 @@ impl<'a> Engine<'a> {
                     .deliver(&delivery)
                     .map_err(|error| ExecuteError::Delivery {
                         location: delivery.location.clone(),
-                        target: delivery.target.display().to_string(),
+                        target: delivery.target.clone(),
                         message: error.to_string(),
                     })?;
             }

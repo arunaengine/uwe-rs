@@ -42,7 +42,7 @@ fn relocate(value: &mut Value, folder: &Path, deliveries: &mut Vec<Delivery>) {
             let target = folder.join(&basename);
             deliveries.push(Delivery {
                 location: source.to_string_lossy().into_owned(),
-                target: target.clone(),
+                target: target.to_string_lossy().into_owned(),
                 mode: DeliveryMode::Copy,
             });
             name(map, &source, &target);
@@ -111,7 +111,7 @@ mod tests {
         let moves: Vec<(&str, String)> = deliveries
             .iter()
             .map(|delivery| {
-                let target = delivery.target.to_string_lossy().into_owned();
+                let target = delivery.target.clone();
                 (delivery.location.as_str(), target)
             })
             .collect();

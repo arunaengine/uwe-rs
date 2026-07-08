@@ -29,8 +29,9 @@ pub enum DeliveryMode {
 pub struct Delivery {
     /// The location of the output, as its outcome gives it.
     pub location: String,
-    /// Where it goes on this machine. What is there is replaced.
-    pub target: PathBuf,
+    /// Where it goes: a path on this machine, or an address of a storage provider, like
+    /// `s3://bucket/results/out.txt`. What is there is replaced.
+    pub target: String,
     pub mode: DeliveryMode,
 }
 
@@ -54,7 +55,7 @@ impl Files for LocalFiles {
 
     fn deliver(&self, delivery: &Delivery) -> io::Result<()> {
         let source = Path::new(&delivery.location);
-        let target = &delivery.target;
+        let target = Path::new(&delivery.target);
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -146,7 +147,7 @@ mod tests {
         let deliver = |location: &Path, target: &str, mode| {
             let delivery = Delivery {
                 location: location.to_string_lossy().into_owned(),
-                target: folder.path().join(target),
+                target: folder.path().join(target).to_string_lossy().into_owned(),
                 mode,
             };
             LocalFiles.deliver(&delivery).expect("delivers");

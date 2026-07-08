@@ -55,7 +55,7 @@ struct Targets(Vec<std::path::PathBuf>);
 impl Observer for Targets {
     fn event(&mut self, event: Event<'_>) {
         if let Event::Delivered { delivery } = event {
-            self.0.push(delivery.target.clone());
+            self.0.push(delivery.target.clone().into());
         }
     }
 }

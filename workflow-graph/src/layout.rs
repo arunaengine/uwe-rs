@@ -1,5 +1,5 @@
-//! A layered layout that draws a graph from top to bottom, as Graphviz `dot` does, in the
-//! steps of Sugiyama's method:
+//! A layered layout that draws a graph from top to bottom, or from left to right, as Graphviz
+//! `dot` does, in the steps of Sugiyama's method:
 //!
 //! 1. The nodes are put in a depth-first order, in which every edge points from a node to a
 //!    later one, except the edges that close a cycle. Those are laid out turned round.
@@ -13,6 +13,10 @@
 //! 5. The places in each layer: each node moves towards the mean place of its neighbours, as
 //!    close as the order and the gaps between nodes allow (an isotonic regression).
 //!
+//! A node can sit beside another one instead of in a layer of its own, like the open point
+//! after a marked task: it takes room after that node in its layer. A layout from left to
+//! right is a layout from top to bottom with widths and heights swapped, turned at the end.
+//!
 //! Everything is deterministic: the same input gives the same layout. The work grows with the
 //! number of nodes, edges and layers, so graphs of thousands of tasks stay fast.
 // Copyright (c) 2026 The iunctus Contributors
@@ -20,6 +24,8 @@
 
 /// The space between two nodes of a layer.
 const GAP: f64 = 24.0;
+/// The space between a node and a node beside it.
+const BESIDE: f64 = 12.0;
 /// The space between two layers.
 const LAYER_GAP: f64 = 48.0;
 /// The space around the drawing.
@@ -47,6 +53,50 @@ pub struct Size {
     pub height: f64,
 }
 
+/// Which way a layout goes, from the first nodes to the last.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Direction {
+    /// From top to bottom: the layers are rows.
+    #[default]
+    Down,
+    /// From left to right: the layers are columns.
+    Right,
+}
+
+impl Direction {
+    /// The direction that `-direction` names: `down` or `right`.
+    pub fn parse(text: &str) -> Option<Direction> {
+        match text {
+            "down" => Some(Direction::Down),
+            "right" => Some(Direction::Right),
+            _ => None,
+        }
+    }
+
+    /// The name of the direction: `down` or `right`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Direction::Down => "down",
+            Direction::Right => "right",
+        }
+    }
+}
+
+/// A graph to lay out.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Graph {
+    /// The size of each node.
+    pub sizes: Vec<Size>,
+    /// The edges, by the positions of their nodes in `sizes`.
+    pub edges: Vec<(usize, usize)>,
+    /// Nodes that sit beside another node instead of in a layer of their own, as pairs of the
+    /// node and the one it sits beside. Such a node follows the other in its layer: to its
+    /// right in a layout down, below it in a layout to the right. Several nodes beside the
+    /// same one follow each other in the order of this list.
+    pub beside: Vec<(usize, usize)>,
+    pub direction: Direction,
+}
+
 /// Where a graph's nodes and edges go.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Layout {
@@ -57,28 +107,197 @@ pub struct Layout {
     /// For each edge, the points it passes, from the border of its first node to the border
     /// of its second; none for an edge from a node to itself.
     pub edges: Vec<Vec<Point>>,
-    /// The layer of each node, from 0 at the top.
+    /// The layer of each node, from 0 at the top, or at the left in a layout to the right.
     pub layers: Vec<usize>,
 }
 
-/// Lays out nodes of the given sizes and edges between them, by their positions in `sizes`.
-/// Edges that name no node are left without points.
-pub fn layout(sizes: &[Size], edges: &[(usize, usize)]) -> Layout {
-    let count = sizes.len();
-    let edges: Vec<(usize, usize)> = (edges.iter().copied())
-        .filter(|&(from, to)| from < count && to < count)
+impl Layout {
+    /// Swaps x and y, which turns a layout down into one to the right.
+    fn turn(&mut self) {
+        std::mem::swap(&mut self.width, &mut self.height);
+        let points = self.nodes.iter_mut().chain(self.edges.iter_mut().flatten());
+        for point in points {
+            std::mem::swap(&mut point.x, &mut point.y);
+        }
+    }
+}
+
+/// The room that a node takes in its layer: from its center to its left and right ends, its
+/// own height, and the height it needs with the nodes beside it.
+#[derive(Clone, Copy, Debug)]
+struct Room {
+    left: f64,
+    right: f64,
+    height: f64,
+    band: f64,
+}
+
+impl Room {
+    fn of(size: Size) -> Room {
+        let half = size.width.max(1.0) / 2.0;
+        Room {
+            left: half,
+            right: half,
+            height: size.height,
+            band: size.height,
+        }
+    }
+}
+
+/// Lays out a graph. Edges that name no node, and edges from a node to itself, are left
+/// without points.
+pub fn layout(graph: &Graph) -> Layout {
+    let count = graph.sizes.len();
+    let turned = graph.direction == Direction::Right;
+    let sizes: Vec<Size> = (graph.sizes.iter())
+        .map(|size| match turned {
+            true => Size {
+                width: size.height,
+                height: size.width,
+            },
+            false => *size,
+        })
         .collect();
+    let beside = Beside::new(count, &graph.beside);
+    // The nodes in layers, and the room that each takes there with the nodes beside it.
+    let mut index: Vec<Option<usize>> = vec![None; count];
+    let mut layered = Vec::new();
+    let mut rooms = Vec::new();
+    for node in (0..count).filter(|&node| beside.host[node].is_none()) {
+        index[node] = Some(rooms.len());
+        layered.push(node);
+        rooms.push(Room::of(sizes[node]));
+    }
+    for &(node, host) in &beside.pairs {
+        if let Some(at) = index[host] {
+            rooms[at].right += BESIDE + sizes[node].width;
+            rooms[at].band = rooms[at].band.max(sizes[node].height);
+        }
+    }
+    let known = |node: usize| index.get(node).copied().flatten();
+    let edges: Vec<(usize, usize)> = (graph.edges.iter())
+        .filter_map(|&(from, to)| Some((known(from)?, known(to)?)))
+        .collect();
+    let arranged = arrange(&rooms, &edges);
+    let mut nodes = vec![Point::default(); count];
+    let mut layers = vec![0; count];
+    let mut ends = Vec::with_capacity(layered.len());
+    for (at, &node) in layered.iter().enumerate() {
+        nodes[node] = arranged.nodes[at];
+        layers[node] = arranged.layers[at];
+        ends.push(nodes[node].x + sizes[node].width / 2.0);
+    }
+    // Each node beside another follows it, or the node that came beside it before.
+    for &(node, host) in &beside.pairs {
+        let Some(at) = index[host] else { continue };
+        let left = ends[at] + BESIDE;
+        nodes[node] = Point {
+            x: left + sizes[node].width / 2.0,
+            y: nodes[host].y,
+        };
+        layers[node] = layers[host];
+        ends[at] = left + sizes[node].width;
+    }
+    let mut routes = arranged.edges.into_iter();
+    let edges = (graph.edges.iter())
+        .map(|&(from, to)| {
+            if from >= count || to >= count || from == to {
+                return Vec::new();
+            }
+            if known(from).is_some() && known(to).is_some() {
+                return routes.next().unwrap_or_default();
+            }
+            side_by_side((nodes[from], sizes[from]), (nodes[to], sizes[to]))
+        })
+        .collect();
+    let mut layout = Layout {
+        width: arranged.width,
+        height: arranged.height,
+        nodes,
+        edges,
+        layers,
+    };
+    if turned {
+        layout.turn();
+    }
+    layout
+}
+
+/// The line between two nodes of a layer, like a node and a node beside it: from the side of
+/// the first that faces the second to the side of the second that faces the first.
+fn side_by_side(from: (Point, Size), to: (Point, Size)) -> Vec<Point> {
+    let toward = if to.0.x >= from.0.x { 1.0 } else { -1.0 };
+    vec![
+        Point {
+            x: from.0.x + toward * from.1.width / 2.0,
+            y: from.0.y,
+        },
+        Point {
+            x: to.0.x - toward * to.1.width / 2.0,
+            y: to.0.y,
+        },
+    ]
+}
+
+/// The nodes that sit beside another node.
+struct Beside {
+    /// For each node, the node in a layer that it sits beside, following chains of nodes
+    /// beside nodes beside nodes.
+    host: Vec<Option<usize>>,
+    /// Each node beside another, and that node in a layer, in the order given.
+    pairs: Vec<(usize, usize)>,
+}
+
+impl Beside {
+    /// Pairs with an unknown node, a node beside itself, a node given twice, or a chain that
+    /// comes back to its start are left out.
+    fn new(count: usize, pairs: &[(usize, usize)]) -> Beside {
+        let mut next: Vec<Option<usize>> = vec![None; count];
+        let mut given = Vec::new();
+        for &(node, of) in pairs {
+            if node >= count || of >= count || node == of || next[node].is_some() {
+                continue;
+            }
+            let mut at = of;
+            let mut round = false;
+            while let Some(following) = next[at] {
+                round |= following == node;
+                at = following;
+            }
+            if !round {
+                next[node] = Some(of);
+                given.push(node);
+            }
+        }
+        let root = |mut node: usize| {
+            while let Some(of) = next[node] {
+                node = of;
+            }
+            node
+        };
+        Beside {
+            host: (0..count)
+                .map(|node| next[node].map(|_| root(node)))
+                .collect(),
+            pairs: given.into_iter().map(|node| (node, root(node))).collect(),
+        }
+    }
+}
+
+/// Lays out the nodes in layers, which take the given room, and the edges between them.
+fn arrange(rooms: &[Room], edges: &[(usize, usize)]) -> Layout {
+    let count = rooms.len();
     // The rank of each node in the depth-first order, and the graph with nodes by rank.
-    let order = depth_first(count, &edges);
+    let order = depth_first(count, edges);
     let mut rank = vec![0; count];
     for (position, &node) in order.iter().enumerate() {
         rank[node] = position;
     }
-    let ranked_sizes: Vec<Size> = order.iter().map(|&node| sizes[node]).collect();
+    let ranked_rooms: Vec<Room> = order.iter().map(|&node| rooms[node]).collect();
     let ranked_edges: Vec<(usize, usize)> = (edges.iter())
         .map(|&(from, to)| (rank[from], rank[to]))
         .collect();
-    let ranked = ordered(&ranked_sizes, &ranked_edges);
+    let ranked = ordered(&ranked_rooms, &ranked_edges);
     Layout {
         width: ranked.width,
         height: ranked.height,
@@ -128,8 +347,8 @@ fn depth_first(count: usize, edges: &[(usize, usize)]) -> Vec<usize> {
 }
 
 /// The layout of a graph whose node order is already a depth-first order.
-fn ordered(sizes: &[Size], edges: &[(usize, usize)]) -> Layout {
-    let count = sizes.len();
+fn ordered(rooms: &[Room], edges: &[(usize, usize)]) -> Layout {
+    let count = rooms.len();
     // Edges from an earlier node to a later one, once each.
     let mut forward: Vec<(usize, usize)> = edges
         .iter()
@@ -139,10 +358,10 @@ fn ordered(sizes: &[Size], edges: &[(usize, usize)]) -> Layout {
     forward.sort_unstable();
     forward.dedup();
     let layer = layers(count, &forward);
-    let mut graph = Layered::new(sizes, &layer, &forward);
+    let mut graph = Layered::new(rooms, &layer, &forward);
     graph.order();
     graph.place();
-    graph.finish(sizes, edges)
+    graph.finish(rooms, edges)
 }
 
 /// The layer of each node: the longest path from a node without predecessors, then moved down
@@ -168,8 +387,10 @@ fn layers(count: usize, forward: &[(usize, usize)]) -> Vec<usize> {
 
 /// The graph with points in passing, arranged in layers.
 struct Layered {
-    /// The width of each node, the real ones first, then the points in passing.
-    widths: Vec<f64>,
+    /// How far each node reaches to the left and to the right of its center, the real ones
+    /// first, then the points in passing.
+    left: Vec<f64>,
+    right: Vec<f64>,
     /// The layer of each node.
     layer: Vec<usize>,
     /// The nodes of each layer, in their order.
@@ -188,8 +409,9 @@ struct Layered {
 }
 
 impl Layered {
-    fn new(sizes: &[Size], layer: &[usize], forward: &[(usize, usize)]) -> Self {
-        let mut widths: Vec<f64> = sizes.iter().map(|size| size.width.max(1.0)).collect();
+    fn new(rooms: &[Room], layer: &[usize], forward: &[(usize, usize)]) -> Self {
+        let mut left: Vec<f64> = rooms.iter().map(|room| room.left).collect();
+        let mut right: Vec<f64> = rooms.iter().map(|room| room.right).collect();
         let mut layer = layer.to_vec();
         let passing: usize = forward
             .iter()
@@ -201,15 +423,16 @@ impl Layered {
             let mut chain = vec![from];
             if span > 1 && (passing <= MOST_PASSING || span <= LONG) {
                 for step in 1..span {
-                    widths.push(PASSING);
+                    left.push(PASSING / 2.0);
+                    right.push(PASSING / 2.0);
                     layer.push(layer[from] + step);
-                    chain.push(widths.len() - 1);
+                    chain.push(left.len() - 1);
                 }
             }
             chain.push(to);
             chains.push(chain);
         }
-        let total = widths.len();
+        let total = left.len();
         let mut up = vec![Vec::new(); total];
         let mut down = vec![Vec::new(); total];
         for chain in &chains {
@@ -230,7 +453,8 @@ impl Layered {
             }
         }
         Layered {
-            widths,
+            left,
+            right,
             layer,
             layers,
             up,
@@ -331,10 +555,10 @@ impl Layered {
     /// of its neighbours, alternating the neighbours above and below.
     fn place(&mut self) {
         for nodes in &self.layers {
-            let mut left = 0.0;
+            let mut end = 0.0;
             for &node in nodes {
-                self.x[node] = left + self.widths[node] / 2.0;
-                left += self.widths[node] + GAP;
+                self.x[node] = end + self.left[node];
+                end = self.x[node] + self.right[node] + GAP;
             }
         }
         for round in 0..PLACING {
@@ -350,7 +574,7 @@ impl Layered {
         }
         // The drawing starts at the margin.
         let leftmost = (0..self.x.len())
-            .map(|node| self.x[node] - self.widths[node] / 2.0)
+            .map(|node| self.x[node] - self.left[node])
             .fold(f64::INFINITY, f64::min);
         if leftmost.is_finite() {
             for x in &mut self.x {
@@ -372,7 +596,7 @@ impl Layered {
         let mut distance = 0.0;
         for (place, &node) in nodes.iter().enumerate() {
             if place > 0 {
-                distance += (self.widths[nodes[place - 1]] + self.widths[node]) / 2.0 + GAP;
+                distance += self.right[nodes[place - 1]] + GAP + self.left[node];
             }
             offset.push(distance);
         }
@@ -405,10 +629,10 @@ impl Layered {
     }
 
     /// The final layout: the centers of the real nodes, and the points of each edge.
-    fn finish(&self, sizes: &[Size], edges: &[(usize, usize)]) -> Layout {
+    fn finish(&self, rooms: &[Room], edges: &[(usize, usize)]) -> Layout {
         let mut heights = vec![0.0f64; self.layers.len()];
-        for (node, size) in sizes.iter().enumerate() {
-            heights[self.layer[node]] = heights[self.layer[node]].max(size.height);
+        for (node, room) in rooms.iter().enumerate() {
+            heights[self.layer[node]] = heights[self.layer[node]].max(room.band);
         }
         let mut tops = Vec::with_capacity(heights.len());
         let mut top = MARGIN;
@@ -425,15 +649,15 @@ impl Layered {
             x: self.x[node],
             y: tops[self.layer[node]] + heights[self.layer[node]] / 2.0,
         };
-        let nodes: Vec<Point> = (0..sizes.len()).map(center).collect();
+        let nodes: Vec<Point> = (0..rooms.len()).map(center).collect();
         let width = (0..self.x.len())
-            .map(|node| self.x[node] + self.widths[node] / 2.0)
+            .map(|node| self.x[node] + self.right[node])
             .fold(0.0, f64::max)
             + MARGIN;
         let routes = edges
             .iter()
             .map(|&(from, to)| {
-                if from == to || from >= sizes.len() || to >= sizes.len() {
+                if from == to || from >= rooms.len() || to >= rooms.len() {
                     return Vec::new();
                 }
                 let key = (from.min(to), from.max(to));
@@ -444,10 +668,10 @@ impl Layered {
                 let mut points: Vec<Point> = chain.iter().map(|&node| center(node)).collect();
                 // From the bottom of the upper node to the top of the lower one.
                 if let Some(first) = points.first_mut() {
-                    first.y += sizes[chain[0]].height / 2.0;
+                    first.y += rooms[chain[0]].height / 2.0;
                 }
                 if let Some(last) = points.last_mut() {
-                    last.y -= sizes[chain[chain.len() - 1]].height / 2.0;
+                    last.y -= rooms[chain[chain.len() - 1]].height / 2.0;
                 }
                 if from > to {
                     points.reverse();
@@ -460,7 +684,7 @@ impl Layered {
             height,
             nodes,
             edges: routes,
-            layers: self.layer[..sizes.len()].to_vec(),
+            layers: self.layer[..rooms.len()].to_vec(),
         }
     }
 }

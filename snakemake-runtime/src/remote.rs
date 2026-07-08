@@ -9,7 +9,8 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
-use std::sync::OnceLock;
+
+use storage::{Blocking, Storage, StorageError};
 
 /// A local folder that mirrors a place on the web.
 struct Mirror {
@@ -21,6 +22,8 @@ struct Mirror {
 /// The mirrors of a run and the files that the web does not have.
 pub struct Mirrors {
     downloads: PathBuf,
+    /// The storage providers that the files come from.
+    storage: Blocking,
     mirrors: RefCell<Vec<Mirror>>,
     missing: RefCell<HashSet<PathBuf>>,
 }
@@ -38,9 +41,10 @@ fn folder_of(parts: &[&str]) -> PathBuf {
 }
 
 impl Mirrors {
-    pub fn new(downloads: PathBuf) -> Mirrors {
+    pub fn new(downloads: PathBuf, storage: &Storage) -> Mirrors {
         Mirrors {
             downloads,
+            storage: storage.blocking(),
             mirrors: RefCell::new(Vec::new()),
             missing: RefCell::new(HashSet::new()),
         }
@@ -173,50 +177,29 @@ impl Mirrors {
         let Some(url) = self.address(path) else {
             return Ok(());
         };
-        match download(&url)? {
-            Some(data) => {
-                let folder = path.parent().unwrap_or(Path::new("/"));
-                std::fs::create_dir_all(folder)?;
-                // Another run may download the same file: write a copy, then rename it.
-                let partial = folder.join(format!(
-                    ".{}.{}.part",
-                    path.file_name().unwrap_or_default().to_string_lossy(),
-                    std::process::id()
-                ));
-                std::fs::write(&partial, data)?;
-                std::fs::rename(&partial, path)
-            }
-            None => {
+        let folder = path.parent().unwrap_or(Path::new("/"));
+        std::fs::create_dir_all(folder)?;
+        // Another run may download the same file: write a copy, then rename it.
+        let partial = folder.join(format!(
+            ".{}.{}.part",
+            path.file_name().unwrap_or_default().to_string_lossy(),
+            std::process::id()
+        ));
+        // The storage providers share one client per process, so that a host's address is
+        // looked up once and its connection reused.
+        match self.storage.download(&url, &partial) {
+            Ok(()) => std::fs::rename(&partial, path),
+            Err(StorageError::Missing { .. }) => {
+                let _ = std::fs::remove_file(&partial);
                 self.missing.borrow_mut().insert(path.to_owned());
                 Ok(())
             }
+            Err(error) => {
+                let _ = std::fs::remove_file(&partial);
+                Err(std::io::Error::other(error.to_string()))
+            }
         }
     }
-}
-
-/// The content at a web address, or `None` when the server does not have it. All downloads
-/// share one client, so that a host's address is looked up once and its connection reused.
-fn download(url: &str) -> std::io::Result<Option<Vec<u8>>> {
-    static CLIENT: OnceLock<Result<reqwest::blocking::Client, String>> = OnceLock::new();
-    let failed =
-        |error: reqwest::Error| std::io::Error::other(format!("cannot download {url}: {error}"));
-    let client = CLIENT
-        .get_or_init(|| {
-            reqwest::blocking::Client::builder()
-                .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
-                .connect_timeout(std::time::Duration::from_secs(30))
-                .timeout(std::time::Duration::from_secs(120))
-                .build()
-                .map_err(|error| error.to_string())
-        })
-        .as_ref()
-        .map_err(|error| std::io::Error::other(format!("cannot download {url}: {error}")))?;
-    let response = client.get(url).send().map_err(failed)?;
-    if response.status() == reqwest::StatusCode::NOT_FOUND {
-        return Ok(None);
-    }
-    let response = response.error_for_status().map_err(failed)?;
-    Ok(Some(response.bytes().map_err(failed)?.to_vec()))
 }
 
 #[cfg(test)]
@@ -224,8 +207,62 @@ mod tests {
     use super::*;
 
     #[test]
+    fn files_come_through_the_storage_providers() {
+        use std::io::{BufRead, BufReader, Write};
+        // A web server that answers only requests with the token of its provider.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+        let server = format!("http://{}", listener.local_addr().expect("an address"));
+        std::thread::spawn(move || {
+            for mut stream in listener.incoming().flatten() {
+                let mut reader = BufReader::new(stream.try_clone().expect("a stream"));
+                let (mut first, mut allowed) = (String::new(), false);
+                let _ = reader.read_line(&mut first);
+                let mut line = String::new();
+                while reader.read_line(&mut line).unwrap_or(0) > 2 {
+                    allowed |= line
+                        .trim()
+                        .eq_ignore_ascii_case("authorization: Bearer t0k3n");
+                    line.clear();
+                }
+                let found = first.contains(" /rules.smk ");
+                let (status, body) = match (allowed, found) {
+                    (false, _) => ("401 Unauthorized", ""),
+                    (true, true) => ("200 OK", "rule a:\n    output: 'a'\n"),
+                    (true, false) => ("404 Not Found", ""),
+                };
+                let answer = format!(
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = stream.write_all(answer.as_bytes());
+            }
+        });
+        let text = format!(
+            "[storage.rules]\ntype = \"https\"\nprefixes = [\"{server}/\"]\ntoken = \"t0k3n\"\n"
+        );
+        let config = config_file::ConfigFile::parse(&text, Path::new("config.toml")).expect("TOML");
+        let storage = Storage::from_config(&config).expect("valid settings");
+        let downloads = tempfile::tempdir().expect("a folder");
+        let mirrors = Mirrors::new(downloads.path().to_owned(), &storage);
+        let rules = mirrors
+            .url(&format!("{server}/rules.smk"))
+            .expect("a web address");
+        mirrors.fetch(&rules).expect("a download");
+        assert_eq!(
+            std::fs::read_to_string(&rules).unwrap(),
+            "rule a:\n    output: 'a'\n"
+        );
+        // A file that the server does not have is left out, without an error.
+        let missing = mirrors
+            .url(&format!("{server}/other.smk"))
+            .expect("a web address");
+        mirrors.fetch(&missing).expect("no error");
+        assert!(!missing.exists());
+    }
+
+    #[test]
     fn remote_files_have_local_paths_and_web_addresses() {
-        let mirrors = Mirrors::new(PathBuf::from("/downloads"));
+        let mirrors = Mirrors::new(PathBuf::from("/downloads"), &Storage::default());
         let snakefile = mirrors.hosted(
             "github",
             "github.com",

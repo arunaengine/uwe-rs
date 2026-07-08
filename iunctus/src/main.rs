@@ -318,15 +318,18 @@ fn driver(
 ) -> Result<Box<dyn Driver>, DriverError> {
     match language {
         Language::Nextflow => nextflow::driver(launch, run, quiet, &setup.storage),
-        Language::Snakemake => snakemake_runtime::driver_with(launch, snakemake(arguments)),
+        Language::Snakemake => {
+            snakemake_runtime::driver_with(launch, snakemake(arguments, &setup.storage))
+        }
         Language::Cwl => cwl_runtime::driver(launch),
         Language::Argo => argo_runtime::driver(launch),
     }
 }
 
 /// The settings of Snakemake runs: the Python container of decision 19, with the engine of
-/// the local executor, which keeps what uv downloads and installs in the cache.
-fn snakemake(arguments: &Arguments) -> snakemake_runtime::Settings {
+/// the local executor, which keeps what uv downloads and installs in the cache, and the
+/// storage providers.
+fn snakemake(arguments: &Arguments, storage: &storage::Storage) -> snakemake_runtime::Settings {
     snakemake_runtime::Settings {
         python: Some(snakemake_runtime::PythonContainers {
             engine: engine(),
@@ -334,6 +337,7 @@ fn snakemake(arguments: &Arguments) -> snakemake_runtime::Settings {
             cache: cache_directory().join("python"),
             show_output: true,
         }),
+        storage: storage.clone(),
     }
 }
 

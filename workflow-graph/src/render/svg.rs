@@ -7,7 +7,7 @@
 use std::fmt::Write as _;
 
 use super::{Drawing, Shape, State};
-use crate::layout::{Layout, Point, Size, layout};
+use crate::layout::{Graph, Layout, Point, Size, layout};
 
 /// The width of a character of the monospace labels at 12 pixels: 0.6 em.
 const CHARACTER: f64 = 7.2;
@@ -32,7 +32,11 @@ pub fn svg(drawing: &Drawing) -> String {
         .iter()
         .map(|link| (link.from, link.to))
         .collect();
-    let layout = layout(&sizes, &edges);
+    let layout = layout(&Graph {
+        sizes: sizes.clone(),
+        edges,
+        ..Graph::default()
+    });
     let states: Vec<State> = State::ALL
         .into_iter()
         .filter(|state| drawing.shapes.iter().any(|shape| shape.state == *state))

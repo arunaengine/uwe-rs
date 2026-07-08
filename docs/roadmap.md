@@ -106,8 +106,8 @@ No task runs for real yet, except one at a time through the simple local executo
 13. **Preparing images:** tags pinned to digests (done for the local executor), images built from Conda environments (decision 12), and one image for a whole workflow (decision 13).
 14. **The context of embedded code:** the `snakemake` object for scripts, wrappers and notebooks, the Snakefile's functions for `run:` blocks, and Nextflow `exec:` sections in the native interpreter.
 15. **Logs and reports:** standard output and error of each task, live progress, and trace, timeline and benchmark files.
-16. **Secrets and credentials** for each storage provider and remote input, kept out of task descriptions and cache keys.
-17. **Several storage providers:** a config file that maps buckets and address prefixes to endpoints and credentials, with secrets as references to environment variables (decision 20), used by the store, remote inputs and delivering results. The store connects to one S3 bucket today, with credentials from the environment.
+16. **Secrets and credentials** for each storage provider and remote input, kept out of task descriptions and cache keys. Done for storage: secrets stay in the providers of the config file, and a test checks that none reaches the output, the run database, the RO-Crate or the cache ([storage](design/storage.md), section 5).
+17. **Several storage providers:** a config file that maps buckets and address prefixes to endpoints and credentials, with secrets as references to environment variables (decision 20), used by the store, remote inputs and delivering results. Done: see [storage](design/storage.md).
 
 ## 4. Better than the native engines: insight, reproducibility, efficiency
 
@@ -154,8 +154,8 @@ iunctus describes every task of every language the same way, and it knows every 
 
 | Feature | What the user gets | Native engines today | Builds on |
 | --- | --- | --- | --- |
-| **Several storage providers in one run** | Each bucket or address prefix has its own endpoint, region and credentials: AWS S3, MinIO, Ceph, Cloudflare R2 or another S3-compatible service, Google Cloud Storage, Azure Blob Storage, HTTPS, FTP and local disks. Inputs can come from one provider, the store can live on a second, and results can go to a third | Nextflow takes one S3 endpoint and one set of credentials for the whole run. Snakemake 8 can name several storage providers, but the Snakefile must declare them | The store (one S3 bucket today, credentials from the environment), remote inputs |
-| **Storage settings outside the workflow** | A config file of the user or the site says which endpoint and credentials serve which bucket, with secrets taken from environment variables (decision 20), so the same workflow runs on any site without changes | Nextflow needs a config profile per site; Snakemake storage settings sit in the Snakefile or on the command line | Several storage providers |
+| **Several storage providers in one run** | Each bucket or address prefix has its own endpoint, region and credentials: AWS S3, MinIO, Ceph, Cloudflare R2 or another S3-compatible service, Google Cloud Storage, Azure Blob Storage, HTTPS, FTP and local disks. Inputs can come from one provider, the store can live on a second, and results can go to a third | Nextflow takes one S3 endpoint and one set of credentials for the whole run. Snakemake 8 can name several storage providers, but the Snakefile must declare them | Done: [storage](design/storage.md) |
+| **Storage settings outside the workflow** | A config file of the user or the site says which endpoint and credentials serve which bucket, with secrets taken from environment variables (decision 20), so the same workflow runs on any site without changes | Nextflow needs a config profile per site; Snakemake storage settings sit in the Snakefile or on the command line | Done: [storage](design/storage.md) |
 | **Copies checked by digest** | Data that moves between providers is checked end to end, a file that is already at the target is not copied again, and a run can move its store, for example from a local disk to S3, without running any task again | Nextflow copies files with `publishDir` and does not check their content | The store |
 | **A cache in layers** | A fast local disk in front of a shared S3 store: reads try the local disk first, and new results go to both | No engine has this | The store, several storage providers |
 | **Tasks near their data** | With several providers and TES servers, a task goes to the site that holds its inputs, instead of the data going to the task | No engine chooses a site by where the data is | The TES executor, several storage providers |
@@ -197,8 +197,8 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 - [ ] The TES executor, tested with Funnel and TESK (decision 22).
 - [ ] The SLURM executor with Apptainer or Podman (decision 22).
 - [ ] The Kubernetes executor, one Kubernetes Job per task (decision 22).
-- [ ] The network and writable-input fields, remote inputs, Argo container sets (section 3, steps 6, 9 and 10).
-- [ ] Several storage providers from a config file, secrets from environment variables (decision 20).
+- [ ] The network and writable-input fields, remote inputs (done), Argo container sets (section 3, steps 6, 9 and 10).
+- [x] Several storage providers from a config file, secrets from environment variables (decision 20): see [storage](design/storage.md).
 - Done when: the `test` profiles of nf-core/demo and 20 more nf-core pipelines, and a sample of Snakemake, CWL and Argo test workflows, run for real on each executor, and their outputs match those of the native tool. This needs a real-run version of the evidence scripts. The 208 CWL conformance tests that only run through today pass for real.
 
 ### Run database, web page and provenance
@@ -226,12 +226,12 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 ### Easy setup
 
 - [ ] A laptop needs nothing but the binary and Docker or Podman.
-- [ ] One config file for executors and storage, with secrets from environment variables.
+- [ ] One config file for executors and storage, with secrets from environment variables. The file and its storage part are done ([storage](design/storage.md)); the executors read their `[executor.<name>]` sections next.
 - [ ] Clear errors that say what to install or set, in the same form for every language.
 
 ## 6. Open questions
 
-1. **FTP inputs.** Should remote inputs include `ftp://`? Many public datasets are on FTP servers, and Nextflow reads them. Recommended: yes, in phase 2.
+1. **FTP inputs.** Should remote inputs include `ftp://`? Many public datasets are on FTP servers, and Nextflow reads them. Recommended: yes, in phase 2. FTP servers that a provider of the config file names work now ([storage](design/storage.md)); the question left is whether every other `ftp://` address is read as the user `anonymous` without any config, as Nextflow does.
 2. **Network by default.** Should tasks run without network unless the workflow says otherwise, or only when the user asks for it? Nextflow and Snakemake workflows never declare network use, so a default of "off" would break the steps that download.
 3. **Trust in a shared cache.** A cache on S3 that several users share means trusting each other's results. Options: one cache namespace per team (the namespace is already part of the cache key), or signed cache entries.
 4. **How results are delivered.** Copies are safe; links from the store save space but make the store's files editable by accident. Which is the default?

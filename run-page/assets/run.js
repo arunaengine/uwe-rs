@@ -42,8 +42,8 @@ async function showRun(id, task) {
 // The frame of the run view: each part is filled by its own draw function.
 function buildRun() {
   view.parts = {
-    summary: el("section", { class: "card" }),
-    progress: el("section", { class: "card" }),
+    summary: el("div", {}),
+    progress: el("div", { class: "summary-progress" }),
     graph: el("section", { class: "card" }),
     steps: el("section", { class: "card" }),
     tasks: el("section", { class: "card" }),
@@ -51,9 +51,10 @@ function buildRun() {
   };
   const parts = view.parts;
   view.columns = el("div", { class: "columns" },
-    el("div", {}, parts.progress, parts.graph, parts.steps, parts.tasks),
+    el("div", {}, parts.graph, parts.steps, parts.tasks),
     parts.detail);
-  main.replaceChildren(parts.summary, view.columns);
+  main.replaceChildren(el("section", { class: "card" }, parts.summary, parts.progress),
+    view.columns);
 }
 
 function drawAll() {
@@ -106,6 +107,9 @@ function drawSummary() {
     el("summary", {}, "command line"),
     el("pre", {}, ["iunctus", ...run.arguments].join(" "))));
   view.parts.summary.replaceChildren(...parts);
+  // The parameters and the command line side by side, until one opens.
+  const folded = parts.filter((part) => part.tagName === "DETAILS");
+  view.parts.summary.append(el("div", { class: "tools summary-more" }, folded));
 }
 
 // The number of tasks in each shown state.
@@ -126,7 +130,8 @@ function drawProgress() {
   const legend = el("div", { class: "legend" },
     STATES.filter((state) => found[state]).map((state) =>
       el("span", {}, el("i", { class: `${state}-fill` }), `${found[state]} ${LABELS[state]}`)));
-  view.parts.progress.replaceChildren(el("h2", {}, `${tasks.length} tasks`), bar, legend);
+  legend.prepend(el("strong", {}, `${tasks.length} tasks`));
+  view.parts.progress.replaceChildren(bar, legend);
 }
 
 // ---- graph ----

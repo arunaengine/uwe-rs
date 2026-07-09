@@ -447,24 +447,38 @@ mod tests {
     use crate::TaskId;
     use crate::render::Link;
 
-    fn shape(id: &str, kind: Kind, state: State) -> Shape {
+    fn task(id: u64, state: State) -> Shape {
         Shape {
-            id: id.to_owned(),
-            kind,
-            lines: vec![format!("{id} <&>")],
+            id: format!("t{id}"),
+            kind: Kind::Task(TaskId(id)),
+            lines: vec![format!("t{id} <&>")],
             tooltip: "a \"tip\"".to_owned(),
             state,
         }
     }
 
-    #[test]
-    fn svg_has_the_boxes_lines_title_and_legend() {
-        let drawing = Drawing {
-            title: vec!["demo (nextflow): 2 tasks".to_owned()],
+    fn drawing() -> Drawing {
+        Drawing {
+            title: vec!["demo (nextflow): 9 tasks".to_owned()],
             shapes: vec![
-                shape("t1", Kind::Task(TaskId(1)), State::Simulated),
-                shape("t2", Kind::Task(TaskId(2)), State::Failed),
-                shape("m2", Kind::OpenPoint, State::Simulated),
+                task(1, State::Simulated),
+                Shape {
+                    id: "s1".to_owned(),
+                    kind: Kind::Step {
+                        name: "FASTQC".to_owned(),
+                        tasks: 7,
+                    },
+                    lines: vec!["FASTQC".to_owned(), "7 tasks".to_owned()],
+                    tooltip: "FASTQC\n7 tasks: 7 failed".to_owned(),
+                    state: State::Failed,
+                },
+                Shape {
+                    id: "ms1".to_owned(),
+                    kind: Kind::OpenPoint,
+                    lines: vec!["more tasks may follow".to_owned()],
+                    tooltip: MORE_TASKS.to_owned(),
+                    state: State::default(),
+                },
             ],
             links: vec![
                 Link {
@@ -480,25 +494,75 @@ mod tests {
                     label: None,
                 },
             ],
-        };
+        }
+    }
+
+    #[test]
+    fn svg_has_the_boxes_lines_title_and_legend() {
+        let drawing = drawing();
         let svg = svg(&drawing, Direction::Down);
         assert!(svg.starts_with("<svg xmlns=\"http://www.w3.org/2000/svg\""));
         assert!(svg.ends_with("</svg>\n"));
-        assert!(svg.contains("id=\"t1\""));
+        assert!(svg.contains("class=\"node task simulated\" id=\"t1\" data-task=\"1\""));
+        assert!(svg.contains("href=\"#icon-simulated\""));
         assert!(svg.contains("t1 &lt;&amp;&gt;"));
         assert!(svg.contains("<title>a &quot;tip&quot;</title>"));
         assert!(svg.contains("<title>a.txt</title>"));
+        assert!(svg.contains("class=\"node step failed\" id=\"s1\" data-step=\"FASTQC\""));
+        assert!(
+            svg.contains("class=\"stack\""),
+            "a step of 7 tasks is stacked"
+        );
+        assert!(svg.contains(">7 tasks</text>"));
+        assert!(svg.contains("class=\"node open-point\" id=\"ms1\" data-host=\"s1\""));
         assert!(svg.contains("class=\"edge open\""));
-        assert!(svg.contains(">demo (nextflow): 2 tasks</text>"));
-        assert!(svg.contains(">more tasks may follow from real data</text>"));
+        assert!(svg.contains(">demo (nextflow): 9 tasks</text>"));
+        assert!(
+            svg.contains(&format!(">{MORE_TASKS}</text>")),
+            "in the legend"
+        );
+        assert!(
+            svg.contains("<symbol id=\"icon-running\""),
+            "every icon is there"
+        );
         assert!(
             !svg.contains(">succeeded</text>"),
-            "only the states it shows"
+            "the legend names only the states it shows"
         );
-        assert_eq!(
-            svg,
-            super::svg(&drawing, Direction::Down),
-            "the same drawing gives the same SVG"
+        assert_eq!(svg, super::svg(&drawing, Direction::Down), "the same SVG");
+    }
+
+    /// The center of the box with this id.
+    fn center(svg: &str, id: &str) -> Point {
+        let start = svg.find(&format!("id=\"{id}\"")).expect("the box");
+        let rest = &svg[start..];
+        let translate = &rest[rest.find("translate(").expect("a place") + 10..];
+        let numbers: Vec<f64> = translate[..translate.find(')').expect("an end")]
+            .split(' ')
+            .map(|number| number.parse().expect("a number"))
+            .collect();
+        Point {
+            x: numbers[0],
+            y: numbers[1],
+        }
+    }
+
+    #[test]
+    fn open_points_sit_beside_their_box_in_either_direction() {
+        let drawing = drawing();
+        let down = svg(&drawing, Direction::Down);
+        let (step, open) = (center(&down, "s1"), center(&down, "ms1"));
+        assert_eq!(step.y, open.y);
+        assert!(open.x > step.x);
+        assert!(down.contains("data-direction=\"down\""));
+        let right = svg(&drawing, Direction::Right);
+        let (first, step, open) = (
+            center(&right, "t1"),
+            center(&right, "s1"),
+            center(&right, "ms1"),
         );
+        assert!(step.x > first.x, "the step follows the task to the right");
+        assert_eq!(step.x, open.x);
+        assert!(open.y > step.y);
     }
 }

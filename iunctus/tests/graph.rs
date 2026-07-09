@@ -214,6 +214,10 @@ fn graphs_have_a_step_view_and_svg() {
         "{stdout}"
     );
     assert!(stdout.contains("id=\"t1\""), "{stdout}");
+    let arguments = ["graph", "main.nf", "-format", "svg", "-direction", "right"];
+    let (code, stdout, stderr) = iunctus(directory.path(), &arguments);
+    assert_eq!(code, 0, "{stderr}");
+    assert!(stdout.contains("data-direction=\"right\""), "{stdout}");
     let arguments = ["run", "main.nf", "-graph", "steps.svg", "-view", "steps"];
     let (code, _, stderr) = iunctus(directory.path(), &arguments);
     assert_eq!(code, 0, "{stderr}");

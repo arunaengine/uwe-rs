@@ -6,7 +6,7 @@
 use std::net::IpAddr;
 use std::path::PathBuf;
 
-use workflow_graph::render::{Format, View};
+use workflow_graph::render::{Direction, Format, View};
 use workflow_graph::{Language, Order};
 
 /// The options of a command.
@@ -53,6 +53,11 @@ pub struct Arguments {
     pub format: Option<Format>,
     /// `-view tasks|steps`: the graph with one node per task, or one node per step.
     pub view: Option<View>,
+    /// `-direction down|right`: which way a picture of the graph goes.
+    pub direction: Option<Direction>,
+    /// `-fold n`: in a picture of the graph of tasks, a step with more than n tasks is one
+    /// box; 0 draws every task.
+    pub fold: Option<usize>,
     /// `-max-pending n`: how many tasks may be pending at once.
     pub max_pending: Option<usize>,
     /// `-order asked|reversed|finished|shuffled[:seed]`: the order in which pending tasks
@@ -152,6 +157,19 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
                     View::parse(&name)
                         .ok_or(format!("unknown graph view `{name}`; use tasks or steps"))?,
                 );
+            }
+            "-direction" => {
+                let name = value()?;
+                parsed.direction = Some(
+                    Direction::parse(&name)
+                        .ok_or(format!("unknown direction `{name}`; use down or right"))?,
+                );
+            }
+            "-fold" => {
+                let number = value()?;
+                parsed.fold = Some(number.parse().map_err(|_| {
+                    format!("`-fold` needs a number of tasks, like 5, not `{number}`")
+                })?);
             }
             "-default-image" => parsed.default_image = Some(value()?),
             "-python-image" => parsed.python_image = Some(value()?),
@@ -330,6 +348,22 @@ mod tests {
         );
         assert_eq!(parsed.configs, [PathBuf::from("config.yaml")]);
         assert_eq!(parsed.language, Some(Language::Snakemake));
+    }
+
+    #[test]
+    fn pictures_take_a_direction_and_a_fold() {
+        let parsed = parse_all(&["main.nf", "-direction", "right", "-fold", "0"]);
+        assert_eq!(parsed.direction, Some(Direction::Right));
+        assert_eq!(parsed.fold, Some(0));
+        let arguments = [
+            "main.nf".to_owned(),
+            "-direction".to_owned(),
+            "up".to_owned(),
+        ];
+        let error = parse(&arguments).expect_err("an unknown direction");
+        assert!(error.contains("use down or right"), "{error}");
+        let arguments = ["main.nf".to_owned(), "-fold".to_owned(), "many".to_owned()];
+        assert!(parse(&arguments).is_err());
     }
 
     #[test]

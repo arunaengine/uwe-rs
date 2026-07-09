@@ -9,6 +9,7 @@ const PAGE: &str = include_str!("../assets/index.html");
 const STYLE: &str = include_str!("../assets/page.css");
 const SCRIPT: &str = include_str!("../assets/page.js");
 const RUN_SCRIPT: &str = include_str!("../assets/run.js");
+const GRAPH_SCRIPT: &str = include_str!("../assets/graph.js");
 const CAMERA_SCRIPT: &str = include_str!("../assets/camera.js");
 const BOXES_SCRIPT: &str = include_str!("../assets/boxes.js");
 
@@ -29,6 +30,11 @@ pub(crate) async fn script() -> impl IntoResponse {
 /// The view of one run.
 pub(crate) async fn run_script() -> impl IntoResponse {
     javascript(RUN_SCRIPT)
+}
+
+/// The graph view of a run.
+pub(crate) async fn graph_script() -> impl IntoResponse {
+    javascript(GRAPH_SCRIPT)
 }
 
 /// Moving and zooming the graph view.

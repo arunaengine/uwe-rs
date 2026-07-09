@@ -18,6 +18,9 @@
   --reused: #6b4fbb;
   --notice: #fff4d6;
   --notice-line: #e2b340;
+  --simulated: #718096;
+  --node-line: #c3cad3;
+  --edge: #9aa4b2;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 15px;
   line-height: 1.45;
@@ -42,6 +45,9 @@
     --reused: #a990f0;
     --notice: #3a3020;
     --notice-line: #b8913a;
+    --simulated: #94a3b8;
+    --node-line: #4a525c;
+    --edge: #6b7480;
   }
 }
 
@@ -82,6 +88,7 @@ main { padding: 1.25rem; max-width: 110rem; margin: 0 auto; }
 .state.running { background: var(--running); }
 .state.stopped { background: var(--stopped); }
 .state.reused { background: var(--reused); }
+.state.simulated { background: var(--simulated); }
 
 .progress { display: flex; height: 0.7rem; border-radius: 999px; overflow: hidden; background: var(--code); margin: 0.5rem 0; }
 .progress span { display: block; }
@@ -116,8 +123,44 @@ button[aria-pressed=true] { background: var(--text); color: var(--card); }
 .summary-more details[open] { flex-basis: 100%; }
 .summary-more summary { margin: 0; }
 
-.graph { overflow: auto; max-height: 70vh; border: 1px solid var(--line); border-radius: 6px; background: var(--ground); padding: 0.5rem; }
-.graph svg { display: block; max-width: none; height: auto; }
-.graph svg [id^="t"], .graph svg [id^="s"] { cursor: pointer; }
+.switch { display: inline-flex; }
+.switch button { border-radius: 0; margin-left: -1px; }
+.switch button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+.switch button:last-child { border-radius: 0 6px 6px 0; }
+
+/* The graph view: the picture of the server, moved and zoomed by graph.js. */
+.stage { position: relative; height: calc(100vh - 14rem); min-height: 26rem; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background-color: var(--ground); background-image: radial-gradient(var(--line) 1px, transparent 1.2px); cursor: grab; touch-action: none; user-select: none; outline: none; }
+.stage:focus-visible { box-shadow: 0 0 0 2px var(--link); }
+.stage.dragging { cursor: grabbing; }
+.stage > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.stage-message { position: absolute; left: 1rem; top: 0.5rem; }
+.stage .graph { transform-origin: 0 0; }
+.stage .graph.moving { transition: transform 350ms ease; }
+.stage .node { cursor: pointer; }
+.stage .node:hover > .box { stroke: var(--link); }
+.stage .node.chosen > .box { stroke: var(--link); stroke-width: 2.4; }
+/* Far away, boxes show their state by colour alone, which is much faster to draw. */
+.stage.far .node text, .stage.far .node .icon { display: none; }
+.stage.far .node > .box { stroke: none; }
+.stage.far .simulated > .box { fill: var(--simulated); }
+.stage.far .succeeded > .box { fill: var(--succeeded); }
+.stage.far .reused > .box { fill: var(--reused); }
+.stage.far .failed > .box { fill: var(--failed); }
+.stage.far .running > .box { fill: var(--running); }
+.stage.far .waiting > .box { fill: var(--waiting); }
+.stage.far .stopped > .box { fill: var(--stopped); }
+.stage.gliding .node { transition: transform 450ms ease, opacity 450ms ease; }
+.stage.gliding .edges { transition: opacity 300ms ease 200ms; }
+.stage .arriving { opacity: 0; }
+.zoom { position: absolute; right: 0.75rem; top: 0.75rem; display: flex; flex-direction: column; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); border-radius: 6px; }
+.zoom button { min-width: 2.4rem; height: 2.2rem; border-radius: 0; margin-top: -1px; }
+.zoom button:first-child { border-radius: 6px 6px 0 0; margin-top: 0; }
+.zoom button:last-child { border-radius: 0 0 6px 6px; font-size: 0.8rem; }
+.graph-legend { margin-top: 0.5rem; align-items: center; }
+.graph-legend .hint { margin-left: auto; }
+.state-icon { width: 0.95rem; height: 0.95rem; margin-right: 0.3rem; vertical-align: -2px; }
+.stack-sign { display: inline-block; width: 0.8rem; height: 0.6rem; margin-right: 0.45rem; border: 1px solid var(--quiet); border-radius: 2px; box-shadow: 2px 2px 0 -1px var(--card), 2px 2px 0 0 var(--quiet); vertical-align: -1px; }
+.graph-tip { position: fixed; z-index: 5; pointer-events: none; max-width: 28rem; padding: 0.45rem 0.65rem; border: 1px solid var(--line); border-radius: 6px; background: var(--card); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14); font-size: 0.85rem; overflow-wrap: anywhere; }
+.graph-tip ul { margin: 0.25rem 0 0; padding-left: 1.1rem; }
 details > summary { cursor: pointer; color: var(--quiet); margin: 0.4rem 0; }
 .marker { border-left: 3px solid var(--notice-line); padding-left: 0.6rem; margin: 0.3rem 0; }

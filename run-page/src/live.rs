@@ -41,7 +41,8 @@ pub(crate) struct Update {
     tasks: Vec<TaskRow>,
     /// All markers of the run, when a new one came.
     markers: Option<Vec<MarkerRow>>,
-    /// Whether the graph changed: a task was asked for or finished, or a marker came.
+    /// Whether the shape of the graph changed: a task was asked for, or a marker came. The
+    /// page changes the states of the tasks in place, and draws the graph again only then.
     graph: bool,
 }
 
@@ -129,7 +130,7 @@ fn update(database: &Database, run: &str, after: i64) -> Result<Option<(Update, 
     let marked = events.iter().any(|event| event.kind == "marked");
     let graph = events
         .iter()
-        .any(|event| matches!(event.kind.as_str(), "requested" | "finished" | "marked"));
+        .any(|event| matches!(event.kind.as_str(), "requested" | "marked"));
     let full = events.len() as u32 == BATCH;
     let update = Update {
         sequence: events.last().map_or(after, |event| event.sequence),

@@ -13,10 +13,8 @@ const LABELS = {
 };
 // How many task rows the table shows at first, and adds on each "show more".
 const ROWS = 300;
-// Runs with more tasks start with the graph of steps, whose drawing stays small.
-const LARGE = 2000;
-// The graph is drawn again at most this often while a run goes on.
-const GRAPH_PAUSE = 3000;
+// The graph is laid out again at most this often while tasks come.
+const GRAPH_PAUSE = 2000;
 
 const main = document.getElementById("main");
 const trail = document.getElementById("trail");
@@ -124,7 +122,10 @@ function route() {
 
 function leave() {
   if (view && view.events) view.events.close();
-  if (view && view.graphTimer) clearTimeout(view.graphTimer);
+  if (view && view.graph) {
+    clearTimeout(view.graph.timer);
+    view.graph.observer.disconnect();
+  }
   view = null;
   liveMark.hidden = true;
 }

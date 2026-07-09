@@ -1,6 +1,6 @@
 // The view of one run on the page of iunctus: its summary, graph, steps, tasks, and one task
-// with its logs and files. A running run updates live through Server-Sent Events. It uses the
-// helpers of `page.js`, which the page loads first.
+// or step with its details. A running run updates live through Server-Sent Events. It uses
+// the helpers of `page.js` and the graph view of `graph.js`.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 "use strict";
@@ -26,10 +26,9 @@ async function showRun(id, task) {
     filter: { text: "", state: "", step: "", order: "asked" },
     shown: ROWS,
     chosen: null,
+    chosenStep: null,
     events: null,
-    graphView: data.tasks.length > LARGE ? "steps" : "tasks",
-    graphTimer: null,
-    graphDrawn: 0,
+    graph: null,
   };
   document.title = `iunctus: ${base(data.run.workflow)} ${id}`;
   buildRun();
@@ -39,7 +38,8 @@ async function showRun(id, task) {
   listen();
 }
 
-// The frame of the run view: each part is filled by its own draw function.
+// The frame of the run view: each part is filled by its own draw function. The graph comes
+// first, next to the panel of the chosen task or step.
 function buildRun() {
   view.parts = {
     summary: el("div", {}),
@@ -132,70 +132,6 @@ function drawProgress() {
       el("span", {}, el("i", { class: `${state}-fill` }), `${found[state]} ${LABELS[state]}`)));
   legend.prepend(el("strong", {}, `${tasks.length} tasks`));
   view.parts.progress.replaceChildren(bar, legend);
-}
-
-// ---- graph ----
-
-function drawGraph() {
-  if (!view) return;
-  view.graphTimer = null;
-  view.graphDrawn = Date.now();
-  const graphView = view.graphView;
-  const toggle = ["steps", "tasks"].map((name) =>
-    el("button", { "aria-pressed": String(name === graphView), onclick: () => {
-      view.graphView = name;
-      drawGraph();
-    } }, name === "steps" ? "Steps" : "Tasks"));
-  const box = el("div", { class: "graph" }, el("p", { class: "quiet" }, "Drawing..."));
-  view.parts.graph.replaceChildren(
-    el("div", { class: "tools" }, el("h2", { style: "margin: 0; flex: 1" }, "Graph"), toggle),
-    box);
-  const id = view.id;
-  fetch(`/api/runs/${encodeURIComponent(id)}/graph.svg?view=${graphView}`)
-    .then(async (response) => {
-      if (!view || view.id !== id) return;
-      if (!response.ok) {
-        box.replaceChildren(el("p", { class: "quiet" }, "The graph cannot be drawn: ",
-          (await response.text()) || response.statusText));
-        return;
-      }
-      const svg = new DOMParser().parseFromString(await response.text(), "image/svg+xml");
-      const root = svg.documentElement;
-      if (root.nodeName !== "svg") {
-        box.replaceChildren(el("p", { class: "quiet" }, "The graph cannot be drawn."));
-        return;
-      }
-      const drawn = document.importNode(root, true);
-      drawn.addEventListener("click", (event) => chooseShape(event.target));
-      box.replaceChildren(drawn);
-    })
-    .catch((error) => box.replaceChildren(el("p", { class: "error" }, error.message)));
-}
-
-// A click on a box of the graph: `t<id>` opens the task, `s<n>` shows the tasks of the n-th
-// step, counted from 0 in the order of their first task, as the renderer numbers them.
-function chooseShape(target) {
-  const shape = target.closest("[id]");
-  const id = shape ? shape.getAttribute("id") : "";
-  if (/^t\d+$/.test(id)) {
-    go(taskPath(Number(id.slice(1))));
-  } else if (/^s\d+$/.test(id)) {
-    const steps = [...new Set([...view.tasks.values()].map((task) => task.step))];
-    const step = steps[Number(id.slice(1))];
-    if (step === undefined) return;
-    view.filter.step = step;
-    view.shown = ROWS;
-    drawSteps();
-    drawTasks();
-    view.parts.tasks.scrollIntoView({ behavior: "smooth" });
-  }
-}
-
-// Draws the graph again soon, but not more often than every few seconds.
-function graphChanged() {
-  if (!view || view.graphTimer) return;
-  const wait = Math.max(0, GRAPH_PAUSE - (Date.now() - view.graphDrawn));
-  view.graphTimer = setTimeout(drawGraph, wait);
 }
 
 // ---- steps ----
@@ -327,16 +263,20 @@ function taskPath(task) {
 function choose(task) {
   if (!view) return;
   view.chosen = task;
+  view.chosenStep = null;
   drawRows();
   const detail = view.parts.detail;
   if (task === null || task === undefined) {
     detail.hidden = true;
     view.columns.classList.remove("open");
+    markChosen();
     return;
   }
   detail.hidden = false;
   view.columns.classList.add("open");
   drawDetail(task);
+  const node = markChosen();
+  if (node) reveal(node);
 }
 
 async function drawDetail(task) {
@@ -366,7 +306,7 @@ async function drawDetail(task) {
   const parts = [
     el("div", { class: "tools" },
       el("h2", { style: "margin: 0; flex: 1" }, row.name, " ", badge(shownState(row))),
-      el("button", { onclick: () => go(`/runs/${encodeURIComponent(id)}`) }, "close")),
+      el("button", { onclick: closeDetail }, "close")),
     el("dl", { class: "facts" },
       facts.map(([name, value]) => el("div", {}, el("dt", {}, name), el("dd", {}, value)))),
   ];
@@ -469,6 +409,19 @@ async function listFolder(button, url) {
     ` ${bytes(entry.size)}`))));
 }
 
+// ---- the panel ----
+
+function closeDetail() {
+  if (view.chosen !== null && view.chosen !== undefined) {
+    go(`/runs/${encodeURIComponent(view.id)}`);
+    return;
+  }
+  view.chosenStep = null;
+  view.parts.detail.hidden = true;
+  view.columns.classList.remove("open");
+  markChosen();
+}
+
 // ---- live updates ----
 
 function listen() {
@@ -485,6 +438,8 @@ function listen() {
     for (const task of update.tasks) view.tasks.set(task.id, task);
     if (update.markers) view.markers = update.markers;
     drawAll();
+    // States change in place; new tasks and markers need a new picture.
+    paintStates(update.tasks);
     if (update.graph) graphChanged();
     if (view.chosen !== null && update.tasks.some((task) => task.id === view.chosen)) {
       drawDetail(view.chosen);
@@ -493,8 +448,7 @@ function listen() {
       events.close();
       liveMark.hidden = true;
       // The run is over: draw its whole graph now, without waiting.
-      if (view.graphTimer) clearTimeout(view.graphTimer);
-      drawGraph();
+      loadGraph({});
     }
   });
 }

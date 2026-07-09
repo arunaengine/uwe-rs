@@ -104,14 +104,6 @@ fn the_page_shows_runs_tasks_logs_and_files() {
     let (status, script) = get(&format!("{url}/run.js"));
     assert_eq!(status, 200);
     assert!(script.contains("EventSource"));
-    for (script, function) in [
-        ("camera.js", "function fitGraph"),
-        ("boxes.js", "function paintStates"),
-    ] {
-        let (status, text) = get(&format!("{url}/{script}"));
-        assert_eq!(status, 200);
-        assert!(text.contains(function), "{script}: {text}");
-    }
 
     let runs = get_json(&format!("{url}/api/runs"));
     assert_eq!(runs.as_array().map(Vec::len), Some(2));
@@ -143,6 +135,15 @@ fn the_page_shows_runs_tasks_logs_and_files() {
     ));
     assert_eq!(status, 200, "{svg}");
     assert!(svg.contains("data-direction=\"right\""), "{svg}");
+    for (script, function) in [
+        ("graph.js", "function loadGraph"),
+        ("camera.js", "function fitGraph"),
+        ("boxes.js", "function paintStates"),
+    ] {
+        let (status, text) = get(&format!("{url}/{script}"));
+        assert_eq!(status, 200);
+        assert!(text.contains(function), "{script}: {text}");
+    }
     // No earlier run has the task, so there is nothing to compare.
     let why = get_json(&format!("{url}/api/runs/finished-run/tasks/4/why"));
     assert_eq!(why, Value::Null);

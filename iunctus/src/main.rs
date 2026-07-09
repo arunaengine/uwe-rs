@@ -453,11 +453,13 @@ fn launch(arguments: &Arguments, target: PathBuf) -> Launch {
     }
 }
 
-/// How to draw the graph: `-view`.
+/// How to draw the graph: `-view`, `-direction` and `-fold`.
 fn picture(arguments: &Arguments) -> Options {
     let defaults = Options::default();
     Options {
         view: arguments.view.unwrap_or(defaults.view),
+        direction: arguments.direction.unwrap_or(defaults.direction),
+        fold: arguments.fold.unwrap_or(defaults.fold),
         ..defaults
     }
 }
@@ -477,7 +479,8 @@ fn usage() -> ExitCode {
 
 const USAGE: &str = "\
 usage: iunctus run <workflow file or directory> [<targets>] [options]
-       iunctus graph <workflow file or directory> [-format json|dot|summary|svg] [-view tasks|steps] [options]
+       iunctus graph <workflow file or directory> [-format json|dot|summary|svg] [-view tasks|steps]
+                     [-direction down|right] [-fold <n>] [options]
        iunctus config [<project>] [-profile <names>] [-c <config>] [--<param> <value>]
        iunctus runs
        iunctus page [<run>] [-address <ip>] [-port <number>]
@@ -494,6 +497,10 @@ options:
   -graph <file>                       writes the execution graph: DOT for .dot, SVG for .svg,
                                       a summary for .txt, else JSON
   -view tasks|steps                   one node per task (the default) or one per step
+  -direction down|right               which way DOT and SVG pictures of the graph go
+                                      (default: down)
+  -fold <n>                           in pictures of the graph of tasks, a step with more
+                                      than n tasks is one box (default 5; 0 draws every task)
   -output-dir <folder>                where CWL outputs and Argo artifacts go
   -tes-server <address>               the TES server of -executor tes; Funnel's
                                       http://localhost:8000 by default

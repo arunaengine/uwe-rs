@@ -18,7 +18,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use nextflow_config::Config;
 use nextflow_evaluator::date;
 use nextflow_evaluator::value::Value;
-use workflow_graph::render::{Format, View, render};
+use workflow_graph::render::{Format, Options, View, render};
 use workflow_graph::{
     Delivery, DeliveryMode, Edge, EdgeKind, ExecutionGraph, Language, Node, Outcome, Task, TaskId,
 };
@@ -319,7 +319,11 @@ impl Reports {
                 markers: Vec::new(),
             });
         }
-        let body = render(&graph, View::Steps, Format::Svg);
+        let steps = Options {
+            view: View::Steps,
+            ..Options::default()
+        };
+        let body = render(&graph, &steps, Format::Svg);
         page("Pipeline graph", &self.workflow, &body)
     }
 }

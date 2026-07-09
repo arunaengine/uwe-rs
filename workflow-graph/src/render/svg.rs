@@ -6,7 +6,7 @@
 
 use std::fmt::Write as _;
 
-use super::{Drawing, Kind, Shape, State};
+use super::{Direction, Drawing, Kind, Shape, State};
 use crate::MORE_TASKS;
 use crate::layout::{Graph, Layout, Point, Size, layout};
 
@@ -26,17 +26,28 @@ const LEGEND: f64 = 36.0;
 const PROPORTIONAL: f64 = 7.0;
 
 /// The drawing as an SVG document.
-pub fn svg(drawing: &Drawing) -> String {
+pub fn svg(drawing: &Drawing, direction: Direction) -> String {
     let sizes: Vec<Size> = drawing.shapes.iter().map(size).collect();
     let edges: Vec<(usize, usize)> = drawing
         .links
         .iter()
         .map(|link| (link.from, link.to))
         .collect();
+    // Each open point sits beside the box before it.
+    let beside = (drawing.links.iter())
+        .filter(|link| {
+            drawing
+                .shapes
+                .get(link.to)
+                .is_some_and(|shape| shape.kind == Kind::OpenPoint)
+        })
+        .map(|link| (link.to, link.from))
+        .collect();
     let layout = layout(&Graph {
         sizes: sizes.clone(),
         edges,
-        ..Graph::default()
+        beside,
+        direction,
     });
     let states: Vec<State> = State::ALL
         .into_iter()
@@ -94,7 +105,7 @@ pub fn svg(drawing: &Drawing) -> String {
         );
     }
     let _ = writeln!(svg, "<g transform=\"translate(0 {top:.1})\">");
-    links(&mut svg, drawing, &layout);
+    links(&mut svg, drawing, &layout, direction);
     shapes(&mut svg, drawing, &layout, &sizes);
     svg.push_str("</g>\n");
     legend_row(&mut svg, &legend_texts(&states, open), top + layout.height);
@@ -154,7 +165,7 @@ fn class(shape: &Shape) -> &'static str {
     }
 }
 
-fn links(svg: &mut String, drawing: &Drawing, layout: &Layout) {
+fn links(svg: &mut String, drawing: &Drawing, layout: &Layout, direction: Direction) {
     svg.push_str("<g class=\"links\">\n");
     for (index, link) in drawing.links.iter().enumerate() {
         let Some(points) = layout.edges.get(index).filter(|points| points.len() >= 2) else {
@@ -175,7 +186,7 @@ fn links(svg: &mut String, drawing: &Drawing, layout: &Layout) {
         let _ = write!(
             svg,
             "<path class=\"{class}\" d=\"{}\" marker-end=\"url(#{arrow})\">",
-            path(points)
+            path(points, direction)
         );
         if let Some(label) = &link.label {
             let _ = write!(svg, "<title>{}</title>", escape(label));
@@ -185,17 +196,30 @@ fn links(svg: &mut String, drawing: &Drawing, layout: &Layout) {
     svg.push_str("</g>\n");
 }
 
-/// A smooth line through the points, which leaves and reaches each point vertically.
-fn path(points: &[Point]) -> String {
+/// A smooth line through the points, which leaves and reaches each point along the direction
+/// of the layout: down, or to the right.
+fn path(points: &[Point], direction: Direction) -> String {
     let mut path = format!("M{:.1} {:.1}", points[0].x, points[0].y);
     for pair in points.windows(2) {
         let (from, to) = (pair[0], pair[1]);
-        let middle = (from.y + to.y) / 2.0;
-        let _ = write!(
-            path,
-            "C{:.1} {middle:.1} {:.1} {middle:.1} {:.1} {:.1}",
-            from.x, to.x, to.x, to.y
-        );
+        let _ = match direction {
+            Direction::Down => {
+                let middle = (from.y + to.y) / 2.0;
+                write!(
+                    path,
+                    "C{:.1} {middle:.1} {:.1} {middle:.1} {:.1} {:.1}",
+                    from.x, to.x, to.x, to.y
+                )
+            }
+            Direction::Right => {
+                let middle = (from.x + to.x) / 2.0;
+                write!(
+                    path,
+                    "C{middle:.1} {:.1} {middle:.1} {:.1} {:.1} {:.1}",
+                    from.y, to.y, to.x, to.y
+                )
+            }
+        };
     }
     path
 }
@@ -325,7 +349,7 @@ mod tests {
                 },
             ],
         };
-        let svg = svg(&drawing);
+        let svg = svg(&drawing, Direction::Down);
         assert!(svg.starts_with("<svg xmlns=\"http://www.w3.org/2000/svg\""));
         assert!(svg.ends_with("</svg>\n"));
         assert!(svg.contains("id=\"t1\""));
@@ -341,7 +365,7 @@ mod tests {
         );
         assert_eq!(
             svg,
-            super::svg(&drawing),
+            super::svg(&drawing, Direction::Down),
             "the same drawing gives the same SVG"
         );
     }

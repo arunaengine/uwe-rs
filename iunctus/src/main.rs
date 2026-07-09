@@ -25,7 +25,7 @@ use std::process::ExitCode;
 
 use run_database::Recorder;
 use run_page::Server;
-use workflow_graph::render::{Format, View, render};
+use workflow_graph::render::{Format, Options, render};
 use workflow_graph::{
     CancellationToken, Driver, DriverError, Engine, ExecuteError, Execution, ExecutionGraph,
     Executor, Language, Launch, Order, RunOptions, SIMULATION, Simulator,
@@ -127,7 +127,7 @@ fn run(arguments: &Arguments) -> Result<(), Failure> {
     }
     let (execution, page) = execute(arguments, false)?;
     if let Some(file) = &arguments.graph {
-        write_graph(file, &execution.graph, arguments.view.unwrap_or_default())?;
+        write_graph(file, &execution.graph, &picture(arguments))?;
     }
     if let Some(page) = page {
         eprintln!("iunctus: the run has ended; the page stays open until you press Ctrl-C");
@@ -142,14 +142,14 @@ fn graph(arguments: &Arguments) -> Result<(), Failure> {
     if arguments.page {
         return Err(failure("iunctus: `-page` is an option of `iunctus run`"));
     }
-    let view = arguments.view.unwrap_or_default();
+    let options = picture(arguments);
     let (execution, _) = execute(arguments, true)?;
     if let Some(file) = &arguments.graph {
-        write_graph(file, &execution.graph, view)?;
+        write_graph(file, &execution.graph, &options)?;
     }
     // A failed run still shows the graph so far.
     let format = arguments.format.unwrap_or_default();
-    print!("{}", render(&execution.graph, view, format));
+    print!("{}", render(&execution.graph, &options, format));
     finish(execution)
 }
 
@@ -453,10 +453,19 @@ fn launch(arguments: &Arguments, target: PathBuf) -> Launch {
     }
 }
 
+/// How to draw the graph: `-view`.
+fn picture(arguments: &Arguments) -> Options {
+    let defaults = Options::default();
+    Options {
+        view: arguments.view.unwrap_or(defaults.view),
+        ..defaults
+    }
+}
+
 /// Writes the graph in the format that the file name asks for: DOT for `.dot`, SVG for
 /// `.svg`, a summary for `.txt`, else JSON.
-fn write_graph(file: &Path, graph: &ExecutionGraph, view: View) -> Result<(), Failure> {
-    let text = render(graph, view, Format::of_file(file));
+fn write_graph(file: &Path, graph: &ExecutionGraph, options: &Options) -> Result<(), Failure> {
+    let text = render(graph, options, Format::of_file(file));
     std::fs::write(file, text)
         .map_err(|error| failure(format!("iunctus: cannot write {}: {error}", file.display())))
 }

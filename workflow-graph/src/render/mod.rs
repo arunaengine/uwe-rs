@@ -1,8 +1,9 @@
 //! Pictures and texts of a graph. The graph with one node per task or one node per step
-//! becomes a [`Drawing`]: boxes with text and a state, and lines between them. [`dot`] writes
-//! a drawing as Graphviz DOT, and [`svg`] draws it as SVG with the layered layout of
-//! [`crate::layout`], with no program besides iunctus. The web page of runs can draw any graph
-//! the same way. [`render`] gives a graph in each view and format.
+//! becomes a [`Drawing`]: boxes with text and a state, and lines between them. In the graph of
+//! tasks, a step with more tasks than [`Options::fold`] becomes one box that counts its tasks,
+//! unless it is open. [`dot`] writes a drawing as Graphviz DOT, and [`svg`] draws it as SVG with
+//! the layered layout of [`crate::layout`], with no program besides iunctus. The web page of
+//! runs shows the same SVG. [`render`] gives a graph in each view and format.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -15,7 +16,12 @@ pub use crate::layout::Direction;
 pub use dot::dot;
 pub use svg::svg;
 
+use std::collections::{BTreeSet, HashMap};
+
 use crate::{ExecutionGraph, TaskId};
+
+/// By default, a step with more tasks than this is one box in a picture of the graph of tasks.
+pub const FOLD: usize = 5;
 
 /// A graph to draw.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -29,12 +35,13 @@ pub struct Drawing {
 /// A box with text.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Shape {
-    /// Unique in the drawing, like `t12` for task 12, `s3` for the fourth step and `m12` for
-    /// the open point after task 12. DOT and SVG use it as the id of the node.
+    /// Unique in the drawing: `t12` for task 12, `s3` for the fourth step in the order of
+    /// their first task, `m12` for the open point after task 12 and `ms3` for the one after
+    /// the fourth step. DOT and SVG use it as the id of the node.
     pub id: String,
     /// What the box stands for.
     pub kind: Kind,
-    /// The lines of text in the box, the first one in bold for a step.
+    /// The lines of text in the box: the name, and for a step how many tasks it has.
     pub lines: Vec<String>,
     /// More text, which a viewer shows when the pointer rests on the box.
     pub tooltip: String,
@@ -141,6 +148,33 @@ impl State {
     }
 }
 
+/// How to draw a graph.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Options {
+    pub view: View,
+    pub direction: Direction,
+    /// In the graph of tasks, a step with more tasks than this is one box, unless it is open;
+    /// 0 draws every task.
+    pub fold: usize,
+    /// The steps whose tasks are drawn although they have more than `fold`.
+    pub open: BTreeSet<String>,
+    /// The states of tasks where they are known better than the graph knows them, as the run
+    /// database knows them while a run goes on. Other tasks get theirs from their exit codes.
+    pub states: HashMap<TaskId, State>,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            view: View::Tasks,
+            direction: Direction::Down,
+            fold: FOLD,
+            open: BTreeSet::new(),
+            states: HashMap::new(),
+        }
+    }
+}
+
 /// Which graph to show: one node per task, or one node per step.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum View {
@@ -194,17 +228,18 @@ impl Format {
     }
 }
 
-/// A graph in a view and a format.
-pub fn render(graph: &ExecutionGraph, view: View, format: Format) -> String {
-    match (view, format) {
+/// A graph in a format, in the view of the options. The pictures, DOT and SVG, are drawn as
+/// the options say; JSON and the summary hold every task.
+pub fn render(graph: &ExecutionGraph, options: &Options, format: Format) -> String {
+    match (options.view, format) {
         (View::Tasks, Format::Json) => json(graph),
-        (View::Tasks, Format::Dot) => dot(&graph.drawing(), Direction::Down),
         (View::Tasks, Format::Summary) => summary::tasks(graph),
-        (View::Tasks, Format::Svg) => svg(&graph.drawing()),
         (View::Steps, Format::Json) => json(&graph.step_graph()),
-        (View::Steps, Format::Dot) => dot(&graph.step_graph().drawing(), Direction::Down),
         (View::Steps, Format::Summary) => summary::steps(&graph.step_graph()),
-        (View::Steps, Format::Svg) => svg(&graph.step_graph().drawing()),
+        (View::Tasks, Format::Dot) => dot(&graph.drawing(), options.direction),
+        (View::Steps, Format::Dot) => dot(&graph.step_graph().drawing(), options.direction),
+        (View::Tasks, Format::Svg) => svg(&graph.drawing(), options.direction),
+        (View::Steps, Format::Svg) => svg(&graph.step_graph().drawing(), options.direction),
     }
 }
 
@@ -214,14 +249,14 @@ fn json(value: &impl serde::Serialize) -> String {
 }
 
 impl ExecutionGraph {
-    /// The graph in Graphviz DOT form, one node per task.
+    /// The graph in Graphviz DOT form, one node per task, or per step with many tasks.
     pub fn to_dot(&self) -> String {
-        dot(&self.drawing(), Direction::Down)
+        render(self, &Options::default(), Format::Dot)
     }
 
-    /// The graph as SVG, one node per task.
+    /// The graph as SVG, one node per task, or per step with many tasks.
     pub fn to_svg(&self) -> String {
-        svg(&self.drawing())
+        render(self, &Options::default(), Format::Svg)
     }
 
     /// A short text: the note of a simulation, counts, then one line per task with its

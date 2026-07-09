@@ -6,7 +6,8 @@
 
 use std::fmt::Write as _;
 
-use super::{Drawing, Shape, State};
+use super::{Drawing, Kind, Shape, State};
+use crate::MORE_TASKS;
 use crate::layout::{Graph, Layout, Point, Size, layout};
 
 /// The width of a character of the monospace labels at 12 pixels: 0.6 em.
@@ -39,16 +40,20 @@ pub fn svg(drawing: &Drawing) -> String {
     });
     let states: Vec<State> = State::ALL
         .into_iter()
-        .filter(|state| drawing.shapes.iter().any(|shape| shape.state == *state))
+        .filter(|state| {
+            let shown = |shape: &Shape| shape.kind != Kind::OpenPoint && shape.state == *state;
+            drawing.shapes.iter().any(shown)
+        })
         .collect();
+    let open = (drawing.shapes.iter()).any(|shape| shape.kind == Kind::OpenPoint);
     let top = if drawing.title.is_empty() {
         0.0
     } else {
         MARGIN / 2.0 + drawing.title.len() as f64 * TITLE_LINE
     };
-    let legend_width: f64 = states
+    let legend_width: f64 = legend_texts(&states, open)
         .iter()
-        .map(|state| 32.0 + state.name().chars().count() as f64 * PROPORTIONAL)
+        .map(|(_, text)| 32.0 + text.chars().count() as f64 * PROPORTIONAL)
         .sum::<f64>()
         + 2.0 * MARGIN;
     let title_width = drawing
@@ -92,7 +97,7 @@ pub fn svg(drawing: &Drawing) -> String {
     links(&mut svg, drawing, &layout);
     shapes(&mut svg, drawing, &layout, &sizes);
     svg.push_str("</g>\n");
-    legend_row(&mut svg, &states, top + layout.height);
+    legend_row(&mut svg, &legend_texts(&states, open), top + layout.height);
     svg.push_str("</svg>\n");
     svg
 }
@@ -128,26 +133,24 @@ fn style() -> String {
          .open-point text { font-style: italic; fill: #744210; }\n",
     );
     for state in State::ALL {
-        let (fill, border) = state.colours();
         let _ = writeln!(
             style,
-            ".{} rect {{ fill: {fill}; stroke: {border}; }}",
-            class(state)
+            ".{} rect {{ fill: {}; stroke: {}; }}",
+            state.name(),
+            state.fill(),
+            state.colour()
         );
     }
+    style.push_str(".open-point rect { fill: #fff8e1; stroke: #b7791f; }\n");
     style.push_str("</style>\n");
     style
 }
 
-/// The CSS class of a state.
-fn class(state: State) -> &'static str {
-    match state {
-        State::Simulated => "simulated",
-        State::Succeeded => "succeeded",
-        State::Failed => "failed",
-        State::FromCache => "from-cache",
-        State::Waiting => "waiting",
-        State::OpenPoint => "open-point",
+/// The CSS class of a box: its state, or `open-point`.
+fn class(shape: &Shape) -> &'static str {
+    match shape.kind {
+        Kind::OpenPoint => "open-point",
+        _ => shape.state.name(),
     }
 }
 
@@ -160,7 +163,7 @@ fn links(svg: &mut String, drawing: &Drawing, layout: &Layout) {
         let open = drawing
             .shapes
             .get(link.to)
-            .is_some_and(|shape| shape.state == State::OpenPoint);
+            .is_some_and(|shape| shape.kind == Kind::OpenPoint);
         let mut class = String::from("link");
         if link.dashed {
             class.push_str(" dashed");
@@ -206,7 +209,7 @@ fn shapes(svg: &mut String, drawing: &Drawing, layout: &Layout, sizes: &[Size]) 
             svg,
             "<g class=\"shape {}\" id=\"{}\"><title>{}</title>\
              <rect x=\"{left:.1}\" y=\"{top:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"6\"/>",
-            class(shape.state),
+            class(shape),
             escape(&shape.id),
             escape(&shape.tooltip),
             size.width,
@@ -231,26 +234,37 @@ fn shapes(svg: &mut String, drawing: &Drawing, layout: &Layout, sizes: &[Size]) 
     svg.push_str("</g>\n");
 }
 
+/// The class and text of each entry of the legend: the states that the drawing shows, and
+/// the open point.
+fn legend_texts(states: &[State], open: bool) -> Vec<(&'static str, &'static str)> {
+    let mut texts: Vec<(&str, &str)> = (states.iter())
+        .map(|state| (state.name(), state.name()))
+        .collect();
+    if open {
+        texts.push(("open-point", MORE_TASKS));
+    }
+    texts
+}
+
 /// A row of the states that the drawing shows, with their colours.
-fn legend_row(svg: &mut String, states: &[State], top: f64) {
-    if states.is_empty() {
+fn legend_row(svg: &mut String, texts: &[(&str, &str)], top: f64) {
+    if texts.is_empty() {
         return;
     }
     let y = top + LEGEND / 2.0;
     let mut x = MARGIN;
     svg.push_str("<g class=\"legend\">\n");
-    for &state in states {
+    for &(class, text) in texts {
         let _ = writeln!(
             svg,
-            "<g class=\"{}\"><rect x=\"{x:.1}\" y=\"{:.1}\" width=\"14\" height=\"12\" rx=\"3\"/>\
+            "<g class=\"{class}\"><rect x=\"{x:.1}\" y=\"{:.1}\" width=\"14\" height=\"12\" rx=\"3\"/>\
              <text x=\"{:.1}\" y=\"{:.1}\">{}</text></g>",
-            class(state),
             y - 6.0,
             x + 20.0,
             y + 4.0,
-            escape(state.name())
+            escape(text)
         );
-        x += 32.0 + state.name().chars().count() as f64 * PROPORTIONAL;
+        x += 32.0 + text.chars().count() as f64 * PROPORTIONAL;
     }
     svg.push_str("</g>\n");
 }
@@ -274,11 +288,13 @@ fn escape(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TaskId;
     use crate::render::Link;
 
-    fn shape(id: &str, state: State) -> Shape {
+    fn shape(id: &str, kind: Kind, state: State) -> Shape {
         Shape {
             id: id.to_owned(),
+            kind,
             lines: vec![format!("{id} <&>")],
             tooltip: "a \"tip\"".to_owned(),
             state,
@@ -290,9 +306,9 @@ mod tests {
         let drawing = Drawing {
             title: vec!["demo (nextflow): 2 tasks".to_owned()],
             shapes: vec![
-                shape("t1", State::Simulated),
-                shape("t2", State::Failed),
-                shape("m2", State::OpenPoint),
+                shape("t1", Kind::Task(TaskId(1)), State::Simulated),
+                shape("t2", Kind::Task(TaskId(2)), State::Failed),
+                shape("m2", Kind::OpenPoint, State::Simulated),
             ],
             links: vec![
                 Link {

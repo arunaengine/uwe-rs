@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use super::{Drawing, Link, Shape, State};
+use super::{Drawing, Kind, Link, Shape, State};
 use crate::steps::{StepGraph, StepNode};
 use crate::{EdgeKind, ExecutionGraph, Language, MORE_TASKS, Marker, TaskId};
 
@@ -47,6 +47,7 @@ impl ExecutionGraph {
             tooltip.extend(node.markers.iter().map(|marker| marker.reason.clone()));
             drawing.shapes.push(Shape {
                 id: format!("t{}", node.task.id),
+                kind: Kind::Task(node.task.id),
                 lines: vec![shorten(&last_parts(&node.task.name, 1))],
                 tooltip: tooltip.join("\n"),
                 state: task_state(node.exit_code, node.reused, simulated),
@@ -119,6 +120,10 @@ impl StepGraph {
             tooltip.extend(step.markers.iter().map(|marker| marker.reason.clone()));
             drawing.shapes.push(Shape {
                 id: format!("s{position}"),
+                kind: Kind::Step {
+                    name: step.name.clone(),
+                    tasks: step.tasks,
+                },
                 lines: vec![shorten(&last_parts(&step.name, 2)), detail],
                 tooltip: tooltip.join("\n"),
                 state: step_state(step, simulated),
@@ -192,9 +197,10 @@ fn open_point(drawing: &mut Drawing, after: usize, id: String, markers: &[Marker
         .collect();
     drawing.shapes.push(Shape {
         id,
+        kind: Kind::OpenPoint,
         lines: vec![MORE_TASKS.to_owned()],
         tooltip: reasons.join("\n"),
-        state: State::OpenPoint,
+        state: State::default(),
     });
     drawing.links.push(Link {
         from: after,
@@ -206,7 +212,7 @@ fn open_point(drawing: &mut Drawing, after: usize, id: String, markers: &[Marker
 
 fn task_state(exit_code: Option<i32>, reused: bool, simulated: bool) -> State {
     match exit_code {
-        Some(0) if reused => State::FromCache,
+        Some(0) if reused => State::Reused,
         Some(0) if simulated => State::Simulated,
         Some(0) => State::Succeeded,
         Some(_) => State::Failed,

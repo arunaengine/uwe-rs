@@ -11,10 +11,11 @@ mod drawing;
 mod summary;
 mod svg;
 
+pub use crate::layout::Direction;
 pub use dot::dot;
 pub use svg::svg;
 
-use crate::ExecutionGraph;
+use crate::{ExecutionGraph, TaskId};
 
 /// A graph to draw.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -26,16 +27,36 @@ pub struct Drawing {
 }
 
 /// A box with text.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Shape {
     /// Unique in the drawing, like `t12` for task 12, `s3` for the fourth step and `m12` for
     /// the open point after task 12. DOT and SVG use it as the id of the node.
     pub id: String,
+    /// What the box stands for.
+    pub kind: Kind,
     /// The lines of text in the box, the first one in bold for a step.
     pub lines: Vec<String>,
     /// More text, which a viewer shows when the pointer rests on the box.
     pub tooltip: String,
     pub state: State,
+}
+
+/// What a box stands for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Kind {
+    /// One task.
+    Task(TaskId),
+    /// The tasks of a step: a box of the graph of steps, or a step of the graph of tasks that
+    /// is folded into one box.
+    Step {
+        /// The name of the step, as the tasks give it.
+        name: String,
+        /// How many tasks it has.
+        tasks: usize,
+    },
+    /// The point after a marked task or step of a simulated graph, where more tasks may follow
+    /// from real data. It is drawn beside the box before it.
+    OpenPoint,
 }
 
 /// A line from one box to another, by their positions in [`Drawing::shapes`].
@@ -50,54 +71,72 @@ pub struct Link {
     pub label: Option<String>,
 }
 
-/// What a box shows about its task or step, by its colour.
+/// What a box shows about its task, or about the tasks of its step, by its icon.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum State {
     /// A task of a simulated run, which did not run.
     #[default]
     Simulated,
     Succeeded,
+    /// Answered by an earlier result, from the cache store or from an earlier run, without
+    /// running.
+    Reused,
     Failed,
-    /// Answered from the cache store without running.
-    FromCache,
-    /// Asked for, but not finished.
+    Running,
+    /// Asked for, and not finished; in a run that goes on, not started yet.
     Waiting,
-    /// The point after a marked task or step, where more tasks may follow from real data.
-    OpenPoint,
+    /// Stopped before it finished, as when its run ended.
+    Stopped,
 }
 
 impl State {
-    /// All states, in the order of the legend.
-    pub const ALL: [State; 6] = [
+    /// All states, in the order of the legend and of the counts of a step.
+    pub const ALL: [State; 7] = [
         State::Simulated,
         State::Succeeded,
-        State::FromCache,
+        State::Reused,
         State::Failed,
+        State::Running,
         State::Waiting,
-        State::OpenPoint,
+        State::Stopped,
     ];
 
-    /// The name of the state in the legend and as a CSS class.
+    /// The name of the state, as the legend, the CSS classes and the web page name it.
     pub fn name(self) -> &'static str {
         match self {
             State::Simulated => "simulated",
             State::Succeeded => "succeeded",
+            State::Reused => "reused",
             State::Failed => "failed",
-            State::FromCache => "from cache",
-            State::Waiting => "not finished",
-            State::OpenPoint => crate::MORE_TASKS,
+            State::Running => "running",
+            State::Waiting => "waiting",
+            State::Stopped => "stopped",
         }
     }
 
-    /// The fill and border colours.
-    pub fn colours(self) -> (&'static str, &'static str) {
+    /// The main colour of the state, the colour of its icon.
+    pub fn colour(self) -> &'static str {
         match self {
-            State::Simulated => ("#eef1f6", "#718096"),
-            State::Succeeded => ("#e6f4ea", "#2f855a"),
-            State::Failed => ("#fdecea", "#c53030"),
-            State::FromCache => ("#e8f0fe", "#2b6cb0"),
-            State::Waiting => ("#ffffff", "#a0aec0"),
-            State::OpenPoint => ("#fff8e1", "#b7791f"),
+            State::Simulated => "#718096",
+            State::Succeeded => "#2e7d4f",
+            State::Reused => "#6b4fbb",
+            State::Failed => "#c0392b",
+            State::Running => "#1f6fd1",
+            State::Waiting => "#8a939e",
+            State::Stopped => "#b7791f",
+        }
+    }
+
+    /// A light colour of the state, for the fill of a box of Graphviz.
+    pub fn fill(self) -> &'static str {
+        match self {
+            State::Simulated => "#eef1f6",
+            State::Succeeded => "#e6f4ea",
+            State::Reused => "#efeafb",
+            State::Failed => "#fdecea",
+            State::Running => "#e8f0fe",
+            State::Waiting => "#ffffff",
+            State::Stopped => "#fdf3e1",
         }
     }
 }
@@ -159,11 +198,11 @@ impl Format {
 pub fn render(graph: &ExecutionGraph, view: View, format: Format) -> String {
     match (view, format) {
         (View::Tasks, Format::Json) => json(graph),
-        (View::Tasks, Format::Dot) => dot(&graph.drawing()),
+        (View::Tasks, Format::Dot) => dot(&graph.drawing(), Direction::Down),
         (View::Tasks, Format::Summary) => summary::tasks(graph),
         (View::Tasks, Format::Svg) => svg(&graph.drawing()),
         (View::Steps, Format::Json) => json(&graph.step_graph()),
-        (View::Steps, Format::Dot) => dot(&graph.step_graph().drawing()),
+        (View::Steps, Format::Dot) => dot(&graph.step_graph().drawing(), Direction::Down),
         (View::Steps, Format::Summary) => summary::steps(&graph.step_graph()),
         (View::Steps, Format::Svg) => svg(&graph.step_graph().drawing()),
     }
@@ -177,7 +216,7 @@ fn json(value: &impl serde::Serialize) -> String {
 impl ExecutionGraph {
     /// The graph in Graphviz DOT form, one node per task.
     pub fn to_dot(&self) -> String {
-        dot(&self.drawing())
+        dot(&self.drawing(), Direction::Down)
     }
 
     /// The graph as SVG, one node per task.

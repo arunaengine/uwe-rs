@@ -12,7 +12,7 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use run_database::{Log, MarkerRow, Run, TaskDetail, TaskRow, Why};
 use serde::{Deserialize, Serialize};
-use workflow_graph::render::{Format, View, render};
+use workflow_graph::render::{Format, Options, View, render};
 
 use crate::{Failure, Shared, assets, files, live, query};
 
@@ -159,7 +159,11 @@ async fn graph(
         let Some(graph) = database.graph(&id)? else {
             return Err(Failure::not_found(format!("no run `{id}`")));
         };
-        Ok(render(&graph, view, Format::Svg))
+        let options = Options {
+            view,
+            ..Options::default()
+        };
+        Ok(render(&graph, &options, Format::Svg))
     })
     .await?;
     Ok(([(header::CONTENT_TYPE, "image/svg+xml")], svg))

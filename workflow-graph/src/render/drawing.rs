@@ -395,7 +395,138 @@ pub(super) fn shorten(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{last_parts, shorten};
+    use super::*;
+    use crate::{Edge, MarkerKind, Task};
+
+    /// INPUT, then seven FASTQC tasks that read its file, then MULTIQC that reads theirs.
+    fn fan_out() -> ExecutionGraph {
+        let task = |id: u64, step: &str| Node {
+            task: Task {
+                id: TaskId(id),
+                name: format!("{step} ({id})"),
+                step: step.into(),
+                ..Task::default()
+            },
+            exit_code: Some(0),
+            reused: false,
+            markers: Vec::new(),
+        };
+        let mut nodes = vec![task(1, "INPUT")];
+        nodes.extend((2..=8).map(|id| task(id, "FASTQC")));
+        nodes.push(task(9, "MULTIQC"));
+        let file = |from: u64, to: u64| Edge {
+            from: TaskId(from),
+            to: TaskId(to),
+            kind: EdgeKind::File {
+                path: format!("{from}.txt"),
+            },
+        };
+        let mut edges: Vec<Edge> = (2..=8).map(|id| file(1, id)).collect();
+        edges.extend((2..=8).map(|id| file(id, 9)));
+        ExecutionGraph {
+            workflow: "demo".into(),
+            nodes,
+            edges,
+            ..ExecutionGraph::default()
+        }
+    }
+
+    fn ids(drawing: &Drawing) -> Vec<&str> {
+        drawing
+            .shapes
+            .iter()
+            .map(|shape| shape.id.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn steps_with_many_tasks_are_one_box() {
+        let mut graph = fan_out();
+        graph.nodes[3].exit_code = Some(1);
+        graph.nodes[4].exit_code = None;
+        let drawing = graph.drawing(&Options::default());
+        assert_eq!(ids(&drawing), ["t1", "s1", "t9"]);
+        let step = &drawing.shapes[1];
+        let kind = Kind::Step {
+            name: "FASTQC".into(),
+            tasks: 7,
+        };
+        assert_eq!(step.kind, kind);
+        assert_eq!(
+            step.lines,
+            ["FASTQC", "7 tasks: 5 succeeded, 1 failed, 1 waiting"]
+        );
+        assert_eq!(step.state, State::Failed);
+        let links: Vec<(usize, usize, Option<&str>)> = (drawing.links.iter())
+            .map(|link| (link.from, link.to, link.label.as_deref()))
+            .collect();
+        let edges = Some("7 task edges");
+        assert_eq!(links, [(0, 1, edges), (1, 2, edges)]);
+        let note = "Each step with more than 5 tasks is one box.";
+        assert!(drawing.title.iter().any(|line| line == note));
+        // An open step shows its tasks, and 0 folds none.
+        let open = Options {
+            open: ["FASTQC".to_owned()].into(),
+            ..Options::default()
+        };
+        assert_eq!(graph.drawing(&open).shapes.len(), 9);
+        let every = graph.drawing(&Options {
+            fold: 0,
+            ..Options::default()
+        });
+        assert_eq!(every.shapes.len(), 9);
+        assert_eq!(every.links[0].label.as_deref(), Some("1.txt"));
+    }
+
+    #[test]
+    fn the_view_of_steps_has_a_box_per_step() {
+        let options = Options {
+            view: View::Steps,
+            ..Options::default()
+        };
+        let drawing = fan_out().drawing(&options);
+        let lines: Vec<Vec<&str>> = (drawing.shapes.iter())
+            .map(|shape| shape.lines.iter().map(String::as_str).collect())
+            .collect();
+        assert_eq!(
+            lines,
+            [
+                ["INPUT", "1 task"],
+                ["FASTQC", "7 tasks"],
+                ["MULTIQC", "1 task"]
+            ]
+        );
+        assert_eq!(drawing.shapes[1].state, State::Succeeded);
+        assert_eq!(drawing.title[0], "demo: 3 steps with 9 tasks");
+    }
+
+    #[test]
+    fn known_states_win_and_open_points_follow_their_box() {
+        let mut graph = fan_out();
+        graph.simulate();
+        let read = Marker::new(MarkerKind::Content, "the workflow read 3.txt");
+        graph.nodes[2].markers.push(read);
+        let spread = Marker::new(MarkerKind::Wildcard, "a pattern matched");
+        graph.nodes[0].markers.push(spread);
+        let mut options = Options::default();
+        options.states.insert(TaskId(2), State::Running);
+        let drawing = graph.drawing(&options);
+        assert_eq!(ids(&drawing), ["t1", "s1", "t9", "m1", "ms1"]);
+        assert_eq!(drawing.shapes[0].state, State::Simulated);
+        assert_eq!(drawing.shapes[1].state, State::Running);
+        assert_eq!(
+            drawing.shapes[1].lines[1],
+            "7 tasks: 6 simulated, 1 running"
+        );
+        assert_eq!(drawing.shapes[4].kind, Kind::OpenPoint);
+        assert!(
+            drawing.shapes[4]
+                .tooltip
+                .ends_with("the workflow read 3.txt")
+        );
+        let last = drawing.links.last().expect("links");
+        assert_eq!((last.from, last.to, last.dashed), (1, 4, true));
+    }
 
     #[test]
     fn qualified_names_keep_their_last_parts() {

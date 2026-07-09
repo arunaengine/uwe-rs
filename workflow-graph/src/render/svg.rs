@@ -1,6 +1,12 @@
-//! A drawing as SVG, laid out by [`crate::layout`]: the title on top, boxes coloured by their
-//! state, lines with arrows, and a legend of the states below. Labels use a monospace font,
-//! so that their width is known without measuring text.
+//! A drawing as SVG, laid out by [`crate::layout`] down or to the right. Each task is a rounded
+//! box with the round icon of its state and its name; each step, or step folded into one box,
+//! is a box with its name and how many tasks it has in which states, stacked when it has
+//! several; each open point of a simulated graph is a dashed box beside the task or step before
+//! it. Smooth lines join the boxes. The title is on top and a legend of the states below.
+//!
+//! The web page of runs shows the same picture and makes it move, zoom and follow a run: it
+//! reads the classes and `data-` attributes of the boxes and turns the icons of `#icon-<state>`.
+//! Names use a monospace font, so that their width is known without measuring text.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -10,43 +16,43 @@ use super::{Direction, Drawing, Kind, Shape, State, icons};
 use crate::MORE_TASKS;
 use crate::layout::{Graph, Layout, Point, Size, layout};
 
-/// The width of a character of the monospace labels at 12 pixels: 0.6 em.
+/// The width of a character of the monospace names at 12 pixels, and of the details at 11.
 const CHARACTER: f64 = 7.2;
-/// The height of a line of a label.
-const LINE: f64 = 16.0;
-/// The space between the text and the border of a box.
-const PADDING_X: f64 = 10.0;
-const PADDING_Y: f64 = 6.0;
+const SMALL: f64 = 6.6;
+/// The heights of the boxes of a task, of a step and of an open point.
+const TASK_HEIGHT: f64 = 30.0;
+const STEP_HEIGHT: f64 = 42.0;
+const OPEN_HEIGHT: f64 = 26.0;
+/// The size of an icon, and of the icon of an open point.
+const ICON: f64 = 18.0;
+const OPEN_ICON: f64 = 16.0;
+/// The space before the icon, between the icon and the text, and after the text.
+const BEFORE_ICON: f64 = 7.0;
+const AFTER_ICON: f64 = 8.0;
+const AFTER_TEXT: f64 = 12.0;
+/// How far the second box of a step with several tasks lies behind the first.
+const STACK: f64 = 4.0;
 const MARGIN: f64 = 16.0;
 /// The height of a line of the title, and of the legend.
 const TITLE_LINE: f64 = 20.0;
-const LEGEND: f64 = 36.0;
+const LEGEND: f64 = 40.0;
 /// An estimate of the width of a character of the title and the legend, in a proportional
 /// font; generous, so that the drawing is wide enough.
 const PROPORTIONAL: f64 = 7.0;
 
 /// The drawing as an SVG document.
 pub fn svg(drawing: &Drawing, direction: Direction) -> String {
-    let sizes: Vec<Size> = drawing.shapes.iter().map(size).collect();
-    let edges: Vec<(usize, usize)> = drawing
-        .links
-        .iter()
-        .map(|link| (link.from, link.to))
-        .collect();
-    // Each open point sits beside the box before it.
-    let beside = (drawing.links.iter())
-        .filter(|link| {
-            drawing
-                .shapes
-                .get(link.to)
-                .is_some_and(|shape| shape.kind == Kind::OpenPoint)
-        })
-        .map(|link| (link.to, link.from))
-        .collect();
+    let frames: Vec<Frame> = drawing.shapes.iter().map(Frame::of).collect();
     let layout = layout(&Graph {
-        sizes: sizes.clone(),
-        edges,
-        beside,
+        sizes: frames.iter().map(Frame::size).collect(),
+        edges: (drawing.links.iter())
+            .map(|link| (link.from, link.to))
+            .collect(),
+        // Each open point sits beside the box before it.
+        beside: (drawing.links.iter())
+            .filter(|link| is_open(drawing, link.to))
+            .map(|link| (link.to, link.from))
+            .collect(),
         direction,
     });
     let states: Vec<State> = State::ALL
@@ -56,24 +62,26 @@ pub fn svg(drawing: &Drawing, direction: Direction) -> String {
             drawing.shapes.iter().any(shown)
         })
         .collect();
-    let open = (drawing.shapes.iter()).any(|shape| shape.kind == Kind::OpenPoint);
+    let open = drawing
+        .shapes
+        .iter()
+        .any(|shape| shape.kind == Kind::OpenPoint);
     let top = if drawing.title.is_empty() {
         0.0
     } else {
         MARGIN / 2.0 + drawing.title.len() as f64 * TITLE_LINE
     };
-    let entries = legend_entries(&states, open);
-    let legend_width: f64 = entries
-        .iter()
-        .map(|(_, text)| entry_width(text))
-        .sum::<f64>()
-        + 2.0 * MARGIN;
     let title_width = drawing
         .title
         .iter()
         .map(|line| line.chars().count() as f64 * PROPORTIONAL + 2.0 * MARGIN)
         .fold(0.0, f64::max);
-    let width = layout.width.max(title_width).max(legend_width).ceil();
+    let entries = legend_entries(&states, open);
+    let legend_width: f64 = entries.iter().map(|(_, text)| entry_width(text)).sum();
+    let width = (layout.width)
+        .max(title_width)
+        .max(legend_width + 2.0 * MARGIN)
+        .ceil();
     let legend = if entries.is_empty() { 0.0 } else { LEGEND };
     let height = (top + layout.height + legend).ceil();
 
@@ -81,15 +89,15 @@ pub fn svg(drawing: &Drawing, direction: Direction) -> String {
     let _ = writeln!(
         svg,
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" \
-         viewBox=\"0 0 {width} {height}\" role=\"img\">"
+         viewBox=\"0 0 {width} {height}\" class=\"graph-picture\" data-direction=\"{}\" \
+         role=\"img\">",
+        direction.name()
     );
-    svg.push_str(&style());
+    svg.push_str(STYLE);
     svg.push_str(
-        "<defs>\n\
-         <marker id=\"arrow\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" \
-         markerHeight=\"7\" orient=\"auto\"><path d=\"M0 0L10 5L0 10z\" fill=\"#8a94a6\"/></marker>\n\
-         <marker id=\"arrow-open\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" \
-         markerHeight=\"7\" orient=\"auto\"><path d=\"M0 0L10 5L0 10z\" fill=\"#b7791f\"/></marker>\n",
+        "<defs>\n<marker id=\"arrow\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" \
+         markerWidth=\"7\" markerHeight=\"7\" orient=\"auto\"><path class=\"arrow\" \
+         d=\"M0 0L10 5L0 10z\"/></marker>\n",
     );
     svg.push_str(&icons::symbols());
     svg.push_str("</defs>\n");
@@ -97,7 +105,112 @@ pub fn svg(drawing: &Drawing, direction: Direction) -> String {
         svg,
         "<rect class=\"background\" width=\"{width}\" height=\"{height}\"/>"
     );
-    for (index, line) in drawing.title.iter().enumerate() {
+    heading(&mut svg, &drawing.title);
+    let _ = writeln!(
+        svg,
+        "<g class=\"graph\" transform=\"translate(0 {top:.1})\" data-width=\"{:.1}\" \
+         data-height=\"{:.1}\">",
+        layout.width, layout.height
+    );
+    edges(&mut svg, drawing, &layout, direction);
+    nodes(&mut svg, drawing, &layout, &frames);
+    svg.push_str("</g>\n");
+    legend_row(&mut svg, &entries, top + layout.height);
+    svg.push_str("</svg>\n");
+    svg
+}
+
+/// The look of the picture. Every rule starts with the class of the picture, so that it
+/// changes nothing else on the web page that shows it. A viewer without CSS variables keeps
+/// the first value of a property.
+const STYLE: &str = "<style>
+.graph-picture text { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 12px; fill: #1d2126; fill: var(--text, #1d2126); }
+.graph-picture .background { fill: #ffffff; }
+.graph-picture .title { font-size: 14px; font-weight: 600; }
+.graph-picture .note { fill: #7a5a12; }
+.graph-picture .node text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; }
+.graph-picture .node .detail { font-size: 11px; fill: #5c6570; fill: var(--quiet, #5c6570); }
+.graph-picture .step .label { font-weight: 600; }
+.graph-picture .box, .graph-picture .stack { fill: #ffffff; fill: var(--card, #ffffff); stroke: #c3cad3; stroke: var(--node-line, #c3cad3); stroke-width: 1; }
+.graph-picture .failed > .box { stroke: #c0392b; stroke: var(--failed, #c0392b); }
+.graph-picture .running > .box { stroke: #1f6fd1; stroke: var(--running, #1f6fd1); }
+.graph-picture .open-point .box { fill: #fff8e1; stroke: #b7791f; stroke-dasharray: 4 3; }
+.graph-picture .open-point text { font-size: 11px; font-style: italic; fill: #7a5a12; }
+.graph-picture .edge { fill: none; stroke: #9aa4b2; stroke: var(--edge, #9aa4b2); stroke-width: 1.3; }
+.graph-picture .edge.dashed { stroke-dasharray: 5 4; }
+.graph-picture .edge.open { stroke: #b7791f; stroke-dasharray: 3 3; }
+.graph-picture .arrow { fill: #9aa4b2; fill: var(--edge, #9aa4b2); }
+@keyframes graph-turn { to { transform: rotate(360deg); } }
+</style>
+";
+
+/// The box of a shape, and whether a second box lies behind it.
+struct Frame {
+    width: f64,
+    height: f64,
+    stacked: bool,
+}
+
+impl Frame {
+    fn of(shape: &Shape) -> Frame {
+        let text = |index: usize, character: f64| {
+            let line = shape.lines.get(index);
+            line.map_or(0.0, |line| line.chars().count() as f64 * character)
+        };
+        match &shape.kind {
+            Kind::Task(_) => Frame {
+                width: BEFORE_ICON + ICON + AFTER_ICON + text(0, CHARACTER) + AFTER_TEXT,
+                height: TASK_HEIGHT,
+                stacked: false,
+            },
+            Kind::Step { tasks, .. } => {
+                // A step that goes on keeps room for its counts as they change.
+                let mut detail = text(1, SMALL);
+                if matches!(shape.state, State::Running | State::Waiting) {
+                    let room = format!("{tasks} tasks: {tasks} succeeded, {tasks} running");
+                    detail = detail.max(room.chars().count() as f64 * SMALL);
+                }
+                Frame {
+                    width: BEFORE_ICON
+                        + ICON
+                        + AFTER_ICON
+                        + text(0, CHARACTER).max(detail)
+                        + AFTER_TEXT,
+                    height: STEP_HEIGHT,
+                    stacked: *tasks > 1,
+                }
+            }
+            Kind::OpenPoint => Frame {
+                width: BEFORE_ICON + OPEN_ICON + AFTER_ICON + text(0, SMALL) + AFTER_TEXT,
+                height: OPEN_HEIGHT,
+                stacked: false,
+            },
+        }
+    }
+
+    /// The room that the layout gives the box, with the box behind it.
+    fn size(&self) -> Size {
+        let behind = if self.stacked { STACK } else { 0.0 };
+        Size {
+            width: self.width + behind,
+            height: self.height + behind,
+        }
+    }
+}
+
+fn is_open(drawing: &Drawing, shape: usize) -> bool {
+    drawing
+        .shapes
+        .get(shape)
+        .is_some_and(|shape| shape.kind == Kind::OpenPoint)
+}
+
+fn heading(svg: &mut String, title: &[String]) {
+    if title.is_empty() {
+        return;
+    }
+    svg.push_str("<g class=\"heading\">\n");
+    for (index, line) in title.iter().enumerate() {
         let class = if index == 0 { "title" } else { "note" };
         let _ = writeln!(
             svg,
@@ -106,89 +219,29 @@ pub fn svg(drawing: &Drawing, direction: Direction) -> String {
             escape(line)
         );
     }
-    let _ = writeln!(svg, "<g transform=\"translate(0 {top:.1})\">");
-    links(&mut svg, drawing, &layout, direction);
-    shapes(&mut svg, drawing, &layout, &sizes);
     svg.push_str("</g>\n");
-    legend_row(&mut svg, &entries, top + layout.height);
-    svg.push_str("</svg>\n");
-    svg
 }
 
-/// The size of a box: its longest line and its number of lines.
-fn size(shape: &Shape) -> Size {
-    let longest = shape
-        .lines
-        .iter()
-        .map(|line| line.chars().count())
-        .max()
-        .unwrap_or(0);
-    Size {
-        width: (longest as f64 * CHARACTER + 2.0 * PADDING_X).max(56.0),
-        height: shape.lines.len().max(1) as f64 * LINE + 2.0 * PADDING_Y,
-    }
-}
-
-fn style() -> String {
-    let mut style = String::from(
-        "<style>\n\
-         .background { fill: #ffffff; }\n\
-         text { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 12px; fill: #1a202c; }\n\
-         .title { font-size: 14px; font-weight: 600; }\n\
-         .note { fill: #744210; }\n\
-         .shape text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; }\n\
-         .shape .detail { fill: #4a5568; }\n\
-         .shape rect { stroke-width: 1.2; }\n\
-         .link { fill: none; stroke: #8a94a6; stroke-width: 1.2; }\n\
-         .link.dashed { stroke-dasharray: 5 4; }\n\
-         .link.open { stroke: #b7791f; }\n\
-         .open-point rect { stroke-dasharray: 5 3; }\n\
-         .open-point text { font-style: italic; fill: #744210; }\n\
-         @keyframes graph-turn { to { transform: rotate(360deg); } }\n",
-    );
-    for state in State::ALL {
-        let _ = writeln!(
-            style,
-            ".{} rect {{ fill: {}; stroke: {}; }}",
-            state.name(),
-            state.fill(),
-            state.colour()
-        );
-    }
-    style.push_str(".open-point rect { fill: #fff8e1; stroke: #b7791f; }\n");
-    style.push_str("</style>\n");
-    style
-}
-
-/// The CSS class of a box: its state, or `open-point`.
-fn class(shape: &Shape) -> &'static str {
-    match shape.kind {
-        Kind::OpenPoint => "open-point",
-        _ => shape.state.name(),
-    }
-}
-
-fn links(svg: &mut String, drawing: &Drawing, layout: &Layout, direction: Direction) {
-    svg.push_str("<g class=\"links\">\n");
+fn edges(svg: &mut String, drawing: &Drawing, layout: &Layout, direction: Direction) {
+    svg.push_str("<g class=\"edges\">\n");
     for (index, link) in drawing.links.iter().enumerate() {
         let Some(points) = layout.edges.get(index).filter(|points| points.len() >= 2) else {
             continue;
         };
-        let open = drawing
-            .shapes
-            .get(link.to)
-            .is_some_and(|shape| shape.kind == Kind::OpenPoint);
-        let mut class = String::from("link");
-        if link.dashed {
-            class.push_str(" dashed");
-        }
-        if open {
-            class.push_str(" open");
-        }
-        let arrow = if open { "arrow-open" } else { "arrow" };
+        let open = is_open(drawing, link.to);
+        let class = match (open, link.dashed) {
+            (true, _) => "edge open",
+            (false, true) => "edge dashed",
+            (false, false) => "edge",
+        };
+        let arrow = if open {
+            ""
+        } else {
+            " marker-end=\"url(#arrow)\""
+        };
         let _ = write!(
             svg,
-            "<path class=\"{class}\" d=\"{}\" marker-end=\"url(#{arrow})\">",
+            "<path class=\"{class}\" d=\"{}\"{arrow}>",
             path(points, direction)
         );
         if let Some(label) = &link.label {
@@ -227,36 +280,109 @@ fn path(points: &[Point], direction: Direction) -> String {
     path
 }
 
-fn shapes(svg: &mut String, drawing: &Drawing, layout: &Layout, sizes: &[Size]) {
-    svg.push_str("<g class=\"shapes\">\n");
+fn nodes(svg: &mut String, drawing: &Drawing, layout: &Layout, frames: &[Frame]) {
+    svg.push_str("<g class=\"nodes\">\n");
+    // The box that each open point follows.
+    let mut hosts = vec![None; drawing.shapes.len()];
+    for link in &drawing.links {
+        if is_open(drawing, link.to) {
+            hosts[link.to] = drawing.shapes.get(link.from).map(|shape| shape.id.as_str());
+        }
+    }
     for (index, shape) in drawing.shapes.iter().enumerate() {
-        let (center, size) = (layout.nodes[index], sizes[index]);
-        let (left, top) = (center.x - size.width / 2.0, center.y - size.height / 2.0);
-        let _ = write!(
+        node(
             svg,
-            "<g class=\"shape {}\" id=\"{}\"><title>{}</title>\
-             <rect x=\"{left:.1}\" y=\"{top:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"6\"/>",
-            class(shape),
-            escape(&shape.id),
-            escape(&shape.tooltip),
-            size.width,
-            size.height
+            shape,
+            &frames[index],
+            layout.nodes[index],
+            hosts[index],
         );
-        for (line_index, line) in shape.lines.iter().enumerate() {
-            let y = top + PADDING_Y + (line_index as f64 + 0.75) * LINE;
-            let detail = if line_index > 0 {
-                " class=\"detail\""
-            } else {
-                ""
-            };
+    }
+    svg.push_str("</g>\n");
+}
+
+/// A box, drawn around the center that the layout gave it.
+fn node(svg: &mut String, shape: &Shape, frame: &Frame, center: Point, host: Option<&str>) {
+    let (kind, data, icon, icon_size, radius) = match &shape.kind {
+        Kind::Task(id) => (
+            "task",
+            format!(" data-task=\"{id}\""),
+            shape.state.name(),
+            ICON,
+            TASK_HEIGHT / 2.0,
+        ),
+        Kind::Step { name, tasks } => (
+            "step",
+            format!(" data-step=\"{}\" data-tasks=\"{tasks}\"", escape(name)),
+            shape.state.name(),
+            ICON,
+            8.0,
+        ),
+        Kind::OpenPoint => (
+            "open-point",
+            host.map(|host| format!(" data-host=\"{}\"", escape(host)))
+                .unwrap_or_default(),
+            "open",
+            OPEN_ICON,
+            OPEN_HEIGHT / 2.0,
+        ),
+    };
+    let state = match shape.kind {
+        Kind::OpenPoint => String::new(),
+        _ => format!(" {}", shape.state.name()),
+    };
+    let size = frame.size();
+    let (left, top) = (-size.width / 2.0, -size.height / 2.0);
+    let _ = write!(
+        svg,
+        "<g class=\"node {kind}{state}\" id=\"{}\"{data} transform=\"translate({:.1} {:.1})\">\
+         <title>{}</title>",
+        escape(&shape.id),
+        center.x,
+        center.y,
+        escape(&shape.tooltip)
+    );
+    let rectangle = |class: &str, x: f64, y: f64| {
+        format!(
+            "<rect class=\"{class}\" x=\"{x:.1}\" y=\"{y:.1}\" width=\"{:.1}\" height=\"{:.1}\" \
+             rx=\"{radius:.1}\"/>",
+            frame.width, frame.height
+        )
+    };
+    if frame.stacked {
+        svg.push_str(&rectangle("stack", left + STACK, top + STACK));
+    }
+    svg.push_str(&rectangle("box", left, top));
+    let middle = top + frame.height / 2.0;
+    let icon_x = left + BEFORE_ICON;
+    let _ = write!(
+        svg,
+        "<use class=\"icon\" href=\"#icon-{icon}\" x=\"{icon_x:.1}\" y=\"{:.1}\" \
+         width=\"{icon_size}\" height=\"{icon_size}\"/>",
+        middle - icon_size / 2.0
+    );
+    let text_x = icon_x + icon_size + AFTER_ICON;
+    match shape.lines.as_slice() {
+        [name, detail, ..] => {
             let _ = write!(
                 svg,
-                "<text x=\"{:.1}\" y=\"{y:.1}\" text-anchor=\"middle\"{detail}>{}</text>",
-                center.x,
-                escape(line)
+                "<text class=\"label\" x=\"{text_x:.1}\" y=\"{:.1}\">{}</text>\
+                 <text class=\"detail\" x=\"{text_x:.1}\" y=\"{:.1}\">{}</text>",
+                middle - 3.5,
+                escape(name),
+                middle + 11.5,
+                escape(detail)
             );
         }
-        svg.push_str("</g>\n");
+        [name] => {
+            let _ = write!(
+                svg,
+                "<text class=\"label\" x=\"{text_x:.1}\" y=\"{:.1}\">{}</text>",
+                middle + 4.0,
+                escape(name)
+            );
+        }
+        [] => {}
     }
     svg.push_str("</g>\n");
 }
@@ -362,7 +488,7 @@ mod tests {
         assert!(svg.contains("t1 &lt;&amp;&gt;"));
         assert!(svg.contains("<title>a &quot;tip&quot;</title>"));
         assert!(svg.contains("<title>a.txt</title>"));
-        assert!(svg.contains("class=\"link dashed open\""));
+        assert!(svg.contains("class=\"edge open\""));
         assert!(svg.contains(">demo (nextflow): 2 tasks</text>"));
         assert!(svg.contains(">more tasks may follow from real data</text>"));
         assert!(

@@ -28,6 +28,8 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/page.css", get(assets::style))
         .route("/page.js", get(assets::script))
         .route("/run.js", get(assets::run_script))
+        .route("/camera.js", get(assets::camera_script))
+        .route("/boxes.js", get(assets::boxes_script))
         .route("/api/runs", get(runs))
         .route("/api/runs/{run}", get(run))
         .route("/api/runs/{run}/events", get(live::events))

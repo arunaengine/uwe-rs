@@ -126,6 +126,15 @@ fn the_page_shows_runs_tasks_logs_and_files() {
     assert!(svg.contains("upper"), "{svg}");
     let (status, _) = get(&format!("{url}/api/runs/finished-run/graph.svg?view=files"));
     assert_eq!(status, 400);
+    let (status, _) = get(&format!(
+        "{url}/api/runs/finished-run/graph.svg?direction=up"
+    ));
+    assert_eq!(status, 400);
+    let (status, svg) = get(&format!(
+        "{url}/api/runs/finished-run/graph.svg?direction=right"
+    ));
+    assert_eq!(status, 200, "{svg}");
+    assert!(svg.contains("data-direction=\"right\""), "{svg}");
     // No earlier run has the task, so there is nothing to compare.
     let why = get_json(&format!("{url}/api/runs/finished-run/tasks/4/why"));
     assert_eq!(why, Value::Null);
@@ -159,6 +168,73 @@ fn the_page_shows_runs_tasks_logs_and_files() {
     assert_eq!(update["tasks"].as_array().map(Vec::len), Some(1));
     assert_eq!(update["graph"], true);
 
+    server.stop();
+}
+
+#[test]
+fn the_graph_folds_large_steps_and_shows_the_states_of_the_database() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    let start = RunStart {
+        id: "wide-run".into(),
+        resumes: None,
+        workflow: "/work/main.nf".into(),
+        language: Language::Nextflow,
+        revision: None,
+        arguments: Vec::new(),
+        parameters: Vec::new(),
+        executor: "local".into(),
+        simulated: false,
+        store: None,
+    };
+    let mut recorder = Database::open(&path)
+        .expect("opens")
+        .record(&start)
+        .expect("starts");
+    for id in 1..=7 {
+        let task = Task {
+            id: TaskId(id),
+            name: format!("FASTQC ({id})"),
+            step: "FASTQC".into(),
+            ..Task::default()
+        };
+        recorder.requested(&task, &[]);
+    }
+    recorder.started(TaskId(1), 1);
+    for id in 2..=3 {
+        recorder.started(TaskId(id), 1);
+        let outcome = Outcome {
+            id: TaskId(id),
+            ..Outcome::default()
+        };
+        recorder.finished(&outcome, 1, false);
+    }
+    recorder.close().expect("closes");
+    let server = Server::start(&Settings::new(path)).expect("starts");
+    let url = format!("{}/api/runs/wide-run/graph.svg", server.url());
+    let (status, svg) = get(&url);
+    assert_eq!(status, 200, "{svg}");
+    // Seven tasks are more than five: one box, which a task that runs makes running.
+    assert!(
+        svg.contains("class=\"node step running\" id=\"s0\" data-step=\"FASTQC\""),
+        "{svg}"
+    );
+    assert!(
+        svg.contains(">7 tasks: 2 succeeded, 1 running, 4 waiting</text>"),
+        "{svg}"
+    );
+    let (status, svg) = get(&format!("{url}?open=FASTQC"));
+    assert_eq!(status, 200, "{svg}");
+    assert!(
+        svg.contains("class=\"node task running\" id=\"t1\""),
+        "{svg}"
+    );
+    assert!(
+        svg.contains("class=\"node task waiting\" id=\"t7\""),
+        "{svg}"
+    );
+    let (_, svg) = get(&format!("{url}?fold=0"));
+    assert!(svg.contains("id=\"t7\""), "{svg}");
     server.stop();
 }
 

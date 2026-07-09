@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use axum::Json;
 use axum::Router;
@@ -12,7 +12,8 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use run_database::{Log, MarkerRow, Run, TaskDetail, TaskRow, Why};
 use serde::{Deserialize, Serialize};
-use workflow_graph::render::{Format, Options, View, render};
+use workflow_graph::TaskId;
+use workflow_graph::render::{Direction, FOLD, Format, Options, State as Shown, View, render};
 
 use crate::{Failure, Shared, assets, files, live, query};
 
@@ -141,30 +142,64 @@ async fn why(
 struct GraphView {
     /// `tasks` or `steps`; `tasks` by default.
     view: Option<String>,
+    /// `down` or `right`; `down` by default.
+    direction: Option<String>,
+    /// The steps whose tasks are drawn although they have many, one name per line.
+    open: Option<String>,
+    /// A step with more tasks than this is one box; 0 draws every task.
+    fold: Option<usize>,
 }
 
 /// The graph of a run as SVG, drawn by the same renderer as `iunctus graph`: one box per task
-/// or one per step, with the states of the tasks and the markers of a simulated run.
+/// with large steps folded, or one per step, down or to the right, with the states of the
+/// tasks as the database knows them and the markers of a simulated run.
 async fn graph(
     State(state): State<Shared>,
     Path(id): Path<String>,
-    Query(GraphView { view }): Query<GraphView>,
+    Query(asked): Query<GraphView>,
 ) -> Result<impl IntoResponse, Failure> {
-    let view = match view.as_deref() {
+    let view = match asked.view.as_deref() {
         None => View::Tasks,
         Some(name) => View::parse(name)
             .ok_or_else(|| Failure::bad_request("the view of a graph is `tasks` or `steps`"))?,
+    };
+    let direction = match asked.direction.as_deref() {
+        None => Direction::Down,
+        Some(name) => Direction::parse(name)
+            .ok_or_else(|| Failure::bad_request("the direction of a graph is `down` or `right`"))?,
+    };
+    let open = asked.open.unwrap_or_default();
+    let mut options = Options {
+        view,
+        direction,
+        fold: asked.fold.unwrap_or(FOLD),
+        open: open.lines().map(str::to_owned).collect(),
+        states: HashMap::new(),
     };
     let svg = query(&state, move |database| {
         let Some(graph) = database.graph(&id)? else {
             return Err(Failure::not_found(format!("no run `{id}`")));
         };
-        let options = Options {
-            view,
-            ..Options::default()
-        };
+        let simulated = graph.is_simulated();
+        options.states = (database.tasks(&id)?.iter())
+            .map(|row| (TaskId(row.id), shown(row, simulated)))
+            .collect();
         Ok(render(&graph, &options, Format::Svg))
     })
     .await?;
     Ok(([(header::CONTENT_TYPE, "image/svg+xml")], svg))
+}
+
+/// The state that the graph shows for a task: waiting and running come from the database,
+/// which knows them while the run goes on.
+fn shown(row: &TaskRow, simulated: bool) -> Shown {
+    match row.state.as_str() {
+        "succeeded" if row.reused.is_some() => Shown::Reused,
+        "succeeded" if simulated => Shown::Simulated,
+        "succeeded" => Shown::Succeeded,
+        "failed" => Shown::Failed,
+        "running" => Shown::Running,
+        "stopped" => Shown::Stopped,
+        _ => Shown::Waiting,
+    }
 }

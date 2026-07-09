@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use workflow_graph::render::{Options, View};
 use workflow_graph::simulator::{EMPTY_GZIP, file_name, glob_matches};
 use workflow_graph::{
     Attempt, Driver, DriverError, EdgeKind, Engine, Event, Executor, Input, Language, MORE_TASKS,
@@ -542,7 +543,11 @@ fn notes_of_the_driver_mark_the_tasks_whose_outputs_they_concern() {
     assert!(dot.contains("t1 -> m1 [style=dashed];"), "{dot}");
     let svg = graph.to_svg();
     assert!(svg.contains("id=\"m1\""), "{svg}");
-    assert_eq!(graph.step_graph().drawing().shapes.len(), 3);
+    let steps = Options {
+        view: View::Steps,
+        ..Options::default()
+    };
+    assert_eq!(graph.drawing(&steps).shapes.len(), 3);
     // A graph of a run that was not simulated keeps its markers, but has no open points.
     graph.simulation = None;
     assert!(!graph.to_dot().contains("m1"));

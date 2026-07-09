@@ -1,160 +1,244 @@
-//! The drawings of the graph with one node per task and of the graph with one node per step.
-//! In a simulated graph, each marked task or step gets a dashed box after it: more tasks may
-//! follow from real data.
+//! The drawing of a graph: a box per task, where a step with many tasks can be folded into one
+//! box that counts its tasks, or a box per step. In a simulated graph, each marked task or step
+//! gets a dashed box beside it: more tasks may follow from real data.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;
 
-use super::{Drawing, Kind, Link, Shape, State};
-use crate::steps::{StepGraph, StepNode};
-use crate::{EdgeKind, ExecutionGraph, Language, MORE_TASKS, Marker, TaskId};
+use super::{Drawing, Kind, Link, Options, Shape, State, View};
+use crate::{EdgeKind, ExecutionGraph, Language, MORE_TASKS, Marker, Node, TaskId};
 
 /// The most characters of a label in a box; longer names keep their end.
 const LABEL: usize = 40;
 
+/// How many tasks are in each state, in the order of [`State::ALL`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Tally([usize; State::ALL.len()]);
+
+impl Tally {
+    fn add(&mut self, state: State) {
+        self.0[state.index()] += 1;
+    }
+
+    fn total(&self) -> usize {
+        self.0.iter().sum()
+    }
+
+    /// The state that a box of these tasks shows: a failure first, then work that goes on,
+    /// then how the tasks ended.
+    pub(crate) fn state(&self) -> State {
+        let order = [
+            State::Failed,
+            State::Running,
+            State::Waiting,
+            State::Stopped,
+            State::Succeeded,
+            State::Simulated,
+        ];
+        let found = order.into_iter().find(|state| self.0[state.index()] > 0);
+        found.unwrap_or(State::Reused)
+    }
+
+    /// `24 tasks: 20 succeeded, 4 running`, in the order of [`State::ALL`].
+    fn spelled(&self) -> String {
+        let states: Vec<String> = (State::ALL.iter())
+            .filter(|state| self.0[state.index()] > 0)
+            .map(|state| format!("{} {}", self.0[state.index()], state.name()))
+            .collect();
+        format!("{}: {}", count(self.total(), "task"), states.join(", "))
+    }
+
+    /// `24 tasks` when every task is in the state of the box, else as [`Tally::spelled`].
+    fn short(&self) -> String {
+        if self.0[self.state().index()] == self.total() {
+            count(self.total(), "task")
+        } else {
+            self.spelled()
+        }
+    }
+}
+
+/// A step of the graph, with its tasks.
+struct Step<'a> {
+    name: &'a str,
+    /// The positions of its tasks in the nodes of the graph.
+    tasks: Vec<usize>,
+    tally: Tally,
+    /// Whether it is one box.
+    folded: bool,
+}
+
+/// The lines between two boxes, gathered: how many task edges they stand for, and whether one
+/// passes a file, with the first file.
+struct Join {
+    from: usize,
+    to: usize,
+    tasks: usize,
+    file: Option<String>,
+}
+
 impl ExecutionGraph {
-    /// The drawing with one box per task.
-    pub fn drawing(&self) -> Drawing {
+    /// The drawing of the graph in the view of the options: a box per task, where a step with
+    /// more tasks than `options.fold` is one box unless it is open, or a box per step.
+    pub fn drawing(&self, options: &Options) -> Drawing {
         let simulated = self.is_simulated();
+        let states: Vec<State> = (self.nodes.iter())
+            .map(|node| match options.states.get(&node.task.id) {
+                Some(state) => *state,
+                None => node_state(node, simulated),
+            })
+            .collect();
+        let steps = self.steps_of(&states, options);
         let mut drawing = Drawing {
-            title: title(
-                &self.workflow,
-                self.language,
-                &format!(
-                    "{} in {}",
-                    count(self.nodes.len(), "task"),
-                    count(self.steps().len(), "step")
-                ),
-                self.simulation.as_deref(),
-                simulated && self.marked().next().is_some(),
-            ),
+            title: self.title(&steps, options),
             ..Drawing::default()
         };
-        let mut index: HashMap<TaskId, usize> = HashMap::new();
-        for node in &self.nodes {
-            index.insert(node.task.id, drawing.shapes.len());
-            let mut tooltip = vec![
-                node.task.name.clone(),
-                format!("step {}", node.task.step),
-                match node.exit_code {
-                    Some(0) if node.reused => "reused an earlier result".to_owned(),
-                    Some(0) if simulated => "simulated".to_owned(),
-                    Some(code) => format!("exit code {code}"),
-                    None => "not finished".to_owned(),
-                },
-            ];
-            tooltip.extend(node.markers.iter().map(|marker| marker.reason.clone()));
-            drawing.shapes.push(Shape {
-                id: format!("t{}", node.task.id),
-                kind: Kind::Task(node.task.id),
-                lines: vec![shorten(&last_parts(&node.task.name, 1))],
-                tooltip: tooltip.join("\n"),
-                state: task_state(node.exit_code, node.reused, simulated),
-            });
+        // The box of each task, and of each folded step; and the markers of each box.
+        let mut shape_of = vec![0; self.nodes.len()];
+        let mut step_shapes: Vec<Option<usize>> = vec![None; steps.len()];
+        let mut marked: Vec<(usize, String, Vec<Marker>)> = Vec::new();
+        let mut step_at: HashMap<&str, usize> = HashMap::new();
+        for (at, step) in steps.iter().enumerate() {
+            step_at.insert(step.name, at);
         }
-        for edge in &self.edges {
-            let (Some(&from), Some(&to)) = (index.get(&edge.from), index.get(&edge.to)) else {
+        for (position, node) in self.nodes.iter().enumerate() {
+            let at = step_at[node.task.step.as_str()];
+            let step = &steps[at];
+            if !step.folded {
+                shape_of[position] = drawing.shapes.len();
+                if !node.markers.is_empty() {
+                    let open = format!("m{}", node.task.id);
+                    marked.push((drawing.shapes.len(), open, node.markers.clone()));
+                }
+                drawing.shapes.push(task_shape(node, states[position]));
                 continue;
-            };
-            drawing.links.push(match &edge.kind {
-                EdgeKind::File { path } => Link {
-                    from,
-                    to,
-                    dashed: false,
-                    label: Some(path.clone()),
-                },
-                EdgeKind::Order => Link {
-                    from,
-                    to,
-                    dashed: true,
-                    label: None,
-                },
+            }
+            shape_of[position] = *step_shapes[at].get_or_insert_with(|| {
+                let markers = self.step_markers(step);
+                let shape = step_shape(at, step, &markers);
+                if !markers.is_empty() {
+                    marked.push((drawing.shapes.len(), format!("ms{at}"), markers));
+                }
+                drawing.shapes.push(shape);
+                drawing.shapes.len() - 1
             });
         }
+        drawing.links = self.links(&drawing.shapes, &shape_of);
         if simulated {
-            for node in self.marked() {
-                let after = index[&node.task.id];
-                open_point(
-                    &mut drawing,
-                    after,
-                    format!("m{}", node.task.id),
-                    &node.markers,
-                );
+            for (after, id, markers) in marked {
+                open_point(&mut drawing, after, id, &markers);
             }
         }
         drawing
     }
-}
 
-impl StepGraph {
-    /// The drawing with one box per step, which counts its tasks.
-    pub fn drawing(&self) -> Drawing {
-        let simulated = self.is_simulated();
-        let tasks: usize = self.steps.iter().map(|step| step.tasks).sum();
-        let mut drawing = Drawing {
-            title: title(
-                &self.workflow,
-                self.language,
-                &format!(
-                    "{} with {}",
-                    count(self.steps.len(), "step"),
-                    count(tasks, "task")
-                ),
-                self.simulation.as_deref(),
-                simulated && self.steps.iter().any(|step| step.marked > 0),
-            ),
-            ..Drawing::default()
-        };
+    /// The steps in the order of their first task, and whether each is one box.
+    fn steps_of(&self, states: &[State], options: &Options) -> Vec<Step<'_>> {
+        let mut steps: Vec<Step> = Vec::new();
         let mut index: HashMap<&str, usize> = HashMap::new();
-        for (position, step) in self.steps.iter().enumerate() {
-            index.insert(&step.name, position);
-            let mut detail = count(step.tasks, "task");
-            if step.failed > 0 {
-                detail.push_str(&format!(", {} failed", step.failed));
-            }
-            let mut tooltip = vec![step.name.clone(), detail.clone()];
-            if step.marked > 0 {
-                tooltip.push(format!("{} with markers", count(step.marked, "task")));
-            }
-            tooltip.extend(step.markers.iter().map(|marker| marker.reason.clone()));
-            drawing.shapes.push(Shape {
-                id: format!("s{position}"),
-                kind: Kind::Step {
-                    name: step.name.clone(),
-                    tasks: step.tasks,
-                },
-                lines: vec![shorten(&last_parts(&step.name, 2)), detail],
-                tooltip: tooltip.join("\n"),
-                state: step_state(step, simulated),
+        for (position, node) in self.nodes.iter().enumerate() {
+            let name = node.task.step.as_str();
+            let at = *index.entry(name).or_insert_with(|| {
+                steps.push(Step {
+                    name,
+                    tasks: Vec::new(),
+                    tally: Tally::default(),
+                    folded: false,
+                });
+                steps.len() - 1
             });
+            steps[at].tasks.push(position);
+            steps[at].tally.add(states[position]);
         }
-        for edge in &self.edges {
-            let (Some(&from), Some(&to)) =
-                (index.get(edge.from.as_str()), index.get(edge.to.as_str()))
-            else {
-                continue;
+        for step in &mut steps {
+            step.folded = match options.view {
+                View::Steps => true,
+                View::Tasks => {
+                    options.fold > 0
+                        && step.tasks.len() > options.fold
+                        && !options.open.contains(step.name)
+                }
             };
-            drawing.links.push(Link {
-                from,
-                to,
-                dashed: !edge.files,
-                label: Some(count(edge.tasks, "task edge")),
-            });
         }
-        if simulated {
-            for (position, step) in self.steps.iter().enumerate() {
-                if step.marked > 0 {
-                    open_point(
-                        &mut drawing,
-                        position,
-                        format!("m{position}"),
-                        &step.markers,
-                    );
+        steps
+    }
+
+    /// The markers of the tasks of a step, one per kind, each with the reason of the first
+    /// task that has it.
+    fn step_markers(&self, step: &Step) -> Vec<Marker> {
+        let mut markers: Vec<Marker> = Vec::new();
+        for &position in &step.tasks {
+            for marker in &self.nodes[position].markers {
+                if !markers.iter().any(|known| known.kind == marker.kind) {
+                    markers.push(marker.clone());
                 }
             }
         }
-        drawing
+        markers
+    }
+
+    /// The lines between the boxes: one per pair of boxes that task edges join, dashed when no
+    /// task of the second reads a file of the first. Edges inside a folded step are left out.
+    fn links(&self, shapes: &[Shape], shape_of: &[usize]) -> Vec<Link> {
+        let positions: HashMap<TaskId, usize> = (self.nodes.iter().enumerate())
+            .map(|(position, node)| (node.task.id, position))
+            .collect();
+        let mut joins: Vec<Join> = Vec::new();
+        let mut index: HashMap<(usize, usize), usize> = HashMap::new();
+        for edge in &self.edges {
+            let (Some(&from), Some(&to)) = (positions.get(&edge.from), positions.get(&edge.to))
+            else {
+                continue;
+            };
+            let (from, to) = (shape_of[from], shape_of[to]);
+            if from == to {
+                continue;
+            }
+            let at = *index.entry((from, to)).or_insert_with(|| {
+                joins.push(Join {
+                    from,
+                    to,
+                    tasks: 0,
+                    file: None,
+                });
+                joins.len() - 1
+            });
+            joins[at].tasks += 1;
+            if let EdgeKind::File { path } = &edge.kind {
+                joins[at].file.get_or_insert_with(|| path.clone());
+            }
+        }
+        let task = |shape: usize| matches!(shapes[shape].kind, Kind::Task(_));
+        (joins.into_iter())
+            .map(|join| Link {
+                from: join.from,
+                to: join.to,
+                dashed: join.file.is_none(),
+                label: if task(join.from) && task(join.to) {
+                    join.file
+                } else {
+                    Some(count(join.tasks, "task edge"))
+                },
+            })
+            .collect()
+    }
+
+    /// The lines above the graph, and which steps are one box.
+    fn title(&self, steps: &[Step], options: &Options) -> Vec<String> {
+        let (tasks, counted) = (count(self.nodes.len(), "task"), count(steps.len(), "step"));
+        let size = match options.view {
+            View::Tasks => format!("{tasks} in {counted}"),
+            View::Steps => format!("{counted} with {tasks}"),
+        };
+        let open = self.is_simulated() && self.marked().next().is_some();
+        let simulation = self.simulation.as_deref();
+        let mut lines = title(&self.workflow, self.language, &size, simulation, open);
+        if options.view == View::Tasks && steps.iter().any(|step| step.folded) {
+            let many = count(options.fold, "task");
+            lines.push(format!("Each step with more than {many} is one box."));
+        }
+        lines
     }
 }
 
@@ -189,17 +273,55 @@ fn title(
     lines
 }
 
+/// The box of a task.
+fn task_shape(node: &Node, state: State) -> Shape {
+    let what = match (state, node.exit_code) {
+        (State::Succeeded | State::Failed, Some(code)) => format!("exit code {code}"),
+        (State::Reused, _) => "reused an earlier result".to_owned(),
+        (state, _) => state.name().to_owned(),
+    };
+    let mut tooltip = vec![
+        node.task.name.clone(),
+        format!("step {}", node.task.step),
+        what,
+    ];
+    tooltip.extend(node.markers.iter().map(|marker| marker.reason.clone()));
+    Shape {
+        id: format!("t{}", node.task.id),
+        kind: Kind::Task(node.task.id),
+        lines: vec![shorten(&last_parts(&node.task.name, 1))],
+        tooltip: tooltip.join("\n"),
+        state,
+    }
+}
+
+/// The box of a step: its name, and how many tasks it has in which states.
+fn step_shape(at: usize, step: &Step, markers: &[Marker]) -> Shape {
+    let mut tooltip = vec![step.name.to_owned(), step.tally.spelled()];
+    if !markers.is_empty() {
+        tooltip.extend(markers.iter().map(|marker| marker.reason.clone()));
+    }
+    Shape {
+        id: format!("s{at}"),
+        kind: Kind::Step {
+            name: step.name.to_owned(),
+            tasks: step.tasks.len(),
+        },
+        lines: vec![shorten(&last_parts(step.name, 2)), step.tally.short()],
+        tooltip: tooltip.join("\n"),
+        state: step.tally.state(),
+    }
+}
+
 /// Adds the dashed box after a marked task or step.
 fn open_point(drawing: &mut Drawing, after: usize, id: String, markers: &[Marker]) {
-    let reasons: Vec<&str> = markers
-        .iter()
-        .map(|marker| marker.reason.as_str())
-        .collect();
+    let mut tooltip = vec![MORE_TASKS.to_owned()];
+    tooltip.extend(markers.iter().map(|marker| marker.reason.clone()));
     drawing.shapes.push(Shape {
         id,
         kind: Kind::OpenPoint,
-        lines: vec![MORE_TASKS.to_owned()],
-        tooltip: reasons.join("\n"),
+        lines: vec!["more tasks may follow".to_owned()],
+        tooltip: tooltip.join("\n"),
         state: State::default(),
     });
     drawing.links.push(Link {
@@ -210,25 +332,14 @@ fn open_point(drawing: &mut Drawing, after: usize, id: String, markers: &[Marker
     });
 }
 
-fn task_state(exit_code: Option<i32>, reused: bool, simulated: bool) -> State {
-    match exit_code {
-        Some(0) if reused => State::Reused,
+/// The state of a task from its exit code: reused, simulated or succeeded when it is 0.
+fn node_state(node: &Node, simulated: bool) -> State {
+    match node.exit_code {
+        Some(0) if node.reused => State::Reused,
         Some(0) if simulated => State::Simulated,
         Some(0) => State::Succeeded,
         Some(_) => State::Failed,
         None => State::Waiting,
-    }
-}
-
-fn step_state(step: &StepNode, simulated: bool) -> State {
-    if step.failed > 0 {
-        State::Failed
-    } else if step.succeeded < step.tasks {
-        State::Waiting
-    } else if simulated {
-        State::Simulated
-    } else {
-        State::Succeeded
     }
 }
 

@@ -146,6 +146,11 @@ impl State {
             State::Stopped => "#fdf3e1",
         }
     }
+
+    /// Its place in [`State::ALL`].
+    fn index(self) -> usize {
+        self as usize
+    }
 }
 
 /// How to draw a graph.
@@ -236,10 +241,8 @@ pub fn render(graph: &ExecutionGraph, options: &Options, format: Format) -> Stri
         (View::Tasks, Format::Summary) => summary::tasks(graph),
         (View::Steps, Format::Json) => json(&graph.step_graph()),
         (View::Steps, Format::Summary) => summary::steps(&graph.step_graph()),
-        (View::Tasks, Format::Dot) => dot(&graph.drawing(), options.direction),
-        (View::Steps, Format::Dot) => dot(&graph.step_graph().drawing(), options.direction),
-        (View::Tasks, Format::Svg) => svg(&graph.drawing(), options.direction),
-        (View::Steps, Format::Svg) => svg(&graph.step_graph().drawing(), options.direction),
+        (_, Format::Dot) => dot(&graph.drawing(options), options.direction),
+        (_, Format::Svg) => svg(&graph.drawing(options), options.direction),
     }
 }
 

@@ -9,6 +9,7 @@
 
 mod dot;
 mod drawing;
+mod icons;
 mod summary;
 mod svg;
 

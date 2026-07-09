@@ -6,7 +6,7 @@
 
 use std::fmt::Write as _;
 
-use super::{Direction, Drawing, Kind, Shape, State};
+use super::{Direction, Drawing, Kind, Shape, State, icons};
 use crate::MORE_TASKS;
 use crate::layout::{Graph, Layout, Point, Size, layout};
 
@@ -62,9 +62,10 @@ pub fn svg(drawing: &Drawing, direction: Direction) -> String {
     } else {
         MARGIN / 2.0 + drawing.title.len() as f64 * TITLE_LINE
     };
-    let legend_width: f64 = legend_texts(&states, open)
+    let entries = legend_entries(&states, open);
+    let legend_width: f64 = entries
         .iter()
-        .map(|(_, text)| 32.0 + text.chars().count() as f64 * PROPORTIONAL)
+        .map(|(_, text)| entry_width(text))
         .sum::<f64>()
         + 2.0 * MARGIN;
     let title_width = drawing
@@ -73,7 +74,7 @@ pub fn svg(drawing: &Drawing, direction: Direction) -> String {
         .map(|line| line.chars().count() as f64 * PROPORTIONAL + 2.0 * MARGIN)
         .fold(0.0, f64::max);
     let width = layout.width.max(title_width).max(legend_width).ceil();
-    let legend = if states.is_empty() { 0.0 } else { LEGEND };
+    let legend = if entries.is_empty() { 0.0 } else { LEGEND };
     let height = (top + layout.height + legend).ceil();
 
     let mut svg = String::new();
@@ -88,9 +89,10 @@ pub fn svg(drawing: &Drawing, direction: Direction) -> String {
          <marker id=\"arrow\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" \
          markerHeight=\"7\" orient=\"auto\"><path d=\"M0 0L10 5L0 10z\" fill=\"#8a94a6\"/></marker>\n\
          <marker id=\"arrow-open\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" \
-         markerHeight=\"7\" orient=\"auto\"><path d=\"M0 0L10 5L0 10z\" fill=\"#b7791f\"/></marker>\n\
-         </defs>\n",
+         markerHeight=\"7\" orient=\"auto\"><path d=\"M0 0L10 5L0 10z\" fill=\"#b7791f\"/></marker>\n",
     );
+    svg.push_str(&icons::symbols());
+    svg.push_str("</defs>\n");
     let _ = writeln!(
         svg,
         "<rect class=\"background\" width=\"{width}\" height=\"{height}\"/>"
@@ -108,7 +110,7 @@ pub fn svg(drawing: &Drawing, direction: Direction) -> String {
     links(&mut svg, drawing, &layout, direction);
     shapes(&mut svg, drawing, &layout, &sizes);
     svg.push_str("</g>\n");
-    legend_row(&mut svg, &legend_texts(&states, open), top + layout.height);
+    legend_row(&mut svg, &entries, top + layout.height);
     svg.push_str("</svg>\n");
     svg
 }
@@ -141,7 +143,8 @@ fn style() -> String {
          .link.dashed { stroke-dasharray: 5 4; }\n\
          .link.open { stroke: #b7791f; }\n\
          .open-point rect { stroke-dasharray: 5 3; }\n\
-         .open-point text { font-style: italic; fill: #744210; }\n",
+         .open-point text { font-style: italic; fill: #744210; }\n\
+         @keyframes graph-turn { to { transform: rotate(360deg); } }\n",
     );
     for state in State::ALL {
         let _ = writeln!(
@@ -258,37 +261,40 @@ fn shapes(svg: &mut String, drawing: &Drawing, layout: &Layout, sizes: &[Size]) 
     svg.push_str("</g>\n");
 }
 
-/// The class and text of each entry of the legend: the states that the drawing shows, and
-/// the open point.
-fn legend_texts(states: &[State], open: bool) -> Vec<(&'static str, &'static str)> {
-    let mut texts: Vec<(&str, &str)> = (states.iter())
+/// The icon and text of each entry of the legend: the states that the drawing shows, and the
+/// open point.
+fn legend_entries(states: &[State], open: bool) -> Vec<(&'static str, &'static str)> {
+    let mut entries: Vec<(&str, &str)> = (states.iter())
         .map(|state| (state.name(), state.name()))
         .collect();
     if open {
-        texts.push(("open-point", MORE_TASKS));
+        entries.push(("open", MORE_TASKS));
     }
-    texts
+    entries
 }
 
-/// A row of the states that the drawing shows, with their colours.
-fn legend_row(svg: &mut String, texts: &[(&str, &str)], top: f64) {
-    if texts.is_empty() {
+fn entry_width(text: &str) -> f64 {
+    14.0 + 6.0 + text.chars().count() as f64 * PROPORTIONAL + 18.0
+}
+
+fn legend_row(svg: &mut String, entries: &[(&str, &str)], top: f64) {
+    if entries.is_empty() {
         return;
     }
     let y = top + LEGEND / 2.0;
     let mut x = MARGIN;
     svg.push_str("<g class=\"legend\">\n");
-    for &(class, text) in texts {
+    for (icon, text) in entries {
         let _ = writeln!(
             svg,
-            "<g class=\"{class}\"><rect x=\"{x:.1}\" y=\"{:.1}\" width=\"14\" height=\"12\" rx=\"3\"/>\
-             <text x=\"{:.1}\" y=\"{:.1}\">{}</text></g>",
-            y - 6.0,
+            "<use href=\"#icon-{icon}\" x=\"{x:.1}\" y=\"{:.1}\" width=\"14\" height=\"14\"/>\
+             <text x=\"{:.1}\" y=\"{:.1}\">{}</text>",
+            y - 7.0,
             x + 20.0,
             y + 4.0,
             escape(text)
         );
-        x += 32.0 + text.chars().count() as f64 * PROPORTIONAL;
+        x += entry_width(text);
     }
     svg.push_str("</g>\n");
 }

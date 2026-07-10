@@ -133,6 +133,7 @@ impl SlurmBackend {
             owner: (owner.uid(), owner.gid()),
             cpus: job.placement.cpus.max(1),
             memory: job.placement.memory_bytes,
+            offline: job.placement.offline,
         };
         let script = wrapper(job.spec, &run.inside(), &control.to_string_lossy());
         tokio::fs::write(control.join("wrapper.sh"), script).await?;

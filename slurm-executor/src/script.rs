@@ -171,6 +171,7 @@ mod tests {
             owner: (1000, 100),
             cpus: 2,
             memory: Some(3 << 30),
+            offline: false,
         }
     }
 
@@ -256,5 +257,13 @@ mod tests {
             '--workdir' '/shared/scratch/run-P-1-1/work' '--cpus' '2' '--memory' '3221225472' \
             'debian@sha256:ab' '/shared/scratch/run-P-1-1/control/wrapper.sh'";
         assert_eq!(command, expected);
+        // A task without network gets none.
+        let offline = ContainerRun {
+            offline: true,
+            ..run(&image, &[], None)
+        };
+        let engine = ContainerEngine::docker("docker");
+        let script = job_script(&Container::Engine(engine), &offline, false);
+        assert!(script.contains("'--network' 'none'"), "{script}");
     }
 }

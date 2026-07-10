@@ -155,6 +155,7 @@ mod tests {
             owner: (1000, 100),
             cpus: 2,
             memory: Some(1 << 30),
+            offline: false,
         };
         let limits = Limits {
             gpus: 1,

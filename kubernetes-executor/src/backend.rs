@@ -127,6 +127,8 @@ impl KubernetesBackend {
             owner: (owner.uid(), owner.gid()),
             cpus: job.placement.cpus.max(1),
             memory: job.placement.memory_bytes,
+            // A pod has no switch of its own for the network; a NetworkPolicy would be one.
+            offline: false,
         };
         let script = wrapper(job.spec, &run.inside(), &control.to_string_lossy());
         tokio::fs::write(control.join("wrapper.sh"), script).await?;

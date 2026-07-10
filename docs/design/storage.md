@@ -25,6 +25,8 @@ Without any config file, everything works as before: public web addresses, publi
 
 Options on the command line win over all files: `-store` over `[store] location`.
 
+**Another site file, or none.** The environment variable `IUNCTUS_SITE_CONFIG` names another file in place of `/etc/iunctus/config.toml`; an empty value means no site file. The tests of the `iunctus` binary use it together with an empty `XDG_CONFIG_HOME`, so that no file of the user or of the machine changes their results (section 7).
+
 **Merging.** Tables merge key by key, and any other value, like a text or a list, replaces the one before it. So a user can add the keys of a provider that the site file names, and a run can point the store elsewhere.
 
 **Format.** The file is TOML. Its sections are:

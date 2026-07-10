@@ -12,7 +12,7 @@ This folder holds the research and the design behind the code. The research was 
 
 ```sh
 iunctus run <workflow file or directory> [-graph graph.json] [-executor simulator|local|tes|slurm|kubernetes] [--<param> <value>]
-iunctus graph <workflow file or directory> [-format json|dot|summary|svg] [-view tasks|steps]
+iunctus graph <workflow file or directory> [-format json|dot|summary|svg] [-view tasks|steps] [-direction down|right] [-fold <n>]
 iunctus config [<Nextflow project>] [-profile <names>]
 iunctus runs
 iunctus page [<run>]

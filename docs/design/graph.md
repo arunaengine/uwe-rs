@@ -10,7 +10,7 @@ Every run gives two graphs: the graph with one node per task, which the engine r
 
 ## 1. The two graphs
 
-**The graph of tasks** (`ExecutionGraph`) has a node per task that the driver asked for, in the order asked, with its exit code, and an edge per file that a task read from an earlier task, or per task that it waits for (engine section 6).
+**The graph of tasks** (`ExecutionGraph`) has a node per task that the driver asked for, in the order asked, with its exit code and whether an earlier result answered it (`Node.reused`, from the cache store or from an earlier run that `-resume` continues), and an edge per file that a task read from an earlier task, or per task that it waits for (engine section 6).
 
 **The graph of steps** (`StepGraph`, `ExecutionGraph::step_graph`) has a node per step: a Nextflow process, a Snakemake rule, a CWL step or an Argo template, as `Task.step` names it. A step node counts its tasks, those that succeeded and those that failed, and carries the markers of its tasks (section 3). A step edge stands for the task edges between two steps: how many there are, and whether any of them passes a file. Edges between tasks of the same step are left out. The steps keep the order of their first task, and the step graph can have cycles, as when tasks of two steps take turns.
 
@@ -62,36 +62,46 @@ What is not marked: values that the driver reads for its own work, like Nextflow
 
 `iunctus graph <target>` prints a graph, `iunctus run <target> -graph <file>` writes one. `-view tasks` (the default) gives the graph of tasks, `-view steps` the graph of steps. `-format` chooses the format of `iunctus graph`, and the name of a `-graph` file chooses its format: DOT for `.dot`, SVG for `.svg`, a summary for `.txt`, else JSON.
 
+The pictures, DOT and SVG, follow two more options. `-direction down` (the default) draws the graph from top to bottom, `-direction right` from left to right. `-fold <n>` folds each step with more than n tasks into one box in the graph of tasks, 5 by default; `-fold 0` draws every task. JSON and the summary always hold every task.
+
 | Format | What it holds |
 |---|---|
 | `summary` (the default) | the simulation note, counts (tasks, steps, edges and marked points), then one line per task or step with what it comes after, and one line per marker under it, starting with `more tasks may follow from real data` in a simulated graph |
 | `json` | the `ExecutionGraph` or `StepGraph` with serde: `simulation`, `nodes` with `markers`, or `steps` with `tasks`, `succeeded`, `failed`, `marked` and `markers` |
 | `dot` | Graphviz DOT with the title as the graph label, the colours of the states, file names on the edges, and dashed open points |
-| `svg` | a picture drawn by iunctus itself (section 5), with no Graphviz |
+| `svg` | a picture drawn by iunctus itself (section 5), with no Graphviz, in the look of the web page of runs |
 
-In DOT and SVG, a simulated graph has a dashed box `more tasks may follow from real data` after each marked task or step, joined by a dashed line; its tooltip gives the reasons.
+In DOT and SVG, a simulated graph has a dashed box `more tasks may follow` beside each marked task or step, joined by a short dashed line; its tooltip says `more tasks may follow from real data` and gives the reasons.
 
 ## 5. Drawing and layout
 
-Both graphs become a `render::Drawing`: boxes (`Shape`, with an id, lines of text, a tooltip and a state) and lines between them (`Link`, dashed or not, with a label). `render::dot` and `render::svg` write any drawing, so the web page of runs can draw its graphs the same way. The states have fixed colours: simulated (grey), succeeded (green), from cache (blue), failed (red), not finished (white), and the open point (amber, dashed).
+`ExecutionGraph::drawing(&render::Options)` turns the graph into a `render::Drawing`: boxes (`Shape`, with an id, a kind, lines of text, a tooltip and a state) and lines between them (`Link`, dashed or not, with a label). `render::dot` and `render::svg` write any drawing; `render::render(graph, &options, format)` does both steps. The options are the view, the direction, the fold (5 by default, `render::FOLD`), the steps that are open although they are large, and the states of tasks where the caller knows them better than the exit codes do, as the run database does for a run that goes on.
 
-Labels are short: a name qualified with `:`, like Nextflow's `NFCORE_RNASEQ:RNASEQ:FASTQC (WT_REP1)`, keeps its last part and its tag (`FASTQC (WT_REP1)`), a step its last two parts, and a label longer than 40 characters is cut. The full name is in the tooltip. Labels use a monospace font, so that their width is known without measuring text.
+**Boxes.** A box stands for one task (`Kind::Task`), for all tasks of a step (`Kind::Step`: a box of the graph of steps, or a large step of the graph of tasks that is folded into one box), or for an open point (`Kind::OpenPoint`). The ids are `t<task id>` for a task, `s<n>` for the n-th step in the order of their first task (counted from 0), `m<task id>` for the open point after a task and `ms<n>` for the one after a step. The lines between a folded step and other boxes stand for all task edges between them: dashed when none passes a file, with the number of task edges as label.
 
-`layout::layout` places the boxes in layers from top to bottom, in the steps of Sugiyama's method:
+**States.** A task shows one of seven states: simulated, succeeded, reused (an earlier result answered it), failed, running, waiting and stopped. From the graph alone, a task without an exit code is waiting; the run database also knows which tasks run and which were stopped. A box of a step shows a failure first, then work that goes on (running, waiting), then how its tasks ended; its second line counts the tasks, like `24 tasks`, or `24 tasks: 20 succeeded, 4 running` when they are not all in the state of the box.
+
+**Labels** are short: a name qualified with `:`, like Nextflow's `NFCORE_RNASEQ:RNASEQ:FASTQC (WT_REP1)`, keeps its last part and its tag (`FASTQC (WT_REP1)`), a step its last two parts, and a label longer than 40 characters is cut. The full name is in the tooltip. Labels use a monospace font, so that their width is known without measuring text.
+
+**The SVG look** follows the graph view of Argo Workflows (`render/svg.rs`, `render/icons.rs`). A task is a rounded box with a round icon of its state and its name: a check on green, a turning three-quarter circle on blue while it runs, a cross on red, a clock, a square on amber when stopped, an arrow that comes back round on purple when reused, and a dashed circle with a check when simulated. A step is a box with its name in bold and its counts, with a second box behind it when it has several tasks. An open point is a dashed amber box `more tasks may follow` beside the box before it, joined by a short dashed line. Lines are smooth curves that leave and reach boxes along the direction of the layout. The title is on top, and a legend with the icons of the states that the picture shows is below. Each icon is a `<symbol>` that the boxes use as `#icon-<state>`, and the colours are CSS variables with fixed defaults, so that the web page can change the state of a box in place and give the picture its dark look. The web page reads the classes and `data-` attributes of the boxes: `node task|step|open-point <state>`, `data-task`, `data-step`, `data-tasks` and `data-host`.
+
+`layout::layout(&layout::Graph)` places the boxes in layers, in the steps of Sugiyama's method:
 
 1. The nodes are put in a depth-first order (the reverse postorder of a search that starts at the nodes in their order), in which every edge points from a node to a later one, except the edges that close a cycle. Those are laid out turned round. The graph of tasks has no cycles; the graph of steps can have them.
-2. Layers by the longest path from a node without predecessors; then each node with successors moves down to just above the first of them, which shortens long edges.
+2. Layers by the longest path from a node without predecessors; then each node with more successors than predecessors, like a node without predecessors, moves down to just above the first of its successors, which shortens more edges than it lengthens. A node with one input and one output stays next to its input, so the graph reads as a tree from the first tasks to the last.
 3. An edge that spans several layers gets a point in each layer between, so that it passes between the boxes there. Beyond 200,000 such points, edges over more than 16 layers go straight.
 4. The order in each layer: sweeps down and up sort each layer by the mean position of its neighbours (the barycenter), at most 12 times, keeping the order with the fewest crossings, which a Fenwick tree counts.
-5. The places in each layer: each box moves towards the mean place of its neighbours, as close as the order and the gaps allow. This is an isotonic regression, solved by pooling adjacent violators, in alternating sweeps.
+5. The places in each layer: each box moves towards the mean place of its neighbours, as close as the order and the gaps allow. This is an isotonic regression, solved by pooling adjacent violators, in alternating sweeps. The points of long edges weigh four times as much as boxes, so that long edges run straight and the boxes make way, instead of long edges sweeping around the layout.
 
-The layout is deterministic: the same graph gives the same SVG. Its unit tests check that boxes do not overlap, that the output does not change, that long edges pass their layers, that back edges are drawn, and that a graph of 5,000 nodes takes well under a second.
+A node can sit beside another one instead of in a layer of its own (`Graph.beside`): it takes room after that node in its layer, and the line between them is short and straight. The SVG places each open point so. `Direction::Right` lays the graph out from left to right: it is the layout down with widths and heights swapped, turned at the end, so the nodes beside another sit below it.
+
+The layout is deterministic: the same graph gives the same SVG. Its unit tests check that boxes do not overlap, that the output does not change, that long edges pass their layers and run straight, which nodes move down, that back edges are drawn, that a layout to the right is the one down turned, where nodes beside others sit, and that a graph of 5,000 nodes takes well under a second.
 
 ## 6. Checks
 
 - `workflow-graph/tests/engine.rs`: a driver whose notes read a task output, spread the files of a wildcard output and mark a checkpoint; the markers, the step graph, the summary, DOT and SVG of a simulated and of a real graph.
-- `workflow-graph/src/layout_tests.rs`, and the unit tests of `render::drawing` and `render::svg`.
-- `iunctus/tests/graph.rs`: the note on standard error, `-view steps`, `-format svg`, `.svg` files.
+- `workflow-graph/src/layout_tests.rs`, and the unit tests of `render::drawing` (folded steps, their counts and states, the view of steps, known states, open points) and `render::svg` (boxes, lines, legend, open points beside their box in both directions).
+- `iunctus/tests/graph.rs`: the note on standard error, `-view steps`, `-format svg`, `-direction right`, `.svg` files.
 - The markers of each driver have their own tests: `nextflow-runtime/tests/driver.rs` (a read, a `flatten` over a wildcard output, a literal output and a sample sheet of the user), the `checkpoint` and `commands` workflows of `snakemake-runtime/tests/workflows.rs`, `cwl-runtime/tests/driver.rs` (a scatter over a glob and over a list without files) and `argo-runtime/tests/run.rs` (`withParam` and `when`).
 
 ## 7. Results on the test workflows

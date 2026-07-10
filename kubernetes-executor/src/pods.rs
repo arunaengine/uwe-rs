@@ -1,17 +1,17 @@
-//! What Kubernetes says about the pods of the Jobs of a backend. One `kubectl get pods` asks
-//! about all of them at once, at most once per poll interval, so that many tasks do not load
-//! the API server. Every call names its kubeconfig; `kubectl` never falls back to another.
+//! What Kubernetes says about the pods of the Jobs of a backend. One request lists all of them
+//! at once, by the label of the backend, at most once per poll interval, so that many tasks do
+//! not load the API server.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{BTreeSet, HashMap};
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use kube::api::ListParams;
 use serde_json::Value;
-use tokio::process::Command;
 use tokio::sync::Mutex;
 
+use crate::cluster::Cluster;
 use crate::manifest::LABEL;
 
 /// The reasons of a container that cannot start, which waiting does not cure.
@@ -22,31 +22,6 @@ const STUCK: [&str; 5] = [
     "CreateContainerConfigError",
     "CreateContainerError",
 ];
-
-/// How `kubectl` reaches the cluster: always with this kubeconfig, never the user's default.
-#[derive(Clone, Debug)]
-pub struct Kubectl {
-    /// The command, `kubectl` or a full path.
-    pub program: PathBuf,
-    pub kubeconfig: PathBuf,
-    /// The namespace of the Jobs; `None` for the one of the kubeconfig's context.
-    pub namespace: Option<String>,
-}
-
-impl Kubectl {
-    /// A `kubectl` command with the kubeconfig and the namespace.
-    pub fn command(&self) -> Command {
-        let mut command = Command::new(&self.program);
-        command
-            .env("KUBECONFIG", &self.kubeconfig)
-            .arg("--kubeconfig")
-            .arg(&self.kubeconfig);
-        if let Some(namespace) = &self.namespace {
-            command.args(["--namespace", namespace]);
-        }
-        command
-    }
-}
 
 /// What the cluster says about the pod of a Job.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -94,11 +69,11 @@ impl Pods {
 
     /// What the cluster says about the pod of a Job, asking it when its last answer is older
     /// than `poll`.
-    pub async fn look(&self, job: &str, poll: Duration, kubectl: &Kubectl, label: &str) -> Look {
+    pub async fn look(&self, job: &str, poll: Duration, cluster: &Cluster, label: &str) -> Look {
         let mut snapshot = self.inner.lock().await;
         if snapshot.taken.is_none_or(|taken| taken.elapsed() >= poll) {
             snapshot.asked = snapshot.jobs.clone();
-            snapshot.looks = ask(kubectl, label).await;
+            snapshot.looks = ask(cluster, label).await;
             snapshot.taken = Some(Instant::now());
         }
         if !snapshot.asked.contains(job) {
@@ -112,16 +87,10 @@ impl Pods {
 }
 
 /// The pods with the label of a backend, by the name of their Job.
-async fn ask(kubectl: &Kubectl, label: &str) -> Option<HashMap<String, Look>> {
-    let output = (kubectl.command())
-        .args(["get", "pods", "--output", "json", "--selector"])
-        .arg(format!("{LABEL}={label}"))
-        .output()
-        .await
-        .ok()
-        .filter(|output| output.status.success())?;
-    let list: Value = serde_json::from_slice(&output.stdout).ok()?;
-    Some(looks(&list))
+async fn ask(cluster: &Cluster, label: &str) -> Option<HashMap<String, Look>> {
+    let selector = ListParams::default().labels(&format!("{LABEL}={label}"));
+    let list = cluster.pods().list(&selector).await.ok()?;
+    Some(looks(&serde_json::to_value(&list).ok()?))
 }
 
 /// What a list of pods says about each Job. With more pods of one Job, the last one counts.

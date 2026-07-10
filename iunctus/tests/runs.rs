@@ -6,7 +6,8 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;
-use std::process::Command;
+
+mod common;
 
 const SCRIPT: &str = r#"
 process UPPER {
@@ -40,7 +41,7 @@ workflow {
 /// Runs the binary in `directory`; the result has the exit code and the standard output and
 /// error.
 fn iunctus(directory: &Path, arguments: &[&str]) -> (i32, String) {
-    let output = Command::new(env!("CARGO_BIN_EXE_iunctus"))
+    let output = common::command()
         .args(arguments)
         .current_dir(directory)
         .env("XDG_CACHE_HOME", directory.join("cache"))

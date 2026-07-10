@@ -10,7 +10,8 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::Path;
-use std::process::Command;
+
+mod common;
 
 /// The token of the private server, which only the environment of iunctus holds.
 const TOKEN: &str = "token-of-the-test-4417";
@@ -65,7 +66,7 @@ fn iunctus(
     environment: &[(&str, &str)],
     arguments: &[&str],
 ) -> (i32, String) {
-    let output = Command::new(env!("CARGO_BIN_EXE_iunctus"))
+    let output = common::command()
         .args(arguments)
         .current_dir(directory)
         .env("XDG_CACHE_HOME", directory.join(cache))

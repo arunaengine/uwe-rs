@@ -162,7 +162,8 @@ Secrets live only in the environment, or in the config file, and in the memory o
 
 ## 7. Checks
 
-- `config-file/tests/config.rs`: typed settings, the merging of files, secrets from the environment, and errors with the file and the line.
+- `config-file/tests/config.rs`: typed settings, the merging of files, secrets from the environment, and errors with the file and the line. A unit test covers `IUNCTUS_SITE_CONFIG`.
+- `iunctus/tests/common/mod.rs`: every test that runs the binary does so through `common::command()`, which sets `XDG_CONFIG_HOME` to an empty folder and `IUNCTUS_SITE_CONFIG` to nothing, so that tests never read the config files of the user or the site. `iunctus/tests/config_files.rs` checks that a site file comes only from the variable and that a file in the home folder is not read.
 - `storage/tests/providers.rs`: settings and their errors, the longest prefix, folders, a local web server that wants a token or a header or a password (and a wrong token that never shows), downloads that happen once and continue after a stop, the blocking view, and a small FTP server of the tests. Unit tests cover addresses, public bucket listings and the hiding of secrets.
 - `task-runner/src/files.rs`: deliveries from this machine to addresses, from addresses to this machine, and between addresses.
 - `iunctus/tests/storage.rs`: the secrets of a whole run, as above.

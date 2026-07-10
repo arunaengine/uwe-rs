@@ -6,9 +6,10 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use fancy_regex::Regex;
+
+mod common;
 
 fn directory(variable: &str) -> PathBuf {
     PathBuf::from(std::env::var(variable).unwrap_or_else(|_| panic!("{variable} is not set")))
@@ -75,7 +76,7 @@ fn configs_equal_the_oracle() {
             problems.push(format!("{name}: no oracle output"));
             continue;
         };
-        let output = Command::new(env!("CARGO_BIN_EXE_iunctus"))
+        let output = common::command()
             .args(["config", "-profile", "test", "."])
             .current_dir(test_workflows.join(name))
             .output()

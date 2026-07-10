@@ -427,6 +427,18 @@ pub fn task(
             }
         },
     };
+    // A tool has no network unless it asks for it; v1.0 tools ask for it by the upgrade.
+    let network = scope.find(|class| match class {
+        RequirementClass::NetworkAccess { network_access } => Some(network_access),
+        _ => None,
+    });
+    let network = match network {
+        Some((Dynamic::Value(allowed), _)) => *allowed,
+        Some((Dynamic::Expression(expression), _)) => {
+            evaluator.evaluate(expression, vars)?.is_truthy()
+        }
+        None => false,
+    };
     let task = Task {
         id,
         name: name.to_owned(),
@@ -443,6 +455,7 @@ pub fn task(
             time_seconds,
             ..resources
         },
+        offline: tool.is_some() && !network,
         after: Vec::new(),
     };
     // Outputs at the path of an input file get its location back, as with cwltool's path

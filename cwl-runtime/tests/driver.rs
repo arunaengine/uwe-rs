@@ -425,3 +425,36 @@ fn real_runs_deliver_the_output_files_to_the_output_folder() {
         [std::path::PathBuf::from("s3://bucket/out/out.txt")]
     );
 }
+
+/// Whether the task of a tool with this version and these requirements runs offline.
+fn offline(version: &str, requirements: &str) -> bool {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let tool = format!(
+        "cwlVersion: {version}\nclass: CommandLineTool\n{requirements}inputs: []\noutputs: []\n\
+         baseCommand: [curl, https://example.org]\n"
+    );
+    let main = folder.path().join("main.cwl");
+    std::fs::write(&main, tool).expect("writes the tool");
+    let launch = Launch {
+        target: main.clone(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let mut driver = CwlDriver::new(&launch, Options::default()).expect("a driver");
+    let mut executor = Simulator::new(folder.path().join("simulator"));
+    let execution = execute(&main.to_string_lossy(), &mut driver, &mut executor);
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    execution.graph.nodes[0].task.offline
+}
+
+#[test]
+fn tools_run_offline_unless_they_ask_for_the_network() {
+    assert!(offline("v1.2", ""));
+    let asked = "requirements:\n  NetworkAccess:\n    networkAccess: true\n";
+    assert!(!offline("v1.2", asked));
+    let expression = "requirements:\n  InlineJavascriptRequirement: {}\n  NetworkAccess:\n    \
+                      networkAccess: $(1 == 1)\n";
+    assert!(!offline("v1.2", expression));
+    // CWL v1.0 has no NetworkAccess, and its tools may use the network, as with cwltool.
+    assert!(!offline("v1.0", ""));
+}

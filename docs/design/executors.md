@@ -35,7 +35,7 @@ Inputs that the task only reads are symbolic links to their sources, and the con
 iunctus run main.nf -executor local
 ```
 
-The local executor needs only Docker or Podman. It takes the engine that `IUNCTUS_ENGINE` names, else Docker when its service answers, else Podman, and it handles rootless engines. Each task runs as the current user, with `--rm`, and with the CPUs and memory it asks for (`--cpus`, `--memory`). Tasks wait for their share of the CPUs and memory of this machine, so parallel tasks never ask for more than the machine has. A task that runs longer than its time is stopped. Ctrl-C stops all containers of the run.
+The local executor needs only Docker or Podman. It takes the engine that `IUNCTUS_ENGINE` names, else Docker when its service answers, else Podman, and it handles rootless engines. Each task runs as the current user, with `--rm`, and with the CPUs and memory it asks for (`--cpus`, `--memory`); a task without network, like a CWL tool that does not ask for it, gets none (`--network none`). Tasks wait for their share of the CPUs and memory of this machine, so parallel tasks never ask for more than the machine has. A task that runs longer than its time is stopped. Ctrl-C stops all containers of the run.
 
 ## 3. GA4GH TES
 

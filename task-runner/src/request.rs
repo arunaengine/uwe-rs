@@ -161,6 +161,7 @@ pub fn request(
             memory_bytes: resources.memory_bytes,
             disk_bytes: resources.disk_bytes,
             time_seconds: resources.time_seconds,
+            offline: task.offline,
             ..Placement::default()
         },
     }

@@ -8,8 +8,8 @@ use std::path::Path;
 
 use executor::Backend;
 use task_model::{
-    Digest, EnvironmentValue, FORMAT, FileKind, Image, InputFile, OutputRule, Placement,
-    ReuseScope, TaskRequest, TaskSpec, Tree,
+    Accelerator, Digest, EnvironmentValue, FORMAT, FileKind, Image, InputFile, OutputRule,
+    Placement, ReuseScope, TaskRequest, TaskSpec, Tree,
 };
 use workflow_graph::{Input, Task};
 
@@ -161,6 +161,9 @@ pub fn request(
             memory_bytes: resources.memory_bytes,
             disk_bytes: resources.disk_bytes,
             time_seconds: resources.time_seconds,
+            accelerators: (resources.gpus.filter(|count| *count > 0))
+                .map(|count| vec![Accelerator { count, kind: None }])
+                .unwrap_or_default(),
             offline: task.offline,
             ..Placement::default()
         },
@@ -196,6 +199,7 @@ mod tests {
             outputs: vec!["out.txt".into(), "db/".into()],
             resources: Resources {
                 cpus: Some(2.0),
+                gpus: Some(1),
                 ..Resources::default()
             },
             ..Task::default()
@@ -222,6 +226,7 @@ mod tests {
         assert_eq!(tagged.spec.outputs[1].pattern, "db/");
         assert_eq!(tagged.spec.stdin, stdin);
         assert_eq!(tagged.placement.cpus, 2);
+        assert_eq!(tagged.placement.accelerators[0].count, 1);
         assert_eq!(
             tagged.spec.environment["A"],
             EnvironmentValue::Literal("1".into())

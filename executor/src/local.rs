@@ -104,6 +104,8 @@ pub struct ContainerRun<'a> {
     /// The CPUs and bytes of memory that the container may use.
     pub cpus: u32,
     pub memory: Option<u64>,
+    /// Whether the container runs without network.
+    pub offline: bool,
 }
 
 impl ContainerRun<'_> {
@@ -141,6 +143,9 @@ impl ContainerRun<'_> {
         if let Some(memory) = self.memory {
             arguments.extend(["--memory".into(), memory.to_string()]);
         }
+        if self.offline {
+            arguments.extend(["--network".into(), "none".into()]);
+        }
         if let Some(platform) = &self.image.platform {
             arguments.extend(["--platform".into(), platform.clone()]);
         }
@@ -175,6 +180,7 @@ impl LocalContainer {
             owner: (owner.uid(), owner.gid()),
             cpus: share.cpus,
             memory: share.memory,
+            offline: job.placement.offline,
         };
         let control = root.join(CONTROL);
         tokio::fs::write(run.script(), wrapper(&spec, &run.inside(), &text(&control))).await?;

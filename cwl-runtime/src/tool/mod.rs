@@ -394,6 +394,11 @@ pub fn task(
     }
     if needs_json {
         outputs.push(OUTPUT_JSON.to_owned());
+        // cwl.output.json may name any file of the output directory, so a real run keeps them
+        // all, as cwltool keeps the directory; the simulator makes no such files.
+        if !options.simulated {
+            outputs.push("*".to_owned());
+        }
     }
     let mut unique = Vec::new();
     for output in outputs {

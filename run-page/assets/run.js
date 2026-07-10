@@ -409,7 +409,22 @@ async function listFolder(button, url) {
     ` ${bytes(entry.size)}`))));
 }
 
-// ---- the panel ----
+// ---- one step ----
+
+// Shows a step in the panel: its tasks by state, its markers, and how to see its tasks.
+function chooseStep(name) {
+  if (!view) return;
+  if (view.chosen !== null && view.chosen !== undefined) {
+    history.pushState(null, "", `/runs/${encodeURIComponent(view.id)}`);
+    view.chosen = null;
+    drawRows();
+  }
+  view.chosenStep = name;
+  view.parts.detail.hidden = false;
+  view.columns.classList.add("open");
+  drawStepDetail();
+  markChosen();
+}
 
 function closeDetail() {
   if (view.chosen !== null && view.chosen !== undefined) {
@@ -420,6 +435,61 @@ function closeDetail() {
   view.parts.detail.hidden = true;
   view.columns.classList.remove("open");
   markChosen();
+}
+
+function drawStepDetail() {
+  const name = view.chosenStep;
+  if (!name) return;
+  const tasks = [...view.tasks.values()].filter((task) => task.step === name);
+  const found = counts(tasks);
+  const time = tasks.reduce((sum, task) =>
+    sum + (task.started && task.ended ? task.ended - task.started : 0), 0);
+  const ids = new Set(tasks.map((task) => task.id));
+  const kinds = new Map();
+  for (const marker of view.markers) {
+    if (ids.has(marker.task) && !kinds.has(marker.kind)) kinds.set(marker.kind, marker);
+  }
+  const graph = view.graph;
+  const foldable = graph && graph.view === "tasks" && tasks.length > FOLD;
+  const folded = foldable && !graph.open.has(name);
+  const state = tallyState(tallyOf(tasks));
+  const parts = [
+    el("div", { class: "tools" },
+      el("h2", { class: "mono", style: "margin: 0; flex: 1" }, name, " ", badge(state)),
+      el("button", { onclick: closeDetail }, "close")),
+    el("dl", { class: "facts" },
+      el("div", {}, el("dt", {}, "Tasks"), el("dd", {}, tasks.length)),
+      el("div", {}, el("dt", {}, "Task time"), el("dd", {}, duration(time)))),
+    el("div", { class: "legend" }, STATES.filter((shown) => found[shown]).map((shown) =>
+      el("span", {}, el("i", { class: `${shown}-fill` }), `${found[shown]} ${LABELS[shown]}`))),
+  ];
+  for (const marker of kinds.values()) {
+    parts.push(el("p", { class: "marker" }, el("strong", {}, `${marker.kind}: `), marker.reason));
+  }
+  const actions = [el("button", { onclick: () => {
+    view.filter.step = name;
+    view.shown = ROWS;
+    drawSteps();
+    drawTasks();
+    view.parts.tasks.scrollIntoView({ behavior: "smooth" });
+  } }, "Show them in the table")];
+  if (foldable) {
+    actions.unshift(el("button", { onclick: () => {
+      if (folded) openStep(name);
+      else foldStep(name);
+      drawStepDetail();
+    } }, folded ? "Show its tasks in the graph" : "Fold its tasks into one box"));
+  }
+  parts.push(el("div", { class: "tools" }, actions));
+  const first = tasks.slice(0, 50);
+  parts.push(el("h3", {}, "Tasks"), el("table", {}, el("tbody", {}, first.map((task) =>
+    el("tr", { class: "pick", onclick: () => go(taskPath(task.id)) },
+      el("td", { class: "number" }, task.id), el("td", {}, task.name),
+      el("td", {}, badge(shownState(task))))))));
+  if (tasks.length > first.length) {
+    parts.push(el("p", { class: "quiet" }, `and ${tasks.length - first.length} more in the table`));
+  }
+  view.parts.detail.replaceChildren(...parts);
 }
 
 // ---- live updates ----
@@ -443,6 +513,9 @@ function listen() {
     if (update.graph) graphChanged();
     if (view.chosen !== null && update.tasks.some((task) => task.id === view.chosen)) {
       drawDetail(view.chosen);
+    }
+    if (view.chosenStep && update.tasks.some((task) => task.step === view.chosenStep)) {
+      drawStepDetail();
     }
     if (update.run.state !== "running") {
       events.close();

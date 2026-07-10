@@ -1,7 +1,7 @@
 //! Files on web servers: whether they exist, and downloads that continue where a stopped one
-//! ended. All requests without headers of their own share one client per process, so that
-//! connections are reused and a host's address is looked up once; a provider with headers,
-//! like a token, has one client of its own.
+//! ended. All requests share one client per process, so that connections are reused and a
+//! host's address is looked up once; a provider with headers, like a token, sends them with
+//! each of its requests.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -20,24 +20,34 @@ use crate::{Metadata, address};
 #[derive(Clone)]
 pub(crate) struct Web {
     client: reqwest::Client,
+    /// The headers of the provider, which may hold secrets, sent with every request.
+    headers: HeaderMap,
     /// Whether a refused request is an error. Public servers answer `HEAD` requests in many
     /// ways, so there any answer but success means that the file is not there, as before.
     strict: bool,
 }
 
-/// The settings that every client shares: its name, and time limits that allow long downloads.
-fn builder() -> reqwest::ClientBuilder {
-    reqwest::Client::builder()
-        .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
-        .connect_timeout(Duration::from_secs(30))
-        .read_timeout(Duration::from_secs(300))
+/// The one HTTP client of the process, made at the first use and shared by everything that
+/// sends requests: the web and bucket providers, the checks of images at their registries and
+/// the requests to TES servers. So connections are reused and a host's address is looked up
+/// once. Requests that must end in time set their own timeout; a download may take as long
+/// as its data keeps coming.
+pub fn http_client() -> Result<&'static reqwest::Client, String> {
+    static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
+    let client = CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
+            .connect_timeout(Duration::from_secs(30))
+            .read_timeout(Duration::from_secs(300))
+            .build()
+            .map_err(|error| error.to_string())
+    });
+    client.as_ref().map_err(Clone::clone)
 }
 
-/// The client of every request without headers of its own, made once per process.
+/// [`http_client`], as a clone (a handle to the same client) for code that keeps one.
 pub(crate) fn shared_client() -> Result<reqwest::Client, Problem> {
-    static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
-    let client = CLIENT.get_or_init(|| builder().build().map_err(|error| error.to_string()));
-    client.clone().map_err(Problem::fixed)
+    http_client().cloned().map_err(Problem::fixed)
 }
 
 impl Web {
@@ -45,18 +55,16 @@ impl Web {
     pub fn public() -> Result<Web, Problem> {
         Ok(Web {
             client: shared_client()?,
+            headers: HeaderMap::new(),
             strict: false,
         })
     }
 
     /// A client that sends these headers with every request, which hold secrets.
     pub fn with_headers(headers: HeaderMap) -> Result<Web, Problem> {
-        let client = builder()
-            .default_headers(headers)
-            .build()
-            .map_err(|error| Problem::fixed(error.to_string()))?;
         Ok(Web {
-            client,
+            client: shared_client()?,
+            headers,
             strict: true,
         })
     }
@@ -73,7 +81,7 @@ impl Web {
     /// Whether a file exists, and its size, from a `HEAD` request.
     pub async fn stat(&self, url: &str) -> Result<Option<Metadata>, Problem> {
         let url = self.address(url);
-        let response = self.client.head(&url).send().await.map_err(network)?;
+        let response = self.request(self.client.head(&url)).await?;
         let status = response.status();
         if status.is_success() {
             // The header gives the size of the file; the response itself has no body.
@@ -105,7 +113,7 @@ impl Web {
 
     /// The status and the text of the answer to a `GET` request, whatever the status.
     pub async fn answer(&self, url: &str) -> Result<(StatusCode, String), Problem> {
-        let response = self.client.get(url).send().await.map_err(network)?;
+        let response = self.request(self.client.get(url)).await?;
         let status = response.status();
         Ok((status, response.text().await.map_err(network)?))
     }
@@ -118,7 +126,7 @@ impl Web {
         if offset > 0 {
             request = request.header(RANGE, format!("bytes={offset}-"));
         }
-        let mut response = request.send().await.map_err(network)?;
+        let mut response = self.request(request).await?;
         let status = response.status();
         if !status.is_success() {
             return Err(self.refused(status));
@@ -134,6 +142,18 @@ impl Web {
             .await
             .map_err(|error| Problem::local(target, error))?;
         Ok(resumed)
+    }
+
+    /// Sends a request with the headers of the provider.
+    async fn request(
+        &self,
+        request: reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response, Problem> {
+        request
+            .headers(self.headers.clone())
+            .send()
+            .await
+            .map_err(network)
     }
 
     /// An answer that is not a success; errors of the server may go away.
@@ -179,4 +199,16 @@ fn network(error: reqwest::Error) -> Problem {
         source = cause.source();
     }
     Problem::passing(message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_process_has_one_client() {
+        let first = http_client().expect("a client");
+        let second = http_client().expect("a client");
+        assert!(std::ptr::eq(first, second));
+    }
 }

@@ -33,6 +33,7 @@ pub use blocking::Blocking;
 pub use downloads::download_name;
 pub use error::StorageError;
 pub use settings::Settings;
+pub use web::http_client;
 
 /// Whether a file exists as a file or a directory, and its size.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -4,9 +4,10 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;
-use std::process::Command;
 
 use workflow_graph::{EdgeKind, ExecutionGraph, Language, SIMULATION, StepGraph};
+
+mod common;
 
 /// Two processes: `SHOUT` reads the file that `GREET` makes.
 const PIPELINE: &str = r#"
@@ -41,7 +42,7 @@ workflow {
 
 /// Runs the binary in `directory`; the result has the exit code, standard output and error.
 fn iunctus(directory: &Path, arguments: &[&str]) -> (i32, String, String) {
-    let output = Command::new(env!("CARGO_BIN_EXE_iunctus"))
+    let output = common::command()
         .args(arguments)
         .current_dir(directory)
         .env("XDG_CACHE_HOME", directory.join("cache"))

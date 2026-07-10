@@ -9,6 +9,8 @@ use std::process::Command;
 
 use workflow_graph::SIMULATION;
 
+mod common;
+
 const SCRIPT: &str = r#"
 process UPPER {
     container 'debian:stable-slim'
@@ -37,7 +39,7 @@ workflow {
 /// Runs the binary in `directory`; the result has the exit code and the standard output and
 /// error, without the note of a simulated run, which `tests/graph.rs` checks.
 fn iunctus(directory: &Path, arguments: &[&str]) -> (i32, String) {
-    let output = Command::new(env!("CARGO_BIN_EXE_iunctus"))
+    let output = common::command()
         .args(arguments)
         .current_dir(directory)
         .env("XDG_CACHE_HOME", directory.join("cache"))
@@ -95,7 +97,7 @@ workflow {
 fn ctrl_c_stops_the_running_tasks() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), SLEEPERS).expect("writes the script");
-    let mut child = Command::new(env!("CARGO_BIN_EXE_iunctus"))
+    let mut child = common::command()
         .args(["run", "main.nf", "-executor", "local"])
         .current_dir(directory.path())
         .env("XDG_CACHE_HOME", directory.path().join("cache"))

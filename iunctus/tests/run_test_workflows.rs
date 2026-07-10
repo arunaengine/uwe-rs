@@ -21,6 +21,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use fancy_regex::Regex;
 use workflow_graph::ExecutionGraph;
 
+mod common;
+
 /// Why each pipeline that fails cannot run, with the output of Nextflow, recorded by
 /// `fixtures/run_evidence.py`.
 const EVIDENCE: &str = include_str!("fixtures/run_evidence.txt");
@@ -85,9 +87,9 @@ fn valid(reason: &str) -> bool {
 fn outcome(target: &Path, project: &Path, cache: &Path, profile: bool) -> String {
     let graph = cache.join("graph.json");
     let _ = std::fs::remove_file(&graph);
-    let mut command = Command::new("timeout");
+    let mut command = common::isolated(Command::new("timeout"));
     command
-        .args(["600", env!("CARGO_BIN_EXE_iunctus")])
+        .args(["600", common::BINARY])
         .args(["run", &target.to_string_lossy()]);
     if profile {
         command.args(["-profile", "test"]);

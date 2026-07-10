@@ -1,0 +1,57 @@
+//! Which config files the binary reads: the file that `IUNCTUS_SITE_CONFIG` names in place of
+//! the site-wide file, and none at all for the commands of the other tests, which run in an
+//! empty config folder.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::path::Path;
+use std::process::Command;
+
+mod common;
+
+const SCRIPT: &str = "workflow { }\n";
+
+/// A config file with a section that iunctus does not know, so that reading it is an error.
+const BAD_CONFIG: &str = "[nonsense]\nkey = 1\n";
+
+/// Prints the graph of an empty workflow in `directory`, with the exit code and standard error.
+fn graph(command: &mut Command, directory: &Path) -> (i32, String) {
+    std::fs::write(directory.join("main.nf"), SCRIPT).expect("writes the script");
+    let output = command
+        .args(["graph", "main.nf"])
+        .current_dir(directory)
+        .env("XDG_CACHE_HOME", directory.join("cache"))
+        .output()
+        .expect("runs iunctus");
+    (
+        output.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    )
+}
+
+#[test]
+fn the_site_file_is_the_one_the_variable_names() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let site = directory.path().join("site.toml");
+    std::fs::write(&site, BAD_CONFIG).expect("writes the site file");
+    let (code, error) = graph(
+        common::command().env(config_file::SITE_FILE_VARIABLE, &site),
+        directory.path(),
+    );
+    assert_ne!(code, 0, "{error}");
+    assert!(error.contains(&site.display().to_string()), "{error}");
+}
+
+#[test]
+fn commands_of_the_tests_read_no_user_file() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    // The user's file of a home folder, which the empty config folder makes unreachable.
+    let user = directory.path().join("home/.config/iunctus");
+    std::fs::create_dir_all(&user).expect("makes the user's folder");
+    std::fs::write(user.join("config.toml"), BAD_CONFIG).expect("writes the user's file");
+    let (code, error) = graph(
+        common::command().env("HOME", directory.path().join("home")),
+        directory.path(),
+    );
+    assert_eq!(code, 0, "{error}");
+}

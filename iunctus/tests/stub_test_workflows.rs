@@ -6,9 +6,10 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use workflow_graph::ExecutionGraph;
+
+mod common;
 
 /// The name of a task as a file name, as `record.sh` makes it.
 fn file_name(task: &str) -> String {
@@ -74,7 +75,7 @@ fn stub_scripts_equal_the_oracle() {
             .into_owned();
         let cache = tempfile::tempdir().expect("a temporary directory");
         let graph = cache.path().join("graph.json");
-        let output = Command::new(env!("CARGO_BIN_EXE_iunctus"))
+        let output = common::command()
             .args(["run", &test_workflows.join(&name).to_string_lossy()])
             .args(["-profile", "test,docker", "-stub"])
             .args(["-graph", &graph.to_string_lossy()])

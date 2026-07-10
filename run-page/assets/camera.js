@@ -256,6 +256,7 @@ function clicked(target) {
   } else if (node.dataset.step !== undefined) {
     const name = node.dataset.step;
     if (view.graph.view === "tasks") openStep(name);
+    chooseStep(name);
   } else if (node.dataset.host) {
     const host = document.getElementById(node.dataset.host);
     if (host) clicked(host);

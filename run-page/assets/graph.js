@@ -112,12 +112,14 @@ function foldStep(name) {
   view.graph.open.delete(name);
   graphTools();
   loadGraph({ focus: name });
+  if (view.chosenStep === name) drawStepDetail();
 }
 
 function foldAll() {
   view.graph.open.clear();
   graphTools();
   loadGraph({});
+  if (view.chosenStep) drawStepDetail();
 }
 
 // ---- pictures ----

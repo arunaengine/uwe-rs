@@ -5,10 +5,10 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use content_store::Store;
-use kubernetes_executor::{Kubectl, KubernetesBackend};
+use kubernetes_executor::{Cluster, KubernetesBackend};
 use storage::Storage;
 use task_runner::{Runner, RunnerExecutor, Settings};
 
@@ -34,12 +34,10 @@ pub fn executor(
             kubeconfig.display()
         ));
     }
-    let kubectl = Kubectl {
-        program: PathBuf::from("kubectl"),
-        kubeconfig,
-        namespace,
-    };
-    let backend = KubernetesBackend::new(kubectl, scratch.join("kubernetes"));
+    // The client runs on the runtime of the engine, which runs the attempts.
+    let runtime = workflow_graph::runtime().map_err(|error| error.to_string())?;
+    let cluster = runtime.block_on(Cluster::connect(&kubeconfig, namespace))?;
+    let backend = KubernetesBackend::new(cluster, scratch.join("kubernetes"));
     // The nodes read the inputs from the store, so they are copied there.
     let settings = Settings {
         downloads: crate::cache_directory().join("downloads"),

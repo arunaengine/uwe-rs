@@ -8,18 +8,19 @@
 
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use executor::manifest::parse;
 use executor::process::Mount;
 use executor::wrapper::{EXIT, MANIFEST, STDERR, wrapper};
 use executor::{Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, place, registry};
+use kube::api::{DeleteParams, ListParams, LogParams, PostParams, PropagationPolicy};
 use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 
+use crate::cluster::Cluster;
 use crate::manifest::{Limits, job_name};
-use crate::pods::{Kubectl, Look, Pods};
+use crate::pods::{Look, Pods};
 
 /// How often the cluster is asked about the pods, by default.
 const POLL: Duration = Duration::from_secs(5);
@@ -33,7 +34,7 @@ const CANCEL_GRACE: Duration = Duration::from_secs(60);
 /// The Kubernetes executor's backend.
 #[derive(Debug)]
 pub struct KubernetesBackend {
-    pub kubectl: Kubectl,
+    pub cluster: Cluster,
     /// Where each attempt gets its scratch directory, which the nodes must see at the same
     /// path.
     pub scratch: PathBuf,
@@ -54,13 +55,13 @@ enum Ended {
 }
 
 impl KubernetesBackend {
-    /// A backend with its attempts in `scratch`, which reaches the cluster through `kubectl`.
-    pub fn new(kubectl: Kubectl, scratch: PathBuf) -> KubernetesBackend {
+    /// A backend with its attempts in `scratch`, which runs them in `cluster`.
+    pub fn new(cluster: Cluster, scratch: PathBuf) -> KubernetesBackend {
         let millis = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |since| since.as_millis());
         KubernetesBackend {
-            kubectl,
+            cluster,
             scratch,
             poll: POLL,
             label: format!("{}-{millis}", std::process::id()),
@@ -137,46 +138,62 @@ impl KubernetesBackend {
             seconds: job.placement.time_seconds,
         };
         let manifest = crate::manifest::job(&name, &self.label, &run, &limits);
-        self.create(&manifest).await?;
+        self.create(manifest).await?;
         self.pods.add(&name).await;
         let ended = self.wait(&name, cancel).await;
         self.pods.remove(&name).await;
+        // The log of a container that failed tells why, as when it could not run the wrapper.
+        let log = match &ended {
+            Ok(Ended::Exited(status, _)) if *status != 0 => self.log(&name).await,
+            _ => None,
+        };
         if !matches!(ended, Err(ExecutorError::Cancelled)) {
-            self.delete(&name, "background").await;
+            self.delete(&name, PropagationPolicy::Background).await;
         }
-        finish(ended?, root.to_owned(), limits.seconds).await
+        let finished = finish(ended?, root.to_owned(), limits.seconds).await;
+        match (finished, log) {
+            (Err(ExecutorError::Engine { engine, message }), Some(log)) => {
+                Err(ExecutorError::Engine {
+                    engine,
+                    message: format!("{message}: {log}"),
+                })
+            }
+            (finished, _) => finished,
+        }
     }
 
     /// Creates a Job from its manifest.
-    async fn create(&self, manifest: &serde_json::Value) -> Result<(), ExecutorError> {
-        let mut child = (self.kubectl.command())
-            .args(["create", "--filename", "-"])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|error| machine(format!("cannot run kubectl: {error}")))?;
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(manifest.to_string().as_bytes()).await?;
-        }
-        let output = child.wait_with_output().await?;
-        if !output.status.success() {
-            let error = String::from_utf8_lossy(&output.stderr);
-            return Err(machine(format!(
-                "kubectl could not create the Job: {}",
-                error.trim()
-            )));
-        }
+    async fn create(&self, manifest: serde_json::Value) -> Result<(), ExecutorError> {
+        let job = serde_json::from_value(manifest)
+            .map_err(|error| machine(format!("the Job is not valid: {error}")))?;
+        let jobs = self.cluster.jobs();
+        (jobs.create(&PostParams::default(), &job).await)
+            .map_err(|error| machine(format!("the cluster did not take the Job: {error}")))?;
         Ok(())
     }
 
-    /// Deletes a Job and its pod, without waiting.
-    async fn delete(&self, name: &str, cascade: &str) {
-        let _ = (self.kubectl.command())
-            .args(["delete", "job", name, "--wait=false", "--ignore-not-found"])
-            .arg(format!("--cascade={cascade}"))
-            .output()
-            .await;
+    /// Deletes a Job and its pod, without waiting; a Job that is gone already is fine.
+    async fn delete(&self, name: &str, policy: PropagationPolicy) {
+        let parameters = DeleteParams {
+            propagation_policy: Some(policy),
+            ..DeleteParams::default()
+        };
+        let _ = self.cluster.jobs().delete(name, &parameters).await;
+    }
+
+    /// The last lines of the log of the pod of a Job, when there is one.
+    async fn log(&self, name: &str) -> Option<String> {
+        let pods = self.cluster.pods();
+        let selector = ListParams::default().labels(&format!("job-name={name}"));
+        let list = pods.list(&selector).await.ok()?;
+        let pod = list.items.last()?.metadata.name.clone()?;
+        let parameters = LogParams {
+            tail_lines: Some(5),
+            ..LogParams::default()
+        };
+        let log = pods.logs(&pod, &parameters).await.ok()?;
+        let lines: Vec<&str> = log.lines().filter(|line| !line.trim().is_empty()).collect();
+        (!lines.is_empty()).then(|| lines.join("; "))
     }
 
     /// Waits for the container of a Job to end, and deletes the Job when `cancel` fires.
@@ -192,7 +209,7 @@ impl KubernetesBackend {
                 }
             }
             pause = (pause * 2).min(self.poll);
-            let problem = match (self.pods.look(name, self.poll, &self.kubectl, &self.label)).await
+            let problem = match (self.pods.look(name, self.poll, &self.cluster, &self.label)).await
             {
                 Look::Active | Look::Unknown => None,
                 Look::Ended { exit_code, reason } => return Ok(Ended::Exited(exit_code, reason)),
@@ -205,7 +222,7 @@ impl KubernetesBackend {
                 (None, _) => trouble = None,
                 (Some(_), None) => trouble = Some(Instant::now()),
                 (Some(problem), Some(since)) if since.elapsed() >= GRACE => {
-                    self.delete(name, "background").await;
+                    self.delete(name, PropagationPolicy::Background).await;
                     return Err(machine(problem));
                 }
                 (Some(_), Some(_)) => {}
@@ -215,13 +232,13 @@ impl KubernetesBackend {
 
     /// Deletes a Job and waits until its pod is gone, so that its container stopped.
     async fn cancel(&self, name: &str) {
-        self.delete(name, "foreground").await;
+        self.delete(name, PropagationPolicy::Foreground).await;
         let deadline = Instant::now() + CANCEL_GRACE;
         while Instant::now() < deadline {
             tokio::time::sleep(self.poll.min(Duration::from_secs(1))).await;
             let look = self
                 .pods
-                .look(name, self.poll, &self.kubectl, &self.label)
+                .look(name, self.poll, &self.cluster, &self.label)
                 .await;
             if look == Look::Missing {
                 break;

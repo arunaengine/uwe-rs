@@ -85,8 +85,9 @@ pub trait Executor {
     }
 }
 
-/// The Tokio runtime that drives the attempts of all runs in this process.
-pub(crate) fn runtime() -> Result<&'static tokio::runtime::Runtime, ExecuteError> {
+/// The Tokio runtime that drives the attempts of all runs in this process. Executors make
+/// clients that attempts use, like one of the Kubernetes API, on it.
+pub fn runtime() -> Result<&'static tokio::runtime::Runtime, ExecuteError> {
     static RUNTIME: OnceLock<Result<tokio::runtime::Runtime, String>> = OnceLock::new();
     let runtime = RUNTIME.get_or_init(|| {
         let workers = std::thread::available_parallelism().map_or(2, |cpus| cpus.get().min(4));

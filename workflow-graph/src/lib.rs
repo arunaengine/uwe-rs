@@ -29,7 +29,7 @@ mod task;
 pub use driver::{Driver, DriverError, Launch};
 pub use engine::{Engine, ExecuteError, Execution, execute, execute_with};
 pub use events::{Event, Observer};
-pub use executor::{Attempt, CancellationToken, Executor, Running};
+pub use executor::{Attempt, CancellationToken, Executor, Running, runtime};
 pub use files::{Delivery, DeliveryMode, Files, LocalFiles};
 pub use graph::{Edge, EdgeKind, ExecutionGraph, Node};
 pub use marker::{MORE_TASKS, Marker, MarkerKind, Note, SIMULATION};

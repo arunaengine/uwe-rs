@@ -65,10 +65,18 @@ pub struct Task {
     /// Text for standard input, when the task reads one.
     pub stdin: Option<String>,
     pub resources: Resources,
+    /// Whether the task runs without network, as CWL tools do unless they ask for it with
+    /// `NetworkAccess`. Executors that can cut a container off the network do so.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub offline: bool,
     /// Tasks this one must wait for besides those that made its input files, like Argo steps
     /// or Snakemake rules ordered without files. Each must be a task that the driver asked for
     /// before this one; the engine starts this task only when all of them have finished.
     pub after: Vec<TaskId>,
+}
+
+fn is_false(flag: &bool) -> bool {
+    !flag
 }
 
 impl Task {

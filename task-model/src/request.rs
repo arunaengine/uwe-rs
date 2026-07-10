@@ -49,6 +49,9 @@ pub struct Placement {
     pub queue: Option<String>,
     /// Backend parameters passed through as given, such as TES `backend_parameters`.
     pub parameters: BTreeMap<String, String>,
+    /// Whether the task runs without network, where the backend can cut it off.
+    #[serde(default)]
+    pub offline: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

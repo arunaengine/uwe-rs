@@ -476,6 +476,7 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
         outputs,
         stdin: None,
         resources: resources(request),
+        offline: false,
         after: Vec::new(),
     }
 }

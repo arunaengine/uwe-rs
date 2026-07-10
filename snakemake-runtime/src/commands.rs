@@ -104,6 +104,7 @@ impl CommandRunner {
             outputs: Vec::new(),
             stdin: None,
             resources: Default::default(),
+            offline: false,
             after: Vec::new(),
         }
     }

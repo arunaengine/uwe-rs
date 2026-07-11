@@ -3,7 +3,10 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use storage::{Storage, StorageError};
 
 use crate::error::Error;
 use crate::iri;
@@ -39,15 +42,57 @@ impl Source for FileSystem {
     }
 }
 
-/// Reads `file:` URLs from the local file system and `http:` and `https:` URLs from the web,
-/// as cwltool does for `run` and `$import` targets that are web addresses.
+/// Where documents and files at addresses come from: the storage providers, so that the
+/// config file's providers and secrets apply to CWL too, and the folder that keeps what they
+/// download.
+#[derive(Clone, Debug)]
+pub struct Remote {
+    pub storage: Storage,
+    pub downloads: PathBuf,
+}
+
+impl Remote {
+    pub fn new(storage: &Storage, downloads: PathBuf) -> Remote {
+        Remote {
+            storage: storage.clone(),
+            downloads,
+        }
+    }
+}
+
+/// Without storage providers of a config file, and with a folder of downloads in the
+/// temporary folder of the system, for callers that give none.
+impl Default for Remote {
+    fn default() -> Self {
+        Remote::new(
+            &Storage::default(),
+            std::env::temp_dir().join("iunctus-downloads"),
+        )
+    }
+}
+
+/// Reads `file:` URLs from the local file system and `http:` and `https:` URLs through the
+/// storage providers, as cwltool reads `run` and `$import` targets that are web addresses.
 #[derive(Clone, Debug, Default)]
-pub struct Web;
+pub struct Web {
+    remote: Remote,
+}
+
+impl Web {
+    pub fn new(remote: Remote) -> Web {
+        Web { remote }
+    }
+}
 
 impl Source for Web {
     fn read(&self, url: &str) -> Result<String, String> {
         match iri::Parts::parse(url).scheme {
-            Some("http" | "https") => fetch(url),
+            Some("http" | "https") => {
+                let downloads = &self.remote.downloads;
+                let copy =
+                    (self.remote.storage.blocking().fetch(url, downloads)).map_err(reason)?;
+                std::fs::read_to_string(&copy).map_err(|error| error.to_string())
+            }
             _ => FileSystem.read(url),
         }
     }
@@ -57,40 +102,15 @@ impl Source for Web {
     }
 }
 
-/// The text at a web address. Each address is fetched once per process, with one client that
-/// all fetches share, so that a host's address is looked up once and its connection reused.
-fn fetch(url: &str) -> Result<String, String> {
-    static CLIENT: OnceLock<Result<reqwest::blocking::Client, String>> = OnceLock::new();
-    static FETCHED: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
-    let fetched = FETCHED.get_or_init(Default::default);
-    if let Some(text) = fetched
-        .lock()
-        .ok()
-        .and_then(|texts| texts.get(url).cloned())
-    {
-        return Ok(text);
+/// Why a document could not be fetched, without the address that the caller names already.
+fn reason(error: StorageError) -> String {
+    match error {
+        StorageError::Failed {
+            provider, message, ..
+        } => format!("{message} ({provider})"),
+        StorageError::Missing { provider, .. } => format!("it does not exist ({provider})"),
+        error => error.to_string(),
     }
-    let client = CLIENT
-        .get_or_init(|| {
-            reqwest::blocking::Client::builder()
-                .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
-                .connect_timeout(std::time::Duration::from_secs(30))
-                .timeout(std::time::Duration::from_secs(120))
-                .build()
-                .map_err(|error| error.to_string())
-        })
-        .as_ref()
-        .map_err(Clone::clone)?;
-    let text = client
-        .get(url)
-        .send()
-        .and_then(|response| response.error_for_status())
-        .and_then(|response| response.text())
-        .map_err(|error| error.to_string())?;
-    if let Ok(mut texts) = fetched.lock() {
-        texts.insert(url.to_owned(), text.clone());
-    }
-    Ok(text)
 }
 
 /// Documents held in memory by URL, for tests and for callers that read files themselves.

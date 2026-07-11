@@ -45,7 +45,7 @@ fn matches_cwltool_validate() {
     let mut agreed = 0;
     for document in &documents {
         let path = root.join(document);
-        let loaded = Loader::new(Web).load_entries(&path.to_string_lossy());
+        let loaded = Loader::new(Web::default()).load_entries(&path.to_string_lossy());
         let expected = !rejected.contains_key(document.as_str());
         if loaded.is_ok() == expected {
             agreed += usize::from(!differences.contains_key(document.as_str()));

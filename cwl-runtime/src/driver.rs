@@ -3,12 +3,14 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use cwl_parser::iri;
 use cwl_parser::model::{Process, Type, short_name};
 use cwl_parser::salad::context::Namespaces;
+use cwl_parser::source::Remote;
+use storage::Storage;
 use workflow_graph::{Delivery, Driver, DriverError, Language, Launch, Note, Outcome, Task};
 
 use crate::files;
@@ -41,7 +43,7 @@ impl CwlDriver {
         {
             reference = format!("{reference}#{}", target.trim_start_matches('#'));
         }
-        let document = cwl_parser::load_file(&reference)
+        let document = cwl_parser::load_file(&reference, options.remote.clone())
             .map_err(|error| DriverError::new(error.to_string()))?;
         let simulated = options.simulated;
         let mut run = Run::new(options);
@@ -108,11 +110,23 @@ impl CwlDriver {
     }
 }
 
-/// The driver of a CWL launch; it takes absent files as present and empty when the launch
-/// assumes its inputs, as for the simulator.
+/// The driver of a CWL launch without the providers of a config file: it takes absent files
+/// as present and empty when the launch is simulated.
 pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
+    let downloads = Remote::default().downloads;
+    driver_with(launch, &Storage::default(), downloads)
+}
+
+/// The driver of a CWL launch that reads documents and files at addresses through `storage`,
+/// which keeps what it downloads in the folder `downloads`.
+pub fn driver_with(
+    launch: &Launch,
+    storage: &Storage,
+    downloads: PathBuf,
+) -> Result<Box<dyn Driver>, DriverError> {
     let options = Options {
         simulated: launch.simulated,
+        remote: Remote::new(storage, downloads),
         ..Options::default()
     };
     Ok(Box::new(CwlDriver::new(launch, options)?))

@@ -11,6 +11,7 @@ use cwl_parser::model::{
     Argument, Class, Dynamic, Expression, LoadListing, Process, RequirementClass, Type, Version,
     short_name,
 };
+use cwl_parser::source::Remote;
 use workflow_graph::{Resources, Task, TaskId};
 
 use crate::binding::{self, Binder, Bound, Key};
@@ -43,7 +44,7 @@ pub const DEFAULT_IMAGE: &str = "debian:stable-slim";
 pub const OUTPUT_JSON: &str = "cwl.output.json";
 
 /// How a run treats what executors give back.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct Options {
     /// Take absent files as present and empty, and give outputs that the executor cannot
     /// make (like the content of `cwl.output.json`) placeholder values of their type. This
@@ -55,6 +56,8 @@ pub struct Options {
     /// placeholders too, and its flags `true`, as a job that sets every input and turns
     /// everything on; by default optional inputs are null and flags `false`.
     pub fill_optional: bool,
+    /// Where files at addresses are read from while the run plans: the storage providers.
+    pub remote: Remote,
 }
 
 impl Default for Options {
@@ -63,6 +66,7 @@ impl Default for Options {
             simulated: true,
             image: DEFAULT_IMAGE.into(),
             fill_optional: false,
+            remote: Remote::default(),
         }
     }
 }

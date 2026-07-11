@@ -24,7 +24,7 @@ pub mod tool;
 pub mod types;
 pub mod value;
 
-pub use driver::{CwlDriver, driver, process_name};
+pub use driver::{CwlDriver, driver, driver_with, process_name};
 pub use expression::{Evaluator, Variables};
 pub use tool::Options;
 pub use value::{Map, Value};

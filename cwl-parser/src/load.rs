@@ -13,7 +13,7 @@ use crate::model::{Process, Runs, Version, check_workflows, read_process};
 use crate::node::{Location, Node, Value};
 use crate::salad::context::Namespaces;
 use crate::salad::{Resolver, check_links, find_object};
-use crate::source::{Documents, Source, Web};
+use crate::source::{Documents, Remote, Source, Web};
 
 /// A loaded document: its main process, with every `run` loaded, and document metadata.
 #[derive(Clone, Debug, PartialEq)]
@@ -42,9 +42,10 @@ pub struct Loader {
     loading: Vec<String>,
 }
 
-/// Loads a file, and everything it refers to, from the local file system and the web.
-pub fn load_file(path: impl AsRef<Path>) -> Result<Document, Error> {
-    let mut loader = Loader::new(Web);
+/// Loads a file, and everything it refers to, from the local file system and the web, which
+/// the storage providers of `remote` serve.
+pub fn load_file(path: impl AsRef<Path>, remote: Remote) -> Result<Document, Error> {
+    let mut loader = Loader::new(Web::new(remote));
     let path = path.as_ref().to_string_lossy();
     loader.load(&path)
 }

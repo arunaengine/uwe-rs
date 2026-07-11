@@ -321,7 +321,10 @@ fn driver(
         Language::Snakemake => {
             snakemake_runtime::driver_with(launch, snakemake(arguments, &setup.storage))
         }
-        Language::Cwl => cwl_runtime::driver(launch),
+        Language::Cwl => {
+            let downloads = cache_directory().join("downloads");
+            cwl_runtime::driver_with(launch, &setup.storage, downloads)
+        }
         Language::Argo => argo_runtime::driver(launch),
     }
 }

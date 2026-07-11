@@ -296,7 +296,7 @@ impl Collector<'_> {
 
     /// Adds size and checksum to the files of a value that lack them.
     fn checksums(&self, value: &mut Value) -> Result<(), String> {
-        let access = self.access;
+        let access = &self.access;
         let mut error = None;
         files::visit_files(value, &mut |file| {
             let is_file = file.get("class").and_then(Value::as_str) == Some("File");

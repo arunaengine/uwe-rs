@@ -24,4 +24,5 @@ storage.workspace = true
 workflow-graph.workspace = true
 
 [dev-dependencies]
+config-file.workspace = true
 tempfile.workspace = true

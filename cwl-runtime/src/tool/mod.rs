@@ -75,6 +75,7 @@ impl Options {
     pub fn access(&self) -> Access {
         Access {
             assume_present: self.simulated,
+            remote: self.remote.clone(),
         }
     }
 }

@@ -28,6 +28,7 @@ fn setting<'a>(types: &'a Types, evaluator: &'a Evaluator, assumed: &'a [String]
         evaluator,
         access: Access {
             assume_present: true,
+            ..Access::default()
         },
         load_listing: None,
         discover: true,

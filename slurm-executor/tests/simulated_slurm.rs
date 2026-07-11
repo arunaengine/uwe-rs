@@ -11,7 +11,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use executor::{Backend, ContainerEngine, ExecutorError, Job, Staged, Staging};
+use executor::{Backend, EngineCommand, ExecutorError, Job, Staged, Staging};
 use slurm_executor::{Container, SlurmBackend};
 use task_model::{FORMAT, Image, OutputRule, Placement, TaskSpec};
 use tokio_util::sync::CancellationToken;
@@ -265,7 +265,7 @@ async fn cancelled_jobs_stop() {
 async fn docker_runs_the_task_in_its_container() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
-    let engine = ContainerEngine::docker("docker");
+    let engine = EngineCommand::docker("docker");
     let backend = backend(root.path(), &bin, Container::Engine(engine));
     let spec = spec("grep -c . /etc/debian_version > out.txt && cat in.txt >> out.txt");
     let staging = staging(root.path(), "hello\n");

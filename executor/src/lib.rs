@@ -20,7 +20,7 @@ use std::future::Future;
 
 use tokio_util::sync::CancellationToken;
 
-pub use engine::{ContainerEngine, EngineKind, NoEngine};
+pub use engine::{ContainerEngine, EngineCommand, EngineKind, NoEngine};
 pub use job::{CONTROL, ExecutorError, Finished, Job, Staged, Staging, WORK};
 pub use local::{ContainerRun, LocalContainer};
 pub use pool::{Pool, Share};

@@ -6,7 +6,7 @@
 use std::path::Path;
 
 use executor::wrapper::quote;
-use executor::{CONTROL, ContainerEngine, ContainerRun, Job};
+use executor::{CONTROL, ContainerRun, EngineCommand, Job};
 
 /// The job script in the control folder of an attempt.
 pub const SCRIPT: &str = "job.sh";
@@ -25,7 +25,7 @@ pub enum Container {
     Apptainer(String),
     /// Podman or Docker. The container may run outside the job, so it gets the limits of the
     /// job and stops with it.
-    Engine(ContainerEngine),
+    Engine(EngineCommand),
 }
 
 /// The options of `sbatch` for an attempt whose scratch directory is `root`: its name, its
@@ -244,7 +244,7 @@ mod tests {
     #[test]
     fn podman_runs_the_wrapper_with_an_init_process_and_the_limits() {
         let image = spec(None).image.expect("an image");
-        let engine = ContainerEngine {
+        let engine = EngineCommand {
             program: "podman".into(),
             kind: EngineKind::Podman,
             rootless: true,
@@ -262,7 +262,7 @@ mod tests {
             offline: true,
             ..run(&image, &[], None)
         };
-        let engine = ContainerEngine::docker("docker");
+        let engine = EngineCommand::docker("docker");
         let script = job_script(&Container::Engine(engine), &offline, false);
         assert!(script.contains("'--network' 'none'"), "{script}");
     }

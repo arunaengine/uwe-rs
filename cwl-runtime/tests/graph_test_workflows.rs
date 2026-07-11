@@ -47,7 +47,7 @@ const LIMIT: Duration = Duration::from_secs(60);
 fn outcome(root: &Path, document: &str) -> String {
     let path = root.join(document).to_string_lossy().into_owned();
     // A packed file without `#main` runs each of its processes.
-    let references: Vec<String> = match Loader::new(Web).load_entries(&path) {
+    let references: Vec<String> = match Loader::new(Web::default()).load_entries(&path) {
         Ok(processes) if processes.len() > 1 => processes
             .iter()
             .map(|process| {

@@ -191,6 +191,59 @@ fn secrets_never_show() {
     assert!(path.join("crate/ro-crate-metadata.json").is_file());
 }
 
+const CWL_WORKFLOW: &str = "cwlVersion: v1.2
+class: Workflow
+inputs: []
+outputs: []
+steps:
+  hello:
+    run: __SERVER__/private/tool.cwl
+    in: {}
+    out: []
+";
+
+const CWL_TOOL: &str = "cwlVersion: v1.2
+class: CommandLineTool
+baseCommand: echo
+inputs: []
+outputs: []
+";
+
+#[test]
+fn cwl_documents_come_through_the_providers() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path();
+    let server = private_server(&[("/private/tool.cwl", CWL_TOOL)]);
+    std::fs::write(
+        path.join("wf.cwl"),
+        CWL_WORKFLOW.replace("__SERVER__", &server),
+    )
+    .expect("writes the workflow");
+    let config = format!(
+        "[storage.private]\ntype = \"https\"\nprefixes = [\"{server}/private/\"]\n\
+         token = {{ environment = \"IUNCTUS_TEST_TOKEN\" }}\n"
+    );
+    std::fs::write(path.join("iunctus.toml"), config).expect("writes the config file");
+    let graph = ["graph", "wf.cwl", "-iunctus-config", "iunctus.toml"];
+
+    let (code, output) = iunctus(path, "cache", &[("IUNCTUS_TEST_TOKEN", TOKEN)], &graph);
+    assert_eq!(code, 0, "{output}");
+    assert!(output.contains("hello"), "{output}");
+    // Without the token, the private server refuses the document, and the error names the
+    // provider.
+    let wrong = "wrong-token-of-the-test-9981";
+    let (code, refused) = iunctus(path, "other", &[("IUNCTUS_TEST_TOKEN", wrong)], &graph);
+    assert_eq!(code, 1, "{refused}");
+    assert!(
+        refused.contains("the server refused access (401 Unauthorized)"),
+        "{refused}"
+    );
+    assert!(
+        !refused.contains(wrong) && !refused.contains(TOKEN),
+        "{refused}"
+    );
+}
+
 /// An environment variable that `just storage-test` sets.
 fn variable(name: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| panic!("{name} is set by `just storage-test`"))

@@ -20,6 +20,7 @@ boa_engine.workspace = true
 cwl-parser.workspace = true
 indexmap.workspace = true
 sha1.workspace = true
+storage.workspace = true
 workflow-graph.workspace = true
 
 [dev-dependencies]

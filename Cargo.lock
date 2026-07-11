@@ -868,6 +868,7 @@ name = "cwl-runtime"
 version = "0.1.0"
 dependencies = [
  "boa_engine",
+ "config-file",
  "cwl-parser",
  "indexmap",
  "serde_json",

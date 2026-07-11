@@ -3,10 +3,13 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use cwl_parser::iri;
+use cwl_parser::source::Remote;
 use sha1::{Digest, Sha1};
+use storage::address;
 
 use crate::value::{Map, Value};
 
@@ -15,10 +18,12 @@ pub const CONTENTS_LIMIT: u64 = 64 * 1024;
 
 /// How files that are not on disk count. The simulator makes empty outputs and job files
 /// often name data that is not there, so a simulated run takes every file as present and
-/// empty.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// empty, and reads no file at an address. A real run reads the content and size of files at
+/// addresses, like `https://` or `s3://`, through the storage providers of `remote`.
+#[derive(Clone, Debug, Default)]
 pub struct Access {
     pub assume_present: bool,
+    pub remote: Remote,
 }
 
 /// The local path of a `file:` location.
@@ -197,7 +202,8 @@ pub fn checksum_of(bytes: &[u8]) -> String {
 }
 
 impl Access {
-    /// The bytes of a file: from disk, or its `contents` for a literal.
+    /// The bytes of a file: from disk, its `contents` for a literal, or from the storage
+    /// providers for a file at an address (never in a simulated run).
     pub fn read(&self, file: &Map, limit: Option<u64>) -> Result<Vec<u8>, String> {
         let location = file
             .get("location")
@@ -212,10 +218,7 @@ impl Access {
             if let Some(limit) = limit
                 && metadata.len() > limit
             {
-                return Err(format!(
-                    "{} is larger than {limit} bytes, the limit of loadContents",
-                    path.display()
-                ));
+                return Err(too_large(&path.display().to_string(), limit));
             }
             return std::fs::read(&path)
                 .map_err(|error| format!("cannot read {}: {error}", path.display()));
@@ -226,7 +229,39 @@ impl Access {
         if self.assume_present {
             return Ok(Vec::new());
         }
+        if address::scheme(location).is_some() {
+            return self.read_remote(location, limit);
+        }
         Err(format!("cannot read `{location}`"))
+    }
+
+    /// The bytes of a file at an address. A file that the provider says is larger than the
+    /// `limit` is not downloaded.
+    fn read_remote(&self, location: &str, limit: Option<u64>) -> Result<Vec<u8>, String> {
+        let failed = |error: storage::StorageError| format!("cannot read {location}: {error}");
+        let storage = self.remote.storage.blocking();
+        if let Some(limit) = limit {
+            let found = storage.metadata(location, &self.remote.downloads);
+            match found.map_err(failed)? {
+                Some(found) if found.size > limit => return Err(too_large(location, limit)),
+                Some(_) => {}
+                None => return Err(format!("cannot read {location}: it does not exist")),
+            }
+        }
+        let copy = storage
+            .fetch(location, &self.remote.downloads)
+            .map_err(failed)?;
+        let read = |error: std::io::Error| format!("cannot read {}: {error}", copy.display());
+        let file = std::fs::File::open(&copy).map_err(read)?;
+        // A server that does not tell the size of a file cannot make this read more than
+        // the limit and one byte, which shows that the file is larger.
+        let most = limit.map_or(u64::MAX, |limit| limit.saturating_add(1));
+        let mut bytes = Vec::new();
+        file.take(most).read_to_end(&mut bytes).map_err(read)?;
+        match limit {
+            Some(limit) if bytes.len() as u64 > limit => Err(too_large(location, limit)),
+            _ => Ok(bytes),
+        }
     }
 
     /// Sets `contents` from the file, at most 64 KiB of UTF-8.
@@ -243,8 +278,8 @@ impl Access {
         Ok(())
     }
 
-    /// Sets `size` when it is missing: from disk, from the contents of a literal, or 0 for an
-    /// absent file that counts as present.
+    /// Sets `size` when it is missing: from disk, from the contents of a literal, 0 for an
+    /// absent file that counts as present, or from the provider of a file at an address.
     pub fn add_size(&self, file: &mut Map) {
         if file.contains_key("size") {
             return;
@@ -260,12 +295,23 @@ impl Access {
             }
         } else if let Some(Value::String(contents)) = file.get("contents") {
             Some(contents.len() as i64)
+        } else if self.assume_present {
+            Some(0)
         } else {
-            self.assume_present.then_some(0)
+            self.remote_size(location)
         };
         if let Some(size) = size {
             file.insert("size".into(), Value::Integer(size));
         }
+    }
+
+    /// The size of a file at an address, from a request of its provider; `None` for a file
+    /// that is not there, and for what is not an address.
+    fn remote_size(&self, location: &str) -> Option<i64> {
+        address::scheme(location)?;
+        let storage = self.remote.storage.blocking();
+        let found = storage.metadata(location, &self.remote.downloads).ok()??;
+        (!found.directory).then(|| i64::try_from(found.size).unwrap_or(i64::MAX))
     }
 
     /// Sets `size` and `checksum` from the bytes of a file, as cwltool does for outputs.
@@ -344,6 +390,11 @@ impl Access {
             }
         }
     }
+}
+
+/// The error of a file that `loadContents` may not read.
+fn too_large(name: &str, limit: u64) -> String {
+    format!("{name} is larger than {limit} bytes, the limit of loadContents")
 }
 
 /// The entries of a directory on disk, sorted by name.

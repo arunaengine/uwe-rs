@@ -11,7 +11,7 @@ use task_model::Image;
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
-use crate::engine::ContainerEngine;
+use crate::engine::{ContainerEngine, EngineCommand};
 use crate::image;
 use crate::job::{CONTROL, ExecutorError, Finished, Job, WORK};
 use crate::manifest::parse;
@@ -120,7 +120,7 @@ impl ContainerRun<'_> {
     }
 
     /// The arguments of the engine's command that run the wrapper with Bash in the image.
-    pub fn arguments(&self, engine: &ContainerEngine) -> Vec<String> {
+    pub fn arguments(&self, engine: &EngineCommand) -> Vec<String> {
         let root = text(self.root);
         let mut arguments: Vec<String> = ["run", "--rm", "--name", self.name]
             .into_iter()
@@ -185,7 +185,7 @@ impl LocalContainer {
         let control = root.join(CONTROL);
         tokio::fs::write(run.script(), wrapper(&spec, &run.inside(), &text(&control))).await?;
         let mut command = Command::new(&self.engine.program);
-        command.args(run.arguments(&self.engine));
+        command.args(run.arguments(&self.engine.command()));
         command.stdin(Stdio::null());
         let time = job.placement.time_seconds.map(Duration::from_secs);
         let ending = self.wait(command, &container, time, cancel).await?;

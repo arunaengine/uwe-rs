@@ -92,6 +92,37 @@ impl ContainerEngine {
         })
     }
 
+    /// The engine as a command, for the options of `run`.
+    pub fn command(&self) -> EngineCommand {
+        EngineCommand {
+            program: self.program.clone(),
+            kind: self.kind,
+            rootless: self.rootless,
+        }
+    }
+}
+
+/// How a script runs a container engine by its command, like a job script on a node of a
+/// cluster, which runs the `podman` or `docker` of that node.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EngineCommand {
+    /// The command, like `docker`, `podman` or a full path.
+    pub program: String,
+    pub kind: EngineKind,
+    /// Whether the engine runs without root, as Podman usually does.
+    pub rootless: bool,
+}
+
+impl EngineCommand {
+    /// Docker running with root, by its command.
+    pub fn docker(program: &str) -> EngineCommand {
+        EngineCommand {
+            program: program.to_owned(),
+            kind: EngineKind::Docker,
+            rootless: false,
+        }
+    }
+
     /// The options that run a container as the user with these ids, so that the files it
     /// writes belong to that user. Rootless Podman keeps the user's id inside the container;
     /// rootless Docker maps the container's root to the user, so it runs as root.
@@ -111,7 +142,7 @@ mod tests {
 
     #[test]
     fn users_keep_their_files() {
-        let mut engine = ContainerEngine::docker("docker");
+        let mut engine = EngineCommand::docker("docker");
         assert_eq!(engine.user_options(1000, 100), ["--user", "1000:100"]);
         engine.rootless = true;
         assert!(engine.user_options(1000, 100).is_empty());

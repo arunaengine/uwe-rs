@@ -7,7 +7,7 @@
 use std::path::Path;
 
 use content_store::Store;
-use executor::{ContainerEngine, EngineKind};
+use executor::{EngineCommand, EngineKind};
 use slurm_executor::{Container, SlurmBackend};
 use storage::Storage;
 use task_runner::{Runner, RunnerExecutor, Settings};
@@ -17,12 +17,12 @@ use task_runner::{Runner, RunnerExecutor, Settings};
 pub fn container(name: Option<&str>) -> Result<Container, String> {
     match name.unwrap_or("apptainer") {
         name @ ("apptainer" | "singularity") => Ok(Container::Apptainer(name.to_owned())),
-        "podman" => Ok(Container::Engine(ContainerEngine {
+        "podman" => Ok(Container::Engine(EngineCommand {
             program: "podman".into(),
             kind: EngineKind::Podman,
             rootless: true,
         })),
-        "docker" => Ok(Container::Engine(ContainerEngine::docker("docker"))),
+        "docker" => Ok(Container::Engine(EngineCommand::docker("docker"))),
         other => Err(format!(
             "unknown container runtime `{other}` for SLURM; use apptainer, singularity, podman \
              or docker"

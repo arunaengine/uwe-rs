@@ -178,12 +178,10 @@ fn reports_failures() {
     )
     .unwrap_err();
     assert!(error.retryable(), "{error}");
-    assert!(
-        error
-            .to_string()
-            .starts_with("docker could not run the task"),
-        "{error}"
-    );
+    // The engine does not pull an image that is not here; the runner pins and pulls first.
+    let text = error.to_string();
+    assert!(text.contains("could not run the task"), "{text}");
+    assert!(text.contains("No such image"), "{text}");
 }
 
 #[test]

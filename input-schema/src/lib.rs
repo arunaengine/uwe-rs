@@ -25,11 +25,17 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod compare;
+mod infer;
 mod properties;
+mod text;
 mod upgrade;
 mod valid;
 
+pub use compare::compare;
+pub use infer::{infer, value_schema};
 pub use properties::{Property, properties};
+pub use text::text;
 pub use upgrade::upgrade;
 pub use valid::valid;
 

@@ -34,6 +34,7 @@ mod pod;
 mod resources;
 mod retry;
 mod run;
+mod schema;
 mod scope;
 pub mod sprig;
 mod start;
@@ -50,7 +51,7 @@ use std::rc::Rc;
 
 use argo_parser::{Node, Value as Yaml, parse_yaml};
 use workflow_graph::{
-    Delivery, DeliveryMode, Driver, DriverError, Language, Launch, Note, Outcome, Task,
+    Delivery, DeliveryMode, Driver, DriverError, Inputs, Language, Launch, Note, Outcome, Task,
 };
 
 pub use library::{Document, Kind, Library, load_file, repository_of};
@@ -176,6 +177,13 @@ impl Driver for ArgoDriver {
         (self.run.as_mut())
             .map(|run| std::mem::take(&mut run.notes))
             .unwrap_or_default()
+    }
+
+    /// The parameters and input artifacts of the workflow, with the values of the run.
+    fn inputs(&mut self) -> Result<Option<Inputs>, DriverError> {
+        schema::inputs(&self.document, &self.library, &self.options)
+            .map(Some)
+            .map_err(driver_error)
     }
 }
 

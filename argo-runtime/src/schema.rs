@@ -1,0 +1,286 @@
+//! The inputs of an Argo workflow as one JSON Schema (decision 24): the parameters of
+//! `spec.arguments`, which are texts, with their `enum`, their value as the default and their
+//! `description`, and the input parameters of the entrypoint that no argument supplies. Input
+//! artifacts are paths that the workflow gives itself, with their location as the default. The
+//! values of a run are its parameters after the command line and the parameter file.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::collections::BTreeSet;
+use std::path::PathBuf;
+
+use argo_parser::model::{Artifact, Parameter, Template, WorkflowSpec};
+use argo_parser::{Node, Value as Yaml, decode};
+use input_schema::{DRAFT, PATH};
+use serde_json::{Map, Value as Json, json};
+use workflow_graph::Inputs;
+
+use crate::Options;
+use crate::library::{Document, Kind, Library};
+use crate::run::{Failure, Result};
+use crate::start::{Joined, joined_spec, workflow_parameters};
+
+/// The annotation that holds the description of a workflow in Argo's user interface.
+const DESCRIPTION: &str = "workflows.argoproj.io/description";
+
+/// The inputs of the workflow that a document runs.
+pub(crate) fn inputs(document: &Document, library: &Library, options: &Options) -> Result<Inputs> {
+    let Joined { spec: node, .. } = joined_spec(document, library)?;
+    let (spec, _) =
+        decode::<WorkflowSpec>(&node).map_err(|error| Failure::error(format!("spec: {error}")))?;
+    let entrypoint = (options.entrypoint.clone())
+        .filter(|entrypoint| !entrypoint.is_empty())
+        .unwrap_or_else(|| spec.entrypoint.clone());
+    let entry_node = template(&node, &entrypoint);
+    let entry = entry_node
+        .and_then(|entry| decode::<Template>(entry).ok())
+        .map(|(template, _)| template)
+        .unwrap_or_default();
+    // The run warns about what it makes up itself.
+    let mut warnings = Vec::new();
+    let given = workflow_parameters(
+        &spec,
+        entry_node,
+        options,
+        (library, &document.path),
+        &mut warnings,
+    )?;
+    let mut properties = Map::new();
+    let mut required = Vec::new();
+    let supplied = |name: &str| spec.arguments.parameters.iter().any(|p| p.name == name);
+    let entry_inputs = entry
+        .inputs
+        .parameters
+        .iter()
+        .filter(|p| !supplied(&p.name));
+    for parameter in spec.arguments.parameters.iter().chain(entry_inputs) {
+        let schema = parameter_schema(parameter);
+        if schema.get("default").is_none() && parameter.value_from.is_none() {
+            required.push(json!(parameter.name));
+        }
+        properties.insert(parameter.name.clone(), schema);
+    }
+    let argument = |name: &str| spec.arguments.artifacts.iter().any(|a| a.name == name);
+    let entry_artifacts = entry.inputs.artifacts.iter().filter(|a| !argument(&a.name));
+    let mut values = Map::new();
+    for artifact in spec.arguments.artifacts.iter().chain(entry_artifacts) {
+        let mut schema = json!({"type": "string", "format": PATH, "readOnly": true});
+        if let Some(location) = location(artifact) {
+            schema["default"] = json!(location);
+            values.insert(artifact.name.clone(), json!(location));
+        }
+        properties.insert(artifact.name.clone(), schema);
+    }
+    for parameter in &given.parameters {
+        if let Some(value) = &parameter.value {
+            values.insert(parameter.name.clone(), json!(value.0));
+        }
+    }
+    let mut schema = json!({
+        "$schema": DRAFT,
+        "title": title(document),
+        "type": "object",
+        "properties": properties,
+    });
+    if let Some(description) = annotation(document, DESCRIPTION) {
+        schema["description"] = json!(description);
+    }
+    if !required.is_empty() {
+        schema["required"] = Json::Array(required);
+    }
+    let read = read(&node, library, &document.path, entry_node, &entry, &spec);
+    Ok(Inputs {
+        schema,
+        values: Json::Object(values),
+        base: std::env::current_dir().unwrap_or_default(),
+        read: Some(read),
+        assumes_values: options.assume_inputs,
+    })
+}
+
+/// The schema of a parameter: a text, with its choices, its value or default as the default,
+/// and its description.
+fn parameter_schema(parameter: &Parameter) -> Json {
+    let mut schema = json!({"type": "string"});
+    if !parameter.enumeration.is_empty() {
+        let choices: Vec<&str> = parameter.enumeration.iter().map(|c| c.as_str()).collect();
+        schema["enum"] = json!(choices);
+    }
+    let default = (parameter.value.as_ref())
+        .or(parameter.default.as_ref())
+        .or_else(|| parameter.value_from.as_ref()?.default.as_ref());
+    if let Some(default) = default {
+        schema["default"] = json!(default.as_str());
+    }
+    if let Some(description) = &parameter.description {
+        schema["description"] = json!(description.as_str());
+    }
+    schema
+}
+
+/// Where an artifact comes from, as an address, when it names one.
+fn location(artifact: &Artifact) -> Option<String> {
+    let text = |node: &Option<Node>, key: &str| {
+        node.as_ref()?
+            .get(key)
+            .and_then(Node::as_str)
+            .map(str::to_owned)
+    };
+    let bucket_key = |node: &Option<Node>, scheme: &str| {
+        let key = text(node, "key")?;
+        Some(match text(node, "bucket") {
+            Some(bucket) => format!("{scheme}://{bucket}/{key}"),
+            None => format!("{scheme}://{key}"),
+        })
+    };
+    text(&artifact.http, "url")
+        .or_else(|| text(&artifact.git, "repo"))
+        .or_else(|| text(&artifact.artifactory, "url"))
+        .or_else(|| bucket_key(&artifact.s3, "s3"))
+        .or_else(|| bucket_key(&artifact.gcs, "gs"))
+        .or_else(|| text(&artifact.raw, "data").map(|_| "data:,".to_owned()))
+}
+
+/// The template of a spec by its name.
+fn template<'a>(spec: &'a Node, name: &str) -> Option<&'a Node> {
+    match &spec.get("templates")?.value {
+        Yaml::Sequence(templates) => templates
+            .iter()
+            .find(|template| template.get("name").and_then(Node::as_str) == Some(name)),
+        _ => None,
+    }
+}
+
+/// The name of the workflow: its `metadata.name` or `generateName`, else its label.
+fn title(document: &Document) -> String {
+    let metadata = document.node.get("metadata");
+    ["name", "generateName"]
+        .iter()
+        .find_map(|key| metadata?.get(key).and_then(Node::as_str))
+        .filter(|name| !name.is_empty())
+        .map_or_else(|| document.label(), str::to_owned)
+}
+
+fn annotation(document: &Document, key: &str) -> Option<String> {
+    let annotations = document.node.get("metadata")?.get("annotations")?;
+    annotations
+        .get(key)
+        .and_then(Node::as_str)
+        .map(str::to_owned)
+}
+
+/// The parameters that the workflow reads: `workflow.parameters.<name>` anywhere in its spec
+/// and in the templates it refers to with `templateRef`, and `inputs.parameters.<name>` in its
+/// entrypoint, whose inputs the arguments supply. An input artifact of the entrypoint is read,
+/// as Argo places it in the container. `{{workflow.parameters}}` reads every parameter.
+fn read(
+    spec: &Node,
+    library: &Library,
+    near: &std::path::Path,
+    entry: Option<&Node>,
+    template: &Template,
+    declared: &WorkflowSpec,
+) -> BTreeSet<String> {
+    let mut texts = Vec::new();
+    let mut seen: BTreeSet<(bool, String)> = BTreeSet::new();
+    let mut pending: Vec<(Node, PathBuf)> = vec![(spec.clone(), near.to_owned())];
+    while let Some((node, near)) = pending.pop() {
+        let mut references = Vec::new();
+        strings(&node, &mut texts, &mut references);
+        for (cluster, name) in references {
+            if !seen.insert((cluster, name.clone())) {
+                continue;
+            }
+            let kind = match cluster {
+                true => Kind::ClusterWorkflowTemplate,
+                false => Kind::WorkflowTemplate,
+            };
+            if let Some(found) = library.find(kind, &name, &near)
+                && let Some(spec) = found.spec()
+            {
+                pending.push((spec.clone(), found.path.clone()));
+            }
+        }
+    }
+    let mut names = BTreeSet::new();
+    for text in &texts {
+        names.extend(names_after(text, "workflow.parameters"));
+        if text.contains("{{workflow.parameters}}") || text.contains("workflow.parameters.json") {
+            names.extend(declared.arguments.parameters.iter().map(|p| p.name.clone()));
+        }
+    }
+    names.remove("json");
+    if let Some(entry) = entry {
+        let mut own = Vec::new();
+        strings(entry, &mut own, &mut Vec::new());
+        for text in &own {
+            names.extend(names_after(text, "inputs.parameters"));
+        }
+    }
+    names.extend(template.inputs.artifacts.iter().map(|a| a.name.clone()));
+    names
+}
+
+/// Every text of a node, keys aside, and the templates that its `templateRef`s name, with
+/// whether each is cluster-scoped.
+fn strings(node: &Node, texts: &mut Vec<String>, references: &mut Vec<(bool, String)>) {
+    match &node.value {
+        Yaml::String(text) => texts.push(text.clone()),
+        Yaml::Sequence(items) => items
+            .iter()
+            .for_each(|item| strings(item, texts, references)),
+        Yaml::Mapping(entries) => {
+            for entry in entries {
+                if entry.key == "templateRef"
+                    && let Some(name) = entry.value.get("name").and_then(Node::as_str)
+                {
+                    let cluster = entry
+                        .value
+                        .get("clusterScope")
+                        .is_some_and(|scope| scope.value == Yaml::Bool(true));
+                    references.push((cluster, name.to_owned()));
+                }
+                strings(&entry.value, texts, references);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The parameter names after `prefix.` or inside `prefix['...']` and `prefix["..."]` in a text.
+fn names_after(text: &str, prefix: &str) -> Vec<String> {
+    let name_char = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';
+    let mut names = Vec::new();
+    for (start, _) in text.match_indices(prefix) {
+        let rest = &text[start + prefix.len()..];
+        let name: String = if let Some(rest) = rest.strip_prefix('.') {
+            rest.chars().take_while(|c| name_char(*c)).collect()
+        } else if let Some(rest) = rest.strip_prefix('[') {
+            let Some(quote) = rest.chars().next().filter(|c| matches!(c, '\'' | '"')) else {
+                continue;
+            };
+            rest[1..].chars().take_while(|c| *c != quote).collect()
+        } else {
+            continue;
+        };
+        if !name.is_empty() {
+            names.push(name);
+        }
+    }
+    names
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parameter_names_in_texts() {
+        let text = "echo {{workflow.parameters.message}} {{=workflow.parameters['max-count']}} \
+                    {{= sprig.upper(workflow.parameters[\"name\"]) }} {{workflow.parameters}}";
+        assert_eq!(
+            names_after(text, "workflow.parameters"),
+            ["message", "max-count", "name"]
+        );
+    }
+}

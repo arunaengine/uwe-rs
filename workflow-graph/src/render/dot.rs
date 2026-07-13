@@ -51,11 +51,19 @@ pub fn dot(drawing: &Drawing, direction: Direction) -> String {
             continue;
         };
         let mut attributes = Vec::new();
-        if let Some(label) = &link.label {
-            attributes.push(format!("label=\"{}\"", escape(label)));
-        }
-        if link.dashed {
-            attributes.push("style=dashed".to_owned());
+        if link.hidden {
+            // A line under a bundle only keeps the layout of Graphviz as it is.
+            attributes.push("style=invis".to_owned());
+        } else {
+            if let Some(label) = &link.label {
+                attributes.push(format!("label=\"{}\"", escape(label)));
+            }
+            if link.dashed {
+                attributes.push("style=dashed".to_owned());
+            }
+            if link.bundled > 0 {
+                attributes.push("penwidth=3".to_owned());
+            }
         }
         if attributes.is_empty() {
             let _ = writeln!(dot, "  {} -> {};", from.id, to.id);

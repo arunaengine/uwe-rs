@@ -4,9 +4,9 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
-use super::{Drawing, Kind, Link, Options, Shape, State, View};
+use super::{Drawing, Kind, Link, Options, Shape, State, View, WIDTH};
 use crate::{EdgeKind, ExecutionGraph, Language, MORE_TASKS, Marker, Node, TaskId};
 
 /// The most characters of a label in a box; longer names keep their end.
@@ -89,9 +89,9 @@ impl ExecutionGraph {
                 None => node_state(node, simulated),
             })
             .collect();
-        let steps = self.steps_of(&states, options);
+        let (steps, fold) = self.steps_of(&states, options);
         let mut drawing = Drawing {
-            title: self.title(&steps, options),
+            title: self.title(&steps, options, fold),
             ..Drawing::default()
         };
         // The box of each task, and of each folded step; and the markers of each box.
@@ -133,8 +133,9 @@ impl ExecutionGraph {
         drawing
     }
 
-    /// The steps in the order of their first task, and whether each is one box.
-    fn steps_of(&self, states: &[State], options: &Options) -> Vec<Step<'_>> {
+    /// The steps in the order of their first task, whether each is one box, and the most tasks
+    /// that a step may have to be drawn task by task.
+    fn steps_of(&self, states: &[State], options: &Options) -> (Vec<Step<'_>>, usize) {
         let mut steps: Vec<Step> = Vec::new();
         let mut index: HashMap<&str, usize> = HashMap::new();
         for (position, node) in self.nodes.iter().enumerate() {
@@ -151,17 +152,94 @@ impl ExecutionGraph {
             steps[at].tasks.push(position);
             steps[at].tally.add(states[position]);
         }
+        let fold = match options.view {
+            View::Steps => 0,
+            View::Tasks => self.fold_for(&steps, options),
+        };
         for step in &mut steps {
             step.folded = match options.view {
                 View::Steps => true,
                 View::Tasks => {
-                    options.fold > 0
-                        && step.tasks.len() > options.fold
-                        && !options.open.contains(step.name)
+                    fold > 0 && step.tasks.len() > fold && !options.open.contains(step.name)
                 }
             };
         }
-        steps
+        (steps, fold)
+    }
+
+    /// The most tasks that a step may have to be drawn task by task: `options.fold`, or fewer
+    /// when that would put more than [`WIDTH`] boxes in a row of the picture, as when every
+    /// step of a pipeline has four samples. It is the largest number that keeps the widest
+    /// row within [`WIDTH`], else the one that makes it narrowest. Steps that are open stay
+    /// open. The rows are those of the longest chains of tasks, which the layout follows.
+    fn fold_for(&self, steps: &[Step], options: &Options) -> usize {
+        if options.fold == 0 {
+            return 0;
+        }
+        let depths = self.depths();
+        let rows = depths.iter().max().map_or(0, |deepest| deepest + 1);
+        // In which rows each step has tasks, and how many.
+        let spans: Vec<Vec<(usize, usize)>> = (steps.iter())
+            .map(|step| {
+                let mut found: BTreeMap<usize, usize> = BTreeMap::new();
+                for &position in &step.tasks {
+                    *found.entry(depths[position]).or_default() += 1;
+                }
+                found.into_iter().collect()
+            })
+            .collect();
+        let mut narrowest = (usize::MAX, options.fold);
+        for fold in (1..=options.fold).rev() {
+            let mut widths = vec![0; rows];
+            for (step, span) in steps.iter().zip(&spans) {
+                let drawn = step.tasks.len() <= fold || options.open.contains(step.name);
+                for &(row, count) in span {
+                    widths[row] += if drawn { count } else { 1 };
+                }
+            }
+            let widest = widths.into_iter().max().unwrap_or(0);
+            if widest <= WIDTH {
+                return fold;
+            }
+            if widest < narrowest.0 {
+                narrowest = (widest, fold);
+            }
+        }
+        narrowest.1
+    }
+
+    /// The row of each task: the length of the longest chain of tasks before it.
+    fn depths(&self) -> Vec<usize> {
+        let positions = self.positions();
+        let mut waiting = vec![0; self.nodes.len()];
+        let mut after: Vec<Vec<usize>> = vec![Vec::new(); self.nodes.len()];
+        for edge in &self.edges {
+            if let (Some(&from), Some(&to)) = (positions.get(&edge.from), positions.get(&edge.to)) {
+                after[from].push(to);
+                waiting[to] += 1;
+            }
+        }
+        let mut depths = vec![0; self.nodes.len()];
+        let mut ready: Vec<usize> = (0..self.nodes.len())
+            .filter(|&position| waiting[position] == 0)
+            .collect();
+        while let Some(position) = ready.pop() {
+            for &next in &after[position] {
+                depths[next] = depths[next].max(depths[position] + 1);
+                waiting[next] -= 1;
+                if waiting[next] == 0 {
+                    ready.push(next);
+                }
+            }
+        }
+        depths
+    }
+
+    /// The position of each task in the nodes.
+    fn positions(&self) -> HashMap<TaskId, usize> {
+        (self.nodes.iter().enumerate())
+            .map(|(position, node)| (node.task.id, position))
+            .collect()
     }
 
     /// The markers of the tasks of a step, one per kind, each with the reason of the first
@@ -180,10 +258,9 @@ impl ExecutionGraph {
 
     /// The lines between the boxes: one per pair of boxes that task edges join, dashed when no
     /// task of the second reads a file of the first. Edges inside a folded step are left out.
+    /// More than [`WIDTH`] lines into one box are bundled into one.
     fn links(&self, shapes: &[Shape], shape_of: &[usize]) -> Vec<Link> {
-        let positions: HashMap<TaskId, usize> = (self.nodes.iter().enumerate())
-            .map(|(position, node)| (node.task.id, position))
-            .collect();
+        let positions = self.positions();
         let mut joins: Vec<Join> = Vec::new();
         let mut index: HashMap<(usize, usize), usize> = HashMap::new();
         for edge in &self.edges {
@@ -210,22 +287,25 @@ impl ExecutionGraph {
             }
         }
         let task = |shape: usize| matches!(shapes[shape].kind, Kind::Task(_));
-        (joins.into_iter())
+        let mut links: Vec<Link> = (joins.iter())
             .map(|join| Link {
                 from: join.from,
                 to: join.to,
                 dashed: join.file.is_none(),
                 label: if task(join.from) && task(join.to) {
-                    join.file
+                    join.file.clone()
                 } else {
                     Some(count(join.tasks, "task edge"))
                 },
+                ..Link::default()
             })
-            .collect()
+            .collect();
+        bundle(&joins, &mut links);
+        links
     }
 
     /// The lines above the graph, and which steps are one box.
-    fn title(&self, steps: &[Step], options: &Options) -> Vec<String> {
+    fn title(&self, steps: &[Step], options: &Options, fold: usize) -> Vec<String> {
         let (tasks, counted) = (count(self.nodes.len(), "task"), count(steps.len(), "step"));
         let size = match options.view {
             View::Tasks => format!("{tasks} in {counted}"),
@@ -235,10 +315,36 @@ impl ExecutionGraph {
         let simulation = self.simulation.as_deref();
         let mut lines = title(&self.workflow, self.language, &size, simulation, open);
         if options.view == View::Tasks && steps.iter().any(|step| step.folded) {
-            let many = count(options.fold, "task");
-            lines.push(format!("Each step with more than {many} is one box."));
+            let many = count(fold, "task");
+            lines.push(if fold < options.fold {
+                format!("The graph is wide: each step with more than {many} is one box.")
+            } else {
+                format!("Each step with more than {many} is one box.")
+            });
         }
         lines
+    }
+}
+
+/// Bundles the lines into each box that more than [`WIDTH`] lines run into: the line of the
+/// middle source, in the order the tasks were asked for, stays and stands for all of them, and
+/// the others are hidden, so that the layout still puts the box under all of its sources.
+fn bundle(joins: &[Join], links: &mut [Link]) {
+    let mut into: HashMap<usize, Vec<usize>> = HashMap::new();
+    for (at, join) in joins.iter().enumerate() {
+        into.entry(join.to).or_default().push(at);
+    }
+    for mut group in into.into_values().filter(|group| group.len() > WIDTH) {
+        group.sort_by_key(|&at| joins[at].from);
+        let middle = group[group.len() / 2];
+        let tasks: usize = group.iter().map(|&at| joins[at].tasks).sum();
+        let dashed = group.iter().all(|&at| links[at].dashed);
+        for &at in &group {
+            links[at].hidden = at != middle;
+        }
+        links[middle].bundled = tasks;
+        links[middle].dashed = dashed;
+        links[middle].label = Some(count(tasks, "task edge"));
     }
 }
 
@@ -328,7 +434,7 @@ fn open_point(drawing: &mut Drawing, after: usize, id: String, markers: &[Marker
         from: after,
         to: drawing.shapes.len() - 1,
         dashed: true,
-        label: None,
+        ..Link::default()
     });
 }
 
@@ -476,6 +582,97 @@ mod tests {
         });
         assert_eq!(every.shapes.len(), 9);
         assert_eq!(every.links[0].label.as_deref(), Some("1.txt"));
+    }
+
+    /// One SOURCE task, then `steps` steps of `tasks` tasks each that read its file, then SINK,
+    /// which reads a file of every task.
+    fn parallel_steps(steps: usize, tasks: usize) -> ExecutionGraph {
+        let task = |id: u64, step: String| Node {
+            task: Task {
+                id: TaskId(id),
+                name: format!("{step} ({id})"),
+                step,
+                ..Task::default()
+            },
+            exit_code: Some(0),
+            reused: false,
+            markers: Vec::new(),
+        };
+        let mut nodes = vec![task(1, "SOURCE".into())];
+        let mut edges = Vec::new();
+        let last = 2 + (steps * tasks) as u64;
+        for at in 0..(steps * tasks) as u64 {
+            let id = 2 + at;
+            nodes.push(task(id, format!("STEP{}", at as usize / tasks)));
+            for (from, to) in [(1, id), (id, last)] {
+                let kind = EdgeKind::File {
+                    path: format!("{from}.txt"),
+                };
+                let (from, to) = (TaskId(from), TaskId(to));
+                edges.push(Edge { from, to, kind });
+            }
+        }
+        nodes.push(task(last, "SINK".into()));
+        ExecutionGraph {
+            workflow: "demo".into(),
+            nodes,
+            edges,
+            ..ExecutionGraph::default()
+        }
+    }
+
+    #[test]
+    fn a_wide_graph_folds_steps_with_few_tasks_too() {
+        // Three steps of four tasks stand in a row of 12: every task has its box.
+        let narrow = parallel_steps(3, 4).drawing(&Options::default());
+        assert_eq!(narrow.shapes.len(), 14);
+        // Six steps of four tasks would stand in a row of 24: each step is one box.
+        let graph = parallel_steps(6, 4);
+        let wide = graph.drawing(&Options::default());
+        assert_eq!(wide.shapes.len(), 8);
+        let note = "The graph is wide: each step with more than 3 tasks is one box.";
+        assert!(
+            wide.title.iter().any(|line| line == note),
+            "{:?}",
+            wide.title
+        );
+        // A step that is open keeps its tasks, and 0 folds none.
+        let open = Options {
+            open: ["STEP0".to_owned()].into(),
+            ..Options::default()
+        };
+        assert_eq!(graph.drawing(&open).shapes.len(), 11);
+        let every = Options {
+            fold: 0,
+            ..Options::default()
+        };
+        assert_eq!(graph.drawing(&every).shapes.len(), 26);
+    }
+
+    #[test]
+    fn many_lines_into_one_box_are_one_line_with_a_count() {
+        // Twenty tasks of an open step read by one task: one thick line, nineteen hidden.
+        let graph = parallel_steps(1, 20);
+        let open = Options {
+            open: ["STEP0".to_owned()].into(),
+            ..Options::default()
+        };
+        let drawing = graph.drawing(&open);
+        let into_sink: Vec<&Link> = (drawing.links.iter())
+            .filter(|link| link.to == drawing.shapes.len() - 1)
+            .collect();
+        assert_eq!(into_sink.len(), 20);
+        let shown: Vec<&&Link> = into_sink.iter().filter(|link| !link.hidden).collect();
+        assert_eq!(shown.len(), 1);
+        assert_eq!(shown[0].bundled, 20);
+        assert_eq!(shown[0].label.as_deref(), Some("20 task edges"));
+        // Fewer lines stay as they are.
+        let few = parallel_steps(1, 16).drawing(&open);
+        assert!(
+            few.links
+                .iter()
+                .all(|link| !link.hidden && link.bundled == 0)
+        );
     }
 
     #[test]

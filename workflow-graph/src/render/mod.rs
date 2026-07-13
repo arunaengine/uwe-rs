@@ -1,7 +1,8 @@
 //! Pictures and texts of a graph. The graph with one node per task or one node per step
 //! becomes a [`Drawing`]: boxes with text and a state, and lines between them. In the graph of
 //! tasks, a step with more tasks than [`Options::fold`] becomes one box that counts its tasks,
-//! unless it is open. [`dot`] writes a drawing as Graphviz DOT, and [`svg`] draws it as SVG with
+//! unless it is open; more steps fold when the graph would be wider than [`WIDTH`] boxes. Many
+//! lines into one box become one line with a count. [`dot`] writes a drawing as Graphviz DOT, and [`svg`] draws it as SVG with
 //! the layered layout of [`crate::layout`], with no program besides iunctus. The web page of
 //! runs shows the same SVG. [`render`] gives a graph in each view and format.
 // Copyright (c) 2026 The iunctus Contributors
@@ -23,6 +24,12 @@ use crate::{ExecutionGraph, TaskId};
 
 /// By default, a step with more tasks than this is one box in a picture of the graph of tasks.
 pub const FOLD: usize = 5;
+
+/// The most boxes side by side that a picture of the graph of tasks aims at. Where more would
+/// stand in a row, steps with fewer tasks than [`Options::fold`] are one box too, the smaller
+/// the number the wider the graph. And when more lines than this run into one box, they become
+/// one line that says how many task edges it stands for.
+pub const WIDTH: usize = 16;
 
 /// A graph to draw.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -77,6 +84,12 @@ pub struct Link {
     /// Text for the line, like the file it passes: DOT writes it next to the line, and SVG
     /// shows it when the pointer rests on the line.
     pub label: Option<String>,
+    /// For the one line that stands for many lines into a box (more than [`WIDTH`]): how many
+    /// task edges it stands for. It is drawn thick. 0 for any other line.
+    pub bundled: usize,
+    /// A line that stands under a bundle: it takes part in the layout, so that the box is
+    /// laid out under all of its sources, but the picture does not draw it.
+    pub hidden: bool,
 }
 
 /// What a box shows about its task, or about the tasks of its step, by its icon.
@@ -160,7 +173,7 @@ pub struct Options {
     pub view: View,
     pub direction: Direction,
     /// In the graph of tasks, a step with more tasks than this is one box, unless it is open;
-    /// 0 draws every task.
+    /// 0 draws every task. A wide graph folds more steps (see [`WIDTH`]).
     pub fold: usize,
     /// The steps whose tasks are drawn although they have more than `fold`.
     pub open: BTreeSet<String>,

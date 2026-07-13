@@ -4,11 +4,15 @@
 
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::process::{Output, Stdio};
 use std::time::Duration;
 
+use bollard::models::{ContainerCreateBody, HostConfig};
+use bollard::query_parameters::{
+    CreateContainerOptions, KillContainerOptions, LogsOptions, RemoveContainerOptions,
+    StopContainerOptions,
+};
+use futures_util::StreamExt;
 use task_model::Image;
-use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
 use crate::engine::{ContainerEngine, EngineCommand};
@@ -33,11 +37,19 @@ pub struct LocalContainer {
     pub pool: Pool,
 }
 
+/// How long the backend waits between two looks at a running container, at most.
+const POLL: Duration = Duration::from_secs(1);
+
 /// How a container ended.
-enum Ending {
-    Exited(Output),
-    /// The task ran longer than its time, so it was stopped.
-    TimedOut(Output, Duration),
+struct Ending {
+    /// The exit code of the container.
+    status: i64,
+    /// Whether the kernel killed it for lack of memory.
+    out_of_memory: bool,
+    /// The time of the task, when the container ran longer and was stopped.
+    timed_out: Option<Duration>,
+    /// The last lines that the container wrote, for errors.
+    log: String,
 }
 
 impl crate::Backend for LocalContainer {
@@ -119,6 +131,34 @@ impl ContainerRun<'_> {
         text(&self.root.join(CONTROL).join("wrapper.sh"))
     }
 
+    /// The container that runs the wrapper with Bash in the image, for the engine's API.
+    pub fn create(&self, engine: &ContainerEngine) -> ContainerCreateBody {
+        let root = text(self.root);
+        let mut binds = vec![format!("{root}:{root}")];
+        if let Some(workdir) = self.workdir {
+            binds.push(format!("{}:{workdir}", text(&self.root.join(WORK))));
+        }
+        for mount in self.mounts {
+            let mode = if mount.read_only { ":ro" } else { "" };
+            binds.push(format!("{}:{}{mode}", text(&mount.source), mount.target));
+        }
+        ContainerCreateBody {
+            image: Some(self.image.reference.clone()),
+            entrypoint: Some(vec!["/bin/bash".to_owned()]),
+            cmd: Some(vec![self.script()]),
+            user: engine.user(self.owner.0, self.owner.1),
+            working_dir: Some(self.inside()),
+            host_config: Some(HostConfig {
+                binds: Some(binds),
+                nano_cpus: Some(i64::from(self.cpus) * 1_000_000_000),
+                memory: self.memory.map(|bytes| bytes as i64),
+                network_mode: self.offline.then(|| "none".to_owned()),
+                ..HostConfig::default()
+            }),
+            ..ContainerCreateBody::default()
+        }
+    }
+
     /// The arguments of the engine's command that run the wrapper with Bash in the image.
     pub fn arguments(&self, engine: &EngineCommand) -> Vec<String> {
         let root = text(self.root);
@@ -184,83 +224,141 @@ impl LocalContainer {
         };
         let control = root.join(CONTROL);
         tokio::fs::write(run.script(), wrapper(&spec, &run.inside(), &text(&control))).await?;
-        let mut command = Command::new(&self.engine.program);
-        command.args(run.arguments(&self.engine.command()));
-        command.stdin(Stdio::null());
+        let options = CreateContainerOptions {
+            name: Some(container.clone()),
+            platform: image.platform.clone().unwrap_or_default(),
+        };
+        let failed = |error| image::failed(&self.engine, error);
+        let client = self.engine.client();
+        let body = run.create(&self.engine);
+        client
+            .create_container(Some(options), body)
+            .await
+            .map_err(failed)?;
         let time = job.placement.time_seconds.map(Duration::from_secs);
-        let ending = self.wait(command, &container, time, cancel).await?;
-        self.finish(ending, root.to_owned()).await
+        let ended = match client.start_container(&container, None).await {
+            Ok(()) => self.wait(&container, time, cancel).await,
+            Err(error) => Err(failed(error)),
+        };
+        let remove = RemoveContainerOptions {
+            force: true,
+            ..RemoveContainerOptions::default()
+        };
+        let _ = client.remove_container(&container, Some(remove)).await;
+        self.finish(ended?, root.to_owned()).await
     }
-    /// Runs the container to its end, stopping it when `cancel` fires or its time is up.
+    /// Waits for the container to end, and stops it when `cancel` fires or its time is up.
     async fn wait(
         &self,
-        mut command: Command,
         container: &str,
         time: Option<Duration>,
         cancel: &CancellationToken,
     ) -> Result<Ending, ExecutorError> {
-        let failed = |error| image::failed(&self.engine, error);
-        let output = command.output();
-        tokio::pin!(output);
         let limit = async {
             match time {
                 Some(time) => tokio::time::sleep(time).await,
                 None => std::future::pending().await,
             }
         };
-        let ended = tokio::select! {
-            output = &mut output => Ending::Exited(output.map_err(failed)?),
-            () = cancel.cancelled() => {
-                self.stop(container, Duration::ZERO).await;
-                let _ = output.await;
-                return Err(ExecutorError::Cancelled);
+        tokio::pin!(limit);
+        let mut timed_out = None;
+        let mut pause = Duration::from_millis(50);
+        loop {
+            tokio::select! {
+                () = tokio::time::sleep(pause) => {}
+                () = cancel.cancelled() => {
+                    let kill = KillContainerOptions::default();
+                    let _ = self.engine.client().kill_container(container, Some(kill)).await;
+                    return Err(ExecutorError::Cancelled);
+                }
+                () = &mut limit, if timed_out.is_none() => {
+                    let stop = StopContainerOptions {
+                        t: Some(STOP_GRACE.as_secs() as i32),
+                        ..StopContainerOptions::default()
+                    };
+                    let _ = self.engine.client().stop_container(container, Some(stop)).await;
+                    timed_out = time;
+                }
             }
-            () = limit => {
-                self.stop(container, STOP_GRACE).await;
-                let output = output.await.map_err(failed)?;
-                Ending::TimedOut(output, time.unwrap_or_default())
+            pause = (pause * 2).min(POLL);
+            let inspected = self
+                .engine
+                .client()
+                .inspect_container(container, None)
+                .await;
+            let state = inspected
+                .map_err(|error| image::failed(&self.engine, error))?
+                .state;
+            let state = state.unwrap_or_default();
+            if state.running.unwrap_or(false) {
+                continue;
             }
-        };
-        Ok(ended)
+            return Ok(Ending {
+                status: state.exit_code.unwrap_or(-1),
+                out_of_memory: state.oom_killed.unwrap_or(false),
+                timed_out,
+                log: self.log(container).await,
+            });
+        }
     }
 
-    /// Stops a container: asks it to end, and kills it after the grace time.
-    async fn stop(&self, container: &str, grace: Duration) {
-        let seconds = grace.as_secs().to_string();
-        let _ = Command::new(&self.engine.program)
-            .args(["stop", "--time", &seconds, container])
-            .output()
-            .await;
+    /// The last lines that a container wrote, which tell why it could not run the wrapper.
+    async fn log(&self, container: &str) -> String {
+        let options = LogsOptions {
+            stdout: true,
+            stderr: true,
+            tail: "5".to_owned(),
+            ..LogsOptions::default()
+        };
+        let mut lines = Vec::new();
+        let mut output = self.engine.client().logs(container, Some(options));
+        while let Some(Ok(part)) = output.next().await {
+            let part = part.to_string();
+            lines.extend(
+                part.lines()
+                    .map(str::to_owned)
+                    .filter(|line| !line.trim().is_empty()),
+            );
+        }
+        lines.join("; ")
     }
 
     /// What a container left behind. The wrapper exits with 0 whenever it recorded the tool's
-    /// exit code. An engine error (125 to 127), or an end without the tool's exit code, is a
-    /// failure of the machine. A container stopped by a signal, as for lack of memory, ends
-    /// the task with the container's exit code, and so does one that ran out of time.
+    /// exit code. A container that could not run the wrapper (exit code 126 or 127, as for an
+    /// image without Bash), or an end without the tool's exit code, is a failure of the
+    /// machine. A container stopped by a signal, as for lack of memory, ends the task with the
+    /// container's exit code, and so does one that ran out of time.
     async fn finish(&self, ending: Ending, root: PathBuf) -> Result<Finished, ExecutorError> {
         let control = root.join(CONTROL);
-        let (output, timed_out) = match ending {
-            Ending::Exited(output) => (output, None),
-            Ending::TimedOut(output, time) => (output, Some(time)),
-        };
         let recorded = read(&control.join(EXIT)).and_then(|text| text.trim().parse().ok());
-        let exit_code = match (recorded, output.status.code(), timed_out) {
-            (Some(code), Some(0), None) => code,
-            (_, Some(125..=127) | Some(0) | None, None) => {
-                return Err(image::engine_error(&self.engine, &output));
+        let status = i32::try_from(ending.status).unwrap_or(-1);
+        let exit_code = match (recorded, status, ending.timed_out, ending.out_of_memory) {
+            (Some(code), 0, None, false) => code,
+            (_, 0 | 125..=127 | -1, None, false) => {
+                return Err(ExecutorError::Engine {
+                    engine: self.engine.name.clone(),
+                    message: match ending.log.is_empty() {
+                        true => format!("the container ended with exit code {status}"),
+                        false => format!(
+                            "the container ended with exit code {status}: {}",
+                            ending.log
+                        ),
+                    },
+                });
             }
-            (_, status, _) => status.unwrap_or(-1),
+            (_, status, _, _) => status,
         };
-        let note = match timed_out {
-            Some(time) => Some(format!(
+        let note = match (ending.timed_out, ending.out_of_memory) {
+            (Some(time), _) => Some(format!(
                 "iunctus: the task ran longer than its time of {} seconds\n",
                 time.as_secs()
             )),
-            None if exit_code != 0 && recorded.is_none() => Some(format!(
+            (None, true) => Some("iunctus: the container ran out of memory\n".to_owned()),
+            (None, false) if exit_code != 0 && recorded.is_none() => Some(format!(
                 "iunctus: the container ended with exit code {exit_code}, maybe for lack of \
                  memory\n"
             )),
-            None => None,
+            (None, false) => None,
         };
         if let Some(note) = note {
             append(&control.join(STDERR), &note).await?;

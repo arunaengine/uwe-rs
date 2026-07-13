@@ -27,8 +27,6 @@ pub struct ContainerEngine {
     pub kind: EngineKind,
     /// Whether the engine runs without root, as Podman usually does.
     pub rootless: bool,
-    /// The command of the engine, `docker` or `podman`.
-    pub program: String,
     client: Docker,
 }
 
@@ -112,7 +110,6 @@ impl ContainerEngine {
             name: format!("{name} at {socket}"),
             kind,
             rootless,
-            program: name.to_lowercase(),
             client,
         })
     }

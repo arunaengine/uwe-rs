@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use crate::{Delivery, Language, Note, Outcome, Task};
+use crate::{Delivery, Inputs, Language, Note, Outcome, Task};
 
 /// What a user asks to run, in the terms all languages share. Each language crate exposes
 /// `pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError>`.
@@ -96,5 +96,12 @@ pub trait Driver {
     /// `complete`. The default notices nothing.
     fn notes(&mut self) -> Vec<Note> {
         Vec::new()
+    }
+
+    /// The inputs of the workflow as one JSON Schema, with the values of this run (decision
+    /// 24), which the binary checks before any task starts. A driver may load the workflow
+    /// here and keep it for [`Driver::start`]. The default knows no inputs.
+    fn inputs(&mut self) -> Result<Option<Inputs>, DriverError> {
+        Ok(None)
     }
 }

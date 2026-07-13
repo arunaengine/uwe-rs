@@ -5,6 +5,7 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::OnceLock;
 
 use executor::{
     Backend, ContainerEngine, ExecutorError, Finished, Job, LocalContainer, Pool, Staged, Staging,
@@ -56,9 +57,24 @@ fn stage(root: &Path, name: &str, text: &str) -> Staged {
     }
 }
 
+/// One runtime for all tests, on which the client of the engine runs.
+fn runtime() -> &'static tokio::runtime::Runtime {
+    static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    RUNTIME.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("a runtime")
+    })
+}
+
 fn executor(root: &Path) -> LocalContainer {
+    let engine = runtime()
+        .block_on(ContainerEngine::find())
+        .expect("an engine");
     LocalContainer {
-        engine: ContainerEngine::docker("docker"),
+        engine,
         scratch: root.join("scratch"),
         pool: Pool::new(2, 1 << 30),
     }
@@ -71,7 +87,11 @@ fn run(
     spec: &TaskSpec,
     staging: &Staging,
 ) -> Result<Finished, ExecutorError> {
-    run_with(executor, name, spec, staging, &Placement::default())
+    let placement = Placement {
+        memory_bytes: Some(256 << 20),
+        ..Placement::default()
+    };
+    run_with(executor, name, spec, staging, &placement)
 }
 
 fn run_with(
@@ -87,11 +107,7 @@ fn run_with(
         staging,
         placement,
     };
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("a runtime");
-    runtime.block_on(Backend::run(executor, job, &CancellationToken::new()))
+    runtime().block_on(Backend::run(executor, job, &CancellationToken::new()))
 }
 
 #[test]
@@ -247,10 +263,7 @@ fn linked_inputs_are_read_only_and_limits_hold() {
 #[ignore = "needs Docker and the debian:stable-slim image"]
 fn pins_images_to_digests() {
     let executor = executor(&std::env::temp_dir());
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("a runtime");
+    let runtime = runtime();
     let pinned = runtime
         .block_on(Backend::pin(&executor, "debian:stable-slim"))
         .expect("inspects")

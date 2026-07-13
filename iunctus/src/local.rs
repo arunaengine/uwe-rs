@@ -19,7 +19,11 @@ pub fn executor(
     default_image: Option<String>,
     storage: Storage,
 ) -> Result<RunnerExecutor<LocalContainer>, String> {
-    let engine = ContainerEngine::find().map_err(|error| error.to_string())?;
+    // The client of the engine runs on the runtime of the engine, which runs the attempts.
+    let runtime = workflow_graph::runtime().map_err(|error| error.to_string())?;
+    let engine = runtime
+        .block_on(ContainerEngine::find())
+        .map_err(|error| error.to_string())?;
     let backend = LocalContainer {
         engine,
         scratch: scratch.to_owned(),

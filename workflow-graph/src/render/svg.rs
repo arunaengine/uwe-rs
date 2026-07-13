@@ -138,6 +138,7 @@ const STYLE: &str = "<style>
 .graph-picture .open-point text { font-size: 11px; font-style: italic; fill: #7a5a12; }
 .graph-picture .edge { fill: none; stroke: #9aa4b2; stroke: var(--edge, #9aa4b2); stroke-width: 1.3; }
 .graph-picture .edge.dashed { stroke-dasharray: 5 4; }
+.graph-picture .edge.bundle { stroke-width: 3; }
 .graph-picture .edge.open { stroke: #b7791f; stroke-dasharray: 3 3; }
 .graph-picture .arrow { fill: #9aa4b2; fill: var(--edge, #9aa4b2); }
 @keyframes graph-turn { to { transform: rotate(360deg); } }
@@ -228,11 +229,17 @@ fn edges(svg: &mut String, drawing: &Drawing, layout: &Layout, direction: Direct
         let Some(points) = layout.edges.get(index).filter(|points| points.len() >= 2) else {
             continue;
         };
+        // A line under a bundle is only there for the layout.
+        if link.hidden {
+            continue;
+        }
         let open = is_open(drawing, link.to);
-        let class = match (open, link.dashed) {
-            (true, _) => "edge open",
-            (false, true) => "edge dashed",
-            (false, false) => "edge",
+        let class = match (open, link.dashed, link.bundled > 0) {
+            (true, _, _) => "edge open",
+            (false, true, false) => "edge dashed",
+            (false, true, true) => "edge dashed bundle",
+            (false, false, false) => "edge",
+            (false, false, true) => "edge bundle",
         };
         let arrow = if open {
             ""
@@ -486,12 +493,13 @@ mod tests {
                     to: 1,
                     dashed: false,
                     label: Some("a.txt".to_owned()),
+                    ..Link::default()
                 },
                 Link {
                     from: 1,
                     to: 2,
                     dashed: true,
-                    label: None,
+                    ..Link::default()
                 },
             ],
         }

@@ -549,9 +549,10 @@ fn cache_directory() -> PathBuf {
     base.join("iunctus")
 }
 
-/// The container engine of the local executor: `$IUNCTUS_ENGINE`, else `docker`.
+/// The container engine of the Python container: `$IUNCTUS_ENGINE`; empty for Docker, else
+/// Podman.
 fn engine() -> String {
-    std::env::var("IUNCTUS_ENGINE").unwrap_or_else(|_| "docker".into())
+    std::env::var("IUNCTUS_ENGINE").unwrap_or_default()
 }
 
 /// A run id from the clock and the process id.

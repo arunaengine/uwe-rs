@@ -11,11 +11,14 @@ use cwl_parser::model::{Process, Type, short_name};
 use cwl_parser::salad::context::Namespaces;
 use cwl_parser::source::Remote;
 use storage::Storage;
-use workflow_graph::{Delivery, Driver, DriverError, Language, Launch, Note, Outcome, Task};
+use workflow_graph::{
+    Delivery, Driver, DriverError, Inputs, Language, Launch, Note, Outcome, Task,
+};
 
 use crate::files;
 use crate::results;
 use crate::run::Run;
+use crate::schema;
 use crate::tool::{Options, UNSUPPORTED};
 use crate::types::Types;
 use crate::value::{Map, Value};
@@ -74,19 +77,7 @@ impl CwlDriver {
             Some(path) => read_job(path, &self.namespaces)?,
             None => Map::new(),
         };
-        let mut types = Types::default();
-        for requirement in self.process.requirements.iter().chain(&self.process.hints) {
-            if let cwl_parser::model::RequirementClass::SchemaDef { types: defined } =
-                &requirement.class
-            {
-                for value_type in defined {
-                    types.add(value_type);
-                }
-            }
-        }
-        for input in &self.process.inputs {
-            types.add(&input.value_type);
-        }
+        let types = self.types();
         let mut given: Vec<(String, Vec<String>)> = Vec::new();
         for (name, text) in &self.launch.params {
             match given.iter_mut().find(|(known, _)| known == name) {
@@ -107,6 +98,26 @@ impl CwlDriver {
             job.insert(name, value);
         }
         Ok(job)
+    }
+}
+
+impl CwlDriver {
+    /// The named types of the process: those of its `SchemaDefRequirement` and of its inputs.
+    fn types(&self) -> Types {
+        let mut types = Types::default();
+        for requirement in self.process.requirements.iter().chain(&self.process.hints) {
+            if let cwl_parser::model::RequirementClass::SchemaDef { types: defined } =
+                &requirement.class
+            {
+                for value_type in defined {
+                    types.add(value_type);
+                }
+            }
+        }
+        for input in &self.process.inputs {
+            types.add(&input.value_type);
+        }
+        types
     }
 }
 
@@ -171,6 +182,20 @@ impl Driver for CwlDriver {
 
     fn deliveries(&mut self) -> Vec<Delivery> {
         std::mem::take(&mut self.deliveries)
+    }
+
+    /// The typed inputs of the process and its input object. Files and directories in the
+    /// object are absolute paths or addresses already. Without a job file, the run makes up the
+    /// required inputs that nothing sets.
+    fn inputs(&mut self) -> Result<Option<Inputs>, DriverError> {
+        let job = self.input_object().map_err(error)?;
+        Ok(Some(Inputs {
+            schema: schema::of(&self.process, &self.types(), &self.namespaces),
+            values: schema::values(&job),
+            base: std::env::current_dir().unwrap_or_default(),
+            read: Some(schema::read(&self.process)),
+            assumes_values: self.launch.inputs.is_none(),
+        }))
     }
 
     /// A real run delivers the files of the output object to the output folder and prints

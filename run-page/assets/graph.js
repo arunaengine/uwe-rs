@@ -8,8 +8,6 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 "use strict";
 
-// A step with more tasks than this is one box, as `render::FOLD` of `workflow-graph` says.
-const FOLD = 5;
 // How long boxes glide to their new places, in milliseconds.
 const GLIDE = 450;
 // Pictures with more boxes than this change without gliding, so that large runs stay fast.
@@ -41,6 +39,11 @@ function drawGraph() {
     drawn: 0,
     press: null,
     waiting: false,
+    // Whether the wheel zooms without Ctrl: after a click into the graph, until the pointer
+    // leaves it.
+    active: false,
+    zoomHint: null,
+    zoomHintTimer: null,
   };
   view.graph = graph;
   graph.tools = el("div", {});
@@ -50,9 +53,10 @@ function drawGraph() {
     el("button", { title: "Zoom out", "aria-label": "zoom out", onclick: () => zoomBy(1 / ZOOM_STEP) }, "−"),
     el("button", { title: "Fit to screen", onclick: () => fitGraph(true) }, "Fit"));
   graph.message = el("p", { class: "quiet stage-message" }, "Drawing...");
+  graph.zoomHint = el("p", { class: "stage-hint", hidden: true }, "Use Ctrl + scroll to zoom the graph");
   graph.stage = el("div", { class: "stage", tabindex: "0",
-    "aria-label": "The graph of the run. Drag to move it, use the wheel to zoom." },
-  graph.message, zoom);
+    "aria-label": "The graph of the run. Drag to move it, use Ctrl and the wheel to zoom." },
+  graph.message, graph.zoomHint, zoom);
   graph.legend = el("div", { class: "legend graph-legend" });
   const stage = graph.stage;
   stage.addEventListener("pointerdown", pressed);
@@ -60,7 +64,8 @@ function drawGraph() {
   stage.addEventListener("pointerup", released);
   stage.addEventListener("pointercancel", released);
   stage.addEventListener("pointerover", hovered);
-  stage.addEventListener("pointerleave", hideTip);
+  stage.addEventListener("pointerleave", () => { graph.active = false; hideTip(); });
+  stage.addEventListener("blur", () => { graph.active = false; });
   stage.addEventListener("wheel", wheeled, { passive: false });
   stage.addEventListener("keydown", keyed);
   graph.observer = new ResizeObserver(() => { if (view && view.graph === graph) reframe(false); });

@@ -193,7 +193,7 @@ function drawGraphLegend() {
     entries.push(el("span", {}, el("i", { class: "stack-sign" }), "a step with several tasks"));
   }
   const hint = graph.view === "tasks" && graph.steps.size
-    ? "Drag to move, wheel to zoom; click a step to show its tasks."
-    : "Drag to move, wheel to zoom.";
+    ? "Drag to move, Ctrl + wheel to zoom (or click the graph first); click a step to show its tasks."
+    : "Drag to move, Ctrl + wheel to zoom (or click the graph first).";
   graph.legend.replaceChildren(...entries, el("span", { class: "quiet hint" }, hint));
 }

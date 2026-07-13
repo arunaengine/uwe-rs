@@ -188,6 +188,7 @@ function hideFarItems() {
 function pressed(event) {
   if (event.button !== 0 || event.target.closest(".zoom")) return;
   const graph = view.graph;
+  graph.active = true;
   graph.press = { x: event.clientX, y: event.clientY, camera: { ...graph.camera }, moved: false,
     target: event.target };
   graph.stage.setPointerCapture(event.pointerId);
@@ -224,11 +225,26 @@ function released() {
   }
 }
 
+// The wheel zooms with Ctrl (or Cmd), and after a click into the graph; else it scrolls the
+// page, as it does over a map on a page, and a hint says how to zoom.
 function wheeled(event) {
+  const graph = view.graph;
+  if (!(event.ctrlKey || event.metaKey || graph.active)) {
+    showZoomHint();
+    return;
+  }
   event.preventDefault();
   const box = view.graph.stage.getBoundingClientRect();
   const speed = event.deltaMode === 1 ? 0.05 : 0.0015;
   zoomAt(Math.exp(-event.deltaY * speed), event.clientX - box.left, event.clientY - box.top, false);
+}
+
+// Says for a moment how to zoom, when the wheel was used without Ctrl.
+function showZoomHint() {
+  const graph = view.graph;
+  graph.zoomHint.hidden = false;
+  clearTimeout(graph.zoomHintTimer);
+  graph.zoomHintTimer = setTimeout(() => { graph.zoomHint.hidden = true; }, 1500);
 }
 
 function keyed(event) {

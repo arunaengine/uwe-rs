@@ -96,7 +96,8 @@ function drawSummary() {
   }
   if (run.error) parts.push(el("pre", { class: "error" }, run.error));
   parts.push(el("dl", { class: "facts" },
-    facts.map(([name, value]) => el("div", {}, el("dt", {}, name), el("dd", {}, value)))));
+    facts.map(([name, value]) => el("div", {}, el("dt", {}, name),
+      el("dd", name === "Time" ? { "data-time": "" } : {}, value)))));
   if (run.parameters.length) {
     parts.push(el("details", {},
       el("summary", {}, `${run.parameters.length} parameters`),
@@ -107,9 +108,16 @@ function drawSummary() {
     el("summary", {}, "command line"),
     el("pre", {}, ["iunctus", ...run.arguments].join(" "))));
   view.parts.summary.replaceChildren(...parts);
+  view.clock = view.parts.summary.querySelector("[data-time]");
   // The parameters and the command line side by side, until one opens.
   const folded = parts.filter((part) => part.tagName === "DETAILS");
   view.parts.summary.append(el("div", { class: "tools summary-more" }, folded));
+}
+
+// Keeps the time of a running run ticking between the updates of the stream.
+function tickTime() {
+  if (!view || !view.clock || view.run.state !== "running") return;
+  view.clock.textContent = duration(Date.now() - view.run.started);
 }
 
 // The number of tasks in each shown state.
@@ -450,8 +458,11 @@ function drawStepDetail() {
     if (ids.has(marker.task) && !kinds.has(marker.kind)) kinds.set(marker.kind, marker);
   }
   const graph = view.graph;
-  const foldable = graph && graph.view === "tasks" && tasks.length > FOLD;
-  const folded = foldable && !graph.open.has(name);
+  // A step is one box when the picture has its box: the server folds a step with more than
+  // five tasks, and more steps when the graph is wide.
+  const opened = Boolean(graph && graph.open.has(name));
+  const folded = Boolean(graph && graph.view === "tasks" && graph.steps.has(name)) && !opened;
+  const foldable = folded || (opened && graph.view === "tasks");
   const state = tallyState(tallyOf(tasks));
   const parts = [
     el("div", { class: "tools" },
@@ -500,6 +511,7 @@ function listen() {
   const events = new EventSource(`/api/runs/${encodeURIComponent(id)}/events?after=${view.sequence}`);
   view.events = events;
   liveMark.hidden = false;
+  view.ticker = setInterval(tickTime, 1000);
   events.addEventListener("update", (message) => {
     if (!view || view.id !== id) return;
     const update = JSON.parse(message.data);
@@ -519,6 +531,7 @@ function listen() {
     }
     if (update.run.state !== "running") {
       events.close();
+      clearInterval(view.ticker);
       liveMark.hidden = true;
       // The run is over: draw its whole graph now, without waiting.
       loadGraph({});

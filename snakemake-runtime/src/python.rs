@@ -18,7 +18,8 @@ pub const DEFAULT_IMAGE: &str = "ghcr.io/astral-sh/uv:0.9.30-python3.12-bookworm
 /// How the Python container of a run starts.
 #[derive(Clone, Debug)]
 pub struct PythonContainers {
-    /// The container engine command, `docker` or `podman`.
+    /// The container engine as `IUNCTUS_ENGINE` names it: `docker`, `podman` or a socket;
+    /// empty for Docker, else Podman.
     pub engine: String,
     /// An image with `python3` and the packages; `None` installs them into the default image.
     pub image: Option<String>,
@@ -193,6 +194,7 @@ impl ContainerStarter {
                 }],
                 workdir: None,
                 environment: self.environment(),
+                memory: None,
                 show_stderr: false,
             };
             run_to_end(&spec).map_err(|error| error.to_string())?;
@@ -252,6 +254,7 @@ impl PythonStarter for ContainerStarter {
             mounts,
             workdir: Some(start.cwd.to_string_lossy().into_owned()),
             environment: self.environment(),
+            memory: None,
             show_stderr: self.settings.show_output,
         };
         let process = ContainerProcess::start(&spec).map_err(|error| error.to_string())?;

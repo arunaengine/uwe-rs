@@ -13,6 +13,7 @@ publish.workspace = true
 
 [dependencies]
 executor.workspace = true
+serde_json.workspace = true
 tokio = { workspace = true, features = ["fs", "process", "sync", "time"] }
 tokio-util.workspace = true
 

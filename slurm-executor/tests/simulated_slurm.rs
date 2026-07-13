@@ -39,18 +39,37 @@ printf '%s\n' "$@" > "$state/$id.options"
 echo "$id"
 "#;
 
+/// Writes JSON with `--json` when the folder has a file `json`, as SLURM 23.02 does; else it
+/// refuses the option, as SLURM before 21.08 does.
 const SQUEUE: &str = r#"#!/bin/bash
 state="$(dirname "$0")/state"
+json=
 for argument in "$@"; do
-    case $argument in --jobs=*) jobs=${argument#--jobs=} ;; esac
+    case $argument in
+        --jobs=*) jobs=${argument#--jobs=} ;;
+        --json)
+            [ -e "$(dirname "$0")/json" ] || { echo "squeue: unrecognized option '--json'" >&2; exit 1; }
+            json=yes ;;
+    esac
 done
+mkdir -p "$state"
+echo "${json:-text}" >> "$state/squeue"
+[ -z "$json" ] || printf '{"jobs": ['
+separator=
 for id in ${jobs//,/ }; do
     [ -e "$state/$id.options" ] || continue
-    if [ ! -e "$state/$id.exit" ]; then echo "$id RUNNING"
-    elif [ -e "$state/$id.cancelled" ]; then echo "$id CANCELLED"
-    elif [ "$(cat "$state/$id.exit")" = 0 ]; then echo "$id COMPLETED"
-    else echo "$id FAILED"; fi
+    if [ ! -e "$state/$id.exit" ]; then job_state=RUNNING
+    elif [ -e "$state/$id.cancelled" ]; then job_state=CANCELLED
+    elif [ "$(cat "$state/$id.exit")" = 0 ]; then job_state=COMPLETED
+    else job_state=FAILED; fi
+    if [ -n "$json" ]; then
+        printf '%s{"job_id": %s, "job_state": ["%s"]}' "$separator" "$id" "$job_state"
+        separator=,
+    else
+        echo "$id $job_state"
+    fi
 done
+[ -z "$json" ] || printf ']}\n'
 "#;
 
 const SCANCEL: &str = r#"#!/bin/bash
@@ -175,6 +194,30 @@ async fn jobs_run_tasks_and_give_their_outputs() {
     assert_eq!(finished.files.len(), 1);
     let options = std::fs::read_to_string(bin.join("state/101.options")).expect("the options");
     assert!(options.contains("--mem=256M\n--account=lab\n"), "{options}");
+}
+
+#[tokio::test]
+async fn clusters_that_write_json_are_read_as_json() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    std::fs::write(bin.join("json"), "").expect("turns on JSON");
+    let backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    let spec = spec("sleep 1; echo json > out.txt");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "run-P-6-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+    assert_eq!(finished.exit_code, Some(0));
+    let asked = std::fs::read_to_string(bin.join("state/squeue")).expect("squeue was asked");
+    assert!(asked.lines().all(|line| line == "yes"), "{asked}");
 }
 
 #[tokio::test]

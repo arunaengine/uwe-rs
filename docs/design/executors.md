@@ -71,7 +71,7 @@ The options of `sbatch` come from the task: `--cpus-per-task`, `--mem`, `--time`
 | `podman` | `podman run --init` as the user (`--userns=keep-id`), with the same limits as the job. The init process hands the signal that stops the job to the task, so the container ends with the job. |
 | `docker` | as Podman, as the user with `--user`. |
 
-The backend asks `squeue` about all jobs of the run at once, at most every 10 seconds, so that many tasks do not load the scheduler. `squeue --states=all` also shows jobs that ended lately; for a job that SLURM has forgotten, `sacct` tells how it ended, when the cluster keeps accounting. How a job ends decides the outcome:
+The SLURM executor uses the tools that every SLURM node has, `sbatch`, `squeue`, `sacct` and `scancel`, so it needs no config (decision 26). The backend asks `squeue` about all jobs of the run at once, at most every 10 seconds, so that many tasks do not load the scheduler. It reads `squeue --json` and `sacct --json` where SLURM writes JSON (since 21.08; the state is a word before 23.02 and a list of words since), and their text where it does not. `squeue --states=all` also shows jobs that ended lately; for a job that SLURM has forgotten, `sacct` tells how it ended, when the cluster keeps accounting. How a job ends decides the outcome:
 
 - The job recorded the exit code of its container, and the wrapper recorded the exit code of the tool: that is the exit code of the task.
 - A container stopped by a signal, like one killed for lack of memory, ends the task with its own exit code and a note on standard error.

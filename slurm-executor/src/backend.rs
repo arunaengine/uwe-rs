@@ -15,7 +15,7 @@ use executor::{Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, pla
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
-use crate::queue::{Look, Queue, accounted};
+use crate::queue::{Look, Queue};
 use crate::script::{CONTAINER_EXIT, Container, LOG, SCRIPT, job_script, sbatch_options};
 
 /// How often the queue is asked about the jobs, by default.
@@ -200,7 +200,7 @@ impl SlurmBackend {
             let state = match self.queue.look(id, self.poll, &squeue).await {
                 Look::Active | Look::Unknown => continue,
                 Look::Ended(state) => Some(state),
-                Look::Gone => accounted(&self.command("sacct"), id).await,
+                Look::Gone => self.queue.accounted(&self.command("sacct"), id).await,
             };
             // A job that ended well has recorded its container; the shared file system may
             // show the record late. Other ends need no wait.

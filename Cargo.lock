@@ -4266,6 +4266,7 @@ name = "slurm-executor"
 version = "0.1.0"
 dependencies = [
  "executor",
+ "serde_json",
  "task-model",
  "tempfile",
  "tokio",

@@ -914,6 +914,7 @@ dependencies = [
  "config-file",
  "cwl-parser",
  "indexmap",
+ "input-schema",
  "serde_json",
  "sha1",
  "storage",

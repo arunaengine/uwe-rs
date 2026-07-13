@@ -19,6 +19,7 @@ mod javascript;
 mod placeholder;
 mod results;
 mod run;
+mod schema;
 mod scope;
 pub mod tool;
 pub mod types;

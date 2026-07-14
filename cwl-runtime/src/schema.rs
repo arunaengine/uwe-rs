@@ -188,12 +188,9 @@ fn type_schema(value_type: &Type, types: &Types, depth: usize) -> Json {
 }
 
 /// The input object of a run as JSON, with files and directories as their paths or addresses.
+/// A `null` is no value in CWL, so it is left out.
 pub fn values(job: &Map) -> Json {
-    Json::Object(
-        job.iter()
-            .map(|(name, value)| (name.clone(), to_json(value)))
-            .collect(),
-    )
+    to_json(&Value::Map(job.clone()))
 }
 
 /// A value as JSON: a file or directory is its local path, else its address; a literal file
@@ -231,6 +228,7 @@ fn to_json(value: &Value) -> Json {
         }
         Value::Map(map) => Json::Object(
             map.iter()
+                .filter(|(_, value)| !value.is_null())
                 .map(|(key, value)| (key.clone(), to_json(value)))
                 .collect(),
         ),
@@ -302,8 +300,11 @@ pub fn read(process: &Process) -> BTreeSet<String> {
 fn referenced(text: &str) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    // Only where an expression can start: not inside a name, a path or an address, like
+    // `array-inputs.cwl`.
+    let inside = |c: char| word(c) || matches!(c, '-' | '.' | '/' | '#');
     for (start, _) in text.match_indices("inputs") {
-        if text[..start].chars().next_back().is_some_and(word) {
+        if text[..start].chars().next_back().is_some_and(inside) {
             continue;
         }
         let rest = &text[start + "inputs".len()..];
@@ -338,7 +339,7 @@ mod tests {
 
     #[test]
     fn references_in_expressions() {
-        let text = r#"$(inputs.reads.path) ${ return inputs["threads"] + inputs['mode'] } inputs[\"index\"] myinputs.x inputs.hasOwnProperty("y")"#;
+        let text = r#"$(inputs.reads.path) ${ return inputs["threads"] + inputs['mode'] } inputs[\"index\"] myinputs.x inputs.hasOwnProperty("y") file:///a/array-inputs.cwl#x"#;
         let found: Vec<String> = referenced(text).into_iter().collect();
         assert_eq!(found, ["index", "mode", "reads", "threads"]);
     }

@@ -54,8 +54,9 @@ fn warnings(inputs: &Inputs, problems: &[Problem]) -> Vec<String> {
 }
 
 /// `iunctus inputs`: prints the JSON Schema of the inputs of a workflow, or with `-format text`
-/// the inputs as help text. With `-check`, the values of the launch are checked as a real run
-/// checks them. The workflow runs no task.
+/// the inputs as help text. With `-check`, the values of the launch are checked as `iunctus run`
+/// with the same options checks them: a simulated run, unless `-executor local` asks for a real
+/// one. The workflow runs no task.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let text = match arguments.format.as_deref() {
         None | Some("json") => false,
@@ -68,14 +69,12 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         }
     };
     let (target, language) = crate::target_and_language(arguments)?;
-    let mut launch = crate::launch(arguments, target);
-    // The schema describes the inputs of a real run, without made-up values.
-    launch.simulated = false;
+    let launch = crate::launch(arguments, target);
     let setup = crate::setup::Setup::load(arguments)?;
     let run = crate::run_id();
     let mut driver = crate::driver(language, &launch, &run, true, arguments, &setup)?;
     let inputs = match arguments.check {
-        true => check(driver.as_mut(), false, true)?,
+        true => check(driver.as_mut(), launch.simulated, true)?,
         false => {
             let inputs = driver.inputs()?;
             if let Some(inputs) = &inputs {

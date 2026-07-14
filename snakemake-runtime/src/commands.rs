@@ -18,7 +18,7 @@ use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
 
 use python_evaluator::{Command, CommandOutcome, Error};
-use workflow_graph::{DriverError, Input, Outcome, Task, TaskId};
+use workflow_graph::{DriverError, Input, Inputs, Outcome, Task, TaskId};
 
 use crate::workflow::State;
 
@@ -28,6 +28,8 @@ pub const DEFAULT_IMAGE: &str = "debian:stable-slim";
 
 /// What the engine asks of the session.
 pub enum Request {
+    /// The inputs of the workflow, before the run starts.
+    Inputs,
     Start,
     Complete(Box<Outcome>),
     Finish,
@@ -36,12 +38,19 @@ pub enum Request {
 /// The answer to a request: the tasks that can run now.
 pub type Reply = Result<Vec<Task>, DriverError>;
 
+/// The answer to a request for the inputs, which comes back on a channel of its own.
+pub type InputsReply = Result<Option<Inputs>, DriverError>;
+
 /// The session's end of its connection to the engine.
 pub struct Channel {
     pub requests: Receiver<Request>,
     pub replies: Sender<Reply>,
     /// Outcomes of tasks of jobs that came while a command waited for its own.
     pub parked: RefCell<VecDeque<Outcome>>,
+    /// Whether the session loads the workflow only to describe its inputs, which runs no task.
+    pub describing: Cell<bool>,
+    /// Whether a command of workflow code had to be refused while describing.
+    pub refused: Cell<bool>,
 }
 
 impl Channel {
@@ -50,6 +59,8 @@ impl Channel {
             requests,
             replies,
             parked: RefCell::new(VecDeque::new()),
+            describing: Cell::new(false),
+            refused: Cell::new(false),
         }
     }
 }
@@ -111,6 +122,12 @@ impl CommandRunner {
 
     /// Runs a command as a task and waits for its outcome.
     pub fn run(&self, command: &Command) -> Result<CommandOutcome, Error> {
+        if self.channel.describing.get() {
+            self.channel.refused.set(true);
+            return Err(Error::runtime_error(
+                "the workflow runs a command while it is loaded, which only a run can do",
+            ));
+        }
         let id = TaskId(self.next_task.get());
         self.next_task.set(id.0 + 1);
         let task = self.task(id, command);
@@ -134,7 +151,7 @@ impl CommandRunner {
                         .send(Ok(Vec::new()))
                         .map_err(|_| ended())?;
                 }
-                Request::Start | Request::Finish => {
+                Request::Inputs | Request::Start | Request::Finish => {
                     return Err(Error::runtime_error(
                         "the engine asked the session to start or finish while a command ran",
                     ));

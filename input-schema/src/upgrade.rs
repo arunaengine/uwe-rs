@@ -2,7 +2,9 @@
 //! Snakemake workflows, to draft 2020-12: `definitions` become `$defs` with their references,
 //! `dependencies` become `dependentRequired` and `dependentSchemas`, a list of `items` becomes
 //! `prefixItems`, and the boolean `exclusiveMinimum` and `exclusiveMaximum` of draft 4 and the
-//! boolean `required` of draft 3 take the forms of draft 2020-12.
+//! boolean `required` of draft 3 take the forms of draft 2020-12. Parts that are no schema, like a
+//! list of names under `properties` or `additionalProperties: null`, which validators skip, are
+//! left out.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -109,19 +111,30 @@ fn upgrade_schema(schema: &mut Json) {
     required_properties(map);
     for keyword in SCHEMA_MAPS {
         if let Some(Json::Object(schemas)) = map.get_mut(*keyword) {
+            schemas.retain(|_, schema| is_schema(schema));
             schemas.values_mut().for_each(upgrade_schema);
         }
     }
     for keyword in SCHEMA_LISTS {
         if let Some(Json::Array(schemas)) = map.get_mut(*keyword) {
+            schemas.retain(is_schema);
             schemas.iter_mut().for_each(upgrade_schema);
         }
     }
     for keyword in SCHEMAS {
-        if let Some(schema) = map.get_mut(*keyword) {
-            upgrade_schema(schema);
+        match map.get_mut(*keyword) {
+            Some(schema) if is_schema(schema) => upgrade_schema(schema),
+            Some(_) => {
+                map.remove(*keyword);
+            }
+            None => {}
         }
     }
+}
+
+/// Whether a value can be a schema: an object, or `true` or `false`.
+fn is_schema(value: &Json) -> bool {
+    matches!(value, Json::Object(_) | Json::Bool(_))
 }
 
 /// Draft 3 marks a required property with `required: true` inside it; later drafts list the
@@ -176,6 +189,23 @@ mod tests {
                 "allOf": [{"$ref": "#/$defs/io"}]
             })
         );
+    }
+
+    #[test]
+    fn parts_that_are_no_schema_are_left_out() {
+        let schema = json!({
+            "properties": {
+                "name": {"type": "string"},
+                "required": ["name"],
+                "map": {"type": "object", "additionalProperties": null}
+            }
+        });
+        let upgraded = upgrade(schema);
+        assert_eq!(
+            upgraded["properties"],
+            json!({"name": {"type": "string"}, "map": {"type": "object"}})
+        );
+        assert_eq!(crate::valid(&upgraded), Ok(()));
     }
 
     #[test]

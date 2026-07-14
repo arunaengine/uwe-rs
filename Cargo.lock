@@ -3769,6 +3769,7 @@ dependencies = [
 name = "run-crate"
 version = "0.1.0"
 dependencies = [
+ "input-schema",
  "jiff",
  "run-database",
  "serde_json",

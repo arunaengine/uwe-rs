@@ -85,6 +85,23 @@ fn record(directory: &Path) -> Database {
         .expect("opens")
         .record(&start)
         .expect("starts");
+    let inputs = serde_json::json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": ["greeting"],
+        "properties": {
+            "greeting": {"type": "string", "description": "The text to shout."},
+            "reference": {
+                "type": "string",
+                "format": "file-path",
+                "exists": true,
+                "mimetype": "text/x-fasta",
+                "default": "/data/reference.fa"
+            }
+        }
+    });
+    let values = serde_json::json!({"greeting": "hello", "reference": "/data/reference.fa"});
+    recorder.inputs(&inputs, &values);
     let assumed = input("reference.fa", Path::new("/data/reference.fa"));
     let first = task(
         1,
@@ -194,6 +211,34 @@ fn a_simulated_run_becomes_a_provenance_run_crate() {
     assert_eq!(run["object"].as_array().map(Vec::len), Some(3));
     let count = format!("data/{}", task_model::Digest::sha256(b"1\n").hex());
     assert_eq!(run["result"]["@id"], count.as_str());
+    // The inputs of the schema are formal parameters of the workflow, and the given parameter
+    // is an example of its formal parameter.
+    let workflow = entity(&metadata, "main.nf");
+    assert_eq!(
+        workflow["input"],
+        serde_json::json!([{"@id": "#input/greeting"}, {"@id": "#input/reference"}])
+    );
+    let greeting = entity(&metadata, "#input/greeting");
+    assert_eq!(
+        (&greeting["additionalType"], &greeting["valueRequired"]),
+        (&Value::from("Text"), &Value::from(true))
+    );
+    let reference = entity(&metadata, "#input/reference");
+    assert_eq!(reference["additionalType"], "File");
+    assert_eq!(reference["encodingFormat"], "text/x-fasta");
+    assert_eq!(
+        entity(&metadata, "#absent//data/reference.fa")["exampleOfWork"]["@id"],
+        "#input/reference"
+    );
+    assert_eq!(
+        entity(&metadata, "#parameter/greeting")["exampleOfWork"]["@id"],
+        "#input/greeting"
+    );
+    assert_eq!(
+        entity(&metadata, "inputs.schema.json")["encodingFormat"],
+        "application/schema+json"
+    );
+    assert!(output.join("inputs.schema.json").is_file());
 
     let recorded = std::fs::read_to_string(fixture.join(METADATA)).expect("reads the fixture");
     assert_eq!(

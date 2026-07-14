@@ -8,6 +8,7 @@ use run_database::FileRow;
 use serde_json::{Value, json};
 
 use crate::data::Placed;
+use crate::formal::{input_id, input_of_file};
 use crate::ids::encode;
 use crate::metadata::Record;
 
@@ -33,6 +34,13 @@ impl Record<'_> {
                 "name": name.unwrap_or(&file.path),
                 "alternateName": file.path
             });
+            // A file that an input of the schema names is an example of that input.
+            let input = (self.run_inputs.as_ref())
+                .filter(|_| file.role == "input")
+                .and_then(|inputs| input_of_file(&inputs.values, &file.location));
+            if let Some(input) = input {
+                entity["exampleOfWork"] = json!({"@id": input_id(input)});
+            }
             match self.placed_file(file) {
                 Some(Placed::Copied { digest, size, .. }) => {
                     entity["sha256"] = json!(digest.hex());

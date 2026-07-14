@@ -91,15 +91,15 @@ rocrate-validator 0.12.0
                                       absolute URI                              
          Detected issues                                                        
          - [Violation of                                                        
-         nda6ac59a7dca4eb5bf27a39382411574b16="file:///tmp/iunctus-crat         
+         ncf338f33288443f699be66c747ef04ceb16="file:///tmp/iunctus-crat         
          e-validation/simulated/main.nf"  on                                    
-         <https://bioschemas.org/ComputationalWorkflow>]: The                   
+         <http://schema.org/SoftwareSourceCode>]: The                           
          SoftwareApplication id SHOULD be an absolute URI                       
                                                                                 
                                                                                 
                                                                                 
          - [Violation of                                                        
-         nda6ac59a7dca4eb5bf27a39382411574b16="file:///tmp/iunctus-crat         
+         ncf338f33288443f699be66c747ef04ceb16="file:///tmp/iunctus-crat         
          e-validation/simulated/#tool/COUNT"  on                                
          <http://schema.org/SoftwareApplication>]: The                          
          SoftwareApplication id SHOULD be an absolute URI                       
@@ -107,7 +107,7 @@ rocrate-validator 0.12.0
                                                                                 
                                                                                 
          - [Violation of                                                        
-         nda6ac59a7dca4eb5bf27a39382411574b16="file:///tmp/iunctus-crat         
+         ncf338f33288443f699be66c747ef04ceb16="file:///tmp/iunctus-crat         
          e-validation/simulated/#tool/UPPER"  on                                
          <http://schema.org/SoftwareApplication>]: The                          
          SoftwareApplication id SHOULD be an absolute URI                       
@@ -115,9 +115,9 @@ rocrate-validator 0.12.0
                                                                                 
                                                                                 
          - [Violation of                                                        
-         nda6ac59a7dca4eb5bf27a39382411574b16="file:///tmp/iunctus-crat         
+         ncf338f33288443f699be66c747ef04ceb16="file:///tmp/iunctus-crat         
          e-validation/simulated/main.nf"  on                                    
-         <http://schema.org/SoftwareSourceCode>]: The                           
+         <https://bioschemas.org/ComputationalWorkflow>]: The                   
          SoftwareApplication id SHOULD be an absolute URI                       
                                                                                 
                                                                                 
@@ -210,21 +210,9 @@ rocrate-validator 0.12.0
                               encodings).                                       
          Detected issues                                                        
          - [Violation on                                                        
-         <./data/5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2         
-         e846f6be03>]: Missing or invalid `encodingFormat` linked to            
+         <./data/3b09aeb6f5f5336beb205d7f720371bc927cd46c21922e334d47ba         
+         264acb5ba4>]: Missing or invalid `encodingFormat` linked to            
          the `File Data Entity`                                                 
-                                                                                
-                                                                                
-                                                                                
-         - [Violation on                                                        
-         <./data/4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a         
-         27460dd865>]: Missing or invalid `encodingFormat` linked to            
-         the `File Data Entity`                                                 
-                                                                                
-                                                                                
-                                                                                
-         - [Violation on <./main.nf>]: Missing or invalid                       
-         `encodingFormat` linked to the `File Data Entity`                      
                                                                                 
                                                                                 
                                                                                 
@@ -234,8 +222,20 @@ rocrate-validator 0.12.0
                                                                                 
                                                                                 
          - [Violation on                                                        
-         <./data/3b09aeb6f5f5336beb205d7f720371bc927cd46c21922e334d47ba         
-         264acb5ba4>]: Missing or invalid `encodingFormat` linked to            
+         <./data/5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2         
+         e846f6be03>]: Missing or invalid `encodingFormat` linked to            
+         the `File Data Entity`                                                 
+                                                                                
+                                                                                
+                                                                                
+         - [Violation on <./main.nf>]: Missing or invalid                       
+         `encodingFormat` linked to the `File Data Entity`                      
+                                                                                
+                                                                                
+                                                                                
+         - [Violation on                                                        
+         <./data/4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a         
+         27460dd865>]: Missing or invalid `encodingFormat` linked to            
          the `File Data Entity`                                                 
                                                                                 
                                                                                 

@@ -2488,11 +2488,13 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "indexmap",
+ "input-schema",
  "nextflow-config",
  "nextflow-evaluator",
  "nextflow-parser",
  "nextflow-plugins",
  "regex",
+ "serde_json",
  "tempfile",
  "workflow-graph",
 ]

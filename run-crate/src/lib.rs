@@ -10,6 +10,7 @@
 mod data;
 mod entities;
 mod files;
+mod formal;
 mod ids;
 mod image;
 mod metadata;
@@ -111,6 +112,11 @@ pub fn export(
             }
         }
     }
+    let inputs = database.run_inputs(run)?;
+    if let Some(inputs) = &inputs {
+        let text = serde_json::to_string_pretty(&inputs.schema)?;
+        std::fs::write(directory.join(formal::INPUT_SCHEMA), text + "\n")?;
+    }
     let published = ids::time(run_database::now());
     let version = match &record.revision {
         Some(revision) => Some(revision.clone()),
@@ -126,6 +132,7 @@ pub fn export(
         published,
         version,
         license: options.license.as_deref(),
+        run_inputs: inputs.as_ref(),
     }
     .graph();
     let metadata = json!({
@@ -139,7 +146,7 @@ pub fn export(
     std::fs::write(directory.join(METADATA), text + "\n")?;
     std::fs::write(
         directory.join(metadata::README),
-        readme(&record, &workflow, tasks.len()),
+        readme(&record, &workflow, tasks.len(), inputs.is_some()),
     )?;
     let (files, bytes) = data.totals();
     Ok(Summary {
@@ -150,7 +157,7 @@ pub fn export(
 }
 
 /// A short text for people who open the crate folder.
-fn readme(run: &Run, workflow: &str, tasks: usize) -> String {
+fn readme(run: &Run, workflow: &str, tasks: usize, inputs: bool) -> String {
     let kind = if run.simulated {
         "Simulated run"
     } else {
@@ -167,11 +174,18 @@ fn readme(run: &Run, workflow: &str, tasks: usize) -> String {
          iunctus {}.\n\n\
          - `ro-crate-metadata.json` describes the run: the workflow, its steps, and one action per \
          task with its command, container image, inputs, outputs, start and end.\n\
-         - `{workflow}` is the workflow that ran.\n\
+         - `{workflow}` is the workflow that ran.\n{}\
          - `data/` holds each file of the run once, named by its SHA-256 digest; the metadata \
          gives each file its name in the run.\n\n\
          The run {}: started {}, ended {ended}, {tasks} tasks.\n",
         env!("CARGO_PKG_VERSION"),
+        match inputs {
+            true => format!(
+                "- `{}` is the JSON Schema of the inputs of the workflow.\n",
+                formal::INPUT_SCHEMA
+            ),
+            false => String::new(),
+        },
         run.state,
         ids::time(run.started),
     ));

@@ -1,16 +1,18 @@
 //! The entities of `ro-crate-metadata.json`: the workflow with its steps and tools, the engine
-//! run, the workflow run, one action per task, the container images, the parameters and the
-//! files. The shapes follow the example crates of the Provenance Run Crate profile 0.5.
+//! run, the workflow run, one action per task, the container images, the parameters, the
+//! inputs of the workflow and the files. The shapes follow the example crates of the
+//! Provenance Run Crate profile 0.5.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use run_database::{Run, TaskDetail};
+use run_database::{Run, RunInputs, TaskDetail};
 use serde_json::{Value, json};
 
 use crate::data::Placed;
 use crate::entities::{image_entity, language, language_id, one_or_many, push_unique, status};
+use crate::formal::{FORMAL_PARAMETER, INPUT_SCHEMA, formal_parameter, input_id, schema_file};
 use crate::ids::{encode, parameter_id, run_id, step_id, task_id, time, tool_id};
 
 const PROFILES: [(&str, &str, &str); 4] = [
@@ -62,6 +64,8 @@ pub(crate) struct Record<'a> {
     /// The version of the workflow: its Git revision, else the digest of its main file.
     pub version: Option<String>,
     pub license: Option<&'a str>,
+    /// The JSON Schema of the inputs and the values of the run, when the driver described them.
+    pub run_inputs: Option<&'a RunInputs>,
 }
 
 impl Record<'_> {
@@ -105,6 +109,20 @@ impl Record<'_> {
         }
         graph.push(self.workflow_entity(&steps));
         graph.push(language(&self.run.language));
+        if let Some(inputs) = self.run_inputs {
+            graph.push(schema_file(self.workflow));
+            graph.extend(
+                input_schema::properties(&inputs.schema)
+                    .iter()
+                    .map(formal_parameter),
+            );
+            graph.push(json!({
+                "@id": FORMAL_PARAMETER,
+                "@type": "CreativeWork",
+                "name": "FormalParameter profile",
+                "version": "1.0-RELEASE"
+            }));
+        }
         for (position, step) in steps.iter().enumerate() {
             graph.push(json!({
                 "@id": step_id(step),
@@ -134,13 +152,18 @@ impl Record<'_> {
         }));
         graph.push(self.engine_action(&steps));
         graph.push(self.workflow_run());
+        let declared = self.declared();
         for (name, value) in &self.run.parameters {
-            graph.push(json!({
+            let mut parameter = json!({
                 "@id": parameter_id(name),
                 "@type": "PropertyValue",
                 "name": name,
                 "value": value
-            }));
+            });
+            if declared.contains(&name.as_str()) {
+                parameter["exampleOfWork"] = json!({"@id": input_id(name)});
+            }
+            graph.push(parameter);
         }
         for step in &steps {
             let actions: Vec<Value> = self
@@ -197,6 +220,9 @@ impl Record<'_> {
             description = format!("{SIMULATED} {description}");
         }
         let mut parts = vec![json!({"@id": self.workflow}), json!({"@id": README})];
+        if self.run_inputs.is_some() {
+            parts.push(json!({"@id": INPUT_SCHEMA}));
+        }
         parts.extend(self.copied().map(|id| json!({"@id": id})));
         let mut mentions = vec![json!({"@id": run_id(&run.id)})];
         mentions.extend(
@@ -252,7 +278,23 @@ impl Record<'_> {
         if let Some(version) = &self.version {
             workflow["version"] = json!(version);
         }
+        let inputs: Vec<Value> = (self.declared().iter())
+            .map(|name| json!({"@id": input_id(name)}))
+            .collect();
+        if !inputs.is_empty() {
+            workflow["input"] = one_or_many(inputs);
+        }
         workflow
+    }
+
+    /// The names of the inputs that the schema of the run declares.
+    fn declared(&self) -> Vec<&str> {
+        self.run_inputs.map_or_else(Vec::new, |inputs| {
+            input_schema::properties(&inputs.schema)
+                .iter()
+                .map(|property| property.name)
+                .collect()
+        })
     }
 
     fn engine_action(&self, steps: &[String]) -> Value {

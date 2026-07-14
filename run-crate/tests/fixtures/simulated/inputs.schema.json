@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "greeting": {
+      "description": "The text to shout.",
+      "type": "string"
+    },
+    "reference": {
+      "default": "/data/reference.fa",
+      "exists": true,
+      "format": "file-path",
+      "mimetype": "text/x-fasta",
+      "type": "string"
+    }
+  },
+  "required": [
+    "greeting"
+  ],
+  "type": "object"
+}

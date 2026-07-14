@@ -37,7 +37,7 @@ workflowhub/440 1 config/standard.config:16:1: Expected `}`
 workflowhub/442 ok
 workflowhub/444 1 workflow/main.nf:21:1: MissingPropertyException: No such variable: WorkflowMain
 workflowhub/450 1 workflow/../subworkflows/../modules/mapseq.nf:31:1: Expected an expression
-workflowhub/452 1 workflows/mobilomeannotation.nf:54:5: SchemaValidationException: The following invalid input values have been detected:
+workflowhub/452 1 iunctus: the input `input` is required, but has no value
 workflowhub/453 1 iunctus: <cache>/workflow holds no workflow iunctus knows: no main.nf, nextflow.config, Snakefile or .smk file; name the workflow file
 workflowhub/454 ok
 workflowhub/462 1 workflows/genomes_annotation.nf:6:18: AbortOperationException: Missing `fromPath` parameter
@@ -58,7 +58,7 @@ workflowhub/813 1 subworkflows/local/utils_nfcore_treeval_pipeline/../yaml_input
 workflowhub/836 1 main.nf:72:2: AbortOperationException: the run exits with code 1
 workflowhub/837 1 main_workflow_precursor_specific_fasta.nf:37:17: AbortOperationException: Missing `fromPath` parameter
 workflowhub/874 1 ERROR: Could not load config/Not_Specified.config check that you are using a valid workflow name
-workflowhub/884 1 subworkflows/local/../nf-core/utils_nfschema_plugin/main.nf:39:13: SchemaValidationException: The following invalid input values have been detected:
+workflowhub/884 1 iunctus: the inputs fit none of the choices of the schema: the input `ena_raw_reads_study_accession` is required, but has no value; or the input `samplesheet` is required, but has no value
 workflowhub/964 1 workflows/../subworkflows/local/../../modules/nf-core/cutadapt/main.nf:14:37: MissingPropertyException: No such variable: outformat
 workflowhub/965 33 main.nf:20:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 workflowhub/966 ok
@@ -105,7 +105,7 @@ workflowhub/1011 ok
 workflowhub/1012 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 workflowhub/1013 1 lib/NfcoreSchema.groovy:181:13: AbortOperationException: the run exits with code 1
 workflowhub/1014 ok
-workflowhub/1015 1 main.nf:43:5: SchemaValidationException: The following invalid input values have been detected:
+workflowhub/1015 1 iunctus: the input `input` is required, but has no value
 workflowhub/1016 ok
 workflowhub/1017 ok
 workflowhub/1018 ok
@@ -120,7 +120,7 @@ workflowhub/1030 1 workflows/sarek/main.nf:870:25: IllegalStateException: Access
 workflowhub/1041 ok
 workflowhub/1055 ok
 workflowhub/1058 ok
-workflowhub/1069 1 main.nf:31:5: SchemaValidationException: The following invalid input values have been detected:
+workflowhub/1069 1 iunctus: the input `input` is required, but has no value
 workflowhub/1100 1 workflows/../subworkflows/nf-core/fastq_trim_fastp_fastqc/main.nf:15:26: IllegalArgumentException: Text must not be null or empty
 workflowhub/1106 33 subworkflows/local/prepare_input/main.nf:130:21: Not supported yet: reading remote files like ftp://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz
 workflowhub/1160 ok
@@ -146,7 +146,7 @@ workflowhub/1742 ok
 workflowhub/1757 1 workflows/../subworkflows/local/fastq_fasta_mash_screen/../../../modules/nf-core/cat/cat/main.nf:59:55: StringIndexOutOfBoundsException: begin -1, end 1, length 1
 workflowhub/1763 1 workflows/pathogensurveillance.nf:38:5: NoSuchFileException: assets/.pathogensurveillance_output.json
 workflowhub/1769 1 NoSuchFileException: params_ccrcc.csv
-workflowhub/1782 1 subworkflows/local/utils_nfcore_taxodactyl_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:39:13: SchemaValidationException: The following invalid input values have been detected:
+workflowhub/1782 1 iunctus: the input `taxdb` is required, but has no value
 workflowhub/1787 ok
 workflowhub/1795 1 WARNING: Could not load nf-core/config/eisca profiles: https://raw.githubusercontent.com/nf-core/configs/master/pipeline/eisca.config
 workflowhub/1814 ok

@@ -24,7 +24,7 @@ createtaxdb ok
 crisprseq ok
 crisprvar 1 Unknown configuration profile: 'test'
 cutandrun ok
-daamicrobiome 1 subworkflows/local/utils_nfcore_daamicrobiome_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
+daamicrobiome 1 iunctus: the input `sim_abs_logfc` must be a text, but it is a list
 dartseq 1 subworkflows/local/utils_nfcore_dartseq_pipeline/main.nf:104:19: SchemaValidationException: The following errors have been detected in assets/samplesheet_4samples_local.csv:
 datasync ok
 ddamsproteomics 33 main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
@@ -57,7 +57,7 @@ genomeannotator ok
 genomeassembler 1 workflows/../subworkflows/local/prepare/main.nf:208:39: JsonException: Unable to determine the current character, it is not a string, number, array, or object
 genomeqc ok
 genomeskim ok
-genomicrelatedness 1 subworkflows/local/utils_nfcore_genomicrelatedness_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:72:9: SchemaValidationException: The following invalid input values have been detected:
+genomicrelatedness 1 iunctus: the input `input` is required, but has no value
 gwas 1 subworkflows/local/utils_nfcore_gwas_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
 hadge ok
 hgtseq 1 workflows/hgtseq.nf:287:9: AbortOperationException: ERROR: Please check input samplesheet -> a column named input1 with either fastq or bam/cram input is mandatory!

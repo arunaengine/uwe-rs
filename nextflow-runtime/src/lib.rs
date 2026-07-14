@@ -6,6 +6,7 @@ mod build;
 pub mod channel;
 pub mod driver;
 mod files;
+pub mod inputs;
 mod keyed;
 mod loader;
 mod network;
@@ -224,6 +225,36 @@ impl Default for Options {
             command_line: String::new(),
         }
     }
+}
+
+/// What a script declares about its params, before any of its workflow runs: the params of the
+/// config with those of the `params.x = value` statements of the script and its includes where
+/// the config leaves them unset, and the evaluated default of each param of the typed `params`
+/// block, `None` for one without a default.
+pub fn declared_params(
+    module: &Rc<Module>,
+    options: &Options,
+    host: &mut dyn Host,
+) -> Result<(Value, Vec<Option<Value>>), Error> {
+    let workflow = workflow::metadata(options, &host.launch_dir());
+    let mut interpreter = Interpreter::new(host);
+    set_globals(&mut interpreter, options, &workflow);
+    let params = options.config.params();
+    script_params(&mut interpreter, module, &params, &mut Vec::new())
+        .map_err(|error| interpreter.locate(error))?;
+    let mut defaults = Vec::new();
+    for parameter in &module.typed_parameters {
+        let default = match &parameter.default {
+            Some(code) => Some(
+                interpreter
+                    .evaluate(code, module)
+                    .map_err(|error| interpreter.locate(error))?,
+            ),
+            None => None,
+        };
+        defaults.push(default);
+    }
+    Ok((params, defaults))
 }
 
 /// Runs the `params.x = value` statements of a script and the scripts it includes: each one

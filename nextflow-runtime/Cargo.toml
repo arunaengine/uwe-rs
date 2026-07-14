@@ -14,11 +14,13 @@ publish.workspace = true
 [dependencies]
 flate2.workspace = true
 indexmap.workspace = true
+input-schema.workspace = true
 nextflow-config.workspace = true
 nextflow-evaluator.workspace = true
 nextflow-parser.workspace = true
 nextflow-plugins.workspace = true
 regex.workspace = true
+serde_json.workspace = true
 workflow-graph.workspace = true
 
 [dev-dependencies]

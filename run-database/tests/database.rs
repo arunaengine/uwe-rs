@@ -66,6 +66,7 @@ fn record(path: &Path, directory: &Path) -> Result<(), DatabaseError> {
     let made = directory.join("made.txt");
     std::fs::write(&made, "made").expect("writes an output");
     let mut recorder = Database::open(path)?.record(&start("run-1", None))?;
+    recorder.inputs(&input_schema(), &serde_json::json!({"outdir": "results"}));
     let first = task(1, "MAKE", vec![input(&data)]);
     recorder.requested(&first, &[]);
     recorder.started(TaskId(1), 1);
@@ -97,6 +98,11 @@ fn record(path: &Path, directory: &Path) -> Result<(), DatabaseError> {
     recorder.close()
 }
 
+/// The schema of the inputs of the recorded run.
+fn input_schema() -> serde_json::Value {
+    serde_json::json!({"type": "object", "properties": {"outdir": {"type": "string"}}})
+}
+
 #[test]
 fn a_run_is_read_back_with_its_logs_and_events() {
     let directory = tempfile::tempdir().expect("a temporary directory");
@@ -118,6 +124,12 @@ fn a_run_is_read_back_with_its_logs_and_events() {
     assert_eq!(run.arguments, ["run", "main.nf"]);
     let counts: Vec<(&str, u64)> = run.tasks.iter().map(|(k, v)| (k.as_str(), *v)).collect();
     assert_eq!(counts, [("failed", 1), ("stopped", 1), ("succeeded", 1)]);
+    let inputs = database
+        .run_inputs("run-1")
+        .expect("reads")
+        .expect("inputs");
+    assert_eq!(inputs.schema, input_schema());
+    assert_eq!(inputs.values, serde_json::json!({"outdir": "results"}));
 
     let log = database.log("run-1", 1, 1, "stdout").expect("reads");
     let log = log.expect("a log");
@@ -273,6 +285,35 @@ fn a_resumed_run_joins_the_lineage_and_finds_finished_tasks() {
 
     let unknown = database.record(&start("run-3", Some("run-9")));
     assert!(matches!(unknown, Err(DatabaseError::UnknownRun(_))));
+}
+
+#[test]
+fn a_database_of_version_1_gets_the_inputs_of_runs() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    drop(Database::open(&path).expect("creates"));
+    let connection = rusqlite::Connection::open(&path).expect("opens");
+    connection
+        .execute_batch(
+            "ALTER TABLE runs DROP COLUMN input_schema; ALTER TABLE runs DROP COLUMN inputs;
+             PRAGMA user_version = 1;",
+        )
+        .expect("goes back to version 1");
+    drop(connection);
+    let mut recorder = Database::open(&path)
+        .expect("migrates")
+        .record(&start("run-1", None))
+        .expect("records");
+    recorder.inputs(&input_schema(), &serde_json::json!({}));
+    recorder.ended(None);
+    recorder.close().expect("closes");
+    let database = Database::open(&path).expect("opens again");
+    assert_eq!(database.version().expect("reads the version"), VERSION);
+    let inputs = database
+        .run_inputs("run-1")
+        .expect("reads")
+        .expect("inputs");
+    assert_eq!(inputs.schema, input_schema());
 }
 
 #[test]

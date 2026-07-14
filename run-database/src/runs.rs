@@ -34,6 +34,14 @@ pub struct Run {
     pub tasks: BTreeMap<String, u64>,
 }
 
+/// The inputs of a run (decision 24): the JSON Schema of the inputs of its workflow, and the
+/// values of the run.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct RunInputs {
+    pub schema: serde_json::Value,
+    pub values: serde_json::Value,
+}
+
 /// The standard output or error of an attempt.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Log {
@@ -81,6 +89,28 @@ impl Database {
             )
             .optional()?;
         run.map(|run| self.counted(parsed(run)?)).transpose()
+    }
+
+    /// The inputs of a run, when its driver described them.
+    pub fn run_inputs(&self, run: &str) -> Result<Option<RunInputs>, DatabaseError> {
+        let row: Option<(Option<String>, Option<String>)> = self
+            .connection
+            .query_row(
+                "SELECT input_schema, inputs FROM runs WHERE id = ?1",
+                [run],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let Some((Some(schema), values)) = row else {
+            return Ok(None);
+        };
+        Ok(Some(RunInputs {
+            schema: serde_json::from_str(&schema)?,
+            values: match values {
+                Some(values) => serde_json::from_str(&values)?,
+                None => serde_json::Value::Null,
+            },
+        }))
     }
 
     /// The standard output (`stdout`) or error (`stderr`) of an attempt, if it wrote any.

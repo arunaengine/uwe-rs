@@ -10,8 +10,11 @@ use std::rc::Rc;
 
 use nextflow_config::{Config, tree};
 use nextflow_evaluator::interpreter::{Error, Host, parse_json, parse_yaml};
+use nextflow_evaluator::lowered::Module;
 use nextflow_evaluator::value::{PathValue, Value};
-use workflow_graph::{Delivery, Driver, DriverError, Input, Language, Launch, Note, Outcome, Task};
+use workflow_graph::{
+    Delivery, Driver, DriverError, Input, Inputs, Language, Launch, Note, Outcome, Task,
+};
 
 use crate::notes::Noting;
 use crate::process::glob_matches;
@@ -78,6 +81,19 @@ pub struct Nextflow {
     reports: Option<Reports>,
     /// The deliveries of the reports, once they are written.
     report_deliveries: Vec<Delivery>,
+    /// The config and the main script, once loaded; the run takes them when it starts.
+    loaded: Option<Loaded>,
+}
+
+/// What a run needs before it starts, which [`Driver::inputs`] loads too.
+struct Loaded {
+    /// The project directory, where the main script and `nextflow.config` are.
+    project: PathBuf,
+    script: PathBuf,
+    config: Config,
+    /// The config files that were read, in order.
+    files: Vec<PathBuf>,
+    module: Rc<Module>,
 }
 
 impl Nextflow {
@@ -97,7 +113,109 @@ impl Nextflow {
             registry: None,
             reports: None,
             report_deliveries: Vec::new(),
+            loaded: None,
         })
+    }
+
+    /// Loads the config of the project and the main script, once.
+    fn load(&mut self) -> Result<(), DriverError> {
+        if self.loaded.is_some() {
+            return Ok(());
+        }
+        let host = self.settings.host.as_mut();
+        // A project directory runs its `manifest.mainScript`, else `main.nf`. The parent of a
+        // bare file name like `main.nf` is empty, which stands for the launch directory.
+        let target = &self.launch.target;
+        let project = if target.is_dir() {
+            target.clone()
+        } else {
+            let parent = target
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty());
+            parent.unwrap_or(Path::new(".")).to_owned()
+        };
+        let (config, files) = load_config(&project, &self.launch, host)?;
+        let script = if target.is_dir() {
+            let main = config
+                .get(&["manifest", "mainScript"])
+                .map_or("main.nf".into(), |name| name.to_string());
+            target.join(main)
+        } else {
+            target.clone()
+        };
+        let module = Loader::default().load(&script).map_err(load_error)?;
+        self.loaded = Some(Loaded {
+            project,
+            script,
+            config,
+            files,
+            module,
+        });
+        Ok(())
+    }
+
+    /// The options of a run of the loaded script with a config.
+    fn options(&self, loaded: &Loaded, config: Config) -> Options {
+        let text = |path: &Path| {
+            std::path::absolute(path)
+                .unwrap_or_else(|_| path.to_owned())
+                .to_string_lossy()
+                .into_owned()
+        };
+        let profiles = &self.launch.profiles;
+        Options {
+            stub: self.launch.stub,
+            simulated: self.launch.simulated,
+            output_dir: (self.launch.output_dir.as_ref())
+                .map(|folder| folder.to_string_lossy().into_owned()),
+            container_engine: self.settings.container_engine.clone(),
+            config,
+            profile: if profiles.is_empty() {
+                "standard".into()
+            } else {
+                profiles.join(",")
+            },
+            project_dir: text(&loaded.project),
+            script_file: text(&loaded.script),
+            run_name: self.settings.run_name.clone(),
+            config_files: (loaded.files.iter())
+                .map(|file| file.to_string_lossy().into_owned())
+                .collect(),
+            command_line: self.settings.command_line.clone(),
+        }
+    }
+
+    /// The schema of a pipeline without a schema file, from what its config and main script
+    /// declare without the params of the command line. A script whose declarations fail
+    /// outside a run gives the params of the config alone.
+    fn declared_schema(&mut self, loaded: &Loaded) -> Result<serde_json::Value, DriverError> {
+        let mut bare = self.launch.clone();
+        bare.params.clear();
+        bare.inputs = None;
+        let (config, _) = load_config(&loaded.project, &bare, self.settings.host.as_mut())?;
+        let options = self.options(loaded, config.clone());
+        let host = self.settings.host.as_mut();
+        let (params, defaults) = crate::declared_params(&loaded.module, &options, host)
+            .unwrap_or_else(|_| (config.params(), Vec::new()));
+        let manifest = |key: &str| {
+            (config.get(&["manifest", key]))
+                .filter(Value::truth)
+                .map(|value| value.to_string())
+        };
+        let title = manifest("name").unwrap_or_else(|| {
+            let project = std::path::absolute(&loaded.project).unwrap_or_default();
+            let name = project.file_name().unwrap_or_default();
+            name.to_string_lossy().into_owned()
+        });
+        let declared = crate::inputs::Declared {
+            params,
+            typed: &loaded.module.typed_parameters,
+            defaults,
+            title,
+            description: manifest("description"),
+        };
+        let base = std::env::current_dir().unwrap_or_default();
+        Ok(crate::inputs::declared(&declared, &base))
     }
 
     /// The container tasks of the requests of the network, which are kept until they finish.
@@ -124,29 +242,10 @@ impl Driver for Nextflow {
     }
 
     fn start(&mut self) -> Result<Vec<Task>, DriverError> {
-        let host = self.settings.host.as_mut();
-        // A project directory runs its `manifest.mainScript`, else `main.nf`. The parent of a
-        // bare file name like `main.nf` is empty, which stands for the launch directory.
-        let target = &self.launch.target;
-        let project = if target.is_dir() {
-            target.clone()
-        } else {
-            let parent = target
-                .parent()
-                .filter(|parent| !parent.as_os_str().is_empty());
-            parent.unwrap_or(Path::new(".")).to_owned()
-        };
-        let (config, files) = load_config(&project, &self.launch, host)?;
-        let script = if target.is_dir() {
-            let main = config
-                .get(&["manifest", "mainScript"])
-                .map_or("main.nf".into(), |name| name.to_string());
-            target.join(main)
-        } else {
-            target.clone()
-        };
-        let module = Loader::default().load(&script).map_err(load_error)?;
-        self.environment = environment(&config);
+        self.load()?;
+        let loaded = self.loaded.take().ok_or_else(not_started)?;
+        let config = &loaded.config;
+        self.environment = environment(config);
         let engine = self
             .settings
             .container_engine
@@ -157,41 +256,16 @@ impl Driver for Nextflow {
             .map(|registry| registry.to_string());
         if !self.launch.simulated {
             let launch_dir = std::env::current_dir().unwrap_or_default();
-            let reports = Reports::of(&config, &launch_dir, &script.to_string_lossy());
+            let script = loaded.script.to_string_lossy();
+            let reports = Reports::of(config, &launch_dir, &script);
             self.reports = Some(reports).filter(|reports| !reports.is_empty());
         }
-        let text = |path: &Path| {
-            std::path::absolute(path)
-                .unwrap_or_else(|_| path.to_owned())
-                .to_string_lossy()
-                .into_owned()
-        };
-        let profiles = &self.launch.profiles;
-        let options = Options {
-            stub: self.launch.stub,
-            simulated: self.launch.simulated,
-            output_dir: (self.launch.output_dir.as_ref())
-                .map(|folder| folder.to_string_lossy().into_owned()),
-            container_engine: self.settings.container_engine.clone(),
-            config,
-            profile: if profiles.is_empty() {
-                "standard".into()
-            } else {
-                profiles.join(",")
-            },
-            project_dir: text(&project),
-            script_file: text(&script),
-            run_name: self.settings.run_name.clone(),
-            config_files: (files.iter())
-                .map(|file| file.to_string_lossy().into_owned())
-                .collect(),
-            command_line: self.settings.command_line.clone(),
-        };
+        let options = self.options(&loaded, loaded.config.clone());
         let mut host = Noting {
-            host,
+            host: self.settings.host.as_mut(),
             notes: &mut self.notes,
         };
-        let (run, requests) = Run::start(&module, &options, &mut host).map_err(error)?;
+        let (run, requests) = Run::start(&loaded.module, &options, &mut host).map_err(error)?;
         self.run = Some(run);
         Ok(self.tasks(requests))
     }
@@ -243,6 +317,32 @@ impl Driver for Nextflow {
         };
         deliveries.append(&mut self.report_deliveries);
         deliveries
+    }
+
+    /// The pipeline's `nextflow_schema.json`, else what its config and script declare, with
+    /// the params of the run and the params that its code reads.
+    fn inputs(&mut self) -> Result<Option<Inputs>, DriverError> {
+        self.load()?;
+        let loaded = self.loaded.take().ok_or_else(not_started)?;
+        let file = crate::inputs::schema_file(&loaded.config, &loaded.project);
+        let schema = match file.is_file() {
+            true => crate::inputs::from_file(&file, &loaded.project).map_err(DriverError::new),
+            false => self.declared_schema(&loaded),
+        };
+        // The params that nf-schema ignores are kept out of the schema on purpose.
+        let mut read = crate::inputs::read(&loaded.project);
+        for name in crate::inputs::ignored(&loaded.config) {
+            read.remove(&name);
+        }
+        let inputs = schema.map(|schema| Inputs {
+            schema,
+            values: crate::inputs::values(&loaded.config.params()),
+            base: std::env::current_dir().unwrap_or_default(),
+            read: Some(read),
+            assumes_values: false,
+        });
+        self.loaded = Some(loaded);
+        inputs.map(Some)
     }
 }
 

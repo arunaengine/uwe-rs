@@ -118,8 +118,44 @@ fn problem(error: &ValidationError<'_>, simulated: bool, assumes_values: bool) -
             let message = format!("{} {message}", subject(&at));
             (at, message)
         }
+        Kind::AnyOf { context } | Kind::OneOfNotValid { context } => {
+            let choices: Vec<String> = context
+                .iter()
+                .map(|branch| {
+                    let problems = branch.iter().map(|error| problem(error, false, false));
+                    let messages: Vec<String> = problems.map(|problem| problem.message).collect();
+                    messages.join(" and ")
+                })
+                .filter(|choice| !choice.is_empty())
+                .collect();
+            let fit = if at.is_empty() { "fit" } else { "fits" };
+            let message = format!(
+                "{} {fit} none of the choices of the schema: {}",
+                subject(&at),
+                choices.join("; or ")
+            );
+            (at, message)
+        }
+        Kind::Not { schema } => {
+            let names: Vec<String> = match schema.get("required") {
+                Some(Json::Array(names)) => names
+                    .iter()
+                    .filter_map(Json::as_str)
+                    .map(|name| format!("`{}`", join(&at, name)))
+                    .collect(),
+                _ => Vec::new(),
+            };
+            let message = match names.as_slice() {
+                [] => format!("{} must not fit the schema `{schema}`", subject(&at)),
+                [one] => format!("the input {one} must not be given"),
+                many => format!("the inputs {} must not all be given", many.join(", ")),
+            };
+            (at, message)
+        }
         _ => {
-            let message = format!("{} is not valid: {error}", subject(&at));
+            let be = if at.is_empty() { "are" } else { "is" };
+            let text: String = error.to_string().chars().take(200).collect();
+            let message = format!("{} {be} not valid: {text}", subject(&at));
             (at, message)
         }
     };

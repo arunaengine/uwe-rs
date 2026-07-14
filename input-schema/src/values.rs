@@ -1,5 +1,5 @@
-//! The values of a run as the check sees them: without `null`s, and with the texts of the
-//! command line read as the numbers and booleans that the schema asks for.
+//! The values of a run as the check sees them: the texts of the command line read as the
+//! numbers and booleans that the schema asks for.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -7,9 +7,8 @@ use serde_json::Value as Json;
 
 use crate::properties::resolve;
 
-/// The values as the check sees them: without `null`s, which stand for no value, and with
-/// texts turned into the numbers and booleans that the schema asks for, as values from the
-/// command line are texts.
+/// The values as the check sees them: texts turned into the numbers and booleans that the schema
+/// asks for, as values from the command line are texts.
 pub(crate) fn prepared(root: &Json, schema: &Json, value: Json) -> Json {
     let (schema, _) = resolve(root, schema);
     let mut value = value;
@@ -22,18 +21,15 @@ pub(crate) fn prepared(root: &Json, schema: &Json, value: Json) -> Json {
         Json::String(text) => typed(root, schema, text),
         Json::Object(entries) => {
             let properties = schema.get("properties");
-            let entries = entries
-                .into_iter()
-                .filter(|(_, value)| !value.is_null())
-                .map(
-                    |(name, value)| match properties.and_then(|p| p.get(&name)) {
-                        Some(property) => {
-                            let value = prepared(root, property, value);
-                            (name, value)
-                        }
-                        None => (name, value),
-                    },
-                );
+            let entries = entries.into_iter().map(|(name, value)| {
+                match properties.and_then(|p| p.get(&name)) {
+                    Some(property) => {
+                        let value = prepared(root, property, value);
+                        (name, value)
+                    }
+                    None => (name, value),
+                }
+            });
             Json::Object(entries.collect())
         }
         Json::Array(items) => match schema.get("items") {

@@ -4,7 +4,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -185,6 +185,43 @@ impl Nextflow {
         }
     }
 
+    /// The inputs of the loaded pipeline.
+    fn describe(&mut self, loaded: &Loaded) -> Result<Inputs, DriverError> {
+        let file = crate::inputs::schema_file(&loaded.config, &loaded.project);
+        let from_file = file.is_file();
+        let schema = match from_file {
+            true => crate::inputs::from_file(&file, &loaded.project).map_err(DriverError::new)?,
+            false => self.declared_schema(loaded)?,
+        };
+        // The params as the pipeline checks them: those of the config, with the `params.x =
+        // value` statements of the script where the config leaves them unset, as Nextflow sets
+        // them before the workflow runs. The run finds them set.
+        let options = self.options(loaded, loaded.config.clone());
+        let host = self.settings.host.as_mut();
+        let params = crate::declared_params(&loaded.module, &options, host)
+            .map_or_else(|_| loaded.config.params(), |(params, _)| params);
+        let mut values = crate::inputs::values(&params);
+        // The params that nf-schema ignores are left out of its check and of the schema on
+        // purpose.
+        let ignored: BTreeSet<String> =
+            crate::inputs::ignored(&loaded.config).into_iter().collect();
+        let mut read = crate::inputs::read(&loaded.project);
+        read.retain(|name| !ignored.contains(name));
+        if crate::inputs::lenient(&loaded.config) {
+            crate::inputs::as_text(&schema, &mut values);
+        }
+        Ok(Inputs {
+            schema,
+            values,
+            base: std::env::current_dir().unwrap_or_default(),
+            read: Some(read),
+            assumes_values: false,
+            // Nextflow holds no param to a schema; a pipeline does when its code checks them.
+            advisory: !(from_file && crate::inputs::validates(&loaded.module, &params)),
+            ignored,
+        })
+    }
+
     /// The schema of a pipeline without a schema file, from what its config and main script
     /// declare without the params of the command line. A script whose declarations fail
     /// outside a run gives the params of the config alone.
@@ -324,23 +361,7 @@ impl Driver for Nextflow {
     fn inputs(&mut self) -> Result<Option<Inputs>, DriverError> {
         self.load()?;
         let loaded = self.loaded.take().ok_or_else(not_started)?;
-        let file = crate::inputs::schema_file(&loaded.config, &loaded.project);
-        let schema = match file.is_file() {
-            true => crate::inputs::from_file(&file, &loaded.project).map_err(DriverError::new),
-            false => self.declared_schema(&loaded),
-        };
-        // The params that nf-schema ignores are kept out of the schema on purpose.
-        let mut read = crate::inputs::read(&loaded.project);
-        for name in crate::inputs::ignored(&loaded.config) {
-            read.remove(&name);
-        }
-        let inputs = schema.map(|schema| Inputs {
-            schema,
-            values: crate::inputs::values(&loaded.config.params()),
-            base: std::env::current_dir().unwrap_or_default(),
-            read: Some(read),
-            assumes_values: false,
-        });
+        let inputs = self.describe(&loaded);
         self.loaded = Some(loaded);
         inputs.map(Some)
     }

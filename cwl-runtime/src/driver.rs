@@ -195,6 +195,8 @@ impl Driver for CwlDriver {
             base: std::env::current_dir().unwrap_or_default(),
             read: Some(schema::read(&self.process)),
             assumes_values: self.launch.inputs.is_none(),
+            advisory: false,
+            ignored: Default::default(),
         }))
     }
 

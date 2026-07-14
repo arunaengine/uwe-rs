@@ -49,8 +49,11 @@ pub struct Arguments {
     pub kubeconfig: Option<PathBuf>,
     /// `-kubernetes-namespace name`: the namespace of the Jobs of `-executor kubernetes`.
     pub kubernetes_namespace: Option<String>,
-    /// `-format json|dot|summary|svg` of `iunctus graph`.
-    pub format: Option<Format>,
+    /// `-format name`: `json`, `dot`, `summary` or `svg` for `iunctus graph`, `json` or `text`
+    /// for `iunctus inputs`.
+    pub format: Option<String>,
+    /// `-check`: `iunctus inputs` also checks the values of the launch against the schema.
+    pub check: bool,
     /// `-view tasks|steps`: the graph with one node per task, or one node per step.
     pub view: Option<View>,
     /// `-direction down|right`: which way a picture of the graph goes.
@@ -147,10 +150,15 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
             "-kubernetes-namespace" => parsed.kubernetes_namespace = Some(value()?),
             "-format" => {
                 let name = value()?;
-                parsed.format = Some(Format::parse(&name).ok_or(format!(
-                    "unknown graph format `{name}`; use json, dot, summary or svg"
-                ))?);
+                if Format::parse(&name).is_none() && name != "text" {
+                    return Err(format!(
+                        "unknown graph format `{name}`; use json, dot, summary or svg, or json \
+                         or text for `iunctus inputs`"
+                    ));
+                }
+                parsed.format = Some(name);
             }
+            "-check" => parsed.check = true,
             "-view" => {
                 let name = value()?;
                 parsed.view = Some(

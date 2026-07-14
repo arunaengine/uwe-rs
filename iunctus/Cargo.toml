@@ -17,6 +17,7 @@ config-file.workspace = true
 content-store.workspace = true
 cwl-runtime.workspace = true
 executor.workspace = true
+input-schema.workspace = true
 jiff.workspace = true
 nextflow-evaluator.workspace = true
 nextflow-runtime.workspace = true

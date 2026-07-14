@@ -8,10 +8,10 @@ use crate::DatabaseError;
 
 /// The version of the schema that this build writes. SQLite keeps it in `PRAGMA user_version`.
 /// A change to the tables adds a step to [`MIGRATIONS`] and raises this number.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 /// The steps from each version to the next: the first creates version 1 in an empty file.
-const MIGRATIONS: [&str; VERSION as usize] = [VERSION_1];
+const MIGRATIONS: [&str; VERSION as usize] = [VERSION_1, VERSION_2];
 
 /// Version 1. Times are milliseconds since the Unix epoch (UTC). Text in JSON is marked as such.
 /// A run is one `iunctus run`; its tasks are the tasks that the driver asked for; an attempt is
@@ -165,6 +165,14 @@ CREATE TABLE events (
     attempt     INTEGER,
     PRIMARY KEY (run, sequence)
 );
+";
+
+/// Version 2: the inputs of each run (decision 24), as JSON: the JSON Schema of the inputs of its
+/// workflow, and the values that the run checked against it. Both are NULL for a run whose driver
+/// does not describe its inputs.
+const VERSION_2: &str = "
+ALTER TABLE runs ADD COLUMN input_schema TEXT;
+ALTER TABLE runs ADD COLUMN inputs TEXT;
 ";
 
 /// Brings the schema of a database to [`VERSION`]: creates it in a new file, and runs the

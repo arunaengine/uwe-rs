@@ -2,8 +2,8 @@
 //! in the same form for all languages. It holds each run with its workflow, revision, command
 //! line and parameters; each task that the driver asked for with its description; each attempt
 //! with its times and exit code; the input and output files with their locations; the edges of
-//! the execution graph; the standard output and error of each attempt; and the events in the
-//! order the engine saw them.
+//! the execution graph; the standard output and error of each attempt; the events in the order
+//! the engine saw them; and the JSON Schema of the inputs with the values of the run.
 //!
 //! A [`Recorder`] writes one run while it goes on. The web page, the RO-Crate export, resume and
 //! the insight commands read the database through [`Database`]. SQLite runs in WAL mode, so a
@@ -31,7 +31,7 @@ pub use fingerprint::{InputState, fingerprint, input_states};
 pub use origin::Origin;
 pub use recorder::{LOG_LIMIT, Recorder, RunStart};
 pub use resume::Reusable;
-pub use runs::{Event, Log, Run};
+pub use runs::{Event, Log, Run, RunInputs};
 pub use schema::VERSION;
 pub use tasks::{Attempt, EdgeRow, FileRow, MarkerRow, TaskDetail, TaskRow};
 pub use why::Why;

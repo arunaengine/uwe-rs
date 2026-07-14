@@ -323,6 +323,22 @@ impl Recorder {
         });
     }
 
+    /// The inputs of the run (decision 24): the JSON Schema of the inputs of its workflow and the
+    /// values that the run checked against it. They are no event of the engine.
+    pub fn inputs(&mut self, schema: &serde_json::Value, values: &serde_json::Value) {
+        let mut writer = lock(&self.writer);
+        if writer.error.is_some() {
+            return;
+        }
+        let written = writer.connection.execute(
+            "UPDATE runs SET input_schema = ?2, inputs = ?3 WHERE id = ?1",
+            params![self.run, schema.to_string(), values.to_string()],
+        );
+        if let Err(error) = written {
+            writer.error = Some(error.into());
+        }
+    }
+
     /// The run ended, with the error that stopped it if one did. Tasks that did not finish are
     /// marked as stopped, and everything is committed.
     pub fn ended(&mut self, error: Option<&str>) {

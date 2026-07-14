@@ -169,3 +169,25 @@ fn groups_of_nf_schema_are_checked() {
         )]
     );
 }
+
+#[test]
+fn choices_say_what_each_one_lacks() {
+    let schema = json!({
+        "type": "object",
+        "anyOf": [
+            {"required": ["accession"], "not": {"required": ["samplesheet"]}},
+            {"required": ["samplesheet"]}
+        ],
+        "properties": {"accession": {"type": "string"}, "samplesheet": {"type": "string"}}
+    });
+    let problems = check(&inputs(schema, json!({}), Path::new("/")), false);
+    assert_eq!(
+        messages(&problems),
+        [(
+            Severity::Error,
+            "the inputs fit none of the choices of the schema: the input `accession` is \
+             required, but has no value; or the input `samplesheet` is required, but has no \
+             value"
+        )]
+    );
+}

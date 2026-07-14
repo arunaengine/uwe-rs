@@ -4320,6 +4320,7 @@ dependencies = [
  "executor",
  "fancy-regex",
  "indexmap",
+ "input-schema",
  "jsonschema",
  "python-evaluator",
  "serde_json",

@@ -11,6 +11,7 @@ mod config;
 mod driver;
 mod files;
 mod functions;
+mod inputs;
 mod iofile;
 mod ioutils;
 mod namespace;

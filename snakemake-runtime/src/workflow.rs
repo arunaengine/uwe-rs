@@ -194,6 +194,10 @@ pub struct State {
     pub unused: Vec<Rule>,
     /// Resources that `workflow.register_resource` added.
     pub global_resources: IndexMap<String, Value>,
+    /// The `validate` calls of the workflow code, for the schema of its inputs.
+    pub validations: Vec<crate::inputs::Validation>,
+    /// The PEP project of `pepfile:` and `pepschema:`.
+    pub pep: Option<crate::inputs::Pep>,
 }
 
 impl State {
@@ -228,6 +232,8 @@ impl State {
             shell_executable: None,
             modifiers: vec![Modifier::root(globals)],
             profile: crate::profile::Profile::default(),
+            validations: Vec::new(),
+            pep: None,
             mirrors,
             snakefiles: HashMap::new(),
             unused: Vec::new(),
@@ -675,13 +681,22 @@ impl Hook {
                 let path = python_evaluator::modules::path_text(interpreter, &first())?;
                 let project = crate::pep::load(interpreter, &path)?;
                 self.state.borrow().modifier().globals.set("pep", project);
+                self.state.borrow_mut().pep = Some(crate::inputs::Pep {
+                    file: path,
+                    schema: None,
+                });
             }
-            // iunctus does not check the project against its schema, as eido does.
+            // iunctus does not check the project against its schema, as eido does; the schema
+            // describes the input `pepfile` (decision 24).
             GlobalKeyword::PepSchema => {
                 if self.state.borrow().modifier().globals.get("pep").is_none() {
                     return Err(workflow_error(
                         "Please specify a PEP with the pepfile directive.",
                     ));
+                }
+                let path = python_evaluator::modules::path_text(interpreter, &first())?;
+                if let Some(pep) = &mut self.state.borrow_mut().pep {
+                    pep.schema = Some(path);
                 }
             }
             GlobalKeyword::PathVariables => {

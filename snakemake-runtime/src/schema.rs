@@ -69,7 +69,7 @@ pub fn from_json(json: &Json) -> Value {
 }
 
 /// Reads a schema file, YAML or JSON, as JSON.
-fn read_schema(path: &Path) -> Result<Json, String> {
+pub(crate) fn read_schema(path: &Path) -> Result<Json, String> {
     let text =
         std::fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
     let value = match parse_json(&text) {

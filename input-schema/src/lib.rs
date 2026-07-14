@@ -27,6 +27,7 @@
 
 mod check;
 mod compare;
+mod counts;
 mod infer;
 mod paths;
 mod properties;
@@ -37,6 +38,7 @@ mod values;
 
 pub use check::{Problem, Severity, check};
 pub use compare::compare;
+pub use counts::Counts;
 pub use infer::{infer, value_schema};
 pub use properties::{Property, properties};
 pub use text::text;

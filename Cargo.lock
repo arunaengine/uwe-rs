@@ -1966,6 +1966,7 @@ dependencies = [
  "cwl-runtime",
  "executor",
  "fancy-regex",
+ "input-schema",
  "jiff",
  "kubernetes-executor",
  "nextflow-evaluator",

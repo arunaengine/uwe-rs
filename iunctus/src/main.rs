@@ -1,13 +1,15 @@
 //! The `iunctus` command: `iunctus run` runs a workflow in any language iunctus knows,
 //! `iunctus graph` prints the execution graph of a run, `iunctus config` prints the config of a
 //! Nextflow project, `iunctus runs` lists the runs of the run database, `iunctus export`
-//! writes the RO-Crate of a run, `iunctus page` serves the web page of the runs, and
-//! `iunctus why` tells why a task ran again, and `iunctus origin` where a file came from.
+//! writes the RO-Crate of a run, `iunctus page` serves the web page of the runs,
+//! `iunctus why` tells why a task ran again, `iunctus origin` where a file came from, and
+//! `iunctus inputs` prints the JSON Schema of the inputs of a workflow.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod arguments;
 mod detect;
+mod inputs;
 mod kubernetes;
 mod local;
 mod nextflow;
@@ -103,6 +105,7 @@ fn main() -> ExitCode {
         "page" => page::command(&arguments),
         "why" => runs::why(&arguments),
         "origin" => runs::origin(&arguments),
+        "inputs" => inputs::command(&arguments),
         _ => return usage(),
     };
     match result {
@@ -143,12 +146,20 @@ fn graph(arguments: &Arguments) -> Result<(), Failure> {
         return Err(failure("iunctus: `-page` is an option of `iunctus run`"));
     }
     let options = picture(arguments);
+    let format = match arguments.format.as_deref() {
+        None => Format::default(),
+        Some(name) => Format::parse(name).ok_or_else(|| {
+            failure(format!(
+                "iunctus: `-format {name}` is a format of `iunctus inputs`; use json, dot, \
+                 summary or svg"
+            ))
+        })?,
+    };
     let (execution, _) = execute(arguments, true)?;
     if let Some(file) = &arguments.graph {
         write_graph(file, &execution.graph, &options)?;
     }
     // A failed run still shows the graph so far.
-    let format = arguments.format.unwrap_or_default();
     print!("{}", render(&execution.graph, &options, format));
     finish(execution)
 }
@@ -195,17 +206,8 @@ fn simulation_notes(graph: &ExecutionGraph) -> Vec<String> {
 /// in the run database. `quiet` keeps standard output free for the graph. With `-page`, the
 /// page of the run serves from the start; the result holds it.
 fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Server>), Failure> {
-    let Some(target) = &arguments.target else {
-        return Err(failure(
-            "iunctus: name a workflow file or a project directory to run",
-        ));
-    };
-    let language = match arguments.language {
-        Some(language) => language,
-        None => {
-            detect::language(target).map_err(|message| failure(format!("iunctus: {message}")))?
-        }
-    };
+    let (target, language) = target_and_language(arguments)?;
+    let target = &target;
     let launch = launch(arguments, target.clone());
     let run = run_id();
     let name = arguments.executor.as_deref().unwrap_or("simulator");
@@ -227,8 +229,12 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Serv
         true => Some(page::start(arguments, &format!("/runs/{run}"))?),
         false => None,
     };
+    // The inputs are checked before any task starts (decision 24).
     let prepared = executor(arguments, &setup, &run, !quiet).and_then(|executor| {
-        let driver = driver(language, &launch, &run, quiet, arguments, &setup)?;
+        let mut driver = driver(language, &launch, &run, quiet, arguments, &setup)?;
+        if let Some(inputs) = inputs::check(driver.as_mut(), started.simulated, quiet)? {
+            recorder.inputs(&inputs.schema, &inputs.values);
+        }
         Ok((executor, driver))
     });
     let (executor, mut driver) = match prepared {
@@ -305,6 +311,22 @@ fn stop_on_interrupt() -> CancellationToken {
         });
     });
     token
+}
+
+/// The workflow of a command and its language: `-lang`, else what the target tells.
+fn target_and_language(arguments: &Arguments) -> Result<(PathBuf, Language), Failure> {
+    let Some(target) = &arguments.target else {
+        return Err(failure(
+            "iunctus: name a workflow file or a project directory to run",
+        ));
+    };
+    let language = match arguments.language {
+        Some(language) => language,
+        None => {
+            detect::language(target).map_err(|message| failure(format!("iunctus: {message}")))?
+        }
+    };
+    Ok((target.clone(), language))
 }
 
 /// The driver of a language.
@@ -490,6 +512,7 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
        iunctus export <run> [-output <folder>] [-license <url>]
        iunctus why <run> <task>
        iunctus origin <file>
+       iunctus inputs <workflow file or directory> [-format json|text] [-check] [options]
 
 options:
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it
@@ -538,7 +561,11 @@ options:
   -address <ip>, -port <number>       where the page listens (default: 127.0.0.1, a free port)
   -database <file>                    the run database (default: runs.sqlite in the cache)
   -output <folder>                    where `export` writes the RO-Crate (default: <run>-crate)
-  -license <url>                      the license of the exported crate";
+  -license <url>                      the license of the exported crate
+  -format json|text                   what `inputs` writes: the JSON Schema of the inputs
+                                      (the default), or the inputs as help text
+  -check                              `inputs` also checks the given values against the
+                                      schema, as a run does before any task starts";
 
 /// `$XDG_CACHE_HOME/iunctus`, else `~/.cache/iunctus`.
 fn cache_directory() -> PathBuf {

@@ -10,10 +10,11 @@
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
-use input_schema::{DRAFT, PATH, infer, upgrade};
+use input_schema::{DRAFT, PATH, infer, properties, upgrade};
 use nextflow_config::Config;
-use nextflow_evaluator::lowered::TypedParameter;
+use nextflow_evaluator::lowered::{Module, TypedParameter};
 use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::Value;
 use nextflow_parser::lexer::tokenize;
@@ -194,6 +195,69 @@ pub fn to_json(value: &Value) -> Json {
         },
         Value::MemoryUnit(_) | Value::Duration(_) | Value::Character(_) => json!(value.to_string()),
         _ => Json::Null,
+    }
+}
+
+/// Whether the pipeline holds its params to its schema itself: a script that it loads includes
+/// `validateParameters` of nf-schema or nf-validation, and the params do not switch the check
+/// off with `validate_params = false`, as nf-core pipelines allow. Nextflow alone checks no param
+/// against `nextflow_schema.json`.
+pub fn validates(module: &Rc<Module>, params: &Value) -> bool {
+    let switched_off = match nextflow_config::tree::get(params, &["validate_params"]) {
+        Some(Value::Boolean(false)) => true,
+        Some(Value::String(text)) => text.eq_ignore_ascii_case("false"),
+        _ => false,
+    };
+    !switched_off && validates_from(module, &mut Vec::new())
+}
+
+fn validates_from(module: &Rc<Module>, seen: &mut Vec<*const Module>) -> bool {
+    if seen.contains(&Rc::as_ptr(module)) {
+        return false;
+    }
+    seen.push(Rc::as_ptr(module));
+    let includes = module.includes.iter().any(|include| {
+        &*include.name == "validateParameters"
+            && matches!(
+                &*include.source,
+                "plugin/nf-schema" | "plugin/nf-validation"
+            )
+    });
+    if includes {
+        return true;
+    }
+    let linked: Vec<Rc<Module>> = (module.links.borrow().values())
+        .chain(module.conditional_links.borrow().values())
+        .map(|link| link.module.clone())
+        .collect();
+    linked.iter().any(|module| validates_from(module, seen))
+}
+
+/// Whether nf-schema checks types leniently, as `validation.lenientMode` asks.
+pub fn lenient(config: &Config) -> bool {
+    config
+        .get(&["validation", "lenientMode"])
+        .is_some_and(|value| value.truth())
+}
+
+/// Reads the numbers and booleans of params whose schema asks for text as text, as nf-schema's
+/// lenient mode takes them.
+pub fn as_text(schema: &Json, values: &mut Json) {
+    let Json::Object(values) = values else {
+        return;
+    };
+    for property in properties(schema) {
+        let text = match property.schema.get("type") {
+            Some(Json::String(kind)) => kind == "string",
+            Some(Json::Array(kinds)) => kinds.iter().any(|kind| kind == "string"),
+            _ => false,
+        };
+        if let Some(value) = values.get_mut(property.name)
+            && text
+            && matches!(value, Json::Number(_) | Json::Bool(_))
+        {
+            *value = Json::String(value.to_string());
+        }
     }
 }
 

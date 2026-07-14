@@ -42,8 +42,9 @@ impl fmt::Display for Problem {
 
 /// Checks the values of a run against the schema of its inputs. A simulated run assumes its
 /// input files, so a file that does not exist is only a warning there, and so is a required
-/// input without a value when the run makes up such values ([`Inputs::assumes_values`]). A
-/// schema that is not valid gives one error.
+/// input without a value when the run makes up such values ([`Inputs::assumes_values`]). Every
+/// problem of an advisory schema ([`Inputs::advisory`]) is a warning, and the values of ignored
+/// inputs ([`Inputs::ignored`]) have none. A schema that is not valid gives one error.
 pub fn check(inputs: &Inputs, simulated: bool) -> Vec<Problem> {
     let values = prepared(&inputs.schema, &inputs.schema, inputs.values.clone());
     let validator = match validator(&inputs.schema, &inputs.base) {
@@ -56,10 +57,28 @@ pub fn check(inputs: &Inputs, simulated: bool) -> Vec<Problem> {
             }];
         }
     };
-    validator
+    let mut problems: Vec<Problem> = validator
         .iter_errors(&values)
+        .filter(|error| !of_ignored(error, inputs))
         .map(|error| problem(&error, simulated, inputs.assumes_values))
-        .collect()
+        .collect();
+    if inputs.advisory {
+        for problem in &mut problems {
+            problem.severity = Severity::Warning;
+        }
+    }
+    problems
+}
+
+/// Whether an error concerns the value of an ignored input. A required input without a value
+/// is an error of the object that lacks it, so ignoring an input does not make it optional.
+fn of_ignored(error: &ValidationError<'_>, inputs: &Inputs) -> bool {
+    let top = error.instance_path().as_str().split('/').nth(1);
+    top.is_some_and(|name| {
+        inputs
+            .ignored
+            .contains(&name.replace("~1", "/").replace("~0", "~"))
+    })
 }
 
 /// The problem that a validation error stands for, in the words of iunctus.

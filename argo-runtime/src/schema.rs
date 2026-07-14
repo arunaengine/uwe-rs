@@ -95,6 +95,8 @@ pub(crate) fn inputs(document: &Document, library: &Library, options: &Options) 
         base: std::env::current_dir().unwrap_or_default(),
         read: Some(read),
         assumes_values: options.assume_inputs,
+        advisory: false,
+        ignored: Default::default(),
     })
 }
 

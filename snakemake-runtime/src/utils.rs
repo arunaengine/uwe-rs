@@ -73,13 +73,6 @@ fn validate(
     }
     let schema_path = python_evaluator::modules::path_text(interpreter, &schema)?;
     let (schema, file) = crate::schema::load_schema(interpreter, &schema_path, &base)?;
-    if data.is(&state.borrow().config) {
-        let validation = Validation {
-            target: Validated::Config,
-            schema: schema.clone(),
-        };
-        state.borrow_mut().validations.push(validation);
-    }
     if matches!(data.plain(), Value::Dict(_)) {
         if let Err(message) =
             crate::schema::validate_record(interpreter, &data, &schema, &file, set_default)?
@@ -87,6 +80,14 @@ fn validate(
             return Err(workflow_error(format!(
                 "Error validating config file.\n{message}"
             )));
+        }
+        if data.is(&state.borrow().config) {
+            let validation = Validation {
+                target: Validated::Config,
+                schema,
+                values: Some(crate::schema::to_json(interpreter, &data)?),
+            };
+            state.borrow_mut().validations.push(validation);
         }
         return Ok(Value::None);
     }
@@ -103,6 +104,7 @@ fn validate(
         let validation = Validation {
             target: Validated::Table(columns),
             schema: schema.clone(),
+            values: None,
         };
         state.borrow_mut().validations.push(validation);
         let mut validated = Vec::with_capacity(records.len());

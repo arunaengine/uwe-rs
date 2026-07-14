@@ -38,7 +38,7 @@ fn required_types_and_enums() {
             "aligner": {"type": "string", "enum": ["star", "hisat2"]}
         }
     });
-    let values = json!({"input": null, "outdir": "out", "threads": "many", "aligner": "bwa"});
+    let values = json!({"outdir": "out", "threads": "many", "aligner": "bwa"});
     let mut problems = check(&inputs(schema, values, Path::new("/")), false);
     problems.sort_by(|a, b| a.input.cmp(&b.input));
     assert_eq!(
@@ -149,6 +149,38 @@ fn made_up_values_are_warnings_in_simulated_runs() {
         )]
     );
     assert_eq!(check(&given, false)[0].severity, Severity::Error);
+}
+
+#[test]
+fn an_advisory_schema_only_warns() {
+    let schema = json!({"type": "object", "required": ["name"], "properties": {"threads": {"type": "integer"}}});
+    let mut given = inputs(schema, json!({"threads": "many"}), Path::new("/"));
+    given.advisory = true;
+    let problems = check(&given, false);
+    assert_eq!(problems.len(), 2);
+    assert!(
+        problems
+            .iter()
+            .all(|problem| problem.severity == Severity::Warning)
+    );
+}
+
+#[test]
+fn ignored_inputs_count_but_are_not_checked() {
+    let schema = json!({
+        "type": "object",
+        "required": ["data", "model"],
+        "properties": {"data": {"type": "integer"}, "model": {"type": "integer"}}
+    });
+    let mut given = inputs(schema, json!({"data": "text"}), Path::new("/"));
+    given.ignored = ["data", "model"].map(str::to_owned).into();
+    assert_eq!(
+        messages(&check(&given, false)),
+        [(
+            Severity::Error,
+            "the input `model` is required, but has no value"
+        )]
+    );
 }
 
 #[test]

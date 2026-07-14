@@ -24,6 +24,9 @@ use crate::workflow::State;
 pub struct Validation {
     pub target: Validated,
     pub schema: Json,
+    /// The config as the validation passed it, with the defaults it set; the workflow code may
+    /// change the config afterwards.
+    pub values: Option<Json>,
 }
 
 /// What a `validate` checks.
@@ -74,7 +77,13 @@ impl Workflow {
 /// The inputs of an evaluated workflow.
 pub fn inputs(interpreter: &mut Interpreter, state: &Workflow) -> Result<Inputs, Error> {
     let workdir = state.workdir.clone();
-    let mut values = crate::schema::to_json(interpreter, &state.config)?;
+    // The config as the last `validate` of it saw it, else as the Snakefile left it.
+    let validated =
+        (state.validations.iter().rev()).find_map(|validation| validation.values.clone());
+    let mut values = match validated {
+        Some(values) => values,
+        None => crate::schema::to_json(interpreter, &state.config)?,
+    };
     let mut schema = config_schema(interpreter, state)?;
     for validation in &state.validations {
         if let Validated::Table(columns) = &validation.target {
@@ -95,6 +104,10 @@ pub fn inputs(interpreter: &mut Interpreter, state: &Workflow) -> Result<Inputs,
         base: workdir,
         read: Some(read(state)),
         assumes_values: false,
+        // Snakemake has held the config to the schemas of `validate` while it evaluated the
+        // Snakefile, before this check; a schema made from the config files only describes it.
+        advisory: true,
+        ignored: Default::default(),
     })
 }
 
@@ -292,8 +305,9 @@ fn attach_pep(schema: &mut Json, values: &mut Json, pep: &Pep, base: &Path) {
     }
 }
 
-/// Marks the texts of the schema whose values name existing files or directories, where the
-/// schema does not say what they are: a file must exist, a directory may be made by the run.
+/// Marks the texts of the schema whose values name existing files or directories as files and
+/// directories, where the schema does not say what they are. Whether they must exist is left to
+/// the schema, as Snakemake has read what it needs while it evaluated the workflow.
 fn mark_paths(schema: &mut Json, values: &Json, base: &Path) {
     let Json::Object(values) = values else {
         return;
@@ -330,7 +344,7 @@ fn mark_path(property: &mut Json, text: &str, base: &Path) {
     }
     match std::fs::metadata(base.join(text)) {
         Ok(metadata) if metadata.is_dir() => property["format"] = json!(DIRECTORY_PATH),
-        Ok(_) => mark_file(property),
+        Ok(_) => property["format"] = json!(FILE_PATH),
         Err(_) => {}
     }
 }
@@ -457,8 +471,8 @@ mod tests {
         assert_eq!(schema["properties"]["data"]["format"], "directory-path");
         assert!(schema["properties"]["mode"].get("format").is_none());
         assert_eq!(
-            schema["properties"]["nested"]["properties"]["ref"]["exists"],
-            true
+            schema["properties"]["nested"]["properties"]["ref"]["format"],
+            "file-path"
         );
     }
 }

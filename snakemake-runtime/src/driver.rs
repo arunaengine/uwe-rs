@@ -15,11 +15,11 @@ use std::thread::JoinHandle;
 use python_evaluator::{Error, Interpreter, Value};
 use storage::Storage;
 use workflow_graph::{
-    Delivery, DeliveryMode, Driver, DriverError, Language, Launch, Marker, MarkerKind, Note,
-    Outcome, Task, TaskId,
+    Delivery, DeliveryMode, Driver, DriverError, Inputs, Language, Launch, Marker, MarkerKind,
+    Note, Outcome, Task, TaskId,
 };
 
-use crate::commands::{Channel, CommandRunner, Reply, Request};
+use crate::commands::{Channel, CommandRunner, InputsReply, Reply, Request};
 use crate::files::{Produced, WorkflowFiles};
 use crate::plan::Planner;
 use crate::python::{ContainerStarter, PythonContainers};
@@ -84,6 +84,8 @@ pub struct Session {
     attempts: HashMap<usize, u32>,
     /// The outputs to deliver to the working directory, which the driver hands to the engine.
     pub deliveries: Arc<Mutex<Vec<Delivery>>>,
+    /// How the evaluation of the Snakefile ended, once it ran; it runs once.
+    evaluation: Option<Result<(), DriverError>>,
 }
 
 impl Session {
@@ -157,6 +159,7 @@ impl Session {
             notes: Vec::new(),
             attempts: HashMap::new(),
             deliveries: Arc::default(),
+            evaluation: None,
         })
     }
 
@@ -466,8 +469,25 @@ impl Session {
         }
     }
 
+    /// Evaluates the Snakefile, once: the inputs and the start of a run share it.
+    fn evaluate_once(&mut self) -> Result<(), DriverError> {
+        if let Some(result) = &self.evaluation {
+            return result.clone();
+        }
+        let result = self.evaluate();
+        self.evaluation = Some(result.clone());
+        result
+    }
+
+    /// The inputs of the workflow, described once its Snakefile is evaluated.
+    pub fn inputs(&mut self) -> Result<Inputs, DriverError> {
+        self.evaluate_once()?;
+        let workflow = crate::inputs::Workflow::of(&self.state.borrow());
+        crate::inputs::inputs(&mut self.interpreter, &workflow).map_err(|error| self.error(&error))
+    }
+
     pub fn start(&mut self) -> Result<Vec<Task>, DriverError> {
-        self.evaluate()?;
+        self.evaluate_once()?;
         self.plan()?;
         self.report_assumed();
         self.ready_tasks(None)
@@ -640,6 +660,8 @@ impl Session {
 struct SnakemakeDriver {
     requests: Sender<Request>,
     replies: Receiver<Reply>,
+    /// The answers to requests for the inputs.
+    inputs: Receiver<InputsReply>,
     worker: Option<JoinHandle<()>>,
     /// The notes of the session, which it adds before each reply.
     notes: Arc<Mutex<Vec<Note>>>,
@@ -686,6 +708,12 @@ impl Driver for SnakemakeDriver {
         std::mem::take(&mut deliveries)
     }
 
+    fn inputs(&mut self) -> Result<Option<Inputs>, DriverError> {
+        let ended = || DriverError::new("the Snakemake session ended unexpectedly");
+        self.requests.send(Request::Inputs).map_err(|_| ended())?;
+        self.inputs.recv().unwrap_or_else(|_| Err(ended()))
+    }
+
     fn finish(&mut self) -> Result<(), DriverError> {
         let result = self.ask(Request::Finish).map(|_| ());
         if let Some(worker) = self.worker.take() {
@@ -726,6 +754,7 @@ pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
 pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver>, DriverError> {
     let (requests, incoming) = channel::<Request>();
     let (outgoing, replies) = channel::<Reply>();
+    let (inputs_outgoing, inputs) = channel::<InputsReply>();
     let launch = launch.clone();
     let notes: Arc<Mutex<Vec<Note>>> = Arc::default();
     let session_notes = notes.clone();
@@ -736,34 +765,49 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
         .stack_size(512 << 20)
         .spawn(move || {
             let channel = Rc::new(Channel::new(incoming, outgoing));
-            let mut session = match Session::new(&launch, &settings.storage) {
-                Ok(session) => Some(session),
+            let open = || -> Result<Session, DriverError> {
+                let mut session = Session::new(&launch, &settings.storage)?;
+                session.deliveries = shared.clone();
+                if let Some(python) = settings.python.clone() {
+                    session.use_python_containers(python);
+                }
+                session.files.set_commands(Rc::new(CommandRunner {
+                    channel: channel.clone(),
+                    next_task: session.next_task.clone(),
+                    state: session.state.clone(),
+                }));
+                Ok(session)
+            };
+            let mut session = match open() {
+                Ok(session) => session,
                 Err(error) => {
                     // Every request gets the error of the setup.
                     while let Ok(request) = channel.requests.recv() {
-                        let finish = matches!(request, Request::Finish);
-                        let _ = channel.replies.send(Err(error.clone()));
-                        if finish {
-                            break;
-                        }
+                        let _ = match request {
+                            Request::Inputs => inputs_outgoing.send(Err(error.clone())).is_ok(),
+                            Request::Finish => {
+                                let _ = channel.replies.send(Err(error.clone()));
+                                break;
+                            }
+                            _ => channel.replies.send(Err(error.clone())).is_ok(),
+                        };
                     }
-                    None
+                    return;
                 }
             };
-            let Some(session) = session.as_mut() else {
-                return;
-            };
-            session.deliveries = shared;
-            if let Some(python) = settings.python {
-                session.use_python_containers(python);
-            }
-            session.files.set_commands(Rc::new(CommandRunner {
-                channel: channel.clone(),
-                next_task: session.next_task.clone(),
-                state: session.state.clone(),
-            }));
+            let session = &mut session;
             while let Ok(request) = channel.requests.recv() {
                 let reply = match request {
+                    Request::Inputs => {
+                        let described = describe(session, &channel, &open);
+                        if let Ok(mut notes) = session_notes.lock() {
+                            notes.extend(session.take_notes());
+                        }
+                        if inputs_outgoing.send(described).is_err() {
+                            break;
+                        }
+                        continue;
+                    }
                     Request::Start => session.start(),
                     Request::Complete(outcome) => session.complete(*outcome),
                     Request::Finish => {
@@ -798,8 +842,28 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
     Ok(Box::new(SnakemakeDriver {
         requests,
         replies,
+        inputs,
         worker: Some(worker),
         notes,
         deliveries,
     }))
+}
+
+/// The inputs of the workflow of a session. Workflow code that runs a command while the
+/// workflow is loaded needs a run, which runs the command as a task: such a workflow has no
+/// inputs to describe before the run, and the session starts again for the run.
+fn describe(
+    session: &mut Session,
+    channel: &Channel,
+    open: &dyn Fn() -> Result<Session, DriverError>,
+) -> InputsReply {
+    channel.describing.set(true);
+    let inputs = session.inputs();
+    channel.describing.set(false);
+    if !channel.refused.replace(false) {
+        return inputs.map(Some);
+    }
+    let _ = session.finish();
+    *session = open()?;
+    Ok(None)
 }

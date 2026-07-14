@@ -11,6 +11,7 @@ use python_evaluator::modules::module;
 use python_evaluator::{Args, Error, Interpreter, Native, Scope, Value};
 
 use crate::functions;
+use crate::inputs::{Validated, Validation};
 use crate::workflow::{State, workflow_error};
 
 /// The Snakemake version that iunctus follows.
@@ -72,6 +73,13 @@ fn validate(
     }
     let schema_path = python_evaluator::modules::path_text(interpreter, &schema)?;
     let (schema, file) = crate::schema::load_schema(interpreter, &schema_path, &base)?;
+    if data.is(&state.borrow().config) {
+        let validation = Validation {
+            target: Validated::Config,
+            schema: schema.clone(),
+        };
+        state.borrow_mut().validations.push(validation);
+    }
     if matches!(data.plain(), Value::Dict(_)) {
         if let Err(message) =
             crate::schema::validate_record(interpreter, &data, &schema, &file, set_default)?
@@ -83,6 +91,20 @@ fn validate(
         return Ok(Value::None);
     }
     if let Some(records) = python_evaluator::pandas::records(interpreter, &data)? {
+        let mut columns: Vec<String> = Vec::new();
+        for record in &records {
+            for (key, _) in interpreter.mapping_items(record)? {
+                let key = interpreter.to_str(&key)?;
+                if !columns.contains(&key) {
+                    columns.push(key);
+                }
+            }
+        }
+        let validation = Validation {
+            target: Validated::Table(columns),
+            schema: schema.clone(),
+        };
+        state.borrow_mut().validations.push(validation);
         let mut validated = Vec::with_capacity(records.len());
         for (index, record) in records.into_iter().enumerate() {
             if let Err(message) =

@@ -22,6 +22,7 @@ use fancy_regex::Regex;
 use workflow_graph::ExecutionGraph;
 
 mod common;
+mod targets;
 
 /// Why each pipeline that fails cannot run, with the output of Nextflow, recorded by
 /// `fixtures/run_evidence.py`.
@@ -137,27 +138,12 @@ fn outcome(target: &Path, project: &Path, cache: &Path, profile: bool) -> String
 fn pipelines_run_as_recorded() {
     let test_workflows = PathBuf::from(
         std::env::var("NF_CORE_TEST_WORKFLOWS").expect("NF_CORE_TEST_WORKFLOWS is set"),
-    )
-    .join("pipelines");
-    let mut pipelines: Vec<String> = std::fs::read_dir(&test_workflows)
-        .expect("reads the test workflows")
-        .map(|entry| {
-            entry
-                .expect("an entry")
-                .file_name()
-                .to_string_lossy()
-                .into_owned()
-        })
-        .collect();
-    pipelines.sort();
-    let targets = pipelines
-        .into_iter()
-        .map(|pipeline| {
-            let folder = test_workflows.join(&pipeline);
-            (pipeline, folder.clone(), folder)
-        })
-        .collect();
-    runs_as_recorded(targets, "run_test_workflows.txt", false);
+    );
+    runs_as_recorded(
+        targets::nf_core(&test_workflows),
+        "run_test_workflows.txt",
+        false,
+    );
 }
 
 /// The Nextflow workflows of WorkflowHub (decision 4), by `workflowhub/<id>`: each runs its
@@ -169,45 +155,8 @@ fn workflowhub_workflows_run_as_recorded() {
     let test_workflows = PathBuf::from(
         std::env::var("WORKFLOWHUB_TEST_WORKFLOWS").expect("WORKFLOWHUB_TEST_WORKFLOWS is set"),
     );
-    let mut ids: Vec<String> = std::fs::read_dir(&test_workflows)
-        .expect("reads the test workflows")
-        .map(|entry| {
-            entry
-                .expect("an entry")
-                .file_name()
-                .to_string_lossy()
-                .into_owned()
-        })
-        .filter(|name| !name.starts_with('.'))
-        .collect();
-    ids.sort_by_key(|id| id.parse::<u64>().unwrap_or(u64::MAX));
-    let targets = ids
-        .into_iter()
-        .map(|id| {
-            let folder = test_workflows.join(&id);
-            let config = std::fs::read_to_string(folder.join("nextflow.config"));
-            let project = folder.join("main.nf").exists()
-                || config.is_ok_and(|text| text.contains("mainScript"));
-            let target = match main_entity(&folder) {
-                Some(main) if !project && main.ends_with(".nf") => folder.join(main),
-                _ => folder.clone(),
-            };
-            (format!("workflowhub/{id}"), target, folder)
-        })
-        .collect();
+    let targets = targets::workflowhub(&test_workflows);
     runs_as_recorded(targets, "run_workflowhub.txt", true);
-}
-
-/// The main script that the RO-Crate of a WorkflowHub entry names, relative to its folder.
-fn main_entity(folder: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(folder.join("ro-crate-metadata.json")).ok()?;
-    let crate_: serde_json::Value = serde_json::from_str(&text).ok()?;
-    let graph = crate_.get("@graph")?.as_array()?;
-    let root = graph
-        .iter()
-        .find(|entity| entity.get("@id").and_then(|id| id.as_str()) == Some("./"))?;
-    let main = root.get("mainEntity")?.get("@id")?.as_str()?;
-    Some(main.trim_start_matches("./").to_owned())
 }
 
 /// Runs each target, by name, main script or folder, and project folder, and compares the

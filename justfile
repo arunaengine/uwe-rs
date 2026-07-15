@@ -126,6 +126,16 @@ run-test-workflows-test:
 	WORKFLOWHUB_TEST_WORKFLOWS="${WORKFLOWHUB_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nextflow-workflowhub}" \
 	cargo test --release --locked -p iunctus --test run_test_workflows -- --ignored
 
+# Describes the inputs of every Nextflow workflow and CWL document of the test workflows as a run
+# does before its first task (decision 24), without network and without running a task, and
+# compares the counts with their fixtures. The Argo and Snakemake test-workflows tests record the
+# inputs of their workflows too.
+inputs-test-workflows-test:
+	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nf-core-text}" \
+	WORKFLOWHUB_TEST_WORKFLOWS="${WORKFLOWHUB_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/nextflow-workflowhub}" \
+	cargo test --release --locked -p iunctus --test inputs_test_workflows -- --ignored --exact workflows_describe_their_inputs
+	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/iunctus/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test inputs_test_workflows -- --ignored
+
 # Records the stub scripts of the pipelines in iunctus/tests/fixtures/oracle/stub with Nextflow
 # and Docker; give the pipelines as arguments, like `just stub-oracle demo`.
 stub-oracle +pipelines:

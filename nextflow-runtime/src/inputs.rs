@@ -233,11 +233,15 @@ fn validates_from(module: &Rc<Module>, seen: &mut Vec<*const Module>) -> bool {
     linked.iter().any(|module| validates_from(module, seen))
 }
 
-/// Whether nf-schema checks types leniently, as `validation.lenientMode` asks.
+/// Whether the check of the pipeline takes types leniently, as nf-schema's
+/// `validation.lenientMode` and nf-validation's `params.validationLenientMode` ask.
 pub fn lenient(config: &Config) -> bool {
-    config
-        .get(&["validation", "lenientMode"])
-        .is_some_and(|value| value.truth())
+    [
+        ["validation", "lenientMode"],
+        ["params", "validationLenientMode"],
+    ]
+    .iter()
+    .any(|setting| config.get(setting).is_some_and(|value| value.truth()))
 }
 
 /// Reads the numbers and booleans of params whose schema asks for text as text, as nf-schema's
@@ -261,9 +265,10 @@ pub fn as_text(schema: &Json, values: &mut Json) {
     }
 }
 
-/// The params that the config tells nf-schema to leave out of the check, like `genomes`:
-/// `validation.ignoreParams` and `validation.defaultIgnoreParams`. They are kept out of the
-/// schema on purpose.
+/// The params that the pipeline tells its check to leave out, like `genomes`, which are kept out
+/// of the schema on purpose: nf-schema's `validation.ignoreParams` and
+/// `validation.defaultIgnoreParams`, and nf-validation's `params.validationSchemaIgnoreParams`,
+/// a text of names joined by commas.
 pub fn ignored(config: &Config) -> Vec<String> {
     let mut names = Vec::new();
     for setting in ["ignoreParams", "defaultIgnoreParams"] {
@@ -271,19 +276,36 @@ pub fn ignored(config: &Config) -> Vec<String> {
             names.extend(list.borrow().items.iter().map(Value::to_string));
         }
     }
+    if let Some(value) = config.get(&["params", "validationSchemaIgnoreParams"]) {
+        let text = value.to_string();
+        names.extend(text.split(',').map(|name| name.trim().to_owned()));
+    }
     names
 }
+
+/// The params that nf-validation reads by their names.
+const NF_VALIDATION_PARAMS: &[&str] = &[
+    "help",
+    "monochrome_logs",
+    "validationFailUnrecognisedParams",
+    "validationLenientMode",
+    "validationS3PathCheck",
+    "validationSchemaIgnoreParams",
+    "validationShowHiddenParams",
+    "validationSkipDuplicateCheck",
+];
 
 /// The params that the code of a project reads, found in its scripts, its config files and its
 /// Groovy classes: `params.name`, `params?.name`, `params['name']`, `params.get('name')` and
 /// `$params.name` in a string. An assignment like `params.name = value` declares the param
-/// rather than reading it. A project that includes nf-schema also reads the params of its help
-/// options, which the plugin reads by name.
-pub fn read(project: &Path) -> BTreeSet<String> {
+/// rather than reading it. A project that includes nf-schema or nf-validation also reads the
+/// params that the plugin reads by name, where its schema declares them, as the plugins read
+/// them only then.
+pub fn read(project: &Path, schema: &Json) -> BTreeSet<String> {
     let mut files = Vec::new();
     source_files(project, &mut files);
     let mut names = BTreeSet::new();
-    let mut nf_schema = false;
+    let (mut nf_schema, mut nf_validation) = (false, false);
     for file in files {
         let Ok(source) = std::fs::read_to_string(&file) else {
             continue;
@@ -293,16 +315,27 @@ pub fn read(project: &Path) -> BTreeSet<String> {
             _ => Dialect::Script,
         };
         nf_schema |= source.contains("plugin/nf-schema");
+        nf_validation |= source.contains("plugin/nf-validation");
         params_read(&source, dialect, &mut names);
     }
+    let mut plugin: Vec<&str> = Vec::new();
     if nf_schema {
-        names.extend(["help", "help_full", "show_hidden"].map(str::to_owned));
+        plugin.extend(["help", "help_full", "show_hidden"]);
+    }
+    if nf_validation {
+        plugin.extend(NF_VALIDATION_PARAMS);
+    }
+    for property in properties(schema) {
+        if plugin.contains(&property.name) {
+            names.insert(property.name.to_owned());
+        }
     }
     names
 }
 
 /// The files of a project that hold code: `.nf`, `.config` and `.groovy` files, outside hidden
-/// folders and the `work` folder of Nextflow.
+/// folders, the `work` folder of Nextflow and the `tests` folders of nf-test, which a run does
+/// not load.
 fn source_files(folder: &Path, files: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(folder) else {
         return;
@@ -316,7 +349,7 @@ fn source_files(folder: &Path, files: &mut Vec<PathBuf>) {
             continue;
         };
         if kind.is_dir() {
-            if !name.starts_with('.') && name != "work" {
+            if !name.starts_with('.') && name != "work" && name != "tests" {
                 source_files(&path, files);
             }
         } else if [".nf", ".config", ".groovy"]

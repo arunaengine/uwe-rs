@@ -5,7 +5,10 @@
 //! exit code (33 for unsupported features) and the first error. Each document that does not pass
 //! needs a record in tests/fixtures/test-workflows/rejected.txt that names why it cannot run:
 //! `invalid` or `missing`, with the evidence that `argo lint` rejects it too, or `unsupported`
-//! by a decision. `ARGO_TEST_WORKFLOWS_UPDATE=1` rewrites the outcomes;
+//! by a decision. Before each run, the test describes the inputs of the workflow, as the binary
+//! does (decision 24), and compares the counts of its schema and of a check of the simulated run
+//! with tests/fixtures/test-workflows/inputs.txt; every schema must be valid JSON Schema.
+//! `ARGO_TEST_WORKFLOWS_UPDATE=1` rewrites the outcomes and the inputs;
 //! `ARGO_TEST_WORKFLOWS_FILTER` runs only the documents whose path contains it, and
 //! `ARGO_TEST_WORKFLOWS_ORDER=shuffled:<seed>` lets tasks finish in a random order.
 // Copyright (c) 2026 The iunctus Contributors
@@ -17,9 +20,17 @@ use std::rc::Rc;
 
 use argo_runtime::library::collect_files;
 use argo_runtime::{ArgoDriver, Document, Kind, Library, Options, load_file, validate};
-use workflow_graph::{Order, RunOptions, Simulator, execute_with};
+use input_schema::Counts;
+use workflow_graph::{Driver, Order, RunOptions, Simulator, execute_with};
 
 const FIXTURE: &str = "tests/fixtures/test-workflows/outcomes.txt";
+
+/// The inputs of each document with an entrypoint.
+const INPUTS: &str = "tests/fixtures/test-workflows/inputs.txt";
+
+const OUTCOMES_HEADER: &str = "# Outcomes of the Argo test-workflows test: `ok` and the number of tasks of a run with the simulator,\n# `valid` for a document without an entrypoint that passes Argo's checks, or the\n# exit code (33 for unsupported features) and the first error. A tab ends the path, which may\n# hold spaces.\n";
+
+const INPUTS_HEADER: &str = "# The inputs of each Argo document with an entrypoint (decision 24): `ok:` and the counts of\n# its schema, of a check of a simulated run, and of the parameters that its templates read and\n# its schema does not declare or the other way round; or the exit code and the first error.\n# A tab ends the path, which may hold spaces.\n";
 
 /// The records of the documents that do not pass: why each cannot run, with evidence.
 const REJECTED: &str = "tests/fixtures/test-workflows/rejected.txt";
@@ -67,6 +78,8 @@ struct TestWorkflows {
     scratch: tempfile::TempDir,
     /// The documents of the directories in [`CONFIGS`], read once.
     configs: BTreeMap<&'static str, Vec<Rc<Document>>>,
+    /// The counts of the inputs of each document that ran.
+    inputs: BTreeMap<String, String>,
 }
 
 impl TestWorkflows {
@@ -94,8 +107,14 @@ impl TestWorkflows {
     }
 
     /// Runs a document with the simulator: `ok` and the number of tasks, or the exit
-    /// code and the error.
-    fn run(&self, relative: &str, document: &Rc<Document>, library: Library) -> String {
+    /// code and the error. The inputs of the document are described first, as the binary does.
+    fn run(
+        &mut self,
+        key: &str,
+        relative: &str,
+        document: &Rc<Document>,
+        library: Library,
+    ) -> String {
         let options = Options {
             scratch: self.scratch.path().join("scratch"),
             now: Some("2026-09-28T12:00:00Z".parse().expect("a time")),
@@ -103,6 +122,15 @@ impl TestWorkflows {
             ..Options::default()
         };
         let mut driver = ArgoDriver::new(Rc::clone(document), Rc::new(library), options);
+        let inputs = match driver.inputs() {
+            Ok(Some(inputs)) => Counts::of(&inputs, true).to_string(),
+            Ok(None) => "none".to_owned(),
+            Err(error) => {
+                let code = if error.unsupported { 33 } else { 1 };
+                format!("{code} {}", one_line(&error.message, ""))
+            }
+        };
+        self.inputs.insert(key.to_owned(), inputs);
         let work = self.scratch.path().join("simulator");
         let _ = std::fs::remove_dir_all(&work);
         let mut executor = Simulator::new(&work);
@@ -217,6 +245,7 @@ fn run_test_workflows() {
         verbose: std::env::var("ARGO_TEST_WORKFLOWS_VERBOSE").is_ok(),
         scratch: tempfile::tempdir().expect("a temporary directory"),
         configs: BTreeMap::new(),
+        inputs: BTreeMap::new(),
     };
     let mut outcomes: BTreeMap<String, String> = BTreeMap::new();
     let mut summary: Vec<String> = Vec::new();
@@ -272,7 +301,7 @@ fn run_test_workflows() {
                 }
                 let library = workflows.library(&relative, &documents, &pool);
                 let outcome = if document.runnable() {
-                    workflows.run(&relative, document, library)
+                    workflows.run(&key, &relative, document, library)
                 } else {
                     match validate(document, &library) {
                         Ok(()) => "valid".to_owned(),
@@ -298,11 +327,39 @@ fn run_test_workflows() {
     let ok = outcomes.values().filter(|outcome| passed(outcome)).count();
     println!("{}", summary.join("\n"));
     println!("{ok} of {total} documents run through with a full graph or pass Argo's checks");
+    let inputs_fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join(INPUTS);
+    let inputs = std::mem::take(&mut workflows.inputs);
+    let invalid: Vec<&String> = (inputs.iter())
+        .filter(|(_, counts)| counts.starts_with("invalid schema"))
+        .map(|(document, _)| document)
+        .collect();
+    assert!(
+        invalid.is_empty(),
+        "schemas that are not valid: {invalid:?}"
+    );
     if update {
-        write_fixture(&fixture, outcomes, &expected, &workflows.filter);
+        let expected_inputs = read_fixture(&inputs_fixture);
+        let filter = &workflows.filter;
+        write_fixture(
+            &inputs_fixture,
+            INPUTS_HEADER,
+            inputs,
+            &expected_inputs,
+            filter,
+        );
+        write_fixture(&fixture, OUTCOMES_HEADER, outcomes, &expected, filter);
         return;
     }
+    let expected_inputs = read_fixture(&inputs_fixture);
     let mut differences = Vec::new();
+    for (document, counts) in &inputs {
+        if expected_inputs.get(document) != Some(counts) {
+            differences.push(format!(
+                "{document}: inputs {counts} (recorded: {:?})",
+                expected_inputs.get(document)
+            ));
+        }
+    }
     for (document, outcome) in &outcomes {
         match expected.get(document) {
             Some(recorded) if recorded == outcome => {}
@@ -413,9 +470,10 @@ fn check_records(outcomes: &BTreeMap<String, String>) {
     );
 }
 
-/// Writes the outcomes; a filtered run updates only the documents it ran.
+/// Writes a fixture of outcomes or inputs; a filtered run updates only the documents it ran.
 fn write_fixture(
     fixture: &Path,
+    header: &str,
     mut outcomes: BTreeMap<String, String>,
     expected: &BTreeMap<String, String>,
     filter: &str,
@@ -427,9 +485,7 @@ fn write_fixture(
             }
         }
     }
-    let mut text = String::from(
-        "# Outcomes of the Argo test-workflows test: `ok` and the number of tasks of a run with the simulator,\n# `valid` for a document without an entrypoint that passes Argo's checks, or the\n# exit code (33 for unsupported features) and the first error. A tab ends the path, which may\n# hold spaces.\n",
-    );
+    let mut text = String::from(header);
     for (document, outcome) in &outcomes {
         text.push_str(&format!("{document}\t{outcome}\n"));
     }

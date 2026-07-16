@@ -1,0 +1,495 @@
+# The inputs of each workflow of the Snakemake test workflows (decision 24), as a run
+# describes them before its first task: `ok:` and the counts of its schema, of a check
+# of the simulated run, and of the config keys that its code reads and its schema does
+# not declare or the other way round; or the error that stops its evaluation.
+# 892 workflows, 685 with a schema.
+catalog/3d-omics__hg_genotype ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/AToL-Bioinformatics__genome-launcher-workflow 1 workflow/Snakefile:8: the workflow imports the Python package giturlparse, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/Addimator__compare_meth 1 workflow/rules/common.smk:7: FileNotFoundError: [Errno 2] No such file or directory: '/projects/koesterlab/benchmark-methylation/data_analysis_jochen/compare_meth/config/sample.tsv'
+catalog/Addimator__varlociraptor-copy-number-variants ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/Albinam1__bioinformatics_school 1 workflow/rules/mapping.smk:34: WorkflowError: Not all output, log and benchmark files of rule map_reads_with_minimap contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
+catalog/AllenInstitute__Bulk-RNA-Snakeline ok: 6 inputs, 6 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/AmberFu__snakemake_BAMmetrics_mosdepth 1 workflow/Snakefile:8: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
+catalog/ArsenaultResearch__RNAseq_Pipeline ok: 4 inputs, 4 required, 1 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+catalog/ArsenaultResearch__windowRAxMLng ok: 4 inputs, 4 required, 1 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/BesenbacherLab__bbq_pipeline ok: 3 inputs, 2 required, 2 files, 1 tables; 0 errors, 0 warnings; 8 read not declared, 0 declared not read
+catalog/Bioinflows-Bioversity-CIAT__ont-target-dna-variant-calling ok: 10 inputs, 0 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 3 declared not read
+catalog/Bioinflows-Bioversity-CIAT__tm-shift_designer ok: 6 inputs, 0 required, 4 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/CAST-genomics__snakemake-gfa-complexity 1 workflow/Snakefile:18: KeyError: 'trait'
+catalog/CBIbigA__hicstuff_pipeline ok: 7 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+catalog/CSB-IG__GSE167150_HiC_matrices 1 workflow/rules/hicpro_allvalidpairs.smk:4: WorkflowError: Not all output, log and benchmark files of rule hicpro_allvalidpairs contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
+catalog/CVUA-RRW__FooDMe ok: 35 inputs, 0 required, 6 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/Cesconlab__ExomeSeq 1 workflow/Snakefile:6: PermissionError: [Errno 13] Permission denied: '/cluster'
+catalog/ChaissonLab__SegDupAnnotation2 ok: 34 inputs, 4 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/ClavelLab__genome-assembly 1 workflow/rules/common.smk:7: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
+catalog/Crollo95__survhive-workflow 1 workflow/Snakefile:18: WorkflowError: Workflow defines configfile config/config.yaml but it is not present or accessible (full checked path: config/config.yaml).
+catalog/DSiB-G2__G2-CovPipeline ok: 4 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/DavideBrex__SpikeFlow ok: 6 inputs, 2 required, 1 files, 1 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
+catalog/DustinMathia__aradopsis-drive ok: 5 inputs, 0 required, 3 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 1 declared not read
+catalog/ETH-NEXUS__gExcite_pipeline ok: 5 inputs, 0 required, 8 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/EichlerLab__ONT_pipelines 1 workflow/Snakefile:11: NameError: name 'srcdir' is not defined
+catalog/EloiseEsox__snakemake ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/EloiseIsobelPearce__snakemake-example ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/FeelLiao__rna-seq-std ok: 4 inputs, 4 required, 1 files, 0 tables; 0 errors, 0 warnings; 5 read not declared, 0 declared not read
+catalog/FilippoGas__GeneProgramsProfiler ok: 12 inputs, 5 required, 2 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 1 declared not read
+catalog/FilippoGas__HapScorer ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/GArcho44__snvs-annotation-pipeline 1 workflow/Snakefile:5: WorkflowError: Workflow defines configfile ../config/config.yml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yml).
+catalog/GaspardR__snakemake-github-module-keyerror ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/Gmidtg21__bt7-9gmidtg ok: 6 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/GooglingTheCancerGenome__sv-callers 1 workflow/validator/__init__.py:6: the workflow imports the Python package ruamel, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/GooglingTheCancerGenome__sv-gen 1 workflow/helper_functions.py:5: the workflow imports the Python package pyfaidx, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/GuttmanLab__chipdip-pipeline ok: 24 inputs, 0 required, 9 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/IHGGM-Aachen__CNVand ok: 4 inputs, 4 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/IKIM-Essen__QC_pre_NextSeq ok: 10 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/IKIM-Essen__ResMAG ok: 16 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+catalog/IKIM-Essen__RiboSnake ok: 28 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/IKIM-Essen__uncovar ok: 10 inputs, 10 required, 2 files, 0 tables; 0 errors, 0 warnings; 8 read not declared, 0 declared not read
+catalog/IMS-Bio2Core-Facility__GTExSnake ok: 2 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/IMS-Bio2Core-Facility__polya_liftover ok: 8 inputs, 7 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/IMS-Bio2Core-Facility__single_snake_sequencing ok: 9 inputs, 7 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/JAlvarezJarreta__community_gff3_validation ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/Jain-Joyce-Labs__snakemake-chipseq ok: 7 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/JeremyTournayre__Pipeline-Holoruminant-Meta 1 workflow/Snakefile:22: KeyError: 'params-file'
+catalog/JoseFcoMH__af3_screening 1 workflow/Snakefile:35: KeyError: 'out_dir'
+catalog/JoyceS13__BEP_pipeline 1 workflow/Snakefile:101: SyntaxError: unindent does not match any outer indentation level
+catalog/KasperSkytte__snakemake_savont ok: 17 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/KasperSkytte__snakemake_usearch ok: 13 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/KonstantinBurkin__cbai ok: 6 inputs, 6 required, 2 files, 2 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/Kratzcomycete__Fungal-Genome-Processing-Snakemake ok: 11 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/LET19__snakemake-template ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/LiaOb21__FSP_assembly_benchmarking ok: 22 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/LiaOb21__colora ok: 18 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/LinhHo__module_area_potentials ok: 2 inputs, 1 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/Louis-XIV-bis__NJ_tree_bootstrap ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/MPUSP__snakemake-assembly-postprocessing ok: 13 inputs, 13 required, 3 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/MPUSP__snakemake-bacterial-riboseq ok: 12 inputs, 12 required, 2 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/MPUSP__snakemake-bacterial-rnaseq-processing ok: 14 inputs, 14 required, 2 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/MPUSP__snakemake-crispr-guides ok: 4 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/MPUSP__snakemake-ms-proteomics ok: 8 inputs, 8 required, 2 files, 1 tables; 0 errors, 0 warnings; 9 read not declared, 0 declared not read
+catalog/MPUSP__snakemake-ont-bacterial-variants ok: 16 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+catalog/MPUSP__snakemake-ont-basecalling ok: 3 inputs, 3 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/MPUSP__snakemake-simple-mapping ok: 9 inputs, 9 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/MarieRiisgaard__snakemake_usearch_primertrim_and_subset 1 workflow/Snakefile:19: FileNotFoundError: [Errno 2] No such file or directory: '.test/nanopore_run_xyz123/fastq_pass'
+catalog/Matheusdras__Snakemake-template ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/MathiasEskildsen__ONT-AmpSeq ok: 19 inputs, 0 required, 3 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/MathiasEskildsen__ONT_RNA-seq_wf 1 workflow/Snakefile:13: FileNotFoundError: [Errno 2] No such file or directory: '/home/bio.aau.dk/mk20aj/Projects/ONT_RNA-seq_wf/data/samples'
+catalog/MethyleneBlues__Snake ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/NCI-CGR__TriosCompass_v2 1 workflow/Snakefile:8: WorkflowError: Workflow defines configfile workflow/../config/config.yaml but it is not present or accessible (full checked path: config/config.yaml).
+catalog/NeuroGranberg__NODDIpipeline 1 workflow/rules/NODDIpipeline.smk:26: KeyError: ('sub', 'ses', 'scan', 'target', 'acq', 'suffix')
+catalog/Ovewh__ACP-haugvaldstad-et-al-2025 ok: 31 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 11 declared not read
+catalog/Ovewh__Climaso ok: 20 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 3 declared not read
+catalog/PathoGenOmics-Lab__VIPERA none: the workflow runs a command while it is loaded
+catalog/Phlya__C-integration-mapping ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/Phlya__distill-reorder-C 1 https://raw.githubusercontent.com/open2c/distiller-sm/master/workflow/Snakefile:18: KeyError: 'output'
+catalog/Phlya__tagmap ok: 60 inputs, 3 required, 5 files, 2 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/Princeton-LSI-ResearchComputing__hifi-assembly ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/PyPSA__grid-builder 1 workflow/scripts/_schema.py:14: the workflow imports the Python package earth_osm, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/RaphaelAngerbauer__snakemake_template ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/Sadia12345__Thesis-BMI-Prediction-Snakemake ok: 9 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/SamBryce-Smith__LAPA_snakemake 1 workflow/Snakefile:4: KeyError: 'lapa_disable_internal_priming_filter'
+catalog/Sara-Morsy__metaomic-workflow ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/SarahSaadain__Single_Copy_Gene_Selector none: the workflow runs a command while it is loaded
+catalog/SarahSaadain__pastForward 1 workflow/rules/initialize.smk:42: WorkflowError: The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:
+catalog/SchlossLab__mikropml-snakemake-workflow ok: 9 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/SchlossLab__mothur-snakemake-workflow ok: 8 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/ShaolinXU__snakemake_repo ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/SichongP__atac-seq ok: 9 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
+catalog/Siffreya__MKD_eDNA_biodiversity ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/SilasK__Metagenome-Profile 1 workflow/rules/sample_table.smk:12: FileNotFoundError: [Errno 2] No such file or directory: 'samples.csv'
+catalog/SilasK__Metagenome-QC 1 workflow/Snakefile:18: KeyError: 'database_dir'
+catalog/SilasK__Snakebread 1 workflow/rules/sample_table.smk:16: FileNotFoundError: Sample table not found. Please provide a 'samples.csv' or 'samples.tsv' file.
+catalog/SilkeAllmannLab__pacbio_snakemake ok: 8 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+catalog/SilvanCodes__1001_genomes_analysis ok: 6 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/SilvanCodes__ag-wiehe-ndm ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/StergachisLab__IsoSeq_smk ok: 8 inputs, 0 required, 6 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+catalog/SveTho__base ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/SveTho__bcl2fastq2_workflow ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/SveTho__merge_fastqs ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/TLenfers__multispecies_mitochondrial_variant_analysis ok: 4 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/TRON-Bioinformatics__neorasp 1 workflow/rules/common.smk:2: the workflow imports the Python package magic, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/TRON-Bioinformatics__oblx ok: 20 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
+catalog/TidballLab__SNP-Cas13d-Selector ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/UpalabdhaD__snakemake_wf_skeleton ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/WHops__triopull-asm ok: 5 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/WanlinLi2021__demo ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/Wheeler-Lab__InDelCoordinateCorrection ok: 2 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/Xavster838__assembly_validation 1 workflow/Snakefile:8: NameError: name 'srcdir' is not defined
+catalog/Xavster838__coreDupGraph 1 workflow/Snakefile:6: NameError: name 'srcdir' is not defined
+catalog/Xavster838__downstream_isoseq_process 1 workflow/Snakefile:10: NameError: name 'srcdir' is not defined
+catalog/Xavster838__get_and_annotate_locus 1 workflow/Snakefile:8: NameError: name 'srcdir' is not defined
+catalog/Xavster838__run_NucFreq 1 workflow/Snakefile:8: NameError: name 'srcdir' is not defined
+catalog/Yegberink__euro_building_heat_supply ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/Yegberink__module_geothermal ok: 34 inputs, 28 required, 0 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+catalog/Yegberink__module_heat_rasters ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/Zilong-Li__array-imputation-workflow 1 workflow/rules/common.smk:31: FileNotFoundError: [Errno 2] No such file or directory: 'data/chip/megaMergedPlus.autosomes.QCedHg38.nonoverlap.bim'
+catalog/Zilong-Li__lcWGS-imputation-workflow ok: 13 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/abbyevewilliams__map-pipeline 1 workflow/Snakefile:13: FileNotFoundError: [Errno 2] No such file or directory: '/data/biol-silvereye/ball6625/map-pipeline/config/zborb-samples.txt'
+catalog/abrahanhernandez__scWGA ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/adrisede__Isoseq_smk_min 1 workflow/Snakefile:273: WorkflowError: Not all output, log and benchmark files of rule collapse contain the same wildcards. This is crucial though, in order to avoid that two or more jobs write to the same file.
+catalog/aekrylova__scPASU 1 workflow/rules/1_data_preprocessing.smk:1: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
+catalog/akcorut__kGWASflow 1 workflow/rules/common.smk:255: SystemExit: 1
+catalog/alexhbnr__contig_simulation ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/alzel__refseq_pipeline none: the workflow runs a command while it is loaded
+catalog/ammaraziz__voi 1 workflow/Snakefile:6: KeyError: 'output'
+catalog/arwisyah__snakemake_rna_vc_docker_reproduce ok: 6 inputs, 6 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/aryazand__call_tss ok: 7 inputs, 0 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/aryazand__fastq-process-align ok: 6 inputs, 6 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/aryazand__genome_browser_workflow ok: 1 inputs, 0 required, 3 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/aryazand__proseq_workflow 1 https://raw.githubusercontent.com/aryazand/fastq-process-align/main/workflow/rules/common.smk:9: FileNotFoundError: [Errno 2] No such file or directory: 'config/samples.tsv'
+catalog/aryazand__rnaseq_to_genome_annotation 1 https://raw.githubusercontent.com/aryazand/fastq-process-align/main/workflow/rules/common.smk:9: FileNotFoundError: [Errno 2] No such file or directory: 'config/samples.tsv'
+catalog/b-brankovics__bwa-gatk-fasttree-smkwf ok: 6 inputs, 6 required, 2 files, 2 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/b-brankovics__smkwf-STRAf-typing ok: 5 inputs, 5 required, 4 files, 3 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/b-brankovics__smkwf-oligo-screening ok: 4 inputs, 4 required, 3 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/babasaraki__NSIB ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/babasaraki__snakemake-workshop-NBIS ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/baerlachlan__smk-rnaseq-counts ok: 16 inputs, 0 required, 2 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/baerlachlan__smk-rnaseq-gatk-variants ok: 6 inputs, 0 required, 2 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/bakerwm__snakemake-rnaseq-star 1 workflow/rules/common.smk:7: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
+catalog/belowlab__ukbb-phecode-mapping ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/bethanyyk__DENV_simulations ok: 4 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/bheimbu__annoSnake ok: 17 inputs, 4 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+catalog/boulardlab__3t-seq ok: 6 inputs, 0 required, 3 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/broomej__serpent-DEFUNCT ok: 2 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/brunosate21-a11y__Metabolic-Modeling-Workflow. ok: 5 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 7 read not declared, 0 declared not read
+catalog/brunosate21-a11y__codigo-sem-commit ok: 4 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/calliope-project__module_road_transport ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/cbg-ethz__V-pipe 1 workflow/rules/common.smk:21: ImportError: cannot import name 'load_configfile' from 'snakemake.io'
+catalog/cbib__SpaceBlocks ok: 35 inputs, 6 required, 5 files, 1 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+catalog/cecivale__snakemake-phylo-beast2 ok: 12 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+catalog/charleshefer__snakemake-workflow-template ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/cjgunnar__snake-dreem ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/clami66__AF_server 1 workflow/rules/common.smk:18: AttributeError: 'Workflow' object has no attribute 'use_env_modules'
+catalog/clarajegousse__hanoxy 1 helpers.py:6: FileNotFoundError: [Errno 2] No such file or directory: '/hpchome/cat3/project/hanoxy/data/info/samples.txt'
+catalog/cmc-aau__nanopore_16Samp ok: 10 inputs, 0 required, 3 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 3 declared not read
+catalog/cmc-aau__snakemake_project_template ok: 6 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/cmkobel__smktest ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/crs4__fair-crcc-get-data 1 workflow/rules/common.smk:8: ImportError: cannot import name 'AbstractRemoteProvider' from 'snakemake.remote'
+catalog/daspacio9__pooledpremiumpcrpipeline2 ok: 12 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/davelunt__NemaTree ok: 28 inputs, 0 required, 6 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 1 declared not read
+catalog/davelunt__badseqs ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/davelunt__mmseqs 1 workflow/Snakefile:15: SyntaxError: Expected name or colon after rule or checkpoint keyword. The keyword rule has a special meaning in Snakemake. If you named a variable or function like this, please rename it to avoid the conflict.
+catalog/davidlorenz__snakemake-workflow-template ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/dawidkrzeciesa__dna-seq-cnv ok: 6 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/dbespiatykh__RDscan ok: 4 inputs, 0 required, 4 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/dbespiatykh__TBvar ok: 5 inputs, 5 required, 5 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/delpropo__TidballLab-SNP-Cas13d-Selector ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/dlaehnemann__create-ecdna-testing-data ok: 4 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/dlaehnemann__create-quant-seq-testing-dataset ok: 3 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/dlaehnemann__create-sv-ci-testing-dataset ok: 7 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+catalog/dlaehnemann__demo-standardized-workflow ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/dlaehnemann__evaluate_varlociraptor_purity_estimation ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/dlaehnemann__rna-seq-conservative-fold-change-without-replicates ok: 3 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/dlaehnemann__wgs-mosdepth-maftools-copy-numbers 1 workflow/rules/common.smk:8: KeyError: "None of ['sample_name'] are in the columns"
+catalog/drifter089__pypsa-workflow 1 workflow/Snakefile:6: ImportError: cannot import name 'load_configfile' from 'snakemake.io'
+catalog/elsamah__ExomeSeq 1 workflow/Snakefile:6: PermissionError: [Errno 13] Permission denied: '/cluster'
+catalog/elsamah__ExomeSeq_wNorm 1 workflow/Snakefile:5: PermissionError: [Errno 13] Permission denied: '/cluster'
+catalog/emilymlayton__variant_calling_snakemake ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/emmaewade__pangenome-workflow 1 workflow/Snakefile:6: KeyError: 'outname'
+catalog/epigen__atacseq_pipeline 1 workflow/Snakefile:28: FileNotFoundError: [Errno 2] No such file or directory: '/path/to/annotation.csv'
+catalog/epigen__dea_limma 1 workflow/Snakefile:25: FileNotFoundError: [Errno 2] No such file or directory: '/path/to/DataSet_dea_limma_annotation.csv'
+catalog/epigen__dea_seurat 1 workflow/Snakefile:25: FileNotFoundError: [Errno 2] No such file or directory: '/path/to/MyData_dea_seurat_annotation.csv'
+catalog/epigen__enrichment_analysis ok: 18 inputs, 18 required, 2 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
+catalog/epigen__fetch_ngs ok: 7 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/epigen__genome_tracks 1 workflow/Snakefile:26: FileNotFoundError: [Errno 2] No such file or directory: '/path/to/myData_genome_tracks_annotation.csv'
+catalog/epigen__mixscape_seurat 1 workflow/Snakefile:24: FileNotFoundError: [Errno 2] No such file or directory: '/path/to/mixscape_seurat_annotation.csv'
+catalog/epigen__rnaseq_pipeline 1 workflow/Snakefile:26: FileNotFoundError: [Errno 2] No such file or directory: '/path/to/MyRNAproject_rnaseq_pipeline_annotation.csv'
+catalog/epigen__scrnaseq_processing_seurat 1 workflow/Snakefile:24: FileNotFoundError: [Errno 2] No such file or directory: '/path/to/scrnaseq_processing_annotation.csv'
+catalog/epigen__spilterlize_integrate 1 workflow/Snakefile:28: FileNotFoundError: [Errno 2] No such file or directory: '/path/to/metadata.csv'
+catalog/epigen__unsupervised_analysis ok: 15 inputs, 13 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+catalog/ethan-baldwin__braker3_annotation 1 workflow/rules/common.smk:6: TypeError: read_table() got an unexpected keyword argument 'delim_whitespace'
+catalog/ethan-baldwin__hybpiper_astral_pipeline 1 workflow/rules/common.smk:3: FileNotFoundError: [Errno 2] No such file or directory: '/home/eab77806/hybpiper_astral_pipeline/config/samples.tsv'
+catalog/ezherman__example-workflow ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/fcaretti__SNPs_from_RNA 1 workflow/Snakefile:5: WorkflowError: Workflow defines configfile config/actual_config.yml but it is not present or accessible (full checked path: config/actual_config.yml).
+catalog/fiberseq__fiberseq-smk ok: 3 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 17 read not declared, 1 declared not read
+catalog/fischuu__Snakebite-Holoruminant-MetaG 1 workflow/Snakefile:53: KeyError: 'params-file'
+catalog/flo-schu__pymob-workflow ok: 2 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
+catalog/fmi-basel__ggiorget_ms2analysis ok: 9 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/franciscozorrilla__metaGEM 1 workflow/Snakefile:1: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
+catalog/frattalab__QAPA_snakemake 1 workflow/Snakefile:6: KeyError: 'sample_sheet'
+catalog/friendsofstrandseq__ashleys-qc-pipeline 1 workflow/rules/common.smk:309: FileNotFoundError: [Errno 2] No such file or directory: '.tests/data_CHR17'
+catalog/friendsofstrandseq__mosaicatcher-pipeline 1 workflow/rules/common.smk:58: WorkflowError: The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:
+catalog/gabora__snakemake_template ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/gabrielfranco89__fastq_to_ucram ok: 1 inputs, 1 required, 1 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/garrison-chen__SR-pipe ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/geeksville__astrosnake ok: 5 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+catalog/giacatxt__gatk ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/giacatxt__trimmomatic ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/gonzarizzo__globe_map ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/guyer__slurm_conda_glitch ok: 2 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 2 declared not read
+catalog/gynecoloji__snakemake_ATACseq ok: 40 inputs, 18 required, 5 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 0 declared not read
+catalog/gynecoloji__snakemake_ATACseq_spikein 1 workflow/Snakefile:48: WorkflowError: Snakemake version mismatch: the driver running this workflow is 9.27.0, but workflow/envs/snakemake.yaml pins snakemake=9.3.2.
+catalog/gynecoloji__snakemake_ChIPseq ok: 24 inputs, 21 required, 4 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/gynecoloji__snakemake_CutandRunseq ok: 40 inputs, 26 required, 5 files, 0 tables; 0 errors, 0 warnings; 11 read not declared, 2 declared not read
+catalog/gynecoloji__snakemake_RNAseq ok: 14 inputs, 11 required, 7 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 1 declared not read
+catalog/gynecoloji__snakemake_debug ok: 12 inputs, 9 required, 4 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/gynecoloji__snakemake_scstseq ok: 9 inputs, 9 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+catalog/harrymatthews50__sankemake-containerisation-test ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/hreypar__containers_test ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/hreypar__felicidades ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/hzi-bifo__phylogeny-of-single-cells 1 workflow/rules/common.smk:32: WorkflowError: Error validating row 0 of data frame.
+catalog/hzi-bifo__snakemake-workflow-univec-removal ok: 2 inputs, 2 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/isaacvock__PROseq_etal ok: 34 inputs, 0 required, 4 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/jackieduckie__methylation-capture 1 workflow/Snakefile:45: SyntaxError: Expected name or colon after rule or checkpoint keyword. The keyword rule has a special meaning in Snakemake. If you named a variable or function like this, please rename it to avoid the conflict.
+catalog/jianhong__pairedtag ok: 4 inputs, 4 required, 3 files, 2 tables; 0 errors, 0 warnings; 6 read not declared, 0 declared not read
+catalog/jjjermiah__snakemake_template ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/jjjoelle__learn_rna ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/jma1991__arrays ok: 5 inputs, 5 required, 1 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/jma1991__chromium 1 workflow/Snakefile:40: KeyError: 'sample'
+catalog/jma1991__rnaseq 1 workflow/Snakefile:10: WorkflowError: Error validating config file.
+catalog/johnne__map_metaT 1 workflow/scripts/common.py:7: FileNotFoundError: [Errno 2] No such file or directory: 'samples.tsv'
+catalog/johnne__mytestworkflow ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/joyling93__sc10x_wf ok: 12 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
+catalog/jsquaredosquared__novocraft-sv-benchmarking ok: 8 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/juliawiggeshoff__AugusMake 1 workflow/Snakefile:17: SyntaxError: Expected a newline after line continuation character
+catalog/kaminosekai54__snakemakeTest ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/karltayeb__laplace-bfs 1 workflow/rules/single_causal_glm_simulations.smk:61: FileNotFoundError: [Errno 2] No such file or directory: 'output/single_variable_selection/'
+catalog/kevinrue__snakemake-cellranger-count ok: 5 inputs, 5 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/kevinrue__snakemake-cncb-2024 ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/kevinrue__snakemake-cncb-3 ok: 2 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+catalog/kevinrue__snakemake-cncb-ensembl-2024 ok: 10 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+catalog/khanlab__SPIMprep 1 workflow/Snakefile:2: the workflow imports the Python package upath, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/khersameesh24__snakemake-workflow-template ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/kircherlab__MPRAsnakeflow ok: 4 inputs, 2 required, 1 files, 0 tables; 0 errors, 0 warnings; 10 read not declared, 0 declared not read
+catalog/knutdrand__bionumpy-benchmarks 1 workflow/Snakefile:5: the workflow imports the Python package bionumpy, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/koesterlab__ngs-fastq-to-cram ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/koesterlab__rossi-ips-dmr 1 workflow/Snakefile:68: FileNotFoundError: [Errno 2] No such file or directory: '/home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/rna-seq-kallisto-sleuth/workflow/Snakefile'
+catalog/kpalin__ONT_hg_somatic ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/kreczko__cms-public-tutorial-snakemake ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/kvntrc__snakemake_template ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/lacklab__MuSTARRd ok: 5 inputs, 0 required, 3 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/lacklab__epens-snakemake ok: 3 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/lasyaa418__control-of-latent-dynamics 1 workflow/Snakefile:7: ModuleNotFoundError: No module named 'src'
+catalog/liezeltamon__single-cell-preprocess 1 workflow/Snakefile:12: the workflow imports the Python package utils, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/loganylchen__NanoInsight ok: 8 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/loganylchen__NanoRNAMod ok: 6 inputs, 6 required, 1 files, 1 tables; 0 errors, 0 warnings; 6 read not declared, 0 declared not read
+catalog/loganylchen__RNA-seq-analysis-pipeline ok: 3 inputs, 0 required, 1 files, 1 tables; 0 errors, 0 warnings; 9 read not declared, 0 declared not read
+catalog/loganylchen__prep-bonito-training-data 1 workflow/rules/common.smk:12: KeyError: "None of ['SampleName'] are in the columns"
+catalog/loganylchen__prep_mix_data ok: 4 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/loganylchen__prep_public_nanoporeDRS_data 1 workflow/rules/common.smk:32: KeyError: 'project'
+catalog/loganylchen__snakeRIP ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/loganylchen__snakemake-epitranscriptome ok: 4 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/lparsons__pf15-smallrna-rseto ok: 5 inputs, 5 required, 2 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+catalog/ltalignani__evo-shave 1 workflow/rules/common.smk:58: FileNotFoundError: [Errno 2] No such file or directory: 'resources/genomes/GCA_018104305.1_AalbF3_genomic.fna.fai'
+catalog/lueong1__cfdna_methylation_public 1 workflow/Snakefile:12: FileNotFoundError: [Errno 2] No such file or directory: 'config/samples.tsv'
+catalog/magwenelab__WeavePop 1 workflow/rules/common.smk:162: SystemExit: 1
+catalog/manuelphilip__Single-cell-analysis-Snakemake-workflow ok: 2 inputs, 2 required, 1 files, 1 tables; 0 errors, 0 warnings; 7 read not declared, 0 declared not read
+catalog/mariaelf97__amplicon_sequencing_simulator ok: 4 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/markschl__uvsnake 1 workflow/Snakefile:11: WorkflowError: Error validating config file.
+catalog/martykardos__asacphus_fire_frogs 1 workflow/rules/initialize.smk:24: AttributeError: 'Logger' object has no attribute 'mode'
+catalog/massiddamt__rna_vc_docker ok: 6 inputs, 6 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/matinnuhamunada__interproscan_helper ok: 3 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+catalog/mbquashie__tm ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/mdondrup__admixture_simulation ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/mdondrup__admixture_workflow 1 workflow/Snakefile:55: FileNotFoundError: [Errno 2] No such file or directory: 'input/selected-SNPINDEL_Ploidy2.vcf.gz'
+catalog/mdondrup__divergence_time ok: 5 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/mdondrup__gromacs_workflow ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/mdondrup__mytemplate_wf ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/mdondrup__ras_meta_transcriptomics 1 workflow/Snakefile:46: FileNotFoundError: [Errno 2] No such file or directory: 'input/fastq'
+catalog/mdondrup__sealice_assemblies ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/mdondrup__test ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/mdondrup__yeast_variantcalling 1 workflow/rules/download.smk:9: FileNotFoundError: [Errno 2] No such file or directory: 'config/chico3.clust'
+catalog/merfre__Adaptive_Sequencing_Analysis_Workflow 1 workflow/Snakefile:118: TypeError: sequence item 24: expected str instance, float found
+catalog/merfre__Hull_Microbiome_Cluster_Workflow ok: 27 inputs, 0 required, 3 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 2 declared not read
+catalog/merfre__MMCAW 1 workflow/Snakefile:63: TypeError: sequence item 31: expected str instance, float found
+catalog/metagenome-atlas__metagenome-assembly ok: 47 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
+catalog/metagenome-atlas__metagenome_instrain ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/milesroberts-123__poolseq-kmers 1 workflow/Snakefile:11: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
+catalog/milesroberts-123__slim-sweep-cnn 1 workflow/Snakefile:9: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
+catalog/mkrg01__genome_assembly_pipeline ok: 32 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 12 read not declared, 1 declared not read
+catalog/modelblocks-org__geospatial_shapes_test_bench ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 1 declared not read
+catalog/modelblocks-org__module_area_potentials ok: 5 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 0 declared not read
+catalog/modelblocks-org__module_co2stop_cdr ok: 2 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
+catalog/modelblocks-org__module_demand_electricity ok: 4 inputs, 4 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/modelblocks-org__module_euro_building_heat ok: 7 inputs, 6 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/modelblocks-org__module_euro_gas_grid ok: 3 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/modelblocks-org__module_geo_boundaries ok: 5 inputs, 2 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/modelblocks-org__module_hydropower ok: 5 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/modelblocks-org__module_powerplants ok: 4 inputs, 3 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/moiexpositoalonsolab__grenepipe 1 workflow/rules/initialize.smk:24: AttributeError: 'Logger' object has no attribute 'mode'
+catalog/monagrland__MB_Pipeline 1 workflow/Snakefile:12: KeyError: 'reads_table'
+catalog/mpitz123__RNA_seq_alignment ok: 2 inputs, 0 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/mrvollger__sd-divergence 1 workflow/Snakefile:10: NameError: name 'srcdir' is not defined
+catalog/mukherjeelab__CLIPs4U 1 workflow/scripts/genomic_files_and_indexes.py:9: the workflow imports the Python package wget, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/mushu-bytes__scelect ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/mynameisdidit__UTS_Bioinformatika_SV-Callers 1 workflow/validator/__init__.py:6: the workflow imports the Python package ruamel, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/nate-d-olson__adotto-smk ok: 3 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/nate-d-olson__defrabb ok: 17 inputs, 16 required, 2 files, 1 tables; 0 errors, 0 warnings; 4 read not declared, 2 declared not read
+catalog/nate-d-olson__giab-stvar-curation-table 1 workflow/Snakefile:244: KeyError: 'liftover'
+catalog/nate-d-olson__giab-sv-external-eval ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/ncbench__ncbench-workflow ok: 4 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 5 read not declared, 1 declared not read
+catalog/ncherric__Iliad ok: 7 inputs, 1 required, 2 files, 2 tables; 0 errors, 0 warnings; 21 read not declared, 2 declared not read
+catalog/niekwit__atac-seq 1 workflow/rules/common.smk:49: ValueError: Following files not found:
+catalog/niekwit__chip-seq 1 workflow/scripts/general_functions.smk:319: AssertionError: No fastq files found...
+catalog/niekwit__crispr-screens 1 workflow/scripts/general_functions.smk:194: ValueError: No fastq or cram files found in reads directory
+catalog/niekwit__cut_and_run 1 workflow/scripts/general_functions.smk:435: AssertionError: No fastq files found...
+catalog/niekwit__damid-seq 1 workflow/scripts/general_functions.smk:430: AssertionError: No fastq files found...
+catalog/niekwit__gps-orfeome ok: 9 inputs, 8 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/niekwit__methyl-seq 1 workflow/rules/common.smk:85: ValueError: No FASTQ (*.fastq.gz) files found in 'reads/' directory.
+catalog/niekwit__partridge-workflow none: the workflow runs a command while it is loaded
+catalog/niekwit__rna-seq-salmon-deseq2 1 workflow/Snakefile:28: WorkflowError: Error validating row 0 of data frame.
+catalog/niekwit__rna-seq-star-deseq2 ok: 10 inputs, 10 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+catalog/niekwit__rna-seq-star-rmats 1 workflow/Snakefile:29: ValueError: Invalid format specifier
+catalog/niekwit__rna-seq-star-tetranscripts 1 workflow/scripts/general_functions.smk:174: AssertionError: No fastq files found ending with .fastq.gz...
+catalog/niekwit__smallRNA-seq ok: 9 inputs, 9 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/nikostr__dna-seq-deepvariant-glnexus-variant-calling ok: 2 inputs, 2 required, 2 files, 2 tables; 0 errors, 0 warnings; 12 read not declared, 0 declared not read
+catalog/nikostr__read-mapping ok: 2 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/nismod__open-gira 1 workflow/Snakefile:20: the workflow imports the Python package open_gira, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/nixonlab__HERV_um_mets 1 workflow/rules/common.smk:6: FileNotFoundError: [Errno 2] No such file or directory: 'resources/mskruns.txt'
+catalog/nixonlab__snakemake_rule_library 1 workflow/Snakefile:8: FileNotFoundError: [Errno 2] No such file or directory: 'workflow/rules/common.smk'
+catalog/nodrogluap__tamor none: the workflow runs a command while it is loaded
+catalog/ntnn19__combflow ok: 5 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/ntnn19__gaptrick-af_unmasked 1 https://raw.githubusercontent.com/ntnn19/AlphaFold3_workflow/dev/workflow/rules/common.smk:34: WorkflowError: Error validating config file.
+catalog/odcambc__dumpling 1 workflow/rules/common.smk:215: FileNotFoundError: Data directory example/data does not exist
+catalog/omidalam__can_vac 1 workflow/rules/prep_refs.smk:7: KeyError: 'ref'
+catalog/open2c__distiller-sm 1 workflow/Snakefile:18: KeyError: 'output'
+catalog/orthanq__orthanq-hla-quantification ok: 5 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/osvaldoreisss__rnaseq_analysis_kallisto_deseq2 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/panguangze__trio_call_phase_pipeline 1 workflow/Snakefile:10: KeyError: 'joint_calling_groups'
+catalog/panta-123__moller-prompt-workflow ok: 5 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+catalog/percyfal__tswf-smk ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/petroskilp__clustromics ok: 8 inputs, 7 required, 2 files, 2 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+catalog/plycrsk__rna-seq-star-deseq2 1 workflow/rules/common.smk:7: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
+catalog/poloarol__snakemake-methylseq 1 workflow/Snakefile:11: WorkflowError: Workflow defines configfile ../config/config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/config.yaml).
+catalog/r1cheu__gnnotator ok: 4 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/r1cheu__imputation ok: 8 inputs, 6 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/rabiafidan__pure-faf 1 workflow/rules/common.smk:5: the workflow imports the Python package cyvcf2, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/rcavalcante__test_snakemake_pipeline ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/recervictory__rna-seq-test ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/regevs__tadpoles ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/regulatory-genomics__hic_sm 1 workflow/rules/common.smk:38: FileNotFoundError: [Errno 2] No such file or directory: 'pep/../config/20260119_hic_sample_2.csv'
+catalog/rglez__bflow-smk ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/richardstoeckl__QCforSeqCode ok: 2 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/richardstoeckl__basecallNanopore 1 workflow/Snakefile:21: WorkflowError: A configuration file is required; use --configfile FILE.yaml
+catalog/rmFlynn__DRAM_testing_pipline ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/rmFlynn__dram_validataion_pipline ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/rmFlynn__snakemake_example 1 workflow/Snakefile:6: ModuleNotFoundError: No module named 'workflow'
+catalog/rnsherpa__TLand-predict 1 workflow/Snakefile:17: FileNotFoundError: [Errno 2] No such file or directory: '/path/to/your/runs_table.tsv'
+catalog/robingarcia__test_snake ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/rochevin__RNA-seq-from-SRR-single 1 workflow/rules/samtools.smk:34: SyntaxError: Expected `,`, found identifier
+catalog/rodolfobrandao8__Snakemake-Mag-Annotation ok: 8 inputs, 8 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/sandragodinhosilva__melange ok: 15 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 1 declared not read
+catalog/sanjaysgk__WES_RNA_Pipeline ok: 11 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 1 declared not read
+catalog/schlesnerlab__multiconDEnrich ok: 5 inputs, 0 required, 2 files, 1 tables; 0 errors, 0 warnings; 8 read not declared, 1 declared not read
+catalog/scholl-lab__sm-calling ok: 8 inputs, 5 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/seankmartin__atn-sub-lfp-workflow ok: 9 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 34 read not declared, 0 declared not read
+catalog/semenko__serpent-methylation-pipeline ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
+catalog/seung1yoo__snakemake-s3-prototype ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/sgallegosperez8__practice ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/shahcompbio__bambu-smk 1 workflow/Snakefile:8: KeyError: 'out_dir'
+catalog/shahcompbio__proteomegenerator-smk 1 workflow/Snakefile:7: KeyError: 'transdecoder_proteome'
+catalog/shahcompbio__transdecoder-smk 1 workflow/Snakefile:7: KeyError: 'transcripts'
+catalog/simonmoulds__decadal-prediction-data-preparation ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+catalog/simonmoulds__gwm-analysis 1 workflow/Snakefile:21: NameError: name 'Snakefile_jules_output' is not defined
+catalog/simonmoulds__india-crop-atlas ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/simonmoulds__jules-ganges-data-preparation ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/simonmoulds__jules-mosart ok: 7 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
+catalog/simonmoulds__subseasonal-flood-prediction 1 workflow/rules/common.smk:18: FileNotFoundError: [Errno 2] No such file or directory: 'resources/stations_selected.parquet'
+catalog/simonmoulds__uk-decadal-flood-prediction 1 workflow/Snakefile:16: FileNotFoundError: [Errno 2] No such file or directory: 'resources/station_list_with_grid_coords.parquet'
+catalog/simonmoulds__uk-decadal-flood-prediction-lstm ok: 8 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 8 declared not read
+catalog/simonmoulds__us-streamflow-prediction ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/sims-lab__snakemake-cncb-genetic-demultiplexing ok: 2 inputs, 2 required, 1 files, 1 tables; 0 errors, 0 warnings; 12 read not declared, 0 declared not read
+catalog/sims-lab__snakemake-cncb-index-ensembl-genome ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 5 read not declared, 0 declared not read
+catalog/snakemake-workflows__cellranger-count 1 workflow/Snakefile:20: WorkflowError: The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:
+catalog/snakemake-workflows__cellranger-multi 1 workflow/Snakefile:20: WorkflowError: The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:
+catalog/snakemake-workflows__cyrcular-calling ok: 5 inputs, 5 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/snakemake-workflows__dna-seq-benchmark ok: 5 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/snakemake-workflows__dna-seq-gatk-variant-calling ok: 6 inputs, 6 required, 2 files, 2 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/snakemake-workflows__dna-seq-mtb ok: 8 inputs, 0 required, 2 files, 2 tables; 0 errors, 0 warnings; 15 read not declared, 2 declared not read
+catalog/snakemake-workflows__dna-seq-short-read-circle-map ok: 5 inputs, 4 required, 2 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/snakemake-workflows__dna-seq-varlociraptor ok: 18 inputs, 8 required, 4 files, 2 tables; 0 errors, 0 warnings; 6 read not declared, 3 declared not read
+catalog/snakemake-workflows__effect-size-estimation ok: 5 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/snakemake-workflows__microsatellite-instability-detection-with-msisensor-pro ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/snakemake-workflows__read-alignment-pangenome ok: 7 inputs, 7 required, 3 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 2 declared not read
+catalog/snakemake-workflows__rna-longseq-de-isoform 1 workflow/Snakefile:11: WorkflowError: Workflow defines configfile config/config.yml but it is not present or accessible (full checked path: config/config.yml).
+catalog/snakemake-workflows__rna-seq-kallisto-sleuth ok: 12 inputs, 7 required, 2 files, 2 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+catalog/snakemake-workflows__rna-seq-star-deseq2 ok: 7 inputs, 7 required, 2 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/snakemake-workflows__rna-seq-xengsort ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/snakemake-workflows__single-cell-counts-preprocessing ok: 2 inputs, 2 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/snakemake-workflows__snakemake-workflow-template ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/snakemake-workflows__species-quantification ok: 16 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+catalog/snakemake-workflows__star-arriba-fusion-calling ok: 3 inputs, 3 required, 2 files, 2 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/sneuensc__mapache 1 workflow/scripts/utils.py:9: ImportError: cannot import name 'Wildcards' from 'snakemake.io'
+catalog/solida-core__astra 1 workflow/rules/common.smk:13: EmptyDataError: No columns to parse from file
+catalog/solida-core__dima 1 workflow/rules/picard.smk:129: AttributeError: 'NoneType' object has no attribute 'get'
+catalog/solida-core__musta ok: 4 inputs, 4 required, 1 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 0 declared not read
+catalog/spjuhel__BoARIO-MRIOT-Tools 1 workflow/Snakefile:6: the workflow imports the Python package boario_tools, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/spjuhel__BoARIO-Sensitivity 1 workflow/Snakefile:34: FileNotFoundError: [Errno 2] No such file or directory: '/home/sjuhel/Repos/BoARIO-MRIOT-Tools/workflow/Snakefile'
+catalog/spjuhel__Climada_TC_TCSurge_Generation 1 workflow/Snakefile:27: KeyError: 'start'
+catalog/spraeger__mutational-patterns-analysis ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/t-i-r__snakemake-workflow-template ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/tahiri-lab__aPhyloGeo-pipeline ok: 2 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/tavareshugo__smk-indexer ok: 2 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/tbenavi1__RetroDetector ok: 6 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 5 read not declared, 0 declared not read
+catalog/tdayris__fair_bowtie2_mapping 1 https://raw.githubusercontent.com/tdayris/fair_genome_indexer/3.9.7/workflow/rules/common.smk:120: AttributeError: module 'snakemake.io' has no attribute 'Wildcards'
+catalog/tdayris__fair_cnv_facets 1 workflow/rules/common.smk:171: AttributeError: module 'snakemake.io' has no attribute 'Wildcards'
+catalog/tdayris__fair_fastqc_multiqc 1 workflow/rules/common.smk:172: AttributeError: module 'snakemake.io' has no attribute 'Wildcards'
+catalog/tdayris__fair_gatk_mutect2 1 workflow/rules/common.smk:171: AttributeError: module 'snakemake.io' has no attribute 'Wildcards'
+catalog/tdayris__fair_genome_indexer 1 workflow/rules/common.smk:123: AttributeError: module 'snakemake.io' has no attribute 'Wildcards'
+catalog/tdayris__fair_macs2_calling 1 workflow/rules/common.smk:171: AttributeError: module 'snakemake.io' has no attribute 'Wildcards'
+catalog/tdayris__fair_rnaseq_salmon_quant 1 workflow/rules/common.smk:106: AttributeError: module 'snakemake.io' has no attribute 'Wildcards'
+catalog/thomasbtf__sars-cov-2-wbe 1 workflow/Snakefile:7: WorkflowError: The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:
+catalog/thomasmulvaney__snakemake-gromacs-workflow ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/tmweiskittel__serpent-methylation-pipeline-cloud ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
+catalog/tmweiskittel__tmw_align_emseq ok: 4 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 2 declared not read
+catalog/tmweiskittel__tmw_analysis_emseq ok: 14 inputs, 0 required, 3 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 1 declared not read
+catalog/trickovicmatija__kingfisher_workflow 1 workflow/Snakefile:3: WorkflowError: Workflow defines configfile ../config/default_config.yaml but it is not present or accessible (full checked path: /home/beavis/.cache/iunctus/test-workflows/snakemake/catalog/config/default_config.yaml).
+catalog/tucca-cellag__tucca-rna-seq ok: 7 inputs, 7 required, 2 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/tud-mchen6__module_gh2_prod ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/ubercomrade__cut_and_run_analysis ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/usnistgov__defrabb ok: 33 inputs, 27 required, 2 files, 1 tables; 0 errors, 0 warnings; 7 read not declared, 1 declared not read
+catalog/usnistgov__giab-defrabb ok: 18 inputs, 17 required, 2 files, 1 tables; 0 errors, 0 warnings; 4 read not declared, 2 declared not read
+catalog/valentynbez__FuncMi ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/varlociraptor__varlociraptor-methylation-evaluation ok: 17 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 4 declared not read
+catalog/vembrane__vembrane-benchmark ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/vince-fang__basic ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/vince-fang__test ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/vivekbibs__pipeline_template ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/vjcitn__rnaseqSnake ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/vkpat__short-read-mapping-and-QC-snakemake-pipeline 1 workflow/Snakefile:1: WorkflowError: Workflow defines configfile config.yaml but it is not present or accessible (full checked path: config.yaml).
+catalog/vojdam__idat_to_graph ok: 2 inputs, 2 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/vollgerlab__DSA-phasing 1 workflow/Snakefile:15: WorkflowError: Error validating config file.
+catalog/votti__snakemake-demo ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/votti__snakemake-renv-quarto ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/watronfire__Gloucester ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/weizhu365__snakemake_template_test ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/westerdijk-wm__smkwf-bwa-gatk-snpeff ok: 7 inputs, 6 required, 3 files, 3 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/westerdijk-wm__snakemake-mlsa-ani ok: 6 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+catalog/wharvey31__denovo_sv_validation 1 workflow/Snakefile:3: the workflow imports the Python package Bio, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+catalog/xiayh17__benchmark_scomatic ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/xin-huang__selscape ok: 6 inputs, 5 required, 4 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
+catalog/yeyuan98__rna_fish_analysis ok: 8 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/ylab-hi__ScanNeo2 1 workflow/rules/common.smk:175: SystemExit: 1
+catalog/zavolanlab__mirflowz 1 workflow/Snakefile:23: WorkflowError: Workflow defines configfile workflow/../test/config_lint.yaml but it is not present or accessible (full checked path: test/config_lint.yaml).
+catalog/zavolanlab__zarp ok: 14 inputs, 7 required, 3 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
+catalog/zhongmicai__mosaicatcher-pipeline 1 workflow/rules/common.smk:22: WorkflowError: The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:
+catalog/zhuakexi__dna-seq-gatk-variant-calling ok: 7 inputs, 6 required, 2 files, 2 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+catalog/zifornd__arrays ok: 5 inputs, 5 required, 1 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+catalog/ziyaipek__snakemake ok: 3 inputs, 3 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+catalog/zjnolen__PopGLen 1 workflow/rules/common.smk:54: FileNotFoundError: [Errno 2] No such file or directory: 'path/to/ref.fa'
+tests/knapsack ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/profile ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test01 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test02 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test03 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test04 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test05 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test06 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test07 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test08 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test09 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test10 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test11 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test12 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test13 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test15 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/testHighWorkload ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_(with_parenthese's) ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_access_patterns ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_all_temp ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_ambiguousruleexception ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_ancient none: the workflow runs a command while it is loaded
+tests/test_ancient_cli none: the workflow runs a command while it is loaded
+tests/test_ancient_dag ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_archive ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_azure_batch ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_bash ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read

@@ -493,3 +493,405 @@ tests/test_ancient_dag ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 
 tests/test_archive ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_azure_batch ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_bash ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_batch ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_batch_final ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_benchmark ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_benchmark_jsonl ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_cache_multioutput ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_callable ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_censored_path ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_checkpoint_allowed_rules ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_checkpoint_missing_output ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_checkpoint_omit_from ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_checkpoint_open ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_checkpoint_rerun ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_checkpoint_running_job_storage_race ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_checkpoint_until ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_checkpoints ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_checkpoints_dir ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_checkpoints_many ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_cloud_checkpoints_issue574 1 Snakefile:6: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
+tests/test_conda ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_conda_cmd_exe ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_conda_custom_prefix ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_conda_function ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_conda_global 1 Snakefile:10: the workflow imports the Python package PIL, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+tests/test_conda_named none: the workflow runs a command while it is loaded
+tests/test_conda_pin_file ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_conda_python_3_7_script ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_conda_python_script ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_conda_run ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_conditional ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_config ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_config_merging ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 1 declared not read
+tests/test_config_replacing ok: 3 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_config_replacing_nocli ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+tests/test_config_yte ok: 2 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+tests/test_container ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_containerize_checkpoint ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_containerized ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_convert_to_cwl 1 Snakefile:39: SyntaxError: Keyword version is deprecated. Use conda or container directive instead.
+tests/test_converting_path_for_r_script ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_core_dependent_threads ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_cwl ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_cyclic_dependency_single ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_cyclic_dependency_split ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_default_flags ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_default_remote ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_default_resources ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_default_storage_local_job ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_default_target ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_deferred_func_eval ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_delete_all_output ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_delete_output none: the workflow runs a command while it is loaded
+tests/test_delete_temp_fs ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_deploy_hashing ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_deploy_script ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_deploy_sources ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_directory ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_dryrun_executor_validation ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_dup_out_patterns ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_dynamic_container ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_empty_include ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_ensure ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_env_modules ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_envvars 1 Snakefile:3: WorkflowError: The following environment variables are requested by the workflow but undefined. Please make sure that they are correctly defined before running Snakemake:
+tests/test_exists ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_expand_flag 1 Snakefile:3: WorkflowError: Flags (directory) in file pattern '{sample}/dir' given to expand() are invalid. Flags (e.g. temp(), directory()) have to be applied outside of expand (e.g. 'temp(expand("plots/{sample}.pdf", sample=SAMPLES))').
+tests/test_expand_list_of_functions ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_failed_intermediate ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+tests/test_filegraph ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_filesep_windows ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_format_params ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_format_wildcards ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_fstring ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_ftp_immediate_close 1 Snakefile:2: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
+tests/test_function_f_string ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_function_f_string_newline ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_generate_unit_tests 1 Snakefile:3: WorkflowError: Workflow defines configfile config/config.json but it is not present or accessible (full checked path: config/config.json).
+tests/test_get_log_both ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_get_log_complex ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_get_log_none ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_get_log_stderr ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_get_log_stdout ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue105 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue1062 1 Snakefile:3: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
+tests/test_github_issue1069 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue1158 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue1261 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue1266 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue1384 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue1389 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue1396 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue1460 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue1469 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue1498 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue1500 ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue1542 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue1550 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue1618 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue1818 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue1882 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue2142 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue2154 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue2213 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue2255 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue261 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue2732 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue2848 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue3213 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue3271 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue3556 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue3687 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue3913 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue4003 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue413 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue456 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue52 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue627 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue640 none: the workflow runs a command while it is loaded
+tests/test_github_issue672 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue727 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue78 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue806 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
+tests/test_github_issue929 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue988 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue_14 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue_3265_respect_dryrun_delete_all ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue_4039_mem_cli ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue_4039_runtime_cli ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue_4039_runtime_no_override ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_github_issue_4039_runtime_profile ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_globwildcards ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_google_lifesciences 1 Snakefile:5: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
+tests/test_group_job_fail ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_group_jobs ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_group_jobs_attempts ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_group_jobs_resources ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_group_parallel ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_group_temp ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_group_with_pipe ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_groupid_expand ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_groupid_expand_cluster ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_groups_out_of_jobs ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_gs_requester_pays 1 Snakefile:2: the workflow imports the Python package google, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+tests/test_handle_storage_multi_consumers ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_handover ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_immediate_submit ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_immediate_submit_without_shared_fs ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_incomplete_params ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_inferred_resources ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_inferred_resources_mib ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_inner_call ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_inoutput_is_path ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_input_generator ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_ioutils ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+tests/test_issue1037 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue1041 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue1046 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue1083 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue1085 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue1092 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue1093 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue1256 1 Snakefile:9: SyntaxError: Expected `:`, found `=`
+tests/test_issue1281 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue1284 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue1331 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue2574 1 Snakefile:4: KeyError: 'unexisting_key'
+tests/test_issue2685 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue2826_failed_binary_logs ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue3192 1 Snakefile:1: KeyError: 'CONDA_PREFIX'
+tests/test_issue3338 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue3361_fail ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue3361_pass ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue381 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue3922 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue3958 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue3970 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue471 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue584 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue612 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue635 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue805 1 Snakefile:6: SyntaxError: No rule keywords allowed after the execution keyword in rule a.
+tests/test_issue823_1 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue823_2 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue823_3 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue850 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue854 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue860 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue894 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue912 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue916 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue930 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue956 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue958 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_issue_3202 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_job_properties ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_jupyter_notebook ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_jupyter_notebook_draft ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_jupyter_notebook_nbconvert ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_keyword_list ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_kubernetes 1 Snakefile:5: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
+tests/test_lazy_resources ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_list_untracked ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_load_metawrapper ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_local_import ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_localrule ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_log_input ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_long_shell ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_many_jobs ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_match_by_wildcard_names ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_metadata_migration ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_missing_file_dryrun ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_module_checkpoint ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_module_complex ok: 14 inputs, 7 required, 3 files, 2 tables; 0 errors, 0 warnings; 3 read not declared, 2 declared not read
+tests/test_module_complex2 ok: 14 inputs, 7 required, 3 files, 2 tables; 0 errors, 0 warnings; 3 read not declared, 2 declared not read
+tests/test_module_global_container ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_module_input_func ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_module_local_git 1 Snakefile:17: WorkflowError: Failed to read source git+file://repo/module/workflow/Snakefile@v0.0.1 from git repo.
+tests/test_module_nested ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 0 declared not read
+tests/test_module_no_prefixing_modified_paths ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_module_onerror ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_module_onstart_not_in_main_snakefile ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_module_onstart_onsuccess ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_module_report ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_module_wildcard_constraints ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_module_with_script ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+tests/test_module_workflow_snakefile_usage ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+tests/test_modules_all ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_modules_all_exclude ok: 4 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+tests/test_modules_dynamic ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_modules_dynamic_import_rules ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_modules_dynamic_module_as_alias ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_modules_dynamic_no_as ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_modules_meta_wrapper ok: 1 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_modules_name ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_modules_no_name 1 Snakefile:7: SyntaxError: Missing module name. A module name must be provided either after the module keyword or inside the module definition after the name keyword.
+tests/test_modules_peppy ok: 2 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_modules_prefix ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_modules_prefix_local ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_modules_ruledeps_inheritance ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_modules_semi_dynamic ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_modules_specific ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_modules_two_names 1 Snakefile:8: SyntaxError: Ambiguous module name. A module name was provided directly after the module keyword. Another module name was provided by the name keyword. The keyword module has a special meaning in Snakemake. If you named a variable or function like this, please rename it to avoid the c
+tests/test_multicomp_group_jobs ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_multiext ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_multiext_named ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_multiple_includes ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_name_override ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_no_temp ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_no_workflow_profile ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_nodelocal ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_nonstr_params ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_omitfrom ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_output_file_cache ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_output_file_cache_storage ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_params ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_params_empty_inherit ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_params_outdated_code ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_params_pickling ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_paramspace ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_paramspace_single_wildcard ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_parser ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_parsing_terminal_comment_following_statement ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_path_with_spaces ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_pathlib ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_pathlib_missing_file ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_pathvars ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_pathvars_cycle 1 Snakefile:1: WorkflowError: Cyclic pathvar reference detected between: foo, bar, foo
+tests/test_pathvars_modules ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_pathvars_storage ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_pep_pathlib ok: 1 inputs, 0 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+tests/test_peppy ok: 1 inputs, 0 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+tests/test_persistence_backend_db_run_directive_concurrency ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_pipe_depend ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_pipes ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_pipes2 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_pipes_fail ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_pipes_multiple ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_prebuilt_conda_script ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_priority ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_priority_invalid ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_profile_double_dash ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_profile_filename ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_profile_multiple ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_profile_new ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_profile_none ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_profile_old ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_profile_with_env_var ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_protected_symlink_output none: the workflow runs a command while it is loaded
+tests/test_python_import_from_github_module ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_queue_input ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_r_wrapper ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_remote_auto 1 Snakefile:4: ImportError: cannot import name 'AUTO' from 'snakemake.remote'
+tests/test_remote_azure 1 Snakefile:9: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
+tests/test_remote_gs 1 Snakefile:2: the workflow imports the Python package google, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
+tests/test_remote_irods 1 Snakefile:3: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
+tests/test_remote_log none: the workflow runs a command while it is loaded
+tests/test_remote_ncbi 1 Snakefile:2: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
+tests/test_remote_ncbi_simple 1 Snakefile:2: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
+tests/test_remote_sftp 1 Snakefile:2: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
+tests/test_remote_zenodo 1 Snakefile:4: KeyError: 'ZENODO_SANDBOX_PAT'
+tests/test_report ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_report_after_run ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_report_dir ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_report_dir_but_file ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_report_display_code ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_report_href ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_report_metadata ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_report_zip ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_resource_quoting ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_resource_string_in_cli_or_profile ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_resource_tbdstring ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_restartable_job_cmd_exit_1 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_restartable_job_qsub_exit_1 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_retries ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_retries_not_overriden ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_rule_defined_in_for_loop ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_rule_inheritance_globals ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_ruledag ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_ruledeps ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_run_namedlist ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_runtime_conversion_from_workflow_profile ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_same_wildcard ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_scatter_gather ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_scatter_gather_multiple_processes ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_scheduler_sequential_all_cores ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_script ok: 5 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 4 declared not read
+tests/test_script_hy ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_script_import_snakemake_obj ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_script_pre_py39 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_script_py ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+tests/test_script_rs ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+tests/test_script_xsh ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_service_jobs ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_set_resources ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_set_resources_complex ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_set_threads ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_shadow ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_shadow_copy ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_shadow_prefix ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_shadowed_log ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_shell ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_shell_exec ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_singularity ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_singularity_conda ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_singularity_global ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_singularity_module ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_singularity_none ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_singularity_source_cache ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_slurm_mpi ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_solver ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_source_path ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_source_path_rerun ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_spaces_in_fnames ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_speed ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_storage 1 Snakefile:12: KeyError: 's3_prefix'
+tests/test_storage_call 1 Snakefile:7: KeyError: 's3_prefix'
+tests/test_storage_cleanup_local ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_storage_dependency_edge_flags 1 Snakefile:6: KeyError: 's3_prefix'
+tests/test_storage_localrule ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_storage_noretrieve_dryrun ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_strict_mode ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_string_resources ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_subpath ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_subworkflow_config 1 Snakefile:3: SyntaxError: Keyword subworkflow is deprecated. Use module directive instead.
+tests/test_subworkflows 1 Snakefile:3: SyntaxError: Keyword subworkflow is deprecated. Use module directive instead.
+tests/test_symlink_temp ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_symlink_time_handling none: the workflow runs a command while it is loaded
+tests/test_temp ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_temp_and_all_input ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_temp_checkpoint ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_temp_expand ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_template_engine ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_tes ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_threads ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_threads0 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_tibanna 1 Snakefile:13: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
+tests/test_tmpdir ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_toposort ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_touch ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_touch_pipeline_with_temp_dir ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_touch_with_directories ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_uncreatable_checkpoint_input ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_unlock ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_unpack_dict ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_unpack_list ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_until ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_update_config ok: 2 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_update_flag none: the workflow runs a command while it is loaded
+tests/test_update_flag_fail none: the workflow runs a command while it is loaded
+tests/test_update_flag_fail_cleanup none: the workflow runs a command while it is loaded
+tests/test_url_include ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_use_rule_same_module ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_validate ok: 2 inputs, 1 required, 1 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+tests/test_wildcard_annotatedstrings ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_wildcard_count_ambiguity ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_wildcard_keyword ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_workflow_profile ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_workflow_profile_cli_overwrite ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_workflow_profile_relative_filename ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_workflow_profile_relative_path ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_wrapper ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_xrootd 1 Snakefile:3: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
+tests/test_yaml_config ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read

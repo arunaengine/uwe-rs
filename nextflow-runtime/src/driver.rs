@@ -205,7 +205,7 @@ impl Nextflow {
         // purpose.
         let ignored: BTreeSet<String> =
             crate::inputs::ignored(&loaded.config).into_iter().collect();
-        let mut read = crate::inputs::read(&loaded.project);
+        let mut read = crate::inputs::read(&loaded.project, &schema);
         read.retain(|name| !ignored.contains(name));
         if crate::inputs::lenient(&loaded.config) {
             crate::inputs::as_text(&schema, &mut values);

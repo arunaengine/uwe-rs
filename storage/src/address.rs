@@ -13,6 +13,23 @@ pub fn scheme(address: &str) -> Option<&str> {
     (valid && !scheme.is_empty()).then_some(scheme)
 }
 
+/// The address with the password of its user hidden, for messages: `ftp://me:[secret]@host/a`
+/// for `ftp://me:pass@host/a`. Other addresses stay as they are.
+pub fn redacted(address: &str) -> String {
+    let Some((scheme, rest)) = address.split_once("://") else {
+        return address.to_owned();
+    };
+    let end = rest.find('/').unwrap_or(rest.len());
+    let (server, path) = rest.split_at(end);
+    match server.rsplit_once('@') {
+        Some((credentials, host)) => match credentials.split_once(':') {
+            Some((user, _)) => format!("{scheme}://{user}:[secret]@{host}{path}"),
+            None => address.to_owned(),
+        },
+        None => address.to_owned(),
+    }
+}
+
 /// Whether `prefix` serves `address`: the address starts with the prefix, which ends at the
 /// end of a name, so that `s3://lab` serves `s3://lab/a` but not `s3://lab-data/a`.
 pub fn serves(prefix: &str, address: &str) -> bool {
@@ -108,6 +125,17 @@ mod tests {
         );
         assert_eq!(bucket_and_key("s3:///key"), None);
         assert_eq!(decode("a%20b%2Fc%zz"), "a b/c%zz");
+    }
+
+    #[test]
+    fn passwords_are_hidden_in_messages() {
+        assert_eq!(
+            redacted("ftp://me:pass@host/a:b"),
+            "ftp://me:[secret]@host/a:b"
+        );
+        assert_eq!(redacted("ftp://me@host/a"), "ftp://me@host/a");
+        assert_eq!(redacted("ftp://host/a@b"), "ftp://host/a@b");
+        assert_eq!(redacted("/local/a"), "/local/a");
     }
 
     #[test]

@@ -26,12 +26,17 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 pub(crate) struct Ftp {
     user: String,
     password: String,
+    /// Whether a user and password in the address win over `user` and `password`, as for the
+    /// built-in provider, which reads `ftp://user:password@server/path` as Nextflow does.
+    from_address: bool,
     /// The address of each server, by its name and port.
     servers: Mutex<HashMap<(String, u16), SocketAddr>>,
 }
 
-/// The server, the port and the path of an `ftp://` address.
+/// The user and password, the server, the port and the path of an `ftp://` address.
 struct Parts {
+    user: Option<String>,
+    password: Option<String>,
     host: String,
     port: u16,
     path: String,
@@ -43,7 +48,17 @@ impl Ftp {
         Ftp {
             user: user.unwrap_or_else(|| "anonymous".to_owned()),
             password: password.unwrap_or_else(|| "anonymous@".to_owned()),
+            from_address: false,
             servers: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// The client of `ftp://` addresses that no provider serves: it logs in as `anonymous`, or
+    /// as the user and password that an address names.
+    pub fn public() -> Ftp {
+        Ftp {
+            from_address: true,
+            ..Ftp::new(None, None)
         }
     }
 
@@ -76,10 +91,11 @@ impl Ftp {
         let mut session = AsyncFtpStream::connect_timeout(server, CONNECT_TIMEOUT)
             .await
             .map_err(problem)?;
-        session
-            .login(&self.user, &self.password)
-            .await
-            .map_err(problem)?;
+        let (user, password) = match (&parts.user, self.from_address) {
+            (Some(user), true) => (user.as_str(), parts.password.as_deref().unwrap_or_default()),
+            _ => (self.user.as_str(), self.password.as_str()),
+        };
+        session.login(user, password).await.map_err(problem)?;
         session
             .transfer_type(FileType::Binary)
             .await
@@ -150,8 +166,16 @@ fn parts(target: &str) -> Result<Parts, Problem> {
         .strip_prefix("ftp://")
         .ok_or_else(|| Problem::fixed("it is not an ftp:// address"))?;
     let (server, path) = rest.split_once('/').unwrap_or((rest, ""));
-    // Credentials in the address are left to the provider's settings.
-    let server = server.rsplit_once('@').map_or(server, |(_, server)| server);
+    // Credentials in the address count only for the built-in provider; see `from_address`.
+    let (credentials, server) = match server.rsplit_once('@') {
+        Some((credentials, server)) => (Some(credentials), server),
+        None => (None, server),
+    };
+    let (user, password) = match credentials.map(|text| text.split_once(':')) {
+        Some(Some((user, password))) => (Some(user), Some(password)),
+        Some(None) => (credentials, None),
+        None => (None, None),
+    };
     let (host, port) = match server.rsplit_once(':') {
         Some((host, port)) => (
             host,
@@ -164,6 +188,8 @@ fn parts(target: &str) -> Result<Parts, Problem> {
         return Err(Problem::fixed("it names no server"));
     }
     Ok(Parts {
+        user: user.map(address::decode),
+        password: password.map(address::decode),
         host: host.to_owned(),
         port,
         path: format!("/{}", address::decode(path)),
@@ -190,6 +216,13 @@ mod tests {
         );
         let found = parts("ftp://user@127.0.0.1:2121/x").expect("an address");
         assert_eq!((found.host.as_str(), found.port), ("127.0.0.1", 2121));
+        assert_eq!(
+            (found.user.as_deref(), found.password),
+            (Some("user"), None)
+        );
+        let found = parts("ftp://me:p%40ss@host/x").expect("an address");
+        let credentials = (found.user.as_deref(), found.password.as_deref());
+        assert_eq!(credentials, (Some("me"), Some("p@ss")));
         assert!(parts("ftp:///x").is_err());
     }
 }

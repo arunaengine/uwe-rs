@@ -29,6 +29,25 @@ Each attempt gets a scratch directory, `<scratch>/<run>-<task>-<attempt>`, with 
 
 Inputs that the task only reads are symbolic links to their sources, and the container sees the folders of the sources read-only at the same paths (`executor::place`). Inputs that the task may change or run are copies.
 
+**Settings in the config file.** Each executor takes its settings from a section `[executor.<name>]` of the config file ([storage](storage.md), section 1), so that a run needs no long command line. Options on the command line and environment variables win over the file. A key that a section does not know is an error.
+
+```toml
+[executor.local]
+engine = "podman"                    # like IUNCTUS_ENGINE: docker, podman or a socket
+
+[executor.tes]
+server = "https://tes.example.org"   # like -tes-server
+token = { environment = "TES_TOKEN" } # like IUNCTUS_TES_TOKEN
+
+[executor.slurm]
+container = "apptainer"              # like -slurm-container
+options = ["--account=lab", "--qos=low"]   # like -slurm-options
+
+[executor.kubernetes]
+kubeconfig = "/home/me/kind.kubeconfig"    # like -kubeconfig
+namespace = "iunctus"                # like -kubernetes-namespace
+```
+
 ## 2. Local containers
 
 ```sh

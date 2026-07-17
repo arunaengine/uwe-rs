@@ -444,7 +444,35 @@ async fn ftp_servers_serve_inputs() {
         !message.contains("wrong-3318") && !message.contains("ftp-secret-3318"),
         "{message}"
     );
-    // FTP servers need a provider of the config file.
-    let error = Storage::default().stat(&file).await.unwrap_err();
-    assert!(matches!(error, StorageError::NoProvider { .. }));
+}
+
+#[tokio::test]
+async fn ftp_servers_without_a_provider_are_read_as_nextflow_reads_them() {
+    // Without a provider, iunctus logs in as `anonymous`, as public servers ask.
+    let public = FtpServer::start(&[("/pub/a.txt", "alpha")], "anonymous", "anonymous@");
+    let file = format!("{}/pub/a.txt", public.address);
+    let found = Storage::default().stat(&file).await.unwrap();
+    assert_eq!(found.map(|metadata| metadata.size), Some(5));
+    // A user and password in the address log in as that user.
+    let private = FtpServer::start(&[("/pub/b.txt", "beta")], "reader", "pass-4471");
+    let server = private
+        .address
+        .strip_prefix("ftp://")
+        .expect("an ftp address");
+    let file = format!("ftp://reader:pass-4471@{server}/pub/b.txt");
+    let downloads = tempfile::tempdir().expect("a folder");
+    let copy = Storage::default()
+        .fetch(&file, downloads.path())
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(copy).unwrap(), "beta");
+    // A wrong password in the address is an error that does not show it.
+    let wrong = format!("ftp://reader:wrong-4471@{server}/pub/b.txt");
+    let message = Storage::default()
+        .stat(&wrong)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("reader:[secret]@"), "{message}");
+    assert!(!message.contains("wrong-4471"), "{message}");
 }

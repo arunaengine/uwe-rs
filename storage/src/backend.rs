@@ -30,6 +30,9 @@ pub(crate) enum Source {
     PublicBuckets,
     /// `file` addresses.
     Files,
+    /// `ftp` addresses that no provider serves: read as the user `anonymous`, or as the user
+    /// and password that the address names, as Nextflow reads them.
+    Ftp,
 }
 
 impl Source {
@@ -40,6 +43,9 @@ impl Source {
             Source::Web => "the web, without credentials".to_owned(),
             Source::PublicBuckets => "a public bucket, without credentials".to_owned(),
             Source::Files => "the local file system".to_owned(),
+            Source::Ftp => {
+                "an FTP server, as the user anonymous or the user of the address".to_owned()
+            }
         }
     }
 }
@@ -70,6 +76,7 @@ impl Connection {
             Source::Files => Backend::Folder(Folder {
                 root: PathBuf::from("/"),
             }),
+            Source::Ftp => Backend::Ftp(Ftp::public()),
             Source::Configured(settings) => match &settings.kind {
                 Kind::S3(s3) => {
                     let service = s3_service(s3, settings, &mut secrets)?;

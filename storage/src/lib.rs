@@ -1,8 +1,8 @@
 //! Storage providers (decision 20). The config file maps address prefixes to providers, each
 //! with its endpoint, region, credentials and settings: S3 and the services that speak its API,
 //! Google Cloud Storage, Azure Blob Storage, web servers, FTP servers and local folders. The
-//! longest prefix that serves an address wins. Web addresses, public buckets and local files
-//! that no provider serves go to a built-in one, so that a machine without a config file reads
+//! longest prefix that serves an address wins. Web addresses, public buckets, FTP servers and
+//! local files that no provider serves go to a built-in one, so that a machine without a config file reads
 //! public files as before. Each provider makes its client once per process, when it is first
 //! used; secrets never show in messages.
 // Copyright (c) 2026 The iunctus Contributors
@@ -115,13 +115,13 @@ impl Served<'_> {
     fn failed(&self, action: &'static str, address: &str, problem: Problem) -> StorageError {
         if problem.missing {
             return StorageError::Missing {
-                address: address.to_owned(),
+                address: address::redacted(address),
                 provider: self.provider.source.describe(),
             };
         }
         StorageError::Failed {
             action,
-            address: address.to_owned(),
+            address: address::redacted(address),
             provider: self.provider.source.describe(),
             message: error::redact(&problem.message, &self.connection.secrets),
             retryable: problem.retryable,
@@ -165,6 +165,7 @@ impl Storage {
             Provider::new(Source::Web, prefixes(&["http://", "https://"])),
             Provider::new(Source::PublicBuckets, prefixes(&["s3://", "gs://"])),
             Provider::new(Source::Files, prefixes(&["file://"])),
+            Provider::new(Source::Ftp, prefixes(&["ftp://"])),
         ];
         Storage {
             inner: Arc::new(Inner {
@@ -191,7 +192,7 @@ impl Storage {
         let (provider, prefix) = longest(&self.inner.configured, target)
             .or_else(|| longest(&self.inner.built_in, target))
             .ok_or_else(|| StorageError::NoProvider {
-                address: target.to_owned(),
+                address: address::redacted(target),
                 prefix: suggested_prefix(target),
             })?;
         Ok(Served {

@@ -194,10 +194,10 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 - [x] The parallel local executor on Docker or Podman, found without any config (decision 22).
 - [ ] The context of embedded code: the `snakemake` object, `run:` blocks, Nextflow `exec:` sections (section 3, step 14).
 - [ ] Images built from Conda environments (decision 12).
-- [ ] The TES executor, tested with Funnel and TESK (decision 22).
-- [ ] The SLURM executor with Apptainer or Podman (decision 22).
-- [ ] The Kubernetes executor, one Kubernetes Job per task (decision 22).
-- [ ] The network and writable-input fields, remote inputs (done), Argo container sets (section 3, steps 6, 9 and 10).
+- [ ] The TES executor (done, tested with a fake server and Funnel), tested with TESK too (decision 22).
+- [ ] The SLURM executor with Apptainer or Podman (done, tested with a simulated SLURM), tested on a SLURM cluster in containers (decision 22).
+- [ ] The Kubernetes executor, one Kubernetes Job per task (done through the API, tested with a fake API server), tested on a `kind` cluster (decision 22).
+- [ ] The network (done) and writable-input fields, remote inputs (done), Argo container sets (section 3, steps 6, 9 and 10).
 - [x] Several storage providers from a config file, secrets from environment variables (decision 20): see [storage](design/storage.md).
 - Done when: the `test` profiles of nf-core/demo and 20 more nf-core pipelines, and a sample of Snakemake, CWL and Argo test workflows, run for real on each executor, and their outputs match those of the native tool. This needs a real-run version of the evidence scripts. The 208 CWL conformance tests that only run through today pass for real.
 
@@ -226,7 +226,7 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 
 ### Easy setup
 
-- [ ] A laptop needs nothing but the binary and Docker or Podman.
+- [x] A laptop needs nothing but the binary and Docker or Podman (decision 26).
 - [ ] One config file for executors and storage, with secrets from environment variables. The file and its storage part are done ([storage](design/storage.md)); the executors read their `[executor.<name>]` sections next.
 - [ ] Clear errors that say what to install or set, in the same form for every language.
 

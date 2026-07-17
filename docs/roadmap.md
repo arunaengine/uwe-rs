@@ -232,8 +232,7 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 
 ## 6. Open questions
 
-1. **FTP inputs.** Should remote inputs include `ftp://`? Many public datasets are on FTP servers, and Nextflow reads them. Recommended: yes, in phase 2. FTP servers that a provider of the config file names work now ([storage](design/storage.md)); the question left is whether every other `ftp://` address is read as the user `anonymous` without any config, as Nextflow does.
-2. **Network by default.** Should tasks run without network unless the workflow says otherwise, or only when the user asks for it? Nextflow and Snakemake workflows never declare network use, so a default of "off" would break the steps that download.
-3. **Trust in a shared cache.** A cache on S3 that several users share means trusting each other's results. Options: one cache namespace per team (the namespace is already part of the cache key), or signed cache entries.
-4. **How results are delivered.** Copies are safe; links from the store save space but make the store's files editable by accident. Which is the default?
-5. **How a mixed-language run is written.** It can use what each language already has, like Snakemake's `cwl:` action, or a small new file that joins workflows. The second needs a decision on its format first.
+1. **Network by default.** Should tasks run without network unless the workflow says otherwise, or only when the user asks for it? Nextflow and Snakemake workflows never declare network use, so a default of "off" would break the steps that download.
+2. **Trust in a shared cache.** A cache on S3 that several users share means trusting each other's results. Options: one cache namespace per team (the namespace is already part of the cache key), or signed cache entries.
+3. **How results are delivered.** Copies are safe; links from the store save space but make the store's files editable by accident. Which is the default?
+4. **How a mixed-language run is written.** It can use what each language already has, like Snakemake's `cwl:` action, or a small new file that joins workflows. The second needs a decision on its format first.

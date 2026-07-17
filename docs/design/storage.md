@@ -129,8 +129,9 @@ With this file, `iunctus run main.nf -executor local --outdir s3://lab-results/r
 | `http://`, `https://` | the web, without credentials; a file of a GitHub repository is read from `raw.githubusercontent.com` |
 | `s3://`, `gs://` | public buckets, read over HTTPS without credentials (`https://<bucket>.s3.amazonaws.com/<key>`, `https://storage.googleapis.com/<bucket>/<key>`), which can also list them |
 | `file://` | the local file system |
+| `ftp://` | FTP servers, as Nextflow reads them (decision 27): as the user `anonymous`, or as the user and password that the address names (`ftp://user:password@server/path`); a password in an address shows as `[secret]` in messages |
 
-Other addresses, like `az://` or `ftp://`, need a provider of the config file. Without one, a run stops with `no storage provider serves az://container/blob; name one in the config file, like [storage.<name>] with its type and prefixes = ["az://container/"]`. A Nextflow workflow that reads such a file fails as before, with exit code 33.
+Other addresses, like `az://`, need a provider of the config file. Without one, a run stops with `no storage provider serves az://container/blob; name one in the config file, like [storage.<name>] with its type and prefixes = ["az://container/"]`. A Nextflow workflow that reads such a file fails as before, with exit code 33.
 
 **Clients.** Each provider makes its client once per process, when it is first used, and every request to it shares that client, so connections are reused and a host's address is looked up once. S3, Google Cloud Storage and Azure go through OpenDAL, with one operator per bucket. They, the web providers and the public buckets share one HTTP client of the storage crate (`storage::http_client`), which a web provider with credentials gives its headers with each request. The checks of images at registries and the requests to TES servers use the same client (`executor::http::client`), so the whole process has one. FTP opens a session per request, as FTP transfers one file per session at a time, and looks up each server's address once. Requests that drivers make wait on a small runtime of the storage crate (`Storage::blocking`), so they work from the driver's thread.
 
@@ -154,7 +155,7 @@ Secrets live only in the environment, or in the config file, and in the memory o
 
 ## 6. Not yet
 
-- **FTP without a config file.** FTP works through a provider of the config file. A built-in provider that reads every `ftp://` address as the user `anonymous`, as Nextflow does, waits for the answer to open question 1 of the [roadmap](../roadmap.md); it is one line in `Storage::new`. It would change the record of WorkflowHub workflow 1106, which stops at an FTP file today.
+- **The record of WorkflowHub workflow 1106**, which stopped at an FTP file before the built-in FTP provider, must be recorded again on the next run of the Nextflow test workflows with network.
 - **Drivers that read task outputs** from a store elsewhere, like a Nextflow `.command.env` or a CWL `cwl.output.json`, still read them as local paths; they need to go through `Files::local` ([the engine](engine.md), section 8). Runs that only pass files on work with a store on S3 today.
 - **CWL** lists no remote directory (`loadListing`), reads no remote file in a simulated run, and fetches `run` and `$import` documents only from `http://` and `https://` addresses.
 - **Settings in workflows.** Argo artifacts may name an endpoint and Kubernetes secrets, and Snakemake's `storage:` directive may give provider settings; iunctus takes the bucket and key from the workflow and the provider from the config file (decision 20).

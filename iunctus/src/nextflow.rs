@@ -135,7 +135,7 @@ pub fn driver(
 ) -> Result<Box<dyn Driver>, DriverError> {
     let settings = Settings {
         host: Box::new(console(quiet, storage)),
-        container_engine: Some(crate::engine()),
+        container_engine: Some(crate::engine_kind()),
         run_name: run.to_owned(),
         command_line: std::env::args().collect::<Vec<_>>().join(" "),
     };

@@ -582,6 +582,16 @@ fn engine() -> String {
     std::env::var("IUNCTUS_ENGINE").unwrap_or_default()
 }
 
+/// The kind of the container engine, `docker` or `podman`, as Nextflow names it in
+/// `workflow.containerEngine` and in its config scopes, like `docker.registry`. A socket counts
+/// as Podman when its path says so.
+fn engine_kind() -> String {
+    match engine() {
+        name if name.contains("podman") => "podman".to_owned(),
+        _ => "docker".to_owned(),
+    }
+}
+
 /// A run id from the clock and the process id.
 fn run_id() -> String {
     let now = std::time::SystemTime::now()

@@ -11,19 +11,21 @@ use storage::Storage;
 use task_runner::{Runner, RunnerExecutor, Settings};
 
 /// An executor whose results go to the store and whose tasks run in `scratch`, with the
-/// container engine of this machine. Tasks without an image get `default_image`.
+/// container engine of this machine that `engine` names (`docker`, `podman` or a socket; empty
+/// for Docker, else Podman). Tasks without an image get `default_image`.
 pub fn executor(
     store: Store,
     scratch: &Path,
     run: &str,
     default_image: Option<String>,
     storage: Storage,
+    engine: &str,
 ) -> Result<RunnerExecutor<LocalContainer>, String> {
     // The client of the engine runs on the runtime of the engine, which runs the attempts.
     let runtime = workflow_graph::runtime().map_err(|error| error.to_string())?;
-    let engine = runtime
-        .block_on(ContainerEngine::find())
-        .map_err(|error| error.to_string())?;
+    let named = Some(engine).filter(|name| !name.is_empty());
+    let found = runtime.block_on(ContainerEngine::named(named));
+    let engine = found.map_err(|error| error.to_string())?;
     let backend = LocalContainer {
         engine,
         scratch: scratch.to_owned(),

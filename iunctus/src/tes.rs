@@ -15,21 +15,27 @@ use tes_executor::{Client, TesBackend};
 /// The address of a TES server when `-tes-server` names none: Funnel's default.
 pub const DEFAULT_SERVER: &str = "http://localhost:8000";
 
-/// An executor that runs tasks on the TES server at `server`, with the bearer token of
-/// `IUNCTUS_TES_TOKEN` when it is set. Tasks without an image get `default_image`.
+/// Where tasks run: the TES server, its bearer token when it needs one, and the scratch
+/// directory of this machine.
+pub struct Place<'a> {
+    pub server: &'a str,
+    pub token: Option<String>,
+    pub scratch: &'a Path,
+}
+
+/// An executor that runs tasks on the TES server of `place`. Tasks without an image get
+/// `default_image`.
 pub fn executor(
     store: Store,
-    scratch: &Path,
+    place: Place<'_>,
     run: &str,
     default_image: Option<String>,
     storage: Storage,
-    server: &str,
 ) -> Result<RunnerExecutor<TesBackend>, String> {
-    let token = std::env::var("IUNCTUS_TES_TOKEN").ok();
-    let client = Client::new(server, token).map_err(|error| error.to_string())?;
+    let client = Client::new(place.server, place.token).map_err(|error| error.to_string())?;
     let backend = TesBackend {
         client,
-        scratch: scratch.join("tes"),
+        scratch: place.scratch.join("tes"),
     };
     // The server reads the inputs from the store, so they are copied there.
     let settings = Settings {

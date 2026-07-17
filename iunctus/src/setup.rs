@@ -4,7 +4,9 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use config_file::{ConfigError, ConfigFile};
+use std::path::PathBuf;
+
+use config_file::{ConfigError, ConfigFile, Secret};
 use content_store::Store;
 use storage::{Storage, StoreLocation};
 
@@ -19,6 +21,59 @@ const SECTIONS: &[&str] = &["store", "storage", "executor"];
 pub struct Setup {
     /// The storage providers, one client each for the whole process.
     pub storage: Storage,
+    /// The settings of the executors.
+    pub executors: Executors,
+}
+
+/// The settings of executors from the `[executor.<name>]` sections. Options on the command line
+/// and environment variables win over them.
+#[derive(Clone, Debug, Default)]
+pub struct Executors {
+    /// `[executor.local] engine`: the container engine, as `IUNCTUS_ENGINE` names it.
+    pub engine: Option<String>,
+    /// `[executor.tes] server`, like `-tes-server`.
+    pub tes_server: Option<String>,
+    /// `[executor.tes] token`, like `IUNCTUS_TES_TOKEN`.
+    pub tes_token: Option<Secret>,
+    /// `[executor.slurm] container`, like `-slurm-container`.
+    pub slurm_container: Option<String>,
+    /// `[executor.slurm] options`, a list of options of `sbatch`, like `-slurm-options`.
+    pub slurm_options: Option<Vec<String>>,
+    /// `[executor.kubernetes] kubeconfig`, like `-kubeconfig`.
+    pub kubeconfig: Option<PathBuf>,
+    /// `[executor.kubernetes] namespace`, like `-kubernetes-namespace`.
+    pub kubernetes_namespace: Option<String>,
+}
+
+impl Executors {
+    /// The settings of the `[executor]` section of a config file.
+    fn read(config: &ConfigFile) -> Result<Executors, ConfigError> {
+        let mut settings = Executors::default();
+        let Some(section) = config.section("executor")? else {
+            return Ok(settings);
+        };
+        section.only(&["local", "tes", "slurm", "kubernetes"])?;
+        if let Some(local) = section.table("local")? {
+            local.only(&["engine"])?;
+            settings.engine = local.text("engine")?;
+        }
+        if let Some(tes) = section.table("tes")? {
+            tes.only(&["server", "token"])?;
+            settings.tes_server = tes.text("server")?;
+            settings.tes_token = tes.secret("token")?;
+        }
+        if let Some(slurm) = section.table("slurm")? {
+            slurm.only(&["container", "options"])?;
+            settings.slurm_container = slurm.text("container")?;
+            settings.slurm_options = slurm.texts("options")?;
+        }
+        if let Some(kubernetes) = section.table("kubernetes")? {
+            kubernetes.only(&["kubeconfig", "namespace"])?;
+            settings.kubeconfig = kubernetes.text("kubeconfig")?.map(PathBuf::from);
+            settings.kubernetes_namespace = kubernetes.text("namespace")?;
+        }
+        Ok(settings)
+    }
 }
 
 impl Setup {
@@ -28,7 +83,28 @@ impl Setup {
         let config = ConfigFile::load(arguments.config_file.as_deref()).map_err(failed)?;
         config.root().only(SECTIONS).map_err(failed)?;
         let storage = Storage::from_config(&config).map_err(failed)?;
-        Ok(Setup { storage })
+        let executors = Executors::read(&config).map_err(failed)?;
+        Ok(Setup { storage, executors })
+    }
+
+    /// The container engine as `IUNCTUS_ENGINE` names it, else as `[executor.local] engine`
+    /// does; empty for Docker, else Podman.
+    pub fn engine(&self) -> String {
+        (std::env::var("IUNCTUS_ENGINE")
+            .ok()
+            .filter(|name| !name.is_empty()))
+        .or_else(|| self.executors.engine.clone())
+        .unwrap_or_default()
+    }
+
+    /// The kind of the container engine, `docker` or `podman`, as Nextflow names it in
+    /// `workflow.containerEngine` and in its config scopes, like `docker.registry`. A socket
+    /// counts as Podman when its path says so.
+    pub fn engine_kind(&self) -> String {
+        match self.engine() {
+            name if name.contains("podman") => "podman".to_owned(),
+            _ => "docker".to_owned(),
+        }
     }
 
     /// Where the cache store lives: `-store`, else `location` of `[store]`, else `store` in
@@ -52,5 +128,57 @@ impl Setup {
             StoreLocation::Objects(operator) => Store::remote(operator, &location),
         };
         store.map_err(|error| failed(format!("cannot open the store at {location}: {error}")))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use config_file::ConfigFile;
+
+    use super::Executors;
+
+    fn read(text: &str) -> Result<Executors, String> {
+        let config =
+            ConfigFile::parse(text, Path::new("config.toml")).map_err(|e| e.to_string())?;
+        Executors::read(&config).map_err(|error| error.to_string())
+    }
+
+    #[test]
+    fn executors_take_their_settings_from_the_config_file() {
+        let text = "[executor.local]\nengine = \"podman\"\n\n[executor.tes]\nserver = \
+                    \"https://tes.example.org\"\ntoken = \"t\"\n\n[executor.slurm]\ncontainer = \
+                    \"podman\"\noptions = [\"--account=lab\", \"--qos=low\"]\n\n\
+                    [executor.kubernetes]\nkubeconfig = \"/k/kind.yaml\"\nnamespace = \"x\"\n";
+        let settings = read(text).expect("settings");
+        assert_eq!(settings.engine.as_deref(), Some("podman"));
+        assert_eq!(
+            settings.tes_server.as_deref(),
+            Some("https://tes.example.org")
+        );
+        let token = settings
+            .tes_token
+            .expect("a token")
+            .reveal()
+            .expect("its text");
+        assert_eq!(token, "t");
+        assert_eq!(settings.slurm_container.as_deref(), Some("podman"));
+        let options = settings.slurm_options.expect("options");
+        assert_eq!(options, ["--account=lab", "--qos=low"]);
+        assert_eq!(
+            settings.kubeconfig.as_deref(),
+            Some(Path::new("/k/kind.yaml"))
+        );
+        assert_eq!(settings.kubernetes_namespace.as_deref(), Some("x"));
+        assert!(read("").expect("no settings").engine.is_none());
+    }
+
+    #[test]
+    fn unknown_executors_and_settings_are_errors() {
+        let error = read("[executor.tes]\nsrever = \"x\"\n").expect_err("an error");
+        assert!(error.contains("srever"), "{error}");
+        let error = read("[executor.cloud]\nx = 1\n").expect_err("an error");
+        assert!(error.contains("cloud"), "{error}");
     }
 }

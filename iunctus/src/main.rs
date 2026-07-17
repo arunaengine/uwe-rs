@@ -339,10 +339,8 @@ fn driver(
     setup: &Setup,
 ) -> Result<Box<dyn Driver>, DriverError> {
     match language {
-        Language::Nextflow => nextflow::driver(launch, run, quiet, &setup.storage),
-        Language::Snakemake => {
-            snakemake_runtime::driver_with(launch, snakemake(arguments, &setup.storage))
-        }
+        Language::Nextflow => nextflow::driver(launch, run, quiet, setup),
+        Language::Snakemake => snakemake_runtime::driver_with(launch, snakemake(arguments, setup)),
         Language::Cwl => {
             let downloads = cache_directory().join("downloads");
             cwl_runtime::driver_with(launch, &setup.storage, downloads)
@@ -354,15 +352,15 @@ fn driver(
 /// The settings of Snakemake runs: the Python container of decision 19, with the engine of
 /// the local executor, which keeps what uv downloads and installs in the cache, and the
 /// storage providers.
-fn snakemake(arguments: &Arguments, storage: &storage::Storage) -> snakemake_runtime::Settings {
+fn snakemake(arguments: &Arguments, setup: &Setup) -> snakemake_runtime::Settings {
     snakemake_runtime::Settings {
         python: Some(snakemake_runtime::PythonContainers {
-            engine: engine(),
+            engine: setup.engine(),
             image: arguments.python_image.clone(),
             cache: cache_directory().join("python"),
             show_output: true,
         }),
-        storage: storage.clone(),
+        storage: setup.storage.clone(),
     }
 }
 
@@ -396,29 +394,48 @@ fn executor(
             let default_image = arguments.default_image.clone();
             let store = setup.store(arguments)?;
             let storage = setup.storage.clone();
-            let mut executor = local::executor(store, &scratch, run, default_image, storage)
-                .map_err(|message| failure(format!("iunctus: {message}")))?;
+            let engine = setup.engine();
+            let mut executor =
+                local::executor(store, &scratch, run, default_image, storage, &engine)
+                    .map_err(|message| failure(format!("iunctus: {message}")))?;
             executor.verbose = verbose;
             Ok(Box::new(executor))
         }
         "tes" => {
             let default_image = arguments.default_image.clone();
-            let server = (arguments.tes_server.as_deref()).unwrap_or(tes::DEFAULT_SERVER);
+            let settings = &setup.executors;
+            let server = (arguments.tes_server.as_deref())
+                .or(settings.tes_server.as_deref())
+                .unwrap_or(tes::DEFAULT_SERVER);
+            let token = match std::env::var("IUNCTUS_TES_TOKEN") {
+                Ok(token) if !token.is_empty() => Some(token),
+                _ => (settings.tes_token.as_ref().map(|secret| secret.reveal()))
+                    .transpose()
+                    .map_err(|error| failure(format!("iunctus: {error}")))?,
+            };
             let store = setup.store(arguments)?;
             let storage = setup.storage.clone();
-            let mut executor = tes::executor(store, &scratch, run, default_image, storage, server)
+            let place = tes::Place {
+                server,
+                token,
+                scratch: &scratch,
+            };
+            let mut executor = tes::executor(store, place, run, default_image, storage)
                 .map_err(|message| failure(format!("iunctus: {message}")))?;
             executor.verbose = verbose;
             Ok(Box::new(executor))
         }
         "slurm" => {
             let default_image = arguments.default_image.clone();
-            let container = slurm::container(arguments.slurm_container.as_deref())
+            let settings = &setup.executors;
+            let named =
+                (arguments.slurm_container.as_deref()).or(settings.slurm_container.as_deref());
+            let container = slurm::container(named)
                 .map_err(|message| failure(format!("iunctus: {message}")))?;
-            let options = (arguments.slurm_options.as_deref().unwrap_or_default())
-                .split_whitespace()
-                .map(str::to_owned)
-                .collect();
+            let options = match arguments.slurm_options.as_deref() {
+                Some(options) => options.split_whitespace().map(str::to_owned).collect(),
+                None => settings.slurm_options.clone().unwrap_or_default(),
+            };
             let store = setup.store(arguments)?;
             let storage = setup.storage.clone();
             let mut executor = slurm::executor(
@@ -436,8 +453,10 @@ fn executor(
         }
         "kubernetes" => {
             let default_image = arguments.default_image.clone();
-            let kubeconfig = arguments.kubeconfig.as_deref();
-            let namespace = arguments.kubernetes_namespace.clone();
+            let settings = &setup.executors;
+            let kubeconfig = (arguments.kubeconfig.as_deref()).or(settings.kubeconfig.as_deref());
+            let namespace = (arguments.kubernetes_namespace.clone())
+                .or_else(|| settings.kubernetes_namespace.clone());
             let store = setup.store(arguments)?;
             let storage = setup.storage.clone();
             let mut executor = kubernetes::executor(
@@ -574,22 +593,6 @@ fn cache_directory() -> PathBuf {
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
         .unwrap_or_else(std::env::temp_dir);
     base.join("iunctus")
-}
-
-/// The container engine of the Python container: `$IUNCTUS_ENGINE`; empty for Docker, else
-/// Podman.
-fn engine() -> String {
-    std::env::var("IUNCTUS_ENGINE").unwrap_or_default()
-}
-
-/// The kind of the container engine, `docker` or `podman`, as Nextflow names it in
-/// `workflow.containerEngine` and in its config scopes, like `docker.registry`. A socket counts
-/// as Podman when its path says so.
-fn engine_kind() -> String {
-    match engine() {
-        name if name.contains("podman") => "podman".to_owned(),
-        _ => "docker".to_owned(),
-    }
 }
 
 /// A run id from the clock and the process id.

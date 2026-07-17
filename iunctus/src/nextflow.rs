@@ -13,6 +13,8 @@ use nextflow_runtime::driver::{Nextflow, Settings};
 use storage::{Blocking, Storage, StorageError};
 use workflow_graph::{Driver, DriverError, Launch};
 
+use crate::setup::Setup;
+
 /// Prints what the workflow prints, and downloads remote files into a cache.
 struct Console {
     downloads: PathBuf,
@@ -131,11 +133,11 @@ pub fn driver(
     launch: &Launch,
     run: &str,
     quiet: bool,
-    storage: &Storage,
+    setup: &Setup,
 ) -> Result<Box<dyn Driver>, DriverError> {
     let settings = Settings {
-        host: Box::new(console(quiet, storage)),
-        container_engine: Some(crate::engine_kind()),
+        host: Box::new(console(quiet, &setup.storage)),
+        container_engine: Some(setup.engine_kind()),
         run_name: run.to_owned(),
         command_line: std::env::args().collect::<Vec<_>>().join(" "),
     };

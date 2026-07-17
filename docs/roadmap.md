@@ -227,7 +227,7 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 ### Easy setup
 
 - [x] A laptop needs nothing but the binary and Docker or Podman (decision 26).
-- [ ] One config file for executors and storage, with secrets from environment variables. The file and its storage part are done ([storage](design/storage.md)); the executors read their `[executor.<name>]` sections next.
+- [x] One config file for executors and storage, with secrets from environment variables ([storage](design/storage.md), [executors](design/executors.md)).
 - [ ] Clear errors that say what to install or set, in the same form for every language.
 
 ## 6. Open questions

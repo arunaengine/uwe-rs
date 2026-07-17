@@ -1,0 +1,289 @@
+# The CWL conformance tests (v1.2) run for real by iunctus and by cwltool, compared by their output objects; written by real_runs_cwl.py.
+# 287 tests: 1 cwltool fails, 8 differs, 14 iunctus fails, 263 same, 1 skipped.
+anonymous_enum_in_array same
+any_input_param same
+any_input_param_graph_no_default same
+any_input_param_graph_no_default_hashmain same
+any_outputSource_compatibility same
+any_without_defaults_specified_fails same: both fail
+any_without_defaults_unspecified_fails same: both fail
+booleanflags_cl_noinputbinding same
+capture_dirs same
+capture_files same: both fail
+capture_files_and_dirs same
+cat_synthetic_file same
+cl_basic_generation same
+cl_empty_array_input same
+cl_gen_arrayofarrays same
+cl_optional_bindings_provided same
+cl_optional_inputs_missing same
+clt_any_input_with_file_provided same
+clt_any_input_with_integer_provided same
+clt_any_input_with_mixed_array_provided same
+clt_any_input_with_record_provided same
+clt_any_input_with_string_provided same
+clt_file_size_property_with_empty_file same
+clt_file_size_property_with_multi_file same
+clt_optional_union_input_file_or_files_with_array_of_one_file_provided same
+clt_optional_union_input_file_or_files_with_many_files_provided same
+clt_optional_union_input_file_or_files_with_nothing_provided same
+clt_optional_union_input_file_or_files_with_single_file_provided same
+colon_in_output_path iunctus fails (exit 1): task colon_test_output: Docker at /var/run/docker.sock could not run the task: Docker responded with status code 400: failed to create task for container: faile
+colon_in_paths iunctus fails (exit 1): colon:test: the input `input_file` names `/tmp/iunctus-real-cwl-3uz5bi3y/conformance/v1.2/tests/A%3AGln2Cys`, which does not exist
+cores_float same
+cwl_requirements_addition differs: output.out.checksum: "sha1$adc83b19e793491b1c6ea0fd8b46cd9f32e592fc" instead of "sha1$b3ec4ed1749c207e52b3a6d08c59f31d83bff519"
+cwl_requirements_override_expression differs: output.out.checksum: "sha1$893a885b3785c8e9bfe0721a4149b129ac0f21f9" instead of "sha1$b3ec4ed1749c207e52b3a6d08c59f31d83bff519"
+cwl_requirements_override_static differs: output.out.checksum: "sha1$adc83b19e793491b1c6ea0fd8b46cd9f32e592fc" instead of "sha1$715e62184492851512a020c36ab7118eca114a59"
+default_path_notfound_warning same
+default_with_falsey_value same
+directory_input_docker same
+directory_input_param_ref same
+directory_literal_with_literal_file_in_subdir_nostdin same
+directory_literal_with_literal_file_nostdin same
+directory_output iunctus fails (exit 1): the output `outdir`: no output file matches ["."]
+directory_secondaryfiles same
+docker_entrypoint iunctus fails (exit 1): task docker-run-cmd: Docker at /var/run/docker.sock could not run the task: Docker responded with status code 400: failed to create task for container: failed t
+docker_json_output_location same
+docker_json_output_path same
+dockeroutputdir same
+dynamic_initial_workdir same
+dynamic_resreq_filesizes same
+dynamic_resreq_inputs same
+dynamic_resreq_wf same
+dynamic_resreq_wf_optional_file_default same
+dynamic_resreq_wf_optional_file_step_default same
+dynamic_resreq_wf_optional_file_wf_default same
+embedded_subworkflow same
+env_home_tmpdir same
+env_home_tmpdir_docker same
+env_home_tmpdir_docker_no_return_code same
+envvar_req same
+expr_reference_self_noinput same
+expression_any same
+expression_any_nodefaultany same: both fail
+expression_any_null same
+expression_any_null_nodefaultany same: both fail
+expression_any_nullstring_nodefaultany same
+expression_any_string same
+expression_outputEval same
+expression_parseint same
+expression_tool_input_loadContents same
+expression_tool_int_array_output same
+expressionlib_tool_wf_override same
+exprtool_directory_literal same
+exprtool_file_literal same
+fileliteral_input_docker same
+filename_with_hash_mark same: both fail
+filesarray_secondaryfiles same
+filesarray_secondaryfiles2 same: both fail
+format_checking same
+format_checking_equivalentclass same
+format_checking_subclass cwltool fails (exit 1): }[0m
+glob_outside_outputs_fails same: both fail
+hints_import same
+hints_unknown_ignored same
+illegal_symlink same: both fail
+initial_work_dir_for_array_dirs same
+initial_work_dir_for_null_and_arrays same
+initial_workdir_empty_writable same
+initial_workdir_empty_writable_docker iunctus fails (exit 1): task writable-dir-docker: Docker at /var/run/docker.sock could not run the task: Docker responded with status code 400: failed to create task for container: fai
+initial_workdir_expr same
+initial_workdir_output same
+initial_workdir_output_glob same
+initial_workdir_secondary_files_expr differs: output.indexedfile.secondaryFiles: 4 items instead of 9
+initial_workdir_trailingnl same
+initialworkdir_nesteddir iunctus fails (exit 1): the command ended with exit code 1
+initialworkpath_output same
+initworkdir_expreng_requirements same
+inline_expressions same
+inlinejs_req_expressions same
+inputBinding_position_expr same
+input_dir_inputbinding same
+input_dir_recurs_copy_writable differs: output.test_result.checksum: "sha1$4eee9dc63c21aabeddbd1ccafb9ee8ffae1a4f1d" instead of "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709"
+input_file_literal same
+input_records_file_entry_with_format same
+input_records_file_entry_with_format_and_bad_entry_array_file_format same: both fail
+input_records_file_entry_with_format_and_bad_entry_file_format same: both fail
+input_records_file_entry_with_format_and_bad_regular_input_file_format same: both fail
+job_input_secondary_subdirs same
+job_input_subdir_primary_and_secondary_subdirs same
+js-input-record same
+json_output_location_relative same
+json_output_path_relative same
+legal_symlink iunctus fails (exit 1): task symlink-legal: Docker at /var/run/docker.sock could not run the task: Docker responded with status code 400: failed to create task for container: failed to
+length_for_non_array same: both fail
+listing_default_none same
+listing_loadListing_deep same
+listing_loadListing_none same
+listing_loadListing_shallow same
+listing_outputBinding_loadListing iunctus fails (exit 1): the output `out`: JavaScript error in `for (var i = 0; i < self[0].listing.length; i++) { if (self[0].listing[i].basena...`: TypeError: cannot convert 'null' or
+listing_requirement_deep same
+listing_requirement_none same
+listing_requirement_shallow same
+metadata same
+modify_directory_content iunctus fails (exit 1): the command ended with exit code 1
+modify_file_content iunctus fails (exit 1): the command ended with exit code 1
+multiple-input-feature-requirement same
+multiple_glob_expr_list same
+nameroot_nameext_generated same
+nameroot_nameext_stdout_expr same
+nested_cl_bindings same
+nested_prefixes_arrays same
+nested_types same
+nested_workflow same
+nested_workflow_noexp same
+networkaccess skipped: needs the network
+networkaccess_disabled same: both fail
+no_inputs_commandlinetool same
+no_inputs_workflow same
+no_outputs_commandlinetool same
+no_outputs_workflow same
+null_missing_params same
+optional_numerical_output_returns_0_not_null same
+outputEval_exitCode same
+output_reference_workflow_input same
+output_secondaryfile_optional same
+outputbinding_glob_directory same
+outputbinding_glob_sorted same
+packed_import_schema same
+param_evaluation_expr same
+param_evaluation_noexpr same
+param_notnull_expr same
+paramref_arguments_inputs differs: output.result.a_double: 1e+42 instead of 1000000000000000000000000000000000000000000
+paramref_arguments_runtime same
+paramref_arguments_self same
+params_broken_null same: both fail
+record_order_with_input_bindings same
+record_output_binding same
+record_output_file_entry_format same
+record_outputeval iunctus fails (exit 1): cannot read GRCm38.primary_assembly.genome.fa: No such file or directory (os error 2)
+record_outputeval_nojs same
+record_with_default differs: output.same_record.fifth: 4.2e+42 instead of 4200000000000000000000000000000000000000000
+rename same
+requirement_override_hints same
+requirement_priority same
+requirement_workflow_steps same
+resreq_step_overrides_wf same
+runtime-outdir iunctus fails (exit 1): the output `stuff`: no output file matches ["."]
+scatter_embedded_subworkflow same
+scatter_multi_input_embedded_subworkflow same
+schema-def_anonymous_enum_in_array same
+schemadef_req_tool_param same
+schemadef_req_wf_param same
+schemadef_types_with_import same
+secondary_files_in_named_records same
+secondary_files_in_output_records same
+secondary_files_in_unnamed_records same
+secondary_files_missing same: both fail
+secondary_files_workflow_propagation same
+shelldir_notinterpreted same
+shelldir_quoted same
+stage_file_array same
+stage_file_array_basename same
+stage_file_array_entryname_overrides same
+staging-basename same
+stderr_redirect same
+stderr_redirect_mediumcut same
+stderr_redirect_shortcut same
+stdin_from_directory_literal_with_literal_file same
+stdin_from_directory_literal_with_local_file same
+stdin_shorcut same
+stdinout_redirect same
+stdinout_redirect_docker same
+stdout_chained_commands same
+stdout_redirect_docker same
+stdout_redirect_mediumcut_docker same
+stdout_redirect_shortcut_docker same
+step_input_default_value same
+step_input_default_value_noexp same
+step_input_default_value_nosource same
+step_input_default_value_nullsource same
+step_input_default_value_overriden same
+step_input_default_value_overriden_2nd_step same
+step_input_default_value_overriden_2nd_step_noexp same
+step_input_default_value_overriden_2nd_step_null same
+step_input_default_value_overriden_2nd_step_null_noexp same
+step_input_default_value_overriden_noexp same
+storage_float same
+success_codes same
+timelimit_basic iunctus fails (exit 1): the command ended with exit code 137
+timelimit_basic_wf differs: output.o: "/var/spool/cwl" instead of "/PaKlIK"
+timelimit_expressiontool same
+timelimit_from_expression same
+timelimit_from_expression_wf same
+timelimit_invalid same: both fail
+timelimit_invalid_wf same
+timelimit_zero_unlimited same
+timelimit_zero_unlimited_wf same
+tmpdir_is_not_outdir same
+user_defined_length_in_parameter_reference same
+valuefrom_constant_overrides_inputs same
+valuefrom_ignored_null same
+valuefrom_secondexpr_ignored same
+valuefrom_wf_step same
+valuefrom_wf_step_multiple same
+valuefrom_wf_step_other same
+very_big_and_very_floats same
+very_big_and_very_floats_nojs same
+wf_compound_doc same
+wf_default_tool_default same
+wf_input_default_missing same
+wf_input_default_provided same
+wf_multiplesources_multipletypes same
+wf_multiplesources_multipletypes_noexp same
+wf_scatter_dotproduct_twoempty same
+wf_scatter_emptylist same
+wf_scatter_flat_crossproduct_oneempty same
+wf_scatter_nested_crossproduct_firstempty same
+wf_scatter_nested_crossproduct_secondempty same
+wf_scatter_oneparam_valueFrom same
+wf_scatter_oneparam_valuefrom same
+wf_scatter_oneparam_valuefrom_inputs same
+wf_scatter_oneparam_valuefrom_twice_current_el same
+wf_scatter_single_param same
+wf_scatter_two_dotproduct same
+wf_scatter_two_flat_crossproduct same
+wf_scatter_two_nested_crossproduct same
+wf_scatter_twopar_oneinput_flattenedmerge same
+wf_scatter_twoparam_dotproduct_valuefrom same
+wf_scatter_twoparam_flat_crossproduct_valuefrom same
+wf_scatter_twoparam_nested_crossproduct_valuefrom same
+wf_simple same
+wf_step_access_undeclared_param same: both fail
+wf_step_connect_undeclared_param same
+wf_two_inputfiles_namecollision same
+wf_wc_expressiontool same
+wf_wc_nomultiple same
+wf_wc_nomultiple_merge_nested same
+wf_wc_parseInt same
+wf_wc_scatter same
+wf_wc_scatter_multiple_flattened same
+wf_wc_scatter_multiple_merge same
+wf_wc_scatter_multiple_nested same
+workflow_any_input_with_file_provided same
+workflow_any_input_with_integer_provided same
+workflow_any_input_with_mixed_array_provided same
+workflow_any_input_with_record_provided same
+workflow_any_input_with_string_provided same
+workflow_embedded_subworkflow_embedded_subsubworkflow same
+workflow_embedded_subworkflow_with_subsubworkflow_and_tool same
+workflow_embedded_subworkflow_with_tool_and_subsubworkflow same
+workflow_file_array_output same
+workflow_file_input_default_specified same
+workflow_file_input_default_unspecified same
+workflow_input_inputBinding_loadContents same
+workflow_input_loadContents_without_inputBinding same
+workflow_integer_input same
+workflow_integer_input_default_and_tool_integer_input_default same
+workflow_integer_input_default_specified same
+workflow_integer_input_default_unspecified same
+workflow_integer_input_optional_specified same
+workflow_integer_input_optional_unspecified same
+workflow_records_inputs_and_outputs same
+workflow_step_in_loadContents same
+workflow_union_default_input_unspecified same
+workflow_union_default_input_with_file_provided same
+workflowstep_int_array_input_output same
+workflowstep_valuefrom_file_basename same
+workflowstep_valuefrom_string same
+writable_stagedfiles iunctus fails (exit 1): the command ended with exit code 1

@@ -66,6 +66,8 @@ A run whose process has gone while its state is still `running` reads as `stoppe
 
 **Digests.** A literal input gets its digest when the task is asked for. Outputs get digests from the executor once `Outcome` carries them (the execution layer, step 2); until then `iunctus export` computes the digest of each file it copies.
 
+Version 2 adds the inputs of each run to `runs` (decision 24): `input_schema`, the JSON Schema of the inputs of the workflow, and `inputs`, the values that the run checked against it ([the inputs of a workflow](inputs.md)).
+
 ## 3. Resume
 
 `-resume` makes the new run join the lineage of the run it continues: the first run of a chain of resumed runs names the lineage. Before the run starts, iunctus loads the finished tasks of every run of the lineage, by fingerprint. The newest run wins when two have the same task.
@@ -123,6 +125,7 @@ The graph is the heart of the page: a large view of the run as a tree from the f
 | `<workflow file>` | a copy of the workflow that ran; for a project folder its main file (`main.nf`, the Snakefile) |
 | `README.md` | what the folder is, and for a simulated run that its files are made up |
 | `data/<sha256>` | each file of the run once, named by its digest, as CWLProv and runcrate name them; a directory is `data/<sha256 of its manifest>/` |
+| `inputs.schema.json` | the JSON Schema of the inputs of the workflow, when the run has one; each input is a `FormalParameter` of the workflow ([the inputs of a workflow](inputs.md), section 7) |
 
 Files are copied, not linked, so that nothing done to the crate can change the store. A file that is gone, like an input that a simulated run assumed, stays in the metadata with a note that it was not there; a file on the web stays a URL.
 

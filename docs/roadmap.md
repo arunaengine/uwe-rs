@@ -165,7 +165,7 @@ iunctus describes every task of every language the same way, and it knows every 
 | Feature | What the user gets | Native engines today | Builds on |
 | --- | --- | --- | --- |
 | **Runs anywhere** | The same workflow runs on a laptop with Docker or Podman, on any TES server, on Kubernetes, or on a SLURM cluster with Apptainer or Podman (decision 22) | Each engine has its own list of executors; Argo needs Kubernetes | The execution layer |
-| **Checked inputs for every workflow** | One JSON Schema of the inputs of each workflow, in all four languages, checked before any task starts; forms and help are made from it (decision 24) | nf-core and Snakemake check params with a schema where the workflow has one; CWL checks its types; Argo only enums | Each driver's input checks (done) |
+| **Checked inputs for every workflow** | One JSON Schema of the inputs of each workflow, in all four languages, checked before any task starts, with the same messages everywhere; `iunctus inputs` prints it or help made from it, and warns where the schema and the code differ (decision 24) | nf-core and Snakemake check params with a schema where the workflow has one; CWL checks its types; Argo only enums | Done: [the inputs of a workflow](design/inputs.md) |
 | **Resume from a database** | A stopped run continues from its event log, also on another machine or with another executor: start on a laptop, finish on a TES cluster | Nextflow resumes only in the same launch folder with its `work/`. Snakemake decides by file times and its `.snakemake` folder | The run database, the S3 store |
 | **No shared file system** | Tasks get their inputs from the store and send their outputs back, so a cluster needs no NFS | Nextflow and Snakemake need a shared folder or a special storage setup | The TES executor, the store |
 | **One entry point for all languages** | A GA4GH WES service that accepts Nextflow, Snakemake, CWL and Argo workflows, with one API for status and results | Each engine has its own server or platform | The run database |
@@ -213,9 +213,9 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 
 ### Inputs
 
-- [ ] One JSON Schema of the inputs of each workflow in all four languages (decision 24).
-- [ ] Check every run against it before any task starts, with the same errors in every language.
-- [ ] Warn where the schema and the parameters that the workflow reads differ.
+- [x] One JSON Schema of the inputs of each workflow in all four languages (decision 24), printed by `iunctus inputs` and kept in the run database and the RO-Crate ([the inputs of a workflow](design/inputs.md)).
+- [x] Check every run against it before any task starts, with the same errors in every language.
+- [x] Warn where the schema and the parameters that the workflow reads differ.
 - [ ] The same for outputs, so that one workflow can feed another.
 
 ### Cache, efficiency and reproducibility

@@ -10,7 +10,7 @@ Status: implemented for Nextflow, Snakemake, CWL and Argo, 2026-09-29; tasks run
 
 1. It finds the language of the target (section 2).
 2. It turns the command line into a `Launch`, the options all languages share.
-3. It asks the language's crate for a `Driver` for that launch.
+3. It asks the language's crate for a `Driver` for that launch, and checks the inputs that the driver describes before any task starts ([the inputs of a workflow](inputs.md)).
 4. `workflow_graph::Engine` runs the driver against an `Executor` with the run options (section 5) and records the execution graph (section 6). It tells an observer each step of the run (section 5); the binary's observer records the run in the run database ([runs](runs.md)).
 5. With `-graph <file>` it writes the graph; `iunctus graph <target>` prints it. A simulated run says so on standard error, and its graph says so too ([the graphs of a run](graph.md)).
 
@@ -66,7 +66,7 @@ A directory with both a Nextflow and a Snakemake workflow, or a file that matche
 
 ## 3. Drivers
 
-A driver is a state machine (`workflow_graph::Driver`): `start` loads the workflow and returns the first tasks, `complete(outcome)` returns the tasks that can run now, and `finish` checks that nothing waits for input that never comes. `notes` gives what the driver noticed while it planned, like reads of task outputs, which the graph turns into markers ([the graphs of a run](graph.md), section 3). Each language crate exposes
+A driver is a state machine (`workflow_graph::Driver`): `start` loads the workflow and returns the first tasks, `complete(outcome)` returns the tasks that can run now, and `finish` checks that nothing waits for input that never comes. `inputs` describes the inputs of the workflow as a JSON Schema with the values of the run, which the binary checks before the engine starts the driver ([the inputs of a workflow](inputs.md)). `notes` gives what the driver noticed while it planned, like reads of task outputs, which the graph turns into markers ([the graphs of a run](graph.md), section 3). Each language crate exposes
 
 ```rust
 pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError>

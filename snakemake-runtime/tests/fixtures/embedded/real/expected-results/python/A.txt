@@ -1,0 +1,9 @@
+data/A.txt data/extra.txt 2
+['a', 'b'] 3 {'x': 1}
+default ['number', 'table', 'words']
+A A 2 python
+hello ['A'] X!
+python.py scripts
+['one', 'two', 'three']
+logs/python/A.log  2>> logs/python/A.log
+shell A threads 2

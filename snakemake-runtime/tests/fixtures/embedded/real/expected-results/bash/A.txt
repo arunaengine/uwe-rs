@@ -1,0 +1,5 @@
+input data/A.txt named data/extra.txt
+params it's here and x y
+wildcard A threads 1 rule bash
+config hello
+3

@@ -1,0 +1,116 @@
+# Jobs of every kind of embedded code, each in an image that is on this machine already, for
+# real runs (iunctus/tests/snakemake_embedded.rs). The outputs of the Python and Bash jobs
+# are the ones Snakemake 9.27.0 made (record.sh); those of R and the notebook are checked by
+# their content.
+configfile: "config.yaml"
+
+PYTHON = "python:3-slim"
+BASH = "debian:stable-slim"
+R = "community.wave.seqera.io/library/r-dplyr_r-fs_r-ggplot2_r-nacho_pruned:92aef6fc5eff932b"
+JUPYTER = "pandas/pandas:pip-all"
+
+
+rule all:
+    input:
+        "python/A.txt",
+        "bash/A.txt",
+        "r/A.txt",
+        "report.html",
+        "wrapper/A.txt",
+        "wrapper_r/A.txt",
+        "notebook/A.txt",
+
+
+rule python:
+    input:
+        data="data/{sample}.txt",
+        extra="data/extra.txt",
+    output:
+        "python/{sample}.txt",
+    params:
+        words=["a", "b"],
+        number=3,
+        table={"x": 1},
+    log:
+        "logs/python/{sample}.log",
+    threads: 2
+    container: PYTHON
+    script:
+        "scripts/python.py"
+
+
+rule bash:
+    input:
+        "data/{sample}.txt",
+        named="data/extra.txt",
+    output:
+        "bash/{sample}.txt",
+    params:
+        text="it's here",
+        pair=["x", "y"],
+    log:
+        "logs/bash/{sample}.log",
+    container: BASH
+    script:
+        "scripts/bash.sh"
+
+
+rule r:
+    input:
+        data="data/{sample}.txt",
+    output:
+        table="r/{sample}.txt",
+    params:
+        factor=2.5,
+        flags=[True, False],
+    container: R
+    script:
+        "scripts/table.R"
+
+
+rule markdown:
+    input:
+        "data/A.txt",
+    output:
+        "report.html",
+    params:
+        title="Embedded code",
+    container: R
+    script:
+        "scripts/report.Rmd"
+
+
+rule wrapper:
+    input:
+        "data/{sample}.txt",
+    output:
+        "wrapper/{sample}.txt",
+    params:
+        extra="--upper",
+    log:
+        "logs/wrapper/{sample}.log",
+    container: PYTHON
+    wrapper:
+        "file://wrappers/upper"
+
+
+rule wrapper_r:
+    input:
+        "data/{sample}.txt",
+    output:
+        "wrapper_r/{sample}.txt",
+    container: R
+    wrapper:
+        "file://wrappers/r_table"
+
+
+rule notebook:
+    input:
+        "data/{sample}.txt",
+    output:
+        "notebook/{sample}.txt",
+    log:
+        notebook="logs/notebook/{sample}.ipynb",
+    container: JUPYTER
+    notebook:
+        "notebooks/count.py.ipynb"

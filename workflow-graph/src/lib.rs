@@ -13,7 +13,7 @@ mod driver;
 mod engine;
 mod events;
 mod executor;
-mod files;
+pub mod files;
 mod graph;
 mod inputs;
 pub mod layout;

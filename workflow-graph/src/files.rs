@@ -72,6 +72,15 @@ impl Files for LocalFiles {
     }
 }
 
+/// The content of a location that a task made: through `files` when the run has them, as a
+/// store elsewhere needs, else from the local path that the location is.
+pub fn read(files: Option<&dyn Files>, location: &str) -> io::Result<Vec<u8>> {
+    match files {
+        Some(files) => std::fs::read(files.local(location)?),
+        None => std::fs::read(location),
+    }
+}
+
 /// Removes a file, a link or a directory, if there is one.
 fn remove(path: &Path) -> io::Result<()> {
     match std::fs::symlink_metadata(path) {

@@ -229,6 +229,9 @@ impl<'a> Engine<'a> {
     ) -> Result<(), ExecuteError> {
         let mut queue = Queue::default();
         let files = self.executor.files();
+        if let Some(files) = &files {
+            driver.use_files(files.clone());
+        }
         let first = driver.start();
         let notes = driver.notes();
         self.asked(first, notes, recorder, &mut queue)?;

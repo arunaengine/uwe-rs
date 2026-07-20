@@ -1,0 +1,72 @@
+# The jobs whose script preambles Snakemake 9.27.0 recorded in snakemake-9.27.0/ (record.sh).
+configfile: "config.yaml"
+
+
+rule all:
+    input:
+        expand("out.{ext}", ext=["R", "sh", "jl", "rs"]),
+        "report.html",
+
+
+PARAMS = dict(
+    null_param=None,
+    logical_param=True,
+    integer_param=123,
+    double_param=123.0,
+    inf_param=float("Inf"),
+    character_param="abc 'q' \"d\" \n",
+    vector_param=[1, 2, 3],
+    list_param=[True, 123, "abc"],
+    dict_param={"a": 1, "b": [1.5, 2]},
+    empty=[],
+)
+
+
+# R and Bash take every value; Julia and Rust fail on complex numbers and NaN.
+rule full:
+    input:
+        "in.txt",
+        named="in2.txt",
+    output:
+        "out.{ext,R|sh}",
+    log:
+        "log.{ext}",
+    threads: 2
+    resources:
+        mem_mb=1024,
+        runtime=10,
+    params:
+        nan_param=float("NaN"),
+        complex_param=complex(1, 2),
+        **PARAMS,
+    script:
+        "scripts/test.{wildcards.ext}"
+
+
+rule plain:
+    input:
+        "in.txt",
+        named="in2.txt",
+    output:
+        "out.{ext,jl|rs}",
+    log:
+        "log.{ext}",
+    threads: 2
+    resources:
+        mem_mb=1024,
+        runtime=10,
+    params:
+        **PARAMS,
+    script:
+        "scripts/test.{wildcards.ext}"
+
+
+rule markdown:
+    input:
+        "in.txt",
+    output:
+        "report.html",
+    params:
+        test="testparam",
+    script:
+        "scripts/test.Rmd"

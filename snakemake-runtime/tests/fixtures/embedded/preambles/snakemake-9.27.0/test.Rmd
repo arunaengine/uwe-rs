@@ -1,0 +1,56 @@
+---
+title: "Test"
+output: html_document
+---
+            ```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+######## snakemake preamble start (automatically inserted, do not edit) ########
+library(methods)
+Snakemake <- setClass(
+    "Snakemake",
+    slots = c(
+        input = "list",
+        output = "list",
+        params = "list",
+        wildcards = "list",
+        threads = "numeric",
+        log = "list",
+        resources = "list",
+        config = "list",
+        rule = "character",
+        bench_iteration = "numeric",
+        scriptdir = "character",
+        source = "function"
+    )
+)
+snakemake <- Snakemake(
+    input = list('in.txt'),
+    output = list('report.html'),
+    params = list('testparam', "test" = 'testparam'),
+    wildcards = list(),
+    threads = 1,
+    log = list(),
+    resources = list('tmpdir', 'mem_mb', 'mem', 'mem_mib', 'disk_mb', 'disk', 'disk_mib', "tmpdir" = '/tmp', "mem_mb" = 1000L, "mem" = '1 GB', "mem_mib" = 954L, "disk_mb" = 1000L, "disk" = '1 GB', "disk_mib" = 954L),
+    config = list("test" = TRUE, "testint" = 123L, "testfloat" = 7.65432, "foo' bar" = "let's go", "nested" = list("a" = c(1L, 2L), "b" = 'x')),
+    rule = 'markdown',
+    bench_iteration = as.numeric(NA),
+    scriptdir = '{folder}/scripts',
+    source = function(...){
+        old_wd <- getwd()
+        on.exit(setwd(old_wd), add = TRUE)
+
+        is_url <- grepl("^https?://", snakemake@scriptdir)
+        file <- ifelse(is_url, file.path(snakemake@scriptdir, ...), ...)
+        if (!is_url) setwd(snakemake@scriptdir)
+        source(file)
+    }
+)
+
+######## snakemake preamble end #########
+
+            ```
+
+
+```{r}
+snakemake@params[["test"]]
+```

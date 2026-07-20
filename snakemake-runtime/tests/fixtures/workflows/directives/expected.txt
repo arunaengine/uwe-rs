@@ -8,27 +8,27 @@
 7 all <- [3, 4, 6]
 task 1: continuumio/miniconda3:4.4.10
   command: bash -c set -euo pipefail;  cutadapt -q 20 -j 2 -o trimmed/S1.1.fq.gz -p trimmed/S1.2.fq.gz data/S1_R1.fq.gz data/S1_R2.fq.gz > logs/trim/S1.log
-  inputs: data/S1_R1.fq.gz data/S1_R2.fq.gz
+  inputs: data/S1_R1.fq.gz data/S1_R2.fq.gz benchmarks/trim logs/trim trimmed
   outputs: trimmed/S1.1.fq.gz trimmed/S1.2.fq.gz logs/trim/S1.log benchmarks/trim/S1.tsv
 task 2: continuumio/miniconda3:4.4.10
   command: bash -c set -euo pipefail;  cutadapt -q 20 -j 2 -o trimmed/S2.1.fq.gz -p trimmed/S2.2.fq.gz data/S2_R1.fq.gz data/S2_R2.fq.gz > logs/trim/S2.log
-  inputs: data/S2_R1.fq.gz data/S2_R2.fq.gz
+  inputs: data/S2_R1.fq.gz data/S2_R2.fq.gz benchmarks/trim logs/trim trimmed
   outputs: trimmed/S2.1.fq.gz trimmed/S2.2.fq.gz logs/trim/S2.log benchmarks/trim/S2.tsv
 task 3: continuumio/miniconda3:4.4.10
-  command: python scripts/call.py
-  inputs: trimmed/S1.1.fq.gz trimmed/S1.2.fq.gz scripts/call.py
+  command: python .snakemake/scripts/call.py
+  inputs: trimmed/S1.1.fq.gz trimmed/S1.2.fq.gz .snakemake/scripts/call.py .snakemake/iunctus {folder}/scripts results
   outputs: results/S1.vcf
 task 4: continuumio/miniconda3:4.4.10
-  command: python scripts/call.py
-  inputs: trimmed/S2.1.fq.gz trimmed/S2.2.fq.gz scripts/call.py
+  command: python .snakemake/scripts/call.py
+  inputs: trimmed/S2.1.fq.gz trimmed/S2.2.fq.gz .snakemake/scripts/call.py .snakemake/iunctus {folder}/scripts results
   outputs: results/S2.vcf
 task 5: continuumio/miniconda3:4.4.10
-  command: python wrapper.py
-  inputs: trimmed/S1.1.fq.gz trimmed/S2.1.fq.gz wrapper.py
+  command: python .snakemake/scripts/wrapper.py
+  inputs: trimmed/S1.1.fq.gz trimmed/S2.1.fq.gz .snakemake/scripts/wrapper.py .snakemake/iunctus results
   outputs: results/stats.txt results/stats.json
 task 6: continuumio/miniconda3:4.4.10
   command: bash -c set -euo pipefail;  multiqc results/stats.txt results/stats.json -o results/multiqc_data && echo  > results/multiqc.html
-  inputs: results/stats.txt results/stats.json
+  inputs: results/stats.txt results/stats.json results
   outputs: results/multiqc.html results/multiqc_data/
 task 7: -
   command: 

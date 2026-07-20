@@ -9,6 +9,7 @@
 mod commands;
 mod config;
 mod driver;
+mod embedded;
 mod files;
 mod functions;
 mod inputs;

@@ -4,11 +4,11 @@
 3 all <- [1, 2]
 task 1: -
   command: bash -c set -euo pipefail;  echo 1 0.1 > results/alpha~1/beta~0.1_gamma~0.99.txt
-  inputs: 
+  inputs: results/alpha~1
   outputs: results/alpha~1/beta~0.1_gamma~0.99.txt
 task 2: -
   command: bash -c set -euo pipefail;  echo 2 0.0 > results/alpha~2/beta~0.0_gamma~3.9.txt
-  inputs: 
+  inputs: results/alpha~2
   outputs: results/alpha~2/beta~0.0_gamma~3.9.txt
 task 3: -
   command: 

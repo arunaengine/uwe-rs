@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use python_evaluator::{Args, Error, Interpreter, Value};
 use workflow_graph::{Input, Task, TaskId};
 
+use crate::embedded::{self, Context, data};
 use crate::files::WorkflowFiles;
 use crate::functions::{call_input_function, is_callable};
 use crate::objects::NamedList;
@@ -17,9 +18,6 @@ use crate::plan::{Job, incomplete_target};
 use crate::rule::{Action, Items, Rule};
 use crate::shell::{command_line, format_command};
 use crate::workflow::{State, workflow_error};
-
-/// Where wrappers come from unless the workflow names a URL.
-pub const WRAPPER_PREFIX: &str = "https://github.com/snakemake/snakemake-wrappers/raw/";
 
 /// Plain texts of items, as `Namedlist._plainstrings` gives them to functions.
 fn plain(items: &Items, kind: &'static str) -> Value {
@@ -52,6 +50,16 @@ pub fn evaluate(
         Ok(value.clone())
     }
 }
+
+/// The variables of numerical libraries that Snakemake's shell() sets to the job's threads.
+const THREAD_VARIABLES: &[&str] = &[
+    "OMP_NUM_THREADS",
+    "GOTO_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+];
 
 /// A container image as TES expects it: `docker://` URIs lose their scheme.
 pub fn image_name(text: &str) -> String {
@@ -88,6 +96,42 @@ fn source_file(rule: &Rule, path: &str, setting: &TaskSetting) -> (String, Strin
             )
         });
     (relative, absolute.to_string_lossy().into_owned())
+}
+
+/// A script of a rule with its text. A file of a remote module comes from its mirror, which the
+/// workflow's files are read from; a simulated run reads no file on the web, and goes on
+/// without a file that is not there, as Snakemake's dry run does not open scripts.
+fn script_source(
+    interpreter: &mut Interpreter,
+    location: &str,
+    setting: &TaskSetting<'_>,
+) -> Result<embedded::script::Source, Error> {
+    let simulated = setting.embedded.simulated;
+    let local = if location.contains("://") {
+        if simulated {
+            None
+        } else {
+            setting.state.mirrors.url(location)
+        }
+    } else {
+        Some(PathBuf::from(location))
+    };
+    let text = match local {
+        Some(path) => match interpreter.host.read(&path) {
+            Ok(bytes) => Some(String::from_utf8_lossy(&bytes).into_owned()),
+            Err(_) if simulated => None,
+            Err(error) => {
+                return Err(workflow_error(format!(
+                    "Failed to open source file {location}\n{error}"
+                )));
+            }
+        },
+        None => None,
+    };
+    Ok(embedded::script::Source {
+        location: location.to_owned(),
+        text,
+    })
 }
 
 /// The program that runs a script, by its file extension, as Snakemake's script support.
@@ -127,6 +171,8 @@ pub struct TaskSetting<'a> {
     pub state: &'a State,
     pub files: &'a WorkflowFiles,
     pub workdir: &'a Path,
+    /// What the code of jobs needs: the stand-in of the snakemake package.
+    pub embedded: &'a embedded::Setting,
 }
 
 /// Builds the task of a job.
@@ -263,6 +309,20 @@ pub fn build(
             ("bench_iteration".into(), Value::None),
         ],
     };
+    // The values that scripts, wrappers, notebooks and `run:` blocks get.
+    let context = |interpreter: &mut Interpreter| Context {
+        input: named(data::files("InputFiles", &job.input)),
+        output: named(data::files("OutputFiles", &job.output)),
+        params: named(data::from_value(interpreter, &params)),
+        wildcards: named(data::from_value(interpreter, &wildcards)),
+        threads,
+        resources: Context::resources(interpreter, threads, &resources),
+        log: named(data::files("Log", &job.log)),
+        config: data::from_value(interpreter, &setting.state.config),
+        rule: rule.name.clone(),
+        bench_iteration: None,
+        scriptdir: String::new(),
+    };
     let mut inputs: Vec<Input> = Vec::new();
     for file in job.input_files() {
         // A file in storage comes from its address.
@@ -335,43 +395,88 @@ pub fn build(
         }
         Action::Script(value) | Action::Notebook(value) => {
             let path = format(interpreter, value)?;
-            let (relative, source) = source_file(rule, &path, setting);
-            command = if matches!(rule.action, Action::Notebook(_)) {
-                vec![
-                    "jupyter".into(),
-                    "nbconvert".into(),
-                    "--execute".into(),
-                    "--to".into(),
-                    "notebook".into(),
-                    relative.clone(),
-                ]
+            let (relative, location) = source_file(rule, &path, setting);
+            let source = script_source(interpreter, &location, setting)?;
+            let context = context(interpreter);
+            let parts = if matches!(rule.action, Action::Notebook(_)) {
+                embedded::notebook::build(context, &source, setting.embedded)
+                    .map(|parts| (parts.command, parts.inputs))
             } else {
-                script_command(&relative)?
+                embedded::script::build(context, &source, setting.embedded, setting.workdir)
+                    .map(|parts| (parts.command, parts.inputs))
             };
-            inputs.push(Input {
-                path: relative,
-                source,
-                directory: false,
-                content: None,
-            });
+            match parts {
+                Ok((script_command, script_inputs)) => {
+                    command = script_command;
+                    inputs.extend(script_inputs);
+                }
+                // A simulated run does not run the script, as Snakemake's dry run does not
+                // make its preamble; it stages the script as it is.
+                Err(_) if setting.embedded.simulated => {
+                    command = if matches!(rule.action, Action::Notebook(_)) {
+                        vec![
+                            "jupyter".into(),
+                            "nbconvert".into(),
+                            "--execute".into(),
+                            "--to".into(),
+                            "notebook".into(),
+                            relative.clone(),
+                        ]
+                    } else {
+                        script_command(&relative)?
+                    };
+                    inputs.push(Input {
+                        path: relative,
+                        source: location,
+                        directory: false,
+                        content: None,
+                    });
+                }
+                Err(message) => return Err(workflow_error(message)),
+            }
         }
         Action::Wrapper(value) => {
             let wrapper = format(interpreter, value)?;
-            let base = if wrapper.contains("://") || wrapper.starts_with("file:") {
-                wrapper.clone()
-            } else {
-                format!("{WRAPPER_PREFIX}{wrapper}")
+            let simulated = setting.embedded.simulated;
+            // Snakemake's dry run does not look for the wrapper's script.
+            let source = match embedded::wrapper::source(
+                &wrapper,
+                setting.workdir,
+                &setting.state.mirrors,
+                simulated,
+            ) {
+                Ok(source) => source,
+                Err(_) if simulated => embedded::script::Source {
+                    location: embedded::wrapper::location(&wrapper, setting.workdir),
+                    text: None,
+                },
+                Err(message) => return Err(workflow_error(message)),
             };
-            let base = base.trim_end_matches('/').to_owned();
-            inputs.push(Input {
-                path: "wrapper.py".into(),
-                source: format!("{base}/wrapper.py"),
-                directory: false,
-                content: None,
-            });
-            command = vec!["python".into(), "wrapper.py".into()];
+            let folder = embedded::wrapper::folder(&source.location).to_owned();
+            let parts = embedded::script::build(
+                context(interpreter),
+                &source,
+                setting.embedded,
+                setting.workdir,
+            );
+            match parts {
+                Ok(parts) => {
+                    command = parts.command;
+                    inputs.extend(parts.inputs);
+                }
+                Err(_) if simulated => {
+                    command = vec!["python".into(), "wrapper.py".into()];
+                    inputs.push(Input {
+                        path: "wrapper.py".into(),
+                        source: source.location.clone(),
+                        directory: false,
+                        content: None,
+                    });
+                }
+                Err(message) => return Err(workflow_error(message)),
+            }
             if conda.is_none() {
-                conda = Some(format!("{base}/environment.yaml"));
+                conda = Some(format!("{folder}/environment.yaml"));
             }
         }
         Action::Run(text) => {
@@ -436,10 +541,31 @@ pub fn build(
     if let Some(benchmark) = job.benchmark.as_ref().and_then(Value::as_str) {
         outputs.push(benchmark.to_owned());
     }
+    // Snakemake makes the folders of a job's outputs before the job runs.
+    for folder in output_folders(&outputs) {
+        inputs.push(Input {
+            path: folder,
+            source: String::new(),
+            directory: true,
+            content: None,
+        });
+    }
     let mut environment = BTreeMap::new();
     for name in &setting.state.envvars {
         if let Ok(value) = std::env::var(name) {
             environment.insert(name.clone(), value);
+        }
+    }
+    // Snakemake's shell() gives every command of a job its threads for the numerical
+    // libraries, and its temporary folder.
+    for name in THREAD_VARIABLES {
+        environment.insert((*name).to_owned(), threads.to_string());
+    }
+    if let Some((_, tmpdir)) = resources.iter().find(|(name, _)| name == "tmpdir")
+        && let Some(tmpdir) = tmpdir.as_str()
+    {
+        for name in ["TMPDIR", "TMP", "TEMPDIR", "TEMP"] {
+            environment.insert(name.to_owned(), tmpdir.to_owned());
         }
     }
     let label = if job.wildcards.is_empty() {
@@ -468,6 +594,41 @@ pub fn build(
         offline: false,
         after: Vec::new(),
     })
+}
+
+/// The folders of relative outputs, without the ones inside another of them: made folders
+/// that the task gets as empty directories.
+fn output_folders(outputs: &[String]) -> Vec<String> {
+    let mut folders: Vec<String> = outputs
+        .iter()
+        .filter(|output| !output.starts_with('/'))
+        .filter_map(|output| {
+            let parent = Path::new(output.trim_end_matches('/')).parent()?;
+            let parent = parent.to_string_lossy().into_owned();
+            (!parent.is_empty() && !parent.split('/').any(|part| part == "..")).then_some(parent)
+        })
+        .collect();
+    folders.sort();
+    folders.dedup();
+    let mut kept: Vec<String> = Vec::new();
+    for folder in folders.into_iter().rev() {
+        if !kept
+            .iter()
+            .any(|inner| inner.starts_with(&format!("{folder}/")))
+        {
+            kept.push(folder);
+        }
+    }
+    kept.reverse();
+    kept
+}
+
+/// A value of the context that is a `Namedlist`; other values become a list of one item.
+fn named(data: data::Data) -> data::Named {
+    match data {
+        data::Data::Named(named) => named,
+        other => data::Named::new("Namedlist", vec![other]),
+    }
 }
 
 /// A param that is not a function: texts and lists of texts get their wildcards filled in.

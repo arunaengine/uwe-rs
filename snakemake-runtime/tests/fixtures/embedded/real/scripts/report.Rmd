@@ -1,0 +1,8 @@
+---
+title: "Report"
+output: html_document
+---
+
+```{r}
+cat(snakemake@params[["title"]], length(readLines(snakemake@input[[1]])), "lines\n")
+```

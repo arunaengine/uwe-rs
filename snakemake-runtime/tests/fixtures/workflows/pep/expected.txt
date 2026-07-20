@@ -4,11 +4,11 @@
 3 all <- [1, 2]
 task 1: -
   command: bash -c set -euo pipefail;  cat reads/A_1.fq reads/A_2.fq > merged/A.fq # treated
-  inputs: reads/A_1.fq reads/A_2.fq
+  inputs: reads/A_1.fq reads/A_2.fq merged
   outputs: merged/A.fq
 task 2: -
   command: bash -c set -euo pipefail;  cat reads/B_1.fq > merged/B.fq # none
-  inputs: reads/B_1.fq
+  inputs: reads/B_1.fq merged
   outputs: merged/B.fq
 task 3: -
   command: 

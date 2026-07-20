@@ -6,19 +6,19 @@
 5 all <- [3, 4]
 task 1: -
   command: bash -c set -euo pipefail;  bwa mem -t 2 ref.fa data/A.fastq > results/A.bam
-  inputs: data/A.fastq
+  inputs: data/A.fastq results
   outputs: results/A.bam
 task 2: -
   command: bash -c set -euo pipefail;  bwa mem -t 2 ref.fa data/B.fastq > results/B.bam
-  inputs: data/B.fastq
+  inputs: data/B.fastq results
   outputs: results/B.bam
 task 3: -
   command: bash -c set -euo pipefail;  samtools sort -m 2G -o results/A.sorted.bam results/A.bam
-  inputs: results/A.bam
+  inputs: results/A.bam results
   outputs: results/A.sorted.bam
 task 4: -
   command: bash -c set -euo pipefail;  samtools sort -m 1G -o results/B.sorted.bam results/B.bam
-  inputs: results/B.bam
+  inputs: results/B.bam results
   outputs: results/B.sorted.bam
 task 5: -
   command: 

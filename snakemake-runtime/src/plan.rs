@@ -50,6 +50,14 @@ impl Job {
         files
     }
 
+    /// The outputs marked `touch()`, which Snakemake makes itself once the job has run.
+    pub fn touched_files(&self) -> Vec<String> {
+        (self.output.values.iter())
+            .filter(|value| value.tag("touch").is_some())
+            .filter_map(|value| value.as_str().map(str::to_owned))
+            .collect()
+    }
+
     /// The outputs marked `temp()`, which Snakemake removes once no job needs them, so that a
     /// run does not deliver them.
     pub fn temporary_files(&self) -> Vec<String> {

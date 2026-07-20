@@ -6,19 +6,19 @@
 5 all <- [3, 4, 2]
 task 1: -
   command: bash -c set -euo pipefail;  samtools faidx align-out/reference/hs1.fa
-  inputs: align-out/reference/hs1.fa
+  inputs: align-out/reference/hs1.fa align-out/reference
   outputs: align-out/reference/hs1.fa.fai
 task 2: -
   command: bash -c set -euo pipefail;  samtools faidx reference/hg38.fa
-  inputs: reference/hg38.fa
+  inputs: reference/hg38.fa align-out/reference
   outputs: align-out/reference/hg38.fa.fai
 task 3: -
   command: bash -c set -euo pipefail;  bwa mem reference/hs1.fa align-out/reads/s1.fq 2> align-out/logs/map/s1.log > align-out/mapped/s1.bam
-  inputs: align-out/reads/s1.fq align-out/reference/hs1.fa.fai
+  inputs: align-out/reads/s1.fq align-out/reference/hs1.fa.fai align-out/logs/map align-out/mapped
   outputs: align-out/mapped/s1.bam align-out/logs/map/s1.log
 task 4: -
   command: bash -c set -euo pipefail;  bwa mem reference/hs1.fa align-out/reads/s2.fq 2> align-out/logs/map/s2.log > align-out/mapped/s2.bam
-  inputs: align-out/reads/s2.fq align-out/reference/hs1.fa.fai
+  inputs: align-out/reads/s2.fq align-out/reference/hs1.fa.fai align-out/logs/map align-out/mapped
   outputs: align-out/mapped/s2.bam align-out/logs/map/s2.log
 task 5: -
   command: 

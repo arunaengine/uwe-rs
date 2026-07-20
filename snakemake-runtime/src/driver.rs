@@ -86,6 +86,10 @@ pub struct Session {
     pub deliveries: Arc<Mutex<Vec<Delivery>>>,
     /// How the evaluation of the Snakefile ended, once it ran; it runs once.
     evaluation: Option<Result<(), DriverError>>,
+    /// What the code of jobs needs, like the stand-in of the snakemake package.
+    embedded: crate::embedded::Setting,
+    /// The folder of the `touch()` outputs that the driver made, once there is one.
+    touched: Option<PathBuf>,
 }
 
 impl Session {
@@ -160,6 +164,8 @@ impl Session {
             attempts: HashMap::new(),
             deliveries: Arc::default(),
             evaluation: None,
+            embedded: crate::embedded::Setting::new(&launch.scratch, launch.simulated),
+            touched: None,
         })
     }
 
@@ -400,6 +406,7 @@ impl Session {
                     state: &state,
                     files: &self.files,
                     workdir: &self.workdir,
+                    embedded: &self.embedded,
                 };
                 crate::task::build(&mut self.interpreter, &setting, &rule, &entry, id, 1)
             }
@@ -529,6 +536,10 @@ impl Session {
                 outcome.exit_code
             )));
         }
+        let mut outcome = outcome;
+        if !self.launch.simulated {
+            self.check_outputs(job, &mut outcome)?;
+        }
         // The outputs go to the working directory, as Snakemake leaves them there, except the
         // temporary ones.
         let temporary = (self.planner.as_ref())
@@ -593,6 +604,70 @@ impl Session {
         self.ready_tasks(Some(job))
     }
 
+    /// Makes the `touch()` outputs that the job did not make, as Snakemake touches them after
+    /// the job, and fails as Snakemake does when other outputs are missing.
+    fn check_outputs(&mut self, job: usize, outcome: &mut Outcome) -> Result<(), DriverError> {
+        let planner = self.planner.as_ref().expect("a planner");
+        let entry = &planner.jobs[job];
+        let rule = planner.rules[entry.rule].name.clone();
+        let touched = entry.touched_files();
+        let outputs: Vec<String> = (entry.output.values.iter())
+            .filter_map(|value| value.as_str().map(str::to_owned))
+            .collect();
+        let made = |outcome: &Outcome, output: &str| {
+            let output = output.trim_start_matches('/').trim_end_matches('/');
+            (outcome.files.iter())
+                .any(|file| file.path.trim_start_matches('/').trim_end_matches('/') == output)
+        };
+        let mut missing = Vec::new();
+        for output in &outputs {
+            if made(outcome, output) {
+                continue;
+            }
+            if touched.iter().any(|file| file == output) {
+                let location = self.touch(output).map_err(|error| {
+                    DriverError::new(format!("cannot touch {output} of rule {rule}: {error}"))
+                })?;
+                outcome.files.push(workflow_graph::OutputFile {
+                    path: output.clone(),
+                    location: location.to_string_lossy().into_owned(),
+                    ..workflow_graph::OutputFile::default()
+                });
+                continue;
+            }
+            missing.push(output.clone());
+        }
+        if missing.is_empty() {
+            return Ok(());
+        }
+        Err(DriverError::new(format!(
+            "MissingOutputException in rule {rule}: Job {} completed successfully, but some \
+             output files are missing: {}",
+            outcome.id,
+            missing.join(", ")
+        )))
+    }
+
+    /// An empty file for a `touch()` output in the scratch folder of the run.
+    fn touch(&mut self, output: &str) -> std::io::Result<PathBuf> {
+        let folder = self.touched.get_or_insert_with(|| {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |time| time.as_nanos());
+            self.launch
+                .scratch
+                .join("snakemake")
+                .join("touched")
+                .join(format!("{}-{nanos}", std::process::id()))
+        });
+        let path = folder.join(output.trim_start_matches('/'));
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, b"")?;
+        Ok(path)
+    }
+
     /// The next attempt of a failed job, while its rule's `retries` allow one, with its
     /// resources evaluated for that attempt, as Snakemake runs it.
     fn retry(&mut self, job: usize, id: TaskId) -> Result<Option<Task>, DriverError> {
@@ -617,6 +692,7 @@ impl Session {
                 state: &state,
                 files: &self.files,
                 workdir: &self.workdir,
+                embedded: &self.embedded,
             };
             crate::task::build(
                 &mut self.interpreter,

@@ -58,7 +58,8 @@ fn describe(folder: &Path) -> String {
         let prefix = format!("{}/", folder.display());
         let _ = writeln!(text, "error: {}", error.to_string().replace(&prefix, ""));
     }
-    text
+    // Scripts see their folder at its path on this machine.
+    text.replace(&folder.display().to_string(), "{folder}")
 }
 
 #[test]

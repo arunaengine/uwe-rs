@@ -15,6 +15,8 @@ struct Chain {
     fail_at_finish: bool,
     delivered: Option<std::path::PathBuf>,
     asked: Vec<Delivery>,
+    /// Whether the engine gave the files of the tasks.
+    files: bool,
 }
 
 impl Driver for Chain {
@@ -47,6 +49,10 @@ impl Driver for Chain {
 
     fn deliveries(&mut self) -> Vec<Delivery> {
         std::mem::take(&mut self.asked)
+    }
+
+    fn use_files(&mut self, files: std::sync::Arc<dyn Files>) {
+        self.files = files.local("/any").is_ok();
     }
 
     fn finish(&mut self) -> Result<(), DriverError> {
@@ -164,10 +170,12 @@ fn real_executors_deliver_what_drivers_ask_for() {
         ..Chain::default()
     };
     let mut notes = Notes::default();
+    let mut simulated = chain();
     let execution = Engine::new(&mut Succeed)
         .observer(&mut notes)
-        .run("chain", &mut chain());
+        .run("chain", &mut simulated);
     assert!(execution.error.is_none());
+    assert!(!simulated.files, "an executor without files gives none");
     let delivered = format!("delivered {}", made.display());
     assert_eq!(
         notes.0[4], delivered,
@@ -176,7 +184,9 @@ fn real_executors_deliver_what_drivers_ask_for() {
     // The simulator delivers nothing; a real executor does.
     let target = made.with_extension("delivered");
     assert!(!target.exists());
-    let execution = Engine::new(&mut Real).run("chain", &mut chain());
+    let mut real = chain();
+    let execution = Engine::new(&mut Real).run("chain", &mut real);
     assert!(execution.error.is_none());
+    assert!(real.files, "the driver gets the files of a real executor");
     assert_eq!(std::fs::read_to_string(target).expect("reads"), "made\n");
 }

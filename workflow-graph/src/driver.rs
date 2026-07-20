@@ -3,8 +3,9 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use crate::{Delivery, Inputs, Language, Note, Outcome, Task};
+use crate::{Delivery, Files, Inputs, Language, Note, Outcome, Task};
 
 /// What a user asks to run, in the terms all languages share. Each language crate exposes
 /// `pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError>`.
@@ -104,4 +105,11 @@ pub trait Driver {
     fn inputs(&mut self) -> Result<Option<Inputs>, DriverError> {
         Ok(None)
     }
+
+    /// The files that the tasks make, where the executor keeps them. A driver that reads the
+    /// content of task outputs, like a Nextflow `.command.env`, reads it through
+    /// [`Files::local`], so that a store elsewhere works too ([`crate::files::read`]). The
+    /// engine gives them before `start`; a simulated run has none, and its outputs are local
+    /// files. The default keeps nothing.
+    fn use_files(&mut self, _files: Arc<dyn Files>) {}
 }

@@ -127,7 +127,7 @@ fn outcomes_carry_env_and_eval_values() {
         stdout: "said\n".into(),
         ..Outcome::default()
     };
-    let result = task_outcome(&request, outcome).expect("an outcome");
+    let result = task_outcome(&request, outcome, None).expect("an outcome");
     let names: Vec<&str> = result.files.iter().map(|(name, _)| name.as_str()).collect();
     assert_eq!(names, ["out.txt"]);
     assert_eq!(result.eval, ["1.0"]);
@@ -138,7 +138,7 @@ fn outcomes_carry_env_and_eval_values() {
         id: workflow_graph::TaskId(1),
         ..Outcome::default()
     };
-    let result = task_outcome(&request, outcome).expect("an outcome");
+    let result = task_outcome(&request, outcome, None).expect("an outcome");
     assert_eq!(result.eval, [""]);
     assert_eq!(result.env["FOO"], "");
     let failed = file(
@@ -150,7 +150,7 @@ fn outcomes_carry_env_and_eval_values() {
         files: vec![failed],
         ..Outcome::default()
     };
-    let error = task_outcome(&request, outcome).expect_err("the eval command failed");
+    let error = task_outcome(&request, outcome, None).expect_err("the eval command failed");
     assert!(error.message.contains("exit status 2: bad"), "{error}");
 }
 
@@ -160,4 +160,39 @@ fn environment_files() {
     let variables = read_environment(text);
     assert_eq!(variables["A"], ("one".to_owned(), 0));
     assert_eq!(variables["B"], ("line 1\nline 2".to_owned(), 0));
+}
+
+/// A store elsewhere, whose `s3://store/` locations have their content in a local folder.
+struct Elsewhere(std::path::PathBuf);
+
+impl workflow_graph::Files for Elsewhere {
+    fn local(&self, location: &str) -> std::io::Result<std::path::PathBuf> {
+        let key = location
+            .strip_prefix("s3://store/")
+            .ok_or(std::io::ErrorKind::NotFound)?;
+        Ok(self.0.join(key))
+    }
+
+    fn deliver(&self, _delivery: &workflow_graph::Delivery) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn values_come_through_the_files_of_a_store_elsewhere() {
+    let request = request(&[], &["FOO"], None);
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    std::fs::write(directory.path().join("env"), "FOO=remote\n/FOO/\n").expect("writes");
+    let outcome = Outcome {
+        id: workflow_graph::TaskId(1),
+        files: vec![OutputFile {
+            path: ".command.env".into(),
+            location: "s3://store/env".into(),
+            ..OutputFile::default()
+        }],
+        ..Outcome::default()
+    };
+    let files = Elsewhere(directory.path().to_owned());
+    let result = task_outcome(&request, outcome, Some(&files)).expect("an outcome");
+    assert_eq!(result.env["FOO"], "remote");
 }

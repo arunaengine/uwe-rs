@@ -7,13 +7,14 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::Arc;
 
 use nextflow_config::{Config, tree};
 use nextflow_evaluator::interpreter::{Error, Host, parse_json, parse_yaml};
 use nextflow_evaluator::lowered::Module;
 use nextflow_evaluator::value::{PathValue, Value};
 use workflow_graph::{
-    Delivery, Driver, DriverError, Input, Inputs, Language, Launch, Note, Outcome, Task,
+    Delivery, Driver, DriverError, Files, Input, Inputs, Language, Launch, Note, Outcome, Task,
 };
 
 use crate::notes::Noting;
@@ -83,6 +84,8 @@ pub struct Nextflow {
     report_deliveries: Vec<Delivery>,
     /// The config and the main script, once loaded; the run takes them when it starts.
     loaded: Option<Loaded>,
+    /// The files of the tasks, where a real executor keeps them.
+    files: Option<Arc<dyn Files>>,
 }
 
 /// What a run needs before it starts, which [`Driver::inputs`] loads too.
@@ -114,6 +117,7 @@ impl Nextflow {
             reports: None,
             report_deliveries: Vec::new(),
             loaded: None,
+            files: None,
         })
     }
 
@@ -319,7 +323,7 @@ impl Driver for Nextflow {
         if self.launch.simulated {
             drop_made_up_outputs(&request, &mut outcome);
         }
-        let outcome = task_outcome(&request, outcome)?;
+        let outcome = task_outcome(&request, outcome, self.files.as_deref())?;
         let run = self.run.as_mut().ok_or_else(not_started)?;
         let mut host = Noting {
             host: self.settings.host.as_mut(),
@@ -364,6 +368,10 @@ impl Driver for Nextflow {
         let inputs = self.describe(&loaded);
         self.loaded = Some(loaded);
         inputs.map(Some)
+    }
+
+    fn use_files(&mut self, files: Arc<dyn Files>) {
+        self.files = Some(files);
     }
 }
 
@@ -603,9 +611,14 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
 }
 
 /// What the network reads of the outcome of a task: its output files, its standard output, and
-/// the values of its `env` and `eval` outputs from `.command.env`. A value that a task did not
-/// write, as with the simulator, is empty.
-pub fn task_outcome(request: &TaskRequest, outcome: Outcome) -> Result<TaskOutcome, DriverError> {
+/// the values of its `env` and `eval` outputs from `.command.env`, which it reads through
+/// `files` when the run has them. A value that a task did not write, as with the simulator, is
+/// empty.
+pub fn task_outcome(
+    request: &TaskRequest,
+    outcome: Outcome,
+    files: Option<&dyn Files>,
+) -> Result<TaskOutcome, DriverError> {
     let mut result = TaskOutcome {
         id: request.id,
         exit_status: outcome.exit_code,
@@ -615,13 +628,13 @@ pub fn task_outcome(request: &TaskRequest, outcome: Outcome) -> Result<TaskOutco
     let mut variables = HashMap::new();
     for file in outcome.files {
         if file.path == ENVIRONMENT {
-            let text = std::fs::read_to_string(&file.location).map_err(|error| {
+            let bytes = workflow_graph::files::read(files, &file.location).map_err(|error| {
                 DriverError::new(format!(
                     "{}: cannot read {}: {error}",
                     request.name, file.location
                 ))
             })?;
-            variables = read_environment(&text);
+            variables = read_environment(&String::from_utf8_lossy(&bytes));
             // The file is iunctus's own, unless an output asks for it.
             if !request.output_patterns.contains(&file.path) {
                 continue;

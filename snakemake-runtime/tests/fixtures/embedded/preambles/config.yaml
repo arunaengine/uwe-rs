@@ -1,0 +1,7 @@
+test: true
+testint: 123
+testfloat: 7.65432
+"foo' bar": "let's go"
+nested:
+  a: [1, 2]
+  b: x

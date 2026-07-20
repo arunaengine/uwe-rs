@@ -1,0 +1,4 @@
+//! ```cargo
+//! [dependencies]
+//! ```
+fn main() {}

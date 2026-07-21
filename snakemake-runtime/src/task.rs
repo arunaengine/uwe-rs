@@ -480,8 +480,37 @@ pub fn build(
             }
         }
         Action::Run(text) => {
-            command = vec!["python".into(), "-c".into(), text.clone()];
-            script = Some(text.clone());
+            let dedented = python_evaluator::modules::dedent(text);
+            let block = embedded::run::Block {
+                rule: &rule.name,
+                text,
+                globals: &rule.globals,
+                jobid: id.0,
+                basedir: &rule.basedir,
+                shell: embedded::run::Shell {
+                    executable: setting.state.shell_executable.as_deref(),
+                    prefix: setting.state.shell_prefix.as_deref(),
+                    suffix: &setting.state.shell_suffix,
+                },
+            };
+            let context = context(interpreter);
+            match embedded::run::build(
+                interpreter,
+                &context,
+                &block,
+                setting.embedded,
+                setting.workdir,
+            ) {
+                Ok(parts) => {
+                    command = parts.command;
+                    inputs.extend(parts.inputs);
+                }
+                Err(_) if setting.embedded.simulated => {
+                    command = vec!["python".into(), "-c".into(), dedented.clone()];
+                }
+                Err(message) => return Err(workflow_error(message)),
+            }
+            script = Some(dedented);
         }
         Action::TemplateEngine(value) => {
             let engine = interpreter.to_str(value)?;
@@ -515,6 +544,11 @@ pub fn build(
         // A rule without an action is a no-op task: no command and no image.
         _ if matches!(rule.action, Action::None) => None,
         (Some(container), _) => Some(image_name(&container)),
+        // A `run:` block runs in the Python image that the user gave, else in the default
+        // image of the executor.
+        (None, None) if matches!(rule.action, Action::Run(_)) => {
+            setting.embedded.python_image.clone()
+        }
         (None, Some(conda)) => {
             let conda = pattern::apply(&conda, &job.wildcards).unwrap_or(conda);
             let is_file = conda.ends_with(".yaml") || conda.ends_with(".yml");

@@ -809,8 +809,13 @@ impl Hook {
                     let line_start = frame.source.text[..start.to_usize()]
                         .rfind('\n')
                         .map_or(0, |index| index + 1);
-                    let text = &frame.source.text[line_start..end.to_usize()];
-                    info.run = Some(python_evaluator::modules::dedent(text));
+                    // The body with the indentation it has in the Snakefile, which Snakemake
+                    // keeps; a body on the line of `run:` starts at its first statement.
+                    let inline = !frame.source.text[line_start..start.to_usize()]
+                        .trim()
+                        .is_empty();
+                    let from = if inline { start.to_usize() } else { line_start };
+                    info.run = Some(frame.source.text[from..end.to_usize()].to_owned());
                     info.directives.push((directive.keyword, Args::default()));
                 }
                 DirectiveValue::Expression(expression) => {

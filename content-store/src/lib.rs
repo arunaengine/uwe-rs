@@ -4,6 +4,8 @@
 
 pub mod layout;
 mod local;
+mod objects;
 mod store;
 
+pub use objects::{FileIdentity, Object};
 pub use store::{S3Options, Store, StoreError, StoredOutput, hash_file};

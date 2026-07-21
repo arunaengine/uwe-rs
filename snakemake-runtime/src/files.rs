@@ -8,9 +8,10 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
+use std::sync::{Arc, OnceLock};
 
 use python_evaluator::{Command, CommandOutcome, Error, FileKind, Host, LocalHost, Stat};
-use workflow_graph::Note;
+use workflow_graph::{Files, Note};
 
 use crate::commands::CommandRunner;
 use crate::remote::Mirrors;
@@ -37,6 +38,9 @@ pub struct WorkflowFiles {
     /// The outputs of tasks that workflow code read or listed since the engine last asked,
     /// by their location, for the markers of the graph.
     pub notes: RefCell<Vec<Note>>,
+    /// The files of the tasks, where a real executor keeps them, which the driver gets from
+    /// the engine; outputs are read through them.
+    task_files: RefCell<Arc<OnceLock<Arc<dyn Files>>>>,
 }
 
 impl WorkflowFiles {
@@ -49,7 +53,13 @@ impl WorkflowFiles {
             commands: RefCell::new(None),
             last_output_read: RefCell::new(None),
             notes: RefCell::new(Vec::new()),
+            task_files: RefCell::new(Arc::default()),
         }
+    }
+
+    /// Reads the outputs of tasks through the files that the driver gets from the engine.
+    pub fn read_outputs_through(&self, files: Arc<OnceLock<Arc<dyn Files>>>) {
+        *self.task_files.borrow_mut() = files;
     }
 
     /// Connects the runner of commands of workflow code.
@@ -94,7 +104,8 @@ impl Host for WorkflowFiles {
             Some((location, _)) => {
                 *self.last_output_read.borrow_mut() = Some(path.to_owned());
                 self.notes.borrow_mut().push(Note::Read(location.clone()));
-                std::fs::read(location)
+                let files = self.task_files.borrow().get().cloned();
+                workflow_graph::files::read(files.as_deref(), &location.to_string_lossy())
             }
             None => {
                 self.mirrors.fetch(path)?;
@@ -190,5 +201,44 @@ impl Host for WorkflowFiles {
                 "running commands while the workflow is planned",
             )),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A store elsewhere, whose `s3://store/` locations have their content in a local folder.
+    struct Elsewhere(PathBuf);
+
+    impl Files for Elsewhere {
+        fn local(&self, location: &str) -> std::io::Result<PathBuf> {
+            let key = location.strip_prefix("s3://store/");
+            Ok(self.0.join(key.ok_or(std::io::ErrorKind::NotFound)?))
+        }
+
+        fn deliver(&self, _delivery: &workflow_graph::Delivery) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn outputs_of_a_store_elsewhere_are_read_through_the_files_of_the_run() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        std::fs::write(folder.path().join("counts.txt"), "3\n").expect("writes");
+        let storage = storage::Storage::default();
+        let mirrors = Rc::new(Mirrors::new(folder.path().join("downloads"), &storage));
+        let files = WorkflowFiles::new(folder.path(), mirrors);
+        let path = folder.path().join("results/counts.txt");
+        let produced = Produced {
+            location: PathBuf::from("s3://store/counts.txt"),
+            directory: false,
+        };
+        files.add_output(&path, produced);
+        let slot: Arc<OnceLock<Arc<dyn Files>>> = Arc::default();
+        files.read_outputs_through(slot.clone());
+        assert!(files.read(&path).is_err(), "no local file is there");
+        let _ = slot.set(Arc::new(Elsewhere(folder.path().to_owned())));
+        assert_eq!(files.read(&path).expect("reads"), b"3\n");
     }
 }

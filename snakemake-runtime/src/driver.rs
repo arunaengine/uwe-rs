@@ -9,14 +9,14 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender, channel};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::thread::JoinHandle;
 
 use python_evaluator::{Error, Interpreter, Value};
 use storage::Storage;
 use workflow_graph::{
-    Delivery, DeliveryMode, Driver, DriverError, Inputs, Language, Launch, Marker, MarkerKind,
-    Note, Outcome, Task, TaskId,
+    Delivery, DeliveryMode, Driver, DriverError, Files, Inputs, Language, Launch, Marker,
+    MarkerKind, Note, Outcome, Task, TaskId,
 };
 
 use crate::commands::{Channel, CommandRunner, InputsReply, Reply, Request};
@@ -743,6 +743,8 @@ struct SnakemakeDriver {
     notes: Arc<Mutex<Vec<Note>>>,
     /// The outputs that the session asked to deliver.
     deliveries: Arc<Mutex<Vec<Delivery>>>,
+    /// The files of the tasks, which the session reads outputs through.
+    files: Arc<OnceLock<Arc<dyn Files>>>,
 }
 
 impl SnakemakeDriver {
@@ -782,6 +784,10 @@ impl Driver for SnakemakeDriver {
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
         std::mem::take(&mut deliveries)
+    }
+
+    fn use_files(&mut self, files: Arc<dyn Files>) {
+        let _ = self.files.set(files);
     }
 
     fn inputs(&mut self) -> Result<Option<Inputs>, DriverError> {
@@ -836,6 +842,8 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
     let session_notes = notes.clone();
     let deliveries: Arc<Mutex<Vec<Delivery>>> = Arc::default();
     let shared = deliveries.clone();
+    let files: Arc<OnceLock<Arc<dyn Files>>> = Arc::default();
+    let task_files = files.clone();
     let worker = std::thread::Builder::new()
         .name("snakemake".into())
         .stack_size(512 << 20)
@@ -844,6 +852,7 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
             let open = || -> Result<Session, DriverError> {
                 let mut session = Session::new(&launch, &settings.storage)?;
                 session.deliveries = shared.clone();
+                session.files.read_outputs_through(task_files.clone());
                 if let Some(python) = settings.python.clone() {
                     session.use_python_containers(python);
                 }
@@ -922,6 +931,7 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
         worker: Some(worker),
         notes,
         deliveries,
+        files,
     }))
 }
 

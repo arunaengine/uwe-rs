@@ -9,7 +9,7 @@ use std::rc::Rc;
 use python_evaluator::{Error, Interpreter, Scope, Value};
 
 /// The modules that `snakemake.workflow` imports.
-const MODULES: &[&str] = &[
+pub(crate) const MODULES: &[&str] = &[
     "os",
     "sys",
     "re",
@@ -25,7 +25,7 @@ const MODULES: &[&str] = &[
 
 /// Names that `snakemake.workflow` imports from modules: the name, its module, and its name
 /// there.
-const NAMES: &[(&str, &str, &str)] = &[
+pub(crate) const NAMES: &[(&str, &str, &str)] = &[
     ("Path", "pathlib", "Path"),
     ("OrderedDict", "collections", "OrderedDict"),
     ("namedtuple", "collections", "namedtuple"),

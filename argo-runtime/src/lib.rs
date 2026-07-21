@@ -51,7 +51,8 @@ use std::rc::Rc;
 
 use argo_parser::{Node, Value as Yaml, parse_yaml};
 use workflow_graph::{
-    Delivery, DeliveryMode, Driver, DriverError, Inputs, Language, Launch, Note, Outcome, Task,
+    Delivery, DeliveryMode, Driver, DriverError, Files, Inputs, Language, Launch, Note, Outcome,
+    Task,
 };
 
 pub use library::{Document, Kind, Library, load_file, repository_of};
@@ -87,6 +88,8 @@ pub struct ArgoDriver {
     /// `<folder>/<step>/<artifact>`, in a real run; `None` keeps them in the store.
     pub results: Option<PathBuf>,
     deliveries: Vec<Delivery>,
+    /// The files of the tasks, where a real executor keeps them.
+    files: Option<std::sync::Arc<dyn Files>>,
 }
 
 impl ArgoDriver {
@@ -99,6 +102,7 @@ impl ArgoDriver {
             warnings: Vec::new(),
             results: None,
             deliveries: Vec::new(),
+            files: None,
         }
     }
 
@@ -137,7 +141,12 @@ impl Driver for ArgoDriver {
         )
         .map_err(driver_error)?;
         let run = self.run.insert(run);
+        run.files = self.files.clone();
         run.operate().map_err(driver_error)
+    }
+
+    fn use_files(&mut self, files: std::sync::Arc<dyn Files>) {
+        self.files = Some(files);
     }
 
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {

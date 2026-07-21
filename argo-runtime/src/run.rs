@@ -13,7 +13,7 @@ use argo_parser::model::{
 };
 use argo_parser::{Node, Position, Value as Yaml, decode};
 use jiff::Timestamp;
-use workflow_graph::{Note, Outcome, Task, TaskId};
+use workflow_graph::{Files, Note, Outcome, Task, TaskId};
 
 use crate::Options;
 use crate::checks::cluster_only;
@@ -194,9 +194,25 @@ pub(crate) struct Run {
     pub inbound: Vec<TaskId>,
     /// The markers found since the engine last asked, for the graph.
     pub notes: Vec<Note>,
+    /// The files of the tasks, where a real executor keeps them; outputs that the run reads,
+    /// like output parameters, are read through them.
+    pub files: Option<std::sync::Arc<dyn Files>>,
+}
+
+/// The text of an output file of a task, read through `files` when the run has them; empty
+/// when it cannot be read.
+pub fn output_text(files: Option<&dyn Files>, location: &str) -> String {
+    let bytes = workflow_graph::files::read(files, location);
+    String::from_utf8_lossy(&bytes.unwrap_or_default()).into_owned()
 }
 
 impl Run {
+    /// The text of an output file of a task, read through the files of the run when it has
+    /// them; empty when it cannot be read.
+    pub fn read_output(&self, location: &str) -> String {
+        output_text(self.files.as_deref(), location)
+    }
+
     /// The output artifacts that the steps of the run made as files, by the name of the step's
     /// node and the name of the artifact.
     pub(crate) fn output_artifacts(&self) -> Vec<(&str, &str, &std::path::Path)> {
@@ -300,6 +316,7 @@ impl Run {
             changed: false,
             warnings: Vec::new(),
             notes: Vec::new(),
+            files: None,
             store: HashMap::new(),
             volumes: Volumes::new(),
             claims: BTreeSet::new(),
@@ -1079,4 +1096,34 @@ pub(crate) fn uid(name: &str) -> String {
         parts[2] & 0xffff,
         parts[3]
     )
+}
+
+#[cfg(test)]
+mod files_tests {
+    use std::path::PathBuf;
+
+    use super::output_text;
+
+    /// A store elsewhere, whose `s3://store/` locations have their content in a local folder.
+    struct Elsewhere(PathBuf);
+
+    impl workflow_graph::Files for Elsewhere {
+        fn local(&self, location: &str) -> std::io::Result<PathBuf> {
+            let key = location.strip_prefix("s3://store/");
+            Ok(self.0.join(key.ok_or(std::io::ErrorKind::NotFound)?))
+        }
+
+        fn deliver(&self, _delivery: &workflow_graph::Delivery) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn outputs_of_a_store_elsewhere_are_read_through_the_files_of_the_run() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        std::fs::write(folder.path().join("result"), "42\n").expect("writes");
+        let files = Elsewhere(folder.path().to_owned());
+        assert_eq!(output_text(Some(&files), "s3://store/result"), "42\n");
+        assert_eq!(output_text(None, "s3://store/result"), "");
+    }
 }

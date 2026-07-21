@@ -6,6 +6,8 @@
 mod entry;
 mod executor;
 mod files;
+mod inputs;
+mod lookup;
 mod outputs;
 mod request;
 mod runner;
@@ -14,5 +16,6 @@ mod staging;
 pub use entry::CacheEntry;
 pub use executor::RunnerExecutor;
 pub use files::StorageFiles;
+pub use lookup::Lookup;
 pub use request::{identity, request};
 pub use runner::{Prepared, Runner, RunnerError, Settings, StoredFile, TaskResult};

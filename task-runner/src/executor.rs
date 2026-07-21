@@ -8,13 +8,14 @@
 
 use std::sync::Arc;
 
+use content_store::Store;
 use executor::{Backend, ExecutorError};
 use task_model::Digest;
 use workflow_graph::{
     Attempt, CancellationToken, ExecuteError, Executor, Files, Outcome, OutputFile, Running, Task,
 };
 
-use crate::{Runner, RunnerError, StorageFiles};
+use crate::{Runner, RunnerError, StorageFiles, TaskResult};
 
 /// A runner as the executor of a run.
 pub struct RunnerExecutor<B> {
@@ -116,22 +117,37 @@ async fn outcome<B: Backend>(
     let mut prepared = runner.request(task, image.clone()).await.map_err(failed)?;
     prepared.request.attempt = attempt;
     let result = runner.execute(&prepared, cancel).await.map_err(failed)?;
-    let text = async |digest: &Option<Digest>| match digest {
-        Some(digest) => runner
-            .read_content(digest)
-            .await
-            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-            .map_err(failed),
-        None => Ok(String::new()),
+    outcome_of(&runner.store, task, attempt, result, image)
+        .await
+        .map_err(failed)
+}
+
+/// The outcome of an attempt from its result in the store: each output at its path on this
+/// machine for a local store, else at its address, and the captured streams as text.
+pub(crate) async fn outcome_of(
+    store: &Store,
+    task: &Task,
+    attempt: u32,
+    result: TaskResult,
+    image: Option<String>,
+) -> Result<Outcome, RunnerError> {
+    let text = async |digest: &Option<Digest>| -> Result<String, RunnerError> {
+        match digest {
+            Some(digest) => {
+                let bytes = store.get_content(digest).await?;
+                Ok(String::from_utf8_lossy(&bytes).into_owned())
+            }
+            None => Ok(String::new()),
+        }
     };
     let files = result
         .files
         .iter()
         .map(|file| OutputFile {
             path: file.path.clone(),
-            location: match runner.local_path(&file.location) {
+            location: match store.local_path(&file.location) {
                 Some(path) => path.to_string_lossy().into_owned(),
-                None => runner.store.url(&file.location),
+                None => store.url(&file.location),
             },
             directory: file.directory,
             size: Some(file.size),

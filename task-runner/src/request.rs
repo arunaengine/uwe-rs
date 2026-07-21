@@ -4,16 +4,16 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;
-use std::path::Path;
 
 use executor::Backend;
 use task_model::{
-    Accelerator, Digest, EnvironmentValue, FORMAT, FileKind, Image, InputFile, OutputRule,
-    Placement, ReuseScope, TaskRequest, TaskSpec, Tree,
+    Accelerator, Digest, EnvironmentValue, FORMAT, Image, InputFile, OutputRule, Placement,
+    ReuseScope, TaskRequest, TaskSpec,
 };
-use workflow_graph::{Input, Task};
+use workflow_graph::Task;
 
-use crate::runner::{Prepared, Source, segment};
+use crate::inputs::{Inputs, Mode};
+use crate::runner::{Prepared, segment};
 use crate::{Runner, RunnerError};
 
 /// The longest step name that an identity keeps, so that it stays a short path segment.
@@ -28,87 +28,36 @@ impl<B: Backend> Runner<B> {
         task: &Task,
         image: Option<String>,
     ) -> Result<Prepared, RunnerError> {
-        let mut inputs = Vec::new();
-        let mut sources = Vec::new();
-        for input in &task.inputs {
-            let (file, source) = self.input(input).await?;
-            inputs.push(file);
-            sources.push(source);
-        }
-        let stdin = match &task.stdin {
-            Some(text) => Some(self.import_bytes(text.as_bytes()).await?),
-            None => None,
+        let inputs = Inputs {
+            store: &self.store,
+            settings: &self.settings,
+            mode: Mode::Run,
         };
-        Ok(Prepared {
-            request: request(task, image, inputs, stdin),
-            sources,
-        })
+        prepare(&inputs, task, image).await
     }
+}
 
-    /// An input by its digest, and where its content comes from: literal content, a local
-    /// directory or a local file. A local path is taken with its links resolved, so that a
-    /// container that sees the folder of the path sees the content. When the runner imports
-    /// inputs, the backend takes them from the store instead.
-    async fn input(&self, input: &Input) -> Result<(InputFile, Source), RunnerError> {
-        let source = Path::new(&input.source);
-        let imported = self.settings.import_inputs;
-        let local = || -> Result<Source, RunnerError> {
-            if imported {
-                return Ok(Source::Stored);
-            }
-            Ok(Source::Local(std::fs::canonicalize(source).map_err(
-                |error| std::io::Error::new(error.kind(), format!("{}: {error}", source.display())),
-            )?))
-        };
-        let (kind, digest, from) = match &input.content {
-            Some(content) => (
-                FileKind::File,
-                self.import_bytes(content.as_bytes()).await?,
-                Source::Content,
-            ),
-            None if input.source.contains("://") => {
-                if input.directory {
-                    return Err(RunnerError::Remote(input.source.clone()));
-                }
-                let local = (self.settings.storage)
-                    .fetch(&input.source, &self.settings.downloads)
-                    .await?;
-                match imported {
-                    true => (FileKind::File, self.import(&local).await?.0, Source::Stored),
-                    false => {
-                        let (digest, _) = content_store::hash_file(&local).await?;
-                        (FileKind::File, digest, Source::Local(local))
-                    }
-                }
-            }
-            // A directory that the workflow makes itself, like an empty CWL `Directory` literal.
-            None if input.directory && input.source.is_empty() => (
-                FileKind::Directory,
-                self.import_tree(&Tree::default()).await?,
-                Source::Stored,
-            ),
-            None if input.directory || source.is_dir() => (
-                FileKind::Directory,
-                self.import_directory(source).await?.0,
-                local()?,
-            ),
-            None => {
-                let (digest, _) = match self.settings.import_inputs {
-                    true => self.import(source).await?,
-                    false => content_store::hash_file(source).await?,
-                };
-                (FileKind::File, digest, local()?)
-            }
-        };
-        let file = InputFile {
-            path: input.path.clone(),
-            kind,
-            digest,
-            executable: false,
-            writable: false,
-        };
-        Ok((file, from))
+/// The request of a task, with the digests of its inputs as `inputs` makes them.
+pub(crate) async fn prepare(
+    inputs: &Inputs<'_>,
+    task: &Task,
+    image: Option<String>,
+) -> Result<Prepared, RunnerError> {
+    let mut files = Vec::new();
+    let mut sources = Vec::new();
+    for input in &task.inputs {
+        let (file, source) = inputs.input(input).await?;
+        files.push(file);
+        sources.push(source);
     }
+    let stdin = match &task.stdin {
+        Some(text) => Some(inputs.bytes(text.as_bytes()).await?),
+        None => None,
+    };
+    Ok(Prepared {
+        request: request(task, image, files, stdin),
+        sources,
+    })
 }
 
 /// The request of a task whose image is pinned if possible and whose inputs and standard input
@@ -185,6 +134,7 @@ pub fn identity(task: &Task) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use task_model::FileKind;
     use workflow_graph::{Resources, TaskId};
 
     #[test]

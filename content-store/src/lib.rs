@@ -3,9 +3,11 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub mod layout;
+mod lease;
 mod local;
 mod objects;
 mod store;
 
+pub use lease::{Holder, LEASE_TIME, Lease};
 pub use objects::{FileIdentity, Object};
 pub use store::{S3Options, Store, StoreError, StoredOutput, hash_file};

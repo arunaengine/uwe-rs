@@ -10,10 +10,12 @@
 
 pub mod bash;
 pub mod data;
+pub mod globals;
 pub mod julia;
 pub mod notebook;
 pub mod python;
 pub mod r;
+pub mod run;
 pub mod rust;
 pub mod script;
 pub mod wrapper;
@@ -66,6 +68,9 @@ pub struct Setting {
     scratch: PathBuf,
     package: OnceCell<PathBuf>,
     pub simulated: bool,
+    /// The image of the Python container that the user gave (`-python-image`), which
+    /// `run:` blocks without a container of their own run in.
+    pub python_image: Option<String>,
 }
 
 impl Setting {
@@ -75,6 +80,7 @@ impl Setting {
             scratch: scratch.to_path_buf(),
             package: OnceCell::new(),
             simulated,
+            python_image: None,
         }
     }
 

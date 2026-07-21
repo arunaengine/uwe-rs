@@ -79,7 +79,8 @@ pub enum Action {
     Wrapper(Value),
     TemplateEngine(Value),
     Cwl(Value),
-    /// A `run:` block, by its source text; it runs at job time.
+    /// A `run:` block, by its source text with the indentation it has in the Snakefile; it
+    /// runs at job time.
     Run(String),
 }
 

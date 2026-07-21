@@ -437,6 +437,7 @@ impl Session {
     /// Runs the Python packages without a stand-in in a container of the local engine
     /// (decision 19), which sees the folders of the workflow.
     pub fn use_python_containers(&mut self, settings: PythonContainers) {
+        self.embedded.python_image = settings.image.clone();
         let mut folders = vec![self.workdir.clone()];
         if let Some(folder) = self.snakefile.parent() {
             folders.push(folder.to_path_buf());

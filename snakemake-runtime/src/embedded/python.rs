@@ -141,21 +141,12 @@ fn params(named: &Named) -> (String, Vec<(usize, &'static str)>) {
     (named_code(named, &values), types)
 }
 
-/// The code of the preamble: the stand-in on the module path, the `snakemake` object, and
-/// what Snakemake's preamble adds, like `__file__` of the original script. `prologue` comes
-/// first, as it may change the working directory, which the module path depends on.
-pub fn code(context: &Context, searchpaths: &[String], prologue: &str, addendum: &str) -> String {
+/// Code that makes the object of a job under a name, with the kinds of its tables in params,
+/// on one line. It needs the stand-in's `iocontainers` module as `__iunctus`.
+pub fn object(context: &Context, name: &str) -> String {
     let (params, types) = params(&context.params);
     let mut code = format!(
-        "{prologue}import sys; sys.path.insert(0, __import__('os').path.abspath({})); \
-         sys.path.extend([{}]); import snakemake.iocontainers as {MODULE}; \
-         snakemake = {MODULE}.Snakemake({}, {}, {params}, {}, {}, {}, {}, {}, {}, {}, {}); ",
-        quote(PACKAGE_FOLDER),
-        searchpaths
-            .iter()
-            .map(|path| quote(path))
-            .collect::<Vec<_>>()
-            .join(", "),
+        "{name} = {MODULE}.Snakemake({}, {}, {params}, {}, {}, {}, {}, {}, {}, {}, {}); ",
         literal(&Data::Named(context.input.clone())),
         literal(&Data::Named(context.output.clone())),
         literal(&Data::Named(context.wildcards.clone())),
@@ -175,8 +166,35 @@ pub fn code(context: &Context, searchpaths: &[String], prologue: &str, addendum:
             .map(|(position, kind)| format!("{position}: {}", quote(kind)))
             .collect::<Vec<_>>()
             .join(", ");
-        code.push_str(&format!("snakemake._params_types = {{{entries}}}; "));
+        code.push_str(&format!("{name}._params_types = {{{entries}}}; "));
     }
+    code
+}
+
+/// Code that puts the stand-in of the snakemake package first on the module path, and the
+/// given folders last, and imports its `iocontainers` module as `__iunctus`.
+pub fn module_path(searchpaths: &[String]) -> String {
+    format!(
+        "import sys; sys.path.insert(0, __import__('os').path.abspath({})); \
+         sys.path.extend([{}]); import snakemake.iocontainers as {MODULE}; ",
+        quote(PACKAGE_FOLDER),
+        searchpaths
+            .iter()
+            .map(|path| quote(path))
+            .collect::<Vec<_>>()
+            .join(", "),
+    )
+}
+
+/// The code of the preamble: the stand-in on the module path, the `snakemake` object, and
+/// what Snakemake's preamble adds, like `__file__` of the original script. `prologue` comes
+/// first, as it may change the working directory, which the module path depends on.
+pub fn code(context: &Context, searchpaths: &[String], prologue: &str, addendum: &str) -> String {
+    let mut code = format!(
+        "{prologue}{}{}",
+        module_path(searchpaths),
+        object(context, "snakemake")
+    );
     code.push_str(
         "from snakemake.logging import logger; from snakemake.iocontainers import Snakemake; ",
     );
@@ -188,6 +206,18 @@ pub fn code(context: &Context, searchpaths: &[String], prologue: &str, addendum:
     }
     code.push_str(addendum);
     code
+}
+
+/// Code that makes a table, an array or a series again from its stored form, as Snakemake
+/// makes the tables in params again.
+pub fn table(kind: &str, stored: &Data) -> String {
+    let stored = literal(stored);
+    match kind {
+        "pd.DataFrame" => format!("__import__('pandas').DataFrame.from_dict({stored})"),
+        "pd.Series" => format!("__import__('pandas').Series({stored})"),
+        "np.ndarray" => format!("__import__('numpy').array({stored})"),
+        _ => stored,
+    }
 }
 
 /// The preamble of a Python script, as Snakemake writes it in front of the script: its start

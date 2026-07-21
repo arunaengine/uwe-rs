@@ -90,6 +90,8 @@ pub(crate) struct Builder<'a> {
     pub config: &'a Config,
     /// The output directory of the workflow outputs from `-output-dir`, over `outputDir`.
     pub output_dir: Option<String>,
+    /// Where `exec:` sections run, if they may (`Options::exec_folder`).
+    pub exec_folder: Option<Rc<std::path::Path>>,
 }
 
 impl Host for Builder<'_> {
@@ -367,6 +369,7 @@ impl Host for Builder<'_> {
             singleton,
             one_round: !queue_inputs,
             stub: self.stub,
+            exec_folder: self.exec_folder.clone(),
             settings: Rc::new(settings),
             rounds: 0,
             tasks: 0,

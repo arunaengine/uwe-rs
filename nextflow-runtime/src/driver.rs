@@ -86,6 +86,9 @@ pub struct Nextflow {
     loaded: Option<Loaded>,
     /// The files of the tasks, where a real executor keeps them.
     files: Option<Arc<dyn Files>>,
+    /// The files that `exec:` sections made, by their path, with the task that made them, so
+    /// that the tasks that read them wait for it.
+    made_by: HashMap<String, workflow_graph::TaskId>,
 }
 
 /// What a run needs before it starts, which [`Driver::inputs`] loads too.
@@ -118,6 +121,7 @@ impl Nextflow {
             report_deliveries: Vec::new(),
             loaded: None,
             files: None,
+            made_by: HashMap::new(),
         })
     }
 
@@ -186,6 +190,11 @@ impl Nextflow {
                 .map(|file| file.to_string_lossy().into_owned())
                 .collect(),
             command_line: self.settings.command_line.clone(),
+            exec_folder: Some((self.launch.scratch.join("nextflow-exec")).join(format!(
+                "{}-{}",
+                std::process::id(),
+                self.settings.run_name
+            ))),
         }
     }
 
@@ -267,6 +276,16 @@ impl Nextflow {
                 let mut task = task(&request, &self.environment);
                 let registry = self.registry.as_deref();
                 task.image = (task.image).map(|image| with_registry(&image, registry));
+                for input in &task.inputs {
+                    if let Some(maker) = self.made_by.get(&input.source)
+                        && !task.after.contains(maker)
+                    {
+                        task.after.push(*maker);
+                    }
+                }
+                for (_, path) in request.made.iter().flatten() {
+                    self.made_by.insert(path.path.clone(), task.id);
+                }
                 if let Some(reports) = &mut self.reports {
                     reports.asked(&task);
                 }
@@ -320,10 +339,20 @@ impl Driver for Nextflow {
             reports.ended(&outcome);
         }
         let mut outcome = outcome;
-        if self.launch.simulated {
-            drop_made_up_outputs(&request, &mut outcome);
-        }
-        let outcome = task_outcome(&request, outcome, self.files.as_deref())?;
+        let outcome = match &request.made {
+            // An `exec:` section ran when the task was asked for; its files are its outputs.
+            Some(made) if outcome.exit_code == 0 => TaskOutcome {
+                id: request.id,
+                files: made.clone(),
+                ..TaskOutcome::default()
+            },
+            _ => {
+                if self.launch.simulated {
+                    drop_made_up_outputs(&request, &mut outcome);
+                }
+                task_outcome(&request, outcome, self.files.as_deref())?
+            }
+        };
         let run = self.run.as_mut().ok_or_else(not_started)?;
         let mut host = Noting {
             host: self.settings.host.as_mut(),
@@ -570,6 +599,9 @@ fn environment(config: &Config) -> BTreeMap<String, String> {
 /// The container task of a Nextflow task: `.command.sh`, with the code that captures `env` and
 /// `eval` outputs, runs in the shell of the `shell` directive; the staged files are its inputs.
 pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Task {
+    if request.made.is_some() {
+        return exec_task(request);
+    }
     let mut inputs = vec![Input {
         path: SCRIPT.into(),
         source: String::new(),
@@ -614,6 +646,39 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
 /// the values of its `env` and `eval` outputs from `.command.env`, which it reads through
 /// `files` when the run has them. A value that a task did not write, as with the simulator, is
 /// empty.
+/// The task of an `exec:` section, which ran in the interpreter when it was asked for (decision
+/// 17): it has no image and no command, so the engine finishes it at once (decision 11 asks
+/// no container of it), and it stands in the graph with the files it read.
+fn exec_task(request: &TaskRequest) -> Task {
+    let inputs = (request.staged.iter())
+        .map(|(source, name)| Input {
+            path: name.clone(),
+            source: match source.prefix {
+                None => source.path.clone(),
+                Some(_) => source.uri(),
+            },
+            directory: false,
+            content: None,
+        })
+        .collect();
+    Task {
+        id: workflow_graph::TaskId(request.id.0),
+        name: request.name.clone(),
+        step: request.process.to_string(),
+        image: None,
+        command: Vec::new(),
+        script: None,
+        workdir: None,
+        environment: BTreeMap::new(),
+        inputs,
+        outputs: Vec::new(),
+        stdin: None,
+        resources: workflow_graph::Resources::default(),
+        offline: true,
+        after: Vec::new(),
+    }
+}
+
 pub fn task_outcome(
     request: &TaskRequest,
     outcome: Outcome,

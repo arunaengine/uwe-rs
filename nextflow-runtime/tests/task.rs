@@ -35,6 +35,7 @@ fn request(eval: &[&str], env: &[&str], container: Option<&str>) -> TaskRequest 
         output_patterns: vec!["out.txt".into()],
         env: env.iter().map(|name| Rc::from(*name)).collect(),
         eval: eval.iter().map(|command| (*command).to_owned()).collect(),
+        made: None,
     }
 }
 

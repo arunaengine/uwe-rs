@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use nextflow_config::ProcessSettings;
@@ -14,6 +15,7 @@ use nextflow_evaluator::interpreter::{
 use nextflow_evaluator::lowered::{Input, Module, Process};
 use nextflow_evaluator::units::{parse_duration, parse_memory};
 use nextflow_evaluator::value::{ChannelId, Key, MapKind, PathValue, Value};
+use nextflow_parser::ast::BodyKind;
 
 use crate::channel::Message;
 use crate::network::{Behaviour, Context, State};
@@ -41,6 +43,9 @@ pub struct TaskRequest {
     pub env: Vec<Rc<str>>,
     /// The commands of the `eval` outputs, run after the script.
     pub eval: Vec<String>,
+    /// The files that an `exec:` section made in its `task.workDir`, by their names there. Such
+    /// a task ran in the interpreter already; the engine only records it.
+    pub made: Option<Vec<(String, PathValue)>>,
 }
 
 /// What a finished task produced.
@@ -66,6 +71,8 @@ pub(crate) struct ProcessNode {
     /// Whether every input is a value channel, so that one round of values starts tasks.
     pub one_round: bool,
     pub stub: bool,
+    /// Where `exec:` sections run, if they may.
+    pub exec_folder: Option<Rc<Path>>,
     /// The config settings of this call of the process.
     pub settings: Rc<ProcessSettings>,
     pub rounds: u32,
@@ -253,6 +260,16 @@ impl ProcessNode {
         id: Option<TaskId>,
         attempt: u32,
     ) -> Result<(), Error> {
+        // An `exec:` section runs here, in a folder of its own, which it knows as
+        // `task.workDir`; so it needs its id first.
+        let exec = self.runs_exec();
+        let (id, work_dir) = match exec {
+            true => {
+                let id = id.unwrap_or_else(|| context.task_id());
+                (Some(id), Some(self.exec_work_dir(id, attempt)?))
+            }
+            false => (id, None),
+        };
         let interpreter = &mut *context.interpreter;
         let mut frame =
             interpreter.bind_task_as(&self.module, &self.process, &self.name, &values)?;
@@ -260,6 +277,11 @@ impl ProcessNode {
         let base = task_object(&self.name, index, attempt, None, &[], &ext);
         let directives = self.directives(interpreter, &mut frame, &base)?;
         let task = task_object(&self.name, index, attempt, None, &directives, &ext);
+        if let (Some(work_dir), Value::Map(map)) = (&work_dir, &task) {
+            let path = PathValue::parse(&work_dir.to_string_lossy(), "/");
+            (map.borrow_mut().entries)
+                .insert(Key(Value::string("workDir")), Value::Path(Rc::new(path)));
+        }
         let rendered = interpreter.render(&mut frame, &self.process, &task, self.stub)?;
         if !rendered.run {
             return Ok(());
@@ -276,6 +298,15 @@ impl ProcessNode {
             output_patterns: Vec::new(),
             env: Vec::new(),
             eval: Vec::new(),
+            made: match &work_dir {
+                Some(folder) => Some(made_files(folder).map_err(|error| {
+                    thrown(Exception::new(
+                        "IOException",
+                        format!("cannot list the files of {}: {error}", folder.display()),
+                    ))
+                })?),
+                None => None,
+            },
         };
         for part in rendered.outputs.iter().flat_map(|output| &output.parts) {
             match part {
@@ -300,6 +331,32 @@ impl ProcessNode {
         self.pending.insert(id, flight);
         context.request(request);
         Ok(())
+    }
+
+    /// Whether the tasks of the process run its `exec:` section, which needs a folder to run
+    /// in; without one, `exec:` sections are not supported.
+    fn runs_exec(&self) -> bool {
+        let exec = (self.process.body.as_ref()).is_some_and(|body| body.kind == BodyKind::Exec);
+        exec && !(self.stub && self.process.stub.is_some())
+    }
+
+    /// The folder of an attempt of an `exec:` section, made empty.
+    fn exec_work_dir(&self, id: TaskId, attempt: u32) -> Result<PathBuf, Error> {
+        let Some(folder) = &self.exec_folder else {
+            return Err(Error::Unsupported {
+                message: "`exec:` sections".into(),
+                span: self.process.span,
+            });
+        };
+        let work_dir = folder.join(format!("{}-{attempt}", id.0));
+        let _ = std::fs::remove_dir_all(&work_dir);
+        std::fs::create_dir_all(&work_dir).map_err(|error| {
+            thrown(Exception::new(
+                "IOException",
+                format!("cannot make the folder {}: {error}", work_dir.display()),
+            ))
+        })?;
+        Ok(work_dir)
     }
 
     /// What happens after a task failed, by its error strategy, which is evaluated now, with
@@ -451,6 +508,29 @@ impl ProcessNode {
         }
         Ok(State::Running)
     }
+}
+
+/// The files and folders below the folder of an `exec:` section, by their paths there, as
+/// Nextflow collects the outputs of a task from its work folder.
+fn made_files(folder: &Path) -> std::io::Result<Vec<(String, PathValue)>> {
+    let mut made = Vec::new();
+    let mut pending = vec![folder.to_path_buf()];
+    while let Some(current) = pending.pop() {
+        for entry in std::fs::read_dir(&current)? {
+            let path = entry?.path();
+            let name = path
+                .strip_prefix(folder)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .into_owned();
+            if path.is_dir() {
+                pending.push(path.clone());
+            }
+            made.push((name, PathValue::parse(&path.to_string_lossy(), "/")));
+        }
+    }
+    made.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(made)
 }
 
 /// The `task.ext` map of the config: selectors replace entries, plain settings add missing

@@ -12,7 +12,7 @@ use cwl_parser::salad::context::Namespaces;
 use cwl_parser::source::Remote;
 use storage::Storage;
 use workflow_graph::{
-    Delivery, Driver, DriverError, Inputs, Language, Launch, Note, Outcome, Task,
+    Delivery, Driver, DriverError, Files, Inputs, Language, Launch, Note, Outcome, Task,
 };
 
 use crate::files;
@@ -178,6 +178,10 @@ impl Driver for CwlDriver {
 
     fn notes(&mut self) -> Vec<Note> {
         self.run.take_notes()
+    }
+
+    fn use_files(&mut self, files: Arc<dyn Files>) {
+        self.run.use_files(files);
     }
 
     fn deliveries(&mut self) -> Vec<Delivery> {

@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use cwl_parser::iri;
 use cwl_parser::model::{Class, Process, short_name};
-use workflow_graph::{Note, Outcome, Task, TaskId};
+use workflow_graph::{Files, Note, Outcome, Task, TaskId};
 
 use crate::expression::Variables;
 use crate::files;
@@ -135,6 +135,8 @@ pub struct Run {
     task_of_job: HashMap<JobId, TaskId>,
     /// The markers found since the engine last asked, for the graph.
     notes: Vec<Note>,
+    /// The files of the tasks, where a real executor keeps them.
+    files: Option<Arc<dyn Files>>,
 }
 
 impl Run {
@@ -154,7 +156,13 @@ impl Run {
             placeholder_strings: HashSet::new(),
             task_of_job: HashMap::new(),
             notes: Vec::new(),
+            files: None,
         }
+    }
+
+    /// Reads the content of task outputs through these files, as a store elsewhere needs.
+    pub fn use_files(&mut self, files: Arc<dyn Files>) {
+        self.files = Some(files);
     }
 
     /// The markers found since the last call.
@@ -218,7 +226,7 @@ impl Run {
                 self.fake.push(prefix);
             }
         }
-        let outputs = pending.collect(outcome)?;
+        let outputs = pending.collect(outcome, self.files.as_deref())?;
         self.events.push_back(Event::Finished(job, outputs));
         self.settle()?;
         Ok(std::mem::take(&mut self.ready))

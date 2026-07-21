@@ -12,7 +12,7 @@ use cwl_parser::model::{
     short_name,
 };
 use workflow_graph::simulator::glob_matches;
-use workflow_graph::{Outcome, OutputFile};
+use workflow_graph::{Files, Outcome, OutputFile};
 
 use super::outputs::{classes, globs};
 use super::{OUTPUT_JSON, Pending, STAGING, TMPDIR};
@@ -28,8 +28,9 @@ impl Pending {
         matches!(self.process.class, Class::Operation)
     }
 
-    /// The output object of the task from its outcome.
-    pub fn collect(self, outcome: &Outcome) -> Result<Map, String> {
+    /// The output object of the task from its outcome; `cwl.output.json` is read through
+    /// `files` when the run has them.
+    pub fn collect(self, outcome: &Outcome, files: Option<&dyn Files>) -> Result<Map, String> {
         let exit = i64::from(outcome.exit_code);
         if exit != 0 && !self.success_codes.contains(&exit) {
             return Err(format!("the command ended with exit code {exit}"));
@@ -45,7 +46,8 @@ impl Pending {
         };
         let from_json = match outcome.files.iter().find(|file| file.path == OUTPUT_JSON) {
             Some(file) => {
-                let text = std::fs::read_to_string(&file.location).unwrap_or_default();
+                let bytes = workflow_graph::files::read(files, &file.location);
+                let text = String::from_utf8(bytes.unwrap_or_default()).unwrap_or_default();
                 match Value::parse(&text) {
                     Ok(Value::Map(map)) => Some(map),
                     // The simulator makes an empty file, which gives no outputs.

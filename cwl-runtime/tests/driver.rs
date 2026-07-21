@@ -458,3 +458,67 @@ fn tools_run_offline_unless_they_ask_for_the_network() {
     // CWL v1.0 has no NetworkAccess, and its tools may use the network, as with cwltool.
     assert!(!offline("v1.0", ""));
 }
+
+/// A store elsewhere: each task leaves `cwl.output.json` at an `s3://store/` location, whose
+/// content is in a local folder.
+struct Elsewhere(std::path::PathBuf);
+
+impl workflow_graph::Files for Elsewhere {
+    fn local(&self, location: &str) -> std::io::Result<std::path::PathBuf> {
+        let key = location
+            .strip_prefix("s3://store/")
+            .ok_or(std::io::ErrorKind::NotFound)?;
+        Ok(self.0.join(key))
+    }
+
+    fn deliver(&self, _delivery: &workflow_graph::Delivery) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Executor for Elsewhere {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        Running::ended(Ok(Outcome {
+            id: attempt.task.id,
+            files: vec![workflow_graph::OutputFile {
+                path: "cwl.output.json".into(),
+                location: "s3://store/work/cwl.output.json".into(),
+                ..Default::default()
+            }],
+            ..Outcome::default()
+        }))
+    }
+
+    fn files(&self) -> Option<std::sync::Arc<dyn workflow_graph::Files>> {
+        Some(std::sync::Arc::new(Elsewhere(self.0.clone())))
+    }
+}
+
+#[test]
+fn cwl_output_json_comes_through_the_files_of_a_store_elsewhere() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: count\ninputs: []\n\
+                outputs:\n  n: int\n";
+    std::fs::write(folder.path().join("main.cwl"), tool).expect("writes the tool");
+    std::fs::create_dir_all(folder.path().join("store/work")).expect("makes the store");
+    let json = folder.path().join("store/work/cwl.output.json");
+    std::fs::write(json, "{\"n\": 3}").expect("writes the output object");
+    let launch = Launch {
+        target: folder.path().join("main.cwl"),
+        scratch: folder.path().join("scratch"),
+        output_dir: Some(
+            folder
+                .path()
+                .join("out")
+                .to_string_lossy()
+                .into_owned()
+                .into(),
+        ),
+        simulated: false,
+        ..Launch::default()
+    };
+    let mut driver = cwl_runtime::driver(&launch).expect("a driver");
+    let mut executor = Elsewhere(folder.path().join("store"));
+    let execution = execute("main", driver.as_mut(), &mut executor);
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+}

@@ -281,10 +281,7 @@ impl Run {
             let value = if let Some(from) = from.filter(|from| !from.path.is_empty()) {
                 match file(&from.path) {
                     Some(found) if !found.directory => {
-                        let mut text = String::from_utf8_lossy(
-                            &std::fs::read(&found.location).unwrap_or_default(),
-                        )
-                        .into_owned();
+                        let mut text = self.read_output(&found.location);
                         if text.ends_with('\n') {
                             text.pop();
                         }
@@ -378,12 +375,10 @@ impl Run {
             return Ok(());
         }
         if let Some(http) = &template.http {
+            let files = self.files.clone();
             let read = |path: &str| {
                 file(path)
-                    .map(|found| {
-                        String::from_utf8_lossy(&std::fs::read(&found.location).unwrap_or_default())
-                            .into_owned()
-                    })
+                    .map(|found| crate::run::output_text(files.as_deref(), &found.location))
                     .unwrap_or_default()
             };
             let body = read(RESPONSE_BODY);

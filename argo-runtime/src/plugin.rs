@@ -264,8 +264,8 @@ impl Run {
             self.fail(index, Phase::Error, message);
             return Ok(());
         }
-        let status = read(&outcome, STATUS_PATH);
-        let body = read(&outcome, REPLY_PATH);
+        let status = self.read_file(&outcome, STATUS_PATH);
+        let body = self.read_file(&outcome, REPLY_PATH);
         match status.trim() {
             "" => {
                 self.warn(format!(
@@ -337,16 +337,15 @@ impl Run {
     }
 }
 
-/// The text of an output file of a task, or nothing when the task did not make it.
-fn read(outcome: &Outcome, path: &str) -> String {
-    let wanted = path.trim_start_matches('/');
-    outcome
-        .files
-        .iter()
-        .find(|file| file.path.trim_start_matches('/') == wanted && !file.directory)
-        .and_then(|file| std::fs::read(&file.location).ok())
-        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-        .unwrap_or_default()
+impl Run {
+    /// The text of an output file of a task, or nothing when the task did not make it.
+    fn read_file(&self, outcome: &Outcome, path: &str) -> String {
+        let wanted = path.trim_start_matches('/');
+        (outcome.files.iter())
+            .find(|file| file.path.trim_start_matches('/') == wanted && !file.directory)
+            .map(|file| self.read_output(&file.location))
+            .unwrap_or_default()
+    }
 }
 
 /// The output parameters that a template declares, for a node whose reply is not known: their

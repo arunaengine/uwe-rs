@@ -21,6 +21,8 @@ struct Fake {
     runs: Mutex<Vec<String>>,
     staged: Mutex<Vec<Staging>>,
     exit_code: i32,
+    /// How long each task takes.
+    delay: std::time::Duration,
 }
 
 impl Backend for Fake {
@@ -35,6 +37,7 @@ impl Backend for Fake {
     ) -> Result<Finished, ExecutorError> {
         self.runs.lock().unwrap().push(job.name.to_owned());
         self.staged.lock().unwrap().push(job.staging.clone());
+        tokio::time::sleep(self.delay).await;
         let mut finished = Finished {
             exit_code: Some(self.exit_code),
             files: Vec::new(),
@@ -69,19 +72,25 @@ impl Backend for Fake {
 }
 
 fn runner(root: &Path, exit_code: i32) -> Runner<Fake> {
+    runner_of(root, "run1", std::time::Duration::ZERO, exit_code)
+}
+
+/// The runner of the run `run` on the store in `root`, whose tasks take `delay`.
+fn runner_of(root: &Path, run: &str, delay: std::time::Duration, exit_code: i32) -> Runner<Fake> {
     let store = Store::local(&root.join("store")).expect("a store");
     let fake = Fake {
         scratch: root.join("scratch"),
         runs: Mutex::new(Vec::new()),
         staged: Mutex::new(Vec::new()),
         exit_code,
+        delay,
     };
     let settings = Settings {
         downloads: root.join("downloads"),
         import_inputs: false,
         storage: storage::Storage::default(),
     };
-    Runner::new(store, fake, "run1", settings)
+    Runner::new(store, fake, run, settings)
 }
 
 /// Task 1 of step `P`, which reads `input.txt` and writes `out.txt`.
@@ -289,4 +298,162 @@ fn outcomes_give_the_stored_files_with_size_and_digest() {
     assert_eq!(file.size, Some(5));
     let digest = task_model::Digest::sha256(b"data\n").to_string();
     assert_eq!(file.digest.as_deref(), Some(digest.as_str()));
+}
+
+#[test]
+fn results_whose_files_are_gone_run_again() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let runner = runner(root.path(), 0);
+    let first = execute(&runner, &request(&runner, &task(root.path(), "a")));
+    let stored = runner
+        .local_path(&first.files[0].location)
+        .expect("a local store");
+    std::fs::remove_file(stored).expect("removes the output");
+    let second = execute(&runner, &request(&runner, &task(root.path(), "a")));
+    assert!(!second.reused);
+    // The new result is stored, and answers the next request.
+    let third = execute(&runner, &request(&runner, &task(root.path(), "a")));
+    assert!(third.reused);
+    assert_eq!(runner.backend().runs.lock().unwrap().len(), 2);
+}
+
+#[test]
+fn entries_say_how_long_the_task_ran_and_when_it_was_used() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let runner = runner_of(root.path(), "run1", std::time::Duration::from_millis(30), 0);
+    let prepared = request(&runner, &task(root.path(), "a"));
+    execute(&runner, &prepared);
+    let key = prepared.request.spec.cache_key().expect("a key");
+    let store = Store::local(&root.path().join("store")).expect("a store");
+    let bytes = block_on(store.get_entry("", &key))
+        .expect("reads")
+        .expect("an entry");
+    let entry = task_runner::CacheEntry::parse(&key, &bytes).expect("an entry");
+    assert!(entry.milliseconds.expect("a time") >= 30, "{entry:?}");
+    assert_eq!((entry.run.as_str(), entry.task.as_str()), ("run1", "P-1"));
+    let used = root
+        .path()
+        .join("store")
+        .join(content_store::layout::used("", &key).unwrap());
+    assert!(!used.exists());
+    execute(&runner, &prepared);
+    assert_eq!(std::fs::read_to_string(used).expect("a mark"), "run1");
+}
+
+#[test]
+fn the_same_task_at_the_same_moment_runs_once() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let delay = std::time::Duration::from_millis(300);
+    // Two runs on one store, and two tasks of the first run, ask for the same task at once.
+    let first = runner_of(root.path(), "run1", delay, 0);
+    let second = runner_of(root.path(), "run2", delay, 0);
+    let prepared = request(&first, &task(root.path(), "a"));
+    let cancel = CancellationToken::new();
+    let (a, b, c) = block_on(async {
+        tokio::join!(
+            first.execute(&prepared, &cancel),
+            first.execute(&prepared, &cancel),
+            second.execute(&prepared, &cancel),
+        )
+    });
+    let results = [a.expect("runs"), b.expect("runs"), c.expect("runs")];
+    let ran =
+        first.backend().runs.lock().unwrap().len() + second.backend().runs.lock().unwrap().len();
+    assert_eq!(ran, 1);
+    assert_eq!(results.iter().filter(|result| result.reused).count(), 2);
+    assert!(
+        results
+            .iter()
+            .all(|result| result.files == results[0].files)
+    );
+}
+
+#[test]
+fn a_task_that_fails_leaves_its_turn_to_the_next() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let delay = std::time::Duration::from_millis(100);
+    let failing = runner_of(root.path(), "run1", delay, 3);
+    let working = runner_of(root.path(), "run2", delay, 0);
+    let prepared = request(&failing, &task(root.path(), "a"));
+    let cancel = CancellationToken::new();
+    let (failed, worked) = block_on(async {
+        tokio::join!(failing.execute(&prepared, &cancel), async {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            working.execute(&prepared, &cancel).await
+        })
+    });
+    assert_eq!(failed.expect("runs").exit_code, Some(3));
+    let worked = worked.expect("runs");
+    assert_eq!((worked.exit_code, worked.reused), (Some(0), false));
+}
+
+#[test]
+fn a_crashed_holder_frees_its_task_at_once() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let runner = runner(root.path(), 0);
+    let prepared = request(&runner, &task(root.path(), "a"));
+    let key = prepared.request.spec.cache_key().expect("a key");
+    // Another process holds the lease of the key, as a run that runs the task does, and is
+    // killed. Without forking, the killed process is the one that holds the lock.
+    let lock = root
+        .path()
+        .join("store/locks/tasks/default")
+        .join(key.hex());
+    std::fs::create_dir_all(lock.parent().unwrap()).expect("makes the folder");
+    let mut holder = std::process::Command::new("flock")
+        .arg("--no-fork")
+        .arg(&lock)
+        .args(["sleep", "60"])
+        .spawn()
+        .expect("runs flock");
+    let store = Store::local(&root.path().join("store")).expect("a store");
+    while block_on(store.held_leases("tasks/"))
+        .expect("lists")
+        .is_empty()
+    {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let begun = std::time::Instant::now();
+    let killer = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        holder.kill().expect("kills the holder");
+        holder.wait().expect("waits for it");
+    });
+    let result = execute(&runner, &prepared);
+    killer.join().expect("the holder was killed");
+    assert!(!result.reused);
+    let waited = begun.elapsed();
+    assert!(
+        waited >= std::time::Duration::from_millis(500),
+        "{waited:?}"
+    );
+    assert!(waited < std::time::Duration::from_secs(5), "{waited:?}");
+    assert_eq!(runner.backend().runs.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn waiting_stops_when_the_run_is_cancelled() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let delay = std::time::Duration::from_secs(30);
+    let slow = runner_of(root.path(), "run1", delay, 0);
+    let waiting = runner_of(root.path(), "run2", delay, 0);
+    let prepared = request(&slow, &task(root.path(), "a"));
+    let cancel = CancellationToken::new();
+    let stop = CancellationToken::new();
+    let result = block_on(async {
+        tokio::select! {
+            _ = slow.execute(&prepared, &cancel) => None,
+            waited = async {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                let stopper = stop.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                    stopper.cancel();
+                });
+                waiting.execute(&prepared, &stop).await
+            } => Some(waited),
+        }
+    });
+    let error = result.expect("the waiting task ends first").unwrap_err();
+    assert!(error.to_string().contains("cancelled"), "{error}");
 }

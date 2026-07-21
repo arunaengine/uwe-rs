@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod entry;
 mod executor;
 mod files;
 mod outputs;
@@ -10,6 +11,7 @@ mod request;
 mod runner;
 mod staging;
 
+pub use entry::CacheEntry;
 pub use executor::RunnerExecutor;
 pub use files::StorageFiles;
 pub use request::{identity, request};

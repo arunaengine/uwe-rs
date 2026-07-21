@@ -448,16 +448,20 @@ impl Interpreter<'_> {
             .iter()
             .map(|(name, slot)| (*slot, name.clone()))
             .collect();
-        let statements = match (&process.stub, &process.body) {
-            (Some(statements), _) if stub => statements,
-            (_, Some(body)) if body.kind != BodyKind::Exec => &body.statements,
-            (_, Some(_)) => return Err(unsupported("`exec:` sections", process.span)),
+        let (statements, exec) = match (&process.stub, &process.body) {
+            (Some(statements), _) if stub => (statements, false),
+            (_, Some(body)) => (&body.statements, body.kind == BodyKind::Exec),
             (_, None) => return Err(unsupported("processes without a script", process.span)),
         };
-        let script = self
-            .block(&mut task.frame, statements)?
-            .value()
-            .to_java_string();
+        // An `exec:` section is code that runs in the interpreter, as Nextflow runs it in its
+        // own process: it makes its files in `task.workDir` and sets the variables of its
+        // outputs, and has no script.
+        let value = self.block(&mut task.frame, statements)?.value();
+        let script = if exec {
+            String::new()
+        } else {
+            value.to_java_string()
+        };
         let shell = match task_object {
             Value::Map(map) => map
                 .borrow()

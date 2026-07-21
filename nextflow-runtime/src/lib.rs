@@ -64,6 +64,10 @@ pub struct Options {
     pub config_files: Vec<String>,
     /// The command line that started the run.
     pub command_line: String,
+    /// Where the `exec:` sections of processes run: a folder of this run on this machine, with
+    /// a folder for each task, its `task.workDir`. Without it, `exec:` sections are not
+    /// supported.
+    pub exec_folder: Option<std::path::PathBuf>,
 }
 
 /// A run of a script: its network, which asks for tasks and takes their outcomes.
@@ -98,6 +102,7 @@ impl Run {
                 stub: options.stub,
                 config: &options.config,
                 output_dir: options.output_dir.clone(),
+                exec_folder: options.exec_folder.clone().map(Rc::from),
             };
             let mut interpreter = Interpreter::new(&mut builder);
             set_globals(&mut interpreter, options, &workflow);
@@ -223,6 +228,7 @@ impl Default for Options {
             run_name: "iunctus".into(),
             config_files: Vec::new(),
             command_line: String::new(),
+            exec_folder: None,
         }
     }
 }

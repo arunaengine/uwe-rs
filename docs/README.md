@@ -44,7 +44,7 @@ Every run records itself in the run database. `iunctus runs` lists the runs, `-r
 - [The graphs of a run](design/graph.md): the graph of tasks and the graph of steps, what a simulated graph says about itself, the markers where real data can add or remove tasks, the formats, and the SVG layout.
 - [Nextflow runtime](design/nextflow/runtime.md): the chosen design of the Nextflow evaluator, the dataflow runtime and the shared task layer, with milestones.
 - [Argo runtime](design/argo/runtime.md): how `argo-runtime` runs Argo Workflows documents as tasks: the template library, substitution, the expression languages, control flow, leaf templates, simulated runs and the results on its test workflows.
-- [The context of embedded code](design/snakemake/embedded-code.md): the `snakemake` object that Snakemake scripts, wrappers and notebooks get, as Snakemake 9.27 writes it in each language, the stand-in of the snakemake package for Python, and the plan for `run:` blocks and Nextflow `exec:` sections.
+- [The context of embedded code](design/snakemake/embedded-code.md): the `snakemake` object that Snakemake scripts, wrappers and notebooks get, as Snakemake 9.27 writes it in each language, the stand-in of the snakemake package for Python, `run:` blocks in the task's container with the Snakefile's globals, and the plan for Nextflow `exec:` sections.
 - [Python packages in a container](design/snakemake/python-packages.md): how Snakemake workflows use Python packages without a stand-in, which run in one container per run (decision 19): the interface, the protocol, handles, the image and the errors.
 
 ## Research notes

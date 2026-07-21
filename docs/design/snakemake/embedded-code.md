@@ -4,7 +4,7 @@
 
 # The context of embedded code
 
-Status: scripts, wrappers and notebooks done, 2026-09-30. `run:` blocks and Nextflow `exec:` sections are not built yet (section 5). The code is in `snakemake-runtime/src/embedded/`.
+Status: scripts, wrappers, notebooks and `run:` blocks done, 2026-09-30. Nextflow `exec:` sections are not built yet (section 6). The code is in `snakemake-runtime/src/embedded/`.
 
 ## 1. The design in short
 
@@ -44,8 +44,21 @@ A real run now also checks, as Snakemake does, that a job that ended well made a
 - `snakemake-runtime/tests/fixtures/embedded/real/` has a job of every kind in images that are on this machine: `python:3-slim`, `debian:stable-slim`, an R image with rmarkdown and pandoc, and `pandas/pandas:pip-all` with nbconvert. `record.sh` recorded Snakemake's outputs of the Python, Bash and wrapper jobs in `expected-results/`. `iunctus run <copy> -executor local` gives the same files, and the R, R Markdown, R wrapper and notebook jobs give the right content.
 - Unit tests in each module of `embedded/`.
 
-## 5. Not built yet
+## 5. `run:` blocks
 
-- **`run:` blocks.** The plan: the block runs as a task in a Python container, as a function with Snakemake's parameters (`input`, `output`, `params`, `wildcards`, `threads`, `resources`, `log`, `rule`, `jobid` and the others), in a generated module that holds the Snakefile's globals that the block uses: plain values as literals, imports as imports, functions and lambdas of the workflow by their source text (with what they use, in turn), and `shell()` of the stand-in, which runs in the same container. Values that are live objects of the native interpreter (a pandas table read while planning, objects of the Python container of decision 19, the `workflow` object) cannot go: they become objects that raise a clear error when the block uses them. The image: the rule's `container:`, else `-python-image`, else the executor's `-default-image`.
+Snakemake runs a `run:` block in its own process, as a function that its parser makes of the block, `__rule_<rule>(input, output, params, wildcards, threads, resources, log, rule, ..., jobid, ..., __is_snakemake_rule_func=True)`, in the globals of the Snakefile. In iunctus the Snakefile runs in the native interpreter (decision 17), but a job is a task, and a task runs in a container (decision 11). Both hold with this design: the block runs in the task's container, in a module that iunctus writes while it plans the job (`embedded/run.rs`), at `.snakemake/scripts/<rule>.run.py`, run with `python3`:
+
+1. The stand-in of the snakemake package on the module path, and the names that every Snakefile sees: the modules and names that Snakemake's `snakemake.workflow` imports (`os`, `Path`, `logger`, ...), `shell` and the functions of `snakemake.io` (`expand`, `temp`, ...).
+2. `config`, the job's config, and the Snakefile's settings of `shell()` (executable, prefix and suffix).
+3. The Snakefile's globals that the block uses (`embedded/globals.rs`), found by the names in its syntax tree, and in turn those that the carried functions use, each before what uses it: plain values as literals, pandas tables and series and numpy arrays as Snakemake stores tables in params, modules as imports, functions and lambdas of the workflow by their source text, functions and classes of library modules as imports from their module. A local module of the workflow (a `.py` file that the Snakefile imports) is staged at its path on this machine, or its top package, and its folder is put on the module path. An import that the image cannot do binds an object that says so when the block uses it.
+4. The block as the body of the rule function, with the indentation it has in the Snakefile, so that texts over several lines stay as written.
+5. The job's object, made as for scripts, and the call of the function with its values; `shell()` in the block finds the job's threads and resources among the function's locals, as in Snakemake, and runs its command in the same container.
+
+The image of the task is the rule's `container:` (Snakemake runs the block's `shell()` commands in it; it must have `python3`), else the image of `-python-image`, else the executor's `-default-image`.
+
+**Limits.** Objects that only the native interpreter has cannot go to the container: the `workflow`, `rules` and `checkpoints` objects, instances of classes of the workflow, classes of the workflow (whose source the interpreter does not keep), objects of the Python container of decision 19 other than modules, and files that the workflow read into objects other than pandas tables. The module binds each to an object that raises, when the block uses it, an error that names it and says why. A block sees only the files of its job, like every task, not the whole working directory as in Snakemake. Job ids are those of iunctus, not of Snakemake. Tested: `tests/run_blocks.rs` checks what a module carries over; the `run_block` job of the real-run fixture gives the files that Snakemake 9.27.0 gives.
+
+## 6. Not built yet
+
 - **Nextflow `exec:` sections** (unsupported today, exit 33). The plan: the driver evaluates the section in the native interpreter when the task's inputs are there (decision 17: evaluation, not a command), with `task.workDir` a folder of the run's scratch, collects the outputs by their patterns there, and asks the engine for a task without image and command (a no-op, decision 11 needs no container for it), so that the task is in the graph; the tasks that read its outputs list it in `after`.
 - A default Python image with the packages that a script or block imports (uv, as decision 19 does), for Python code without a container. It needs the network.

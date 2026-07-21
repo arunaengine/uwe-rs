@@ -2,6 +2,8 @@
 # real runs (iunctus/tests/snakemake_embedded.rs). The outputs of the Python and Bash jobs
 # are the ones Snakemake 9.27.0 made (record.sh); those of R and the notebook are checked by
 # their content.
+import json
+
 configfile: "config.yaml"
 
 PYTHON = "python:3-slim"
@@ -19,6 +21,8 @@ rule all:
         "wrapper/A.txt",
         "wrapper_r/A.txt",
         "notebook/A.txt",
+        "run/A.txt",
+        "run/A.json",
 
 
 rule python:
@@ -114,3 +118,39 @@ rule notebook:
     container: JUPYTER
     notebook:
         "notebooks/count.py.ipynb"
+
+
+SAMPLES = config["samples"]
+WORD = "done"
+double = lambda number: 2 * number
+
+
+def loud():
+    return WORD.upper()
+
+
+def describe(sample, lines):
+    return f"{sample}: {len(lines)} lines, {loud()}"
+
+
+rule run_block:
+    input:
+        "data/{sample}.txt",
+    output:
+        "run/{sample}.txt",
+        "run/{sample}.json",
+    params:
+        factor=3,
+    threads: 2
+    container: PYTHON
+    run:
+        lines = open(input[0]).read().split()
+        text = """first
+second"""
+        with open(output[0], "w") as out:
+            print(describe(wildcards.sample, lines), params.factor * len(lines), file=out)
+            print(double(threads), rule, isinstance(jobid, int), SAMPLES, config["greeting"], file=out)
+            print(repr(text), file=out)
+        shell("echo shell {wildcards.sample} {threads} $OMP_NUM_THREADS >> {output[0]}")
+        with open(output[1], "w") as out:
+            json.dump({"lines": lines}, out)

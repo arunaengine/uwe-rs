@@ -1,0 +1,29 @@
+# A run: block that uses the Snakefile's globals of every kind (tests/run_blocks.rs).
+import sys
+
+sys.path.insert(0, "lib")
+from helpers import tidy
+
+shell.prefix("set -e; ")
+NUMBERS = {"a": 1, "b": [2.5, None]}
+square = lambda x: x * x
+
+
+def total(values):
+    return sum(square(value) for value in values)
+
+
+rule all:
+    input:
+        "out.txt",
+
+
+rule block:
+    output:
+        "out.txt",
+    run:
+        text = """kept
+as written"""
+        with open(output[0], "w") as out:
+            print(tidy(text), total([1, 2]), NUMBERS, workflow.basedir, file=out)
+        shell("echo done >> {output}")

@@ -107,6 +107,10 @@ Both proposals describe the same network (A 6, B 5.11 to 5.13):
 
 Task identity: inside a run, a task is its fully qualified process name plus a digest of the canonical encoding of its input values (A 6.10), with an occurrence number for exact duplicates. This identity does not depend on arrival order, so attempt names stay stable after a restart without replay. The task index still follows firing order for display and `task.index`.
 
+### 3.8 `exec:` sections
+
+A process with an `exec:` section runs it in the interpreter when its task is asked for, with a folder of the run as `task.workDir`; the task that stands for it in the graph has no image and no command, and its outputs are the files that the section made. The design is in [the context of embedded code](../snakemake/embedded-code.md), section 6.
+
 ## 4. Storage and the run database
 
 ### 4.1 The cache directory

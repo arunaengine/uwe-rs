@@ -49,7 +49,6 @@ The largest gaps are the same in every language: results are not delivered, and 
 
 | Gap | What it blocks | Kind |
 | --- | --- | --- |
-| `exec:` sections | At least 9 test workflows in a real run, like nf-core circrna, mcmicro and quantms | Not built |
 | Real `script:` blocks across whole pipelines | Unknown: the pipeline runs were stub runs, as nf-core tests itself | Needs a check against Nextflow |
 | Running a pipeline by its Git name and revision (`nf-core/rnaseq -r 3.14`), and remote modules | Users who never clone | Not built |
 | `-entry` | Pipelines with several named workflows | Not built |
@@ -103,7 +102,7 @@ No task runs for real yet, except one at a time through the simple local executo
 11. **Delivering results** to the place each language expects (section 2), from the store, as copies or links.
 12. **The run database** (decision 10): the task graph, the event log, attempts and log locations in one SQLite file next to the store. Done: see [runs](design/runs.md); resume, the web page, the RO-Crate export and the first insight features read it.
 13. **Preparing images:** tags pinned to digests (done for the local executor), images built from Conda environments (decision 12), and one image for a whole workflow (decision 13).
-14. **The context of embedded code:** the `snakemake` object for scripts, wrappers and notebooks and the Snakefile's functions for `run:` blocks (done: [embedded code](design/snakemake/embedded-code.md)), and Nextflow `exec:` sections in the native interpreter.
+14. **The context of embedded code:** the `snakemake` object for scripts, wrappers and notebooks, the Snakefile's functions for `run:` blocks, and Nextflow `exec:` sections in the native interpreter. Done: see [embedded code](design/snakemake/embedded-code.md).
 15. **Logs and reports:** standard output and error of each task, live progress, and trace, timeline and benchmark files.
 16. **Secrets and credentials** for each storage provider and remote input, kept out of task descriptions and cache keys. Done for storage: secrets stay in the providers of the config file, and a test checks that none reaches the output, the run database, the RO-Crate or the cache ([storage](design/storage.md), section 5).
 17. **Several storage providers:** a config file that maps buckets and address prefixes to endpoints and credentials, with secrets as references to environment variables (decision 20), used by the store, remote inputs and delivering results. Done: see [storage](design/storage.md).
@@ -193,7 +192,7 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 - [x] The parallel local executor on Docker or Podman, found without any config (decision 22).
 - [x] The `snakemake` object for Snakemake scripts, wrappers and notebooks, as Snakemake 9.27 writes it in each language: see [embedded code](design/snakemake/embedded-code.md).
 - [x] Snakemake `run:` blocks in the task's container, with the Snakefile's globals that they use: see [embedded code](design/snakemake/embedded-code.md), section 5.
-- [ ] Nextflow `exec:` sections in the native interpreter (section 3, step 14; the plan is in [embedded code](design/snakemake/embedded-code.md), section 6).
+- [x] Nextflow `exec:` sections in the native interpreter, as tasks without a container: see [embedded code](design/snakemake/embedded-code.md), section 6.
 - [ ] Images built from Conda environments (decision 12).
 - [ ] The TES executor (done, tested with a fake server and Funnel), tested with TESK too (decision 22).
 - [ ] The SLURM executor with Apptainer or Podman (done, tested with a simulated SLURM), tested on a SLURM cluster in containers (decision 22).

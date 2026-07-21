@@ -4,7 +4,7 @@
 
 # The context of embedded code
 
-Status: scripts, wrappers, notebooks and `run:` blocks done, 2026-09-30. Nextflow `exec:` sections are not built yet (section 6). The code is in `snakemake-runtime/src/embedded/`.
+Status: done, 2026-09-30: Snakemake scripts, wrappers, notebooks and `run:` blocks (`snakemake-runtime/src/embedded/`), and Nextflow `exec:` sections (section 6, in `nextflow-runtime`).
 
 ## 1. The design in short
 
@@ -58,7 +58,16 @@ The image of the task is the rule's `container:` (Snakemake runs the block's `sh
 
 **Limits.** Objects that only the native interpreter has cannot go to the container: the `workflow`, `rules` and `checkpoints` objects, instances of classes of the workflow, classes of the workflow (whose source the interpreter does not keep), objects of the Python container of decision 19 other than modules, and files that the workflow read into objects other than pandas tables. The module binds each to an object that raises, when the block uses it, an error that names it and says why. A block sees only the files of its job, like every task, not the whole working directory as in Snakemake. Job ids are those of iunctus, not of Snakemake. Tested: `tests/run_blocks.rs` checks what a module carries over; the `run_block` job of the real-run fixture gives the files that Snakemake 9.27.0 gives.
 
-## 6. Not built yet
+## 6. Nextflow `exec:` sections
 
-- **Nextflow `exec:` sections** (unsupported today, exit 33). The plan: the driver evaluates the section in the native interpreter when the task's inputs are there (decision 17: evaluation, not a command), with `task.workDir` a folder of the run's scratch, collects the outputs by their patterns there, and asks the engine for a task without image and command (a no-op, decision 11 needs no container for it), so that the task is in the graph; the tasks that read its outputs list it in `after`.
+Nextflow runs the `exec:` section of a process in its own process, as Groovy code, with a work folder for the task, `task.workDir`, where the code makes the files that the outputs collect. In iunctus the section is evaluation in the native interpreter (decision 17), not an external command, so decision 11 asks no container of it:
+
+1. When a task of such a process is asked for, the runtime makes a folder for its attempt in the run's scratch folder (`<scratch>/nextflow-exec/<number of the iunctus process>-<run name>/<task id>-<attempt>/`), gives it to the task as `task.workDir`, and the interpreter runs the section, which sets the variables of `val` outputs and writes files there.
+2. The runtime lists what the section made, and asks the engine for a task without image and command, which the engine finishes at once, so that the task stands in the graph with the files it read. When its outcome comes, the outputs bind to the files that the section made, as Nextflow collects them from the work folder, and `publishDir` delivers them.
+3. A task that reads a file that an `exec:` section made lists that task in `after`, so the graph shows the order and the engine keeps it.
+
+**Limits.** A section that fails stops the run, as Nextflow's default error strategy does; the failed attempt is not in the graph. The folders of `exec:` sections stay in the scratch folder of the cache after the run. As in Nextflow 26.04.6, the section reads its `path` inputs by their names; a section that reads their content works in iunctus, where Nextflow cannot find the files (they are relative to its launch folder). Tested: `nextflow-runtime/tests/exec.rs` runs `tests/fixtures/exec` with the simulator and compares the files that the sections make with what Nextflow 26.04.6 publishes (`record.sh`); a real run with the local executor publishes the same files and prints the same line.
+
+## 7. Not built yet
+
 - A default Python image with the packages that a script or block imports (uv, as decision 19 does), for Python code without a container. It needs the network.

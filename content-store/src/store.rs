@@ -57,11 +57,11 @@ pub struct StoredOutput {
 
 #[derive(Clone, Debug)]
 pub struct Store {
-    operator: Operator,
+    pub(crate) operator: Operator,
     /// The directory of a local store.
-    root: Option<std::path::PathBuf>,
+    pub(crate) root: Option<std::path::PathBuf>,
     /// The URL of the store's root for others, like `s3://bucket/prefix`.
-    base: Option<String>,
+    pub(crate) base: Option<String>,
 }
 
 impl Store {

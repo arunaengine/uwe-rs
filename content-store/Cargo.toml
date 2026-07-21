@@ -14,11 +14,12 @@ publish.workspace = true
 [dependencies]
 bytes.workspace = true
 opendal.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 task-model.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["sync", "time"] }
 
 [dev-dependencies]
 tempfile.workspace = true

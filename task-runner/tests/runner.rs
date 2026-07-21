@@ -457,3 +457,49 @@ fn waiting_stops_when_the_run_is_cancelled() {
     let error = result.expect("the waiting task ends first").unwrap_err();
     assert!(error.to_string().contains("cancelled"), "{error}");
 }
+
+#[test]
+fn a_lookup_finds_stored_results_without_writing_anything() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let runner = runner(root.path(), 0);
+    let mut made = task(root.path(), "a");
+    made.stdin = Some("text\n".into());
+    execute(&runner, &request(&runner, &made));
+    let store = Store::local(&root.path().join("store")).expect("a store");
+    let settings = Settings {
+        downloads: root.path().join("downloads"),
+        import_inputs: false,
+        storage: storage::Storage::default(),
+    };
+    let lookup = task_runner::Lookup::new(store.clone(), settings);
+    let objects = || block_on(store.objects("")).expect("lists").len();
+    let before = objects();
+    let pinned = Some("debian@sha256:00".to_owned());
+    let found = block_on(lookup.find(&made, pinned.clone())).expect("looks");
+    let found = found.expect("a stored result");
+    assert!(found.cached);
+    assert_eq!(found.stdout, "said\n");
+    let stored = root.path().join("store/runs/run1/P-1/1/work/out.txt");
+    assert_eq!(found.files[0].location, stored.to_string_lossy());
+    // Another script, an image without a digest and a missing input are no hits.
+    let other = task(root.path(), "b");
+    assert!(
+        block_on(lookup.find(&other, pinned.clone()))
+            .expect("looks")
+            .is_none()
+    );
+    let tagged = Some("debian".to_owned());
+    assert!(
+        block_on(lookup.find(&made, tagged))
+            .expect("looks")
+            .is_none()
+    );
+    let mut missing = made.clone();
+    missing.inputs[0].source = root.path().join("gone.txt").to_string_lossy().into_owned();
+    assert!(
+        block_on(lookup.find(&missing, pinned))
+            .expect("looks")
+            .is_none()
+    );
+    assert_eq!(objects(), before);
+}

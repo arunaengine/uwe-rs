@@ -12,13 +12,14 @@ use content_store::{Holder, Lease, Store, StoreError, layout};
 use executor::{Backend, ExecutorError, Job};
 use serde::{Deserialize, Serialize};
 use storage::{Storage, StorageError};
-use task_model::{Digest, ReuseScope, SpecError, TaskRequest, Tree, TreeEntry};
+use task_model::{Digest, ReuseScope, SpecError, TaskRequest, Tree};
 use tokio::sync::OnceCell;
 
 use tokio_util::sync::CancellationToken;
 
 use crate::entry::{self, CacheEntry, Stale};
-use crate::outputs::{self, Found};
+use crate::inputs::{Inputs, Mode};
+use crate::outputs;
 
 /// How long a task first waits for another run that runs the same task, before it looks for
 /// the result again; each wait is twice as long as the one before, up to [`LONGEST_PAUSE`].
@@ -73,6 +74,9 @@ pub enum RunnerError {
     Entry { key: Digest, message: String },
     #[error("the input {0} is a remote directory, which iunctus cannot read yet")]
     Remote(String),
+    /// A lookup of the cache cannot know a remote input that no run downloaded yet.
+    #[error("the input {0} is not downloaded yet")]
+    NotDownloaded(String),
     /// A remote input could not be read through the storage providers.
     #[error(transparent)]
     Storage(#[from] StorageError),
@@ -202,45 +206,27 @@ impl<B: Backend> Runner<B> {
 
     /// Stores bytes by their content, like a task script.
     pub async fn import_bytes(&self, bytes: &[u8]) -> Result<Digest, RunnerError> {
-        Ok(self
-            .store
-            .put_content(Bytes::copy_from_slice(bytes))
-            .await?)
+        self.inputs().bytes(bytes).await
     }
 
     /// The manifest of a local directory, which is stored, and the size of its files. The
     /// files are stored by their content too when the runner imports inputs.
     pub async fn import_directory(&self, directory: &Path) -> Result<(Digest, u64), RunnerError> {
-        let mut entries = Vec::new();
-        for found in outputs::walk(directory).await? {
-            entries.push(match found {
-                Found::File {
-                    relative,
-                    path,
-                    executable,
-                } => {
-                    let (digest, size) = match self.settings.import_inputs {
-                        true => self.store.put_file(&path).await?,
-                        false => content_store::hash_file(&path).await?,
-                    };
-                    TreeEntry::File {
-                        path: relative,
-                        digest,
-                        size,
-                        executable,
-                    }
-                }
-                Found::EmptyDirectory { relative } => TreeEntry::EmptyDirectory { path: relative },
-            });
-        }
-        let tree = Tree { entries };
-        let size = tree.size();
-        Ok((self.store.put_tree(&tree).await?, size))
+        self.inputs().directory(directory).await
     }
 
     /// Stores a directory manifest, like the one of an empty directory.
     pub async fn import_tree(&self, tree: &Tree) -> Result<Digest, RunnerError> {
-        Ok(self.store.put_tree(tree).await?)
+        self.inputs().tree(tree).await
+    }
+
+    /// How a run makes the digests of inputs.
+    fn inputs(&self) -> Inputs<'_> {
+        Inputs {
+            store: &self.store,
+            settings: &self.settings,
+            mode: Mode::Run,
+        }
     }
 
     /// Reads an object of the store, like a stored output.

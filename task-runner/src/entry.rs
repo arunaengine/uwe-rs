@@ -75,7 +75,6 @@ impl CacheEntry {
 
 /// What to do with an entry whose files are gone.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code, reason = "a lookup of the cache leaves stale entries")]
 pub(crate) enum Stale {
     /// Remove it, so that the task runs again and stores a new entry.
     Remove,

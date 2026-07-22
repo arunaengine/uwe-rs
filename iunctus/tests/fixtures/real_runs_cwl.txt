@@ -1,5 +1,5 @@
 # The CWL conformance tests (v1.2) run for real by iunctus and by cwltool, compared by their output objects; written by real_runs_cwl.py.
-# 287 tests: 1 cwltool fails, 8 differs, 14 iunctus fails, 263 same, 1 skipped.
+# 287 tests: 1 cwltool fails, 8 differs, 8 iunctus fails, 269 same, 1 skipped.
 anonymous_enum_in_array same
 any_input_param same
 any_input_param_graph_no_default same
@@ -28,8 +28,8 @@ clt_optional_union_input_file_or_files_with_array_of_one_file_provided same
 clt_optional_union_input_file_or_files_with_many_files_provided same
 clt_optional_union_input_file_or_files_with_nothing_provided same
 clt_optional_union_input_file_or_files_with_single_file_provided same
-colon_in_output_path iunctus fails (exit 1): task colon_test_output: Docker at /var/run/docker.sock could not run the task: Docker responded with status code 400: failed to create task for container: faile
-colon_in_paths iunctus fails (exit 1): colon:test: the input `input_file` names `/tmp/iunctus-real-cwl-3uz5bi3y/conformance/v1.2/tests/A%3AGln2Cys`, which does not exist
+colon_in_output_path same
+colon_in_paths iunctus fails (exit 1): iunctus: the input `input_file` names the file `/tmp/iunctus-real-cwl-rrc7r152/conformance/v1.2/tests/A%3AGln2Cys`, which does not exist
 cores_float same
 cwl_requirements_addition differs: output.out.checksum: "sha1$adc83b19e793491b1c6ea0fd8b46cd9f32e592fc" instead of "sha1$b3ec4ed1749c207e52b3a6d08c59f31d83bff519"
 cwl_requirements_override_expression differs: output.out.checksum: "sha1$893a885b3785c8e9bfe0721a4149b129ac0f21f9" instead of "sha1$b3ec4ed1749c207e52b3a6d08c59f31d83bff519"
@@ -40,9 +40,9 @@ directory_input_docker same
 directory_input_param_ref same
 directory_literal_with_literal_file_in_subdir_nostdin same
 directory_literal_with_literal_file_nostdin same
-directory_output iunctus fails (exit 1): the output `outdir`: no output file matches ["."]
+directory_output same
 directory_secondaryfiles same
-docker_entrypoint iunctus fails (exit 1): task docker-run-cmd: Docker at /var/run/docker.sock could not run the task: Docker responded with status code 400: failed to create task for container: failed t
+docker_entrypoint same
 docker_json_output_location same
 docker_json_output_path same
 dockeroutputdir same
@@ -86,7 +86,7 @@ illegal_symlink same: both fail
 initial_work_dir_for_array_dirs same
 initial_work_dir_for_null_and_arrays same
 initial_workdir_empty_writable same
-initial_workdir_empty_writable_docker iunctus fails (exit 1): task writable-dir-docker: Docker at /var/run/docker.sock could not run the task: Docker responded with status code 400: failed to create task for container: fai
+initial_workdir_empty_writable_docker iunctus fails (exit 1): task writable-dir-docker: the image docker.io/alpine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 has no bash, which iunctus needs to
 initial_workdir_expr same
 initial_workdir_output same
 initial_workdir_output_glob same
@@ -110,13 +110,13 @@ job_input_subdir_primary_and_secondary_subdirs same
 js-input-record same
 json_output_location_relative same
 json_output_path_relative same
-legal_symlink iunctus fails (exit 1): task symlink-legal: Docker at /var/run/docker.sock could not run the task: Docker responded with status code 400: failed to create task for container: failed to
+legal_symlink iunctus fails (exit 1): task symlink-legal: the image docker.io/alpine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 has no bash, which iunctus needs to run a
 length_for_non_array same: both fail
 listing_default_none same
 listing_loadListing_deep same
 listing_loadListing_none same
 listing_loadListing_shallow same
-listing_outputBinding_loadListing iunctus fails (exit 1): the output `out`: JavaScript error in `for (var i = 0; i < self[0].listing.length; i++) { if (self[0].listing[i].basena...`: TypeError: cannot convert 'null' or
+listing_outputBinding_loadListing same
 listing_requirement_deep same
 listing_requirement_none same
 listing_requirement_shallow same
@@ -164,7 +164,7 @@ requirement_override_hints same
 requirement_priority same
 requirement_workflow_steps same
 resreq_step_overrides_wf same
-runtime-outdir iunctus fails (exit 1): the output `stuff`: no output file matches ["."]
+runtime-outdir same
 scatter_embedded_subworkflow same
 scatter_multi_input_embedded_subworkflow same
 schema-def_anonymous_enum_in_array same
@@ -206,8 +206,8 @@ step_input_default_value_overriden_2nd_step_null_noexp same
 step_input_default_value_overriden_noexp same
 storage_float same
 success_codes same
-timelimit_basic iunctus fails (exit 1): the command ended with exit code 137
-timelimit_basic_wf differs: output.o: "/var/spool/cwl" instead of "/PaKlIK"
+timelimit_basic same: fails as the test expects
+timelimit_basic_wf differs: output.o: "/var/spool/cwl" instead of "/lufbVN"
 timelimit_expressiontool same
 timelimit_from_expression same
 timelimit_from_expression_wf same

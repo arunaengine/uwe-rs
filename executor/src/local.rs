@@ -144,7 +144,8 @@ impl ContainerRun<'_> {
         }
         ContainerCreateBody {
             image: Some(self.image.reference.clone()),
-            entrypoint: Some(vec!["/bin/bash".to_owned()]),
+            // Bash of the image, wherever its `PATH` has it.
+            entrypoint: Some(vec!["bash".to_owned()]),
             cmd: Some(vec![self.script()]),
             user: engine.user(self.owner.0, self.owner.1),
             working_dir: Some(self.inside()),
@@ -206,9 +207,13 @@ impl LocalContainer {
     ) -> Result<Finished, ExecutorError> {
         let image = job.spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
         let mut spec = job.spec.clone();
-        if spec.arguments.is_empty() {
-            spec.arguments = image::default_command(&self.engine, &image.reference).await?;
-        }
+        // The command runs through the image's entrypoint, as `docker run` runs it, which
+        // some images need to set up their tools.
+        let entrypoint = image::entrypoint(&self.engine, &image.reference).await?;
+        spec.arguments = match spec.arguments.is_empty() {
+            true => image::default_command(&self.engine, &image.reference).await?,
+            false => entrypoint.into_iter().chain(spec.arguments).collect(),
+        };
         let owner = tokio::fs::metadata(root).await?;
         let container = format!("iunctus-{}", job.name);
         let run = ContainerRun {
@@ -238,6 +243,13 @@ impl LocalContainer {
         let time = job.placement.time_seconds.map(Duration::from_secs);
         let ended = match client.start_container(&container, None).await {
             Ok(()) => self.wait(&container, time, cancel).await,
+            Err(error)
+                if error
+                    .to_string()
+                    .contains("\"bash\": executable file not found") =>
+            {
+                Err(ExecutorError::NoBash(image.reference.clone()))
+            }
             Err(error) => Err(failed(error)),
         };
         let remove = RemoveContainerOptions {

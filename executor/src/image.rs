@@ -53,6 +53,15 @@ async fn pull(engine: &ContainerEngine, reference: &str) -> Result<(), ExecutorE
     Ok(())
 }
 
+/// The entrypoint of an image, which runs the command of a container; empty for none.
+pub(crate) async fn entrypoint(
+    engine: &ContainerEngine,
+    reference: &str,
+) -> Result<Vec<String>, ExecutorError> {
+    let config = inspect(engine, reference).await?.config.unwrap_or_default();
+    Ok(config.entrypoint.unwrap_or_default())
+}
+
 /// The default command of an image: its entrypoint, then its command.
 pub(crate) async fn default_command(
     engine: &ContainerEngine,

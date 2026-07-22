@@ -21,6 +21,7 @@ use nextflow_evaluator::value::Value;
 use workflow_graph::render::{Format, Options, View, render};
 use workflow_graph::{
     Delivery, DeliveryMode, Edge, EdgeKind, ExecutionGraph, Language, Node, Outcome, Task, TaskId,
+    Usage,
 };
 
 /// The columns of the trace when the config names none, as in Nextflow.
@@ -84,6 +85,7 @@ struct Row {
     submit: i64,
     start: Option<i64>,
     complete: Option<i64>,
+    usage: Option<Usage>,
 }
 
 impl Reports {
@@ -165,6 +167,7 @@ impl Reports {
             submit: *submit,
             start: outcome.started.map(millis),
             complete: outcome.ended.map(millis),
+            usage: outcome.usage,
         });
         self.exits.insert(outcome.id, outcome.exit_code);
         for file in &outcome.files {
@@ -337,6 +340,11 @@ impl Row {
         }
     }
 
+    /// A size that the executor measured, as Nextflow writes sizes.
+    fn measured(&self, field: fn(&Usage) -> Option<u64>) -> String {
+        (self.usage.as_ref().and_then(field)).map_or(UNKNOWN.to_owned(), size)
+    }
+
     fn realtime(&self) -> Option<i64> {
         Some(self.complete? - self.start?)
     }
@@ -363,6 +371,17 @@ impl Row {
             "time" => (resources.time_seconds).map_or(UNKNOWN.to_owned(), |seconds| {
                 duration(Some(seconds as i64 * 1000))
             }),
+            // The CPU time over the time of the task, as a share of one CPU.
+            "%cpu" => match (self.usage.and_then(|usage| usage.cpu_usec), self.realtime()) {
+                (Some(cpu), Some(real)) if real > 0 => {
+                    format!("{:.1}%", cpu as f64 / 10.0 / real as f64)
+                }
+                _ => UNKNOWN.to_owned(),
+            },
+            // The peak of the container's memory, page cache included.
+            "peak_rss" => self.measured(|usage| usage.memory_peak),
+            "read_bytes" => self.measured(|usage| usage.read_bytes),
+            "write_bytes" => self.measured(|usage| usage.write_bytes),
             _ => UNKNOWN.to_owned(),
         }
     }
@@ -459,6 +478,33 @@ fn escape(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn measured_usage_fills_cpu_memory_and_io() {
+        let row = Row {
+            number: 1,
+            task: Task::default(),
+            exit: 0,
+            attempt: 1,
+            cached: false,
+            image: None,
+            submit: 0,
+            start: Some(1000),
+            complete: Some(3000),
+            usage: Some(Usage {
+                cpu_usec: Some(1_000_000),
+                memory_peak: Some(3 << 20),
+                read_bytes: Some(0),
+                write_bytes: None,
+            }),
+        };
+        assert_eq!(row.value("%cpu"), "50.0%");
+        assert_eq!(row.value("peak_rss"), "3 MB");
+        assert_eq!(row.value("read_bytes"), "0");
+        assert_eq!(row.value("write_bytes"), "-");
+        let unmeasured = Row { usage: None, ..row };
+        assert_eq!(unmeasured.value("%cpu"), "-");
+    }
 
     #[test]
     fn durations_and_sizes_read_as_in_nextflow() {

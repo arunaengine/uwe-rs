@@ -382,6 +382,7 @@ impl LocalContainer {
         Ok(Finished {
             exit_code: Some(exit_code),
             files,
+            usage: crate::job::Usage::of(&root),
             root,
         })
     }

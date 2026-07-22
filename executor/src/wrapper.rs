@@ -17,6 +17,9 @@ pub const STDOUT: &str = "stdout";
 pub const STDERR: &str = "stderr";
 pub const STDIN: &str = "stdin";
 pub const ROOT: &str = "root";
+/// What the task used, as the cgroup of its container counts it: `cpu_usec`, `memory_peak`,
+/// `read_bytes` and `write_bytes`, one per line with its number.
+pub const USAGE: &str = "usage";
 
 /// The wrapper for a task whose work and control directories are at the given absolute paths
 /// inside the container. The task runs the arguments of the specification, which must not be
@@ -70,6 +73,7 @@ pub fn wrapper_with_outbox(spec: &TaskSpec, work: &str, control: &str, outbox: &
     script.push_str(&format!(
         "status=$?\necho \"$status\" > \"$control/{EXIT}\"\n"
     ));
+    script.push_str(USAGE_SCRIPT);
     script.push_str(&format!("date +%s > \"$control/{END}\"\n"));
     script.push_str(COLLECT);
     script.push_str(&format!(": > \"$control/{MANIFEST}\"\n"));
@@ -89,6 +93,35 @@ pub fn wrapper_with_outbox(spec: &TaskSpec, work: &str, control: &str, outbox: &
     script.push_str("exit 0\n");
     script
 }
+
+/// Records what the task used, from the cgroup of the container, when the container has one of
+/// its own, as with Docker and Podman: CPU time, the peak of memory (page cache included) and
+/// the bytes of block I/O. Bash builtins only, so that any image with Bash has what it needs.
+const USAGE_SCRIPT: &str = r#"cgroup=/sys/fs/cgroup
+if [ -r "$cgroup/memory.peak" ]; then
+    {
+        echo "memory_peak $(< "$cgroup/memory.peak")"
+        if [ -r "$cgroup/cpu.stat" ]; then
+            while read -r key value; do
+                [ "$key" = usage_usec ] && echo "cpu_usec $value"
+            done < "$cgroup/cpu.stat"
+        fi
+        if [ -r "$cgroup/io.stat" ]; then
+            read_bytes=0 write_bytes=0
+            while read -r -a words; do
+                for word in "${words[@]}"; do
+                    case $word in
+                        rbytes=*) read_bytes=$((read_bytes + ${word#rbytes=})) ;;
+                        wbytes=*) write_bytes=$((write_bytes + ${word#wbytes=})) ;;
+                    esac
+                done
+            done < "$cgroup/io.stat"
+            echo "read_bytes $read_bytes"
+            echo "write_bytes $write_bytes"
+        fi
+    } > "$control/usage" 2> /dev/null
+fi
+"#;
 
 /// Adds each file and directory that a pattern matches to the manifest, as
 /// `file <size> <path>` or `directory <path>`. Bash expands the pattern with `globstar`,

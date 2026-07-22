@@ -15,6 +15,8 @@ pub type Encoded = Result<String, String>;
 /// `TypeError` that the job gets in Snakemake.
 fn json(data: &Data) -> Encoded {
     Ok(match data {
+        // numpy's `float64` is a float for `json.dumps`, its other scalars are not.
+        Data::Scalar { kind, value } if kind == "float64" => json(value)?,
         Data::None => "null".into(),
         Data::Bool(true) => "true".into(),
         Data::Bool(false) => "false".into(),
@@ -77,6 +79,7 @@ fn type_name(data: &Data) -> &str {
         Data::Set(_) => "set",
         Data::Table { kind, .. } => kind.rsplit('.').next().unwrap_or(kind),
         Data::Opaque { repr, .. } => repr,
+        Data::Scalar { kind, .. } => kind,
         _ => "object",
     }
 }

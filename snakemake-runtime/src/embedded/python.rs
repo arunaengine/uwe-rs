@@ -83,6 +83,10 @@ fn literal_with(
             }
             literal_with(stored, types, None)
         }
+        Data::Scalar { kind, value } => format!(
+            "__import__('numpy').{kind}({})",
+            literal_with(value, types, None)
+        ),
         Data::Opaque { repr, .. } => format!(
             "{MODULE}.Unavailable({})",
             quote(&format!(
@@ -237,4 +241,37 @@ pub fn cell(context: &Context, searchpaths: &[String], workdir: &str) -> String 
         "{START}\n{}\n{END}\n",
         code(context, searchpaths, workdir, "")
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::literal;
+    use crate::embedded::data::{Data, Named};
+
+    #[test]
+    fn values_become_python_literals() {
+        assert_eq!(literal(&Data::Float(f64::NAN)), "float('nan')");
+        assert_eq!(literal(&Data::Float(1e16)), "1e+16");
+        assert_eq!(literal(&Data::Tuple(vec![Data::int(1)])), "(1,)");
+        assert_eq!(literal(&Data::Set(Vec::new())), "set()");
+        let scalar = Data::Scalar {
+            kind: "float64".into(),
+            value: Box::new(Data::Float(3.9)),
+        };
+        assert_eq!(literal(&scalar), "__import__('numpy').float64(3.9)");
+        let named = Named {
+            kind: "Params".into(),
+            values: vec![Data::str("x")],
+            names: vec![("a".into(), 0, None)],
+        };
+        assert_eq!(
+            literal(&Data::Named(named)),
+            "__iunctus.named(__iunctus.Params, ['x'], [('a', 0, None)])"
+        );
+        let function = Data::Opaque {
+            repr: "<function f>".into(),
+            text: "<function f>".into(),
+        };
+        assert!(literal(&function).starts_with("__iunctus.Unavailable('<function f> is no plain"));
+    }
 }

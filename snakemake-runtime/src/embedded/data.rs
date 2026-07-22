@@ -39,6 +39,11 @@ pub enum Data {
         stored: Box<Data>,
         items: Vec<Data>,
     },
+    /// A numpy scalar of a type, like `float64`, as `Paramspace.instance()` gives numbers.
+    Scalar {
+        kind: String,
+        value: Box<Data>,
+    },
     /// Any other object, like a function: no language can take it. Its `repr()` names it, and
     /// its `str()` is what Bash gets, as Snakemake gives Bash `str()` of every value.
     Opaque {
@@ -126,10 +131,12 @@ impl Data {
 
     /// Whether Python counts it as a number, as `numbers.Number` does: booleans too.
     pub fn is_number(&self) -> bool {
-        matches!(
-            self,
-            Data::Bool(_) | Data::Int(_) | Data::Float(_) | Data::Complex(..)
-        )
+        match self {
+            Data::Bool(_) | Data::Int(_) | Data::Float(_) | Data::Complex(..) => true,
+            // numpy's booleans are no numbers.
+            Data::Scalar { kind, .. } => kind != "bool_",
+            _ => false,
+        }
     }
 
     /// The items that iterating the value gives, for values that Python can iterate, except
@@ -177,6 +184,7 @@ impl Data {
             ),
             Data::Named(named) => format!("[{}]", joined(&named.values, Data::repr)),
             Data::Table { stored, .. } => stored.repr(),
+            Data::Scalar { kind, value } => format!("np.{kind}({})", value.repr()),
             Data::Opaque { repr, .. } => repr.clone(),
         }
     }
@@ -192,6 +200,7 @@ impl Data {
                 .collect::<Vec<_>>()
                 .join(" "),
             Data::Opaque { text, .. } => text.clone(),
+            Data::Scalar { value, .. } => value.text(),
             other => other.repr(),
         }
     }
@@ -238,6 +247,15 @@ pub fn files(kind: &str, items: &Items) -> Data {
 
 /// The plain form of a value of the interpreter.
 pub fn from_value(interpreter: &mut Interpreter, value: &Value) -> Data {
+    if let Some(kind) = value
+        .tag(crate::paramspace::NUMPY_TAG)
+        .and_then(Value::as_str)
+    {
+        return Data::Scalar {
+            kind: kind.to_owned(),
+            value: Box::new(from_value(interpreter, value.plain())),
+        };
+    }
     match value.plain() {
         Value::None => Data::None,
         Value::Bool(flag) => Data::Bool(*flag),

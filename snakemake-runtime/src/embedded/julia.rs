@@ -11,6 +11,12 @@ pub type Encoded = Result<String, String>;
 /// A value as Julia code, as `JuliaEncoder.encode_value` writes it.
 pub fn value(data: &Data) -> Encoded {
     match data {
+        // `JuliaEncoder` writes numpy numbers by `str()`; numpy's booleans it cannot take.
+        Data::Scalar { kind, .. } if kind == "bool_" => Err(format!(
+            "Unsupported value for conversion into Julia: {}",
+            data.text()
+        )),
+        Data::Scalar { value, .. } => self::value(value),
         Data::None => Ok("nothing".into()),
         Data::Str(text) | Data::Path(text) => Ok(json_string(text)),
         Data::Dict(entries) => dict(entries),

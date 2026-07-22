@@ -48,6 +48,7 @@ impl CacheEntry {
             stdout: self.stdout,
             stderr: self.stderr,
             reused: true,
+            usage: None,
         }
     }
 

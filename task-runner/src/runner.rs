@@ -52,6 +52,8 @@ pub struct TaskResult {
     pub stderr: Option<Digest>,
     /// Whether a stored result answered the request.
     pub reused: bool,
+    /// What the attempt used, when the backend measured it.
+    pub usage: Option<executor::Usage>,
 }
 
 #[derive(Debug, thiserror::Error)]

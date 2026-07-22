@@ -70,7 +70,15 @@ fn record(path: &Path, directory: &Path) -> Result<(), DatabaseError> {
     let first = task(1, "MAKE", vec![input(&data)]);
     recorder.requested(&first, &[]);
     recorder.started(TaskId(1), 1);
-    recorder.finished(&outcome(1, made.clone(), "hello\n"), 1, false);
+    let measured = Outcome {
+        usage: Some(workflow_graph::Usage {
+            cpu_usec: Some(1500),
+            memory_peak: Some(4096),
+            ..workflow_graph::Usage::default()
+        }),
+        ..outcome(1, made.clone(), "hello\n")
+    };
+    recorder.finished(&measured, 1, false);
     recorder.reused(TaskId(1), 1, "run-0");
     let second = task(2, "USE", vec![input(&made)]);
     let edge = Edge {
@@ -180,6 +188,15 @@ fn tasks_are_read_back_with_their_files_and_edges() {
             (3, "stopped", None)
         ]
     );
+
+    // What the first task used, as its executor measured it.
+    let first = database.task("run-1", 1).expect("reads").expect("a task");
+    let attempt = &first.attempts[0];
+    assert_eq!(
+        (attempt.cpu_usec, attempt.memory_peak),
+        (Some(1500), Some(4096))
+    );
+    assert_eq!(attempt.read_bytes, None);
 
     let detail = database.task("run-1", 2).expect("reads").expect("a task");
     assert_eq!(detail.description.step, "USE");
@@ -296,7 +313,9 @@ fn a_database_of_version_1_gets_the_inputs_of_runs() {
     connection
         .execute_batch(
             "ALTER TABLE runs DROP COLUMN input_schema; ALTER TABLE runs DROP COLUMN inputs;
-             PRAGMA user_version = 1;",
+             ALTER TABLE attempts DROP COLUMN cpu_usec; ALTER TABLE attempts DROP COLUMN memory_peak;
+             ALTER TABLE attempts DROP COLUMN read_bytes;
+             ALTER TABLE attempts DROP COLUMN write_bytes; PRAGMA user_version = 1;",
         )
         .expect("goes back to version 1");
     drop(connection);

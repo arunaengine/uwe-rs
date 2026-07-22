@@ -215,10 +215,14 @@ impl Recorder {
             // The executor knows the times best; a result from the cache ran nowhere.
             let time = |at: Option<SystemTime>| at.map(milliseconds);
             let reused = outcome.cached.then_some("cache");
+            let usage = outcome.usage.unwrap_or_default();
+            // SQLite keeps whole numbers as signed 64 bits.
+            let clamp = |value: u64| i64::try_from(value).unwrap_or(i64::MAX);
             connection
                 .prepare_cached(
                     "UPDATE attempts SET ended = ?4, exit_code = ?5, retried = ?6, image = ?7,
-                        reused = COALESCE(?8, reused), started = COALESCE(?9, started)
+                        reused = COALESCE(?8, reused), started = COALESCE(?9, started),
+                        cpu_usec = ?10, memory_peak = ?11, read_bytes = ?12, write_bytes = ?13
                      WHERE run = ?1 AND task = ?2 AND number = ?3",
                 )?
                 .execute(params![
@@ -231,6 +235,10 @@ impl Recorder {
                     outcome.image,
                     reused,
                     time(outcome.started),
+                    usage.cpu_usec.map(clamp),
+                    usage.memory_peak.map(clamp),
+                    usage.read_bytes.map(clamp),
+                    usage.write_bytes.map(clamp),
                 ])?;
             let state = match (retried, outcome.exit_code) {
                 (true, _) => "running",

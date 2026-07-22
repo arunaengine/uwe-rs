@@ -8,10 +8,10 @@ use crate::DatabaseError;
 
 /// The version of the schema that this build writes. SQLite keeps it in `PRAGMA user_version`.
 /// A change to the tables adds a step to [`MIGRATIONS`] and raises this number.
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 
 /// The steps from each version to the next: the first creates version 1 in an empty file.
-const MIGRATIONS: [&str; VERSION as usize] = [VERSION_1, VERSION_2];
+const MIGRATIONS: [&str; VERSION as usize] = [VERSION_1, VERSION_2, VERSION_3];
 
 /// Version 1. Times are milliseconds since the Unix epoch (UTC). Text in JSON is marked as such.
 /// A run is one `iunctus run`; its tasks are the tasks that the driver asked for; an attempt is
@@ -173,6 +173,16 @@ CREATE TABLE events (
 const VERSION_2: &str = "
 ALTER TABLE runs ADD COLUMN input_schema TEXT;
 ALTER TABLE runs ADD COLUMN inputs TEXT;
+";
+
+/// Version 3: what an attempt used, as the cgroup of its container counted it, when the
+/// executor measured it: CPU time in microseconds, the peak of memory in bytes (page cache
+/// included), and the bytes of block I/O.
+const VERSION_3: &str = "
+ALTER TABLE attempts ADD COLUMN cpu_usec INTEGER;
+ALTER TABLE attempts ADD COLUMN memory_peak INTEGER;
+ALTER TABLE attempts ADD COLUMN read_bytes INTEGER;
+ALTER TABLE attempts ADD COLUMN write_bytes INTEGER;
 ";
 
 /// Brings the schema of a database to [`VERSION`]: creates it in a new file, and runs the

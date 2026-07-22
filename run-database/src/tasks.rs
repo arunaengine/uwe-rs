@@ -34,6 +34,12 @@ pub struct Attempt {
     pub reused: Option<String>,
     pub image: Option<String>,
     pub retried: bool,
+    /// What the attempt used, when the executor measured it: CPU time in microseconds, the
+    /// peak of memory and the bytes of block I/O.
+    pub cpu_usec: Option<i64>,
+    pub memory_peak: Option<i64>,
+    pub read_bytes: Option<i64>,
+    pub write_bytes: Option<i64>,
 }
 
 /// An input or output file of a task.
@@ -118,7 +124,8 @@ impl Database {
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
         let mut statement = self.connection.prepare(
-            "SELECT number, started, ended, exit_code, reused, image, retried FROM attempts
+            "SELECT number, started, ended, exit_code, reused, image, retried, cpu_usec,
+                    memory_peak, read_bytes, write_bytes FROM attempts
              WHERE run = ?1 AND task = ?2 ORDER BY number",
         )?;
         let attempts = statement
@@ -131,6 +138,10 @@ impl Database {
                     reused: row.get(4)?,
                     image: row.get(5)?,
                     retried: row.get(6)?,
+                    cpu_usec: row.get(7)?,
+                    memory_peak: row.get(8)?,
+                    read_bytes: row.get(9)?,
+                    write_bytes: row.get(10)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;

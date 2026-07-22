@@ -131,6 +131,21 @@ pub struct Outcome {
     /// When the attempt started and ended. The engine fills in what the executor leaves out.
     pub started: Option<SystemTime>,
     pub ended: Option<SystemTime>,
+    /// What the attempt used, when the executor could measure it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<Usage>,
+}
+
+/// What an attempt of a task used, as the cgroup of its container counted it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Usage {
+    /// The CPU time, in microseconds.
+    pub cpu_usec: Option<u64>,
+    /// The peak of memory, in bytes, page cache included.
+    pub memory_peak: Option<u64>,
+    /// The bytes read from and written to block devices.
+    pub read_bytes: Option<u64>,
+    pub write_bytes: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -54,6 +54,7 @@ pub(crate) async fn store_outputs(
         stdout: log(finished.stdout()).await?,
         stderr: log(finished.stderr()).await?,
         reused: false,
+        usage: finished.usage,
     })
 }
 

@@ -34,6 +34,8 @@ fn numeric(data: &Data) -> Encoded {
 /// A value as R code, as `REncoder.encode_value` writes it.
 pub fn value(data: &Data) -> Encoded {
     match data {
+        // `REncoder` takes numpy scalars by their `item()`.
+        Data::Scalar { value, .. } => self::value(value),
         Data::None => Ok("NULL".into()),
         Data::Bool(true) => Ok("TRUE".into()),
         Data::Bool(false) => Ok("FALSE".into()),

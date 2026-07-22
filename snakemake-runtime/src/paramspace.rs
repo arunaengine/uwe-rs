@@ -174,18 +174,23 @@ impl Paramspace {
             .filter(|value| !is_missing(value))
             .collect();
         let all = |test: fn(&Value) -> bool| !present.is_empty() && present.iter().all(|v| test(v));
+        // Numbers are numpy scalars in Snakemake, which scripts may call `.item()` on; the
+        // tag keeps their type for the preambles of scripts. `False` stays Python's.
         if all(|value| matches!(value.plain(), Value::Bool(_))) {
-            return Value::Bool(!text.is_empty() && text != "False");
+            return match !text.is_empty() && text != "False" {
+                true => numpy_scalar(Value::Bool(true), "bool_"),
+                false => Value::Bool(false),
+            };
         }
         if all(|value| matches!(value.plain(), Value::Int(_)))
             && let Ok(number) = text.parse::<i64>()
         {
-            return Value::Int(number);
+            return numpy_scalar(Value::Int(number), "int64");
         }
         if all(|value| matches!(value.plain(), Value::Int(_) | Value::Float(_)))
             && let Ok(number) = text.parse::<f64>()
         {
-            return Value::Float(number);
+            return numpy_scalar(Value::Float(number), "float64");
         }
         Value::str(text)
     }
@@ -241,6 +246,13 @@ impl Paramspace {
         }
         Ok(Value::dict(dict))
     }
+}
+
+/// The tag of a value that Snakemake has as a numpy scalar, with the name of its numpy type.
+pub const NUMPY_TAG: &str = "numpy";
+
+fn numpy_scalar(value: Value, kind: &str) -> Value {
+    value.with_tag(NUMPY_TAG, Value::str(kind))
 }
 
 /// A table that an attribute or item of the underlying table gives, as a new Paramspace.

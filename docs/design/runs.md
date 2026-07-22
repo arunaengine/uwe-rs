@@ -51,7 +51,7 @@ The file is `runs.sqlite` in the cache directory (`$XDG_CACHE_HOME/iunctus`, els
 |---|---|---|
 | `runs` | run | id, lineage, the run it resumes, workflow (absolute path), language, Git revision, command line and parameters (JSON), executor, simulated, store, process id, start, end, state (`running`, `succeeded`, `failed`), error |
 | `tasks` | task the driver asked for | run, id, step, name, the task as JSON, fingerprint, time asked, state (`waiting`, `running`, `succeeded`, `failed`, `stopped`) |
-| `attempts` | execution of a task | run, task, number, start, end, exit code, reused (`cache` or the id of an earlier run), image as it ran, retried |
+| `attempts` | execution of a task | run, task, number, start, end, exit code, reused (`cache` or the id of an earlier run), image as it ran, retried, and what it used when the executor measured it (CPU time, peak memory, block I/O) |
 | `files` | input of a task, or output of an attempt | run, task, attempt (none for inputs), role, the path the task sees, location, directory, SHA-256 digest, size |
 | `edges` | edge of the execution graph | run, source task, target task, kind (`file` or `order`), path |
 | `markers` | point where real data can change the tasks (decision 21) | run, task, kind (`content`, `wildcard`, `checkpoint`), reason |
@@ -67,6 +67,8 @@ A run whose process has gone while its state is still `running` reads as `stoppe
 **Digests.** A literal input gets its digest when the task is asked for. Outputs get digests from the executor once `Outcome` carries them (the execution layer, step 2); until then `iunctus export` computes the digest of each file it copies.
 
 Version 2 adds the inputs of each run to `runs` (decision 24): `input_schema`, the JSON Schema of the inputs of the workflow, and `inputs`, the values that the run checked against it ([the inputs of a workflow](inputs.md)).
+
+Version 3 adds what each attempt used to `attempts`: `cpu_usec`, the CPU time in microseconds, `memory_peak`, the peak of memory in bytes (page cache included), and `read_bytes` and `write_bytes` of block I/O. The wrapper of a task reads them from the cgroup of its container at its end (`control/usage`), so they are known with Docker and Podman, and empty where a container has no cgroup of its own.
 
 ## 3. Resume
 

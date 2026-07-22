@@ -184,6 +184,9 @@ def compare(test, suite, work, environment, images):
     our_ok = our_code == 0 and our_output is not None
     if not native_ok and not our_ok:
         return "same: both fail"
+    # A test that expects a failure is met by a failure, whatever the other tool does.
+    if test.get("should_fail") and not our_ok:
+        return "same: fails as the test expects"
     if not our_ok:
         return f"iunctus fails (exit {our_code}): {our_error}"
     if not native_ok:

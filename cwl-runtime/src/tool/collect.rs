@@ -173,9 +173,13 @@ impl Pending {
 /// The folder the executor put the task's outputs in, from any output file.
 pub fn workdir(outcome: &Outcome) -> Option<String> {
     outcome.files.iter().find_map(|file| {
-        file.location
-            .strip_suffix(file.path.trim_end_matches('/'))
-            .map(|folder| folder.trim_end_matches('/').to_owned())
+        let path = file.path.trim_end_matches('/');
+        // The output directory itself, from the glob `.`, is the folder.
+        if path == "." {
+            let folder = file.location.trim_end_matches('/');
+            return Some(folder.strip_suffix("/.").unwrap_or(folder).to_owned());
+        }
+        (file.location.strip_suffix(path)).map(|folder| folder.trim_end_matches('/').to_owned())
     })
 }
 

@@ -397,13 +397,20 @@ pub fn task(
             }
         }
     }
+    // The glob `.` names the output directory itself, and cwl.output.json may name any file
+    // of it, so a real run keeps all of it, as cwltool keeps the directory; the simulator
+    // makes no such files.
+    let whole = (process.outputs.iter())
+        .filter_map(|output| output.binding.as_ref())
+        .any(|binding| {
+            let found = outputs::globs(binding, &evaluator, vars, &outdir);
+            found.is_ok_and(|globs| globs.iter().any(|glob| glob == "."))
+        });
     if needs_json {
         outputs.push(OUTPUT_JSON.to_owned());
-        // cwl.output.json may name any file of the output directory, so a real run keeps them
-        // all, as cwltool keeps the directory; the simulator makes no such files.
-        if !options.simulated {
-            outputs.push("*".to_owned());
-        }
+    }
+    if (needs_json || whole) && !options.simulated {
+        outputs.push("*".to_owned());
     }
     let mut unique = Vec::new();
     for output in outputs {

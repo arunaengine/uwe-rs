@@ -146,6 +146,15 @@ fn runs_a_task_in_a_container() {
     );
     let me = std::os::unix::fs::MetadataExt::uid(&std::fs::metadata(root.path()).unwrap());
     assert_eq!(owner, me, "outputs belong to the current user");
+    // With cgroups v2, the container's own cgroup tells what the task used.
+    if Path::new("/sys/fs/cgroup/cgroup.controllers").exists() {
+        let usage = finished.usage.expect("the usage of the task");
+        assert!(
+            usage.memory_peak.is_some_and(|bytes| bytes > 0),
+            "{usage:?}"
+        );
+        assert!(usage.cpu_usec.is_some(), "{usage:?}");
+    }
 }
 
 #[test]

@@ -255,6 +255,7 @@ async fn finish(ended: Ended, root: PathBuf, time: Option<u64>) -> Result<Finish
     Ok(Finished {
         exit_code: Some(exit_code),
         files,
+        usage: executor::Usage::of(&root),
         root,
     })
 }

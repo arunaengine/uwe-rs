@@ -42,6 +42,7 @@ impl Backend for Fake {
             exit_code: Some(self.exit_code),
             files: Vec::new(),
             root: self.scratch.join(job.name),
+            usage: None,
         };
         std::fs::create_dir_all(finished.root.join("work"))?;
         std::fs::create_dir_all(finished.root.join("control"))?;

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use task_model::{Placement, TaskSpec};
 
 use crate::manifest::{Collected, ManifestError, parse};
-use crate::wrapper::{EXIT, MANIFEST, ROOT, STDERR, STDOUT};
+use crate::wrapper::{EXIT, MANIFEST, ROOT, STDERR, STDOUT, USAGE};
 
 /// The folders of a task's scratch directory: the work directory, the control files of the
 /// wrapper, and copies of inputs at absolute paths, which are mounted where the task sees them.
@@ -63,6 +63,42 @@ pub struct Finished {
     pub files: Vec<Collected>,
     /// The scratch directory, which the caller removes once it has the outputs.
     pub root: PathBuf,
+    /// What the task used, when its container had a cgroup of its own.
+    pub usage: Option<Usage>,
+}
+
+/// What a task used, as the cgroup of its container counted it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Usage {
+    /// The CPU time, in microseconds.
+    pub cpu_usec: Option<u64>,
+    /// The peak of memory, in bytes, page cache included.
+    pub memory_peak: Option<u64>,
+    /// The bytes read from and written to block devices.
+    pub read_bytes: Option<u64>,
+    pub write_bytes: Option<u64>,
+}
+
+impl Usage {
+    /// What the wrapper recorded in the control folder of a scratch directory, if anything.
+    pub fn of(root: &std::path::Path) -> Option<Usage> {
+        let text = std::fs::read_to_string(root.join(CONTROL).join(USAGE)).ok()?;
+        let mut usage = Usage::default();
+        for line in text.lines() {
+            let Some((key, value)) = line.split_once(' ') else {
+                continue;
+            };
+            let value = value.trim().parse().ok();
+            match key {
+                "cpu_usec" => usage.cpu_usec = value,
+                "memory_peak" => usage.memory_peak = value,
+                "read_bytes" => usage.read_bytes = value,
+                "write_bytes" => usage.write_bytes = value,
+                _ => {}
+            }
+        }
+        (usage != Usage::default()).then_some(usage)
+    }
 }
 
 impl Finished {
@@ -89,6 +125,7 @@ impl Finished {
         Ok(Finished {
             exit_code,
             files,
+            usage: Usage::of(&root),
             root,
         })
     }
@@ -128,5 +165,23 @@ impl ExecutorError {
     /// Whether the machine failed rather than the task, so that another attempt may work.
     pub fn retryable(&self) -> bool {
         matches!(self, ExecutorError::Engine { .. })
+    }
+}
+
+#[cfg(test)]
+mod usage_tests {
+    use super::*;
+
+    #[test]
+    fn usage_comes_from_the_control_folder() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        std::fs::create_dir_all(root.path().join(CONTROL)).expect("makes the folder");
+        assert_eq!(Usage::of(root.path()), None);
+        let text = "memory_peak 2048\ncpu_usec 1500\nread_bytes 0\nwrite_bytes 4096\n";
+        std::fs::write(root.path().join(CONTROL).join(USAGE), text).expect("writes");
+        let usage = Usage::of(root.path()).expect("a usage");
+        assert_eq!(usage.memory_peak, Some(2048));
+        assert_eq!(usage.cpu_usec, Some(1500));
+        assert_eq!(usage.write_bytes, Some(4096));
     }
 }

@@ -110,6 +110,9 @@ pub enum ExecutorError {
     NoImage,
     #[error("the task has no command, and the image {0} has no default command")]
     NoCommand(String),
+    /// The image has no Bash, which runs the wrapper of every task.
+    #[error("the image {0} has no bash, which iunctus needs to run a task; use an image with bash")]
+    NoBash(String),
     #[error("cannot prepare the task directory: {0}")]
     Io(#[from] std::io::Error),
     /// The container engine or the machine failed, not the tool; another attempt may work.

@@ -272,3 +272,26 @@ fn pins_images_to_digests() {
         .expect("keeps it");
     assert_eq!(again, Some(pinned.clone()));
 }
+
+#[test]
+#[ignore = "needs Docker and the bash:4.4 and alpine:latest images"]
+fn commands_run_through_the_entrypoint_of_the_image() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let executor = executor(root.path());
+    // The entrypoint of the bash image runs Bash with options like `-c`, as `docker run` does.
+    let mut task = spec(Some("bash:4.4"), &["out.txt"]);
+    task.arguments = vec!["-c".into(), "echo moo > out.txt".into()];
+    let finished = run(&executor, "task-9", &task, &Staging::default()).expect("runs");
+    assert_eq!(finished.exit_code, Some(0));
+    let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("reads");
+    assert_eq!(output, "moo\n");
+    // An image without Bash cannot run the wrapper; that is no failure of the machine.
+    let error = run(
+        &executor,
+        "task-10",
+        &spec(Some("alpine:latest"), &[]),
+        &Staging::default(),
+    )
+    .expect_err("no bash");
+    assert!(matches!(error, ExecutorError::NoBash(_)), "{error}");
+}

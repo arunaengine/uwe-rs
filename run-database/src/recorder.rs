@@ -249,14 +249,18 @@ impl Recorder {
                 .prepare_cached("UPDATE tasks SET state = ?3 WHERE run = ?1 AND id = ?2")?
                 .execute(params![run, task, state])?;
             let mut insert = connection.prepare_cached(
-                "INSERT INTO files (run, task, attempt, role, path, location, directory, size)
-                 VALUES (?1, ?2, ?3, 'output', ?4, ?5, ?6, ?7)",
+                "INSERT INTO files (run, task, attempt, role, path, location, directory, digest,
+                    size)
+                 VALUES (?1, ?2, ?3, 'output', ?4, ?5, ?6, ?7, ?8)",
             )?;
             for file in &outcome.files {
-                let size = std::fs::metadata(&file.location)
-                    .ok()
-                    .filter(|metadata| metadata.is_file())
-                    .map(|metadata| metadata.len());
+                // The executor knows size and digest best; the simulator tells neither.
+                let size = file.size.or_else(|| {
+                    std::fs::metadata(&file.location)
+                        .ok()
+                        .filter(|metadata| metadata.is_file())
+                        .map(|metadata| metadata.len())
+                });
                 insert.execute(params![
                     run,
                     task,
@@ -264,6 +268,7 @@ impl Recorder {
                     file.path,
                     file.location,
                     file.directory,
+                    file.digest,
                     size
                 ])?;
             }

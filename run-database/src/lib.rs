@@ -14,6 +14,7 @@
 
 mod fingerprint;
 mod graph;
+mod keep;
 mod origin;
 mod recorder;
 mod resume;
@@ -28,6 +29,7 @@ use std::time::Duration;
 use rusqlite::Connection;
 
 pub use fingerprint::{InputState, fingerprint, input_states};
+pub use keep::References;
 pub use origin::Origin;
 pub use recorder::{LOG_LIMIT, Recorder, RunStart};
 pub use resume::Reusable;

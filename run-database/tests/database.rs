@@ -425,3 +425,55 @@ fn why_a_task_ran_again_names_what_changed() {
         why.changes
     );
 }
+
+#[test]
+fn clean_up_learns_what_runs_refer_to() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    record(&path, directory.path()).expect("records");
+    let database = Database::open(&path).expect("opens");
+    // A run of this process that has not ended goes on.
+    let mut going = database
+        .record(&start("run-2", None))
+        .expect("starts a run");
+    let made = directory.path().join("second.txt");
+    going.requested(&task(1, "MAKE", Vec::new()), &[]);
+    going.started(TaskId(1), 1);
+    let output = OutputFile {
+        digest: Some(format!("sha256:{}", "a".repeat(64))),
+        size: Some(4),
+        ..outcome(1, made.clone(), "").files[0].clone()
+    };
+    let finished = Outcome {
+        files: vec![output],
+        ..outcome(1, made.clone(), "")
+    };
+    going.finished(&finished, 1, false);
+    going.close().expect("writes");
+    let database = Database::open(&path).expect("opens");
+    let running: Vec<String> = (database.running_runs().expect("reads").into_iter())
+        .map(|run| run.id)
+        .collect();
+    assert_eq!(running, ["run-2"]);
+    assert_eq!(database.runs_since(0).expect("reads"), ["run-1", "run-2"]);
+    assert!(database.runs_since(i64::MAX).expect("reads").is_empty());
+    let references = database
+        .references(&["run-1".to_owned(), "run-2".to_owned()])
+        .expect("reads");
+    let data = directory
+        .path()
+        .join("data.txt")
+        .to_string_lossy()
+        .into_owned();
+    let second = made.to_string_lossy().into_owned();
+    assert!(references.locations.contains(&data));
+    assert!(references.locations.contains(&second));
+    // The digest of an output that the executor gave, and of each log.
+    assert!(
+        references
+            .digests
+            .contains(&format!("sha256:{}", "a".repeat(64)))
+    );
+    let hello = task_model::Digest::sha256(b"hello\n").to_string();
+    assert!(references.digests.contains(&hello), "{references:?}");
+}

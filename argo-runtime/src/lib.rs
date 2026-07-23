@@ -194,6 +194,13 @@ impl Driver for ArgoDriver {
             .map(Some)
             .map_err(driver_error)
     }
+
+    /// The outputs of the entrypoint and the global outputs of the workflow.
+    fn outputs(&mut self) -> Result<Option<serde_json::Value>, DriverError> {
+        schema::outputs(&self.document, &self.library, &self.options)
+            .map(Some)
+            .map_err(driver_error)
+    }
 }
 
 /// The driver for an Argo workflow file.

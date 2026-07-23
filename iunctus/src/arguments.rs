@@ -85,6 +85,15 @@ pub struct Arguments {
     pub address: Option<IpAddr>,
     /// `-port number`: the port of the web page; a free one by default.
     pub port: Option<u16>,
+    /// `-keep-days n`: `iunctus clean` keeps what runs made or used in the last n days.
+    pub keep_days: Option<u64>,
+    /// `-keep-run run`, as often as needed: `iunctus clean` keeps what the run needs.
+    pub keep_runs: Vec<String>,
+    /// `-keep-slower-than time`, like `10m`: `iunctus clean` keeps the results of tasks that
+    /// ran at least this long.
+    pub keep_slower_than: Option<std::time::Duration>,
+    /// `-remove`: `iunctus clean` removes what it lists, instead of only listing it.
+    pub remove: bool,
 }
 
 /// Which run `-resume` continues.
@@ -197,6 +206,20 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
                 );
             }
             "-page" => parsed.page = true,
+            "-keep-days" => {
+                let number = value()?;
+                parsed.keep_days = Some(number.parse().map_err(|_| {
+                    format!("`-keep-days` needs a whole number of days, like 30, not `{number}`")
+                })?);
+            }
+            "-keep-run" => parsed.keep_runs.push(value()?),
+            "-keep-slower-than" => {
+                let text = value()?;
+                parsed.keep_slower_than = Some(duration(&text).ok_or(format!(
+                    "`-keep-slower-than` needs a time like 90s, 10m, 2h or 1d, not `{text}`"
+                ))?);
+            }
+            "-remove" => parsed.remove = true,
             "-address" => {
                 let text = value()?;
                 parsed.address = Some(text.parse().map_err(|_| {
@@ -271,6 +294,23 @@ fn looks_like_run(text: &str) -> bool {
     })
 }
 
+/// A time like `90s`, `10m`, `2h` or `1d`; a plain number counts seconds.
+fn duration(text: &str) -> Option<std::time::Duration> {
+    let split = text
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(text.len());
+    let (number, unit) = text.split_at(split);
+    let number: u64 = number.parse().ok()?;
+    let seconds = match unit {
+        "" | "s" => 1,
+        "m" => 60,
+        "h" => 60 * 60,
+        "d" => 24 * 60 * 60,
+        _ => return None,
+    };
+    Some(std::time::Duration::from_secs(number.checked_mul(seconds)?))
+}
+
 /// A language by its name, as `-lang` takes it.
 fn language(name: &str) -> Option<Language> {
     Some(match name.to_ascii_lowercase().as_str() {
@@ -318,6 +358,32 @@ mod tests {
     fn parse_all(arguments: &[&str]) -> Arguments {
         let arguments: Vec<String> = arguments.iter().map(|text| text.to_string()).collect();
         parse(&arguments).expect("valid options")
+    }
+
+    #[test]
+    fn clean_up_takes_its_rules() {
+        let parsed = parse_all(&[
+            "-keep-days",
+            "30",
+            "-keep-run",
+            "1a-2b",
+            "-keep-run",
+            "3c-4d",
+            "-keep-slower-than",
+            "10m",
+            "-remove",
+        ]);
+        assert_eq!(parsed.keep_days, Some(30));
+        assert_eq!(parsed.keep_runs, ["1a-2b", "3c-4d"]);
+        assert_eq!(
+            parsed.keep_slower_than,
+            Some(std::time::Duration::from_secs(600))
+        );
+        assert!(parsed.remove);
+        assert_eq!(duration("90"), Some(std::time::Duration::from_secs(90)));
+        assert_eq!(duration("1d"), Some(std::time::Duration::from_secs(86_400)));
+        assert_eq!(duration("1.5h"), None);
+        assert_eq!(duration("m"), None);
     }
 
     #[test]

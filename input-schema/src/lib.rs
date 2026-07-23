@@ -38,7 +38,7 @@ mod values;
 
 pub use check::{Problem, Severity, check};
 pub use compare::compare;
-pub use counts::Counts;
+pub use counts::{Counts, OutputCounts};
 pub use infer::{infer, value_schema};
 pub use properties::{Property, properties};
 pub use text::{outputs_text, text};

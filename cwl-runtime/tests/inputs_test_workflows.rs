@@ -14,7 +14,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use cwl_runtime::{CwlDriver, Options};
-use input_schema::Counts;
+use input_schema::{Counts, OutputCounts};
 use workflow_graph::{Driver, Launch};
 
 const DOCUMENTS: &str = include_str!("fixtures/graph_test_workflows.txt");
@@ -23,8 +23,8 @@ const FIXTURE: &str = "tests/fixtures/inputs_test_workflows.txt";
 /// What the error of a document says when it could not read a file from the web.
 const NO_NETWORK: &str = "cannot read `http";
 
-/// The inputs of one document, as the fixture records them.
-fn describe(root: &Path, document: &str) -> String {
+/// The inputs of one document, as the fixture records them, and the counts of its outputs.
+fn describe(root: &Path, document: &str) -> (String, Option<OutputCounts>) {
     let (file, fragment) = match document.split_once('#') {
         Some((file, fragment)) => (file, Some(fragment)),
         None => (document, None),
@@ -37,24 +37,31 @@ fn describe(root: &Path, document: &str) -> String {
     };
     let described = CwlDriver::new(&launch, Options::default()).and_then(|mut driver| {
         let inputs = driver.inputs()?;
-        Ok(inputs.map(|inputs| Counts::of(&inputs, true).to_string()))
+        let outputs = Driver::outputs(&mut driver)?;
+        Ok((inputs, outputs))
     });
-    match described {
-        Ok(Some(counts)) => counts,
-        Ok(None) => "none".into(),
-        Err(error) => {
-            let kind = if error.unsupported {
-                "unsupported"
-            } else {
-                "fail"
-            };
-            let first = error.message.lines().next().unwrap_or_default();
-            let first = first
-                .replace(&format!("file://{}/", root.display()), "")
-                .replace(&format!("{}/", root.display()), "");
-            format!("{kind}: {}", first.chars().take(200).collect::<String>())
-        }
-    }
+    let (inputs, outputs) = match described {
+        Ok((inputs, outputs)) => (inputs, outputs),
+        Err(error) => return (failure(root, &error), None),
+    };
+    let line = inputs.map_or("none".into(), |inputs| {
+        Counts::of(&inputs, true).to_string()
+    });
+    (line, outputs.map(|outputs| OutputCounts::of(&outputs)))
+}
+
+/// Why a document could not be described, on one line.
+fn failure(root: &Path, error: &workflow_graph::DriverError) -> String {
+    let kind = if error.unsupported {
+        "unsupported"
+    } else {
+        "fail"
+    };
+    let first = error.message.lines().next().unwrap_or_default();
+    let first = first
+        .replace(&format!("file://{}/", root.display()), "")
+        .replace(&format!("{}/", root.display()), "");
+    format!("{kind}: {}", first.chars().take(200).collect::<String>())
 }
 
 #[test]
@@ -73,6 +80,7 @@ fn documents_describe_their_inputs() {
         .collect();
     let next = AtomicUsize::new(0);
     let lines = Mutex::new(vec![String::new(); documents.len()]);
+    let outputs: Mutex<Vec<(&str, OutputCounts)>> = Mutex::new(Vec::new());
     std::thread::scope(|scope| {
         for _ in 0..4 {
             scope.spawn(|| {
@@ -81,7 +89,14 @@ fn documents_describe_their_inputs() {
                     let Some(document) = documents.get(index) else {
                         break;
                     };
-                    let line = format!("{document} {}", describe(&root, document));
+                    let (inputs, counts) = describe(&root, document);
+                    if let Some(counts) = counts {
+                        outputs
+                            .lock()
+                            .expect("no thread panicked")
+                            .push((document, counts));
+                    }
+                    let line = format!("{document} {inputs}");
                     lines.lock().expect("no thread panicked")[index] = line;
                 }
             });
@@ -103,7 +118,30 @@ fn documents_describe_their_inputs() {
     );
     println!("{header}");
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join(FIXTURE);
-    let text = format!("{header}\n{}\n", actual.join("\n"));
+    // The outputs of documents that depend on the network do not count, as they differ.
+    let outputs = outputs.into_inner().expect("no thread panicked");
+    let invalid: Vec<&(&str, OutputCounts)> = (outputs.iter())
+        .filter(|(_, counts)| counts.invalid.is_some())
+        .collect();
+    assert!(
+        invalid.is_empty(),
+        "schemas of outputs that are not valid: {invalid:?}"
+    );
+    let recorded_text =
+        std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(FIXTURE))
+            .unwrap_or_default();
+    let needs_network: std::collections::HashSet<&str> = (recorded_text.lines())
+        .chain(actual.iter().map(String::as_str))
+        .filter(|line| line.contains(NO_NETWORK))
+        .filter_map(|line| line.split(' ').next())
+        .collect();
+    let online = |document: &str| !needs_network.contains(document);
+    let counted: Vec<OutputCounts> = (outputs.into_iter())
+        .filter(|(document, _)| online(document))
+        .map(|(_, counts)| counts)
+        .collect();
+    let totals = OutputCounts::totals(&counted);
+    let text = format!("{header}\n{}\n{totals}\n", actual.join("\n"));
     if std::env::var_os("UPDATE_FIXTURE").is_some() {
         std::fs::write(&fixture, &text).expect("writes the fixture");
     }
@@ -118,9 +156,8 @@ fn documents_describe_their_inputs() {
         .filter(|line| line.contains(NO_NETWORK))
         .map(document)
         .collect();
-    let changed: Vec<&str> = actual
-        .iter()
-        .map(String::as_str)
+    let changed: Vec<&str> = (actual.iter().map(String::as_str))
+        .chain([totals.as_str()])
         .filter(|line| !recorded.contains(line) && !offline.contains(&document(line)))
         .collect();
     let written = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("inputs_test_workflows.txt");

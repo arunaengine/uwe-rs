@@ -7,7 +7,8 @@
 //! `invalid` or `missing`, with the evidence that `argo lint` rejects it too, or `unsupported`
 //! by a decision. Before each run, the test describes the inputs of the workflow, as the binary
 //! does (decision 24), and compares the counts of its schema and of a check of the simulated run
-//! with tests/fixtures/test-workflows/inputs.txt; every schema must be valid JSON Schema.
+//! with tests/fixtures/test-workflows/inputs.txt, with the totals of their outputs as the line
+//! `(outputs)`; every schema must be valid JSON Schema.
 //! `ARGO_TEST_WORKFLOWS_UPDATE=1` rewrites the outcomes and the inputs;
 //! `ARGO_TEST_WORKFLOWS_FILTER` runs only the documents whose path contains it, and
 //! `ARGO_TEST_WORKFLOWS_ORDER=shuffled:<seed>` lets tasks finish in a random order.
@@ -20,7 +21,7 @@ use std::rc::Rc;
 
 use argo_runtime::library::collect_files;
 use argo_runtime::{ArgoDriver, Document, Kind, Library, Options, load_file, validate};
-use input_schema::Counts;
+use input_schema::{Counts, OutputCounts};
 use workflow_graph::{Driver, Order, RunOptions, Simulator, execute_with};
 
 const FIXTURE: &str = "tests/fixtures/test-workflows/outcomes.txt";
@@ -80,6 +81,8 @@ struct TestWorkflows {
     configs: BTreeMap<&'static str, Vec<Rc<Document>>>,
     /// The counts of the inputs of each document that ran.
     inputs: BTreeMap<String, String>,
+    /// The counts of the outputs of each document that ran.
+    outputs: Vec<OutputCounts>,
 }
 
 impl TestWorkflows {
@@ -131,6 +134,9 @@ impl TestWorkflows {
             }
         };
         self.inputs.insert(key.to_owned(), inputs);
+        if let Ok(Some(outputs)) = driver.outputs() {
+            self.outputs.push(OutputCounts::of(&outputs));
+        }
         let work = self.scratch.path().join("simulator");
         let _ = std::fs::remove_dir_all(&work);
         let mut executor = Simulator::new(&work);
@@ -246,6 +252,7 @@ fn run_test_workflows() {
         scratch: tempfile::tempdir().expect("a temporary directory"),
         configs: BTreeMap::new(),
         inputs: BTreeMap::new(),
+        outputs: Vec::new(),
     };
     let mut outcomes: BTreeMap<String, String> = BTreeMap::new();
     let mut summary: Vec<String> = Vec::new();
@@ -328,7 +335,17 @@ fn run_test_workflows() {
     println!("{}", summary.join("\n"));
     println!("{ok} of {total} documents run through with a full graph or pass Argo's checks");
     let inputs_fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join(INPUTS);
-    let inputs = std::mem::take(&mut workflows.inputs);
+    let mut inputs = std::mem::take(&mut workflows.inputs);
+    let outputs = std::mem::take(&mut workflows.outputs);
+    let invalid: Vec<&OutputCounts> = outputs.iter().filter(|c| c.invalid.is_some()).collect();
+    assert!(
+        invalid.is_empty(),
+        "schemas of outputs that are not valid: {invalid:?}"
+    );
+    // The totals of the outputs of all documents, which a filtered run does not have.
+    if workflows.filter.is_empty() {
+        inputs.insert("(outputs)".into(), OutputCounts::totals(&outputs));
+    }
     let invalid: Vec<&String> = (inputs.iter())
         .filter(|(_, counts)| counts.starts_with("invalid schema"))
         .map(|(document, _)| document)

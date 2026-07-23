@@ -19,7 +19,7 @@ use std::rc::Rc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use input_schema::Counts;
+use input_schema::{Counts, OutputCounts};
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, Host};
 use nextflow_evaluator::value::{PathValue, Value};
@@ -82,11 +82,20 @@ fn describe(target: &Path, profile: bool, scratch: &Path) -> String {
     };
     let described = Nextflow::new(&launch, settings).and_then(|mut driver| {
         let inputs = driver.inputs()?;
-        Ok(inputs.map(|inputs| Counts::of(&inputs, true).to_string()))
+        let outputs = driver.outputs()?;
+        Ok((inputs, outputs))
     });
     match described {
-        Ok(Some(counts)) => counts,
-        Ok(None) => "none".into(),
+        // The counts of the outputs follow on a line of their own.
+        Ok((inputs, outputs)) => {
+            let inputs = inputs.map_or("none".into(), |inputs| {
+                Counts::of(&inputs, true).to_string()
+            });
+            let outputs = outputs.map_or("none".into(), |outputs| {
+                OutputCounts::of(&outputs).to_string()
+            });
+            format!("{inputs}\n{outputs}")
+        }
         Err(error) => {
             let kind = if error.unsupported {
                 "unsupported"
@@ -169,6 +178,7 @@ fn workflows_describe_their_inputs() {
         .unwrap_or(4);
     let next = AtomicUsize::new(0);
     let lines = Mutex::new(vec![String::new(); targets.len()]);
+    let outputs: Mutex<Vec<OutputCounts>> = Mutex::new(Vec::new());
     std::thread::scope(|scope| {
         for _ in 0..jobs.max(1) {
             scope.spawn(|| {
@@ -178,19 +188,30 @@ fn workflows_describe_their_inputs() {
                         break;
                     };
                     let outcome = outcomes.path().join(index.to_string());
-                    let line = format!("{name} {}", child(target, project, &outcome));
+                    let described = child(target, project, &outcome);
+                    let (inputs, counts) = described.split_once('\n').unwrap_or((&described, ""));
+                    if let Ok(counts) = counts.parse::<OutputCounts>() {
+                        outputs.lock().expect("no child panicked").push(counts);
+                    }
+                    let line = format!("{name} {inputs}");
                     lines.lock().expect("no child panicked")[index] = line;
                 }
             });
         }
     });
     let actual = lines.into_inner().expect("no child panicked");
-    compare(&actual, &targets);
+    let outputs = outputs.into_inner().expect("no child panicked");
+    let invalid: Vec<&OutputCounts> = outputs.iter().filter(|c| c.invalid.is_some()).collect();
+    assert!(
+        invalid.is_empty(),
+        "schemas of outputs that are not valid: {invalid:?}"
+    );
+    compare(&actual, &targets, &OutputCounts::totals(&outputs));
 }
 
-/// Compares the lines with the fixture, or writes it with `UPDATE_FIXTURE=1`. Every schema
-/// must be valid.
-fn compare(actual: &[String], targets: &[targets::Target]) {
+/// Compares the lines with the fixture, or writes it with `UPDATE_FIXTURE=1`, with the totals
+/// of the outputs as the last line. Every schema must be valid.
+fn compare(actual: &[String], targets: &[targets::Target], totals: &str) {
     let counted = |prefix: &str| {
         actual
             .iter()
@@ -224,7 +245,7 @@ fn compare(actual: &[String], targets: &[targets::Target]) {
     );
     println!("{header}");
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join(FIXTURE);
-    let text = format!("{header}\n{}\n", actual.join("\n"));
+    let text = format!("{header}\n{}\n{totals}\n", actual.join("\n"));
     if std::env::var_os("UPDATE_FIXTURE").is_some() {
         std::fs::write(&fixture, &text).expect("writes the fixture");
     }
@@ -233,8 +254,9 @@ fn compare(actual: &[String], targets: &[targets::Target]) {
         .lines()
         .filter(|line| !line.starts_with('#'))
         .collect();
-    let changed: Vec<&String> = actual
-        .iter()
+    let totals = totals.to_owned();
+    let changed: Vec<&String> = (actual.iter())
+        .chain([&totals])
         .filter(|line| !recorded.contains(&line.as_str()))
         .collect();
     let written = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("inputs_test_workflows.txt");

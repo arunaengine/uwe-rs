@@ -348,3 +348,4 @@ workflowhub/2251 ok: 31 inputs, 2 required, 4 files, 0 tables; 0 errors, 2 warni
 workflowhub/2302 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 64 read not declared, 0 declared not read
 workflowhub/2317 ok: 16 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 8 declared not read
 workflowhub/2318 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 44 read not declared, 0 declared not read
+outputs: 153 of 280 workflows have outputs, 324 outputs, 145 files

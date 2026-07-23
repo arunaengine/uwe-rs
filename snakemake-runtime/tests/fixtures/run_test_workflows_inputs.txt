@@ -1,8 +1,10 @@
 # The inputs of each workflow of the Snakemake test workflows (decision 24), as a run
 # describes them before its first task: `ok:` and the counts of its schema, of a check
 # of the simulated run, and of the config keys that its code reads and its schema does
-# not declare or the other way round; or the error that stops its evaluation.
+# not declare or the other way round; or the error that stops its evaluation. The line
+# `(outputs)` holds the totals of the schemas of their outputs.
 # 892 workflows, 685 with a schema.
+(outputs) outputs: 605 of 683 workflows have outputs, 655 outputs, 655 files
 catalog/3d-omics__hg_genotype ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/AToL-Bioinformatics__genome-launcher-workflow 1 workflow/Snakefile:8: the workflow imports the Python package giturlparse, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/Addimator__compare_meth 1 workflow/rules/common.smk:7: FileNotFoundError: [Errno 2] No such file or directory: '/projects/koesterlab/benchmark-methylation/data_analysis_jochen/compare_meth/config/sample.tsv'

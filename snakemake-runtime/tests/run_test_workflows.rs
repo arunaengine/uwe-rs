@@ -14,7 +14,8 @@
 //!
 //! Before each run, the test describes the inputs of the workflow, as the binary does (decision
 //! 24), and compares the counts of its schema and of a check of the simulated run with
-//! `tests/fixtures/run_test_workflows_inputs.txt`; every schema must be valid JSON Schema.
+//! `tests/fixtures/run_test_workflows_inputs.txt`, with the totals of their outputs as the line
+//! `(outputs)`; every schema must be valid JSON Schema.
 //! `UPDATE_FIXTURE=1` writes that file too.
 //!
 //! Workflows that import a Python package without a stand-in while they are planned need the
@@ -30,7 +31,7 @@ use std::process::Command;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use input_schema::Counts;
+use input_schema::{Counts, OutputCounts};
 use snakemake_runtime::{PythonContainers, Settings};
 use workflow_graph::{Launch, Order, RunOptions, Simulator, execute_with};
 
@@ -186,8 +187,9 @@ fn shuffle_seed() -> u64 {
 }
 
 /// The outcome of one run in this process, as the fixture line records it, and the counts of
-/// the inputs of the workflow, which the run describes first, as the binary does.
-fn run(folder: &Path, launching: &Launching, scratch: &Path) -> (String, String) {
+/// the inputs and the outputs of the workflow, which the run describes first, as the binary
+/// does.
+fn run(folder: &Path, launching: &Launching, scratch: &Path) -> (String, String, String) {
     // Files on the web, like remote modules, are downloaded once for all runs.
     if let Some(root) = std::env::var_os("SNAKEMAKE_TEST_WORKFLOWS") {
         let downloads = Path::new(&root).join("downloads");
@@ -200,12 +202,17 @@ fn run(folder: &Path, launching: &Launching, scratch: &Path) -> (String, String)
         Ok(driver) => driver,
         Err(error) => {
             let outcome = format!("{} {error}", if error.unsupported { 33 } else { 1 });
-            return (outcome.clone(), outcome);
+            return (outcome.clone(), outcome.clone(), outcome);
         }
     };
     let inputs = match driver.inputs() {
         Ok(Some(inputs)) => Counts::of(&inputs, true).to_string(),
         Ok(None) => "none: the workflow runs a command while it is loaded".into(),
+        Err(error) => format!("{} {error}", if error.unsupported { 33 } else { 1 }),
+    };
+    let outputs = match driver.outputs() {
+        Ok(Some(outputs)) => OutputCounts::of(&outputs).to_string(),
+        Ok(None) => "none".into(),
         Err(error) => format!("{} {error}", if error.unsupported { 33 } else { 1 }),
     };
     let mut executor = Simulator::new(scratch.join("simulator"));
@@ -226,12 +233,17 @@ fn run(folder: &Path, launching: &Launching, scratch: &Path) -> (String, String)
         None => format!("ok {}", execution.graph.nodes.len()),
         Some(error) => format!("{} {error}", if error.unsupported() { 33 } else { 1 }),
     };
-    (outcome, inputs)
+    (outcome, inputs, outputs)
 }
 
 /// The file next to the outcome of a child that holds the counts of the inputs.
 fn inputs_file(outcome: &Path) -> PathBuf {
     outcome.with_extension("inputs")
+}
+
+/// The file next to the outcome of a child that holds the counts of the outputs.
+fn outputs_file(outcome: &Path) -> PathBuf {
+    outcome.with_extension("outputs")
 }
 
 /// The first line of an outcome, without the parts that differ between machines.
@@ -267,8 +279,9 @@ fn run_one() {
     let scratch = std::env::var_os("SNAKEMAKE_RUN_SCRATCH").map(PathBuf::from);
     let own = tempfile::tempdir().expect("a temporary directory");
     let scratch = scratch.unwrap_or_else(|| own.path().to_path_buf());
-    let (result, inputs) = run(&folder, &Launching::of(&name.to_string_lossy()), &scratch);
+    let (result, inputs, outputs) = run(&folder, &Launching::of(&name.to_string_lossy()), &scratch);
     let outcome = PathBuf::from(outcome);
+    std::fs::write(outputs_file(&outcome), outputs).expect("writes the outputs");
     std::fs::write(inputs_file(&outcome), clean(&inputs, &folder)).expect("writes the inputs");
     std::fs::write(outcome, clean(&result, &folder)).expect("writes the outcome");
 }
@@ -437,6 +450,7 @@ fn workflows_run_as_recorded() {
     let next = AtomicUsize::new(0);
     let results: Mutex<Vec<Option<String>>> = Mutex::new(vec![None; workflows.len()]);
     let inputs: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+    let outputs: Mutex<Vec<OutputCounts>> = Mutex::new(Vec::new());
     let threads = std::thread::available_parallelism()
         .map_or(4, |count| count.get())
         .min(4);
@@ -456,6 +470,10 @@ fn workflows_run_as_recorded() {
                         .lock()
                         .expect("the inputs")
                         .push((name.clone(), counts));
+                    let described = std::fs::read_to_string(outputs_file(&file));
+                    if let Some(counts) = described.ok().and_then(|text| text.parse().ok()) {
+                        outputs.lock().expect("the outputs").push(counts);
+                    }
                     results.lock().expect("the results")[index] = Some(outcome);
                 }
             });
@@ -474,6 +492,16 @@ fn workflows_run_as_recorded() {
         .collect();
     if !containers() {
         let mut inputs = inputs.into_inner().expect("the inputs");
+        let outputs = outputs.into_inner().expect("the outputs");
+        let invalid: Vec<&OutputCounts> = outputs.iter().filter(|c| c.invalid.is_some()).collect();
+        assert!(
+            invalid.is_empty(),
+            "schemas of outputs that are not valid: {invalid:?}"
+        );
+        // The totals of the outputs of all workflows, which a filtered run does not have.
+        if filter.is_empty() {
+            inputs.push(("(outputs)".into(), OutputCounts::totals(&outputs)));
+        }
         inputs.sort();
         compare_inputs(
             &fixtures.join("run_test_workflows_inputs.txt"),
@@ -567,9 +595,10 @@ fn compare_inputs(fixture: &Path, inputs: &[(String, String)], filter: &str) {
             "# The inputs of each workflow of the Snakemake test workflows (decision 24), as a run\n\
              # describes them before its first task: `ok:` and the counts of its schema, of a check\n\
              # of the simulated run, and of the config keys that its code reads and its schema does\n\
-             # not declare or the other way round; or the error that stops its evaluation.\n\
+             # not declare or the other way round; or the error that stops its evaluation. The line\n\
+             # `(outputs)` holds the totals of the schemas of their outputs.\n\
              # {} workflows, {described} with a schema.",
-            all.len()
+            all.iter().filter(|(name, _)| name != "(outputs)").count()
         );
         std::fs::write(fixture, format!("{header}\n{}\n", lines.join("\n")))
             .expect("writes the fixture of the inputs");

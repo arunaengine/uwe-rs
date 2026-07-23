@@ -1,14 +1,17 @@
-//! The inputs of a CWL process as one JSON Schema (decision 24): each input with its type, its
-//! `label` as the title, its `doc` as the description and its default. Files and directories
-//! are paths that must exist, with their formats and secondary files; enums, arrays, records
-//! and optional types map onto their JSON Schema forms. The values of a run are its input
-//! object, with files and directories as their paths or addresses.
+//! The inputs and outputs of a CWL process as JSON Schema (decision 24): each input or output
+//! with its type, its `label` as the title, its `doc` as the description, and an input with its
+//! default. Files and directories are paths, which an input must name before the run, with
+//! their formats and secondary files; enums, arrays, records and optional types map onto their
+//! JSON Schema forms. The values of a run are its input object, with files and directories as
+//! their paths or addresses.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeSet;
 
-use cwl_parser::model::{Class, Expression, InputParameter, Process, Type, short_name};
+use cwl_parser::model::{
+    Class, Expression, InputParameter, OutputParameter, Process, Type, short_name,
+};
 use cwl_parser::salad::context::Namespaces;
 use input_schema::{DIRECTORY_PATH, DRAFT, FILE_PATH};
 use serde_json::{Map as JsonMap, Value as Json, json};
@@ -34,6 +37,27 @@ pub fn of(process: &Process, types: &Types, namespaces: &Namespaces) -> Json {
         }
         properties.insert(name, schema);
     }
+    object(process, properties, required)
+}
+
+/// The schema of the outputs of a process: the output object of a run. A file or directory is
+/// a path that the run makes.
+pub fn outputs(process: &Process, types: &Types, namespaces: &Namespaces) -> Json {
+    let mut properties = JsonMap::new();
+    let mut required = Vec::new();
+    for output in &process.outputs {
+        let name = short_name(&output.id).to_owned();
+        if !types.optional(&output.value_type) {
+            required.push(Json::String(name.clone()));
+        }
+        properties.insert(name, output_schema(output, types, namespaces));
+    }
+    object(process, properties, required)
+}
+
+/// The schema of an object of a process: its label as the title, else its name, and its
+/// documentation as the description.
+fn object(process: &Process, properties: JsonMap<String, Json>, required: Vec<Json>) -> Json {
     let mut schema = json!({
         "$schema": DRAFT,
         "title": process
@@ -50,6 +74,42 @@ pub fn of(process: &Process, types: &Types, namespaces: &Namespaces) -> Json {
         schema["required"] = Json::Array(required);
     }
     schema
+}
+
+/// The schema of one output: its type, whose files and directories need not exist before the
+/// run, with the format and secondary files of a file.
+fn output_schema(output: &OutputParameter, types: &Types, namespaces: &Namespaces) -> Json {
+    let mut schema = type_schema(&output.value_type, types, 0);
+    without_exists(&mut schema);
+    if let Some(label) = &output.label {
+        schema["title"] = json!(label);
+    }
+    if !output.doc.is_empty() {
+        schema["description"] = json!(output.doc.join("\n").trim());
+    }
+    let formats: Vec<String> = (output.format.iter())
+        .filter_map(literal)
+        .map(|format| namespaces.expand_prefix(format))
+        .collect();
+    let secondary: Vec<&str> = (output.secondary_files.iter())
+        .filter_map(|file| literal(&file.pattern))
+        .collect();
+    if !formats.is_empty() || !secondary.is_empty() {
+        with_file_details(&mut schema, &formats, &secondary);
+    }
+    schema
+}
+
+/// A schema without the `exists` keywords of its files and directories.
+fn without_exists(schema: &mut Json) {
+    match schema {
+        Json::Object(fields) => {
+            fields.remove("exists");
+            fields.values_mut().for_each(without_exists);
+        }
+        Json::Array(items) => items.iter_mut().for_each(without_exists),
+        _ => {}
+    }
 }
 
 /// The schema of one input: its type, with the formats and secondary files of a file.

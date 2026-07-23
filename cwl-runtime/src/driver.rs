@@ -204,6 +204,12 @@ impl Driver for CwlDriver {
         }))
     }
 
+    /// The typed outputs of the process: the output object of a run.
+    fn outputs(&mut self) -> Result<Option<serde_json::Value>, DriverError> {
+        let schema = schema::outputs(&self.process, &self.types(), &self.namespaces);
+        Ok(Some(schema))
+    }
+
     /// A real run delivers the files of the output object to the output folder and prints
     /// the object, which then names them there, as `cwltool --outdir` does.
     fn finish(&mut self) -> Result<(), DriverError> {

@@ -113,7 +113,9 @@ pub fn inputs(interpreter: &mut Interpreter, state: &Workflow) -> Result<Inputs,
 
 /// The name of the folder of a workflow: that of its Snakefile, or the one above a `workflow`
 /// folder.
-fn workflow_folder(folder: &Path) -> Option<String> {
+pub(crate) fn workflow_folder(folder: &Path) -> Option<String> {
+    let folder = std::fs::canonicalize(folder).unwrap_or_else(|_| folder.to_owned());
+    let folder = folder.as_path();
     let folder = match folder.file_name()?.to_str()? {
         "workflow" => folder.parent()?,
         _ => folder,

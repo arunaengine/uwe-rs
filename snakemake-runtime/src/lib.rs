@@ -17,6 +17,7 @@ mod iofile;
 mod ioutils;
 mod namespace;
 mod objects;
+mod output_schema;
 mod paramspace;
 mod pathvars;
 mod pattern;

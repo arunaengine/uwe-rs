@@ -30,6 +30,8 @@ pub const DEFAULT_IMAGE: &str = "debian:stable-slim";
 pub enum Request {
     /// The inputs of the workflow, before the run starts.
     Inputs,
+    /// The outputs of the workflow, before the run starts.
+    Outputs,
     Start,
     Complete(Box<Outcome>),
     Finish,
@@ -40,6 +42,10 @@ pub type Reply = Result<Vec<Task>, DriverError>;
 
 /// The answer to a request for the inputs, which comes back on a channel of its own.
 pub type InputsReply = Result<Option<Inputs>, DriverError>;
+
+/// The answer to a request for the outputs, the schema of the results of a run, which comes
+/// back on a channel of its own.
+pub type OutputsReply = Result<Option<serde_json::Value>, DriverError>;
 
 /// The session's end of its connection to the engine.
 pub struct Channel {
@@ -151,7 +157,7 @@ impl CommandRunner {
                         .send(Ok(Vec::new()))
                         .map_err(|_| ended())?;
                 }
-                Request::Inputs | Request::Start | Request::Finish => {
+                Request::Inputs | Request::Outputs | Request::Start | Request::Finish => {
                     return Err(Error::runtime_error(
                         "the engine asked the session to start or finish while a command ran",
                     ));

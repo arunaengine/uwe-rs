@@ -3,8 +3,8 @@
 //! Nextflow project, `iunctus runs` lists the runs of the run database, `iunctus export`
 //! writes the RO-Crate of a run, `iunctus page` serves the web page of the runs,
 //! `iunctus why` tells why a task ran again, `iunctus origin` where a file came from,
-//! `iunctus inputs` prints the JSON Schema of the inputs of a workflow, and `iunctus clean`
-//! removes from the store what no rule keeps.
+//! `iunctus inputs` prints the JSON Schema of the inputs of a workflow, `iunctus outputs` that
+//! of its outputs, and `iunctus clean` removes from the store what no rule keeps.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -108,6 +108,7 @@ fn main() -> ExitCode {
         "why" => runs::why(&arguments),
         "origin" => runs::origin(&arguments),
         "inputs" => inputs::command(&arguments),
+        "outputs" => inputs::outputs(&arguments),
         "clean" => clean::command(&arguments),
         _ => return usage(),
     };
@@ -535,6 +536,7 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
        iunctus why <run> <task>
        iunctus origin <file>
        iunctus inputs <workflow file or directory> [-format json|text] [-check] [options]
+       iunctus outputs <workflow file or directory> [-format json|text] [options]
        iunctus clean [-keep-days <n>] [-keep-run <run>]... [-keep-slower-than <time>] [-remove]
 
 options:
@@ -586,7 +588,8 @@ options:
   -output <folder>                    where `export` writes the RO-Crate (default: <run>-crate)
   -license <url>                      the license of the exported crate
   -format json|text                   what `inputs` writes: the JSON Schema of the inputs
-                                      (the default), or the inputs as help text
+                                      (the default), or the inputs as help text;
+                                      for `outputs` the same of the outputs
   -check                              `inputs` also checks the given values against the
                                       schema, as a run does before any task starts
   -keep-days <n>                      `clean` keeps what runs made or used in the last n days

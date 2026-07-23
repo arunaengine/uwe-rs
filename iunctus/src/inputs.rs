@@ -1,10 +1,11 @@
-//! The inputs of a workflow as one JSON Schema (decision 24): `iunctus inputs` prints the schema
-//! of any workflow, and every run checks its values against it before any task starts.
+//! The inputs and outputs of a workflow as JSON Schema (decision 24): `iunctus inputs` prints the
+//! schema of the inputs of any workflow, `iunctus outputs` that of its outputs, and every run
+//! checks its values against the schema of its inputs before any task starts.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use input_schema::{Problem, Severity};
-use workflow_graph::{Driver, Inputs};
+use workflow_graph::{Driver, Inputs, Language};
 
 use crate::arguments::Arguments;
 use crate::{Failure, failure};
@@ -58,23 +59,10 @@ fn warnings(inputs: &Inputs, problems: &[Problem]) -> Vec<String> {
 /// with the same options checks them: a simulated run, unless `-executor local` asks for a real
 /// one. The workflow runs no task.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
-    let text = match arguments.format.as_deref() {
-        None | Some("json") => false,
-        Some("text") => true,
-        Some(other) => {
-            return Err(failure(format!(
-                "iunctus: `-format {other}` is a format of `iunctus graph`; `iunctus inputs` \
-                 writes json or text"
-            )));
-        }
-    };
-    let (target, language) = crate::target_and_language(arguments)?;
-    let launch = crate::launch(arguments, target);
-    let setup = crate::setup::Setup::load(arguments)?;
-    let run = crate::run_id();
-    let mut driver = crate::driver(language, &launch, &run, true, arguments, &setup)?;
+    let text = text_format(arguments, "inputs")?;
+    let (mut driver, language, simulated) = describing(arguments)?;
     let inputs = match arguments.check {
-        true => check(driver.as_mut(), launch.simulated, true)?,
+        true => check(driver.as_mut(), simulated, true)?,
         false => {
             let inputs = driver.inputs()?;
             if let Some(inputs) = &inputs {
@@ -90,10 +78,54 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
             "iunctus: the {language} driver does not describe the inputs of its workflows yet"
         )));
     };
+    print(&inputs.schema, text.then_some(input_schema::text))
+}
+
+/// `iunctus outputs`: prints the JSON Schema of the outputs of a workflow, the results of a run,
+/// or with `-format text` the outputs as text. The workflow runs no task.
+pub fn outputs(arguments: &Arguments) -> Result<(), Failure> {
+    let text = text_format(arguments, "outputs")?;
+    let (mut driver, language, _) = describing(arguments)?;
+    let Some(schema) = driver.outputs()? else {
+        return Err(failure(format!(
+            "iunctus: the {language} driver does not describe the outputs of its workflows yet"
+        )));
+    };
+    print(&schema, text.then_some(input_schema::outputs_text))
+}
+
+/// Whether `-format` asks a command that describes a workflow for text rather than JSON.
+fn text_format(arguments: &Arguments, command: &str) -> Result<bool, Failure> {
+    match arguments.format.as_deref() {
+        None | Some("json") => Ok(false),
+        Some("text") => Ok(true),
+        Some(other) => Err(failure(format!(
+            "iunctus: `-format {other}` is a format of `iunctus graph`; `iunctus {command}` \
+             writes json or text"
+        ))),
+    }
+}
+
+/// The driver of the workflow that a command describes, its language, and whether a run with
+/// the same options would be simulated.
+fn describing(arguments: &Arguments) -> Result<(Box<dyn Driver>, Language, bool), Failure> {
+    let (target, language) = crate::target_and_language(arguments)?;
+    let launch = crate::launch(arguments, target);
+    let setup = crate::setup::Setup::load(arguments)?;
+    let run = crate::run_id();
+    let driver = crate::driver(language, &launch, &run, true, arguments, &setup)?;
+    Ok((driver, language, launch.simulated))
+}
+
+/// Prints a schema as JSON, or as text when a writer of text is given.
+fn print(
+    schema: &serde_json::Value,
+    text: Option<fn(&serde_json::Value) -> String>,
+) -> Result<(), Failure> {
     match text {
-        true => print!("{}", input_schema::text(&inputs.schema)),
-        false => {
-            let json = serde_json::to_string_pretty(&inputs.schema)
+        Some(text) => print!("{}", text(schema)),
+        None => {
+            let json = serde_json::to_string_pretty(schema)
                 .map_err(|error| failure(format!("iunctus: {error}")))?;
             println!("{json}");
         }

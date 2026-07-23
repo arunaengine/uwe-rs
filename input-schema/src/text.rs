@@ -1,6 +1,6 @@
-//! The inputs of a workflow as text, for help on the command line: each input with its kind,
-//! whether it is required, its default, its choices and its description, in the groups of the
-//! schema.
+//! The inputs or outputs of a workflow as text, for help on the command line: each with its
+//! kind, whether it is required, its default, its choices, its files and its description, in the
+//! groups of the schema.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -9,9 +9,19 @@ use serde_json::Value as Json;
 use crate::properties::{Property, properties, resolve};
 use crate::{DIRECTORY_PATH, FILE_PATH, FILE_PATH_PATTERN, PATH};
 
-/// The help text of a schema, with the groups in the order of `allOf` and the inputs of a
-/// group by name. Inputs that nf-schema marks `hidden` are left out and counted at the end.
+/// The help text of a schema of inputs, with the groups in the order of `allOf` and the inputs
+/// of a group by name. Inputs that nf-schema marks `hidden` are left out and counted at the end.
 pub fn text(schema: &Json) -> String {
+    write(schema, "Inputs", "--")
+}
+
+/// The text of a schema of outputs, like [`text`], with the outputs by their names.
+pub fn outputs_text(schema: &Json) -> String {
+    write(schema, "Outputs", "")
+}
+
+/// The text of a schema: `heading` for inputs outside groups, and `prefix` before each name.
+fn write(schema: &Json, heading: &str, prefix: &str) -> String {
     let mut out = String::new();
     for keyword in ["title", "description"] {
         if let Some(text) = schema.get(keyword).and_then(Json::as_str) {
@@ -29,10 +39,10 @@ pub fn text(schema: &Json) -> String {
         if group != Some(property.group) {
             group = Some(property.group);
             out.push('\n');
-            out.push_str(property.group.unwrap_or("Inputs"));
+            out.push_str(property.group.unwrap_or(heading));
             out.push('\n');
         }
-        out.push_str(&line(schema, &property));
+        out.push_str(&line(schema, &property, prefix));
     }
     match hidden {
         0 => {}
@@ -43,7 +53,7 @@ pub fn text(schema: &Json) -> String {
 }
 
 /// `  --name <kind> (required)` and the description below it.
-fn line(root: &Json, property: &Property) -> String {
+fn line(root: &Json, property: &Property, prefix: &str) -> String {
     let (schema, _) = resolve(root, property.schema);
     let mut notes = Vec::new();
     if property.required {
@@ -56,7 +66,13 @@ fn line(root: &Json, property: &Property) -> String {
     if let Some(default) = schema.get("default") {
         notes.push(format!("default: {}", plain(default)));
     }
-    let mut line = format!("  --{} <{}>", property.name, kind(root, schema));
+    match schema.get("const") {
+        Some(Json::Array(items)) if items.len() == 1 => notes.push(plain(&items[0])),
+        Some(Json::Array(items)) => notes.push(format!("{} of them", items.len())),
+        Some(value) => notes.push(plain(value)),
+        None => {}
+    }
+    let mut line = format!("  {prefix}{} <{}>", property.name, kind(root, schema));
     if !notes.is_empty() {
         line.push_str(&format!(" ({})", notes.join("; ")));
     }
@@ -117,6 +133,20 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn outputs_by_name() {
+        let schema = json!({
+            "properties": {
+                "report": {"type": "string", "format": "file-path", "const": "results/report.html"},
+                "counts": {"type": "array", "items": {"type": "string", "format": "file-path"}, "const": ["a", "b"]}
+            }
+        });
+        assert_eq!(
+            outputs_text(&schema),
+            "\nOutputs\n  counts <list of file> (2 of them)\n  report <file> (results/report.html)\n"
+        );
+    }
 
     #[test]
     fn help_in_groups() {

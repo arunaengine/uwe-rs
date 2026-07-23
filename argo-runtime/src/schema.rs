@@ -2,7 +2,9 @@
 //! `spec.arguments`, which are texts, with their `enum`, their value as the default and their
 //! `description`, and the input parameters of the entrypoint that no argument supplies. Input
 //! artifacts are paths that the workflow gives itself, with their location as the default. The
-//! values of a run are its parameters after the command line and the parameter file.
+//! values of a run are its parameters after the command line and the parameter file. The
+//! outputs are those of the entrypoint, parameters as texts and artifacts as paths, and the
+//! global outputs of all templates, by their `globalName`.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -98,6 +100,94 @@ pub(crate) fn inputs(document: &Document, library: &Library, options: &Options) 
         advisory: false,
         ignored: Default::default(),
     })
+}
+
+/// The outputs of the workflow that a document runs: the output parameters of its entrypoint,
+/// which are texts, and its output artifacts, which are paths, then the global outputs of its
+/// templates by their `globalName`, as `workflow.outputs` gives them. An artifact that is
+/// `optional` may be missing.
+pub(crate) fn outputs(document: &Document, library: &Library, options: &Options) -> Result<Json> {
+    let Joined { spec: node, .. } = joined_spec(document, library)?;
+    let (spec, _) =
+        decode::<WorkflowSpec>(&node).map_err(|error| Failure::error(format!("spec: {error}")))?;
+    let entrypoint = (options.entrypoint.clone())
+        .filter(|entrypoint| !entrypoint.is_empty())
+        .unwrap_or_else(|| spec.entrypoint.clone());
+    let entry = spec
+        .templates
+        .iter()
+        .find(|template| template.name == entrypoint);
+    let mut properties = Map::new();
+    let mut required = Vec::new();
+    let mut add = |name: &str, schema: Json, optional: bool| {
+        if properties.contains_key(name) {
+            return;
+        }
+        if !optional {
+            required.push(json!(name));
+        }
+        properties.insert(name.to_owned(), schema);
+    };
+    if let Some(entry) = entry {
+        for parameter in &entry.outputs.parameters {
+            add(&parameter.name, output_parameter(parameter, None), false);
+        }
+        for artifact in &entry.outputs.artifacts {
+            add(&artifact.name, output_artifact(None), artifact.optional);
+        }
+    }
+    for template in &spec.templates {
+        for parameter in &template.outputs.parameters {
+            if !parameter.global_name.is_empty() {
+                let schema = output_parameter(parameter, Some(&template.name));
+                add(&parameter.global_name, schema, true);
+            }
+        }
+        for artifact in &template.outputs.artifacts {
+            if !artifact.global_name.is_empty() {
+                let schema = output_artifact(Some(&template.name));
+                add(&artifact.global_name, schema, true);
+            }
+        }
+    }
+    let mut schema = json!({
+        "$schema": DRAFT,
+        "title": title(document),
+        "type": "object",
+        "properties": properties,
+    });
+    if !required.is_empty() {
+        schema["required"] = Json::Array(required);
+    }
+    Ok(schema)
+}
+
+/// The schema of an output parameter: a text, with its description, and the template that
+/// gives it when it is a global output.
+fn output_parameter(parameter: &Parameter, template: Option<&str>) -> Json {
+    let mut schema = json!({"type": "string"});
+    let description = parameter
+        .description
+        .as_ref()
+        .map(|d| d.as_str().to_owned());
+    let description = match (description, template) {
+        (Some(description), _) => Some(description),
+        (None, Some(template)) => Some(format!("a global output of the template {template}")),
+        (None, None) => None,
+    };
+    if let Some(description) = description {
+        schema["description"] = json!(description);
+    }
+    schema
+}
+
+/// The schema of an output artifact: a file or directory that the run makes.
+fn output_artifact(template: Option<&str>) -> Json {
+    let mut schema = json!({"type": "string", "format": PATH});
+    if let Some(template) = template {
+        schema["description"] = json!(format!("a global output of the template {template}"));
+    }
+    schema
 }
 
 /// The schema of a parameter: a text, with its choices, its value or default as the default,

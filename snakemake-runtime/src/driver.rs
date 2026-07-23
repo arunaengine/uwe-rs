@@ -19,7 +19,7 @@ use workflow_graph::{
     MarkerKind, Note, Outcome, Task, TaskId,
 };
 
-use crate::commands::{Channel, CommandRunner, InputsReply, Reply, Request};
+use crate::commands::{Channel, CommandRunner, InputsReply, OutputsReply, Reply, Request};
 use crate::files::{Produced, WorkflowFiles};
 use crate::plan::Planner;
 use crate::python::{ContainerStarter, PythonContainers};
@@ -494,6 +494,23 @@ impl Session {
         crate::inputs::inputs(&mut self.interpreter, &workflow).map_err(|error| self.error(&error))
     }
 
+    /// The outputs of the workflow: the files of its target rules for the config of the launch.
+    pub fn outputs(&mut self) -> Result<serde_json::Value, DriverError> {
+        self.evaluate_once()?;
+        let (rules, targets, title) = {
+            let state = self.state.borrow();
+            let targets: Vec<String> = match self.launch.targets.is_empty() {
+                true => state.default_target.iter().cloned().collect(),
+                false => self.launch.targets.clone(),
+            };
+            let folder = state.main_snakefile.parent();
+            let title = folder.and_then(crate::inputs::workflow_folder);
+            (state.rules.clone(), targets, title.unwrap_or_default())
+        };
+        crate::output_schema::schema(&mut self.interpreter, &rules, &targets, &title)
+            .map_err(|error| self.error(&error))
+    }
+
     pub fn start(&mut self) -> Result<Vec<Task>, DriverError> {
         self.evaluate_once()?;
         self.plan()?;
@@ -739,6 +756,8 @@ struct SnakemakeDriver {
     replies: Receiver<Reply>,
     /// The answers to requests for the inputs.
     inputs: Receiver<InputsReply>,
+    /// The answers to requests for the outputs.
+    outputs: Receiver<OutputsReply>,
     worker: Option<JoinHandle<()>>,
     /// The notes of the session, which it adds before each reply.
     notes: Arc<Mutex<Vec<Note>>>,
@@ -797,6 +816,12 @@ impl Driver for SnakemakeDriver {
         self.inputs.recv().unwrap_or_else(|_| Err(ended()))
     }
 
+    fn outputs(&mut self) -> Result<Option<serde_json::Value>, DriverError> {
+        let ended = || DriverError::new("the Snakemake session ended unexpectedly");
+        self.requests.send(Request::Outputs).map_err(|_| ended())?;
+        self.outputs.recv().unwrap_or_else(|_| Err(ended()))
+    }
+
     fn finish(&mut self) -> Result<(), DriverError> {
         let result = self.ask(Request::Finish).map(|_| ());
         if let Some(worker) = self.worker.take() {
@@ -838,6 +863,7 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
     let (requests, incoming) = channel::<Request>();
     let (outgoing, replies) = channel::<Reply>();
     let (inputs_outgoing, inputs) = channel::<InputsReply>();
+    let (outputs_outgoing, outputs) = channel::<OutputsReply>();
     let launch = launch.clone();
     let notes: Arc<Mutex<Vec<Note>>> = Arc::default();
     let session_notes = notes.clone();
@@ -871,6 +897,7 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
                     while let Ok(request) = channel.requests.recv() {
                         let _ = match request {
                             Request::Inputs => inputs_outgoing.send(Err(error.clone())).is_ok(),
+                            Request::Outputs => outputs_outgoing.send(Err(error.clone())).is_ok(),
                             Request::Finish => {
                                 let _ = channel.replies.send(Err(error.clone()));
                                 break;
@@ -885,11 +912,21 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
             while let Ok(request) = channel.requests.recv() {
                 let reply = match request {
                     Request::Inputs => {
-                        let described = describe(session, &channel, &open);
+                        let described = describe(session, &channel, &open, Session::inputs);
                         if let Ok(mut notes) = session_notes.lock() {
                             notes.extend(session.take_notes());
                         }
                         if inputs_outgoing.send(described).is_err() {
+                            break;
+                        }
+                        continue;
+                    }
+                    Request::Outputs => {
+                        let described = describe(session, &channel, &open, Session::outputs);
+                        if let Ok(mut notes) = session_notes.lock() {
+                            notes.extend(session.take_notes());
+                        }
+                        if outputs_outgoing.send(described).is_err() {
                             break;
                         }
                         continue;
@@ -929,6 +966,7 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
         requests,
         replies,
         inputs,
+        outputs,
         worker: Some(worker),
         notes,
         deliveries,
@@ -936,19 +974,20 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
     }))
 }
 
-/// The inputs of the workflow of a session. Workflow code that runs a command while the
-/// workflow is loaded needs a run, which runs the command as a task: such a workflow has no
-/// inputs to describe before the run, and the session starts again for the run.
-fn describe(
+/// The inputs or outputs of the workflow of a session. Workflow code that runs a command while
+/// the workflow is loaded needs a run, which runs the command as a task: such a workflow has no
+/// inputs or outputs to describe before the run, and the session starts again for the run.
+fn describe<T>(
     session: &mut Session,
     channel: &Channel,
     open: &dyn Fn() -> Result<Session, DriverError>,
-) -> InputsReply {
+    what: impl FnOnce(&mut Session) -> Result<T, DriverError>,
+) -> Result<Option<T>, DriverError> {
     channel.describing.set(true);
-    let inputs = session.inputs();
+    let described = what(session);
     channel.describing.set(false);
     if !channel.refused.replace(false) {
-        return inputs.map(Some);
+        return described.map(Some);
     }
     let _ = session.finish();
     *session = open()?;

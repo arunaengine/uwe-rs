@@ -5977,3 +5977,4 @@ realworld/workflowhub/882/beacon-omop-worker-survival.cwl ok: 3 inputs, 2 requir
 realworld/workflowhub/882/beacon-omop-worker.cwl ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 realworld/workflowhub/882/workflow_entrypoint.cwl ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 realworld/workflowhub/882/workflow_entrypoint_survival.cwl ok: 3 inputs, 2 required, 0 files, 0 tables; 0 errors, 2 warnings; 0 read not declared, 0 declared not read
+outputs: 5805 of 5956 workflows have outputs, 16708 outputs, 15853 files

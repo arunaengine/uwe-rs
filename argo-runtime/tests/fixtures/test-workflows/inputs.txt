@@ -2,6 +2,7 @@
 # its schema, of a check of a simulated run, and of the parameters that its templates read and
 # its schema does not declare or the other way round; or the exit code and the first error.
 # A tab ends the path, which may hold spaces.
+(outputs)	outputs: 153 of 1347 workflows have outputs, 297 outputs, 123 files
 Hybrid-Argo-Workflows/Examples/QC-Alignment-WF.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 Hybrid-Argo-Workflows/Examples/clean-up-wf.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 Hybrid-Argo-Workflows/Examples/katib-workflow.yaml	ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read

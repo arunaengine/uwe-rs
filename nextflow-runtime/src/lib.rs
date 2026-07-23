@@ -12,6 +12,7 @@ mod loader;
 mod network;
 mod notes;
 mod operator;
+mod output_schema;
 mod outputs;
 mod pairs;
 mod process;
@@ -261,6 +262,47 @@ pub fn declared_params(
         defaults.push(default);
     }
     Ok((params, defaults))
+}
+
+/// Where the `output { }` block of a script publishes an output, below the output folder.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OutputTarget {
+    pub name: Rc<str>,
+    /// The folder or file that the `path` option gives; `None` when a closure decides it for
+    /// each value, or when the output has no `path`.
+    pub path: Option<String>,
+    /// The index file of the `index { }` section, which lists the published values.
+    pub index: Option<String>,
+}
+
+/// The targets of the `output { }` block of a script, with the texts of their `path` options
+/// where they are texts. Nothing of the workflow runs.
+pub fn output_targets(
+    module: &Rc<Module>,
+    options: &Options,
+    host: &mut dyn Host,
+) -> Vec<OutputTarget> {
+    let workflow = workflow::metadata(options, &host.launch_dir());
+    let mut interpreter = Interpreter::new(host);
+    set_globals(&mut interpreter, options, &workflow);
+    let mut text = |options: &[(Rc<str>, Rc<nextflow_evaluator::lowered::Code>)]| {
+        let (_, code) = options.iter().find(|(name, _)| &**name == "path")?;
+        match interpreter.evaluate(code, module).ok()? {
+            value @ (Value::String(_) | Value::GString(_) | Value::Path(_)) => {
+                Some(value.to_string())
+            }
+            _ => None,
+        }
+    };
+    module
+        .outputs
+        .iter()
+        .map(|output| OutputTarget {
+            name: output.name.clone(),
+            path: text(&output.options),
+            index: text(&output.index),
+        })
+        .collect()
 }
 
 /// Runs the `params.x = value` statements of a script and the scripts it includes: each one

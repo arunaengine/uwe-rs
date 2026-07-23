@@ -247,22 +247,12 @@ impl Nextflow {
         let host = self.settings.host.as_mut();
         let (params, defaults) = crate::declared_params(&loaded.module, &options, host)
             .unwrap_or_else(|_| (config.params(), Vec::new()));
-        let manifest = |key: &str| {
-            (config.get(&["manifest", key]))
-                .filter(Value::truth)
-                .map(|value| value.to_string())
-        };
-        let title = manifest("name").unwrap_or_else(|| {
-            let project = std::path::absolute(&loaded.project).unwrap_or_default();
-            let name = project.file_name().unwrap_or_default();
-            name.to_string_lossy().into_owned()
-        });
         let declared = crate::inputs::Declared {
             params,
             typed: &loaded.module.typed_parameters,
             defaults,
-            title,
-            description: manifest("description"),
+            title: title(&config, &loaded.project),
+            description: manifest(&config, "description"),
         };
         let base = std::env::current_dir().unwrap_or_default();
         Ok(crate::inputs::declared(&declared, &base))
@@ -402,6 +392,44 @@ impl Driver for Nextflow {
     fn use_files(&mut self, files: Arc<dyn Files>) {
         self.files = Some(files);
     }
+
+    /// The outputs of the `output { }` block of the main script, which it publishes into the
+    /// output folder (`-output-dir`, else `outputDir` of the config, else `results`), else the
+    /// `emit`s of the workflows of the main script.
+    fn outputs(&mut self) -> Result<Option<serde_json::Value>, DriverError> {
+        self.load()?;
+        let loaded = self.loaded.take().ok_or_else(not_started)?;
+        let options = self.options(&loaded, loaded.config.clone());
+        let host = self.settings.host.as_mut();
+        let targets = crate::output_targets(&loaded.module, &options, host);
+        let output_dir = (self.launch.output_dir.as_ref())
+            .map(|folder| folder.to_string_lossy().into_owned())
+            .or_else(|| {
+                let folder = loaded.config.get(&["outputDir"]).filter(Value::truth);
+                folder.map(|folder| folder.to_string())
+            })
+            .unwrap_or_else(|| "results".into());
+        let title = title(&loaded.config, &loaded.project);
+        let schema = crate::output_schema::schema(&loaded.module, &targets, &output_dir, &title);
+        self.loaded = Some(loaded);
+        Ok(Some(schema))
+    }
+}
+
+/// A setting of the manifest of the config, like its `name`.
+fn manifest(config: &Config, key: &str) -> Option<String> {
+    (config.get(&["manifest", key]))
+        .filter(Value::truth)
+        .map(|value| value.to_string())
+}
+
+/// The name of a pipeline: the name in its manifest, else the name of its folder.
+fn title(config: &Config, project: &Path) -> String {
+    manifest(config, "name").unwrap_or_else(|| {
+        let project = std::path::absolute(project).unwrap_or_default();
+        let name = project.file_name().unwrap_or_default();
+        name.to_string_lossy().into_owned()
+    })
 }
 
 /// In a simulated run, a task only pretends to run, and the simulator makes up the outputs that a

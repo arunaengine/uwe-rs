@@ -112,4 +112,11 @@ pub trait Driver {
     /// engine gives them before `start`; a simulated run has none, and its outputs are local
     /// files. The default keeps nothing.
     fn use_files(&mut self, _files: Arc<dyn Files>) {}
+
+    /// The outputs of the workflow as one JSON Schema of the results of a run, from what the
+    /// workflow declares, so that one workflow can feed another (decision 24). Like
+    /// [`Driver::inputs`], it runs no task. The default knows no outputs.
+    fn outputs(&mut self) -> Result<Option<serde_json::Value>, DriverError> {
+        Ok(None)
+    }
 }

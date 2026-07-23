@@ -314,3 +314,129 @@ fn two_runs_at_the_same_moment_run_a_task_once() {
     assert_eq!(lines, ["[cached] SLOW\n", "[done] SLOW\n"], "{lines:?}");
     assert_eq!(entries(&cache), 1);
 }
+
+/// The ids of the runs in the run database of a cache folder, the latest first.
+fn run_ids(cache: &Path) -> Vec<String> {
+    let database = run_database::Database::open(&cache.join("iunctus/runs.sqlite"));
+    let runs = database.expect("opens").runs(50).expect("reads");
+    runs.into_iter().map(|run| run.id).collect()
+}
+
+#[test]
+fn clean_up_needs_a_rule_and_removes_the_scratch_of_simulated_runs() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let cache = root.path().join("cache");
+    let first = pipeline(root.path(), "first", FIRST);
+    let (code, output) = iunctus(root.path(), &cache, &["clean"]);
+    assert_eq!(code, 1, "{output}");
+    assert!(
+        output.contains("say what `iunctus clean` keeps"),
+        "{output}"
+    );
+    for _ in 0..2 {
+        let (code, output) = iunctus(&first, &cache, &["run", "main.nf"]);
+        assert_eq!(code, 0, "{output}");
+    }
+    let simulated = cache.join("iunctus/scratch/simulator");
+    assert_eq!(std::fs::read_dir(&simulated).expect("lists").count(), 2);
+    let latest = run_ids(&cache).remove(0);
+    let (code, output) = iunctus(root.path(), &cache, &["clean", "-keep-run", &latest]);
+    assert_eq!(code, 0, "{output}");
+    assert!(output.contains("It keeps what run"), "{output}");
+    assert!(
+        output.contains("scratch folders of runs that ended: 1 folder"),
+        "{output}"
+    );
+    assert!(
+        output.contains("Nothing was removed; add -remove"),
+        "{output}"
+    );
+    assert_eq!(std::fs::read_dir(&simulated).expect("lists").count(), 2);
+    let arguments = ["clean", "-keep-run", &latest, "-remove"];
+    let (code, output) = iunctus(root.path(), &cache, &arguments);
+    assert_eq!(code, 0, "{output}");
+    assert!(
+        output.contains("Removed 0 results, 0 files and 1 scratch folder."),
+        "{output}"
+    );
+    let left: Vec<String> = std::fs::read_dir(&simulated)
+        .expect("lists")
+        .map(|entry| {
+            entry
+                .expect("an entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    assert_eq!(left, [latest]);
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn clean_up_removes_what_no_rule_keeps() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let cache = root.path().join("cache");
+    let first = pipeline(root.path(), "first", FIRST);
+    let second = pipeline(root.path(), "second", SECOND);
+    let real = ["run", "main.nf", "-executor", "local"];
+    assert_eq!(iunctus(&first, &cache, &real).0, 0);
+    // The second pipeline takes the count of the first from the cache.
+    let (code, output) = iunctus(&second, &cache, &real);
+    assert_eq!(code, 0, "{output}");
+    let kept = run_ids(&cache).remove(0);
+    // The first pipeline counts other data.
+    std::fs::write(first.join("data/sample.txt"), "one two three four\n").expect("writes");
+    let (code, output) = iunctus(&first, &cache, &real);
+    assert_eq!(code, 0, "{output}");
+    assert!(output.contains("sample: 4 words"), "{output}");
+    let dropped = run_ids(&cache).remove(0);
+    assert_eq!(entries(&cache), 3);
+    // What the second run needs stays, also the count that it took from the first run; the
+    // last run's result goes.
+    let arguments = ["clean", "-keep-run", &kept];
+    let (code, output) = iunctus(root.path(), &cache, &arguments);
+    assert_eq!(code, 0, "{output}");
+    assert!(output.contains("holds 3 results"), "{output}");
+    assert!(
+        output.contains("It would remove 1 result and 2 files"),
+        "{output}"
+    );
+    assert!(output.contains(&format!("run {dropped} (")), "{output}");
+    assert_eq!(entries(&cache), 3);
+    let arguments = ["clean", "-keep-run", &kept, "-remove"];
+    let (code, output) = iunctus(root.path(), &cache, &arguments);
+    assert_eq!(code, 0, "{output}");
+    assert!(output.contains("Removed 1 result, 2 files"), "{output}");
+    assert_eq!(entries(&cache), 2);
+    let (code, output) = iunctus(&second, &cache, &real);
+    assert_eq!(code, 0, "{output}");
+    assert!(
+        output.contains("[cached] PREPARE:WORDCOUNT (1)"),
+        "{output}"
+    );
+    assert!(output.contains("[cached] REPORT (1)"), "{output}");
+    let (code, output) = iunctus(&first, &cache, &real);
+    assert_eq!(code, 0, "{output}");
+    assert!(output.contains("[done] WORDCOUNT (1)"), "{output}");
+    // Without a rule that keeps anything, everything goes.
+    let (code, output) = iunctus(
+        root.path(),
+        &cache,
+        &["clean", "-keep-days", "0", "-remove"],
+    );
+    assert_eq!(code, 0, "{output}");
+    assert!(output.contains("It keeps nothing"), "{output}");
+    assert_eq!(entries(&cache), 0);
+    let objects = |kind: &str| -> usize {
+        let folder = cache.join("iunctus/store").join(kind);
+        std::fs::read_dir(folder).map_or(0, |entries| entries.count())
+    };
+    assert_eq!(
+        (objects("runs"), objects("cas"), objects("trees")),
+        (0, 0, 0)
+    );
+    let (code, output) = iunctus(&second, &cache, &real);
+    assert_eq!(code, 0, "{output}");
+    assert!(output.contains("[done] PREPARE:WORDCOUNT (1)"), "{output}");
+}

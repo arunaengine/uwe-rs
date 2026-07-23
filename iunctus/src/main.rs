@@ -2,12 +2,14 @@
 //! `iunctus graph` prints the execution graph of a run, `iunctus config` prints the config of a
 //! Nextflow project, `iunctus runs` lists the runs of the run database, `iunctus export`
 //! writes the RO-Crate of a run, `iunctus page` serves the web page of the runs,
-//! `iunctus why` tells why a task ran again, `iunctus origin` where a file came from, and
-//! `iunctus inputs` prints the JSON Schema of the inputs of a workflow.
+//! `iunctus why` tells why a task ran again, `iunctus origin` where a file came from,
+//! `iunctus inputs` prints the JSON Schema of the inputs of a workflow, and `iunctus clean`
+//! removes from the store what no rule keeps.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod arguments;
+mod clean;
 mod detect;
 mod inputs;
 mod kubernetes;
@@ -106,6 +108,7 @@ fn main() -> ExitCode {
         "why" => runs::why(&arguments),
         "origin" => runs::origin(&arguments),
         "inputs" => inputs::command(&arguments),
+        "clean" => clean::command(&arguments),
         _ => return usage(),
     };
     match result {
@@ -532,6 +535,7 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
        iunctus why <run> <task>
        iunctus origin <file>
        iunctus inputs <workflow file or directory> [-format json|text] [-check] [options]
+       iunctus clean [-keep-days <n>] [-keep-run <run>]... [-keep-slower-than <time>] [-remove]
 
 options:
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it
@@ -584,7 +588,13 @@ options:
   -format json|text                   what `inputs` writes: the JSON Schema of the inputs
                                       (the default), or the inputs as help text
   -check                              `inputs` also checks the given values against the
-                                      schema, as a run does before any task starts";
+                                      schema, as a run does before any task starts
+  -keep-days <n>                      `clean` keeps what runs made or used in the last n days
+  -keep-run <run>                     `clean` keeps what the run needs; give it once per run
+  -keep-slower-than <time>            `clean` keeps the results of tasks that ran this long,
+                                      like 90s, 10m, 2h or 1d
+  -remove                             `clean` removes what it lists; without it, it only lists
+                                      what it would remove";
 
 /// `$XDG_CACHE_HOME/iunctus`, else `~/.cache/iunctus`.
 fn cache_directory() -> PathBuf {

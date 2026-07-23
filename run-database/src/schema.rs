@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use rusqlite::Connection;
+use rusqlite::{Connection, TransactionBehavior};
 
 use crate::DatabaseError;
 
@@ -186,19 +186,25 @@ ALTER TABLE attempts ADD COLUMN write_bytes INTEGER;
 ";
 
 /// Brings the schema of a database to [`VERSION`]: creates it in a new file, and runs the
-/// missing steps on an older one, in one transaction.
+/// missing steps on an older one, in one transaction. Two runs that open a new file at the same
+/// moment take turns: the version is read again once the write lock is held, so the second
+/// finds the tables of the first.
 pub(crate) fn migrate(connection: &mut Connection) -> Result<(), DatabaseError> {
-    let found: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    if found > VERSION {
-        return Err(DatabaseError::Newer {
-            found,
-            known: VERSION,
-        });
-    }
-    if found == VERSION {
+    let version = |connection: &Connection| -> Result<u32, DatabaseError> {
+        let found: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if found > VERSION {
+            return Err(DatabaseError::Newer {
+                found,
+                known: VERSION,
+            });
+        }
+        Ok(found)
+    };
+    if version(connection)? == VERSION {
         return Ok(());
     }
-    let transaction = connection.transaction()?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let found = version(&transaction)?;
     for step in &MIGRATIONS[found as usize..] {
         transaction.execute_batch(step)?;
     }

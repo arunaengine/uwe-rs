@@ -352,6 +352,22 @@ fn a_database_of_a_newer_version_is_refused() {
 }
 
 #[test]
+fn runs_that_open_a_new_database_at_once_share_its_tables() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    let openers: Vec<_> = (0..8)
+        .map(|_| {
+            let path = path.clone();
+            std::thread::spawn(move || Database::open(&path).map(|database| database.version()))
+        })
+        .collect();
+    for opener in openers {
+        let version = opener.join().expect("the thread ends").expect("opens");
+        assert_eq!(version.expect("reads the version"), VERSION);
+    }
+}
+
+#[test]
 fn why_a_task_ran_again_names_what_changed() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");

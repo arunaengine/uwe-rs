@@ -504,3 +504,108 @@ fn a_lookup_finds_stored_results_without_writing_anything() {
     );
     assert_eq!(objects(), before);
 }
+
+/// A task like [`task`], whose input holds `text`, so that its output does too.
+fn task_with(root: &Path, id: u64, text: &str) -> Task {
+    let input = root.join(format!("input-{id}.txt"));
+    std::fs::write(&input, text).expect("writes the input");
+    let mut made = task(root, "a");
+    made.id = TaskId(id);
+    made.inputs[0].source = input.to_string_lossy().into_owned();
+    made
+}
+
+#[test]
+fn clean_up_keeps_what_the_named_runs_need() {
+    use task_runner::clean::{Keep, plan, remove};
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let old = runner_of(root.path(), "old", std::time::Duration::ZERO, 0);
+    let kept = runner_of(root.path(), "kept", std::time::Duration::ZERO, 0);
+    let first = task_with(root.path(), 1, "first\n");
+    let second = task_with(root.path(), 2, "second\n");
+    let third = task_with(root.path(), 3, "third\n");
+    execute(&old, &request(&old, &first));
+    let taken = execute(&old, &request(&old, &third));
+    execute(&kept, &request(&kept, &second));
+    // The kept run took the third result from the cache: it refers to files of the old run.
+    let reused = execute(&kept, &request(&kept, &third));
+    assert!(reused.reused);
+    let store = Store::local(&root.path().join("store")).expect("a store");
+    let keep = Keep {
+        runs: ["kept".to_owned()].into(),
+        locations: taken
+            .files
+            .iter()
+            .map(|file| file.location.clone())
+            .collect(),
+        ..Keep::default()
+    };
+    let planned = block_on(plan(&store, &keep)).expect("plans");
+    // Only the result of the first task goes: its entry, its output and its content.
+    assert_eq!(planned.results.len(), 1);
+    assert_eq!(planned.results[0].task.as_deref(), Some("P-1"));
+    let mut locations: Vec<&str> = (planned.objects.iter())
+        .map(|object| object.location.as_str())
+        .collect();
+    locations.sort_unstable();
+    let content = content_store::layout::content(&task_model::Digest::sha256(b"first\n"));
+    assert_eq!(locations, [content.as_str(), "runs/old/P-1/1/work/out.txt"]);
+    // The output and its content are one file with two names: its space counts once.
+    assert_eq!(planned.freed(), 6);
+    assert_eq!((planned.stored_results, planned.stored_objects), (3, 7));
+    let removed = block_on(remove(&store, &planned)).expect("removes");
+    assert_eq!((removed.results, removed.objects), (1, 2));
+    // What the kept run needs is still answered from the cache; the first task runs again.
+    assert!(execute(&kept, &request(&kept, &third)).reused);
+    assert!(execute(&kept, &request(&kept, &second)).reused);
+    assert!(!execute(&kept, &request(&kept, &first)).reused);
+}
+
+#[test]
+fn clean_up_keeps_what_was_used_lately_and_what_took_long() {
+    use task_runner::clean::{Keep, plan};
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let quick = runner_of(root.path(), "quick", std::time::Duration::ZERO, 0);
+    let slow = runner_of(
+        root.path(),
+        "slow",
+        std::time::Duration::from_millis(200),
+        0,
+    );
+    let first = task_with(root.path(), 1, "first\n");
+    let second = task_with(root.path(), 2, "second\n");
+    let third = task_with(root.path(), 3, "third\n");
+    execute(&quick, &request(&quick, &first));
+    execute(&quick, &request(&quick, &second));
+    execute(&slow, &request(&slow, &third));
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let lately = std::time::SystemTime::now();
+    // A later run uses the second result.
+    assert!(execute(&quick, &request(&quick, &second)).reused);
+    let store = Store::local(&root.path().join("store")).expect("a store");
+    let tasks = |keep: &Keep| -> Vec<String> {
+        let planned = block_on(plan(&store, keep)).expect("plans");
+        let mut tasks: Vec<String> = (planned.results.iter())
+            .filter_map(|result| result.task.clone())
+            .collect();
+        tasks.sort();
+        tasks
+    };
+    let used = Keep {
+        used_since: Some(lately),
+        ..Keep::default()
+    };
+    assert_eq!(tasks(&used), ["P-1", "P-3"]);
+    let long = Keep {
+        slower_than: Some(std::time::Duration::from_millis(150)),
+        ..Keep::default()
+    };
+    assert_eq!(tasks(&long), ["P-1", "P-2"]);
+    // What is newer than the oldest run that goes on stays, whatever the rules say.
+    let active = Keep {
+        active_since: Some(std::time::SystemTime::UNIX_EPOCH),
+        ..Keep::default()
+    };
+    let planned = block_on(plan(&store, &active)).expect("plans");
+    assert!(planned.is_empty());
+}

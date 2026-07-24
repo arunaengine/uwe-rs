@@ -73,7 +73,7 @@ impl crate::Backend for LocalContainer {
     ) -> Result<Finished, ExecutorError> {
         let placement = job.placement;
         let share = tokio::select! {
-            share = self.pool.share(placement.cpus, placement.memory_bytes) => share,
+            share = self.pool.share(placement.cpus, placement.memory_bytes, placement.priority) => share,
             () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
         };
         let root = self.scratch.join(job.name);

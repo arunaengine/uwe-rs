@@ -1,34 +1,75 @@
-//! The CPUs and memory that local tasks share. A task starts when its share is free, in the
-//! order the tasks asked.
+//! The CPUs and memory that local tasks share. A task starts when its share is free. Tasks that
+//! wait take their shares one after another: the one with the highest priority first, and of
+//! equal ones the one that asked first.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use tokio::sync::{Mutex, Semaphore, SemaphorePermit};
+use std::cmp::Reverse;
+use std::collections::BTreeSet;
+use std::sync::{Mutex, PoisonError};
+
+use tokio::sync::Notify;
 
 const MIB: u64 = 1024 * 1024;
 
 /// The CPUs and memory of this machine, or the part of them that tasks may use.
 #[derive(Debug)]
 pub struct Pool {
-    cpus: Semaphore,
-    /// In MiB.
-    memory: Semaphore,
     total_cpus: u32,
     total_memory: u64,
-    /// Held while a task takes its share, so that tasks take theirs one after another and
-    /// none waits for memory while holding CPUs that an earlier task waits for.
-    turn: Mutex<()>,
+    /// What is free, and the tasks that wait for their share.
+    state: Mutex<State>,
+    /// Wakes the waiting tasks when a share comes free or a task leaves the queue.
+    changed: Notify,
+}
+
+/// The place of a task in the queue: its priority, the highest first, then when it came.
+type Ticket = (Reverse<u64>, u64);
+
+#[derive(Debug)]
+struct State {
+    free_cpus: u32,
+    /// In MiB.
+    free_memory: u64,
+    /// The tasks that wait, the next one first. Only the first may take its share, so that a
+    /// task that needs much is not passed forever by tasks that need little.
+    waiting: BTreeSet<Ticket>,
+    /// Counts the tasks that came, so that each ticket is new.
+    came: u64,
+}
+
+/// A task in the queue; it leaves the queue when this is dropped, also when the task stops
+/// waiting because it was cancelled.
+struct Place<'a> {
+    pool: &'a Pool,
+    ticket: Ticket,
+}
+
+impl Drop for Place<'_> {
+    fn drop(&mut self) {
+        self.pool.state().waiting.remove(&self.ticket);
+        self.pool.changed.notify_waiters();
+    }
 }
 
 /// A task's share of the pool, given back when it is dropped.
 #[derive(Debug)]
 pub struct Share<'a> {
-    _cpus: SemaphorePermit<'a>,
-    _memory: Option<SemaphorePermit<'a>>,
+    pool: &'a Pool,
     /// The CPUs and bytes of memory that the task may use: what it asked for, but at most all
     /// of the pool.
     pub cpus: u32,
     pub memory: Option<u64>,
+}
+
+impl Drop for Share<'_> {
+    fn drop(&mut self) {
+        let mut state = self.pool.state();
+        state.free_cpus += self.cpus;
+        state.free_memory += self.memory.map_or(0, mebibytes);
+        drop(state);
+        self.pool.changed.notify_waiters();
+    }
 }
 
 impl Pool {
@@ -37,11 +78,15 @@ impl Pool {
         let total_cpus = cpus.max(1);
         let total_memory = memory.max(MIB);
         Pool {
-            cpus: Semaphore::new(total_cpus as usize),
-            memory: Semaphore::new(mebibytes(total_memory) as usize),
             total_cpus,
             total_memory,
-            turn: Mutex::new(()),
+            state: Mutex::new(State {
+                free_cpus: total_cpus,
+                free_memory: mebibytes(total_memory),
+                waiting: BTreeSet::new(),
+                came: 0,
+            }),
+            changed: Notify::new(),
         }
     }
 
@@ -60,31 +105,56 @@ impl Pool {
     }
 
     /// Waits until a task's share is free. A task that asks for more than the pool has gets
-    /// all of it; a task that names no memory takes none from the pool.
-    pub async fn share(&self, cpus: u32, memory: Option<u64>) -> Share<'_> {
+    /// all of it; a task that names no memory takes none from the pool. The tasks that wait
+    /// take their shares one after another, the one with the highest `priority` first, and of
+    /// equal ones the one that came first. The choice is made when a share comes free, so a
+    /// task that comes later with a higher priority goes before those that wait.
+    pub async fn share(&self, cpus: u32, memory: Option<u64>, priority: u64) -> Share<'_> {
         let cpus = cpus.clamp(1, self.total_cpus);
         let memory = memory.map(|bytes| bytes.clamp(MIB, self.total_memory));
-        let _turn = self.turn.lock().await;
-        let cpu_permit = self.cpus.acquire_many(cpus).await;
-        let memory_permit = match memory {
-            Some(bytes) => Some(self.memory.acquire_many(mebibytes(bytes)).await),
-            None => None,
-        };
-        // The semaphores are never closed, so a permit always comes.
-        let (Ok(cpu_permit), Ok(memory_permit)) = (cpu_permit, memory_permit.transpose()) else {
-            unreachable!("the pool's semaphores are never closed")
-        };
-        Share {
-            _cpus: cpu_permit,
-            _memory: memory_permit,
-            cpus,
-            memory,
+        let needed = memory.map_or(0, mebibytes);
+        let place = self.enqueue(priority);
+        loop {
+            // Listening starts before the check, so that no change is missed between the two.
+            let changed = self.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            {
+                let mut state = self.state();
+                let first = state.waiting.first() == Some(&place.ticket);
+                if first && state.free_cpus >= cpus && state.free_memory >= needed {
+                    state.free_cpus -= cpus;
+                    state.free_memory -= needed;
+                    // Leaving the queue lets the next task look at what is left.
+                    drop(state);
+                    drop(place);
+                    return Share {
+                        pool: self,
+                        cpus,
+                        memory,
+                    };
+                }
+            }
+            changed.await;
         }
+    }
+
+    /// Puts a task into the queue.
+    fn enqueue(&self, priority: u64) -> Place<'_> {
+        let mut state = self.state();
+        let ticket = (Reverse(priority), state.came);
+        state.came += 1;
+        state.waiting.insert(ticket);
+        Place { pool: self, ticket }
+    }
+
+    fn state(&self) -> std::sync::MutexGuard<'_, State> {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
-fn mebibytes(bytes: u64) -> u32 {
-    (bytes.div_ceil(MIB)).min(u32::MAX as u64 >> 3) as u32
+fn mebibytes(bytes: u64) -> u64 {
+    bytes.div_ceil(MIB)
 }
 
 /// The memory of this machine, from `/proc/meminfo` on Linux.
@@ -102,15 +172,42 @@ mod tests {
     #[tokio::test]
     async fn tasks_wait_for_their_share() {
         let pool = Pool::new(4, 8 * 1024 * MIB);
-        let first = pool.share(3, Some(2 * 1024 * MIB)).await;
+        let first = pool.share(3, Some(2 * 1024 * MIB), 0).await;
         assert_eq!((first.cpus, first.memory), (3, Some(2 * 1024 * MIB)));
         // More than the pool has is all of it, once the first task is done.
-        let waiting = pool.share(8, Some(100 * 1024 * MIB));
+        let waiting = pool.share(8, Some(100 * 1024 * MIB), 0);
         let timeout = std::time::Duration::from_millis(50);
         let mut waiting = Box::pin(waiting);
         assert!(tokio::time::timeout(timeout, &mut waiting).await.is_err());
         drop(first);
         let all = waiting.await;
         assert_eq!((all.cpus, all.memory), (4, Some(8 * 1024 * MIB)));
+    }
+
+    #[tokio::test]
+    async fn tasks_with_more_after_them_take_their_share_first() {
+        let pool = std::sync::Arc::new(Pool::new(1, 1024 * MIB));
+        let first = pool.share(1, None, 0).await;
+        let order = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let mut waiting = Vec::new();
+        // They come in this order; the second of equal priority comes after the first.
+        for (name, priority) in [("a", 1), ("b", 3), ("c", 2), ("d", 3)] {
+            let (pool, order) = (pool.clone(), order.clone());
+            waiting.push(tokio::spawn(async move {
+                let share = pool.share(1, None, priority).await;
+                order.lock().unwrap().push(name);
+                drop(share);
+            }));
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        // A task that stops waiting leaves the queue.
+        let gone = pool.share(1, None, 9);
+        let timeout = std::time::Duration::from_millis(20);
+        assert!(tokio::time::timeout(timeout, gone).await.is_err());
+        drop(first);
+        for task in waiting {
+            task.await.expect("the task ends");
+        }
+        assert_eq!(*order.lock().unwrap(), ["b", "d", "c", "a"]);
     }
 }

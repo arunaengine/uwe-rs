@@ -52,6 +52,11 @@ pub struct Placement {
     /// Whether the task runs without network, where the backend can cut it off.
     #[serde(default)]
     pub offline: bool,
+    /// How soon the task should start when tasks wait for the machine: the time, in
+    /// milliseconds, of the longest chain of work that follows from its step in earlier runs;
+    /// 0 when unknown. Tasks with more after them start first, so that the run ends sooner.
+    #[serde(default)]
+    pub priority: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

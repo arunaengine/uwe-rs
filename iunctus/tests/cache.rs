@@ -440,3 +440,68 @@ fn clean_up_removes_what_no_rule_keeps() {
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("[done] PREPARE:WORDCOUNT (1)"), "{output}");
 }
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn a_simulated_run_previews_what_comes_from_the_cache() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let cache = root.path().join("cache");
+    let first = pipeline(root.path(), "first", FIRST);
+    let second = pipeline(root.path(), "second", SECOND);
+    // Before any real run, everything is simulated.
+    let (code, output) = iunctus(&second, &cache, &["run", "main.nf"]);
+    assert_eq!(code, 0, "{output}");
+    assert!(
+        output.contains("[simulated] PREPARE:WORDCOUNT (1)"),
+        "{output}"
+    );
+    assert!(!output.contains("from the cache"), "{output}");
+    assert_eq!(
+        iunctus(&first, &cache, &["run", "main.nf", "-executor", "local"]).0,
+        0
+    );
+    // The count of the first pipeline answers the second, which a real run would take from
+    // the cache; the report after it would run.
+    let (code, output) = iunctus(&second, &cache, &["run", "main.nf"]);
+    assert_eq!(code, 0, "{output}");
+    assert!(
+        output.contains("[cached] PREPARE:WORDCOUNT (1)"),
+        "{output}"
+    );
+    assert!(output.contains("[simulated] REPORT (1)"), "{output}");
+    let note = "A real run would take 1 of 2 tasks from the cache; 1 would run.";
+    assert!(output.contains(&format!("iunctus: {note}")), "{output}");
+    // The graph, as a summary and as a picture, says the same.
+    let (code, summary) = iunctus(&second, &cache, &["graph", "main.nf"]);
+    assert_eq!(code, 0, "{summary}");
+    assert!(summary.contains(&format!("{note}\n")), "{summary}");
+    assert!(
+        summary.contains("PREPARE:WORDCOUNT (1) (from the cache) <- []"),
+        "{summary}"
+    );
+    let (code, steps) = iunctus(&second, &cache, &["graph", "main.nf", "-view", "steps"]);
+    assert_eq!(code, 0, "{steps}");
+    assert!(
+        steps.contains("PREPARE:WORDCOUNT: 1 task, 1 from the cache"),
+        "{steps}"
+    );
+    let (code, picture) = iunctus(&second, &cache, &["graph", "main.nf", "-format", "svg"]);
+    assert_eq!(code, 0, "{picture}");
+    assert!(picture.contains(note), "{picture}");
+    assert!(picture.contains("reused"), "{picture}");
+    // The run database knows it too, for the web page.
+    let latest = run_ids(&cache).remove(0);
+    let database = run_database::Database::open(&cache.join("iunctus/runs.sqlite"));
+    let graph = database.expect("opens").graph(&latest).expect("reads");
+    let graph = graph.expect("the graph of the run");
+    assert_eq!(graph.cache_note().as_deref(), Some(note));
+    // Once the second pipeline ran for real, a preview finds all of it in the cache.
+    assert_eq!(
+        iunctus(&second, &cache, &["run", "main.nf", "-executor", "local"]).0,
+        0
+    );
+    let (code, output) = iunctus(&second, &cache, &["run", "main.nf"]);
+    assert_eq!(code, 0, "{output}");
+    let all = "A real run would take all 2 tasks from the cache; none would run.";
+    assert!(output.contains(all), "{output}");
+}

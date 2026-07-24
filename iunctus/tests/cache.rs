@@ -505,3 +505,100 @@ fn a_simulated_run_previews_what_comes_from_the_cache() {
     let all = "A real run would take all 2 tasks from the cache; none would run.";
     assert!(output.contains(all), "{output}");
 }
+
+/// Three short tasks and a chain of two long ones. Each task asks for more CPUs than any
+/// machine has, so it gets all of them and the tasks run one after another. Each writes when
+/// it started, in nanoseconds.
+const CHAINS: &str = r#"
+params.round = 1
+
+process LONG {
+    container 'debian:stable-slim'
+    cpus 100000
+    input:
+    val(name)
+    output:
+    path('long.txt')
+    script:
+    """
+    date +%s%N > long.txt
+    sleep 2
+    echo ${params.round} ${name} > /dev/null
+    """
+}
+
+process AFTER {
+    container 'debian:stable-slim'
+    cpus 100000
+    input:
+    path(first)
+    output:
+    path('after.txt')
+    script:
+    """
+    sleep 2
+    cat ${first} > after.txt
+    echo ${params.round} > /dev/null
+    """
+}
+
+process SHORT {
+    container 'debian:stable-slim'
+    cpus 100000
+    input:
+    val(n)
+    output:
+    path("short.txt")
+    script:
+    """
+    date +%s%N > short.txt
+    echo ${params.round} ${n} > /dev/null
+    """
+}
+
+workflow {
+    SHORT(channel.of(1, 2, 3)).view { file -> "short ${file.text.trim()}" }
+    AFTER(LONG(channel.of('long')))
+    LONG.out.view { file -> "long ${file.text.trim()}" }
+}
+"#;
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn the_longest_chain_starts_first() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let cache = root.path().join("cache");
+    std::fs::write(root.path().join("main.nf"), CHAINS).expect("writes");
+    // The first run tells how long each step takes; the second, whose tasks are new, starts
+    // the long chain before the short tasks that wait.
+    let mut starts = Vec::new();
+    for round in ["1", "2"] {
+        let arguments = ["run", "main.nf", "-executor", "local", "--round", round];
+        let (code, output) = iunctus(root.path(), &cache, &arguments);
+        assert_eq!(code, 0, "{output}");
+        let time = |line: &str| {
+            line.split(' ')
+                .nth(1)
+                .and_then(|time| time.parse::<u128>().ok())
+        };
+        let long = output
+            .lines()
+            .filter(|line| line.starts_with("long "))
+            .find_map(time);
+        let shorts: Vec<u128> = (output.lines())
+            .filter(|line| line.starts_with("short "))
+            .filter_map(time)
+            .collect();
+        starts.push((long.expect("the long task started"), shorts));
+    }
+    let before: Vec<usize> = (starts.iter())
+        .map(|(long, shorts)| shorts.iter().filter(|short| *short < long).count())
+        .collect();
+    assert_eq!(starts[1].1.len(), 3);
+    // Without times, the tasks start in the order the workflow asked for them. With them, at
+    // most the one short task that found the machine free starts before the long chain.
+    assert!(
+        before[1] <= 1 && before[1] < before[0],
+        "{before:?} {starts:?}"
+    );
+}

@@ -123,7 +123,9 @@ impl Recorder {
         &self.run
     }
 
-    /// The driver asked for a task; `edges` join it to the earlier tasks it waits for.
+    /// The driver asked for a task; `edges` join it to the earlier tasks it waits for. A task
+    /// whose attempt failed may be asked for again, to retry it: its row takes the new
+    /// description and inputs, and keeps the time it was first asked for.
     pub fn requested(&mut self, task: &Task, edges: &[Edge]) {
         self.write(|connection, run, sequence| {
             let states = input_states(task);
@@ -132,7 +134,10 @@ impl Recorder {
                 .prepare_cached(
                     "INSERT INTO tasks (run, id, step, name, description, fingerprint, requested,
                         state)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'waiting')",
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'waiting')
+                     ON CONFLICT (run, id) DO UPDATE SET name = excluded.name,
+                        description = excluded.description, fingerprint = excluded.fingerprint,
+                        state = 'waiting'",
                 )?
                 .execute(params![
                     run,
@@ -143,6 +148,11 @@ impl Recorder {
                     fingerprint(task, &states),
                     time,
                 ])?;
+            connection
+                .prepare_cached(
+                    "DELETE FROM files WHERE run = ?1 AND task = ?2 AND role = 'input'",
+                )?
+                .execute(params![run, task.id.0])?;
             let mut insert = connection.prepare_cached(
                 "INSERT INTO files (run, task, attempt, role, path, location, directory, digest,
                     size)

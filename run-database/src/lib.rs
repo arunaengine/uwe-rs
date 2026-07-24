@@ -69,7 +69,7 @@ pub struct Database {
 
 impl Database {
     /// Opens the database file, creating it and its folder when missing, and brings its schema
-    /// to the current [`VERSION`].
+    /// to the current [`VERSION`]. Runs that open a new file at the same moment take turns.
     pub fn open(path: &Path) -> Result<Self, DatabaseError> {
         if let Some(parent) = path
             .parent()
@@ -77,6 +77,23 @@ impl Database {
         {
             std::fs::create_dir_all(parent)?;
         }
+        let begun = std::time::Instant::now();
+        loop {
+            match Self::connect(path) {
+                // SQLite gives up at once on some locks, like the one that turns a new file
+                // into WAL mode while another connection sets it up too.
+                Err(DatabaseError::Sqlite(error))
+                    if busy(&error) && begun.elapsed() < BUSY_TIMEOUT =>
+                {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                result => return result,
+            }
+        }
+    }
+
+    /// A connection to the file, set up and with the current schema.
+    fn connect(path: &Path) -> Result<Self, DatabaseError> {
         let mut connection = Connection::open(path)?;
         connection.busy_timeout(BUSY_TIMEOUT)?;
         // WAL lets readers go on while a run writes; NORMAL syncs at checkpoints only, which
@@ -99,6 +116,15 @@ impl Database {
     pub fn record(self, run: &RunStart) -> Result<Recorder, DatabaseError> {
         Recorder::start(self.connection, run)
     }
+}
+
+/// Whether SQLite could not get a lock that another connection holds.
+fn busy(error: &rusqlite::Error) -> bool {
+    use rusqlite::ErrorCode;
+    matches!(
+        error.sqlite_error_code(),
+        Some(ErrorCode::DatabaseBusy | ErrorCode::DatabaseLocked)
+    )
 }
 
 /// Milliseconds since the Unix epoch, the unit of every time in the database.

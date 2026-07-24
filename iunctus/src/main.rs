@@ -16,6 +16,7 @@ mod kubernetes;
 mod local;
 mod nextflow;
 mod page;
+mod preview;
 mod record;
 mod resume;
 mod revision;
@@ -194,6 +195,7 @@ fn simulation_notes(graph: &ExecutionGraph) -> Vec<String> {
         return Vec::new();
     }
     let mut notes = vec![format!("iunctus: {SIMULATION}")];
+    notes.extend(graph.cache_note().map(|note| format!("iunctus: {note}")));
     match graph.marked().count() {
         0 => {}
         1 => notes.push(
@@ -390,9 +392,9 @@ fn executor(
     let scratch = cache.join("scratch");
     match arguments.executor.as_deref().unwrap_or("simulator") {
         "simulator" => {
-            let mut executor = Simulator::new(scratch.join("simulator").join(run));
-            executor.verbose = verbose;
-            Ok(Box::new(executor))
+            let mut simulator = Simulator::new(scratch.join("simulator").join(run));
+            simulator.verbose = verbose;
+            Ok(previewed(simulator, arguments, setup))
         }
         "local" => {
             let default_image = arguments.default_image.clone();
@@ -481,6 +483,31 @@ fn executor(
              `kubernetes`"
         ))),
     }
+}
+
+/// The simulator with the preview of the cache: tasks whose results the store holds, as a real
+/// run would find them, come from there (see [`preview`]). Without a store or a run database
+/// to read, every task is simulated.
+fn previewed(simulator: Simulator, arguments: &Arguments, setup: &Setup) -> Box<dyn Executor> {
+    let pins = runs::open(arguments).and_then(|database| {
+        (database.pins()).map_err(|error| failure(format!("iunctus: {error}")))
+    });
+    let (Ok(pins), Ok(store)) = (pins, setup.store(arguments)) else {
+        return Box::new(simulator);
+    };
+    let settings = task_runner::Settings {
+        downloads: cache_directory().join("downloads"),
+        import_inputs: false,
+        storage: setup.storage.clone(),
+    };
+    let lookup = task_runner::Lookup::new(store, settings);
+    let default_image = arguments.default_image.clone();
+    Box::new(preview::Previewed::new(
+        simulator,
+        lookup,
+        pins,
+        default_image,
+    ))
 }
 
 /// What the command line asks to run, in the terms all languages share.

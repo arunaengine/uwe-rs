@@ -6,6 +6,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use content_store::Store;
@@ -24,6 +25,10 @@ pub struct RunnerExecutor<B> {
     default_image: Option<String>,
     /// Prints a line when a task ends.
     pub verbose: bool,
+    /// How soon the tasks of each step should start when tasks wait for the machine: the time
+    /// of the longest chain of work that follows from the step in earlier runs, in
+    /// milliseconds (see `Placement::priority`). Steps without one start in the order asked.
+    pub priorities: Arc<HashMap<String, u64>>,
 }
 
 impl<B: Backend> RunnerExecutor<B> {
@@ -32,6 +37,7 @@ impl<B: Backend> RunnerExecutor<B> {
             runner,
             default_image,
             verbose: false,
+            priorities: Arc::default(),
         }
     }
 
@@ -54,8 +60,9 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
         };
         let runner = self.runner.clone();
         let verbose = self.verbose;
+        let priority = self.priorities.get(&task.step).copied().unwrap_or_default();
         Running::new(async move {
-            let result = outcome(&runner, &task, attempt.number, &attempt.cancel).await;
+            let result = outcome(&runner, &task, attempt.number, priority, &attempt.cancel).await;
             if verbose && let Ok(outcome) = &result {
                 let state = match (outcome.cached, outcome.exit_code) {
                     (true, _) => "cached".to_owned(),
@@ -107,6 +114,7 @@ async fn outcome<B: Backend>(
     runner: &Runner<B>,
     task: &Task,
     attempt: u32,
+    priority: u64,
     cancel: &CancellationToken,
 ) -> Result<Outcome, ExecuteError> {
     let failed = |error: RunnerError| failure(task, error);
@@ -116,6 +124,7 @@ async fn outcome<B: Backend>(
     };
     let mut prepared = runner.request(task, image.clone()).await.map_err(failed)?;
     prepared.request.attempt = attempt;
+    prepared.request.placement.priority = priority;
     let result = runner.execute(&prepared, cancel).await.map_err(failed)?;
     outcome_of(&runner.store, task, attempt, result, image)
         .await

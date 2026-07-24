@@ -405,6 +405,7 @@ fn executor(
                 local::executor(store, &scratch, run, default_image, storage, &engine)
                     .map_err(|message| failure(format!("iunctus: {message}")))?;
             executor.verbose = verbose;
+            executor.priorities = std::sync::Arc::new(chains(arguments));
             Ok(Box::new(executor))
         }
         "tes" => {
@@ -483,6 +484,20 @@ fn executor(
              `kubernetes`"
         ))),
     }
+}
+
+/// For each step of the workflow, the time of the longest chain of work that follows from it
+/// in its earlier real runs, so that the tasks on the longest remaining chain start first when
+/// tasks wait for the machine. Empty before the first real run, or without a run database.
+fn chains(arguments: &Arguments) -> std::collections::HashMap<String, u64> {
+    let Some(target) = &arguments.target else {
+        return Default::default();
+    };
+    let workflow = std::path::absolute(target).unwrap_or_else(|_| target.clone());
+    let workflow = workflow.to_string_lossy();
+    (runs::open(arguments).ok())
+        .and_then(|database| database.chains(&workflow).ok())
+        .unwrap_or_default()
 }
 
 /// The simulator with the preview of the cache: tasks whose results the store holds, as a real

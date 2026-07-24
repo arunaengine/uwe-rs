@@ -134,10 +134,10 @@ function drawProgress() {
   const bar = el("div", { class: "progress", role: "img",
     "aria-label": STATES.map((state) => `${found[state]} ${state}`).join(", ") },
     STATES.filter((state) => found[state]).map((state) =>
-      el("span", { class: `${state}-fill`, style: `width: ${(100 * found[state]) / total}%` })));
+      el("span", { class: fill(state), style: `width: ${(100 * found[state]) / total}%` })));
   const legend = el("div", { class: "legend" },
     STATES.filter((state) => found[state]).map((state) =>
-      el("span", {}, el("i", { class: `${state}-fill` }), `${found[state]} ${label(state)}`)));
+      el("span", {}, el("i", { class: fill(state) }), `${found[state]} ${label(state)}`)));
   legend.prepend(el("strong", {}, `${tasks.length} tasks`));
   const parts = [bar, legend];
   // A simulated run is a preview: it tells how much of the work a real run would take from
@@ -150,6 +150,12 @@ function drawProgress() {
         `${left} would run.`));
   }
   view.parts.progress.replaceChildren(...parts);
+}
+
+// The colour of a state in the bar and the legend; the tasks of a simulated run that succeeded
+// have the colour of simulated tasks, as in the graph.
+function fill(state) {
+  return view.run.simulated && state === "succeeded" ? "simulated-fill" : `${state}-fill`;
 }
 
 // The name of a state in the legend. In a simulated run, a task that succeeded was simulated,

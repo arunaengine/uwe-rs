@@ -477,3 +477,35 @@ fn clean_up_learns_what_runs_refer_to() {
     let hello = task_model::Digest::sha256(b"hello\n").to_string();
     assert!(references.digests.contains(&hello), "{references:?}");
 }
+
+#[test]
+fn real_runs_tell_the_digests_of_their_images() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    let pinned = |run: &str, simulated: bool, image: &str| {
+        let start = RunStart {
+            simulated,
+            ..start(run, None)
+        };
+        let mut recorder = Database::open(&path)
+            .expect("opens")
+            .record(&start)
+            .expect("starts");
+        recorder.requested(&task(1, "MAKE", Vec::new()), &[]);
+        recorder.started(TaskId(1), 1);
+        let finished = Outcome {
+            image: Some(image.to_owned()),
+            ..outcome(1, directory.path().join("made.txt"), "")
+        };
+        recorder.finished(&finished, 1, false);
+        recorder.ended(None);
+        recorder.close().expect("writes");
+    };
+    pinned("run-1", false, "debian@sha256:01");
+    pinned("run-2", false, "debian@sha256:02");
+    // A simulated run pins nothing, whatever its outcome says.
+    pinned("run-3", true, "debian@sha256:03");
+    let pins = Database::open(&path).expect("opens").pins().expect("reads");
+    assert_eq!(pins.len(), 1);
+    assert_eq!(pins["debian:stable-slim"], "debian@sha256:02");
+}

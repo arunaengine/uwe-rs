@@ -16,6 +16,7 @@ mod fingerprint;
 mod graph;
 mod keep;
 mod origin;
+mod pins;
 mod recorder;
 mod resume;
 mod runs;

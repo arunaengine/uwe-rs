@@ -33,6 +33,10 @@ pub struct StepNode {
     pub succeeded: usize,
     /// How many of them ended with another exit code; the rest did not end.
     pub failed: usize,
+    /// How many of those that ended with exit code 0 an earlier result answered, from the
+    /// cache store or from an earlier run.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub reused: usize,
     /// How many of them have markers.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub marked: usize,
@@ -79,6 +83,9 @@ impl ExecutionGraph {
                 Some(_) => step.failed += 1,
                 None => {}
             }
+            if node.reused && node.exit_code == Some(0) {
+                step.reused += 1;
+            }
             if !node.markers.is_empty() {
                 step.marked += 1;
             }
@@ -123,5 +130,12 @@ impl ExecutionGraph {
 impl StepGraph {
     pub fn is_simulated(&self) -> bool {
         self.simulation.is_some()
+    }
+
+    /// The sentence of [`ExecutionGraph::cache_note`] for the tasks of the steps.
+    pub fn cache_note(&self) -> Option<String> {
+        let reused = self.steps.iter().map(|step| step.reused).sum();
+        let tasks = self.steps.iter().map(|step| step.tasks).sum();
+        crate::graph::cache_note(reused, tasks, self.is_simulated())
     }
 }

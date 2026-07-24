@@ -314,6 +314,12 @@ impl ExecutionGraph {
         let open = self.is_simulated() && self.marked().next().is_some();
         let simulation = self.simulation.as_deref();
         let mut lines = title(&self.workflow, self.language, &size, simulation, open);
+        // What came from the cache, or would in a real run, right after the note of a
+        // simulation.
+        if let Some(note) = self.cache_note() {
+            let at = 1 + usize::from(simulation.is_some());
+            lines.insert(at.min(lines.len()), note);
+        }
         if options.view == View::Tasks && steps.iter().any(|step| step.folded) {
             let many = count(fold, "task");
             lines.push(if fold < options.fold {
@@ -582,6 +588,44 @@ mod tests {
         });
         assert_eq!(every.shapes.len(), 9);
         assert_eq!(every.links[0].label.as_deref(), Some("1.txt"));
+    }
+
+    #[test]
+    fn graphs_count_what_came_from_the_cache() {
+        let mut graph = fan_out();
+        for node in &mut graph.nodes[..6] {
+            node.reused = true;
+        }
+        let real = "6 of 9 tasks came from the cache.";
+        assert_eq!(graph.cache_note().as_deref(), Some(real));
+        graph.simulate();
+        let preview = "A real run would take 6 of 9 tasks from the cache; 3 would run.";
+        assert_eq!(graph.cache_note().as_deref(), Some(preview));
+        let drawing = graph.drawing(&Options::default());
+        assert_eq!(drawing.title[2], preview);
+        let step = &drawing.shapes[1];
+        assert_eq!(step.lines, ["FASTQC", "7 tasks: 2 simulated, 5 reused"]);
+        let summary = graph.summary();
+        assert!(summary.contains(&format!("{preview}\n")), "{summary}");
+        assert!(
+            summary.contains("1 INPUT (1) (from the cache) <- []"),
+            "{summary}"
+        );
+        assert!(summary.contains("9 MULTIQC (9) <- [2, 3, 4"), "{summary}");
+        let by_step = Options {
+            view: View::Steps,
+            ..Options::default()
+        };
+        let steps = crate::render::render(&graph, &by_step, crate::render::Format::Summary);
+        assert!(
+            steps.contains("FASTQC: 7 tasks, 5 from the cache <- [INPUT]"),
+            "{steps}"
+        );
+        assert_eq!(graph.step_graph().cache_note().as_deref(), Some(preview));
+        for node in &mut graph.nodes {
+            node.reused = false;
+        }
+        assert_eq!(graph.cache_note(), None);
     }
 
     /// One SOURCE task, then `steps` steps of `tasks` tasks each that read its file, then SINK,

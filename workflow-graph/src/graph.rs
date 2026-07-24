@@ -56,6 +56,27 @@ fn is_false(flag: &bool) -> bool {
     !flag
 }
 
+/// The sentence of [`ExecutionGraph::cache_note`] for `reused` of `total` tasks.
+pub(crate) fn cache_note(reused: usize, total: usize, simulated: bool) -> Option<String> {
+    let tasks = |number: usize| match number {
+        1 => "1 task".to_owned(),
+        _ => format!("{number} tasks"),
+    };
+    let left = total.saturating_sub(reused);
+    match (reused, simulated) {
+        (0, _) => None,
+        (_, true) if left == 0 => Some(format!(
+            "A real run would take all {} from the cache; none would run.",
+            tasks(total)
+        )),
+        (_, true) => Some(format!(
+            "A real run would take {reused} of {} from the cache; {left} would run.",
+            tasks(total)
+        )),
+        (_, false) => Some(format!("{reused} of {} came from the cache.", tasks(total))),
+    }
+}
+
 impl ExecutionGraph {
     /// Notes that the graph comes from a simulated run, in the words of [`SIMULATION`].
     pub fn simulate(&mut self) {
@@ -64,6 +85,18 @@ impl ExecutionGraph {
 
     pub fn is_simulated(&self) -> bool {
         self.simulation.is_some()
+    }
+
+    /// How many tasks an earlier result answered, from the cache store or from an earlier run.
+    pub fn reused(&self) -> usize {
+        self.nodes.iter().filter(|node| node.reused).count()
+    }
+
+    /// One sentence about the tasks that an earlier result answered, when any did. For a
+    /// simulated graph it tells how much of the work a real run would take from the cache, as a
+    /// preview before any compute is spent.
+    pub fn cache_note(&self) -> Option<String> {
+        cache_note(self.reused(), self.nodes.len(), self.is_simulated())
     }
 
     /// The tasks with markers.

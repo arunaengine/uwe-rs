@@ -216,7 +216,7 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 - [x] One JSON Schema of the inputs of each workflow in all four languages (decision 24), printed by `iunctus inputs` and kept in the run database and the RO-Crate ([the inputs of a workflow](design/inputs.md)).
 - [x] Check every run against it before any task starts, with the same errors in every language.
 - [x] Warn where the schema and the parameters that the workflow reads differ.
-- [ ] The same for outputs, so that one workflow can feed another.
+- [x] The same for outputs, so that one workflow can feed another: `iunctus outputs` prints one JSON Schema of the outputs of each workflow in all four languages ([the inputs of a workflow](design/inputs.md), section 9).
 
 ### Cache, efficiency and reproducibility
 

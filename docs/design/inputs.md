@@ -1,4 +1,4 @@
-<!-- The inputs of a workflow as one JSON Schema: how each language describes them, the check of a run, and where the schema goes. -->
+<!-- The inputs of a workflow as one JSON Schema: how each language describes them, the check of a run, and where the schema goes; and the outputs as a second schema. -->
 <!-- Copyright (c) 2026 The iunctus Contributors -->
 <!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
 
@@ -12,6 +12,7 @@ iunctus describes the inputs of every workflow, in every language, as one JSON S
 - Every `iunctus run` and `iunctus graph` checks its values against the schema before any task starts, with the same messages in every language.
 - A run warns where the schema and the inputs that the workflow code reads differ.
 - The run database keeps the schema and the values of each run, and the RO-Crate of a run holds the schema and one formal parameter per input.
+- `iunctus outputs <workflow>` prints a second schema: the outputs of the workflow, so that one workflow can feed another (section 9).
 
 The code is in the `input-schema` crate (the check, the comparison, schemas from defaults, older drafts, help text), in one module per language (`nextflow-runtime/src/inputs.rs`, `snakemake-runtime/src/inputs.rs`, `cwl-runtime/src/schema.rs`, `argo-runtime/src/schema.rs`) and in `iunctus/src/inputs.rs`.
 
@@ -167,8 +168,36 @@ Every schema is valid JSON Schema of draft 2020-12. The workflows without a sche
 
 The schemas of some workflows hold parts that are no schema, like a list named `required` under `properties` in nine Snakemake workflows; validators skip them, and so does `upgrade`. The comparison with the code finds real mistakes: in 58 CWL documents the code reads an input that the process does not declare.
 
-## 9. Next steps
+## 9. The outputs
 
-- The same for outputs, so that one workflow can feed another (roadmap, section 5).
+A driver describes the outputs of its workflow with `Driver::outputs`, which returns one JSON Schema of draft 2020-12, or `None` when it knows no outputs. The schema is an object with one property per output: the results of a run, as another workflow would take them as its inputs. It comes only from what the workflow declares, and no task runs.
+
+| Language | The outputs |
+|---|---|
+| Nextflow | The outputs of the `output { }` block of the main script: each a list of paths, with the folder that the pipeline publishes it to below its output folder (`-output-dir`, else `outputDir` of the config, else `results`), and its index file if it has one. Without an `output { }` block, each `emit` of the named workflows of the main script is an output: a channel that a pipeline which includes it gets. |
+| Snakemake | The files of the target rules, which are the first rule unless the launch names targets. A rule with outputs gives them; a rule without, like `all`, gives the inputs that it asks for. A named group of files is an output by that name; the other files are the output `targets`. Each output holds its files for the config of the launch as `const`, and `directory()` makes a directory path. |
+| CWL | The outputs of the process, with the same types as its inputs, their `label`, `doc`, formats and secondary files. Files and directories are paths that the run makes, so they have no `exists`. An output is required unless its type is optional. |
+| Argo | The output parameters of the entrypoint as texts, and its output artifacts as paths, required unless `optional`. Then the global outputs of all templates by their `globalName`, as `workflow.outputs` gives them. |
+
+The command prints the schema, or with `-format text` the outputs as text; the options of `iunctus run` that describe a launch apply, as for `iunctus inputs`:
+
+```sh
+iunctus outputs <workflow file or directory> [-format json|text] [options of iunctus run]
+```
+
+The tests of the test workflows count the outputs of every workflow with a schema of its inputs, and every schema of outputs must be valid:
+
+| Language | Workflows | With outputs | Outputs | Files or directories |
+|---|---|---|---|---|
+| Nextflow (nf-core and WorkflowHub) | 280 | 153 | 324 | 145 |
+| Snakemake | 683 | 605 | 655 | 655 |
+| CWL | 5,956 | 5,805 | 16,708 | 15,853 |
+| Argo | 1,347 | 153 | 297 | 123 |
+
+The 179 Nextflow outputs that are not files are emits, whose type the script does not declare. Most Argo workflows declare no outputs at all.
+
+## 10. Next steps
+
+- The schema of the outputs in the run database and the RO-Crate, and a run that takes the outputs of another run as its inputs.
 - Checking the content of local sample sheets against their `schema`, and remote files once runs may use the network again.
 - The inputs on the web page of a run, and a form made from the schema.

@@ -549,3 +549,62 @@ fn real_runs_tell_the_digests_of_their_images() {
     assert_eq!(pins.len(), 1);
     assert_eq!(pins["debian:stable-slim"], "debian@sha256:02");
 }
+
+#[test]
+fn the_longest_chain_after_each_step_comes_from_earlier_runs() {
+    use std::time::{Duration, UNIX_EPOCH};
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    let real = RunStart {
+        simulated: false,
+        ..start("run-1", None)
+    };
+    let mut recorder = Database::open(&path)
+        .expect("opens")
+        .record(&real)
+        .expect("starts");
+    // A takes 1 s and feeds B, which takes 2 s; C takes half a second alone. D came from the
+    // cache and took no time.
+    let steps = [
+        (1, "A", 1000),
+        (2, "B", 2000),
+        (3, "C", 500),
+        (4, "D", 9000),
+    ];
+    for (id, step, time) in steps {
+        let inputs = match id {
+            2 => vec![input(&directory.path().join("a.txt"))],
+            _ => Vec::new(),
+        };
+        let edges = match id {
+            2 => vec![Edge {
+                from: TaskId(1),
+                to: TaskId(2),
+                kind: EdgeKind::File {
+                    path: "in.txt".into(),
+                },
+            }],
+            _ => Vec::new(),
+        };
+        recorder.requested(&task(id, step, inputs), &edges);
+        recorder.started(TaskId(id), 1);
+        let begun = UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let finished = Outcome {
+            started: Some(begun),
+            ended: Some(begun + Duration::from_millis(time)),
+            cached: step == "D",
+            ..outcome(id, directory.path().join(format!("{id}.txt")), "")
+        };
+        recorder.finished(&finished, 1, false);
+    }
+    recorder.ended(None);
+    recorder.close().expect("writes");
+    let database = Database::open(&path).expect("opens");
+    let chains = database.chains("/work/main.nf").expect("reads");
+    assert_eq!(chains["A"], 3000);
+    assert_eq!(chains["B"], 2000);
+    assert_eq!(chains["C"], 500);
+    assert!(!chains.contains_key("D"), "{chains:?}");
+    // Simulated runs and other workflows tell nothing.
+    assert!(database.chains("/work/other.nf").expect("reads").is_empty());
+}

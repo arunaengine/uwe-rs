@@ -46,6 +46,9 @@ pub(super) fn tasks(graph: &ExecutionGraph) -> String {
     if let Some(note) = &graph.simulation {
         let _ = writeln!(text, "{note}");
     }
+    if let Some(note) = graph.cache_note() {
+        let _ = writeln!(text, "{note}");
+    }
     let _ = writeln!(
         text,
         "{} tasks, {} steps, {} edges{}",
@@ -67,7 +70,12 @@ pub(super) fn tasks(graph: &ExecutionGraph) -> String {
             .get(&node.task.id)
             .map(|list| list.join(", "))
             .unwrap_or_default();
-        let _ = writeln!(text, "{:>5} {} <- [{before}]", node.task.id, node.task.name);
+        let cached = if node.reused { " (from the cache)" } else { "" };
+        let _ = writeln!(
+            text,
+            "{:>5} {}{cached} <- [{before}]",
+            node.task.id, node.task.name
+        );
         markers(&mut text, &node.markers, simulated);
     }
     text
@@ -78,6 +86,9 @@ pub(super) fn steps(graph: &StepGraph) -> String {
     let simulated = graph.is_simulated();
     let mut text = String::new();
     if let Some(note) = &graph.simulation {
+        let _ = writeln!(text, "{note}");
+    }
+    if let Some(note) = graph.cache_note() {
         let _ = writeln!(text, "{note}");
     }
     let tasks: usize = graph.steps.iter().map(|step| step.tasks).sum();
@@ -100,6 +111,9 @@ pub(super) fn steps(graph: &StepGraph) -> String {
             step.tasks,
             if step.tasks == 1 { "task" } else { "tasks" }
         );
+        if step.reused > 0 {
+            let _ = write!(line, ", {} from the cache", step.reused);
+        }
         if step.failed > 0 {
             let _ = write!(line, ", {} failed", step.failed);
         }

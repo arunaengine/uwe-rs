@@ -1,24 +1,26 @@
-<!-- How iunctus reuses the results of tasks across runs, pipelines and languages, runs the same task once, cleans up its store by rule, and previews a run. -->
+<!-- How iunctus reuses the results of tasks across runs, pipelines and languages, runs the same task once, cleans up its store by rule, previews a run, and starts the longest chain first. -->
 <!-- Copyright (c) 2026 The iunctus Contributors -->
 <!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
 
-# The cache: reuse, one execution, clean-up and the preview
+# The cache: reuse, one execution, clean-up, the preview and the longest chain first
 
 Status: implemented, 2026-09-30. This applies [decisions](../decisions.md) 7, 9 and 10, and the reuse scopes of the [Nextflow runtime](nextflow/runtime.md), section 5.3.
 
-iunctus keeps the result of every task in a content-addressed store. Four features build on it, so that iunctus spends less compute, less storage and less waiting than the native engines:
+iunctus keeps the result of every task in a content-addressed store, and the times of every run in the run database. Five features build on them, so that iunctus spends less compute, less storage and less waiting than the native engines:
 
 - **The global cache.** Any run, pipeline or language that asks for a task that ran before takes its result from the store. Nothing needs to be turned on.
 - **One execution.** Two runs, or two tasks of one run, that ask for the same task at the same moment run it once. The other waits and takes the result.
 - **Clean-up by rule.** `iunctus clean` removes what no rule keeps, like "keep what was used in the last 30 days". It replaces `nextflow clean`, and it never removes what a run still refers to.
 - **The preview.** A simulated run tells, for each task, whether a real run would take it from the cache. So the user sees how much work is left before any compute is spent.
+- **The longest chain first.** When tasks wait for the machine, the one with the most work after it starts first, by the times of earlier runs. So the run ends sooner on the same machine.
 
 | Crate | What it does here |
 |---|---|
 | `task-model` | The task description and its cache key |
 | `content-store` | The store: contents, directory manifests, outputs, cache entries, marks of use, leases, and listing and removing objects |
 | `task-runner` | Answers tasks from the store, waits for a task that runs elsewhere, looks up results without side effects (`Lookup`), and plans clean-up (`clean`) |
-| `run-database` | What runs refer to, which runs go on, and the image digests of real runs |
+| `run-database` | What runs refer to, which runs go on, the image digests of real runs, and the chains of steps with their times |
+| `executor` | The pool of CPUs and memory of the local executor, which serves waiting tasks by priority |
 | `iunctus` | `iunctus clean`, and the preview in simulated runs (`preview.rs`) |
 
 ## 1. The same task
@@ -137,7 +139,17 @@ iunctus: A real run would take 1 of 2 tasks from the cache; 1 would run.
 - The SVG draws such tasks in the state `reused` and puts the sentence under its title.
 - The run database records them as reused from the cache, so the web page draws them so too, names them `from the cache` in the legend of a simulated run, and gives the sentence under it.
 
-## 6. Where it is in the code
+## 6. The longest chain first
+
+A run ends when its longest chain of tasks ends. When more tasks are ready than the machine can run, the order in which they start decides how long the run takes: a task that starts late on the longest chain makes the whole run late, while a short task at the end of a side branch costs nothing.
+
+So each task gets a priority (`Placement::priority`): the time, in milliseconds, of the longest chain of steps that starts with its step, from the latest five real runs of the same workflow (`Database::chains`). The time of a step is the mean time of its tasks that ran; tasks taken from the cache or from an earlier run took no time. The time of a chain adds the times of its steps, along the edges between the steps of those runs. A loop between steps stops the chain.
+
+The pool of the local executor (`executor::Pool`) serves the tasks that wait by priority, the highest first, and of equal ones the one that asked first. The choice is made when a share of CPUs and memory comes free, so a task with a higher priority goes before the tasks that waited longer. Only the first task of the queue may take its share, so a task that needs much is never passed forever by tasks that need little. A run without earlier real runs gives every task the priority 0, and tasks start in the order they asked, as before.
+
+The priority helps only when tasks wait: on a machine with room for every task, all start at once. The TES, SLURM and Kubernetes executors leave the order to their servers; they could pass the priority on, for example as a SLURM `--nice` value.
+
+## 7. Where it is in the code
 
 - `task_runner::Runner::execute`: the hit, the wait for the lease of a key, the lease of the run, and the entry with its time.
 - `task_runner::CacheEntry` (`entry.rs`): the entry and the check that its files are still there.
@@ -145,15 +157,17 @@ iunctus: A real run would take 1 of 2 tasks from the cache; 1 would run.
 - `task_runner::clean`: `Keep`, `plan` and `remove`; `iunctus/src/clean.rs`: the rules from the command line, the runs from the database, the listing and the scratch folders.
 - `task_runner::Lookup` (`lookup.rs`, `inputs.rs`): the key of a task without side effects; `iunctus/src/preview.rs`: `Previewed`, the simulator with the cache; `Database::pins`.
 - `ExecutionGraph::cache_note` and `StepNode.reused`: the counts in notes, summaries and pictures.
+- `Database::chains` (`chains.rs`), `RunnerExecutor::priorities`, `Placement::priority` and `Pool::share`: the longest chain first.
 
-## 7. Checks
+## 8. Checks
 
 - `task-runner/tests/runner.rs`: shared results; a result whose files are gone runs again; entries record their time and their last use; three requests of two runs at the same moment run the task once; a failed task leaves its turn to the next; a lease whose holder is killed frees the task at once (with the `flock` tool of util-linux, which holds the lock the way a run does); waiting stops when the run is cancelled; a lookup finds results and writes nothing; clean-up keeps what named runs need, what was used lately and what took long, and everything newer than a run that goes on.
 - `content-store`: leases in a store on this machine and in an object store, including one whose holder stopped renewing it; listing and removing objects; marks of use.
-- `run-database/tests/database.rs`: which runs go on, which started lately, what they refer to, the pins of real runs; eight runs that open a new database at the same moment.
-- `iunctus/tests/cache.rs`, with Docker and `debian:stable-slim` (`cargo test -p iunctus --test cache -- --include-ignored --test-threads 1`): a module that two Nextflow pipelines vendor runs once, although its process has another name and sits in a subworkflow in the second; a CWL tool and an Argo template written alike share their task, while a Snakemake rule that does the same work runs; two `iunctus run` processes started at the same moment on one store run a task once (`[done]` in one, `[cached]` in the other); clean-up after real runs removes what no rule keeps and nothing that a kept run needs; the preview before and after real runs, in the notes, the summaries, the SVG and the run database.
+- `executor` (unit test of the pool): tasks that wait take their shares by priority, and a task that stops waiting leaves the queue.
+- `run-database/tests/database.rs`: which runs go on, which started lately, what they refer to, the pins of real runs, the chains of steps with their times; eight runs that open a new database at the same moment, twenty times over (two races that made the second of two runs fail are fixed); four runs that record at the same moment.
+- `iunctus/tests/cache.rs`, with Docker and `debian:stable-slim` (`cargo test -p iunctus --test cache -- --include-ignored --test-threads 1`): a module that two Nextflow pipelines vendor runs once, although its process has another name and sits in a subworkflow in the second; a CWL tool and an Argo template written alike share their task, while a Snakemake rule that does the same work runs; two `iunctus run` processes started at the same moment on one store run a task once (`[done]` in one, `[cached]` in the other); clean-up after real runs removes what no rule keeps and nothing that a kept run needs; the preview before and after real runs, in the notes, the summaries, the SVG and the run database; the longest chain first: tasks that each take the whole machine run one after another, and where the first run started three short tasks before a long chain, the second, with the times of the first, starts at most the one that found the machine free.
 
-## 8. Not yet
+## 9. Not yet
 
 - **A stat cache of local inputs.** Every run, and every preview, hashes its local inputs again. A cache of digests by path, size, time and inode would make that instant for large inputs ([runs](runs.md): the `index` table of the design).
 - **One layout of tasks for all languages.** Tasks of different languages share results only where their descriptions are equal. Writing paths inside the work directory the same way in every driver would make more of them equal.

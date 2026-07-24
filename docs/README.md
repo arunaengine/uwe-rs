@@ -19,6 +19,7 @@ iunctus page [<run>]
 iunctus export <run> [-output <folder>]
 iunctus inputs <workflow file or directory> [-format json|text] [-check]
 iunctus outputs <workflow file or directory> [-format json|text]
+iunctus clean [-keep-days <n>] [-keep-run <run>] [-keep-slower-than <time>] [-remove]
 ```
 
 `iunctus run` finds the language of its target, or takes it from `-lang`. The default executor is the simulator, which writes the TES task document of each task and makes up its outputs, so any workflow runs through without containers. A simulated run gives a simulated graph, not a prediction of a real run (decision 21). All four languages run: Nextflow, Snakemake, CWL and Argo. The local executor runs tasks in Docker or Podman instead, the TES executor on a GA4GH TES server, the SLURM executor as batch jobs, and the Kubernetes executor as Jobs. See [the engine](design/engine.md) and [the executors](design/executors.md). `iunctus graph` prints the graph of a run with one node per task or one node per step, as a summary, JSON, DOT or an SVG drawn by iunctus itself, and marks the points where a run with real data can add or remove tasks; see [the graphs of a run](design/graph.md).
@@ -28,6 +29,8 @@ Storage needs no setup for public files. A config file, `~/.config/iunctus/confi
 `iunctus inputs` describes the inputs of any workflow, in every language, as one JSON Schema: values, files and directories with their formats, and sample sheets as tables with typed columns; `-format text` gives the inputs as help. Every run checks its values against the schema before any task starts, with the same messages in every language, and warns where the schema and the inputs that the code reads differ (decision 24). `iunctus outputs` describes the outputs of a workflow the same way, from what it declares, so that one workflow can feed another; see [the inputs of a workflow](design/inputs.md).
 
 Every run records itself in the run database. `iunctus runs` lists the runs, `-resume` continues one without running its finished tasks again, `iunctus run -page` and `iunctus page` show runs live on a web page, and `iunctus export` writes the RO-Crate of a run with its provenance. See [runs](design/runs.md).
+
+Every result goes to a content-addressed store, and any run, pipeline or language that asks for the same task takes it from there. Two runs that ask for the same task at the same moment run it once. A simulated run previews which tasks a real run would take from the cache, and `iunctus clean` removes what no rule keeps, never what a run still refers to. See [the cache](design/cache.md).
 
 ## Start here
 
@@ -40,6 +43,7 @@ Every run records itself in the run database. `iunctus runs` lists the runs, `-r
 - [Engine](design/engine.md): how `iunctus run` finds the language, the driver interface every language implements, how tasks run, the execution graph, the executors, and the next steps for the execution layer.
 - [Executors](design/executors.md): how the local, TES, SLURM and Kubernetes executors run tasks, how to set each one up, and how the end of a job becomes the outcome of a task.
 - [Runs](design/runs.md): the run database that every run fills, resume, the web page of runs and the Workflow Run RO-Crate of a run.
+- [The cache](design/cache.md): when two tasks are the same, the store and its entries, one execution of a task that runs elsewhere with leases that end with their process, clean-up by rule, and the preview of a run.
 - [The config file and storage providers](design/storage.md): the config file of the site, the user and a run, secrets from environment variables, and the providers (S3 and compatible services, Google Cloud Storage, Azure Blob Storage, web servers, FTP and folders) that serve the store, remote inputs and results, with an example.
 - [The inputs of a workflow](design/inputs.md): the inputs of every workflow as one JSON Schema, how each language describes them, the check of a run before its first task, and the inputs that the code reads.
 - [The graphs of a run](design/graph.md): the graph of tasks and the graph of steps, what a simulated graph says about itself, the markers where real data can add or remove tasks, the formats, and the SVG layout.

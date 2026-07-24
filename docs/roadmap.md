@@ -220,8 +220,10 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 
 ### Cache, efficiency and reproducibility
 
-- [ ] The global cache by default, the same task at the same time run once, clean-up by rule, remote files downloaded once, a cache in layers (section 4).
-- [ ] The preview before a run, right-sized resources, the longest chain first, short tasks together, tasks near their data (section 4).
+- [x] The global cache by default, the same task at the same time run once, clean-up by rule, remote files downloaded once (section 4): see [the cache](design/cache.md).
+- [ ] A cache in layers (section 4).
+- [x] The preview before a run (section 4): see [the cache](design/cache.md), section 5.
+- [ ] Right-sized resources, the longest chain first, short tasks together, tasks near their data (section 4).
 - [ ] Everything pinned, tasks without network by default, the reproducibility check, the order check for users (section 4).
 
 ### Easy setup

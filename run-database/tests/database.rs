@@ -354,16 +354,56 @@ fn a_database_of_a_newer_version_is_refused() {
 #[test]
 fn runs_that_open_a_new_database_at_once_share_its_tables() {
     let directory = tempfile::tempdir().expect("a temporary directory");
+    for round in 0..20 {
+        let path = directory.path().join(format!("runs-{round}.sqlite"));
+        let openers: Vec<_> = (0..8)
+            .map(|_| {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    let database = Database::open(&path)?;
+                    database.version()
+                })
+            })
+            .collect();
+        for opener in openers {
+            let version = opener.join().expect("the thread ends").expect("opens");
+            assert_eq!(version, VERSION);
+        }
+    }
+}
+
+#[test]
+fn runs_that_record_at_the_same_time_record_everything() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
-    let openers: Vec<_> = (0..8)
-        .map(|_| {
-            let path = path.clone();
-            std::thread::spawn(move || Database::open(&path).map(|database| database.version()))
+    Database::open(&path).expect("creates");
+    let runs: Vec<_> = (0..4)
+        .map(|number| {
+            let (path, directory) = (path.clone(), directory.path().to_owned());
+            std::thread::spawn(move || {
+                let id = format!("run-{number}");
+                let mut recorder = Database::open(&path)?.record(&start(&id, None))?;
+                for task in 1..=200 {
+                    recorder.requested(&self::task(task, "MAKE", Vec::new()), &[]);
+                    recorder.started(TaskId(task), 1);
+                    let made = directory.join(format!("{number}-{task}.txt"));
+                    recorder.finished(&outcome(task, made, "said\n"), 1, false);
+                }
+                recorder.ended(None);
+                recorder.close()
+            })
         })
         .collect();
-    for opener in openers {
-        let version = opener.join().expect("the thread ends").expect("opens");
-        assert_eq!(version.expect("reads the version"), VERSION);
+    for run in runs {
+        run.join()
+            .expect("the thread ends")
+            .expect("records the whole run");
+    }
+    let database = Database::open(&path).expect("opens");
+    for number in 0..4 {
+        let run = database.run(&format!("run-{number}")).expect("reads");
+        let tasks: u64 = run.expect("the run").tasks.values().sum();
+        assert_eq!(tasks, 200);
     }
 }
 

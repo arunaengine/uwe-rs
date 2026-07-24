@@ -93,6 +93,7 @@ main { padding: 1.25rem; max-width: 110rem; margin: 0 auto; }
 .progress { display: flex; height: 0.7rem; border-radius: 999px; overflow: hidden; background: var(--code); margin: 0.5rem 0; }
 .progress span { display: block; }
 .legend { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; font-size: 0.85rem; color: var(--quiet); }
+.preview { margin: 0.5rem 0 0; font-weight: 600; }
 .legend i { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 2px; margin-right: 0.3rem; vertical-align: -1px; }
 .succeeded-fill { background: var(--succeeded); }
 .failed-fill { background: var(--failed); }

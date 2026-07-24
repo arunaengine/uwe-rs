@@ -137,9 +137,27 @@ function drawProgress() {
       el("span", { class: `${state}-fill`, style: `width: ${(100 * found[state]) / total}%` })));
   const legend = el("div", { class: "legend" },
     STATES.filter((state) => found[state]).map((state) =>
-      el("span", {}, el("i", { class: `${state}-fill` }), `${found[state]} ${LABELS[state]}`)));
+      el("span", {}, el("i", { class: `${state}-fill` }), `${found[state]} ${label(state)}`)));
   legend.prepend(el("strong", {}, `${tasks.length} tasks`));
-  view.parts.progress.replaceChildren(bar, legend);
+  const parts = [bar, legend];
+  // A simulated run is a preview: it tells how much of the work a real run would take from
+  // the cache, before any compute is spent.
+  if (view.run.simulated && found.reused > 0) {
+    const left = tasks.length - found.reused;
+    parts.push(el("p", { class: "preview" }, left === 0
+      ? `A real run would take all ${tasks.length} tasks from the cache; none would run.`
+      : `A real run would take ${found.reused} of ${tasks.length} tasks from the cache; ` +
+        `${left} would run.`));
+  }
+  view.parts.progress.replaceChildren(...parts);
+}
+
+// The name of a state in the legend. In a simulated run, a task that succeeded was simulated,
+// and a reused one is what a real run would take from the cache.
+function label(state) {
+  if (view.run.simulated && state === "succeeded") return "simulated";
+  if (view.run.simulated && state === "reused") return "from the cache";
+  return LABELS[state];
 }
 
 // ---- steps ----

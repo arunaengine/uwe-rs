@@ -23,6 +23,7 @@ mod resume;
 mod runs;
 mod schema;
 mod tasks;
+mod time;
 mod why;
 
 use std::path::Path;
@@ -38,6 +39,7 @@ pub use resume::Reusable;
 pub use runs::{Event, Log, Run, RunInputs};
 pub use schema::VERSION;
 pub use tasks::{Attempt, EdgeRow, FileRow, MarkerRow, TaskDetail, TaskRow};
+pub use time::{PathTask, StepTime, TimeSpent};
 pub use why::Why;
 
 /// The name of the database file in the cache directory, next to the default store.

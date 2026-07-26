@@ -17,6 +17,9 @@ pub const STDOUT: &str = "stdout";
 pub const STDERR: &str = "stderr";
 pub const STDIN: &str = "stdin";
 pub const ROOT: &str = "root";
+/// Writes the time in seconds since the Unix epoch: with microseconds from Bash 5 on, whose
+/// `EPOCHREALTIME` needs no program, else whole seconds from `date`.
+const NOW: &str = "echo \"${EPOCHREALTIME:-$(date +%s)}\"";
 /// What the task used, as the cgroup of its container counts it: `cpu_usec`, `memory_peak`,
 /// `read_bytes` and `write_bytes`, one per line with its number.
 pub const USAGE: &str = "usage";
@@ -65,16 +68,15 @@ pub fn wrapper_with_outbox(spec: &TaskSpec, work: &str, control: &str, outbox: &
         Some(_) => format!(" < \"$control/{STDIN}\""),
         None => String::new(),
     };
-    script.push_str(&format!("date +%s > \"$control/{START}\"\n"));
+    script.push_str(&format!("{NOW} > \"$control/{START}\"\n"));
     script.push_str(&format!(
         "{} > \"$control/{STDOUT}\" 2> \"$control/{STDERR}\"{stdin}\n",
         arguments.join(" ")
     ));
     script.push_str(&format!(
-        "status=$?\necho \"$status\" > \"$control/{EXIT}\"\n"
+        "status=$?\n{NOW} > \"$control/{END}\"\necho \"$status\" > \"$control/{EXIT}\"\n"
     ));
     script.push_str(USAGE_SCRIPT);
-    script.push_str(&format!("date +%s > \"$control/{END}\"\n"));
     script.push_str(COLLECT);
     script.push_str(&format!(": > \"$control/{MANIFEST}\"\n"));
     // Bash rejects an empty `then` block, so a task without outputs gets none.

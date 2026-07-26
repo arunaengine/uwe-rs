@@ -4,11 +4,12 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::PathBuf;
+use std::time::{Duration, SystemTime};
 
 use task_model::{Placement, TaskSpec};
 
 use crate::manifest::{Collected, ManifestError, parse};
-use crate::wrapper::{EXIT, MANIFEST, ROOT, STDERR, STDOUT, USAGE};
+use crate::wrapper::{END, EXIT, MANIFEST, ROOT, START, STDERR, STDOUT, USAGE};
 
 /// The folders of a task's scratch directory: the work directory, the control files of the
 /// wrapper, and copies of inputs at absolute paths, which are mounted where the task sees them.
@@ -102,6 +103,22 @@ impl Usage {
 }
 
 impl Finished {
+    /// When the tool of the task started and ended, as the wrapper wrote it in the control
+    /// folder: seconds since the Unix epoch, with a fraction where Bash has one. `None` when
+    /// the tool did not get that far.
+    pub fn tool_times(&self) -> Option<(SystemTime, SystemTime)> {
+        let control = self.root.join(CONTROL);
+        let read = |name: &str| -> Option<SystemTime> {
+            let text = std::fs::read_to_string(control.join(name)).ok()?;
+            // Bash writes the fraction with the decimal separator of the locale.
+            let seconds: f64 = text.trim().replace(',', ".").parse().ok()?;
+            let elapsed = Duration::try_from_secs_f64(seconds).ok()?;
+            SystemTime::UNIX_EPOCH.checked_add(elapsed)
+        };
+        let (started, ended) = (read(START)?, read(END)?);
+        (ended >= started).then_some((started, ended))
+    }
+
     /// Where an output is on the host: a relative path in the work directory, an absolute one
     /// where the wrapper copied it.
     pub fn local_path(&self, path: &str) -> PathBuf {
@@ -183,5 +200,30 @@ mod usage_tests {
         assert_eq!(usage.memory_peak, Some(2048));
         assert_eq!(usage.cpu_usec, Some(1500));
         assert_eq!(usage.write_bytes, Some(4096));
+    }
+
+    #[test]
+    fn tool_times_come_from_the_control_folder() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        let control = root.path().join(CONTROL);
+        std::fs::create_dir_all(&control).expect("makes the folder");
+        let finished = Finished {
+            exit_code: Some(0),
+            files: Vec::new(),
+            root: root.path().to_owned(),
+            usage: None,
+        };
+        assert_eq!(finished.tool_times(), None);
+        std::fs::write(control.join(START), "1700000000.250000\n").expect("writes");
+        std::fs::write(control.join(END), "1700000002,750000\n").expect("writes");
+        let (started, ended) = finished.tool_times().expect("times");
+        let seconds = |time: SystemTime| {
+            let elapsed = time.duration_since(SystemTime::UNIX_EPOCH);
+            elapsed.expect("after 1970").as_secs_f64()
+        };
+        assert_eq!(seconds(started), 1_700_000_000.25);
+        assert_eq!(seconds(ended), 1_700_000_002.75);
+        std::fs::write(control.join(END), "1699999999\n").expect("writes");
+        assert_eq!(finished.tool_times(), None, "an end before the start");
     }
 }

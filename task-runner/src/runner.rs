@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use bytes::Bytes;
 use content_store::{Holder, Lease, Store, StoreError, layout};
@@ -54,6 +54,10 @@ pub struct TaskResult {
     pub reused: bool,
     /// What the attempt used, when the backend measured it.
     pub usage: Option<executor::Usage>,
+    /// When the tool of the attempt started and ended, as its wrapper wrote it; `None` for a
+    /// stored result.
+    pub started: Option<SystemTime>,
+    pub ended: Option<SystemTime>,
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -172,13 +172,15 @@ pub(crate) async fn outcome_of(
         stderr: text(&result.stderr).await?,
         cached: result.reused,
         image,
+        // The time of the tool itself: waiting for a free CPU and staging come before it.
+        started: result.started,
+        ended: result.ended,
         usage: result.usage.map(|usage| workflow_graph::Usage {
             cpu_usec: usage.cpu_usec,
             memory_peak: usage.memory_peak,
             read_bytes: usage.read_bytes,
             write_bytes: usage.write_bytes,
         }),
-        ..Outcome::default()
     })
 }
 

@@ -48,6 +48,7 @@ pub(crate) async fn store_outputs(
         }
         Ok(Some(store.put_file(&file).await?.0))
     };
+    let times = finished.tool_times();
     Ok(TaskResult {
         exit_code: finished.exit_code,
         files,
@@ -55,6 +56,8 @@ pub(crate) async fn store_outputs(
         stderr: log(finished.stderr()).await?,
         reused: false,
         usage: finished.usage,
+        started: times.map(|(started, _)| started),
+        ended: times.map(|(_, ended)| ended),
     })
 }
 

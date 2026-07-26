@@ -49,6 +49,8 @@ impl CacheEntry {
             stderr: self.stderr,
             reused: true,
             usage: None,
+            started: None,
+            ended: None,
         }
     }
 

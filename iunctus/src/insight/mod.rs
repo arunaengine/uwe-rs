@@ -1,8 +1,10 @@
 //! The commands that show what runs did and why, from the run database: `iunctus time` tells
-//! where the time of a run went. They write plain text, or JSON with `-format json`.
+//! where the time of a run went, and `iunctus compare` what differs between two runs. They
+//! write plain text, or JSON with `-format json`.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+pub mod compare;
 pub mod time;
 
 use run_database::{Database, Run};

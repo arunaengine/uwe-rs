@@ -4,8 +4,9 @@
 //! writes the RO-Crate of a run, `iunctus page` serves the web page of the runs,
 //! `iunctus why` tells why a task ran again, `iunctus origin` where a file came from,
 //! `iunctus inputs` prints the JSON Schema of the inputs of a workflow, `iunctus outputs` that
-//! of its outputs, `iunctus clean` removes from the store what no rule keeps, and
-//! `iunctus time` tells where the time of a run went.
+//! of its outputs, `iunctus clean` removes from the store what no rule keeps,
+//! `iunctus time` tells where the time of a run went, and `iunctus compare` what differs
+//! between two runs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -114,6 +115,7 @@ fn main() -> ExitCode {
         "outputs" => inputs::outputs(&arguments),
         "clean" => clean::command(&arguments),
         "time" => insight::time::command(&arguments),
+        "compare" => insight::compare::command(&arguments),
         _ => return usage(),
     };
     match result {
@@ -581,6 +583,7 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
        iunctus why <run> <task>
        iunctus origin <file>
        iunctus time <run> [-format text|json]
+       iunctus compare <run> [<run>] [-format text|json]
        iunctus inputs <workflow file or directory> [-format json|text] [-check] [options]
        iunctus outputs <workflow file or directory> [-format json|text] [options]
        iunctus clean [-keep-days <n>] [-keep-run <run>]... [-keep-slower-than <time>] [-remove]

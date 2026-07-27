@@ -114,6 +114,10 @@ function drawSummary() {
   // The parameters and the command line side by side, until one opens.
   const folded = parts.filter((part) => part.tagName === "DETAILS");
   view.parts.summary.append(el("div", { class: "tools summary-more" }, folded));
+  // Other runs of the workflow come from the list of runs, which the part asks for itself.
+  const compare = el("div", {});
+  view.parts.summary.append(compare);
+  comparePart(run).then((part) => compare.replaceWith(part));
 }
 
 // Keeps the time of a running run ticking between the updates of the stream.

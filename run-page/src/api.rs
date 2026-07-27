@@ -10,7 +10,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::header;
 use axum::response::IntoResponse;
 use axum::routing::get;
-use run_database::{Log, MarkerRow, Run, TaskDetail, TaskRow, TimeSpent, Why};
+use run_database::{Comparison, Log, MarkerRow, Run, TaskDetail, TaskRow, TimeSpent, Why};
 use serde::{Deserialize, Serialize};
 use workflow_graph::TaskId;
 use workflow_graph::render::{Direction, FOLD, Format, Options, State as Shown, View, render};
@@ -25,6 +25,7 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/", get(assets::page))
         .route("/runs/{run}", get(assets::page))
         .route("/runs/{run}/tasks/{task}", get(assets::page))
+        .route("/compare/{first}/{second}", get(assets::page))
         .route("/page.css", get(assets::style))
         .route("/page.js", get(assets::script))
         .route("/run.js", get(assets::run_script))
@@ -32,11 +33,13 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/camera.js", get(assets::camera_script))
         .route("/boxes.js", get(assets::boxes_script))
         .route("/time.js", get(assets::time_script))
+        .route("/compare.js", get(assets::compare_script))
         .route("/api/runs", get(runs))
         .route("/api/runs/{run}", get(run))
         .route("/api/runs/{run}/events", get(live::events))
         .route("/api/runs/{run}/graph.svg", get(graph))
         .route("/api/runs/{run}/time", get(time))
+        .route("/api/compare/{first}/{second}", get(compare))
         .route("/api/runs/{run}/tasks/{task}", get(task))
         .route("/api/runs/{run}/tasks/{task}/why", get(why))
         .route(
@@ -154,6 +157,23 @@ async fn time(
     })
     .await?;
     Ok(Json(spent))
+}
+
+/// What differs between two runs, task by task.
+async fn compare(
+    State(state): State<Shared>,
+    Path((first, second)): Path<(String, String)>,
+) -> Result<Json<Comparison>, Failure> {
+    let comparison = query(&state, move |database| {
+        match database.compare(&first, &second)? {
+            Some(comparison) => Ok(comparison),
+            None => Err(Failure::not_found(format!(
+                "no run `{first}` or no run `{second}`"
+            ))),
+        }
+    })
+    .await?;
+    Ok(Json(comparison))
 }
 
 #[derive(Deserialize)]

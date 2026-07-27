@@ -115,6 +115,8 @@ function route() {
     } else {
       showRun(parts[1], task);
     }
+  } else if (parts[0] === "compare" && parts[1] && parts[2]) {
+    showCompare(parts[1], parts[2]);
   } else {
     showRuns();
   }

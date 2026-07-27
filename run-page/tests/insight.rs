@@ -21,6 +21,10 @@ fn start(id: &str) -> RunStart {
         executor: "local".into(),
         simulated: false,
         store: None,
+        program: None,
+        launch: None,
+        workflow_folder: None,
+        repeats: None,
     }
 }
 

@@ -250,6 +250,10 @@ mod tests {
             state: "succeeded".into(),
             error: None,
             tasks: BTreeMap::from([("failed".into(), 1), ("succeeded".into(), 4)]),
+            program: None,
+            launch: None,
+            workflow_folder: None,
+            repeats: None,
         };
         let text = table(&[run]);
         let lines: Vec<&str> = text.lines().collect();

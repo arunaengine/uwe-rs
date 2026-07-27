@@ -6,7 +6,7 @@ use rusqlite::{OptionalExtension, Row, params};
 use serde::Serialize;
 use workflow_graph::Task;
 
-use crate::{Database, DatabaseError};
+use crate::{CheckRow, Database, DatabaseError};
 
 /// A task with its last attempt, as a row of a table.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -84,6 +84,8 @@ pub struct TaskDetail {
     pub inputs: Vec<FileRow>,
     /// The outputs of the last attempt.
     pub outputs: Vec<FileRow>,
+    /// The verdicts of the reproducibility check of its attempts.
+    pub checks: Vec<CheckRow>,
 }
 
 const TASK_ROW: &str = "SELECT t.id, t.step, t.name, t.state, t.requested,
@@ -161,6 +163,7 @@ impl Database {
             attempts,
             inputs,
             outputs,
+            checks: self.checks(run, Some(task))?,
         }))
     }
 

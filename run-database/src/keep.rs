@@ -49,16 +49,18 @@ impl Database {
         Ok(ids)
     }
 
-    /// The files and contents that the tasks of the runs refer to: their inputs, their outputs
-    /// and their logs.
+    /// The files and contents that the runs refer to: the inputs, outputs and logs of their
+    /// tasks, the files of their workflows and command lines, and the remote files they read.
     pub fn references(&self, runs: &[String]) -> Result<References, DatabaseError> {
         let mut references = References::default();
         let mut files = self
             .connection
             .prepare("SELECT location, digest FROM files WHERE run = ?1")?;
-        let mut logs = self
-            .connection
-            .prepare("SELECT digest FROM logs WHERE run = ?1")?;
+        let mut contents = self.connection.prepare(
+            "SELECT digest FROM logs WHERE run = ?1
+             UNION SELECT digest FROM sources WHERE run = ?1
+             UNION SELECT digest FROM remote_files WHERE run = ?1",
+        )?;
         for run in runs {
             let rows = files.query_map(params![run], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
@@ -70,7 +72,7 @@ impl Database {
                 }
                 references.digests.extend(digest);
             }
-            let rows = logs.query_map(params![run], |row| row.get::<_, String>(0))?;
+            let rows = contents.query_map(params![run], |row| row.get::<_, String>(0))?;
             for digest in rows {
                 references.digests.insert(digest?);
             }

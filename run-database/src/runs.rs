@@ -32,6 +32,14 @@ pub struct Run {
     pub error: Option<String>,
     /// The number of tasks in each state, like `succeeded: 12`.
     pub tasks: BTreeMap<String, u64>,
+    /// The iunctus that ran it, like `iunctus 0.1.0`; unknown for runs of older versions.
+    pub program: Option<String>,
+    /// The folder the run started in, where relative paths of its command line start.
+    pub launch: Option<String>,
+    /// The folder of the workflow whose files the run recorded as its sources.
+    pub workflow_folder: Option<String>,
+    /// The run that this one repeats.
+    pub repeats: Option<String>,
 }
 
 /// The inputs of a run (decision 24): the JSON Schema of the inputs of its workflow, and the
@@ -63,7 +71,8 @@ pub struct Event {
 }
 
 const RUN_COLUMNS: &str = "id, lineage, resumes, workflow, language, revision, arguments,
-    parameters, executor, simulated, store, process, started, ended, state, error";
+    parameters, executor, simulated, store, process, started, ended, state, error, program,
+    launch, workflow_folder, repeats";
 
 impl Database {
     /// The latest runs first, at most `limit` of them.
@@ -214,6 +223,10 @@ fn run_row(row: &Row) -> rusqlite::Result<(Run, String, String)> {
         state: row.get(14)?,
         error: row.get(15)?,
         tasks: BTreeMap::new(),
+        program: row.get(16)?,
+        launch: row.get(17)?,
+        workflow_folder: row.get(18)?,
+        repeats: row.get(19)?,
     };
     Ok((run, row.get(6)?, row.get(7)?))
 }

@@ -7,6 +7,7 @@ use std::io::ErrorKind as IoErrorKind;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use bytes::Bytes;
 use opendal::ErrorKind;
 use task_model::Digest;
 
@@ -140,6 +141,24 @@ impl Store {
             .write(&location, run.as_bytes().to_vec())
             .await?;
         Ok(())
+    }
+
+    /// Marks a tool whose task gave other bytes from the same inputs, so that no run shares
+    /// its results any more; `note` says what was found. A later mark replaces it.
+    pub async fn mark_unreproducible(&self, tool: &Digest, note: Bytes) -> Result<(), StoreError> {
+        let location = layout::unreproducible(tool);
+        self.operator.write(&location, note).await?;
+        Ok(())
+    }
+
+    /// The note of a tool that gave other bytes from the same inputs; `None` for a tool that
+    /// is not marked.
+    pub async fn unreproducible(&self, tool: &Digest) -> Result<Option<Bytes>, StoreError> {
+        match self.operator.read(&layout::unreproducible(tool)).await {
+            Ok(buffer) => Ok(Some(buffer.to_bytes())),
+            Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error.into()),
+        }
     }
 
     /// Removes the cache entry of a key and the mark of its last use.

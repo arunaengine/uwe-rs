@@ -22,6 +22,12 @@ pub fn tree(digest: &Digest) -> String {
     sharded("trees", digest)
 }
 
+/// The mark of a tool that gave other bytes from the same inputs when a task of it ran again:
+/// `tools/<digest hex>.json`, where the digest names the tool (its image and step).
+pub fn unreproducible(tool: &Digest) -> String {
+    format!("tools/{}.json", tool.hex())
+}
+
 /// The folder of leases (see [`crate::Lease`]).
 pub const LEASES: &str = "locks";
 

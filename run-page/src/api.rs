@@ -10,7 +10,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::header;
 use axum::response::IntoResponse;
 use axum::routing::get;
-use run_database::{Log, MarkerRow, Run, TaskDetail, TaskRow, Why};
+use run_database::{Log, MarkerRow, Run, TaskDetail, TaskRow, TimeSpent, Why};
 use serde::{Deserialize, Serialize};
 use workflow_graph::TaskId;
 use workflow_graph::render::{Direction, FOLD, Format, Options, State as Shown, View, render};
@@ -31,10 +31,12 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/graph.js", get(assets::graph_script))
         .route("/camera.js", get(assets::camera_script))
         .route("/boxes.js", get(assets::boxes_script))
+        .route("/time.js", get(assets::time_script))
         .route("/api/runs", get(runs))
         .route("/api/runs/{run}", get(run))
         .route("/api/runs/{run}/events", get(live::events))
         .route("/api/runs/{run}/graph.svg", get(graph))
+        .route("/api/runs/{run}/time", get(time))
         .route("/api/runs/{run}/tasks/{task}", get(task))
         .route("/api/runs/{run}/tasks/{task}/why", get(why))
         .route(
@@ -139,6 +141,19 @@ async fn why(
 ) -> Result<Json<Option<Why>>, Failure> {
     let why = query(&state, move |database| Ok(database.why(&id, task)?)).await?;
     Ok(Json(why))
+}
+
+/// Where the time of a run went: the critical path, waiting and running, and the steps.
+async fn time(
+    State(state): State<Shared>,
+    Path(id): Path<String>,
+) -> Result<Json<TimeSpent>, Failure> {
+    let spent = query(&state, move |database| match database.time_spent(&id)? {
+        Some(spent) => Ok(spent),
+        None => Err(Failure::not_found(format!("no run `{id}`"))),
+    })
+    .await?;
+    Ok(Json(spent))
 }
 
 #[derive(Deserialize)]

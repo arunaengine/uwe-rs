@@ -94,8 +94,12 @@ function graphTools() {
       graphTools();
       loadGraph({});
     });
+  const path = Boolean(view.time && view.time.path);
+  const critical = el("button", { "aria-pressed": String(path),
+    title: "The chain of tasks that set the length of the run", onclick: () => showPath(!path) },
+  "Critical path");
   const rows = [el("div", { class: "tools" },
-    el("h2", { style: "margin: 0; flex: 1" }, "Graph"), views, directions)];
+    el("h2", { style: "margin: 0; flex: 1" }, "Graph"), views, directions, critical)];
   if (graph.view === "tasks" && graph.open.size) {
     rows.push(el("div", { class: "tools" }, el("span", { class: "quiet" }, "Open steps:"),
       [...graph.open].map((name) => el("span", { class: "chip mono", title: name },
@@ -189,6 +193,7 @@ function mountPicture(picture, how) {
   graph.items = content.querySelectorAll(".node").length > HIDE_LEAST ? extents(content) : null;
   paintStates(null);
   markChosen();
+  markPath();
   drawGraphLegend();
   if (!before || graph.framing) {
     reframe(Boolean(before));

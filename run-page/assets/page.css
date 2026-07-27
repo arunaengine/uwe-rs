@@ -21,6 +21,11 @@
   --simulated: #718096;
   --node-line: #c3cad3;
   --edge: #9aa4b2;
+  /* The kinds of time on the critical path: categorical slots checked for colour vision
+     deficiencies on the card, in this order. */
+  --part-ran: #2a78d6;
+  --part-waited: #eb6834;
+  --part-between: #1baf7a;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 15px;
   line-height: 1.45;
@@ -48,6 +53,9 @@
     --simulated: #94a3b8;
     --node-line: #4a525c;
     --edge: #6b7480;
+    --part-ran: #3987e5;
+    --part-waited: #d95926;
+    --part-between: #199e70;
   }
 }
 
@@ -167,3 +175,30 @@ button[aria-pressed=true] { background: var(--text); color: var(--card); }
 .graph-tip ul { margin: 0.25rem 0 0; padding-left: 1.1rem; }
 details > summary { cursor: pointer; color: var(--quiet); margin: 0.4rem 0; }
 .marker { border-left: 3px solid var(--notice-line); padding-left: 0.6rem; margin: 0.3rem 0; }
+
+/* Where the time went: numbers of the run, the critical path as one bar, the steps. */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.6rem; margin: 0.4rem 0 0.8rem; }
+.tile { border: 1px solid var(--line); border-radius: 6px; padding: 0.5rem 0.7rem; }
+.tile-label { color: var(--quiet); font-size: 0.8rem; }
+.tile-value { font-size: 1.35rem; font-weight: 600; }
+.timepath h3, .timepath p { margin: 0.4rem 0; }
+.timebar { display: flex; gap: 2px; height: 1.4rem; margin: 0.5rem 0 0.2rem; }
+.timebar.dense { gap: 0; }
+.timebar .part { display: block; min-width: 1px; cursor: pointer; }
+.timebar .part-label { display: block; padding: 0 0.4rem; color: #fff; font-size: 0.75rem; font-weight: 600; line-height: 1.4rem; white-space: nowrap; width: max-content; }
+.timebar .part:first-child { border-radius: 4px 0 0 4px; }
+.timebar .part:last-child { border-radius: 0 4px 4px 0; }
+.timebar .part:hover { filter: brightness(1.15); }
+.part.ran { background: var(--part-ran); }
+.part.waited { background: var(--part-waited); }
+.part.between { background: var(--part-between); }
+.timescale { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 0.4rem; }
+td.sorted { min-width: 7rem; }
+.databar { height: 6px; margin-top: 0.2rem; background: var(--code); border-radius: 3px; }
+.databar span { display: block; height: 100%; background: var(--part-ran); border-radius: 0 3px 3px 0; }
+
+/* The critical path in the graph view: its boxes and lines stand out, the rest steps back. */
+.stage.showing-path .node:not(.on-path), .stage.showing-path .edge:not(.on-path) { opacity: 0.3; }
+.stage .node.on-path > .box { stroke: var(--text); stroke-width: 2.4; }
+.stage .edge.on-path { stroke: var(--text); stroke-width: 2.6; }
+.path-sign { display: inline-block; width: 1.1rem; height: 0; margin-right: 0.35rem; border-top: 3px solid var(--text); vertical-align: 3px; }

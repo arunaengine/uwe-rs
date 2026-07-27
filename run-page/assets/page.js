@@ -123,6 +123,7 @@ function route() {
 function leave() {
   if (view && view.events) view.events.close();
   if (view && view.ticker) clearInterval(view.ticker);
+  if (view && view.time) clearTimeout(view.time.timer);
   if (view && view.graph) {
     clearTimeout(view.graph.timer);
     view.graph.observer.disconnect();

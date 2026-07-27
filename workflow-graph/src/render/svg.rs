@@ -246,9 +246,18 @@ fn edges(svg: &mut String, drawing: &Drawing, layout: &Layout, direction: Direct
         } else {
             " marker-end=\"url(#arrow)\""
         };
+        // The ids of the boxes it joins, so that the web page can mark a chain of tasks.
+        let id = |index: usize| {
+            drawing
+                .shapes
+                .get(index)
+                .map_or("", |shape| shape.id.as_str())
+        };
         let _ = write!(
             svg,
-            "<path class=\"{class}\" d=\"{}\"{arrow}>",
+            "<path class=\"{class}\" data-from=\"{}\" data-to=\"{}\" d=\"{}\"{arrow}>",
+            escape(id(link.from)),
+            escape(id(link.to)),
             path(points, direction)
         );
         if let Some(label) = &link.label {
@@ -524,6 +533,7 @@ mod tests {
         assert!(svg.contains(">7 tasks</text>"));
         assert!(svg.contains("class=\"node open-point\" id=\"ms1\" data-host=\"s1\""));
         assert!(svg.contains("class=\"edge open\""));
+        assert!(svg.contains("class=\"edge\" data-from=\"t1\" data-to=\"s1\""));
         assert!(svg.contains(">demo (nextflow): 9 tasks</text>"));
         assert!(
             svg.contains(&format!(">{MORE_TASKS}</text>")),

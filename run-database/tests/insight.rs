@@ -1,12 +1,12 @@
-//! The insight of the run database: where the time of a run went, and tasks that the workflow
-//! asks for again to retry them.
+//! The insight of the run database: where the time of a run went, tasks that the workflow asks
+//! for again to retry them, and what differs between two runs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-use run_database::{Database, Recorder, RunStart};
+use run_database::{Database, Pairing, Recorder, RunStart};
 use workflow_graph::{Edge, EdgeKind, Language, Outcome, OutputFile, Task, TaskId, Usage};
 
 fn start(id: &str) -> RunStart {
@@ -165,4 +165,137 @@ fn a_task_asked_for_again_keeps_its_record() {
     let requested = events.iter().filter(|event| event.kind == "requested");
     assert_eq!(requested.count(), 2);
     assert!(Path::new(&path).exists());
+}
+
+/// Records a run of these tasks, each with one attempt that made `out.txt` with this digest.
+fn record_run(path: &Path, run: RunStart, tasks: &[(Task, &str, bool)]) {
+    let mut recorder = Database::open(path)
+        .and_then(|database| database.record(&run))
+        .expect("starts a record");
+    for (task, digest, cached) in tasks {
+        let outcome = Outcome {
+            id: task.id,
+            files: vec![OutputFile {
+                path: "out.txt".into(),
+                location: format!("/store/runs/{}/{}/out.txt", run.id, task.id),
+                digest: Some(format!("sha256:{}", digest.repeat(64))),
+                size: Some(1),
+                ..OutputFile::default()
+            }],
+            cached: *cached,
+            ..Outcome::default()
+        };
+        attempt(&mut recorder, task, &[], &outcome);
+    }
+    recorder.ended(None);
+    recorder.close().expect("records the run");
+}
+
+#[test]
+fn two_runs_compare_task_by_task() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    let with_image = |mut task: Task, image: &str| {
+        task.image = Some(image.into());
+        task
+    };
+    let first = RunStart {
+        parameters: vec![("outdir".into(), "results".into())],
+        ..start("first")
+    };
+    record_run(
+        &path,
+        first,
+        &[
+            (task(1, "PREP"), "a", false),
+            (with_image(task(2, "ALIGN"), "tool:1"), "b", false),
+            (task(3, "QC"), "c", false),
+            (task(4, "OLD"), "d", false),
+        ],
+    );
+    let mut second = RunStart {
+        parameters: vec![("outdir".into(), "out".into()), ("x".into(), "1".into())],
+        ..start("second")
+    };
+    second.revision = Some("0123abc".into());
+    let renamed = |id: u64, step: &str| {
+        let mut task = task(id, step);
+        task.name = format!("{step} ({})", id - 10);
+        task
+    };
+    record_run(
+        &path,
+        second,
+        &[
+            (renamed(11, "PREP"), "a", false),
+            (with_image(renamed(12, "ALIGN"), "tool:2"), "b", false),
+            (renamed(13, "QC"), "e", true),
+            (renamed(15, "NEW"), "f", false),
+        ],
+    );
+    let database = Database::open(&path).expect("opens again");
+    let comparison = database
+        .compare("first", "second")
+        .expect("reads the runs")
+        .expect("knows both runs");
+    assert_eq!(
+        comparison.changes,
+        [
+            "the Git revision is unknown in the first run and 0123abc in the second",
+            "the parameter `outdir` is `results` in the first run and `out` in the second",
+            "the parameter `x` is not given in the first run and is `1` in the second",
+        ]
+    );
+    let pairs: Vec<(&str, Pairing, Option<u64>, Option<u64>)> = (comparison.tasks.iter())
+        .map(|pair| {
+            let id = |side: &Option<run_database::Side>| side.as_ref().map(|side| side.task);
+            (
+                pair.step.as_str(),
+                pair.pairing,
+                id(&pair.first),
+                id(&pair.second),
+            )
+        })
+        .collect();
+    assert_eq!(
+        pairs,
+        [
+            ("PREP", Pairing::Same, Some(1), Some(11)),
+            ("ALIGN", Pairing::Changed, Some(2), Some(12)),
+            ("QC", Pairing::Outputs, Some(3), Some(13)),
+            ("OLD", Pairing::First, Some(4), None),
+            ("NEW", Pairing::Second, None, Some(15)),
+        ]
+    );
+    let align = &comparison.tasks[1];
+    assert_eq!(
+        align.changes,
+        ["the image changed from `tool:1` to `tool:2`"]
+    );
+    let qc = &comparison.tasks[2];
+    assert_eq!(
+        qc.outputs,
+        [
+            "the output `out.txt` differs: sha256:cccccccccccc in the first run, sha256:eeeeeeeeeeee in the second"
+        ]
+    );
+    assert_eq!(
+        qc.results,
+        ["it ran in the first run and came from the cache in the second"]
+    );
+    assert_eq!(database.compare("first", "no-run").expect("reads"), None);
+}
+
+#[test]
+fn a_run_is_compared_with_the_run_before_it() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    record_run(&path, start("run-a"), &[(task(1, "PREP"), "a", false)]);
+    record_run(&path, start("run-b"), &[(task(1, "PREP"), "a", false)]);
+    let database = Database::open(&path).expect("opens again");
+    assert_eq!(
+        database.run_before("run-b").expect("reads").as_deref(),
+        Some("run-a")
+    );
+    assert_eq!(database.run_before("run-a").expect("reads"), None);
 }

@@ -13,7 +13,8 @@ use content_store::Store;
 use executor::{Backend, ExecutorError};
 use task_model::Digest;
 use workflow_graph::{
-    Attempt, CancellationToken, ExecuteError, Executor, Files, Outcome, OutputFile, Running, Task,
+    Attempt, CancellationToken, ExecuteError, Executor, Files, Outcome, OutputFile,
+    ReproducibilityCheck, Running, Task, Verdict,
 };
 
 use crate::{Runner, RunnerError, StorageFiles, TaskResult};
@@ -44,6 +45,12 @@ impl<B: Backend> RunnerExecutor<B> {
     pub fn runner(&self) -> &Runner<B> {
         &self.runner
     }
+
+    /// Runs a share of the tasks whose results come from the cache again, from 0 (none) to 1
+    /// (all), and compares their outputs with the stored ones (the reproducibility check).
+    pub fn check_reproducibility(&mut self, share: f64) {
+        self.runner.check_reproducibility(share);
+    }
 }
 
 impl<B: Backend> Executor for RunnerExecutor<B> {
@@ -69,7 +76,10 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
                     (false, 0) => "done".to_owned(),
                     (false, code) => format!("failed with exit code {code}"),
                 };
-                println!("[{state}] {}", task.name);
+                match &outcome.reproducibility {
+                    Some(check) => println!("[checked] {}: {}", task.name, said(check)),
+                    None => println!("[{state}] {}", task.name),
+                }
             }
             result
         })
@@ -81,6 +91,22 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
         let settings = &self.runner.settings;
         let files = StorageFiles::new(&settings.storage, settings.downloads.clone());
         Some(Arc::new(files))
+    }
+}
+
+/// What the reproducibility check of a task found, in words.
+fn said(check: &ReproducibilityCheck) -> String {
+    let earlier = &check.earlier_run;
+    match &check.verdict {
+        Verdict::Same => format!("ran again and gave the same bytes as in run {earlier}"),
+        Verdict::Differs { paths } => format!(
+            "ran again and gave other bytes than in run {earlier}: {}; its tool shares no \
+             results any more",
+            paths.join(", ")
+        ),
+        Verdict::Failed { exit_code } => {
+            format!("ran again and failed with exit code {exit_code}")
+        }
     }
 }
 
@@ -126,9 +152,13 @@ async fn outcome<B: Backend>(
     prepared.request.attempt = attempt;
     prepared.request.placement.priority = priority;
     let result = runner.execute(&prepared, cancel).await.map_err(failed)?;
-    outcome_of(&runner.store, task, attempt, result, image)
+    let mut outcome = outcome_of(&runner.store, task, attempt, result, image)
         .await
-        .map_err(failed)
+        .map_err(failed)?;
+    outcome.inputs = (prepared.request.spec.inputs.iter())
+        .map(|input| (input.path.clone(), input.digest.to_string()))
+        .collect();
+    Ok(outcome)
 }
 
 /// The outcome of an attempt from its result in the store: each output at its path on this
@@ -181,6 +211,8 @@ pub(crate) async fn outcome_of(
             read_bytes: usage.read_bytes,
             write_bytes: usage.write_bytes,
         }),
+        reproducibility: result.check,
+        ..Outcome::default()
     })
 }
 

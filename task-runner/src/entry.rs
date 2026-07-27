@@ -51,6 +51,7 @@ impl CacheEntry {
             usage: None,
             started: None,
             ended: None,
+            check: None,
         }
     }
 

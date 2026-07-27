@@ -34,6 +34,7 @@ async function showRun(id, task) {
   buildRun();
   drawAll();
   drawGraph();
+  drawTime();
   choose(task);
   listen();
 }
@@ -45,13 +46,14 @@ function buildRun() {
     summary: el("div", {}),
     progress: el("div", { class: "summary-progress" }),
     graph: el("section", { class: "card" }),
+    time: el("section", { class: "card" }),
     steps: el("section", { class: "card" }),
     tasks: el("section", { class: "card" }),
     detail: el("aside", { class: "card side", hidden: true }),
   };
   const parts = view.parts;
   view.columns = el("div", { class: "columns" },
-    el("div", {}, parts.graph, parts.steps, parts.tasks),
+    el("div", {}, parts.graph, parts.time, parts.steps, parts.tasks),
     parts.detail);
   main.replaceChildren(el("section", { class: "card" }, parts.summary, parts.progress),
     view.columns);
@@ -547,6 +549,7 @@ function listen() {
     // States change in place; new tasks and markers need a new picture.
     paintStates(update.tasks);
     if (update.graph) graphChanged();
+    timeChanged();
     if (view.chosen !== null && update.tasks.some((task) => task.id === view.chosen)) {
       drawDetail(view.chosen);
     }
@@ -559,6 +562,7 @@ function listen() {
       liveMark.hidden = true;
       // The run is over: draw its whole graph now, without waiting.
       loadGraph({});
+      loadTime();
     }
   });
 }

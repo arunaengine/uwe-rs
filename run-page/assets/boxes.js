@@ -113,8 +113,8 @@ function tallyText(tally, spelled) {
 function setState(node, state) {
   if (node.classList.contains(state)) return;
   const kind = node.classList.contains("step") ? "step" : "task";
-  const chosen = node.classList.contains("chosen") ? " chosen" : "";
-  node.setAttribute("class", `node ${kind} ${state}${chosen}`);
+  const kept = ["chosen", "on-path"].filter((name) => node.classList.contains(name));
+  node.setAttribute("class", ["node", kind, state, ...kept].join(" "));
   const icon = node.querySelector(".icon");
   if (icon) icon.setAttribute("href", `#icon-${state}`);
 }
@@ -188,6 +188,10 @@ function drawGraphLegend() {
   const entries = shown.map((state) => el("span", {}, stateIcon(state), state));
   if (content.querySelector(".node.open-point")) {
     entries.push(el("span", {}, stateIcon("open"), "more tasks may follow from real data"));
+  }
+  if (view.time && view.time.path) {
+    entries.push(el("span", {}, el("i", { class: "path-sign" }),
+      "the critical path: the chain of tasks that set the length of the run"));
   }
   if (content.querySelector(".stack")) {
     entries.push(el("span", {}, el("i", { class: "stack-sign" }), "a step with several tasks"));

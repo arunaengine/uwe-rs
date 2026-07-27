@@ -12,6 +12,7 @@ const RUN_SCRIPT: &str = include_str!("../assets/run.js");
 const GRAPH_SCRIPT: &str = include_str!("../assets/graph.js");
 const CAMERA_SCRIPT: &str = include_str!("../assets/camera.js");
 const BOXES_SCRIPT: &str = include_str!("../assets/boxes.js");
+const TIME_SCRIPT: &str = include_str!("../assets/time.js");
 
 /// The same page for every view; its script shows the view that the address names.
 pub(crate) async fn page() -> impl IntoResponse {
@@ -45,6 +46,11 @@ pub(crate) async fn camera_script() -> impl IntoResponse {
 /// The boxes of the graph view: tooltips, live states and the legend.
 pub(crate) async fn boxes_script() -> impl IntoResponse {
     javascript(BOXES_SCRIPT)
+}
+
+/// Where the time of a run went, and the critical path in the graph view.
+pub(crate) async fn time_script() -> impl IntoResponse {
+    javascript(TIME_SCRIPT)
 }
 
 fn javascript(text: &'static str) -> impl IntoResponse {

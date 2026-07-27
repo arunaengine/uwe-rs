@@ -38,4 +38,7 @@ pub use marker::{MORE_TASKS, Marker, MarkerKind, Note, SIMULATION};
 pub use options::{Order, RunOptions};
 pub use simulator::Simulator;
 pub use steps::{StepEdge, StepGraph, StepNode};
-pub use task::{Input, Language, Outcome, OutputFile, Resources, Task, TaskId, Usage};
+pub use task::{
+    Input, Language, Outcome, OutputFile, ReproducibilityCheck, Resources, Task, TaskId, Usage,
+    Verdict,
+};

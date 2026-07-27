@@ -134,6 +134,37 @@ pub struct Outcome {
     /// What the attempt used, when the executor could measure it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<Usage>,
+    /// The digest of each input, like `sha256:<hex>`, by the path the task sees it at, as the
+    /// executor hashed it: a file, or the manifest of a directory. Empty when the executor
+    /// does not hash inputs, as the simulator does not.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub inputs: BTreeMap<String, String>,
+    /// The result of the reproducibility check, when the result came from the cache and the
+    /// task ran again to see whether its tool gives the same bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reproducibility: Option<ReproducibilityCheck>,
+}
+
+/// A task whose result came from the cache, run again to see whether its tool gives the same
+/// bytes from the same inputs.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReproducibilityCheck {
+    /// The run that made the result in the cache.
+    pub earlier_run: String,
+    pub verdict: Verdict,
+}
+
+/// What the task gave when it ran again.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "verdict", rename_all = "snake_case")]
+pub enum Verdict {
+    /// Every output has the same digest as in the cache.
+    Same,
+    /// These outputs, by path, have other digests than in the cache, or only one of the two
+    /// results has them.
+    Differs { paths: Vec<String> },
+    /// The task failed this time, with this exit code.
+    Failed { exit_code: i32 },
 }
 
 /// What an attempt of a task used, as the cgroup of its container counted it.

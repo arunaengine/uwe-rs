@@ -29,8 +29,9 @@ pub struct Attempt {
 pub struct Running(State);
 
 enum State {
-    /// The attempt ended when it started; `None` once the outcome was taken.
-    Ended(Option<Result<Outcome, ExecuteError>>),
+    /// The attempt ended when it started; `None` once the outcome was taken. Boxed, as an
+    /// outcome is much larger than a future.
+    Ended(Option<Box<Result<Outcome, ExecuteError>>>),
     Future(Pin<Box<dyn Future<Output = Result<Outcome, ExecuteError>> + Send>>),
 }
 
@@ -45,13 +46,13 @@ impl Running {
     /// An attempt that ended when it started, like one of the simulator, which does its work
     /// on the thread of the driver.
     pub fn ended(result: Result<Outcome, ExecuteError>) -> Self {
-        Running(State::Ended(Some(result)))
+        Running(State::Ended(Some(Box::new(result))))
     }
 
     /// Takes the outcome of an attempt that ended when it started.
     pub(crate) fn take_ended(&mut self) -> Option<Result<Outcome, ExecuteError>> {
         match &mut self.0 {
-            State::Ended(result) => result.take(),
+            State::Ended(result) => result.take().map(|result| *result),
             State::Future(_) => None,
         }
     }
@@ -62,12 +63,15 @@ impl Future for Running {
 
     fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
         match &mut self.0 {
-            State::Ended(result) => Poll::Ready(result.take().unwrap_or_else(|| {
-                Err(ExecuteError::Executor {
-                    task: String::new(),
-                    message: "the outcome of an attempt was taken twice".into(),
-                })
-            })),
+            State::Ended(result) => Poll::Ready(result.take().map_or_else(
+                || {
+                    Err(ExecuteError::Executor {
+                        task: String::new(),
+                        message: "the outcome of an attempt was taken twice".into(),
+                    })
+                },
+                |result| *result,
+            )),
             State::Future(future) => future.as_mut().poll(context),
         }
     }

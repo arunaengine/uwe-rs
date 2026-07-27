@@ -57,6 +57,7 @@ pub(crate) async fn prepare(
     Ok(Prepared {
         request: request(task, image, files, stdin),
         sources,
+        step: task.step.clone(),
     })
 }
 

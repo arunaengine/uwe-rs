@@ -58,6 +58,7 @@ pub(crate) async fn store_outputs(
         usage: finished.usage,
         started: times.map(|(started, _)| started),
         ended: times.map(|(_, ended)| ended),
+        check: None,
     })
 }
 

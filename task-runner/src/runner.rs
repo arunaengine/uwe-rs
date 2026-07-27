@@ -16,7 +16,9 @@ use task_model::{Digest, ReuseScope, SpecError, TaskRequest, Tree};
 use tokio::sync::OnceCell;
 
 use tokio_util::sync::CancellationToken;
+use workflow_graph::{ReproducibilityCheck, Verdict};
 
+use crate::check;
 use crate::entry::{self, CacheEntry, Stale};
 use crate::inputs::{Inputs, Mode};
 use crate::outputs;
@@ -58,6 +60,9 @@ pub struct TaskResult {
     /// stored result.
     pub started: Option<SystemTime>,
     pub ended: Option<SystemTime>,
+    /// When the result came from the cache and the task ran again to check that its tool
+    /// gives the same bytes: what it gave.
+    pub check: Option<ReproducibilityCheck>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -141,6 +146,8 @@ pub struct Prepared {
     pub request: TaskRequest,
     /// One per input of the specification, in its order.
     pub(crate) sources: Vec<Source>,
+    /// The step of the task, which names its tool together with its image.
+    pub(crate) step: String,
 }
 
 /// An image pinned to its digest once per run, or `None` without one.
@@ -156,12 +163,15 @@ pub struct Runner<B> {
     /// The lease of the run in the store, which it holds from its first task on, so that
     /// clean-up knows that the run goes on.
     lease: Arc<OnceCell<Option<Lease>>>,
+    /// The share of results from the cache that run again for the reproducibility check, from
+    /// 0 (none) to 1 (all).
+    check: f64,
 }
 
 /// Whose turn it is to run a task whose key another run may run at the same moment.
 enum Turn {
     /// The other run stored the result, which answers this request too.
-    Reused(TaskResult),
+    Reused(CacheEntry),
     /// This run runs the task, and holds the lease of its key until it has stored the result.
     Ours(Lease),
 }
@@ -175,6 +185,7 @@ impl<B> Clone for Runner<B> {
             settings: self.settings.clone(),
             pinned: self.pinned.clone(),
             lease: self.lease.clone(),
+            check: self.check,
         }
     }
 }
@@ -189,7 +200,14 @@ impl<B: Backend> Runner<B> {
             settings,
             pinned: Arc::default(),
             lease: Arc::default(),
+            check: 0.0,
         }
+    }
+
+    /// Runs a share of the tasks whose results come from the cache again, from 0 (none) to 1
+    /// (all), and compares their outputs with the stored ones (the reproducibility check).
+    pub fn check_reproducibility(&mut self, share: f64) {
+        self.check = share;
     }
 
     /// The image pinned to its digest where it has one, found once per run.
@@ -268,20 +286,35 @@ impl<B: Backend> Runner<B> {
         let request = &prepared.request;
         let key = request.spec.cache_key()?;
         let namespace = request.spec.namespace.as_str();
-        let _turn = match request.scope {
-            ReuseScope::Shared => {
-                if let Some(result) = self.reuse(namespace, &key).await? {
-                    return Ok(result);
-                }
-                match self
-                    .turn(namespace, &key, &request.identity, cancel)
-                    .await?
-                {
-                    Turn::Reused(result) => return Ok(result),
-                    Turn::Ours(lease) => Some(lease),
+        // A tool that gave other bytes from the same inputs shares no results.
+        let tool = match (&request.spec.image, request.scope) {
+            (Some(image), ReuseScope::Shared) => {
+                Some(check::tool(&image.reference, &prepared.step))
+            }
+            _ => None,
+        };
+        let shared = match &tool {
+            Some(tool) => self.store.unreproducible(tool).await?.is_none(),
+            None => request.scope == ReuseScope::Shared,
+        };
+        let (earlier, _turn) = match shared {
+            true => {
+                let found = match self.reuse(namespace, &key).await? {
+                    Some(entry) => Turn::Reused(entry),
+                    None => {
+                        self.turn(namespace, &key, &request.identity, cancel)
+                            .await?
+                    }
+                };
+                match found {
+                    Turn::Reused(entry) if check::chosen(self.check, &self.run, &key) => {
+                        (Some(entry), None)
+                    }
+                    Turn::Reused(entry) => return Ok(entry.result()),
+                    Turn::Ours(lease) => (None, Some(lease)),
                 }
             }
-            ReuseScope::Lineage | ReuseScope::None => None,
+            false => (None, None),
         };
         let task = segment(&request.identity);
         let staging = self.stage(prepared).await?;
@@ -299,6 +332,11 @@ impl<B: Backend> Runner<B> {
             outputs::store_outputs(&self.store, &self.run, &finished, &task, request.attempt).await;
         (tokio::fs::remove_dir_all(&finished.root).await).map_err(at(&finished.root))?;
         let result = stored?;
+        if let Some(earlier) = earlier {
+            return self
+                .checked(earlier, &result, tool.as_ref(), prepared, &task)
+                .await;
+        }
         if result.exit_code == Some(0) && request.scope != ReuseScope::None {
             let entry = CacheEntry {
                 run: self.run.clone(),
@@ -314,6 +352,42 @@ impl<B: Backend> Runner<B> {
         Ok(result)
     }
 
+    /// The result in the cache, with what the task gave when it ran again for the
+    /// reproducibility check. A tool that gave other bytes is marked in the store, so that no
+    /// run shares its results any more.
+    async fn checked(
+        &self,
+        earlier: CacheEntry,
+        now: &TaskResult,
+        tool: Option<&Digest>,
+        prepared: &Prepared,
+        task: &str,
+    ) -> Result<TaskResult, RunnerError> {
+        let verdict = check::verdict(&earlier, now);
+        if let (Verdict::Differs { paths }, Some(tool), Some(image)) =
+            (&verdict, tool, &prepared.request.spec.image)
+        {
+            let note = check::Note {
+                image: &image.reference,
+                step: &prepared.step,
+                run: &self.run,
+                task,
+                earlier_run: &earlier.run,
+                differing: paths,
+            };
+            let bytes = serde_json::to_vec_pretty(&note).map_err(std::io::Error::other)?;
+            self.store.mark_unreproducible(tool, bytes.into()).await?;
+        }
+        let earlier_run = earlier.run.clone();
+        Ok(TaskResult {
+            check: Some(ReproducibilityCheck {
+                earlier_run,
+                verdict,
+            }),
+            ..earlier.result()
+        })
+    }
+
     /// The stored result of a key, when every file of it is still there. An entry whose files
     /// are gone is removed, so that the task runs again. A result that answers a request is
     /// marked as used now, for clean-up by the time of the last use.
@@ -321,13 +395,13 @@ impl<B: Backend> Runner<B> {
         &self,
         namespace: &str,
         key: &Digest,
-    ) -> Result<Option<TaskResult>, RunnerError> {
+    ) -> Result<Option<CacheEntry>, RunnerError> {
         let Some(found) = entry::stored(&self.store, namespace, key, Stale::Remove).await? else {
             return Ok(None);
         };
         // A mark that cannot be written only makes the entry look older to clean-up.
         let _ = self.store.mark_used(namespace, key, &self.run).await;
-        Ok(Some(found.result()))
+        Ok(Some(found))
     }
 
     /// Waits until this run may run the task of `key`: while another run, or another task of
@@ -348,8 +422,8 @@ impl<B: Backend> Runner<B> {
         loop {
             if let Some(lease) = self.store.try_lease(&name, &holder).await? {
                 // The other run may have stored the result just before it gave the lease back.
-                if let Some(result) = self.reuse(namespace, key).await? {
-                    return Ok(Turn::Reused(result));
+                if let Some(entry) = self.reuse(namespace, key).await? {
+                    return Ok(Turn::Reused(entry));
                 }
                 return Ok(Turn::Ours(lease));
             }
@@ -360,8 +434,8 @@ impl<B: Backend> Runner<B> {
                 }
             }
             pause = (pause * 2).min(LONGEST_PAUSE);
-            if let Some(result) = self.reuse(namespace, key).await? {
-                return Ok(Turn::Reused(result));
+            if let Some(entry) = self.reuse(namespace, key).await? {
+                return Ok(Turn::Reused(entry));
             }
         }
     }

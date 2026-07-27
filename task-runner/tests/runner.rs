@@ -23,6 +23,8 @@ struct Fake {
     exit_code: i32,
     /// How long each task takes.
     delay: std::time::Duration,
+    /// Whether each run writes other bytes, like a tool that writes the time.
+    varies: bool,
 }
 
 impl Backend for Fake {
@@ -47,10 +49,13 @@ impl Backend for Fake {
         std::fs::create_dir_all(finished.root.join("work"))?;
         std::fs::create_dir_all(finished.root.join("control"))?;
         std::fs::write(finished.stdout(), "said\n")?;
-        let input = match job.staging.inputs.first() {
+        let mut input = match job.staging.inputs.first() {
             Some(file) => std::fs::read_to_string(&file.source)?,
             None => String::new(),
         };
+        if self.varies {
+            input.push_str(&format!("{}\n", job.name));
+        }
         for rule in &job.spec.outputs {
             let path = rule.pattern.trim_end_matches('/').to_owned();
             let local = finished.local_path(&path);
@@ -78,6 +83,17 @@ fn runner(root: &Path, exit_code: i32) -> Runner<Fake> {
 
 /// The runner of the run `run` on the store in `root`, whose tasks take `delay`.
 fn runner_of(root: &Path, run: &str, delay: std::time::Duration, exit_code: i32) -> Runner<Fake> {
+    runner_on(root, run, delay, exit_code, false)
+}
+
+/// The same, with a fake that writes other bytes each time when `varies` is set.
+fn runner_on(
+    root: &Path,
+    run: &str,
+    delay: std::time::Duration,
+    exit_code: i32,
+    varies: bool,
+) -> Runner<Fake> {
     let store = Store::local(&root.join("store")).expect("a store");
     let fake = Fake {
         scratch: root.join("scratch"),
@@ -85,6 +101,7 @@ fn runner_of(root: &Path, run: &str, delay: std::time::Duration, exit_code: i32)
         staged: Mutex::new(Vec::new()),
         exit_code,
         delay,
+        varies,
     };
     let settings = Settings {
         downloads: root.join("downloads"),
@@ -608,4 +625,49 @@ fn clean_up_keeps_what_was_used_lately_and_what_took_long() {
     };
     let planned = block_on(plan(&store, &active)).expect("plans");
     assert!(planned.is_empty());
+}
+
+#[test]
+fn the_reproducibility_check_keeps_tools_that_give_other_bytes_from_sharing() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let zero = std::time::Duration::ZERO;
+    let made = task(root.path(), "a");
+    let first = runner_of(root.path(), "run1", zero, 0);
+    execute(&first, &request(&first, &made));
+    // Every result from the cache runs again; this tool gives the same bytes.
+    let mut second = runner_of(root.path(), "run2", zero, 0);
+    second.check_reproducibility(1.0);
+    let checked = execute(&second, &request(&second, &made));
+    assert!(checked.reused);
+    let check = checked.check.expect("a check");
+    assert_eq!(check.earlier_run, "run1");
+    assert_eq!(check.verdict, workflow_graph::Verdict::Same);
+    assert_eq!(second.backend().runs.lock().unwrap().len(), 1);
+    // Without the check, the result comes from the cache and the task does not run.
+    let third = runner_of(root.path(), "run3", zero, 0);
+    assert!(execute(&third, &request(&third, &made)).reused);
+    assert!(third.backend().runs.lock().unwrap().is_empty());
+    // A tool that writes other bytes each time is marked and shares no results any more.
+    let mut varying = runner_on(root.path(), "run4", zero, 0, true);
+    varying.check_reproducibility(1.0);
+    let checked = execute(&varying, &request(&varying, &made));
+    assert!(checked.reused, "the run keeps the result of the cache");
+    let expected = workflow_graph::Verdict::Differs {
+        paths: vec!["out.txt".into()],
+    };
+    assert_eq!(checked.check.expect("a check").verdict, expected);
+    let later = runner_of(root.path(), "run5", zero, 0);
+    let result = execute(&later, &request(&later, &made));
+    assert!(!result.reused, "the tool is marked");
+    assert_eq!(later.backend().runs.lock().unwrap().len(), 1);
+    let marks = std::fs::read_dir(root.path().join("store/tools")).expect("marks");
+    assert_eq!(marks.count(), 1);
+    // Another step with the same image is another tool.
+    let mut other = task(root.path(), "a");
+    other.step = "Q".into();
+    let result = execute(&later, &request(&later, &other));
+    assert!(
+        result.reused,
+        "the same script of another step shares its key"
+    );
 }

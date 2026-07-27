@@ -4,7 +4,8 @@
 //! writes the RO-Crate of a run, `iunctus page` serves the web page of the runs,
 //! `iunctus why` tells why a task ran again, `iunctus origin` where a file came from,
 //! `iunctus inputs` prints the JSON Schema of the inputs of a workflow, `iunctus outputs` that
-//! of its outputs, and `iunctus clean` removes from the store what no rule keeps.
+//! of its outputs, `iunctus clean` removes from the store what no rule keeps, and
+//! `iunctus time` tells where the time of a run went.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -12,6 +13,7 @@ mod arguments;
 mod clean;
 mod detect;
 mod inputs;
+mod insight;
 mod kubernetes;
 mod local;
 mod nextflow;
@@ -111,6 +113,7 @@ fn main() -> ExitCode {
         "inputs" => inputs::command(&arguments),
         "outputs" => inputs::outputs(&arguments),
         "clean" => clean::command(&arguments),
+        "time" => insight::time::command(&arguments),
         _ => return usage(),
     };
     match result {
@@ -577,6 +580,7 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
        iunctus export <run> [-output <folder>] [-license <url>]
        iunctus why <run> <task>
        iunctus origin <file>
+       iunctus time <run> [-format text|json]
        iunctus inputs <workflow file or directory> [-format json|text] [-check] [options]
        iunctus outputs <workflow file or directory> [-format json|text] [options]
        iunctus clean [-keep-days <n>] [-keep-run <run>]... [-keep-slower-than <time>] [-remove]

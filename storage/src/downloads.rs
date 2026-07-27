@@ -45,10 +45,14 @@ impl Storage {
         // was stopped leaves its part, which the next run takes over and continues.
         let partial = copy.with_extension(format!("{}.partial", std::process::id()));
         let present = take_over(downloads, &name, &partial);
-        self.download_from(target, &partial, present).await?;
+        let downloaded = self.download_from(target, &partial, present).await?;
         tokio::fs::rename(&partial, &copy)
             .await
             .map_err(local(&copy))?;
+        // Later runs compare the version with the one that the provider gives then.
+        if let Some(version) = downloaded.version {
+            let _ = std::fs::write(copy.with_extension("version"), version);
+        }
         Ok(copy)
     }
 
@@ -114,6 +118,7 @@ fn known(target: &str, downloads: &Path) -> Option<Metadata> {
         return Some(Metadata {
             directory: false,
             size: found.len(),
+            version: None,
         });
     }
     let noted = std::fs::read_to_string(copy.with_extension("metadata")).ok()?;
@@ -121,10 +126,12 @@ fn known(target: &str, downloads: &Path) -> Option<Metadata> {
         Some(("file", size)) => Some(Metadata {
             directory: false,
             size: size.parse().ok()?,
+            version: None,
         }),
         None if noted.trim() == "directory" => Some(Metadata {
             directory: true,
             size: 0,
+            version: None,
         }),
         _ => None,
     }
@@ -159,12 +166,14 @@ mod tests {
         let file = Metadata {
             directory: false,
             size: 42,
+            version: None,
         };
         note(found, downloads.path(), &file);
         assert_eq!(size(known(found, downloads.path())), Some((false, 42)));
         let directory = Metadata {
             directory: true,
             size: 0,
+            version: None,
         };
         note(folder, downloads.path(), &directory);
         assert_eq!(size(known(folder, downloads.path())), Some((true, 0)));

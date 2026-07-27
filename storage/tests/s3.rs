@@ -46,19 +46,14 @@ async fn inputs_and_store_live_on_two_providers() {
         .upload(&local, "s3://inputs/samples/a.csv")
         .await
         .expect("an upload");
+    let file = storage.stat("s3://inputs/samples/a.csv").await.unwrap();
+    let file = file.expect("the file");
+    assert_eq!((file.directory, file.size), (false, 13));
+    assert!(file.version.is_some(), "an object has an ETag");
+    let samples: Option<Metadata> = storage.stat("s3://inputs/samples").await.unwrap();
     assert_eq!(
-        storage.stat("s3://inputs/samples/a.csv").await.unwrap(),
-        Some(Metadata {
-            directory: false,
-            size: 13
-        })
-    );
-    assert_eq!(
-        storage.stat("s3://inputs/samples").await.unwrap(),
-        Some(Metadata {
-            directory: true,
-            size: 0
-        })
+        samples.map(|found| (found.directory, found.size, found.version)),
+        Some((true, 0, None))
     );
     assert_eq!(storage.stat("s3://inputs/none.csv").await.unwrap(), None);
     assert_eq!(

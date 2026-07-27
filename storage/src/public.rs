@@ -8,7 +8,7 @@ use std::path::Path;
 
 use crate::error::Problem;
 use crate::web::Web;
-use crate::{Entry, Metadata, address};
+use crate::{Downloaded, Entry, Metadata, address};
 
 pub(crate) struct PublicBuckets {
     web: Web,
@@ -38,6 +38,7 @@ impl PublicBuckets {
         Ok(text.contains("<Key>").then_some(Metadata {
             directory: true,
             size: 0,
+            version: None,
         }))
     }
 
@@ -79,7 +80,12 @@ impl PublicBuckets {
         }
     }
 
-    pub async fn download(&self, target: &str, file: &Path, offset: u64) -> Result<bool, Problem> {
+    pub async fn download(
+        &self,
+        target: &str,
+        file: &Path,
+        offset: u64,
+    ) -> Result<Downloaded, Problem> {
         self.web.download(&public_url(target)?, file, offset).await
     }
 }

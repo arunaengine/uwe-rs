@@ -35,12 +35,20 @@ pub use error::StorageError;
 pub use settings::Settings;
 pub use web::http_client;
 
-/// Whether a file exists as a file or a directory, and its size.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Whether a file exists as a file or a directory, its size, and its version.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Metadata {
     pub directory: bool,
     /// The size of a file; 0 for a directory.
     pub size: u64,
+    /// What the provider says changes with the content of a file: its ETag, else the time of
+    /// its last change; `None` when the provider tells neither.
+    pub version: Option<String>,
+}
+
+/// What a download learned: the version of the file that the provider gave with it.
+pub(crate) struct Downloaded {
+    pub version: Option<String>,
 }
 
 /// An entry of a directory.
@@ -228,14 +236,13 @@ impl Storage {
         self.download_from(target, file, 0).await.map(|_| ())
     }
 
-    /// Downloads a file into `file`, from `offset` on where the provider can; returns whether
-    /// it appended to what `file` held.
+    /// Downloads a file into `file`, from `offset` on where the provider can.
     pub(crate) async fn download_from(
         &self,
         target: &str,
         file: &Path,
         offset: u64,
-    ) -> Result<bool, StorageError> {
+    ) -> Result<Downloaded, StorageError> {
         let served = self.serve(target)?;
         let done = (served.connection)
             .download(served.prefix, target, file, offset)

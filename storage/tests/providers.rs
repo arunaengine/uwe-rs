@@ -182,18 +182,12 @@ async fn folders_read_list_and_write() {
         mirror.display()
     ));
     assert_eq!(
-        storage.stat("s3://mirror/data/a.txt").await.unwrap(),
-        Some(Metadata {
-            directory: false,
-            size: 5
-        })
+        shape(storage.stat("s3://mirror/data/a.txt").await.unwrap()),
+        Some((false, 5))
     );
     assert_eq!(
-        storage.stat("s3://mirror/data").await.unwrap(),
-        Some(Metadata {
-            directory: true,
-            size: 0
-        })
+        shape(storage.stat("s3://mirror/data").await.unwrap()),
+        Some((true, 0))
     );
     assert_eq!(
         storage.list("s3://mirror/data").await.unwrap(),
@@ -249,11 +243,8 @@ async fn web_providers_send_their_credentials() {
     };
     let right = with("token-7431");
     assert_eq!(
-        right.stat(&address).await.unwrap(),
-        Some(Metadata {
-            directory: false,
-            size: 13
-        })
+        shape(right.stat(&address).await.unwrap()),
+        Some((false, 13))
     );
     let copy = right.fetch(&address, downloads.path()).await.unwrap();
     assert_eq!(std::fs::read_to_string(copy).unwrap(), "id,reads\na,1\n");
@@ -392,20 +383,8 @@ async fn ftp_servers_serve_inputs() {
     let storage = with("ftp-secret-3318");
     let file = format!("{}/pub/data/a.txt", server.address);
     let folder = format!("{}/pub/data", server.address);
-    assert_eq!(
-        storage.stat(&file).await.unwrap(),
-        Some(Metadata {
-            directory: false,
-            size: 5
-        })
-    );
-    assert_eq!(
-        storage.stat(&folder).await.unwrap(),
-        Some(Metadata {
-            directory: true,
-            size: 0
-        })
-    );
+    assert_eq!(shape(storage.stat(&file).await.unwrap()), Some((false, 5)));
+    assert_eq!(shape(storage.stat(&folder).await.unwrap()), Some((true, 0)));
     let missing = format!("{}/pub/none.txt", server.address);
     assert_eq!(storage.stat(&missing).await.unwrap(), None);
     assert_eq!(
@@ -475,4 +454,9 @@ async fn ftp_servers_without_a_provider_are_read_as_nextflow_reads_them() {
         .to_string();
     assert!(message.contains("reader:[secret]@"), "{message}");
     assert!(!message.contains("wrong-4471"), "{message}");
+}
+
+/// Whether a file is a directory, and its size; its version depends on when it was made.
+fn shape(found: Option<Metadata>) -> Option<(bool, u64)> {
+    found.map(|found| (found.directory, found.size))
 }

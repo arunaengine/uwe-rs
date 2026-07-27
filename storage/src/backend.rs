@@ -18,7 +18,7 @@ use crate::objects::{Objects, Service};
 use crate::public::PublicBuckets;
 use crate::settings::{self, Kind, ProviderSettings};
 use crate::web::Web;
-use crate::{Entry, Metadata, StorageError};
+use crate::{Downloaded, Entry, Metadata, StorageError};
 
 /// Where a provider comes from.
 pub(crate) enum Source {
@@ -154,15 +154,14 @@ impl Connection {
         }
     }
 
-    /// Downloads a file into `file`, from `offset` on where the provider can; returns whether
-    /// it appended to what `file` held.
+    /// Downloads a file into `file`, from `offset` on where the provider can.
     pub async fn download(
         &self,
         prefix: &str,
         target: &str,
         file: &Path,
         offset: u64,
-    ) -> Result<bool, Problem> {
+    ) -> Result<Downloaded, Problem> {
         match &self.backend {
             Backend::Web(web) => web.download(target, file, offset).await,
             Backend::PublicBuckets(buckets) => buckets.download(target, file, offset).await,

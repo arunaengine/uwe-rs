@@ -93,8 +93,13 @@ fn answer(
         },
         None => ("404 Not Found", b"missing".to_vec()),
     };
+    // The ETag changes with the content, as web servers make it.
+    let tag: u64 = body.iter().fold(body.len() as u64, |sum, byte| {
+        sum.wrapping_mul(31).wrapping_add(u64::from(*byte))
+    });
     let head = format!(
-        "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {status}\r\nContent-Length: {}\r\nETag: \"{tag:x}\"\r\nConnection: \
+         close\r\n\r\n",
         body.len()
     );
     let _ = stream.write_all(head.as_bytes());

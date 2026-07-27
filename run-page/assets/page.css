@@ -202,3 +202,9 @@ td.sorted { min-width: 7rem; }
 .stage .node.on-path > .box { stroke: var(--text); stroke-width: 2.4; }
 .stage .edge.on-path { stroke: var(--text); stroke-width: 2.6; }
 .path-sign { display: inline-block; width: 1.1rem; height: 0; margin-right: 0.35rem; border-top: 3px solid var(--text); vertical-align: 3px; }
+
+/* Comparing two runs. */
+.pair-of-runs { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 0.6rem; margin: 0.6rem 0; }
+.pair-of-runs .tile > div { margin-top: 0.15rem; overflow-wrap: anywhere; }
+.differences { margin: 0; padding-left: 1.1rem; }
+.compare-with { margin: 0.4rem 0 0; }

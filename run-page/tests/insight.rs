@@ -1,4 +1,4 @@
-//! The insight views of the page: where the time of a run went.
+//! The insight views of the page: where the time of a run went, and comparing two runs.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -38,8 +38,14 @@ fn task(id: u64, step: &str) -> Task {
 /// Records a run of two tasks, the second after the first.
 fn record(directory: &Path) -> PathBuf {
     let path = directory.join("runs.sqlite");
-    let mut recorder = Database::open(&path)
-        .and_then(|database| database.record(&start("run-1")))
+    record_run(&path, "run-1");
+    path
+}
+
+/// Records a run of two tasks in the database at `path`.
+fn record_run(path: &Path, id: &str) {
+    let mut recorder = Database::open(path)
+        .and_then(|database| database.record(&start(id)))
         .expect("starts a record");
     let order = Edge {
         from: TaskId(1),
@@ -60,7 +66,6 @@ fn record(directory: &Path) -> PathBuf {
     }
     recorder.ended(None);
     recorder.close().expect("records the run");
-    path
 }
 
 fn get(url: &str) -> (u16, String) {
@@ -92,5 +97,32 @@ fn the_page_tells_where_the_time_went() {
     let (status, svg) = get(&format!("{url}/api/runs/run-1/graph.svg"));
     assert_eq!(status, 200);
     assert!(svg.contains("data-from=\"t1\" data-to=\"t2\""), "{svg}");
+    server.stop();
+}
+
+#[test]
+fn the_page_compares_two_runs() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = record(directory.path());
+    record_run(&path, "run-2");
+    let server = Server::start(&Settings::new(path)).expect("starts");
+    let url = server.url().to_owned();
+
+    let (status, page) = get(&format!("{url}/compare/run-1/run-2"));
+    assert_eq!(status, 200);
+    assert!(page.contains("/compare.js"), "{page}");
+    let (status, script) = get(&format!("{url}/compare.js"));
+    assert_eq!(status, 200);
+    assert!(script.contains("function showCompare"), "{script}");
+    let (status, text) = get(&format!("{url}/api/compare/run-1/run-2"));
+    assert_eq!(status, 200, "{text}");
+    let comparison: Value = serde_json::from_str(&text).expect("JSON");
+    assert_eq!(comparison["first"]["id"], "run-1");
+    let pairings: Vec<&Value> = (comparison["tasks"].as_array().into_iter().flatten())
+        .map(|pair| &pair["pairing"])
+        .collect();
+    assert_eq!(pairings, ["same", "same"]);
+    let (status, _) = get(&format!("{url}/api/compare/run-1/no-run"));
+    assert_eq!(status, 404);
     server.stop();
 }

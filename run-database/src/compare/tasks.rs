@@ -1,9 +1,12 @@
-//! What differs between a task of one run and the same task of the other: what it does and
-//! how it ended.
+//! What differs between a task of one run and the same task of the other: what it does, its
+//! inputs and outputs by content, and how it ended.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::{BTreeMap, HashMap};
+
 use super::{Loaded, Pairing, Side, TaskPair};
+use crate::FileRow;
 use crate::why::described;
 
 /// A task that only one run has.
@@ -25,8 +28,14 @@ pub(super) fn alone(task: &Loaded, pairing: Pairing) -> TaskPair {
 }
 
 /// What differs between a task and the same task of the other run.
-pub(super) fn compared(a: &Loaded, b: &Loaded) -> TaskPair {
+pub(super) fn compared(
+    a: &Loaded,
+    b: &Loaded,
+    a_inputs: &HashMap<String, String>,
+    b_inputs: &HashMap<String, String>,
+) -> TaskPair {
     let mut changes = described(&a.description, &b.description);
+    changes.extend(input_changes(a, b, a_inputs, b_inputs));
     if changes.is_empty() && a.fingerprint != b.fingerprint {
         changes
             .push("an input file was written again: its size is the same, its time is new".into());
@@ -39,10 +48,11 @@ pub(super) fn compared(a: &Loaded, b: &Loaded) -> TaskPair {
             "the image ran as `{x}` in the first run and as `{y}` in the second"
         ));
     }
-    let outputs = Vec::new();
-    let pairing = match changes.is_empty() {
-        false => Pairing::Changed,
-        true => Pairing::Same,
+    let outputs = output_changes(&a.outputs, &b.outputs);
+    let pairing = match (changes.is_empty(), outputs.is_empty()) {
+        (false, _) => Pairing::Changed,
+        (true, false) => Pairing::Outputs,
+        (true, true) => Pairing::Same,
     };
     TaskPair {
         step: a.step.clone(),
@@ -53,6 +63,88 @@ pub(super) fn compared(a: &Loaded, b: &Loaded) -> TaskPair {
         changes,
         outputs,
     }
+}
+
+/// The inputs that differ, by the path the task sees: by content where both digests are known,
+/// else by where they come from and their size.
+fn input_changes(
+    a: &Loaded,
+    b: &Loaded,
+    a_digests: &HashMap<String, String>,
+    b_digests: &HashMap<String, String>,
+) -> Vec<String> {
+    let by_path = |files: &[FileRow]| -> BTreeMap<String, FileRow> {
+        (files.iter())
+            .map(|file| (file.path.clone(), file.clone()))
+            .collect()
+    };
+    let (first, second) = (by_path(&a.inputs), by_path(&b.inputs));
+    let mut changes = Vec::new();
+    for (path, x) in &first {
+        let Some(y) = second.get(path) else {
+            changes.push(format!("only the first run reads the input `{path}`"));
+            continue;
+        };
+        // What the workflow writes itself is part of the description, compared before.
+        if x.location.is_empty() && y.location.is_empty() {
+            continue;
+        }
+        match (a_digests.get(path), b_digests.get(path)) {
+            (Some(p), Some(q)) if p == q => {}
+            (Some(_), Some(_)) => {
+                changes.push(format!("the content of the input `{path}` differs"));
+            }
+            _ if x.size != y.size => changes.push(format!(
+                "the input `{path}` has {} in the first run and {} in the second",
+                size(x.size),
+                size(y.size)
+            )),
+            _ if x.location != y.location => changes.push(format!(
+                "the input `{path}` comes from {} in the first run and from {} in the second",
+                x.location, y.location
+            )),
+            _ => {}
+        }
+    }
+    for path in second.keys().filter(|path| !first.contains_key(*path)) {
+        changes.push(format!("only the second run reads the input `{path}`"));
+    }
+    changes
+}
+
+/// The outputs whose content differs by digest, or that only one run has.
+fn output_changes(a: &[FileRow], b: &[FileRow]) -> Vec<String> {
+    let by_path = |files: &[FileRow]| -> BTreeMap<String, Option<String>> {
+        (files.iter())
+            .map(|file| (file.path.clone(), file.digest.clone()))
+            .collect()
+    };
+    let (first, second) = (by_path(a), by_path(b));
+    let mut changes = Vec::new();
+    for (path, x) in &first {
+        match second.get(path) {
+            Some(y) => {
+                if let (Some(x), Some(y)) = (x, y)
+                    && x != y
+                {
+                    changes.push(format!(
+                        "the output `{path}` differs: {} in the first run, {} in the second",
+                        short(x),
+                        short(y)
+                    ));
+                }
+            }
+            // An output of a task that did not finish is no difference of content.
+            None if !b.is_empty() => changes.push(format!("only the first run made `{path}`")),
+            None => {}
+        }
+    }
+    if !a.is_empty() {
+        for path in second.keys().filter(|path| !first.contains_key(*path)) {
+            changes.push(format!("only the second run made `{path}`"));
+        }
+    }
+    changes
 }
 
 /// How the task ended differently in the two runs.
@@ -79,4 +171,19 @@ fn result_changes(a: &Side, b: &Side) -> Vec<String> {
         ));
     }
     changes
+}
+
+/// A digest in short, like `sha256:1f2e3d4c5b6a`.
+fn short(digest: &str) -> String {
+    match digest.split_once(':') {
+        Some((kind, hex)) => format!("{kind}:{}", &hex[..hex.len().min(12)]),
+        None => digest.chars().take(19).collect(),
+    }
+}
+
+fn size(size: Option<u64>) -> String {
+    size.map_or_else(
+        || "an unknown size".to_owned(),
+        |size| format!("{size} bytes"),
+    )
 }

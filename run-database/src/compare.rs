@@ -11,13 +11,13 @@
 mod pairing;
 mod tasks;
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use rusqlite::OptionalExtension;
 use serde::Serialize;
 use workflow_graph::Task;
 
-use crate::{Database, DatabaseError, Run};
+use crate::{Database, DatabaseError, FileRow, Run};
 
 /// What differs between two runs.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -81,6 +81,8 @@ struct Loaded {
     step: String,
     fingerprint: String,
     description: Task,
+    inputs: Vec<FileRow>,
+    outputs: Vec<FileRow>,
 }
 
 impl Database {
@@ -92,10 +94,18 @@ impl Database {
         let mut changes = run_changes(&first_run, &second_run);
         changes.extend(self.input_changes(&first_run, &second_run)?);
         let (earlier, later) = (self.loaded(first)?, self.loaded(second)?);
+        let (earlier_digests, later_digests) = (self.digests(first)?, self.digests(second)?);
         let mut tasks = Vec::new();
         for (a, b) in pairing::paired(&earlier, &later) {
             let pair = match (a.map(|a| &earlier[a]), b.map(|b| &later[b])) {
-                (Some(a), Some(b)) => tasks::compared(a, b),
+                (Some(a), Some(b)) => {
+                    let inputs = |task: &Loaded, digests: &HashMap<String, String>| {
+                        self.input_digests(task, digests)
+                    };
+                    let (a_inputs, b_inputs) =
+                        (inputs(a, &earlier_digests)?, inputs(b, &later_digests)?);
+                    tasks::compared(a, b, &a_inputs, &b_inputs)
+                }
                 (Some(a), None) => tasks::alone(a, Pairing::First),
                 (None, Some(b)) => tasks::alone(b, Pairing::Second),
                 (None, None) => continue,
@@ -126,7 +136,7 @@ impl Database {
         Ok(found)
     }
 
-    /// The tasks of a run with their last attempt.
+    /// The tasks of a run with their last attempt, inputs and the outputs of that attempt.
     fn loaded(&self, run: &str) -> Result<Vec<Loaded>, DatabaseError> {
         let mut statement = self.connection.prepare(
             "SELECT t.id, t.name, t.step, t.fingerprint, t.state, t.description, a.exit_code,
@@ -149,16 +159,68 @@ impl Database {
                 Ok((side, texts, row.get::<_, Option<u32>>(9)?))
             })?
             .collect::<Result<Vec<_>, _>>()?;
+        let mut files: HashMap<u64, Vec<FileRow>> = HashMap::new();
+        for file in self.files(run, None)? {
+            files.entry(file.task).or_default().push(file);
+        }
         let mut tasks = Vec::with_capacity(rows.len());
-        for (side, (step, fingerprint, description), _) in rows {
+        for (side, (step, fingerprint, description), last) in rows {
+            let (inputs, outputs): (Vec<FileRow>, Vec<FileRow>) = (files.remove(&side.task))
+                .unwrap_or_default()
+                .into_iter()
+                .partition(|file| file.attempt.is_none());
             tasks.push(Loaded {
                 description: serde_json::from_str(&description)?,
+                outputs: (outputs.into_iter())
+                    .filter(|file| file.attempt == last)
+                    .collect(),
+                inputs,
                 side,
                 step,
                 fingerprint,
             });
         }
         Ok(tasks)
+    }
+
+    /// The digest of each output of a run, by its location.
+    fn digests(&self, run: &str) -> Result<HashMap<String, String>, DatabaseError> {
+        let mut statement = self.connection.prepare(
+            "SELECT location, digest FROM files
+             WHERE run = ?1 AND role = 'output' AND digest IS NOT NULL",
+        )?;
+        let digests = statement
+            .query_map([run], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<Result<HashMap<String, String>, _>>()?;
+        Ok(digests)
+    }
+
+    /// The digest of each input of a task by its path, where it is known: its own, or that of
+    /// the output of this run, or of any run, at its location.
+    fn input_digests(
+        &self,
+        task: &Loaded,
+        digests: &HashMap<String, String>,
+    ) -> Result<HashMap<String, String>, DatabaseError> {
+        let mut found = HashMap::new();
+        for input in &task.inputs {
+            let digest = match (&input.digest, digests.get(&input.location)) {
+                (Some(digest), _) | (None, Some(digest)) => Some(digest.clone()),
+                (None, None) if input.location.is_empty() => None,
+                (None, None) => self
+                    .connection
+                    .prepare_cached(
+                        "SELECT digest FROM files
+                         WHERE location = ?1 AND role = 'output' AND digest IS NOT NULL LIMIT 1",
+                    )?
+                    .query_row([&input.location], |row| row.get(0))
+                    .optional()?,
+            };
+            if let Some(digest) = digest {
+                found.insert(input.path.clone(), digest);
+            }
+        }
+        Ok(found)
     }
 
     /// The input values of the runs (decision 24) that differ, beyond their parameters.

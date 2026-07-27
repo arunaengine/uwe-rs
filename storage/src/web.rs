@@ -10,11 +10,11 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use reqwest::StatusCode;
-use reqwest::header::{CONTENT_LENGTH, HeaderMap, RANGE};
+use reqwest::header::{CONTENT_LENGTH, ETAG, HeaderMap, LAST_MODIFIED, RANGE};
 use tokio::io::AsyncWriteExt;
 
 use crate::error::Problem;
-use crate::{Metadata, address};
+use crate::{Downloaded, Metadata, address};
 
 /// A client for web servers.
 #[derive(Clone)]
@@ -85,14 +85,15 @@ impl Web {
         let status = response.status();
         if status.is_success() {
             // The header gives the size of the file; the response itself has no body.
-            let size = response
-                .headers()
-                .get(CONTENT_LENGTH)
+            let headers = response.headers();
+            let size = (headers.get(CONTENT_LENGTH))
                 .and_then(|length| length.to_str().ok()?.parse().ok())
                 .unwrap_or(0);
+            let header = |name| headers.get(name)?.to_str().ok().map(str::to_owned);
             return Ok(Some(Metadata {
                 directory: false,
                 size,
+                version: header(ETAG).or_else(|| header(LAST_MODIFIED)),
             }));
         }
         match status {
@@ -119,9 +120,14 @@ impl Web {
     }
 
     /// Downloads a file into `target`. With an `offset`, it asks for the rest of the file only
-    /// and appends it, if the server can; else it writes the whole file. Returns whether it
-    /// appended.
-    pub async fn download(&self, url: &str, target: &Path, offset: u64) -> Result<bool, Problem> {
+    /// and appends it, if the server can; else it writes the whole file. The version is the
+    /// ETag of the answer, else the time of the last change it gives.
+    pub async fn download(
+        &self,
+        url: &str,
+        target: &Path,
+        offset: u64,
+    ) -> Result<Downloaded, Problem> {
         let mut request = self.client.get(self.address(url));
         if offset > 0 {
             request = request.header(RANGE, format!("bytes={offset}-"));
@@ -132,6 +138,15 @@ impl Web {
             return Err(self.refused(status));
         }
         let resumed = status == StatusCode::PARTIAL_CONTENT;
+        let header = |name| {
+            response
+                .headers()
+                .get(name)?
+                .to_str()
+                .ok()
+                .map(str::to_owned)
+        };
+        let version = header(ETAG).or_else(|| header(LAST_MODIFIED));
         let mut file = open(target, resumed).await?;
         while let Some(chunk) = response.chunk().await.map_err(network)? {
             file.write_all(&chunk)
@@ -141,7 +156,7 @@ impl Web {
         file.flush()
             .await
             .map_err(|error| Problem::local(target, error))?;
-        Ok(resumed)
+        Ok(Downloaded { version })
     }
 
     /// Sends a request with the headers of the provider.

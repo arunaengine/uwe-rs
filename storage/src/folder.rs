@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::error::Problem;
-use crate::{Entry, Metadata, address};
+use crate::{Downloaded, Entry, Metadata, address};
 
 pub(crate) struct Folder {
     pub root: PathBuf,
@@ -40,6 +40,7 @@ impl Folder {
             Ok(found) => Ok(Some(Metadata {
                 directory: found.is_dir(),
                 size: if found.is_dir() { 0 } else { found.len() },
+                version: modified(&found),
             })),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(error) => Err(Problem::local(path, error)),
@@ -70,9 +71,11 @@ impl Folder {
 
     /// Copies a file to `target`, whole: a copy of a local file is fast, and file systems like
     /// btrfs and XFS share its blocks instead of copying them.
-    pub async fn download(&self, path: &Path, target: &Path) -> Result<bool, Problem> {
+    pub async fn download(&self, path: &Path, target: &Path) -> Result<Downloaded, Problem> {
         match tokio::fs::copy(path, target).await {
-            Ok(_) => Ok(false),
+            Ok(_) => Ok(Downloaded {
+                version: std::fs::metadata(path).ok().as_ref().and_then(modified),
+            }),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(Problem::missing()),
             Err(error) => Err(Problem::local(path, error)),
         }
@@ -96,4 +99,11 @@ impl Folder {
             .await
             .map_err(|error| Problem::local(path, error))
     }
+}
+
+/// The time of the last change of a file, in nanoseconds since the Unix epoch, as its version.
+fn modified(found: &std::fs::Metadata) -> Option<String> {
+    let modified = found.modified().ok()?;
+    let since = modified.duration_since(std::time::UNIX_EPOCH).ok()?;
+    Some(format!("modified {}", since.as_nanos()))
 }

@@ -18,7 +18,7 @@ use suppaftp::types::FileType;
 
 use crate::error::Problem;
 use crate::web::open;
-use crate::{Entry, Metadata, address};
+use crate::{Downloaded, Entry, Metadata, address};
 
 /// How long iunctus waits for a server to answer a connection.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -110,11 +110,13 @@ impl Ftp {
             Ok(size) => Some(Metadata {
                 directory: false,
                 size: size as u64,
+                version: None,
             }),
             // A directory has no size, and the server can change into it.
             Err(_) => session.cwd(&parts.path).await.ok().map(|()| Metadata {
                 directory: true,
                 size: 0,
+                version: None,
             }),
         };
         let _ = session.quit().await;
@@ -140,7 +142,12 @@ impl Ftp {
     }
 
     /// Downloads a file into `target`, from `offset` on if the server can.
-    pub async fn download(&self, target: &str, file: &Path, offset: u64) -> Result<bool, Problem> {
+    pub async fn download(
+        &self,
+        target: &str,
+        file: &Path,
+        offset: u64,
+    ) -> Result<Downloaded, Problem> {
         let parts = parts(target)?;
         let mut session = self.session(&parts).await?;
         let resumed = match usize::try_from(offset) {
@@ -157,7 +164,7 @@ impl Ftp {
             .await
             .map_err(problem)?;
         let _ = session.quit().await;
-        Ok(resumed)
+        Ok(Downloaded { version: None })
     }
 }
 

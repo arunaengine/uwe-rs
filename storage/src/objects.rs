@@ -20,7 +20,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::error::Problem;
 use crate::web::{open, shared_client};
-use crate::{Entry, Metadata, address};
+use crate::{Downloaded, Entry, Metadata, address};
 
 /// Files are downloaded and uploaded in parts of this size, so they never sit in memory whole.
 const PART_SIZE: usize = 8 * 1024 * 1024;
@@ -180,9 +180,11 @@ impl Objects {
         if !key.is_empty() {
             match operator.stat(key).await {
                 Ok(found) if !found.is_dir() => {
+                    let changed = found.last_modified().map(|time| time.to_string());
                     return Ok(Some(Metadata {
                         directory: false,
                         size: found.content_length(),
+                        version: found.etag().map(str::to_owned).or(changed),
                     }));
                 }
                 Ok(_) => {}
@@ -196,6 +198,7 @@ impl Objects {
             Ok(entries) if !entries.is_empty() || key.is_empty() => Ok(Some(Metadata {
                 directory: true,
                 size: 0,
+                version: None,
             })),
             Ok(_) => Ok(None),
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
@@ -222,7 +225,12 @@ impl Objects {
     }
 
     /// Downloads an object into `file`, from `offset` on, which it always can.
-    pub async fn download(&self, target: &str, file: &Path, offset: u64) -> Result<bool, Problem> {
+    pub async fn download(
+        &self,
+        target: &str,
+        file: &Path,
+        offset: u64,
+    ) -> Result<Downloaded, Problem> {
         let (bucket, key) = bucket_and_key(target)?;
         let reader = self.operator(bucket)?.reader(key).await.map_err(problem)?;
         let mut stream = reader.into_bytes_stream(offset..).await.map_err(problem)?;
@@ -238,7 +246,7 @@ impl Objects {
             .flush()
             .await
             .map_err(|error| Problem::local(file, error))?;
-        Ok(offset > 0)
+        Ok(Downloaded { version: None })
     }
 
     /// Uploads a local file in parts.

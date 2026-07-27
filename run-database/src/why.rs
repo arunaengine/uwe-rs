@@ -181,7 +181,7 @@ impl Database {
 }
 
 /// The changes of what the driver described, besides the inputs.
-fn described(before: &Task, now: &Task) -> Vec<String> {
+pub(crate) fn described(before: &Task, now: &Task) -> Vec<String> {
     let mut changes = Vec::new();
     if before.image != now.image {
         changes.push(format!(

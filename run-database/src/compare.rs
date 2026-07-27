@@ -1,0 +1,262 @@
+//! What differs between two runs, of the same workflow or of two versions of it: the runs
+//! themselves (revision, parameters, input values, executor), and task by task what each does
+//! (image, command, script, environment, inputs), which outputs have other content, how it
+//! ended, and which came from the cache or an earlier run in one run and ran in the other.
+//!
+//! Tasks are paired step by step: first those with the same fingerprint, then those with the
+//! same name, then those that read the most files of the same names, and the rest in order.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+mod pairing;
+mod tasks;
+
+use std::collections::{BTreeMap, HashSet};
+
+use rusqlite::OptionalExtension;
+use serde::Serialize;
+use workflow_graph::Task;
+
+use crate::{Database, DatabaseError, Run};
+
+/// What differs between two runs.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Comparison {
+    pub first: Run,
+    pub second: Run,
+    /// What differs between the runs themselves, one sentence each.
+    pub changes: Vec<String>,
+    /// Every task of both runs: the pairs in the order of the first run, then the tasks that
+    /// only the second run has.
+    pub tasks: Vec<TaskPair>,
+}
+
+/// How a task of one run compares with the same task of the other.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Pairing {
+    /// Both runs have the task, and it does the same and made the same outputs.
+    Same,
+    /// The task does something else: another image, command, script, environment or input.
+    Changed,
+    /// The task does the same, but some of its outputs have other content.
+    Outputs,
+    /// Only the first run has the task.
+    First,
+    /// Only the second run has the task.
+    Second,
+}
+
+/// A task of the first run and the same task of the second, and what differs.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct TaskPair {
+    pub step: String,
+    pub pairing: Pairing,
+    pub first: Option<Side>,
+    pub second: Option<Side>,
+    /// What the task does differently, one sentence each.
+    pub changes: Vec<String>,
+    /// The outputs whose content differs, or that only one run has.
+    pub outputs: Vec<String>,
+    /// How the task ended differently: its state, or where its result came from.
+    pub results: Vec<String>,
+}
+
+/// A task in one of the runs.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Side {
+    pub task: u64,
+    pub name: String,
+    pub state: String,
+    pub exit_code: Option<i32>,
+    /// Where its result came from when it did not run: `cache` or an earlier run.
+    pub reused: Option<String>,
+    /// The image as the task ran in it.
+    pub image: Option<String>,
+}
+
+/// A task of a run with what the comparison needs.
+struct Loaded {
+    side: Side,
+    step: String,
+    fingerprint: String,
+    description: Task,
+}
+
+impl Database {
+    /// What differs between two runs; `None` when either is unknown.
+    pub fn compare(&self, first: &str, second: &str) -> Result<Option<Comparison>, DatabaseError> {
+        let (Some(first_run), Some(second_run)) = (self.run(first)?, self.run(second)?) else {
+            return Ok(None);
+        };
+        let mut changes = run_changes(&first_run, &second_run);
+        changes.extend(self.input_changes(&first_run, &second_run)?);
+        let (earlier, later) = (self.loaded(first)?, self.loaded(second)?);
+        let mut tasks = Vec::new();
+        for (a, b) in pairing::paired(&earlier, &later) {
+            let pair = match (a.map(|a| &earlier[a]), b.map(|b| &later[b])) {
+                (Some(a), Some(b)) => tasks::compared(a, b),
+                (Some(a), None) => tasks::alone(a, Pairing::First),
+                (None, Some(b)) => tasks::alone(b, Pairing::Second),
+                (None, None) => continue,
+            };
+            tasks.push(pair);
+        }
+        Ok(Some(Comparison {
+            first: first_run,
+            second: second_run,
+            changes,
+            tasks,
+        }))
+    }
+
+    /// The latest run of the same workflow that started before this one, to compare it with.
+    pub fn run_before(&self, run: &str) -> Result<Option<String>, DatabaseError> {
+        let found = self
+            .connection
+            .query_row(
+                "SELECT e.id FROM runs r JOIN runs e ON e.workflow = r.workflow
+                 WHERE r.id = ?1
+                    AND (e.started < r.started OR (e.started = r.started AND e.rowid < r.rowid))
+                 ORDER BY e.started DESC, e.rowid DESC LIMIT 1",
+                [run],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(found)
+    }
+
+    /// The tasks of a run with their last attempt.
+    fn loaded(&self, run: &str) -> Result<Vec<Loaded>, DatabaseError> {
+        let mut statement = self.connection.prepare(
+            "SELECT t.id, t.name, t.step, t.fingerprint, t.state, t.description, a.exit_code,
+                a.reused, a.image, a.number
+             FROM tasks t LEFT JOIN attempts a ON a.run = t.run AND a.task = t.id
+                AND a.number = (SELECT MAX(number) FROM attempts WHERE run = t.run AND task = t.id)
+             WHERE t.run = ?1 ORDER BY t.rowid",
+        )?;
+        let rows = statement
+            .query_map([run], |row| {
+                let side = Side {
+                    task: row.get(0)?,
+                    name: row.get(1)?,
+                    state: row.get(4)?,
+                    exit_code: row.get(6)?,
+                    reused: row.get(7)?,
+                    image: row.get(8)?,
+                };
+                let texts: (String, String, String) = (row.get(2)?, row.get(3)?, row.get(5)?);
+                Ok((side, texts, row.get::<_, Option<u32>>(9)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut tasks = Vec::with_capacity(rows.len());
+        for (side, (step, fingerprint, description), _) in rows {
+            tasks.push(Loaded {
+                description: serde_json::from_str(&description)?,
+                side,
+                step,
+                fingerprint,
+            });
+        }
+        Ok(tasks)
+    }
+
+    /// The input values of the runs (decision 24) that differ, beyond their parameters.
+    fn input_changes(&self, first: &Run, second: &Run) -> Result<Vec<String>, DatabaseError> {
+        let (Some(a), Some(b)) = (self.run_inputs(&first.id)?, self.run_inputs(&second.id)?) else {
+            return Ok(Vec::new());
+        };
+        let parameters: HashSet<&str> = (first.parameters.iter())
+            .chain(&second.parameters)
+            .map(|(name, _)| name.as_str())
+            .collect();
+        let object = |value: &serde_json::Value| -> BTreeMap<String, serde_json::Value> {
+            match value {
+                serde_json::Value::Object(map) => map.clone().into_iter().collect(),
+                _ => BTreeMap::new(),
+            }
+        };
+        let (a, b) = (object(&a.values), object(&b.values));
+        let mut changes = Vec::new();
+        for name in a
+            .keys()
+            .chain(b.keys().filter(|name| !a.contains_key(*name)))
+        {
+            if parameters.contains(name.as_str()) {
+                continue;
+            }
+            match (a.get(name), b.get(name)) {
+                (Some(x), Some(y)) if x != y => changes.push(format!(
+                    "the input `{name}` is {} in the first run and {} in the second",
+                    shown(x),
+                    shown(y)
+                )),
+                (Some(x), None) => changes.push(format!(
+                    "the input `{name}` is {} in the first run and not set in the second",
+                    shown(x)
+                )),
+                (None, Some(y)) => changes.push(format!(
+                    "the input `{name}` is not set in the first run and is {} in the second",
+                    shown(y)
+                )),
+                _ => {}
+            }
+        }
+        Ok(changes)
+    }
+}
+
+/// What differs between the runs themselves, besides their input values.
+fn run_changes(first: &Run, second: &Run) -> Vec<String> {
+    let mut changes = Vec::new();
+    let mut differ = |what: &str, a: &str, b: &str| {
+        if a != b {
+            changes.push(format!(
+                "the {what} is {a} in the first run and {b} in the second"
+            ));
+        }
+    };
+    differ("workflow", &first.workflow, &second.workflow);
+    differ("language", &first.language, &second.language);
+    differ("executor", &first.executor, &second.executor);
+    let revision = |run: &Run| run.revision.clone().unwrap_or_else(|| "unknown".into());
+    differ("Git revision", &revision(first), &revision(second));
+    if first.simulated != second.simulated {
+        let simulated = if first.simulated { "first" } else { "second" };
+        changes.push(format!(
+            "the {simulated} run was simulated, the other ran for real"
+        ));
+    }
+    let a: BTreeMap<&str, &str> = (first.parameters.iter())
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+        .collect();
+    let b: BTreeMap<&str, &str> = (second.parameters.iter())
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+        .collect();
+    for (name, value) in &a {
+        match b.get(name) {
+            Some(other) if other == value => {}
+            Some(other) => changes.push(format!(
+                "the parameter `{name}` is `{value}` in the first run and `{other}` in the second"
+            )),
+            None => changes.push(format!(
+                "the parameter `{name}` is `{value}` in the first run and not given in the second"
+            )),
+        }
+    }
+    for (name, value) in b.iter().filter(|(name, _)| !a.contains_key(*name)) {
+        changes.push(format!(
+            "the parameter `{name}` is not given in the first run and is `{value}` in the second"
+        ));
+    }
+    changes
+}
+
+/// A JSON value in a sentence, cut when it is long.
+fn shown(value: &serde_json::Value) -> String {
+    let text = value.to_string();
+    match text.char_indices().nth(80) {
+        Some((cut, _)) => format!("`{}...`", &text[..cut]),
+        None => format!("`{text}`"),
+    }
+}

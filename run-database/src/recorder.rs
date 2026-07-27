@@ -9,9 +9,10 @@ use std::time::{Duration, Instant, SystemTime};
 
 use rusqlite::{Connection, OptionalExtension, params};
 use task_model::Digest;
-use workflow_graph::{Edge, EdgeKind, Event, Language, Observer, Outcome, Task, TaskId};
+use workflow_graph::{Edge, EdgeKind, Event, Language, Observer, Outcome, Task, TaskId, Verdict};
 
 use crate::fingerprint::{fingerprint, input_states};
+use crate::pinned::{RemoteFile, Source};
 use crate::{DatabaseError, now};
 
 /// The longest text of a standard output or error that the database keeps, in bytes. A longer
@@ -44,6 +45,15 @@ pub struct RunStart {
     pub simulated: bool,
     /// Where a real run keeps its files.
     pub store: Option<String>,
+    /// The iunctus that runs it, like `iunctus 0.1.0`.
+    pub program: Option<String>,
+    /// The folder the run starts in, where relative paths of its command line start.
+    pub launch: Option<String>,
+    /// The folder of the workflow whose files the run records: the Git repository of the
+    /// workflow, or its folder.
+    pub workflow_folder: Option<String>,
+    /// The run that this one repeats, with `iunctus repeat`.
+    pub repeats: Option<String>,
 }
 
 /// Records one run. A failed write does not stop the run: the recorder keeps the first error,
@@ -78,8 +88,10 @@ impl Recorder {
         };
         connection.execute(
             "INSERT INTO runs (id, lineage, resumes, workflow, language, revision, arguments,
-                parameters, executor, simulated, store, process, started, state)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 'running')",
+                parameters, executor, simulated, store, process, started, state, program, launch,
+                workflow_folder, repeats)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 'running', ?14, ?15,
+                ?16, ?17)",
             params![
                 run.id,
                 lineage,
@@ -94,6 +106,10 @@ impl Recorder {
                 run.store,
                 std::process::id(),
                 now(),
+                run.program,
+                run.launch,
+                run.workflow_folder,
+                run.repeats,
             ],
         )?;
         let writer = Arc::new(Mutex::new(Writer {
@@ -282,6 +298,35 @@ impl Recorder {
                     size
                 ])?;
             }
+            let mut update = connection.prepare_cached(
+                "UPDATE files SET digest = ?4
+                 WHERE run = ?1 AND task = ?2 AND role = 'input' AND attempt IS NULL AND path = ?3",
+            )?;
+            for (path, digest) in &outcome.inputs {
+                update.execute(params![run, task, path, digest])?;
+            }
+            if let Some(check) = &outcome.reproducibility {
+                let (verdict, differing, exit_code) = match &check.verdict {
+                    Verdict::Same => ("same", &[][..], None),
+                    Verdict::Differs { paths } => ("differs", &paths[..], None),
+                    Verdict::Failed { exit_code } => ("failed", &[][..], Some(*exit_code)),
+                };
+                connection
+                    .prepare_cached(
+                        "INSERT OR REPLACE INTO checks (run, task, attempt, earlier, verdict,
+                            differing, exit_code)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    )?
+                    .execute(params![
+                        run,
+                        task,
+                        attempt,
+                        check.earlier_run,
+                        verdict,
+                        serde_json::to_string(differing).map_err(to_sqlite)?,
+                        exit_code
+                    ])?;
+            }
             for (stream, text) in [("stdout", &outcome.stdout), ("stderr", &outcome.stderr)] {
                 if text.is_empty() {
                     continue;
@@ -349,15 +394,75 @@ impl Recorder {
     /// The inputs of the run (decision 24): the JSON Schema of the inputs of its workflow and the
     /// values that the run checked against it. They are no event of the engine.
     pub fn inputs(&mut self, schema: &serde_json::Value, values: &serde_json::Value) {
+        self.update(|connection, run| {
+            connection.execute(
+                "UPDATE runs SET input_schema = ?2, inputs = ?3 WHERE id = ?1",
+                params![run, schema.to_string(), values.to_string()],
+            )?;
+            Ok(())
+        });
+    }
+
+    /// The JSON Schema of the outputs of the workflow of the run.
+    pub fn outputs(&mut self, schema: &serde_json::Value) {
+        self.update(|connection, run| {
+            connection.execute(
+                "UPDATE runs SET output_schema = ?2 WHERE id = ?1",
+                params![run, schema.to_string()],
+            )?;
+            Ok(())
+        });
+    }
+
+    /// The files that make up the workflow of the run and the files that its command line
+    /// names, by their digests.
+    pub fn sources(&mut self, sources: &[Source]) {
+        self.update(|connection, run| {
+            let mut insert = connection.prepare_cached(
+                "INSERT INTO sources (run, kind, path, digest, size) VALUES (?1, ?2, ?3, ?4, ?5)",
+            )?;
+            for source in sources {
+                insert.execute(params![
+                    run,
+                    source.kind.name(),
+                    source.path,
+                    source.digest,
+                    source.size
+                ])?;
+            }
+            Ok(())
+        });
+    }
+
+    /// The remote files that the run read, by their digests. A file that is noted twice keeps
+    /// what was noted last.
+    pub fn remote_files(&mut self, files: &[RemoteFile]) {
+        self.update(|connection, run| {
+            let mut insert = connection.prepare_cached(
+                "INSERT OR REPLACE INTO remote_files (run, address, digest, size, fetched, version)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )?;
+            for file in files {
+                insert.execute(params![
+                    run,
+                    file.address,
+                    file.digest,
+                    file.size,
+                    file.fetched,
+                    file.version
+                ])?;
+            }
+            Ok(())
+        });
+    }
+
+    /// Runs one write that is no event of the engine, in the open transaction if there is one.
+    fn update(&mut self, action: impl FnOnce(&Connection, &str) -> rusqlite::Result<()>) {
         let mut writer = lock(&self.writer);
         if writer.error.is_some() {
             return;
         }
-        let written = writer.connection.execute(
-            "UPDATE runs SET input_schema = ?2, inputs = ?3 WHERE id = ?1",
-            params![self.run, schema.to_string(), values.to_string()],
-        );
-        if let Err(error) = written {
+        if let Err(error) = action(&writer.connection, &self.run) {
             writer.error = Some(error.into());
         }
     }

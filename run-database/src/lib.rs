@@ -3,7 +3,9 @@
 //! line and parameters; each task that the driver asked for with its description; each attempt
 //! with its times and exit code; the input and output files with their locations; the edges of
 //! the execution graph; the standard output and error of each attempt; the events in the order
-//! the engine saw them; and the JSON Schema of the inputs with the values of the run.
+//! the engine saw them; the JSON Schemas of the inputs, with the values of the run, and of the
+//! outputs; and what pins the run: the files of its workflow, the files its command line names
+//! and the remote files it read, by digest, and the verdicts of the reproducibility check.
 //!
 //! A [`Recorder`] writes one run while it goes on. The web page, the RO-Crate export, resume and
 //! the insight commands read the database through [`Database`]. SQLite runs in WAL mode, so a
@@ -18,6 +20,7 @@ mod fingerprint;
 mod graph;
 mod keep;
 mod origin;
+mod pinned;
 mod pins;
 mod recorder;
 mod resume;
@@ -36,6 +39,7 @@ pub use compare::{Comparison, Pairing, Side, TaskPair};
 pub use fingerprint::{InputState, fingerprint, input_states};
 pub use keep::References;
 pub use origin::Origin;
+pub use pinned::{CheckRow, ImagePin, RemoteFile, Source, SourceKind};
 pub use recorder::{LOG_LIMIT, Recorder, RunStart};
 pub use resume::Reusable;
 pub use runs::{Event, Log, Run, RunInputs};

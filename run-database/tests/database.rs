@@ -20,6 +20,10 @@ fn start(id: &str, resumes: Option<&str>) -> RunStart {
         executor: "simulator".into(),
         simulated: true,
         store: None,
+        program: Some("iunctus 0.1.0".into()),
+        launch: Some("/work".into()),
+        workflow_folder: Some("/work".into()),
+        repeats: None,
     }
 }
 
@@ -315,7 +319,11 @@ fn a_database_of_version_1_gets_the_inputs_of_runs() {
             "ALTER TABLE runs DROP COLUMN input_schema; ALTER TABLE runs DROP COLUMN inputs;
              ALTER TABLE attempts DROP COLUMN cpu_usec; ALTER TABLE attempts DROP COLUMN memory_peak;
              ALTER TABLE attempts DROP COLUMN read_bytes;
-             ALTER TABLE attempts DROP COLUMN write_bytes; PRAGMA user_version = 1;",
+             ALTER TABLE attempts DROP COLUMN write_bytes; DROP TABLE sources;
+             DROP TABLE remote_files; DROP TABLE checks; ALTER TABLE runs DROP COLUMN program;
+             ALTER TABLE runs DROP COLUMN launch; ALTER TABLE runs DROP COLUMN workflow_folder;
+             ALTER TABLE runs DROP COLUMN repeats; ALTER TABLE runs DROP COLUMN output_schema;
+             PRAGMA user_version = 1;",
         )
         .expect("goes back to version 1");
     drop(connection);

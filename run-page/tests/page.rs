@@ -30,6 +30,10 @@ fn record(directory: &Path) -> std::path::PathBuf {
         executor: "simulator".into(),
         simulated: true,
         store: None,
+        program: None,
+        launch: None,
+        workflow_folder: None,
+        repeats: None,
     };
     let task = Task {
         id: TaskId(4),
@@ -195,6 +199,10 @@ fn the_graph_folds_large_steps_and_shows_the_states_of_the_database() {
         executor: "local".into(),
         simulated: false,
         store: None,
+        program: None,
+        launch: None,
+        workflow_folder: None,
+        repeats: None,
     };
     let mut recorder = Database::open(&path)
         .expect("opens")
@@ -262,6 +270,10 @@ fn a_running_run_updates_the_page_live() {
         executor: "simulator".into(),
         simulated: true,
         store: None,
+        program: None,
+        launch: None,
+        workflow_folder: None,
+        repeats: None,
     };
     let mut recorder = Database::open(&path)
         .expect("opens")

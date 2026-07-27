@@ -8,10 +8,10 @@ use crate::DatabaseError;
 
 /// The version of the schema that this build writes. SQLite keeps it in `PRAGMA user_version`.
 /// A change to the tables adds a step to [`MIGRATIONS`] and raises this number.
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 
 /// The steps from each version to the next: the first creates version 1 in an empty file.
-const MIGRATIONS: [&str; VERSION as usize] = [VERSION_1, VERSION_2, VERSION_3];
+const MIGRATIONS: [&str; VERSION as usize] = [VERSION_1, VERSION_2, VERSION_3, VERSION_4];
 
 /// Version 1. Times are milliseconds since the Unix epoch (UTC). Text in JSON is marked as such.
 /// A run is one `iunctus run`; its tasks are the tasks that the driver asked for; an attempt is
@@ -183,6 +183,61 @@ ALTER TABLE attempts ADD COLUMN cpu_usec INTEGER;
 ALTER TABLE attempts ADD COLUMN memory_peak INTEGER;
 ALTER TABLE attempts ADD COLUMN read_bytes INTEGER;
 ALTER TABLE attempts ADD COLUMN write_bytes INTEGER;
+";
+
+/// Version 4: what a run needs to be repeated exactly, and the verdicts of the reproducibility
+/// check. The run gets the iunctus that ran it, the folder it started in (relative paths of its
+/// command line start there), the folder of its workflow, the run it repeats, and the JSON
+/// Schema of the outputs of its workflow.
+const VERSION_4: &str = "
+ALTER TABLE runs ADD COLUMN program TEXT;
+ALTER TABLE runs ADD COLUMN launch TEXT;
+ALTER TABLE runs ADD COLUMN workflow_folder TEXT;
+ALTER TABLE runs ADD COLUMN repeats TEXT;
+ALTER TABLE runs ADD COLUMN output_schema TEXT;
+
+CREATE TABLE sources (
+    run         TEXT NOT NULL REFERENCES runs (id),
+    -- `workflow` for a file of the folder of the workflow, `named` for a file that the command
+    -- line names, like a config file, a params file or a CWL job file.
+    kind        TEXT NOT NULL,
+    -- A file of the workflow relative to its folder; a named file as an absolute path.
+    path        TEXT NOT NULL,
+    -- `sha256:<hex>` of the file as the run found it. A real run keeps the content in its store.
+    digest      TEXT NOT NULL,
+    size        INTEGER NOT NULL
+);
+CREATE INDEX sources_run ON sources (run);
+
+CREATE TABLE remote_files (
+    run         TEXT NOT NULL REFERENCES runs (id),
+    -- The address the run read, like `https://...` or `s3://bucket/key`.
+    address     TEXT NOT NULL,
+    -- `sha256:<hex>` of the content the run read. A real run keeps the content in its store.
+    digest      TEXT NOT NULL,
+    size        INTEGER NOT NULL,
+    -- When the content was read from the address; an earlier run may have read it.
+    fetched     INTEGER NOT NULL,
+    -- The version that the provider gave then, like an ETag or a time of change, when known.
+    version     TEXT,
+    PRIMARY KEY (run, address)
+);
+
+CREATE TABLE checks (
+    run         TEXT NOT NULL,
+    task        INTEGER NOT NULL,
+    attempt     INTEGER NOT NULL,
+    -- The run that made the result in the cache that the task was compared with.
+    earlier     TEXT NOT NULL,
+    -- `same`, `differs` or `failed`.
+    verdict     TEXT NOT NULL,
+    -- The outputs whose digests differ, as a JSON array of paths.
+    differing   TEXT NOT NULL,
+    -- The exit code of a task that failed when it ran again.
+    exit_code   INTEGER,
+    PRIMARY KEY (run, task, attempt),
+    FOREIGN KEY (run, task) REFERENCES tasks (run, id)
+);
 ";
 
 /// Brings the schema of a database to [`VERSION`]: creates it in a new file, and runs the

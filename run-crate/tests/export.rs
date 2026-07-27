@@ -80,6 +80,10 @@ fn record(directory: &Path) -> Database {
         executor: "simulator".into(),
         simulated: true,
         store: None,
+        program: None,
+        launch: None,
+        workflow_folder: None,
+        repeats: None,
     };
     let mut recorder = Database::open(&path)
         .expect("opens")

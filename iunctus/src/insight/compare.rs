@@ -189,6 +189,10 @@ mod tests {
             state: "succeeded".into(),
             error: None,
             tasks: BTreeMap::new(),
+            program: None,
+            launch: None,
+            workflow_folder: None,
+            repeats: None,
         }
     }
 

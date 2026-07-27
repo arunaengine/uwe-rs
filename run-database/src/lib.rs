@@ -13,6 +13,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod chains;
+mod compare;
 mod fingerprint;
 mod graph;
 mod keep;
@@ -31,6 +32,7 @@ use std::time::Duration;
 
 use rusqlite::Connection;
 
+pub use compare::{Comparison, Pairing, Side, TaskPair};
 pub use fingerprint::{InputState, fingerprint, input_states};
 pub use keep::References;
 pub use origin::Origin;

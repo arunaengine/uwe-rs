@@ -11,7 +11,7 @@ Every `iunctus run` and `iunctus graph` records itself in one SQLite file, the r
 - **Resume:** `iunctus run <workflow> -resume` continues the last run of the workflow without running its finished tasks again.
 - **The web page:** `iunctus run -page` shows the run live in the browser, and `iunctus page` shows any past run.
 - **RO-Crate:** `iunctus export <run>` writes a Workflow Run RO-Crate of the Provenance Run Crate profile, with the digest of every file.
-- **Insight:** `iunctus why <run> <task>` tells why a task ran again, and `iunctus origin <file>` where a file came from.
+- **Insight:** `iunctus why <run> <task>` tells why a task ran again, `iunctus origin <file>` where a file came from, `iunctus time <run>` where the time of a run went, and `iunctus compare <run> <run>` what differs between two runs.
 
 | Crate | What it is |
 |---|---|
@@ -29,6 +29,9 @@ Every `iunctus run` and `iunctus graph` records itself in one SQLite file, the r
 | `iunctus export <run>` | writes the RO-Crate of a run to `-output <folder>`, by default `<run>-crate` |
 | `iunctus why <run> <task>` | what changed since the same task ran before, or where its result came from when it did not run (section 6) |
 | `iunctus origin <file>` | the tasks that made a file, back to the data that no task made; the file is a path or `sha256:<hex>` (section 6) |
+| `iunctus time <run>` | where the time of a run went: the critical path, waiting and running, and the steps that used the most (section 6.1) |
+| `iunctus compare <run> [<run>]` | what differs between two runs, task by task; with one run, the run of its workflow before it (section 6.2) |
+| `-format text\|json` | what `time` and `compare` write: plain text (the default) or JSON |
 | `-resume [<run>]` | continues a run; without an id, the last run of the same workflow |
 | `-page` | serves the page of the run that `iunctus run` starts; it stays open after the run until Ctrl-C |
 | `-address <ip>`, `-port <number>` | where the page listens: `127.0.0.1` and a free port by default |
@@ -91,11 +94,11 @@ Not yet: recorded facts (time stamps and random values answered again, runtime.m
 
 The page is one HTML file, its style and five scripts, all inside the binary: `page.js` for the helpers, navigation and the list of runs, `run.js` for one run, and `graph.js`, `camera.js` and `boxes.js` for its graph view (section 4.1). There is no build step, no framework and nothing to install. `run-page` serves them with axum on a thread of its own, so the page runs next to a run.
 
-**What it shows.** The list of runs. For one run: its workflow, state, times, executor, revision, parameters and command line; a notice when the run was simulated; the number of tasks in each state as a bar; the graph view, next to a panel of the chosen task or step; a table of steps with the tasks in each state and their time; a table of tasks, with a search and a filter by state and step. The panel of a task shows its command, script, image, markers, standard output and error, inputs (with a link to the task that made each one), outputs with links to download them, environment and attempts; the panel of a step shows its tasks by state, its markers, and buttons that open or fold it in the graph and show its tasks in the table.
+**What it shows.** The list of runs. For one run: its workflow, state, times, executor, revision, parameters and command line; a notice when the run was simulated; the number of tasks in each state as a bar; the graph view, next to a panel of the chosen task or step; a table of steps with the tasks in each state and their time; a table of tasks, with a search and a filter by state and step. The panel of a task shows its command, script, image, markers, standard output and error, inputs (with a link to the task that made each one), outputs with links to download them, environment and attempts; the panel of a step shows its tasks by state, its markers, and buttons that open or fold it in the graph and show its tasks in the table. A card tells where the time of the run went (section 6.1), and the summary offers to compare the run with another run of its workflow (section 6.2).
 
 **Live.** A running run keeps an EventSource open (Server-Sent Events), and the time of the run in its summary ticks every second between the updates. The server reads new events from the database twice a second and sends one update with the tasks that changed, so a run of thousands of short tasks sends few messages. The page changes the states of the boxes of the graph in place; when tasks were asked for or a marker came (the `graph` flag of the update), it lays the graph out again, at most every two seconds. A browser that reconnects says which event it saw last, and the stream ends after the update that shows the run has ended.
 
-**Routes.** `/`, `/runs/<run>` and `/runs/<run>/tasks/<task>` serve the page; `/api/runs`, `/api/runs/<run>`, `/api/runs/<run>/tasks/<task>`, `/api/runs/<run>/events`, `/api/runs/<run>/graph.svg`, `/api/runs/<run>/tasks/<task>/why`, `/api/runs/<run>/tasks/<task>/logs/<attempt>/<stream>` and `/api/runs/<run>/tasks/<task>/{inputs,outputs}/<n>` serve JSON, logs and files. `graph.svg` takes `view=tasks|steps`, `direction=down|right`, `open=<steps, one name per line>` and `fold=<n>`.
+**Routes.** `/`, `/runs/<run>`, `/runs/<run>/tasks/<task>` and `/compare/<run>/<run>` serve the page; `/api/runs`, `/api/runs/<run>`, `/api/runs/<run>/tasks/<task>`, `/api/runs/<run>/events`, `/api/runs/<run>/graph.svg`, `/api/runs/<run>/time`, `/api/compare/<run>/<run>`, `/api/runs/<run>/tasks/<task>/why`, `/api/runs/<run>/tasks/<task>/logs/<attempt>/<stream>` and `/api/runs/<run>/tasks/<task>/{inputs,outputs}/<n>` serve JSON, logs and files. `graph.svg` takes `view=tasks|steps`, `direction=down|right`, `open=<steps, one name per line>` and `fold=<n>`.
 
 **Safety.** The page listens on `127.0.0.1` unless `-address` says otherwise, and then warns that everyone who can reach the machine sees the runs. It serves only the files that the database lists for a task, by their place in the list, never a path that a request names; a file inside a directory output must stay inside it, also through links.
 
@@ -156,9 +159,44 @@ Not yet: the formal parameters of the workflow (they come with the JSON Schema o
 
 **Where a file came from** (`Database::origin`, `iunctus origin`). From a file, by its location or its digest, the answer walks back: the task that made it in the latest run that did, then the tasks that made that task's inputs, down to the data that no task made. Since a resumed run reads the files of the runs before it, the chain crosses runs. Once outputs carry digests (section 2), the same content made by another run is found by its digest too. On the page, each input links to the task that made it.
 
+### 6.1 Where the time went
+
+`Database::time_spent` (`run-database/src/time.rs`), `iunctus time <run>`, and the card "Where the time went" on the page. It reads the times of the tasks, attempts, edges and events of a run.
+
+**The critical path** is the chain of tasks that set the length of the run. It starts at the task that ended last and walks back: each task waited for the task before it, which is the task that ended last of those whose files it reads or that it comes after (its edges); or, when the workflow asked for it only after all of those had ended, the task whose end made the workflow ask for it. The event log names that task: the engine hears how an attempt ended, then asks the driver, and records the tasks that the driver asks for then, so the last `finished` event before a `requested` event made that request. This follows the graph as it grew, also where a task depends on a value rather than a file, like a Nextflow `collect` or a Snakemake checkpoint.
+
+Each task of the path splits its part of the run into three: the time between the end of the task before it and the moment the workflow asked for it (iunctus stored the outputs, and the workflow planned), the time it waited from the moment it could start until it started (a free CPU or memory, staging, the start of the container), and the time it ran, from the start of its first attempt to the end of its last. With the time before the first task (loading the workflow, checking its inputs) and after the last one (delivering results, reports), the parts add up to the length of the run.
+
+**Waiting and running.** For every task, the time it waited is from the moment it could start (the workflow had asked for it, and every task before it had ended) until it started; the time it ran is that of its attempts. The totals, the number of tasks that ran at a time on average, and the time in which no task ran at all (the union of the attempts) show whether a run was held back by its tools, by waiting for the machine, or by planning. In real runs, the start and end of an attempt are those of the tool itself: the wrapper writes them in `control/start` and `control/end` (with microseconds from Bash 5 on), so waiting for a share of the machine and starting the container count as waiting. A task that came from the cache or from an earlier run neither waited nor ran.
+
+**Steps.** For each step: its tasks, how long they ran and waited together, and what they used as the cgroup of their containers counted it (section 2, version 3): the CPU time and block I/O of all attempts together and the highest peak of memory of one attempt. `iunctus time` lists the five steps that ran the longest, used the most CPU time, the most memory and the most I/O; the page shows a table of all steps in the chosen order, with a bar for the value it is sorted by.
+
+**On the page**, the card shows the numbers of the run, the critical path as one bar (its parts in three colours, the names of the tasks inside the parts that are wide enough, a tooltip on every part, and a click opens the task), the path as a table, and the table of steps. The switch "Critical path" in the graph view (also in the card) marks the boxes and lines of the path, or the boxes of their steps where those are folded, and lets the rest of the graph step back. The lines of the picture name the boxes they join (`data-from` and `data-to`) for this. While a run goes on, the card is read again at most every five seconds.
+
+### 6.2 Comparing two runs
+
+`Database::compare` (`run-database/src/compare.rs`), `iunctus compare <run> [<run>]`, and the page `/compare/<run>/<run>`. The two runs may be runs of the same workflow or of two versions of it, like two revisions or two copies.
+
+**The runs** differ in their workflow, language, executor, Git revision, whether they were simulated, their parameters (by name) and their input values (decision 24), each said in one sentence.
+
+**Tasks are paired** step by step: first the tasks with the same fingerprint, then those with the same name, then those that read and make the most files of the same names (paths as the task sees them, like `sample1.bam`), and the rest in order. Names alone can mislead, as in resume, since Nextflow numbers tasks in the order they finished. A pair is:
+
+| Pairing | Meaning |
+|---|---|
+| `same` | the task does the same and made the same outputs |
+| `changed` | the task does something else: the image, the command, the script, the environment, what the workflow writes into a file, or an input by its content, size or place; also the image as it ran, pinned to its digest, when a tag moved |
+| `outputs` | the task does the same, but outputs have other content, by their digest: a tool that does not give the same bytes |
+| `first`, `second` | only one run has the task |
+
+For each pair it also says how the task ended otherwise (succeeded in one run, failed with exit code 1 in the other) and where its result came from: `it ran in the first run and came from the cache in the second`. Inputs are compared by content where both digests are known: the digest of the input itself, or of the output of any run at its place; else by size and place.
+
+**On the page**, the summary of a run has a list of the other runs of its workflow, the run before it chosen, and a button that opens the comparison: the two runs, what differs between them, the counts of each pairing, and a table for each kind of pair with links to the task in each run.
+
 ## 7. Checks
 
 - `run-database/tests/database.rs`: a run is recorded and read back with its logs, events, tasks, files, edges and markers; a resumed run joins the lineage and finds the finished tasks; why a task ran again, and where a file came from; a database of a newer version is refused. Unit tests cover the fingerprint and the end of long logs.
 - `run-crate/tests/export.rs` and its fixture; unit tests cover image references and the copies by digest.
+- `run-database/tests/insight.rs`: where the time of a recorded run went, a task that the workflow asks for again, and two runs compared task by task; unit tests in `time.rs` cover the critical path, waits, the steps and overlapping attempts.
+- `run-page/tests/insight.rs`: the time of a run, the lines that name their boxes, and the comparison of two runs.
 - `run-page/tests/page.rs`: the page and its scripts, the JSON, a download, a log and the stream of a finished run; the graph down and to the right, a folded step with the states of the database, an open step, and `fold=0`.
 - `iunctus/tests/runs.rs`: `iunctus runs`, `-resume` with nothing changed and with a changed input, `iunctus why` on the tasks that ran again, `iunctus origin`, `iunctus export`, and a real run that may not resume a simulated one. Unit tests cover the new options, the Git revision and the main file of a project.

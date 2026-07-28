@@ -5,8 +5,8 @@
 //! `iunctus why` tells why a task ran again, `iunctus origin` where a file came from,
 //! `iunctus inputs` prints the JSON Schema of the inputs of a workflow, `iunctus outputs` that
 //! of its outputs, `iunctus clean` removes from the store what no rule keeps,
-//! `iunctus time` tells where the time of a run went, and `iunctus compare` what differs
-//! between two runs.
+//! `iunctus time` tells where the time of a run went, `iunctus compare` what differs
+//! between two runs, and `iunctus replay` runs one recorded task again.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -119,6 +119,7 @@ fn main() -> ExitCode {
         "clean" => clean::command(&arguments),
         "time" => insight::time::command(&arguments),
         "compare" => insight::compare::command(&arguments),
+        "replay" => insight::replay::command(&arguments),
         _ => return usage(),
     };
     match result {
@@ -250,7 +251,7 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Serv
         false => None,
     };
     // The inputs are checked before any task starts (decision 24).
-    let prepared = executor(arguments, &setup, &run, !quiet).and_then(|executor| {
+    let prepared = executor(arguments, &setup, &run, !quiet, true).and_then(|executor| {
         let mut driver = driver(language, &launch, &run, quiet, arguments, &setup)?;
         if let Some(inputs) = inputs::check(driver.as_mut(), started.simulated, quiet)? {
             recorder.inputs(&inputs.schema, &inputs.values);
@@ -421,12 +422,14 @@ fn config(arguments: &Arguments) -> Result<(), Failure> {
 /// The executor that `-executor` names: `simulator` (the default) writes a TES task document
 /// for each task and makes up its outputs, `local` runs each task in a container, `tes` on a
 /// TES server, `slurm` as a SLURM batch job and `kubernetes` as a Kubernetes Job. The simulator
-/// keeps its files in the scratch directory of the cache.
+/// keeps its files in the scratch directory of the cache. Without `reuse`, real executors run
+/// every task whatever the cache holds, as a replay of one task does.
 fn executor(
     arguments: &Arguments,
     setup: &Setup,
     run: &str,
     verbose: bool,
+    reuse: bool,
 ) -> Result<Box<dyn Executor>, Failure> {
     let cache = cache_directory();
     let scratch = cache.join("scratch");
@@ -445,6 +448,7 @@ fn executor(
                 local::executor(store, &scratch, run, default_image, storage, &engine)
                     .map_err(|message| failure(format!("iunctus: {message}")))?;
             executor.verbose = verbose;
+            executor.reuse = reuse;
             executor.priorities = std::sync::Arc::new(chains(arguments));
             Ok(Box::new(executor))
         }
@@ -470,6 +474,7 @@ fn executor(
             let mut executor = tes::executor(store, place, run, default_image, storage)
                 .map_err(|message| failure(format!("iunctus: {message}")))?;
             executor.verbose = verbose;
+            executor.reuse = reuse;
             Ok(Box::new(executor))
         }
         "slurm" => {
@@ -496,6 +501,7 @@ fn executor(
             )
             .map_err(|message| failure(format!("iunctus: {message}")))?;
             executor.verbose = verbose;
+            executor.reuse = reuse;
             Ok(Box::new(executor))
         }
         "kubernetes" => {
@@ -517,6 +523,7 @@ fn executor(
             )
             .map_err(|message| failure(format!("iunctus: {message}")))?;
             executor.verbose = verbose;
+            executor.reuse = reuse;
             Ok(Box::new(executor))
         }
         other => Err(failure(format!(
@@ -619,6 +626,7 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
        iunctus origin <file>
        iunctus time <run> [-format text|json]
        iunctus compare <run> [<run>] [-format text|json]
+       iunctus replay <run> <task> [-executor local|tes|slurm|kubernetes] [-store <place>]
        iunctus inputs <workflow file or directory> [-format json|text] [-check] [options]
        iunctus outputs <workflow file or directory> [-format json|text] [options]
        iunctus clean [-keep-days <n>] [-keep-run <run>]... [-keep-slower-than <time>] [-remove]

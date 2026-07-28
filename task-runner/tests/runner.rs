@@ -319,6 +319,25 @@ fn outcomes_give_the_stored_files_with_size_and_digest() {
 }
 
 #[test]
+fn a_replay_runs_its_task_whatever_the_cache_holds() {
+    use task_runner::RunnerExecutor;
+    use workflow_graph::{Attempt, Executor};
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let mut executor = RunnerExecutor::new(runner(root.path(), 0), None);
+    let attempt = |number| Attempt {
+        task: std::sync::Arc::new(task(root.path(), "a")),
+        number,
+        cancel: CancellationToken::new(),
+    };
+    let first = block_on(executor.run(attempt(1))).expect("an outcome");
+    let second = block_on(executor.run(attempt(2))).expect("an outcome");
+    assert_eq!((first.cached, second.cached), (false, true));
+    executor.reuse = false;
+    let replayed = block_on(executor.run(attempt(3))).expect("an outcome");
+    assert!(!replayed.cached, "a replay runs the task again");
+}
+
+#[test]
 fn results_whose_files_are_gone_run_again() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);

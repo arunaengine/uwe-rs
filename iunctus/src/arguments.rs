@@ -10,7 +10,7 @@ use workflow_graph::render::{Direction, Format, View};
 use workflow_graph::{Language, Order};
 
 /// The options of a command.
-#[derive(Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Arguments {
     /// The workflow file or project directory.
     pub target: Option<PathBuf>,

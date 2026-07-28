@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use content_store::Store;
 use executor::{Backend, ExecutorError};
-use task_model::Digest;
+use task_model::{Digest, ReuseScope};
 use workflow_graph::{
     Attempt, CancellationToken, ExecuteError, Executor, Files, Outcome, OutputFile,
     ReproducibilityCheck, Running, Task, Verdict,
@@ -30,6 +30,10 @@ pub struct RunnerExecutor<B> {
     /// of the longest chain of work that follows from the step in earlier runs, in
     /// milliseconds (see `Placement::priority`). Steps without one start in the order asked.
     pub priorities: Arc<HashMap<String, u64>>,
+    /// Whether a stored result may answer a task, and a new result is stored for later runs.
+    /// A replay of one task sets it to false, so that the task runs again whatever the cache
+    /// holds, and leaves the cache as it was.
+    pub reuse: bool,
 }
 
 impl<B: Backend> RunnerExecutor<B> {
@@ -39,6 +43,7 @@ impl<B: Backend> RunnerExecutor<B> {
             default_image,
             verbose: false,
             priorities: Arc::default(),
+            reuse: true,
         }
     }
 
@@ -68,8 +73,10 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
         let runner = self.runner.clone();
         let verbose = self.verbose;
         let priority = self.priorities.get(&task.step).copied().unwrap_or_default();
+        let reuse = self.reuse;
         Running::new(async move {
-            let result = outcome(&runner, &task, attempt.number, priority, &attempt.cancel).await;
+            let number = attempt.number;
+            let result = outcome(&runner, &task, number, priority, reuse, &attempt.cancel).await;
             if verbose && let Ok(outcome) = &result {
                 let state = match (outcome.cached, outcome.exit_code) {
                     (true, _) => "cached".to_owned(),
@@ -141,6 +148,7 @@ async fn outcome<B: Backend>(
     task: &Task,
     attempt: u32,
     priority: u64,
+    reuse: bool,
     cancel: &CancellationToken,
 ) -> Result<Outcome, ExecuteError> {
     let failed = |error: RunnerError| failure(task, error);
@@ -151,6 +159,9 @@ async fn outcome<B: Backend>(
     let mut prepared = runner.request(task, image.clone()).await.map_err(failed)?;
     prepared.request.attempt = attempt;
     prepared.request.placement.priority = priority;
+    if !reuse {
+        prepared.request.scope = ReuseScope::None;
+    }
     let result = runner.execute(&prepared, cancel).await.map_err(failed)?;
     let mut outcome = outcome_of(&runner.store, task, attempt, result, image)
         .await

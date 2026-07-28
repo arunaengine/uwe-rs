@@ -10,11 +10,13 @@
 
 mod otlp;
 mod send;
+mod spans;
 
 use std::io::Write;
 
 pub use otlp::{KeyValue, Request, Span, SpanEvent, Status, Value};
 pub use send::{Sent, TelemetryError, send, traces_address};
+pub use spans::requests;
 
 /// How many spans one export request holds, so that a request of a large run stays small
 /// enough for collectors, which take a few megabytes each by default.

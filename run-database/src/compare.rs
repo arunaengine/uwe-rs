@@ -120,15 +120,17 @@ impl Database {
         }))
     }
 
-    /// The latest run of the same workflow that started before this one, to compare it with.
+    /// The latest run of the same workflow that started before this one, to compare it with;
+    /// for a replay of one task, the run it replays.
     pub fn run_before(&self, run: &str) -> Result<Option<String>, DatabaseError> {
         let found = self
             .connection
             .query_row(
                 "SELECT e.id FROM runs r JOIN runs e ON e.workflow = r.workflow
                  WHERE r.id = ?1
-                    AND (e.started < r.started OR (e.started = r.started AND e.rowid < r.rowid))
-                 ORDER BY e.started DESC, e.rowid DESC LIMIT 1",
+                    AND (e.id = r.replays OR r.replays IS NULL AND e.replays IS NULL
+                        AND (e.started < r.started OR (e.started = r.started AND e.rowid < r.rowid)))
+                 ORDER BY e.id = r.replays DESC, e.started DESC, e.rowid DESC LIMIT 1",
                 [run],
                 |row| row.get(0),
             )
@@ -207,14 +209,7 @@ impl Database {
             let digest = match (&input.digest, digests.get(&input.location)) {
                 (Some(digest), _) | (None, Some(digest)) => Some(digest.clone()),
                 (None, None) if input.location.is_empty() => None,
-                (None, None) => self
-                    .connection
-                    .prepare_cached(
-                        "SELECT digest FROM files
-                         WHERE location = ?1 AND role = 'output' AND digest IS NOT NULL LIMIT 1",
-                    )?
-                    .query_row([&input.location], |row| row.get(0))
-                    .optional()?,
+                (None, None) => self.digest_of(&input.location)?,
             };
             if let Some(digest) = digest {
                 found.insert(input.path.clone(), digest);

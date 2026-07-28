@@ -188,6 +188,8 @@ mod tests {
             ended: None,
             state: "succeeded".into(),
             error: None,
+            replays: None,
+            replays_task: None,
             tasks: BTreeMap::new(),
             program: None,
             launch: None,

@@ -58,6 +58,7 @@ impl Database {
             .query_row(
                 "SELECT e.id FROM runs r JOIN runs e ON e.workflow = r.workflow
                  WHERE r.id = ?1 AND e.id != r.id AND e.started <= r.started
+                    AND e.replays IS NULL
                     AND EXISTS (SELECT 1 FROM tasks t WHERE t.run = e.id AND t.step = ?2)
                  ORDER BY e.id = r.resumes DESC, e.started DESC, e.rowid DESC LIMIT 1",
                 params![run, step],

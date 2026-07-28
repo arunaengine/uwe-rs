@@ -467,6 +467,21 @@ impl Recorder {
         }
     }
 
+    /// The run replays one task of an earlier run. It is no event of the engine.
+    pub fn replays(&mut self, run: &str, task: u64) {
+        let mut writer = lock(&self.writer);
+        if writer.error.is_some() {
+            return;
+        }
+        let written = writer.connection.execute(
+            "UPDATE runs SET replays = ?2, replays_task = ?3 WHERE id = ?1",
+            params![self.run, run, task],
+        );
+        if let Err(error) = written {
+            writer.error = Some(error.into());
+        }
+    }
+
     /// The run ended, with the error that stopped it if one did. Tasks that did not finish are
     /// marked as stopped, and everything is committed.
     pub fn ended(&mut self, error: Option<&str>) {

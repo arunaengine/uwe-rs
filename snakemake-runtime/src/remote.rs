@@ -187,7 +187,7 @@ impl Mirrors {
         ));
         // The storage providers share one client per process, so that a host's address is
         // looked up once and its connection reused.
-        match self.storage.download(&url, &partial) {
+        match self.storage.copy_of(&url, &partial) {
             Ok(()) => std::fs::rename(&partial, path),
             Err(StorageError::Missing { .. }) => {
                 let _ = std::fs::remove_file(&partial);

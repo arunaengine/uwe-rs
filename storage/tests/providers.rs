@@ -460,3 +460,47 @@ async fn ftp_servers_without_a_provider_are_read_as_nextflow_reads_them() {
 fn shape(found: Option<Metadata>) -> Option<(bool, u64)> {
     found.map(|found| (found.directory, found.size))
 }
+
+#[tokio::test]
+async fn remote_files_that_a_process_reads_are_noted_and_can_be_pinned() {
+    let server = WebServer::start(&[("/a.csv", "id\n1\n")], None);
+    let downloads = tempfile::tempdir().expect("a folder of downloads");
+    let address = format!("{}/a.csv", server.address);
+    let storage = Storage::default();
+    let copy = storage.fetch(&address, downloads.path()).await.unwrap();
+    let fetched = storage.fetched();
+    assert_eq!(fetched.len(), 1);
+    let noted = &fetched[0];
+    assert_eq!(noted.address, address);
+    assert_eq!(noted.copy, copy);
+    let digest = "sha256:7cde7fb64fd82bd152710cf238e017b9ab46c0592483edc067ba4f6c75fac108";
+    assert_eq!(noted.digest, digest);
+    assert_eq!(noted.size, 5);
+    let version = noted.version.clone().expect("the ETag of the download");
+    assert!(version.starts_with('"'), "{version}");
+    // A later process that reads the copy knows the same, without a request.
+    let served = server.served();
+    let later = Storage::default();
+    later.fetch(&address, downloads.path()).await.unwrap();
+    assert_eq!(later.fetched(), fetched);
+    assert_eq!(server.served(), served);
+    // A pinned copy answers for its address in every kind of read.
+    let kept = downloads.path().join("kept.csv");
+    std::fs::write(&kept, "id\n2\n").unwrap();
+    let repeat = Storage::default();
+    let other = format!("{}/b.csv", server.address);
+    let pinned = storage::Fetched {
+        address: other.clone(),
+        copy: kept.clone(),
+        ..noted.clone()
+    };
+    repeat.pin(pinned.clone());
+    assert_eq!(repeat.fetch(&other, downloads.path()).await.unwrap(), kept);
+    let found = repeat.metadata(&other, downloads.path()).await.unwrap();
+    assert_eq!(shape(found), Some((false, 5)));
+    let file = downloads.path().join("b.csv");
+    repeat.copy_of(&other, &file).await.unwrap();
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "id\n2\n");
+    assert_eq!(repeat.fetched(), [pinned]);
+    assert_eq!(server.served(), served, "no request for a pinned address");
+}

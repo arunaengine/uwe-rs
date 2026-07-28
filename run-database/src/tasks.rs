@@ -125,27 +125,11 @@ impl Database {
             params![run, task],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
-        let mut statement = self.connection.prepare(
-            "SELECT number, started, ended, exit_code, reused, image, retried, cpu_usec,
-                    memory_peak, read_bytes, write_bytes FROM attempts
-             WHERE run = ?1 AND task = ?2 ORDER BY number",
-        )?;
+        let mut statement = self.connection.prepare(&format!(
+            "SELECT {ATTEMPT_COLUMNS} FROM attempts WHERE run = ?1 AND task = ?2 ORDER BY number"
+        ))?;
         let attempts = statement
-            .query_map(params![run, task], |row| {
-                Ok(Attempt {
-                    number: row.get(0)?,
-                    started: row.get(1)?,
-                    ended: row.get(2)?,
-                    exit_code: row.get(3)?,
-                    reused: row.get(4)?,
-                    image: row.get(5)?,
-                    retried: row.get(6)?,
-                    cpu_usec: row.get(7)?,
-                    memory_peak: row.get(8)?,
-                    read_bytes: row.get(9)?,
-                    write_bytes: row.get(10)?,
-                })
-            })?
+            .query_map(params![run, task], attempt_row)?
             .collect::<Result<Vec<_>, _>>()?;
         let files = self.files(run, Some(task))?;
         let last = attempts.last().map(|attempt| attempt.number);
@@ -165,6 +149,17 @@ impl Database {
             outputs,
             checks: self.checks(run, Some(task))?,
         }))
+    }
+
+    /// Every attempt of a run with the task it belongs to, by task and number.
+    pub fn attempts(&self, run: &str) -> Result<Vec<(u64, Attempt)>, DatabaseError> {
+        let mut statement = self.connection.prepare(&format!(
+            "SELECT {ATTEMPT_COLUMNS}, task FROM attempts WHERE run = ?1 ORDER BY task, number"
+        ))?;
+        let attempts = statement
+            .query_map([run], |row| Ok((row.get(11)?, attempt_row(row)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(attempts)
     }
 
     /// The files of a run, or of one of its tasks, in the order they were recorded.
@@ -240,6 +235,26 @@ impl Database {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(edges)
     }
+}
+
+/// The columns of an attempt that [`attempt_row`] reads, in its order.
+const ATTEMPT_COLUMNS: &str = "number, started, ended, exit_code, reused, image, retried,
+    cpu_usec, memory_peak, read_bytes, write_bytes";
+
+fn attempt_row(row: &Row) -> rusqlite::Result<Attempt> {
+    Ok(Attempt {
+        number: row.get(0)?,
+        started: row.get(1)?,
+        ended: row.get(2)?,
+        exit_code: row.get(3)?,
+        reused: row.get(4)?,
+        image: row.get(5)?,
+        retried: row.get(6)?,
+        cpu_usec: row.get(7)?,
+        memory_peak: row.get(8)?,
+        read_bytes: row.get(9)?,
+        write_bytes: row.get(10)?,
+    })
 }
 
 fn task_row(row: &Row) -> rusqlite::Result<TaskRow> {

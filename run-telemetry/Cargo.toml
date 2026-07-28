@@ -1,0 +1,25 @@
+# Manifest of run-telemetry, which exports runs as OpenTelemetry traces.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "run-telemetry"
+description = "Exports a run of the run database as OpenTelemetry traces in the OTLP JSON format, to a file and to an OTLP HTTP endpoint"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+reqwest.workspace = true
+run-database.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt"] }
+workflow-graph.workspace = true

@@ -1975,6 +1975,7 @@ dependencies = [
  "run-crate",
  "run-database",
  "run-page",
+ "run-telemetry",
  "serde_json",
  "slurm-executor",
  "snakemake-runtime",
@@ -3811,6 +3812,21 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
+ "workflow-graph",
+]
+
+[[package]]
+name = "run-telemetry"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "run-database",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror",
+ "tokio",
  "workflow-graph",
 ]
 

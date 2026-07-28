@@ -10,18 +10,7 @@ use std::path::{Path, PathBuf};
 /// for plain repositories, worktrees and submodules, whose `.git` is a file that names the
 /// real Git folder, and for references packed into `packed-refs`.
 pub fn revision(path: &Path) -> Option<String> {
-    let start = std::path::absolute(path).ok()?;
-    let dot_git = start
-        .ancestors()
-        .map(|folder| folder.join(".git"))
-        .find(|dot_git| dot_git.exists())?;
-    let git = if dot_git.is_file() {
-        let text = read_to_string(&dot_git).ok()?;
-        let target = text.strip_prefix("gitdir:")?.trim();
-        dot_git.parent()?.join(target)
-    } else {
-        dot_git
-    };
+    let (_, git) = repository(path)?;
     let head = read_to_string(git.join("HEAD")).ok()?;
     let head = head.trim();
     let Some(reference) = head.strip_prefix("ref:") else {
@@ -50,6 +39,23 @@ pub fn revision(path: &Path) -> Option<String> {
             None
         }
     })
+}
+
+/// The folder of the work tree and the Git folder of the repository that holds `path`, when it
+/// is in one. A work tree of `git worktree` and a submodule have a `.git` file that names their
+/// Git folder.
+pub fn repository(path: &Path) -> Option<(PathBuf, PathBuf)> {
+    let start = std::path::absolute(path).ok()?;
+    let (root, dot_git) = start.ancestors().find_map(|folder| {
+        let dot_git = folder.join(".git");
+        dot_git.exists().then(|| (folder.to_owned(), dot_git))
+    })?;
+    if dot_git.is_dir() {
+        return Some((root, dot_git));
+    }
+    let text = read_to_string(&dot_git).ok()?;
+    let target = text.strip_prefix("gitdir:")?.trim();
+    Some((root.clone(), root.join(target)))
 }
 
 /// The text when it is a SHA-1 or SHA-256 commit id.

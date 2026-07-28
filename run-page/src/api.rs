@@ -99,6 +99,8 @@ struct TaskView {
     stderr: Option<Log>,
     /// The task that made each input, by the input's location.
     producers: BTreeMap<String, u64>,
+    /// The runs that replay the task, the latest first.
+    replays: Vec<Run>,
 }
 
 async fn task(
@@ -127,6 +129,7 @@ async fn task(
             }
         }
         Ok(TaskView {
+            replays: database.replays_of(&id, task)?,
             detail,
             stdout,
             stderr,

@@ -90,6 +90,12 @@ function drawSummary() {
     el("h1", {}, base(run.workflow), " ", badge(run.state)),
     el("div", { class: "quiet mono" }, run.workflow),
   ];
+  if (run.replays) {
+    parts.push(el("div", { class: "notice" }, el("strong", {}, "Replay. "),
+      "This run runs one task again alone: ",
+      link(`/runs/${encodeURIComponent(run.replays)}/tasks/${run.replays_task}`,
+        `task ${run.replays_task} of run ${run.replays}`), "."));
+  }
   if (run.simulated) {
     parts.push(el("div", { class: "notice" },
       el("strong", {}, "Simulated run. "),
@@ -356,6 +362,7 @@ async function drawDetail(task) {
   }
   if (description.script) parts.push(el("h3", {}, "Script"), el("pre", {}, description.script));
   if (!row.reused && row.attempts > 0) parts.push(whyPart(id, task));
+  if (!view.run.simulated && row.attempts > 0) parts.push(replayPart(id, task, data.replays));
   parts.push(logPart("Standard output", data.stdout, id, task, last, "stdout"));
   parts.push(logPart("Standard error", data.stderr, id, task, last, "stderr"));
   parts.push(el("h3", {}, "Inputs"), filesTable(data.inputs, "inputs", id, task, data.producers));
@@ -392,6 +399,33 @@ function whyPart(id, task) {
         el("ul", {}, why.changes.map((change) => el("li", {}, change))));
     })
     .catch(() => {});
+  return part;
+}
+
+// How to run the task again alone, and the runs that did.
+function replayPart(id, task, replays) {
+  const command = `iunctus replay ${id} ${task}`;
+  const shown = el("div", { hidden: true },
+    el("p", { class: "quiet" }, "Run this to run the task again alone, in the image it ran in " +
+      "and with the same inputs, on this machine; add -executor tes, slurm or kubernetes to run " +
+      "it elsewhere. It shows the new logs next to these."),
+    el("div", { class: "tools" }, el("pre", { class: "command" }, command),
+      el("button", { onclick: (event) => {
+        navigator.clipboard.writeText(command).then(() => { event.target.textContent = "copied"; },
+          () => { event.target.textContent = "select the command to copy it"; });
+      } }, "copy")));
+  const part = el("div", {}, el("div", { class: "tools" }, el("h3", { style: "margin: 0" }, "Replay"),
+    el("button", { onclick: (event) => {
+      shown.hidden = !shown.hidden;
+      event.target.setAttribute("aria-pressed", String(!shown.hidden));
+    } }, "Replay this task")), shown);
+  if (replays.length) {
+    part.append(el("p", { class: "quiet" }, "Replays of this task:"),
+      el("ul", {}, replays.map((replay) => el("li", {},
+        link(`/runs/${encodeURIComponent(replay.id)}/tasks/${task}`, replay.id), " ",
+        badge(replay.state), ` ${when(replay.started)}, ${replay.executor}, `,
+        link(`/compare/${encodeURIComponent(id)}/${encodeURIComponent(replay.id)}`, "compare")))));
+  }
   return part;
 }
 

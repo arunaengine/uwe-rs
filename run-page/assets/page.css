@@ -208,3 +208,4 @@ td.sorted { min-width: 7rem; }
 .pair-of-runs .tile > div { margin-top: 0.15rem; overflow-wrap: anywhere; }
 .differences { margin: 0; padding-left: 1.1rem; }
 .compare-with { margin: 0.4rem 0 0; }
+pre.command { flex: 1; margin: 0; }

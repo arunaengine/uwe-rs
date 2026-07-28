@@ -10,6 +10,7 @@ use run_database::{Database, Recorder, Reusable, Run, RunStart};
 use workflow_graph::Language;
 
 use crate::arguments::{Arguments, Resume};
+use crate::sources::Sources;
 use crate::{Failure, failure, revision, runs};
 
 /// A run being recorded, and the finished tasks of the runs it continues.
@@ -27,6 +28,10 @@ pub struct Started<'a> {
     pub executor: &'a str,
     pub simulated: bool,
     pub store: Option<&'a str>,
+    /// The files of the workflow and of the command line, by digest.
+    pub sources: &'a Sources,
+    /// The run that this one repeats.
+    pub repeats: Option<&'a str>,
 }
 
 /// Opens the run database and starts the record of a run. With `-resume`, the run joins the
@@ -60,8 +65,13 @@ pub fn start(arguments: &Arguments, run: &Started) -> Result<Recording, Failure>
         executor: run.executor.to_owned(),
         simulated: run.simulated,
         store: run.store.map(str::to_owned),
+        program: Some(format!("iunctus {}", env!("CARGO_PKG_VERSION"))),
+        launch: (std::env::current_dir().ok()).map(|folder| folder.to_string_lossy().into_owned()),
+        workflow_folder: Some(run.sources.folder.to_string_lossy().into_owned()),
+        repeats: run.repeats.map(str::to_owned),
     };
-    let recorder = database.record(&start).map_err(broken)?;
+    let mut recorder = database.record(&start).map_err(broken)?;
+    recorder.sources(&run.sources.files);
     Ok(Recording { recorder, reusable })
 }
 

@@ -26,7 +26,9 @@ mod revision;
 mod runs;
 mod setup;
 mod slurm;
+mod sources;
 mod tes;
+mod tracked;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -224,13 +226,19 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Serv
     let name = arguments.executor.as_deref().unwrap_or("simulator");
     let setup = Setup::load(arguments)?;
     let store = setup.store_location(arguments);
+    let real = name != "simulator";
+    let runtime =
+        workflow_graph::runtime().map_err(|error| failure(format!("iunctus: {error}")))?;
+    let sources = runtime.block_on(sources::collect(target, arguments));
     let started = record::Started {
         id: &run,
         target,
         language,
         executor: name,
-        simulated: name == "simulator",
-        store: (name != "simulator").then_some(store.as_str()),
+        simulated: !real,
+        store: real.then_some(store.as_str()),
+        sources: &sources,
+        repeats: None,
     };
     let record::Recording {
         mut recorder,
@@ -246,6 +254,10 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Serv
         if let Some(inputs) = inputs::check(driver.as_mut(), started.simulated, quiet)? {
             recorder.inputs(&inputs.schema, &inputs.values);
         }
+        // A workflow whose outputs cannot be described still runs.
+        if let Ok(Some(schema)) = driver.outputs() {
+            recorder.outputs(&schema);
+        }
         Ok((executor, driver))
     });
     let (executor, mut driver) = match prepared {
@@ -256,6 +268,9 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Serv
             return Err(failure);
         }
     };
+    if let (true, Some(reason)) = (real, &sources.skipped) {
+        eprintln!("iunctus: note: the run records no files of its workflow, as {reason}");
+    }
     let taken = resume::Taken::default();
     let mut executor = match reusable {
         Some(reusable) => {
@@ -266,7 +281,6 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Serv
     };
     // A real executor runs every task that can run, and the pool of its machine or cluster
     // sets how many run at once. The simulator runs one at a time, in the order asked.
-    let real = name != "simulator";
     let options = RunOptions {
         max_pending: (arguments.max_pending).unwrap_or(if real { usize::MAX } else { 1 }),
         order: (arguments.order).unwrap_or(if real {

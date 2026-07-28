@@ -34,19 +34,23 @@ pub(super) fn compared(
     a_inputs: &HashMap<String, String>,
     b_inputs: &HashMap<String, String>,
 ) -> TaskPair {
-    let mut changes = described(&a.description, &b.description);
+    // Images compare as they ran, pinned to their digests, where both runs know them: a tag
+    // and its digest are the same image, and a tag that moved is another one.
+    let ran_in = |task: &Loaded| {
+        let mut description = task.description.clone();
+        if task.side.image.is_some() {
+            description.image.clone_from(&task.side.image);
+        }
+        description
+    };
+    let mut changes = described(&ran_in(a), &ran_in(b));
     changes.extend(input_changes(a, b, a_inputs, b_inputs));
-    if changes.is_empty() && a.fingerprint != b.fingerprint {
+    // The fingerprint holds the image as the workflow named it, which may be a tag in one run
+    // and its digest in the other, as in a replay.
+    let named_alike = a.description.image == b.description.image;
+    if changes.is_empty() && a.fingerprint != b.fingerprint && named_alike {
         changes
             .push("an input file was written again: its size is the same, its time is new".into());
-    }
-    if a.description.image == b.description.image
-        && let (Some(x), Some(y)) = (&a.side.image, &b.side.image)
-        && x != y
-    {
-        changes.push(format!(
-            "the image ran as `{x}` in the first run and as `{y}` in the second"
-        ));
     }
     let outputs = output_changes(&a.outputs, &b.outputs);
     let pairing = match (changes.is_empty(), outputs.is_empty()) {

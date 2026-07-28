@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 
 use crate::error::local;
+use crate::journal::{self, Fetched};
 use crate::{Metadata, Storage, StorageError, address};
 
 /// The name of the local copy of a file in the folder of downloads: the SHA-256 of its public
@@ -32,28 +33,72 @@ impl Storage {
         if let Some(path) = target.strip_prefix("file://") {
             return Ok(PathBuf::from(address::decode(path)));
         }
-        let name = download_name(target);
-        let copy = downloads.join(&name);
-        if tokio::fs::try_exists(&copy).await.map_err(local(&copy))? {
+        if let Some(pinned) = self.inner.journal.pinned(target) {
+            let copy = pinned.copy.clone();
+            self.inner.journal.note(pinned);
             return Ok(copy);
         }
-        tokio::fs::create_dir_all(downloads)
-            .await
-            .map_err(local(downloads))?;
-        // The file comes into a part named with the process id, which is renamed once
-        // complete, so that runs that download the same file at once do not mix. A run that
-        // was stopped leaves its part, which the next run takes over and continues.
-        let partial = copy.with_extension(format!("{}.partial", std::process::id()));
-        let present = take_over(downloads, &name, &partial);
-        let downloaded = self.download_from(target, &partial, present).await?;
-        tokio::fs::rename(&partial, &copy)
-            .await
-            .map_err(local(&copy))?;
-        // Later runs compare the version with the one that the provider gives then.
-        if let Some(version) = downloaded.version {
-            let _ = std::fs::write(copy.with_extension("version"), version);
+        let name = download_name(target);
+        let copy = downloads.join(&name);
+        if !tokio::fs::try_exists(&copy).await.map_err(local(&copy))? {
+            tokio::fs::create_dir_all(downloads)
+                .await
+                .map_err(local(downloads))?;
+            // The file comes into a part named with the process id, which is renamed once
+            // complete, so that runs that download the same file at once do not mix. A run
+            // that was stopped leaves its part, which the next run takes over and continues.
+            let partial = copy.with_extension(format!("{}.partial", std::process::id()));
+            let present = take_over(downloads, &name, &partial);
+            let downloaded = self.download_from(target, &partial, present).await?;
+            tokio::fs::rename(&partial, &copy)
+                .await
+                .map_err(local(&copy))?;
+            // Later runs compare the version with the one that the provider gives then. A
+            // provider that gives none leaves the size to compare.
+            journal::note_version(&copy, downloaded.version.as_deref());
         }
+        self.inner
+            .journal
+            .note(journal::described(target, &copy).await?);
         Ok(copy)
+    }
+
+    /// Downloads a file into `file`, whole, as a transfer: the process does not note it as a
+    /// file that it read, like a result that goes from a store elsewhere to its place.
+    pub async fn download(&self, target: &str, file: &Path) -> Result<(), StorageError> {
+        self.download_from(target, file, 0).await.map(|_| ())
+    }
+
+    /// A copy of a remote file at `file`, which the process notes as read, like a file of a
+    /// workflow on the web that a run keeps next to the others; a pinned copy answers for its
+    /// address.
+    pub async fn copy_of(&self, target: &str, file: &Path) -> Result<(), StorageError> {
+        let (fetched, version) = match self.inner.journal.pinned(target) {
+            Some(pinned) => {
+                tokio::fs::copy(&pinned.copy, file)
+                    .await
+                    .map_err(local(file))?;
+                let version = pinned.version.clone();
+                (pinned, version)
+            }
+            None => {
+                let downloaded = self.download_from(target, file, 0).await?;
+                (journal::described(target, file).await?, downloaded.version)
+            }
+        };
+        self.inner.journal.note(Fetched { version, ..fetched });
+        Ok(())
+    }
+
+    /// The remote files that this process read through the providers, each address once.
+    pub fn fetched(&self) -> Vec<Fetched> {
+        self.inner.journal.read()
+    }
+
+    /// Answers every later read of an address with a copy that an earlier run read, as a
+    /// repeat of that run does.
+    pub fn pin(&self, fetched: Fetched) {
+        self.inner.journal.pin(fetched);
     }
 
     /// Whether a remote file exists, and its size. A file that an earlier run downloaded or
@@ -64,6 +109,13 @@ impl Storage {
         target: &str,
         downloads: &Path,
     ) -> Result<Option<Metadata>, StorageError> {
+        if let Some(pinned) = self.inner.journal.pinned(target) {
+            return Ok(Some(Metadata {
+                directory: false,
+                size: pinned.size,
+                version: pinned.version,
+            }));
+        }
         if let Some(known) = known(target, downloads) {
             return Ok(Some(known));
         }

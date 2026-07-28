@@ -49,6 +49,12 @@ impl Blocking {
         run(async move { storage.download(&target, &file).await })
     }
 
+    /// A copy of a remote file that the process notes as read; see [`Storage::copy_of`].
+    pub fn copy_of(&self, target: &str, file: &Path) -> Result<(), StorageError> {
+        let (storage, target, file) = self.owned(target, file);
+        run(async move { storage.copy_of(&target, &file).await })
+    }
+
     /// The entries of a directory; see [`Storage::list`].
     pub fn list(&self, target: &str) -> Result<Vec<Entry>, StorageError> {
         let (storage, target) = (self.storage.clone(), target.to_owned());

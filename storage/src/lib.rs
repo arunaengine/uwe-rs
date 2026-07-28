@@ -4,7 +4,9 @@
 //! longest prefix that serves an address wins. Web addresses, public buckets, FTP servers and
 //! local files that no provider serves go to a built-in one, so that a machine without a config file reads
 //! public files as before. Each provider makes its client once per process, when it is first
-//! used; secrets never show in messages.
+//! used; secrets never show in messages. The storage notes each remote file that it reads, by
+//! digest, so that runs can record them, and a repeat of a run can pin addresses to the copies
+//! that the run read.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -15,6 +17,7 @@ mod downloads;
 mod error;
 mod folder;
 mod ftp;
+mod journal;
 mod objects;
 mod public;
 pub mod settings;
@@ -32,6 +35,7 @@ use error::Problem;
 pub use blocking::Blocking;
 pub use downloads::download_name;
 pub use error::StorageError;
+pub use journal::Fetched;
 pub use settings::Settings;
 pub use web::http_client;
 
@@ -78,6 +82,8 @@ struct Inner {
     /// The providers of what the config file does not serve.
     built_in: Vec<Provider>,
     store: Option<String>,
+    /// What the providers read, and the copies that answer for addresses.
+    journal: journal::Journal,
 }
 
 /// A provider, and its client once it is used.
@@ -180,6 +186,7 @@ impl Storage {
                 configured,
                 built_in,
                 store: settings.store,
+                journal: journal::Journal::default(),
             }),
         }
     }
@@ -229,11 +236,6 @@ impl Storage {
         }
         let found = served.connection.list(served.prefix, target).await;
         found.map_err(|problem| served.failed("list", target, problem))
-    }
-
-    /// Downloads a file into `file`, whole.
-    pub async fn download(&self, target: &str, file: &Path) -> Result<(), StorageError> {
-        self.download_from(target, file, 0).await.map(|_| ())
     }
 
     /// Downloads a file into `file`, from `offset` on where the provider can.

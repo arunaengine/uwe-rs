@@ -13,11 +13,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use sha2::{Digest, Sha256};
 
 use crate::StorageError;
+use crate::address::redacted;
 use crate::error::local;
 
 /// A remote file as the process read it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Fetched {
+    /// The address, with a password that it holds hidden.
     pub address: String,
     /// The local copy that the process read.
     pub copy: PathBuf,
@@ -60,21 +62,23 @@ impl Journal {
 
     pub(crate) fn pin(&self, fetched: Fetched) {
         let mut pinned = self.pinned.lock().unwrap_or_else(PoisonError::into_inner);
-        pinned.insert(fetched.address.clone(), fetched);
+        pinned.insert(redacted(&fetched.address), fetched);
     }
 
-    /// The copy that answers for an address, when one does.
+    /// The copy that answers for an address, when one does. Addresses are compared without
+    /// the passwords they hold, as runs record them.
     pub(crate) fn pinned(&self, address: &str) -> Option<Fetched> {
         let pinned = self.pinned.lock().unwrap_or_else(PoisonError::into_inner);
-        pinned.get(address).cloned()
+        pinned.get(&redacted(address)).cloned()
     }
 }
 
 /// What the process read at an address from a local copy: its digest and size, remembered
 /// next to the copy while the copy does not change, and the version that a note next to the
-/// copy holds. The time is when the copy was written.
+/// copy holds. The time is when the copy was written. A password in the address is hidden, so
+/// that no record of the read holds it.
 pub(crate) async fn described(address: &str, copy: &Path) -> Result<Fetched, StorageError> {
-    let (address, copy) = (address.to_owned(), copy.to_owned());
+    let (address, copy) = (redacted(address), copy.to_owned());
     let described = tokio::task::spawn_blocking(move || {
         let found = std::fs::metadata(&copy).map_err(local(&copy))?;
         let time = found.modified().unwrap_or(UNIX_EPOCH);
@@ -175,6 +179,21 @@ mod tests {
         let second = described("https://x/a", &copy).await.expect("describes");
         assert_ne!(second.digest, expected);
         assert_eq!(second.size, 4);
+    }
+
+    #[tokio::test]
+    async fn passwords_of_addresses_are_never_noted() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let copy = folder.path().join("copy");
+        std::fs::write(&copy, "abc").expect("writes");
+        let noted = described("ftp://me:pass@host/a.txt", &copy)
+            .await
+            .expect("describes");
+        assert_eq!(noted.address, "ftp://me:[secret]@host/a.txt");
+        let journal = Journal::default();
+        journal.pin(noted);
+        assert!(journal.pinned("ftp://me:pass@host/a.txt").is_some());
+        assert!(journal.pinned("ftp://host/a.txt").is_none());
     }
 
     #[test]

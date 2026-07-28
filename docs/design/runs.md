@@ -11,7 +11,7 @@ Every `iunctus run` and `iunctus graph` records itself in one SQLite file, the r
 - **Resume:** `iunctus run <workflow> -resume` continues the last run of the workflow without running its finished tasks again.
 - **The web page:** `iunctus run -page` shows the run live in the browser, and `iunctus page` shows any past run.
 - **RO-Crate:** `iunctus export <run>` writes a Workflow Run RO-Crate of the Provenance Run Crate profile, with the digest of every file.
-- **Insight:** `iunctus why <run> <task>` tells why a task ran again, `iunctus origin <file>` where a file came from, `iunctus time <run>` where the time of a run went, and `iunctus compare <run> <run>` what differs between two runs.
+- **Insight:** `iunctus why <run> <task>` tells why a task ran again, `iunctus origin <file>` where a file came from, `iunctus time <run>` where the time of a run went, `iunctus compare <run> <run>` what differs between two runs, and `iunctus replay <run> <task>` runs one recorded task again alone.
 
 | Crate | What it is |
 |---|---|
@@ -31,6 +31,7 @@ Every `iunctus run` and `iunctus graph` records itself in one SQLite file, the r
 | `iunctus origin <file>` | the tasks that made a file, back to the data that no task made; the file is a path or `sha256:<hex>` (section 6) |
 | `iunctus time <run>` | where the time of a run went: the critical path, waiting and running, and the steps that used the most (section 6.1) |
 | `iunctus compare <run> [<run>]` | what differs between two runs, task by task; with one run, the run of its workflow before it (section 6.2) |
+| `iunctus replay <run> <task>` | runs one recorded task again alone, on this machine or with `-executor tes\|slurm\|kubernetes`, and tells what differs (section 6.3) |
 | `-format text\|json` | what `time` and `compare` write: plain text (the default) or JSON |
 | `-resume [<run>]` | continues a run; without an id, the last run of the same workflow |
 | `-page` | serves the page of the run that `iunctus run` starts; it stays open after the run until Ctrl-C |
@@ -70,6 +71,8 @@ A run whose process has gone while its state is still `running` reads as `stoppe
 **Digests.** A literal input gets its digest when the task is asked for. Outputs get digests from the executor once `Outcome` carries them (the execution layer, step 2); until then `iunctus export` computes the digest of each file it copies.
 
 Version 2 adds the inputs of each run to `runs` (decision 24): `input_schema`, the JSON Schema of the inputs of the workflow, and `inputs`, the values that the run checked against it ([the inputs of a workflow](inputs.md)).
+
+Version 5 adds replays to `runs`: `replays` and `replays_task` name the run and the task that a replay of one task runs again (section 6.3). Version 4 holds what a run needs to be repeated exactly (`program`, `launch`, `workflow_folder`, `repeats`, `output_schema`, and the tables `sources`, `remote_files` and `checks`).
 
 Version 3 adds what each attempt used to `attempts`: `cpu_usec`, the CPU time in microseconds, `memory_peak`, the peak of memory in bytes (page cache included), and `read_bytes` and `write_bytes` of block I/O. The wrapper of a task reads them from the cgroup of its container at its end (`control/usage`), so they are known with Docker and Podman, and empty where a container has no cgroup of its own.
 
@@ -192,11 +195,24 @@ For each pair it also says how the task ended otherwise (succeeded in one run, f
 
 **On the page**, the summary of a run has a list of the other runs of its workflow, the run before it chosen, and a button that opens the comparison: the two runs, what differs between them, the counts of each pairing, and a table for each kind of pair with links to the task in each run.
 
+### 6.3 Replaying one task
+
+`iunctus replay <run> <task>` (`iunctus/src/insight/replay.rs`) runs one recorded task again, alone, from its description in the run database, and the task panel of the page has a button that shows this command.
+
+**The same task.** The task runs as the driver described it, without the tasks it waited for, in the image it ran in, pinned to its digest, which the attempt recorded. Each input is taken where it is: at its place when the file is still there, or else from the store by its digest, which the run database knows for every output and for the inputs that the runner hashed. A directory whose files are gone, or an input whose digest is unknown, stops the replay with a sentence that names it. A task of a simulated run cannot be replayed, since its files are made up.
+
+**Anywhere.** It runs on this machine by default (`-executor local`), or on a TES server, a SLURM cluster or Kubernetes with the options of `iunctus run`; the store is the one of the run unless `-store` names another. It runs whatever the cache holds (`RunnerExecutor.reuse`, which sets the reuse scope `none`), and stores no new cache entry, so a replay never changes what later runs take from the cache.
+
+**A run of its own.** The replay is recorded as a run with one task, the same task number, and `runs.replays` and `runs.replays_task` naming the task it replays. So its logs, outputs, times and what it used are on the page like those of any run. Resume, `why` and the list of earlier runs to compare with leave replays out; `iunctus compare <replay>` compares it with the run it replays, and `iunctus runs` names it.
+
+**What differs.** After the run, the command compares the replay with the task as it ran (section 6.2): the exit code and time before and now, where the earlier result came from when the task had not run, any difference in what the task does, each output whose content differs by its digest (or that every output has the same content, which checks that the tool gives the same bytes), and the last lines of the standard output and error before and now. A failed task replays too: its old and new errors stand next to each other, and the command ends with exit code 1 when the task fails again. On the page, the panel of a task lists its replays, each with a link to compare it.
+
 ## 7. Checks
 
 - `run-database/tests/database.rs`: a run is recorded and read back with its logs, events, tasks, files, edges and markers; a resumed run joins the lineage and finds the finished tasks; why a task ran again, and where a file came from; a database of a newer version is refused. Unit tests cover the fingerprint and the end of long logs.
 - `run-crate/tests/export.rs` and its fixture; unit tests cover image references and the copies by digest.
-- `run-database/tests/insight.rs`: where the time of a recorded run went, a task that the workflow asks for again, and two runs compared task by task; unit tests in `time.rs` cover the critical path, waits, the steps and overlapping attempts.
-- `run-page/tests/insight.rs`: the time of a run, the lines that name their boxes, and the comparison of two runs.
+- `run-database/tests/insight.rs`: where the time of a recorded run went, a task that the workflow asks for again, two runs compared task by task, and a replay that resume leaves out and whose image, named by its digest, is the same as the tag it ran in before; unit tests in `time.rs` cover the critical path, waits, the steps and overlapping attempts.
+- `run-page/tests/insight.rs`: the time of a run, the lines that name their boxes, the comparison of two runs, and the replays of a task.
+- `iunctus/tests/insight.rs`: `iunctus time` and `iunctus compare` on simulated runs, a replay refused for a simulated run, and (ignored, needs Docker) a task replayed in its container after its input file was removed from its place in the store.
 - `run-page/tests/page.rs`: the page and its scripts, the JSON, a download, a log and the stream of a finished run; the graph down and to the right, a folded step with the states of the database, an open step, and `fold=0`.
 - `iunctus/tests/runs.rs`: `iunctus runs`, `-resume` with nothing changed and with a changed input, `iunctus why` on the tasks that ran again, `iunctus origin`, `iunctus export`, and a real run that may not resume a simulated one. Unit tests cover the new options, the Git revision and the main file of a project.

@@ -208,7 +208,7 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 - [x] The web page (decision 23): the graph as it grows, the state of each step, logs and outputs, for the current run or any past run.
 - [x] The graph view of the page, as in Argo Workflows: move, zoom and fit, top down or left to right, round icons of the states, large steps folded into one box that opens on a click, open points beside their task, and live states in place; `iunctus graph -format svg` draws the same picture.
 - [x] Workflow Run RO-Crate with the provenance graph (decision 25): valid at the level REQUIRED of the Provenance Run Crate profile 0.5.
-- [ ] Insight: why a task ran again (done), where a file came from (done), where the time went (done), comparing two runs (done), replaying one task, OpenTelemetry export (section 4).
+- [ ] Insight: why a task ran again (done), where a file came from (done), where the time went (done), comparing two runs (done), replaying one task (done), OpenTelemetry export (section 4).
 - Done when: a real run can be followed live on the page, and its RO-Crate passes the checks of the Provenance Run Crate profile.
 
 ### Inputs

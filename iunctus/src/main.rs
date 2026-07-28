@@ -13,6 +13,7 @@
 mod arguments;
 mod clean;
 mod detect;
+mod fetched;
 mod inputs;
 mod insight;
 mod kubernetes;
@@ -268,6 +269,17 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Serv
             return Err(failure);
         }
     };
+    // A real run keeps the files of its workflow and the remote files it read in its store,
+    // so that a repeat of the run has them years later.
+    let kept = match real {
+        true => setup.store(arguments).ok(),
+        false => None,
+    };
+    if let Some(store) = &kept
+        && let Err(message) = runtime.block_on(sources::keep(store, &sources))
+    {
+        eprintln!("iunctus: warning: the store does not keep the files of the workflow: {message}");
+    }
     if let (true, Some(reason)) = (real, &sources.skipped) {
         eprintln!("iunctus: note: the run records no files of its workflow, as {reason}");
     }
@@ -302,6 +314,15 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Serv
     }
     // The run is over: a later Ctrl-C, like the one that closes the page, stops nothing.
     interrupt.cancel();
+    let read = fetched::read(&setup.storage, &store);
+    recorder.remote_files(&fetched::rows(&read));
+    if let Some(store) = &kept
+        && let Err(message) = runtime.block_on(fetched::keep(store, &read))
+    {
+        eprintln!(
+            "iunctus: warning: the store does not keep the remote files of the run: {message}"
+        );
+    }
     close(recorder);
     Ok((execution, page))
 }

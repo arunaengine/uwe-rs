@@ -1,11 +1,15 @@
 //! The sources of a run: the files of its workflow and the files that its command line names,
-//! like config files, params files and CWL job files, each by digest.
+//! like config files, params files and CWL job files, each by digest. A real run keeps their
+//! contents in its store, so that a repeat of the run has the same workflow and the same config
+//! years later, also when the folder of the workflow has changed since.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::{Path, PathBuf};
 
+use content_store::Store;
 use run_database::{Source, SourceKind};
+use task_model::{Tree, TreeEntry};
 
 use crate::arguments::Arguments;
 use crate::{revision, tracked};
@@ -67,6 +71,53 @@ pub async fn collect(target: &Path, arguments: &Arguments) -> Sources {
         files,
         skipped,
     }
+}
+
+/// Keeps the contents of the sources in a store. The files of the workflow go in as one tree,
+/// so that a later run of the same files finds the tree and stores nothing.
+pub async fn keep(store: &Store, sources: &Sources) -> Result<(), String> {
+    let failed = |error: content_store::StoreError| error.to_string();
+    let workflow: Vec<&Source> = (sources.files.iter())
+        .filter(|source| source.kind == SourceKind::Workflow)
+        .collect();
+    let tree = tree(&workflow).map_err(|error| error.to_string())?;
+    let digest = tree.digest().map_err(|error| error.to_string())?;
+    let stored = store.has_tree(&digest).await.map_err(failed)?;
+    for source in &sources.files {
+        let path = match source.kind {
+            SourceKind::Workflow if stored => continue,
+            SourceKind::Workflow => sources.folder.join(&source.path),
+            SourceKind::Named => PathBuf::from(&source.path),
+        };
+        let (kept, _) = store.put_file(&path).await.map_err(failed)?;
+        // A file that changed since it was hashed is kept as it is now; the run notes the
+        // digest it read, so a repeat finds out.
+        if kept.to_string() != source.digest {
+            return Err(format!("{} changed while the run started", path.display()));
+        }
+    }
+    if !stored {
+        store.put_tree(&tree).await.map_err(failed)?;
+    }
+    Ok(())
+}
+
+/// The files of the workflow as a tree of the store.
+pub fn tree(workflow: &[&Source]) -> Result<Tree, task_model::SpecError> {
+    let entries = workflow
+        .iter()
+        .map(|source| {
+            Ok(TreeEntry::File {
+                path: source.path.clone(),
+                digest: source.digest.parse().map_err(|_| {
+                    task_model::SpecError::Encoding(format!("digest {}", source.digest))
+                })?,
+                size: source.size,
+                executable: false,
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Tree { entries })
 }
 
 /// The folder of the workflow and its files: the files that Git tracks in its repository, else
@@ -227,5 +278,14 @@ mod tests {
             ]
         );
         assert!(sources.files[0].digest.starts_with("sha256:"));
+        // The store keeps the files once.
+        let store = Store::local(&root.path().join("store")).expect("a store");
+        runtime.block_on(keep(&store, &sources)).expect("keeps");
+        let workflow: Vec<&Source> = sources.files[..2].iter().collect();
+        let digest = tree(&workflow).expect("a tree").digest().expect("a digest");
+        assert!(runtime.block_on(store.has_tree(&digest)).expect("looks"));
+        runtime
+            .block_on(keep(&store, &sources))
+            .expect("keeps again");
     }
 }

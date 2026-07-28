@@ -130,3 +130,31 @@ fn the_page_compares_two_runs() {
     assert_eq!(status, 404);
     server.stop();
 }
+
+#[test]
+fn the_panel_of_a_task_lists_its_replays() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = record(directory.path());
+    let mut recorder = Database::open(&path)
+        .and_then(|database| database.record(&start("replay-1")))
+        .expect("starts a record");
+    recorder.replays("run-1", 2);
+    recorder.ended(None);
+    recorder.close().expect("records the replay");
+    let server = Server::start(&Settings::new(path)).expect("starts");
+    let url = server.url().to_owned();
+
+    let (status, text) = get(&format!("{url}/api/runs/run-1/tasks/2"));
+    assert_eq!(status, 200, "{text}");
+    let task: Value = serde_json::from_str(&text).expect("JSON");
+    assert_eq!(task["replays"][0]["id"], "replay-1");
+    let (status, text) = get(&format!("{url}/api/runs/replay-1"));
+    assert_eq!(status, 200, "{text}");
+    let run: Value = serde_json::from_str(&text).expect("JSON");
+    assert_eq!(run["run"]["replays"], "run-1");
+    assert_eq!(run["run"]["replays_task"], 2);
+    let (status, script) = get(&format!("{url}/run.js"));
+    assert_eq!(status, 200);
+    assert!(script.contains("iunctus replay ${id} ${task}"), "{script}");
+    server.stop();
+}

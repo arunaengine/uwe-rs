@@ -8,10 +8,11 @@ use crate::DatabaseError;
 
 /// The version of the schema that this build writes. SQLite keeps it in `PRAGMA user_version`.
 /// A change to the tables adds a step to [`MIGRATIONS`] and raises this number.
-pub const VERSION: u32 = 4;
+pub const VERSION: u32 = 5;
 
 /// The steps from each version to the next: the first creates version 1 in an empty file.
-const MIGRATIONS: [&str; VERSION as usize] = [VERSION_1, VERSION_2, VERSION_3, VERSION_4];
+const MIGRATIONS: [&str; VERSION as usize] =
+    [VERSION_1, VERSION_2, VERSION_3, VERSION_4, VERSION_5];
 
 /// Version 1. Times are milliseconds since the Unix epoch (UTC). Text in JSON is marked as such.
 /// A run is one `iunctus run`; its tasks are the tasks that the driver asked for; an attempt is
@@ -238,6 +239,13 @@ CREATE TABLE checks (
     PRIMARY KEY (run, task, attempt),
     FOREIGN KEY (run, task) REFERENCES tasks (run, id)
 );
+";
+
+/// Version 5: replays of one task. A replay is a run of its own, of one task of an earlier run,
+/// which it names; resume and `why` leave replays out.
+const VERSION_5: &str = "
+ALTER TABLE runs ADD COLUMN replays TEXT;
+ALTER TABLE runs ADD COLUMN replays_task INTEGER;
 ";
 
 /// Brings the schema of a database to [`VERSION`]: creates it in a new file, and runs the

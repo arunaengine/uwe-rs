@@ -323,6 +323,7 @@ fn a_database_of_version_1_gets_the_inputs_of_runs() {
              DROP TABLE remote_files; DROP TABLE checks; ALTER TABLE runs DROP COLUMN program;
              ALTER TABLE runs DROP COLUMN launch; ALTER TABLE runs DROP COLUMN workflow_folder;
              ALTER TABLE runs DROP COLUMN repeats; ALTER TABLE runs DROP COLUMN output_schema;
+             ALTER TABLE runs DROP COLUMN replays; ALTER TABLE runs DROP COLUMN replays_task;
              PRAGMA user_version = 1;",
         )
         .expect("goes back to version 1");

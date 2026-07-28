@@ -40,6 +40,9 @@ pub struct Run {
     pub workflow_folder: Option<String>,
     /// The run that this one repeats.
     pub repeats: Option<String>,
+    /// For a replay of one task, the run and the task that it replays.
+    pub replays: Option<String>,
+    pub replays_task: Option<u64>,
 }
 
 /// The inputs of a run (decision 24): the JSON Schema of the inputs of its workflow, and the
@@ -72,7 +75,7 @@ pub struct Event {
 
 const RUN_COLUMNS: &str = "id, lineage, resumes, workflow, language, revision, arguments,
     parameters, executor, simulated, store, process, started, ended, state, error, program,
-    launch, workflow_folder, repeats";
+    launch, workflow_folder, repeats, replays, replays_task";
 
 impl Database {
     /// The latest runs first, at most `limit` of them.
@@ -98,6 +101,22 @@ impl Database {
             )
             .optional()?;
         run.map(|run| self.counted(parsed(run)?)).transpose()
+    }
+
+    /// The runs that replay a task of a run, the latest first.
+    pub fn replays_of(&self, run: &str, task: u64) -> Result<Vec<Run>, DatabaseError> {
+        let mut statement = self.connection.prepare(
+            "SELECT id FROM runs WHERE replays = ?1 AND replays_task = ?2
+             ORDER BY started DESC, rowid DESC",
+        )?;
+        let ids = statement
+            .query_map(params![run, task], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut runs = Vec::with_capacity(ids.len());
+        for id in ids {
+            runs.extend(self.run(&id)?);
+        }
+        Ok(runs)
     }
 
     /// The inputs of a run, when its driver described them.
@@ -227,6 +246,8 @@ fn run_row(row: &Row) -> rusqlite::Result<(Run, String, String)> {
         launch: row.get(17)?,
         workflow_folder: row.get(18)?,
         repeats: row.get(19)?,
+        replays: row.get(20)?,
+        replays_task: row.get(21)?,
     };
     Ok((run, row.get(6)?, row.get(7)?))
 }

@@ -193,6 +193,20 @@ impl Database {
         Ok(files)
     }
 
+    /// The digest of the output of any run at a location, when one run made it and its
+    /// executor knew the digest.
+    pub fn digest_of(&self, location: &str) -> Result<Option<String>, DatabaseError> {
+        let digest = self
+            .connection
+            .prepare_cached(
+                "SELECT digest FROM files
+                 WHERE location = ?1 AND role = 'output' AND digest IS NOT NULL LIMIT 1",
+            )?
+            .query_row([location], |row| row.get(0))
+            .optional()?;
+        Ok(digest)
+    }
+
     /// The markers of a run, in the order they were found.
     pub fn markers(&self, run: &str) -> Result<Vec<MarkerRow>, DatabaseError> {
         let mut statement = self

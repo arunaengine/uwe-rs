@@ -19,11 +19,13 @@ pub struct Reusable {
 
 impl Database {
     /// The latest run of a workflow, or with `real`, its latest run that was not simulated.
+    /// Replays of one task are left out.
     pub fn last_run(&self, workflow: &str, real: bool) -> Result<Option<Run>, DatabaseError> {
         let id: Option<String> = self
             .connection
             .query_row(
-                "SELECT id FROM runs WHERE workflow = ?1 AND (simulated = 0 OR NOT ?2)
+                "SELECT id FROM runs
+                 WHERE workflow = ?1 AND (simulated = 0 OR NOT ?2) AND replays IS NULL
                  ORDER BY started DESC, rowid DESC LIMIT 1",
                 params![workflow, real],
                 |row| row.get(0),

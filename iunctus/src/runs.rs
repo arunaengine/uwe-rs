@@ -50,9 +50,13 @@ fn table(runs: &[Run]) -> String {
         } else {
             run.executor.as_str()
         };
+        let replay = match (&run.replays, run.replays_task) {
+            (Some(earlier), Some(task)) => format!(" (replays task {task} of run {earlier})"),
+            _ => String::new(),
+        };
         let _ = writeln!(
             text,
-            "{:<20} {:<19} {:<9} {:<9} {:>6} {:>6}  {}",
+            "{:<20} {:<19} {:<9} {:<9} {:>6} {:>6}  {}{replay}",
             run.id,
             local_time(run.started),
             run.state,
@@ -249,6 +253,8 @@ mod tests {
             ended: None,
             state: "succeeded".into(),
             error: None,
+            replays: None,
+            replays_task: None,
             tasks: BTreeMap::from([("failed".into(), 1), ("succeeded".into(), 4)]),
             program: None,
             launch: None,

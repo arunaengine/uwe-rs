@@ -303,3 +303,56 @@ fn a_run_is_compared_with_the_run_before_it() {
     );
     assert_eq!(database.run_before("run-a").expect("reads"), None);
 }
+
+#[test]
+fn a_replay_is_its_own_run_that_resume_leaves_out() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    let tagged = task(1, "SORT");
+    let pinned = "debian@sha256:5bc3";
+    let ran = |task: &Task| Outcome {
+        id: task.id,
+        image: Some(pinned.into()),
+        ..Outcome::default()
+    };
+    let mut recorder = Database::open(&path)
+        .and_then(|database| database.record(&start("original")))
+        .expect("starts a record");
+    attempt(&mut recorder, &tagged, &[], &ran(&tagged));
+    recorder.ended(None);
+    recorder.close().expect("records the run");
+    // The replay names the image by the digest it ran in before.
+    let mut again = tagged.clone();
+    again.image = Some(pinned.into());
+    let mut recorder = Database::open(&path)
+        .and_then(|database| database.record(&start("replay")))
+        .expect("starts a record");
+    recorder.replays("original", 1);
+    attempt(&mut recorder, &again, &[], &ran(&again));
+    recorder.ended(None);
+    recorder.close().expect("records the replay");
+
+    let database = Database::open(&path).expect("opens again");
+    let replay = database.run("replay").expect("reads").expect("the replay");
+    assert_eq!(replay.replays.as_deref(), Some("original"));
+    assert_eq!(replay.replays_task, Some(1));
+    let last = database.last_run("/work/main.nf", true).expect("reads");
+    assert_eq!(last.map(|run| run.id).as_deref(), Some("original"));
+    let before = database.run_before("replay").expect("reads");
+    assert_eq!(before.as_deref(), Some("original"));
+    let replays = database.replays_of("original", 1).expect("reads");
+    assert_eq!(
+        replays
+            .iter()
+            .map(|run| run.id.as_str())
+            .collect::<Vec<_>>(),
+        ["replay"]
+    );
+    // A tag and the digest it ran in are the same image.
+    let comparison = database
+        .compare("original", "replay")
+        .expect("reads")
+        .expect("both runs");
+    assert_eq!(comparison.tasks[0].pairing, Pairing::Same);
+    assert_eq!(comparison.tasks[0].changes, Vec::<String>::new());
+}

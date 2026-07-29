@@ -75,6 +75,9 @@ pub struct Options {
     /// supplies, placeholders, as a simulated run does (`Launch.simulated`). Without it, a run
     /// needs them, as `argo submit` does.
     pub assume_inputs: bool,
+    /// Whether a DAG that does not set `failFast` goes on after a task failed, with the tasks
+    /// that do not depend on it, as `failFast: false` does (`Launch.keep_going`).
+    pub keep_going: bool,
 }
 
 /// A run of one Argo document as a [`Driver`].
@@ -246,6 +249,7 @@ pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
         print_warnings: true,
         now: None,
         assume_inputs: launch.simulated,
+        keep_going: launch.keep_going,
     };
     let mut driver = ArgoDriver::new(document, Rc::new(library), options);
     if !launch.simulated {

@@ -593,6 +593,7 @@ fn launch(arguments: &Arguments, target: PathBuf) -> Launch {
         // The simulator makes up the outputs of tasks, so its runs also assume that the
         // source files of the workflow exist, as the graph needs them rather than their content.
         simulated: arguments.executor.as_deref().unwrap_or("simulator") == "simulator",
+        keep_going: arguments.keep_going,
     }
 }
 
@@ -673,6 +674,9 @@ options:
   -default-image <image>              the image of tasks that name none, for real executors
   -python-image <image>               the image of the Python packages without a stand-in
   -stub                               runs the stubs of tasks
+  -keep-going                         after a task failed, runs every task that does not
+                                      depend on it, then fails; without it no more tasks
+                                      start, as each language's engine does
   -profile <names>, -c <file>         Nextflow profiles and config files
   -params-file <file>, -inputs <file> a params file, or a CWL job file
   -entry <name>                       the entry workflow or target

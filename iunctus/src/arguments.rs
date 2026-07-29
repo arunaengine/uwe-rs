@@ -17,6 +17,8 @@ pub struct Arguments {
     /// `-lang name`; else the language is found from the target.
     pub language: Option<Language>,
     pub stub: bool,
+    /// `-keep-going`: after a task failed, run every task that does not depend on it.
+    pub keep_going: bool,
     /// `-store folder|address`: where the cache store lives; a folder is made absolute.
     pub store: Option<String>,
     /// `-iunctus-config file`: a config file of iunctus, read after the site-wide file and
@@ -121,6 +123,7 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
         };
         match argument.as_str() {
             "-stub" | "-stub-run" => parsed.stub = true,
+            "-keep-going" => parsed.keep_going = true,
             "-store" => {
                 let place = value()?;
                 parsed.store = Some(match storage::address::scheme(&place) {
@@ -388,7 +391,16 @@ mod tests {
 
     #[test]
     fn params_take_their_values() {
-        let parsed = parse_all(&["main.nf", "--outdir", "out", "--skip", "--n", "-1", "-stub"]);
+        let parsed = parse_all(&[
+            "main.nf",
+            "--outdir",
+            "out",
+            "--skip",
+            "--n",
+            "-1",
+            "-stub",
+            "-keep-going",
+        ]);
         assert_eq!(parsed.target, Some(PathBuf::from("main.nf")));
         let params = [("outdir", "out"), ("skip", "true"), ("n", "-1")];
         let params: Vec<(String, String)> = params
@@ -397,6 +409,7 @@ mod tests {
             .collect();
         assert_eq!(parsed.params, params);
         assert!(parsed.stub);
+        assert!(parsed.keep_going);
     }
 
     #[test]

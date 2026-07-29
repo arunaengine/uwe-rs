@@ -59,11 +59,23 @@ workflow {
 /// Runs the pipeline with this config and these failures; the result has the error and what
 /// ran.
 fn run(config: &str, failures: &[(&str, u32, i32)]) -> (Option<String>, Vec<Ran>) {
+    run_pipeline(PIPELINE, config, failures, false)
+}
+
+/// Runs a pipeline with this config and these failures, and keeps going after a failure when
+/// asked to.
+fn run_pipeline(
+    pipeline: &str,
+    config: &str,
+    failures: &[(&str, u32, i32)],
+    keep_going: bool,
+) -> (Option<String>, Vec<Ran>) {
     let directory = tempfile::tempdir().expect("a temporary directory");
-    std::fs::write(directory.path().join("main.nf"), PIPELINE).expect("writes the script");
+    std::fs::write(directory.path().join("main.nf"), pipeline).expect("writes the script");
     std::fs::write(directory.path().join("nextflow.config"), config).expect("writes the config");
     let launch = Launch {
         target: directory.path().to_owned(),
+        keep_going,
         ..Launch::default()
     };
     let mut driver = nextflow_runtime::driver(&launch).expect("a driver");
@@ -136,4 +148,55 @@ fn finish_fails_the_run_once_the_running_tasks_end() {
         "{error}"
     );
     assert_eq!(ran, [("FIRST".to_owned(), 1, None)]);
+}
+
+/// A failing process and an independent branch of two processes.
+const BRANCHES: &str = r#"
+process FAIL {
+    script:
+    "exit 3"
+}
+
+process SLOW {
+    output:
+    val 1
+    script:
+    "sleep 6"
+}
+
+process LATER {
+    input:
+    val x
+    script:
+    "echo ${x}"
+}
+
+workflow {
+    FAIL()
+    LATER(SLOW())
+}
+"#;
+
+/// The steps that ran, in order.
+fn steps(ran: &[Ran]) -> Vec<&str> {
+    ran.iter().map(|(step, _, _)| step.as_str()).collect()
+}
+
+#[test]
+fn failures_stop_new_tasks_unless_the_run_keeps_going() {
+    let failure = [("FAIL", 1, 3)];
+    // Nextflow 26.04.6 with `terminate`, the default, stops at once: the running `SLOW` is
+    // killed, and `LATER` never starts. With `finish`, `SLOW` ends first, and `LATER` never
+    // starts either (recorded with a probe of both strategies).
+    for config in ["", "process.errorStrategy = 'finish'\n"] {
+        let (error, ran) = run_pipeline(BRANCHES, config, &failure, false);
+        let error = error.expect("an error");
+        assert!(error.contains("`FAIL` terminated"), "{error}");
+        assert_eq!(steps(&ran), ["FAIL", "SLOW"], "{config}");
+    }
+    // `-keep-going` runs what does not depend on the failed task, then fails the run.
+    let (error, ran) = run_pipeline(BRANCHES, "", &failure, true);
+    let error = error.expect("an error");
+    assert!(error.contains("`FAIL` terminated"), "{error}");
+    assert_eq!(steps(&ran), ["FAIL", "SLOW", "LATER"]);
 }

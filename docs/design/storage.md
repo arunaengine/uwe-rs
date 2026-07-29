@@ -36,6 +36,7 @@ Options on the command line win over all files: `-store` over `[store] location`
 | `[store]` | `location`: where the cache store lives, an absolute folder or an address of a provider, like `s3://lab-cache/iunctus` |
 | `[storage.<name>]` | one storage provider; the name is free, like `lab` or `aws` |
 | `[executor.<name>]` | the settings of an executor ([executors](executors.md)) |
+| `[telemetry]` | `endpoint`, an OTLP HTTP endpoint that the trace of every real run goes to, and `headers`, each value a secret ([runs](runs.md), section 6.4) |
 
 A section of another name, and a key that its table does not know, is an error, so that a typing mistake does not go unnoticed.
 

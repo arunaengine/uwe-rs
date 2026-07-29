@@ -11,7 +11,7 @@ Every `iunctus run` and `iunctus graph` records itself in one SQLite file, the r
 - **Resume:** `iunctus run <workflow> -resume` continues the last run of the workflow without running its finished tasks again.
 - **The web page:** `iunctus run -page` shows the run live in the browser, and `iunctus page` shows any past run.
 - **RO-Crate:** `iunctus export <run>` writes a Workflow Run RO-Crate of the Provenance Run Crate profile, with the digest of every file.
-- **Insight:** `iunctus why <run> <task>` tells why a task ran again, `iunctus origin <file>` where a file came from, `iunctus time <run>` where the time of a run went, `iunctus compare <run> <run>` what differs between two runs, and `iunctus replay <run> <task>` runs one recorded task again alone.
+- **Insight:** `iunctus why <run> <task>` tells why a task ran again, `iunctus origin <file>` where a file came from, `iunctus time <run>` where the time of a run went, `iunctus compare <run> <run>` what differs between two runs, `iunctus replay <run> <task>` runs one recorded task again alone, and `iunctus telemetry <run>` writes and sends its OpenTelemetry trace.
 
 | Crate | What it is |
 |---|---|
@@ -32,12 +32,13 @@ Every `iunctus run` and `iunctus graph` records itself in one SQLite file, the r
 | `iunctus time <run>` | where the time of a run went: the critical path, waiting and running, and the steps that used the most (section 6.1) |
 | `iunctus compare <run> [<run>]` | what differs between two runs, task by task; with one run, the run of its workflow before it (section 6.2) |
 | `iunctus replay <run> <task>` | runs one recorded task again alone, on this machine or with `-executor tes\|slurm\|kubernetes`, and tells what differs (section 6.3) |
+| `iunctus telemetry <run>` | writes the OpenTelemetry trace of a run to `-output`, by default `<run>-traces.jsonl`, and sends it to the endpoint of the config file (section 6.4) |
 | `-format text\|json` | what `time` and `compare` write: plain text (the default) or JSON |
 | `-resume [<run>]` | continues a run; without an id, the last run of the same workflow |
 | `-page` | serves the page of the run that `iunctus run` starts; it stays open after the run until Ctrl-C |
 | `-address <ip>`, `-port <number>` | where the page listens: `127.0.0.1` and a free port by default |
 | `-database <file>` | another run database than the default |
-| `-output <folder>`, `-license <url>` | the folder and the license of an exported crate |
+| `-output <folder>`, `-license <url>` | the folder and the license of an exported crate; for `telemetry`, the file of the trace |
 
 A run id is the start time in milliseconds and the process id, both in hexadecimal, like `1a0f1cc4c10-3a2487`. `-resume` takes the next argument as the run only when it has this form, so `iunctus run -resume main.nf` resumes the last run of `main.nf`.
 
@@ -207,12 +208,37 @@ For each pair it also says how the task ended otherwise (succeeded in one run, f
 
 **What differs.** After the run, the command compares the replay with the task as it ran (section 6.2): the exit code and time before and now, where the earlier result came from when the task had not run, any difference in what the task does, each output whose content differs by its digest (or that every output has the same content, which checks that the tool gives the same bytes), and the last lines of the standard output and error before and now. A failed task replays too: its old and new errors stand next to each other, and the command ends with exit code 1 when the task fails again. On the page, the panel of a task lists its replays, each with a link to compare it.
 
+### 6.4 OpenTelemetry traces
+
+The crate `run-telemetry` turns a run of the database into an OpenTelemetry trace in the OTLP JSON format, with no OpenTelemetry library: the format is plain JSON (ids as hex, 64-bit numbers and times as decimal text, enums as numbers).
+
+| Span | Parent | From, until | Attributes | Events |
+|---|---|---|---|---|
+| the run, `run <workflow file>` | none | start, end of the run | `iunctus.run.id`, `.lineage`, `.state`, `.error`, `.resumes`, `.replays`, `.tasks`, `iunctus.workflow`, `.language`, `.executor`, `.simulated`, `.revision`, `.store`, `iunctus.parameter.<name>` | `ended` |
+| each task, named by its step | the run | when the workflow asked for it, until its last attempt ended | `iunctus.task.id`, `.name`, `.step`, `.state`, `.exit_code`, `.attempts`, `.reused` | `requested`, `marked` with `iunctus.marker.kind` and `.reason` |
+| each attempt, `attempt <n>` | its task | its start and end | `iunctus.attempt.number`, `.exit_code`, `.image` (pinned), `.reused`, `.retried`, `.cpu_usec`, `.memory_peak`, `.read_bytes`, `.write_bytes` | `started`, `finished`, `reused` |
+
+The resource is `service.name = iunctus` with its version. A failed run, task or attempt has the status error with a message, a succeeded one ok. Tasks are named by their step, as OpenTelemetry advises names of few values, so that dashboards group the tasks of a step; the name of each task is an attribute. The trace id and the span ids come from the SHA-256 of the run id (and task and attempt), so the same run always gives the same trace, and sending it twice does not make two.
+
+**To a file.** `iunctus telemetry <run>` writes the trace as JSON lines, one export request of at most 1,000 spans per line, as the file exporter of OpenTelemetry writes them and the `otlpjsonfile` receiver of the OpenTelemetry Collector reads them.
+
+**To an endpoint.** With a `[telemetry]` section in the config file, the command also sends the requests, one after the other, as `POST <endpoint>/v1/traces` with JSON (an endpoint that ends with `/v1/traces` is taken as it is), through the one HTTP client of the process, with the headers of the section, whose values are secrets (decision 20) and marked as sensitive. Every real run and replay sends its trace there when it ends; simulated runs do not, since their times are made up. A failure to send is a warning after the run; a partial success says how many spans the endpoint rejected.
+
+```toml
+[telemetry]
+endpoint = "http://localhost:4318"
+headers = { authorization = { environment = "OTLP_AUTHORIZATION" } }
+```
+
+**Checked** against the trace messages of OTLP v1 (the same message and field names and numbers, built with `protoc` and read with protobuf's JSON parser, ids turned from hex to base64 first): the traces of a real run and of a failed run of 2026-09-30 parse without unknown fields, every trace id has 16 bytes, every span id 8, and no span ends before it starts. A collector or a tracing backend was not at hand (no downloads during the network stop).
+
 ## 7. Checks
 
 - `run-database/tests/database.rs`: a run is recorded and read back with its logs, events, tasks, files, edges and markers; a resumed run joins the lineage and finds the finished tasks; why a task ran again, and where a file came from; a database of a newer version is refused. Unit tests cover the fingerprint and the end of long logs.
 - `run-crate/tests/export.rs` and its fixture; unit tests cover image references and the copies by digest.
 - `run-database/tests/insight.rs`: where the time of a recorded run went, a task that the workflow asks for again, two runs compared task by task, and a replay that resume leaves out and whose image, named by its digest, is the same as the tag it ran in before; unit tests in `time.rs` cover the critical path, waits, the steps and overlapping attempts.
 - `run-page/tests/insight.rs`: the time of a run, the lines that name their boxes, the comparison of two runs, and the replays of a task.
-- `iunctus/tests/insight.rs`: `iunctus time` and `iunctus compare` on simulated runs, a replay refused for a simulated run, and (ignored, needs Docker) a task replayed in its container after its input file was removed from its place in the store.
+- `iunctus/tests/insight.rs`: `iunctus time` and `iunctus compare` on simulated runs, a replay refused for a simulated run, `iunctus telemetry` to a file and to a small OTLP HTTP receiver of the test with a header from an environment variable, and (ignored, needs Docker) a real run that sends its trace, and a task replayed in its container after its input file was removed from its place in the store.
+- `run-telemetry/tests/traces.rs`: the spans, parents, attributes, markers and events of a recorded run, requests of a given size, JSON lines, and sending to a receiver that answers with a partial success or refuses; unit tests cover the JSON form of values, ids, times and addresses.
 - `run-page/tests/page.rs`: the page and its scripts, the JSON, a download, a log and the stream of a finished run; the graph down and to the right, a folded step with the states of the database, an open step, and `fold=0`.
 - `iunctus/tests/runs.rs`: `iunctus runs`, `-resume` with nothing changed and with a changed input, `iunctus why` on the tasks that ran again, `iunctus origin`, `iunctus export`, and a real run that may not resume a simulated one. Unit tests cover the new options, the Git revision and the main file of a project.

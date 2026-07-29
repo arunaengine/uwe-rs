@@ -403,6 +403,11 @@ impl ProcessNode {
                 context.fail(error());
                 self.finish_if_done(context)
             }
+            // A run that keeps going goes on as if the task was ignored, and fails at its end.
+            Strategy::Terminate | Strategy::Retry if context.keep_going => {
+                context.fail(error());
+                self.finish_if_done(context)
+            }
             Strategy::Terminate | Strategy::Retry => Err(error()),
         }
     }

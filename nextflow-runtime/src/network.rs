@@ -74,6 +74,8 @@ pub struct Network {
     /// The failure of a task whose error strategy is `finish`: no more tasks start, and the
     /// run ends with it once the running tasks have ended.
     failure: Option<Error>,
+    /// Whether tasks go on starting after such a failure (`-keep-going`).
+    keep_going: bool,
     /// The node that requested each task in flight.
     owners: HashMap<TaskId, usize>,
     next_task: u64,
@@ -94,6 +96,8 @@ pub(crate) struct Context<'n, 'i, 'h> {
     requests: Vec<TaskRequest>,
     deliveries: Vec<Delivery>,
     failure: Option<Error>,
+    /// Whether the run goes on after a task failed that would end it.
+    pub keep_going: bool,
     next_task: &'n mut u64,
     task_files: &'n mut HashMap<String, String>,
     pub interpreter: &'i mut Interpreter<'h>,
@@ -302,6 +306,11 @@ impl Network {
         std::mem::take(&mut self.requests)
     }
 
+    /// Lets tasks go on starting after a task failed, which fails the run at its end.
+    pub fn keep_going(&mut self, keep_going: bool) {
+        self.keep_going = keep_going;
+    }
+
     /// The failure that ends the run once the running tasks have ended, if there is one.
     pub fn take_failure(&mut self) -> Option<Error> {
         self.failure.take()
@@ -361,6 +370,7 @@ impl Network {
             requests: Vec::new(),
             deliveries: Vec::new(),
             failure: None,
+            keep_going: self.keep_going,
             next_task: &mut self.next_task,
             task_files: &mut self.task_files,
             interpreter,
@@ -376,8 +386,9 @@ impl Network {
         if let Some(failure) = context.failure.take() {
             self.failure.get_or_insert(failure);
         }
-        // After a failure that ends the run once the running tasks end, no task starts.
-        if self.failure.is_some() {
+        // After a failure that ends the run once the running tasks end, no task starts, unless
+        // the run keeps going.
+        if self.failure.is_some() && !self.keep_going {
             requests.clear();
         }
         let again = context.again;

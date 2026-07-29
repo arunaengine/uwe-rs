@@ -69,6 +69,9 @@ pub struct Options {
     /// a folder for each task, its `task.workDir`. Without it, `exec:` sections are not
     /// supported.
     pub exec_folder: Option<std::path::PathBuf>,
+    /// Whether the run goes on after a task failed that would end it (`Launch.keep_going`):
+    /// the task counts as ignored, and the run fails at its end.
+    pub keep_going: bool,
 }
 
 /// A run of a script: its network, which asks for tasks and takes their outcomes.
@@ -90,6 +93,7 @@ impl Run {
         host: &mut dyn Host,
     ) -> Result<(Run, Vec<TaskRequest>), Error> {
         let mut network = Network::default();
+        network.keep_going(options.keep_going);
         let workflow = workflow::metadata(options, &host.launch_dir());
         let mut session = Session {
             base: host,
@@ -230,6 +234,7 @@ impl Default for Options {
             config_files: Vec::new(),
             command_line: String::new(),
             exec_folder: None,
+            keep_going: false,
         }
     }
 }

@@ -174,6 +174,7 @@ impl Nextflow {
         Options {
             stub: self.launch.stub,
             simulated: self.launch.simulated,
+            keep_going: self.launch.keep_going,
             output_dir: (self.launch.output_dir.as_ref())
                 .map(|folder| folder.to_string_lossy().into_owned()),
             container_engine: self.settings.container_engine.clone(),

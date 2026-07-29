@@ -12,9 +12,11 @@ use crate::manifest::{Collected, ManifestError, parse};
 use crate::wrapper::{END, EXIT, MANIFEST, ROOT, START, STDERR, STDOUT, USAGE};
 
 /// The folders of a task's scratch directory: the work directory, the control files of the
-/// wrapper, and copies of inputs at absolute paths, which are mounted where the task sees them.
+/// wrapper, the home folder of the task, and copies of inputs at absolute paths, which are
+/// mounted where the task sees them.
 pub const WORK: &str = "work";
 pub const CONTROL: &str = "control";
+pub const HOME: &str = "home";
 pub(crate) const MOUNTS: &str = "mounts";
 
 /// One attempt of a task.

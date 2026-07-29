@@ -26,7 +26,7 @@ The runner does the rest, the same for every backend:
 - It adopts the outputs into the store and fills the outcome: the exit code, the output files with size and digest, the attempt, the pinned image and the times.
 - It sorts errors: a failure of the machine (`ExecutorError::Engine`) lets the engine run the task again, twice by default, and a cancelled attempt ends quietly.
 
-Each attempt gets a scratch directory, `<scratch>/<run>-<task>-<attempt>`, with the folders `work` (the work directory of the task) and `control` (the wrapper and its records). The wrapper (`executor::wrapper`) runs the command of the task with its streams captured in `control`, records the exit code, and on success lists the outputs in the manifest. Every backend runs the same wrapper, so a task behaves the same everywhere.
+Each attempt gets a scratch directory, `<scratch>/<run>-<task>-<attempt>`, with the folders `work` (the work directory of the task), `control` (the wrapper and its records) and `home` (the home folder of the task, which the wrapper sets as `HOME`; on TES it is `/iunctus/home`, a volume of the task). The wrapper (`executor::wrapper`) runs the command of the task with its streams captured in `control`, records the exit code, and on success lists the outputs in the manifest. Every backend runs the same wrapper, so a task behaves the same everywhere.
 
 Inputs that the task only reads are symbolic links to their sources, and the container sees the folders of the sources read-only at the same paths (`executor::place`). Inputs that the task may change or run are copies.
 

@@ -7,7 +7,7 @@ use std::path::Path;
 use std::process::Command;
 
 use executor::manifest::{Collected, parse};
-use executor::wrapper::wrapper;
+use executor::wrapper::{Folders, wrapper};
 use task_model::{Digest, EnvironmentValue, FORMAT, OutputRule, TaskSpec};
 
 fn spec(outputs: &[&str]) -> TaskSpec {
@@ -42,7 +42,14 @@ fn run(root: &Path, spec: &TaskSpec, script: &str) -> i32 {
     let control = root.join("control");
     std::fs::create_dir_all(&work).expect("creates the work directory");
     std::fs::write(work.join("task script.sh"), script).expect("writes the script");
-    let text = wrapper(spec, &work.to_string_lossy(), &control.to_string_lossy());
+    let home = root.join("home");
+    let folders = Folders {
+        work: &work.to_string_lossy(),
+        control: &control.to_string_lossy(),
+        home: &home.to_string_lossy(),
+        outbox: "",
+    };
+    let text = wrapper(spec, &folders);
     let status = Command::new("bash")
         .arg("-c")
         .arg(text)
@@ -115,6 +122,30 @@ fn patterns_take_braces_globstar_and_absolute_paths() {
 }
 
 #[test]
+fn tasks_get_a_home_folder_they_may_write() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let script = "echo \"$HOME\" > home.txt\necho x > \"$HOME/.settings\"\n";
+    assert_eq!(run(root.path(), &spec(&["home.txt"]), script), 0);
+    let home = root.path().join("home");
+    assert_eq!(
+        read(&root.path().join("work/home.txt")),
+        format!("{}\n", home.display())
+    );
+    assert_eq!(read(&home.join(".settings")), "x\n");
+    // A task that sets its own home keeps it, as CWL tools have theirs in the work directory.
+    let mut own = spec(&["home.txt"]);
+    own.environment
+        .insert("HOME".to_owned(), EnvironmentValue::WorkDirectory);
+    let other = tempfile::tempdir().expect("a temporary directory");
+    assert_eq!(run(other.path(), &own, script), 0);
+    let work = other.path().join("work");
+    assert_eq!(
+        read(&work.join("home.txt")),
+        format!("{}\n", work.display())
+    );
+}
+
+#[test]
 fn keeps_only_the_logs_of_a_failure() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let spec = spec(&["out.txt"]);
@@ -160,12 +191,14 @@ fn outputs_go_to_the_outbox_too() {
     let script = "mkdir -p dir/a && echo b > dir/a/b.txt\nln -s ../input.txt linked.txt\n";
     std::fs::write(work.join("task script.sh"), script).expect("writes the script");
     let spec = spec(&["dir/", "linked.txt"]);
-    let text = executor::wrapper::wrapper_with_outbox(
-        &spec,
-        &work.to_string_lossy(),
-        &control.to_string_lossy(),
-        &outbox.to_string_lossy(),
-    );
+    let home = root.path().join("home");
+    let folders = Folders {
+        work: &work.to_string_lossy(),
+        control: &control.to_string_lossy(),
+        home: &home.to_string_lossy(),
+        outbox: &outbox.to_string_lossy(),
+    };
+    let text = wrapper(&spec, &folders);
     let status = Command::new("bash").arg("-c").arg(text).status();
     assert_eq!(status.expect("runs bash").code(), Some(0));
     assert_eq!(read(&outbox.join("dir/a/b.txt")), "b\n");

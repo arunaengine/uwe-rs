@@ -24,26 +24,43 @@ const NOW: &str = "echo \"${EPOCHREALTIME:-$(date +%s)}\"";
 /// `read_bytes` and `write_bytes`, one per line with its number.
 pub const USAGE: &str = "usage";
 
-/// The wrapper for a task whose work and control directories are at the given absolute paths
-/// inside the container. The task runs the arguments of the specification, which must not be
-/// empty.
+/// Where the wrapper of a task finds its folders, as absolute paths inside the container.
+#[derive(Clone, Copy, Debug)]
+pub struct Folders<'a> {
+    /// The work directory of the task.
+    pub work: &'a str,
+    /// The control files of the wrapper.
+    pub control: &'a str,
+    /// The home folder of the task, which the wrapper makes. The task may write there, as
+    /// tools like Jupyter, R and Java expect of `HOME`, also when the container runs as a user
+    /// that the image does not know.
+    pub home: &'a str,
+    /// Where copies of the outputs go, for servers that give back only the directories a task
+    /// names, like TES; empty for none.
+    pub outbox: &'a str,
+}
+
+/// The wrapper for a task in the given folders. The task runs the arguments of the
+/// specification, which must not be empty.
 ///
 /// It runs the arguments with both streams captured in the control directory, so that output
 /// patterns cannot match the capture files, and with `stdin` of the control directory as
-/// standard input when the task has one. It records the exit code and times, collects the
-/// outputs only on success, writes the manifest, and exits with 0 whenever it got that far, so
-/// that the logs of a failed tool are kept. Outputs at absolute paths are copied below `root`
-/// in the control directory, so that they outlive the container.
-pub fn wrapper(spec: &TaskSpec, work: &str, control: &str) -> String {
-    wrapper_with_outbox(spec, work, control, "")
-}
-
-/// The wrapper, which also copies each output in the work directory to the same path in the
-/// `outbox` directory, for servers that give back only the directories a task names, like TES.
-/// An empty `outbox` copies nothing. With an outbox, the wrapper at last lets every user change
-/// what the task made, since such a server may run the container as root and then cannot remove
-/// the folders that the task made.
-pub fn wrapper_with_outbox(spec: &TaskSpec, work: &str, control: &str, outbox: &str) -> String {
+/// standard input when the task has one. `HOME` is the home folder, unless the task sets it
+/// itself. The wrapper records the exit code and times, collects the outputs only on success,
+/// writes the manifest, and exits with 0 whenever it got that far, so that the logs of a
+/// failed tool are kept. Outputs at absolute paths are copied below `root` in the control
+/// directory, so that they outlive the container.
+///
+/// With an outbox, the wrapper also copies each output in the work directory to the same path
+/// there, and at last lets every user change what the task made, since such a server may run
+/// the container as root and then cannot remove the folders that the task made.
+pub fn wrapper(spec: &TaskSpec, folders: &Folders<'_>) -> String {
+    let Folders {
+        work,
+        control,
+        home,
+        outbox,
+    } = *folders;
     let mut script = String::from("#!/bin/bash\n# The iunctus task wrapper.\nset -u\n");
     script.push_str(&format!(
         "work={}\ncontrol={}\noutbox={}\n",
@@ -52,6 +69,10 @@ pub fn wrapper_with_outbox(spec: &TaskSpec, work: &str, control: &str, outbox: &
         quote(outbox)
     ));
     script.push_str("mkdir -p \"$work\" \"$control\"\ncd \"$work\" || exit 1\n");
+    script.push_str(&format!(
+        "export HOME={}\nmkdir -p \"$HOME\"\n",
+        quote(home)
+    ));
     for (name, value) in &spec.environment {
         let value = match value {
             EnvironmentValue::Literal(text) => quote(text),

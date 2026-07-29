@@ -12,7 +12,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use executor::manifest::parse;
 use executor::process::Mount;
-use executor::wrapper::{EXIT, MANIFEST, STDERR, wrapper};
+use executor::wrapper::{EXIT, MANIFEST, STDERR};
 use executor::{Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, place, registry};
 use kube::api::{DeleteParams, ListParams, LogParams, PostParams, PropagationPolicy};
 use tokio::io::AsyncWriteExt;
@@ -116,7 +116,6 @@ impl KubernetesBackend {
         if job.spec.arguments.is_empty() {
             return Err(ExecutorError::NoCommand(image.reference.clone()));
         }
-        let control = root.join(CONTROL);
         let owner = tokio::fs::metadata(root).await?;
         let name = job_name(job.name);
         let run = ContainerRun {
@@ -131,8 +130,7 @@ impl KubernetesBackend {
             // A pod has no switch of its own for the network; a NetworkPolicy would be one.
             offline: false,
         };
-        let script = wrapper(job.spec, &run.inside(), &control.to_string_lossy());
-        tokio::fs::write(control.join("wrapper.sh"), script).await?;
+        tokio::fs::write(run.script(), run.wrapper(job.spec)).await?;
         let limits = Limits {
             gpus: job.placement.accelerators.iter().map(|gpu| gpu.count).sum(),
             seconds: job.placement.time_seconds,

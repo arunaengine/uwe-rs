@@ -41,6 +41,12 @@ pub struct Launch {
     /// for made-up files hold only in simulated runs too, like placeholders for missing
     /// values; a real run follows the reference tool.
     pub simulated: bool,
+    /// Whether the run goes on after a task failed, with every task that does not depend on
+    /// the failed one, as Snakemake's `--keep-going` and cwltool's `--on-error continue` do;
+    /// the run still fails at its end. Without it, each language stops as its engine does:
+    /// no more tasks start, and the running ones end first, except where the language stops
+    /// them at once, like Nextflow's default error strategy `terminate`.
+    pub keep_going: bool,
 }
 
 /// Why a driver cannot go on.

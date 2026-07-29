@@ -136,7 +136,7 @@ The Sprig subset covers what the test workflows use and what is cheap to add alo
 | `when` | Decided after substitution. A condition that still holds a tag, as a simulated run leaves some, cannot be decided: the step is skipped with a warning. |
 | Loops | `withItems`, `withParam` and `withSequence` give one node per item, named `name(index:description)`. An empty loop gives a skipped node. A `withParam` that does not parse is ignored when `when` is false. |
 | `continueOn` | `failed` and `error` let the run go on after a failed step or task. |
-| `failFast` | Only changes the assessment of the DAG, as in Argo. |
+| `failFast` | Only changes the assessment of the DAG, as in Argo. `-keep-going` turns it off where a DAG does not set it. |
 | Retries | A retry node holds attempts named `name(n)`. The policy, the limit and the retry expression decide whether another attempt runs. Backoff is not waited for. With the simulator every task succeeds, so each retry node has one attempt. |
 | Exit handlers | `onExit` of the workflow and the `exit` hook run after the entrypoint, with `workflow.status` and `workflow.failures`. The exit hooks of steps and tasks run after their node. |
 | Lifecycle hooks | Hooks of the workflow and of steps and tasks run when their `expression` holds. |

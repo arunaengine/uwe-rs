@@ -152,7 +152,8 @@ impl Run {
             self.execute_dag_task(index, &processed, &tasks, target, &mut visited)?;
         }
         let dag_name = self.nodes[index].name.clone();
-        match self.assess_dag(index, &tasks, &targets, dag.fail_fast != Some(false)) {
+        let fail_fast = dag.fail_fast.unwrap_or(!self.options.keep_going);
+        match self.assess_dag(index, &tasks, &targets, fail_fast) {
             Phase::Running => return Ok(()),
             phase @ (Phase::Failed | Phase::Error) => {
                 let message = targets

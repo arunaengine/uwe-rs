@@ -67,6 +67,8 @@ struct Setup {
     files: Vec<(&'static str, Vec<&'static str>)>,
     /// Run as a real run, which gives no placeholders for missing inputs.
     real_inputs: bool,
+    /// Go on after a failure, as `-keep-going` asks.
+    keep_going: bool,
 }
 
 struct Ran {
@@ -178,6 +180,7 @@ fn run_with(workflow: &str, setup: Setup) -> Ran {
         scratch: directory.path().join("scratch"),
         now: Some("2026-09-28T12:00:00Z".parse().expect("a time")),
         assume_inputs: !setup.real_inputs,
+        keep_going: setup.keep_going,
         ..Options::default()
     };
     let mut driver = ArgoDriver::new(document, Rc::new(library), options);
@@ -451,6 +454,44 @@ fn dag_depends_on_results() {
         "{}",
         ran.error()
     );
+}
+
+#[test]
+fn failed_tasks_let_the_other_branches_of_a_dag_run() {
+    let dag = r#"
+  - name: fail
+    container: {image: busybox, command: ["false"]}
+  - name: main
+    dag:
+      tasks:
+      - name: a
+        template: fail
+      - name: b
+        template: print
+        arguments: {parameters: [{name: message, value: b}]}
+      - name: c
+        template: print
+        depends: b
+        arguments: {parameters: [{name: message, value: c}]}
+"#;
+    let failing = |keep_going| Setup {
+        exit: vec![("fail", vec![1])],
+        keep_going,
+        ..Setup::default()
+    };
+    // Argo schedules the tasks whose dependencies are done before it assesses the DAG, and a
+    // DAG runs while any of its tasks runs; so `c` starts after `b` although `a` failed, also
+    // with `failFast`, the default (workflow/controller/dag.go of Argo v4.1.4). `-keep-going`
+    // turns `failFast` off where a DAG does not set it.
+    for keep_going in [false, true] {
+        let ran = run_with(&workflow(dag), failing(keep_going));
+        assert_eq!(ran.names(), ["a", "b", "c"]);
+        assert!(
+            ran.error().contains("Error (exit code 1)"),
+            "{}",
+            ran.error()
+        );
+    }
 }
 
 #[test]

@@ -232,6 +232,11 @@ impl Run {
         Ok(std::mem::take(&mut self.ready))
     }
 
+    /// The tasks that can run now, which a call that failed may have left behind.
+    pub fn take_ready(&mut self) -> Vec<Task> {
+        std::mem::take(&mut self.ready)
+    }
+
     /// The output object of the main process, once it finished.
     pub fn outputs(&self) -> Option<&Map> {
         self.result.as_ref()

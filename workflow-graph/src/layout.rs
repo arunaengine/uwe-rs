@@ -721,7 +721,7 @@ fn inversions(values: &[usize], limit: usize) -> usize {
         let mut index = value + 1;
         while index <= limit {
             tree[index] += 1;
-            index += index & index.wrapping_neg();
+            index += index.isolate_lowest_one();
         }
     }
     count

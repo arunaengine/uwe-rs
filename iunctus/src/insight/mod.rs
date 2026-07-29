@@ -1,12 +1,14 @@
 //! The commands that show what runs did and why, from the run database: `iunctus time` tells
 //! where the time of a run went, `iunctus compare` what differs between two runs, and
-//! `iunctus replay` runs one task again and tells what differs. `time` and `compare` write
-//! plain text, or JSON with `-format json`.
+//! `iunctus replay` runs one task again and tells what differs, and `iunctus telemetry` writes
+//! and sends the trace of a run in the OpenTelemetry format. `time` and `compare` write plain
+//! text, or JSON with `-format json`.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub mod compare;
 pub mod replay;
+pub mod telemetry;
 pub mod time;
 
 use run_database::{Database, Run};

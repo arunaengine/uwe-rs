@@ -11,11 +11,12 @@ use content_store::Store;
 use storage::{Storage, StoreLocation};
 
 use crate::arguments::Arguments;
+use crate::insight::telemetry::Telemetry;
 use crate::{Failure, failure};
 
 /// The sections of the config file. Another name is an error, so that a typing mistake does
 /// not go unnoticed. `executor` holds the settings of executors.
-const SECTIONS: &[&str] = &["store", "storage", "executor"];
+const SECTIONS: &[&str] = &["store", "storage", "executor", "telemetry"];
 
 /// What the config files set up for a command.
 pub struct Setup {
@@ -23,6 +24,8 @@ pub struct Setup {
     pub storage: Storage,
     /// The settings of the executors.
     pub executors: Executors,
+    /// Where the traces of runs go, from `[telemetry]`.
+    pub telemetry: Option<Telemetry>,
 }
 
 /// The settings of executors from the `[executor.<name>]` sections. Options on the command line
@@ -84,7 +87,12 @@ impl Setup {
         config.root().only(SECTIONS).map_err(failed)?;
         let storage = Storage::from_config(&config).map_err(failed)?;
         let executors = Executors::read(&config).map_err(failed)?;
-        Ok(Setup { storage, executors })
+        let telemetry = Telemetry::read(&config).map_err(failed)?;
+        Ok(Setup {
+            storage,
+            executors,
+            telemetry,
+        })
     }
 
     /// The container engine as `IUNCTUS_ENGINE` names it, else as `[executor.local] engine`

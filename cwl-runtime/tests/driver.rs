@@ -522,3 +522,94 @@ fn cwl_output_json_comes_through_the_files_of_a_store_elsewhere() {
     let execution = execute("main", driver.as_mut(), &mut executor);
     assert!(execution.error.is_none(), "{:?}", execution.error);
 }
+
+/// Fails the tools whose names end with `fail`, makes `out.txt` for the others, and notes the
+/// name of each task that started.
+struct Failing {
+    folder: std::path::PathBuf,
+    ran: Vec<String>,
+}
+
+impl Executor for Failing {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        let task = &attempt.task;
+        self.ran.push(task.name.clone());
+        let exit_code = if task.name.ends_with("fail") { 3 } else { 0 };
+        let location = self.folder.join(format!("{}.txt", task.id));
+        std::fs::write(&location, "x\n").expect("writes");
+        let files = task
+            .outputs
+            .iter()
+            .filter(|output| output.as_str() == "out.txt")
+            .map(|output| workflow_graph::OutputFile {
+                path: output.clone(),
+                location: location.to_string_lossy().into_owned(),
+                ..workflow_graph::OutputFile::default()
+            })
+            .collect();
+        Running::ended(Ok(Outcome {
+            id: task.id,
+            exit_code,
+            files,
+            ..Outcome::default()
+        }))
+    }
+}
+
+/// Runs a workflow whose step `fail` fails while `slow` runs; `later` reads what `slow` made.
+/// The result has the error and the tasks that started.
+fn run_failing(keep_going: bool) -> (String, Vec<String>) {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: tool\n\
+        inputs: {x: {type: File?, inputBinding: {}}}\n\
+        outputs: {out: {type: File, outputBinding: {glob: out.txt}}}\n";
+    let main = "cwlVersion: v1.2\nclass: Workflow\ninputs: []\noutputs: []\nsteps:\n  \
+        fail: {run: tool.cwl, in: [], out: [out]}\n  \
+        slow: {run: tool.cwl, in: [], out: [out]}\n  \
+        later: {run: tool.cwl, in: {x: slow/out}, out: [out]}\n";
+    std::fs::write(folder.path().join("tool.cwl"), tool).expect("writes");
+    std::fs::write(folder.path().join("main.cwl"), main).expect("writes");
+    let launch = Launch {
+        target: folder.path().join("main.cwl"),
+        scratch: folder.path().join("scratch"),
+        keep_going,
+        ..Launch::default()
+    };
+    let options = Options {
+        simulated: false,
+        ..Options::default()
+    };
+    let mut driver = CwlDriver::new(&launch, options).expect("a driver");
+    let mut executor = Failing {
+        folder: folder.path().to_owned(),
+        ran: Vec::new(),
+    };
+    let run_options = workflow_graph::RunOptions {
+        max_pending: 2,
+        order: workflow_graph::Order::AsAsked,
+    };
+    let execution = workflow_graph::Engine::new(&mut executor)
+        .options(run_options)
+        .run("main.cwl", &mut driver);
+    let error = execution.error.expect("the run fails").to_string();
+    let ran = executor
+        .ran
+        .iter()
+        .map(|name| name.replace("main/", ""))
+        .collect();
+    (error, ran)
+}
+
+#[test]
+fn failed_tools_stop_new_steps_unless_the_run_keeps_going() {
+    // As `cwltool --parallel` with `--on-error stop`, the default: the running step `slow`
+    // ends, but `later` never starts.
+    let (error, ran) = run_failing(false);
+    assert!(error.contains("exit code 3"), "{error}");
+    assert_eq!(ran, ["fail", "slow"]);
+    // As `--on-error continue`: the steps that do not depend on the failure run, and the run
+    // still fails.
+    let (error, ran) = run_failing(true);
+    assert!(error.contains("exit code 3"), "{error}");
+    assert_eq!(ran, ["fail", "slow", "later"]);
+}

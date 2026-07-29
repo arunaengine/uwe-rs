@@ -34,6 +34,9 @@ pub struct CwlDriver {
     /// The `$namespaces` of the document, which expand prefixed formats of the job file.
     namespaces: Namespaces,
     run: Run,
+    /// Why the tools that failed failed, in the order they ended. After the first, no step
+    /// starts unless the run keeps going, and the run fails at its end, as cwltool does.
+    failures: Vec<String>,
 }
 
 impl CwlDriver {
@@ -58,6 +61,7 @@ impl CwlDriver {
             run,
             namespaces: Namespaces::default().extend(document.namespaces),
             process: document.process,
+            failures: Vec::new(),
         })
     }
 
@@ -172,8 +176,24 @@ impl Driver for CwlDriver {
         self.run.start(&process, job, &name).map_err(error)
     }
 
+    /// A tool that failed fails its step. As cwltool's `--on-error stop`, the default, the
+    /// run starts no more steps and lets the running ones end; as `--on-error continue`
+    /// (`-keep-going`), it runs the steps that do not depend on the failure. Either way the
+    /// run fails at its end.
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
-        self.run.complete(&outcome).map_err(error)
+        let stopping = !self.failures.is_empty() && !self.launch.keep_going;
+        match self.run.complete(&outcome) {
+            Err(message) if message.contains(UNSUPPORTED) => Err(error(message)),
+            Err(message) => {
+                self.failures.push(message);
+                Ok(match self.launch.keep_going {
+                    true => self.run.take_ready(),
+                    false => Vec::new(),
+                })
+            }
+            Ok(_) if stopping => Ok(Vec::new()),
+            Ok(tasks) => Ok(tasks),
+        }
     }
 
     fn notes(&mut self) -> Vec<Note> {
@@ -213,6 +233,13 @@ impl Driver for CwlDriver {
     /// A real run delivers the files of the output object to the output folder and prints
     /// the object, which then names them there, as `cwltool --outdir` does.
     fn finish(&mut self) -> Result<(), DriverError> {
+        if let Some(first) = self.failures.first() {
+            let message = match self.failures.len() {
+                1 => first.clone(),
+                count => format!("{first}; and {} more steps failed", count - 1),
+            };
+            return Err(DriverError::new(message));
+        }
         if let Some(outputs) = self.run.outputs() {
             if !self.simulated {
                 let folder = match &self.launch.output_dir {

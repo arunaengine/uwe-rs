@@ -24,6 +24,7 @@ nextflow-runtime.workspace = true
 run-crate.workspace = true
 run-database.workspace = true
 run-page.workspace = true
+run-telemetry.workspace = true
 serde_json.workspace = true
 snakemake-runtime.workspace = true
 storage.workspace = true

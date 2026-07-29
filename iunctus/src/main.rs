@@ -6,7 +6,8 @@
 //! `iunctus inputs` prints the JSON Schema of the inputs of a workflow, `iunctus outputs` that
 //! of its outputs, `iunctus clean` removes from the store what no rule keeps,
 //! `iunctus time` tells where the time of a run went, `iunctus compare` what differs
-//! between two runs, and `iunctus replay` runs one recorded task again.
+//! between two runs, `iunctus replay` runs one recorded task again, and `iunctus telemetry`
+//! writes and sends the OpenTelemetry trace of a run.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -120,6 +121,7 @@ fn main() -> ExitCode {
         "time" => insight::time::command(&arguments),
         "compare" => insight::compare::command(&arguments),
         "replay" => insight::replay::command(&arguments),
+        "telemetry" => insight::telemetry::command(&arguments),
         _ => return usage(),
     };
     match result {
@@ -325,6 +327,10 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Serv
         );
     }
     close(recorder);
+    // Traces of simulated runs would only fill dashboards with made-up times.
+    if real {
+        insight::telemetry::after_run(arguments, &setup, &run);
+    }
     Ok((execution, page))
 }
 
@@ -627,6 +633,7 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
        iunctus time <run> [-format text|json]
        iunctus compare <run> [<run>] [-format text|json]
        iunctus replay <run> <task> [-executor local|tes|slurm|kubernetes] [-store <place>]
+       iunctus telemetry <run> [-output <file>]
        iunctus inputs <workflow file or directory> [-format json|text] [-check] [options]
        iunctus outputs <workflow file or directory> [-format json|text] [options]
        iunctus clean [-keep-days <n>] [-keep-run <run>]... [-keep-slower-than <time>] [-remove]
@@ -677,7 +684,9 @@ options:
   -page                               serves the web page of the run while it goes on
   -address <ip>, -port <number>       where the page listens (default: 127.0.0.1, a free port)
   -database <file>                    the run database (default: runs.sqlite in the cache)
-  -output <folder>                    where `export` writes the RO-Crate (default: <run>-crate)
+  -output <folder or file>            where `export` writes the RO-Crate (default: <run>-crate),
+                                      and `telemetry` the trace (default:
+                                      <run>-traces.jsonl)
   -license <url>                      the license of the exported crate
   -format json|text                   what `inputs` writes: the JSON Schema of the inputs
                                       (the default), or the inputs as help text;

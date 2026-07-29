@@ -108,6 +108,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         .run(&original.workflow, &mut driver);
     interrupt.cancel();
     crate::close(recorder);
+    super::telemetry::after_run(&arguments, &setup, &id);
     if driver.outcome.is_some() {
         print!("{}", report(&database, &run, &id, task, &from_store)?);
     }

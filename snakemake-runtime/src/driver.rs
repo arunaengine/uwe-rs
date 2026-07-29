@@ -90,6 +90,10 @@ pub struct Session {
     embedded: crate::embedded::Setting,
     /// The folder of the `touch()` outputs that the driver made, once there is one.
     touched: Option<PathBuf>,
+    /// Why the jobs that failed failed, in the order they ended. After the first, no job
+    /// starts unless the run keeps going, and the run fails once the running jobs have ended,
+    /// as Snakemake does.
+    failures: Vec<String>,
 }
 
 impl Session {
@@ -166,6 +170,7 @@ impl Session {
             evaluation: None,
             embedded: crate::embedded::Setting::new(&launch.scratch, launch.simulated),
             touched: None,
+            failures: Vec::new(),
         })
     }
 
@@ -544,19 +549,18 @@ impl Session {
             return Ok(vec![task]);
         }
         if outcome.exit_code != 0 {
-            let name = self
-                .planner
-                .as_ref()
-                .map(|planner| planner.rules[planner.jobs[job].rule].name.clone())
-                .unwrap_or_default();
-            return Err(DriverError::new(format!(
-                "Error in rule {name}: the task ended with exit code {}",
+            let message = format!(
+                "Error in rule {}: the task ended with exit code {}",
+                self.rule_name(job),
                 outcome.exit_code
-            )));
+            );
+            return self.failed(message);
         }
         let mut outcome = outcome;
-        if !self.launch.simulated {
-            self.check_outputs(job, &mut outcome)?;
+        if !self.launch.simulated
+            && let Err(error) = self.check_outputs(job, &mut outcome)
+        {
+            return self.failed(error.message);
         }
         // The outputs go to the working directory, as Snakemake leaves them there, except the
         // temporary ones.
@@ -614,12 +618,36 @@ impl Session {
         if planner.rules[planner.jobs[job].rule].checkpoint {
             self.replan = true;
         }
+        // After a failure, running jobs end, but no job starts unless the run keeps going.
+        if !self.failures.is_empty() && !self.launch.keep_going {
+            return Ok(Vec::new());
+        }
         if self.replan && self.outstanding == 0 {
             self.replan = false;
             self.plan()?;
             return self.ready_tasks(None);
         }
         self.ready_tasks(Some(job))
+    }
+
+    /// The name of the rule of a job.
+    fn rule_name(&self, job: usize) -> String {
+        (self.planner.as_ref())
+            .map(|planner| planner.rules[planner.jobs[job].rule].name.clone())
+            .unwrap_or_default()
+    }
+
+    /// Notes a job that failed. Snakemake starts no job after it, and with `--keep-going` the
+    /// jobs that do not depend on it; so the jobs after it never become ready either way. A
+    /// run that keeps going plans again when a checkpoint waited for this job.
+    fn failed(&mut self, message: String) -> Result<Vec<Task>, DriverError> {
+        self.failures.push(message);
+        if self.launch.keep_going && self.replan && self.outstanding == 0 {
+            self.replan = false;
+            self.plan()?;
+            return self.ready_tasks(None);
+        }
+        Ok(Vec::new())
     }
 
     /// Makes the `touch()` outputs that the job did not make, as Snakemake touches them after
@@ -729,6 +757,13 @@ impl Session {
 
     pub fn finish(&mut self) -> Result<(), DriverError> {
         self.interpreter.packages.stop();
+        if let Some(first) = self.failures.first() {
+            let message = match self.failures.len() {
+                1 => first.clone(),
+                count => format!("{first}; and {} more jobs failed", count - 1),
+            };
+            return Err(DriverError::new(message));
+        }
         let Some(planner) = &self.planner else {
             return Ok(());
         };

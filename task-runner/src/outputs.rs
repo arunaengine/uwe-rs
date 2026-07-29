@@ -5,9 +5,11 @@
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use content_store::{Store, layout};
 use executor::Finished;
+use executor::manifest::Collected;
 use task_model::{Digest, Tree, TreeEntry};
 
 use crate::runner::at;
@@ -15,6 +17,11 @@ use crate::{RunnerError, StoredFile, TaskResult};
 
 /// Stores the outputs of a finished attempt of `task` in the run `run`, and its captured
 /// streams by their content.
+///
+/// Directories come first, the outer ones before those inside them: an output inside a
+/// directory output of the same task, as Snakemake allows, is part of what the directory
+/// stored already. A file that the task reaches through a link, like a directory output that
+/// is a link to an input, is copied; only the files of the scratch directory are moved.
 pub(crate) async fn store_outputs(
     store: &Store,
     run: &str,
@@ -22,25 +29,57 @@ pub(crate) async fn store_outputs(
     task: &str,
     attempt: u32,
 ) -> Result<TaskResult, RunnerError> {
-    let mut files = Vec::new();
-    for collected in &finished.files {
-        let local = finished.local_path(&collected.path);
-        let path = &collected.path;
-        let (location, digest, size) = if collected.directory {
-            let place = Place { run, task, attempt };
-            let (digest, size) = store_directory(store, &place, &local, path).await?;
-            (layout::output(run, task, attempt, path)?, digest, size)
+    let place = Place {
+        run,
+        task,
+        attempt,
+        scratch: Scratch::of(&finished.root)?,
+    };
+    let mut order: Vec<&Collected> = finished.files.iter().collect();
+    order.sort_by_key(|collected| (!collected.directory, collected.path.len()));
+    // The directories stored so far, by their paths, with their trees.
+    let mut trees: Vec<(&str, Tree)> = Vec::new();
+    let mut stored: Vec<(&str, StoredFile)> = Vec::new();
+    for collected in order {
+        let path = collected.path.as_str();
+        let location = layout::output(run, task, attempt, path)?;
+        let (digest, size) = if collected.directory {
+            let tree = match trees
+                .iter()
+                .find_map(|(base, tree)| within(tree, base, path))
+            {
+                Some(entries) => Tree { entries },
+                None => store_directory(store, &place, &finished.local_path(path), path).await?,
+            };
+            let size = tree.size();
+            let digest = store.put_tree(&tree).await?;
+            trees.push((path, tree));
+            (digest, size)
+        } else if let Some(file) = trees
+            .iter()
+            .find_map(|(base, tree)| file_in(tree, base, path))
+        {
+            file
         } else {
-            let stored = store.adopt_output(run, task, attempt, path, &local).await?;
-            (stored.location, stored.digest, stored.size)
+            let local = place.scratch.own(&finished.local_path(path)).await?;
+            let output = store.adopt_output(run, task, attempt, path, &local).await?;
+            (output.digest, output.size)
         };
-        files.push(StoredFile {
-            path: path.clone(),
+        let file = StoredFile {
+            path: path.to_owned(),
             digest,
             size,
             location,
             directory: collected.directory,
-        });
+        };
+        stored.push((path, file));
+    }
+    // The outputs keep the order of the manifest.
+    let mut files = Vec::new();
+    for collected in &finished.files {
+        if let Some(index) = stored.iter().position(|(path, _)| *path == collected.path) {
+            files.push(stored.swap_remove(index).1);
+        }
     }
     let log = async |file: PathBuf| -> Result<Option<Digest>, RunnerError> {
         if !tokio::fs::try_exists(&file).await.map_err(at(&file))? {
@@ -62,23 +101,96 @@ pub(crate) async fn store_outputs(
     })
 }
 
+/// The files and empty directories of a stored directory at `base` that lie in a directory
+/// output at `path` inside it, relative to that output; `None` when the path is not inside.
+fn within(tree: &Tree, base: &str, path: &str) -> Option<Vec<TreeEntry>> {
+    let relative = path.strip_prefix(base)?.strip_prefix('/')?;
+    let prefix = format!("{relative}/");
+    let entries = tree.entries.iter().filter_map(|entry| match entry {
+        TreeEntry::File {
+            path,
+            digest,
+            size,
+            executable,
+        } => Some(TreeEntry::File {
+            path: path.strip_prefix(&prefix)?.to_owned(),
+            digest: digest.clone(),
+            size: *size,
+            executable: *executable,
+        }),
+        TreeEntry::EmptyDirectory { path } => Some(TreeEntry::EmptyDirectory {
+            path: path.strip_prefix(&prefix)?.to_owned(),
+        }),
+    });
+    Some(entries.collect())
+}
+
+/// The digest and size of a file output at `path` that a stored directory at `base` holds.
+fn file_in(tree: &Tree, base: &str, path: &str) -> Option<(Digest, u64)> {
+    let relative = path.strip_prefix(base)?.strip_prefix('/')?;
+    tree.entries.iter().find_map(|entry| match entry {
+        TreeEntry::File {
+            path, digest, size, ..
+        } if path == relative => Some((digest.clone(), *size)),
+        _ => None,
+    })
+}
+
 /// The attempt that outputs belong to.
 struct Place<'a> {
     run: &'a str,
     task: &'a str,
     attempt: u32,
+    scratch: Scratch,
 }
 
-/// Stores a directory output at `base`: each file under the output and by its content, the
-/// empty directories in a local store, and the manifest. The result has the digest of the
-/// manifest and the size of the files.
+/// The scratch directory of an attempt, whose files the store may take over.
+struct Scratch {
+    /// The directory, with its links resolved.
+    root: PathBuf,
+    /// Where files from outside it are copied first, and how many are there.
+    copies: PathBuf,
+    copied: AtomicUsize,
+}
+
+impl Scratch {
+    fn of(root: &Path) -> Result<Scratch, RunnerError> {
+        Ok(Scratch {
+            root: std::fs::canonicalize(root).map_err(at(root))?,
+            copies: root.join("copies"),
+            copied: AtomicUsize::new(0),
+        })
+    }
+
+    /// A file that the store may take over: the file itself when it is in the scratch
+    /// directory, else a copy there. A file that the task reached through a link, like the
+    /// file of an input, must stay where it is.
+    async fn own(&self, file: &Path) -> Result<PathBuf, RunnerError> {
+        let resolved = tokio::fs::canonicalize(file).await.map_err(at(file))?;
+        let linked = tokio::fs::symlink_metadata(file).await.map_err(at(file))?;
+        if resolved.starts_with(&self.root) || linked.is_symlink() {
+            // The store copies a link itself, and moves the file of the scratch directory.
+            return Ok(file.to_owned());
+        }
+        (tokio::fs::create_dir_all(&self.copies).await).map_err(at(&self.copies))?;
+        let count = self.copied.fetch_add(1, Ordering::Relaxed);
+        let copy = self.copies.join(count.to_string());
+        tokio::fs::copy(file, &copy).await.map_err(at(file))?;
+        Ok(copy)
+    }
+}
+
+/// Stores the files of a directory output at `base`, under the output and by their content,
+/// and the empty directories in a local store. The result is the tree of the directory.
 async fn store_directory(
     store: &Store,
     place: &Place<'_>,
     directory: &Path,
     base: &str,
-) -> Result<(Digest, u64), RunnerError> {
-    let Place { run, task, attempt } = *place;
+) -> Result<Tree, RunnerError> {
+    let Place {
+        run, task, attempt, ..
+    } = *place;
     if let Some(path) = store.local_path(&layout::output(run, task, attempt, base)?) {
         tokio::fs::create_dir_all(&path).await.map_err(at(&path))?;
     }
@@ -91,8 +203,9 @@ async fn store_directory(
                 path,
                 executable,
             } => {
+                let local = place.scratch.own(&path).await?;
                 let stored = store
-                    .adopt_output(run, task, attempt, &inside, &path)
+                    .adopt_output(run, task, attempt, &inside, &local)
                     .await?;
                 entries.push(TreeEntry::File {
                     path: relative,
@@ -110,9 +223,7 @@ async fn store_directory(
             }
         }
     }
-    let tree = Tree { entries };
-    let size = tree.size();
-    Ok((store.put_tree(&tree).await?, size))
+    Ok(Tree { entries })
 }
 
 /// A file or an empty directory inside a directory.
@@ -180,4 +291,75 @@ fn walk_now(root: &Path) -> Result<Vec<Found>, RunnerError> {
         }
     }
     Ok(found)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A finished attempt in `root/scratch/attempt` that collected these outputs.
+    fn finished(root: &Path, files: &[(&str, bool)]) -> Finished {
+        let scratch = root.join("scratch").join("attempt");
+        std::fs::create_dir_all(scratch.join("work")).expect("makes the work directory");
+        Finished {
+            exit_code: Some(0),
+            files: (files.iter())
+                .map(|(path, directory)| Collected {
+                    path: (*path).to_owned(),
+                    directory: *directory,
+                    size: 0,
+                })
+                .collect(),
+            root: scratch,
+            usage: None,
+        }
+    }
+
+    fn store_all(root: &Path, finished: &Finished) -> TaskResult {
+        let store = Store::local(&root.join("store")).expect("a store");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("a runtime");
+        let stored = store_outputs(&store, "run", finished, "task", 1);
+        runtime.block_on(stored).expect("stores the outputs")
+    }
+
+    #[test]
+    fn outputs_inside_a_directory_output_share_its_files() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        // Snakemake's test_github_issue3687: `directory('dir1/D')` and `'dir1/D/file.txt'`.
+        let finished = finished(root.path(), &[("dir1/D", true), ("dir1/D/file.txt", false)]);
+        let folder = finished.root.join("work/dir1/D");
+        std::fs::create_dir_all(&folder).expect("makes the folder");
+        std::fs::write(folder.join("file.txt"), "x\n").expect("writes");
+        let result = store_all(root.path(), &finished);
+        let paths: Vec<&str> = result.files.iter().map(|file| file.path.as_str()).collect();
+        assert_eq!(paths, ["dir1/D", "dir1/D/file.txt"]);
+        let file = &result.files[1];
+        assert_eq!(file.digest, Digest::sha256(b"x\n"));
+        assert_eq!(file.location, "runs/run/task/1/work/dir1/D/file.txt");
+        let stored = root.path().join("store").join(&file.location);
+        assert_eq!(std::fs::read_to_string(stored).expect("reads"), "x\n");
+        assert!(result.files[0].directory);
+    }
+
+    #[test]
+    fn files_reached_through_links_stay_where_they_are() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        // A directory output that is a link to an input, and a file output below a link.
+        let input = root.path().join("input");
+        std::fs::create_dir_all(&input).expect("makes the input");
+        std::fs::write(input.join("a.txt"), "a\n").expect("writes");
+        let finished = finished(root.path(), &[("linked", true), ("via/a.txt", false)]);
+        let work = finished.root.join("work");
+        std::os::unix::fs::symlink(&input, work.join("linked")).expect("links");
+        std::os::unix::fs::symlink(&input, work.join("via")).expect("links");
+        let result = store_all(root.path(), &finished);
+        assert_eq!(result.files.len(), 2);
+        assert_eq!(result.files[1].digest, Digest::sha256(b"a\n"));
+        let kept = std::fs::read_to_string(input.join("a.txt")).expect("the input is still there");
+        assert_eq!(kept, "a\n");
+        let stored = root.path().join("store/runs/run/task/1/work/linked/a.txt");
+        assert_eq!(std::fs::read_to_string(stored).expect("reads"), "a\n");
+    }
 }

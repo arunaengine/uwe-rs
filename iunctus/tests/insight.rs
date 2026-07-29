@@ -1,11 +1,15 @@
-//! The insight commands on recorded runs: `iunctus time` and `iunctus compare` on simulated
-//! runs, and `iunctus replay`, which refuses simulated runs and, in the ignored test, runs a task
-//! of a real run again in its container: `cargo test -p iunctus --test insight -- --ignored`
-//! (needs Docker and the debian:stable-slim image).
+//! The insight commands on recorded runs: `iunctus time`, `iunctus compare` and
+//! `iunctus telemetry` on simulated runs, with a small OTLP HTTP receiver of the test, and
+//! `iunctus replay`, which refuses simulated runs and, in the ignored test, runs a task of a
+//! real run again in its container: `cargo test -p iunctus --test insight -- --ignored` (needs
+//! Docker and the debian:stable-slim image).
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::Path;
+use std::sync::mpsc::{self, Receiver, Sender};
 
 mod common;
 
@@ -45,10 +49,16 @@ workflow {
 /// Runs the binary in `directory`; the result has the exit code and the standard output and
 /// error.
 fn iunctus(directory: &Path, arguments: &[&str]) -> (i32, String) {
+    iunctus_with(directory, arguments, &[])
+}
+
+/// Runs the binary in `directory` with more environment variables.
+fn iunctus_with(directory: &Path, arguments: &[&str], variables: &[(&str, &str)]) -> (i32, String) {
     let output = common::command()
         .args(arguments)
         .current_dir(directory)
         .env("XDG_CACHE_HOME", directory.join("cache"))
+        .envs(variables.iter().copied())
         .output()
         .expect("runs iunctus");
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
@@ -127,8 +137,23 @@ fn a_task_replays_in_its_container() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path();
     workflow(path);
-    let (code, output) = iunctus(path, &["run", "main.nf", "-executor", "local"]);
+    // A real run sends its trace to the endpoint of the config file when it ends.
+    let (endpoint, received) = receiver();
+    let config = format!("[telemetry]\nendpoint = \"{endpoint}\"\n");
+    std::fs::write(path.join("config.toml"), config).expect("writes the config");
+    let arguments = [
+        "run",
+        "main.nf",
+        "-executor",
+        "local",
+        "-iunctus-config",
+        "config.toml",
+    ];
+    let (code, output) = iunctus(path, &arguments);
     assert_eq!(code, 0, "{output}");
+    assert!(output.contains("sent the trace to"), "{output}");
+    let (_, body) = received.recv().expect("the trace");
+    assert!(body.contains("\"iunctus.attempt.image\""), "{body}");
     let [run] = runs(path).try_into().expect("one run");
     // The file that COUNT read is gone from its place; the store still has it by its digest.
     let stored = path.join(format!(
@@ -154,4 +179,100 @@ fn a_task_replays_in_its_container() {
         output.contains(&format!("(replays task 2 of run {run})")),
         "{output}"
     );
+}
+
+#[test]
+fn the_trace_of_a_run_goes_to_a_file_and_to_an_otlp_endpoint() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path();
+    workflow(path);
+    let (code, output) = iunctus(path, &["run", "main.nf"]);
+    assert_eq!(code, 0, "{output}");
+    let [run] = runs(path).try_into().expect("one run");
+    let (endpoint, received) = receiver();
+    let config = format!(
+        "[telemetry]\nendpoint = \"{endpoint}\"\nheaders = {{ authorization = {{ environment = \
+         \"IUNCTUS_TEST_OTLP\" }} }}\n"
+    );
+    std::fs::write(path.join("config.toml"), config).expect("writes the config");
+    let arguments = [
+        "telemetry",
+        &run,
+        "-output",
+        "trace.jsonl",
+        "-iunctus-config",
+        "config.toml",
+    ];
+    let (code, output) = iunctus_with(path, &arguments, &[("IUNCTUS_TEST_OTLP", "Bearer t")]);
+    assert_eq!(code, 0, "{output}");
+    assert!(output.contains(&format!(
+        "wrote the trace of run {run} to trace.jsonl: 5 spans"
+    )));
+    assert!(output.contains(&format!("sent the trace to {endpoint}/v1/traces: 5 spans")));
+    let lines = std::fs::read_to_string(path.join("trace.jsonl")).expect("reads the trace");
+    let line: serde_json::Value = serde_json::from_str(lines.trim()).expect("one JSON line");
+    let spans = &line["resourceSpans"][0]["scopeSpans"][0]["spans"];
+    assert_eq!(spans[0]["name"], "run main.nf");
+    let (head, body) = received.recv().expect("a request");
+    assert!(
+        head.to_ascii_lowercase()
+            .contains("authorization: bearer t"),
+        "{head}"
+    );
+    assert_eq!(body, lines.trim());
+    // A secret whose variable is not set stops the command before anything is sent.
+    let (code, output) = iunctus(path, &arguments);
+    assert_eq!(code, 1, "{output}");
+    assert!(output.contains("IUNCTUS_TEST_OTLP"), "{output}");
+}
+
+/// A small OTLP HTTP receiver: it answers every request with 200 and hands the head and body of
+/// each request to the channel.
+fn receiver() -> (String, Receiver<(String, String)>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("listens");
+    let address = format!("http://{}", listener.local_addr().expect("an address"));
+    let (sender, received) = mpsc::channel();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(stream) = stream else { break };
+            let sender = sender.clone();
+            std::thread::spawn(move || serve(stream, &sender));
+        }
+    });
+    (address, received)
+}
+
+/// Answers the requests of one connection, which keeps going until the client closes it.
+fn serve(stream: TcpStream, sender: &Sender<(String, String)>) {
+    let mut reader = BufReader::new(stream.try_clone().expect("a second handle"));
+    let mut writer = stream;
+    loop {
+        let mut head = String::new();
+        loop {
+            let mut line = String::new();
+            if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                return;
+            }
+            if line == "\r\n" {
+                break;
+            }
+            head.push_str(&line);
+        }
+        let length = head
+            .lines()
+            .filter_map(|line| line.split_once(':'))
+            .find(|(name, _)| name.eq_ignore_ascii_case("content-length"))
+            .and_then(|(_, value)| value.trim().parse().ok())
+            .unwrap_or(0);
+        let mut body = vec![0; length];
+        if reader.read_exact(&mut body).is_err() {
+            return;
+        }
+        let _ = sender.send((head, String::from_utf8_lossy(&body).into_owned()));
+        let reply =
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}";
+        if writer.write_all(reply.as_bytes()).is_err() {
+            return;
+        }
+    }
 }

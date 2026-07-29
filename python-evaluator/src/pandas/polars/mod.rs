@@ -359,11 +359,9 @@ pub fn fill(interpreter: &mut Interpreter, value: &Value, records: &[Value]) -> 
     let mut data = frame.data.borrow_mut();
     let width = data.data.len();
     for (row, record) in records.iter().enumerate().take(rows) {
-        for column in 0..width {
-            if data.data[column][row].is_none()
-                && let Some(name) = names.get(column)
-            {
-                data.data[column][row] = record_value(record, name);
+        for (values, name) in data.data.iter_mut().zip(&names) {
+            if values[row].is_none() {
+                values[row] = record_value(record, name);
             }
         }
     }

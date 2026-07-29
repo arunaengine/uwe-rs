@@ -159,6 +159,23 @@ fn runs_a_task_in_a_container() {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
+fn tasks_have_a_home_they_may_write() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let executor = executor(root.path());
+    // The container runs as the current user, whom the image does not know, so its own home
+    // would be `/`, which the user cannot write.
+    let script = "mkdir -p \"$HOME/.cache\" && echo cached > \"$HOME/.cache/x\"\n\
+                  cat \"$HOME/.cache/x\" > out.txt\n";
+    let staged = staging(vec![stage(root.path(), ".command.sh", script)]);
+    let spec = spec(Some("debian:stable-slim"), &["out.txt"]);
+    let finished = run(&executor, "task-home", &spec, &staged).expect("runs");
+    assert_eq!(finished.exit_code, Some(0));
+    let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("reads");
+    assert_eq!(output, "cached\n");
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
 fn reports_failures() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let executor = executor(root.path());

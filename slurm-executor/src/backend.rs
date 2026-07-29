@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use executor::manifest::parse;
-use executor::wrapper::{EXIT, MANIFEST, STDERR, wrapper};
+use executor::wrapper::{EXIT, MANIFEST, STDERR};
 use executor::{Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, place, registry};
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
@@ -135,8 +135,7 @@ impl SlurmBackend {
             memory: job.placement.memory_bytes,
             offline: job.placement.offline,
         };
-        let script = wrapper(job.spec, &run.inside(), &control.to_string_lossy());
-        tokio::fs::write(control.join("wrapper.sh"), script).await?;
+        tokio::fs::write(run.script(), run.wrapper(job.spec)).await?;
         let gpus = job.placement.accelerators.iter().any(|gpu| gpu.count > 0);
         let script = job_script(&self.container, &run, gpus);
         tokio::fs::write(control.join(SCRIPT), script).await?;

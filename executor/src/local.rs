@@ -12,17 +12,17 @@ use bollard::query_parameters::{
     StopContainerOptions,
 };
 use futures_util::StreamExt;
-use task_model::Image;
+use task_model::{Image, TaskSpec};
 use tokio_util::sync::CancellationToken;
 
 use crate::engine::{ContainerEngine, EngineCommand};
 use crate::image;
-use crate::job::{CONTROL, ExecutorError, Finished, Job, WORK};
+use crate::job::{CONTROL, ExecutorError, Finished, HOME, Job, WORK};
 use crate::manifest::parse;
 use crate::pool::{Pool, Share};
 use crate::process::Mount;
 use crate::stage::place;
-use crate::wrapper::{EXIT, MANIFEST, STDERR, wrapper};
+use crate::wrapper::{EXIT, Folders, MANIFEST, STDERR, wrapper};
 
 /// How long a task may take to end after it was asked to stop, before it is killed.
 const STOP_GRACE: Duration = Duration::from_secs(10);
@@ -131,6 +131,20 @@ impl ContainerRun<'_> {
         text(&self.root.join(CONTROL).join("wrapper.sh"))
     }
 
+    /// The wrapper of a task in this container: its work directory where the container sees
+    /// it, and its control files and home folder in the scratch directory.
+    pub fn wrapper(&self, spec: &TaskSpec) -> String {
+        let control = text(&self.root.join(CONTROL));
+        let home = text(&self.root.join(HOME));
+        let folders = Folders {
+            work: &self.inside(),
+            control: &control,
+            home: &home,
+            outbox: "",
+        };
+        wrapper(spec, &folders)
+    }
+
     /// The container that runs the wrapper with Bash in the image, for the engine's API.
     pub fn create(&self, engine: &ContainerEngine) -> ContainerCreateBody {
         let root = text(self.root);
@@ -227,8 +241,7 @@ impl LocalContainer {
             memory: share.memory,
             offline: job.placement.offline,
         };
-        let control = root.join(CONTROL);
-        tokio::fs::write(run.script(), wrapper(&spec, &run.inside(), &text(&control))).await?;
+        tokio::fs::write(run.script(), run.wrapper(&spec)).await?;
         let options = CreateContainerOptions {
             name: Some(container.clone()),
             platform: image.platform.clone().unwrap_or_default(),

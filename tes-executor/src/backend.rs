@@ -18,6 +18,7 @@ use crate::client::{Client, ExecutorSpec, FileType, Input, Output, Resources, St
 const WORK: &str = "/iunctus/work";
 const CONTROL: &str = "/iunctus/control";
 const OUTBOX: &str = "/iunctus/outbox";
+const HOME: &str = "/iunctus/home";
 const WRAPPER: &str = "/iunctus/wrapper.sh";
 
 /// How long the backend waits between two looks at a task, at most.
@@ -62,7 +63,13 @@ impl TesBackend {
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
         let task = task(job, root)?;
-        let script = wrapper::wrapper_with_outbox(job.spec, &workdir(job), CONTROL, OUTBOX);
+        let folders = wrapper::Folders {
+            work: &workdir(job),
+            control: CONTROL,
+            home: HOME,
+            outbox: OUTBOX,
+        };
+        let script = wrapper::wrapper(job.spec, &folders);
         tokio::fs::write(root.join("wrapper.sh"), script).await?;
         let id = self.client.create(&task).await.map_err(machine)?;
         let status = self.wait(&id, cancel).await?;
@@ -189,8 +196,9 @@ fn task(job: Job<'_>, root: &Path) -> Result<Task, ExecutorError> {
             command: vec!["/bin/bash".into(), WRAPPER.into()],
             workdir: Some(work.clone()),
         }],
-        // The work directory and `/tmp` are writable, also when the image's own files are not.
-        volumes: vec![work, "/tmp".into()],
+        // The work directory, the home folder and `/tmp` are writable, also when the image's
+        // own files are not.
+        volumes: vec![work, HOME.into(), "/tmp".into()],
         tags: BTreeMap::from([("iunctus-attempt".to_owned(), job.name.to_owned())]),
     })
 }

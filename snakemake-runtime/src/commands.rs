@@ -1,8 +1,10 @@
 //! Commands that workflow code runs while the workflow is planned, like `shell()` or
 //! `subprocess.run`. They never run on the machine of iunctus (decision 11): each becomes a
 //! container task that the engine runs like the task of a job. The image is the workflow's
-//! global `container:`, else a small default image, and the task gets the working directory
-//! of the workflow as input; files that the command writes are not kept.
+//! global `container:`, else a small default image. The task runs in the working directory of
+//! the workflow, which it changes where it is, as Snakemake runs the command there: the files
+//! that the command writes stay for the workflow code and the jobs after it. So such a task
+//! never comes from the cache.
 //!
 //! The session answers each request of the engine once. A command hands its task to the engine
 //! as the answer to the request that the session is handling, and waits for the outcome of that
@@ -18,7 +20,7 @@ use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
 
 use python_evaluator::{Command, CommandOutcome, Error};
-use workflow_graph::{DriverError, Input, Inputs, Outcome, Task, TaskId};
+use workflow_graph::{DriverError, Input, Inputs, Outcome, Task, TaskId, Writable};
 
 use crate::workflow::State;
 
@@ -117,7 +119,7 @@ impl CommandRunner {
                 source: workdir.to_string_lossy().into_owned(),
                 directory: true,
                 content: None,
-                ..Default::default()
+                writable: Writable::InPlace,
             }],
             outputs: Vec::new(),
             stdin: None,

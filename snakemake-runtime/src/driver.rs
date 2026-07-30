@@ -90,6 +90,9 @@ pub struct Session {
     embedded: crate::embedded::Setting,
     /// The folder of the `touch()` outputs that the driver made, once there is one.
     touched: Option<PathBuf>,
+    /// The source files of the workflow, which every job sees in its work directory; found
+    /// when the run starts.
+    sources: Rc<crate::sources::Sources>,
     /// Why the jobs that failed failed, in the order they ended. After the first, no job
     /// starts unless the run keeps going, and the run fails once the running jobs have ended,
     /// as Snakemake does.
@@ -170,6 +173,7 @@ impl Session {
             evaluation: None,
             embedded: crate::embedded::Setting::new(&launch.scratch, launch.simulated),
             touched: None,
+            sources: Rc::default(),
             failures: Vec::new(),
         })
     }
@@ -412,6 +416,7 @@ impl Session {
                     files: &self.files,
                     workdir: &self.workdir,
                     embedded: &self.embedded,
+                    sources: &self.sources,
                 };
                 crate::task::build(&mut self.interpreter, &setting, &rule, &entry, id, 1)
             }
@@ -518,6 +523,7 @@ impl Session {
 
     pub fn start(&mut self) -> Result<Vec<Task>, DriverError> {
         self.evaluate_once()?;
+        self.sources = Rc::new(crate::sources::Sources::find(&self.state.borrow()));
         self.plan()?;
         self.report_assumed();
         self.ready_tasks(None)
@@ -739,6 +745,7 @@ impl Session {
                 files: &self.files,
                 workdir: &self.workdir,
                 embedded: &self.embedded,
+                sources: &self.sources,
             };
             crate::task::build(
                 &mut self.interpreter,

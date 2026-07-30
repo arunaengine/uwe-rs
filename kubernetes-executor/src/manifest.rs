@@ -5,7 +5,7 @@
 
 use serde_json::{Value, json};
 
-use executor::{ContainerRun, WORK};
+use executor::ContainerRun;
 
 /// The label that marks the Jobs of one backend, so that one request lists all their pods.
 pub const LABEL: &str = "iunctus.dev/attempts";
@@ -48,22 +48,16 @@ pub struct Limits {
 
 /// The Job that runs the wrapper of `run` in its image, labelled with `label`.
 pub fn job(name: &str, label: &str, run: &ContainerRun<'_>, limits: &Limits) -> Value {
-    let root = run.root.to_string_lossy();
-    let mut mounts = vec![json!({"name": "scratch", "mountPath": root})];
-    let mut volumes = vec![json!({"name": "scratch", "hostPath": {"path": root}})];
-    if let Some(workdir) = run.workdir {
-        let work = run.root.join(WORK);
-        mounts.push(json!({"name": "work", "mountPath": workdir}));
-        volumes.push(json!({"name": "work", "hostPath": {"path": work.to_string_lossy()}}));
-    }
-    for (index, mount) in run.mounts.iter().enumerate() {
-        let volume = format!("mount-{index}");
+    let mut mounts = Vec::new();
+    let mut volumes = Vec::new();
+    for (index, bind) in run.binds().iter().enumerate() {
+        let volume = format!("folder-{index}");
         mounts.push(json!({
             "name": volume,
-            "mountPath": mount.target,
-            "readOnly": mount.read_only,
+            "mountPath": bind.target,
+            "readOnly": bind.read_only,
         }));
-        let source = mount.source.to_string_lossy();
+        let source = bind.source.to_string_lossy();
         volumes.push(json!({"name": volume, "hostPath": {"path": source}}));
     }
     let mut requests = json!({"cpu": run.cpus.max(1).to_string()});

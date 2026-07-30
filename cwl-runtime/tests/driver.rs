@@ -613,3 +613,37 @@ fn failed_tools_stop_new_steps_unless_the_run_keeps_going() {
     assert!(error.contains("exit code 3"), "{error}");
     assert_eq!(ran, ["fail", "slow", "later"]);
 }
+
+#[test]
+fn writable_initial_work_dir_entries_are_copies_of_the_task() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    std::fs::write(folder.path().join("whale.txt"), "whale\n").expect("writes");
+    let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: edit\n\
+        requirements:\n  InitialWorkDirRequirement:\n    listing:\n      \
+        - {entry: $(inputs.infile), entryname: bob.txt, writable: true}\n      \
+        - {entry: $(inputs.other)}\n\
+        inputs: {infile: File, other: File}\noutputs: []\n";
+    std::fs::write(folder.path().join("main.cwl"), tool).expect("writes");
+    let job =
+        "infile: {class: File, location: whale.txt}\nother: {class: File, location: whale.txt}\n";
+    std::fs::write(folder.path().join("job.yml"), job).expect("writes");
+    let launch = Launch {
+        target: folder.path().join("main.cwl"),
+        inputs: Some(folder.path().join("job.yml")),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let mut driver = CwlDriver::new(&launch, Options::default()).expect("a driver");
+    let mut executor = Simulator::new(folder.path().join("simulator"));
+    let execution = execute("main.cwl", &mut driver, &mut executor);
+    let graph = execution.into_result().expect("the run succeeds");
+    let task = &graph.nodes[0].task;
+    let writable = |name: &str| {
+        let input = (task.inputs.iter())
+            .find(|input| input.path.ends_with(name))
+            .unwrap_or_else(|| panic!("no input {name} in {:?}", task.inputs));
+        input.writable
+    };
+    assert_eq!(writable("bob.txt"), workflow_graph::Writable::Copy);
+    assert_eq!(writable("whale.txt"), workflow_graph::Writable::No);
+}

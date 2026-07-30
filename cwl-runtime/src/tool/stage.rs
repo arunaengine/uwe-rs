@@ -6,7 +6,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use workflow_graph::Input;
+use workflow_graph::{Input, Writable};
 
 use super::STAGING;
 use crate::files;
@@ -64,8 +64,9 @@ impl Stager {
     }
 
     /// Stages a file object into a folder, with its secondary files beside it and the
-    /// entries of a literal directory inside it. `replace` lets the new path win.
-    pub(super) fn stage(&mut self, file: &Map, folder: &str, replace: bool) {
+    /// entries of a literal directory inside it. `replace` lets the new path win. The result
+    /// is the path of the file object in the work directory.
+    pub(super) fn stage(&mut self, file: &Map, folder: &str, replace: bool) -> String {
         let location = file
             .get("location")
             .and_then(Value::as_str)
@@ -112,7 +113,9 @@ impl Stager {
                         Some(relative) if !literal => {
                             self.inside(entry, &join(&target, relative), replace);
                         }
-                        _ => self.stage(entry, &target, replace),
+                        _ => {
+                            self.stage(entry, &target, replace);
+                        }
                     }
                 }
             }
@@ -142,6 +145,18 @@ impl Stager {
                 if let Value::Map(entry) = entry {
                     self.stage(entry, folder, replace);
                 }
+            }
+        }
+        target
+    }
+
+    /// Lets the task change what is staged at `target` and inside it, in copies of its own,
+    /// as an InitialWorkDir entry with `writable: true` asks.
+    pub(super) fn make_writable(&mut self, target: &str) {
+        let inside = format!("{}/", target.trim_end_matches('/'));
+        for input in &mut self.inputs {
+            if input.path == target || input.path.starts_with(&inside) {
+                input.writable = Writable::Copy;
             }
         }
     }

@@ -168,8 +168,9 @@ pub(super) fn initial_workdir(
         };
         let mut map = map;
         map.insert("basename".into(), Value::String(name));
-        stager.stage(&map, &folder, true);
+        let target = stager.stage(&map, &folder, true);
         if map.get("writable") == Some(&Value::Bool(true)) {
+            stager.make_writable(&target);
             let mut entry = Value::Map(map);
             files::visit_files(&mut entry, &mut |inner| {
                 if let Some(Value::String(location)) = inner.get("location") {

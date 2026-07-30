@@ -143,11 +143,9 @@ impl Paramspace {
     /// Each row as a pattern like `alpha~1/beta~0.5`; missing values are `NA`.
     fn instance_patterns(&self, interpreter: &mut Interpreter) -> Result<Vec<Value>, Error> {
         let data = self.table();
-        let mut patterns = Vec::new();
-        for row in 0..data.rows() {
-            let mut parts = Vec::new();
-            for (position, column) in self.columns.iter().enumerate() {
-                let value = &data.data[position][row];
+        let mut rows: Vec<Vec<String>> = vec![Vec::new(); data.rows()];
+        for (column, values) in self.columns.iter().zip(&data.data) {
+            for (parts, value) in rows.iter_mut().zip(values) {
                 let text = if is_missing(value) {
                     "NA".to_owned()
                 } else {
@@ -155,9 +153,11 @@ impl Paramspace {
                 };
                 parts.push(format!("{column}{}{text}", self.param_sep));
             }
-            patterns.push(Value::str(fill(&self.pattern, &parts)));
         }
-        Ok(patterns)
+        let patterns = rows
+            .iter()
+            .map(|parts| Value::str(fill(&self.pattern, parts)));
+        Ok(patterns.collect())
     }
 
     /// A wildcard value as a value of the type of its column, as `astype` gives it.

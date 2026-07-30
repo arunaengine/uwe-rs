@@ -12,6 +12,7 @@ mod driver;
 mod embedded;
 mod files;
 mod functions;
+mod git;
 mod inputs;
 mod iofile;
 mod ioutils;

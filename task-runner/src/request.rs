@@ -54,8 +54,13 @@ pub(crate) async fn prepare(
         Some(text) => Some(inputs.bytes(text.as_bytes()).await?),
         None => None,
     };
+    let mut request = request(task, image, files, stdin);
+    // A task that changes an input where it is has effects that no stored result has.
+    if (sources.iter()).any(|source| matches!(source, crate::runner::Source::InPlace(_))) {
+        request.scope = ReuseScope::None;
+    }
     Ok(Prepared {
-        request: request(task, image, files, stdin),
+        request,
         sources,
         step: task.step.clone(),
     })

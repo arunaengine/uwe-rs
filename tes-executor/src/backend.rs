@@ -129,28 +129,35 @@ fn task(job: Job<'_>, root: &Path) -> Result<Task, ExecutorError> {
         return Err(ExecutorError::NoCommand(image.reference.clone()));
     }
     let work = workdir(job);
-    let inside = |path: &str| match path.starts_with('/') {
-        true => path.trim_end_matches('/').to_owned(),
-        false => format!(
-            "{}/{}",
-            work.trim_end_matches('/'),
-            path.trim_end_matches('/')
-        ),
+    let inside = |path: &str| match path.trim_end_matches('/') {
+        "." => work.clone(),
+        absolute if absolute.starts_with('/') => absolute.to_owned(),
+        relative => format!("{}/{relative}", work.trim_end_matches('/')),
     };
     let mut inputs = vec![Input {
         path: WRAPPER.into(),
         url: file_url(&root.join("wrapper.sh")),
         kind: FileType::File,
     }];
+    // An input that the task changes where it is goes back to its place as an output too.
+    let mut written_back = Vec::new();
     for staged in &job.staging.inputs {
+        let kind = match staged.directory {
+            true => FileType::Directory,
+            false => FileType::File,
+        };
         inputs.push(Input {
             path: inside(&staged.path),
             url: file_url(&staged.source),
-            kind: match staged.directory {
-                true => FileType::Directory,
-                false => FileType::File,
-            },
+            kind,
         });
+        if staged.in_place {
+            written_back.push(Output {
+                path: inside(&staged.path),
+                url: file_url(&staged.source),
+                kind,
+            });
+        }
     }
     // A directory that the task gets empty is an empty folder of the scratch directory.
     for directory in &job.staging.directories {
@@ -167,7 +174,7 @@ fn task(job: Job<'_>, root: &Path) -> Result<Task, ExecutorError> {
             kind: FileType::File,
         });
     }
-    let outputs = vec![
+    let mut outputs = vec![
         Output {
             path: OUTBOX.into(),
             url: file_url(&root.join("work")),
@@ -179,6 +186,7 @@ fn task(job: Job<'_>, root: &Path) -> Result<Task, ExecutorError> {
             kind: FileType::Directory,
         },
     ];
+    outputs.extend(written_back);
     let placement = job.placement;
     const GIB: f64 = (1u64 << 30) as f64;
     let resources = Resources {
@@ -278,6 +286,7 @@ mod tests {
                 directory: false,
                 copy: false,
                 executable: false,
+                ..Default::default()
             }],
             directories: vec!["made".into()],
             stdin: None,

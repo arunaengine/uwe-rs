@@ -31,7 +31,7 @@ pub struct Job<'a> {
 }
 
 /// An input placed before the task starts.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Staged {
     /// A path relative to the work directory, or an absolute path inside the container.
     pub path: String,
@@ -44,6 +44,9 @@ pub struct Staged {
     pub copy: bool,
     /// Whether a copy is a program the task runs.
     pub executable: bool,
+    /// Whether the task changes the source where it is: the container sees it writable at the
+    /// path of the input, and later tasks see the changes.
+    pub in_place: bool,
 }
 
 /// What a backend places before a task starts.

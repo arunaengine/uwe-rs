@@ -156,6 +156,7 @@ fn staging(root: &Path, text: &str) -> Staging {
             directory: false,
             copy: false,
             executable: false,
+            ..Default::default()
         }],
         ..Staging::default()
     }

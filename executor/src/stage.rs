@@ -48,7 +48,13 @@ pub fn place(root: &Path, staging: &Staging) -> std::io::Result<Vec<Mount>> {
             continue;
         }
         if path.starts_with('/') && !input.copy {
-            mounts.push(mount(input.source.clone(), path, true));
+            // An input at its own path is shown as the folders of linked inputs are, so that
+            // the container gets one mount where both need the same place.
+            if Path::new(path) == input.source {
+                shown.insert(input.source.clone());
+            } else {
+                mounts.push(mount(input.source.clone(), path, true));
+            }
             continue;
         }
         let target = place(path);
@@ -190,6 +196,30 @@ mod tests {
         ];
         assert_eq!(mounts, expected);
         assert!(root.join("mounts/made/empty/deeper").is_dir());
+    }
+
+    #[test]
+    fn inputs_at_their_own_paths_share_the_mounts_of_shown_folders() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let scripts = folder.path().join("scripts");
+        std::fs::create_dir(&scripts).expect("makes a folder");
+        let script = scripts.join("a.py");
+        std::fs::write(&script, "a\n").expect("writes");
+        // A script folder at its own path, and a file of it linked into the work directory.
+        let own = Staged {
+            path: scripts.to_string_lossy().into_owned(),
+            source: scripts.clone(),
+            directory: true,
+            ..Staged::default()
+        };
+        let staging = Staging {
+            inputs: vec![own, input("scripts/a.py", &script, false)],
+            ..Staging::default()
+        };
+        let root = folder.path().join("scratch").join("task");
+        let mounts = place(&root, &staging).expect("places");
+        let targets: Vec<&str> = mounts.iter().map(|mount| mount.target.as_str()).collect();
+        assert_eq!(targets, [scripts.to_string_lossy()]);
     }
 
     #[test]

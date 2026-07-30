@@ -26,9 +26,17 @@ impl<B: Backend> Runner<B> {
                 directory,
                 copy: copy || input.writable || input.executable,
                 executable: input.executable,
+                ..Default::default()
             };
             match source {
                 Source::Local(path) => staging.inputs.push(staged(path.clone(), false)),
+                Source::InPlace(path) => staging.inputs.push(Staged {
+                    path: input.path.clone(),
+                    source: path.clone(),
+                    directory,
+                    in_place: true,
+                    ..Staged::default()
+                }),
                 Source::Content | Source::Stored if !directory => {
                     let content = self.local_content(&input.digest).await?;
                     let copy = *source == Source::Content;
@@ -72,6 +80,7 @@ impl<B: Backend> Runner<B> {
                     directory: false,
                     copy: executable,
                     executable,
+                    ..Default::default()
                 }),
                 TreeEntry::EmptyDirectory { .. } => staging.directories.push(inside),
             }

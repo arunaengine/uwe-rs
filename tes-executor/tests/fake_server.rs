@@ -115,6 +115,7 @@ fn tasks_run_on_the_server_and_give_back_their_outputs() {
             directory: false,
             copy: false,
             executable: false,
+            ..Default::default()
         }],
         ..Staging::default()
     };

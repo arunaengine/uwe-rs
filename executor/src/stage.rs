@@ -16,7 +16,9 @@ use crate::wrapper::STDIN;
 /// A linked input is a symbolic link to its source, and the container sees the folder of the
 /// source read-only at the same path. A copy is the task's own. A linked input at an absolute
 /// path is mounted there read-only; a copy and a made directory at an absolute path are made
-/// in `mounts/` and mounted there.
+/// in `mounts/` and mounted there. An input that the task changes in place is mounted
+/// writable at its path; the target of such a mount is relative to the work directory for a
+/// relative path, and `.` is the work directory itself.
 pub fn place(root: &Path, staging: &Staging) -> std::io::Result<Vec<Mount>> {
     let work = root.join(WORK);
     let control = root.join(CONTROL);
@@ -41,6 +43,10 @@ pub fn place(root: &Path, staging: &Staging) -> std::io::Result<Vec<Mount>> {
     }
     for input in &staging.inputs {
         let path = input.path.trim_end_matches('/');
+        if input.in_place {
+            mounts.push(mount(input.source.clone(), path, false));
+            continue;
+        }
         if path.starts_with('/') && !input.copy {
             mounts.push(mount(input.source.clone(), path, true));
             continue;
@@ -141,6 +147,7 @@ mod tests {
             directory: false,
             copy,
             executable: false,
+            ..Default::default()
         }
     }
 
@@ -183,6 +190,31 @@ mod tests {
         ];
         assert_eq!(mounts, expected);
         assert!(root.join("mounts/made/empty/deeper").is_dir());
+    }
+
+    #[test]
+    fn inputs_changed_in_place_are_mounted_writable_at_their_paths() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let in_place = |path: &str| Staged {
+            path: path.into(),
+            source: folder.path().to_owned(),
+            directory: true,
+            in_place: true,
+            ..Staged::default()
+        };
+        let staging = Staging {
+            inputs: vec![in_place("."), in_place("data/"), in_place("/abs")],
+            ..Staging::default()
+        };
+        let root = folder.path().join("scratch").join("task");
+        let mounts = place(&root, &staging).expect("places");
+        let mounts: Vec<(&str, bool)> = (mounts.iter())
+            .map(|mount| (mount.target.as_str(), mount.read_only))
+            .collect();
+        assert_eq!(mounts, [(".", false), ("data", false), ("/abs", false)]);
+        // Nothing is placed for them: the work directory stays empty.
+        let placed = std::fs::read_dir(root.join("work")).expect("reads").count();
+        assert_eq!(placed, 0);
     }
 
     #[test]

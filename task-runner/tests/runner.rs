@@ -693,3 +693,41 @@ fn the_reproducibility_check_keeps_tools_that_give_other_bytes_from_sharing() {
         "the same script of another step shares its key"
     );
 }
+
+#[test]
+fn inputs_changed_in_place_are_named_by_their_path_and_never_cached() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let runner = runner(root.path(), 0);
+    let project = root.path().join("project");
+    std::fs::create_dir_all(&project).expect("makes the folder");
+    std::fs::write(project.join("big.dat"), "data\n").expect("writes");
+    let mut task = task(root.path(), "a");
+    task.inputs.push(Input {
+        path: ".".into(),
+        source: project.to_string_lossy().into_owned(),
+        directory: true,
+        writable: workflow_graph::Writable::InPlace,
+        ..Input::default()
+    });
+    let prepared = request(&runner, &task);
+    assert_eq!(prepared.request.scope, task_model::ReuseScope::None);
+    let input = &prepared.request.spec.inputs[1];
+    assert!(input.writable);
+    let place = project.canonicalize().expect("a path");
+    let digest = task_model::Digest::sha256(place.to_string_lossy().as_bytes());
+    assert_eq!(input.digest, digest);
+    let result = execute(&runner, &prepared);
+    assert!(!result.reused);
+    {
+        let staged = runner.backend().staged.lock().unwrap();
+        let staged = &staged.last().expect("staged").inputs[1];
+        assert!(staged.in_place);
+        assert_eq!(staged.source, place);
+    }
+    // A copy of its own is what a writable input gets otherwise.
+    task.inputs[1].writable = workflow_graph::Writable::Copy;
+    task.inputs[1].path = "project".into();
+    let prepared = request(&runner, &task);
+    assert!(prepared.request.spec.inputs[1].writable);
+    assert_eq!(prepared.request.scope, task_model::ReuseScope::Shared);
+}

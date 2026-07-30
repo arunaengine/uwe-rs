@@ -54,6 +54,7 @@ fn stage(root: &Path, name: &str, text: &str) -> Staged {
         directory: false,
         copy: false,
         executable: false,
+        ..Default::default()
     }
 }
 
@@ -172,6 +173,37 @@ fn tasks_have_a_home_they_may_write() {
     assert_eq!(finished.exit_code, Some(0));
     let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("reads");
     assert_eq!(output, "cached\n");
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn inputs_changed_in_place_keep_the_changes() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let executor = executor(root.path());
+    let project = root.path().join("project");
+    std::fs::create_dir_all(&project).expect("makes the folder");
+    std::fs::write(project.join("old.txt"), "old\n").expect("writes");
+    // The task runs in the folder itself, as a Snakemake `shell()` call of the Snakefile does.
+    let in_place = Staged {
+        path: ".".into(),
+        source: project.clone(),
+        directory: true,
+        in_place: true,
+        ..Staged::default()
+    };
+    let spec = TaskSpec {
+        arguments: vec![
+            "/bin/bash".into(),
+            "-c".into(),
+            "cat old.txt > new.txt && echo more >> old.txt".into(),
+        ],
+        ..spec(Some("debian:stable-slim"), &[])
+    };
+    let finished = run(&executor, "task-in-place", &spec, &staging(vec![in_place])).expect("runs");
+    assert_eq!(finished.exit_code, Some(0));
+    let read = |name: &str| std::fs::read_to_string(project.join(name)).expect("reads");
+    assert_eq!(read("new.txt"), "old\n");
+    assert_eq!(read("old.txt"), "old\nmore\n");
 }
 
 #[test]

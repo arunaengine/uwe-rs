@@ -58,6 +58,7 @@ fn funnel_runs_tasks_and_gives_back_their_outputs() {
             directory: false,
             copy: false,
             executable: false,
+            ..Default::default()
         }],
         ..Staging::default()
     };

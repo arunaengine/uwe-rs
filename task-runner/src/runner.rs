@@ -95,13 +95,16 @@ pub enum RunnerError {
     Name(PathBuf),
     #[error("the directory manifest of the input `{0}` names a path outside the directory")]
     Tree(String),
+    /// Only a file or directory of this machine can be changed in place.
+    #[error("the input {0} is not on this machine, so a task cannot change it where it is")]
+    NotInPlace(String),
 }
 
 impl RunnerError {
     /// Whether the cause is a feature that the runner does not support yet.
     pub fn unsupported(&self) -> bool {
         match self {
-            RunnerError::Remote(_) => true,
+            RunnerError::Remote(_) | RunnerError::NotInPlace(_) => true,
             RunnerError::Storage(error) => error.unsupported(),
             _ => false,
         }
@@ -138,6 +141,8 @@ pub(crate) enum Source {
     Content,
     /// Only the store has it.
     Stored,
+    /// A local file or directory that the task changes where it is.
+    InPlace(PathBuf),
 }
 
 /// A task request, with where the content of each input comes from.

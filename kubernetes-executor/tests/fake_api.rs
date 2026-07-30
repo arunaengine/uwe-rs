@@ -355,6 +355,7 @@ async fn jobs_run_tasks_and_give_their_outputs() {
             directory: false,
             copy: false,
             executable: false,
+            ..Default::default()
         }],
         ..Staging::default()
     };

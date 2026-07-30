@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use bytes::Bytes;
 use content_store::Store;
 use task_model::{Digest, FileKind, InputFile, Tree, TreeEntry};
-use workflow_graph::Input;
+use workflow_graph::{Input, Writable};
 
 use crate::outputs::{self, Found};
 use crate::runner::Source;
@@ -112,8 +112,32 @@ impl Inputs<'_> {
     /// directory or a local file. A local path is taken with its links resolved, so that a
     /// container that sees the folder of the path sees the content. When the runner imports
     /// inputs, the backend takes them from the store instead.
+    ///
+    /// An input that the task changes where it is is named by its path, not its content,
+    /// which the task changes: such a task never comes from the cache, and a large folder,
+    /// like the working directory of a workflow, is not read.
     pub(crate) async fn input(&self, input: &Input) -> Result<(InputFile, Source), RunnerError> {
         let source = Path::new(&input.source);
+        if input.writable == Writable::InPlace {
+            if input.source.contains("://") || input.content.is_some() {
+                return Err(RunnerError::NotInPlace(input.source.clone()));
+            }
+            let place = std::fs::canonicalize(source).map_err(|error| {
+                std::io::Error::new(error.kind(), format!("{}: {error}", source.display()))
+            })?;
+            let kind = match place.is_dir() {
+                true => FileKind::Directory,
+                false => FileKind::File,
+            };
+            let file = InputFile {
+                path: input.path.clone(),
+                kind,
+                digest: Digest::sha256(place.to_string_lossy().as_bytes()),
+                executable: false,
+                writable: true,
+            };
+            return Ok((file, Source::InPlace(place)));
+        }
         let imported = self.imported();
         let local = || -> Result<Source, RunnerError> {
             if imported {
@@ -160,7 +184,7 @@ impl Inputs<'_> {
             kind,
             digest,
             executable: false,
-            writable: false,
+            writable: input.writable == Writable::Copy,
         };
         Ok((file, from))
     }

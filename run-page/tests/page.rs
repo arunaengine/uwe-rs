@@ -49,6 +49,7 @@ fn record(directory: &Path) -> std::path::PathBuf {
             source: input.to_string_lossy().into_owned(),
             directory: false,
             content: None,
+            ..Default::default()
         }],
         outputs: vec!["out.txt".into()],
         ..Task::default()

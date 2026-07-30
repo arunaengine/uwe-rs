@@ -636,6 +636,7 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
         source: String::new(),
         directory: false,
         content: Some(command_script(request)),
+        ..Default::default()
     }];
     for (source, name) in &request.staged {
         let (source, directory) = match source.prefix {
@@ -647,6 +648,7 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
             source,
             directory,
             content: None,
+            ..Default::default()
         });
     }
     let mut outputs = request.output_patterns.clone();
@@ -688,6 +690,7 @@ fn exec_task(request: &TaskRequest) -> Task {
             },
             directory: false,
             content: None,
+            ..Default::default()
         })
         .collect();
     Task {

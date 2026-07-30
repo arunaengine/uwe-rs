@@ -123,6 +123,7 @@ impl Run {
                 source: String::new(),
                 directory: false,
                 content: Some(source.clone()),
+                ..Default::default()
             });
             task.script = Some(source);
             task.outputs = outputs.clone();
@@ -630,18 +631,21 @@ fn input_of(artifact: &ArtifactValue) -> Option<Input> {
             source: String::new(),
             directory: false,
             content: Some(data.clone()),
+            ..Default::default()
         },
         Location::File(file) => Input {
             path,
             source: file.to_string_lossy().into_owned(),
             directory: artifact.directory || file.is_dir(),
             content: None,
+            ..Default::default()
         },
         Location::Url(url) => Input {
             path,
             source: url.clone(),
             directory: artifact.directory,
             content: None,
+            ..Default::default()
         },
     })
 }

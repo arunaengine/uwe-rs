@@ -55,6 +55,7 @@ impl Driver for Toy {
                 source: file.location.clone(),
                 directory: false,
                 content: None,
+                ..Default::default()
             })
             .collect();
         Ok(vec![Task {
@@ -155,6 +156,7 @@ fn simulated_tasks_make_the_files_that_the_script_names() {
         source: format!("/data/{path}"),
         directory: false,
         content: content.map(str::to_owned),
+        ..Default::default()
     };
     let task = Task {
         id: TaskId(7),
@@ -332,6 +334,7 @@ fn simulated_tasks_of_scripts_that_fail_give_the_failure() {
             source: "/data/s.fastq.gz".into(),
             directory: false,
             content: None,
+            ..Default::default()
         }],
         outputs: ["*.fastq.gz", "*.log"].map(String::from).to_vec(),
         ..Task::default()
@@ -365,6 +368,7 @@ fn simulated_tasks_name_the_outputs_of_tools_after_their_arguments() {
             source: "/data/s.mzML".into(),
             directory: false,
             content: None,
+            ..Default::default()
         }],
         outputs: ["output/*.featureXML", "*.log", "report/", "res/*"]
             .map(String::from)
@@ -451,6 +455,7 @@ impl Driver for Noting {
                     source: location(name).to_string_lossy().into_owned(),
                     directory: false,
                     content: None,
+                    ..Default::default()
                 }],
                 ..Task::default()
             })

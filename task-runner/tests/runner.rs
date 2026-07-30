@@ -126,6 +126,7 @@ fn task(root: &Path, command: &str) -> Task {
             source: input.to_string_lossy().into_owned(),
             directory: false,
             content: None,
+            ..Default::default()
         }],
         outputs: vec!["out.txt".into()],
         ..Task::default()
@@ -225,12 +226,14 @@ fn directories_travel_as_one_entry() {
         source: on_disk.to_string_lossy().into_owned(),
         directory: true,
         content: None,
+        ..Default::default()
     });
     second.inputs.push(Input {
         path: "made".into(),
         source: String::new(),
         directory: true,
         content: None,
+        ..Default::default()
     });
     second.stdin = Some("text\n".into());
     let prepared = request(&runner, &second);

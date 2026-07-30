@@ -36,6 +36,7 @@ fn input(path: &str, source: &Path) -> Input {
         source: source.to_string_lossy().into_owned(),
         directory: false,
         content: None,
+        ..Default::default()
     }
 }
 

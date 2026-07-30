@@ -197,6 +197,7 @@ impl Run {
                 source: String::new(),
                 directory: true,
                 content: None,
+                ..Default::default()
             };
             match source {
                 Source::Shared { key, host } => {
@@ -211,6 +212,7 @@ impl Run {
                                 source: host.path.clone(),
                                 directory: !host.file,
                                 content: None,
+                                ..Default::default()
                             });
                         } else if !host.create {
                             return Err(Failure::error(format!(
@@ -231,6 +233,7 @@ impl Run {
                                 source: location.to_string_lossy().into_owned(),
                                 directory: false,
                                 content: None,
+                                ..Default::default()
                             });
                         }
                     }
@@ -279,6 +282,7 @@ impl Run {
                                 source: String::new(),
                                 directory: false,
                                 content: Some(value.clone()),
+                                ..Default::default()
                             });
                         }
                     }
@@ -311,6 +315,7 @@ impl Run {
                             source: String::new(),
                             directory: false,
                             content: Some(value),
+                            ..Default::default()
                         });
                     }
                 }

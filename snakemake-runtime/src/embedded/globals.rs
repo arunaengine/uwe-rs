@@ -300,6 +300,7 @@ impl<'a> Transfer<'a> {
                 source: path,
                 directory: top.is_dir(),
                 content: None,
+                ..Default::default()
             });
         }
         let root = root.to_string_lossy().into_owned();

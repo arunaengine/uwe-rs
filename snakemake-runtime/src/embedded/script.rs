@@ -245,6 +245,7 @@ fn folder_inputs(script: &Path, language: Language, workdir: &Path) -> Vec<Input
             source: absolute(folder),
             directory: true,
             content: None,
+            ..Default::default()
         }];
     }
     let mut files: Vec<PathBuf> = std::fs::read_dir(folder)
@@ -274,6 +275,7 @@ fn folder_inputs(script: &Path, language: Language, workdir: &Path) -> Vec<Input
             source: absolute(file),
             directory: false,
             content: None,
+            ..Default::default()
         })
         .collect()
 }

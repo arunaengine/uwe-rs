@@ -117,6 +117,7 @@ impl CommandRunner {
                 source: workdir.to_string_lossy().into_owned(),
                 directory: true,
                 content: None,
+                ..Default::default()
             }],
             outputs: Vec::new(),
             stdin: None,

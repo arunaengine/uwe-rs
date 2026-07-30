@@ -90,6 +90,7 @@ impl Stager {
                     source: String::new(),
                     directory: true,
                     content: None,
+                    ..Default::default()
                 });
             } else {
                 self.add(Input {
@@ -97,6 +98,7 @@ impl Stager {
                     source: source_of(&location),
                     directory: true,
                     content: None,
+                    ..Default::default()
                 });
             }
             if let Some(Value::List(listing)) = file.get("listing") {
@@ -124,6 +126,7 @@ impl Stager {
                 source: String::new(),
                 directory: false,
                 content: Some(content.to_owned()),
+                ..Default::default()
             });
         } else {
             self.add(Input {
@@ -131,6 +134,7 @@ impl Stager {
                 source: source_of(&location),
                 directory: false,
                 content: None,
+                ..Default::default()
             });
         }
         if let Some(Value::List(secondary)) = file.get("secondaryFiles") {

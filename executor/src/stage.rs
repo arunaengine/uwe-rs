@@ -128,15 +128,24 @@ fn copy(input: &Staged, target: &Path) -> std::io::Result<()> {
     std::fs::set_permissions(target, std::fs::Permissions::from_mode(mode))
 }
 
+/// Copies a directory, which the task may change: its folders and files are writable, and
+/// files keep whether they are programs.
 fn copy_tree(source: &Path, target: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(target)?;
+    std::fs::set_permissions(target, std::fs::Permissions::from_mode(0o755))?;
     for entry in std::fs::read_dir(source)? {
         let entry = entry?;
         let to = target.join(entry.file_name());
-        if std::fs::metadata(entry.path())?.is_dir() {
+        let metadata = std::fs::metadata(entry.path())?;
+        if metadata.is_dir() {
             copy_tree(&entry.path(), &to)?;
         } else {
             std::fs::copy(entry.path(), &to)?;
+            let mode = match metadata.permissions().mode() & 0o111 {
+                0 => 0o644,
+                _ => 0o755,
+            };
+            std::fs::set_permissions(&to, std::fs::Permissions::from_mode(mode))?;
         }
     }
     Ok(())
@@ -196,6 +205,36 @@ mod tests {
         ];
         assert_eq!(mounts, expected);
         assert!(root.join("mounts/made/empty/deeper").is_dir());
+    }
+
+    #[test]
+    fn copied_directories_are_writable() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let source = folder.path().join("stored");
+        std::fs::create_dir_all(source.join("c")).expect("makes the folders");
+        std::fs::write(source.join("c/d"), "d\n").expect("writes");
+        // A directory of the store, whose files and folders nobody may change.
+        let read_only = std::fs::Permissions::from_mode(0o444);
+        std::fs::set_permissions(source.join("c/d"), read_only).expect("sets the mode");
+        let copied = Staged {
+            path: "work_dir".into(),
+            source: source.clone(),
+            directory: true,
+            copy: true,
+            ..Staged::default()
+        };
+        let staging = Staging {
+            inputs: vec![copied],
+            ..Staging::default()
+        };
+        let root = folder.path().join("scratch").join("task");
+        place(&root, &staging).expect("places");
+        let mode = |path: &str| {
+            let metadata = std::fs::metadata(root.join("work").join(path)).expect("exists");
+            metadata.permissions().mode() & 0o777
+        };
+        assert_eq!(mode("work_dir/c/d"), 0o644);
+        assert_eq!(mode("work_dir/c"), 0o755);
     }
 
     #[test]

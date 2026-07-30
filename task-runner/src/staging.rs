@@ -43,7 +43,7 @@ impl<B: Backend> Runner<B> {
                     staging.inputs.push(staged(content, copy));
                 }
                 Source::Content | Source::Stored => {
-                    self.stage_tree(&input.path, &input.digest, &mut staging)
+                    self.stage_tree(&input.path, &input.digest, input.writable, &mut staging)
                         .await?;
                 }
             }
@@ -54,11 +54,13 @@ impl<B: Backend> Runner<B> {
         Ok(staging)
     }
 
-    /// Stages a directory that only the store has: its files and its empty directories.
+    /// Stages a directory that only the store has: its files and its empty directories. The
+    /// task gets copies of the files when it may change them.
     async fn stage_tree(
         &self,
         path: &str,
         digest: &Digest,
+        writable: bool,
         staging: &mut Staging,
     ) -> Result<(), RunnerError> {
         let base = path.trim_end_matches('/');
@@ -78,7 +80,7 @@ impl<B: Backend> Runner<B> {
                     path: inside,
                     source: self.local_content(&digest).await?,
                     directory: false,
-                    copy: executable,
+                    copy: executable || writable,
                     executable,
                     ..Default::default()
                 }),

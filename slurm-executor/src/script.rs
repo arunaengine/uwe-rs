@@ -92,24 +92,15 @@ pub fn job_script(container: &Container, run: &ContainerRun<'_>, gpus: bool) -> 
 /// The command of Apptainer: a container with its own `/tmp`, home and environment, which sees
 /// the scratch directory at the same path, the work directory, and the other mounts.
 fn apptainer(program: &str, run: &ContainerRun<'_>, gpus: bool) -> Vec<String> {
-    let root = run.root.to_string_lossy();
     let mut command = vec![
         program.to_owned(),
         "exec".into(),
         "--containall".into(),
         "--pwd".into(),
         run.inside(),
-        "--bind".into(),
-        format!("{root}:{root}"),
     ];
-    if let Some(workdir) = run.workdir {
-        let work = run.root.join(executor::WORK);
-        command.extend(["--bind".into(), format!("{}:{workdir}", work.display())]);
-    }
-    for mount in run.mounts {
-        let mode = if mount.read_only { ":ro" } else { "" };
-        let bind = format!("{}:{}{mode}", mount.source.display(), mount.target);
-        command.extend(["--bind".into(), bind]);
+    for bind in run.binds() {
+        command.extend(["--bind".into(), executor::local::volume(&bind)]);
     }
     if gpus {
         command.push("--nv".into());

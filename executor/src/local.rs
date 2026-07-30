@@ -126,6 +126,42 @@ impl ContainerRun<'_> {
         (self.workdir.map(str::to_owned)).unwrap_or_else(|| text(&self.root.join(WORK)))
     }
 
+    /// The folders that the container sees, each with its place inside it: the scratch
+    /// directory at the same path, the work directory at the task's `workdir` when it names
+    /// one, and the mounts of the inputs. A mount with a relative target is inside the work
+    /// directory, and one at the work directory itself, like the working directory of a
+    /// Snakemake `shell()` call that the task changes in place, takes its place.
+    pub fn binds(&self) -> Vec<Mount> {
+        let inside = self.inside();
+        let mounts: Vec<Mount> = (self.mounts.iter())
+            .map(|mount| Mount {
+                source: mount.source.clone(),
+                target: match mount.target.as_str() {
+                    "." => inside.clone(),
+                    target if target.starts_with('/') => target.to_owned(),
+                    target => format!("{}/{target}", inside.trim_end_matches('/')),
+                },
+                read_only: mount.read_only,
+            })
+            .collect();
+        let mut binds = vec![Mount {
+            source: self.root.to_owned(),
+            target: text(self.root),
+            read_only: false,
+        }];
+        if let Some(workdir) = self.workdir
+            && !mounts.iter().any(|mount| mount.target == workdir)
+        {
+            binds.push(Mount {
+                source: self.root.join(WORK),
+                target: workdir.to_owned(),
+                read_only: false,
+            });
+        }
+        binds.extend(mounts);
+        binds
+    }
+
     /// The wrapper in the control folder, which the container runs.
     pub fn script(&self) -> String {
         text(&self.root.join(CONTROL).join("wrapper.sh"))
@@ -147,15 +183,7 @@ impl ContainerRun<'_> {
 
     /// The container that runs the wrapper with Bash in the image, for the engine's API.
     pub fn create(&self, engine: &ContainerEngine) -> ContainerCreateBody {
-        let root = text(self.root);
-        let mut binds = vec![format!("{root}:{root}")];
-        if let Some(workdir) = self.workdir {
-            binds.push(format!("{}:{workdir}", text(&self.root.join(WORK))));
-        }
-        for mount in self.mounts {
-            let mode = if mount.read_only { ":ro" } else { "" };
-            binds.push(format!("{}:{}{mode}", text(&mount.source), mount.target));
-        }
+        let binds = self.binds().iter().map(volume).collect();
         ContainerCreateBody {
             image: Some(self.image.reference.clone()),
             // Bash of the image, wherever its `PATH` has it.
@@ -176,22 +204,14 @@ impl ContainerRun<'_> {
 
     /// The arguments of the engine's command that run the wrapper with Bash in the image.
     pub fn arguments(&self, engine: &EngineCommand) -> Vec<String> {
-        let root = text(self.root);
         let mut arguments: Vec<String> = ["run", "--rm", "--name", self.name]
             .into_iter()
             .chain(["--entrypoint", "/bin/bash"])
             .map(str::to_owned)
             .collect();
         arguments.extend(engine.user_options(self.owner.0, self.owner.1));
-        arguments.extend(["--volume".into(), format!("{root}:{root}")]);
-        if let Some(workdir) = self.workdir {
-            let work = text(&self.root.join(WORK));
-            arguments.extend(["--volume".into(), format!("{work}:{workdir}")]);
-        }
-        for mount in self.mounts {
-            let mode = if mount.read_only { ":ro" } else { "" };
-            let volume = format!("{}:{}{mode}", text(&mount.source), mount.target);
-            arguments.extend(["--volume".into(), volume]);
+        for bind in self.binds() {
+            arguments.extend(["--volume".into(), volume(&bind)]);
         }
         arguments.extend(["--workdir".into(), self.inside()]);
         arguments.extend(["--cpus".into(), self.cpus.to_string()]);
@@ -411,10 +431,67 @@ async fn append(path: &Path, text: &str) -> std::io::Result<()> {
     file.write_all(text.as_bytes()).await
 }
 
+/// A bind in the form of `docker run --volume`: `<source>:<target>`, with `:ro` when it is
+/// read-only.
+pub fn volume(mount: &Mount) -> String {
+    let mode = if mount.read_only { ":ro" } else { "" };
+    format!("{}:{}{mode}", text(&mount.source), mount.target)
+}
+
 fn text(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
 fn read(path: &Path) -> Option<String> {
     std::fs::read_to_string(path).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn binds_put_relative_mounts_in_the_work_directory() {
+        let image = Image {
+            reference: "debian".into(),
+            platform: None,
+        };
+        let mount = |source: &str, target: &str| Mount {
+            source: PathBuf::from(source),
+            target: target.to_owned(),
+            read_only: false,
+        };
+        let mounts = [mount("/project", "."), mount("/data", "data")];
+        let mut run = ContainerRun {
+            name: "task",
+            image: &image,
+            root: Path::new("/scratch/task"),
+            workdir: None,
+            mounts: &mounts,
+            owner: (1000, 100),
+            cpus: 1,
+            memory: None,
+            offline: false,
+        };
+        let binds =
+            |run: &ContainerRun<'_>| -> Vec<String> { run.binds().iter().map(volume).collect() };
+        assert_eq!(
+            binds(&run),
+            [
+                "/scratch/task:/scratch/task",
+                "/project:/scratch/task/work",
+                "/data:/scratch/task/work/data",
+            ]
+        );
+        // A mount at the work directory takes the place of the work directory of the scratch.
+        run.workdir = Some("/work");
+        assert_eq!(
+            binds(&run),
+            [
+                "/scratch/task:/scratch/task",
+                "/project:/work",
+                "/data:/work/data"
+            ]
+        );
+    }
 }

@@ -337,6 +337,7 @@ pub fn build(
                 source: address,
                 directory: false,
                 content: None,
+                ..Default::default()
             });
             continue;
         }
@@ -356,6 +357,7 @@ pub fn build(
             source: source.to_string_lossy().into_owned(),
             directory,
             content: None,
+            ..Default::default()
         });
     }
     let mut conda = match &rule.conda {
@@ -430,6 +432,7 @@ pub fn build(
                         source: location,
                         directory: false,
                         content: None,
+                        ..Default::default()
                     });
                 }
                 Err(message) => return Err(workflow_error(message)),
@@ -471,6 +474,7 @@ pub fn build(
                         source: source.location.clone(),
                         directory: false,
                         content: None,
+                        ..Default::default()
                     });
                 }
                 Err(message) => return Err(workflow_error(message)),
@@ -525,6 +529,7 @@ pub fn build(
                 source,
                 directory: false,
                 content: None,
+                ..Default::default()
             });
         }
     }
@@ -582,6 +587,7 @@ pub fn build(
             source: String::new(),
             directory: true,
             content: None,
+            ..Default::default()
         });
     }
     let mut environment = BTreeMap::new();

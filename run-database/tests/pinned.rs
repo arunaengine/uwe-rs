@@ -42,6 +42,7 @@ fn task(id: u64, image: &str) -> Task {
             source: "https://example.org/reads.fq".into(),
             directory: false,
             content: None,
+            ..Default::default()
         }],
         outputs: vec!["out.txt".into()],
         ..Task::default()

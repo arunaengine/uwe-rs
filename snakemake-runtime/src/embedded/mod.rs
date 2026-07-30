@@ -104,6 +104,7 @@ impl Setting {
             source,
             directory: true,
             content: None,
+            ..Default::default()
         })
     }
 }
@@ -146,6 +147,7 @@ pub fn literal(path: &str, content: &str) -> Input {
         source: String::new(),
         directory: false,
         content: Some(content.to_owned()),
+        ..Default::default()
     }
 }
 

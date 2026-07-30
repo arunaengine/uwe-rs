@@ -233,6 +233,7 @@ impl Run {
                 source: String::new(),
                 directory: false,
                 content: Some(content),
+                ..Default::default()
             });
         }
         task.outputs = vec![REPLY_PATH.to_owned(), STATUS_PATH.to_owned()];

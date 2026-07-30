@@ -79,6 +79,7 @@ mod tests {
                 source: source.into(),
                 directory: false,
                 content: None,
+                ..Default::default()
             }],
             ..Task::default()
         }

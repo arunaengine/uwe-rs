@@ -90,7 +90,7 @@ impl Task {
 }
 
 /// A file or directory the task reads.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Input {
     /// Where the task sees it, relative to the working directory unless absolute.
     pub path: String,
@@ -101,6 +101,32 @@ pub struct Input {
     /// Literal content, for a file that the workflow writes itself, like a CWL
     /// `InitialWorkDir` entry or an Argo `raw` artifact.
     pub content: Option<String>,
+    /// Whether and how the task may change the input.
+    #[serde(default, skip_serializing_if = "Writable::is_no")]
+    pub writable: Writable,
+}
+
+/// Whether and how a task may change an input.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Writable {
+    /// The task only reads it; the default.
+    #[default]
+    No,
+    /// The task gets a copy of its own, which it may change and no other task sees, as a CWL
+    /// `InitialWorkDir` entry with `writable: true`.
+    Copy,
+    /// The task changes the input where it is, and later tasks see the changes, as a CWL input
+    /// with `InplaceUpdateRequirement`, or the working directory of Snakemake's `shell()` calls
+    /// in the Snakefile. Only a local file or directory can be changed in place, and such a
+    /// task never comes from the cache.
+    InPlace,
+}
+
+impl Writable {
+    fn is_no(&self) -> bool {
+        *self == Writable::No
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

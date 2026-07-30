@@ -31,6 +31,7 @@ mod resources;
 mod rule;
 mod schema;
 mod shell;
+mod sources;
 mod storage;
 mod task;
 mod utils;

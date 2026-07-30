@@ -173,6 +173,8 @@ pub struct TaskSetting<'a> {
     pub workdir: &'a Path,
     /// What the code of jobs needs: the stand-in of the snakemake package.
     pub embedded: &'a embedded::Setting,
+    /// The source files of the workflow, which every job sees in its work directory.
+    pub sources: &'a crate::sources::Sources,
 }
 
 /// Builds the task of a job.
@@ -590,6 +592,12 @@ pub fn build(
             ..Default::default()
         });
     }
+    // The source files of the workflow, as Snakemake's jobs see them in the working directory.
+    let taken: Vec<&str> = (inputs.iter().map(|input| input.path.as_str()))
+        .chain(outputs.iter().map(String::as_str))
+        .collect();
+    let sources = setting.sources.inputs(&taken);
+    inputs.extend(sources);
     let mut environment = BTreeMap::new();
     for name in &setting.state.envvars {
         if let Ok(value) = std::env::var(name) {

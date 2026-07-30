@@ -11,9 +11,28 @@ use std::path::Path;
 
 use workflow_graph::{Launch, Simulator, execute};
 
-/// The graph of a run, and for each task its image, command, inputs and outputs.
-fn describe(folder: &Path) -> String {
+/// Copies a folder with its files and folders.
+fn copy(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).expect("makes the folder");
+    for entry in std::fs::read_dir(from).expect("reads the folder") {
+        let entry = entry.expect("an entry");
+        let target = to.join(entry.file_name());
+        match entry.file_type().expect("a type").is_dir() {
+            true => copy(&entry.path(), &target),
+            false => {
+                std::fs::copy(entry.path(), &target).expect("copies");
+            }
+        }
+    }
+}
+
+/// The graph of a run, and for each task its image, command, inputs and outputs. The run is of
+/// a copy of the folder outside the repository, so that no file that git tracks becomes a
+/// source of its jobs, wherever the repository is.
+fn describe(fixture: &Path) -> String {
     let scratch = tempfile::tempdir().expect("a temporary directory");
+    let folder = &scratch.path().join("workflow");
+    copy(fixture, folder);
     let targets = std::fs::read_to_string(folder.join("targets"))
         .map(|text| {
             text.lines()

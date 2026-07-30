@@ -14,6 +14,7 @@
 mod arguments;
 mod clean;
 mod detect;
+mod failure;
 mod fetched;
 mod inputs;
 mod insight;
@@ -39,60 +40,13 @@ use run_database::Recorder;
 use run_page::Server;
 use workflow_graph::render::{Format, Options, render};
 use workflow_graph::{
-    CancellationToken, Driver, DriverError, Engine, ExecuteError, Execution, ExecutionGraph,
-    Executor, Language, Launch, Order, RunOptions, SIMULATION, Simulator,
+    CancellationToken, Driver, DriverError, Engine, Execution, ExecutionGraph, Executor, Language,
+    Launch, Order, RunOptions, SIMULATION, Simulator,
 };
 
 use crate::arguments::Arguments;
+use crate::failure::{Failure, INTERRUPTED, failure};
 use crate::setup::Setup;
-
-/// The exit code for a feature that a workflow language supports but iunctus does not yet, as
-/// CWL runners use it for unsupported requirements.
-const UNSUPPORTED: u8 = 33;
-
-/// The exit code of a run stopped with Ctrl-C, as shells give it.
-const INTERRUPTED: u8 = 130;
-
-/// Why a command failed, and its exit code.
-struct Failure {
-    message: String,
-    code: u8,
-    /// Lines for standard error after the message, like the note of a simulated run.
-    after: Vec<String>,
-}
-
-impl From<DriverError> for Failure {
-    fn from(error: DriverError) -> Self {
-        Failure {
-            code: if error.unsupported { UNSUPPORTED } else { 1 },
-            message: error.message,
-            after: Vec::new(),
-        }
-    }
-}
-
-impl From<ExecuteError> for Failure {
-    fn from(error: ExecuteError) -> Self {
-        let code = match &error {
-            ExecuteError::Cancelled => INTERRUPTED,
-            error if error.unsupported() => UNSUPPORTED,
-            _ => 1,
-        };
-        Failure {
-            code,
-            message: error.to_string(),
-            after: Vec::new(),
-        }
-    }
-}
-
-fn failure(message: impl Into<String>) -> Failure {
-    Failure {
-        message: message.into(),
-        code: 1,
-        after: Vec::new(),
-    }
-}
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();

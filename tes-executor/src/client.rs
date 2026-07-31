@@ -181,6 +181,12 @@ impl Client {
         self.send(self.http.get(&url), &url).await
     }
 
+    /// Asks the server about itself (`GET /service-info`), which tells whether it answers.
+    pub async fn service_info(&self) -> Result<serde_json::Value, TesError> {
+        let url = format!("{}/service-info", self.base);
+        self.send(self.http.get(&url), &url).await
+    }
+
     /// Asks the server to cancel a task.
     pub async fn cancel(&self, id: &str) -> Result<(), TesError> {
         let url = format!("{}/tasks/{id}:cancel", self.base);
@@ -199,7 +205,7 @@ impl Client {
         }
         let failed = |error: reqwest::Error| TesError::Request {
             url: url.to_owned(),
-            message: error.to_string(),
+            message: cause(&error),
         };
         let response = request.send().await.map_err(failed)?;
         let status = response.status();
@@ -213,6 +219,16 @@ impl Client {
         }
         serde_json::from_str(&text).map_err(|error| TesError::Answer(format!("{error}: {text}")))
     }
+}
+
+/// What went wrong with a request, in the words of its deepest cause, like `Connection
+/// refused`, which says more than `error sending request for url`.
+fn cause(error: &reqwest::Error) -> String {
+    let mut cause: &dyn std::error::Error = error;
+    while let Some(source) = cause.source() {
+        cause = source;
+    }
+    cause.to_string()
 }
 
 #[cfg(test)]

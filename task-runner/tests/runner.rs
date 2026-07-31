@@ -198,6 +198,23 @@ fn failures_are_not_cached() {
 }
 
 #[test]
+fn a_missing_input_names_its_file() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let runner = runner(root.path(), 0);
+    let mut task = task(root.path(), "a");
+    let missing = root.path().join("data/samples.csv");
+    task.inputs[0].source = missing.to_string_lossy().into_owned();
+    let Err(error) = block_on(runner.request(&task, Some("debian@sha256:00".into()))) else {
+        panic!("a missing input is an error")
+    };
+    let text = error.to_string();
+    assert_eq!(
+        text,
+        format!("the input {} does not exist", missing.display())
+    );
+}
+
+#[test]
 fn directories_travel_as_one_entry() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);

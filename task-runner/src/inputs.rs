@@ -172,6 +172,7 @@ impl Inputs<'_> {
                 self.tree(&Tree::default()).await?,
                 Source::Stored,
             ),
+            None if !source.exists() => return Err(RunnerError::Missing(source.to_owned())),
             None if input.directory || source.is_dir() => (
                 FileKind::Directory,
                 self.directory(source).await?.0,

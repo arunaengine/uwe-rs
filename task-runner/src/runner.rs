@@ -83,6 +83,9 @@ pub enum RunnerError {
     },
     #[error("cannot read the cache entry {key}: {message}")]
     Entry { key: Digest, message: String },
+    /// A local input of the task is not there.
+    #[error("the input {} does not exist", .0.display())]
+    Missing(PathBuf),
     #[error("the input {0} is a remote directory, which iunctus cannot read yet")]
     Remote(String),
     /// A lookup of the cache cannot know a remote input that no run downloaded yet.

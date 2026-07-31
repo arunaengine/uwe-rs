@@ -36,7 +36,10 @@ pub fn executor(
     }
     // The client runs on the runtime of the engine, which runs the attempts.
     let runtime = workflow_graph::runtime().map_err(|error| error.to_string())?;
-    let cluster = runtime.block_on(Cluster::connect(&kubeconfig, namespace))?;
+    // The first line says what is wrong; the lines after it quote the file.
+    let cluster = runtime
+        .block_on(Cluster::connect(&kubeconfig, namespace))
+        .map_err(|error| error.lines().next().unwrap_or_default().to_owned())?;
     let backend = KubernetesBackend::new(cluster, scratch.join("kubernetes"));
     // The nodes read the inputs from the store, so they are copied there.
     let settings = Settings {

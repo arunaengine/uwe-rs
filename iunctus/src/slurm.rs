@@ -43,6 +43,19 @@ pub fn executor(
 ) -> Result<RunnerExecutor<SlurmBackend>, String> {
     let mut backend = SlurmBackend::new(scratch.join("slurm"), container);
     backend.options = options;
+    let needed: Vec<&str> = (backend.missing_tools().into_iter())
+        .filter(|tool| *tool != "sacct")
+        .collect();
+    if let Some((last, others)) = needed.split_last() {
+        let (tools, are) = match others {
+            [] => (format!("`{last}` is"), ""),
+            others => (format!("`{}` and `{last}`", others.join("`, `")), " are"),
+        };
+        return Err(format!(
+            "-executor slurm needs the tools of SLURM, but {tools}{are} not on the PATH; run \
+             iunctus on a node of the SLURM cluster, like its login node"
+        ));
+    }
     // The nodes read the inputs from the store, so they are copied there.
     let settings = Settings {
         downloads: crate::cache_directory().join("downloads"),

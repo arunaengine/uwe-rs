@@ -151,6 +151,13 @@ impl Nextflow {
         } else {
             target.clone()
         };
+        if target.is_dir() && !script.is_file() {
+            return Err(DriverError::new(format!(
+                "{}: no such file; name the main script of the project, or set \
+                 `manifest.mainScript` in its nextflow.config",
+                script.display()
+            )));
+        }
         let module = Loader::default().load(&script).map_err(load_error)?;
         self.loaded = Some(Loaded {
             project,

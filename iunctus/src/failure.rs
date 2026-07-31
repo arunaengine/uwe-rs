@@ -52,6 +52,11 @@ impl Failure {
         Failure::with_code(message, SETUP)
     }
 
+    /// A command that has said why it failed, like a check that printed its report.
+    pub fn said(code: u8) -> Failure {
+        Failure::with_code(String::new(), code)
+    }
+
     fn with_code(message: impl Into<String>, code: u8) -> Failure {
         Failure {
             message: message.into(),

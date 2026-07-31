@@ -12,6 +12,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod arguments;
+mod check;
 mod clean;
 mod detect;
 mod failure;
@@ -61,6 +62,7 @@ fn main() -> ExitCode {
     let result = match command.as_str() {
         "run" => run(&arguments),
         "graph" => graph(&arguments),
+        "check" => check::command(&arguments),
         "config" => config(&arguments),
         "runs" => runs::list(&arguments),
         "export" => runs::export(&arguments),
@@ -587,6 +589,7 @@ const USAGE: &str = "\
 usage: iunctus run <workflow file or directory> [<targets>] [options]
        iunctus graph <workflow file or directory> [-format json|dot|summary|svg] [-view tasks|steps]
                      [-direction down|right] [-fold <n>] [options]
+       iunctus check <workflow file or directory> [-default-image <image>] [options]
        iunctus config [<project>] [-profile <names>] [-c <config>] [--<param> <value>]
        iunctus runs
        iunctus page [<run>] [-address <ip>] [-port <number>]

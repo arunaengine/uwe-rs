@@ -46,3 +46,40 @@ The code: `iunctus/src/failure.rs` (`Failure`, the exit codes, and how a message
 | 130 | The run was stopped with Ctrl-C | |
 
 33 is the code that CWL runners give for unsupported requirements. A run that fails for several reasons gives the code of the first one it meets.
+
+## 3. Checking a workflow before a run
+
+```sh
+iunctus check <workflow file or directory> [-default-image <image>] [the options of iunctus run]
+```
+
+`iunctus check` finds everything that would stop a real run with the same options, at once and without running a task, in all four languages:
+
+- **Unsupported features**, which stop a run with exit code 33, like DSL1 scripts or Argo resource templates.
+- **Syntax and load errors** of every file of the workflow, and **broken references**: includes, modules and subworkflows, CWL `run` documents, Argo templates and template references. The Nextflow loader reports the errors of all its files at once; the other languages stop at the first error of their loader.
+- **Inputs** against the JSON Schema of the workflow (`iunctus inputs`), as a real run checks them: a required input without a value, a value of the wrong type, a file or directory that does not exist.
+- **Local files that tasks read and that do not exist**, and that no task makes, for every task of the plan, not only the first one that a run would reach.
+- **Tasks without a container image**, which a real run cannot start unless `-default-image` gives one (decision 11).
+
+The check plans the run with the simulator, as `iunctus graph` does, so that the plan goes past the files that are missing. It keeps the made-up files in a scratch folder that it removes, and it records nothing in the run database. What the workflow prints goes to standard error; the report goes to standard output, the worst problems first, then what the check could not look at:
+
+```text
+error: step COPY reads data/samples.csv, which does not exist
+error: step COPY: 1 task names no container image; iunctus runs every task in a container, so name an image in the workflow or give one with `-default-image <image>`
+main.nf (Nextflow): 2 errors would stop a real run.
+```
+
+```text
+unsupported: main.nf:1:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+main.nf (Nextflow): 1 unsupported feature would stop a real run.
+```
+
+```text
+main.nf (Nextflow): nothing would stop a real run of 2 tasks in 2 steps.
+```
+
+The exit code is 33 when a feature is not supported, else 1 when something would stop a real run, else 0; warnings do not change it.
+
+**Limits.** A plan with made-up files can differ from a real run where real data decides which tasks follow (the markers of [the graphs of a run](graph.md), section 3); the report says how many such points the plan has, since it cannot see the problems of tasks that only real data makes. Files at remote addresses are not fetched, and the report counts them. A load error stops the plan, so the problems of the tasks after it show once it is fixed. Snakemake, CWL and Argo report the first load error of their loader only.
+
+The code: `iunctus/src/check.rs`; tests in `iunctus/tests/check.rs`.

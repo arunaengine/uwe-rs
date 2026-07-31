@@ -58,7 +58,7 @@ Loading follows Proposal B, section 5.1: read the manifest, evaluate the config,
 
 Lowering follows Proposal A, sections 3.1 and 3.2. Its passes repeat the Nextflow compiler in order: names and scopes, script structure (legacy inputs and outputs become declarations, directives are marked fixed or per task), type stripping, `LangHelpers` comparisons, `branch` and `multiMap` criteria, GString to String, and the escaping of staged paths in task scripts. Every lowered node keeps its file and span. There is no bytecode; a later compiler can start from the lowered tree if profiling asks for it.
 
-`iunctus check <pipeline>` loads and lowers a pipeline and prints every unsupported feature at once. The test-workflows report uses it.
+`iunctus check <pipeline>` loads and lowers a pipeline and prints every unsupported feature and load error at once, and the other problems that would stop a real run; it works the same way for every language ([errors, exit codes and checks](../checks.md), section 3).
 
 ### 3.2 Values
 

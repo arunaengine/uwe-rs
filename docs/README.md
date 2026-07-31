@@ -30,6 +30,8 @@ Storage needs no setup for public files. A config file, `~/.config/iunctus/confi
 
 Every run records itself in the run database. `iunctus runs` lists the runs, `-resume` continues one without running its finished tasks again, `iunctus run -page` and `iunctus page` show runs live on a web page, and `iunctus export` writes the RO-Crate of a run with its provenance. See [runs](design/runs.md).
 
+Every error has the same form, `iunctus: <where>: <what went wrong>; <what to do>`, in every language and executor, and the exit code tells its kind: 1 for the workflow, 2 for the command line, 3 for the machine or its config, 33 for a feature that iunctus does not support. See [errors, exit codes and checks](design/checks.md).
+
 Every result goes to a content-addressed store, and any run, pipeline or language that asks for the same task takes it from there. Two runs that ask for the same task at the same moment run it once. A simulated run previews which tasks a real run would take from the cache, and `iunctus clean` removes what no rule keeps, never what a run still refers to. See [the cache](design/cache.md).
 
 ## Start here
@@ -41,6 +43,7 @@ Every result goes to a content-addressed store, and any run, pipeline or languag
 ## Design
 
 - [Engine](design/engine.md): how `iunctus run` finds the language, the driver interface every language implements, how tasks run, the execution graph, the executors, and the next steps for the execution layer.
+- [Errors, exit codes and checks](design/checks.md): the one form of every error, what each exit code means, and the checks of a workflow and of the machine before a run.
 - [Executors](design/executors.md): how the local, TES, SLURM and Kubernetes executors run tasks, how to set each one up, and how the end of a job becomes the outcome of a task.
 - [Runs](design/runs.md): the run database that every run fills, resume, the web page of runs and the Workflow Run RO-Crate of a run.
 - [The cache](design/cache.md): when two tasks are the same, the store and its entries, one execution of a task that runs elsewhere with leases that end with their process, clean-up by rule, the preview of a run, and the longest chain first.

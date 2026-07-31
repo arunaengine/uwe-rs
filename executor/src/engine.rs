@@ -41,9 +41,9 @@ impl fmt::Debug for ContainerEngine {
     }
 }
 
-/// No container engine answers.
+/// No container engine answers: where iunctus looked, and how to turn one on.
 #[derive(Debug, thiserror::Error)]
-#[error("iunctus runs every task in a container, but {0}")]
+#[error("{0}")]
 pub struct NoEngine(String);
 
 impl ContainerEngine {
@@ -64,27 +64,19 @@ impl ContainerEngine {
             Some("podman") => podman_sockets(),
             Some(socket) => vec![socket.trim_start_matches("unix://").to_owned()],
         };
-        let mut reasons = Vec::new();
-        for socket in sockets {
-            match Self::connect(&socket).await {
+        let mut failed = Vec::new();
+        for socket in &sockets {
+            // A socket that is not there needs no reason; one that is there and does not
+            // answer does, like one that the user may not use.
+            if !std::path::Path::new(socket).exists() {
+                continue;
+            }
+            match Self::connect(socket).await {
                 Ok(engine) => return Ok(engine),
-                Err(reason) => reasons.push(format!("{socket}: {reason}")),
+                Err(reason) => failed.push(format!("{socket}: {reason}")),
             }
         }
-        let how = match name {
-            Some("podman") => "turn on the socket of Podman with `systemctl --user enable --now \
-                               podman.socket`"
-                .to_owned(),
-            Some("docker") => "start Docker".to_owned(),
-            Some(socket) => format!("start the engine of {socket}"),
-            None => "start Docker, or turn on the socket of Podman with `systemctl --user enable \
-                     --now podman.socket`, or name a socket with IUNCTUS_ENGINE"
-                .to_owned(),
-        };
-        Err(NoEngine(format!(
-            "no container engine answers ({}). To run tasks, {how}.",
-            reasons.join("; ")
-        )))
+        Err(NoEngine(missing(name, &sockets, &failed)))
     }
 
     /// The engine at a socket, asked about itself.
@@ -137,6 +129,43 @@ impl ContainerEngine {
             rootless: self.rootless,
         }
     }
+}
+
+/// Why no engine answers at `sockets`, and what to do, in one sentence. `failed` holds the
+/// sockets that are there but did not answer, with the reason.
+fn missing(name: Option<&str>, sockets: &[String], failed: &[String]) -> String {
+    let denied = failed
+        .iter()
+        .any(|reason| reason.to_lowercase().contains("permission denied"));
+    let mut how = match name {
+        Some("podman") => {
+            "turn on the socket of Podman with `systemctl --user enable --now podman.socket`"
+                .to_owned()
+        }
+        Some("docker") => "start Docker".to_owned(),
+        Some(socket) => format!("start the engine of {socket}"),
+        None => "start Docker, or turn on the socket of Podman with `systemctl --user enable \
+                 --now podman.socket`, or name a socket with IUNCTUS_ENGINE"
+            .to_owned(),
+    };
+    if denied {
+        how = format!(
+            "let your user use the socket, like with `sudo usermod -aG docker $USER` and a new \
+             login, or {how}"
+        );
+    }
+    let at = match sockets.split_last() {
+        Some((last, [])) => last.clone(),
+        Some((last, others)) => format!("{} or {last}", others.join(", ")),
+        None => String::new(),
+    };
+    let mut message = format!(
+        "no container engine answers at {at}; iunctus runs every task in a container, so {how}"
+    );
+    if !failed.is_empty() {
+        message.push_str(&format!(" ({})", failed.join("; ")));
+    }
+    message
 }
 
 /// The sockets where Docker answers: the one of `DOCKER_HOST`, the system one, and the one of
@@ -238,5 +267,24 @@ mod tests {
                 "{text}"
             );
         }
+    }
+
+    #[test]
+    fn a_socket_that_the_user_may_not_use_says_so() {
+        let sockets = ["/var/run/docker.sock".to_owned()];
+        let failed = ["/var/run/docker.sock: Permission denied".to_owned()];
+        let text = missing(None, &sockets, &failed);
+        assert!(text.starts_with("no container engine answers at /var/run/docker.sock; "));
+        assert!(text.contains("sudo usermod -aG docker $USER"), "{text}");
+        assert!(
+            text.ends_with("(/var/run/docker.sock: Permission denied)"),
+            "{text}"
+        );
+        let text = missing(Some("docker"), &sockets, &[]);
+        assert_eq!(
+            text,
+            "no container engine answers at /var/run/docker.sock; iunctus runs every task in a \
+             container, so start Docker"
+        );
     }
 }

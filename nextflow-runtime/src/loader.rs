@@ -361,7 +361,10 @@ impl Imports for Includes<'_> {
             return Err(format!("Plugins are not supported yet: {source}"));
         };
         if !path.exists() {
-            return Err(format!("Invalid include source: '{}'", path.display()));
+            return Err(format!(
+                "the included file {} does not exist",
+                path.display()
+            ));
         }
         let Some(module) = self.loader.load_file(&path) else {
             return Err(format!("Cannot include '{source}', which has errors"));

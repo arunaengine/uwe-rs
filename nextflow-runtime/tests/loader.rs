@@ -87,7 +87,7 @@ fn bad_includes() {
     );
     assert_eq!(
         error("missing.nf"),
-        "<root>/missing.nf:1:11: Invalid include source: '<root>/nowhere.nf'"
+        "<root>/missing.nf:1:11: the included file <root>/nowhere.nf does not exist"
     );
     assert_eq!(
         error("undefined.nf"),

@@ -115,7 +115,7 @@ proteogenomicsdb unsupported: main.nf:13:1: DSL1 scripts are not supported (deci
 proteomicslfq unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
 provenancereport ok: 22 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 5 declared not read
 quantms ok: 167 inputs, 3 required, 3 files, 0 tables; 0 errors, 0 warnings; 6 read not declared, 16 declared not read
-radseq fail: workflows/radseq.nf:38:11: Invalid include source: 'workflows/../subworkflows/local/fastq_fastp.nf'
+radseq fail: workflows/radseq.nf:38:11: the included file workflows/../subworkflows/local/fastq_fastp.nf does not exist
 rangeland ok: 40 inputs, 7 required, 8 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 6 declared not read
 raredisease ok: 150 inputs, 4 required, 57 files, 8 tables; 0 errors, 0 warnings; 0 read not declared, 8 declared not read
 rarevariantburden ok: 64 inputs, 5 required, 23 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 5 declared not read
@@ -174,7 +174,7 @@ workflowhub/136 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warning
 workflowhub/140 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 49 read not declared, 0 declared not read
 workflowhub/156 unsupported: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run 
 workflowhub/192 fail: main.nf:28:15: Unexpected character: '`'
-workflowhub/240 fail: main.nf:47:13: Invalid include source: 'workflow/samtools.nf'
+workflowhub/240 fail: main.nf:47:13: the included file workflow/samtools.nf does not exist
 workflowhub/244 unsupported: main.nf:3:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run i
 workflowhub/264 ok: 94 inputs, 0 required, 13 files, 1 tables; 0 errors, 0 warnings; 42 read not declared, 11 declared not read
 workflowhub/300 ok: 35 inputs, 0 required, 2 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 6 declared not read
@@ -189,13 +189,13 @@ workflowhub/419 ok: 27 inputs, 0 required, 7 files, 0 tables; 0 errors, 0 warnin
 workflowhub/431 ok: 13 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/435 unsupported: sqtlseeker2.nf:26:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do n
 workflowhub/436 unsupported: mvgwas.nf:24:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not ru
-workflowhub/438 fail: mop_preprocess/mop_preprocess.nf:151:11: Invalid include source: 'mop_preprocess/../BioNextflow/subworkflows/basecalling/guppy.nf'
+workflowhub/438 fail: mop_preprocess/mop_preprocess.nf:151:11: the included file mop_preprocess/../BioNextflow/subworkflows/basecalling/guppy.nf does not exist
 workflowhub/440 fail: config/standard.config:16:1: Expected `}`
 workflowhub/442 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 0 declared not read
 workflowhub/444 ok: 37 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 1 read not declared, 16 declared not read
 workflowhub/450 fail: workflow/../subworkflows/../modules/mapseq.nf:31:1: Expected an expression
 workflowhub/452 ok: 41 inputs, 6 required, 2 files, 1 tables; 1 errors, 0 warnings; 0 read not declared, 3 declared not read
-workflowhub/453 fail: main.nf: No such file or directory (os error 2)
+workflowhub/453 fail: main.nf: no such file; name the main script of the project, or set `manifest.mainScript` in its nextflow.config
 workflowhub/454 ok: 28 inputs, 0 required, 0 files, 0 tables; 0 errors, 1 warnings; 10 read not declared, 2 declared not read
 workflowhub/462 ok: 29 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 6 read not declared, 1 declared not read
 workflowhub/480 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 11 read not declared, 0 declared not read
@@ -297,7 +297,7 @@ workflowhub/1320 ok: 29 inputs, 5 required, 4 files, 0 tables; 0 errors, 0 warni
 workflowhub/1321 ok: 29 inputs, 5 required, 4 files, 0 tables; 0 errors, 0 warnings; 7 read not declared, 5 declared not read
 workflowhub/1330 ok: 32 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
 workflowhub/1360 ok: 49 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
-workflowhub/1727 fail: main.nf: No such file or directory (os error 2)
+workflowhub/1727 fail: main.nf: no such file; name the main script of the project, or set `manifest.mainScript` in its nextflow.config
 workflowhub/1735 ok: 30 inputs, 4 required, 5 files, 1 tables; 0 errors, 0 warnings; 3 read not declared, 0 declared not read
 workflowhub/1742 ok: 73 inputs, 4 required, 9 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
 workflowhub/1757 ok: 191 inputs, 2 required, 7 files, 2 tables; 0 errors, 0 warnings; 0 read not declared, 8 declared not read
@@ -314,17 +314,17 @@ workflowhub/1864 ok: 32 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warni
 workflowhub/1865 ok: 104 inputs, 2 required, 4 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 4 declared not read
 workflowhub/1871 ok: 41 inputs, 0 required, 1 files, 0 tables; 0 errors, 0 warnings; 3 read not declared, 16 declared not read
 workflowhub/1888 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 34 read not declared, 0 declared not read
-workflowhub/1950 fail: main.nf: No such file or directory (os error 2)
+workflowhub/1950 fail: main.nf: no such file; name the main script of the project, or set `manifest.mainScript` in its nextflow.config
 workflowhub/1954 ok: 64 inputs, 2 required, 3 files, 1 tables; 0 errors, 0 warnings; 0 read not declared, 5 declared not read
 workflowhub/1960 ok: 60 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 7 declared not read
 workflowhub/2033 ok: 47 inputs, 0 required, 13 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 9 declared not read
 workflowhub/2037 ok: 56 inputs, 1 required, 3 files, 1 tables; 0 errors, 0 warnings; 3 read not declared, 2 declared not read
 workflowhub/2040 ok: 49 inputs, 2 required, 5 files, 1 tables; 0 errors, 0 warnings; 1 read not declared, 6 declared not read
-workflowhub/2053 fail: main.nf: No such file or directory (os error 2)
+workflowhub/2053 fail: main.nf: no such file; name the main script of the project, or set `manifest.mainScript` in its nextflow.config
 workflowhub/2054 ok: 53 inputs, 0 required, 4 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 workflowhub/2080 ok: 19 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 7 read not declared, 2 declared not read
 workflowhub/2105 ok: 71 inputs, 2 required, 6 files, 0 tables; 0 errors, 0 warnings; 7 read not declared, 4 declared not read
-workflowhub/2110 fail: quantify_and_align.nf:26:10: Invalid include source: 'include/xic-extractor/main.nf'
+workflowhub/2110 fail: quantify_and_align.nf:26:10: the included file include/xic-extractor/main.nf does not exist
 workflowhub/2141 ok: 75 inputs, 1 required, 11 files, 0 tables; 0 errors, 0 warnings; 4 read not declared, 8 declared not read
 workflowhub/2153 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 13 read not declared, 0 declared not read
 workflowhub/2154 ok: 2 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 14 read not declared, 0 declared not read

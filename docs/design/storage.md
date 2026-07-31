@@ -51,8 +51,8 @@ iunctus reads the variable when the provider is first used, so a provider that a
 **Errors** name the file, the line and what is wrong, in plain words:
 
 ```text
-iunctus: /home/me/.config/iunctus/config.toml, line 12: `[storage.lab]` has no setting `regoin`; it knows `type`, `prefixes`, `endpoint`, `region`, `path_style`, `access_key_id`, `secret_access_key`, `session_token` and `anonymous`
-iunctus: /home/me/.config/iunctus/config.toml, line 7: the environment variable LAB_S3_SECRET, which holds this secret, is not set
+iunctus: /home/me/.config/iunctus/config.toml:12: `[storage.lab]` has no setting `regoin`; it knows `type`, `prefixes`, `endpoint`, `region`, `path_style`, `access_key_id`, `secret_access_key`, `session_token` and `anonymous`
+iunctus: /home/me/.config/iunctus/config.toml:7: the environment variable LAB_S3_SECRET, which holds this secret, is not set
 ```
 
 **For other parts of iunctus** (`config_file`): `ConfigFile::load(named)` reads the files; `config.section("executor")` gives a `Table` whose accessors `text`, `texts`, `flag`, `integer`, `number`, `secret`, `table`, `tables` and `keys` read values by type, `only(&[...])` rejects unknown keys, and `invalid` and `missing` make errors at the right line. `Secret::reveal()` gives the secret when it is needed; printing a `Secret` shows only where it comes from.

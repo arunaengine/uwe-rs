@@ -91,7 +91,7 @@ fn later_files_win_key_by_key() {
     assert_eq!(
         error,
         format!(
-            "{}, line 2: `storage.lab.endpoint` is not a web address",
+            "{}:2: `storage.lab.endpoint` is not a web address",
             user.display()
         )
     );
@@ -127,7 +127,7 @@ fn secrets_come_from_the_file_or_the_environment() {
         .to_string();
     assert_eq!(
         error,
-        "/site/config.toml, line 4: the environment variable \
+        "/site/config.toml:4: the environment variable \
          IUNCTUS_TEST_VARIABLE_THAT_IS_NOT_SET, which holds this secret, is not set"
     );
     assert!(web.secret("absent").unwrap().is_none());
@@ -137,9 +137,7 @@ fn secrets_come_from_the_file_or_the_environment() {
 fn errors_name_the_file_and_the_line() {
     let syntax = parse("[storage.lab]\ntype = \"s3\nregion = 1\n").expect_err("broken");
     assert!(
-        syntax
-            .to_string()
-            .starts_with("/site/config.toml, line 2: "),
+        syntax.to_string().starts_with("/site/config.toml:2: "),
         "{syntax}"
     );
 
@@ -153,39 +151,39 @@ fn errors_name_the_file_and_the_line() {
     let message = |error: ConfigError| error.to_string();
     assert_eq!(
         message(lab.texts("prefixes").unwrap_err()),
-        "/site/config.toml, line 3: `storage.lab.prefixes` must be a list of texts, not a whole number"
+        "/site/config.toml:3: `storage.lab.prefixes` must be a list of texts, not a whole number"
     );
     assert_eq!(
         message(lab.flag("path_style").unwrap_err()),
-        "/site/config.toml, line 4: `storage.lab.path_style` must be true or false, not text"
+        "/site/config.toml:4: `storage.lab.path_style` must be true or false, not text"
     );
     assert_eq!(
         message(lab.only(&["type", "prefixes", "endpoint"]).unwrap_err()),
-        "/site/config.toml, line 5: `[storage.lab]` has no setting `endpont`; it knows `type`, \
+        "/site/config.toml:5: `[storage.lab]` has no setting `endpont`; it knows `type`, \
          `prefixes` and `endpoint`"
     );
     assert_eq!(
         message(lab.secret("key").unwrap_err()),
-        "/site/config.toml, line 6: `storage.lab.key` needs the name of an environment \
+        "/site/config.toml:6: `storage.lab.key` needs the name of an environment \
          variable, like key = { environment = \"NAME\" }"
     );
     assert_eq!(
         message(lab.secret("other").unwrap_err()),
-        "/site/config.toml, line 7: `[storage.lab.other]` has no setting `variable`; it knows \
+        "/site/config.toml:7: `[storage.lab.other]` has no setting `variable`; it knows \
          `environment`"
     );
     assert_eq!(
         message(lab.missing("region", "like region = \"eu-central-1\"")),
-        "/site/config.toml, line 1: `[storage.lab]` needs `region`, like region = \"eu-central-1\""
+        "/site/config.toml:1: `[storage.lab]` needs `region`, like region = \"eu-central-1\""
     );
     assert_eq!(
         message(config.root().only(&["store"]).unwrap_err()),
-        "/site/config.toml, line 1: iunctus has no section `storage`; it knows `store`"
+        "/site/config.toml:1: iunctus has no section `storage`; it knows `store`"
     );
     let table = parse("storage = 3").unwrap();
     assert_eq!(
         message(table.section("storage").unwrap_err()),
-        "/site/config.toml, line 1: `storage` must be a table, not a whole number"
+        "/site/config.toml:1: `storage` must be a table, not a whole number"
     );
 }
 

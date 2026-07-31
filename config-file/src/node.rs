@@ -41,7 +41,7 @@ impl Origin {
 
 impl fmt::Display for Origin {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}, line {}", self.file.display(), self.line)
+        write!(formatter, "{}:{}", self.file.display(), self.line)
     }
 }
 

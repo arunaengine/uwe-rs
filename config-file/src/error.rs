@@ -8,7 +8,7 @@ use crate::Origin;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    #[error("cannot read the config file {file}: {source}")]
+    #[error("cannot read the config file {file}: {}", reason(source))]
     Read {
         file: PathBuf,
         source: std::io::Error,
@@ -24,5 +24,13 @@ impl ConfigError {
             origin: origin.clone(),
             message: message.into(),
         }
+    }
+}
+
+/// Why a file cannot be read, in plain words.
+fn reason(error: &std::io::Error) -> String {
+    match error.kind() {
+        std::io::ErrorKind::NotFound => "it does not exist".to_owned(),
+        _ => error.to_string(),
     }
 }

@@ -69,35 +69,35 @@ fn wrong_settings_name_the_line() {
     assert_eq!(
         settings_error("[storage.a]\nprefixes = [\"s3://a/\"]\n"),
         format!(
-            "{file}, line 1: `[storage.a]` needs `type`, the kind of provider: one of s3, \
+            "{file}:1: `[storage.a]` needs `type`, the kind of provider: one of s3, \
              google-cloud-storage, azure-blob-storage, https, ftp, folder"
         )
     );
     assert_eq!(
         settings_error("[storage.a]\ntype = \"dropbox\"\n"),
         format!(
-            "{file}, line 2: `storage.a.type` is `dropbox`, which iunctus does not know; use \
+            "{file}:2: `storage.a.type` is `dropbox`, which iunctus does not know; use \
              one of s3, google-cloud-storage, azure-blob-storage, https, ftp, folder"
         )
     );
     assert_eq!(
         settings_error("[storage.a]\ntype = \"s3\"\n"),
         format!(
-            "{file}, line 1: `[storage.a]` needs `prefixes`, the addresses it serves, like \
+            "{file}:1: `[storage.a]` needs `prefixes`, the addresses it serves, like \
              prefixes = [\"s3://my-bucket/\"]"
         )
     );
     assert_eq!(
         settings_error("[storage.a]\ntype = \"s3\"\nprefixes = [\"gs://a/\"]\n"),
         format!(
-            "{file}, line 3: `storage.a.prefixes` holds \"gs://a/\"; a `s3` provider needs an \
+            "{file}:3: `storage.a.prefixes` holds \"gs://a/\"; a `s3` provider needs an \
              address that starts with s3://, http://, https://"
         )
     );
     assert_eq!(
         settings_error("[storage.a]\ntype = \"s3\"\nprefixes = [\"s3://a/\"]\nregoin = \"x\"\n"),
         format!(
-            "{file}, line 4: `[storage.a]` has no setting `regoin`; it knows `type`, \
+            "{file}:4: `[storage.a]` has no setting `regoin`; it knows `type`, \
              `prefixes`, `endpoint`, `region`, `path_style`, `access_key_id`, \
              `secret_access_key`, `session_token` and `anonymous`"
         )
@@ -107,14 +107,14 @@ fn wrong_settings_name_the_line() {
             "[storage.a]\ntype = \"s3\"\nprefixes = [\"s3://a/\"]\naccess_key_id = \"x\"\n"
         ),
         format!(
-            "{file}, line 1: `[storage.a]` needs `secret_access_key`, which goes with `access_key_id`"
+            "{file}:1: `[storage.a]` needs `secret_access_key`, which goes with `access_key_id`"
         )
     );
     assert_eq!(
         settings_error(
             "[storage.a]\ntype = \"folder\"\nprefixes = [\"s3://a/\"]\npath = \"data\"\n"
         ),
-        format!("{file}, line 4: `storage.a.path` must be an absolute path, like \"/data/mirror\"")
+        format!("{file}:4: `storage.a.path` must be an absolute path, like \"/data/mirror\"")
     );
     assert_eq!(
         settings_error(
@@ -122,13 +122,13 @@ fn wrong_settings_name_the_line() {
              [storage.b]\ntype = \"https\"\nprefixes = [\"https://x/\"]\n"
         ),
         format!(
-            "{file}, line 4: the storage providers `a` and `b` both serve \"https://x/\"; give \
+            "{file}:4: the storage providers `a` and `b` both serve \"https://x/\"; give \
              it to one of them"
         )
     );
     assert_eq!(
         settings_error("[store]\nplace = \"/x\"\n"),
-        format!("{file}, line 2: `[store]` has no setting `place`; it knows `location`")
+        format!("{file}:2: `[store]` has no setting `place`; it knows `location`")
     );
 }
 

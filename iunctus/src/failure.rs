@@ -1,8 +1,22 @@
-//! Why a command failed, and its exit code.
+//! Why a command failed, and its exit code. Every error has one form, whichever part of
+//! iunctus finds it: `iunctus: <where>: <what went wrong>; <what to do>`. The place is a file
+//! and line, a task, an input or an address. docs/design/checks.md lists the exit codes.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use workflow_graph::{DriverError, ExecuteError};
+
+/// The exit code of a workflow that failed or cannot run: an error in its files, inputs that
+/// do not fit its schema, a task that failed, or a result that cannot be delivered.
+pub const FAILED: u8 = 1;
+
+/// The exit code of a command line that iunctus does not understand: an unknown command or
+/// option, a value that an option does not take, or an option of another command.
+pub const USAGE: u8 = 2;
+
+/// The exit code when this machine or its config is not ready: the config file, the container
+/// engine, the store, the run database, or what an executor needs, like its server.
+pub const SETUP: u8 = 3;
 
 /// The exit code for a feature that a workflow language supports but iunctus does not yet, as
 /// CWL runners use it for unsupported requirements.
@@ -10,6 +24,9 @@ pub const UNSUPPORTED: u8 = 33;
 
 /// The exit code of a run stopped with Ctrl-C, as shells give it.
 pub const INTERRUPTED: u8 = 130;
+
+/// What every error line starts with, so that the user knows who speaks.
+const PREFIX: &str = "iunctus: ";
 
 /// Why a command failed, and its exit code.
 pub struct Failure {
@@ -19,13 +36,47 @@ pub struct Failure {
     pub after: Vec<String>,
 }
 
-impl From<DriverError> for Failure {
-    fn from(error: DriverError) -> Self {
+impl Failure {
+    /// The workflow failed or cannot run.
+    pub fn new(message: impl Into<String>) -> Failure {
+        Failure::with_code(message, FAILED)
+    }
+
+    /// The command line is wrong.
+    pub fn usage(message: impl Into<String>) -> Failure {
+        Failure::with_code(message, USAGE)
+    }
+
+    /// This machine or its config is not ready.
+    pub fn setup(message: impl Into<String>) -> Failure {
+        Failure::with_code(message, SETUP)
+    }
+
+    fn with_code(message: impl Into<String>, code: u8) -> Failure {
         Failure {
-            code: if error.unsupported { UNSUPPORTED } else { 1 },
-            message: error.message,
+            message: message.into(),
+            code,
             after: Vec::new(),
         }
+    }
+
+    /// The lines that standard error shows: the message in the form of every error, then the
+    /// lines after it.
+    pub fn lines(&self) -> Vec<String> {
+        let mut lines: Vec<String> = self.message.lines().map(shown).collect();
+        lines.extend(self.after.iter().cloned());
+        lines
+    }
+}
+
+impl From<DriverError> for Failure {
+    fn from(error: DriverError) -> Self {
+        let code = if error.unsupported {
+            UNSUPPORTED
+        } else {
+            FAILED
+        };
+        Failure::with_code(error.message, code)
     }
 }
 
@@ -33,21 +84,90 @@ impl From<ExecuteError> for Failure {
     fn from(error: ExecuteError) -> Self {
         let code = match &error {
             ExecuteError::Cancelled => INTERRUPTED,
+            // The container engine, the TES server or the cluster failed, not the workflow.
+            ExecuteError::Machine { .. } => SETUP,
             error if error.unsupported() => UNSUPPORTED,
-            _ => 1,
+            _ => FAILED,
         };
-        Failure {
-            code,
-            message: error.to_string(),
-            after: Vec::new(),
-        }
+        Failure::with_code(error.to_string(), code)
     }
 }
 
+/// A failure of the workflow.
 pub fn failure(message: impl Into<String>) -> Failure {
-    Failure {
-        message: message.into(),
-        code: 1,
-        after: Vec::new(),
+    Failure::new(message)
+}
+
+/// A line of an error as iunctus shows it: with the prefix of every error, unless it continues
+/// the line before it (it is empty or starts with a space), and without the numbers of system
+/// errors, like ` (os error 2)` after `No such file or directory`, which say nothing more.
+fn shown(line: &str) -> String {
+    let line = without_error_numbers(line);
+    if line.is_empty() || line.starts_with(char::is_whitespace) || line.starts_with(PREFIX) {
+        return line;
+    }
+    format!("{PREFIX}{line}")
+}
+
+/// The line without ` (os error <number>)`.
+fn without_error_numbers(line: &str) -> String {
+    const START: &str = " (os error ";
+    let mut shown = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(at) = rest.find(START) {
+        let after = &rest[at + START.len()..];
+        let digits = after.len() - after.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+        if digits == 0 || !after[digits..].starts_with(')') {
+            shown.push_str(&rest[..at + START.len()]);
+            rest = after;
+            continue;
+        }
+        shown.push_str(&rest[..at]);
+        rest = &after[digits + 1..];
+    }
+    shown.push_str(rest);
+    shown
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_line_names_iunctus_once() {
+        let failure = Failure::new(
+            "main.nf:3:5: Expected `}`\niunctus: the input `x` is required\n    affected files:\n",
+        );
+        assert_eq!(
+            failure.lines(),
+            [
+                "iunctus: main.nf:3:5: Expected `}`",
+                "iunctus: the input `x` is required",
+                "    affected files:"
+            ]
+        );
+    }
+
+    #[test]
+    fn numbers_of_system_errors_are_left_out() {
+        let line = "cannot read job.yml: No such file or directory (os error 2)";
+        assert_eq!(
+            shown(line),
+            "iunctus: cannot read job.yml: No such file or directory"
+        );
+        let line = "a (os error 2) and b (os error x) and c (os error 13)";
+        assert_eq!(without_error_numbers(line), "a and b (os error x) and c");
+    }
+
+    #[test]
+    fn failures_of_the_machine_are_failures_of_the_setup() {
+        let error = ExecuteError::Machine {
+            task: "A".into(),
+            message: "the TES server does not answer".into(),
+        };
+        assert_eq!(Failure::from(error).code, SETUP);
+        let error = DriverError::unsupported("DSL1 scripts are not supported");
+        assert_eq!(Failure::from(error).code, UNSUPPORTED);
+        assert_eq!(Failure::usage("x").code, USAGE);
     }
 }

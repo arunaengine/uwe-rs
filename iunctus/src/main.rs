@@ -51,14 +51,12 @@ use crate::setup::Setup;
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let Some((command, rest)) = arguments.split_first() else {
-        return usage();
+        eprintln!("{USAGE}");
+        return ExitCode::from(failure::USAGE);
     };
     let arguments = match arguments::parse(rest) {
         Ok(arguments) => arguments,
-        Err(message) => {
-            eprintln!("iunctus: {message}");
-            return usage();
-        }
+        Err(message) => return exit(Err(Failure::usage(format!("{message}; {HELP}")))),
     };
     let result = match command.as_str() {
         "run" => run(&arguments),
@@ -76,13 +74,23 @@ fn main() -> ExitCode {
         "compare" => insight::compare::command(&arguments),
         "replay" => insight::replay::command(&arguments),
         "telemetry" => insight::telemetry::command(&arguments),
-        _ => return usage(),
+        "help" | "-help" | "--help" => {
+            println!("{USAGE}");
+            Ok(())
+        }
+        _ => Err(Failure::usage(format!(
+            "unknown command `{command}`; {HELP}"
+        ))),
     };
+    exit(result)
+}
+
+/// The exit code of a command, after its error, if any, on standard error.
+fn exit(result: Result<(), Failure>) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(failure) => {
-            eprintln!("{}", failure.message);
-            for line in &failure.after {
+            for line in failure.lines() {
                 eprintln!("{line}");
             }
             ExitCode::from(failure.code)
@@ -94,7 +102,7 @@ fn main() -> ExitCode {
 /// the page of the run stays open after the run until Ctrl-C.
 fn run(arguments: &Arguments) -> Result<(), Failure> {
     if arguments.format.is_some() {
-        return Err(failure(
+        return Err(Failure::usage(
             "iunctus: `-format` is an option of `iunctus graph`",
         ));
     }
@@ -113,13 +121,15 @@ fn run(arguments: &Arguments) -> Result<(), Failure> {
 /// and prints its graph. What the workflow prints goes to standard error.
 fn graph(arguments: &Arguments) -> Result<(), Failure> {
     if arguments.page {
-        return Err(failure("iunctus: `-page` is an option of `iunctus run`"));
+        return Err(Failure::usage(
+            "iunctus: `-page` is an option of `iunctus run`",
+        ));
     }
     let options = picture(arguments);
     let format = match arguments.format.as_deref() {
         None => Format::default(),
         Some(name) => Format::parse(name).ok_or_else(|| {
-            failure(format!(
+            Failure::usage(format!(
                 "iunctus: `-format {name}` is a format of `iunctus inputs`; use json, dot, \
                  summary or svg"
             ))
@@ -323,7 +333,7 @@ fn stop_on_interrupt() -> CancellationToken {
 /// The workflow of a command and its language: `-lang`, else what the target tells.
 fn target_and_language(arguments: &Arguments) -> Result<(PathBuf, Language), Failure> {
     let Some(target) = &arguments.target else {
-        return Err(failure(
+        return Err(Failure::usage(
             "iunctus: name a workflow file or a project directory to run",
         ));
     };
@@ -406,7 +416,7 @@ fn executor(
             let engine = setup.engine();
             let mut executor =
                 local::executor(store, &scratch, run, default_image, storage, &engine)
-                    .map_err(|message| failure(format!("iunctus: {message}")))?;
+                    .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
             executor.verbose = verbose;
             executor.reuse = reuse;
             executor.priorities = std::sync::Arc::new(chains(arguments));
@@ -422,7 +432,7 @@ fn executor(
                 Ok(token) if !token.is_empty() => Some(token),
                 _ => (settings.tes_token.as_ref().map(|secret| secret.reveal()))
                     .transpose()
-                    .map_err(|error| failure(format!("iunctus: {error}")))?,
+                    .map_err(|error| Failure::setup(format!("iunctus: {error}")))?,
             };
             let store = setup.store(arguments)?;
             let storage = setup.storage.clone();
@@ -432,7 +442,7 @@ fn executor(
                 scratch: &scratch,
             };
             let mut executor = tes::executor(store, place, run, default_image, storage)
-                .map_err(|message| failure(format!("iunctus: {message}")))?;
+                .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
             executor.verbose = verbose;
             executor.reuse = reuse;
             Ok(Box::new(executor))
@@ -443,7 +453,7 @@ fn executor(
             let named =
                 (arguments.slurm_container.as_deref()).or(settings.slurm_container.as_deref());
             let container = slurm::container(named)
-                .map_err(|message| failure(format!("iunctus: {message}")))?;
+                .map_err(|message| Failure::usage(format!("iunctus: {message}")))?;
             let options = match arguments.slurm_options.as_deref() {
                 Some(options) => options.split_whitespace().map(str::to_owned).collect(),
                 None => settings.slurm_options.clone().unwrap_or_default(),
@@ -459,7 +469,7 @@ fn executor(
                 container,
                 options,
             )
-            .map_err(|message| failure(format!("iunctus: {message}")))?;
+            .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
             executor.verbose = verbose;
             executor.reuse = reuse;
             Ok(Box::new(executor))
@@ -481,12 +491,12 @@ fn executor(
                 kubeconfig,
                 namespace,
             )
-            .map_err(|message| failure(format!("iunctus: {message}")))?;
+            .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
             executor.verbose = verbose;
             executor.reuse = reuse;
             Ok(Box::new(executor))
         }
-        other => Err(failure(format!(
+        other => Err(Failure::usage(format!(
             "iunctus: unknown executor `{other}`; use `simulator`, `local`, `tes`, `slurm` or \
              `kubernetes`"
         ))),
@@ -570,10 +580,8 @@ fn write_graph(file: &Path, graph: &ExecutionGraph, options: &Options) -> Result
         .map_err(|error| failure(format!("iunctus: cannot write {}: {error}", file.display())))
 }
 
-fn usage() -> ExitCode {
-    eprintln!("{USAGE}");
-    ExitCode::from(2)
-}
+/// What an error of the command line points to.
+const HELP: &str = "`iunctus help` lists the commands and their options";
 
 const USAGE: &str = "\
 usage: iunctus run <workflow file or directory> [<targets>] [options]

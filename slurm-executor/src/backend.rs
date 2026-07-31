@@ -28,6 +28,23 @@ const EXIT_GRACE: Duration = Duration::from_secs(30);
 /// How long a cancelled job may take to leave the queue before the backend stops waiting.
 const CANCEL_GRACE: Duration = Duration::from_secs(60);
 
+/// The tools of SLURM that the backend runs.
+pub const TOOLS: [&str; 4] = ["sbatch", "squeue", "sacct", "scancel"];
+
+/// Whether a program can run: a path to an executable file, or a name that the PATH has.
+pub fn executable(program: &Path) -> bool {
+    let runs = |path: &Path| {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(path)
+            .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+    };
+    if program.components().count() > 1 {
+        return runs(program);
+    }
+    std::env::var_os("PATH")
+        .is_some_and(|path| std::env::split_paths(&path).any(|folder| runs(&folder.join(program))))
+}
+
 /// The SLURM executor's backend.
 #[derive(Debug)]
 pub struct SlurmBackend {
@@ -64,6 +81,16 @@ impl SlurmBackend {
             poll: POLL,
             queue: Queue::default(),
         }
+    }
+
+    /// The tools of SLURM that are not there: not in the folder of `commands`, or not on the
+    /// PATH. Runs need `sbatch`, `squeue` and `scancel`; `sacct` only tells how a job ended
+    /// that SLURM has forgotten.
+    pub fn missing_tools(&self) -> Vec<&'static str> {
+        TOOLS
+            .into_iter()
+            .filter(|tool| !executable(&self.command(tool)))
+            .collect()
     }
 
     fn command(&self, name: &str) -> PathBuf {

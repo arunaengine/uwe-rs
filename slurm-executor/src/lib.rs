@@ -8,5 +8,5 @@ mod backend;
 mod queue;
 mod script;
 
-pub use backend::SlurmBackend;
+pub use backend::{SlurmBackend, TOOLS, executable};
 pub use script::{CONTAINER_EXIT, Container, LOG, SCRIPT, job_script, sbatch_options};

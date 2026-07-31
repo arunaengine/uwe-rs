@@ -4,49 +4,49 @@
 # for unsupported features). run_evidence.txt says why each pipeline that fails cannot run.
 abotyper ok
 airrflow ok
-alleleexpression 1 main.nf:35:9: AbortOperationException: Input samplesheet not specified!
-ampliseq 1 workflows/../subworkflows/local/../../modules/nf-core/cutadapt/main.nf:14:37: MissingPropertyException: No such variable: outformat
+alleleexpression 1 iunctus: main.nf:35:9: AbortOperationException: Input samplesheet not specified!
+ampliseq 1 iunctus: workflows/../subworkflows/local/../../modules/nf-core/cutadapt/main.nf:14:37: MissingPropertyException: No such variable: outformat
 atacseq ok
 bacass ok
-bacmodel 1 workflows/../subworkflows/nf-core/utils_nfcore_pipeline/main.nf:82:20: NullPointerException: Cannot invoke method collectEntries() on null object
+bacmodel 1 iunctus: workflows/../subworkflows/nf-core/utils_nfcore_pipeline/main.nf:82:20: NullPointerException: Cannot invoke method collectEntries() on null object
 bactmap ok
 bamtofastq ok
-cageseq 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-callingcards 1 workflows/../subworkflows/local/yeast/prepare_reads.nf:211:17: IndexOutOfBoundsException: index is out of range 0..-1 (index = 0)
+cageseq 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+callingcards 1 iunctus: workflows/../subworkflows/local/yeast/prepare_reads.nf:211:17: IndexOutOfBoundsException: index is out of range 0..-1 (index = 0)
 cellpainting ok
-chipseq 1 workflows/../subworkflows/nf-core/utils_nfcore_pipeline/main.nf:106:16: NullPointerException: Cannot invoke method collectEntries() on null object
+chipseq 1 iunctus: workflows/../subworkflows/nf-core/utils_nfcore_pipeline/main.nf:106:16: NullPointerException: Cannot invoke method collectEntries() on null object
 circdna ok
-circrna 1 MissingFileException: Missing output file(s) `mirna.targets.tsv` expected by process `NFCORE_CIRCRNA:CIRCRNA:MIRNA_PREDICTION:MIRNA_BINDINGSITES:MAJORITY_VOTE (mirna)`
-clipseq 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-coproid 1 MissingFileException: Missing output file(s) `*.report.sourcepredict.csv` expected by process `NFCORE_COPROID:COPROID:KRAKEN2_CLASSIFICATION:SOURCEPREDICT (samples_combined)`
+circrna 1 iunctus: MissingFileException: Missing output file(s) `mirna.targets.tsv` expected by process `NFCORE_CIRCRNA:CIRCRNA:MIRNA_PREDICTION:MIRNA_BINDINGSITES:MAJORITY_VOTE (mirna)`
+clipseq 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+coproid 1 iunctus: MissingFileException: Missing output file(s) `*.report.sourcepredict.csv` expected by process `NFCORE_COPROID:COPROID:KRAKEN2_CLASSIFICATION:SOURCEPREDICT (samples_combined)`
 createpanelrefs ok
 createtaxdb ok
 crisprseq ok
-crisprvar 1 Unknown configuration profile: 'test'
+crisprvar 1 iunctus: Unknown configuration profile: 'test'
 cutandrun ok
 daamicrobiome 1 iunctus: the input `sim_abs_logfc` must be a text, but it is a list
-dartseq 1 subworkflows/local/utils_nfcore_dartseq_pipeline/main.nf:104:19: SchemaValidationException: The following errors have been detected in assets/samplesheet_4samples_local.csv:
+dartseq 1 iunctus: subworkflows/local/utils_nfcore_dartseq_pipeline/main.nf:104:19: SchemaValidationException: The following errors have been detected in assets/samplesheet_4samples_local.csv:
 datasync ok
-ddamsproteomics 33 main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-deepmodeloptim 1 workflows/../subworkflows/local/tune/../../../modules/local/custom/modify_model_config/main.nf:15:15: MissingValueException: Missing value declared as output parameter: meta_updated
+ddamsproteomics 33 iunctus: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+deepmodeloptim 1 iunctus: workflows/../subworkflows/local/tune/../../../modules/local/custom/modify_model_config/main.nf:15:15: MissingValueException: Missing value declared as output parameter: meta_updated
 deepmutscan ok
-deepvariant 33 main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+deepvariant 33 iunctus: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 demo ok
-demultiplex 1 workflows/../subworkflows/nf-core/bcl_demultiplex/main.nf:65:23: NoSuchFileException: No files match pattern `<cache>/iunctus/scratch/simulator/<run>/work/1/220422_M11111_0222_000000000-K9H97/*.xml`
-denovohybrid 33 main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-denovotranscript 1 workflows/../subworkflows/nf-core/fastq_trim_fastp_fastqc/main.nf:15:26: IllegalArgumentException: Text must not be null or empty
+demultiplex 1 iunctus: workflows/../subworkflows/nf-core/bcl_demultiplex/main.nf:65:23: NoSuchFileException: No files match pattern `<cache>/iunctus/scratch/simulator/<run>/work/1/220422_M11111_0222_000000000-K9H97/*.xml`
+denovohybrid 33 iunctus: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+denovotranscript 1 iunctus: workflows/../subworkflows/nf-core/fastq_trim_fastp_fastqc/main.nf:15:26: IllegalArgumentException: Text must not be null or empty
 detaxizer ok
-diaproteomics 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+diaproteomics 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 differentialabundance ok
-diseasemodulediscovery 1 workflows/../subworkflows/local/utils_nfcore_diseasemodulediscovery_pipeline/main.nf:331:9: IllegalArgumentException: TSV must have at least one header and one data row
-drop 1 workflows/../subworkflows/local/aberrantexpression/../bam_stats_idxstats_merge/main.nf:27:29: NullPointerException: Cannot invoke method getAt() on null object
-drugresponseeval 1 Config file does not exist: conf/test.config (No such file or directory (os error 2))
-dualrnaseq 33 main.nf:28:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-eager 33 main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-epigenomesegmentation 1 MissingFileException: Missing output file(s) `mm10.chrom.sizes.V2` expected by process `NFCORE_EPIGENOMESEGMENTATION:EPIGENOMESEGMENTATION:PREPARE_GENOME:CUSTOM_FILTERCHROMSIZES (mm10.chrom.sizes)`
+diseasemodulediscovery 1 iunctus: workflows/../subworkflows/local/utils_nfcore_diseasemodulediscovery_pipeline/main.nf:331:9: IllegalArgumentException: TSV must have at least one header and one data row
+drop 1 iunctus: workflows/../subworkflows/local/aberrantexpression/../bam_stats_idxstats_merge/main.nf:27:29: NullPointerException: Cannot invoke method getAt() on null object
+drugresponseeval 1 iunctus: Config file does not exist: conf/test.config (No such file or directory)
+dualrnaseq 33 iunctus: main.nf:28:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+eager 33 iunctus: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+epigenomesegmentation 1 iunctus: MissingFileException: Missing output file(s) `mm10.chrom.sizes.V2` expected by process `NFCORE_EPIGENOMESEGMENTATION:EPIGENOMESEGMENTATION:PREPARE_GENOME:CUSTOM_FILTERCHROMSIZES (mm10.chrom.sizes)`
 epitopeprediction ok
-evexplorer 1 main.nf:107:5: IllegalArgumentException: Workflow `PIPELINE_INITIALISATION` declares 8 input channels but 6 were given
-exoseq 33 PairedSingleSampleWF.nf:27:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+evexplorer 1 iunctus: main.nf:107:5: IllegalArgumentException: Workflow `PIPELINE_INITIALISATION` declares 8 input channels but 6 were given
+exoseq 33 iunctus: PairedSingleSampleWF.nf:27:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 fastqrepair ok
 fastquorum ok
 fetchngs ok
@@ -54,68 +54,68 @@ funcprofiler ok
 funcscan ok
 genephylomodeler ok
 genomeannotator ok
-genomeassembler 1 workflows/../subworkflows/local/prepare/main.nf:208:39: JsonException: Unable to determine the current character, it is not a string, number, array, or object
+genomeassembler 1 iunctus: workflows/../subworkflows/local/prepare/main.nf:208:39: JsonException: Unable to determine the current character, it is not a string, number, array, or object
 genomeqc ok
 genomeskim ok
 genomicrelatedness 1 iunctus: the input `input` is required, but has no value
-gwas 1 subworkflows/local/utils_nfcore_gwas_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
+gwas 1 iunctus: subworkflows/local/utils_nfcore_gwas_pipeline/../../nf-core/utils_nfschema_plugin/main.nf:68:9: SchemaValidationException: The following invalid input values have been detected:
 hadge ok
-hgtseq 1 workflows/hgtseq.nf:287:9: AbortOperationException: ERROR: Please check input samplesheet -> a column named input1 with either fastq or bam/cram input is mandatory!
+hgtseq 1 iunctus: workflows/hgtseq.nf:287:9: AbortOperationException: ERROR: Please check input samplesheet -> a column named input1 with either fastq or bam/cram input is mandatory!
 hic ok
 hicar ok
 hlatyping ok
-imcyto 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+imcyto 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 isoseq ok
-kmermaid 33 main.nf:1:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+kmermaid 33 iunctus: main.nf:1:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 liverctanalysis ok
 lncpipe ok
 longraredisease ok
 lsmquant ok
-mag 1 workflows/../subworkflows/local/bin_qc/../../../modules/nf-core/untar/main.nf:14:30: MissingPropertyException: No such variable: output_dir
-magmap 1 workflows/../modules/local/check_duplicates/main.nf:33:13: MissingPropertyException: No such variable: outfile
-marsseq 1 workflows/marsseq.nf:20:78: NoSuchFileException: No such file or directory: <cache>/out/references/mm10/GRCm39.fa
-mcmicro 1 workflows/mcmicro.nf:265:39: AbortOperationException: QC Error found
-meerpipe 1 nextflow.config:53:21: `PSRDB_URL` is not defined (hint: use `env('...')` to access environment variable)
+mag 1 iunctus: workflows/../subworkflows/local/bin_qc/../../../modules/nf-core/untar/main.nf:14:30: MissingPropertyException: No such variable: output_dir
+magmap 1 iunctus: workflows/../modules/local/check_duplicates/main.nf:33:13: MissingPropertyException: No such variable: outfile
+marsseq 1 iunctus: workflows/marsseq.nf:20:78: NoSuchFileException: No such file or directory: <cache>/out/references/mm10/GRCm39.fa
+mcmicro 1 iunctus: workflows/mcmicro.nf:265:39: AbortOperationException: QC Error found
+meerpipe 1 iunctus: nextflow.config:53:21: `PSRDB_URL` is not defined (hint: use `env('...')` to access environment variable)
 metaboigniter ok
 metapep ok
 metatdenovo ok
 methylarray ok
-methylong 1 ProcessFailedException: Process `NFCORE_METHYLONG:METHYLONG:ONT:ONT_TRIM_REPAIR:PORECHOP_PORECHOP (homo_sapiens)` terminated with an error exit status (2)
+methylong 1 iunctus: ProcessFailedException: Process `NFCORE_METHYLONG:METHYLONG:ONT:ONT_TRIM_REPAIR:PORECHOP_PORECHOP (homo_sapiens)` terminated with an error exit status (2)
 methylseq ok
 mhcquant ok
 mitodetect ok
-mnaseseq 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+mnaseseq 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 molkart ok
-mspepid 1 workflows/../subworkflows/local/spectra_identification/../../../modules/local/cometconfig/main.nf:61:13: MissingPropertyException: No such variable: params_file
+mspepid 1 iunctus: workflows/../subworkflows/local/spectra_identification/../../../modules/local/cometconfig/main.nf:61:13: MissingPropertyException: No such variable: params_file
 multiplesequencealign ok
 nanoseq ok
-nanostring 1 MissingFileException: Missing output file(s) `*_mqc.tsv` expected by process `NFCORE_NANOSTRING:NANOSTRING:CREATE_ANNOTATED_TABLES (samplesheet_test.csv)`
+nanostring 1 iunctus: MissingFileException: Missing output file(s) `*_mqc.tsv` expected by process `NFCORE_NANOSTRING:NANOSTRING:CREATE_ANNOTATED_TABLES (samplesheet_test.csv)`
 nascent ok
 ncrnannotator ok
-neutronstar 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+neutronstar 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 omicsgenetraitassociation ok
-oncoanalyser 1 workflows/../subworkflows/local/prepare_reference/main.nf:290:12: NoSuchFileException: No such file or directory: <cache>/iunctus/scratch/simulator/<run>/work/4/hmf_pipeline_resources.38_v3.0.0--8/dna/copy_number/AmberGermlineSites.38.tsv.gz
+oncoanalyser 1 iunctus: workflows/../subworkflows/local/prepare_reference/main.nf:290:12: NoSuchFileException: No such file or directory: <cache>/iunctus/scratch/simulator/<run>/work/4/hmf_pipeline_resources.38_v3.0.0--8/dna/copy_number/AmberGermlineSites.38.tsv.gz
 pacsomatic ok
 pacvar ok
-pairgenomealign 1 MissingFileException: Missing output file(s) `*.matrix.txt` expected by process `NFCORE_PAIRGENOMEALIGN:PAIRGENOMEALIGN:PAIRALIGN_M2O:ALIGNMENT_SPLIT_O2O (MT192765___contigs)`
+pairgenomealign 1 iunctus: MissingFileException: Missing output file(s) `*.matrix.txt` expected by process `NFCORE_PAIRGENOMEALIGN:PAIRGENOMEALIGN:PAIRALIGN_M2O:ALIGNMENT_SPLIT_O2O (MT192765___contigs)`
 pangenome ok
 panoramaseq ok
 pathogenepidemiology ok
-pathogensurveillance 1 workflows/../subworkflows/local/prepare_input/main.nf:220:14: MissingMethodException: No signature of method: groovy.lang.Closure.doCall() is applicable for argument types: (ArrayList) values: [[null, null, null]]
+pathogensurveillance 1 iunctus: workflows/../subworkflows/local/prepare_input/main.nf:220:14: MissingMethodException: No signature of method: groovy.lang.Closure.doCall() is applicable for argument types: (ArrayList) values: [[null, null, null]]
 phageannotator ok
-phaseimpute 1 workflows/chrcheck/function.nf:46:13: AbortOperationException: Contig names: [chr21, chr22] absent from file: https://raw.githubusercontent.com/nf-core/test-datasets/phaseimpute/hum_data/individuals/NA12878/NA12878.s.1x.bam and cannot be solved by adding or removing the `chr` prefix.
+phaseimpute 1 iunctus: workflows/chrcheck/function.nf:46:13: AbortOperationException: Contig names: [chr21, chr22] absent from file: https://raw.githubusercontent.com/nf-core/test-datasets/phaseimpute/hum_data/individuals/NA12878/NA12878.s.1x.bam and cannot be solved by adding or removing the `chr` prefix.
 phyloplace ok
 pixelator ok
 plasmodiumdrugres ok
 proteinannotator ok
 proteinfamilies ok
 proteinfold ok
-proteogenomicsdb 33 main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-proteomicslfq 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+proteogenomicsdb 33 iunctus: main.nf:13:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+proteomicslfq 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
 provenancereport ok
 quantms ok
-radseq 1 workflows/radseq.nf:38:11: Invalid include source: 'workflows/../subworkflows/local/fastq_fastp.nf'
-rangeland 1 workflows/rangeland.nf:88:19: NoSuchFileException: No files match pattern `<cache>/iunctus/scratch/simulator/<run>/work/3/Landsat_data/*/*`
+radseq 1 iunctus: workflows/radseq.nf:38:11: the included file workflows/../subworkflows/local/fastq_fastp.nf does not exist
+rangeland 1 iunctus: workflows/rangeland.nf:88:19: NoSuchFileException: No files match pattern `<cache>/iunctus/scratch/simulator/<run>/work/3/Landsat_data/*/*`
 raredisease ok
 rarevariantburden ok
 readsimulator ok
@@ -123,26 +123,26 @@ references ok
 reportho ok
 ribomsqc ok
 riboseq ok
-rnadnavar 1 MissingMethodException: No signature of method: java.util.ArrayList.tokenize() is applicable for argument types: (String) values: [.]
+rnadnavar 1 iunctus: MissingMethodException: No signature of method: java.util.ArrayList.tokenize() is applicable for argument types: (String) values: [.]
 rnafusion ok
 rnaseq ok
 rnasplice ok
 rnastructurome ok
-rnavar 1 ProcessUnrecoverableException: Input tuple does not match tuple declaration in process `NFCORE_RNAVAR:RNAVAR:FASTQ_ALIGN_STAR:BAM_SORT_STATS_SAMTOOLS_TRANSCRIPTOME:SAMTOOLS_SORT` -- offending value: [[:], []]
+rnavar 1 iunctus: ProcessUnrecoverableException: Input tuple does not match tuple declaration in process `NFCORE_RNAVAR:RNAVAR:FASTQ_ALIGN_STAR:BAM_SORT_STATS_SAMTOOLS_TRANSCRIPTOME:SAMTOOLS_SORT` -- offending value: [[:], []]
 sammyseq ok
 sarek ok
-scdownstream 1 workflows/../subworkflows/nf-core/utils_nfcore_pipeline/main.nf:82:20: NullPointerException: Cannot invoke method collectEntries() on null object
+scdownstream 1 iunctus: workflows/../subworkflows/nf-core/utils_nfcore_pipeline/main.nf:82:20: NullPointerException: Cannot invoke method collectEntries() on null object
 scflow ok
 scnanoseq ok
-scrnaseq 1 workflows/../subworkflows/nf-core/utils_nfcore_pipeline/main.nf:82:20: NullPointerException: Cannot invoke method collectEntries() on null object
+scrnaseq 1 iunctus: workflows/../subworkflows/nf-core/utils_nfcore_pipeline/main.nf:82:20: NullPointerException: Cannot invoke method collectEntries() on null object
 seqinspector ok
 seqsubmit ok
-slamseq 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-smartseq2 33 main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
-smrnaseq 1 subworkflows/local/prepare_genome/main.nf:32:9: Exception: Unable to extract the prefix from the Bowtie index files. No file with the '.1.ebwt' extension was found. Please ensure that the correct files are in the specified path.
+slamseq 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+smartseq2 33 iunctus: main.nf:12:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
+smrnaseq 1 iunctus: subworkflows/local/prepare_genome/main.nf:32:9: Exception: Unable to extract the prefix from the Bowtie index files. No file with the '.1.ebwt' extension was found. Please ensure that the correct files are in the specified path.
 sopa ok
-spatialaxe 1 workflows/spatialaxe.nf:212:13: AbortOperationException: ❌ Missing required file(s) in xenium bundle '<cache>/iunctus/scratch/simulator/<run>/work/1/test_run': [cell_boundaries.csv.gz, cell_boundaries.parquet, cell_feature_matrix.h5, cell_feature_matrix.zarr.zip, cells.csv.gz, cells.parquet, cells.zarr.zip, experiment.xenium, gene_panel.json, metrics_summary.csv, morphology.ome.tif, morphology_focus/, nucleus_boundaries.csv.gz, nucleus_boundaries.parquet, transcripts.parquet, transcripts.zarr.zip]
-spatialvi 1 workflows/../subworkflows/local/input_check/main.nf:144:9: AbortOperationException: No `fastq_dir` specified or no samples found in folder.
+spatialaxe 1 iunctus: workflows/spatialaxe.nf:212:13: AbortOperationException: ❌ Missing required file(s) in xenium bundle '<cache>/iunctus/scratch/simulator/<run>/work/1/test_run': [cell_boundaries.csv.gz, cell_boundaries.parquet, cell_feature_matrix.h5, cell_feature_matrix.zarr.zip, cells.csv.gz, cells.parquet, cells.zarr.zip, experiment.xenium, gene_panel.json, metrics_summary.csv, morphology.ome.tif, morphology_focus/, nucleus_boundaries.csv.gz, nucleus_boundaries.parquet, transcripts.parquet, transcripts.zarr.zip]
+spatialvi 1 iunctus: workflows/../subworkflows/local/input_check/main.nf:144:9: AbortOperationException: No `fastq_dir` specified or no samples found in folder.
 spinningjenny ok
 ssds ok
 stableexpression ok
@@ -155,7 +155,7 @@ tumourevo ok
 variantbenchmarking ok
 variantcatalogue ok
 variantprioritization ok
-vipr 1 Unknown configuration profile: 'test'
+vipr 1 iunctus: Unknown configuration profile: 'test'
 viralintegration ok
 viralmetagenome ok
-viralrecon 1 workflows/../subworkflows/local/fastq_trim_fastp_fastqc/main.nf:15:26: IllegalArgumentException: Text must not be null or empty
+viralrecon 1 iunctus: workflows/../subworkflows/local/fastq_trim_fastp_fastqc/main.nf:15:26: IllegalArgumentException: Text must not be null or empty

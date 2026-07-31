@@ -99,7 +99,7 @@ fn text_format(arguments: &Arguments, command: &str) -> Result<bool, Failure> {
     match arguments.format.as_deref() {
         None | Some("json") => Ok(false),
         Some("text") => Ok(true),
-        Some(other) => Err(failure(format!(
+        Some(other) => Err(Failure::usage(format!(
             "iunctus: `-format {other}` is a format of `iunctus graph`; `iunctus {command}` \
              writes json or text"
         ))),

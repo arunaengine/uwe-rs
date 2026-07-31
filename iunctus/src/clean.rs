@@ -51,7 +51,7 @@ fn rules(arguments: &Arguments) -> Option<Vec<String>> {
 /// `iunctus clean`.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let Some(rules) = rules(arguments) else {
-        return Err(failure(
+        return Err(Failure::usage(
             "iunctus: say what `iunctus clean` keeps: -keep-days <n> keeps what runs made or \
              used in the last n days, -keep-run <run> what a run needs, -keep-slower-than \
              <time> the results of tasks that ran that long, like 10m; -keep-days 0 keeps only \

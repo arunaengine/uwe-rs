@@ -37,7 +37,7 @@ pub struct Started<'a> {
 /// Opens the run database and starts the record of a run. With `-resume`, the run joins the
 /// lineage of the run it continues, and gets the finished tasks of that lineage.
 pub fn start(arguments: &Arguments, run: &Started) -> Result<Recording, Failure> {
-    let broken = |error: run_database::DatabaseError| failure(format!("iunctus: {error}"));
+    let broken = |error: run_database::DatabaseError| Failure::setup(format!("iunctus: {error}"));
     let database = runs::open(arguments)?;
     let workflow = std::path::absolute(run.target)
         .unwrap_or_else(|_| run.target.to_owned())

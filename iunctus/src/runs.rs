@@ -8,7 +8,7 @@
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use run_database::{Database, Run};
+use run_database::{Database, DatabaseError, Run};
 use workflow_graph::Language;
 
 use crate::arguments::Arguments;
@@ -24,7 +24,18 @@ pub fn database_path(arguments: &Arguments) -> PathBuf {
 }
 
 pub fn open(arguments: &Arguments) -> Result<Database, Failure> {
-    Database::open(&database_path(arguments)).map_err(|error| failure(error.to_string()))
+    let path = database_path(arguments);
+    Database::open(&path).map_err(|error| {
+        let why = match error {
+            DatabaseError::Sqlite(error) => error.to_string(),
+            DatabaseError::Io(error) => error.to_string(),
+            error => error.to_string(),
+        };
+        Failure::setup(format!(
+            "iunctus: {}: cannot open the run database: {why}; name another file with -database",
+            path.display()
+        ))
+    })
 }
 
 /// `iunctus runs`: the latest runs, one line each.
@@ -84,7 +95,7 @@ pub fn local_time(milliseconds: i64) -> String {
 /// `<run>-crate` in the current directory.
 pub fn export(arguments: &Arguments) -> Result<(), Failure> {
     let Some(id) = arguments.target.as_ref().map(|id| id.to_string_lossy()) else {
-        return Err(failure(
+        return Err(Failure::usage(
             "iunctus: name the run to export; `iunctus runs` lists them",
         ));
     };
@@ -128,7 +139,7 @@ pub fn why(arguments: &Arguments) -> Result<(), Failure> {
         .first()
         .and_then(|task| task.parse::<u64>().ok());
     let (Some(run), Some(task)) = (run, task) else {
-        return Err(failure(
+        return Err(Failure::usage(
             "iunctus: name a run and the number of one of its tasks, like `iunctus why \
              1a0f1cc4c10-3a2487 4`; `iunctus runs` lists the runs",
         ));
@@ -166,7 +177,7 @@ pub fn why(arguments: &Arguments) -> Result<(), Failure> {
 /// file is a path, or a digest like `sha256:<hex>`.
 pub fn origin(arguments: &Arguments) -> Result<(), Failure> {
     let Some(file) = &arguments.target else {
-        return Err(failure(
+        return Err(Failure::usage(
             "iunctus: name a file that a run made, or its digest as sha256:<hex>",
         ));
     };

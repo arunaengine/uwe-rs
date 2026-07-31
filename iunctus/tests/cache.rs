@@ -328,7 +328,8 @@ fn clean_up_needs_a_rule_and_removes_the_scratch_of_simulated_runs() {
     let cache = root.path().join("cache");
     let first = pipeline(root.path(), "first", FIRST);
     let (code, output) = iunctus(root.path(), &cache, &["clean"]);
-    assert_eq!(code, 1, "{output}");
+    // A command without what it needs is a mistake of the command line.
+    assert_eq!(code, 2, "{output}");
     assert!(
         output.contains("say what `iunctus clean` keeps"),
         "{output}"

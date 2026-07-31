@@ -39,7 +39,9 @@ pub fn language(target: &Path) -> Result<Language, String> {
         };
     }
     if !target.is_file() {
-        return Err(format!("{shown}: no such file or directory"));
+        return Err(format!(
+            "{shown}: no such file or directory; name a workflow file or a project directory"
+        ));
     }
     let name = target
         .file_name()

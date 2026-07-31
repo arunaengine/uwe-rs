@@ -10,9 +10,9 @@ use config_file::{ConfigError, ConfigFile, Secret};
 use content_store::Store;
 use storage::{Storage, StoreLocation};
 
+use crate::Failure;
 use crate::arguments::Arguments;
 use crate::insight::telemetry::Telemetry;
-use crate::{Failure, failure};
 
 /// The sections of the config file. Another name is an error, so that a typing mistake does
 /// not go unnoticed. `executor` holds the settings of executors.
@@ -82,7 +82,7 @@ impl Executors {
 impl Setup {
     /// Reads the config files.
     pub fn load(arguments: &Arguments) -> Result<Setup, Failure> {
-        let failed = |error: ConfigError| failure(format!("iunctus: {error}"));
+        let failed = |error: ConfigError| Failure::setup(format!("iunctus: {error}"));
         let config = ConfigFile::load(arguments.config_file.as_deref()).map_err(failed)?;
         config.root().only(SECTIONS).map_err(failed)?;
         let storage = Storage::from_config(&config).map_err(failed)?;
@@ -129,7 +129,7 @@ impl Setup {
     /// The cache store: a folder, or a place of a storage provider that can write there.
     pub fn store(&self, arguments: &Arguments) -> Result<Store, Failure> {
         let location = self.store_location(arguments);
-        let failed = |message: String| failure(format!("iunctus: {message}"));
+        let failed = |message: String| Failure::setup(format!("iunctus: {message}"));
         let place = (self.storage.store(&location)).map_err(|error| failed(error.to_string()))?;
         let store = match place {
             StoreLocation::Folder(folder) => Store::local(&folder),

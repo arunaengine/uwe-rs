@@ -11,7 +11,7 @@ use std::process::{Command, Stdio};
 use run_page::{Server, Settings};
 
 use crate::arguments::Arguments;
-use crate::{Failure, failure, runs};
+use crate::{Failure, runs};
 
 /// Starts the page and says where it is; `path` is the part of the address after the host,
 /// like `/runs/<run>`. In a terminal, the browser opens it too.
@@ -21,7 +21,8 @@ pub fn start(arguments: &Arguments, path: &str) -> Result<Server, Failure> {
         address: arguments.address.unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST)),
         port: arguments.port.unwrap_or(0),
     };
-    let server = Server::start(&settings).map_err(|error| failure(format!("iunctus: {error}")))?;
+    let server =
+        Server::start(&settings).map_err(|error| Failure::setup(format!("iunctus: {error}")))?;
     let url = format!("{}{path}", server.url());
     eprintln!("iunctus: the page is at {url}");
     if !settings.address.is_loopback() {

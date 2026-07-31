@@ -176,7 +176,7 @@ fn languages_can_be_named() {
 fn unknown_executors_and_formats_are_errors() {
     let directory = pipeline();
     let (code, _, stderr) = iunctus(directory.path(), &["run", "main.nf", "-executor", "cloud"]);
-    assert_eq!(code, 1);
+    assert_eq!(code, 2);
     assert!(stderr.contains("unknown executor `cloud`"), "{stderr}");
     let (code, _, stderr) = iunctus(directory.path(), &["graph", "main.nf", "-format", "png"]);
     assert_eq!(code, 2);

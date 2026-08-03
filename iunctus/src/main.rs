@@ -408,6 +408,10 @@ fn executor(
     let cache = cache_directory();
     let scratch = cache.join("scratch");
     match arguments.executor.as_deref().unwrap_or("simulator") {
+        "simulator" if arguments.check_reproducibility.is_some() => Err(Failure::usage(
+            "iunctus: the reproducibility check runs cached tasks again, so it needs a real \
+             executor, like `-executor local`",
+        )),
         "simulator" => {
             let mut simulator = Simulator::new(scratch.join("simulator").join(run));
             simulator.verbose = verbose;
@@ -421,10 +425,8 @@ fn executor(
             let mut executor =
                 local::executor(store, &scratch, run, default_image, storage, &engine)
                     .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
-            executor.verbose = verbose;
-            executor.reuse = reuse;
             executor.priorities = std::sync::Arc::new(chains(arguments));
-            Ok(Box::new(executor))
+            Ok(real(executor, arguments, verbose, reuse))
         }
         "tes" => {
             let default_image = arguments.default_image.clone();
@@ -445,11 +447,9 @@ fn executor(
                 token,
                 scratch: &scratch,
             };
-            let mut executor = tes::executor(store, place, run, default_image, storage)
+            let executor = tes::executor(store, place, run, default_image, storage)
                 .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
-            executor.verbose = verbose;
-            executor.reuse = reuse;
-            Ok(Box::new(executor))
+            Ok(real(executor, arguments, verbose, reuse))
         }
         "slurm" => {
             let default_image = arguments.default_image.clone();
@@ -464,7 +464,7 @@ fn executor(
             };
             let store = setup.store(arguments)?;
             let storage = setup.storage.clone();
-            let mut executor = slurm::executor(
+            let executor = slurm::executor(
                 store,
                 &scratch,
                 run,
@@ -474,9 +474,7 @@ fn executor(
                 options,
             )
             .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
-            executor.verbose = verbose;
-            executor.reuse = reuse;
-            Ok(Box::new(executor))
+            Ok(real(executor, arguments, verbose, reuse))
         }
         "kubernetes" => {
             let default_image = arguments.default_image.clone();
@@ -486,7 +484,7 @@ fn executor(
                 .or_else(|| settings.kubernetes_namespace.clone());
             let store = setup.store(arguments)?;
             let storage = setup.storage.clone();
-            let mut executor = kubernetes::executor(
+            let executor = kubernetes::executor(
                 store,
                 &scratch,
                 run,
@@ -496,9 +494,7 @@ fn executor(
                 namespace,
             )
             .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
-            executor.verbose = verbose;
-            executor.reuse = reuse;
-            Ok(Box::new(executor))
+            Ok(real(executor, arguments, verbose, reuse))
         }
         other => Err(Failure::usage(format!(
             "iunctus: unknown executor `{other}`; use `simulator`, `local`, `tes`, `slurm` or \
@@ -544,6 +540,20 @@ fn previewed(simulator: Simulator, arguments: &Arguments, setup: &Setup) -> Box<
         pins,
         default_image,
     ))
+}
+
+/// A real executor with the settings of the command line: its line per task, whether the cache
+/// answers tasks, and the share of cached tasks that run again for the reproducibility check.
+fn real<B: executor::Backend>(
+    mut executor: task_runner::RunnerExecutor<B>,
+    arguments: &Arguments,
+    verbose: bool,
+    reuse: bool,
+) -> Box<dyn Executor> {
+    executor.verbose = verbose;
+    executor.reuse = reuse;
+    executor.check_reproducibility(arguments.check_reproducibility.unwrap_or(0.0));
+    Box::new(executor)
 }
 
 /// What the command line asks to run, in the terms all languages share.
@@ -670,7 +680,10 @@ options:
   -keep-slower-than <time>            `clean` keeps the results of tasks that ran this long,
                                       like 90s, 10m, 2h or 1d
   -remove                             `clean` removes what it lists; without it, it only lists
-                                      what it would remove";
+                                      what it would remove
+  -check-reproducibility <percent>    runs this share of the tasks whose results come from the
+                                      cache again, like 10%, and compares their outputs; a tool
+                                      that gives other bytes shares no results any more";
 
 /// `$XDG_CACHE_HOME/iunctus`, else `~/.cache/iunctus`.
 fn cache_directory() -> PathBuf {

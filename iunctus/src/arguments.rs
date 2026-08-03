@@ -96,6 +96,9 @@ pub struct Arguments {
     pub keep_slower_than: Option<std::time::Duration>,
     /// `-remove`: `iunctus clean` removes what it lists, instead of only listing it.
     pub remove: bool,
+    /// `-check-reproducibility percent`, like `10%`: the share of the tasks whose results come
+    /// from the cache that run again, to check that their tools give the same bytes; from 0 to 1.
+    pub check_reproducibility: Option<f64>,
 }
 
 /// Which run `-resume` continues.
@@ -223,6 +226,13 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
                 ))?);
             }
             "-remove" => parsed.remove = true,
+            "-check-reproducibility" => {
+                let text = value()?;
+                parsed.check_reproducibility = Some(percent(&text).ok_or(format!(
+                    "`-check-reproducibility` needs a share of the cached tasks from 0% to 100%, \
+                     like 10%, not `{text}`"
+                ))?);
+            }
             "-address" => {
                 let text = value()?;
                 parsed.address = Some(text.parse().map_err(|_| {
@@ -295,6 +305,12 @@ fn looks_like_run(text: &str) -> bool {
         let hex = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_hexdigit());
         hex(time) && hex(process)
     })
+}
+
+/// A percent like `10%` or `10` as a share from 0 to 1.
+fn percent(text: &str) -> Option<f64> {
+    let number: f64 = text.strip_suffix('%').unwrap_or(text).parse().ok()?;
+    (0.0..=100.0).contains(&number).then_some(number / 100.0)
 }
 
 /// A time like `90s`, `10m`, `2h` or `1d`; a plain number counts seconds.
@@ -387,6 +403,16 @@ mod tests {
         assert_eq!(duration("1d"), Some(std::time::Duration::from_secs(86_400)));
         assert_eq!(duration("1.5h"), None);
         assert_eq!(duration("m"), None);
+    }
+
+    #[test]
+    fn the_reproducibility_check_takes_a_percent() {
+        let parsed = parse_all(&["-check-reproducibility", "10%"]);
+        assert_eq!(parsed.check_reproducibility, Some(0.1));
+        assert_eq!(percent("100"), Some(1.0));
+        assert_eq!(percent("0.5%"), Some(0.005));
+        assert_eq!(percent("120%"), None);
+        assert_eq!(percent("some"), None);
     }
 
     #[test]

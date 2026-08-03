@@ -168,7 +168,7 @@ iunctus describes every task of every language the same way, and it knows every 
 | **No shared file system** | Tasks get their inputs from the store and send their outputs back, so a cluster needs no NFS | Nextflow and Snakemake need a shared folder or a special storage setup | The TES executor, the store |
 | **One entry point for all languages** | A GA4GH WES service that accepts Nextflow, Snakemake, CWL and Argo workflows, with one API for status and results | Each engine has its own server or platform | The run database |
 | **Mixed-language runs** | One run that calls a CWL tool from Snakemake, a Snakemake workflow from Nextflow, or an nf-core module from Argo, with files handed over by digest | Snakemake can call CWL tools; nothing else crosses languages | The execution graph (done) |
-| **One check for all languages** | `iunctus check` lists every unsupported feature, missing file and broken reference before a run, with the same exit codes everywhere | Each engine has its own linter, if any | The drivers (done) |
+| **One check for all languages** | `iunctus check` lists every unsupported feature, missing file and broken reference before a run, with the same exit codes everywhere | Each engine has its own linter, if any | Done: [checks](design/checks.md) |
 
 ## 5. To-do list
 
@@ -231,7 +231,8 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 
 - [x] A laptop needs nothing but the binary and Docker or Podman (decision 26).
 - [x] One config file for executors and storage, with secrets from environment variables ([storage](design/storage.md), [executors](design/executors.md)).
-- [ ] Clear errors that say what to install or set, in the same form for every language.
+- [x] Clear errors that say what to install or set, in the same form for every language, with one exit code per kind of problem: see [errors, exit codes and checks](design/checks.md).
+- [x] `iunctus check <workflow>` reports at once everything that would stop a real run, in every language, and `iunctus check-machine` what is ready on this machine and what is missing (section 4, "One check for all languages").
 
 ## 6. Open questions
 

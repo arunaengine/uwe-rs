@@ -83,3 +83,50 @@ The exit code is 33 when a feature is not supported, else 1 when something would
 **Limits.** A plan with made-up files can differ from a real run where real data decides which tasks follow (the markers of [the graphs of a run](graph.md), section 3); the report says how many such points the plan has, since it cannot see the problems of tasks that only real data makes. Files at remote addresses are not fetched, and the report counts them. A load error stops the plan, so the problems of the tasks after it show once it is fixed. Snakemake, CWL and Argo report the first load error of their loader only.
 
 The code: `iunctus/src/check.rs`; tests in `iunctus/tests/check.rs`.
+
+## 4. Checking the machine
+
+```sh
+iunctus check-machine [-executor <executor>] [-store <folder or address>] [-iunctus-config <file>] [the options of the executors]
+```
+
+`iunctus check-machine` says what is ready on this machine for real runs, and what is missing, with what to install or set. It looks at:
+
+| Part | Ready when | What it says when it is missing |
+|---|---|---|
+| config file | every config file is valid; it names the files and their storage providers | the file, the line and the mistake |
+| secret | the environment variable of each `{ environment = "NAME" }` of the config file is set | the file, the line and the variable to set |
+| container engine | Docker or Podman answers at its socket; it gives its version | the sockets it tried, and how to start Docker or turn on the socket of Podman (`systemctl --user enable --now podman.socket`); a socket that the user may not use gets `sudo usermod -aG docker $USER` |
+| store | the folder can be written, with its free space, or the store at an address answers | why not, and where to name another store; less than 1 GB free counts as missing |
+| cache folder | where tasks run and downloads go, with its free space, when it is on another file system than the store | as for the store |
+| run database | it opens; it counts the runs | why it cannot open, and `-database` |
+| executor tes | the TES server of `-tes-server` or `[executor.tes]` answers | the server and why it does not answer, or that it refuses the token |
+| executor slurm | `sbatch`, `squeue`, `sacct` and `scancel` are on the PATH | the tools that are missing, and to run iunctus on a node of the cluster |
+| executor kubernetes | the kubeconfig of `-kubeconfig` or `[executor.kubernetes]` is readable; it names the namespace of the Jobs | the file and why it cannot be read |
+
+An executor that neither the config file nor the command line sets up is `not set up`, which is no problem; only the SLURM tools are looked for anyway, as that costs nothing. The check makes no request outside this machine, except to the servers that the config file or the command line names, each once: the store at an address and the TES server. It never asks a Kubernetes cluster, and it reads no kubeconfig that is not named.
+
+```text
+not set up config file: none, so public files need no provider and the store is a folder in the cache; /home/me/.config/iunctus/config.toml can name storage providers and executors
+ready      container engine: Docker 29.8.1 at /var/run/docker.sock
+ready      store: /home/me/.cache/iunctus/store, 23.2 GB free
+ready      run database: /home/me/.cache/iunctus/runs.sqlite, 54 runs
+not set up executor tes: no TES server named; name one with -tes-server or `server` in [executor.tes]
+not set up executor slurm: the tools of SLURM are not on the PATH; -executor slurm runs on a node of a SLURM cluster
+not set up executor kubernetes: no kubeconfig named; name one with -kubeconfig or `kubeconfig` in [executor.kubernetes]; iunctus never takes the default one
+This machine is ready for real runs.
+```
+
+```text
+ready      config file: lab.toml; no storage providers
+missing    secret: lab.toml:3: the environment variable TES_TOKEN, which holds this secret, is not set; set it before a run
+missing    container engine: no container engine answers at /var/run/docker.sock, /run/user/1000/docker.sock, /run/user/1000/podman/podman.sock or /run/podman/podman.sock; iunctus runs every task in a container, so start Docker, or turn on the socket of Podman with `systemctl --user enable --now podman.socket`, or name a socket with IUNCTUS_ENGINE
+ready      store: /home/me/.cache/iunctus/store, 23.2 GB free
+ready      run database: /home/me/.cache/iunctus/runs.sqlite, 0 runs
+missing    executor tes: the TES server at http://127.0.0.1:8000 does not answer: Connection refused; start it, or name another with -tes-server or `server` in [executor.tes] of the config file
+3 things are missing for real runs; the lines that start with `missing` say what to do.
+```
+
+The exit code is 3 when something is missing, else 0. A real run makes the same checks for what it needs before its first task: the config file and the store for every command, the container engine for `-executor local`, one request to the TES server for `-executor tes`, the SLURM tools for `-executor slurm`, and the kubeconfig for `-executor kubernetes`. Each stops the run with exit code 3 and the same words.
+
+The code: `iunctus/src/machine.rs`; tests in `iunctus/tests/machine.rs`.

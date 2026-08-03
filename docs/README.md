@@ -8,11 +8,26 @@ iunctus is a native Rust application. It reads Nextflow, Snakemake, CWL and Argo
 
 This folder holds the research and the design behind the code. The research was checked on 2026-09-27.
 
+## Getting started
+
+A laptop needs the `iunctus` binary and Docker or Podman, nothing else: no Java, no Python, no config file.
+
+```sh
+iunctus check-machine                        # what is ready for real runs, and what to install or set
+iunctus check main.nf                        # what would stop a real run of the workflow, found at once
+iunctus run main.nf                          # a simulated run: the plan of tasks, no container runs
+iunctus run main.nf -executor local          # a real run in Docker or Podman
+```
+
+With Podman, turn on its socket once: `systemctl --user enable --now podman.socket`. Tasks whose workflow names no container image need one: add `-default-image <image>`. Every error says where it is and what to do, and `iunctus check-machine` and `iunctus check` list every problem at once ([errors, exit codes and checks](design/checks.md)). A config file is needed only for private storage and for the TES, SLURM and Kubernetes executors ([the config file and storage providers](design/storage.md), [executors](design/executors.md)).
+
 ## The command
 
 ```sh
 iunctus run <workflow file or directory> [-graph graph.json] [-executor simulator|local|tes|slurm|kubernetes] [--<param> <value>]
 iunctus graph <workflow file or directory> [-format json|dot|summary|svg] [-view tasks|steps] [-direction down|right] [-fold <n>]
+iunctus check <workflow file or directory> [-default-image <image>]
+iunctus check-machine [-executor <executor>]
 iunctus config [<Nextflow project>] [-profile <names>]
 iunctus runs
 iunctus page [<run>]
@@ -20,6 +35,7 @@ iunctus export <run> [-output <folder>]
 iunctus inputs <workflow file or directory> [-format json|text] [-check]
 iunctus outputs <workflow file or directory> [-format json|text]
 iunctus clean [-keep-days <n>] [-keep-run <run>] [-keep-slower-than <time>] [-remove]
+iunctus help
 ```
 
 `iunctus run` finds the language of its target, or takes it from `-lang`. The default executor is the simulator, which writes the TES task document of each task and makes up its outputs, so any workflow runs through without containers. A simulated run gives a simulated graph, not a prediction of a real run (decision 21). All four languages run: Nextflow, Snakemake, CWL and Argo. The local executor runs tasks in Docker or Podman instead, the TES executor on a GA4GH TES server, the SLURM executor as batch jobs, and the Kubernetes executor as Jobs. See [the engine](design/engine.md) and [the executors](design/executors.md). `iunctus graph` prints the graph of a run with one node per task or one node per step, as a summary, JSON, DOT or an SVG drawn by iunctus itself, and marks the points where a run with real data can add or remove tasks; see [the graphs of a run](design/graph.md).
@@ -30,7 +46,7 @@ Storage needs no setup for public files. A config file, `~/.config/iunctus/confi
 
 Every run records itself in the run database. `iunctus runs` lists the runs, `-resume` continues one without running its finished tasks again, `iunctus run -page` and `iunctus page` show runs live on a web page, and `iunctus export` writes the RO-Crate of a run with its provenance. See [runs](design/runs.md).
 
-Every error has the same form, `iunctus: <where>: <what went wrong>; <what to do>`, in every language and executor, and the exit code tells its kind: 1 for the workflow, 2 for the command line, 3 for the machine or its config, 33 for a feature that iunctus does not support. See [errors, exit codes and checks](design/checks.md).
+Every error has the same form, `iunctus: <where>: <what went wrong>; <what to do>`, in every language and executor, and the exit code tells its kind: 1 for the workflow, 2 for the command line, 3 for the machine or its config, 33 for a feature that iunctus does not support. `iunctus check` reports at once everything that would stop a real run of a workflow, without running a task, and `iunctus check-machine` what is ready on this machine and what is missing. See [errors, exit codes and checks](design/checks.md).
 
 Every result goes to a content-addressed store, and any run, pipeline or language that asks for the same task takes it from there. Two runs that ask for the same task at the same moment run it once. A simulated run previews which tasks a real run would take from the cache, and `iunctus clean` removes what no rule keeps, never what a run still refers to. See [the cache](design/cache.md).
 

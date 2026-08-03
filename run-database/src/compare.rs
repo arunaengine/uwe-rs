@@ -75,6 +75,16 @@ pub struct Side {
     pub image: Option<String>,
 }
 
+/// What the comparison knows of the inputs of a task, by the path the task sees them at.
+#[derive(Default)]
+struct KnownInputs {
+    /// The digest of each input where it is known.
+    digests: HashMap<String, String>,
+    /// The inputs that a task made. The same task of the other run reads the file of its own
+    /// run, at another place, so their places do not tell whether they differ.
+    made: HashSet<String>,
+}
+
 /// A task of a run with what the comparison needs.
 struct Loaded {
     side: Side,
@@ -94,16 +104,13 @@ impl Database {
         let mut changes = run_changes(&first_run, &second_run);
         changes.extend(self.input_changes(&first_run, &second_run)?);
         let (earlier, later) = (self.loaded(first)?, self.loaded(second)?);
-        let (earlier_digests, later_digests) = (self.digests(first)?, self.digests(second)?);
+        let (earlier_outputs, later_outputs) = (self.outputs(first)?, self.outputs(second)?);
         let mut tasks = Vec::new();
         for (a, b) in pairing::paired(&earlier, &later) {
             let pair = match (a.map(|a| &earlier[a]), b.map(|b| &later[b])) {
                 (Some(a), Some(b)) => {
-                    let inputs = |task: &Loaded, digests: &HashMap<String, String>| {
-                        self.input_digests(task, digests)
-                    };
-                    let (a_inputs, b_inputs) =
-                        (inputs(a, &earlier_digests)?, inputs(b, &later_digests)?);
+                    let a_inputs = self.known_inputs(a, &earlier_outputs)?;
+                    let b_inputs = self.known_inputs(b, &later_outputs)?;
                     tasks::compared(a, b, &a_inputs, &b_inputs)
                 }
                 (Some(a), None) => tasks::alone(a, Pairing::First),
@@ -185,37 +192,54 @@ impl Database {
         Ok(tasks)
     }
 
-    /// The digest of each output of a run, by its location.
-    fn digests(&self, run: &str) -> Result<HashMap<String, String>, DatabaseError> {
-        let mut statement = self.connection.prepare(
-            "SELECT location, digest FROM files
-             WHERE run = ?1 AND role = 'output' AND digest IS NOT NULL",
-        )?;
-        let digests = statement
+    /// The places of the outputs of a run, with their digests where known.
+    fn outputs(&self, run: &str) -> Result<HashMap<String, Option<String>>, DatabaseError> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT location, digest FROM files WHERE run = ?1 AND role = 'output'")?;
+        let outputs = statement
             .query_map([run], |row| Ok((row.get(0)?, row.get(1)?)))?
-            .collect::<Result<HashMap<String, String>, _>>()?;
-        Ok(digests)
+            .collect::<Result<HashMap<String, Option<String>>, _>>()?;
+        Ok(outputs)
     }
 
-    /// The digest of each input of a task by its path, where it is known: its own, or that of
-    /// the output of this run, or of any run, at its location.
-    fn input_digests(
+    /// What is known of the inputs of a task: the digest of each where it is known (its own,
+    /// or that of the output of this run, or of any run, at its place), and which a task made.
+    fn known_inputs(
         &self,
         task: &Loaded,
-        digests: &HashMap<String, String>,
-    ) -> Result<HashMap<String, String>, DatabaseError> {
-        let mut found = HashMap::new();
+        outputs: &HashMap<String, Option<String>>,
+    ) -> Result<KnownInputs, DatabaseError> {
+        let mut known = KnownInputs::default();
         for input in &task.inputs {
-            let digest = match (&input.digest, digests.get(&input.location)) {
-                (Some(digest), _) | (None, Some(digest)) => Some(digest.clone()),
-                (None, None) if input.location.is_empty() => None,
-                (None, None) => self.digest_of(&input.location)?,
+            if input.location.is_empty() {
+                continue;
+            }
+            let made = match outputs.get(&input.location) {
+                Some(digest) => Some(digest.clone()),
+                None => self.made_at(&input.location)?,
             };
-            if let Some(digest) = digest {
-                found.insert(input.path.clone(), digest);
+            if made.is_some() {
+                known.made.insert(input.path.clone());
+            }
+            if let Some(digest) = input.digest.clone().or(made.flatten()) {
+                known.digests.insert(input.path.clone(), digest);
             }
         }
-        Ok(found)
+        Ok(known)
+    }
+
+    /// Whether a task of any run made a file at this place, and its digest where known.
+    fn made_at(&self, location: &str) -> Result<Option<Option<String>>, DatabaseError> {
+        let made = self
+            .connection
+            .prepare_cached(
+                "SELECT digest FROM files WHERE location = ?1 AND role = 'output'
+                 ORDER BY digest IS NULL LIMIT 1",
+            )?
+            .query_row([location], |row| row.get(0))
+            .optional()?;
+        Ok(made)
     }
 
     /// The input values of the runs (decision 24) that differ, beyond their parameters.

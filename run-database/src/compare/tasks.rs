@@ -3,9 +3,9 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
-use super::{Loaded, Pairing, Side, TaskPair};
+use super::{KnownInputs, Loaded, Pairing, Side, TaskPair};
 use crate::FileRow;
 use crate::why::described;
 
@@ -31,8 +31,8 @@ pub(super) fn alone(task: &Loaded, pairing: Pairing) -> TaskPair {
 pub(super) fn compared(
     a: &Loaded,
     b: &Loaded,
-    a_inputs: &HashMap<String, String>,
-    b_inputs: &HashMap<String, String>,
+    a_inputs: &KnownInputs,
+    b_inputs: &KnownInputs,
 ) -> TaskPair {
     // Images compare as they ran, pinned to their digests, where both runs know them: a tag
     // and its digest are the same image, and a tag that moved is another one.
@@ -46,9 +46,12 @@ pub(super) fn compared(
     let mut changes = described(&ran_in(a), &ran_in(b));
     changes.extend(input_changes(a, b, a_inputs, b_inputs));
     // The fingerprint holds the image as the workflow named it, which may be a tag in one run
-    // and its digest in the other, as in a replay.
+    // and its digest in the other, as in a replay, and the places of the inputs, which differ
+    // for the files that tasks of each run made.
     let named_alike = a.description.image == b.description.image;
-    if changes.is_empty() && a.fingerprint != b.fingerprint && named_alike {
+    let placed_alike = (a.inputs.iter())
+        .all(|x| (b.inputs.iter()).any(|y| y.path == x.path && y.location == x.location));
+    if changes.is_empty() && a.fingerprint != b.fingerprint && named_alike && placed_alike {
         changes
             .push("an input file was written again: its size is the same, its time is new".into());
     }
@@ -74,8 +77,8 @@ pub(super) fn compared(
 fn input_changes(
     a: &Loaded,
     b: &Loaded,
-    a_digests: &HashMap<String, String>,
-    b_digests: &HashMap<String, String>,
+    a_known: &KnownInputs,
+    b_known: &KnownInputs,
 ) -> Vec<String> {
     let by_path = |files: &[FileRow]| -> BTreeMap<String, FileRow> {
         (files.iter())
@@ -93,7 +96,8 @@ fn input_changes(
         if x.location.is_empty() && y.location.is_empty() {
             continue;
         }
-        match (a_digests.get(path), b_digests.get(path)) {
+        let made = a_known.made.contains(path) && b_known.made.contains(path);
+        match (a_known.digests.get(path), b_known.digests.get(path)) {
             (Some(p), Some(q)) if p == q => {}
             (Some(_), Some(_)) => {
                 changes.push(format!("the content of the input `{path}` differs"));
@@ -103,6 +107,8 @@ fn input_changes(
                 size(x.size),
                 size(y.size)
             )),
+            // The tasks that made them are compared themselves.
+            _ if made => {}
             _ if x.location != y.location => changes.push(format!(
                 "the input `{path}` comes from {} in the first run and from {} in the second",
                 x.location, y.location

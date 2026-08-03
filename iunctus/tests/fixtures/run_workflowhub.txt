@@ -57,7 +57,7 @@ workflowhub/737 ok
 workflowhub/813 1 iunctus: subworkflows/local/utils_nfcore_treeval_pipeline/../yaml_input/main.nf:55:62: NoSuchFileException: No such file or directory: busco/subset
 workflowhub/836 1 iunctus: main.nf:72:2: AbortOperationException: the run exits with code 1
 workflowhub/837 1 iunctus: main_workflow_precursor_specific_fasta.nf:37:17: AbortOperationException: Missing `fromPath` parameter
-workflowhub/874 1 iunctus: ERROR: Could not load config/Not_Specified.config check that you are using a valid workflow name
+workflowhub/874 1 ERROR: Could not load config/Not_Specified.config check that you are using a valid workflow name
 workflowhub/884 1 iunctus: the inputs fit none of the choices of the schema: the input `ena_raw_reads_study_accession` is required, but has no value; or the input `samplesheet` is required, but has no value
 workflowhub/964 1 iunctus: workflows/../subworkflows/local/../../modules/nf-core/cutadapt/main.nf:14:37: MissingPropertyException: No such variable: outformat
 workflowhub/965 33 iunctus: main.nf:20:1: DSL1 scripts are not supported (decision 14): this script has processes that read `from` channels and write `into` channels, which only DSL1 has, and Nextflow 22.12 and later do not run it either
@@ -148,7 +148,7 @@ workflowhub/1763 1 iunctus: workflows/pathogensurveillance.nf:38:5: NoSuchFileEx
 workflowhub/1769 1 iunctus: NoSuchFileException: params_ccrcc.csv
 workflowhub/1782 1 iunctus: the input `taxdb` is required, but has no value
 workflowhub/1787 ok
-workflowhub/1795 1 iunctus: WARNING: Could not load nf-core/config/eisca profiles: https://raw.githubusercontent.com/nf-core/configs/master/pipeline/eisca.config
+workflowhub/1795 1 WARNING: Could not load nf-core/config/eisca profiles: https://raw.githubusercontent.com/nf-core/configs/master/pipeline/eisca.config
 workflowhub/1814 ok
 workflowhub/1841 1 iunctus: Unable to parse config file: 'conf/module.config'
 workflowhub/1846 ok
@@ -162,7 +162,7 @@ workflowhub/1954 ok
 workflowhub/1960 1 iunctus: main.nf:35:3: NoSuchFileException: data/samples.tsv
 workflowhub/2033 1 iunctus: IllegalStateException: Error while parsing JSON content - cause: JsonException: Invalid JSON: unexpected end
 workflowhub/2037 1 iunctus: ProcessUnrecoverableException: Path value cannot be null
-workflowhub/2040 1 iunctus: WARNING: Could not load nf-core/config/eista profiles: https://raw.githubusercontent.com/nf-core/configs/master/pipeline/eista.config
+workflowhub/2040 1 WARNING: Could not load nf-core/config/eista profiles: https://raw.githubusercontent.com/nf-core/configs/master/pipeline/eista.config
 workflowhub/2053 1 iunctus: <cache>/workflow holds no workflow iunctus knows: no main.nf, nextflow.config, Snakefile or .smk file; name the workflow file
 workflowhub/2054 ok
 workflowhub/2080 1 iunctus: main.nf:89:16: AbortOperationException: No files found matching the pattern reads/*_R{1,2}.fastq.gz

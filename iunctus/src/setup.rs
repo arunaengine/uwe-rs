@@ -18,7 +18,8 @@ use crate::insight::telemetry::Telemetry;
 /// not go unnoticed. `executor` holds the settings of executors.
 const SECTIONS: &[&str] = &["store", "storage", "executor", "telemetry"];
 
-/// What the config files set up for a command.
+/// What the config files set up for a command; the default is what no config file sets up.
+#[derive(Default)]
 pub struct Setup {
     /// The storage providers, one client each for the whole process.
     pub storage: Storage,

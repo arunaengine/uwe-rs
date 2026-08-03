@@ -114,8 +114,8 @@ fn shown(line: &str) -> String {
     format!("{PREFIX}{line}")
 }
 
-/// The line without ` (os error <number>)`.
-fn without_error_numbers(line: &str) -> String {
+/// The text without ` (os error <number>)`, which iunctus never shows.
+pub fn without_error_numbers(line: &str) -> String {
     const START: &str = " (os error ";
     let mut shown = String::with_capacity(line.len());
     let mut rest = line;

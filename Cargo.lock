@@ -1976,6 +1976,7 @@ dependencies = [
  "run-database",
  "run-page",
  "run-telemetry",
+ "rustix",
  "serde_json",
  "slurm-executor",
  "snakemake-runtime",

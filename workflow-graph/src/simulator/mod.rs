@@ -283,15 +283,46 @@ pub fn pretend_run(task: &Task, work: &Path) -> std::io::Result<Result<Vec<Outpu
     for name in outputs {
         if !files.iter().any(|file| file.path == name) {
             let location = work.join(&name);
+            // The digest of a made-up file lets a run be compared with another by content.
+            let (size, digest) = match location.is_file() {
+                true => (sized(&location)?, Some(digest(&location)?)),
+                false => (None, None),
+            };
             files.push(OutputFile {
                 directory: location.is_dir(),
                 path: name,
                 location: location.to_string_lossy().into_owned(),
-                ..OutputFile::default()
+                size,
+                digest,
             });
         }
     }
     Ok(Ok(files))
+}
+
+/// The size of a file.
+fn sized(file: &Path) -> std::io::Result<Option<u64>> {
+    Ok(Some(std::fs::metadata(file)?.len()))
+}
+
+/// `sha256:<hex>` of a file, read in parts.
+fn digest(file: &Path) -> std::io::Result<String> {
+    use sha2::Digest as _;
+    use std::io::Read as _;
+    let mut hasher = sha2::Sha256::new();
+    let mut reader = std::fs::File::open(file)?;
+    let mut buffer = vec![0; 1 << 16];
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    let hex: String = (hasher.finalize().iter())
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    Ok(format!("sha256:{hex}"))
 }
 
 /// Writes a file or directory that a task makes; one that exists stays, like an input.

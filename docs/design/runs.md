@@ -192,7 +192,7 @@ Each task of the path splits its part of the run into three: the time between th
 | `outputs` | the task does the same, but outputs have other content, by their digest: a tool that does not give the same bytes |
 | `first`, `second` | only one run has the task |
 
-For each pair it also says how the task ended otherwise (succeeded in one run, failed with exit code 1 in the other) and where its result came from: `it ran in the first run and came from the cache in the second`. Inputs are compared by content where both digests are known: the digest of the input itself, or of the output of any run at its place; else by size and place.
+For each pair it also says how the task ended otherwise (succeeded in one run, failed with exit code 1 in the other) and where its result came from: `it ran in the first run and came from the cache in the second`. Inputs are compared by content where both digests are known: the digest of the input itself, or of the output of any run at its place; else by size and place. An input that a task made in each run lies at another place in each (the store or scratch folder of its run), so its place tells nothing; the tasks that made it are compared themselves.
 
 **On the page**, the summary of a run has a list of the other runs of its workflow, the run before it chosen, and a button that opens the comparison: the two runs, what differs between them, the counts of each pairing, and a table for each kind of pair with links to the task in each run.
 

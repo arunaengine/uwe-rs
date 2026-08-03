@@ -1,13 +1,15 @@
 //! `iunctus check-machine`: what is ready on this machine for real runs, and what is missing
 //! with what to install or set: the config file and its secrets, the container engine, the
-//! store and its free space, and the run database.
+//! store and its free space, the run database, and each executor that the config file or the
+//! command line sets up.
 //!
-//! The check asks no server outside this machine, except the store at an address that the
-//! config file or the command line names, once.
+//! The check asks no server outside this machine, except those that the config file or the
+//! command line names, each once: the store at an address, and the TES server.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod config;
+mod executors;
 mod local;
 
 use std::fmt;
@@ -94,6 +96,9 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     local::engine(runtime, &setup, &mut report);
     local::store(runtime, &setup, arguments, &mut report);
     local::database(arguments, &mut report);
+    executors::tes_server(&setup.executors, arguments, &mut report);
+    executors::slurm(&setup.executors, arguments, &mut report);
+    executors::kubernetes(runtime, &setup.executors, arguments, &mut report);
     print!("{}", report.text());
     match report
         .found

@@ -385,6 +385,7 @@ fn inputs_that_tasks_made_are_compared_by_their_tasks() {
             source: made,
             directory: false,
             content: None,
+            writable: workflow_graph::Writable::No,
         }];
         let finished = Outcome {
             id: read.id,

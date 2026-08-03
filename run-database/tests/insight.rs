@@ -356,3 +356,54 @@ fn a_replay_is_its_own_run_that_resume_leaves_out() {
     assert_eq!(comparison.tasks[0].pairing, Pairing::Same);
     assert_eq!(comparison.tasks[0].changes, Vec::<String>::new());
 }
+
+#[test]
+fn inputs_that_tasks_made_are_compared_by_their_tasks() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    // Two simulated runs: USE reads the file that MAKE made in its own run, at another place,
+    // and no digest is known.
+    for run in ["sim-1", "sim-2"] {
+        let mut recorder = Database::open(&path)
+            .and_then(|database| database.record(&start(run)))
+            .expect("starts a record");
+        let made = format!("/scratch/{run}/work/1/out.txt");
+        let make = task(1, "MAKE");
+        let output = Outcome {
+            id: make.id,
+            files: vec![OutputFile {
+                path: "out.txt".into(),
+                location: made.clone(),
+                ..OutputFile::default()
+            }],
+            ..Outcome::default()
+        };
+        attempt(&mut recorder, &make, &[], &output);
+        let mut read = task(2, "USE");
+        read.inputs = vec![workflow_graph::Input {
+            path: "out.txt".into(),
+            source: made,
+            directory: false,
+            content: None,
+        }];
+        let finished = Outcome {
+            id: read.id,
+            ..Outcome::default()
+        };
+        attempt(&mut recorder, &read, &[file_edge(1, 2)], &finished);
+        recorder.ended(None);
+        recorder.close().expect("records the run");
+    }
+    let database = Database::open(&path).expect("opens again");
+    let comparison = database
+        .compare("sim-1", "sim-2")
+        .expect("reads")
+        .expect("both");
+    let pairs: Vec<(Pairing, &Vec<String>)> = (comparison.tasks.iter())
+        .map(|pair| (pair.pairing, &pair.changes))
+        .collect();
+    assert_eq!(
+        pairs,
+        [(Pairing::Same, &Vec::new()), (Pairing::Same, &Vec::new())]
+    );
+}

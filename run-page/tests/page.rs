@@ -63,6 +63,12 @@ fn record(directory: &Path) -> std::path::PathBuf {
             ..OutputFile::default()
         }],
         stdout: "done\n".into(),
+        reproducibility: Some(workflow_graph::ReproducibilityCheck {
+            earlier_run: "earlier-run".into(),
+            verdict: workflow_graph::Verdict::Differs {
+                paths: vec!["out.txt".into()],
+            },
+        }),
         ..Outcome::default()
     };
     let mut recorder = Database::open(&path)
@@ -123,6 +129,9 @@ fn the_page_shows_runs_tasks_logs_and_files() {
     assert_eq!(task["stdout"]["text"], "done\n");
     assert_eq!(task["stderr"], Value::Null);
     assert_eq!(task["outputs"][0]["path"], "out.txt");
+    assert_eq!(task["checks"][0]["verdict"], "differs");
+    assert_eq!(task["checks"][0]["earlier"], "earlier-run");
+    assert!(script.contains("Reproducibility check"));
     let (status, svg) = get(&format!("{url}/api/runs/finished-run/graph.svg"));
     assert_eq!(status, 200, "{svg}");
     assert!(svg.contains("<svg") && svg.contains("id=\"t4\""), "{svg}");

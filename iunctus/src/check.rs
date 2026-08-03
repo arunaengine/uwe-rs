@@ -19,7 +19,7 @@ use workflow_graph::{
 };
 
 use crate::arguments::Arguments;
-use crate::failure::{FAILED, UNSUPPORTED};
+use crate::failure::{FAILED, UNSUPPORTED, without_error_numbers};
 use crate::setup::Setup;
 use crate::{Failure, cache_directory};
 
@@ -66,7 +66,7 @@ impl Report {
     fn add(&mut self, kind: Kind, message: impl Into<String>) {
         self.problems.push(Problem {
             kind,
-            message: message.into(),
+            message: without_error_numbers(&message.into()),
         });
     }
 

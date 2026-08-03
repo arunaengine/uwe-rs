@@ -361,6 +361,7 @@ async function drawDetail(task) {
     parts.push(el("h3", {}, "Command"), el("pre", {}, description.command.join(" ")));
   }
   if (description.script) parts.push(el("h3", {}, "Script"), el("pre", {}, description.script));
+  if (data.checks.length) parts.push(checksPart(data.checks));
   if (!row.reused && row.attempts > 0) parts.push(whyPart(id, task));
   if (!view.run.simulated && row.attempts > 0) parts.push(replayPart(id, task, data.replays));
   parts.push(logPart("Standard output", data.stdout, id, task, last, "stdout"));
@@ -384,6 +385,25 @@ async function drawDetail(task) {
   }
   parts.push(el("p", { class: "quiet mono" }, `fingerprint ${data.fingerprint}`));
   detail.replaceChildren(...parts);
+}
+
+// What the reproducibility check found: the result came from the cache, and the task ran again
+// to see whether its tool gives the same bytes.
+function checksPart(checks) {
+  const earlier = (check) => link(`/runs/${encodeURIComponent(check.earlier)}`, `run ${check.earlier}`);
+  const said = (check) => {
+    switch (check.verdict) {
+      case "same":
+        return ["It ran again and gave the same bytes as the result of ", earlier(check), " in the cache."];
+      case "differs":
+        return ["It ran again and gave other bytes than the result of ", earlier(check), " in the cache, in ",
+          check.differing.join(", "), ". iunctus shares no results of this tool any more; resumed runs still take them."];
+      default:
+        return ["It ran again and failed with exit code ", String(check.exit_code ?? ""), "."];
+    }
+  };
+  return el("div", {}, el("h3", {}, "Reproducibility check"),
+    checks.map((check) => el("p", { class: check.verdict === "same" ? "" : "marker" }, ...said(check))));
 }
 
 // Why the task ran instead of taking the result of an earlier run, filled when it is known.

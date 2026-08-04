@@ -6,8 +6,9 @@
 //! `iunctus inputs` prints the JSON Schema of the inputs of a workflow, `iunctus outputs` that
 //! of its outputs, `iunctus clean` removes from the store what no rule keeps,
 //! `iunctus time` tells where the time of a run went, `iunctus compare` what differs
-//! between two runs, `iunctus replay` runs one recorded task again, and `iunctus telemetry`
-//! writes and sends the OpenTelemetry trace of a run.
+//! between two runs, `iunctus replay` runs one recorded task again, `iunctus telemetry`
+//! writes and sends the OpenTelemetry trace of a run, and `iunctus check-order` whether the
+//! outputs of a workflow depend on the order in which its tasks finish.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -23,6 +24,7 @@ mod kubernetes;
 mod local;
 mod machine;
 mod nextflow;
+mod order;
 mod page;
 mod preview;
 mod record;
@@ -74,6 +76,7 @@ fn main() -> ExitCode {
         "inputs" => inputs::command(&arguments),
         "outputs" => inputs::outputs(&arguments),
         "clean" => clean::command(&arguments),
+        "check-order" => order::command(&arguments),
         "time" => insight::time::command(&arguments),
         "compare" => insight::compare::command(&arguments),
         "replay" => insight::replay::command(&arguments),
@@ -110,7 +113,9 @@ fn run(arguments: &Arguments) -> Result<(), Failure> {
             "iunctus: `-format` is an option of `iunctus graph`",
         ));
     }
-    let (execution, page) = execute(arguments, false)?;
+    let Ran {
+        execution, page, ..
+    } = execute(arguments, false)?;
     if let Some(file) = &arguments.graph {
         write_graph(file, &execution.graph, &picture(arguments))?;
     }
@@ -139,7 +144,7 @@ fn graph(arguments: &Arguments) -> Result<(), Failure> {
             ))
         })?,
     };
-    let (execution, _) = execute(arguments, true)?;
+    let Ran { execution, .. } = execute(arguments, true)?;
     if let Some(file) = &arguments.graph {
         write_graph(file, &execution.graph, &options)?;
     }
@@ -190,7 +195,7 @@ fn simulation_notes(graph: &ExecutionGraph) -> Vec<String> {
 /// Runs the target with its language's driver and the chosen executor, and records the run
 /// in the run database. `quiet` keeps standard output free for the graph. With `-page`, the
 /// page of the run serves from the start; the result holds it.
-fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Server>), Failure> {
+fn execute(arguments: &Arguments, quiet: bool) -> Result<Ran, Failure> {
     let (target, language) = target_and_language(arguments)?;
     let target = &target;
     let launch = launch(arguments, target.clone());
@@ -299,7 +304,19 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<(Execution, Option<Serv
     if real {
         insight::telemetry::after_run(arguments, &setup, &run);
     }
-    Ok((execution, page))
+    Ok(Ran {
+        execution,
+        page,
+        id: run,
+    })
+}
+
+/// A run that ended: what the engine did, the page that serves it, and its id in the run
+/// database.
+struct Ran {
+    execution: Execution,
+    page: Option<Server>,
+    id: String,
 }
 
 /// Ends the record of a run. A run goes on when the database fails; it only says so.
@@ -616,6 +633,7 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
        iunctus inputs <workflow file or directory> [-format json|text] [-check] [options]
        iunctus outputs <workflow file or directory> [-format json|text] [options]
        iunctus clean [-keep-days <n>] [-keep-run <run>]... [-keep-slower-than <time>] [-remove]
+       iunctus check-order <workflow file or directory> [options]
 
 options:
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it

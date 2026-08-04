@@ -61,6 +61,12 @@ impl Changes {
     pub fn any(&self) -> bool {
         (self.parts.iter()).any(|part| !part.changes.is_empty() || part.note.is_some())
     }
+
+    /// The files of the workflow or the command line that changed.
+    pub fn sources_changed(&self) -> bool {
+        (self.parts.iter().take(2))
+            .any(|part| (part.changes.iter()).any(|change| change.kind != Kind::Unknown))
+    }
 }
 
 /// How an image is found now: the image that its tag names at its registry, pinned to a digest.

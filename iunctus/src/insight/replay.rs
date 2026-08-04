@@ -71,7 +71,14 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let language: Language = serde_json::from_value(original.language.clone().into())
         .map_err(|_| failure(format!("iunctus: run {run} has an unknown language")))?;
     let id = crate::run_id();
-    let mut executor_of_run = crate::executor(&arguments, &setup, &id, true, false)?;
+    let mut executor_of_run = crate::executor(
+        &arguments,
+        &setup,
+        &id,
+        true,
+        false,
+        &crate::repeat::Pinned::default(),
+    )?;
     let start = RunStart {
         id: id.clone(),
         resumes: None,

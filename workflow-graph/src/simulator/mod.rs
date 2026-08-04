@@ -283,9 +283,10 @@ pub fn pretend_run(task: &Task, work: &Path) -> std::io::Result<Result<Vec<Outpu
     for name in outputs {
         if !files.iter().any(|file| file.path == name) {
             let location = work.join(&name);
-            // The digest of a made-up file lets a run be compared with another by content.
+            // The digest of a made-up file lets a run be compared with another by content; a
+            // file that cannot be read just has none.
             let (size, digest) = match location.is_file() {
-                true => (sized(&location)?, Some(digest(&location)?)),
+                true => (sized(&location), digest(&location).ok()),
                 false => (None, None),
             };
             files.push(OutputFile {
@@ -301,8 +302,8 @@ pub fn pretend_run(task: &Task, work: &Path) -> std::io::Result<Result<Vec<Outpu
 }
 
 /// The size of a file.
-fn sized(file: &Path) -> std::io::Result<Option<u64>> {
-    Ok(Some(std::fs::metadata(file)?.len()))
+fn sized(file: &Path) -> Option<u64> {
+    std::fs::metadata(file).ok().map(|found| found.len())
 }
 
 /// `sha256:<hex>` of a file, read in parts.

@@ -56,6 +56,11 @@ impl<B: Backend> RunnerExecutor<B> {
     pub fn check_reproducibility(&mut self, share: f64) {
         self.runner.check_reproducibility(share);
     }
+
+    /// Pins images to the digests given; see [`Runner::pin_images`].
+    pub fn pin_images(&self, images: &HashMap<String, String>) {
+        self.runner.pin_images(images);
+    }
 }
 
 impl<B: Backend> Executor for RunnerExecutor<B> {

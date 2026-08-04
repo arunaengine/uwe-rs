@@ -218,6 +218,19 @@ impl<B: Backend> Runner<B> {
         self.check = share;
     }
 
+    /// Pins images to the digests given, instead of asking the engine or the registry, as a
+    /// repeat of a run pins them to the digests that the run ran at.
+    pub fn pin_images(&self, images: &HashMap<String, String>) {
+        let mut pinned = self
+            .pinned
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        for (image, digest) in images {
+            let known = Pinned::new_with(Some(Some(digest.clone())));
+            pinned.insert(image.clone(), Arc::new(known));
+        }
+    }
+
     /// The image pinned to its digest where it has one, found once per run.
     pub async fn pin(&self, image: &str) -> Result<String, RunnerError> {
         let cell = {

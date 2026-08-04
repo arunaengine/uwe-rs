@@ -748,3 +748,20 @@ fn inputs_changed_in_place_are_named_by_their_path_and_never_cached() {
     assert!(prepared.request.spec.inputs[1].writable);
     assert_eq!(prepared.request.scope, task_model::ReuseScope::Shared);
 }
+
+#[test]
+fn images_can_be_pinned_to_given_digests() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let runner = runner(root.path(), 0);
+    let given = [("debian".to_owned(), "debian@sha256:11".to_owned())].into();
+    runner.pin_images(&given);
+    assert_eq!(
+        block_on(runner.pin("debian")).expect("pins"),
+        "debian@sha256:11"
+    );
+    // Other images are pinned by the backend, as before.
+    assert_eq!(
+        block_on(runner.pin("alpine")).expect("pins"),
+        "alpine@sha256:00"
+    );
+}

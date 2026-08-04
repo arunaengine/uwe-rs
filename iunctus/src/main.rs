@@ -554,11 +554,7 @@ fn previewed(simulator: Simulator, arguments: &Arguments, setup: &Setup) -> Box<
     let (Ok(pins), Ok(store)) = (pins, setup.store(arguments)) else {
         return Box::new(simulator);
     };
-    let settings = task_runner::Settings {
-        downloads: cache_directory().join("downloads"),
-        import_inputs: false,
-        storage: setup.storage.clone(),
-    };
+    let settings = runner_settings(setup.storage.clone(), false);
     let lookup = task_runner::Lookup::new(store, settings);
     let default_image = arguments.default_image.clone();
     Box::new(preview::Previewed::new(
@@ -717,6 +713,17 @@ options:
   -check-reproducibility <percent>    runs this share of the tasks whose results come from the
                                       cache again, like 10%, and compares their outputs; a tool
                                       that gives other bytes shares no results any more";
+
+/// How the task runner treats the inputs of tasks: remote files are downloaded once into the
+/// cache folder. `import_inputs` copies local inputs into the store too, for executors whose
+/// tasks run on other machines.
+fn runner_settings(storage: storage::Storage, import_inputs: bool) -> task_runner::Settings {
+    task_runner::Settings {
+        downloads: cache_directory().join("downloads"),
+        import_inputs,
+        storage,
+    }
+}
 
 /// `$XDG_CACHE_HOME/iunctus`, else `~/.cache/iunctus`.
 fn cache_directory() -> PathBuf {

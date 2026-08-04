@@ -4555,6 +4555,7 @@ dependencies = [
  "config-file",
  "content-store",
  "executor",
+ "rusqlite",
  "serde",
  "serde_json",
  "storage",

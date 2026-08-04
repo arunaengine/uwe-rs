@@ -159,7 +159,18 @@ impl Store {
     /// store copies it, other stores get it uploaded in parts.
     pub async fn put_file(&self, file: &std::path::Path) -> Result<(Digest, u64), StoreError> {
         let (digest, size) = hash_file(file).await?;
-        let location = layout::content(&digest);
+        self.put_file_as(file, &digest).await?;
+        Ok((digest, size))
+    }
+
+    /// Stores a local file whose digest is known, unless the store already has its content, as
+    /// [`Store::put_file`] does without reading the file to hash it.
+    pub async fn put_file_as(
+        &self,
+        file: &std::path::Path,
+        digest: &Digest,
+    ) -> Result<(), StoreError> {
+        let location = layout::content(digest);
         match self.local_path(&location) {
             Some(target) => local::copy_absent(file, &target)
                 .await
@@ -169,7 +180,7 @@ impl Store {
             }
             None => {}
         }
-        Ok((digest, size))
+        Ok(())
     }
 
     /// Stores an output file of a task attempt under its original path and by its content. A

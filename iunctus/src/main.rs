@@ -8,8 +8,8 @@
 //! `iunctus time` tells where the time of a run went, `iunctus compare` what differs
 //! between two runs, `iunctus replay` runs one recorded task again, `iunctus telemetry`
 //! writes and sends the OpenTelemetry trace of a run, `iunctus check-order` whether the
-//! outputs of a workflow depend on the order in which its tasks finish, and `iunctus changes`
-//! what changed since a run.
+//! outputs of a workflow depend on the order in which its tasks finish, `iunctus changes`
+//! what changed since a run, and `iunctus repeat` runs a past run again with what it pinned.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -30,6 +30,7 @@ mod order;
 mod page;
 mod preview;
 mod record;
+mod repeat;
 mod resume;
 mod revision;
 mod runs;
@@ -52,6 +53,7 @@ use workflow_graph::{
 
 use crate::arguments::Arguments;
 use crate::failure::{Failure, INTERRUPTED, failure};
+use crate::repeat::Pinned;
 use crate::setup::Setup;
 
 fn main() -> ExitCode {
@@ -80,6 +82,7 @@ fn main() -> ExitCode {
         "clean" => clean::command(&arguments),
         "check-order" => order::command(&arguments),
         "changes" => changes::command(&arguments),
+        "repeat" => repeat::command(&arguments),
         "time" => insight::time::command(&arguments),
         "compare" => insight::compare::command(&arguments),
         "replay" => insight::replay::command(&arguments),
@@ -118,7 +121,7 @@ fn run(arguments: &Arguments) -> Result<(), Failure> {
     }
     let Ran {
         execution, page, ..
-    } = execute(arguments, false)?;
+    } = execute(arguments, false, &Pinned::default())?;
     if let Some(file) = &arguments.graph {
         write_graph(file, &execution.graph, &picture(arguments))?;
     }
@@ -147,7 +150,7 @@ fn graph(arguments: &Arguments) -> Result<(), Failure> {
             ))
         })?,
     };
-    let Ran { execution, .. } = execute(arguments, true)?;
+    let Ran { execution, .. } = execute(arguments, true, &Pinned::default())?;
     if let Some(file) = &arguments.graph {
         write_graph(file, &execution.graph, &options)?;
     }
@@ -198,13 +201,16 @@ fn simulation_notes(graph: &ExecutionGraph) -> Vec<String> {
 /// Runs the target with its language's driver and the chosen executor, and records the run
 /// in the run database. `quiet` keeps standard output free for the graph. With `-page`, the
 /// page of the run serves from the start; the result holds it.
-fn execute(arguments: &Arguments, quiet: bool) -> Result<Ran, Failure> {
+fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, Failure> {
     let (target, language) = target_and_language(arguments)?;
     let target = &target;
     let launch = launch(arguments, target.clone());
     let run = run_id();
     let name = arguments.executor.as_deref().unwrap_or("simulator");
     let setup = Setup::load(arguments)?;
+    for file in &pinned.files {
+        setup.storage.pin(file.clone());
+    }
     let store = setup.store_location(arguments);
     let real = name != "simulator";
     let runtime =
@@ -218,7 +224,7 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<Ran, Failure> {
         simulated: !real,
         store: real.then_some(store.as_str()),
         sources: &sources,
-        repeats: None,
+        repeats: pinned.repeats.as_deref(),
     };
     let record::Recording {
         mut recorder,
@@ -229,7 +235,7 @@ fn execute(arguments: &Arguments, quiet: bool) -> Result<Ran, Failure> {
         false => None,
     };
     // The inputs are checked before any task starts (decision 24).
-    let prepared = executor(arguments, &setup, &run, !quiet, true).and_then(|executor| {
+    let prepared = executor(arguments, &setup, &run, !quiet, true, pinned).and_then(|executor| {
         let mut driver = driver(language, &launch, &run, quiet, arguments, &setup)?;
         if let Some(inputs) = inputs::check(driver.as_mut(), started.simulated, quiet)? {
             recorder.inputs(&inputs.schema, &inputs.values);
@@ -424,6 +430,7 @@ fn executor(
     run: &str,
     verbose: bool,
     reuse: bool,
+    pinned: &Pinned,
 ) -> Result<Box<dyn Executor>, Failure> {
     let cache = cache_directory();
     let scratch = cache.join("scratch");
@@ -446,7 +453,7 @@ fn executor(
                 local::executor(store, &scratch, run, default_image, storage, &engine)
                     .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
             executor.priorities = std::sync::Arc::new(chains(arguments));
-            Ok(real(executor, arguments, verbose, reuse))
+            Ok(real(executor, arguments, verbose, reuse, pinned))
         }
         "tes" => {
             let default_image = arguments.default_image.clone();
@@ -469,7 +476,7 @@ fn executor(
             };
             let executor = tes::executor(store, place, run, default_image, storage)
                 .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
-            Ok(real(executor, arguments, verbose, reuse))
+            Ok(real(executor, arguments, verbose, reuse, pinned))
         }
         "slurm" => {
             let default_image = arguments.default_image.clone();
@@ -494,7 +501,7 @@ fn executor(
                 options,
             )
             .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
-            Ok(real(executor, arguments, verbose, reuse))
+            Ok(real(executor, arguments, verbose, reuse, pinned))
         }
         "kubernetes" => {
             let default_image = arguments.default_image.clone();
@@ -514,7 +521,7 @@ fn executor(
                 namespace,
             )
             .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
-            Ok(real(executor, arguments, verbose, reuse))
+            Ok(real(executor, arguments, verbose, reuse, pinned))
         }
         other => Err(Failure::usage(format!(
             "iunctus: unknown executor `{other}`; use `simulator`, `local`, `tes`, `slurm` or \
@@ -563,16 +570,19 @@ fn previewed(simulator: Simulator, arguments: &Arguments, setup: &Setup) -> Box<
 }
 
 /// A real executor with the settings of the command line: its line per task, whether the cache
-/// answers tasks, and the share of cached tasks that run again for the reproducibility check.
+/// answers tasks, the share of cached tasks that run again for the reproducibility check, and
+/// the images that a repeat of a run pins.
 fn real<B: executor::Backend>(
     mut executor: task_runner::RunnerExecutor<B>,
     arguments: &Arguments,
     verbose: bool,
     reuse: bool,
+    pinned: &Pinned,
 ) -> Box<dyn Executor> {
     executor.verbose = verbose;
     executor.reuse = reuse;
     executor.check_reproducibility(arguments.check_reproducibility.unwrap_or(0.0));
+    executor.pin_images(&pinned.images);
     Box::new(executor)
 }
 
@@ -638,6 +648,7 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
        iunctus clean [-keep-days <n>] [-keep-run <run>]... [-keep-slower-than <time>] [-remove]
        iunctus check-order <workflow file or directory> [options]
        iunctus changes <run>
+       iunctus repeat <run> [-executor <executor>] [-store <folder or address>] [options]
 
 options:
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it

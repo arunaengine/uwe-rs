@@ -32,7 +32,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
             max_pending: Some(pending),
             ..arguments.clone()
         };
-        execute(&arguments, true)
+        execute(&arguments, true, &crate::repeat::Pinned::default())
     };
     let first = run(Order::AsAsked)?;
     let second = run(Order::Reversed)?;

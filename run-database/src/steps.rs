@@ -50,7 +50,7 @@ pub enum StepChange {
 struct Step {
     /// How each task is made, without its id, name, resources and where its inputs are.
     made: Vec<String>,
-    /// The content of the inputs of each task.
+    /// The content of the inputs of each task, whatever their paths.
     inputs: Vec<String>,
     /// The outputs of each task by path and digest.
     outputs: Vec<Vec<(String, String)>>,
@@ -130,21 +130,27 @@ impl Database {
         let mut order: Vec<String> = Vec::new();
         let mut steps: HashMap<String, Step> = HashMap::new();
         let mut inputs: HashMap<u64, Vec<String>> = HashMap::new();
+        // The content at each path of each task, in the order of its inputs.
+        let mut placed: HashMap<u64, Vec<String>> = HashMap::new();
         let mut outputs: HashMap<u64, Vec<(String, String)>> = HashMap::new();
         let mut after: HashMap<u64, BTreeSet<String>> = HashMap::new();
         let last = self.last_attempts(run)?;
         for file in &files {
             match file.attempt {
+                // What the workflow writes itself, like a task script, is part of how the task
+                // is made.
+                None if file.location.is_empty() => {}
                 None => {
                     let content = match (&file.digest, made_at.get(file.location.as_str())) {
                         (Some(digest), _) => digest.clone(),
                         (None, Some((digest, _))) => (*digest).to_owned(),
                         (None, None) => format!("{} {:?}", file.location, file.size),
                     };
-                    inputs
+                    placed
                         .entry(file.task)
                         .or_default()
                         .push(format!("{} {content}", file.path));
+                    inputs.entry(file.task).or_default().push(content);
                     if let Some((_, maker)) = made_at.get(file.location.as_str())
                         && let Some(step) = step_of.get(maker)
                     {
@@ -173,8 +179,10 @@ impl Database {
                 order.push(task.step.clone());
                 Step::default()
             });
-            step.made.push(made(description, run));
+            let paths = placed.remove(&task.id).unwrap_or_default();
+            step.made.push(made(description, &paths, run));
             let mut read = inputs.remove(&task.id).unwrap_or_default();
+            read.retain(|content| !content.is_empty());
             read.sort();
             step.inputs.push(read.join("\n"));
             let mut made_files = outputs.remove(&task.id).unwrap_or_default();
@@ -218,8 +226,8 @@ impl Database {
 
 /// How a task is made, as a digest: its description without its id, name, resources, the
 /// tasks it waits for and where its inputs are, with the id of the run left out of its text,
-/// as scratch folders hold it.
-fn made(task: &Task, run: &str) -> String {
+/// as scratch folders hold it; and which content it sees at each path of its inputs.
+fn made(task: &Task, paths: &[String], run: &str) -> String {
     let mut described = Task {
         id: TaskId(0),
         name: String::new(),
@@ -231,7 +239,8 @@ fn made(task: &Task, run: &str) -> String {
         input.source.clear();
     }
     let text = serde_json::to_string(&described).unwrap_or_default();
-    Digest::sha256(text.replace(run, "<run>").as_bytes()).to_string()
+    let text = format!("{}\n{}", text.replace(run, "<run>"), paths.join("\n"));
+    Digest::sha256(text.as_bytes()).to_string()
 }
 
 /// The paths of outputs that one run made with other content than the other, at most

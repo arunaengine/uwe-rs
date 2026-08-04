@@ -19,6 +19,7 @@ use tokio_util::sync::CancellationToken;
 use workflow_graph::{ReproducibilityCheck, Verdict};
 
 use crate::check;
+use crate::digests::DigestCache;
 use crate::entry::{self, CacheEntry, Stale};
 use crate::inputs::{Inputs, Mode};
 use crate::outputs;
@@ -133,6 +134,9 @@ pub struct Settings {
     pub import_inputs: bool,
     /// The storage providers that remote inputs come from.
     pub storage: Storage,
+    /// The digests of local files that earlier runs read, so that an input that did not change
+    /// is not read again; `None` reads every input.
+    pub digests: Option<DigestCache>,
 }
 
 /// Where the content of an input comes from, for staging.

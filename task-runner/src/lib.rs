@@ -5,6 +5,7 @@
 
 mod check;
 pub mod clean;
+mod digests;
 mod entry;
 mod executor;
 mod files;
@@ -15,6 +16,7 @@ mod request;
 mod runner;
 mod staging;
 
+pub use digests::DigestCache;
 pub use entry::CacheEntry;
 pub use executor::RunnerExecutor;
 pub use files::StorageFiles;

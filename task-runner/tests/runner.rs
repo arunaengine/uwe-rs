@@ -107,6 +107,7 @@ fn runner_on(
         downloads: root.join("downloads"),
         import_inputs: false,
         storage: storage::Storage::default(),
+        digests: None,
     };
     Runner::new(store, fake, run, settings)
 }
@@ -527,6 +528,7 @@ fn a_lookup_finds_stored_results_without_writing_anything() {
         downloads: root.path().join("downloads"),
         import_inputs: false,
         storage: storage::Storage::default(),
+        digests: None,
     };
     let lookup = task_runner::Lookup::new(store.clone(), settings);
     let objects = || block_on(store.objects("")).expect("lists").len();

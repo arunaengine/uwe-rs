@@ -50,11 +50,22 @@ impl Inputs<'_> {
         }
     }
 
-    /// The digest and size of a local file.
+    /// The digest and size of a local file, which goes into the store too when the runner
+    /// imports inputs.
     async fn file(&self, file: &Path) -> Result<(Digest, u64), RunnerError> {
-        match self.imported() {
-            true => Ok(self.store.put_file(file).await?),
-            false => Ok(content_store::hash_file(file).await?),
+        let (digest, size) = self.hash(file).await?;
+        if self.imported() {
+            self.store.put_file_as(file, &digest).await?;
+        }
+        Ok((digest, size))
+    }
+
+    /// The digest and size of a local file: from the cache of digests when the file did not
+    /// change since a run read it, else read now.
+    async fn hash(&self, file: &Path) -> Result<(Digest, u64), RunnerError> {
+        match &self.settings.digests {
+            Some(digests) => Ok(digests.hash(file).await?),
+            None => Ok(content_store::hash_file(file).await?),
         }
     }
 
@@ -161,7 +172,7 @@ impl Inputs<'_> {
                 match imported {
                     true => (FileKind::File, self.file(&copy).await?.0, Source::Stored),
                     false => {
-                        let (digest, _) = content_store::hash_file(&copy).await?;
+                        let (digest, _) = self.hash(&copy).await?;
                         (FileKind::File, digest, Source::Local(copy))
                     }
                 }

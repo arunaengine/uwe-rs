@@ -7,12 +7,14 @@
 //! of its outputs, `iunctus clean` removes from the store what no rule keeps,
 //! `iunctus time` tells where the time of a run went, `iunctus compare` what differs
 //! between two runs, `iunctus replay` runs one recorded task again, `iunctus telemetry`
-//! writes and sends the OpenTelemetry trace of a run, and `iunctus check-order` whether the
-//! outputs of a workflow depend on the order in which its tasks finish.
+//! writes and sends the OpenTelemetry trace of a run, `iunctus check-order` whether the
+//! outputs of a workflow depend on the order in which its tasks finish, and `iunctus changes`
+//! what changed since a run.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod arguments;
+mod changes;
 mod check;
 mod clean;
 mod detect;
@@ -77,6 +79,7 @@ fn main() -> ExitCode {
         "outputs" => inputs::outputs(&arguments),
         "clean" => clean::command(&arguments),
         "check-order" => order::command(&arguments),
+        "changes" => changes::command(&arguments),
         "time" => insight::time::command(&arguments),
         "compare" => insight::compare::command(&arguments),
         "replay" => insight::replay::command(&arguments),
@@ -634,6 +637,7 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
        iunctus outputs <workflow file or directory> [-format json|text] [options]
        iunctus clean [-keep-days <n>] [-keep-run <run>]... [-keep-slower-than <time>] [-remove]
        iunctus check-order <workflow file or directory> [options]
+       iunctus changes <run>
 
 options:
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it

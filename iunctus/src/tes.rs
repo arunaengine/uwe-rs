@@ -9,7 +9,7 @@ use std::path::Path;
 
 use content_store::Store;
 use storage::Storage;
-use task_runner::{Runner, RunnerExecutor, Settings};
+use task_runner::{Runner, RunnerExecutor};
 use tes_executor::{Client, TesBackend, TesError};
 
 /// The address of a TES server when `-tes-server` names none: Funnel's default.
@@ -39,12 +39,7 @@ pub fn executor(
         scratch: place.scratch.join("tes"),
     };
     // The server reads the inputs from the store, so they are copied there.
-    let settings = Settings {
-        downloads: crate::cache_directory().join("downloads"),
-        import_inputs: true,
-        storage,
-    };
-    let runner = Runner::new(store, backend, run, settings);
+    let runner = Runner::new(store, backend, run, crate::runner_settings(storage, true));
     Ok(RunnerExecutor::new(runner, default_image))
 }
 

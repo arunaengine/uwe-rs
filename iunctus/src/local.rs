@@ -8,7 +8,7 @@ use std::path::Path;
 use content_store::Store;
 use executor::{ContainerEngine, LocalContainer, Pool};
 use storage::Storage;
-use task_runner::{Runner, RunnerExecutor, Settings};
+use task_runner::{Runner, RunnerExecutor};
 
 /// An executor whose results go to the store and whose tasks run in `scratch`, with the
 /// container engine of this machine that `engine` names (`docker`, `podman` or a socket; empty
@@ -32,11 +32,6 @@ pub fn executor(
         pool: Pool::of_this_machine(),
     };
     // Remote inputs share the folder of downloads with the files that workflow code reads.
-    let settings = Settings {
-        downloads: crate::cache_directory().join("downloads"),
-        import_inputs: false,
-        storage,
-    };
-    let runner = Runner::new(store, backend, run, settings);
+    let runner = Runner::new(store, backend, run, crate::runner_settings(storage, false));
     Ok(RunnerExecutor::new(runner, default_image))
 }

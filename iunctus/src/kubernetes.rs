@@ -10,7 +10,7 @@ use std::path::Path;
 use content_store::Store;
 use kubernetes_executor::{Cluster, KubernetesBackend};
 use storage::Storage;
-use task_runner::{Runner, RunnerExecutor, Settings};
+use task_runner::{Runner, RunnerExecutor};
 
 /// An executor that runs each task as a Job in the cluster of `kubeconfig`, in `namespace` or
 /// else the namespace of the kubeconfig's context. Tasks without an image get `default_image`.
@@ -42,11 +42,6 @@ pub fn executor(
         .map_err(|error| error.lines().next().unwrap_or_default().to_owned())?;
     let backend = KubernetesBackend::new(cluster, scratch.join("kubernetes"));
     // The nodes read the inputs from the store, so they are copied there.
-    let settings = Settings {
-        downloads: crate::cache_directory().join("downloads"),
-        import_inputs: true,
-        storage,
-    };
-    let runner = Runner::new(store, backend, run, settings);
+    let runner = Runner::new(store, backend, run, crate::runner_settings(storage, true));
     Ok(RunnerExecutor::new(runner, default_image))
 }

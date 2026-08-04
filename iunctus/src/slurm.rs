@@ -10,7 +10,7 @@ use content_store::Store;
 use executor::{EngineCommand, EngineKind};
 use slurm_executor::{Container, SlurmBackend};
 use storage::Storage;
-use task_runner::{Runner, RunnerExecutor, Settings};
+use task_runner::{Runner, RunnerExecutor};
 
 /// The container runtime of the nodes that `-slurm-container` names: `apptainer` (the
 /// default), `singularity`, `podman` or `docker`.
@@ -57,11 +57,6 @@ pub fn executor(
         ));
     }
     // The nodes read the inputs from the store, so they are copied there.
-    let settings = Settings {
-        downloads: crate::cache_directory().join("downloads"),
-        import_inputs: true,
-        storage,
-    };
-    let runner = Runner::new(store, backend, run, settings);
+    let runner = Runner::new(store, backend, run, crate::runner_settings(storage, true));
     Ok(RunnerExecutor::new(runner, default_image))
 }

@@ -1,0 +1,487 @@
+//! What changed since a run: the files of its workflow and of its command line, the files it
+//! read on this machine and at addresses, and the images that its tags name now, each compared
+//! by digest with what the run recorded. `iunctus changes <run>` prints it, and
+//! `iunctus repeat <run>` prints it before it runs the run again with what the run pinned.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write as _;
+use std::path::{Path, PathBuf};
+
+use run_database::{Database, ImagePin, RemoteFile, Run, Source, SourceKind};
+use storage::Storage;
+
+use crate::arguments::{self, Arguments};
+use crate::{Failure, failure, revision, runs, sources};
+
+/// What happened to one thing since the run.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Kind {
+    /// It has other content now.
+    Changed,
+    /// It is gone.
+    Gone,
+    /// It is new: the run did not have it.
+    New,
+    /// It cannot be told: the reason says why.
+    Unknown,
+}
+
+/// One thing that changed, or that cannot be compared.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Change {
+    pub kind: Kind,
+    /// The file, address or image.
+    pub name: String,
+    /// More in words, like the version now and then.
+    pub detail: Option<String>,
+}
+
+/// One kind of thing that a run depends on, like the files of its workflow.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Part {
+    /// What the part holds, like `files of the workflow`.
+    pub what: &'static str,
+    /// How many of them the run recorded.
+    pub total: usize,
+    pub changes: Vec<Change>,
+    /// A sentence more, like the Git revision now and then.
+    pub note: Option<String>,
+}
+
+/// What changed since a run.
+pub struct Changes {
+    pub run: Run,
+    pub parts: Vec<Part>,
+}
+
+impl Changes {
+    /// Whether anything changed, or cannot be told.
+    pub fn any(&self) -> bool {
+        (self.parts.iter()).any(|part| !part.changes.is_empty() || part.note.is_some())
+    }
+}
+
+/// How an image is found now: the image that its tag names at its registry, pinned to a digest.
+pub type Resolve<'a> = &'a dyn Fn(&str) -> Result<Option<String>, String>;
+
+/// `iunctus changes <run>`: what changed since the run.
+pub fn command(arguments: &Arguments) -> Result<(), Failure> {
+    let database = runs::open(arguments)?;
+    let run = named_run(&database, arguments, "changes")?;
+    let setup = crate::setup::Setup::load(arguments)?;
+    let changes = found(&database, run, &setup.storage, &registry)?;
+    print!("{}", report(&changes));
+    Ok(())
+}
+
+/// The run that a command names as its first argument.
+pub fn named_run(
+    database: &Database,
+    arguments: &Arguments,
+    command: &str,
+) -> Result<Run, Failure> {
+    let Some(id) = arguments
+        .target
+        .as_ref()
+        .map(|id| id.to_string_lossy().into_owned())
+    else {
+        return Err(failure(format!(
+            "iunctus: name the run, like `iunctus {command} <run>`; `iunctus runs` lists the runs"
+        )));
+    };
+    let run = database
+        .run(&id)
+        .map_err(|error| failure(format!("iunctus: {error}")))?;
+    run.ok_or_else(|| {
+        failure(format!(
+            "iunctus: the run database has no run `{id}`; `iunctus runs` lists the runs"
+        ))
+    })
+}
+
+/// The image that a tag names now at its registry.
+pub fn registry(image: &str) -> Result<Option<String>, String> {
+    let runtime = workflow_graph::runtime().map_err(|error| error.to_string())?;
+    runtime
+        .block_on(executor::registry::pin(image))
+        .map_err(|error| error.to_string())
+}
+
+/// What changed since a run, with the storage providers to ask about remote files and `resolve`
+/// to ask about images.
+pub fn found(
+    database: &Database,
+    run: Run,
+    storage: &Storage,
+    resolve: Resolve,
+) -> Result<Changes, Failure> {
+    let broken = |error: run_database::DatabaseError| failure(format!("iunctus: {error}"));
+    let recorded = database.sources(&run.id).map_err(broken)?;
+    let arguments = recorded_arguments(&run)?;
+    let runtime =
+        workflow_graph::runtime().map_err(|error| failure(format!("iunctus: {error}")))?;
+    let now = runtime.block_on(sources::collect(Path::new(&run.workflow), &arguments));
+    let mut workflow = compared(
+        &recorded,
+        &now.files,
+        SourceKind::Workflow,
+        "files of the workflow",
+    );
+    let revision_now = revision::revision(Path::new(&run.workflow));
+    if revision_now != run.revision {
+        let shown = |revision: &Option<String>| match revision {
+            Some(revision) => revision.chars().take(12).collect(),
+            None => "none".to_owned(),
+        };
+        workflow.note = Some(format!(
+            "Its Git revision is {} now; the run had {}.",
+            shown(&revision_now),
+            shown(&run.revision)
+        ));
+    }
+    let named = compared(
+        &recorded,
+        &now.files,
+        SourceKind::Named,
+        "files that the command line names",
+    );
+    let inputs = local_inputs(database, &run, &recorded)?;
+    let remote = remote_files(&database.remote_files(&run.id).map_err(broken)?, storage);
+    let images = images(&database.images(&run.id).map_err(broken)?, resolve);
+    Ok(Changes {
+        run,
+        parts: vec![workflow, named, inputs, remote, images],
+    })
+}
+
+/// The command line of a run, with its paths made absolute from the folder the run started in.
+pub fn recorded_arguments(run: &Run) -> Result<Arguments, Failure> {
+    let mut parsed = match run.arguments.split_first() {
+        Some((_, rest)) => arguments::parse(rest).map_err(|message| {
+            failure(format!(
+                "iunctus: the command line of run {} is not valid: {message}",
+                run.id
+            ))
+        })?,
+        None => Arguments::default(),
+    };
+    let launch = PathBuf::from(run.launch.clone().unwrap_or_else(|| ".".into()));
+    let absolute = |path: &PathBuf| match path.is_absolute() {
+        true => path.clone(),
+        false => launch.join(path),
+    };
+    parsed.target = Some(PathBuf::from(&run.workflow));
+    parsed.configs = parsed.configs.iter().map(absolute).collect();
+    parsed.inputs = parsed.inputs.as_ref().map(absolute);
+    parsed.output_dir = parsed.output_dir.as_ref().map(absolute);
+    Ok(parsed)
+}
+
+/// The files of one kind that differ between the run and now, by path.
+fn compared(recorded: &[Source], now: &[Source], kind: SourceKind, what: &'static str) -> Part {
+    let by_path = |sources: &[Source]| -> BTreeMap<String, String> {
+        (sources.iter())
+            .filter(|source| source.kind == kind)
+            .map(|source| (source.path.clone(), source.digest.clone()))
+            .collect()
+    };
+    let (then, now) = (by_path(recorded), by_path(now));
+    let mut changes = Vec::new();
+    for (path, digest) in &then {
+        let kind = match now.get(path) {
+            None => Kind::Gone,
+            Some(other) if other != digest => Kind::Changed,
+            Some(_) => continue,
+        };
+        changes.push(change(kind, path, None));
+    }
+    // A new file of the workflow may change it too; a file that the run named cannot be new.
+    for path in now.keys().filter(|path| !then.contains_key(*path)) {
+        changes.push(change(Kind::New, path, None));
+    }
+    Part {
+        what,
+        total: then.len(),
+        changes,
+        note: None,
+    }
+}
+
+/// The files on this machine that tasks of the run read and no task made, compared by digest,
+/// else by size where the run did not know the digest, as a simulated run does not.
+fn local_inputs(database: &Database, run: &Run, recorded: &[Source]) -> Result<Part, Failure> {
+    let broken = |error: run_database::DatabaseError| failure(format!("iunctus: {error}"));
+    let files = database.files(&run.id, None).map_err(broken)?;
+    let made: BTreeSet<&str> = (files.iter())
+        .filter(|file| file.role == "output")
+        .map(|file| file.location.as_str())
+        .collect();
+    let folder = run.workflow_folder.as_deref().map(Path::new);
+    let of_workflow: BTreeSet<PathBuf> = (recorded.iter())
+        .filter(|source| source.kind == SourceKind::Workflow)
+        .filter_map(|source| folder.map(|folder| folder.join(&source.path)))
+        .collect();
+    let mut seen = BTreeSet::new();
+    let mut part = Part {
+        what: "files on this machine that tasks read",
+        total: 0,
+        changes: Vec::new(),
+        note: None,
+    };
+    let runtime =
+        workflow_graph::runtime().map_err(|error| failure(format!("iunctus: {error}")))?;
+    for file in files.iter().filter(|file| file.role == "input") {
+        let location = file.location.as_str();
+        let local = !location.is_empty() && storage::address::scheme(location).is_none();
+        let inside_store = (run.store.as_deref()).is_some_and(|store| location.starts_with(store));
+        if !local
+            || made.contains(location)
+            || inside_store
+            || of_workflow.contains(Path::new(location))
+            || !seen.insert(location)
+        {
+            continue;
+        }
+        part.total += 1;
+        let path = Path::new(location);
+        let Ok(found) = std::fs::metadata(path) else {
+            part.changes.push(change(Kind::Gone, location, None));
+            continue;
+        };
+        if file.directory || found.is_dir() {
+            continue;
+        }
+        let differs = match &file.digest {
+            Some(digest) => match runtime.block_on(content_store::hash_file(path)) {
+                Ok((now, _)) => now.to_string() != *digest,
+                Err(error) => {
+                    let detail = format!("it cannot be read: {error}");
+                    part.changes
+                        .push(change(Kind::Unknown, location, Some(detail)));
+                    continue;
+                }
+            },
+            None => file.size.is_some_and(|size| size != found.len()),
+        };
+        if differs {
+            part.changes.push(change(Kind::Changed, location, None));
+        }
+    }
+    Ok(part)
+}
+
+/// The remote files of the run, asked about at their providers: gone, or of another version or
+/// size. A provider that gives no version leaves a file of the same size unknown.
+fn remote_files(files: &[RemoteFile], storage: &Storage) -> Part {
+    let mut part = Part {
+        what: "remote files",
+        total: files.len(),
+        changes: Vec::new(),
+        note: None,
+    };
+    let blocking = storage.blocking();
+    for file in files {
+        if file.address.contains("[secret]") {
+            let detail = "its address holds a password, which the run did not record".to_owned();
+            part.changes
+                .push(change(Kind::Unknown, &file.address, Some(detail)));
+            continue;
+        }
+        let found = match blocking.stat(&file.address) {
+            Ok(found) => found,
+            Err(error) => {
+                let detail = format!("it cannot be asked for: {error}");
+                part.changes
+                    .push(change(Kind::Unknown, &file.address, Some(detail)));
+                continue;
+            }
+        };
+        let Some(found) = found else {
+            part.changes.push(change(Kind::Gone, &file.address, None));
+            continue;
+        };
+        let (kind, detail) = match (&file.version, &found.version) {
+            (Some(then), Some(now)) if then != now => (
+                Kind::Changed,
+                format!("its version is {now} now; the run read {then}"),
+            ),
+            (Some(_), Some(_)) => continue,
+            _ if found.size != file.size => (
+                Kind::Changed,
+                format!(
+                    "it has {} bytes now; the run read {}",
+                    found.size, file.size
+                ),
+            ),
+            _ => (
+                Kind::Unknown,
+                "it has the same size, and its provider gives no version to compare".to_owned(),
+            ),
+        };
+        part.changes.push(change(kind, &file.address, Some(detail)));
+    }
+    part
+}
+
+/// The images of the run, whose tags may name other images now.
+fn images(images: &[ImagePin], resolve: Resolve) -> Part {
+    let mut part = Part {
+        what: "images",
+        total: images.len(),
+        changes: Vec::new(),
+        note: None,
+    };
+    let digest = |image: &str| image.split_once('@').map(|(_, digest)| digest.to_owned());
+    for image in images {
+        if !image.pinned() {
+            let detail = "the run used an image of this machine without a digest".to_owned();
+            part.changes
+                .push(change(Kind::Unknown, &image.named, Some(detail)));
+            continue;
+        }
+        let (kind, detail) = match resolve(&image.named) {
+            Ok(Some(now)) if digest(&now) == digest(&image.ran) => continue,
+            Ok(Some(now)) => (
+                Kind::Changed,
+                format!("it names {now} now; the run used {}", image.ran),
+            ),
+            Ok(None) => (Kind::Unknown, "its registry gives no digest".to_owned()),
+            Err(error) => (
+                Kind::Unknown,
+                format!("its registry cannot be asked: {error}"),
+            ),
+        };
+        part.changes.push(change(kind, &image.named, Some(detail)));
+    }
+    part
+}
+
+fn change(kind: Kind, name: &str, detail: Option<String>) -> Change {
+    Change {
+        kind,
+        name: name.to_owned(),
+        detail,
+    }
+}
+
+/// The changes as text for people.
+pub fn report(changes: &Changes) -> String {
+    let run = &changes.run;
+    let mut text = format!(
+        "Changes since run {} of {}, which started {}:\n",
+        run.id,
+        run.workflow,
+        runs::local_time(run.started)
+    );
+    for part in &changes.parts {
+        let changed = (part.changes.iter())
+            .filter(|change| change.kind != Kind::Unknown)
+            .count();
+        let _ = match (part.total, changed, part.changes.len()) {
+            (0, 0, 0) => writeln!(text, "The {}: the run recorded none.", part.what),
+            (total, 0, 0) => writeln!(text, "The {}: none changed ({total}).", part.what),
+            (total, changed, _) => {
+                writeln!(text, "The {}: {changed} of {total} changed.", part.what)
+            }
+        };
+        for change in &part.changes {
+            let kind = match change.kind {
+                Kind::Changed => "changed",
+                Kind::Gone => "gone",
+                Kind::New => "new",
+                Kind::Unknown => "unknown",
+            };
+            let _ = match &change.detail {
+                Some(detail) => writeln!(text, "  {kind:<8} {}: {detail}", change.name),
+                None => writeln!(text, "  {kind:<8} {}", change.name),
+            };
+        }
+        if let Some(note) = &part.note {
+            let _ = writeln!(text, "  {note}");
+        }
+    }
+    if !changes.any() {
+        text.push_str("Nothing changed since the run.\n");
+    }
+    text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn source(kind: SourceKind, path: &str, digest: &str) -> Source {
+        Source {
+            kind,
+            path: path.into(),
+            digest: digest.into(),
+            size: 1,
+        }
+    }
+
+    #[test]
+    fn files_are_changed_gone_or_new() {
+        let then = [
+            source(SourceKind::Workflow, "main.nf", "sha256:1"),
+            source(SourceKind::Workflow, "gone.nf", "sha256:2"),
+            source(SourceKind::Workflow, "same.nf", "sha256:3"),
+        ];
+        let now = [
+            source(SourceKind::Workflow, "main.nf", "sha256:9"),
+            source(SourceKind::Workflow, "same.nf", "sha256:3"),
+            source(SourceKind::Workflow, "new.nf", "sha256:4"),
+        ];
+        let part = compared(&then, &now, SourceKind::Workflow, "files of the workflow");
+        let found: Vec<(Kind, &str)> = (part.changes.iter())
+            .map(|change| (change.kind.clone(), change.name.as_str()))
+            .collect();
+        assert_eq!(
+            found,
+            [
+                (Kind::Gone, "gone.nf"),
+                (Kind::Changed, "main.nf"),
+                (Kind::New, "new.nf")
+            ]
+        );
+        assert_eq!(part.total, 3);
+    }
+
+    #[test]
+    fn images_whose_tags_moved_are_changed() {
+        let pins = [
+            ImagePin {
+                named: "debian:stable-slim".into(),
+                ran: "debian@sha256:11".into(),
+            },
+            ImagePin {
+                named: "tool:1".into(),
+                ran: "tool@sha256:22".into(),
+            },
+            ImagePin {
+                named: "built".into(),
+                ran: "built".into(),
+            },
+        ];
+        let resolve = |image: &str| -> Result<Option<String>, String> {
+            match image {
+                "debian:stable-slim" => Ok(Some("debian@sha256:33".into())),
+                _ => Ok(Some("tool@sha256:22".into())),
+            }
+        };
+        let part = images(&pins, &resolve);
+        let found: Vec<(Kind, &str)> = (part.changes.iter())
+            .map(|change| (change.kind.clone(), change.name.as_str()))
+            .collect();
+        assert_eq!(
+            found,
+            [
+                (Kind::Changed, "debian:stable-slim"),
+                (Kind::Unknown, "built")
+            ]
+        );
+        let detail = part.changes[0].detail.as_deref().unwrap_or_default();
+        assert!(detail.contains("debian@sha256:33 now"), "{detail}");
+    }
+}

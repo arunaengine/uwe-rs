@@ -15,7 +15,7 @@ use storage::Fetched;
 use task_model::Digest;
 
 use crate::arguments::Arguments;
-use crate::changes;
+use crate::changes::{self, broken, runtime};
 use crate::setup::Setup;
 use crate::{Failure, Ran, cache_directory, execute, failure, finish, runs};
 
@@ -62,12 +62,12 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         .as_deref()
         .filter(|launch| Path::new(launch).is_dir())
     {
-        std::env::set_current_dir(launch)
-            .map_err(|error| failure(format!("iunctus: cannot work in {launch}: {error}")))?;
+        std::env::set_current_dir(launch).map_err(|error| {
+            Failure::setup(format!("iunctus: cannot work in {launch}: {error}"))
+        })?;
     }
     let Ran { execution, id, .. } = execute(&repeated, false, &pinned)?;
-    let differences = (runs::open(arguments)?.compare_steps(&run.id, &id))
-        .map_err(|error| failure(format!("iunctus: {error}")))?;
+    let differences = (runs::open(arguments)?.compare_steps(&run.id, &id)).map_err(broken)?;
     eprint!("{}", compared(&run, &id, &differences));
     finish(execution)
 }
@@ -130,7 +130,6 @@ fn restore(
             run.id
         )));
     };
-    let broken = |error: run_database::DatabaseError| failure(format!("iunctus: {error}"));
     let sources = database.sources(&run.id).map_err(broken)?;
     let (Some(workflow_folder), false) = (&run.workflow_folder, sources.is_empty()) else {
         return Err(failure(format!(
@@ -141,8 +140,7 @@ fn restore(
     };
     let _ = std::fs::remove_dir_all(folder);
     let workflow = folder.join("workflow");
-    let runtime =
-        workflow_graph::runtime().map_err(|error| failure(format!("iunctus: {error}")))?;
+    let runtime = runtime()?;
     let mut named: HashMap<PathBuf, PathBuf> = HashMap::new();
     for (index, source) in sources.iter().enumerate() {
         let target = match source.kind {
@@ -192,8 +190,7 @@ async fn copy_out(store: &Store, source: &Source, target: &Path) -> Result<(), F
 
 /// The images of the run that ran at a digest, by the names that tasks gave them.
 fn images(database: &Database, run: &Run) -> Result<HashMap<String, String>, Failure> {
-    let images =
-        (database.images(&run.id)).map_err(|error| failure(format!("iunctus: {error}")))?;
+    let images = database.images(&run.id).map_err(broken)?;
     Ok((images.into_iter())
         .filter(|image| image.pinned())
         .map(|image| (image.named, image.ran))
@@ -208,10 +205,8 @@ fn remote_files(
     store: Option<&Store>,
     folder: &Path,
 ) -> Result<Vec<Fetched>, Failure> {
-    let broken = |error: run_database::DatabaseError| failure(format!("iunctus: {error}"));
     let files = database.remote_files(&run.id).map_err(broken)?;
-    let runtime =
-        workflow_graph::runtime().map_err(|error| failure(format!("iunctus: {error}")))?;
+    let runtime = runtime()?;
     let mut pinned = Vec::new();
     for file in files {
         let copy = match store {

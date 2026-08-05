@@ -93,7 +93,7 @@ pub fn named_run(
         .as_ref()
         .map(|id| id.to_string_lossy().into_owned())
     else {
-        return Err(failure(format!(
+        return Err(Failure::usage(format!(
             "iunctus: name the run, like `iunctus {command} <run>`; `iunctus runs` lists the runs"
         )));
     };
@@ -105,6 +105,16 @@ pub fn named_run(
             "iunctus: the run database has no run `{id}`; `iunctus runs` lists the runs"
         ))
     })
+}
+
+/// An error of the run database, which the machine must fix.
+pub fn broken(error: run_database::DatabaseError) -> Failure {
+    Failure::setup(format!("iunctus: {error}"))
+}
+
+/// The runtime of the engine, for the requests that the commands make.
+pub fn runtime() -> Result<&'static tokio::runtime::Runtime, Failure> {
+    workflow_graph::runtime().map_err(|error| Failure::setup(format!("iunctus: {error}")))
 }
 
 /// The image that a tag names now at its registry.
@@ -123,11 +133,9 @@ pub fn found(
     storage: &Storage,
     resolve: Resolve,
 ) -> Result<Changes, Failure> {
-    let broken = |error: run_database::DatabaseError| failure(format!("iunctus: {error}"));
     let recorded = database.sources(&run.id).map_err(broken)?;
     let arguments = recorded_arguments(&run)?;
-    let runtime =
-        workflow_graph::runtime().map_err(|error| failure(format!("iunctus: {error}")))?;
+    let runtime = runtime()?;
     let now = runtime.block_on(sources::collect(Path::new(&run.workflow), &arguments));
     let mut workflow = compared(
         &recorded,
@@ -218,7 +226,6 @@ fn compared(recorded: &[Source], now: &[Source], kind: SourceKind, what: &'stati
 /// The files on this machine that tasks of the run read and no task made, compared by digest,
 /// else by size where the run did not know the digest, as a simulated run does not.
 fn local_inputs(database: &Database, run: &Run, recorded: &[Source]) -> Result<Part, Failure> {
-    let broken = |error: run_database::DatabaseError| failure(format!("iunctus: {error}"));
     let files = database.files(&run.id, None).map_err(broken)?;
     let made: BTreeSet<&str> = (files.iter())
         .filter(|file| file.role == "output")
@@ -236,8 +243,7 @@ fn local_inputs(database: &Database, run: &Run, recorded: &[Source]) -> Result<P
         changes: Vec::new(),
         note: None,
     };
-    let runtime =
-        workflow_graph::runtime().map_err(|error| failure(format!("iunctus: {error}")))?;
+    let runtime = runtime()?;
     for file in files.iter().filter(|file| file.role == "input") {
         let location = file.location.as_str();
         let local = !location.is_empty() && storage::address::scheme(location).is_none();

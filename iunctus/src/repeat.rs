@@ -103,7 +103,7 @@ fn chosen_here(repeated: &mut Arguments, given: &Arguments) {
 }
 
 /// The store that kept the files of the run: none for a simulated run.
-fn kept_by(setup: &Setup, run: &Run) -> Result<Option<Store>, Failure> {
+pub fn kept_by(setup: &Setup, run: &Run) -> Result<Option<Store>, Failure> {
     let Some(location) = &run.store else {
         return Ok(None);
     };
@@ -235,7 +235,7 @@ fn remote_files(
 
 /// A local copy of content that the store keeps: the file of a local store itself, else a copy
 /// in `folder`. `None` when the store does not have it.
-async fn kept_copy(store: &Store, digest: &str, folder: &Path) -> Option<PathBuf> {
+pub async fn kept_copy(store: &Store, digest: &str, folder: &Path) -> Option<PathBuf> {
     let digest: Digest = digest.parse().ok()?;
     if !store.has_content(&digest).await.ok()? {
         return None;

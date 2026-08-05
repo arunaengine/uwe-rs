@@ -113,6 +113,7 @@ pub fn export(arguments: &Arguments) -> Result<(), Failure> {
     let options = run_crate::Options {
         workflow,
         license: arguments.license.clone(),
+        sources: kept_sources(arguments, &database, &run)?,
     };
     let summary = run_crate::export(&database, &id, &output, &options)
         .map_err(|error| failure(error.to_string()))?;
@@ -129,6 +130,32 @@ pub fn export(arguments: &Arguments) -> Result<(), Failure> {
         summary.bytes
     );
     Ok(())
+}
+
+/// Copies of the files of the workflow and of the command line of a run, by digest, as the
+/// store of a real run keeps them; none for a simulated run, whose crate takes the files as they
+/// are now when they did not change.
+fn kept_sources(
+    arguments: &Arguments,
+    database: &Database,
+    run: &Run,
+) -> Result<std::collections::HashMap<String, PathBuf>, Failure> {
+    let setup = crate::setup::Setup::load(arguments)?;
+    let Some(store) = crate::repeat::kept_by(&setup, run)? else {
+        return Ok(Default::default());
+    };
+    let sources = database.sources(&run.id).map_err(crate::changes::broken)?;
+    let folder = cache_directory().join("exports").join(&run.id);
+    let runtime = crate::changes::runtime()?;
+    let mut kept = std::collections::HashMap::new();
+    for source in sources {
+        if let Some(copy) =
+            runtime.block_on(crate::repeat::kept_copy(&store, &source.digest, &folder))
+        {
+            kept.insert(source.digest, copy);
+        }
+    }
+    Ok(kept)
 }
 
 /// `iunctus why <run> <task>`: what changed since the same task ran before.

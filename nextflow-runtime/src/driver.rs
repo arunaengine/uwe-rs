@@ -675,7 +675,7 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
         outputs,
         stdin: None,
         resources: resources(request),
-        offline: false,
+        network: workflow_graph::Network::Unstated,
         after: Vec::new(),
     }
 }
@@ -713,7 +713,7 @@ fn exec_task(request: &TaskRequest) -> Task {
         outputs: Vec::new(),
         stdin: None,
         resources: workflow_graph::Resources::default(),
-        offline: true,
+        network: workflow_graph::Network::Denied,
         after: Vec::new(),
     }
 }

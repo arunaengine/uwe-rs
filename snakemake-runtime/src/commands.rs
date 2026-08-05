@@ -124,7 +124,7 @@ impl CommandRunner {
             outputs: Vec::new(),
             stdin: None,
             resources: Default::default(),
-            offline: false,
+            network: workflow_graph::Network::Unstated,
             after: Vec::new(),
         }
     }

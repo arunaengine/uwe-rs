@@ -444,7 +444,7 @@ fn offline(version: &str, requirements: &str) -> bool {
     let mut executor = Simulator::new(folder.path().join("simulator"));
     let execution = execute(&main.to_string_lossy(), &mut driver, &mut executor);
     assert!(execution.error.is_none(), "{:?}", execution.error);
-    execution.graph.nodes[0].task.offline
+    execution.graph.nodes[0].task.network == workflow_graph::Network::Denied
 }
 
 #[test]

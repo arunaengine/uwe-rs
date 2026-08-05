@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use config_file::{ConfigError, ConfigFile, Secret};
 use content_store::Store;
 use storage::{Storage, StoreLocation};
+use task_runner::NetworkRule;
 
 use crate::Failure;
 use crate::arguments::Arguments;
@@ -16,7 +17,7 @@ use crate::insight::telemetry::Telemetry;
 
 /// The sections of the config file. Another name is an error, so that a typing mistake does
 /// not go unnoticed. `executor` holds the settings of executors.
-const SECTIONS: &[&str] = &["store", "storage", "executor", "telemetry"];
+const SECTIONS: &[&str] = &["store", "storage", "executor", "telemetry", "network"];
 
 /// What the config files set up for a command; the default is what no config file sets up.
 #[derive(Default)]
@@ -27,6 +28,8 @@ pub struct Setup {
     pub executors: Executors,
     /// Where the traces of runs go, from `[telemetry]`.
     pub telemetry: Option<Telemetry>,
+    /// Which tasks get the network, from `[network]`.
+    pub network: NetworkRule,
 }
 
 /// The settings of executors from the `[executor.<name>]` sections. Options on the command line
@@ -80,6 +83,28 @@ impl Executors {
     }
 }
 
+/// Which tasks get the network, from `[network]`: `default = "none"` runs the tasks whose
+/// workflow does not say without network (`"allowed"` is the default), and `allowed_steps`
+/// names the steps that get it in any case.
+fn network(config: &ConfigFile) -> Result<NetworkRule, ConfigError> {
+    let Some(section) = config.section("network")? else {
+        return Ok(NetworkRule::default());
+    };
+    section.only(&["default", "allowed_steps"])?;
+    let none_by_default = match section.text("default")?.as_deref() {
+        None | Some("allowed") => false,
+        Some("none") => true,
+        Some(other) => {
+            let message = format!("is `{other}`; use \"none\" or \"allowed\"");
+            return Err(section.invalid("default", message));
+        }
+    };
+    Ok(NetworkRule {
+        none_by_default,
+        allowed_steps: section.texts("allowed_steps")?.unwrap_or_default(),
+    })
+}
+
 impl Setup {
     /// Reads the config files.
     pub fn load(arguments: &Arguments) -> Result<Setup, Failure> {
@@ -89,10 +114,12 @@ impl Setup {
         let storage = Storage::from_config(&config).map_err(failed)?;
         let executors = Executors::read(&config).map_err(failed)?;
         let telemetry = Telemetry::read(&config).map_err(failed)?;
+        let network = network(&config).map_err(failed)?;
         Ok(Setup {
             storage,
             executors,
             telemetry,
+            network,
         })
     }
 
@@ -147,6 +174,7 @@ mod tests {
     use config_file::ConfigFile;
 
     use super::Executors;
+    use task_runner::NetworkRule;
 
     fn read(text: &str) -> Result<Executors, String> {
         let config =
@@ -181,6 +209,22 @@ mod tests {
         );
         assert_eq!(settings.kubernetes_namespace.as_deref(), Some("x"));
         assert!(read("").expect("no settings").engine.is_none());
+    }
+
+    #[test]
+    fn the_network_section_names_the_default_and_the_allowed_steps() {
+        let parse = |text: &str| -> Result<NetworkRule, String> {
+            let config = ConfigFile::parse(text, Path::new("config.toml"))
+                .map_err(|error| error.to_string())?;
+            super::network(&config).map_err(|error| error.to_string())
+        };
+        let rule = parse("[network]\ndefault = \"none\"\nallowed_steps = [\"DOWNLOAD_*\"]\n")
+            .expect("a rule");
+        assert!(rule.none_by_default);
+        assert_eq!(rule.allowed_steps, ["DOWNLOAD_*"]);
+        assert_eq!(parse("").expect("no rule"), NetworkRule::default());
+        let error = parse("[network]\ndefault = \"off\"\n").expect_err("an error");
+        assert!(error.contains("line 2") && error.contains("off"), "{error}");
     }
 
     #[test]

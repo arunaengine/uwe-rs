@@ -13,11 +13,11 @@ use content_store::Store;
 use executor::{Backend, ExecutorError};
 use task_model::{Digest, ReuseScope};
 use workflow_graph::{
-    Attempt, CancellationToken, ExecuteError, Executor, Files, Outcome, OutputFile,
+    Attempt, CancellationToken, ExecuteError, Executor, Files, Network, Outcome, OutputFile,
     ReproducibilityCheck, Running, Task, Verdict,
 };
 
-use crate::{Runner, RunnerError, StorageFiles, TaskResult};
+use crate::{NetworkRule, Runner, RunnerError, StorageFiles, TaskResult};
 
 /// A runner as the executor of a run.
 pub struct RunnerExecutor<B> {
@@ -34,6 +34,8 @@ pub struct RunnerExecutor<B> {
     /// A replay of one task sets it to false, so that the task runs again whatever the cache
     /// holds, and leaves the cache as it was.
     pub reuse: bool,
+    /// Which tasks get the network.
+    pub network: NetworkRule,
 }
 
 impl<B: Backend> RunnerExecutor<B> {
@@ -44,6 +46,7 @@ impl<B: Backend> RunnerExecutor<B> {
             verbose: false,
             priorities: Arc::default(),
             reuse: true,
+            network: NetworkRule::default(),
         }
     }
 
@@ -66,7 +69,7 @@ impl<B: Backend> RunnerExecutor<B> {
 impl<B: Backend> Executor for RunnerExecutor<B> {
     fn run(&mut self, attempt: Attempt) -> Running {
         let task = match checked(&attempt.task, self.default_image.as_deref()) {
-            Ok(Some(task)) => task,
+            Ok(Some(task)) => with_network(task, &self.network),
             Ok(None) => {
                 return Running::ended(Ok(Outcome {
                     id: attempt.task.id,
@@ -143,6 +146,24 @@ fn checked(
                       container, so name an image in the workflow or give one with \
                       `-default-image <image>`"
                 .into(),
+        }),
+    }
+}
+
+/// The task with the network that the rule gives it, which its request passes on to the
+/// backend.
+fn with_network(task: Arc<Task>, rule: &NetworkRule) -> Arc<Task> {
+    let network = match rule.offline(&task) {
+        true => Network::Denied,
+        false => Network::Allowed,
+    };
+    let same = task.network == network
+        || (task.network == Network::Unstated && network == Network::Allowed);
+    match same {
+        true => task,
+        false => Arc::new(Task {
+            network,
+            ..Task::clone(&task)
         }),
     }
 }

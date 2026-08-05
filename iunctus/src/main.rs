@@ -436,6 +436,7 @@ fn executor(
 ) -> Result<Box<dyn Executor>, Failure> {
     let cache = cache_directory();
     let scratch = cache.join("scratch");
+    offline_possible(arguments, setup)?;
     match arguments.executor.as_deref().unwrap_or("simulator") {
         "simulator" if arguments.check_reproducibility.is_some() => Err(Failure::usage(
             "iunctus: the reproducibility check runs cached tasks again, so it needs a real \
@@ -455,7 +456,7 @@ fn executor(
                 local::executor(store, &scratch, run, default_image, storage, &engine)
                     .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
             executor.priorities = std::sync::Arc::new(chains(arguments));
-            Ok(real(executor, arguments, verbose, reuse, pinned))
+            real(executor, arguments, setup, verbose, reuse, pinned)
         }
         "tes" => {
             let default_image = arguments.default_image.clone();
@@ -478,7 +479,7 @@ fn executor(
             };
             let executor = tes::executor(store, place, run, default_image, storage)
                 .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
-            Ok(real(executor, arguments, verbose, reuse, pinned))
+            real(executor, arguments, setup, verbose, reuse, pinned)
         }
         "slurm" => {
             let default_image = arguments.default_image.clone();
@@ -503,7 +504,7 @@ fn executor(
                 options,
             )
             .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
-            Ok(real(executor, arguments, verbose, reuse, pinned))
+            real(executor, arguments, setup, verbose, reuse, pinned)
         }
         "kubernetes" => {
             let default_image = arguments.default_image.clone();
@@ -523,7 +524,7 @@ fn executor(
                 namespace,
             )
             .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
-            Ok(real(executor, arguments, verbose, reuse, pinned))
+            real(executor, arguments, setup, verbose, reuse, pinned)
         }
         other => Err(Failure::usage(format!(
             "iunctus: unknown executor `{other}`; use `simulator`, `local`, `tes`, `slurm` or \
@@ -572,20 +573,58 @@ fn previewed(simulator: Simulator, arguments: &Arguments, setup: &Setup) -> Box<
 }
 
 /// A real executor with the settings of the command line: its line per task, whether the cache
-/// answers tasks, the share of cached tasks that run again for the reproducibility check, and
-/// the images that a repeat of a run pins.
+/// answers tasks, the share of cached tasks that run again for the reproducibility check, the
+/// images that a repeat of a run pins, and which tasks get the network.
 fn real<B: executor::Backend>(
     mut executor: task_runner::RunnerExecutor<B>,
     arguments: &Arguments,
+    setup: &Setup,
     verbose: bool,
     reuse: bool,
     pinned: &Pinned,
-) -> Box<dyn Executor> {
+) -> Result<Box<dyn Executor>, Failure> {
     executor.verbose = verbose;
     executor.reuse = reuse;
     executor.check_reproducibility(arguments.check_reproducibility.unwrap_or(0.0));
     executor.pin_images(&pinned.images);
-    Box::new(executor)
+    executor.network = network_rule(arguments, setup);
+    Ok(Box::new(executor))
+}
+
+/// Which tasks get the network: `[network]` of the config file, with `-no-network` for the
+/// tasks whose workflow does not say.
+fn network_rule(arguments: &Arguments, setup: &Setup) -> task_runner::NetworkRule {
+    task_runner::NetworkRule {
+        none_by_default: arguments.no_network || setup.network.none_by_default,
+        ..setup.network.clone()
+    }
+}
+
+/// An error when the run asks for tasks without network and its executor cannot cut a task
+/// off the network yet: TES, Kubernetes, and SLURM with Apptainer or Singularity. It comes
+/// before the executor starts, so that it is the first thing the user reads.
+fn offline_possible(arguments: &Arguments, setup: &Setup) -> Result<(), Failure> {
+    if !network_rule(arguments, setup).none_by_default {
+        return Ok(());
+    }
+    let named = (arguments.slurm_container.as_deref())
+        .or(setup.executors.slurm_container.as_deref())
+        .unwrap_or("apptainer");
+    let why = match arguments.executor.as_deref() {
+        Some("tes") => "a TES server has no setting that cuts a task off the network",
+        Some("kubernetes") => {
+            "the Kubernetes executor makes no network policy that cuts a task off the network"
+        }
+        Some("slurm") if matches!(named, "apptainer" | "singularity") => {
+            "Apptainer and Singularity cut a task off the network only where the site allows \
+             it, which iunctus does not ask for yet (`-slurm-container podman` or `docker` can)"
+        }
+        _ => return Ok(()),
+    };
+    Err(Failure::usage(format!(
+        "iunctus: {why}, so tasks cannot run without network there yet; leave out \
+         `-no-network` and `default = \"none\"` of `[network]`, or use `-executor local`"
+    )))
 }
 
 /// What the command line asks to run, in the terms all languages share.
@@ -718,6 +757,9 @@ options:
                                       like 90s, 10m, 2h or 1d
   -remove                             `clean` removes what it lists; without it, it only lists
                                       what it would remove
+  -no-network                         runs the tasks without network whose workflow does not
+                                      say that they need it; `[network] allowed_steps` of the
+                                      config file names steps that get it anyway
   -check-reproducibility <percent>    runs this share of the tasks whose results come from the
                                       cache again, like 10%, and compares their outputs; a tool
                                       that gives other bytes shares no results any more";

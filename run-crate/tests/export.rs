@@ -8,12 +8,32 @@
 use std::path::{Path, PathBuf};
 
 use run_crate::{METADATA, Options, export};
-use run_database::{Database, RunStart};
+use run_database::{Database, RemoteFile, RunStart, Source, SourceKind};
 use serde_json::Value;
 use workflow_graph::{Edge, EdgeKind, Input, Language, Outcome, OutputFile, Task, TaskId};
 
 const WORKFLOW: &str = "process UPPER {\n    input:\n    path text\n    output:\n    \
     path 'upper.txt'\n    script:\n    \"tr a-z A-Z < $text > upper.txt\"\n}\n";
+
+/// A module of the workflow and a config file that the command line named, which the store of
+/// the run keeps.
+const MODULE: &str = "process COUNT {\n    script:\n    \"wc -l < in.txt > count.txt\"\n}\n";
+const CONFIG: &str = "params.greeting = 'hello'\n";
+
+/// The files that pin the run: the files of its workflow and its named config file.
+fn sources() -> Vec<Source> {
+    let source = |kind, path: &str, text: &str| Source {
+        kind,
+        path: path.into(),
+        digest: task_model::Digest::sha256(text.as_bytes()).to_string(),
+        size: text.len() as u64,
+    };
+    vec![
+        source(SourceKind::Workflow, "main.nf", WORKFLOW),
+        source(SourceKind::Workflow, "modules/count.nf", MODULE),
+        source(SourceKind::Named, "/work/extra.config", CONFIG),
+    ]
+}
 
 fn task(id: u64, step: &str, inputs: Vec<Input>, output: &str) -> Task {
     Task {
@@ -81,9 +101,9 @@ fn record(directory: &Path) -> Database {
         executor: "simulator".into(),
         simulated: true,
         store: None,
-        program: None,
-        launch: None,
-        workflow_folder: None,
+        program: Some("iunctus 0.1.0".into()),
+        launch: Some("/work".into()),
+        workflow_folder: Some("/work".into()),
         repeats: None,
     };
     let mut recorder = Database::open(&path)
@@ -107,6 +127,21 @@ fn record(directory: &Path) -> Database {
     });
     let values = serde_json::json!({"greeting": "hello", "reference": "/data/reference.fa"});
     recorder.inputs(&inputs, &values);
+    recorder.outputs(&serde_json::json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+            "count": {"type": "string", "format": "file-path", "description": "The count."}
+        }
+    }));
+    recorder.sources(&sources());
+    recorder.remote_files(&[RemoteFile {
+        address: "https://example.org/samples.csv".into(),
+        digest: task_model::Digest::sha256(b"id\na\n").to_string(),
+        size: 5,
+        fetched: 1_790_000_000_000,
+        version: Some("\"1\"".into()),
+    }]);
     let assumed = input("reference.fa", Path::new("/data/reference.fa"));
     let first = task(
         1,
@@ -168,13 +203,24 @@ fn a_simulated_run_becomes_a_provenance_run_crate() {
     } else {
         directory.path().join("crate")
     };
+    // The store keeps the files of the workflow and of the command line as the run had them.
+    let kept = directory.path().join("kept");
+    std::fs::create_dir_all(&kept).expect("makes a folder");
+    let mut copies = std::collections::HashMap::new();
+    for (source, text) in sources().iter().zip([WORKFLOW, MODULE, CONFIG]) {
+        let copy = kept.join(&source.digest[7..]);
+        std::fs::write(&copy, text).expect("writes a kept copy");
+        copies.insert(source.digest.clone(), copy);
+    }
     let options = Options {
         workflow,
         license: None,
+        sources: copies,
     };
     let summary = export(&database, "fixture-run", &output, &options).expect("exports");
-    // The input, the two outputs; the assumed input does not exist.
-    assert_eq!((summary.tasks, summary.files, summary.bytes), (2, 3, 14));
+    // The input, the two outputs and the config file; the assumed input does not exist.
+    let bytes = 14 + CONFIG.len() as u64;
+    assert_eq!((summary.tasks, summary.files, summary.bytes), (2, 4, bytes));
 
     let written = std::fs::read_to_string(output.join(METADATA)).expect("reads the metadata");
     let metadata = normalized(&written);
@@ -211,9 +257,9 @@ fn a_simulated_run_becomes_a_provenance_run_crate() {
         (&Value::from("library/debian"), &Value::from("stable-slim"))
     );
     let run = entity(&metadata, "#run/fixture-run");
-    // The workflow reads the greeting, the assumed reference and a parameter, and makes the
-    // count, which no task reads.
-    assert_eq!(run["object"].as_array().map(Vec::len), Some(3));
+    // The workflow reads the greeting, the assumed reference, a parameter, the config file and
+    // the sample sheet on the web, and makes the count, which no task reads.
+    assert_eq!(run["object"].as_array().map(Vec::len), Some(5));
     let count = format!("data/{}", task_model::Digest::sha256(b"1\n").hex());
     assert_eq!(run["result"]["@id"], count.as_str());
     // The inputs of the schema are formal parameters of the workflow, and the given parameter
@@ -244,6 +290,31 @@ fn a_simulated_run_becomes_a_provenance_run_crate() {
         "application/schema+json"
     );
     assert!(output.join("inputs.schema.json").is_file());
+    // What pins the run: the files of the workflow as it ran, the named config file, the remote
+    // file that the workflow read, and the schema of the outputs.
+    assert_eq!(
+        std::fs::read_to_string(output.join("workflow/modules/count.nf")).expect("reads"),
+        MODULE
+    );
+    let folder = entity(&metadata, "workflow/");
+    assert_eq!(folder["hasPart"].as_array().map(Vec::len), Some(2));
+    let config = format!(
+        "data/{}",
+        task_model::Digest::sha256(CONFIG.as_bytes()).hex()
+    );
+    assert_eq!(
+        entity(&metadata, &config)["alternateName"],
+        "/work/extra.config"
+    );
+    let samples = entity(&metadata, "https://example.org/samples.csv");
+    assert_eq!(samples["sdDatePublished"], "2026-09-21T14:13:20.000+00:00");
+    let objects = run["object"].as_array().expect("objects");
+    for id in [config.as_str(), "https://example.org/samples.csv"] {
+        assert!(objects.iter().any(|object| object["@id"] == id), "{id}");
+    }
+    assert_eq!(workflow["output"]["@id"], "#output/count");
+    assert_eq!(entity(&metadata, "#output/count")["additionalType"], "File");
+    assert!(output.join("outputs.schema.json").is_file());
 
     let recorded = std::fs::read_to_string(fixture.join(METADATA)).expect("reads the fixture");
     assert_eq!(

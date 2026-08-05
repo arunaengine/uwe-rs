@@ -57,7 +57,7 @@ rocrate-validator 0.12.0
  │  │ ╰────────────────────╯╰─────────────────────╯╰─────────────────────╯ │  │ 
  │  │ ╭── PASSED Checks ───╮╭─── FAILED Checks ───╮╭── SKIPPED Checks ───╮ │  │ 
  │  │ │                    ││                     ││                     │ │  │ 
- │  │ │        174         ││          6          ││          0          │ │  │ 
+ │  │ │        172         ││          8          ││          0          │ │  │ 
  │  │ │                    ││                     ││                     │ │  │ 
  │  │ ╰────────────────────╯╰─────────────────────╯╰─────────────────────╯ │  │ 
  │  │                                                                      │  │ 
@@ -91,15 +91,15 @@ rocrate-validator 0.12.0
                                       absolute URI                              
          Detected issues                                                        
          - [Violation of                                                        
-         ncf338f33288443f699be66c747ef04ceb16="file:///tmp/iunctus-crat         
+         nfecb298460e34cd4aaa271767afdf5bab16="file:///tmp/iunctus-crat         
          e-validation/simulated/main.nf"  on                                    
-         <http://schema.org/SoftwareSourceCode>]: The                           
+         <https://bioschemas.org/ComputationalWorkflow>]: The                   
          SoftwareApplication id SHOULD be an absolute URI                       
                                                                                 
                                                                                 
                                                                                 
          - [Violation of                                                        
-         ncf338f33288443f699be66c747ef04ceb16="file:///tmp/iunctus-crat         
+         nfecb298460e34cd4aaa271767afdf5bab16="file:///tmp/iunctus-crat         
          e-validation/simulated/#tool/COUNT"  on                                
          <http://schema.org/SoftwareApplication>]: The                          
          SoftwareApplication id SHOULD be an absolute URI                       
@@ -107,7 +107,7 @@ rocrate-validator 0.12.0
                                                                                 
                                                                                 
          - [Violation of                                                        
-         ncf338f33288443f699be66c747ef04ceb16="file:///tmp/iunctus-crat         
+         nfecb298460e34cd4aaa271767afdf5bab16="file:///tmp/iunctus-crat         
          e-validation/simulated/#tool/UPPER"  on                                
          <http://schema.org/SoftwareApplication>]: The                          
          SoftwareApplication id SHOULD be an absolute URI                       
@@ -115,9 +115,9 @@ rocrate-validator 0.12.0
                                                                                 
                                                                                 
          - [Violation of                                                        
-         ncf338f33288443f699be66c747ef04ceb16="file:///tmp/iunctus-crat         
+         nfecb298460e34cd4aaa271767afdf5bab16="file:///tmp/iunctus-crat         
          e-validation/simulated/main.nf"  on                                    
-         <https://bioschemas.org/ComputationalWorkflow>]: The                   
+         <http://schema.org/SoftwareSourceCode>]: The                           
          SoftwareApplication id SHOULD be an absolute URI                       
                                                                                 
                                                                                 
@@ -137,17 +137,17 @@ rocrate-validator 0.12.0
                                       The Action SHOULD have an agent that is a 
                                       Person or Organization                    
          Detected issues                                                        
-         - [Violation on <./#task/1>]: The Action SHOULD have an agent          
-         that is a Person or Organization                                       
-                                                                                
-                                                                                
-                                                                                
          - [Violation on <./#run/fixture-run>]: The Action SHOULD have          
          an agent that is a Person or Organization                              
                                                                                 
                                                                                 
                                                                                 
          - [Violation on <./#task/2>]: The Action SHOULD have an agent          
+         that is a Person or Organization                                       
+                                                                                
+                                                                                
+                                                                                
+         - [Violation on <./#task/1>]: The Action SHOULD have an agent          
          that is a Person or Organization                                       
                                                                                 
                                                                                 
@@ -210,9 +210,28 @@ rocrate-validator 0.12.0
                               encodings).                                       
          Detected issues                                                        
          - [Violation on                                                        
+         <./data/5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2         
+         e846f6be03>]: Missing or invalid `encodingFormat` linked to            
+         the `File Data Entity`                                                 
+                                                                                
+                                                                                
+                                                                                
+         - [Violation on                                                        
          <./data/3b09aeb6f5f5336beb205d7f720371bc927cd46c21922e334d47ba         
          264acb5ba4>]: Missing or invalid `encodingFormat` linked to            
          the `File Data Entity`                                                 
+                                                                                
+                                                                                
+                                                                                
+         - [Violation on                                                        
+         <./data/4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a         
+         27460dd865>]: Missing or invalid `encodingFormat` linked to            
+         the `File Data Entity`                                                 
+                                                                                
+                                                                                
+                                                                                
+         - [Violation on <https://example.org/samples.csv>]: Missing or         
+         invalid `encodingFormat` linked to the `File Data Entity`              
                                                                                 
                                                                                 
                                                                                 
@@ -221,22 +240,56 @@ rocrate-validator 0.12.0
                                                                                 
                                                                                 
                                                                                 
-         - [Violation on                                                        
-         <./data/5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2         
-         e846f6be03>]: Missing or invalid `encodingFormat` linked to            
-         the `File Data Entity`                                                 
-                                                                                
-                                                                                
-                                                                                
          - [Violation on <./main.nf>]: Missing or invalid                       
          `encodingFormat` linked to the `File Data Entity`                      
                                                                                 
                                                                                 
                                                                                 
+         - [Violation on <./workflow/main.nf>]: Missing or invalid              
+         `encodingFormat` linked to the `File Data Entity`                      
+                                                                                
+                                                                                
+                                                                                
          - [Violation on                                                        
-         <./data/4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a         
-         27460dd865>]: Missing or invalid `encodingFormat` linked to            
+         <./data/bf3c52c045e178e0c802ccc2f861feedca3ef41114459a78ab1d98         
+         9c89dc7cfd>]: Missing or invalid `encodingFormat` linked to            
          the `File Data Entity`                                                 
+                                                                                
+                                                                                
+                                                                                
+         - [Violation on <./workflow/modules/count.nf>]: Missing or             
+         invalid `encodingFormat` linked to the `File Data Entity`              
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                  [profile: RO-Crate Metadata Specification 1.1]
+     [ ro-crate-1.1_28 ]: Web-based Data Entity: RECOMMENDED resource           
+     availability                                                               
+                                                                                
+      Web-based Data Entity instances SHOULD be available at the URIs           
+      specified in the @id property of the Web-based Data Entity.               
+                                                                                
+          Failed checks                                                         
+                                                                                
+                                                                                
+        [ ro-crate-1.1_28.1 ] Web-based Data Entity: resource                   
+        availability:                                                           
+                              Check if the Web-based Data Entity is directly    
+                              downloadable by a simple retrieval (e.g. HTTP GET)
+                              permitting redirection and HTTP/HTTPS URIs.       
+                                                                                
+                              Resources that cannot be natively retrieved by the
+                              validator (e.g. scp://, s3://, sftp://) or that   
+                              are protected by an authorization mechanism (HTTP 
+                              401/403) are reported as recommendation-level     
+                              issues and logged as warnings, without            
+                              invalidating the validation.                      
+         Detected issues                                                        
+         - [Violation]: Web-based Data Entity                                   
+         https://example.org/samples.csv is not available                       
                                                                                 
                                                                                 
                                                                                 
@@ -260,6 +313,30 @@ rocrate-validator 0.12.0
          - [Violation on <./main.nf>]: The Main Workflow SHOULD comply          
          with Bioschemas ComputationalWorkflow profile version 1.0 or           
          later                                                                  
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                               [profile: Workflow Run Crate 0.5]
+     [ workflow-run-crate-0.5_6 ]: Workflow Run Crate FormalParameter           
+     SHOULD                                                                     
+                                                                                
+      Recommended properties of the Workflow Run Crate FormalParameter          
+                                                                                
+          Failed checks                                                         
+                                                                                
+                                                                                
+        [ workflow-run-crate-0.5_6.1 ] FormalParameter inverse                  
+        exampleOfWork:                                                          
+                                       FormalParameter SHOULD be referenced from
+                                       a data entity or PropertyValue via       
+                                       exampleOfWork                            
+         Detected issues                                                        
+         - [Violation on <./#output/count>]: FormalParameter SHOULD be          
+         referenced from a data entity or PropertyValue via                     
+         exampleOfWork                                                          
                                                                                 
                                                                                 
                                                                                 

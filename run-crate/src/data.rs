@@ -181,7 +181,10 @@ impl Data {
 }
 
 /// Copies bytes to a new file and returns their digest and size.
-fn copy_hashed(source: &mut dyn Read, target: &Path) -> Result<(Digest, u64), CrateError> {
+pub(crate) fn copy_hashed(
+    source: &mut dyn Read,
+    target: &Path,
+) -> Result<(Digest, u64), CrateError> {
     let mut output = File::create(target)?;
     let mut hasher = Sha256::new();
     let mut buffer = vec![0; 1 << 20];

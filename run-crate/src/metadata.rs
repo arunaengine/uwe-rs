@@ -14,6 +14,7 @@ use crate::data::Placed;
 use crate::entities::{image_entity, language, language_id, one_or_many, push_unique, status};
 use crate::formal::{FORMAL_PARAMETER, INPUT_SCHEMA, formal_parameter, input_id, schema_file};
 use crate::ids::{encode, parameter_id, run_id, step_id, task_id, time, tool_id};
+use crate::pinned::Pinned;
 
 const PROFILES: [(&str, &str, &str); 4] = [
     (
@@ -66,6 +67,9 @@ pub(crate) struct Record<'a> {
     pub license: Option<&'a str>,
     /// The JSON Schema of the inputs and the values of the run, when the driver described them.
     pub run_inputs: Option<&'a RunInputs>,
+    /// What pins the run: the files of its workflow and command line, its remote files, and
+    /// the schema of the outputs.
+    pub pinned: &'a Pinned,
 }
 
 impl Record<'_> {
@@ -116,6 +120,8 @@ impl Record<'_> {
                     .iter()
                     .map(formal_parameter),
             );
+        }
+        if self.run_inputs.is_some() || self.pinned.output_schema.is_some() {
             graph.push(json!({
                 "@id": FORMAL_PARAMETER,
                 "@type": "CreativeWork",
@@ -202,6 +208,8 @@ impl Record<'_> {
             graph.push(image_entity(id, reference, named.as_deref()));
         }
         graph.extend(self.file_entities());
+        let read: Vec<&str> = self.inputs().map(|file| file.location.as_str()).collect();
+        graph.extend(self.pinned.entities(self.run, self.workflow, &read));
         graph
     }
 
@@ -224,6 +232,9 @@ impl Record<'_> {
             parts.push(json!({"@id": INPUT_SCHEMA}));
         }
         parts.extend(self.copied().map(|id| json!({"@id": id})));
+        parts.extend(self.pinned.parts().into_iter().map(|id| json!({"@id": id})));
+        // Files on the web are data entities of the crate too, as RO-Crate asks.
+        parts.extend(self.remote().into_iter().map(|url| json!({"@id": url})));
         let mut mentions = vec![json!({"@id": run_id(&run.id)})];
         mentions.extend(
             self.tasks
@@ -284,6 +295,10 @@ impl Record<'_> {
         if !inputs.is_empty() {
             workflow["input"] = one_or_many(inputs);
         }
+        let outputs = self.pinned.outputs();
+        if !outputs.is_empty() {
+            workflow["output"] = one_or_many(outputs.iter().map(|id| json!({"@id": id})));
+        }
         workflow
     }
 
@@ -332,6 +347,14 @@ impl Record<'_> {
                 .iter()
                 .map(|(name, _)| Some(json!({"@id": parameter_id(name)}))),
         );
+        // The files that the command line named, and the remote files that the workflow read
+        // while it planned, are inputs of the run too.
+        objects.extend(self.pinned.named_ids().map(|id| Some(json!({"@id": id}))));
+        for address in self.pinned.remote.keys() {
+            if !consumed.contains(address.as_str()) {
+                push_unique(&mut objects, Some(json!({"@id": address})));
+            }
+        }
         let mut results = Vec::new();
         for output in self.outputs() {
             if !consumed.contains(output.location.as_str()) {

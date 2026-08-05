@@ -313,6 +313,13 @@ fn the_reproducibility_check_and_a_repeat_of_a_changed_workflow() {
         output.contains("STAMP"),
         "the repeat names the step that differs: {output}"
     );
+    // The crate of the first run holds its workflow as it ran, not as it is now.
+    let (code, output) = iunctus(&folder, &cache, &["export", &first, "-output", "crate"]);
+    assert_eq!(code, 0, "{output}");
+    let main = std::fs::read_to_string(folder.join("crate/main.nf")).expect("reads");
+    assert_eq!(main, REAL_WORKFLOW);
+    let kept = std::fs::read_to_string(folder.join("crate/workflow/main.nf")).expect("reads");
+    assert_eq!(kept, REAL_WORKFLOW);
 }
 
 #[test]

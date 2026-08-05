@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "count": {
+      "description": "The count.",
+      "format": "file-path",
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

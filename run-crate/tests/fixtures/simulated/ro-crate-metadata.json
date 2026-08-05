@@ -39,7 +39,7 @@
           "@id": "https://w3id.org/workflowhub/workflow-ro-crate/1.0"
         }
       ],
-      "datePublished": "2026-09-30T12:16:36.272+00:00",
+      "datePublished": "2026-09-30T17:26:29.455+00:00",
       "description": "Simulated run: iunctus did not run the tasks. Its simulator made up their output files, so the files, digests and times in this crate are not results of the tools. A run with real data gives the real results. Simulated run fixture-run of the nextflow workflow /work/main.nf by iunctus, with the provenance of each task.",
       "hasPart": [
         {
@@ -59,6 +59,18 @@
         },
         {
           "@id": "data/5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03"
+        },
+        {
+          "@id": "workflow/"
+        },
+        {
+          "@id": "outputs.schema.json"
+        },
+        {
+          "@id": "data/bf3c52c045e178e0c802ccc2f861feedca3ef41114459a78ab1d989c89dc7cfd"
+        },
+        {
+          "@id": "https://example.org/samples.csv"
         }
       ],
       "license": {
@@ -151,6 +163,9 @@
         }
       ],
       "name": "main.nf",
+      "output": {
+        "@id": "#output/count"
+      },
       "programmingLanguage": {
         "@id": "https://w3id.org/workflowhub/workflow-ro-crate#nextflow"
       },
@@ -263,7 +278,7 @@
       "@type": "OrganizeAction",
       "actionStatus": "http://schema.org/CompletedActionStatus",
       "description": "iunctus run main.nf --greeting hello",
-      "endTime": "2026-09-30T12:16:36.268+00:00",
+      "endTime": "2026-09-30T17:26:29.449+00:00",
       "instrument": {
         "@id": "https://github.com/arunaengine/iunctus"
       },
@@ -279,14 +294,14 @@
       "result": {
         "@id": "#run/fixture-run"
       },
-      "startTime": "2026-09-30T12:16:36.267+00:00"
+      "startTime": "2026-09-30T17:26:29.447+00:00"
     },
     {
       "@id": "#run/fixture-run",
       "@type": "CreateAction",
       "actionStatus": "http://schema.org/CompletedActionStatus",
       "description": "Simulated run: iunctus did not run the tasks. Its simulator made up their output files, so the files, digests and times in this crate are not results of the tools. A run with real data gives the real results.",
-      "endTime": "2026-09-30T12:16:36.268+00:00",
+      "endTime": "2026-09-30T17:26:29.449+00:00",
       "instrument": {
         "@id": "main.nf"
       },
@@ -300,12 +315,18 @@
         },
         {
           "@id": "#parameter/greeting"
+        },
+        {
+          "@id": "data/bf3c52c045e178e0c802ccc2f861feedca3ef41114459a78ab1d989c89dc7cfd"
+        },
+        {
+          "@id": "https://example.org/samples.csv"
         }
       ],
       "result": {
         "@id": "data/4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
       },
-      "startTime": "2026-09-30T12:16:36.267+00:00"
+      "startTime": "2026-09-30T17:26:29.447+00:00"
     },
     {
       "@id": "#parameter/greeting",
@@ -346,7 +367,7 @@
         "@id": "#image/0"
       },
       "description": "Simulated, not run. /bin/bash -ue .command.sh\n\ntr a-z A-Z < in.txt > upper.txt",
-      "endTime": "2026-09-30T12:16:36.268+00:00",
+      "endTime": "2026-09-30T17:26:29.448+00:00",
       "environment": {
         "@id": "#task/1/environment/LC_ALL"
       },
@@ -365,7 +386,7 @@
       "result": {
         "@id": "data/3b09aeb6f5f5336beb205d7f720371bc927cd46c21922e334d47ba264acb5ba4"
       },
-      "startTime": "2026-09-30T12:16:36.267+00:00"
+      "startTime": "2026-09-30T17:26:29.448+00:00"
     },
     {
       "@id": "#task/1/environment/LC_ALL",
@@ -381,7 +402,7 @@
         "@id": "#image/0"
       },
       "description": "Simulated, not run. /bin/bash -ue .command.sh\n\ntr a-z A-Z < in.txt > count.txt",
-      "endTime": "2026-09-30T12:16:36.268+00:00",
+      "endTime": "2026-09-30T17:26:29.449+00:00",
       "environment": {
         "@id": "#task/2/environment/LC_ALL"
       },
@@ -395,7 +416,7 @@
       "result": {
         "@id": "data/4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
       },
-      "startTime": "2026-09-30T12:16:36.268+00:00"
+      "startTime": "2026-09-30T17:26:29.449+00:00"
     },
     {
       "@id": "#task/2/environment/LC_ALL",
@@ -446,6 +467,72 @@
       "contentSize": "2",
       "name": "count.txt",
       "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "@id": "workflow/",
+      "@type": "Dataset",
+      "description": "The files of the workflow as run fixture-run had them, from /work.",
+      "hasPart": [
+        {
+          "@id": "workflow/main.nf"
+        },
+        {
+          "@id": "workflow/modules/count.nf"
+        }
+      ],
+      "name": "The files of the workflow"
+    },
+    {
+      "@id": "workflow/main.nf",
+      "@type": "File",
+      "contentSize": "125",
+      "name": "main.nf",
+      "sha256": "8b4ca44d419043fdfcf52b5298baf7066de3a5f18c4fdddd265fdd1904ebe149"
+    },
+    {
+      "@id": "workflow/modules/count.nf",
+      "@type": "File",
+      "contentSize": "63",
+      "name": "modules/count.nf",
+      "sha256": "2fd747a8b0fd99dc07eeb788db1b5c42fbc5cf1acc2d9278b36f6f83dc3fbd6f"
+    },
+    {
+      "@id": "data/bf3c52c045e178e0c802ccc2f861feedca3ef41114459a78ab1d989c89dc7cfd",
+      "@type": "File",
+      "alternateName": "/work/extra.config",
+      "contentSize": "26",
+      "description": "A file that the command line of the run named.",
+      "name": "extra.config",
+      "sha256": "bf3c52c045e178e0c802ccc2f861feedca3ef41114459a78ab1d989c89dc7cfd"
+    },
+    {
+      "@id": "https://example.org/samples.csv",
+      "@type": "File",
+      "contentSize": "5",
+      "description": "A remote file that the workflow read while it planned its tasks.",
+      "name": "samples.csv",
+      "sdDatePublished": "2026-09-21T14:13:20.000+00:00",
+      "sha256": "1830fc9c555d1d487575d177ff91a65767af948c8319af93d72ca6cffa43c7f9"
+    },
+    {
+      "@id": "outputs.schema.json",
+      "@type": "File",
+      "about": {
+        "@id": "main.nf"
+      },
+      "encodingFormat": "application/schema+json",
+      "name": "The JSON Schema of the outputs of the workflow"
+    },
+    {
+      "@id": "#output/count",
+      "@type": "FormalParameter",
+      "additionalType": "File",
+      "conformsTo": {
+        "@id": "https://bioschemas.org/profiles/FormalParameter/1.0-RELEASE"
+      },
+      "description": "The count.",
+      "name": "count",
+      "valueRequired": false
     }
   ]
 }

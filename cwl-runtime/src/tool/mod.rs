@@ -12,7 +12,7 @@ use cwl_parser::model::{
     short_name,
 };
 use cwl_parser::source::Remote;
-use workflow_graph::{Resources, Task, TaskId};
+use workflow_graph::{Network, Resources, Task, TaskId};
 
 use crate::binding::{self, Binder, Bound, Key};
 use crate::expression::{Evaluator, Variables};
@@ -472,7 +472,12 @@ pub fn task(
             time_seconds,
             ..resources
         },
-        offline: tool.is_some() && !network,
+        network: match (tool.is_some(), network) {
+            // An abstract operation runs no tool.
+            (false, _) => Network::Unstated,
+            (true, true) => Network::Allowed,
+            (true, false) => Network::Denied,
+        },
         after: Vec::new(),
     };
     // Outputs at the path of an input file get its location back, as with cwltool's path

@@ -10,7 +10,7 @@ use task_model::{
     Accelerator, Digest, EnvironmentValue, FORMAT, Image, InputFile, OutputRule, Placement,
     ReuseScope, TaskRequest, TaskSpec,
 };
-use workflow_graph::Task;
+use workflow_graph::{Network, Task};
 
 use crate::inputs::{Inputs, Mode};
 use crate::runner::{Prepared, segment};
@@ -119,7 +119,7 @@ pub fn request(
             accelerators: (resources.gpus.filter(|count| *count > 0))
                 .map(|count| vec![Accelerator { count, kind: None }])
                 .unwrap_or_default(),
-            offline: task.offline,
+            offline: task.network == Network::Denied,
             ..Placement::default()
         },
     }

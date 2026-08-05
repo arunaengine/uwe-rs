@@ -65,18 +65,34 @@ pub struct Task {
     /// Text for standard input, when the task reads one.
     pub stdin: Option<String>,
     pub resources: Resources,
-    /// Whether the task runs without network, as CWL tools do unless they ask for it with
-    /// `NetworkAccess`. Executors that can cut a container off the network do so.
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub offline: bool,
+    /// Whether the workflow lets the task use the network: CWL tools run without it unless
+    /// they ask for it with `NetworkAccess`; the other languages do not say, and the run
+    /// decides. Executors that can cut a container off the network do so.
+    #[serde(default, skip_serializing_if = "Network::is_unstated")]
+    pub network: Network,
     /// Tasks this one must wait for besides those that made its input files, like Argo steps
     /// or Snakemake rules ordered without files. Each must be a task that the driver asked for
     /// before this one; the engine starts this task only when all of them have finished.
     pub after: Vec<TaskId>,
 }
 
-fn is_false(flag: &bool) -> bool {
-    !flag
+/// Whether a workflow lets a task use the network.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Network {
+    /// The workflow does not say; the run decides, and gives the network unless told not to.
+    #[default]
+    Unstated,
+    /// The workflow lets the task use the network, like a CWL tool with `NetworkAccess`.
+    Allowed,
+    /// The task runs without network, like a CWL tool without `NetworkAccess`.
+    Denied,
+}
+
+impl Network {
+    fn is_unstated(&self) -> bool {
+        *self == Network::Unstated
+    }
 }
 
 impl Task {

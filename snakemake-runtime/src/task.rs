@@ -639,7 +639,7 @@ pub fn build(
         outputs,
         stdin: None,
         resources: crate::resources::task_resources(threads, &resources),
-        offline: false,
+        network: workflow_graph::Network::Unstated,
         after: Vec::new(),
     })
 }

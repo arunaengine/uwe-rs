@@ -46,6 +46,7 @@ impl Record<'_> {
                     entity["sha256"] = json!(digest.hex());
                     entity["contentSize"] = json!(size.to_string());
                 }
+                Some(Placed::Remote { url }) => self.pinned.describe_remote(&mut entity, url),
                 Some(Placed::Absent) => {
                     entity["description"] = json!(format!(
                         "Not in this crate: {} was not there when the crate was made.",
@@ -89,6 +90,21 @@ impl Record<'_> {
         ids.sort_unstable();
         ids.dedup();
         ids.into_iter()
+    }
+
+    /// The addresses of the files of the run on the web or in buckets, which stay where they
+    /// are, each once and sorted.
+    pub(crate) fn remote(&self) -> Vec<&str> {
+        let mut urls: Vec<&str> = (self.placed.values())
+            .filter_map(|placed| match placed {
+                Placed::Remote { url } => Some(url.as_str()),
+                _ => None,
+            })
+            .chain(self.pinned.remote.keys().map(String::as_str))
+            .collect();
+        urls.sort_unstable();
+        urls.dedup();
+        urls
     }
 
     pub(crate) fn inputs(&self) -> impl Iterator<Item = &FileRow> {

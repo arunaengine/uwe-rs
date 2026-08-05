@@ -14,6 +14,7 @@ mod formal;
 mod ids;
 mod image;
 mod metadata;
+mod pinned;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -23,6 +24,7 @@ use serde_json::json;
 
 use crate::data::Data;
 use crate::metadata::Record;
+use crate::pinned::Pinned;
 
 /// The file name of the metadata of every RO-Crate.
 pub const METADATA: &str = "ro-crate-metadata.json";
@@ -62,6 +64,10 @@ pub struct Options {
     pub workflow: PathBuf,
     /// The license of the crate, as a URL like `https://spdx.org/licenses/CC-BY-4.0`.
     pub license: Option<String>,
+    /// Copies of the files of the workflow and of the command line as the run had them, by
+    /// their digests, like the files of the store that keeps them. The crate takes them over
+    /// the files as they are now, which may have changed since the run.
+    pub sources: HashMap<String, PathBuf>,
 }
 
 /// Writes the crate of a run into a directory, creating it when needed.
@@ -83,7 +89,10 @@ pub fn export(
     };
     std::fs::create_dir_all(directory)?;
     let workflow = name.to_string_lossy().into_owned();
-    std::fs::copy(&options.workflow, directory.join(&workflow))?;
+    std::fs::copy(
+        main_file(database, &record, options)?,
+        directory.join(&workflow),
+    )?;
     let mut tasks: Vec<TaskDetail> = Vec::new();
     for row in database.tasks(run)? {
         // A task that never started did not run, so the crate leaves it out.
@@ -112,6 +121,7 @@ pub fn export(
             }
         }
     }
+    let pinned = pinned::gather(database, &record, directory, options, &mut data)?;
     let inputs = database.run_inputs(run)?;
     if let Some(inputs) = &inputs {
         let text = serde_json::to_string_pretty(&inputs.schema)?;
@@ -133,6 +143,7 @@ pub fn export(
         version,
         license: options.license.as_deref(),
         run_inputs: inputs.as_ref(),
+        pinned: &pinned,
     }
     .graph();
     let metadata = json!({
@@ -146,7 +157,7 @@ pub fn export(
     std::fs::write(directory.join(METADATA), text + "\n")?;
     std::fs::write(
         directory.join(metadata::README),
-        readme(&record, &workflow, tasks.len(), inputs.is_some()),
+        readme(&record, &workflow, tasks.len(), inputs.is_some(), &pinned),
     )?;
     let (files, bytes) = data.totals();
     Ok(Summary {
@@ -156,8 +167,20 @@ pub fn export(
     })
 }
 
+/// The main file of the workflow as the run had it: the copy that the options give for its
+/// recorded digest, else the file as it is now.
+fn main_file(database: &Database, run: &Run, options: &Options) -> Result<PathBuf, CrateError> {
+    let folder = run.workflow_folder.as_deref().map(Path::new);
+    let recorded = (database.sources(&run.id)?.into_iter()).find(|source| {
+        source.kind == run_database::SourceKind::Workflow
+            && folder.is_some_and(|folder| folder.join(&source.path) == options.workflow)
+    });
+    let kept = recorded.and_then(|source| options.sources.get(&source.digest).cloned());
+    Ok(kept.unwrap_or_else(|| options.workflow.clone()))
+}
+
 /// A short text for people who open the crate folder.
-fn readme(run: &Run, workflow: &str, tasks: usize, inputs: bool) -> String {
+fn readme(run: &Run, workflow: &str, tasks: usize, inputs: bool, pinned: &Pinned) -> String {
     let kind = if run.simulated {
         "Simulated run"
     } else {
@@ -179,13 +202,23 @@ fn readme(run: &Run, workflow: &str, tasks: usize, inputs: bool) -> String {
          gives each file its name in the run.\n\n\
          The run {}: started {}, ended {ended}, {tasks} tasks.\n",
         env!("CARGO_PKG_VERSION"),
-        match inputs {
-            true => format!(
+        [
+            (inputs, format!(
                 "- `{}` is the JSON Schema of the inputs of the workflow.\n",
                 formal::INPUT_SCHEMA
-            ),
-            false => String::new(),
-        },
+            )),
+            (pinned.output_schema.is_some(), format!(
+                "- `{}` is the JSON Schema of the outputs of the workflow.\n",
+                pinned::OUTPUT_SCHEMA
+            )),
+            (!pinned.workflow.is_empty(), format!(
+                "- `{}` holds the files of the workflow as the run had them.\n",
+                pinned::WORKFLOW_FOLDER
+            )),
+        ]
+        .into_iter()
+        .filter_map(|(shown, line)| shown.then_some(line))
+        .collect::<String>(),
         run.state,
         ids::time(run.started),
     ));

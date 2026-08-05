@@ -20,7 +20,7 @@ const PENDING: usize = 64;
 /// the outputs of a step depend on the order in which tasks finished.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     if arguments.order.is_some() || arguments.resume.is_some() || arguments.page {
-        return Err(failure(
+        return Err(Failure::usage(
             "iunctus: `iunctus check-order` chooses the orders of its two runs itself; leave out \
              `-order`, `-resume` and `-page`",
         ));
@@ -53,8 +53,8 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         )));
     }
     let database = runs::open(arguments)?;
-    let differences = (database.compare_steps(&first.id, &second.id))
-        .map_err(|error| failure(format!("iunctus: {error}")))?;
+    let differences =
+        (database.compare_steps(&first.id, &second.id)).map_err(crate::changes::broken)?;
     let (text, depends) = report(&differences);
     print!("{text}");
     match (depends, a) {

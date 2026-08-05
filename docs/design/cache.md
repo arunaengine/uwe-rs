@@ -13,6 +13,7 @@ iunctus keeps the result of every task in a content-addressed store, and the tim
 - **Clean-up by rule.** `iunctus clean` removes what no rule keeps, like "keep what was used in the last 30 days". It replaces `nextflow clean`, and it never removes what a run still refers to.
 - **The preview.** A simulated run tells, for each task, whether a real run would take it from the cache. So the user sees how much work is left before any compute is spent.
 - **The longest chain first.** When tasks wait for the machine, the one with the most work after it starts first, by the times of earlier runs. So the run ends sooner on the same machine.
+- **Digests of local files** that did not change are not computed again, and `-no-cache` runs every task of one run (section 7).
 
 | Crate | What it does here |
 |---|---|
@@ -149,7 +150,17 @@ The pool of the local executor (`executor::Pool`) serves the tasks that wait by 
 
 The priority helps only when tasks wait: on a machine with room for every task, all start at once. The TES, SLURM and Kubernetes executors leave the order to their servers; they could pass the priority on, for example as a SLURM `--nice` value.
 
-## 7. Where it is in the code
+## 7. Digests of local files, and runs without the cache
+
+**The digests of local files.** A task input is known by the digest of its content, so a run and a preview read every local input to hash it. For large inputs, like a reference genome, that costs as much time as some tasks. So the runner keeps the digest of each local file it read in a small SQLite file next to the run database, `<cache>/digests.sqlite` (`task_runner::DigestCache`), with what tells that version of the file: its device and inode, its size, the time of its last change of content, and the time of its last change of any kind, which no program can set back. When a later run or preview finds all of them the same, it takes the digest from there and does not read the file. Any change, also one that keeps the size and sets the time of the content back, gives the file a new time of change, so it is read again. A file that changed less than two seconds before it was read is not kept, as a file system with coarse times could miss a change right after the read. Downloaded copies of remote files are kept the same way; tasks of executors on other machines take such a file into the store under its known digest (`Store::put_file_as`), without reading it twice. The cache only saves time: when it cannot be opened, inputs are read as before.
+
+**Runs without the cache.** `-no-cache` runs every task of one run, whatever the store holds: the run takes no result from the cache and keeps none there, and it waits for no other run that runs the same task (the scope `none` of each request, which a replay of one task uses too). A simulated run with `-no-cache` previews nothing from the cache, as such a real run would run everything. `-resume` still reuses the finished tasks of the run it continues, as the user asked for them.
+
+```sh
+iunctus run main.nf -executor local -no-cache
+```
+
+## 8. Where it is in the code
 
 - `task_runner::Runner::execute`: the hit, the wait for the lease of a key, the lease of the run, and the entry with its time.
 - `task_runner::CacheEntry` (`entry.rs`): the entry and the check that its files are still there.
@@ -158,18 +169,19 @@ The priority helps only when tasks wait: on a machine with room for every task, 
 - `task_runner::Lookup` (`lookup.rs`, `inputs.rs`): the key of a task without side effects; `iunctus/src/preview.rs`: `Previewed`, the simulator with the cache; `Database::pins`.
 - `ExecutionGraph::cache_note` and `StepNode.reused`: the counts in notes, summaries and pictures.
 - `Database::chains` (`chains.rs`), `RunnerExecutor::priorities`, `Placement::priority` and `Pool::share`: the longest chain first.
+- `task_runner::DigestCache` (`digests.rs`) and `Inputs::hash` (`inputs.rs`): the digests of local files; `-no-cache` in `iunctus/src/arguments.rs` and `main.rs` (`RunnerExecutor::reuse`, and no preview).
 
-## 8. Checks
+## 9. Checks
 
 - `task-runner/tests/runner.rs`: shared results; a result whose files are gone runs again; entries record their time and their last use; three requests of two runs at the same moment run the task once; a failed task leaves its turn to the next; a lease whose holder is killed frees the task at once (with the `flock` tool of util-linux, which holds the lock the way a run does); waiting stops when the run is cancelled; a lookup finds results and writes nothing; clean-up keeps what named runs need, what was used lately and what took long, and everything newer than a run that goes on.
 - `content-store`: leases in a store on this machine and in an object store, including one whose holder stopped renewing it; listing and removing objects; marks of use.
 - `executor` (unit test of the pool): tasks that wait take their shares by priority, and a task that stops waiting leaves the queue.
 - `run-database/tests/database.rs`: which runs go on, which started lately, what they refer to, the pins of real runs, the chains of steps with their times; eight runs that open a new database at the same moment, twenty times over (two races that made the second of two runs fail are fixed); four runs that record at the same moment.
 - `iunctus/tests/cache.rs`, with Docker and `debian:stable-slim` (`cargo test -p iunctus --test cache -- --include-ignored --test-threads 1`): a module that two Nextflow pipelines vendor runs once, although its process has another name and sits in a subworkflow in the second; a CWL tool and an Argo template written alike share their task, while a Snakemake rule that does the same work runs; two `iunctus run` processes started at the same moment on one store run a task once (`[done]` in one, `[cached]` in the other); clean-up after real runs removes what no rule keeps and nothing that a kept run needs; the preview before and after real runs, in the notes, the summaries, the SVG and the run database; the longest chain first: tasks that each take the whole machine run one after another, and where the first run started three short tasks before a long chain, the second, with the times of the first, starts at most the one that found the machine free.
+- `task-runner/src/digests.rs`: digests come from the cache until the file changes, also when the size stays the same; a file that changed just before it was read is not kept; a second process sees the same cache. `iunctus/tests/cache.rs` (Docker): with `-no-cache` a preview finds nothing in the cache and a real run runs every task.
 
-## 9. Not yet
+## 10. Not yet
 
-- **A stat cache of local inputs.** Every run, and every preview, hashes its local inputs again. A cache of digests by path, size, time and inode would make that instant for large inputs ([runs](runs.md): the `index` table of the design).
 - **One layout of tasks for all languages.** Tasks of different languages share results only where their descriptions are equal. Writing paths inside the work directory the same way in every driver would make more of them equal.
 - **A cache in layers**, a fast local store in front of a shared one, and **trust in a shared cache** ([roadmap](../roadmap.md), open question 3).
-- **Turning the cache off** for one run, and a preview that asks registries for the digests of images that no real run used.
+- **A preview that asks registries** for the digests of images that no real run used.

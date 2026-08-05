@@ -48,7 +48,7 @@ Every run records itself in the run database. `iunctus runs` lists the runs, `-r
 
 Every error has the same form, `iunctus: <where>: <what went wrong>; <what to do>`, in every language and executor, and the exit code tells its kind: 1 for the workflow, 2 for the command line, 3 for the machine or its config, 33 for a feature that iunctus does not support. `iunctus check` reports at once everything that would stop a real run of a workflow, without running a task, and `iunctus check-machine` what is ready on this machine and what is missing. See [errors, exit codes and checks](design/checks.md).
 
-Every result goes to a content-addressed store, and any run, pipeline or language that asks for the same task takes it from there. Two runs that ask for the same task at the same moment run it once. A simulated run previews which tasks a real run would take from the cache, and `iunctus clean` removes what no rule keeps, never what a run still refers to. See [the cache](design/cache.md).
+Every result goes to a content-addressed store, and any run, pipeline or language that asks for the same task takes it from there. Two runs that ask for the same task at the same moment run it once. A simulated run previews which tasks a real run would take from the cache, `-no-cache` runs every task of one run, and `iunctus clean` removes what no rule keeps, never what a run still refers to. Local inputs that did not change since a run read them are not read again to find their digests. See [the cache](design/cache.md).
 
 ## Start here
 

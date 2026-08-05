@@ -224,7 +224,7 @@ mod tests {
         assert_eq!(rule.allowed_steps, ["DOWNLOAD_*"]);
         assert_eq!(parse("").expect("no rule"), NetworkRule::default());
         let error = parse("[network]\ndefault = \"off\"\n").expect_err("an error");
-        assert!(error.contains("line 2") && error.contains("off"), "{error}");
+        assert!(error.contains(":2:") && error.contains("off"), "{error}");
     }
 
     #[test]

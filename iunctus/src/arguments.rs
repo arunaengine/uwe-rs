@@ -99,6 +99,9 @@ pub struct Arguments {
     /// `-check-reproducibility percent`, like `10%`: the share of the tasks whose results come
     /// from the cache that run again, to check that their tools give the same bytes; from 0 to 1.
     pub check_reproducibility: Option<f64>,
+    /// `-no-cache`: the run takes no result from the cache and keeps none there; every task
+    /// runs.
+    pub no_cache: bool,
 }
 
 /// Which run `-resume` continues.
@@ -233,6 +236,7 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
                      like 10%, not `{text}`"
                 ))?);
             }
+            "-no-cache" => parsed.no_cache = true,
             "-address" => {
                 let text = value()?;
                 parsed.address = Some(text.parse().map_err(|_| {
@@ -581,6 +585,12 @@ mod tests {
         assert_eq!(parsed.address, Some("0.0.0.0".parse().expect("an address")));
         assert_eq!(parsed.port, Some(8080));
         assert!(parse(&["-port".to_owned(), "web".to_owned()]).is_err());
+    }
+
+    #[test]
+    fn runs_can_go_without_the_cache() {
+        assert!(!parse_all(&["main.nf"]).no_cache);
+        assert!(parse_all(&["main.nf", "-no-cache"]).no_cache);
     }
 
     #[test]

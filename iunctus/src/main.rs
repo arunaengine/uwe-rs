@@ -235,17 +235,19 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
         false => None,
     };
     // The inputs are checked before any task starts (decision 24).
-    let prepared = executor(arguments, &setup, &run, !quiet, true, pinned).and_then(|executor| {
-        let mut driver = driver(language, &launch, &run, quiet, arguments, &setup)?;
-        if let Some(inputs) = inputs::check(driver.as_mut(), started.simulated, quiet)? {
-            recorder.inputs(&inputs.schema, &inputs.values);
-        }
-        // A workflow whose outputs cannot be described still runs.
-        if let Ok(Some(schema)) = driver.outputs() {
-            recorder.outputs(&schema);
-        }
-        Ok((executor, driver))
-    });
+    let prepared = executor(arguments, &setup, &run, !quiet, !arguments.no_cache, pinned).and_then(
+        |executor| {
+            let mut driver = driver(language, &launch, &run, quiet, arguments, &setup)?;
+            if let Some(inputs) = inputs::check(driver.as_mut(), started.simulated, quiet)? {
+                recorder.inputs(&inputs.schema, &inputs.values);
+            }
+            // A workflow whose outputs cannot be described still runs.
+            if let Ok(Some(schema)) = driver.outputs() {
+                recorder.outputs(&schema);
+            }
+            Ok((executor, driver))
+        },
+    );
     let (executor, mut driver) = match prepared {
         Ok(prepared) => prepared,
         Err(failure) => {
@@ -548,6 +550,10 @@ fn chains(arguments: &Arguments) -> std::collections::HashMap<String, u64> {
 /// run would find them, come from there (see [`preview`]). Without a store or a run database
 /// to read, every task is simulated.
 fn previewed(simulator: Simulator, arguments: &Arguments, setup: &Setup) -> Box<dyn Executor> {
+    // A real run without the cache would run every task.
+    if arguments.no_cache {
+        return Box::new(simulator);
+    }
     let pins = runs::open(arguments).and_then(|database| {
         (database.pins()).map_err(|error| failure(format!("iunctus: {error}")))
     });
@@ -692,6 +698,8 @@ options:
   --<param> <value>                   a workflow parameter
   -resume [<run>]                     continues a run, by default the last one of the workflow,
                                       without running its finished tasks again
+  -no-cache                           takes no result from the cache and keeps none there:
+                                      every task runs
   -page                               serves the web page of the run while it goes on
   -address <ip>, -port <number>       where the page listens (default: 127.0.0.1, a free port)
   -database <file>                    the run database (default: runs.sqlite in the cache)

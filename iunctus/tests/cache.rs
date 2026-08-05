@@ -505,6 +505,16 @@ fn a_simulated_run_previews_what_comes_from_the_cache() {
     assert_eq!(code, 0, "{output}");
     let all = "A real run would take all 2 tasks from the cache; none would run.";
     assert!(output.contains(all), "{output}");
+    // Without the cache, a preview finds nothing in it, and a real run runs every task.
+    let (code, output) = iunctus(&second, &cache, &["run", "main.nf", "-no-cache"]);
+    assert_eq!(code, 0, "{output}");
+    assert!(!output.contains("[cached]"), "{output}");
+    assert!(!output.contains("from the cache"), "{output}");
+    let arguments = ["run", "main.nf", "-executor", "local", "-no-cache"];
+    let (code, output) = iunctus(&second, &cache, &arguments);
+    assert_eq!(code, 0, "{output}");
+    assert!(!output.contains("[cached]"), "{output}");
+    assert_eq!(output.matches("[done]").count(), 2, "{output}");
 }
 
 /// Three short tasks and a chain of two long ones. Each task asks for more CPUs than any

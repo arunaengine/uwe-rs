@@ -98,6 +98,23 @@ workflow {
 }
 "#;
 
+/// Lists the network interfaces that the task sees.
+const NETWORK_WORKFLOW: &str = r#"
+process NETS {
+    container 'debian:stable-slim'
+    output:
+    path 'nets.txt'
+    script:
+    """
+    ls /sys/class/net > nets.txt
+    """
+}
+
+workflow {
+    NETS()
+}
+"#;
+
 /// Runs the binary in `directory` with the cache folder `cache`, and gives its exit code and
 /// what it printed.
 fn iunctus(directory: &Path, cache: &Path, arguments: &[&str]) -> (i32, String) {
@@ -296,4 +313,51 @@ fn the_reproducibility_check_and_a_repeat_of_a_changed_workflow() {
         output.contains("STAMP"),
         "the repeat names the step that differs: {output}"
     );
+}
+
+#[test]
+fn executors_that_cannot_cut_tasks_off_the_network_say_so_before_they_start() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let cache = root.path().join("cache");
+    std::fs::write(root.path().join("main.nf"), NETWORK_WORKFLOW).expect("writes");
+    for executor in [&["-executor", "tes"][..], &["-executor", "kubernetes"][..]] {
+        let mut arguments = vec!["run", "main.nf", "-no-network"];
+        arguments.extend(executor);
+        let (code, output) = iunctus(root.path(), &cache, &arguments);
+        assert_eq!(code, 2, "{output}");
+        assert!(
+            output.contains("cannot run without network there yet"),
+            "{output}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn tasks_run_without_network_unless_a_step_is_allowed() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    std::fs::write(root.path().join("main.nf"), NETWORK_WORKFLOW).expect("writes");
+    let nets = |cache: &str, extra: &[&str], config: Option<&str>| {
+        let cache = root.path().join(cache);
+        let mut arguments = vec!["run", "main.nf", "-executor", "local"];
+        arguments.extend(extra);
+        let mut command = common::command();
+        if let Some(text) = config {
+            let file = root.path().join("network.toml");
+            std::fs::write(&file, text).expect("writes the config file");
+            arguments.extend(["-iunctus-config", "network.toml"]);
+        }
+        let output = command
+            .args(&arguments)
+            .current_dir(root.path())
+            .env("XDG_CACHE_HOME", &cache)
+            .output()
+            .expect("runs iunctus");
+        assert!(output.status.success(), "{output:?}");
+        output_text(&cache, &latest(&cache), "NETS")
+    };
+    assert!(nets("open", &[], None).contains("eth0"));
+    assert_eq!(nets("closed", &["-no-network"], None).trim(), "lo");
+    let allowed = "[network]\ndefault = \"none\"\nallowed_steps = [\"NE*\"]\n";
+    assert!(nets("allowed", &[], Some(allowed)).contains("eth0"));
 }

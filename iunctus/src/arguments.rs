@@ -102,6 +102,9 @@ pub struct Arguments {
     /// `-no-cache`: the run takes no result from the cache and keeps none there; every task
     /// runs.
     pub no_cache: bool,
+    /// `-no-network`: tasks whose workflow does not say that they need the network run
+    /// without it.
+    pub no_network: bool,
 }
 
 /// Which run `-resume` continues.
@@ -229,6 +232,7 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
                 ))?);
             }
             "-remove" => parsed.remove = true,
+            "-no-network" => parsed.no_network = true,
             "-check-reproducibility" => {
                 let text = value()?;
                 parsed.check_reproducibility = Some(percent(&text).ok_or(format!(
@@ -407,6 +411,12 @@ mod tests {
         assert_eq!(duration("1d"), Some(std::time::Duration::from_secs(86_400)));
         assert_eq!(duration("1.5h"), None);
         assert_eq!(duration("m"), None);
+    }
+
+    #[test]
+    fn no_network_is_a_switch() {
+        assert!(parse_all(&["main.nf", "-no-network"]).no_network);
+        assert!(!parse_all(&["main.nf"]).no_network);
     }
 
     #[test]

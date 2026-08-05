@@ -98,14 +98,16 @@ impl Store {
         Ok(())
     }
 
-    /// Whether the store has an object, or a folder of a store on this machine.
+    /// Whether the store has an object, or a folder of a store on this machine. A store in
+    /// layers has what its folder or the shared store behind it has.
     pub async fn exists(&self, location: &str) -> Result<bool, StoreError> {
-        match self.local_path(location) {
-            Some(path) => Ok(tokio::fs::try_exists(&path)
+        let here = match self.local_path(location) {
+            Some(path) => tokio::fs::try_exists(&path)
                 .await
-                .map_err(|error| StoreError::File { path, error })?),
-            None => Ok(self.operator.exists(location).await?),
-        }
+                .map_err(|error| StoreError::File { path, error })?,
+            None => self.operator.exists(location).await?,
+        };
+        Ok(here || self.shared_contains(location).await?)
     }
 
     /// Whether the store has the directory manifest of a digest.
@@ -116,6 +118,11 @@ impl Store {
     /// The location in the store of a path or address that [`Store::url`] gave, like
     /// `runs/...` for `/home/me/.cache/iunctus/store/runs/...`; `None` for one outside it.
     pub fn location_of(&self, url: &str) -> Option<String> {
+        if let Some(shared) = &self.shared
+            && let Some(location) = shared.location_of(url)
+        {
+            return Some(location);
+        }
         let inside = match (&self.root, &self.base) {
             (Some(root), _) => Path::new(url)
                 .strip_prefix(root)
@@ -140,6 +147,13 @@ impl Store {
         self.operator
             .write(&location, run.as_bytes().to_vec())
             .await?;
+        // The shared store keeps its own marks, for its own clean-up.
+        if let Some(shared) = &self.shared {
+            shared
+                .operator
+                .write(&location, run.as_bytes().to_vec())
+                .await?;
+        }
         Ok(())
     }
 
@@ -147,18 +161,17 @@ impl Store {
     /// its results any more; `note` says what was found. A later mark replaces it.
     pub async fn mark_unreproducible(&self, tool: &Digest, note: Bytes) -> Result<(), StoreError> {
         let location = layout::unreproducible(tool);
-        self.operator.write(&location, note).await?;
+        self.operator.write(&location, note.clone()).await?;
+        if let Some(shared) = &self.shared {
+            shared.operator.write(&location, note).await?;
+        }
         Ok(())
     }
 
     /// The note of a tool that gave other bytes from the same inputs; `None` for a tool that
     /// is not marked.
     pub async fn unreproducible(&self, tool: &Digest) -> Result<Option<Bytes>, StoreError> {
-        match self.operator.read(&layout::unreproducible(tool)).await {
-            Ok(buffer) => Ok(Some(buffer.to_bytes())),
-            Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(error.into()),
-        }
+        self.read(&layout::unreproducible(tool)).await
     }
 
     /// Removes the cache entry of a key and the mark of its last use.

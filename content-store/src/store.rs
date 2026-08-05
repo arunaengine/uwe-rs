@@ -13,7 +13,7 @@ use tokio::io::AsyncReadExt;
 use crate::{layout, local};
 
 /// Files are read and uploaded in parts of this size, so they never sit in memory as a whole.
-const PART_SIZE: usize = 8 * 1024 * 1024;
+pub(crate) const PART_SIZE: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -62,6 +62,9 @@ pub struct Store {
     pub(crate) root: Option<std::path::PathBuf>,
     /// The URL of the store's root for others, like `s3://bucket/prefix`.
     pub(crate) base: Option<String>,
+    /// For a store in layers, the shared store behind this one in a folder: new objects go
+    /// there too, and it serves what the folder lacks (see `layers.rs`).
+    pub(crate) shared: Option<std::sync::Arc<Store>>,
 }
 
 impl Store {
@@ -112,8 +115,14 @@ impl Store {
     }
 
     /// Where an object is for others: its path for a local store, its URL for S3, else the
-    /// location in the store.
+    /// location in the store. A store in layers gives the path in its folder when the object is
+    /// there, else the place in the shared store.
     pub fn url(&self, location: &str) -> String {
+        if let (Some(shared), Some(root)) = (&self.shared, &self.root)
+            && !root.join(location).exists()
+        {
+            return shared.url(location);
+        }
         match (&self.root, &self.base) {
             (Some(root), _) => root.join(location).to_string_lossy().into_owned(),
             (None, Some(base)) => format!("{base}/{location}"),
@@ -131,6 +140,7 @@ impl Store {
             operator: operator.layer(RetryLayer::new()),
             root: None,
             base: None,
+            shared: None,
         })
     }
 
@@ -148,9 +158,12 @@ impl Store {
                 .await
                 .map_err(at(&target))?,
             None if !self.operator.exists(location).await? => {
-                self.operator.write(location, bytes).await?;
+                self.operator.write(location, bytes.clone()).await?;
             }
             None => {}
+        }
+        if let Some(shared) = &self.shared {
+            Box::pin(shared.put_absent(location, bytes)).await?;
         }
         Ok(())
     }
@@ -180,6 +193,9 @@ impl Store {
             }
             None => {}
         }
+        if let Some(shared) = &self.shared {
+            Box::pin(shared.put_file_as(file, digest)).await?;
+        }
         Ok(())
     }
 
@@ -203,6 +219,10 @@ impl Store {
                 local::link_absent(&target, &stored)
                     .await
                     .map_err(at(&stored))?;
+                if let Some(shared) = &self.shared {
+                    shared.upload(&location, &target).await?;
+                    Box::pin(shared.put_file_as(&target, &digest)).await?;
+                }
             }
             _ => {
                 self.upload(&location, file).await?;
@@ -247,7 +267,7 @@ impl Store {
 
     /// Reads a directory manifest by digest and checks that it still matches the digest.
     pub async fn get_tree(&self, digest: &Digest) -> Result<Tree, StoreError> {
-        let bytes = self.operator.read(&layout::tree(digest)).await?.to_bytes();
+        let bytes = self.read_found(&layout::tree(digest)).await?;
         let actual = Digest::sha256(&bytes);
         if &actual != digest {
             let expected = digest.clone();
@@ -261,11 +281,7 @@ impl Store {
 
     /// Reads content by digest and checks that the bytes still match it.
     pub async fn get_content(&self, digest: &Digest) -> Result<Bytes, StoreError> {
-        let bytes = self
-            .operator
-            .read(&layout::content(digest))
-            .await?
-            .to_bytes();
+        let bytes = self.read_found(&layout::content(digest)).await?;
         let actual = Digest::sha256(&bytes);
         if &actual != digest {
             let expected = digest.clone();
@@ -275,17 +291,23 @@ impl Store {
     }
 
     pub async fn has_content(&self, digest: &Digest) -> Result<bool, StoreError> {
-        Ok(self.operator.exists(&layout::content(digest)).await?)
+        self.exists(&layout::content(digest)).await
     }
 
     /// Writes a cache entry only if none exists, so the first result for a key wins. Returns
-    /// whether this call wrote it.
+    /// whether this call wrote it. In a store in layers, the shared store decides which result
+    /// is first, and the folder keeps a copy of it.
     pub async fn put_entry(
         &self,
         namespace: &str,
         key: &Digest,
         entry: Bytes,
     ) -> Result<bool, StoreError> {
+        if let Some(shared) = &self.shared
+            && !Box::pin(shared.put_entry(namespace, key, entry.clone())).await?
+        {
+            return Ok(false);
+        }
         let location = layout::entry(namespace, key)?;
         let written = self
             .operator
@@ -305,11 +327,7 @@ impl Store {
         key: &Digest,
     ) -> Result<Option<Bytes>, StoreError> {
         let location = layout::entry(namespace, key)?;
-        match self.operator.read(&location).await {
-            Ok(buffer) => Ok(Some(buffer.to_bytes())),
-            Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(error.into()),
-        }
+        self.read(&location).await
     }
 
     /// Stores one output file of a task attempt under its original path, reading it from a
@@ -324,6 +342,9 @@ impl Store {
     ) -> Result<String, StoreError> {
         let location = layout::output(run, task, attempt, path)?;
         self.upload(&location, file).await?;
+        if let Some(shared) = &self.shared {
+            shared.upload(&location, file).await?;
+        }
         Ok(location)
     }
 
@@ -337,12 +358,24 @@ impl Store {
         bytes: Bytes,
     ) -> Result<String, StoreError> {
         let location = layout::output(run, task, attempt, relative)?;
-        self.operator.write(&location, bytes).await?;
+        self.operator.write(&location, bytes.clone()).await?;
+        if let Some(shared) = &self.shared {
+            shared.operator.write(&location, bytes).await?;
+        }
         Ok(location)
     }
 
     pub async fn get_object(&self, location: &str) -> Result<Bytes, StoreError> {
-        Ok(self.operator.read(location).await?.to_bytes())
+        self.read_found(location).await
+    }
+
+    /// The bytes of an object that must be there, from the folder of a store in layers or the
+    /// shared store behind it.
+    async fn read_found(&self, location: &str) -> Result<Bytes, StoreError> {
+        match self.read(location).await? {
+            Some(bytes) => Ok(bytes),
+            None => Err(opendal::Error::new(ErrorKind::NotFound, location.to_owned()).into()),
+        }
     }
 }
 

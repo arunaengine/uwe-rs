@@ -89,6 +89,10 @@ impl Store {
         name: &str,
         holder: &Holder,
     ) -> Result<Option<Lease>, StoreError> {
+        // Runs on other machines see the leases of the shared store of a store in layers.
+        if let Some(shared) = &self.shared {
+            return Box::pin(shared.try_lease(name, holder)).await;
+        }
         let location = layout::lease(name)?;
         match self.local_path(&location) {
             Some(path) => {
@@ -104,6 +108,9 @@ impl Store {
 
     /// Who holds the leases whose names start with `prefix`, like `runs/`, now.
     pub async fn held_leases(&self, prefix: &str) -> Result<Vec<Holder>, StoreError> {
+        if let Some(shared) = &self.shared {
+            return Box::pin(shared.held_leases(prefix)).await;
+        }
         let folder = layout::lease(prefix.trim_end_matches('/'))?;
         let mut held = Vec::new();
         for object in self.objects(&format!("{folder}/")).await? {
@@ -122,6 +129,9 @@ impl Store {
 
     /// Removes the leases that nobody holds, and gives how many there were.
     pub async fn remove_free_leases(&self) -> Result<usize, StoreError> {
+        if let Some(shared) = &self.shared {
+            return Box::pin(shared.remove_free_leases()).await;
+        }
         let mut removed = 0;
         for object in self.objects(&format!("{}/", layout::LEASES)).await? {
             let free = match self.local_path(&object.location) {

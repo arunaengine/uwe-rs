@@ -9,7 +9,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -123,7 +123,8 @@ impl Report {
     /// iunctus's own, like the made-up values of inputs that have none.
     fn tasks(&mut self, graph: &ExecutionGraph, default_image: Option<&str>, scratch: &Path) {
         let mut without_image: BTreeMap<&str, usize> = BTreeMap::new();
-        let mut missing: BTreeMap<&str, Vec<PathBuf>> = BTreeMap::new();
+        // Each missing file, with the steps that read it.
+        let mut missing: BTreeMap<PathBuf, BTreeSet<&str>> = BTreeMap::new();
         let mut remote = 0;
         for task in graph.nodes.iter().map(|node| &node.task) {
             if task.image.is_none() && !task.is_no_op() && default_image.is_none() {
@@ -138,21 +139,22 @@ impl Report {
                     continue;
                 }
                 let source = PathBuf::from(&input.source);
-                if source.starts_with(scratch) {
-                    continue;
-                }
-                let files = missing.entry(&task.step).or_default();
-                if !source.exists() && !files.contains(&source) {
-                    files.push(source);
+                if !source.starts_with(scratch) && !source.exists() {
+                    missing.entry(source).or_default().insert(&task.step);
                 }
             }
         }
-        for (step, files) in missing.into_iter().filter(|(_, files)| !files.is_empty()) {
-            let problem = missing_files(step, &files);
-            // The check of the inputs may have named the file already.
-            if !self.names_any(&files) {
-                self.add(Kind::Error, problem);
+        // The check of the inputs may have named a file already. The others go together when
+        // the same steps read them.
+        let mut groups: BTreeMap<BTreeSet<&str>, Vec<PathBuf>> = BTreeMap::new();
+        for (file, steps) in missing {
+            if !self.names(&file) {
+                groups.entry(steps).or_default().push(file);
             }
+        }
+        for (steps, files) in groups {
+            let steps: Vec<&str> = steps.into_iter().collect();
+            self.add(Kind::Error, missing_files(&steps, &files));
         }
         for (step, count) in without_image {
             let tasks = match count {
@@ -190,16 +192,11 @@ impl Report {
         }
     }
 
-    /// Whether a problem so far names one of the files.
-    fn names_any(&self, files: &[PathBuf]) -> bool {
-        files.iter().any(|file| {
-            let names = [shown(file), file.display().to_string()];
-            (self.problems.iter()).any(|problem| {
-                names
-                    .iter()
-                    .any(|name| problem.message.contains(name.as_str()))
-            })
-        })
+    /// Whether a problem so far names the file.
+    fn names(&self, file: &Path) -> bool {
+        let names = [shown(file), file.display().to_string()];
+        (self.problems.iter())
+            .any(|problem| (names.iter()).any(|name| problem.message.contains(name.as_str())))
     }
 
     /// The exit code of the check: 33 when a feature is not supported, else 1 when a run
@@ -273,22 +270,33 @@ fn planned(graph: &ExecutionGraph) -> String {
     format!(" of {} in {}", plural(tasks, "task"), plural(steps, "step"))
 }
 
-/// The problem of the files of a step that do not exist: each one, or the first few and how
-/// many more.
-fn missing_files(step: &str, files: &[PathBuf]) -> String {
+/// The problem of files that do not exist and that the same steps read: each file, or the
+/// first few and how many more.
+fn missing_files(steps: &[&str], files: &[PathBuf]) -> String {
+    let (steps, read) = match steps {
+        [one] => (format!("step {one}"), "reads"),
+        steps => (format!("steps {}", listed(steps)), "read"),
+    };
     let names: Vec<String> = files.iter().map(|file| shown(file)).collect();
-    match names.as_slice() {
-        [one] => format!("step {step} reads {one}, which does not exist"),
-        [others @ .., last] if names.len() <= NAMED_FILES => format!(
-            "step {step} reads {} and {last}, which do not exist",
-            others.join(", ")
+    match names.len() {
+        1 => format!("{steps} {read} {}, which does not exist", names[0]),
+        count if count <= NAMED_FILES => {
+            format!("{steps} {read} {}, which do not exist", listed(&names))
+        }
+        count => format!(
+            "{steps} {read} {count} files that do not exist, like {} and {}",
+            names[0], names[1]
         ),
-        names => format!(
-            "step {step} reads {} files that do not exist, like {} and {}",
-            names.len(),
-            names[0],
-            names[1]
-        ),
+    }
+}
+
+/// `a`, `a and b`, `a, b and c`.
+fn listed(names: &[impl AsRef<str>]) -> String {
+    let names: Vec<&str> = names.iter().map(AsRef::as_ref).collect();
+    match names.split_last() {
+        Some((last, [])) => (*last).to_owned(),
+        Some((last, others)) => format!("{} and {last}", others.join(", ")),
+        None => String::new(),
     }
 }
 
@@ -420,15 +428,15 @@ mod tests {
             .map(PathBuf::from)
             .collect();
         assert_eq!(
-            missing_files("A", &files[..1]),
+            missing_files(&["A"], &files[..1]),
             "step A reads /d/a, which does not exist"
         );
         assert_eq!(
-            missing_files("A", &files[..2]),
-            "step A reads /d/a and /d/b, which do not exist"
+            missing_files(&["A", "B"], &files[..2]),
+            "steps A and B read /d/a and /d/b, which do not exist"
         );
         assert_eq!(
-            missing_files("A", &files),
+            missing_files(&["A"], &files),
             "step A reads 4 files that do not exist, like /d/a and /d/b"
         );
     }

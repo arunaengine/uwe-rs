@@ -169,11 +169,13 @@ fn replayed_task(
             return Err(gone());
         }
         let location = layout::content(&digest);
-        input.source = match store.local_path(&location) {
-            Some(path) if path.exists() => path.to_string_lossy().into_owned(),
-            Some(_) => return Err(gone()),
-            None => store.url(&location),
-        };
+        // A path when the object is on this machine (also in the shared layer of a store in
+        // layers), else its address.
+        let source = store.url(&location);
+        if !source.contains("://") && !Path::new(&source).exists() {
+            return Err(gone());
+        }
+        input.source = source;
         from_store.push(input.path.clone());
     }
     Ok((task, from_store))

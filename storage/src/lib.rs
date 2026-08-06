@@ -82,6 +82,8 @@ struct Inner {
     /// The providers of what the config file does not serve.
     built_in: Vec<Provider>,
     store: Option<String>,
+    /// A folder of this machine in front of the store (`[store] local`).
+    local_store: Option<String>,
     /// What the providers read, and the copies that answer for addresses.
     journal: journal::Journal,
 }
@@ -186,6 +188,7 @@ impl Storage {
                 configured,
                 built_in,
                 store: settings.store,
+                local_store: settings.local_store,
                 journal: journal::Journal::default(),
             }),
         }
@@ -199,6 +202,12 @@ impl Storage {
     /// Where the config file puts the cache store: a folder or an address.
     pub fn store_location(&self) -> Option<&str> {
         self.inner.store.as_deref()
+    }
+
+    /// The folder of this machine that the config file puts in front of the store, so that
+    /// the store has two layers.
+    pub fn local_store(&self) -> Option<&str> {
+        self.inner.local_store.as_deref()
     }
 
     /// The provider that serves an address: the one with the longest prefix that serves it,

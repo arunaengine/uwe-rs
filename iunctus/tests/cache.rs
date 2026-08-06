@@ -613,3 +613,67 @@ fn the_longest_chain_starts_first() {
         "{before:?} {starts:?}"
     );
 }
+
+/// The config file of a machine whose store has its folder `front` in front of the shared store
+/// in the folder `shared`, which a storage provider serves as `s3://shared/`, as a bucket
+/// would.
+fn layers(front: &Path, shared: &Path) -> std::path::PathBuf {
+    let file = front.with_extension("toml");
+    let text = format!(
+        "[storage.shared]\ntype = \"folder\"\nprefixes = [\"s3://shared/\"]\npath = \"{}\"\n\n\
+         [store]\nlocation = \"s3://shared/cache\"\nlocal = \"{}\"\n",
+        shared.display(),
+        front.display()
+    );
+    std::fs::write(&file, text).expect("writes the config file");
+    file
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn a_store_in_layers_shares_results_between_machines() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let shared = root.path().join("shared");
+    let entries = |folder: &Path| {
+        let folder = folder.join("ac/v1/default");
+        let entries = std::fs::read_dir(folder).map_or(Vec::new(), |entries| entries.collect());
+        (entries.iter().flatten())
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".json"))
+            .count()
+    };
+    // The first machine runs both tasks; their results go to its folder and to the shared
+    // store.
+    let first = pipeline(root.path(), "first", SECOND);
+    let front = root.path().join("front-first");
+    let config = layers(&front, &shared).to_string_lossy().into_owned();
+    let arguments = [
+        "run",
+        "main.nf",
+        "-executor",
+        "local",
+        "-iunctus-config",
+        &config,
+    ];
+    let (code, output) = iunctus(&first, &root.path().join("cache-first"), &arguments);
+    assert_eq!(code, 0, "{output}");
+    assert_eq!(output.matches("[done]").count(), 2, "{output}");
+    assert_eq!(entries(&front), 2);
+    assert_eq!(entries(&shared.join("cache")), 2);
+    // The second machine has an empty folder: it runs nothing, and keeps what it read.
+    let second = pipeline(root.path(), "second", SECOND);
+    let front = root.path().join("front-second");
+    let config = layers(&front, &shared).to_string_lossy().into_owned();
+    let arguments = [
+        "run",
+        "main.nf",
+        "-executor",
+        "local",
+        "-iunctus-config",
+        &config,
+    ];
+    let (code, output) = iunctus(&second, &root.path().join("cache-second"), &arguments);
+    assert_eq!(code, 0, "{output}");
+    assert_eq!(output.matches("[cached]").count(), 2, "{output}");
+    assert!(output.contains("sample has 3 words"), "{output}");
+    assert_eq!(entries(&front), 2);
+}

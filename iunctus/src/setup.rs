@@ -154,7 +154,9 @@ impl Setup {
             })
     }
 
-    /// The cache store: a folder, or a place of a storage provider that can write there.
+    /// The cache store: a folder, or a place of a storage provider that can write there. With
+    /// `local` of `[store]`, a folder of this machine stands in front of a store elsewhere:
+    /// reads look there first, and new results go to both.
     pub fn store(&self, arguments: &Arguments) -> Result<Store, Failure> {
         let location = self.store_location(arguments);
         let failed = |message: String| Failure::setup(format!("iunctus: {message}"));
@@ -163,7 +165,19 @@ impl Setup {
             StoreLocation::Folder(folder) => Store::local(&folder),
             StoreLocation::Objects(operator) => Store::remote(operator, &location),
         };
-        store.map_err(|error| failed(format!("cannot open the store at {location}: {error}")))
+        let store = store
+            .map_err(|error| failed(format!("cannot open the store at {location}: {error}")))?;
+        let Some(local) = self.storage.local_store() else {
+            return Ok(store);
+        };
+        let opened = Store::local(std::path::Path::new(local))
+            .and_then(|front| Store::layered(front, store));
+        opened.map_err(|error| {
+            failed(format!(
+                "cannot open the folder {local} in front of the store: {error}; name another with \
+                 `local` in [store]"
+            ))
+        })
     }
 }
 

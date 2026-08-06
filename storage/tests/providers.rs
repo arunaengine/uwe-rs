@@ -128,7 +128,7 @@ fn wrong_settings_name_the_line() {
     );
     assert_eq!(
         settings_error("[store]\nplace = \"/x\"\n"),
-        format!("{file}:2: `[store]` has no setting `place`; it knows `location`")
+        format!("{file}:2: `[store]` has no setting `place`; it knows `location` and `local`")
     );
 }
 

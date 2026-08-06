@@ -73,7 +73,7 @@ A run whose process has gone while its state is still `running` reads as `stoppe
 
 Version 2 adds the inputs of each run to `runs` (decision 24): `input_schema`, the JSON Schema of the inputs of the workflow, and `inputs`, the values that the run checked against it ([the inputs of a workflow](inputs.md)).
 
-Version 5 adds replays to `runs`: `replays` and `replays_task` name the run and the task that a replay of one task runs again (section 6.3). Version 4 holds what a run needs to be repeated exactly (`program`, `launch`, `workflow_folder`, `repeats`, `output_schema`, and the tables `sources`, `remote_files` and `checks`).
+Version 5 adds replays to `runs`: `replays` and `replays_task` name the run and the task that a replay of one task runs again (section 6.3). Version 4 holds what a run needs to be repeated exactly (`program`, `launch`, `workflow_folder`, `repeats`, `output_schema`, and the tables `sources`, `remote_files` and `checks`); [reproducibility](reproducibility.md), section 1, describes them.
 
 Version 3 adds what each attempt used to `attempts`: `cpu_usec`, the CPU time in microseconds, `memory_peak`, the peak of memory in bytes (page cache included), and `read_bytes` and `write_bytes` of block I/O. The wrapper of a task reads them from the cgroup of its container at its end (`control/usage`), so they are known with Docker and Podman, and empty where a container has no cgroup of its own.
 
@@ -131,12 +131,14 @@ The graph is the heart of the page: a large view of the run as a tree from the f
 | File | What it holds |
 |---|---|
 | `ro-crate-metadata.json` | the metadata, as JSON-LD |
-| `<workflow file>` | a copy of the workflow that ran; for a project folder its main file (`main.nf`, the Snakefile) |
+| `<workflow file>` | a copy of the workflow that ran; for a project folder its main file (`main.nf`, the Snakefile); from the store of a real run, as it ran |
+| `workflow/` | the files of the workflow as the run had them, when the run recorded them ([reproducibility](reproducibility.md), section 1) |
+| `outputs.schema.json` | the JSON Schema of the outputs of the workflow, when the run has one; each output is a `FormalParameter`, the `output` of the workflow |
 | `README.md` | what the folder is, and for a simulated run that its files are made up |
 | `data/<sha256>` | each file of the run once, named by its digest, as CWLProv and runcrate name them; a directory is `data/<sha256 of its manifest>/` |
 | `inputs.schema.json` | the JSON Schema of the inputs of the workflow, when the run has one; each input is a `FormalParameter` of the workflow ([the inputs of a workflow](inputs.md), section 7) |
 
-Files are copied, not linked, so that nothing done to the crate can change the store. A file that is gone, like an input that a simulated run assumed, stays in the metadata with a note that it was not there; a file on the web stays a URL.
+Files are copied, not linked, so that nothing done to the crate can change the store. A file that is gone, like an input that a simulated run assumed, stays in the metadata with a note that it was not there; a file on the web stays a URL, with its digest, size and the time the run read it (`sdDatePublished`). The files that the command line named, like a config file, are in `data/` too, as inputs of the workflow run.
 
 The crate conforms to Process Run Crate, Workflow Run Crate and Provenance Run Crate 0.5 and Workflow RO-Crate 1.0, on RO-Crate 1.1, the newest versions that the validator checks:
 
@@ -153,7 +155,7 @@ The crate conforms to Process Run Crate, Workflow Run Crate and Provenance Run C
 
 A crate of a simulated run says so in the description of the crate, of the workflow run and of every task, in its README, and in a `simulated` property of the crate.
 
-**Validation.** `run-crate/tests/fixtures/validate.sh` writes the fixture crate of a small simulated run again and checks it with `rocrate-validator` 0.12.0 (`uv tool install roc-validator`); the report is `run-crate/tests/fixtures/validation.txt`. At the level REQUIRED all 83 checks pass: the crate is a valid `provenance-run-crate-0.5`. At the level RECOMMENDED 174 checks pass and 6 fail, each for something iunctus cannot know: the person who ran the workflow (`agent`, `author`), a `publisher`, the media type of files (`encodingFormat`), absolute web addresses for tools that only exist inside the workflow, and a full Bioschemas description of the workflow. The crate of a real `iunctus run` of a two-step Nextflow workflow gives the same result. The test `run-crate/tests/export.rs` fails when the export changes without the fixture being written and checked again.
+**Validation.** `run-crate/tests/fixtures/validate.sh` writes the fixture crate of a small simulated run again and checks it with `rocrate-validator` 0.12.0 (`uv tool install roc-validator`); the report is `run-crate/tests/fixtures/validation.txt`. At the level REQUIRED all 83 checks pass: the crate is a valid `provenance-run-crate-0.5`. At the level RECOMMENDED 172 checks pass and 8 fail. Six are for something iunctus cannot know: the person who ran the workflow (`agent`, `author`), a `publisher`, the media type of files (`encodingFormat`), absolute web addresses for tools that only exist inside the workflow, and a full Bioschemas description of the workflow. Two came with the files that pin the run: the validator could not fetch the made-up web address of the fixture without network, and no file of the run names the formal parameters of outputs as its `exampleOfWork` yet. The crate of a real `iunctus run` of a two-step Nextflow workflow gives the same result. The test `run-crate/tests/export.rs` fails when the export changes without the fixture being written and checked again.
 
 Not yet: the formal parameters of the workflow (they come with the JSON Schema of inputs, decision 24), resource use, and a zip file.
 

@@ -127,11 +127,11 @@ iunctus describes every task of every language the same way, and it knows every 
 
 | Feature | What the user gets | Native engines today | Builds on |
 | --- | --- | --- | --- |
-| **Everything pinned** | Each run records the Git revision of the workflow, the digest of every image and remote input, and every parameter and config value, so the same run can be repeated years later. A remote file or image tag that changed since is reported | Nextflow and Snakemake resolve image tags and remote files again at each run, so a moved tag changes results without notice | Preparing images, remote inputs, the run database |
+| **Everything pinned** | Each run records the Git revision of the workflow, the digest of every image and remote input, and every parameter and config value, so the same run can be repeated years later. A remote file or image tag that changed since is reported | Nextflow and Snakemake resolve image tags and remote files again at each run, so a moved tag changes results without notice | Done: see [reproducibility](design/reproducibility.md) |
 | **Containers only, images by digest** | Every task runs in a container from an image pinned to its digest, never on the host. Conda environments are locked and built into images (decisions 11 and 12) | Nextflow, Snakemake and cwltool run a step on the host when it names no container; Conda environments are solved again on each machine | Preparing images |
-| **Tasks without network by default** | A task that needs no network gets none, so it cannot fetch anything that is not in its description. The workflow or the user says which steps may download | Nextflow, Snakemake and Argo give each task the full network; only CWL turns it off by default | The network field (section 3, step 6) |
-| **Reproducibility check** | A sample of cached tasks runs again and the output digests are compared. Tools that do not give the same bytes are marked, and their results are not shared | No engine checks this | The global cache |
-| **Order check** | A run with task results in a shuffled order finds steps whose output depends on which task finished first, like a file list collected in completion order. This check already runs on all test workflows | No engine offers it | The shuffled order of the engine (done) |
+| **Tasks without network by default** | A task that needs no network gets none, so it cannot fetch anything that is not in its description. The workflow or the user says which steps may download | Nextflow, Snakemake and Argo give each task the full network; only CWL turns it off by default | Done as an option (`-no-network`); the default is open question 1 |
+| **Reproducibility check** | A sample of cached tasks runs again and the output digests are compared. Tools that do not give the same bytes are marked, and their results are not shared | No engine checks this | Done: see [reproducibility](design/reproducibility.md) |
+| **Order check** | A run with task results in a shuffled order finds steps whose output depends on which task finished first, like a file list collected in completion order. This check already runs on all test workflows | No engine offers it | Done: `iunctus check-order` |
 | **Provenance for every language** | A Workflow Run RO-Crate of the Provenance Run Crate profile for each run (decision 25): the provenance graph with the digest of every input, output and image, in the same form for all four languages | nf-prov for Nextflow, CWLProv for cwltool, `--report` for Snakemake, each different | The run database, the store |
 
 ### Efficiency: less compute, less storage, less waiting
@@ -225,7 +225,7 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 - [x] The preview before a run (section 4): see [the cache](design/cache.md), section 5.
 - [x] The longest chain first (section 4), in the local executor: see [the cache](design/cache.md), section 6.
 - [ ] Right-sized resources, short tasks together, tasks near their data (section 4).
-- [ ] Everything pinned, tasks without network by default, the reproducibility check, the order check for users (section 4).
+- [x] Everything pinned, with `iunctus changes` and `iunctus repeat`; tasks without network as an option (whether it becomes the default is open question 1); the reproducibility check; the order check for users: see [reproducibility](design/reproducibility.md).
 
 ### Easy setup
 

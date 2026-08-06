@@ -35,6 +35,9 @@ iunctus export <run> [-output <folder>]
 iunctus inputs <workflow file or directory> [-format json|text] [-check]
 iunctus outputs <workflow file or directory> [-format json|text]
 iunctus clean [-keep-days <n>] [-keep-run <run>] [-keep-slower-than <time>] [-remove]
+iunctus changes <run>
+iunctus repeat <run> [-executor <executor>]
+iunctus check-order <workflow file or directory>
 iunctus help
 ```
 
@@ -47,6 +50,8 @@ Storage needs no setup for public files. A config file, `~/.config/iunctus/confi
 Every run records itself in the run database. `iunctus runs` lists the runs, `-resume` continues one without running its finished tasks again, `iunctus run -page` and `iunctus page` show runs live on a web page, and `iunctus export` writes the RO-Crate of a run with its provenance. See [runs](design/runs.md).
 
 Every error has the same form, `iunctus: <where>: <what went wrong>; <what to do>`, in every language and executor, and the exit code tells its kind: 1 for the workflow, 2 for the command line, 3 for the machine or its config, 33 for a feature that iunctus does not support. `iunctus check` reports at once everything that would stop a real run of a workflow, without running a task, and `iunctus check-machine` what is ready on this machine and what is missing. See [errors, exit codes and checks](design/checks.md).
+
+Every run records what pins it: the files of its workflow and command line, the remote files it read, the images it ran in and the inputs of its tasks, each by digest, and a real run keeps them in its store. `iunctus changes` tells what changed since a run, and `iunctus repeat` runs it again with the files, remote files and images it had. `-check-reproducibility` runs a share of the cached tasks again and stops sharing the results of tools that give other bytes, `iunctus check-order` names the steps whose outputs depend on the order in which tasks finish, and `-no-network` runs tasks without network. See [reproducibility](design/reproducibility.md).
 
 Every result goes to a content-addressed store, and any run, pipeline or language that asks for the same task takes it from there. Two runs that ask for the same task at the same moment run it once. A simulated run previews which tasks a real run would take from the cache, `-no-cache` runs every task of one run, and `iunctus clean` removes what no rule keeps, never what a run still refers to. Local inputs that did not change since a run read them are not read again to find their digests. See [the cache](design/cache.md).
 
@@ -62,6 +67,7 @@ Every result goes to a content-addressed store, and any run, pipeline or languag
 - [Errors, exit codes and checks](design/checks.md): the one form of every error, what each exit code means, and the checks of a workflow and of the machine before a run.
 - [Executors](design/executors.md): how the local, TES, SLURM and Kubernetes executors run tasks, how to set each one up, and how the end of a job becomes the outcome of a task.
 - [Runs](design/runs.md): the run database that every run fills, resume, the web page of runs and the Workflow Run RO-Crate of a run.
+- [Reproducibility](design/reproducibility.md): what each run records to pin it, what changed since a run, repeating a run exactly, the reproducibility check of cached tasks, the order check, and tasks without network.
 - [The cache](design/cache.md): when two tasks are the same, the store and its entries, one execution of a task that runs elsewhere with leases that end with their process, clean-up by rule, the preview of a run, and the longest chain first.
 - [The config file and storage providers](design/storage.md): the config file of the site, the user and a run, secrets from environment variables, and the providers (S3 and compatible services, Google Cloud Storage, Azure Blob Storage, web servers, FTP and folders) that serve the store, remote inputs and results, with an example.
 - [The inputs of a workflow](design/inputs.md): the inputs of every workflow as one JSON Schema, how each language describes them, the check of a run before its first task, and the inputs that the code reads.

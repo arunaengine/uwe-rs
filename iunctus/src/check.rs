@@ -19,7 +19,7 @@ use workflow_graph::{
 };
 
 use crate::arguments::Arguments;
-use crate::failure::{FAILED, UNSUPPORTED, without_error_numbers};
+use crate::failure::{FAILED, UNSUPPORTED, continues, without_error_numbers};
 use crate::setup::Setup;
 use crate::{Failure, cache_directory};
 
@@ -91,7 +91,7 @@ impl Report {
     fn add_lines(&mut self, kind: Kind, text: &str) {
         for line in text.lines() {
             match self.problems.last_mut() {
-                Some(last) if line.starts_with(char::is_whitespace) => {
+                Some(last) if !line.trim().is_empty() && continues(line) => {
                     last.message.push('\n');
                     last.message.push_str(line);
                 }

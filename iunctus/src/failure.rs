@@ -104,14 +104,23 @@ pub fn failure(message: impl Into<String>) -> Failure {
 }
 
 /// A line of an error as iunctus shows it: with the prefix of every error, unless it continues
-/// the line before it (it is empty or starts with a space), and without the numbers of system
-/// errors, like ` (os error 2)` after `No such file or directory`, which say nothing more.
+/// the line before it, and without the numbers of system errors, like ` (os error 2)` after
+/// `No such file or directory`, which say nothing more.
 fn shown(line: &str) -> String {
     let line = without_error_numbers(line);
-    if line.is_empty() || line.starts_with(char::is_whitespace) || line.starts_with(PREFIX) {
+    if continues(&line) || line.starts_with(PREFIX) {
         return line;
     }
     format!("{PREFIX}{line}")
+}
+
+/// Whether a line of a message continues the line before it: it is empty, starts with a space,
+/// or is an item of a list, like the `* --input ...` lines of nf-schema.
+pub fn continues(line: &str) -> bool {
+    line.is_empty()
+        || line.starts_with(char::is_whitespace)
+        || line.starts_with("* ")
+        || line.starts_with("- ")
 }
 
 /// The text without ` (os error <number>)`, which iunctus never shows.
@@ -141,14 +150,16 @@ mod tests {
     #[test]
     fn every_line_names_iunctus_once() {
         let failure = Failure::new(
-            "main.nf:3:5: Expected `}`\niunctus: the input `x` is required\n    affected files:\n",
+            "main.nf:3:5: Expected `}`\niunctus: the input `x` is required\n    affected files:\n* \
+             --input: missing\n",
         );
         assert_eq!(
             failure.lines(),
             [
                 "iunctus: main.nf:3:5: Expected `}`",
                 "iunctus: the input `x` is required",
-                "    affected files:"
+                "    affected files:",
+                "* --input: missing"
             ]
         );
     }

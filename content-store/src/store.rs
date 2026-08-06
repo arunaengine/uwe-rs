@@ -17,7 +17,7 @@ pub(crate) const PART_SIZE: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
-    #[error(transparent)]
+    #[error("{}", plain(.0))]
     Backend(#[from] opendal::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -379,6 +379,25 @@ impl Store {
     }
 }
 
+/// An error of the store's service in plain words: what went wrong and its causes, without the
+/// request and the answer that the full text of OpenDAL lists, which only help to debug it.
+fn plain(error: &opendal::Error) -> String {
+    let mut message = match error.kind() {
+        ErrorKind::NotFound => format!("the store has no {}", error.message()),
+        ErrorKind::PermissionDenied => "the store refused access; check the credentials of its \
+                                        storage provider"
+            .to_owned(),
+        ErrorKind::RateLimited => "the store asks for fewer requests".to_owned(),
+        _ => format!("the store failed: {}", error.message()),
+    };
+    let mut source = std::error::Error::source(error);
+    while let Some(cause) = source {
+        message = format!("{message}: {cause}");
+        source = cause.source();
+    }
+    message
+}
+
 /// The digest and size of a local file, read in parts.
 pub async fn hash_file(file: &std::path::Path) -> Result<(Digest, u64), StoreError> {
     let mut reader = tokio::fs::File::open(file).await?;
@@ -401,5 +420,29 @@ fn at(path: &std::path::Path) -> impl FnOnce(std::io::Error) -> StoreError + '_ 
     move |error| StoreError::File {
         path: path.to_owned(),
         error,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn errors_of_the_service_are_in_plain_words() {
+        let error = opendal::Error::new(ErrorKind::NotFound, "cas/sha256/ab/cd")
+            .with_operation("read")
+            .with_context("service", "s3");
+        assert_eq!(
+            StoreError::from(error).to_string(),
+            "the store has no cas/sha256/ab/cd"
+        );
+        let refused = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "refused");
+        let error = opendal::Error::new(ErrorKind::Unexpected, "send http request")
+            .with_context("url", "http://127.0.0.1:1/lab")
+            .set_source(refused);
+        assert_eq!(
+            StoreError::from(error).to_string(),
+            "the store failed: send http request: refused"
+        );
     }
 }

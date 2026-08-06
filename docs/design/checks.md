@@ -39,7 +39,7 @@ The code: `iunctus/src/failure.rs` (`Failure`, the exit codes, and how a message
 | Code | Meaning | Examples |
 |---|---|---|
 | 0 | The command did what it was asked | a run whose tasks all succeeded; a check that found no problem |
-| 1 | The workflow failed or cannot run | a syntax error, a missing include or input file, inputs that do not fit the schema, a task that failed, a result that cannot be delivered |
+| 1 | The workflow failed or cannot run | a syntax error, a missing include or input file, inputs that do not fit the schema, an image that its registry does not have, a task that failed, a result that cannot be delivered |
 | 2 | The command line is wrong | an unknown command or option, an option without its value, an option of another command, no workflow named |
 | 3 | This machine or its config is not ready | a config file with a mistake, a secret whose environment variable is not set, no container engine, a store or run database that cannot be opened, a TES server that does not answer, SLURM tools that are missing, a cluster that failed a task again and again |
 | 33 | The workflow uses a feature that iunctus does not support | a DSL1 Nextflow script (decision 14), an Argo resource template for Kubernetes objects (decision 18), an address that no storage provider serves |

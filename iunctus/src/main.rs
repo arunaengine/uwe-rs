@@ -181,7 +181,8 @@ fn finish(execution: Execution) -> Result<(), Failure> {
 /// What a simulated run says on standard error, which keeps standard output free for the
 /// graph: that it is a simulation, and how many points of its graph are marked.
 fn simulation_notes(graph: &ExecutionGraph) -> Vec<String> {
-    if !graph.is_simulated() {
+    // A run that asked for no task, like one that stopped while it loaded, simulated nothing.
+    if !graph.is_simulated() || graph.nodes.is_empty() {
         return Vec::new();
     }
     let mut notes = vec![format!("iunctus: {SIMULATION}")];

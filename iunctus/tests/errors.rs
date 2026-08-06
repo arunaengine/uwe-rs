@@ -78,6 +78,8 @@ fn errors_of_a_workflow_name_their_place() {
     assert!(stderr.starts_with("iunctus: "), "{stderr}");
     assert!(stderr.contains("main.nf:8:1: "), "{stderr}");
     assert_form(&stderr);
+    // A run that stopped before its first task simulated nothing, so it says nothing of it.
+    assert!(!stderr.contains("This is a simulation"), "{stderr}");
     let directory = project("include { B } from './modules/b'\n\nworkflow {\n    B()\n}\n");
     let (code, stderr) = iunctus(directory.path(), &["run", "main.nf"]);
     assert_eq!(code, 1, "{stderr}");

@@ -17,7 +17,7 @@ const LISTED: usize = 50;
 
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let Some(first) = arguments.target.as_ref().map(|id| id.to_string_lossy()) else {
-        return Err(failure(
+        return Err(Failure::usage(
             "iunctus: name two runs to compare, like `iunctus compare 1a0f1cc4c10-3a2487 \
              1a0f1d02e11-3b0001`, or one to compare with the run before it; `iunctus runs` \
              lists the runs",

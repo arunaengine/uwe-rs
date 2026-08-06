@@ -21,7 +21,7 @@ fn json_format(arguments: &Arguments, command: &str) -> Result<bool, Failure> {
     match arguments.format.as_deref() {
         None | Some("text") => Ok(false),
         Some("json") => Ok(true),
-        Some(other) => Err(failure(format!(
+        Some(other) => Err(Failure::usage(format!(
             "iunctus: `iunctus {command}` writes text or json, not `{other}`"
         ))),
     }

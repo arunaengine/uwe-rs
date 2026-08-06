@@ -18,7 +18,7 @@ const LISTED: usize = 5;
 
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let Some(id) = arguments.target.as_ref().map(|id| id.to_string_lossy()) else {
-        return Err(failure(
+        return Err(Failure::usage(
             "iunctus: name a run, like `iunctus time 1a0f1cc4c10-3a2487`; `iunctus runs` lists \
              the runs",
         ));

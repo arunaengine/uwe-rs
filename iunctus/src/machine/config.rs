@@ -81,9 +81,12 @@ fn providers(config: &ConfigFile) -> String {
         .unwrap_or_default();
     let names: Vec<String> = tables
         .iter()
-        .map(|table| match table.text("type").ok().flatten() {
-            Some(kind) => format!("{} ({kind})", table.name()),
-            None => table.name().to_owned(),
+        .map(|table| {
+            let name = table.name().trim_start_matches("storage.");
+            match table.text("type").ok().flatten() {
+                Some(kind) => format!("{name} ({kind})"),
+                None => name.to_owned(),
+            }
         })
         .collect();
     match names.split_last() {

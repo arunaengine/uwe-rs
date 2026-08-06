@@ -241,7 +241,7 @@ pub async fn kept_copy(store: &Store, digest: &str, folder: &Path) -> Option<Pat
         return None;
     }
     let location = layout::content(&digest);
-    if let Some(path) = store.local_path(&location) {
+    if let Some(path) = store.local_file(&location).await.ok()? {
         return Some(path);
     }
     let copy = folder.join("remote").join(digest.hex());

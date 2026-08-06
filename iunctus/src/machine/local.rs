@@ -62,7 +62,21 @@ pub(super) fn store(
                 format!("{location}: {error}; check the storage provider of the config file"),
             ),
         }
-        cache_folder(None, report);
+        let Some(local) = setup.storage.local_store() else {
+            cache_folder(None, report);
+            return;
+        };
+        // The folder in front of the store, from `local` of `[store]`.
+        let folder = PathBuf::from(local);
+        match writable(&folder) {
+            Ok(()) => report.add_space("store folder", &folder, "the folder of the store"),
+            Err(problem) => report.add(
+                State::Missing,
+                "store folder",
+                format!("{local}: {problem}; name another with `local` in [store]"),
+            ),
+        }
+        cache_folder(Some(&folder), report);
         return;
     }
     let folder = PathBuf::from(&location);

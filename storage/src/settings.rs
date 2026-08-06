@@ -16,6 +16,9 @@ pub struct Settings {
     pub providers: Vec<ProviderSettings>,
     /// Where the cache store lives: a folder or an address (`[store] location`).
     pub store: Option<String>,
+    /// A folder of this machine in front of a store at an address (`[store] local`): reads
+    /// look there first, and new results go to both.
+    pub local_store: Option<String>,
 }
 
 /// A storage provider: its kind with its settings, and the addresses it serves.
@@ -126,9 +129,9 @@ impl Settings {
             }
         }
         check_prefixes(&providers)?;
-        let store = match config.section("store")? {
+        let (store, local_store) = match config.section("store")? {
             Some(store) => {
-                store.only(&["location"])?;
+                store.only(&["location", "local"])?;
                 let location = store.text("location")?;
                 let relative = location.as_deref().is_some_and(|location| {
                     address::scheme(location).is_none() && !Path::new(location).is_absolute()
@@ -139,11 +142,25 @@ impl Settings {
                         "must be an absolute folder or an address, like \"s3://my-bucket/iunctus\"",
                     ));
                 }
-                location
+                let local = store.text("local")?;
+                if local
+                    .as_deref()
+                    .is_some_and(|local| !Path::new(local).is_absolute())
+                {
+                    return Err(store.invalid(
+                        "local",
+                        "must be an absolute folder of this machine, like \"/scratch/iunctus\"",
+                    ));
+                }
+                (location, local)
             }
-            None => None,
+            None => (None, None),
         };
-        Ok(Settings { providers, store })
+        Ok(Settings {
+            providers,
+            store,
+            local_store,
+        })
     }
 }
 

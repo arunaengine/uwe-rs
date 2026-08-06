@@ -90,10 +90,10 @@ impl<B: Backend> Runner<B> {
         Ok(())
     }
 
-    /// A local file with the content of a digest: the store's own file for a local store, else
-    /// a download.
+    /// A local file with the content of a digest: the store's own file for a local store or a
+    /// store in layers, else a download.
     async fn local_content(&self, digest: &Digest) -> Result<PathBuf, RunnerError> {
-        if let Some(path) = self.store.local_path(&layout::content(digest)) {
+        if let Some(path) = self.store.local_file(&layout::content(digest)).await? {
             return Ok(path);
         }
         let downloads = &self.settings.downloads;

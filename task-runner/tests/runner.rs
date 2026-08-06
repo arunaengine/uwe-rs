@@ -95,6 +95,18 @@ fn runner_on(
     varies: bool,
 ) -> Runner<Fake> {
     let store = Store::local(&root.join("store")).expect("a store");
+    runner_with(store, root, run, delay, exit_code, varies)
+}
+
+/// The runner of the run `run` on `store`, with its scratch and downloads in `root`.
+fn runner_with(
+    store: Store,
+    root: &Path,
+    run: &str,
+    delay: std::time::Duration,
+    exit_code: i32,
+    varies: bool,
+) -> Runner<Fake> {
     let fake = Fake {
         scratch: root.join("scratch"),
         runs: Mutex::new(Vec::new()),
@@ -186,6 +198,44 @@ fn reuses_shared_results() {
     assert_eq!(pinned, "debian@sha256:00");
     // Each run removes its scratch directory.
     assert!(!root.path().join("scratch/run1-P-1-1").exists());
+}
+
+#[test]
+fn a_result_of_another_machine_comes_through_the_shared_store() {
+    let operator = opendal::Operator::new(opendal::services::Memory::default()).expect("memory");
+    let shared = Store::remote(operator, "s3://shared/cache").expect("a store");
+    let machine = |root: &Path, run: &str| {
+        let front = Store::local(&root.join("store")).expect("a folder");
+        let store = Store::layered(front, shared.clone()).expect("a store in layers");
+        runner_with(store, root, run, std::time::Duration::ZERO, 0, false)
+    };
+    let first = tempfile::tempdir().expect("a temporary directory");
+    let runner = machine(first.path(), "run1");
+    let made = execute(&runner, &request(&runner, &task(first.path(), "a")));
+    assert!(!made.reused);
+    let second = tempfile::tempdir().expect("a temporary directory");
+    let runner = machine(second.path(), "run2");
+    let taken = execute(&runner, &request(&runner, &task(second.path(), "a")));
+    assert!(taken.reused);
+    assert!(runner.backend().runs.lock().unwrap().is_empty());
+    // The output is in the shared store only, until this machine reads it.
+    let [output] = taken.files.as_slice() else {
+        panic!("one output")
+    };
+    let address = format!("s3://shared/cache/{}", output.location);
+    let store = Store::layered(
+        Store::local(&second.path().join("store")).expect("a folder"),
+        shared.clone(),
+    )
+    .expect("a store in layers");
+    assert_eq!(store.url(&output.location), address);
+    // A task of this machine that reads it takes it into the folder first.
+    let mut next = task(second.path(), "b");
+    next.inputs[0].source = address;
+    let prepared = request(&runner, &next);
+    execute(&runner, &prepared);
+    let kept = second.path().join("store").join(&output.location);
+    assert_eq!(std::fs::read_to_string(kept).expect("reads"), "data\n");
 }
 
 #[test]

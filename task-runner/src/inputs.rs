@@ -119,6 +119,27 @@ impl Inputs<'_> {
         }
     }
 
+    /// The input with a file of this machine in place of an object that only the shared store
+    /// of a store in layers has, like an output of a task of another machine: a run takes the
+    /// object into the folder of the store first, as it does with everything it reads there.
+    /// A lookup of the cache downloads nothing.
+    async fn taken_into_folder(&self, input: &Input) -> Result<Option<Input>, RunnerError> {
+        let shared = self.store.shared().is_some() && self.mode == Mode::Run;
+        let location = (shared && input.source.contains("://"))
+            .then(|| self.store.location_of(&input.source))
+            .flatten();
+        let Some(location) = location else {
+            return Ok(None);
+        };
+        let Some(path) = self.store.local_file(&location).await? else {
+            return Ok(None);
+        };
+        Ok(Some(Input {
+            source: path.to_string_lossy().into_owned(),
+            ..input.clone()
+        }))
+    }
+
     /// An input by its digest, and where its content comes from: literal content, a local
     /// directory or a local file. A local path is taken with its links resolved, so that a
     /// container that sees the folder of the path sees the content. When the runner imports
@@ -128,6 +149,9 @@ impl Inputs<'_> {
     /// which the task changes: such a task never comes from the cache, and a large folder,
     /// like the working directory of a workflow, is not read.
     pub(crate) async fn input(&self, input: &Input) -> Result<(InputFile, Source), RunnerError> {
+        if let Some(local) = self.taken_into_folder(input).await? {
+            return Box::pin(self.input(&local)).await;
+        }
         let source = Path::new(&input.source);
         if input.writable == Writable::InPlace {
             if input.source.contains("://") || input.content.is_some() {

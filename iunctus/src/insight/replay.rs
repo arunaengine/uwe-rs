@@ -28,7 +28,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let run = arguments.target.as_ref().map(|run| run.to_string_lossy());
     let task = (arguments.targets.first()).and_then(|task| task.parse::<u64>().ok());
     let (Some(run), Some(task)) = (run, task) else {
-        return Err(failure(
+        return Err(Failure::usage(
             "iunctus: name a run and the number of one of its tasks, like `iunctus replay \
              1a0f1cc4c10-3a2487 4`; `iunctus runs` lists the runs",
         ));
@@ -57,7 +57,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         .get_or_insert_with(|| "local".into())
         .clone();
     if executor == "simulator" {
-        return Err(failure(
+        return Err(Failure::usage(
             "iunctus: a replay runs the task for real; use -executor local, tes, slurm or \
              kubernetes",
         ));

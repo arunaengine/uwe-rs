@@ -59,7 +59,7 @@ impl Telemetry {
 /// `<run>-traces.jsonl`, and sends it to the endpoint of the config file.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let Some(run) = arguments.target.as_ref().map(|run| run.to_string_lossy()) else {
-        return Err(failure(
+        return Err(Failure::usage(
             "iunctus: name a run, like `iunctus telemetry 1a0f1cc4c10-3a2487`; `iunctus runs` \
              lists the runs",
         ));

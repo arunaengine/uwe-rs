@@ -44,6 +44,12 @@ async fn pull(engine: &ContainerEngine, reference: &str) -> Result<(), ExecutorE
     while let Some(step) = progress.next().await {
         let step = step.map_err(|error| failed(engine, error))?;
         if let Some(error) = step.error_detail.and_then(|detail| detail.message) {
+            if missing(&error) {
+                return Err(ExecutorError::MissingImage {
+                    image: reference.to_owned(),
+                    reason: error,
+                });
+            }
             return Err(ExecutorError::Engine {
                 engine: engine.name.clone(),
                 message: format!("cannot pull {reference}: {error}"),
@@ -92,6 +98,22 @@ fn pinned(reference: &str, digests: &[String]) -> Option<String> {
     Some(format!("{name}@{hash}"))
 }
 
+/// Whether the answer of a pull says that the registry has no such image, or does not let
+/// this machine have it, rather than that the network failed. Docker and Podman give such
+/// answers as text, like `manifest unknown` or `pull access denied`.
+fn missing(answer: &str) -> bool {
+    let answer = answer.to_lowercase();
+    [
+        "manifest unknown",
+        "not found",
+        "does not exist",
+        "access denied",
+        "unauthorized",
+    ]
+    .iter()
+    .any(|words| answer.contains(words))
+}
+
 /// A request to the engine failed; another attempt may work.
 pub(crate) fn failed(engine: &ContainerEngine, error: ApiError) -> ExecutorError {
     ExecutorError::Engine {
@@ -103,6 +125,21 @@ pub(crate) fn failed(engine: &ContainerEngine, error: ApiError) -> ExecutorError
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn answers_of_registries_without_the_image_are_not_retried() {
+        assert!(missing(
+            "manifest for debian:nosuchtag not found: manifest unknown: manifest unknown"
+        ));
+        assert!(missing(
+            "pull access denied for nosuchimage, repository does not exist or may require \
+             'docker login'"
+        ));
+        assert!(!missing(
+            "Get \"https://registry-1.docker.io/v2/\": dial tcp: lookup registry-1.docker.io: \
+             i/o timeout"
+        ));
+    }
 
     #[test]
     fn digests_keep_the_repository() {

@@ -169,6 +169,13 @@ pub enum ExecutorError {
     NoImage,
     #[error("the task has no command, and the image {0} has no default command")]
     NoCommand(String),
+    /// The registry does not have the image, or does not let this machine pull it: another
+    /// attempt would not work either.
+    #[error(
+        "the image {image} cannot be pulled: {reason}; check its name and tag, or log in to its \
+         registry"
+    )]
+    MissingImage { image: String, reason: String },
     /// The image has no Bash, which runs the wrapper of every task.
     #[error("the image {0} has no bash, which iunctus needs to run a task; use an image with bash")]
     NoBash(String),

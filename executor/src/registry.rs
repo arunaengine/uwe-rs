@@ -106,10 +106,22 @@ pub async fn pin(reference: &str) -> Result<Option<String>, ExecutorError> {
             .await
             .map_err(|error| failed(error.to_string()))?;
     }
-    if !response.status().is_success() {
+    let status = response.status();
+    let absent = [
+        StatusCode::NOT_FOUND,
+        StatusCode::UNAUTHORIZED,
+        StatusCode::FORBIDDEN,
+    ];
+    if absent.contains(&status) {
+        // Another attempt gives the same answer.
+        return Err(ExecutorError::MissingImage {
+            image: reference.to_owned(),
+            reason: format!("the registry {} answers {status}", parsed.registry),
+        });
+    }
+    if !status.is_success() {
         return Err(failed(format!(
-            "the registry has no image {reference}: {}",
-            response.status()
+            "the registry has no image {reference}: {status}"
         )));
     }
     let digest = (response.headers().get("docker-content-digest"))

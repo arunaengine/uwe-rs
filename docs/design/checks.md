@@ -78,7 +78,9 @@ main.nf (Nextflow): 1 unsupported feature would stop a real run.
 main.nf (Nextflow): nothing would stop a real run of 2 tasks in 2 steps.
 ```
 
-The exit code is 33 when a feature is not supported, else 1 when something would stop a real run, else 0; warnings do not change it.
+The exit code is 33 when a feature is not supported, else 1 when something would stop a real run, else 0; warnings do not change it. A config file with a mistake stops the check at once with exit code 3, as it stops every command; `iunctus check-machine` names the mistake together with the rest of the machine. A missing file is named once, with every step that reads it; many missing files that the same steps read are counted.
+
+The plan is the one of `iunctus graph`: a Snakemake workflow that imports a Python package without a stand-in starts its Python container while it plans (decision 19), as a simulated run does.
 
 **Limits.** A plan with made-up files can differ from a real run where real data decides which tasks follow (the markers of [the graphs of a run](graph.md), section 3); the report says how many such points the plan has, since it cannot see the problems of tasks that only real data makes. Files at remote addresses are not fetched, and the report counts them. A load error stops the plan, so the problems of the tasks after it show once it is fixed. Snakemake, CWL and Argo report the first load error of their loader only.
 

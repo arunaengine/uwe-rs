@@ -221,10 +221,8 @@ pub(crate) async fn outcome_of(
         .iter()
         .map(|file| OutputFile {
             path: file.path.clone(),
-            location: match store.local_path(&file.location) {
-                Some(path) => path.to_string_lossy().into_owned(),
-                None => store.url(&file.location),
-            },
+            // A path for an object on this machine, else its address.
+            location: store.url(&file.location),
             directory: file.directory,
             size: Some(file.size),
             digest: Some(file.digest.to_string()),

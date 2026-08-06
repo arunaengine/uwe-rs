@@ -14,6 +14,7 @@ iunctus keeps the result of every task in a content-addressed store, and the tim
 - **The preview.** A simulated run tells, for each task, whether a real run would take it from the cache. So the user sees how much work is left before any compute is spent.
 - **The longest chain first.** When tasks wait for the machine, the one with the most work after it starts first, by the times of earlier runs. So the run ends sooner on the same machine.
 - **Digests of local files** that did not change are not computed again, and `-no-cache` runs every task of one run (section 7).
+- **A store in layers:** a folder of this machine in front of a shared store on S3; reads look in the folder first, and new results go to both (section 8).
 
 | Crate | What it does here |
 |---|---|
@@ -160,7 +161,25 @@ The priority helps only when tasks wait: on a machine with room for every task, 
 iunctus run main.nf -executor local -no-cache
 ```
 
-## 8. Where it is in the code
+## 8. A store in layers
+
+A store on S3 lets several machines share results, but every read of a result goes over the network. A store in layers puts a folder of this machine in front of it:
+
+```toml
+[store]
+location = "s3://lab-cache/iunctus"    # shared by the machines of the lab
+local = "/scratch/iunctus-store"       # a fast disk of this machine
+```
+
+- **Reads look in the folder first.** What the folder lacks comes from the shared store, and the folder keeps a copy: file contents, directory manifests and cache entries as soon as a run reads them, task outputs when a task of this machine reads them as inputs. A result that no task of this machine reads stays in the shared store only; its place for drivers and deliveries is then its address there.
+- **New results go to both.** Outputs move into the folder, as in a store on this machine, and are uploaded to the shared store; contents, manifests, entries and marks of use go to both.
+- **The shared store decides which result of a task is first**, so that machines agree: an entry goes to the shared store first, and the folder keeps a copy only of the entry that won.
+- **Leases live in the shared store**, so that two machines that run the same task at the same moment run it once (section 3).
+- **Clean-up works on the folder only.** `iunctus clean` removes from the folder what no rule keeps; the shared store keeps everything until it is cleaned on its own, with `iunctus clean -store s3://lab-cache/iunctus`.
+
+`iunctus check-machine` shows the free space of the folder next to the answer of the shared store. The code: `content_store::Store::layered` and `layers.rs` (`local_file` takes an object into the folder); `Setup::store` in the binary.
+
+## 9. Where it is in the code
 
 - `task_runner::Runner::execute`: the hit, the wait for the lease of a key, the lease of the run, and the entry with its time.
 - `task_runner::CacheEntry` (`entry.rs`): the entry and the check that its files are still there.
@@ -171,7 +190,7 @@ iunctus run main.nf -executor local -no-cache
 - `Database::chains` (`chains.rs`), `RunnerExecutor::priorities`, `Placement::priority` and `Pool::share`: the longest chain first.
 - `task_runner::DigestCache` (`digests.rs`) and `Inputs::hash` (`inputs.rs`): the digests of local files; `-no-cache` in `iunctus/src/arguments.rs` and `main.rs` (`RunnerExecutor::reuse`, and no preview).
 
-## 9. Checks
+## 10. Checks
 
 - `task-runner/tests/runner.rs`: shared results; a result whose files are gone runs again; entries record their time and their last use; three requests of two runs at the same moment run the task once; a failed task leaves its turn to the next; a lease whose holder is killed frees the task at once (with the `flock` tool of util-linux, which holds the lock the way a run does); waiting stops when the run is cancelled; a lookup finds results and writes nothing; clean-up keeps what named runs need, what was used lately and what took long, and everything newer than a run that goes on.
 - `content-store`: leases in a store on this machine and in an object store, including one whose holder stopped renewing it; listing and removing objects; marks of use.
@@ -179,9 +198,10 @@ iunctus run main.nf -executor local -no-cache
 - `run-database/tests/database.rs`: which runs go on, which started lately, what they refer to, the pins of real runs, the chains of steps with their times; eight runs that open a new database at the same moment, twenty times over (two races that made the second of two runs fail are fixed); four runs that record at the same moment.
 - `iunctus/tests/cache.rs`, with Docker and `debian:stable-slim` (`cargo test -p iunctus --test cache -- --include-ignored --test-threads 1`): a module that two Nextflow pipelines vendor runs once, although its process has another name and sits in a subworkflow in the second; a CWL tool and an Argo template written alike share their task, while a Snakemake rule that does the same work runs; two `iunctus run` processes started at the same moment on one store run a task once (`[done]` in one, `[cached]` in the other); clean-up after real runs removes what no rule keeps and nothing that a kept run needs; the preview before and after real runs, in the notes, the summaries, the SVG and the run database; the longest chain first: tasks that each take the whole machine run one after another, and where the first run started three short tasks before a long chain, the second, with the times of the first, starts at most the one that found the machine free.
 - `task-runner/src/digests.rs`: digests come from the cache until the file changes, also when the size stays the same; a file that changed just before it was read is not kept; a second process sees the same cache. `iunctus/tests/cache.rs` (Docker): with `-no-cache` a preview finds nothing in the cache and a real run runs every task.
+- `content-store/tests/layers.rs`: new objects go to both layers; reads take what the folder lacks from the shared store and keep it, also a directory output of an object store; the shared store decides the first result of a task; leases live there. `task-runner/tests/runner.rs`: a result of another machine answers a task through the shared store, and a task that reads its output takes it into the folder. `iunctus/tests/cache.rs` (Docker): two machines with folders of their own in front of one shared store; the second runs nothing and keeps the entries it read.
 
-## 10. Not yet
+## 11. Not yet
 
 - **One layout of tasks for all languages.** Tasks of different languages share results only where their descriptions are equal. Writing paths inside the work directory the same way in every driver would make more of them equal.
-- **A cache in layers**, a fast local store in front of a shared one, and **trust in a shared cache** ([roadmap](../roadmap.md), open question 3).
+- **Trust in a shared cache** ([roadmap](../roadmap.md), open question 2).
 - **A preview that asks registries** for the digests of images that no real run used.

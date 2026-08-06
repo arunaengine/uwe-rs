@@ -155,7 +155,7 @@ iunctus describes every task of every language the same way, and it knows every 
 | **Several storage providers in one run** | Each bucket or address prefix has its own endpoint, region and credentials: AWS S3, MinIO, Ceph, Cloudflare R2 or another S3-compatible service, Google Cloud Storage, Azure Blob Storage, HTTPS, FTP and local disks. Inputs can come from one provider, the store can live on a second, and results can go to a third | Nextflow takes one S3 endpoint and one set of credentials for the whole run. Snakemake 8 can name several storage providers, but the Snakefile must declare them | Done: [storage](design/storage.md) |
 | **Storage settings outside the workflow** | A config file of the user or the site says which endpoint and credentials serve which bucket, with secrets taken from environment variables (decision 20), so the same workflow runs on any site without changes | Nextflow needs a config profile per site; Snakemake storage settings sit in the Snakefile or on the command line | Done: [storage](design/storage.md) |
 | **Copies checked by digest** | Data that moves between providers is checked end to end, a file that is already at the target is not copied again, and a run can move its store, for example from a local disk to S3, without running any task again | Nextflow copies files with `publishDir` and does not check their content | The store |
-| **A cache in layers** | A fast local disk in front of a shared S3 store: reads try the local disk first, and new results go to both | No engine has this | The store, several storage providers |
+| **A cache in layers** | A fast local disk in front of a shared S3 store: reads try the local disk first, and new results go to both | No engine has this | Done: [the cache](design/cache.md), section 8 |
 | **Tasks near their data** | With several providers and TES servers, a task goes to the site that holds its inputs, instead of the data going to the task | No engine chooses a site by where the data is | The TES executor, several storage providers |
 
 ### Flexibility and reach
@@ -221,7 +221,7 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 ### Cache, efficiency and reproducibility
 
 - [x] The global cache by default, the same task at the same time run once, clean-up by rule, remote files downloaded once (section 4): see [the cache](design/cache.md).
-- [ ] A cache in layers (section 4).
+- [x] A cache in layers (section 4): a folder of this machine in front of a shared store, see [the cache](design/cache.md), section 8.
 - [x] The preview before a run (section 4): see [the cache](design/cache.md), section 5.
 - [x] The longest chain first (section 4), in the local executor: see [the cache](design/cache.md), section 6.
 - [ ] Right-sized resources, short tasks together, tasks near their data (section 4).

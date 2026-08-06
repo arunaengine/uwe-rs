@@ -33,7 +33,7 @@ Options on the command line win over all files: `-store` over `[store] location`
 
 | Section | What it sets |
 |---|---|
-| `[store]` | `location`: where the cache store lives, an absolute folder or an address of a provider, like `s3://lab-cache/iunctus` |
+| `[store]` | `location`: where the cache store lives, an absolute folder or an address of a provider, like `s3://lab-cache/iunctus`; `local`: an absolute folder of this machine in front of a store at an address, the store in layers of [the cache](cache.md), section 8 |
 | `[storage.<name>]` | one storage provider; the name is free, like `lab` or `aws` |
 | `[executor.<name>]` | the settings of an executor ([executors](executors.md)) |
 | `[telemetry]` | `endpoint`, an OTLP HTTP endpoint that the trace of every real run goes to, and `headers`, each value a secret ([runs](runs.md), section 6.4) |

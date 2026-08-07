@@ -37,6 +37,7 @@ pub fn executor(
     let backend = TesBackend {
         client,
         scratch: place.scratch.join("tes"),
+        configs: Default::default(),
     };
     // The server reads the inputs from the store, so they are copied there.
     let runner = Runner::new(store, backend, run, crate::runner_settings(storage, true));

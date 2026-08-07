@@ -6,6 +6,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use executor::registry::{ImageConfig, ImageConfigs};
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -92,7 +93,7 @@ fn start(folder: &Path, job: &Value) -> Running {
         .collect();
     // An image without Bash cannot run the wrapper.
     let command = match container["image"].as_str() {
-        Some("without-bash") => "(echo 'exec: \"/bin/bash\": not found' >&2; exit 127)".to_owned(),
+        Some("without-shell") => "(echo 'exec: \"sh\": not found' >&2; exit 127)".to_owned(),
         _ => words.join(" "),
     };
     let directory = container["workingDir"].as_str().unwrap_or("/");
@@ -311,6 +312,17 @@ async fn backend(root: &Path) -> (KubernetesBackend, Arc<Mutex<State>>) {
     assert_eq!(cluster.namespace(), NAMESPACE);
     let mut backend = KubernetesBackend::new(cluster, root.join("scratch"));
     backend.poll = Duration::from_millis(100);
+    // The images of the tests are made up, so no registry gives their configs; one runs its
+    // commands through an entrypoint, as Biocontainers do.
+    let entrypoint = ImageConfig {
+        entrypoint: vec!["env".into(), "FROM_ENTRYPOINT=yes".into()],
+        cmd: Vec::new(),
+    };
+    backend.configs = ImageConfigs::known([
+        ("debian:stable-slim".to_owned(), ImageConfig::default()),
+        ("without-shell".to_owned(), ImageConfig::default()),
+        ("with-entrypoint".to_owned(), entrypoint),
+    ]);
     (backend, state)
 }
 
@@ -382,6 +394,24 @@ async fn jobs_run_tasks_and_give_their_outputs() {
 }
 
 #[tokio::test]
+async fn commands_run_through_the_entrypoint_of_the_image() {
+    let root = tempfile::tempdir().expect("a folder");
+    let (backend, _) = backend(root.path()).await;
+    let spec = spec("with-entrypoint", "echo $FROM_ENTRYPOINT > out.txt");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "run-P-5-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+    assert_eq!(finished.exit_code, Some(0));
+    let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("an output");
+    assert_eq!(output, "yes\n");
+}
+
+#[tokio::test]
 async fn failed_tools_end_their_tasks() {
     let root = tempfile::tempdir().expect("a folder");
     let (backend, _) = backend(root.path()).await;
@@ -403,7 +433,7 @@ async fn failed_tools_end_their_tasks() {
 async fn a_container_that_cannot_run_the_wrapper_fails_the_machine_with_its_log() {
     let root = tempfile::tempdir().expect("a folder");
     let (backend, _) = backend(root.path()).await;
-    let spec = spec("without-bash", "true");
+    let spec = spec("without-shell", "true");
     let (staging, placement) = (Staging::default(), placement());
     let job = Job {
         name: "run-P-3-1",
@@ -413,10 +443,7 @@ async fn a_container_that_cannot_run_the_wrapper_fails_the_machine_with_its_log(
     };
     let error = (backend.run(job, &CancellationToken::new()).await).expect_err("a failure");
     assert!(error.retryable(), "{error}");
-    assert!(
-        error.to_string().contains("/bin/bash\": not found"),
-        "{error}"
-    );
+    assert!(error.to_string().contains("\"sh\": not found"), "{error}");
 }
 
 #[tokio::test]

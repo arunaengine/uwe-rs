@@ -13,9 +13,12 @@ use tokio_util::sync::CancellationToken;
 
 fn backend(folder: &std::path::Path) -> TesBackend {
     let server = std::env::var("IUNCTUS_TES_SERVER").expect("IUNCTUS_TES_SERVER names Funnel");
+    // Funnel runs images of this machine, whose configs no registry needs to give.
+    let config = executor::registry::ImageConfig::default();
     TesBackend {
         client: Client::new(&server, None).expect("a client"),
         scratch: folder.join("scratch"),
+        configs: executor::registry::ImageConfigs::known([("debian:stable-slim".into(), config)]),
     }
 }
 

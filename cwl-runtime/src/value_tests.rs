@@ -78,3 +78,17 @@ fn summarizes_values_for_messages() {
         format!("the string \"{}\"...", "x".repeat(40))
     );
 }
+
+#[test]
+fn output_objects_print_as_python_indents_them_with_exact_integers() {
+    let value = Value::parse(
+        "{b: [1, 2], a: {}, c: [], d: 1000000000000000000000000000000000000000000, e: 4.2, \
+         f: 1.0e42, g: é}",
+    )
+    .expect("YAML");
+    // Python's json.dumps(indent=4, ensure_ascii=False) of the same object.
+    let expected = "{\n    \"b\": [\n        1,\n        2\n    ],\n    \"a\": {},\n    \
+        \"c\": [],\n    \"d\": 1000000000000000000000000000000000000000000,\n    \
+        \"e\": 4.2,\n    \"f\": 1e+42,\n    \"g\": \"é\"\n}";
+    assert_eq!(value.to_pretty_json(), expected);
+}

@@ -255,7 +255,7 @@ impl Driver for CwlDriver {
                 };
                 let mut outputs = outputs.clone();
                 self.deliveries = results::deliver(&mut outputs, &folder);
-                println!("{}", pretty(&Value::Map(outputs)));
+                println!("{}", Value::Map(outputs).to_pretty_json());
             }
             return Ok(());
         }
@@ -268,15 +268,6 @@ impl Driver for CwlDriver {
                 waiting.join(", ")
             )
         }))
-    }
-}
-
-/// A value as indented JSON, as cwltool prints the output object.
-fn pretty(value: &Value) -> String {
-    let text = value.to_json();
-    match serde_json::from_str::<serde_json::Value>(&text) {
-        Ok(json) => serde_json::to_string_pretty(&json).unwrap_or(text),
-        Err(_) => text,
     }
 }
 

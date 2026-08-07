@@ -208,6 +208,24 @@ fn inputs_changed_in_place_keep_the_changes() {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
+fn paths_may_hold_colons() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    // As the CWL conformance test colon_in_paths: `docker run -v a:b:c` cannot say this.
+    let folder = root.path().join("A:Gln2Cys");
+    let executor = executor(&folder);
+    let staged = staging(vec![
+        stage(&folder, ".command.sh", "cat 'in:put.txt' > 'out:put.txt'\n"),
+        stage(&folder, "in:put.txt", "colons\n"),
+    ]);
+    let spec = spec(Some("debian:stable-slim"), &["out:put.txt"]);
+    let finished = run(&executor, "task-colons", &spec, &staged).expect("runs");
+    assert_eq!(finished.exit_code, Some(0));
+    let output = std::fs::read_to_string(finished.local_path("out:put.txt")).expect("reads");
+    assert_eq!(output, "colons\n");
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
 fn reports_failures() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let executor = executor(root.path());

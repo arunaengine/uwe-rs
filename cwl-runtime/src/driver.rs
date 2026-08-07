@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use cwl_parser::iri;
-use cwl_parser::model::{Process, Type, short_name};
+use cwl_parser::model::record::Context;
+use cwl_parser::model::{Process, Requirement, Type, Version, read_requirements, short_name};
 use cwl_parser::salad::context::Namespaces;
 use cwl_parser::source::Remote;
 use storage::Storage;
@@ -171,9 +172,13 @@ impl Driver for CwlDriver {
             let base = placeholder_base(&self.launch, &self.process);
             self.run.use_placeholders(&base);
         }
+        let requirements = match &self.launch.inputs {
+            Some(path) => job_requirements(path, self.process.version).map_err(error)?,
+            None => Vec::new(),
+        };
         let name = process_name(&self.process.id);
         let process = Arc::clone(&self.process);
-        self.run.start(&process, job, &name).map_err(error)
+        (self.run.start(&process, job, &name, requirements)).map_err(error)
     }
 
     /// A tool that failed fails its step. As cwltool's `--on-error stop`, the default, the
@@ -298,7 +303,11 @@ fn read_job(path: &Path, namespaces: &Namespaces) -> Result<Map, String> {
         }
     });
     match value {
-        Value::Map(map) => Ok(map),
+        Value::Map(mut map) => {
+            // Requirements of the job, not an input (see `job_requirements`).
+            map.shift_remove(REQUIREMENTS);
+            Ok(map)
+        }
         Value::Null => Ok(Map::new()),
         other => Err(format!(
             "{} must hold an object, not {}",
@@ -306,6 +315,22 @@ fn read_job(path: &Path, namespaces: &Namespaces) -> Result<Map, String> {
             other.to_json()
         )),
     }
+}
+
+/// The key of the input object that holds requirements.
+const REQUIREMENTS: &str = "cwl:requirements";
+
+/// The requirements that an input object gives under `cwl:requirements`, which override
+/// those of every process of the run, as cwltool reads them. Their fields are lists, as a
+/// document has them after Salad.
+fn job_requirements(path: &Path, version: Version) -> Result<Vec<Requirement>, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    let file: Arc<str> = Arc::from(path.to_string_lossy().as_ref());
+    let node = cwl_parser::yaml::read(&text, &file).map_err(|error| error.to_string())?;
+    let context = Context { version };
+    let requirements = read_requirements(node.get(REQUIREMENTS), &context, false);
+    requirements.map_err(|error| error.to_string())
 }
 
 /// The value of an input given on the command line, read by its type; repeated values make

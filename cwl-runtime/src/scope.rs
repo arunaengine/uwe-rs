@@ -1,5 +1,6 @@
 //! The requirements and hints in effect for a process: those of the enclosing workflows and
 //! steps, then its own. The last entry of a class wins, and any requirement beats any hint.
+//! Requirements of the input object (`cwl:requirements`) beat all of them.
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -26,9 +27,19 @@ const IGNORED_EXTENSIONS: [&str; 6] = [
 pub struct Scope {
     requirements: Arc<Vec<Requirement>>,
     hints: Arc<Vec<Requirement>>,
+    /// The requirements of the input object, which override those of every process.
+    overrides: Arc<Vec<Requirement>>,
 }
 
 impl Scope {
+    /// The scope of a run whose input object has these requirements.
+    pub fn overriding(requirements: Vec<Requirement>) -> Scope {
+        Scope {
+            overrides: Arc::new(requirements),
+            ..Scope::default()
+        }
+    }
+
     /// The scope inside this one, with more requirements and hints after the current ones.
     pub fn with(&self, requirements: &[Requirement], hints: &[Requirement]) -> Scope {
         if requirements.is_empty() && hints.is_empty() {
@@ -41,6 +52,7 @@ impl Scope {
         Scope {
             requirements: Arc::new(all_requirements),
             hints: Arc::new(all_hints),
+            overrides: Arc::clone(&self.overrides),
         }
     }
 
@@ -69,10 +81,8 @@ impl Scope {
         &'s self,
         pick: impl Fn(&'s RequirementClass) -> Option<T>,
     ) -> Option<(T, bool)> {
-        let required = self
-            .requirements
-            .iter()
-            .rev()
+        let required = (self.overrides.iter().rev())
+            .chain(self.requirements.iter().rev())
             .find_map(|entry| pick(&entry.class));
         if let Some(found) = required {
             return Some((found, true));
@@ -102,7 +112,8 @@ impl Scope {
     /// The named types of every `SchemaDefRequirement` in scope.
     pub fn types(&self) -> Types {
         let mut types = Types::default();
-        for entry in self.requirements.iter().chain(self.hints.iter()) {
+        let entries = (self.requirements.iter()).chain(self.hints.iter());
+        for entry in entries.chain(self.overrides.iter()) {
             if let RequirementClass::SchemaDef { types: defined } = &entry.class {
                 for value_type in defined {
                     types.add(value_type);
@@ -123,7 +134,7 @@ impl Scope {
     /// Fails for requirements that iunctus cannot satisfy: unknown classes, and software
     /// packages, which need a package resolver. Hints may always be ignored.
     pub fn check_supported(&self) -> Result<(), DriverError> {
-        for entry in self.requirements.iter() {
+        for entry in self.requirements.iter().chain(self.overrides.iter()) {
             match &entry.class {
                 RequirementClass::Software { .. } => {
                     return Err(DriverError::unsupported(format!(

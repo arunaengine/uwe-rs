@@ -43,6 +43,16 @@ pub fn resolve_location(base: &str, reference: &str) -> String {
     iri::join(base, encoded.trim_start_matches("file://"))
 }
 
+/// A location for a `location` written in a document or job, relative to `base`. Unlike a
+/// path, a location is a URI reference, so its escapes stay escapes: `A%3AGln2Cys` names the
+/// file `A:Gln2Cys`, as cwltool reads it.
+pub fn resolve_uri(base: &str, reference: &str) -> String {
+    if iri::has_scheme(reference) || reference.starts_with("_:") {
+        return reference.to_owned();
+    }
+    iri::join(base, reference)
+}
+
 /// The last segment of a location, decoded.
 pub fn basename_of(location: &str) -> String {
     let path = match local_path(location) {
@@ -107,7 +117,7 @@ pub fn visit_files(value: &mut Value, visit: &mut dyn FnMut(&mut Map)) {
 pub fn resolve_locations(value: &mut Value, base: &str) {
     visit_files(value, &mut |file| {
         if let Some(Value::String(location)) = file.get("location") {
-            let resolved = resolve_location(base, location);
+            let resolved = resolve_uri(base, location);
             file.insert("location".into(), Value::String(resolved));
         } else if let Some(Value::String(path)) = file.get("path") {
             let resolved = resolve_location(base, path);

@@ -12,8 +12,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use executor::manifest::parse;
 use executor::process::Mount;
+use executor::registry::{self, ImageConfigs};
 use executor::wrapper::{EXIT, MANIFEST, STDERR};
-use executor::{Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, place, registry};
+use executor::{Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, place};
 use kube::api::{DeleteParams, ListParams, LogParams, PostParams, PropagationPolicy};
 use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
@@ -40,6 +41,8 @@ pub struct KubernetesBackend {
     pub scratch: PathBuf,
     /// How often the cluster is asked about the pods.
     pub poll: Duration,
+    /// The entrypoints and default commands of images, from their registries.
+    pub configs: ImageConfigs,
     /// The label value of the Jobs of this backend.
     label: String,
     pods: Pods,
@@ -64,6 +67,7 @@ impl KubernetesBackend {
             cluster,
             scratch,
             poll: POLL,
+            configs: ImageConfigs::default(),
             label: format!("{}-{millis}", std::process::id()),
             pods: Pods::default(),
         }
@@ -112,8 +116,12 @@ impl KubernetesBackend {
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
         let image = job.spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
-        // The default command of an image is not known without its engine on this machine.
-        if job.spec.arguments.is_empty() {
+        // The command runs through the entrypoint of the image, as `docker run` and the local
+        // executor run it; a task without one runs the image's default command.
+        let config = self.configs.get(&image.reference).await?;
+        let mut spec = job.spec.clone();
+        spec.arguments = config.command(&job.spec.arguments);
+        if spec.arguments.is_empty() {
             return Err(ExecutorError::NoCommand(image.reference.clone()));
         }
         let owner = tokio::fs::metadata(root).await?;
@@ -130,7 +138,7 @@ impl KubernetesBackend {
             // A pod has no switch of its own for the network; a NetworkPolicy would be one.
             offline: false,
         };
-        tokio::fs::write(run.script(), run.wrapper(job.spec)).await?;
+        tokio::fs::write(run.script(), run.wrapper(&spec)).await?;
         let limits = Limits {
             gpus: job.placement.accelerators.iter().map(|gpu| gpu.count).sum(),
             seconds: job.placement.time_seconds,

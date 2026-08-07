@@ -8,6 +8,7 @@ use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use executor::registry::{ImageConfig, ImageConfigs};
 use executor::{Backend, Job, Staged, Staging};
 use task_model::{FORMAT, Image, OutputRule, Placement, TaskSpec};
 use tes_executor::{Client, TesBackend};
@@ -86,9 +87,15 @@ fn tasks_run_on_the_server_and_give_back_their_outputs() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let task = Arc::new(Mutex::new(None));
     let address = serve(task.clone());
+    // The image runs commands through an entrypoint, as Biocontainers do.
+    let config = ImageConfig {
+        entrypoint: vec!["/usr/local/env-execute".into()],
+        cmd: Vec::new(),
+    };
     let backend = TesBackend {
         client: Client::new(&address, None).expect("a client"),
         scratch: folder.path().join("scratch"),
+        configs: ImageConfigs::known([("debian:stable-slim".to_owned(), config)]),
     };
     let source = folder.path().join("in.txt");
     std::fs::write(&source, "in\n").expect("writes the input");
@@ -138,5 +145,10 @@ fn tasks_run_on_the_server_and_give_back_their_outputs() {
     assert_eq!(output, "hi\n");
     let sent = task.lock().expect("the task").clone().expect("a task");
     assert_eq!(sent["executors"][0]["command"][1], "/iunctus/wrapper.sh");
+    let wrapper = std::fs::read_to_string(finished.root.join("wrapper.sh")).expect("reads");
+    assert!(
+        wrapper.contains("'/usr/local/env-execute' 'bash' '-c' 'cp in.txt out.txt'"),
+        "{wrapper}"
+    );
     assert_eq!(sent["inputs"][1]["path"], "/iunctus/work/in.txt");
 }

@@ -9,7 +9,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use executor::{Backend, ExecutorError, Finished, Job, registry, wrapper};
+use executor::registry::{self, ImageConfigs};
+use executor::{Backend, ExecutorError, Finished, Job, wrapper};
 use tokio_util::sync::CancellationToken;
 
 use crate::client::{Client, ExecutorSpec, FileType, Input, Output, Resources, State, Task};
@@ -33,6 +34,8 @@ pub struct TesBackend {
     pub client: Client,
     /// Where each attempt gets its scratch directory, which the server reads and writes.
     pub scratch: PathBuf,
+    /// The entrypoints and default commands of images, from their registries.
+    pub configs: ImageConfigs,
 }
 
 impl Backend for TesBackend {
@@ -62,6 +65,13 @@ impl TesBackend {
         root: &Path,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
+        // The command runs through the entrypoint of the image, as `docker run` and the local
+        // executor run it; a task without one runs the image's default command.
+        let image = job.spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
+        let config = self.configs.get(&image.reference).await?;
+        let mut spec = job.spec.clone();
+        spec.arguments = config.command(&job.spec.arguments);
+        let job = Job { spec: &spec, ..job };
         let task = task(job, root)?;
         let folders = wrapper::Folders {
             work: &workdir(job),
@@ -124,7 +134,7 @@ fn workdir(job: Job<'_>) -> String {
 fn task(job: Job<'_>, root: &Path) -> Result<Task, ExecutorError> {
     let spec = job.spec;
     let image = spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
-    // TES needs a command; the default command of an image is not known without it.
+    // TES needs a command: the task's, or the default command of the image.
     if spec.arguments.is_empty() {
         return Err(ExecutorError::NoCommand(image.reference.clone()));
     }

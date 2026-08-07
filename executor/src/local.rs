@@ -6,7 +6,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use bollard::models::{ContainerCreateBody, HostConfig};
+use bollard::models::{ContainerCreateBody, HostConfig, MountType};
 use bollard::query_parameters::{
     CreateContainerOptions, KillContainerOptions, LogsOptions, RemoveContainerOptions,
     StopContainerOptions,
@@ -181,9 +181,18 @@ impl ContainerRun<'_> {
         wrapper(spec, &folders)
     }
 
-    /// The container that runs the wrapper with Bash in the image, for the engine's API.
+    /// The container that runs the wrapper with the shell of the image, for the engine's API.
+    /// The folders are mounts, not `source:target` binds, so that a path may hold a `:`.
     pub fn create(&self, engine: &ContainerEngine) -> ContainerCreateBody {
-        let binds = self.binds().iter().map(volume).collect();
+        let mounts = (self.binds().into_iter())
+            .map(|bind| bollard::models::Mount {
+                target: Some(bind.target),
+                source: Some(text(&bind.source)),
+                typ: Some(MountType::BIND),
+                read_only: Some(bind.read_only),
+                ..bollard::models::Mount::default()
+            })
+            .collect();
         ContainerCreateBody {
             image: Some(self.image.reference.clone()),
             // The shell of the image, wherever its `PATH` has it.
@@ -192,7 +201,7 @@ impl ContainerRun<'_> {
             user: engine.user(self.owner.0, self.owner.1),
             working_dir: Some(self.inside()),
             host_config: Some(HostConfig {
-                binds: Some(binds),
+                mounts: Some(mounts),
                 nano_cpus: Some(i64::from(self.cpus) * 1_000_000_000),
                 memory: self.memory.map(|bytes| bytes as i64),
                 network_mode: self.offline.then(|| "none".to_owned()),

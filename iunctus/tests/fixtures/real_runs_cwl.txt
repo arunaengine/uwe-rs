@@ -1,5 +1,5 @@
 # The CWL conformance tests (v1.2) run for real by iunctus and by cwltool, compared by their output objects; written by real_runs_cwl.py.
-# 287 tests: 1 cwltool fails, 8 differs, 8 iunctus fails, 269 same, 1 skipped.
+# 287 tests: 1 cwltool fails, 1 differs, 1 iunctus fails, 283 same, 1 skipped.
 anonymous_enum_in_array same
 any_input_param same
 any_input_param_graph_no_default same
@@ -29,11 +29,11 @@ clt_optional_union_input_file_or_files_with_many_files_provided same
 clt_optional_union_input_file_or_files_with_nothing_provided same
 clt_optional_union_input_file_or_files_with_single_file_provided same
 colon_in_output_path same
-colon_in_paths iunctus fails (exit 1): iunctus: the input `input_file` names the file `/tmp/iunctus-real-cwl-rrc7r152/conformance/v1.2/tests/A%3AGln2Cys`, which does not exist
+colon_in_paths iunctus fails (exit 1): task colon:test: Docker at /var/run/docker.sock could not run the task: Docker responded with status code 500: invalid volume specification: '/tmp/iunctus-real-
 cores_float same
-cwl_requirements_addition differs: output.out.checksum: "sha1$adc83b19e793491b1c6ea0fd8b46cd9f32e592fc" instead of "sha1$b3ec4ed1749c207e52b3a6d08c59f31d83bff519"
-cwl_requirements_override_expression differs: output.out.checksum: "sha1$893a885b3785c8e9bfe0721a4149b129ac0f21f9" instead of "sha1$b3ec4ed1749c207e52b3a6d08c59f31d83bff519"
-cwl_requirements_override_static differs: output.out.checksum: "sha1$adc83b19e793491b1c6ea0fd8b46cd9f32e592fc" instead of "sha1$715e62184492851512a020c36ab7118eca114a59"
+cwl_requirements_addition same
+cwl_requirements_override_expression same
+cwl_requirements_override_static same
 default_path_notfound_warning same
 default_with_falsey_value same
 directory_input_docker same
@@ -86,20 +86,20 @@ illegal_symlink same: both fail
 initial_work_dir_for_array_dirs same
 initial_work_dir_for_null_and_arrays same
 initial_workdir_empty_writable same
-initial_workdir_empty_writable_docker iunctus fails (exit 1): task writable-dir-docker: the image docker.io/alpine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 has no bash, which iunctus needs to
+initial_workdir_empty_writable_docker same
 initial_workdir_expr same
 initial_workdir_output same
 initial_workdir_output_glob same
-initial_workdir_secondary_files_expr differs: output.indexedfile.secondaryFiles: 4 items instead of 9
+initial_workdir_secondary_files_expr same
 initial_workdir_trailingnl same
-initialworkdir_nesteddir iunctus fails (exit 1): the command ended with exit code 1
+initialworkdir_nesteddir same
 initialworkpath_output same
 initworkdir_expreng_requirements same
 inline_expressions same
 inlinejs_req_expressions same
 inputBinding_position_expr same
 input_dir_inputbinding same
-input_dir_recurs_copy_writable differs: output.test_result.checksum: "sha1$4eee9dc63c21aabeddbd1ccafb9ee8ffae1a4f1d" instead of "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709"
+input_dir_recurs_copy_writable same
 input_file_literal same
 input_records_file_entry_with_format same
 input_records_file_entry_with_format_and_bad_entry_array_file_format same: both fail
@@ -110,7 +110,7 @@ job_input_subdir_primary_and_secondary_subdirs same
 js-input-record same
 json_output_location_relative same
 json_output_path_relative same
-legal_symlink iunctus fails (exit 1): task symlink-legal: the image docker.io/alpine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 has no bash, which iunctus needs to run a
+legal_symlink same
 length_for_non_array same: both fail
 listing_default_none same
 listing_loadListing_deep same
@@ -121,8 +121,8 @@ listing_requirement_deep same
 listing_requirement_none same
 listing_requirement_shallow same
 metadata same
-modify_directory_content iunctus fails (exit 1): the command ended with exit code 1
-modify_file_content iunctus fails (exit 1): the command ended with exit code 1
+modify_directory_content same
+modify_file_content same
 multiple-input-feature-requirement same
 multiple_glob_expr_list same
 nameroot_nameext_generated same
@@ -149,16 +149,16 @@ packed_import_schema same
 param_evaluation_expr same
 param_evaluation_noexpr same
 param_notnull_expr same
-paramref_arguments_inputs differs: output.result.a_double: 1e+42 instead of 1000000000000000000000000000000000000000000
+paramref_arguments_inputs same
 paramref_arguments_runtime same
 paramref_arguments_self same
 params_broken_null same: both fail
 record_order_with_input_bindings same
 record_output_binding same
 record_output_file_entry_format same
-record_outputeval iunctus fails (exit 1): cannot read GRCm38.primary_assembly.genome.fa: No such file or directory (os error 2)
+record_outputeval same
 record_outputeval_nojs same
-record_with_default differs: output.same_record.fifth: 4.2e+42 instead of 4200000000000000000000000000000000000000000
+record_with_default same
 rename same
 requirement_override_hints same
 requirement_priority same
@@ -286,4 +286,4 @@ workflow_union_default_input_with_file_provided same
 workflowstep_int_array_input_output same
 workflowstep_valuefrom_file_basename same
 workflowstep_valuefrom_string same
-writable_stagedfiles iunctus fails (exit 1): the command ended with exit code 1
+writable_stagedfiles same

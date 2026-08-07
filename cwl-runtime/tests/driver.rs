@@ -672,3 +672,41 @@ fn requirements_of_the_input_object_override_those_of_the_tool() {
     let environment = &graph.nodes[0].task.environment;
     assert_eq!(environment["TEST_ENV"], "hello test env");
 }
+
+/// Notes the output patterns of each task, and ends it without files.
+#[derive(Default)]
+struct Patterns(Vec<Vec<String>>);
+
+impl Executor for Patterns {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        self.0.push(attempt.task.outputs.clone());
+        Running::ended(Ok(Outcome {
+            id: attempt.task.id,
+            ..Outcome::default()
+        }))
+    }
+}
+
+#[test]
+fn outputs_that_output_eval_makes_keep_the_whole_output_folder() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    // As the conformance test record_outputeval: an `outputEval` names files by their paths.
+    let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: touch\n\
+        requirements: {InlineJavascriptRequirement: {}}\ninputs: []\narguments: [a.fa]\n\
+        outputs:\n  references:\n    type: {type: record, fields: [{name: fa, type: File}]}\n    \
+        outputBinding:\n      outputEval: '$({fa: {class: \"File\", path: runtime.outdir + \"/a.fa\"}})'\n";
+    std::fs::write(folder.path().join("main.cwl"), tool).expect("writes");
+    let launch = Launch {
+        target: folder.path().join("main.cwl"),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let options = Options {
+        simulated: false,
+        ..Options::default()
+    };
+    let mut driver = CwlDriver::new(&launch, options).expect("a driver");
+    let mut executor = Patterns::default();
+    let _ = execute("main.cwl", &mut driver, &mut executor);
+    assert_eq!(executor.0, [vec!["*".to_owned()]]);
+}

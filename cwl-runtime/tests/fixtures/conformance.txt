@@ -434,7 +434,7 @@ v1.1 fail_glob_outside_output_dir pass
 v1.1 symlink_to_file_out_of_workdir_illegal pass
 v1.1 symlink-to-file-in-workdir-legal pass
 v1.1 inplace_update_on_file_content ran
-v1.1 inplace_update_on_dir_content ran
+v1.1 inplace_update_on_dir_content pass
 v1.1 outputbinding_glob_directory pass
 v1.1 stage_file_array_to_dir ran
 v1.1 stage_file_array_to_dir_basename ran
@@ -689,7 +689,7 @@ v1.2 glob_outside_outputs_fails pass
 v1.2 illegal_symlink pass
 v1.2 legal_symlink pass
 v1.2 modify_file_content ran
-v1.2 modify_directory_content ran
+v1.2 modify_directory_content pass
 v1.2 outputbinding_glob_directory pass
 v1.2 stage_file_array ran
 v1.2 stage_file_array_basename ran
@@ -819,7 +819,7 @@ v1.2 stdout_chained_commands pass
 v1.2 multiple-input-feature-requirement pass
 v1.2 js-input-record ran
 v1.2 schemadef_types_with_import pass
-v1.2 filename_with_hash_mark ran
+v1.2 filename_with_hash_mark pass
 v1.2 capture_files pass
 v1.2 capture_dirs pass
 v1.2 capture_files_and_dirs pass

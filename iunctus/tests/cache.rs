@@ -399,8 +399,10 @@ fn clean_up_removes_what_no_rule_keeps() {
     let (code, output) = iunctus(root.path(), &cache, &arguments);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("holds 3 results"), "{output}");
+    // The files that go: the result of the last run, and the contents that only runs that no
+    // rule keeps read (the first script, the changed data) with the trees of the workflow.
     assert!(
-        output.contains("It would remove 1 result and 2 files"),
+        output.contains("It would remove 1 result and 7 files"),
         "{output}"
     );
     assert!(output.contains(&format!("run {dropped} (")), "{output}");
@@ -408,8 +410,17 @@ fn clean_up_removes_what_no_rule_keeps() {
     let arguments = ["clean", "-keep-run", &kept, "-remove"];
     let (code, output) = iunctus(root.path(), &cache, &arguments);
     assert_eq!(code, 0, "{output}");
-    assert!(output.contains("Removed 1 result, 2 files"), "{output}");
+    assert!(output.contains("Removed 1 result, 7 files"), "{output}");
     assert_eq!(entries(&cache), 2);
+    // The files of the workflow of the kept run stay, so that a repeat of it can restore them.
+    for file in ["main.nf", "modules/wordcount/main.nf", "data/sample.txt"] {
+        let bytes = std::fs::read(second.join(file)).expect("reads");
+        let digest = task_model::Digest::sha256(&bytes);
+        let stored = cache
+            .join("iunctus/store")
+            .join(content_store::layout::content(&digest));
+        assert!(stored.exists(), "{file} of the kept run is gone");
+    }
     let (code, output) = iunctus(&second, &cache, &real);
     assert_eq!(code, 0, "{output}");
     assert!(

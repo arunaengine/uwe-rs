@@ -173,6 +173,15 @@ impl Value {
         text
     }
 
+    /// The value as indented JSON, as cwltool prints the output object with
+    /// `json.dumps(indent=4, ensure_ascii=False)`: in the order of its keys, and with every
+    /// integer exact, also those beyond 64 bits.
+    pub fn to_pretty_json(&self) -> String {
+        let mut text = String::new();
+        write_pretty(self, &mut text, 0);
+        text
+    }
+
     /// The value as a JavaScript literal: JSON, with `NaN` and `Infinity` for such numbers.
     pub fn to_javascript(&self) -> String {
         let mut text = String::new();
@@ -269,6 +278,43 @@ enum JsonStyle {
     Compact,
     Javascript,
     Python { sort_keys: bool },
+}
+
+/// Writes indented JSON, four spaces per level.
+fn write_pretty(value: &Value, text: &mut String, depth: usize) {
+    let indent = |text: &mut String, depth: usize| text.push_str(&" ".repeat(4 * depth));
+    match value {
+        Value::List(items) if !items.is_empty() => {
+            text.push_str("[\n");
+            for (index, item) in items.iter().enumerate() {
+                if index > 0 {
+                    text.push_str(",\n");
+                }
+                indent(text, depth + 1);
+                write_pretty(item, text, depth + 1);
+            }
+            text.push('\n');
+            indent(text, depth);
+            text.push(']');
+        }
+        Value::Map(map) if !map.is_empty() => {
+            text.push_str("{\n");
+            for (index, (key, item)) in map.iter().enumerate() {
+                if index > 0 {
+                    text.push_str(",\n");
+                }
+                indent(text, depth + 1);
+                write_string(key, text, false);
+                text.push_str(": ");
+                write_pretty(item, text, depth + 1);
+            }
+            text.push('\n');
+            indent(text, depth);
+            text.push('}');
+        }
+        Value::Float(number) if number.is_finite() => text.push_str(&python_float(*number)),
+        other => write_json(other, text, JsonStyle::Compact),
+    }
 }
 
 fn write_json(value: &Value, text: &mut String, style: JsonStyle) {

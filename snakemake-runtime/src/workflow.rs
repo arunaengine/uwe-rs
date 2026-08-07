@@ -986,6 +986,7 @@ impl Hook {
                         params.push(value.clone());
                     }
                     for (key, value) in &args.keywords {
+                        crate::rule::check_name(key, false)?;
                         params.push(value.clone());
                         params.add_name(key);
                     }
@@ -1171,6 +1172,9 @@ impl Hook {
         skips: &[String],
         pathvars: &Pathvars,
     ) -> Result<(), Error> {
+        if let Some(name) = name {
+            crate::rule::check_name(name, property == "input")?;
+        }
         match value.plain() {
             Value::Str(_) => {
                 let modified = self.state.borrow().modify_path(value, property, skips);

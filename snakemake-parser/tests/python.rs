@@ -111,6 +111,26 @@ fn errors_carry_positions() {
 }
 
 #[test]
+fn an_equals_sign_in_a_condition_reads_as_cpython_words_it() {
+    // Snakemake's test_issue1256, whose SyntaxError is at line 9, as Python 3 puts it.
+    let source = "rule all:\n    input:\n        'done.txt',\n\nrule trim:\n    output:\n        \
+                  done.txt,\n    run:\n        if 1 = 2:\n            print('foo')\n";
+    let error = reject(source);
+    assert_eq!(error.line, 9);
+    let expected = "cannot assign to literal here. Maybe you meant '==' instead of '='?";
+    assert_eq!(error.message, expected);
+    let named = reject("while x = 1:\n    pass\n");
+    let expected = "invalid syntax. Maybe you meant '==' or ':=' instead of '='?";
+    assert_eq!(named.message, expected);
+    let attribute = reject("if a.b = 1:\n    pass\n");
+    assert!(
+        attribute
+            .message
+            .starts_with("cannot assign to attribute here")
+    );
+}
+
+#[test]
 fn keyword_errors_first() {
     // parser.py compiles the Python only after its state machine has read the whole file.
     let error = reject("rule a:\n    input: f(1,,)\n    oops: 1\n");

@@ -705,8 +705,18 @@ fn outputs_that_output_eval_makes_keep_the_whole_output_folder() {
         simulated: false,
         ..Options::default()
     };
-    let mut driver = CwlDriver::new(&launch, options).expect("a driver");
+    let mut driver = CwlDriver::new(&launch, options.clone()).expect("a driver");
     let mut executor = Patterns::default();
     let _ = execute("main.cwl", &mut driver, &mut executor);
     assert_eq!(executor.0, [vec!["*".to_owned()]]);
+    // As initial_workdir_secondary_files_expr: expressions name secondary files.
+    let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: touch\n\
+        requirements: {InlineJavascriptRequirement: {}}\ninputs: []\narguments: [a.fa]\n\
+        outputs:\n  fa:\n    type: File\n    outputBinding: {glob: a.fa}\n    \
+        secondaryFiles: [.fai, '$(self.basename).idx']\n";
+    std::fs::write(folder.path().join("main.cwl"), tool).expect("writes");
+    let mut driver = CwlDriver::new(&launch, options).expect("a driver");
+    let mut executor = Patterns::default();
+    let _ = execute("main.cwl", &mut driver, &mut executor);
+    assert_eq!(executor.0, [vec!["a.fa.fai", "a.fa", "*"]]);
 }

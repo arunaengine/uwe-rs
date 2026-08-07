@@ -655,7 +655,7 @@ tests/test_issue1083 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 wa
 tests/test_issue1085 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_issue1092 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_issue1093 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-tests/test_issue1256 1 Snakefile:9: SyntaxError: Expected `:`, found `=`
+tests/test_issue1256 1 Snakefile:9: SyntaxError: cannot assign to literal here. Maybe you meant '==' instead of '='?
 tests/test_issue1281 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_issue1284 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_issue1331 ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read

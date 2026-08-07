@@ -2,8 +2,11 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::{Arguments, AtomicNodeIndex, ExceptHandler, Expr, ExprCall, Stmt, Suite};
-use ruff_python_parser::{ParseError, parse_expression_range, parse_module};
+use ruff_python_parser::{
+    ParseError, ParseErrorType, parse_expression, parse_expression_range, parse_module,
+};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::Error;
@@ -221,5 +224,49 @@ fn located(source: &str, error: &ParseError, range: TextRange) -> Error {
     } else {
         TextRange::empty(error.location.start().clamp(range.start(), range.end()))
     };
-    Error::new(source, error.error.to_string(), location)
+    Error::new(source, message(source, error), location)
+}
+
+/// The message of a parse error, in CPython's words where people meet it often: an `=` in the
+/// condition of `if`, `elif` or `while`, which CPython reads as an assignment to what stands
+/// before it, as in Snakemake's own test_issue1256.
+fn message(source: &str, error: &ParseError) -> String {
+    let words = error.error.to_string();
+    let ParseErrorType::ExpectedToken {
+        expected: TokenKind::Colon,
+        found: TokenKind::Equal,
+    } = &error.error
+    else {
+        return words;
+    };
+    let start = error.location.start().to_usize().min(source.len());
+    let Some(before) = source.get(..start) else {
+        return words;
+    };
+    let header = before[before.rfind('\n').map_or(0, |index| index + 1)..].trim_start();
+    let Some(target) = ["if ", "elif ", "while "]
+        .iter()
+        .find_map(|keyword| header.strip_prefix(keyword))
+    else {
+        return words;
+    };
+    let Ok(parsed) = parse_expression(target.trim()) else {
+        return words;
+    };
+    let what = match parsed.expr() {
+        Expr::Name(_) => {
+            return "invalid syntax. Maybe you meant '==' or ':=' instead of '='?".to_owned();
+        }
+        Expr::NumberLiteral(_)
+        | Expr::StringLiteral(_)
+        | Expr::BytesLiteral(_)
+        | Expr::BooleanLiteral(_)
+        | Expr::NoneLiteral(_)
+        | Expr::EllipsisLiteral(_) => "literal",
+        Expr::Attribute(_) => "attribute",
+        Expr::Subscript(_) => "subscript",
+        Expr::Call(_) => "function call",
+        _ => return words,
+    };
+    format!("cannot assign to {what} here. Maybe you meant '==' instead of '='?")
 }

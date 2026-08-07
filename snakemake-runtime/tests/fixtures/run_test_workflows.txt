@@ -651,7 +651,7 @@ tests/test_issue1083 ok 1
 tests/test_issue1085 1 WorkflowError: unpack() is not allowed with params. Simply return a dictionary which can be directly .used, e.g. via {params[mykey]}. (rule test)
 tests/test_issue1092 ok 3
 tests/test_issue1093 ok 3
-tests/test_issue1256 1 Snakefile:9: SyntaxError: Expected `:`, found `=`
+tests/test_issue1256 1 Snakefile:9: SyntaxError: cannot assign to literal here. Maybe you meant '==' instead of '='?
 tests/test_issue1281 ok 5
 tests/test_issue1284 ok 6
 tests/test_issue1331 ok 19

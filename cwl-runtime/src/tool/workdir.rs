@@ -5,7 +5,7 @@
 
 use cwl_parser::model::{Dirent, Listing, ListingEntry, Process, RequirementClass, Version};
 
-use super::stage::Stager;
+use super::stage::{InPlace, Stager};
 use crate::expression::{Evaluator, Variables};
 use crate::files;
 use crate::scope::Scope;
@@ -29,6 +29,12 @@ pub(super) fn initial_workdir(
     let docker_required = scope
         .find(|class| matches!(class, RequirementClass::Docker(_)).then_some(()))
         .is_some_and(|(_, required)| required);
+    let in_place = scope
+        .find(|class| match class {
+            RequirementClass::InplaceUpdate { inplace_update } => Some(*inplace_update),
+            _ => None,
+        })
+        .is_some_and(|(update, _)| update);
     let runtime = Value::Map(runtime.clone());
     let vars = Variables {
         inputs,
@@ -171,6 +177,17 @@ pub(super) fn initial_workdir(
         let target = stager.stage(&map, &folder, true);
         if map.get("writable") == Some(&Value::Bool(true)) {
             stager.make_writable(&target);
+            let location = map
+                .get("location")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if in_place && !location.starts_with("_:") && !target.starts_with('/') {
+                stager.in_place.push(InPlace {
+                    path: target.clone(),
+                    location: location.to_owned(),
+                    directory: map.get("class").and_then(Value::as_str) == Some("Directory"),
+                });
+            }
             let mut entry = Value::Map(map);
             files::visit_files(&mut entry, &mut |inner| {
                 if let Some(Value::String(location)) = inner.get("location") {

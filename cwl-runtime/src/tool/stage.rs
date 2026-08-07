@@ -25,6 +25,17 @@ pub(super) struct Stager {
     pub(super) from_job: HashSet<String>,
     /// The locations that InitialWorkDir copies as writable.
     pub(super) writable: HashSet<String>,
+    /// The writable entries that `InplaceUpdateRequirement` updates in place.
+    pub(super) in_place: Vec<InPlace>,
+}
+
+/// A writable entry that the tool updates in place: its path in the output directory, where
+/// the task's copy is collected, and the location it was staged from.
+#[derive(Clone, Debug)]
+pub struct InPlace {
+    pub path: String,
+    pub location: String,
+    pub directory: bool,
 }
 
 impl Stager {

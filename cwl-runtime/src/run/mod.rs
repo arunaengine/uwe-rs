@@ -229,10 +229,56 @@ impl Run {
                 self.fake.push(prefix);
             }
         }
+        let updates = pending.updated(outcome);
         let outputs = pending.collect(outcome, self.files.as_deref())?;
         self.events.push_back(Event::Finished(job, outputs));
+        for (old, new) in &updates {
+            self.update_in_place(old, new);
+        }
         self.settle()?;
         Ok(std::mem::take(&mut self.ready))
+    }
+
+    /// Takes a file or directory that a tool updated in place as its new version everywhere
+    /// the run holds it, so that later steps read what the tool made, as with cwltool, which
+    /// changes the file itself. What the old version knew of its content goes: its listing,
+    /// size and checksum.
+    fn update_in_place(&mut self, old: &str, new: &str) {
+        let inside = format!("{old}/");
+        let mut update = |value: &mut Value| {
+            files::visit_files(value, &mut |file| {
+                let location = file.get("location").and_then(Value::as_str);
+                let moved = match location {
+                    Some(location) if location == old => new.to_owned(),
+                    Some(location) if location.starts_with(&inside) => {
+                        format!("{new}/{}", &location[inside.len()..])
+                    }
+                    _ => return,
+                };
+                file.insert("location".into(), Value::String(moved));
+                for stale in ["listing", "size", "checksum", "contents"] {
+                    file.shift_remove(stale);
+                }
+            });
+        };
+        for job in &mut self.jobs {
+            match &mut job.state {
+                State::Workflow(run) => run.values.values_mut().for_each(&mut update),
+                State::Scatter(scatter) => {
+                    for result in scatter.results.iter_mut().flatten() {
+                        result.values_mut().for_each(&mut update);
+                    }
+                }
+                State::Task(_) | State::Finished => {}
+            }
+        }
+        for event in &mut self.events {
+            match event {
+                Event::Finished(_, outputs) | Event::Step { outputs, .. } => {
+                    outputs.values_mut().for_each(&mut update);
+                }
+            }
+        }
     }
 
     /// The tasks that can run now, which a call that failed may have left behind.

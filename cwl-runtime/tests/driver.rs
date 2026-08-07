@@ -720,3 +720,94 @@ fn outputs_that_output_eval_makes_keep_the_whole_output_folder() {
     let _ = execute("main.cwl", &mut driver, &mut executor);
     assert_eq!(executor.0, [vec!["a.fa.fai", "a.fa", "*"]]);
 }
+
+/// Makes each output that a task asks for, as a file with the task's id, in a folder of its
+/// own, and notes the tasks with the sources of their inputs.
+struct Making {
+    folder: std::path::PathBuf,
+    tasks: Vec<Task>,
+}
+
+impl Executor for Making {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        let task = &attempt.task;
+        self.tasks.push(task.as_ref().clone());
+        let mut files = Vec::new();
+        for output in task.outputs.iter().filter(|output| !output.contains('*')) {
+            let location = self.folder.join(task.id.to_string()).join(output);
+            std::fs::create_dir_all(location.parent().expect("a parent")).expect("makes");
+            std::fs::write(&location, format!("{}\n", task.id)).expect("writes");
+            files.push(workflow_graph::OutputFile {
+                path: output.clone(),
+                location: location.to_string_lossy().into_owned(),
+                ..workflow_graph::OutputFile::default()
+            });
+        }
+        Running::ended(Ok(Outcome {
+            id: task.id,
+            files,
+            ..Outcome::default()
+        }))
+    }
+}
+
+#[test]
+fn later_steps_see_what_a_tool_updated_in_place() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    // As the conformance test modify_file_content.
+    let make = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: [touch, value.txt]\n\
+        inputs: []\noutputs: {out: {type: File, outputBinding: {glob: value.txt}}}\n";
+    let update = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: [update]\n\
+        requirements:\n  InitialWorkDirRequirement:\n    listing: [{entry: $(inputs.r), writable: true}]\n  \
+        InplaceUpdateRequirement: {inplaceUpdate: true}\n\
+        inputs: {r: File}\noutputs: {out: {type: File, outputBinding: {glob: $(inputs.r.basename)}}}\n";
+    let read = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: [cat]\n\
+        inputs: {file1: {type: File, inputBinding: {}}, wait: File}\noutputs: []\n";
+    let main = "cwlVersion: v1.2\nclass: Workflow\ninputs: []\noutputs: []\nsteps:\n  \
+        step1: {run: make.cwl, in: [], out: [out]}\n  \
+        step2: {run: update.cwl, in: {r: step1/out}, out: [out]}\n  \
+        step3: {run: read.cwl, in: {file1: step1/out, wait: step2/out}, out: []}\n";
+    for (name, text) in [
+        ("make.cwl", make),
+        ("update.cwl", update),
+        ("read.cwl", read),
+        ("main.cwl", main),
+    ] {
+        std::fs::write(folder.path().join(name), text).expect("writes");
+    }
+    let launch = Launch {
+        target: folder.path().join("main.cwl"),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let options = Options {
+        simulated: false,
+        ..Options::default()
+    };
+    let mut driver = CwlDriver::new(&launch, options).expect("a driver");
+    let mut executor = Making {
+        folder: folder.path().join("made"),
+        tasks: Vec::new(),
+    };
+    let execution = execute("main.cwl", &mut driver, &mut executor);
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    let [_, update, read] = executor.tasks.as_slice() else {
+        panic!("three tasks: {:?}", executor.tasks)
+    };
+    // The tool gets a copy of its own, and brings it back.
+    let staged = (update.inputs.iter())
+        .find(|input| input.path == "value.txt")
+        .expect("the entry in the output directory");
+    assert_eq!(staged.writable, workflow_graph::Writable::Copy);
+    assert!(update.outputs.contains(&"value.txt".to_owned()));
+    // The step after it reads the new version where it asked for the old one: both of its
+    // inputs are the same file now, staged once.
+    let made = folder.path().join("made").join(update.id.to_string());
+    let updated = made.join("value.txt").to_string_lossy().into_owned();
+    let sources: Vec<&str> = read
+        .inputs
+        .iter()
+        .map(|input| input.source.as_str())
+        .collect();
+    assert_eq!(sources, [updated]);
+}

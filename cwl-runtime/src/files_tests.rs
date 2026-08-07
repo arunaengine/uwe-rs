@@ -47,6 +47,19 @@ fn resolves_locations_against_the_job() {
     let file = value.get("f").expect("f");
     assert_eq!(file.text("location"), Some("file:///work/sub/x.txt"));
     assert!(file.get("path").is_none());
+    // A location is a URI reference, whose escapes stay; a path is a path.
+    let text = "{l: {class: File, location: A%3AGln2Cys}, p: {class: File, path: 'a%b c'}}";
+    let mut value = Value::parse(text).expect("YAML");
+    resolve_locations(&mut value, "file:///work/job.yml");
+    let location = value.get("l").and_then(|file| file.text("location"));
+    assert_eq!(location, Some("file:///work/A%3AGln2Cys"));
+    let local = location.and_then(local_path).expect("a local path");
+    assert_eq!(local, std::path::PathBuf::from("/work/A:Gln2Cys"));
+    let path = value.get("p").and_then(|file| file.text("location"));
+    assert_eq!(
+        path.and_then(local_path).expect("a path").to_str(),
+        Some("/work/a%b c")
+    );
 }
 
 #[test]

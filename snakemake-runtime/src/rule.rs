@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use indexmap::IndexMap;
-use python_evaluator::{Scope, Value};
+use python_evaluator::{Error, Scope, Value};
 
 use crate::pattern;
 
@@ -18,6 +18,59 @@ pub struct Items {
     pub values: Vec<Value>,
     /// A name, the first item, and the end of the range for names of several items.
     pub names: Vec<(String, usize, Option<usize>)>,
+}
+
+/// The names that Snakemake's named lists keep for themselves, their methods and attributes,
+/// except `index` and `sort`, which a name may take (`Namedlist._set_name` of Snakemake
+/// 9.27.0); input files have their sizes besides.
+const RESERVED: [&str; 22] = [
+    "_add_name",
+    "_allitems",
+    "_clone",
+    "_get_names",
+    "_insert_items",
+    "_plainstrings",
+    "_set_name",
+    "_stripped_constraints",
+    "_take_names",
+    "append",
+    "clear",
+    "copy",
+    "count",
+    "extend",
+    "get",
+    "insert",
+    "items",
+    "keys",
+    "pop",
+    "remove",
+    "reverse",
+    "update",
+];
+const RESERVED_FOR_INPUTS: [&str; 11] = [
+    "_predicated_size_files",
+    "size",
+    "size_files",
+    "size_files_gb",
+    "size_files_kb",
+    "size_files_mb",
+    "size_gb",
+    "size_kb",
+    "size_mb",
+    "size_tempfiles",
+    "temp_size_mb",
+];
+
+/// Fails, as Snakemake does, for a name of an input, output, log or param that the named list
+/// keeps for itself, like `items`.
+pub fn check_name(name: &str, input: bool) -> Result<(), Error> {
+    if RESERVED.contains(&name) || (input && RESERVED_FOR_INPUTS.contains(&name)) {
+        return Err(Error::attribute_error(format!(
+            "invalid name for input, output, wildcard, params or log: {name} is reserved for \
+             internal use"
+        )));
+    }
+    Ok(())
 }
 
 impl Items {

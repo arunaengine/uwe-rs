@@ -11,7 +11,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use run_database::{Recorder, Reusable, fingerprint, input_states};
-use workflow_graph::{Attempt, Event, Executor, Observer, Outcome, Running, TaskId};
+use workflow_graph::{Attempt, Event, Executor, Files, Observer, Outcome, Running, TaskId};
 
 /// The tasks whose results came from an earlier run, and that run, until the recorder hears of
 /// them.
@@ -77,6 +77,12 @@ impl Executor for Resumed {
             cached: true,
             ..found.outcome.clone()
         }))
+    }
+
+    /// The files of the executor that runs the other tasks, so that a resumed run delivers
+    /// its results too.
+    fn files(&self) -> Option<Arc<dyn Files>> {
+        self.executor.files()
     }
 }
 

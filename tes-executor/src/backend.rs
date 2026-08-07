@@ -201,7 +201,7 @@ fn task(job: Job<'_>, root: &Path) -> Result<Task, ExecutorError> {
         resources: Some(resources),
         executors: vec![ExecutorSpec {
             image: image.reference.clone(),
-            command: vec!["/bin/bash".into(), WRAPPER.into()],
+            command: vec!["sh".into(), WRAPPER.into()],
             workdir: Some(work.clone()),
         }],
         // The work directory, the home folder and `/tmp` are writable, also when the image's

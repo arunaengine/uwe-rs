@@ -186,8 +186,8 @@ impl ContainerRun<'_> {
         let binds = self.binds().iter().map(volume).collect();
         ContainerCreateBody {
             image: Some(self.image.reference.clone()),
-            // Bash of the image, wherever its `PATH` has it.
-            entrypoint: Some(vec!["bash".to_owned()]),
+            // The shell of the image, wherever its `PATH` has it.
+            entrypoint: Some(vec!["sh".to_owned()]),
             cmd: Some(vec![self.script()]),
             user: engine.user(self.owner.0, self.owner.1),
             working_dir: Some(self.inside()),
@@ -206,7 +206,7 @@ impl ContainerRun<'_> {
     pub fn arguments(&self, engine: &EngineCommand) -> Vec<String> {
         let mut arguments: Vec<String> = ["run", "--rm", "--name", self.name]
             .into_iter()
-            .chain(["--entrypoint", "/bin/bash"])
+            .chain(["--entrypoint", "sh"])
             .map(str::to_owned)
             .collect();
         arguments.extend(engine.user_options(self.owner.0, self.owner.1));
@@ -279,9 +279,9 @@ impl LocalContainer {
             Err(error)
                 if error
                     .to_string()
-                    .contains("\"bash\": executable file not found") =>
+                    .contains("\"sh\": executable file not found") =>
             {
-                Err(ExecutorError::NoBash(image.reference.clone()))
+                Err(ExecutorError::NoShell(image.reference.clone()))
             }
             Err(error) => Err(failed(error)),
         };

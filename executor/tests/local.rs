@@ -343,13 +343,16 @@ fn commands_run_through_the_entrypoint_of_the_image() {
     assert_eq!(finished.exit_code, Some(0));
     let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("reads");
     assert_eq!(output, "moo\n");
-    // An image without Bash cannot run the wrapper; that is no failure of the machine.
-    let error = run(
-        &executor,
-        "task-10",
-        &spec(Some("alpine:latest"), &[]),
-        &Staging::default(),
-    )
-    .expect_err("no bash");
-    assert!(matches!(error, ExecutorError::NoBash(_)), "{error}");
+    // An image without Bash runs the wrapper in its `sh`, which collects the outputs too.
+    let mut task = spec(Some("alpine:latest"), &["out.txt", "*.log", "missing.txt"]);
+    let script = "echo moo > out.txt && echo l > a.log && echo \"$HOME\" > home.log";
+    task.arguments = vec!["sh".into(), "-c".into(), script.into()];
+    let finished = run(&executor, "task-10", &task, &Staging::default()).expect("runs");
+    assert_eq!(finished.exit_code, Some(0));
+    let paths: Vec<&str> = (finished.files.iter())
+        .map(|file| file.path.as_str())
+        .collect();
+    assert_eq!(paths, ["out.txt", "a.log", "home.log"]);
+    let home = std::fs::read_to_string(finished.local_path("home.log")).expect("reads");
+    assert!(home.trim_end().ends_with("/home"), "{home}");
 }

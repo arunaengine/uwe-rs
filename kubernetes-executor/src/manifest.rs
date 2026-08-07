@@ -81,7 +81,7 @@ pub fn job(name: &str, label: &str, run: &ContainerRun<'_>, limits: &Limits) -> 
                 "containers": [{
                     "name": "task",
                     "image": run.image.reference,
-                    "command": ["/bin/bash", run.script()],
+                    "command": ["sh", run.script()],
                     "workingDir": run.inside(),
                     "resources": {"requests": requests, "limits": limits_of_container},
                     "volumeMounts": mounts,

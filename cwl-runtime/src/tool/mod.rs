@@ -397,16 +397,20 @@ pub fn task(
             }
         }
     }
-    // The glob `.` names the output directory itself, and cwl.output.json and an
-    // `outputEval` that gives files may name any file of it, so a real run keeps all of it,
-    // as cwltool keeps the directory; the simulator makes no such files.
+    // The glob `.` names the output directory itself, and cwl.output.json, an `outputEval`
+    // that gives files and secondary files that expressions name may name any file of it, so
+    // a real run keeps all of it, as cwltool keeps the directory; the simulator makes no such
+    // files.
     let whole = process.outputs.iter().any(|output| {
+        let named = (output.secondary_files.iter()).any(|entry| has_code(&entry.pattern));
         let Some(binding) = output.binding.as_ref() else {
             return false;
         };
         let found = outputs::globs(binding, &evaluator, vars, &outdir);
         let dot = found.is_ok_and(|globs| globs.iter().any(|glob| glob == "."));
-        dot || (binding.output_eval.is_some() && outputs::holds_files(&types, &output.value_type))
+        let evaluated =
+            binding.output_eval.is_some() && outputs::holds_files(&types, &output.value_type);
+        dot || evaluated || named
     });
     if needs_json {
         outputs.push(OUTPUT_JSON.to_owned());

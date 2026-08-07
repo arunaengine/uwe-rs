@@ -106,7 +106,7 @@ fn apptainer(program: &str, run: &ContainerRun<'_>, gpus: bool) -> Vec<String> {
         command.push("--nv".into());
     }
     command.push(image(&run.image.reference));
-    command.extend(["/bin/bash".into(), run.script()]);
+    command.extend(["sh".into(), run.script()]);
     command
 }
 
@@ -224,7 +224,7 @@ mod tests {
             '--bind' '/shared/scratch/run-P-1-1:/shared/scratch/run-P-1-1' \
             '--bind' '/shared/scratch/run-P-1-1/work:/data' \
             '--bind' '/shared/store/cas:/shared/store/cas:ro' '--nv' \
-            'docker://debian@sha256:ab' '/bin/bash' \
+            'docker://debian@sha256:ab' 'sh' \
             '/shared/scratch/run-P-1-1/control/wrapper.sh'\n\
             echo $? > '/shared/scratch/run-P-1-1/control/container-exit'\n";
         assert_eq!(script, expected);
@@ -243,7 +243,7 @@ mod tests {
         let script = job_script(&Container::Engine(engine), &run(&image, &[], None), false);
         let command = script.lines().nth(2).expect("the command");
         let expected = "'podman' 'run' '--init' '--rm' '--name' 'iunctus-run-P-1-1' \
-            '--entrypoint' '/bin/bash' '--userns=keep-id' '--user' '1000:100' \
+            '--entrypoint' 'sh' '--userns=keep-id' '--user' '1000:100' \
             '--volume' '/shared/scratch/run-P-1-1:/shared/scratch/run-P-1-1' \
             '--workdir' '/shared/scratch/run-P-1-1/work' '--cpus' '2' '--memory' '3221225472' \
             'debian@sha256:ab' '/shared/scratch/run-P-1-1/control/wrapper.sh'";

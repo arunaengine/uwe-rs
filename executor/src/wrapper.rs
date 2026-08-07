@@ -61,7 +61,8 @@ pub fn wrapper(spec: &TaskSpec, folders: &Folders<'_>) -> String {
         home,
         outbox,
     } = *folders;
-    let mut script = String::from("#!/bin/bash\n# The iunctus task wrapper.\nset -u\n");
+    let mut script = String::from("#!/bin/sh\n# The iunctus task wrapper.\nset -u\n");
+    script.push_str(BASH);
     script.push_str(&format!(
         "work={}\ncontrol={}\noutbox={}\n",
         quote(work),
@@ -100,7 +101,7 @@ pub fn wrapper(spec: &TaskSpec, folders: &Folders<'_>) -> String {
     script.push_str(USAGE_SCRIPT);
     script.push_str(COLLECT);
     script.push_str(&format!(": > \"$control/{MANIFEST}\"\n"));
-    // Bash rejects an empty `then` block, so a task without outputs gets none.
+    // A shell rejects an empty `then` block, so a task without outputs gets none.
     if !spec.outputs.is_empty() {
         script.push_str("if [ \"$status\" -eq 0 ]; then\n");
         for rule in &spec.outputs {
@@ -117,13 +118,23 @@ pub fn wrapper(spec: &TaskSpec, folders: &Folders<'_>) -> String {
     script
 }
 
+/// The wrapper starts in `sh`, which every image with a shell has, and goes on in Bash where
+/// the image has it, wherever its `PATH` has it: Bash collects outputs with `**` and hidden
+/// files, as Nextflow's globs do. In plain `sh`, as in Alpine, the patterns are those of `sh`.
+const BASH: &str = r#"if [ -z "${BASH_VERSION:-}" ] && command -v bash > /dev/null 2>&1; then
+    exec bash "$0"
+fi
+"#;
+
 /// Records what the task used, from the cgroup of the container, when the container has one of
 /// its own, as with Docker and Podman: CPU time, the peak of memory (page cache included) and
-/// the bytes of block I/O. Bash builtins only, so that any image with Bash has what it needs.
+/// the bytes of block I/O. Shell builtins only, so that any image with a shell has what it
+/// needs.
 const USAGE_SCRIPT: &str = r#"cgroup=/sys/fs/cgroup
 if [ -r "$cgroup/memory.peak" ]; then
     {
-        echo "memory_peak $(< "$cgroup/memory.peak")"
+        read -r peak < "$cgroup/memory.peak"
+        echo "memory_peak $peak"
         if [ -r "$cgroup/cpu.stat" ]; then
             while read -r key value; do
                 [ "$key" = usage_usec ] && echo "cpu_usec $value"
@@ -131,8 +142,8 @@ if [ -r "$cgroup/memory.peak" ]; then
         fi
         if [ -r "$cgroup/io.stat" ]; then
             read_bytes=0 write_bytes=0
-            while read -r -a words; do
-                for word in "${words[@]}"; do
+            while read -r line; do
+                for word in $line; do
                     case $word in
                         rbytes=*) read_bytes=$((read_bytes + ${word#rbytes=})) ;;
                         wbytes=*) write_bytes=$((write_bytes + ${word#wbytes=})) ;;
@@ -148,13 +159,18 @@ fi
 
 /// Adds each file and directory that a pattern matches to the manifest, as
 /// `file <size> <path>` or `directory <path>`. Bash expands the pattern with `globstar`,
-/// `nullglob` and `dotglob`. A match at an absolute path is copied below `root` in the control
-/// directory, and one in the work directory to the outbox, when there is one; the copies hold
-/// what links point to.
-const COLLECT: &str = r#"shopt -s globstar nullglob dotglob
+/// `nullglob` and `dotglob`; plain `sh` with its own globs, whose unmatched patterns stay as
+/// they are and are left out. A match at an absolute path is copied below `root` in the
+/// control directory, and one in the work directory to the outbox, when there is one; the
+/// copies hold what links point to.
+const COLLECT: &str = r#"if [ -n "${BASH_VERSION:-}" ]; then
+    shopt -s globstar nullglob dotglob
+fi
 collect() {
-    local IFS=$'\n' match
+    local IFS='
+' match
     for match in $1; do
+        [ -e "$match" ] || [ -L "$match" ] || continue
         match=${match#./}
         case $match in
             /*) [ -e "$control/root$match" ] || {
@@ -173,7 +189,7 @@ collect() {
 }
 "#;
 
-/// A Bash word in single quotes.
+/// A shell word in single quotes.
 pub fn quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', r"'\''"))
 }

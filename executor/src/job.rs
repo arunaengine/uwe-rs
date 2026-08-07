@@ -176,9 +176,11 @@ pub enum ExecutorError {
          registry"
     )]
     MissingImage { image: String, reason: String },
-    /// The image has no Bash, which runs the wrapper of every task.
-    #[error("the image {0} has no bash, which iunctus needs to run a task; use an image with bash")]
-    NoBash(String),
+    /// The image has no `sh`, which runs the wrapper of every task.
+    #[error(
+        "the image {0} has no sh, which iunctus needs to run a task; use an image with a shell"
+    )]
+    NoShell(String),
     #[error("cannot prepare the task directory: {0}")]
     Io(#[from] std::io::Error),
     /// The container engine or the machine failed, not the tool; another attempt may work.

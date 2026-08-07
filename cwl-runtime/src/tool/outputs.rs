@@ -90,6 +90,22 @@ pub(super) fn classes(types: &Types, value_type: &Type) -> (bool, bool) {
     }
 }
 
+/// Whether a value of a type can hold files or directories, also in the fields of records.
+pub(super) fn holds_files(types: &Types, value_type: &Type) -> bool {
+    let (files, folders) = classes(types, value_type);
+    if files || folders {
+        return true;
+    }
+    match types.resolve(value_type) {
+        Type::Record(record) => {
+            (record.fields.iter()).any(|field| holds_files(types, &field.value_type))
+        }
+        Type::Array(array) => holds_files(types, &array.items),
+        Type::Union(members) => members.iter().any(|member| holds_files(types, member)),
+        _ => false,
+    }
+}
+
 /// Whether the files an output collects are directories.
 pub(super) fn directory_type(types: &Types, value_type: &Type) -> bool {
     match types.resolve(value_type) {

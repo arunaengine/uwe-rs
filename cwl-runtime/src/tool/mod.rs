@@ -12,7 +12,7 @@ use cwl_parser::model::{
     short_name,
 };
 use cwl_parser::source::Remote;
-use workflow_graph::{Network, Resources, Task, TaskId};
+use workflow_graph::{Network, Outcome, Resources, Task, TaskId};
 
 use crate::binding::{self, Binder, Bound, Key};
 use crate::expression::{Evaluator, Variables};
@@ -29,7 +29,7 @@ mod workdir;
 
 pub use collect::workdir;
 use outputs::{operation_output, patterns, unbound};
-use stage::{Stager, adjust};
+use stage::{InPlace, Stager, adjust};
 use workdir::initial_workdir;
 
 /// The output directory inside the container, `runtime.outdir`, and the task's workdir.
@@ -97,6 +97,26 @@ pub struct Pending {
     stderr: Option<String>,
     success_codes: Vec<i64>,
     options: Options,
+    /// The entries that the tool updates in place.
+    in_place: Vec<InPlace>,
+}
+
+impl Pending {
+    /// The new locations of the files that the tool updated in place, by their old ones: the
+    /// copies that the task changed, which later steps see instead, as cwltool updates the
+    /// file itself.
+    pub fn updated(&self, outcome: &Outcome) -> Vec<(String, String)> {
+        let mut updates = Vec::new();
+        for entry in &self.in_place {
+            let made = (outcome.files.iter())
+                .find(|file| file.path.trim_end_matches('/') == entry.path.trim_end_matches('/'));
+            if let Some(file) = made {
+                let location = cwl_parser::iri::file_url(std::path::Path::new(&file.location));
+                updates.push((entry.location.clone(), location));
+            }
+        }
+        updates
+    }
 }
 
 /// Makes the task of a command line tool (or of an abstract `Operation`) for a prepared
@@ -376,6 +396,13 @@ pub fn task(
     // Outputs the executor fetches: the standard streams, the globs, and cwl.output.json
     // when an output can come from nowhere else.
     let mut outputs: Vec<String> = stdout.iter().chain(&stderr).cloned().collect();
+    // The copies that the tool updates in place come back, as the new versions of their files.
+    for entry in &stager.in_place {
+        outputs.push(match entry.directory {
+            true => format!("{}/", entry.path),
+            false => entry.path.clone(),
+        });
+    }
     let mut needs_json = false;
     for output in &process.outputs {
         match types.resolve(&output.value_type) {
@@ -511,6 +538,7 @@ pub fn task(
             .map(|tool| tool.success_codes.clone())
             .unwrap_or_default(),
         options: options.clone(),
+        in_place: stager.in_place.clone(),
     };
     Ok((task, pending))
 }

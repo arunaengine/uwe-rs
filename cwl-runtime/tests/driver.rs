@@ -647,3 +647,28 @@ fn writable_initial_work_dir_entries_are_copies_of_the_task() {
     assert_eq!(writable("bob.txt"), workflow_graph::Writable::Copy);
     assert_eq!(writable("whale.txt"), workflow_graph::Writable::No);
 }
+
+#[test]
+fn requirements_of_the_input_object_override_those_of_the_tool() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    // As the conformance tests cwl_requirements_*: the tool's own value gives way.
+    let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: [printenv, TEST_ENV]\n\
+        requirements:\n  EnvVarRequirement:\n    envDef:\n      TEST_ENV: conflict_original\n\
+        inputs: {in: string}\noutputs: []\n";
+    std::fs::write(folder.path().join("main.cwl"), tool).expect("writes");
+    let job = "in: hello test env\ncwl:requirements:\n  - class: EnvVarRequirement\n    \
+        envDef:\n      - envName: TEST_ENV\n        envValue: $(inputs.in)\n";
+    std::fs::write(folder.path().join("job.yml"), job).expect("writes");
+    let launch = Launch {
+        target: folder.path().join("main.cwl"),
+        inputs: Some(folder.path().join("job.yml")),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let mut driver = CwlDriver::new(&launch, Options::default()).expect("a driver");
+    let mut executor = Simulator::new(folder.path().join("simulator"));
+    let execution = execute("main.cwl", &mut driver, &mut executor);
+    let graph = execution.into_result().expect("the run succeeds");
+    let environment = &graph.nodes[0].task.environment;
+    assert_eq!(environment["TEST_ENV"], "hello test env");
+}

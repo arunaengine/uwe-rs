@@ -20,7 +20,7 @@ pub use parameter::{InputParameter, LinkMerge, OutputParameter, PickValue};
 pub use process::{Argument, Class, CommandLineTool, ExpressionTool, Kind, Process, Version};
 pub use requirement::{
     Dirent, Docker, EnvironmentDef, Listing, ListingEntry, Requirement, RequirementClass, Resource,
-    SoftwarePackage,
+    SoftwarePackage, read_requirements,
 };
 pub use schema::{
     ArraySchema, EnumSchema, RecordField, RecordSchema, SecondaryFile, Type, short_name,

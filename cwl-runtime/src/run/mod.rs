@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use cwl_parser::iri;
-use cwl_parser::model::{Class, Process, short_name};
+use cwl_parser::model::{Class, Process, Requirement, short_name};
 use workflow_graph::{Files, Note, Outcome, Task, TaskId};
 
 use crate::expression::Variables;
@@ -183,12 +183,14 @@ impl Run {
         self.assumed.push(base.to_owned());
     }
 
-    /// Starts the main process with its input object and returns the first tasks.
+    /// Starts the main process with its input object and returns the first tasks. The
+    /// requirements of the input object override those of every process.
     pub fn start(
         &mut self,
         process: &Arc<Process>,
         job: Map,
         name: &str,
+        requirements: Vec<Requirement>,
     ) -> Result<Vec<Task>, String> {
         let names = Names {
             display: name.to_owned(),
@@ -201,7 +203,8 @@ impl Run {
             }
             self.placeholder_strings = placeholder::strings(process, &types, base);
         }
-        self.launch(process, job, &Scope::default(), Parent::Root, names, true)?;
+        let scope = Scope::overriding(requirements);
+        self.launch(process, job, &scope, Parent::Root, names, true)?;
         self.settle()?;
         Ok(std::mem::take(&mut self.ready))
     }

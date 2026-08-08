@@ -26,6 +26,11 @@ impl Queue {
         self.waiting.remove(position)
     }
 
+    /// Drops the tasks that have not started, which never will.
+    pub(crate) fn clear(&mut self) {
+        self.waiting.clear();
+    }
+
     /// Notes that a task finished, so that the tasks after it can start.
     pub(crate) fn finished(&mut self, id: TaskId) {
         self.finished.insert(id);

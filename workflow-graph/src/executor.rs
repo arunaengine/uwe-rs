@@ -87,6 +87,11 @@ pub trait Executor {
     fn files(&self) -> Option<Arc<dyn Files>> {
         None
     }
+
+    /// Starts no attempt that has not begun to run: attempts that still wait for their turn,
+    /// like for their share of the machine, end at once as cancelled. The engine holds the
+    /// executor when its driver drains. The default holds nothing.
+    fn hold(&mut self) {}
 }
 
 /// The Tokio runtime that drives the attempts of all runs in this process. Executors make

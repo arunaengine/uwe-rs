@@ -247,3 +247,99 @@ fn a_cancelled_run_stops_its_attempts() {
     stopped.sort();
     assert_eq!(stopped, [TaskId(1), TaskId(2)]);
 }
+
+/// Asks for fixed tasks at the start, notes the outcomes it hears, and drains the run after
+/// the first failure, as Snakemake stops after a failed job.
+#[derive(Default)]
+struct Draining {
+    first: Vec<Task>,
+    heard: Vec<TaskId>,
+    failed: bool,
+}
+
+impl Driver for Draining {
+    fn language(&self) -> Language {
+        Language::Snakemake
+    }
+
+    fn start(&mut self) -> Result<Vec<Task>, DriverError> {
+        Ok(std::mem::take(&mut self.first))
+    }
+
+    fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
+        self.heard.push(outcome.id);
+        self.failed |= outcome.exit_code != 0;
+        Ok(Vec::new())
+    }
+
+    fn finish(&mut self) -> Result<(), DriverError> {
+        match self.failed {
+            true => Err(DriverError::new("a task failed")),
+            false => Ok(()),
+        }
+    }
+
+    fn draining(&self) -> bool {
+        self.failed
+    }
+}
+
+/// Runs a task for as long as it says, and holds the tasks that wait for their turn: task 3
+/// waits until it is held, as a task that waits for its share of the machine.
+#[derive(Default)]
+struct Turns {
+    held: CancellationToken,
+    holds: usize,
+}
+
+impl Executor for Turns {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        let id = attempt.task.id;
+        let held = self.held.clone();
+        Running::new(async move {
+            match id.0 {
+                1 => tokio::time::sleep(Duration::from_millis(10)).await,
+                2 => tokio::time::sleep(Duration::from_millis(200)).await,
+                _ => {
+                    held.cancelled().await;
+                    return Err(ExecuteError::Cancelled);
+                }
+            }
+            let exit_code = if id.0 == 1 { 1 } else { 0 };
+            Ok(Outcome {
+                id,
+                exit_code,
+                ..Outcome::default()
+            })
+        })
+    }
+
+    fn hold(&mut self) {
+        self.holds += 1;
+        self.held.cancel();
+    }
+}
+
+#[test]
+fn a_draining_run_lets_running_tasks_end_and_starts_no_other() {
+    // Task 1 fails while task 2 runs and task 3 waits for its turn; task 4 waits in the queue,
+    // since at most three tasks are pending.
+    let mut driver = Draining {
+        first: vec![task(1, &[]), task(2, &[]), task(3, &[]), task(4, &[])],
+        ..Draining::default()
+    };
+    let mut executor = Turns::default();
+    let mut finished = Retries::default();
+    let execution = Engine::new(&mut executor)
+        .options(options(3, Order::Finished))
+        .observer(&mut finished)
+        .run("drain", &mut driver);
+    let error = execution.error.expect("the run fails").to_string();
+    assert_eq!(error, "a task failed");
+    // The driver hears the failed task and the one that ran; task 3 never ran and task 4
+    // never started.
+    assert_eq!(driver.heard, [TaskId(1), TaskId(2)]);
+    assert_eq!(executor.holds, 1);
+    let ended: Vec<TaskId> = finished.0.iter().map(|(id, _, _)| *id).collect();
+    assert_eq!(ended, [TaskId(1), TaskId(3), TaskId(2)]);
+}

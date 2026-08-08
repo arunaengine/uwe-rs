@@ -236,8 +236,17 @@ impl<'a> Engine<'a> {
         let notes = driver.notes();
         self.asked(first, notes, recorder, &mut queue)?;
         self.deliver(driver, files.as_deref())?;
+        let mut draining = false;
         loop {
-            while pending.len() < self.options.max_pending.max(1)
+            // After a failure that ends the run once the running tasks have ended, no task
+            // starts: neither one of the queue nor one that waits in the executor.
+            if !draining && driver.draining() {
+                draining = true;
+                queue.clear();
+                self.executor.hold();
+            }
+            while !draining
+                && pending.len() < self.options.max_pending.max(1)
                 && let Some(task) = queue.next()
             {
                 self.start(Arc::new(task), pending, attempts);
@@ -262,6 +271,17 @@ impl<'a> Engine<'a> {
             };
             let mut outcome = match result {
                 Ok(outcome) => outcome,
+                // An attempt that waited for its turn when the run began to end never ran; the
+                // observer hears so, the driver does not.
+                Err(error @ ExecuteError::Cancelled) if draining => {
+                    let outcome = failed(&task, &error, attempt, started, time);
+                    self.report(Event::Finished {
+                        outcome: &outcome,
+                        attempt,
+                        retried: false,
+                    });
+                    continue;
+                }
                 Err(error) if error.retryable() && attempt <= self.retries => {
                     let outcome = failed(&task, &error, attempt, started, time);
                     self.report(Event::Finished {

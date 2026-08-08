@@ -125,4 +125,12 @@ pub trait Driver {
     fn outputs(&mut self) -> Result<Option<serde_json::Value>, DriverError> {
         Ok(None)
     }
+
+    /// Whether the run is ending after a failure: the tasks that run now end, and their
+    /// outcomes still come, but no other task starts, not even one that the driver asked for
+    /// already, as Snakemake and cwltool start no job after a failed one. The engine asks after
+    /// each call. The default never drains.
+    fn draining(&self) -> bool {
+        false
+    }
 }

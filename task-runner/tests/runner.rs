@@ -67,11 +67,7 @@ impl Backend for Fake {
                 std::fs::create_dir_all(local.parent().expect("a parent"))?;
                 std::fs::write(&local, &input)?;
             }
-            finished.files.push(Collected {
-                path,
-                directory,
-                size: if directory { 0 } else { input.len() as u64 },
-            });
+            finished.files.push(Collected { path, directory });
         }
         Ok(finished)
     }

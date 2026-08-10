@@ -17,11 +17,14 @@ pub const STDOUT: &str = "stdout";
 pub const STDERR: &str = "stderr";
 pub const STDIN: &str = "stdin";
 pub const ROOT: &str = "root";
+/// The last line that the wrapper writes to its own standard output, which the container's
+/// output shows, when it got to its end: it recorded the tool's exit code and its outputs.
+pub const ENDED: &str = "iunctus: the wrapper ended";
 /// Writes the time in seconds since the Unix epoch: with microseconds from Bash 5 on, whose
 /// `EPOCHREALTIME` needs no program, else whole seconds from `date`.
 const NOW: &str = "echo \"${EPOCHREALTIME:-$(date +%s)}\"";
 /// What the task used, as the cgroup of its container counts it: `cpu_usec`, `memory_peak`,
-/// `read_bytes` and `write_bytes`, one per line with its number.
+/// `read_bytes`, `write_bytes` and `oom_kills`, one per line with its number.
 pub const USAGE: &str = "usage";
 
 /// Where the wrapper of a task finds its folders, as absolute paths inside the container.
@@ -47,8 +50,8 @@ pub struct Folders<'a> {
 /// patterns cannot match the capture files, and with `stdin` of the control directory as
 /// standard input when the task has one. `HOME` is the home folder, unless the task sets it
 /// itself. The wrapper records the exit code and times, collects the outputs only on success,
-/// writes the manifest, and exits with 0 whenever it got that far, so that the logs of a
-/// failed tool are kept. Outputs at absolute paths are copied below `root` in the control
+/// writes the manifest, then writes [`ENDED`] to its standard output and exits with 0, so that
+/// the logs of a failed tool are kept. Outputs at absolute paths are copied below `root` in the control
 /// directory, so that they outlive the container.
 ///
 /// With an outbox, the wrapper also copies each output in the work directory to the same path
@@ -69,9 +72,11 @@ pub fn wrapper(spec: &TaskSpec, folders: &Folders<'_>) -> String {
         quote(control),
         quote(outbox)
     ));
-    script.push_str("mkdir -p \"$work\" \"$control\"\ncd \"$work\" || exit 1\n");
+    // Folders that the backend made already need no `mkdir` process.
+    script.push_str("[ -d \"$work\" ] && [ -d \"$control\" ] || mkdir -p \"$work\" \"$control\"\n");
+    script.push_str("cd \"$work\" || exit 1\n");
     script.push_str(&format!(
-        "export HOME={}\nmkdir -p \"$HOME\"\n",
+        "export HOME={}\n[ -d \"$HOME\" ] || mkdir -p \"$HOME\"\n",
         quote(home)
     ));
     for (name, value) in &spec.environment {
@@ -114,7 +119,7 @@ pub fn wrapper(spec: &TaskSpec, folders: &Folders<'_>) -> String {
     if !outbox.is_empty() {
         script.push_str("chmod -R a+rwX \"$work\" \"$outbox\" \"$control\" 2> /dev/null\n");
     }
-    script.push_str("exit 0\n");
+    script.push_str(&format!("echo {}\nexit 0\n", quote(ENDED)));
     script
 }
 
@@ -127,14 +132,19 @@ fi
 "#;
 
 /// Records what the task used, from the cgroup of the container, when the container has one of
-/// its own, as with Docker and Podman: CPU time, the peak of memory (page cache included) and
-/// the bytes of block I/O. Shell builtins only, so that any image with a shell has what it
-/// needs.
+/// its own, as with Docker and Podman: CPU time, the peak of memory (page cache included), the
+/// bytes of block I/O, and how many processes the kernel killed for lack of memory. Shell
+/// builtins only, so that any image with a shell has what it needs, and no process starts.
 const USAGE_SCRIPT: &str = r#"cgroup=/sys/fs/cgroup
 if [ -r "$cgroup/memory.peak" ]; then
     {
         read -r peak < "$cgroup/memory.peak"
         echo "memory_peak $peak"
+        if [ -r "$cgroup/memory.events" ]; then
+            while read -r key value; do
+                [ "$key" = oom_kill ] && echo "oom_kills $value"
+            done < "$cgroup/memory.events"
+        fi
         if [ -r "$cgroup/cpu.stat" ]; then
             while read -r key value; do
                 [ "$key" = usage_usec ] && echo "cpu_usec $value"
@@ -157,8 +167,8 @@ if [ -r "$cgroup/memory.peak" ]; then
 fi
 "#;
 
-/// Adds each file and directory that a pattern matches to the manifest, as
-/// `file <size> <path>` or `directory <path>`. Bash expands the pattern with `globstar`,
+/// Adds each file and directory that a pattern matches to the manifest, as `file <path>` or
+/// `directory <path>`, without a process per file. Bash expands the pattern with `globstar`,
 /// `nullglob` and `dotglob`; plain `sh` with its own globs, whose unmatched patterns stay as
 /// they are and are left out. A match at an absolute path is copied below `root` in the
 /// control directory, and one in the work directory to the outbox, when there is one; the
@@ -183,7 +193,7 @@ collect() {
         if [ -d "$match" ]; then
             printf 'directory %s\n' "$match" >> "$control/manifest"
         elif [ -f "$match" ]; then
-            printf 'file %s %s\n' "$(wc -c < "$match")" "$match" >> "$control/manifest"
+            printf 'file %s\n' "$match" >> "$control/manifest"
         fi
     done
 }

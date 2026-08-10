@@ -7,7 +7,7 @@ use std::path::Path;
 use std::process::Command;
 
 use executor::manifest::{Collected, parse};
-use executor::wrapper::{Folders, wrapper};
+use executor::wrapper::{ENDED, Folders, wrapper};
 use task_model::{Digest, EnvironmentValue, FORMAT, OutputRule, TaskSpec};
 
 fn spec(outputs: &[&str]) -> TaskSpec {
@@ -36,7 +36,7 @@ fn spec(outputs: &[&str]) -> TaskSpec {
 }
 
 /// Writes the task script into the work directory and runs the wrapper; the result has the
-/// wrapper's exit code.
+/// wrapper's exit code. The wrapper's own output is only the line that says that it ended.
 fn run(root: &Path, spec: &TaskSpec, script: &str) -> i32 {
     let work = root.join("work");
     let control = root.join("control");
@@ -50,12 +50,14 @@ fn run(root: &Path, spec: &TaskSpec, script: &str) -> i32 {
         outbox: "",
     };
     let text = wrapper(spec, &folders);
-    let status = Command::new("bash")
+    let output = Command::new("bash")
         .arg("-c")
         .arg(text)
-        .status()
+        .output()
         .expect("runs bash");
-    status.code().expect("an exit code")
+    let said = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(said, format!("{ENDED}\n"));
+    output.status.code().expect("an exit code")
 }
 
 fn read(path: &Path) -> String {
@@ -86,12 +88,10 @@ fn collects_outputs_after_success() {
             Collected {
                 path: "out.txt".into(),
                 directory: false,
-                size: 3
             },
             Collected {
                 path: "dir".into(),
                 directory: true,
-                size: 0
             }
         ]
     );
@@ -170,13 +170,13 @@ fn reads_the_standard_input() {
 
 #[test]
 fn manifest_errors() {
-    let text = "file 12 a.txt\nfile 12 a.txt\ndirectory d e\n";
+    let text = "file a.txt\nfile a.txt\nfile 12 b.txt\ndirectory d e\n";
     let files = parse(text).expect("parses");
-    assert_eq!(paths(&files), ["a.txt", "d e"]);
-    let error = parse("12 a.txt\n").unwrap_err();
+    assert_eq!(paths(&files), ["a.txt", "12 b.txt", "d e"]);
+    let error = parse("a.txt\n").unwrap_err();
     assert_eq!(
         error.to_string(),
-        "line 1 of the result manifest is not `file <size> <path>` or `directory <path>`: 12 a.txt"
+        "line 1 of the result manifest is not `file <path>` or `directory <path>`: a.txt"
     );
 }
 

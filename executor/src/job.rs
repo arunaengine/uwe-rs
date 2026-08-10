@@ -83,6 +83,8 @@ pub struct Usage {
     /// The bytes read from and written to block devices.
     pub read_bytes: Option<u64>,
     pub write_bytes: Option<u64>,
+    /// How many processes of the task the kernel killed for lack of memory.
+    pub oom_kills: Option<u64>,
 }
 
 impl Usage {
@@ -100,6 +102,7 @@ impl Usage {
                 "memory_peak" => usage.memory_peak = value,
                 "read_bytes" => usage.read_bytes = value,
                 "write_bytes" => usage.write_bytes = value,
+                "oom_kills" => usage.oom_kills = value,
                 _ => {}
             }
         }
@@ -208,12 +211,13 @@ mod usage_tests {
         let root = tempfile::tempdir().expect("a temporary directory");
         std::fs::create_dir_all(root.path().join(CONTROL)).expect("makes the folder");
         assert_eq!(Usage::of(root.path()), None);
-        let text = "memory_peak 2048\ncpu_usec 1500\nread_bytes 0\nwrite_bytes 4096\n";
+        let text = "memory_peak 2048\noom_kills 1\ncpu_usec 1500\nread_bytes 0\nwrite_bytes 4096\n";
         std::fs::write(root.path().join(CONTROL).join(USAGE), text).expect("writes");
         let usage = Usage::of(root.path()).expect("a usage");
         assert_eq!(usage.memory_peak, Some(2048));
         assert_eq!(usage.cpu_usec, Some(1500));
         assert_eq!(usage.write_bytes, Some(4096));
+        assert_eq!(usage.oom_kills, Some(1));
     }
 
     #[test]

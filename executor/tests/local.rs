@@ -331,6 +331,17 @@ fn linked_inputs_are_read_only_and_limits_hold() {
     assert_ne!(finished.exit_code, Some(0));
     let said = std::fs::read_to_string(finished.stderr()).expect("reads");
     assert!(said.contains("longer than its time"), "{said}");
+    // A tool that ends well while the engine stops it still ran longer than its time.
+    task.arguments = vec!["/bin/bash".into(), "-c".into(), "sleep 3".into()];
+    let finished = run_with(
+        &executor,
+        "task-8-again",
+        &task,
+        &Staging::default(),
+        &placement,
+    )
+    .expect("runs");
+    assert_eq!(finished.exit_code, Some(143));
 }
 
 #[test]

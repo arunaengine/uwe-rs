@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use std::sync::{Mutex, PoisonError};
 
 use tokio::sync::Notify;
+use tokio_util::sync::CancellationToken;
 
 const MIB: u64 = 1024 * 1024;
 
@@ -21,6 +22,8 @@ pub struct Pool {
     state: Mutex<State>,
     /// Wakes the waiting tasks when a share comes free or a task leaves the queue.
     changed: Notify,
+    /// Fires when the run starts no more tasks, so that the tasks that wait give up.
+    held: CancellationToken,
 }
 
 /// The place of a task in the queue: its priority, the highest first, then when it came.
@@ -87,7 +90,19 @@ impl Pool {
                 came: 0,
             }),
             changed: Notify::new(),
+            held: CancellationToken::new(),
         }
+    }
+
+    /// Gives no more shares: the tasks that wait for theirs, and those that come later, wait
+    /// for `held` instead, as a run that ends after a failure starts no more tasks.
+    pub fn hold(&self) {
+        self.held.cancel();
+    }
+
+    /// Ends when the pool is held.
+    pub async fn held(&self) {
+        self.held.cancelled().await
     }
 
     /// All CPUs and all memory of this machine.
@@ -209,5 +224,14 @@ mod tests {
             task.await.expect("the task ends");
         }
         assert_eq!(*order.lock().unwrap(), ["b", "d", "c", "a"]);
+    }
+
+    #[tokio::test]
+    async fn a_held_pool_lets_waiting_tasks_give_up() {
+        let pool = Pool::new(1, 1024 * MIB);
+        let timeout = std::time::Duration::from_millis(20);
+        assert!(tokio::time::timeout(timeout, pool.held()).await.is_err());
+        pool.hold();
+        assert!(tokio::time::timeout(timeout, pool.held()).await.is_ok());
     }
 }

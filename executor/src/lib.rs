@@ -41,4 +41,10 @@ pub trait Backend: Send + Sync + 'static {
         job: Job<'_>,
         cancel: &CancellationToken,
     ) -> impl Future<Output = Result<Finished, ExecutorError>> + Send;
+
+    /// Starts no attempt that waits for its turn on this machine, as a run that ends after a
+    /// failure starts no more tasks; an attempt that waits ends as cancelled. Backends whose
+    /// attempts wait in a queue of their server or cluster start them all, as Snakemake does
+    /// with the jobs that it submitted to a cluster. The default holds nothing.
+    fn hold(&self) {}
 }

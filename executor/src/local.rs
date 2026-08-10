@@ -57,6 +57,10 @@ impl crate::Backend for LocalContainer {
         image::pin(&self.engine, image).await
     }
 
+    fn hold(&self) {
+        self.pool.hold();
+    }
+
     /// Runs a task in `<scratch>/<name>`, a name that must not be in use: stages its inputs,
     /// runs the wrapper in the task's image as the current user, and reads the control files.
     /// The directory stays for the caller to take the outputs from, unless the attempt fails
@@ -72,9 +76,12 @@ impl crate::Backend for LocalContainer {
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
         let placement = job.placement;
+        // A task that waits for its share when the run is held never starts.
         let share = tokio::select! {
-            share = self.pool.share(placement.cpus, placement.memory_bytes, placement.priority) => share,
+            biased;
             () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
+            () = self.pool.held() => return Err(ExecutorError::Cancelled),
+            share = self.pool.share(placement.cpus, placement.memory_bytes, placement.priority) => share,
         };
         let root = self.scratch.join(job.name);
         let placed = {

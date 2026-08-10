@@ -84,6 +84,10 @@ impl Executor for Resumed {
     fn files(&self) -> Option<Arc<dyn Files>> {
         self.executor.files()
     }
+
+    fn hold(&mut self) {
+        self.executor.hold();
+    }
 }
 
 /// Passes the events of the engine to the recorder, and marks the results that came from an

@@ -107,6 +107,10 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
         let files = StorageFiles::new(&settings.storage, settings.downloads.clone());
         Some(Arc::new(files))
     }
+
+    fn hold(&mut self) {
+        self.runner.backend().hold();
+    }
 }
 
 /// What the reproducibility check of a task found, in words.

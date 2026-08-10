@@ -17,6 +17,7 @@ mod arguments;
 mod changes;
 mod check;
 mod clean;
+mod conda;
 mod detect;
 mod failure;
 mod fetched;
@@ -83,6 +84,7 @@ fn main() -> ExitCode {
         "check-order" => order::command(&arguments),
         "changes" => changes::command(&arguments),
         "repeat" => repeat::command(&arguments),
+        "lock-environment" => conda::command(&arguments),
         "time" => insight::time::command(&arguments),
         "compare" => insight::compare::command(&arguments),
         "replay" => insight::replay::command(&arguments),
@@ -691,6 +693,7 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
        iunctus check-order <workflow file or directory> [options]
        iunctus changes <run>
        iunctus repeat <run> [-executor <executor>] [-store <folder or address>] [options]
+       iunctus lock-environment <conda environment file> [-platform <name>] [-output <file>]
 
 options:
   -lang nextflow|snakemake|cwl|argo   the language, when the target does not tell it
@@ -744,9 +747,12 @@ options:
   -address <ip>, -port <number>       where the page listens (default: 127.0.0.1, a free port)
   -database <file>                    the run database (default: runs.sqlite in the cache)
   -output <folder or file>            where `export` writes the RO-Crate (default: <run>-crate),
-                                      and `telemetry` the trace (default:
-                                      <run>-traces.jsonl)
+                                      `telemetry` the trace (default: <run>-traces.jsonl),
+                                      and `lock-environment` the lock (default: standard
+                                      output; a .txt file gets conda's explicit list)
   -license <url>                      the license of the exported crate
+  -platform <name>                    the conda platform of `lock-environment`, like linux-64
+                                      (default: Linux on the processor of this machine)
   -format json|text                   what `inputs` writes: the JSON Schema of the inputs
                                       (the default), or the inputs as help text;
                                       for `outputs` the same of the outputs

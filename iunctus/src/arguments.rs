@@ -77,6 +77,8 @@ pub struct Arguments {
     pub database: Option<PathBuf>,
     /// `-output folder`: where `iunctus export` writes the crate.
     pub output: Option<PathBuf>,
+    /// `-platform name`: the conda platform of a lock, like `linux-64`.
+    pub platform: Option<String>,
     /// `-license url`: the license of an exported crate.
     pub license: Option<String>,
     /// `-resume [run]`: continue a run, by default the last run of the workflow.
@@ -205,6 +207,7 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
             "-database" => parsed.database = Some(value()?.into()),
             "-output" => parsed.output = Some(value()?.into()),
             "-license" => parsed.license = Some(value()?),
+            "-platform" => parsed.platform = Some(value()?),
             "-resume" => {
                 // The run is optional: the next argument is taken only when it looks like a run.
                 parsed.resume = Some(

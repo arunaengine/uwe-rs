@@ -7,13 +7,16 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod environment;
 mod lock;
 mod repodata;
+mod solve;
 mod spec;
 mod version;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+pub use environment::{Environment, EnvironmentError};
 pub use lock::{FORMAT, Lock, Package, base};
 pub use repodata::{Index, Record, channels, repodata_path};
 pub use spec::{MatchSpec, SpecError};
@@ -74,4 +77,35 @@ fn missing_downloads(missing: &[(String, String, PathBuf)]) -> String {
         })
         .collect();
     lines.join(", ")
+}
+
+/// The platform of the containers of this machine as conda names it: Linux on this machine's
+/// processor, like `linux-64` or `linux-aarch64`.
+pub fn platform() -> String {
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "64",
+        "aarch64" => "aarch64",
+        "powerpc64" => "ppc64le",
+        other => other,
+    };
+    format!("linux-{arch}")
+}
+
+/// Locks an environment for a platform with the repodata in `folder`.
+pub fn lock(environment: &Environment, folder: &Path, platform: &str) -> Result<Lock, LockError> {
+    let channels = channels(&environment.channels);
+    let index = Index::load(folder, &channels, platform)?;
+    let records = solve::solve(&index, &environment.dependencies)?;
+    Ok(Lock {
+        format: FORMAT,
+        platform: platform.to_owned(),
+        channels,
+        specs: environment
+            .dependencies
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+        pip: environment.pip.clone(),
+        packages: records.into_iter().map(Package::of).collect(),
+    })
 }

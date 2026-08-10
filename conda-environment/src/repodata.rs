@@ -144,4 +144,14 @@ impl Index {
         })
     }
 
+    /// The packages of a name, from the first channel that has it, or from the channel named.
+    pub(crate) fn candidates(&self, name: &str, channel: Option<&str>) -> Vec<&Record> {
+        let Some(records) = self.by_name.get(name) else {
+            return Vec::new();
+        };
+        let wanted = channel.or_else(|| records.first().map(|record| record.channel.as_str()));
+        (records.iter())
+            .filter(|record| Some(record.channel.as_str()) == wanted)
+            .collect()
+    }
 }

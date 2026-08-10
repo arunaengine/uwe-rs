@@ -179,3 +179,73 @@ pub(crate) fn glob(pattern: &str, text: &str) -> bool {
     }
     rest.ends_with(last)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn record(name: &str, version: &str, build: &str) -> Record {
+        Record {
+            name: name.into(),
+            version: version.into(),
+            build: build.into(),
+            ..Record::default()
+        }
+    }
+
+    fn spec(text: &str) -> MatchSpec {
+        MatchSpec::parse(text).unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    #[test]
+    fn the_forms_of_environment_files() {
+        let fastqc = spec("bioconda::fastqc=0.12.1=hdfd78af_0");
+        assert_eq!(fastqc.channel.as_deref(), Some("bioconda"));
+        assert!(fastqc.matches(&record("fastqc", "0.12.1", "hdfd78af_0")));
+        assert!(!fastqc.matches(&record("fastqc", "0.12.1", "hdfd78af_1")));
+        let samtools = spec("samtools=1.17");
+        assert!(samtools.matches(&record("samtools", "1.17", "h00cdaf9_0")));
+        assert!(samtools.matches(&record("samtools", "1.17.1", "h00cdaf9_0")));
+        assert!(!samtools.matches(&record("samtools", "1.18", "h00cdaf9_0")));
+        assert!(!spec("samtools==1.17").matches(&record("samtools", "1.17.1", "0")));
+        assert!(spec("r-base>=4.1,<4.3").matches(&record("r-base", "4.2.3", "0")));
+        assert!(spec("R-Base").matches(&record("r-base", "4.2.3", "0")));
+        assert!(spec("python=3.10 # a comment").matches(&record("python", "3.10.8", "0")));
+        // Spaces around operators and commas count for nothing.
+        assert!(spec("bcftools = 1.15").matches(&record("bcftools", "1.15.1", "0")));
+        assert!(!spec("annotsv == 3.4.2").matches(&record("annotsv", "3.4.3", "0")));
+        assert!(spec("bbmap >= 39.01, <40").matches(&record("bbmap", "39.06", "0")));
+        assert!(!spec("bbmap >= 39.01, <40").matches(&record("bbmap", "40.0", "0")));
+    }
+
+    #[test]
+    fn the_form_of_the_dependencies_of_packages() {
+        let python = spec("python >=3.8,<3.9.0a0");
+        assert!(python.matches(&record("python", "3.8.18", "h955ad1f_0")));
+        assert!(!python.matches(&record("python", "3.9.0", "0")));
+        let abi = spec("python_abi 3.8.* *_cp38");
+        assert!(abi.matches(&record("python_abi", "3.8", "4_cp38")));
+        assert!(!abi.matches(&record("python_abi", "3.8", "4_cp39")));
+        assert!(spec("libzlib 1.2.13").matches(&record("libzlib", "1.2.13", "0")));
+        let cpython = spec("python >=3.8 *_cpython");
+        assert!(cpython.matches(&record("python", "3.12.1", "h1_0_cpython")));
+        assert!(!cpython.matches(&record("python", "3.12.1", "h1_0_pypy")));
+        assert!(!spec("libzlib 1.2.13").matches(&record("libzlib", "1.2.13.1", "0")));
+    }
+
+    #[test]
+    fn what_is_no_match_spec() {
+        for text in [
+            "",
+            "name[version='1.0']",
+            "a b c d",
+            "bad name!",
+            "x=>=<1",
+            "b:c=1",
+        ] {
+            assert!(MatchSpec::parse(text).is_err(), "{text}");
+        }
+        assert!(glob("py3*_0", "py39_0"));
+        assert!(!glob("py3*_0", "py39_1"));
+    }
+}

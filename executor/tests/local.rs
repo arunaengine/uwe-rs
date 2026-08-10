@@ -74,11 +74,7 @@ fn executor(root: &Path) -> LocalContainer {
     let engine = runtime()
         .block_on(ContainerEngine::find())
         .expect("an engine");
-    LocalContainer {
-        engine,
-        scratch: root.join("scratch"),
-        pool: Pool::new(2, 1 << 30),
-    }
+    LocalContainer::new(engine, root.join("scratch"), Pool::new(2, 1 << 30))
 }
 
 /// Runs a job to its end.

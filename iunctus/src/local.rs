@@ -26,11 +26,7 @@ pub fn executor(
     let named = Some(engine).filter(|name| !name.is_empty());
     let found = runtime.block_on(ContainerEngine::named(named));
     let engine = found.map_err(|error| error.to_string())?;
-    let backend = LocalContainer {
-        engine,
-        scratch: scratch.to_owned(),
-        pool: Pool::of_this_machine(),
-    };
+    let backend = LocalContainer::new(engine, scratch.to_owned(), Pool::of_this_machine());
     // Remote inputs share the folder of downloads with the files that workflow code reads.
     let runner = Runner::new(store, backend, run, crate::runner_settings(storage, false));
     Ok(RunnerExecutor::new(runner, default_image))

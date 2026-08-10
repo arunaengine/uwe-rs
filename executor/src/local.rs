@@ -2,8 +2,10 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashMap;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bollard::models::{ContainerCreateBody, HostConfig, MountType};
@@ -13,10 +15,11 @@ use bollard::query_parameters::{
 };
 use futures_util::StreamExt;
 use task_model::{Image, TaskSpec};
+use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
 
 use crate::engine::{ContainerEngine, EngineCommand};
-use crate::image;
+use crate::image::{self, Commands};
 use crate::job::{CONTROL, ExecutorError, Finished, HOME, Job, WORK};
 use crate::manifest::parse;
 use crate::pool::{Pool, Share};
@@ -35,6 +38,9 @@ pub struct LocalContainer {
     pub scratch: PathBuf,
     /// The CPUs and memory that tasks share.
     pub pool: Pool,
+    /// What containers of each image run by default, asked once per run, as the runner pins
+    /// each image once per run.
+    commands: Mutex<HashMap<String, Arc<OnceCell<Commands>>>>,
 }
 
 /// How long the backend waits between two looks at a running container, at most.
@@ -246,6 +252,17 @@ impl ContainerRun<'_> {
 }
 
 impl LocalContainer {
+    /// The executor of a run with the engine of this machine, which runs each task in its
+    /// own scratch directory in `scratch`, within its share of `pool`.
+    pub fn new(engine: ContainerEngine, scratch: PathBuf, pool: Pool) -> LocalContainer {
+        LocalContainer {
+            engine,
+            scratch,
+            pool,
+            commands: Mutex::default(),
+        }
+    }
+
     /// Runs the container of a staged task to its end, within its share of the pool.
     async fn contain(
         &self,
@@ -259,11 +276,8 @@ impl LocalContainer {
         let mut spec = job.spec.clone();
         // The command runs through the image's entrypoint, as `docker run` runs it, which
         // some images need to set up their tools.
-        let entrypoint = image::entrypoint(&self.engine, &image.reference).await?;
-        spec.arguments = match spec.arguments.is_empty() {
-            true => image::default_command(&self.engine, &image.reference).await?,
-            false => entrypoint.into_iter().chain(spec.arguments).collect(),
-        };
+        let commands = self.commands(&image.reference).await?;
+        spec.arguments = commands.arguments(&image.reference, spec.arguments)?;
         let owner = tokio::fs::metadata(root).await?;
         let container = format!("iunctus-{}", job.name);
         let run = ContainerRun {
@@ -308,6 +322,16 @@ impl LocalContainer {
         let _ = client.remove_container(&container, Some(remove)).await;
         self.finish(ended?, root.to_owned()).await
     }
+    /// What containers of an image run by default, asked once per run.
+    async fn commands(&self, reference: &str) -> Result<Commands, ExecutorError> {
+        let cell = {
+            let mut commands = (self.commands.lock()).unwrap_or_else(|poison| poison.into_inner());
+            commands.entry(reference.to_owned()).or_default().clone()
+        };
+        let asked = cell.get_or_try_init(|| Commands::of(&self.engine, reference));
+        asked.await.cloned()
+    }
+
     /// Waits for the container to end, and stops it when `cancel` fires or its time is up.
     async fn wait(
         &self,

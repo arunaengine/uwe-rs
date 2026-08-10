@@ -388,7 +388,8 @@ impl LocalContainer {
     /// exit code. A container that could not run the wrapper (exit code 126 or 127, as for an
     /// image without Bash), or an end without the tool's exit code, is a failure of the
     /// machine. A container stopped by a signal, as for lack of memory, ends the task with the
-    /// container's exit code, and so does one that ran out of time.
+    /// container's exit code, and so does one that ran out of time; that one fails even when its
+    /// tool ended well while the engine stopped it.
     async fn finish(&self, ending: Ending, root: PathBuf) -> Result<Finished, ExecutorError> {
         let control = root.join(CONTROL);
         let recorded = read(&control.join(EXIT)).and_then(|text| text.trim().parse().ok());
@@ -407,6 +408,9 @@ impl LocalContainer {
                     },
                 });
             }
+            // A tool that ended well while the engine stopped it still ran out of time; 143 is
+            // the code of a stop by SIGTERM.
+            (_, 0, Some(_), _) => 143,
             (_, status, _, _) => status,
         };
         let note = match (ending.timed_out, ending.out_of_memory) {

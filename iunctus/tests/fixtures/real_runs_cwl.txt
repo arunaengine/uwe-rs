@@ -1,5 +1,5 @@
 # The CWL conformance tests (v1.2) run for real by iunctus and by cwltool, compared by their output objects; written by real_runs_cwl.py.
-# 287 tests: 1 cwltool fails, 1 differs, 1 iunctus fails, 283 same, 1 skipped.
+# 287 tests: 2 cwltool fails, 284 same, 1 skipped.
 anonymous_enum_in_array same
 any_input_param same
 any_input_param_graph_no_default same
@@ -8,7 +8,7 @@ any_outputSource_compatibility same
 any_without_defaults_specified_fails same: both fail
 any_without_defaults_unspecified_fails same: both fail
 booleanflags_cl_noinputbinding same
-capture_dirs same
+capture_dirs same: both fail
 capture_files same: both fail
 capture_files_and_dirs same
 cat_synthetic_file same
@@ -29,7 +29,7 @@ clt_optional_union_input_file_or_files_with_many_files_provided same
 clt_optional_union_input_file_or_files_with_nothing_provided same
 clt_optional_union_input_file_or_files_with_single_file_provided same
 colon_in_output_path same
-colon_in_paths iunctus fails (exit 1): task colon:test: Docker at /var/run/docker.sock could not run the task: Docker responded with status code 500: invalid volume specification: '/tmp/iunctus-real-
+colon_in_paths same
 cores_float same
 cwl_requirements_addition same
 cwl_requirements_override_expression same
@@ -73,7 +73,7 @@ expressionlib_tool_wf_override same
 exprtool_directory_literal same
 exprtool_file_literal same
 fileliteral_input_docker same
-filename_with_hash_mark same: both fail
+filename_with_hash_mark cwltool fails (exit 1): Invalid filename: 'item #1.txt' contains illegal characters[0m
 filesarray_secondaryfiles same
 filesarray_secondaryfiles2 same: both fail
 format_checking same
@@ -207,7 +207,7 @@ step_input_default_value_overriden_noexp same
 storage_float same
 success_codes same
 timelimit_basic same: fails as the test expects
-timelimit_basic_wf differs: output.o: "/var/spool/cwl" instead of "/lufbVN"
+timelimit_basic_wf same: fails as the test expects
 timelimit_expressiontool same
 timelimit_from_expression same
 timelimit_from_expression_wf same

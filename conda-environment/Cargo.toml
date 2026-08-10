@@ -1,0 +1,22 @@
+# Manifest of conda-environment, Conda environment files and their locks from local repodata.
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "conda-environment"
+description = "Conda environment files, match specs, the order of conda versions, and locks from the repodata of a local folder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+argo-parser.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

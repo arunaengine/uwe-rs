@@ -738,6 +738,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "conda-environment"
+version = "0.1.0"
+dependencies = [
+ "argo-parser",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "config-file"
 version = "0.1.0"
 dependencies = [

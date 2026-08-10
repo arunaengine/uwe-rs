@@ -59,27 +59,44 @@ async fn pull(engine: &ContainerEngine, reference: &str) -> Result<(), ExecutorE
     Ok(())
 }
 
-/// The entrypoint of an image, which runs the command of a container; empty for none.
-pub(crate) async fn entrypoint(
-    engine: &ContainerEngine,
-    reference: &str,
-) -> Result<Vec<String>, ExecutorError> {
-    let config = inspect(engine, reference).await?.config.unwrap_or_default();
-    Ok(config.entrypoint.unwrap_or_default())
+/// What a container of an image runs by default: its entrypoint and its command.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Commands {
+    entrypoint: Vec<String>,
+    command: Vec<String>,
 }
 
-/// The default command of an image: its entrypoint, then its command.
-pub(crate) async fn default_command(
-    engine: &ContainerEngine,
-    reference: &str,
-) -> Result<Vec<String>, ExecutorError> {
-    let config = inspect(engine, reference).await?.config.unwrap_or_default();
-    let mut command = config.entrypoint.unwrap_or_default();
-    command.extend(config.cmd.unwrap_or_default());
-    if command.is_empty() {
-        return Err(ExecutorError::NoCommand(reference.to_owned()));
+impl Commands {
+    /// Asks the engine about an image.
+    pub(crate) async fn of(
+        engine: &ContainerEngine,
+        reference: &str,
+    ) -> Result<Commands, ExecutorError> {
+        let config = inspect(engine, reference).await?.config.unwrap_or_default();
+        Ok(Commands {
+            entrypoint: config.entrypoint.unwrap_or_default(),
+            command: config.cmd.unwrap_or_default(),
+        })
     }
-    Ok(command)
+
+    /// What a container of the image runs for a task: its arguments through the entrypoint,
+    /// as `docker run` runs them, or, for a task without arguments, the default command of
+    /// the image, its entrypoint and then its command.
+    pub(crate) fn arguments(
+        &self,
+        reference: &str,
+        arguments: Vec<String>,
+    ) -> Result<Vec<String>, ExecutorError> {
+        let arguments = match arguments.is_empty() {
+            true => self.command.clone(),
+            false => arguments,
+        };
+        let command: Vec<String> = (self.entrypoint.iter().cloned()).chain(arguments).collect();
+        if command.is_empty() {
+            return Err(ExecutorError::NoCommand(reference.to_owned()));
+        }
+        Ok(command)
+    }
 }
 
 /// The reference with the first digest of the image's `RepoDigests`, which look like
@@ -139,6 +156,26 @@ mod tests {
             "Get \"https://registry-1.docker.io/v2/\": dial tcp: lookup registry-1.docker.io: \
              i/o timeout"
         ));
+    }
+
+    #[test]
+    fn tasks_run_through_the_entrypoint_or_run_the_default_command() {
+        let words =
+            |words: &[&str]| -> Vec<String> { words.iter().map(|w| (*w).to_owned()).collect() };
+        let commands = Commands {
+            entrypoint: words(&["/entry.sh"]),
+            command: words(&["serve"]),
+        };
+        let given = commands
+            .arguments("tool", words(&["-c", "x"]))
+            .expect("a command");
+        assert_eq!(given, ["/entry.sh", "-c", "x"]);
+        let default = commands.arguments("tool", Vec::new()).expect("a command");
+        assert_eq!(default, ["/entry.sh", "serve"]);
+        let none = Commands::default()
+            .arguments("tool", Vec::new())
+            .unwrap_err();
+        assert!(matches!(none, ExecutorError::NoCommand(_)), "{none}");
     }
 
     #[test]

@@ -1,0 +1,101 @@
+//! The lock of an environment: the packages that it installs for a platform, each with its
+//! channel, file, address and digest, so that the same environment is built again anywhere.
+//! Its digest names the environment, as decision 12 asks: an image built from it is reused by
+//! the lock, the base image, the platform and the recipe.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use serde::{Deserialize, Serialize};
+use sha2::{Digest as _, Sha256};
+
+use crate::repodata::Record;
+
+/// The version of the format of locks; a change of the format raises it.
+pub const FORMAT: u32 = 1;
+
+/// The packages of an environment for a platform.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Lock {
+    pub format: u32,
+    /// The platform, like `linux-64`.
+    pub platform: String,
+    pub channels: Vec<String>,
+    /// The match specs of the environment file.
+    pub specs: Vec<String>,
+    /// The packages that `pip` installs, which the lock does not pin yet.
+    pub pip: Vec<String>,
+    /// The packages, sorted by name.
+    pub packages: Vec<Package>,
+}
+
+/// A locked package.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Package {
+    pub name: String,
+    pub version: String,
+    pub build: String,
+    pub channel: String,
+    pub subdir: String,
+    /// The file of the package, like `samtools-1.17-hd87286a_1.tar.bz2`.
+    pub file: String,
+    pub url: String,
+    pub sha256: Option<String>,
+    pub md5: Option<String>,
+}
+
+impl Package {
+    pub(crate) fn of(record: &Record) -> Package {
+        Package {
+            name: record.name.clone(),
+            version: record.version.clone(),
+            build: record.build.clone(),
+            channel: record.channel.clone(),
+            subdir: record.subdir.clone(),
+            file: record.file.clone(),
+            url: format!(
+                "{}/{}/{}",
+                base(&record.channel),
+                record.subdir,
+                record.file
+            ),
+            sha256: record.sha256.clone(),
+            md5: record.md5.clone(),
+        }
+    }
+}
+
+/// Where a channel serves its packages: Anaconda's own channels at repo.anaconda.com, the
+/// others at conda.anaconda.org.
+pub fn base(channel: &str) -> String {
+    match channel.strip_prefix("pkgs/") {
+        Some(_) => format!("https://repo.anaconda.com/{channel}"),
+        None => format!("https://conda.anaconda.org/{channel}"),
+    }
+}
+
+impl Lock {
+    /// `sha256:<hex>` of the lock as JSON, which names the environment.
+    pub fn digest(&self) -> String {
+        // Serializing a lock cannot fail: its fields are texts and lists.
+        let bytes = serde_json::to_vec(self).unwrap_or_default();
+        let hex: String = (Sha256::digest(&bytes).iter())
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        format!("sha256:{hex}")
+    }
+
+    /// The explicit list that conda and micromamba install from without solving:
+    /// `@EXPLICIT`, then the address of each package with its MD5 digest.
+    pub fn explicit(&self) -> String {
+        let mut text = format!("# platform: {}\n@EXPLICIT\n", self.platform);
+        for package in &self.packages {
+            text.push_str(&package.url);
+            if let Some(md5) = &package.md5 {
+                text.push('#');
+                text.push_str(md5);
+            }
+            text.push('\n');
+        }
+        text
+    }
+}

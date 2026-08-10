@@ -307,7 +307,6 @@ mod tests {
                 .map(|(path, directory)| Collected {
                     path: (*path).to_owned(),
                     directory: *directory,
-                    size: 0,
                 })
                 .collect(),
             root: scratch,

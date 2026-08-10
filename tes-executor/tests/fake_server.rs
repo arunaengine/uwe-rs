@@ -46,7 +46,7 @@ fn leave(output: &serde_json::Value) {
     match output["path"].as_str() {
         Some("/iunctus/control") => {
             std::fs::write(folder.join("exit"), "0\n").expect("writes");
-            std::fs::write(folder.join("manifest"), "file 3 out.txt\n").expect("writes");
+            std::fs::write(folder.join("manifest"), "file out.txt\n").expect("writes");
         }
         _ => std::fs::write(folder.join("out.txt"), "hi\n").expect("writes"),
     }

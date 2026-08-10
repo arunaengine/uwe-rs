@@ -41,7 +41,7 @@ The largest gaps are the same in every language: results are not delivered, and 
 | --- | --- | --- |
 | Delivering results: Nextflow `publishDir` and the `output` block, Snakemake target files in the workflow folder, the CWL output object, Argo output artifacts | Every real run: outputs stay in the store ("Files are not copied yet" in the Nextflow driver) | Not built |
 | An image for every step: steps without a container need `-default-image` | Workflows that rely on tools installed on the host, CWL tools without `DockerRequirement` | Decided (decision 11) |
-| Images built from Conda environments | Snakemake rules with only `conda:`, Nextflow processes with only `conda` | Not built (decision 12) |
+| Images built from Conda environments | Snakemake rules with only `conda:`, Nextflow processes with only `conda` | Locked without network from local repodata (`iunctus lock-environment`, see [Conda environments](design/conda.md)); images not built yet (decision 12) |
 | Run reports: Nextflow trace, timeline and report files, Snakemake `benchmark:` files and `--report` | Users who read timings, memory use and costs | Not built |
 | Language coverage: Groovy, Python and JavaScript cover what the test workflows use | Workflows outside the test set may stop with a clear error (exit code 33), never with a wrong result | Grows with each new test workflow |
 

@@ -1974,6 +1974,7 @@ name = "iunctus"
 version = "0.1.0"
 dependencies = [
  "argo-runtime",
+ "conda-environment",
  "config-file",
  "content-store",
  "cwl-runtime",

@@ -547,7 +547,9 @@ async fn append(path: &Path, text: &str) -> std::io::Result<()> {
         .append(true)
         .open(path)
         .await?;
-    file.write_all(text.as_bytes()).await
+    file.write_all(text.as_bytes()).await?;
+    // Tokio writes in the background; the caller may read the file at once.
+    file.flush().await
 }
 
 /// A bind in the form of `docker run --volume`: `<source>:<target>`, with `:ro` when it is

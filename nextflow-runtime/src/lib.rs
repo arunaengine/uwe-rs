@@ -160,6 +160,11 @@ impl Run {
         self.network.take_deliveries()
     }
 
+    /// Whether the run ends once the running tasks have ended, after a failure.
+    pub fn draining(&self) -> bool {
+        self.network.draining()
+    }
+
     /// Checks that the run ended, then runs the `workflow.onComplete` handlers. No task may
     /// run and no step may wait for input: a run that would wait forever in Nextflow is an
     /// error here.

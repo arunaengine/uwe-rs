@@ -8,6 +8,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::thread::JoinHandle;
@@ -636,6 +637,11 @@ impl Session {
         self.ready_tasks(Some(job))
     }
 
+    /// Whether the run ends after a failed job: the running jobs end, and no other job starts.
+    pub fn draining(&self) -> bool {
+        !self.failures.is_empty() && !self.launch.keep_going
+    }
+
     /// The name of the rule of a job.
     fn rule_name(&self, job: usize) -> String {
         (self.planner.as_ref())
@@ -807,6 +813,8 @@ struct SnakemakeDriver {
     deliveries: Arc<Mutex<Vec<Delivery>>>,
     /// The files of the tasks, which the session reads outputs through.
     files: Arc<OnceLock<Arc<dyn Files>>>,
+    /// Whether the session drains the run after a failed job, as of its last reply.
+    draining: Arc<AtomicBool>,
 }
 
 impl SnakemakeDriver {
@@ -850,6 +858,10 @@ impl Driver for SnakemakeDriver {
 
     fn use_files(&mut self, files: Arc<dyn Files>) {
         let _ = self.files.set(files);
+    }
+
+    fn draining(&self) -> bool {
+        self.draining.load(Ordering::Relaxed)
     }
 
     fn inputs(&mut self) -> Result<Option<Inputs>, DriverError> {
@@ -913,6 +925,8 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
     let shared = deliveries.clone();
     let files: Arc<OnceLock<Arc<dyn Files>>> = Arc::default();
     let task_files = files.clone();
+    let draining: Arc<AtomicBool> = Arc::default();
+    let session_draining = draining.clone();
     let worker = std::thread::Builder::new()
         .name("snakemake".into())
         .stack_size(512 << 20)
@@ -996,6 +1010,7 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
                 if let Ok(mut notes) = session_notes.lock() {
                     notes.extend(session.take_notes());
                 }
+                session_draining.store(session.draining(), Ordering::Relaxed);
                 if channel.replies.send(reply).is_err() {
                     break;
                 }
@@ -1013,6 +1028,7 @@ pub fn driver_with(launch: &Launch, settings: Settings) -> Result<Box<dyn Driver
         notes,
         deliveries,
         files,
+        draining,
     }))
 }
 

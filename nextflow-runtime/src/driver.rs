@@ -360,6 +360,10 @@ impl Driver for Nextflow {
         Ok(self.tasks(requests))
     }
 
+    fn draining(&self) -> bool {
+        self.run.as_ref().is_some_and(Run::draining)
+    }
+
     fn finish(&mut self) -> Result<(), DriverError> {
         let run = self.run.as_mut().ok_or_else(not_started)?;
         run.finish(self.settings.host.as_mut()).map_err(error)?;

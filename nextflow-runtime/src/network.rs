@@ -311,6 +311,12 @@ impl Network {
         self.keep_going = keep_going;
     }
 
+    /// Whether the run ends once the running tasks have ended, after a task with the error
+    /// strategy `finish` failed: no other task starts, as Nextflow submits none.
+    pub fn draining(&self) -> bool {
+        self.failure.is_some() && !self.keep_going
+    }
+
     /// The failure that ends the run once the running tasks have ended, if there is one.
     pub fn take_failure(&mut self) -> Option<Error> {
         self.failure.take()

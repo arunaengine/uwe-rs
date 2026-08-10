@@ -205,6 +205,10 @@ impl Driver for CwlDriver {
         self.run.take_notes()
     }
 
+    fn draining(&self) -> bool {
+        !self.failures.is_empty() && !self.launch.keep_going
+    }
+
     fn use_files(&mut self, files: Arc<dyn Files>) {
         self.run.use_files(files);
     }

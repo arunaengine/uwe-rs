@@ -7,13 +7,17 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use content_store::{Store, layout};
+use content_store::{Store, StoredOutput, layout};
 use executor::Finished;
 use executor::manifest::Collected;
 use task_model::{Digest, Tree, TreeEntry};
 
 use crate::runner::at;
-use crate::{RunnerError, StoredFile, TaskResult};
+use crate::{DigestCache, RunnerError, StoredFile, TaskResult};
+
+/// Outputs from this size on get their digests kept in the cache of digests; smaller files are
+/// read again faster.
+const KEPT_FROM: u64 = 1 << 20;
 
 /// Stores the outputs of a finished attempt of `task` in the run `run`, and its captured
 /// streams by their content.
@@ -21,19 +25,23 @@ use crate::{RunnerError, StoredFile, TaskResult};
 /// Directories come first, the outer ones before those inside them: an output inside a
 /// directory output of the same task, as Snakemake allows, is part of what the directory
 /// stored already. A file that the task reaches through a link, like a directory output that
-/// is a link to an input, is copied; only the files of the scratch directory are moved.
+/// is a link to an input, is copied; only the files of the scratch directory are moved. The
+/// digests of large files that a local store took over go into `digests`, so that later tasks
+/// that read them do not read them again.
 pub(crate) async fn store_outputs(
     store: &Store,
     run: &str,
     finished: &Finished,
     task: &str,
     attempt: u32,
+    digests: Option<&DigestCache>,
 ) -> Result<TaskResult, RunnerError> {
     let place = Place {
         run,
         task,
         attempt,
         scratch: Scratch::of(&finished.root)?,
+        digests,
     };
     let mut order: Vec<&Collected> = finished.files.iter().collect();
     order.sort_by_key(|collected| (!collected.directory, collected.path.len()));
@@ -63,6 +71,7 @@ pub(crate) async fn store_outputs(
         } else {
             let local = place.scratch.own(&finished.local_path(path)).await?;
             let output = store.adopt_output(run, task, attempt, path, &local).await?;
+            place.remember(store, &output).await;
             (output.digest, output.size)
         };
         let file = StoredFile {
@@ -142,6 +151,19 @@ struct Place<'a> {
     task: &'a str,
     attempt: u32,
     scratch: Scratch,
+    digests: Option<&'a DigestCache>,
+}
+
+impl Place<'_> {
+    /// Keeps the digest of a large output that a local store took over.
+    async fn remember(&self, store: &Store, output: &StoredOutput) {
+        let path = store.local_path(&output.location);
+        if let (Some(digests), Some(path)) = (self.digests, path)
+            && output.size >= KEPT_FROM
+        {
+            digests.keep_stored(&path, &output.digest).await;
+        }
+    }
 }
 
 /// The scratch directory of an attempt, whose files the store may take over.
@@ -207,6 +229,7 @@ async fn store_directory(
                 let stored = store
                     .adopt_output(run, task, attempt, &inside, &local)
                     .await?;
+                place.remember(store, &stored).await;
                 entries.push(TreeEntry::File {
                     path: relative,
                     digest: stored.digest,
@@ -319,7 +342,7 @@ mod tests {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .build()
             .expect("a runtime");
-        let stored = store_outputs(&store, "run", finished, "task", 1);
+        let stored = store_outputs(&store, "run", finished, "task", 1, None);
         runtime.block_on(stored).expect("stores the outputs")
     }
 

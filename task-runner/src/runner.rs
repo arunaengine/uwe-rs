@@ -370,8 +370,16 @@ impl<B: Backend> Runner<B> {
             false => self.backend.run(job, cancel).await?,
         };
         let milliseconds = begun.elapsed().as_millis() as u64;
-        let stored =
-            outputs::store_outputs(&self.store, &self.run, &finished, &task, request.attempt).await;
+        let digests = self.settings.digests.as_ref();
+        let stored = outputs::store_outputs(
+            &self.store,
+            &self.run,
+            &finished,
+            &task,
+            request.attempt,
+            digests,
+        )
+        .await;
         (tokio::fs::remove_dir_all(&finished.root).await).map_err(at(&finished.root))?;
         let result = stored?;
         if let Some(earlier) = earlier {

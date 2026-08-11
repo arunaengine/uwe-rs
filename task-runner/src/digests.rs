@@ -129,6 +129,18 @@ impl DigestCache {
         Ok((digest, size))
     }
 
+    /// Keeps the digest of a file that the caller has just read itself and that nothing
+    /// changes, like an output that the run moved into its store, even when the file is
+    /// recent: a later task that reads it as its input need not read it again.
+    pub async fn keep_stored(&self, file: &Path, digest: &Digest) {
+        let Ok(metadata) = tokio::fs::metadata(file).await else {
+            return;
+        };
+        let path = file.to_string_lossy().into_owned();
+        self.keep(path, Version::of(&metadata), digest.clone())
+            .await;
+    }
+
     /// The digest of the path in the cache, when it was kept for this version of the file.
     async fn known(&self, path: String, version: Version) -> Option<Digest> {
         let connection = self.connection.clone();
@@ -246,5 +258,17 @@ mod tests {
         let version = Version::of(&std::fs::metadata(&file).expect("reads the metadata"));
         let path = file.to_string_lossy().into_owned();
         assert_eq!(block_on(cache.known(path, version)), None);
+    }
+
+    #[test]
+    fn a_stored_file_is_known_at_once() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let cache = DigestCache::open(&folder.path().join("digests.sqlite")).expect("opens");
+        let file = folder.path().join("output.bam");
+        std::fs::write(&file, "made\n").expect("writes");
+        // The digest comes from the cache, not from reading the file.
+        let told = Digest::sha256(b"told");
+        block_on(cache.keep_stored(&file, &told));
+        assert_eq!(block_on(cache.hash(&file)).expect("hashes"), (told, 5));
     }
 }

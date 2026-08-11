@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use content_store::Store;
 use executor::{Backend, ExecutorError};
-use task_model::{Digest, ReuseScope};
+use task_model::{Digest, Measured, ReuseScope};
 use workflow_graph::{
     Attempt, CancellationToken, ExecuteError, Executor, Files, Network, Outcome, OutputFile,
     ReproducibilityCheck, Running, Task, Verdict,
@@ -36,6 +36,9 @@ pub struct RunnerExecutor<B> {
     pub reuse: bool,
     /// Which tasks get the network.
     pub network: NetworkRule,
+    /// What the tasks of each step used in earlier runs, which right-sizes the CPUs and memory
+    /// of the first attempt of a task (see [`crate::resources`]). Empty keeps what tasks ask.
+    pub measured: Arc<HashMap<String, Vec<Measured>>>,
 }
 
 impl<B: Backend> RunnerExecutor<B> {
@@ -47,6 +50,7 @@ impl<B: Backend> RunnerExecutor<B> {
             priorities: Arc::default(),
             reuse: true,
             network: NetworkRule::default(),
+            measured: Arc::default(),
         }
     }
 
@@ -82,9 +86,16 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
         let verbose = self.verbose;
         let priority = self.priorities.get(&task.step).copied().unwrap_or_default();
         let reuse = self.reuse;
+        let measured = self.measured.clone();
         Running::new(async move {
             let number = attempt.number;
-            let result = outcome(&runner, &task, number, priority, reuse, &attempt.cancel).await;
+            let measured = measured.get(&task.step).map_or(&[][..], Vec::as_slice);
+            let options = AttemptOptions {
+                priority,
+                reuse,
+                measured,
+            };
+            let result = outcome(&runner, &task, number, &options, &attempt.cancel).await;
             if verbose && let Ok(outcome) = &result {
                 let state = match (outcome.cached, outcome.exit_code) {
                     (true, _) => "cached".to_owned(),
@@ -172,13 +183,20 @@ fn with_network(task: Arc<Task>, rule: &NetworkRule) -> Arc<Task> {
     }
 }
 
+/// How an attempt of a task is placed and whether the cache may answer it.
+struct AttemptOptions<'a> {
+    priority: u64,
+    reuse: bool,
+    /// What the earlier tasks of its step used.
+    measured: &'a [Measured],
+}
+
 /// Runs an attempt of a task through the runner, and turns its result into an outcome.
 async fn outcome<B: Backend>(
     runner: &Runner<B>,
     task: &Task,
     attempt: u32,
-    priority: u64,
-    reuse: bool,
+    options: &AttemptOptions<'_>,
     cancel: &CancellationToken,
 ) -> Result<Outcome, ExecuteError> {
     let failed = |error: RunnerError| failure(task, error);
@@ -188,8 +206,11 @@ async fn outcome<B: Backend>(
     };
     let mut prepared = runner.request(task, image.clone()).await.map_err(failed)?;
     prepared.request.attempt = attempt;
-    prepared.request.placement.priority = priority;
-    if !reuse {
+    let placement = &prepared.request.placement;
+    prepared.request.placement =
+        crate::resources::placement(task, placement, attempt, options.measured);
+    prepared.request.placement.priority = options.priority;
+    if !options.reuse {
         prepared.request.scope = ReuseScope::None;
     }
     let result = runner.execute(&prepared, cancel).await.map_err(failed)?;

@@ -402,3 +402,100 @@ fn lost() -> ExecutorError {
         message: "it ended without an answer for this task".into(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use task_model::{FORMAT, Image};
+
+    fn member(
+        name: &str,
+        pattern: &str,
+    ) -> (Member, oneshot::Receiver<Result<Finished, ExecutorError>>) {
+        let (reply, answer) = oneshot::channel();
+        let spec = TaskSpec {
+            format: FORMAT,
+            namespace: String::new(),
+            image: Some(Image {
+                reference: "debian:stable-slim".into(),
+                platform: None,
+            }),
+            arguments: vec!["sh".into(), "-c".into(), "echo it's me > out.txt".into()],
+            workdir: None,
+            environment: Default::default(),
+            inputs: Vec::new(),
+            outputs: vec![OutputRule {
+                pattern: pattern.into(),
+            }],
+            stdin: None,
+        };
+        let member = Member {
+            name: name.into(),
+            spec,
+            staging: Staging {
+                inputs: vec![Staged {
+                    path: "in.txt".into(),
+                    source: "/data/in.txt".into(),
+                    ..Staged::default()
+                }],
+                directories: Vec::new(),
+                stdin: Some("/data/stdin".into()),
+            },
+            placement: Placement {
+                cpus: 1,
+                time_seconds: Some(10),
+                ..Placement::default()
+            },
+            per_container: 4,
+            cancel: CancellationToken::new(),
+            reply,
+        };
+        (member, answer)
+    }
+
+    #[test]
+    fn a_group_places_each_task_in_its_own_folder() {
+        let (first, _) = member("r-A-1-1", "out.txt");
+        let (second, _) = member("r-A-2-1", "out.txt");
+        let members = [first, second];
+        let (spec, staging, placement) = combined(&members, "/store/script".into());
+        assert_eq!(spec.arguments, ["sh", SCRIPT]);
+        let patterns: Vec<&str> = spec
+            .outputs
+            .iter()
+            .map(|rule| rule.pattern.as_str())
+            .collect();
+        assert_eq!(patterns, ["m0", "m1"]);
+        let paths: Vec<&str> = staging
+            .inputs
+            .iter()
+            .map(|input| input.path.as_str())
+            .collect();
+        assert_eq!(
+            paths,
+            [
+                SCRIPT,
+                "m0/work/in.txt",
+                "m0/control/stdin",
+                "m1/work/in.txt",
+                "m1/control/stdin"
+            ]
+        );
+        assert_eq!(placement.time_seconds, Some(20));
+        let text = script(&members);
+        assert!(text.contains("work=\"${0%/*/*}\"'/m1/work'"), "{text}");
+        assert!(text.contains("sh \"$group/m1/wrapper.sh\""), "{text}");
+        assert!(!text.contains(GROUP), "{text}");
+    }
+
+    #[test]
+    fn tasks_with_absolute_paths_run_alone() {
+        let (mut task, _) = member("r-A-1-1", "out.txt");
+        assert!(joinable(&task.job()));
+        task.spec.outputs[0].pattern = "/results/out.txt".into();
+        assert!(!joinable(&task.job()));
+        let (mut task, _) = member("r-A-1-1", "out.txt");
+        task.spec.workdir = Some("/work".into());
+        assert!(!joinable(&task.job()));
+    }
+}

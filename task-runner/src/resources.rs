@@ -53,6 +53,7 @@ mod tests {
             cpu_usec: Some(1_000_000),
             milliseconds: 1000,
             input_bytes: Some(3),
+            overhead: None,
         }];
         let first = placement(&task, &asked, 1, &measured);
         assert_eq!(first.cpus, 2);

@@ -447,6 +447,8 @@ fn the_measures_of_earlier_runs_come_by_step() {
     assert_eq!(align[0].cpu_usec, Some(300_000));
     assert_eq!(align[0].memory_peak, Some(3_000_000));
     assert_eq!(align[0].milliseconds, 200);
+    // The events of the test come at once, so the tool took longer than the hand-over.
+    assert_eq!(align[0].overhead, Some(0));
     assert!(
         database
             .measured("/work/other.nf")

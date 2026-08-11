@@ -408,3 +408,49 @@ fn inputs_that_tasks_made_are_compared_by_their_tasks() {
         [(Pairing::Same, &Vec::new()), (Pairing::Same, &Vec::new())]
     );
 }
+
+#[test]
+fn the_measures_of_earlier_runs_come_by_step() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    let mut recorder = Database::open(&path)
+        .and_then(|database| database.record(&start("run-m")))
+        .expect("starts a record");
+    let base = SystemTime::now() - Duration::from_secs(10);
+    // A task with an input of 5 bytes, a task that failed, and a task taken from the cache.
+    let mut sized = task(1, "ALIGN");
+    sized.inputs = vec![workflow_graph::Input {
+        path: "in.txt".into(),
+        content: Some("12345".into()),
+        ..workflow_graph::Input::default()
+    }];
+    attempt(&mut recorder, &sized, &[], &ran(1, base, 0, 200, 300_000));
+    let failed = Outcome {
+        exit_code: 1,
+        ..ran(2, base, 0, 100, 9_000)
+    };
+    attempt(&mut recorder, &task(2, "ALIGN"), &[], &failed);
+    let cached = Outcome {
+        cached: true,
+        ..ran(3, base, 0, 100, 9_000)
+    };
+    attempt(&mut recorder, &task(3, "MERGE"), &[], &cached);
+    recorder.ended(None);
+    recorder.close().expect("records the run");
+
+    let database = Database::open(&path).expect("opens again");
+    let measured = database.measured("/work/main.nf").expect("reads");
+    assert_eq!(measured.len(), 1, "{measured:?}");
+    let align = &measured["ALIGN"];
+    assert_eq!(align.len(), 1);
+    assert_eq!(align[0].input_bytes, Some(5));
+    assert_eq!(align[0].cpu_usec, Some(300_000));
+    assert_eq!(align[0].memory_peak, Some(3_000_000));
+    assert_eq!(align[0].milliseconds, 200);
+    assert!(
+        database
+            .measured("/work/other.nf")
+            .expect("reads")
+            .is_empty()
+    );
+}

@@ -19,6 +19,7 @@ mod compare;
 mod fingerprint;
 mod graph;
 mod keep;
+mod measured;
 mod origin;
 mod pinned;
 mod pins;

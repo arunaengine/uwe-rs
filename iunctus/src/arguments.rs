@@ -107,6 +107,9 @@ pub struct Arguments {
     /// `-no-network`: tasks whose workflow does not say that they need the network run
     /// without it.
     pub no_network: bool,
+    /// `-no-right-sizing`: tasks ask for the CPUs and memory that their workflow names, not
+    /// for what the tasks of their step used in earlier runs.
+    pub no_right_sizing: bool,
 }
 
 /// Which run `-resume` continues.
@@ -244,6 +247,7 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
                 ))?);
             }
             "-no-cache" => parsed.no_cache = true,
+            "-no-right-sizing" => parsed.no_right_sizing = true,
             "-address" => {
                 let text = value()?;
                 parsed.address = Some(text.parse().map_err(|_| {
@@ -604,6 +608,7 @@ mod tests {
     fn runs_can_go_without_the_cache() {
         assert!(!parse_all(&["main.nf"]).no_cache);
         assert!(parse_all(&["main.nf", "-no-cache"]).no_cache);
+        assert!(parse_all(&["main.nf", "-no-right-sizing"]).no_right_sizing);
     }
 
     #[test]

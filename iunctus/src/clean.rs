@@ -336,7 +336,7 @@ fn space(freed: u64) -> String {
 }
 
 /// A size in bytes, kB, MB, GB or TB, with one decimal from kB on.
-fn bytes(size: u64) -> String {
+pub(crate) fn bytes(size: u64) -> String {
     let units = ["kB", "MB", "GB", "TB"];
     if size < 1000 {
         return count(size as usize, "byte");

@@ -28,16 +28,21 @@ pub struct Measured {
     pub overhead: Option<u64>,
 }
 
-/// Whether the tasks of a step are short: their tools ran, on average, for less time than the
-/// executor spent on the least of them besides the tool. Such tasks save time when several run
-/// one after another in one container. A step without such measures is not short.
-pub fn short(measured: &[Measured]) -> bool {
+/// The most tasks that one container runs one after another.
+pub const MOST_TOGETHER: usize = 100;
+
+/// How many tasks of a step one container may run, one after another: as many as fit into the
+/// time that the executor spent on the least of them besides the tool, so that a group ends at
+/// most about one start-up later than a task alone, and at most [`MOST_TOGETHER`]. 1 for a step
+/// whose tasks are not short, or that has no such measures.
+pub fn per_container(measured: &[Measured]) -> usize {
     let least = measured.iter().filter_map(|task| task.overhead).min();
     let Some(least) = least else {
-        return false;
+        return 1;
     };
     let tool = measured.iter().map(|task| task.milliseconds).sum::<u64>() / measured.len() as u64;
-    tool < least
+    let fit = least / tool.max(1);
+    (fit as usize).clamp(1, MOST_TOGETHER)
 }
 
 /// The placement of a task with the CPUs and memory that the tasks of its step used in earlier
@@ -130,16 +135,23 @@ mod tests {
     }
 
     #[test]
-    fn short_tasks_ran_for_less_time_than_the_executor_spent_besides() {
+    fn as_many_short_tasks_run_together_as_fit_into_one_start_up() {
         let ran = |milliseconds, overhead| Measured {
             milliseconds,
             overhead,
             ..Measured::default()
         };
-        assert!(short(&[ran(100, Some(800)), ran(300, Some(2000))]));
-        assert!(!short(&[ran(900, Some(800)), ran(900, Some(2000))]));
-        assert!(!short(&[ran(100, None)]));
-        assert!(!short(&[]));
+        assert_eq!(
+            per_container(&[ran(100, Some(800)), ran(300, Some(2000))]),
+            4
+        );
+        assert_eq!(
+            per_container(&[ran(900, Some(800)), ran(900, Some(2000))]),
+            1
+        );
+        assert_eq!(per_container(&[ran(0, Some(800))]), MOST_TOGETHER);
+        assert_eq!(per_container(&[ran(100, None)]), 1);
+        assert_eq!(per_container(&[]), 1);
     }
 
     #[test]

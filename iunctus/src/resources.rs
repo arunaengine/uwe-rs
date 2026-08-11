@@ -151,6 +151,7 @@ mod tests {
             cpu_usec: Some(1_000_000),
             milliseconds: 1_000,
             input_bytes: None,
+            overhead: None,
         };
         let measured: Measures = Arc::new(
             [

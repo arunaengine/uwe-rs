@@ -22,6 +22,22 @@ pub struct Measured {
     pub cpu_usec: Option<u64>,
     /// How long its tool ran, in milliseconds.
     pub milliseconds: u64,
+    /// The milliseconds that the executor spent on the task besides its tool: from the
+    /// hand-over of the task to the result, less the time of the tool. It holds the start of
+    /// the container, staging and storing the outputs, and any wait for a free CPU.
+    pub overhead: Option<u64>,
+}
+
+/// Whether the tasks of a step are short: their tools ran, on average, for less time than the
+/// executor spent on the least of them besides the tool. Such tasks save time when several run
+/// one after another in one container. A step without such measures is not short.
+pub fn short(measured: &[Measured]) -> bool {
+    let least = measured.iter().filter_map(|task| task.overhead).min();
+    let Some(least) = least else {
+        return false;
+    };
+    let tool = measured.iter().map(|task| task.milliseconds).sum::<u64>() / measured.len() as u64;
+    tool < least
 }
 
 /// The placement of a task with the CPUs and memory that the tasks of its step used in earlier
@@ -109,7 +125,21 @@ mod tests {
             memory_peak: Some(peak),
             cpu_usec: Some(cpu_seconds * 1_000_000),
             milliseconds: seconds * 1000,
+            overhead: None,
         }
+    }
+
+    #[test]
+    fn short_tasks_ran_for_less_time_than_the_executor_spent_besides() {
+        let ran = |milliseconds, overhead| Measured {
+            milliseconds,
+            overhead,
+            ..Measured::default()
+        };
+        assert!(short(&[ran(100, Some(800)), ran(300, Some(2000))]));
+        assert!(!short(&[ran(900, Some(800)), ran(900, Some(2000))]));
+        assert!(!short(&[ran(100, None)]));
+        assert!(!short(&[]));
     }
 
     #[test]

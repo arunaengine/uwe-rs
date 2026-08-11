@@ -10,7 +10,7 @@ mod tree;
 
 pub use digest::{Digest, DigestError};
 pub use request::{Accelerator, Placement, ReuseScope, TaskRequest};
-pub use resources::{LEAST_MEMORY, Measured, right_sized};
+pub use resources::{LEAST_MEMORY, Measured, right_sized, short};
 pub use spec::{
     EnvironmentValue, FORMAT, FileKind, Image, InputFile, OutputRule, SpecError, TaskSpec,
 };

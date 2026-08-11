@@ -16,12 +16,9 @@ use crate::clean::bytes;
 /// What the tasks of each step used in earlier real runs.
 pub type Measures = Arc<HashMap<String, Vec<Measured>>>;
 
-/// What the tasks of each step of the workflow used in its earlier real runs. Empty with
-/// `-no-right-sizing`, before the first real run, or without a run database.
+/// What the tasks of each step of the workflow used in its earlier real runs. Empty before the
+/// first real run, or without a run database.
 pub fn measured(arguments: &Arguments) -> Measures {
-    if arguments.no_right_sizing {
-        return Measures::default();
-    }
     let Some(workflow) = crate::recorded_workflow(arguments) else {
         return Measures::default();
     };

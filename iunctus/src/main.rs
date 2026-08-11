@@ -325,7 +325,7 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
     }
     close(recorder);
     // A failed run leaves its error as the first line on standard error.
-    if execution.error.is_none() {
+    if execution.error.is_none() && !arguments.no_right_sizing {
         for line in resources::notes(&execution.graph, &measured, !real) {
             eprintln!("{line}");
         }
@@ -611,6 +611,8 @@ fn real<B: executor::Backend>(
 ) -> Result<Box<dyn Executor>, Failure> {
     executor.verbose = verbose;
     executor.measured = measured.clone();
+    executor.right_sizing = !arguments.no_right_sizing;
+    executor.together = !arguments.no_grouping;
     executor.reuse = reuse;
     executor.check_reproducibility(arguments.check_reproducibility.unwrap_or(0.0));
     executor.pin_images(&pinned.images);
@@ -769,6 +771,9 @@ options:
                                       every task runs
   -no-right-sizing                    tasks ask for the CPUs and memory that the workflow
                                       names, not for what earlier runs of their step used
+  -no-grouping                        runs each task in a container of its own; without it,
+                                      short tasks of a step run one after another in one
+                                      container
   -page                               serves the web page of the run while it goes on
   -address <ip>, -port <number>       where the page listens (default: 127.0.0.1, a free port)
   -database <file>                    the run database (default: runs.sqlite in the cache)

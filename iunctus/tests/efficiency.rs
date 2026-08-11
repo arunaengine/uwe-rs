@@ -1,7 +1,8 @@
-//! Right-sized resources in real runs: a run after an earlier one asks for the memory that its
-//! tasks used, not for what the workflow names, and says so; `-no-right-sizing` keeps what the
-//! workflow names. `cargo test -p iunctus --test efficiency -- --ignored` (needs Docker and the
-//! debian:stable-slim image).
+//! Right-sized resources and short tasks together in real runs: a run after an earlier one asks
+//! for the memory that its tasks used, not for what the workflow names, and says so;
+//! `-no-right-sizing` keeps what the workflow names. Short tasks run one after another in one
+//! container, each with its own outcome, log and outputs. `cargo test -p iunctus --test
+//! efficiency -- --ignored` (needs Docker and the debian:stable-slim image).
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -92,4 +93,161 @@ fn a_later_run_asks_for_the_memory_that_its_tasks_used() {
         output.contains("a real run would ask for less than the workflow"),
         "{output}"
     );
+}
+
+/// Twelve short tasks; the third fails.
+const SHORT: &str = r#"
+process SHORT {
+    container 'debian:stable-slim'
+    publishDir 'results', mode: 'copy'
+    errorStrategy 'ignore'
+    input:
+    val n
+    output:
+    path "out-${n}.txt"
+    script:
+    """
+    [ ${n} -ne 3 ] || exit 3
+    echo "task ${n}" > out-${n}.txt
+    echo "log of ${n}"
+    """
+}
+
+workflow {
+    SHORT(channel.of(1..12))
+}
+"#;
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn short_tasks_run_together_and_keep_their_own_results() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let directory = directory.path();
+    std::fs::write(directory.join("main.nf"), SHORT).expect("writes the workflow");
+    let (code, output) = iunctus(directory, &["run", "main.nf", "-executor", "local"]);
+    assert_eq!(code, 0, "{output}");
+    assert!(!output.contains("[together]"), "{output}");
+
+    std::fs::remove_dir_all(directory.join("results")).expect("removes the results");
+    let again = ["run", "main.nf", "-executor", "local", "-no-cache"];
+    let (code, output) = iunctus(directory, &again);
+    assert_eq!(code, 0, "{output}");
+    assert!(
+        output.contains("[together] 12 short tasks run one after another in one container"),
+        "{output}"
+    );
+    for n in (1..=12).filter(|n| *n != 3) {
+        let text = std::fs::read_to_string(directory.join(format!("results/out-{n}.txt")));
+        assert_eq!(text.expect("an output").trim(), format!("task {n}"));
+    }
+    assert!(!directory.join("results/out-3.txt").exists());
+    // Each task has its own exit code and log.
+    let database = run_database::Database::open(&directory.join("cache/iunctus/runs.sqlite"))
+        .expect("opens the run database");
+    let workflow = directory.join("main.nf").to_string_lossy().into_owned();
+    let run = database
+        .last_run(&workflow, true)
+        .expect("reads")
+        .expect("a run");
+    for task in database.tasks(&run.id).expect("reads the tasks") {
+        let n = task
+            .name
+            .trim_start_matches("SHORT (")
+            .trim_end_matches(')');
+        let detail = database
+            .task(&run.id, task.id)
+            .expect("reads")
+            .expect("a task");
+        let log = database.log(&run.id, task.id, 1, "stdout").expect("reads");
+        match n {
+            "3" => assert_eq!(detail.attempts[0].exit_code, Some(3)),
+            n => {
+                assert_eq!(detail.attempts[0].exit_code, Some(0));
+                assert_eq!(log.expect("a log").text.trim(), format!("log of {n}"));
+            }
+        }
+    }
+
+    let alone = [&again[..], &["-no-grouping"]].concat();
+    let (code, output) = iunctus(directory, &alone);
+    assert_eq!(code, 0, "{output}");
+    assert!(!output.contains("[together]"), "{output}");
+}
+
+/// Runs short tasks through the runner on the Funnel server of `just funnel-server`.
+#[test]
+#[ignore = "needs the Funnel server of `just funnel-server`, Docker and debian:stable-slim"]
+fn short_tasks_run_together_in_one_tes_task() {
+    use std::sync::Arc;
+    use task_model::Measured;
+    use workflow_graph::{Attempt, CancellationToken, Executor, Task, TaskId};
+
+    let server = std::env::var("IUNCTUS_TES_SERVER").unwrap_or("http://localhost:18000".into());
+    // Funnel may read and write below /tmp.
+    let folder = tempfile::tempdir_in("/tmp").expect("a temporary directory");
+    let folder = folder.path();
+    let store = content_store::Store::local(&folder.join("store")).expect("a store");
+    let image = "debian:stable-slim";
+    let backend = tes_executor::TesBackend {
+        client: tes_executor::Client::new(&server, None).expect("a client"),
+        scratch: folder.join("scratch"),
+        // Funnel runs images of this machine, whose configs no registry needs to give.
+        configs: executor::registry::ImageConfigs::known([(image.into(), Default::default())]),
+    };
+    let settings = task_runner::Settings {
+        downloads: folder.join("downloads"),
+        import_inputs: true,
+        storage: storage::Storage::default(),
+        digests: None,
+    };
+    let runner = task_runner::Runner::new(store, backend, "run-t", settings);
+    let mut executor = task_runner::RunnerExecutor::new(runner, None);
+    // No registry either: the image stays as it is named.
+    executor.pin_images(&[(image.to_owned(), image.to_owned())].into());
+    let earlier = Measured {
+        milliseconds: 10,
+        overhead: Some(5_000),
+        ..Measured::default()
+    };
+    executor.measured = Arc::new([("S".to_owned(), vec![earlier])].into());
+    executor.together = true;
+    let runtime = workflow_graph::runtime().expect("a runtime");
+    let running: Vec<_> = (1..=4)
+        .map(|n| {
+            let task = Task {
+                id: TaskId(n),
+                name: format!("S ({n})"),
+                step: "S".into(),
+                image: Some(image.into()),
+                command: vec![
+                    "bash".into(),
+                    "-c".into(),
+                    format!("sleep 0.5; echo {n} > out.txt; echo log {n}"),
+                ],
+                outputs: vec!["out.txt".into()],
+                ..Task::default()
+            };
+            let attempt = Attempt {
+                task: Arc::new(task),
+                number: 1,
+                cancel: CancellationToken::new(),
+            };
+            runtime.spawn(executor.run(attempt))
+        })
+        .collect();
+    let mut outcomes: Vec<_> = running
+        .into_iter()
+        .map(|handle| runtime.block_on(handle).expect("ends").expect("an outcome"))
+        .collect();
+    for (n, outcome) in (1..).zip(&outcomes) {
+        assert_eq!(outcome.exit_code, 0, "{outcome:?}");
+        assert_eq!(outcome.stdout.trim(), format!("log {n}"));
+        let text = std::fs::read_to_string(&outcome.files[0].location).expect("reads the output");
+        assert_eq!(text.trim(), n.to_string());
+    }
+    // One after another in one container: no tool started before the one before it ended.
+    outcomes.sort_by_key(|outcome| outcome.started);
+    for pair in outcomes.windows(2) {
+        assert!(pair[1].started >= pair[0].ended, "{pair:?}");
+    }
 }

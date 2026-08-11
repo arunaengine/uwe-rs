@@ -110,6 +110,9 @@ pub struct Arguments {
     /// `-no-right-sizing`: tasks ask for the CPUs and memory that their workflow names, not
     /// for what the tasks of their step used in earlier runs.
     pub no_right_sizing: bool,
+    /// `-no-grouping`: each task runs in a container of its own, also the short tasks that
+    /// would run together.
+    pub no_grouping: bool,
 }
 
 /// Which run `-resume` continues.
@@ -248,6 +251,7 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
             }
             "-no-cache" => parsed.no_cache = true,
             "-no-right-sizing" => parsed.no_right_sizing = true,
+            "-no-grouping" => parsed.no_grouping = true,
             "-address" => {
                 let text = value()?;
                 parsed.address = Some(text.parse().map_err(|_| {
@@ -609,6 +613,7 @@ mod tests {
         assert!(!parse_all(&["main.nf"]).no_cache);
         assert!(parse_all(&["main.nf", "-no-cache"]).no_cache);
         assert!(parse_all(&["main.nf", "-no-right-sizing"]).no_right_sizing);
+        assert!(parse_all(&["main.nf", "-no-grouping"]).no_grouping);
     }
 
     #[test]

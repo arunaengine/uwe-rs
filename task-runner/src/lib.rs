@@ -14,6 +14,7 @@ mod lookup;
 mod network;
 mod outputs;
 mod request;
+pub mod resources;
 mod runner;
 mod staging;
 

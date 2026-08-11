@@ -32,6 +32,7 @@ mod page;
 mod preview;
 mod record;
 mod repeat;
+mod resources;
 mod resume;
 mod revision;
 mod runs;
@@ -229,6 +230,8 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
         sources: &sources,
         repeats: pinned.repeats.as_deref(),
     };
+    // Read before this run is in the database.
+    let measured = resources::measured(arguments);
     let record::Recording {
         mut recorder,
         reusable,
@@ -238,19 +241,26 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
         false => None,
     };
     // The inputs are checked before any task starts (decision 24).
-    let prepared = executor(arguments, &setup, &run, !quiet, !arguments.no_cache, pinned).and_then(
-        |executor| {
-            let mut driver = driver(language, &launch, &run, quiet, arguments, &setup)?;
-            if let Some(inputs) = inputs::check(driver.as_mut(), started.simulated, quiet)? {
-                recorder.inputs(&inputs.schema, &inputs.values);
-            }
-            // A workflow whose outputs cannot be described still runs.
-            if let Ok(Some(schema)) = driver.outputs() {
-                recorder.outputs(&schema);
-            }
-            Ok((executor, driver))
-        },
-    );
+    let prepared = executor(
+        arguments,
+        &setup,
+        &run,
+        !quiet,
+        !arguments.no_cache,
+        pinned,
+        &measured,
+    )
+    .and_then(|executor| {
+        let mut driver = driver(language, &launch, &run, quiet, arguments, &setup)?;
+        if let Some(inputs) = inputs::check(driver.as_mut(), started.simulated, quiet)? {
+            recorder.inputs(&inputs.schema, &inputs.values);
+        }
+        // A workflow whose outputs cannot be described still runs.
+        if let Ok(Some(schema)) = driver.outputs() {
+            recorder.outputs(&schema);
+        }
+        Ok((executor, driver))
+    });
     let (executor, mut driver) = match prepared {
         Ok(prepared) => prepared,
         Err(failure) => {
@@ -314,6 +324,12 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
         );
     }
     close(recorder);
+    // A failed run leaves its error as the first line on standard error.
+    if execution.error.is_none() {
+        for line in resources::notes(&execution.graph, &measured, !real) {
+            eprintln!("{line}");
+        }
+    }
     // Traces of simulated runs would only fill dashboards with made-up times.
     if real {
         insight::telemetry::after_run(arguments, &setup, &run);
@@ -436,6 +452,7 @@ fn executor(
     verbose: bool,
     reuse: bool,
     pinned: &Pinned,
+    measured: &resources::Measures,
 ) -> Result<Box<dyn Executor>, Failure> {
     let cache = cache_directory();
     let scratch = cache.join("scratch");
@@ -459,7 +476,7 @@ fn executor(
                 local::executor(store, &scratch, run, default_image, storage, &engine)
                     .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
             executor.priorities = std::sync::Arc::new(chains(arguments));
-            real(executor, arguments, setup, verbose, reuse, pinned)
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
         "tes" => {
             let default_image = arguments.default_image.clone();
@@ -482,7 +499,7 @@ fn executor(
             };
             let executor = tes::executor(store, place, run, default_image, storage)
                 .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
-            real(executor, arguments, setup, verbose, reuse, pinned)
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
         "slurm" => {
             let default_image = arguments.default_image.clone();
@@ -507,7 +524,7 @@ fn executor(
                 options,
             )
             .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
-            real(executor, arguments, setup, verbose, reuse, pinned)
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
         "kubernetes" => {
             let default_image = arguments.default_image.clone();
@@ -527,7 +544,7 @@ fn executor(
                 namespace,
             )
             .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
-            real(executor, arguments, setup, verbose, reuse, pinned)
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
         other => Err(Failure::usage(format!(
             "iunctus: unknown executor `{other}`; use `simulator`, `local`, `tes`, `slurm` or \
@@ -540,14 +557,19 @@ fn executor(
 /// in its earlier real runs, so that the tasks on the longest remaining chain start first when
 /// tasks wait for the machine. Empty before the first real run, or without a run database.
 fn chains(arguments: &Arguments) -> std::collections::HashMap<String, u64> {
-    let Some(target) = &arguments.target else {
+    let Some(workflow) = recorded_workflow(arguments) else {
         return Default::default();
     };
-    let workflow = std::path::absolute(target).unwrap_or_else(|_| target.clone());
-    let workflow = workflow.to_string_lossy();
     (runs::open(arguments).ok())
         .and_then(|database| database.chains(&workflow).ok())
         .unwrap_or_default()
+}
+
+/// The workflow as the run database records it: the target as an absolute path.
+fn recorded_workflow(arguments: &Arguments) -> Option<String> {
+    let target = arguments.target.as_ref()?;
+    let workflow = std::path::absolute(target).unwrap_or_else(|_| target.clone());
+    Some(workflow.to_string_lossy().into_owned())
 }
 
 /// The simulator with the preview of the cache: tasks whose results the store holds, as a real
@@ -585,8 +607,10 @@ fn real<B: executor::Backend>(
     verbose: bool,
     reuse: bool,
     pinned: &Pinned,
+    measured: &resources::Measures,
 ) -> Result<Box<dyn Executor>, Failure> {
     executor.verbose = verbose;
+    executor.measured = measured.clone();
     executor.reuse = reuse;
     executor.check_reproducibility(arguments.check_reproducibility.unwrap_or(0.0));
     executor.pin_images(&pinned.images);
@@ -743,6 +767,8 @@ options:
                                       without running its finished tasks again
   -no-cache                           takes no result from the cache and keeps none there:
                                       every task runs
+  -no-right-sizing                    tasks ask for the CPUs and memory that the workflow
+                                      names, not for what earlier runs of their step used
   -page                               serves the web page of the run while it goes on
   -address <ip>, -port <number>       where the page listens (default: 127.0.0.1, a free port)
   -database <file>                    the run database (default: runs.sqlite in the cache)

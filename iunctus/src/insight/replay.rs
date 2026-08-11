@@ -78,6 +78,8 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         true,
         false,
         &crate::repeat::Pinned::default(),
+        // A replay asks for what the task asked for in its run.
+        &crate::resources::Measures::default(),
     )?;
     let start = RunStart {
         id: id.clone(),

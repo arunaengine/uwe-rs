@@ -37,8 +37,15 @@ pub struct RunnerExecutor<B> {
     /// Which tasks get the network.
     pub network: NetworkRule,
     /// What the tasks of each step used in earlier runs, which right-sizes the CPUs and memory
-    /// of the first attempt of a task (see [`crate::resources`]). Empty keeps what tasks ask.
+    /// of the first attempt of a task (see [`crate::resources`]) and tells short tasks.
     pub measured: Arc<HashMap<String, Vec<Measured>>>,
+    /// Whether tasks ask for right-sized resources; without it they ask for what their
+    /// workflow names.
+    pub right_sizing: bool,
+    /// Whether short tasks run together: the first attempts of tasks of steps that
+    /// [`task_model::per_container`] finds short, with the same image and resources, run one after
+    /// another in one container (see `together.rs`).
+    pub together: bool,
 }
 
 impl<B: Backend> RunnerExecutor<B> {
@@ -51,6 +58,8 @@ impl<B: Backend> RunnerExecutor<B> {
             reuse: true,
             network: NetworkRule::default(),
             measured: Arc::default(),
+            right_sizing: true,
+            together: false,
         }
     }
 
@@ -82,10 +91,13 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
             }
             Err(error) => return Running::ended(Err(error)),
         };
-        let runner = self.runner.clone();
+        let mut runner = self.runner.clone();
+        runner.verbose_groups = self.verbose;
         let verbose = self.verbose;
         let priority = self.priorities.get(&task.step).copied().unwrap_or_default();
         let reuse = self.reuse;
+        let together = self.together;
+        let right_sizing = self.right_sizing;
         let measured = self.measured.clone();
         Running::new(async move {
             let number = attempt.number;
@@ -94,6 +106,8 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
                 priority,
                 reuse,
                 measured,
+                right_sizing,
+                together,
             };
             let result = outcome(&runner, &task, number, &options, &attempt.cancel).await;
             if verbose && let Ok(outcome) = &result {
@@ -189,6 +203,10 @@ struct AttemptOptions<'a> {
     reuse: bool,
     /// What the earlier tasks of its step used.
     measured: &'a [Measured],
+    /// Whether it asks for right-sized resources.
+    right_sizing: bool,
+    /// Whether it may run with other short tasks, when it is short.
+    together: bool,
 }
 
 /// Runs an attempt of a task through the runner, and turns its result into an outcome.
@@ -206,10 +224,16 @@ async fn outcome<B: Backend>(
     };
     let mut prepared = runner.request(task, image.clone()).await.map_err(failed)?;
     prepared.request.attempt = attempt;
-    let placement = &prepared.request.placement;
-    prepared.request.placement =
-        crate::resources::placement(task, placement, attempt, options.measured);
+    if options.right_sizing {
+        let placement = &prepared.request.placement;
+        prepared.request.placement =
+            crate::resources::placement(task, placement, attempt, options.measured);
+    }
     prepared.request.placement.priority = options.priority;
+    // A retry runs alone.
+    if options.together && attempt <= 1 {
+        prepared.per_container = task_model::per_container(options.measured);
+    }
     if !options.reuse {
         prepared.request.scope = ReuseScope::None;
     }

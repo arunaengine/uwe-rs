@@ -63,6 +63,7 @@ pub(crate) async fn prepare(
         request,
         sources,
         step: task.step.clone(),
+        per_container: 1,
     })
 }
 

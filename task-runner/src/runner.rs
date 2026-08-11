@@ -160,6 +160,9 @@ pub struct Prepared {
     pub(crate) sources: Vec<Source>,
     /// The step of the task, which names its tool together with its image.
     pub(crate) step: String,
+    /// How many tasks like this one may run one after another in one container: more than 1
+    /// for a short task (see [`crate::together`]).
+    pub(crate) per_container: usize,
 }
 
 /// An image pinned to its digest once per run, or `None` without one.
@@ -168,7 +171,7 @@ type Pinned = OnceCell<Option<String>>;
 /// The runner of a run. Its clones share the backend, so that tasks run at the same time.
 pub struct Runner<B> {
     pub(crate) store: Store,
-    backend: Arc<B>,
+    pub(crate) backend: Arc<B>,
     run: String,
     pub(crate) settings: Settings,
     pinned: Arc<Mutex<HashMap<String, Arc<Pinned>>>>,
@@ -178,6 +181,11 @@ pub struct Runner<B> {
     /// The share of results from the cache that run again for the reproducibility check, from
     /// 0 (none) to 1 (all).
     check: f64,
+    /// Short tasks that wait for their group, and how many CPUs the groups may use at once.
+    pub(crate) gathering: crate::together::Gathering,
+    pub(crate) slots: usize,
+    /// Whether a line says when a group of short tasks starts.
+    pub(crate) verbose_groups: bool,
 }
 
 /// Whose turn it is to run a task whose key another run may run at the same moment.
@@ -198,6 +206,9 @@ impl<B> Clone for Runner<B> {
             pinned: self.pinned.clone(),
             lease: self.lease.clone(),
             check: self.check,
+            gathering: self.gathering.clone(),
+            slots: self.slots,
+            verbose_groups: self.verbose_groups,
         }
     }
 }
@@ -213,6 +224,9 @@ impl<B: Backend> Runner<B> {
             pinned: Arc::default(),
             lease: Arc::default(),
             check: 0.0,
+            gathering: Arc::default(),
+            slots: std::thread::available_parallelism().map_or(1, usize::from),
+            verbose_groups: false,
         }
     }
 
@@ -351,7 +365,10 @@ impl<B: Backend> Runner<B> {
             placement: &request.placement,
         };
         let begun = Instant::now();
-        let finished = self.backend.run(job, cancel).await?;
+        let finished = match prepared.per_container > 1 && crate::together::joinable(&job) {
+            true => self.together(job, prepared.per_container, cancel).await?,
+            false => self.backend.run(job, cancel).await?,
+        };
         let milliseconds = begun.elapsed().as_millis() as u64;
         let stored =
             outputs::store_outputs(&self.store, &self.run, &finished, &task, request.attempt).await;

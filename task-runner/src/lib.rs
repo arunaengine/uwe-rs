@@ -17,6 +17,7 @@ mod request;
 pub mod resources;
 mod runner;
 mod staging;
+mod together;
 
 pub use digests::DigestCache;
 pub use entry::CacheEntry;

@@ -339,7 +339,8 @@ fn linked_inputs_are_read_only_and_limits_hold() {
     .expect("runs");
     assert_eq!(finished.exit_code, Some(143));
     // A tool that the kernel kills for lack of memory ends the task, which says so. When the
-    // wrapper itself survives, the cgroup told it about the kill.
+    // wrapper itself survives, the cgroup told it about the kill; when the kernel killed the
+    // wrapper too, the note says that memory may be the cause.
     task.arguments = vec![
         "/bin/bash".into(),
         "-c".into(),
@@ -361,7 +362,7 @@ fn linked_inputs_are_read_only_and_limits_hold() {
     assert_ne!(finished.exit_code, Some(0));
     let said = std::fs::read_to_string(finished.stderr()).expect("reads");
     let got = (finished.exit_code, &finished.usage, &said);
-    assert!(said.contains("ran out of memory"), "{got:?}");
+    assert!(said.contains("memory"), "{got:?}");
     if let Some(usage) = finished.usage {
         assert!(usage.oom_kills.is_some_and(|kills| kills > 0), "{usage:?}");
     }

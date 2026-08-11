@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use bollard::Docker;
 use bollard::container::LogOutput;
 use bollard::errors::Error as ApiError;
 use bollard::models::{ContainerCreateBody, HostConfig, MountType};
@@ -18,6 +19,7 @@ use bollard::query_parameters::{
 use futures_util::StreamExt;
 use task_model::{Image, TaskSpec};
 use tokio::sync::OnceCell;
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::engine::{ContainerEngine, EngineCommand};
@@ -214,6 +216,9 @@ impl ContainerRun<'_> {
             user: engine.user(self.owner.0, self.owner.1),
             working_dir: Some(self.inside()),
             host_config: Some(HostConfig {
+                // The engine removes the container once it ended, which takes it a while, so
+                // that the task need not wait for it.
+                auto_remove: Some(true),
                 mounts: Some(mounts),
                 nano_cpus: Some(i64::from(self.cpus) * 1_000_000_000),
                 memory: self.memory.map(|bytes| bytes as i64),
@@ -310,9 +315,10 @@ impl LocalContainer {
     /// Runs a container to its end: creates it, attaches to its output before it starts, and
     /// reads the output until the wrapper says that it ended. The wrapper writes only that
     /// last line there, so the output tells when the task is done, without asking the engine
-    /// again and again. Only when the wrapper did not end does the engine tell how the
-    /// container ended. The container stops when `cancel` fires, and when it runs longer than
-    /// `time`; it is removed in the end.
+    /// again and again, and without waiting for the engine to take the container down. Only
+    /// when the wrapper did not end does the container's exit code count; the request for it
+    /// goes out before the start, as the engine removes the container once it ended.
+    /// The container stops when `cancel` fires, and when it runs longer than `time`.
     async fn run_to_end(
         &self,
         run: &ContainerRun<'_>,
@@ -338,26 +344,35 @@ impl LocalContainer {
         };
         let started = async {
             let attached = client.attach_container(run.name, Some(attach)).await?;
-            client.start_container(run.name, None).await?;
-            Ok::<_, ApiError>(attached.output)
-        };
-        let ended = match started.await {
-            Ok(stream) => self.follow(run.name, stream, time, cancel).await,
-            Err(error)
-                if error
-                    .to_string()
-                    .contains("\"sh\": executable file not found") =>
-            {
-                Err(ExecutorError::NoShell(run.image.reference.clone()))
+            let exited = tokio::spawn(exit_code(client.clone(), run.name.to_owned()));
+            match client.start_container(run.name, None).await {
+                Ok(()) => Ok((attached.output, exited)),
+                Err(error) => {
+                    exited.abort();
+                    Err(error)
+                }
             }
-            Err(error) => Err(failed(error)),
         };
-        let remove = RemoveContainerOptions {
-            force: true,
-            ..RemoveContainerOptions::default()
-        };
-        let _ = client.remove_container(run.name, Some(remove)).await;
-        ended
+        match started.await {
+            Ok((stream, exited)) => self.follow(run.name, stream, exited, time, cancel).await,
+            Err(error) => {
+                // The engine removes only a container that ran.
+                let remove = RemoveContainerOptions {
+                    force: true,
+                    ..RemoveContainerOptions::default()
+                };
+                let _ = client.remove_container(run.name, Some(remove)).await;
+                Err(
+                    match error
+                        .to_string()
+                        .contains("\"sh\": executable file not found")
+                    {
+                        true => ExecutorError::NoShell(run.image.reference.clone()),
+                        false => failed(error),
+                    },
+                )
+            }
+        }
     }
 
     /// Follows a started container until the wrapper says that it ended, or until the
@@ -366,6 +381,7 @@ impl LocalContainer {
         &self,
         container: &str,
         mut stream: impl futures_util::Stream<Item = Result<LogOutput, ApiError>> + Unpin,
+        mut exited: JoinHandle<i64>,
         time: Option<Duration>,
         cancel: &CancellationToken,
     ) -> Result<Ending, ExecutorError> {
@@ -377,11 +393,6 @@ impl LocalContainer {
             }
         };
         tokio::pin!(limit);
-        // The container runs already, so waiting until it does not run misses no end.
-        let options = WaitContainerOptions {
-            condition: "not-running".to_owned(),
-        };
-        let mut exited = client.wait_container(container, Some(options));
         let mut output = Output::default();
         let mut open = true;
         let mut status = None;
@@ -392,14 +403,9 @@ impl LocalContainer {
                     Some(Ok(part)) => output.push(part.as_ref()),
                     Some(Err(_)) | None => open = false,
                 },
-                code = exited.next(), if status.is_none() => {
-                    status = Some(match code {
-                        Some(Ok(response)) => response.status_code,
-                        Some(Err(ApiError::DockerContainerWaitError { code, .. })) => code,
-                        _ => -1,
-                    });
-                }
+                code = &mut exited, if status.is_none() => status = Some(code.unwrap_or(-1)),
                 () = cancel.cancelled() => {
+                    exited.abort();
                     let kill = KillContainerOptions::default();
                     let _ = client.kill_container(container, Some(kill)).await;
                     return Err(ExecutorError::Cancelled);
@@ -415,6 +421,7 @@ impl LocalContainer {
             }
         }
         if output.ended && timed_out.is_none() {
+            exited.abort();
             return Ok(Ending {
                 status: 0,
                 out_of_memory: false,
@@ -422,13 +429,17 @@ impl LocalContainer {
                 log: output.text(),
             });
         }
-        let state = (client.inspect_container(container, None).await)
-            .ok()
-            .and_then(|inspected| inspected.state)
-            .unwrap_or_default();
+        let status = match status {
+            Some(status) => status,
+            None => exited.await.unwrap_or(-1),
+        };
+        // The engine may have removed the container already; then its lack of memory is not
+        // known, and the note on the task says that it may be the cause.
+        let inspected = client.inspect_container(container, None).await.ok();
+        let state = inspected.and_then(|inspected| inspected.state);
         Ok(Ending {
-            status: status.or(state.exit_code).unwrap_or(-1),
-            out_of_memory: state.oom_killed.unwrap_or(false),
+            status,
+            out_of_memory: state.and_then(|state| state.oom_killed).unwrap_or(false),
             timed_out,
             log: output.text(),
         })
@@ -537,6 +548,19 @@ impl Output {
         let rest = std::mem::take(&mut self.partial);
         self.line(&rest);
         Vec::from(self.lines).join("; ")
+    }
+}
+
+/// The exit code of a container when it next ends; -1 when the engine does not tell it.
+async fn exit_code(client: Docker, container: String) -> i64 {
+    let options = WaitContainerOptions {
+        condition: "next-exit".to_owned(),
+    };
+    let mut waiting = client.wait_container(&container, Some(options));
+    match waiting.next().await {
+        Some(Ok(response)) => response.status_code,
+        Some(Err(ApiError::DockerContainerWaitError { code, .. })) => code,
+        _ => -1,
     }
 }
 

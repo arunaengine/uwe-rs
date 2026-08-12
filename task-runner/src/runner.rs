@@ -64,12 +64,12 @@ pub struct TaskResult {
     /// When the result came from the cache and the task ran again to check that its tool
     /// gives the same bytes: what it gave.
     pub check: Option<ReproducibilityCheck>,
-    /// How the containers of a task that runs several ended, besides the main one, in the
-    /// order of the task.
+    /// How the containers of a task that runs several ended, in the order of the task, the
+    /// main one first.
     pub containers: Vec<ContainerResult>,
 }
 
-/// How a container of a task that runs several ended, besides the main one.
+/// How a container of a task that runs several ended.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ContainerResult {
     pub name: String,
@@ -396,7 +396,8 @@ impl<B: Backend> Runner<B> {
         .await;
         let stored = match stored {
             Ok(mut result) => {
-                let containers = outputs::store_containers(&self.store, &request.spec, &finished);
+                let (spec, streams) = (&request.spec, (&result.stdout, &result.stderr));
+                let containers = outputs::store_containers(&self.store, spec, &finished, streams);
                 containers.await.map(|containers| {
                     result.containers = containers;
                     result

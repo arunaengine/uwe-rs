@@ -333,7 +333,8 @@ impl Recorder {
                 ("stdout".to_owned(), &outcome.stdout),
                 ("stderr".to_owned(), &outcome.stderr),
             ];
-            for container in &outcome.containers {
+            // The streams of the main container, the first, are those of the task.
+            for container in outcome.containers.iter().skip(1) {
                 streams.push((format!("{}/stdout", container.name), &container.stdout));
                 streams.push((format!("{}/stderr", container.name), &container.stderr));
             }

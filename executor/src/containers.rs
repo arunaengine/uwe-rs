@@ -235,8 +235,11 @@ fn exit_path(spec: &TaskSpec, position: usize) -> String {
 /// The wrapper of one container of the engine that runs the wrappers of a group of containers
 /// at once, given as paths that the container sees, and ends when all of them ended.
 pub fn group_wrapper(wrappers: &[String]) -> String {
-    let mut script =
-        String::from("#!/bin/sh\n# Containers of an iunctus task that share an image.\n");
+    // The script is the first process of its container, which ignores a stop that it has no
+    // trap for; when it ends, the container ends with every process in it.
+    let mut script = String::from(
+        "#!/bin/sh\n# Containers of an iunctus task that share an image.\ntrap 'exit 143' TERM INT HUP\n",
+    );
     for wrapper in wrappers {
         script.push_str(&format!("sh {} > /dev/null &\n", quote(wrapper)));
     }
@@ -274,7 +277,7 @@ pub fn write_wrappers(
     Ok(written)
 }
 
-/// How a container other than the main one ended, from its control files.
+/// How a container of a task that runs several ended, from its control files.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Ended {
     pub name: String,
@@ -284,10 +287,10 @@ pub struct Ended {
     pub stderr: Option<PathBuf>,
 }
 
-/// How the containers of a task besides the main one ended, in the order of the task, from
-/// its control folder on this machine.
+/// How the containers of a task that runs several ended, in the order of the task, the main
+/// one first, from its control folder on this machine.
 pub fn ended(spec: &TaskSpec, control: &Path) -> Vec<Ended> {
-    (1..spec.containers.len())
+    (0..spec.containers.len())
         .map(|position| {
             let own = control.join(own_folder(spec, position));
             let exists = |name: &str| Some(own.join(name)).filter(|path| path.exists());
@@ -309,7 +312,7 @@ pub fn recorded(spec: &TaskSpec, control: &Path) -> Option<i32> {
     if spec.containers.len() < 2 {
         return Some(main);
     }
-    let others: Option<Vec<i32>> = (ended(spec, control).into_iter())
+    let others: Option<Vec<i32>> = (ended(spec, control).into_iter().skip(1))
         .map(|ended| ended.exit_code)
         .collect();
     let others = others?;
@@ -434,8 +437,9 @@ mod tests {
         write("exit", "2\n");
         assert_eq!(recorded(&spec, control), Some(2));
         let ends = ended(&spec, control);
-        assert_eq!(ends[1].name, "c");
-        assert_eq!(ends[1].exit_code, Some(3));
-        assert_eq!(ends[1].stdout, None);
+        assert_eq!(ends[0].exit_code, Some(2));
+        assert_eq!(ends[2].name, "c");
+        assert_eq!(ends[2].exit_code, Some(3));
+        assert_eq!(ends[2].stdout, None);
     }
 }

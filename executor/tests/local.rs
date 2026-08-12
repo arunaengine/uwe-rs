@@ -489,8 +489,14 @@ fn containers_of_a_task_share_its_folders_in_their_order() {
     let codes: Vec<(&str, Option<i32>)> = (ended.iter())
         .map(|ended| (ended.name.as_str(), ended.exit_code))
         .collect();
-    assert_eq!(codes, [("a", Some(0)), ("b", Some(0)), ("c", Some(0))]);
-    assert_eq!(read(ended[2].stdout.as_ref().expect("a log")), "c\n");
+    let all = [
+        ("main", Some(0)),
+        ("a", Some(0)),
+        ("b", Some(0)),
+        ("c", Some(0)),
+    ];
+    assert_eq!(codes, all);
+    assert_eq!(read(ended[3].stdout.as_ref().expect("a log")), "c\n");
 }
 
 #[test]
@@ -517,6 +523,7 @@ fn a_container_after_one_that_failed_does_not_run() {
     );
     let control = finished.root.join(executor::CONTROL);
     let ended = executor::containers::ended(&spec, &control);
-    assert_eq!(ended[0].exit_code, Some(4));
-    assert_eq!(ended[1].exit_code, Some(0));
+    assert_eq!(ended[0].exit_code, Some(1));
+    assert_eq!(ended[1].exit_code, Some(4));
+    assert_eq!(ended[2].exit_code, Some(0));
 }

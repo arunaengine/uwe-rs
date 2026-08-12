@@ -111,16 +111,30 @@ pub(crate) async fn store_outputs(
     })
 }
 
-/// Stores the captured streams of the containers of a task that runs several, besides the
-/// main one, by their content, with how each ended.
+/// Stores the captured streams of the containers of a task that runs several by their
+/// content, with how each ended. The streams of the main container are the task's, which are
+/// stored already as `main`.
 pub(crate) async fn store_containers(
     store: &Store,
     spec: &task_model::TaskSpec,
     finished: &Finished,
+    main: (&Option<Digest>, &Option<Digest>),
 ) -> Result<Vec<ContainerResult>, RunnerError> {
     let control = finished.root.join(executor::CONTROL);
     let mut results = Vec::new();
-    for ended in executor::containers::ended(spec, &control) {
+    for (position, ended) in executor::containers::ended(spec, &control)
+        .into_iter()
+        .enumerate()
+    {
+        if position == 0 {
+            results.push(ContainerResult {
+                name: ended.name,
+                exit_code: ended.exit_code,
+                stdout: main.0.clone(),
+                stderr: main.1.clone(),
+            });
+            continue;
+        }
         let log = async |file: Option<PathBuf>| -> Result<Option<Digest>, RunnerError> {
             match file {
                 Some(file) => Ok(Some(store.put_file(&file).await?.0)),

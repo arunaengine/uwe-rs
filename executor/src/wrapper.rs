@@ -96,12 +96,12 @@ pub fn wrapper(spec: &TaskSpec, folders: &Folders<'_>) -> String {
         None => String::new(),
     };
     script.push_str(&format!("{NOW} > \"$control/{START}\"\n"));
-    script.push_str(&format!(
-        "{} > \"$control/{STDOUT}\" 2> \"$control/{STDERR}\"{stdin}\n",
+    script.push_str(&stoppable(&format!(
+        "{} > \"$control/{STDOUT}\" 2> \"$control/{STDERR}\"{stdin}",
         arguments.join(" ")
-    ));
+    )));
     script.push_str(&format!(
-        "status=$?\n{NOW} > \"$control/{END}\"\necho \"$status\" > \"$control/{EXIT}\"\n"
+        "{NOW} > \"$control/{END}\"\necho \"$status\" > \"$control/{EXIT}\"\n"
     ));
     script.push_str(USAGE_SCRIPT);
     script.push_str(COLLECT);
@@ -121,6 +121,20 @@ pub fn wrapper(spec: &TaskSpec, folders: &Folders<'_>) -> String {
     }
     script.push_str(&format!("echo {}\nexit 0\n", quote(ENDED)));
     script
+}
+
+/// Runs a command so that a stop reaches it, and sets `status` to its exit code. The script
+/// that runs it is the first process of its container, which ignores signals that it has no
+/// trap for, so without the trap a stop would wait for the engine's whole grace time. The trap
+/// passes SIGTERM on to the command, for a stop by SIGTERM, SIGINT or SIGHUP, and sets
+/// `stopped`. The command runs in the background to let the trap run while it waits, with the
+/// script's own standard input, which a background command would not get otherwise.
+pub fn stoppable(command: &str) -> String {
+    format!(
+        "exec 3<&0\n<&3 3<&- {command} &\npid=$!\n\
+         trap 'stopped=1; kill -TERM \"$pid\" 2> /dev/null' TERM INT HUP\n\
+         wait \"$pid\"\nstatus=$?\nexec 3<&-\n"
+    )
 }
 
 /// The wrapper starts in `sh`, which every image with a shell has, and goes on in Bash where

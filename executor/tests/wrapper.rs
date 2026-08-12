@@ -218,3 +218,51 @@ fn outputs_go_to_the_outbox_too() {
         .mode();
     assert_eq!(mode & 0o777, 0o777);
 }
+
+#[test]
+fn a_stop_reaches_the_tool_at_once() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let work = root.path().join("work");
+    let control = root.path().join("control");
+    std::fs::create_dir_all(&work).expect("creates the work directory");
+    // The tool reads the wrapper's standard input, then sleeps until it is stopped.
+    std::fs::write(work.join("task script.sh"), "cat > in.txt\nsleep 30\n").expect("writes");
+    let home = root.path().join("home");
+    let folders = Folders {
+        work: &work.to_string_lossy(),
+        control: &control.to_string_lossy(),
+        home: &home.to_string_lossy(),
+        outbox: "",
+    };
+    let text = wrapper(&spec(&["in.txt"]), &folders);
+    let started = std::time::Instant::now();
+    let mut child = Command::new("bash")
+        .arg("-c")
+        .arg(text)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("runs bash");
+    use std::io::Write;
+    let mut stdin = child.stdin.take().expect("standard input");
+    stdin.write_all(b"given\n").expect("writes standard input");
+    drop(stdin);
+    while !work.join("in.txt").exists() || read(&work.join("in.txt")).is_empty() {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let stopped = Command::new("kill")
+        .args(["-TERM", &child.id().to_string()])
+        .status();
+    assert!(stopped.expect("runs kill").success());
+    let output = child.wait_with_output().expect("waits for bash");
+    // The wrapper passed the stop on, recorded the tool's end and ended itself.
+    assert!(started.elapsed().as_secs() < 10, "{:?}", started.elapsed());
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        format!("{ENDED}\n")
+    );
+    assert_eq!(read(&control.join("exit")), "143\n");
+    assert_eq!(read(&work.join("in.txt")), "given\n");
+}

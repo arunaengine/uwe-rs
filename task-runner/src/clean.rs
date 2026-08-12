@@ -158,8 +158,7 @@ pub async fn plan(store: &Store, keep: &Keep) -> Result<Plan, RunnerError> {
                         (entry.milliseconds).is_some_and(|took| took >= slower.as_millis() as u64)
                     })
                     || (entry.files.iter()).any(|file| keep.locations.contains(&file.location))
-                    || (entry.stdout.iter().chain(&entry.stderr))
-                        .any(|digest| keep.digests.contains(digest))
+                    || entry.logs().any(|digest| keep.digests.contains(digest))
             }
             // An entry that cannot be read answers no request; it goes unless it is new.
             None => recent(item.last_use),
@@ -183,7 +182,7 @@ pub async fn plan(store: &Store, keep: &Keep) -> Result<Plan, RunnerError> {
                 }
             }
         }
-        digests.extend(entry.stdout.iter().chain(&entry.stderr).cloned());
+        digests.extend(entry.logs().cloned());
     }
     // A file stays when it, or a folder around it, is kept: a directory output or the folder
     // of a kept run.

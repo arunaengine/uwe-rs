@@ -49,6 +49,14 @@ impl Backend for Fake {
         std::fs::create_dir_all(finished.root.join("work"))?;
         std::fs::create_dir_all(finished.root.join("control"))?;
         std::fs::write(finished.stdout(), "said\n")?;
+        // The other containers of a task that runs several say their names and end well.
+        let control = finished.root.join("control");
+        for container in job.spec.containers.iter().skip(1) {
+            let own = control.join("containers").join(&container.name);
+            std::fs::create_dir_all(&own)?;
+            std::fs::write(own.join("exit"), "0\n")?;
+            std::fs::write(own.join("stdout"), format!("{}\n", container.name))?;
+        }
         let mut input = match job.staging.inputs.first() {
             Some(file) => std::fs::read_to_string(&file.source)?,
             None => String::new(),
@@ -383,6 +391,47 @@ fn outcomes_give_the_stored_files_with_size_and_digest() {
     assert_eq!(file.size, Some(5));
     let digest = task_model::Digest::sha256(b"data\n").to_string();
     assert_eq!(file.digest.as_deref(), Some(digest.as_str()));
+}
+
+#[test]
+fn containers_of_a_task_are_pinned_and_keep_their_logs_in_the_cache() {
+    use task_runner::RunnerExecutor;
+    use workflow_graph::{Attempt, Container, Executor};
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let mut executor = RunnerExecutor::new(runner(root.path(), 0), None);
+    let mut task = task(root.path(), "a");
+    let container = |name: &str, image: &str, after: &[&str]| Container {
+        name: name.to_owned(),
+        image: Some(image.to_owned()),
+        command: task.command.clone(),
+        after: after.iter().map(|name| (*name).to_owned()).collect(),
+        attempts: 1,
+        ..Container::default()
+    };
+    task.containers = vec![
+        container("main", "debian", &["prepare"]),
+        container("prepare", "alpine", &[]),
+    ];
+    let attempt = |task: &Task, number| Attempt {
+        task: std::sync::Arc::new(task.clone()),
+        number,
+        cancel: CancellationToken::new(),
+    };
+    let first = block_on(executor.run(attempt(&task, 1))).expect("an outcome");
+    let second = block_on(executor.run(attempt(&task, 2))).expect("an outcome");
+    assert_eq!((first.cached, second.cached), (false, true));
+    for outcome in [&first, &second] {
+        let [prepare] = outcome.containers.as_slice() else {
+            panic!("one other container")
+        };
+        assert_eq!(prepare.name, "prepare");
+        assert_eq!(prepare.exit_code, Some(0));
+        assert_eq!(prepare.stdout, "prepare\n");
+    }
+    // Another image of a container is another task.
+    task.containers[1].image = Some("busybox".into());
+    let third = block_on(executor.run(attempt(&task, 3))).expect("an outcome");
+    assert!(!third.cached);
 }
 
 #[test]

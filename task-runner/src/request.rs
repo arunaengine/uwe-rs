@@ -7,8 +7,8 @@ use std::collections::BTreeMap;
 
 use executor::Backend;
 use task_model::{
-    Accelerator, Digest, EnvironmentValue, FORMAT, Image, InputFile, OutputRule, Placement,
-    ReuseScope, TaskRequest, TaskSpec,
+    Accelerator, ContainerSpec, Digest, EnvironmentValue, FORMAT, Image, InputFile, OutputRule,
+    Placement, ReuseScope, TaskRequest, TaskSpec,
 };
 use workflow_graph::{Network, Task};
 
@@ -69,24 +69,45 @@ pub(crate) async fn prepare(
 
 /// The request of a task whose image is pinned if possible and whose inputs and standard input
 /// are in the store. Results are shared across runs only when the image is pinned to a digest.
+/// The containers of a task that runs several keep their images as the task names them, so
+/// the caller pins those in the task first; the main container gets `image`.
 pub fn request(
     task: &Task,
     image: Option<String>,
     inputs: Vec<InputFile>,
     stdin: Option<Digest>,
 ) -> TaskRequest {
-    let environment: BTreeMap<String, EnvironmentValue> = task
-        .environment
-        .iter()
-        .map(|(name, value)| (name.clone(), EnvironmentValue::Literal(value.clone())))
+    let literal = |environment: &BTreeMap<String, String>| -> BTreeMap<String, EnvironmentValue> {
+        (environment.iter())
+            .map(|(name, value)| (name.clone(), EnvironmentValue::Literal(value.clone())))
+            .collect()
+    };
+    let environment = literal(&task.environment);
+    let image = image.map(|reference| Image {
+        reference,
+        platform: None,
+    });
+    let containers = (task.containers.iter().enumerate())
+        .map(|(position, container)| ContainerSpec {
+            name: container.name.clone(),
+            image: match position {
+                0 => image.clone(),
+                _ => (container.image.clone()).map(|reference| Image {
+                    reference,
+                    platform: None,
+                }),
+            },
+            arguments: container.command.clone(),
+            workdir: container.workdir.clone(),
+            environment: literal(&container.environment),
+            after: container.after.clone(),
+            attempts: container.attempts.max(1),
+        })
         .collect();
     let spec = TaskSpec {
         format: FORMAT,
         namespace: String::new(),
-        image: image.map(|reference| Image {
-            reference,
-            platform: None,
-        }),
+        image,
         arguments: task.command.clone(),
         workdir: task.workdir.clone(),
         environment,
@@ -99,7 +120,7 @@ pub fn request(
             })
             .collect(),
         stdin,
-        containers: Vec::new(),
+        containers,
     };
     let scope = if spec.image_pinned() {
         ReuseScope::Shared

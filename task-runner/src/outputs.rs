@@ -13,7 +13,7 @@ use executor::manifest::Collected;
 use task_model::{Digest, Tree, TreeEntry};
 
 use crate::runner::at;
-use crate::{DigestCache, RunnerError, StoredFile, TaskResult};
+use crate::{ContainerResult, DigestCache, RunnerError, StoredFile, TaskResult};
 
 /// Outputs from this size on get their digests kept in the cache of digests; smaller files are
 /// read again faster.
@@ -107,7 +107,34 @@ pub(crate) async fn store_outputs(
         started: times.map(|(started, _)| started),
         ended: times.map(|(_, ended)| ended),
         check: None,
+        containers: Vec::new(),
     })
+}
+
+/// Stores the captured streams of the containers of a task that runs several, besides the
+/// main one, by their content, with how each ended.
+pub(crate) async fn store_containers(
+    store: &Store,
+    spec: &task_model::TaskSpec,
+    finished: &Finished,
+) -> Result<Vec<ContainerResult>, RunnerError> {
+    let control = finished.root.join(executor::CONTROL);
+    let mut results = Vec::new();
+    for ended in executor::containers::ended(spec, &control) {
+        let log = async |file: Option<PathBuf>| -> Result<Option<Digest>, RunnerError> {
+            match file {
+                Some(file) => Ok(Some(store.put_file(&file).await?.0)),
+                None => Ok(None),
+            }
+        };
+        results.push(ContainerResult {
+            name: ended.name,
+            exit_code: ended.exit_code,
+            stdout: log(ended.stdout).await?,
+            stderr: log(ended.stderr).await?,
+        });
+    }
+    Ok(results)
 }
 
 /// The files and empty directories of a stored directory at `base` that lie in a directory

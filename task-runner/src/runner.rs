@@ -64,6 +64,20 @@ pub struct TaskResult {
     /// When the result came from the cache and the task ran again to check that its tool
     /// gives the same bytes: what it gave.
     pub check: Option<ReproducibilityCheck>,
+    /// How the containers of a task that runs several ended, besides the main one, in the
+    /// order of the task.
+    pub containers: Vec<ContainerResult>,
+}
+
+/// How a container of a task that runs several ended, besides the main one.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ContainerResult {
+    pub name: String,
+    /// Its exit code; `None` when it recorded none.
+    pub exit_code: Option<i32>,
+    /// The digests of its captured standard output and error, when it got that far.
+    pub stdout: Option<Digest>,
+    pub stderr: Option<Digest>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -380,6 +394,16 @@ impl<B: Backend> Runner<B> {
             digests,
         )
         .await;
+        let stored = match stored {
+            Ok(mut result) => {
+                let containers = outputs::store_containers(&self.store, &request.spec, &finished);
+                containers.await.map(|containers| {
+                    result.containers = containers;
+                    result
+                })
+            }
+            Err(error) => Err(error),
+        };
         (tokio::fs::remove_dir_all(&finished.root).await).map_err(at(&finished.root))?;
         let result = stored?;
         if let Some(earlier) = earlier {
@@ -395,6 +419,7 @@ impl<B: Backend> Runner<B> {
                 stdout: result.stdout.clone(),
                 stderr: result.stderr.clone(),
                 milliseconds: Some(milliseconds),
+                containers: result.containers.clone(),
             };
             let bytes = entry.to_bytes(&key)?;
             self.store.put_entry(namespace, &key, bytes.into()).await?;

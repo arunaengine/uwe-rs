@@ -150,6 +150,7 @@ mod tests {
             cpus: 2,
             memory: Some(1 << 30),
             offline: false,
+            wrapper_path: None,
         };
         let limits = Limits {
             gpus: 1,

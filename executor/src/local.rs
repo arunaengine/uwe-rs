@@ -29,7 +29,7 @@ use crate::manifest::parse;
 use crate::pool::{Pool, Share};
 use crate::process::Mount;
 use crate::stage::place;
-use crate::wrapper::{ENDED, EXIT, Folders, MANIFEST, STDERR, wrapper};
+use crate::wrapper::{ENDED, Folders, MANIFEST, STDERR, wrapper};
 
 /// How long a task may take to end after it was asked to stop, before it is killed.
 const STOP_GRACE: Duration = Duration::from_secs(10);
@@ -133,6 +133,9 @@ pub struct ContainerRun<'a> {
     pub memory: Option<u64>,
     /// Whether the container runs without network.
     pub offline: bool,
+    /// The wrapper that the container runs, when it is not the wrapper of the task in the
+    /// control folder, as for the containers of a task that runs several.
+    pub wrapper_path: Option<&'a Path>,
 }
 
 impl ContainerRun<'_> {
@@ -179,7 +182,10 @@ impl ContainerRun<'_> {
 
     /// The wrapper in the control folder, which the container runs.
     pub fn script(&self) -> String {
-        text(&self.root.join(CONTROL).join("wrapper.sh"))
+        match self.wrapper_path {
+            Some(path) => text(path),
+            None => text(&self.root.join(CONTROL).join("wrapper.sh")),
+        }
     }
 
     /// The wrapper of a task in this container: its work directory where the container sees
@@ -277,6 +283,9 @@ impl LocalContainer {
         share: &Share<'_>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
+        if !job.spec.containers.is_empty() {
+            return self.contain_several(job, root, mounts, share, cancel).await;
+        }
         let image = job.spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
         let mut spec = job.spec.clone();
         // The command runs through the image's entrypoint, as `docker run` runs it, which
@@ -295,11 +304,86 @@ impl LocalContainer {
             cpus: share.cpus,
             memory: share.memory,
             offline: job.placement.offline,
+            wrapper_path: None,
         };
         tokio::fs::write(run.script(), run.wrapper(&spec)).await?;
         let time = job.placement.time_seconds.map(Duration::from_secs);
         let ending = self.run_to_end(&run, time, cancel).await?;
-        self.finish(ending, root.to_owned()).await
+        self.finish(ending, root.to_owned(), &spec).await
+    }
+
+    /// Runs a task of several containers: one container of the engine for each image, all at
+    /// once, on the same scratch directory and mounts, within the share of the task. When one
+    /// of them ends without its wrapper, the others stop, since containers that wait for it
+    /// would wait for ever.
+    async fn contain_several(
+        &self,
+        job: Job<'_>,
+        root: &Path,
+        mounts: &[Mount],
+        share: &Share<'_>,
+        cancel: &CancellationToken,
+    ) -> Result<Finished, ExecutorError> {
+        let mut spec = job.spec.clone();
+        for container in &mut spec.containers {
+            let image = container.image.as_ref().ok_or(ExecutorError::NoImage)?;
+            let commands = self.commands(&image.reference).await?;
+            let arguments = std::mem::take(&mut container.arguments);
+            container.arguments = commands.arguments(&image.reference, arguments)?;
+        }
+        let owner = tokio::fs::metadata(root).await?;
+        let (control, home) = (root.join(CONTROL), text(&root.join(HOME)));
+        let work = (spec.workdir.clone()).unwrap_or_else(|| text(&root.join(WORK)));
+        let folders = Folders {
+            work: &work,
+            control: &text(&control),
+            home: &home,
+            outbox: "",
+        };
+        let groups = crate::containers::write_wrappers(&spec, &control, &folders)?;
+        let names: Vec<String> = (0..groups.len())
+            .map(|index| format!("iunctus-{}-{index}", job.name))
+            .collect();
+        let paths: Vec<PathBuf> = groups.iter().map(|(_, path)| path.into()).collect();
+        let runs: Vec<ContainerRun<'_>> = (groups.iter().enumerate())
+            .map(|(index, (group, _))| ContainerRun {
+                name: &names[index],
+                image: &group.image,
+                root,
+                workdir: spec.workdir.as_deref(),
+                mounts,
+                owner: (owner.uid(), owner.gid()),
+                cpus: share.cpus,
+                memory: share.memory,
+                offline: job.placement.offline,
+                wrapper_path: Some(&paths[index]),
+            })
+            .collect();
+        let time = job.placement.time_seconds.map(Duration::from_secs);
+        let stop = cancel.child_token();
+        let mut running: futures_util::stream::FuturesUnordered<_> = (runs.iter())
+            .map(|run| self.run_to_end(run, time, &stop))
+            .collect();
+        let mut first: Option<Result<Ending, ExecutorError>> = None;
+        let mut normal = None;
+        while let Some(result) = running.next().await {
+            let ended_well = matches!(&result, Ok(ending) if ending.status == 0
+                && ending.timed_out.is_none() && !ending.out_of_memory);
+            match (ended_well, &first) {
+                (true, _) => normal = Some(result),
+                (false, None) => {
+                    stop.cancel();
+                    first = Some(result);
+                }
+                (false, Some(_)) => {}
+            }
+        }
+        drop(running);
+        let ending = match (first, normal) {
+            (Some(result), _) | (None, Some(result)) => result?,
+            (None, None) => return Err(ExecutorError::NoImage),
+        };
+        self.finish(ending, root.to_owned(), &spec).await
     }
 
     /// What containers of an image run by default, asked once per run.
@@ -451,9 +535,14 @@ impl LocalContainer {
     /// machine. A container stopped by a signal, as for lack of memory, ends the task with the
     /// container's exit code, and so does one that ran out of time; that one fails even when its
     /// tool ended well while the engine stopped it.
-    async fn finish(&self, ending: Ending, root: PathBuf) -> Result<Finished, ExecutorError> {
+    async fn finish(
+        &self,
+        ending: Ending,
+        root: PathBuf,
+        spec: &TaskSpec,
+    ) -> Result<Finished, ExecutorError> {
         let control = root.join(CONTROL);
-        let recorded = read(&control.join(EXIT)).and_then(|text| text.trim().parse().ok());
+        let recorded = crate::containers::recorded(spec, &control);
         let status = i32::try_from(ending.status).unwrap_or(-1);
         let usage = Usage::of(&root);
         // The wrapper reads from the cgroup of the container whether the kernel killed a
@@ -617,6 +706,7 @@ mod tests {
             cpus: 1,
             memory: None,
             offline: false,
+            wrapper_path: None,
         };
         let binds =
             |run: &ContainerRun<'_>| -> Vec<String> { run.binds().iter().map(volume).collect() };

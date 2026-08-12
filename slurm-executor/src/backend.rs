@@ -161,6 +161,7 @@ impl SlurmBackend {
             cpus: job.placement.cpus.max(1),
             memory: job.placement.memory_bytes,
             offline: job.placement.offline,
+            wrapper_path: None,
         };
         tokio::fs::write(run.script(), run.wrapper(job.spec)).await?;
         let gpus = job.placement.accelerators.iter().any(|gpu| gpu.count > 0);

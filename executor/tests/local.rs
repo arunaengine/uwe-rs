@@ -10,7 +10,9 @@ use std::sync::OnceLock;
 use executor::{
     Backend, ContainerEngine, ExecutorError, Finished, Job, LocalContainer, Pool, Staged, Staging,
 };
-use task_model::{Digest, FORMAT, FileKind, Image, InputFile, OutputRule, Placement, TaskSpec};
+use task_model::{
+    ContainerSpec, Digest, FORMAT, FileKind, Image, InputFile, OutputRule, Placement, TaskSpec,
+};
 use tokio_util::sync::CancellationToken;
 
 fn spec(image: Option<&str>, outputs: &[&str]) -> TaskSpec {
@@ -412,4 +414,109 @@ fn commands_run_through_the_entrypoint_of_the_image() {
     assert_eq!(paths, ["out.txt", "a.log", "home.log"]);
     let home = std::fs::read_to_string(finished.local_path("home.log")).expect("reads");
     assert!(home.trim_end().ends_with("/home"), "{home}");
+}
+
+/// A container of a task that runs several, which runs a shell script.
+fn container(name: &str, image: &str, script: &str, after: &[&str]) -> ContainerSpec {
+    ContainerSpec {
+        name: name.to_owned(),
+        image: Some(Image {
+            reference: image.to_owned(),
+            platform: None,
+        }),
+        arguments: vec!["sh".into(), "-c".into(), script.to_owned()],
+        workdir: None,
+        environment: BTreeMap::new(),
+        after: after.iter().map(|name| (*name).to_owned()).collect(),
+        attempts: 1,
+    }
+}
+
+/// A task of several containers, whose first container is the main one.
+fn several(containers: Vec<ContainerSpec>, outputs: &[&str]) -> TaskSpec {
+    let main = &containers[0];
+    TaskSpec {
+        image: main.image.clone(),
+        arguments: main.arguments.clone(),
+        containers,
+        ..spec(None, outputs)
+    }
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim and alpine:latest images"]
+fn containers_of_a_task_share_its_folders_in_their_order() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let executor = executor(root.path());
+    let mut retried = container(
+        "c",
+        "alpine:latest",
+        "[ -e /workspace/tried ] || { touch /workspace/tried; exit 3; }; echo c",
+        &["a"],
+    );
+    retried.attempts = 2;
+    let spec = several(
+        vec![
+            container(
+                "main",
+                "debian:stable-slim",
+                "cat /workspace/message > out.txt; echo main",
+                &["b", "c"],
+            ),
+            container(
+                "a",
+                "debian:stable-slim",
+                "echo a > /workspace/message",
+                &[],
+            ),
+            container("b", "alpine:latest", "echo b >> /workspace/message", &["a"]),
+            retried,
+        ],
+        &["out.txt", "/workspace/"],
+    );
+    let staged = Staging {
+        directories: vec!["/workspace".into()],
+        ..Staging::default()
+    };
+    let finished = run(&executor, "task-set", &spec, &staged).expect("runs");
+    assert_eq!(finished.exit_code, Some(0));
+    let read = |path: &std::path::Path| std::fs::read_to_string(path).expect("reads");
+    assert_eq!(read(&finished.local_path("out.txt")), "a\nb\n");
+    assert_eq!(read(&finished.stdout()), "main\n");
+    assert!(finished.local_path("/workspace/tried").exists());
+    let control = finished.root.join(executor::CONTROL);
+    let ended = executor::containers::ended(&spec, &control);
+    let codes: Vec<(&str, Option<i32>)> = (ended.iter())
+        .map(|ended| (ended.name.as_str(), ended.exit_code))
+        .collect();
+    assert_eq!(codes, [("a", Some(0)), ("b", Some(0)), ("c", Some(0))]);
+    assert_eq!(read(ended[2].stdout.as_ref().expect("a log")), "c\n");
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn a_container_after_one_that_failed_does_not_run() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let executor = executor(root.path());
+    let spec = several(
+        vec![
+            container("main", "debian:stable-slim", "echo main > ran", &["a"]),
+            container("a", "debian:stable-slim", "echo a >&2; exit 4", &[]),
+            container("b", "debian:stable-slim", "echo b", &[]),
+        ],
+        &["ran"],
+    );
+    let finished = run(&executor, "task-set-failed", &spec, &Staging::default()).expect("runs");
+    assert_eq!(finished.exit_code, Some(1));
+    assert!(finished.files.is_empty());
+    assert!(!finished.local_path("ran").exists());
+    let said = std::fs::read_to_string(finished.stderr()).expect("reads");
+    assert!(
+        said.contains("did not run, since container a failed"),
+        "{said}"
+    );
+    let control = finished.root.join(executor::CONTROL);
+    let ended = executor::containers::ended(&spec, &control);
+    assert_eq!(ended[0].exit_code, Some(4));
+    assert_eq!(ended[1].exit_code, Some(0));
 }

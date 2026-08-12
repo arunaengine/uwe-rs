@@ -137,6 +137,7 @@ impl KubernetesBackend {
             memory: job.placement.memory_bytes,
             // A pod has no switch of its own for the network; a NetworkPolicy would be one.
             offline: false,
+            wrapper_path: None,
         };
         tokio::fs::write(run.script(), run.wrapper(&spec)).await?;
         let limits = Limits {

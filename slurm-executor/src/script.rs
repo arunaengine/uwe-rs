@@ -164,6 +164,7 @@ mod tests {
             cpus: 2,
             memory: Some(3 << 30),
             offline: false,
+            wrapper_path: None,
         }
     }
 

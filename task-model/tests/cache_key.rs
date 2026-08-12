@@ -5,8 +5,8 @@
 use std::collections::BTreeMap;
 
 use task_model::{
-    Digest, EnvironmentValue, FORMAT, FileKind, Image, InputFile, OutputRule, SpecError, TaskSpec,
-    Tree, TreeEntry,
+    ContainerSpec, Digest, EnvironmentValue, FORMAT, FileKind, Image, InputFile, OutputRule,
+    SpecError, TaskSpec, Tree, TreeEntry,
 };
 
 fn file_digest(content: &str) -> Digest {
@@ -54,6 +54,7 @@ fn fastqc() -> TaskSpec {
             },
         ],
         stdin: None,
+        containers: Vec::new(),
     }
 }
 
@@ -159,6 +160,67 @@ fn rejects_invalid_specs() {
     let mut future = fastqc();
     future.format = FORMAT + 1;
     assert_eq!(future.validate(), Err(SpecError::Format(FORMAT + 1)));
+}
+
+/// A task of two containers: the main one of FASTQC and one before it in another image.
+fn with_containers() -> TaskSpec {
+    let mut spec = fastqc();
+    let container = |name: &str, image: &Option<Image>, after: &[&str]| ContainerSpec {
+        name: name.to_owned(),
+        image: image.clone(),
+        arguments: vec!["sh".into(), "-c".into(), format!("echo {name}")],
+        workdir: None,
+        environment: BTreeMap::new(),
+        after: after.iter().map(|name| (*name).to_owned()).collect(),
+        attempts: 1,
+    };
+    let other = Some(Image {
+        reference: format!("alpine@{}", file_digest("alpine")),
+        platform: None,
+    });
+    spec.containers = vec![
+        container("main", &spec.image, &["prepare"]),
+        container("prepare", &other, &[]),
+    ];
+    spec
+}
+
+#[test]
+fn containers_count_and_are_checked() {
+    let base = with_containers().cache_key().expect("valid specification");
+    assert_ne!(Some(&base), fastqc().cache_key().ok().as_ref());
+    let changes: Vec<fn(&mut TaskSpec)> = vec![
+        |spec| spec.containers[1].arguments.push("-x".into()),
+        |spec| spec.containers[1].image = None,
+        |spec| spec.containers[1].attempts = 3,
+        |spec| spec.containers[0].after.clear(),
+        |spec| spec.containers[1].workdir = Some("/data".into()),
+    ];
+    for (index, change) in changes.into_iter().enumerate() {
+        let mut spec = with_containers();
+        change(&mut spec);
+        assert_ne!(spec.cache_key().expect("valid"), base, "change {index}");
+    }
+    assert_eq!(with_containers().container_order(), Some(vec![1, 0]));
+    let mut unknown = with_containers();
+    unknown.containers[1].after = vec!["nobody".into()];
+    assert!(matches!(unknown.validate(), Err(SpecError::Containers(_))));
+    let mut cycle = with_containers();
+    cycle.containers[1].after = vec!["main".into()];
+    assert!(matches!(cycle.validate(), Err(SpecError::Containers(_))));
+    let mut unsafe_name = with_containers();
+    unsafe_name.containers[1].name = "../x".into();
+    assert!(matches!(
+        unsafe_name.validate(),
+        Err(SpecError::Containers(_))
+    ));
+    let mut floating = with_containers();
+    floating.containers[1].image = Some(Image {
+        reference: "alpine:latest".into(),
+        platform: None,
+    });
+    assert!(!floating.image_pinned());
+    assert!(with_containers().image_pinned());
 }
 
 #[test]

@@ -141,6 +141,7 @@ fn spec(script: &str) -> TaskSpec {
             pattern: "out.txt".into(),
         }],
         stdin: None,
+        containers: Vec::new(),
     }
 }
 

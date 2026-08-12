@@ -288,6 +288,7 @@ mod tests {
                 pattern: "out.txt".into(),
             }],
             stdin: None,
+            containers: Vec::new(),
         };
         let staging = Staging {
             inputs: vec![Staged {

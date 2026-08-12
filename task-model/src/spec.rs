@@ -30,6 +30,34 @@ pub struct TaskSpec {
     pub outputs: Vec<OutputRule>,
     /// The digest of the text that the task reads on standard input.
     pub stdin: Option<Digest>,
+    /// The containers of a task that runs several at once in one place, like the containers of
+    /// an Argo container set: they share the work directory, the inputs and the outputs. Empty
+    /// for a task of one container, which the fields above describe. Otherwise the first is
+    /// the main container: the fields above repeat its image, arguments, work directory and
+    /// environment, it reads the standard input, its standard output is the task's, and it
+    /// collects the outputs. An empty list is left out of the encoding, so that the keys of
+    /// tasks of one container stay the same.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub containers: Vec<ContainerSpec>,
+}
+
+/// One container of a task that runs several.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ContainerSpec {
+    /// Unique in the task, and a safe file name.
+    pub name: String,
+    pub image: Option<Image>,
+    /// The program and its arguments; an empty list runs the image's default command.
+    pub arguments: Vec<String>,
+    /// Where the container starts, as an absolute path; `None` for the work directory.
+    pub workdir: Option<String>,
+    pub environment: BTreeMap<String, EnvironmentValue>,
+    /// The containers of the task, by name, that must end with exit code 0 before this one
+    /// starts. When one of them fails, this one does not run and fails too.
+    pub after: Vec<String>,
+    /// How often the container runs its command at most while it fails, at least once.
+    pub attempts: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -87,6 +115,8 @@ pub enum SpecError {
     Workdir(String),
     #[error("the input path `{0}` appears more than once")]
     DuplicateInput(String),
+    #[error("the containers of the task are not valid: {0}")]
+    Containers(String),
     #[error("cannot encode the specification: {0}")]
     Encoding(String),
 }
@@ -114,7 +144,57 @@ impl TaskSpec {
         for output in &self.outputs {
             check_path(&output.pattern)?;
         }
+        self.check_containers()
+    }
+
+    /// The containers of a task that runs several have unique names that are safe as file
+    /// names, and wait only for containers of the task, without a cycle.
+    fn check_containers(&self) -> Result<(), SpecError> {
+        let invalid = |message: String| Err(SpecError::Containers(message));
+        let mut names = BTreeSet::new();
+        for container in &self.containers {
+            let name = container.name.as_str();
+            let safe = (name.chars()).all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c));
+            if name.is_empty() || name.starts_with('.') || !safe {
+                return invalid(format!("`{name}` is not a safe name"));
+            }
+            if !names.insert(name) {
+                return invalid(format!("`{name}` appears more than once"));
+            }
+            if container.arguments.is_empty() && container.image.is_none() {
+                return Err(SpecError::NoProgram);
+            }
+        }
+        for container in &self.containers {
+            if let Some(unknown) =
+                (container.after.iter()).find(|name| !names.contains(name.as_str()))
+            {
+                return invalid(format!(
+                    "`{}` waits for `{unknown}`, which it does not have",
+                    container.name
+                ));
+            }
+        }
+        if self.container_order().is_none() {
+            return invalid("the containers wait for each other in a cycle".to_owned());
+        }
         Ok(())
+    }
+
+    /// The positions of the containers in an order where each comes after those it waits for,
+    /// otherwise in the order of the list; `None` when they wait for each other in a cycle.
+    pub fn container_order(&self) -> Option<Vec<usize>> {
+        let containers = &self.containers;
+        let mut order: Vec<usize> = Vec::new();
+        while order.len() < containers.len() {
+            let next = (0..containers.len()).find(|&position| {
+                !order.contains(&position)
+                    && (containers[position].after.iter())
+                        .all(|name| (order.iter()).any(|&done| containers[done].name == *name))
+            })?;
+            order.push(next);
+        }
+        Some(order)
     }
 
     /// The RFC 8785 canonical JSON of the specification. Inputs and outputs are sorted, because
@@ -134,9 +214,10 @@ impl TaskSpec {
 
     /// Whether the image is pinned to a digest, one condition for sharing results across runs.
     pub fn image_pinned(&self) -> bool {
-        self.image
-            .as_ref()
-            .is_none_or(|image| image.reference.contains("@sha256:"))
+        let pinned = |image: &Option<Image>| {
+            (image.as_ref()).is_none_or(|image| image.reference.contains("@sha256:"))
+        };
+        pinned(&self.image) && (self.containers.iter()).all(|container| pinned(&container.image))
     }
 }
 

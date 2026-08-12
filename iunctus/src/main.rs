@@ -495,6 +495,7 @@ fn executor(
             let place = tes::Place {
                 server,
                 token,
+                sites: &settings.tes_sites,
                 scratch: &scratch,
             };
             let executor = tes::executor(store, place, run, default_image, storage)

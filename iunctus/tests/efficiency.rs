@@ -251,3 +251,100 @@ fn short_tasks_run_together_in_one_tes_task() {
         assert!(pair[1].started >= pair[0].ended, "{pair:?}");
     }
 }
+
+/// The number of tasks that the TES server at `server`, like `http://localhost:18000`, knows.
+fn tes_tasks(server: &str) -> usize {
+    use std::io::{Read, Write};
+    let address = server.trim_start_matches("http://");
+    let mut stream = std::net::TcpStream::connect(address).expect("connects to the server");
+    let request = format!("GET /v1/tasks?view=MINIMAL HTTP/1.0\r\nHost: {address}\r\n\r\n");
+    stream.write_all(request.as_bytes()).expect("asks");
+    let mut answer = String::new();
+    stream
+        .read_to_string(&mut answer)
+        .expect("reads the answer");
+    let body = answer.split_once("\r\n\r\n").expect("a body").1;
+    let tasks: serde_json::Value = serde_json::from_str(body).expect("JSON");
+    tasks["tasks"].as_array().map_or(0, Vec::len)
+}
+
+/// Sends tasks to the site near their inputs: two Funnel servers on this machine, the second
+/// near one folder. Start them with `just funnel-server` and the same with
+/// `--Server.HTTPPort 18001 --Server.RPCPort 19091` and other BoltDB and work folders.
+/// It counts the tasks of each server, so run it with `--test-threads 1`.
+#[test]
+#[ignore = "needs two Funnel servers, at ports 18000 and 18001, Docker and debian:stable-slim"]
+fn tasks_go_to_the_tes_server_near_their_inputs() {
+    use std::sync::Arc;
+    use workflow_graph::{Attempt, CancellationToken, Executor, Input, Task, TaskId};
+
+    let first = std::env::var("IUNCTUS_TES_SERVER").unwrap_or("http://localhost:18000".into());
+    let second = "http://localhost:18001";
+    let (before_first, before_second) = (tes_tasks(&first), tes_tasks(second));
+    let folder = tempfile::tempdir_in("/tmp").expect("a temporary directory");
+    let folder = folder.path();
+    let (here, there) = (folder.join("here"), folder.join("there"));
+    for data in [&here, &there] {
+        std::fs::create_dir_all(data).expect("makes the data folder");
+        std::fs::write(data.join("a.txt"), "a\n").expect("writes the data");
+    }
+    let image = "debian:stable-slim";
+    let backend = |server: &str| tes_executor::TesBackend {
+        client: tes_executor::Client::new(server, None).expect("a client"),
+        scratch: folder.join("scratch"),
+        configs: executor::registry::ImageConfigs::known([(image.into(), Default::default())]),
+    };
+    let backends = task_runner::Sites {
+        default: backend(&first),
+        sites: [("there".to_owned(), backend(second))].into(),
+    };
+    let settings = task_runner::Settings {
+        downloads: folder.join("downloads"),
+        import_inputs: true,
+        storage: storage::Storage::default(),
+        digests: None,
+    };
+    let store = content_store::Store::local(&folder.join("store")).expect("a store");
+    let runner = task_runner::Runner::new(store, backends, "run-s", settings);
+    let mut executor = task_runner::RunnerExecutor::new(runner, None);
+    executor.pin_images(&[(image.to_owned(), image.to_owned())].into());
+    executor.sites = task_runner::SiteRule {
+        sites: vec![task_runner::Site {
+            name: "there".into(),
+            near: vec![there.to_string_lossy().into_owned()],
+        }],
+    };
+    let runtime = workflow_graph::runtime().expect("a runtime");
+    let running: Vec<_> = [&here, &here, &there, &there]
+        .into_iter()
+        .enumerate()
+        .map(|(n, data)| {
+            let task = Task {
+                id: TaskId(n as u64),
+                name: format!("S ({n})"),
+                step: "S".into(),
+                image: Some(image.into()),
+                command: vec!["bash".into(), "-c".into(), format!("cat a.txt; echo {n}")],
+                inputs: vec![Input {
+                    path: "a.txt".into(),
+                    source: data.join("a.txt").to_string_lossy().into_owned(),
+                    ..Input::default()
+                }],
+                ..Task::default()
+            };
+            let attempt = Attempt {
+                task: Arc::new(task),
+                number: 1,
+                cancel: CancellationToken::new(),
+            };
+            runtime.spawn(executor.run(attempt))
+        })
+        .collect();
+    for (n, handle) in running.into_iter().enumerate() {
+        let outcome = runtime.block_on(handle).expect("ends").expect("an outcome");
+        assert_eq!(outcome.exit_code, 0, "{outcome:?}");
+        assert_eq!(outcome.stdout, format!("a\n{n}\n"));
+    }
+    assert_eq!(tes_tasks(&first) - before_first, 2);
+    assert_eq!(tes_tasks(second) - before_second, 2);
+}

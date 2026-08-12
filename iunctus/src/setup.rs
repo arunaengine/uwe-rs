@@ -42,6 +42,8 @@ pub struct Executors {
     pub tes_server: Option<String>,
     /// `[executor.tes] token`, like `IUNCTUS_TES_TOKEN`.
     pub tes_token: Option<Secret>,
+    /// `[executor.tes.sites.<name>]`: more TES servers, each near some data.
+    pub tes_sites: Vec<TesSite>,
     /// `[executor.slurm] container`, like `-slurm-container`.
     pub slurm_container: Option<String>,
     /// `[executor.slurm] options`, a list of options of `sbatch`, like `-slurm-options`.
@@ -50,6 +52,16 @@ pub struct Executors {
     pub kubeconfig: Option<PathBuf>,
     /// `[executor.kubernetes] namespace`, like `-kubernetes-namespace`.
     pub kubernetes_namespace: Option<String>,
+}
+
+/// A site of `[executor.tes.sites.<name>]`: a TES server, and the address prefixes or folders
+/// of the data near it, which decide the tasks that run there.
+#[derive(Clone, Debug)]
+pub struct TesSite {
+    pub name: String,
+    pub server: String,
+    pub token: Option<Secret>,
+    pub near: Vec<String>,
 }
 
 impl Executors {
@@ -65,9 +77,28 @@ impl Executors {
             settings.engine = local.text("engine")?;
         }
         if let Some(tes) = section.table("tes")? {
-            tes.only(&["server", "token"])?;
+            tes.only(&["server", "token", "sites"])?;
             settings.tes_server = tes.text("server")?;
             settings.tes_token = tes.secret("token")?;
+            for site in (tes.table("sites")?.map(|sites| sites.tables()))
+                .transpose()?
+                .into_iter()
+                .flatten()
+            {
+                site.only(&["server", "token", "near"])?;
+                let server = site.text("server")?;
+                let server = server
+                    .ok_or_else(|| site.missing("server", "the address of its TES server"))?;
+                settings.tes_sites.push(TesSite {
+                    // The table is named by its whole path, like `executor.tes.sites.hamburg`.
+                    name: (site.name().strip_prefix("executor.tes.sites."))
+                        .unwrap_or(site.name())
+                        .to_owned(),
+                    server,
+                    token: site.secret("token")?,
+                    near: site.texts("near")?.unwrap_or_default(),
+                });
+            }
         }
         if let Some(slurm) = section.table("slurm")? {
             slurm.only(&["container", "options"])?;
@@ -222,6 +253,7 @@ mod tests {
             Some(Path::new("/k/kind.yaml"))
         );
         assert_eq!(settings.kubernetes_namespace.as_deref(), Some("x"));
+        assert!(settings.tes_sites.is_empty());
         assert!(read("").expect("no settings").engine.is_none());
     }
 
@@ -239,6 +271,22 @@ mod tests {
         assert_eq!(parse("").expect("no rule"), NetworkRule::default());
         let error = parse("[network]\ndefault = \"off\"\n").expect_err("an error");
         assert!(error.contains(":2:") && error.contains("off"), "{error}");
+    }
+
+    #[test]
+    fn tes_sites_name_their_server_and_the_data_near_them() {
+        let text = "[executor.tes]\nserver = \"https://tes.example.org\"\n\n\
+                    [executor.tes.sites.hamburg]\nserver = \"https://tes.hh.example.org\"\n\
+                    near = [\"s3://hh/\", \"/mnt/hh/\"]\n\n\
+                    [executor.tes.sites.heidelberg]\nserver = \"https://tes.hd.example.org\"\n";
+        let sites = read(text).expect("settings").tes_sites;
+        let names: Vec<&str> = sites.iter().map(|site| site.name.as_str()).collect();
+        assert_eq!(names, ["hamburg", "heidelberg"]);
+        assert_eq!(sites[0].server, "https://tes.hh.example.org");
+        assert_eq!(sites[0].near, ["s3://hh/", "/mnt/hh/"]);
+        assert!(sites[1].near.is_empty() && sites[1].token.is_none());
+        let error = read("[executor.tes.sites.x]\nnear = [\"/a/\"]\n").expect_err("an error");
+        assert!(error.contains("server"), "{error}");
     }
 
     #[test]

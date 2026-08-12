@@ -22,7 +22,7 @@ pub const ROOT: &str = "root";
 pub const ENDED: &str = "iunctus: the wrapper ended";
 /// Writes the time in seconds since the Unix epoch: with microseconds from Bash 5 on, whose
 /// `EPOCHREALTIME` needs no program, else whole seconds from `date`.
-const NOW: &str = "echo \"${EPOCHREALTIME:-$(date +%s)}\"";
+pub(crate) const NOW: &str = "echo \"${EPOCHREALTIME:-$(date +%s)}\"";
 /// What the task used, as the cgroup of its container counts it: `cpu_usec`, `memory_peak`,
 /// `read_bytes`, `write_bytes` and `oom_kills`, one per line with its number.
 pub const USAGE: &str = "usage";
@@ -140,7 +140,7 @@ pub fn stoppable(command: &str) -> String {
 /// The wrapper starts in `sh`, which every image with a shell has, and goes on in Bash where
 /// the image has it, wherever its `PATH` has it: Bash collects outputs with `**` and hidden
 /// files, as Nextflow's globs do. In plain `sh`, as in Alpine, the patterns are those of `sh`.
-const BASH: &str = r#"if [ -z "${BASH_VERSION:-}" ] && command -v bash > /dev/null 2>&1; then
+pub(crate) const BASH: &str = r#"if [ -z "${BASH_VERSION:-}" ] && command -v bash > /dev/null 2>&1; then
     exec bash "$0"
 fi
 "#;
@@ -149,7 +149,7 @@ fi
 /// its own, as with Docker and Podman: CPU time, the peak of memory (page cache included), the
 /// bytes of block I/O, and how many processes the kernel killed for lack of memory. Shell
 /// builtins only, so that any image with a shell has what it needs, and no process starts.
-const USAGE_SCRIPT: &str = r#"cgroup=/sys/fs/cgroup
+pub(crate) const USAGE_SCRIPT: &str = r#"cgroup=/sys/fs/cgroup
 if [ -r "$cgroup/memory.peak" ]; then
     {
         read -r peak < "$cgroup/memory.peak"
@@ -187,7 +187,7 @@ fi
 /// they are and are left out. A match at an absolute path is copied below `root` in the
 /// control directory, and one in the work directory to the outbox, when there is one; the
 /// copies hold what links point to.
-const COLLECT: &str = r#"if [ -n "${BASH_VERSION:-}" ]; then
+pub(crate) const COLLECT: &str = r#"if [ -n "${BASH_VERSION:-}" ]; then
     shopt -s globstar nullglob dotglob
 fi
 collect() {

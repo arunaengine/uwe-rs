@@ -1,0 +1,441 @@
+//! Tasks of several containers, like an Argo container set: the containers run at once in one
+//! place, as the containers of one Kubernetes pod do, and share the work directory, the inputs
+//! and the control folder of the task.
+//!
+//! Each container runs a wrapper of its own. It waits until the containers that it comes after
+//! recorded their exit codes, and runs its command only when all of them ended with 0, as
+//! Argo's executor does; else it fails without running. It runs a failed command again while
+//! it has attempts left, as the `retryStrategy` of an Argo container set asks, unless the shell
+//! could not find the command (exit code 127). It records its exit code and streams in its own
+//! folder below `containers/` in the control folder. The main container, the first, uses the
+//! control folder itself, as the wrapper of a task of one container does, so its standard
+//! output is the task's. After its own end it waits for every container that does not come
+//! after it, then collects the outputs and writes the manifest.
+//!
+//! Containers that share an image can run in one container of the engine: its wrapper starts
+//! their wrappers at once and waits for all of them.
+// Copyright (c) 2026 The iunctus Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::path::{Path, PathBuf};
+
+use task_model::{EnvironmentValue, Image, TaskSpec};
+
+use crate::braces::expand_braces;
+use crate::wrapper::{
+    BASH, COLLECT, END, ENDED, EXIT, Folders, MANIFEST, NOW, START, STDERR, STDIN, STDOUT,
+    USAGE_SCRIPT, quote,
+};
+
+/// The folder in the control folder that holds a folder for each container of a task that
+/// runs several, with its wrapper and, besides the main container, its control files.
+pub const CONTAINERS: &str = "containers";
+
+/// The wrapper of each container, in its folder.
+pub const WRAPPER: &str = "wrapper.sh";
+
+/// The exit code of a container that did not run because a container it comes after failed,
+/// as Argo's executor ends it with an error.
+pub const DEPENDENCY_FAILED: i32 = 1;
+
+/// Containers of a task that share an image, which run in one container of the engine.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Group {
+    pub image: Image,
+    /// Their positions in the containers of the task.
+    pub members: Vec<usize>,
+}
+
+/// The containers of a task by their image, in the order of their first container: the
+/// group of the main container comes first. `None` when a container has no image.
+pub fn groups(spec: &TaskSpec) -> Option<Vec<Group>> {
+    let mut groups: Vec<Group> = Vec::new();
+    for (position, container) in spec.containers.iter().enumerate() {
+        let image = container.image.clone()?;
+        match groups.iter_mut().find(|group| group.image == image) {
+            Some(group) => group.members.push(position),
+            None => groups.push(Group {
+                image,
+                members: vec![position],
+            }),
+        }
+    }
+    Some(groups)
+}
+
+/// The folder of a container's control files, relative to the control folder: the control
+/// folder itself for the main container.
+pub fn own_folder(spec: &TaskSpec, position: usize) -> String {
+    match position {
+        0 => String::new(),
+        _ => format!("{CONTAINERS}/{}", spec.containers[position].name),
+    }
+}
+
+/// The wrapper of a container, relative to the control folder.
+pub fn wrapper_path(spec: &TaskSpec, position: usize) -> String {
+    format!("{CONTAINERS}/{}/{WRAPPER}", spec.containers[position].name)
+}
+
+/// The wrapper of a group of containers that share an image, relative to the control folder.
+pub fn group_path(index: usize) -> String {
+    format!("{CONTAINERS}/group-{index}.sh")
+}
+
+/// Whether the container at `position` comes after the one at `before`, directly or through
+/// others.
+fn comes_after(spec: &TaskSpec, position: usize, before: usize) -> bool {
+    let containers = &spec.containers;
+    let mut seen = vec![false; containers.len()];
+    let mut open = vec![position];
+    while let Some(next) = open.pop() {
+        for name in &containers[next].after {
+            if let Some(found) = containers.iter().position(|other| other.name == *name)
+                && !seen[found]
+            {
+                if found == before {
+                    return true;
+                }
+                seen[found] = true;
+                open.push(found);
+            }
+        }
+    }
+    false
+}
+
+/// An order of the containers that runs them one after the other: each after those it comes
+/// after, and the main container as early as it can be while every container that does not
+/// come after it comes before it. For servers that run the containers of a task one after the
+/// other, like TES.
+pub fn sequence(spec: &TaskSpec) -> Option<Vec<usize>> {
+    let order = spec.container_order()?;
+    let (after_main, before): (Vec<usize>, Vec<usize>) = (order.into_iter())
+        .filter(|&position| position != 0)
+        .partition(|&position| comes_after(spec, position, 0));
+    Some(before.into_iter().chain([0]).chain(after_main).collect())
+}
+
+/// The wrapper of the container at `position` of a task that runs several, in the folders
+/// that its container sees. Its arguments must be what the container runs, the entrypoint of
+/// its image included.
+pub fn container_wrapper(spec: &TaskSpec, position: usize, folders: &Folders<'_>) -> String {
+    let container = &spec.containers[position];
+    let main = position == 0;
+    let own = own_folder(spec, position);
+    let mut script = format!(
+        "#!/bin/sh\n# The iunctus wrapper of container {} of a task.\nset -u\n",
+        container.name
+    );
+    script.push_str(BASH);
+    script.push_str(&format!(
+        "work={}\ncontrol={}\noutbox={}\nown=\"$control\"{}\n",
+        quote(folders.work),
+        quote(folders.control),
+        quote(folders.outbox),
+        match own.is_empty() {
+            true => String::new(),
+            false => format!("/{}", quote(&own)),
+        }
+    ));
+    script.push_str("[ -d \"$work\" ] && [ -d \"$own\" ] || mkdir -p \"$work\" \"$own\"\n");
+    script.push_str("cd \"$work\" || exit 1\n");
+    script.push_str(&format!(
+        "export HOME={}\n[ -d \"$HOME\" ] || mkdir -p \"$HOME\"\n",
+        quote(folders.home)
+    ));
+    if let Some(workdir) = &container.workdir {
+        let workdir = quote(workdir);
+        script.push_str(&format!(
+            "[ -d {workdir} ] || mkdir -p {workdir}\ncd {workdir} || exit 1\n"
+        ));
+    }
+    for (name, value) in &container.environment {
+        let value = match value {
+            EnvironmentValue::Literal(text) => quote(text),
+            EnvironmentValue::WorkDirectory => "\"$work\"".to_owned(),
+        };
+        script.push_str(&format!("export {name}={value}\n"));
+    }
+    script.push_str(WAITED);
+    script.push_str("status=0\n");
+    for name in &container.after {
+        let Some(found) = spec.containers.iter().position(|other| other.name == *name) else {
+            continue;
+        };
+        let exit = exit_path(spec, found);
+        script.push_str(&format!(
+            "if [ \"$status\" -eq 0 ] && ! waited {exit}; then\n    status={DEPENDENCY_FAILED}\n    echo {} > \"$own/{STDERR}\"\nfi\n",
+            quote(&format!(
+                "iunctus: container {} did not run, since container {name} failed",
+                container.name
+            ))
+        ));
+    }
+    let arguments: Vec<String> = container.arguments.iter().map(|word| quote(word)).collect();
+    let stdin = match (main, spec.stdin.is_some()) {
+        (true, true) => format!(" < \"$control/{STDIN}\""),
+        _ => String::new(),
+    };
+    script.push_str(&format!("{NOW} > \"$own/{START}\"\n"));
+    script.push_str(&format!(
+        "if [ \"$status\" -eq 0 ]; then\n    attempt=1\n    : > \"$own/{STDOUT}\"\n    : > \"$own/{STDERR}\"\n    while :; do\n        {} >> \"$own/{STDOUT}\" 2>> \"$own/{STDERR}\"{stdin}\n        status=$?\n        {{ [ \"$status\" -eq 0 ] || [ \"$status\" -eq 127 ] || [ \"$attempt\" -ge {} ]; }} && break\n        attempt=$((attempt + 1))\n    done\nfi\n",
+        arguments.join(" "),
+        container.attempts.max(1)
+    ));
+    script.push_str(&format!(
+        "{NOW} > \"$own/{END}\"\necho \"$status\" > \"$own/{EXIT}\"\n"
+    ));
+    if main {
+        // The outputs are complete when every container that does not come after the main
+        // one has ended, whether it failed or not.
+        for other in 1..spec.containers.len() {
+            if !comes_after(spec, other, 0) {
+                script.push_str(&format!("waited {} || :\n", exit_path(spec, other)));
+            }
+        }
+        script.push_str(USAGE_SCRIPT);
+        script.push_str(COLLECT);
+        script.push_str(&format!(": > \"$control/{MANIFEST}\"\n"));
+        if !spec.outputs.is_empty() {
+            script.push_str("if [ \"$status\" -eq 0 ]; then\n");
+            for rule in &spec.outputs {
+                for pattern in expand_braces(rule.pattern.trim_end_matches('/')) {
+                    script.push_str(&format!("    collect {}\n", quote(&pattern)));
+                }
+            }
+            script.push_str("fi\n");
+        }
+        if !folders.outbox.is_empty() {
+            script.push_str("chmod -R a+rwX \"$work\" \"$outbox\" \"$control\" 2> /dev/null\n");
+        }
+    }
+    script.push_str(&format!("echo {}\nexit 0\n", quote(ENDED)));
+    script
+}
+
+/// Waits until a file of an exit code has one, then tells whether it is 0.
+const WAITED: &str = r#"waited() {
+    while [ ! -s "$1" ]; do
+        sleep 0.1
+    done
+    read -r code < "$1"
+    [ "$code" = 0 ]
+}
+"#;
+
+/// The file of a container's exit code, as the wrapper names it.
+fn exit_path(spec: &TaskSpec, position: usize) -> String {
+    match own_folder(spec, position) {
+        own if own.is_empty() => format!("\"$control/{EXIT}\""),
+        own => format!("\"$control\"/{}", quote(&format!("{own}/{EXIT}"))),
+    }
+}
+
+/// The wrapper of one container of the engine that runs the wrappers of a group of containers
+/// at once, given as paths that the container sees, and ends when all of them ended.
+pub fn group_wrapper(wrappers: &[String]) -> String {
+    let mut script =
+        String::from("#!/bin/sh\n# Containers of an iunctus task that share an image.\n");
+    for wrapper in wrappers {
+        script.push_str(&format!("sh {} > /dev/null &\n", quote(wrapper)));
+    }
+    script.push_str(&format!("wait\necho {}\nexit 0\n", quote(ENDED)));
+    script
+}
+
+/// Writes the wrapper of every container and of every group of a task that runs several into
+/// the control folder `control` of this machine. `folders` are the folders as the containers
+/// see them. The arguments of the containers must be what they run, the entrypoints of their
+/// images included. Gives the groups with the paths of their wrappers as the containers see
+/// them.
+pub fn write_wrappers(
+    spec: &TaskSpec,
+    control: &Path,
+    folders: &Folders<'_>,
+) -> std::io::Result<Vec<(Group, String)>> {
+    let groups = groups(spec).ok_or_else(|| std::io::Error::other("a container has no image"))?;
+    let inside = |relative: &str| format!("{}/{relative}", folders.control.trim_end_matches('/'));
+    for position in 0..spec.containers.len() {
+        let path = control.join(wrapper_path(spec, position));
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, container_wrapper(spec, position, folders))?;
+    }
+    let mut written = Vec::new();
+    for (index, group) in groups.into_iter().enumerate() {
+        let wrappers: Vec<String> = (group.members.iter())
+            .map(|&position| inside(&wrapper_path(spec, position)))
+            .collect();
+        std::fs::write(control.join(group_path(index)), group_wrapper(&wrappers))?;
+        written.push((group, inside(&group_path(index))));
+    }
+    Ok(written)
+}
+
+/// How a container other than the main one ended, from its control files.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Ended {
+    pub name: String,
+    pub exit_code: Option<i32>,
+    /// Its captured streams, when it got that far.
+    pub stdout: Option<PathBuf>,
+    pub stderr: Option<PathBuf>,
+}
+
+/// How the containers of a task besides the main one ended, in the order of the task, from
+/// its control folder on this machine.
+pub fn ended(spec: &TaskSpec, control: &Path) -> Vec<Ended> {
+    (1..spec.containers.len())
+        .map(|position| {
+            let own = control.join(own_folder(spec, position));
+            let exists = |name: &str| Some(own.join(name)).filter(|path| path.exists());
+            Ended {
+                name: spec.containers[position].name.clone(),
+                exit_code: read_code(&own.join(EXIT)),
+                stdout: exists(STDOUT),
+                stderr: exists(STDERR),
+            }
+        })
+        .collect()
+}
+
+/// The exit code that the wrappers of a task recorded in its control folder on this machine:
+/// that of the main container when it failed, else that of the first other container that
+/// failed, else 0. `None` when a container recorded none, so that the task did not end.
+pub fn recorded(spec: &TaskSpec, control: &Path) -> Option<i32> {
+    let main = read_code(&control.join(EXIT))?;
+    if spec.containers.len() < 2 {
+        return Some(main);
+    }
+    let others: Option<Vec<i32>> = (ended(spec, control).into_iter())
+        .map(|ended| ended.exit_code)
+        .collect();
+    let others = others?;
+    let failed = others.into_iter().find(|code| *code != 0);
+    Some(if main != 0 { main } else { failed.unwrap_or(0) })
+}
+
+fn read_code(path: &Path) -> Option<i32> {
+    std::fs::read_to_string(path).ok()?.trim().parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use task_model::{ContainerSpec, FORMAT};
+
+    use super::*;
+
+    fn spec(containers: &[(&str, &str, &[&str])]) -> TaskSpec {
+        let image = |reference: &str| Image {
+            reference: reference.to_owned(),
+            platform: None,
+        };
+        TaskSpec {
+            format: FORMAT,
+            namespace: String::new(),
+            image: Some(image(containers[0].1)),
+            arguments: vec!["true".into()],
+            workdir: None,
+            environment: BTreeMap::new(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            stdin: None,
+            containers: (containers.iter())
+                .map(|(name, reference, after)| ContainerSpec {
+                    name: (*name).to_owned(),
+                    image: Some(image(reference)),
+                    arguments: vec!["echo".into(), (*name).to_owned()],
+                    workdir: None,
+                    environment: BTreeMap::new(),
+                    after: after.iter().map(|name| (*name).to_owned()).collect(),
+                    attempts: 2,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn containers_of_an_image_form_a_group() {
+        let spec = spec(&[
+            ("main", "a", &["b"]),
+            ("b", "b", &[]),
+            ("c", "a", &["main"]),
+        ]);
+        let groups = groups(&spec).expect("groups");
+        let members: Vec<&[usize]> = groups.iter().map(|group| &group.members[..]).collect();
+        assert_eq!(members, [&[0, 2][..], &[1][..]]);
+        assert_eq!(groups[0].image.reference, "a");
+    }
+
+    #[test]
+    fn a_sequence_puts_the_main_container_after_those_it_does_not_come_before() {
+        let spec = spec(&[
+            ("main", "a", &["b"]),
+            ("b", "a", &[]),
+            ("c", "a", &["main"]),
+            ("d", "a", &[]),
+        ]);
+        assert_eq!(sequence(&spec), Some(vec![1, 3, 0, 2]));
+    }
+
+    #[test]
+    fn wrappers_wait_retry_and_record_in_their_own_folders() {
+        let spec = spec(&[
+            ("main", "a", &["b"]),
+            ("b", "a", &[]),
+            ("c", "a", &["main"]),
+        ]);
+        let folders = Folders {
+            work: "/w",
+            control: "/c",
+            home: "/h",
+            outbox: "",
+        };
+        let other = container_wrapper(&spec, 1, &folders);
+        assert!(
+            other.contains("own=\"$control\"/'containers/b'\n"),
+            "{other}"
+        );
+        assert!(other.contains("[ \"$attempt\" -ge 2 ]"), "{other}");
+        assert!(!other.contains("manifest"), "{other}");
+        let main = container_wrapper(&spec, 0, &folders);
+        assert!(main.contains("own=\"$control\"\n"), "{main}");
+        assert!(
+            main.contains("! waited \"$control\"/'containers/b/exit'"),
+            "{main}"
+        );
+        // The main container waits for b before it collects, not for c, which comes after it.
+        assert!(main.contains("waited \"$control\"/'containers/b/exit' || :"));
+        assert!(!main.contains("containers/c/exit"), "{main}");
+        assert!(main.contains(": > \"$control/manifest\""), "{main}");
+        let group = group_wrapper(&["/c/containers/main/wrapper.sh".into()]);
+        assert!(group.contains("sh '/c/containers/main/wrapper.sh' > /dev/null &\nwait\n"));
+    }
+
+    #[test]
+    fn the_task_fails_with_the_main_container_or_the_first_that_failed() {
+        let spec = spec(&[("main", "a", &[]), ("b", "a", &[]), ("c", "a", &[])]);
+        let folder = tempfile::tempdir().expect("a folder");
+        let control = folder.path();
+        let write = |relative: &str, code: &str| {
+            let path = control.join(relative);
+            std::fs::create_dir_all(path.parent().expect("a parent")).expect("makes");
+            std::fs::write(path, code).expect("writes");
+        };
+        write("exit", "0\n");
+        write("containers/b/exit", "0\n");
+        assert_eq!(recorded(&spec, control), None);
+        write("containers/c/exit", "3\n");
+        assert_eq!(recorded(&spec, control), Some(3));
+        write("exit", "2\n");
+        assert_eq!(recorded(&spec, control), Some(2));
+        let ends = ended(&spec, control);
+        assert_eq!(ends[1].name, "c");
+        assert_eq!(ends[1].exit_code, Some(3));
+        assert_eq!(ends[1].stdout, None);
+    }
+}

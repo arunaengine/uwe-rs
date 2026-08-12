@@ -55,6 +55,8 @@ Every run records what pins it: the files of its workflow and command line, the 
 
 Every result goes to a content-addressed store, and any run, pipeline or language that asks for the same task takes it from there. Two runs that ask for the same task at the same moment run it once. A simulated run previews which tasks a real run would take from the cache, `-no-cache` runs every task of one run, and `iunctus clean` removes what no rule keeps, never what a run still refers to. Local inputs that did not change since a run read them are not read again to find their digests. See [the cache](design/cache.md).
 
+Real runs learn from earlier ones: a task asks for the CPUs and memory that the tasks of its step used before, with a margin, short tasks of a step run one after another in one container or one TES task, and with several TES servers a task goes to the site near its inputs. See [efficiency](design/efficiency.md).
+
 ## Start here
 
 - [Decisions](decisions.md): what has been decided so far. It replaces the report's plan where they differ.
@@ -70,6 +72,7 @@ Every result goes to a content-addressed store, and any run, pipeline or languag
 - [Reproducibility](design/reproducibility.md): what each run records to pin it, what changed since a run, repeating a run exactly, the reproducibility check of cached tasks, the order check, and tasks without network.
 - [Conda environments](design/conda.md): environment files, match specs, the order of conda versions, and locks made without network from local repodata with `iunctus lock-environment`; how images will be built.
 - [The cache](design/cache.md): when two tasks are the same, the store and its entries, one execution of a task that runs elsewhere with leases that end with their process, clean-up by rule, the preview of a run, and the longest chain first.
+- [Efficiency](design/efficiency.md): right-sized resources from what tasks used in earlier runs, short tasks together in one container, and tasks near their data with several TES servers.
 - [The config file and storage providers](design/storage.md): the config file of the site, the user and a run, secrets from environment variables, and the providers (S3 and compatible services, Google Cloud Storage, Azure Blob Storage, web servers, FTP and folders) that serve the store, remote inputs and results, with an example.
 - [The inputs of a workflow](design/inputs.md): the inputs of every workflow as one JSON Schema, how each language describes them, the check of a run before its first task, and the inputs that the code reads.
 - [The graphs of a run](design/graph.md): the graph of tasks and the graph of steps, what a simulated graph says about itself, the markers where real data can add or remove tasks, the formats, and the SVG layout.

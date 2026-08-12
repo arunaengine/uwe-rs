@@ -40,6 +40,10 @@ engine = "podman"                    # like IUNCTUS_ENGINE: docker, podman or a 
 server = "https://tes.example.org"   # like -tes-server
 token = { environment = "TES_TOKEN" } # like IUNCTUS_TES_TOKEN
 
+[executor.tes.sites.hamburg]         # more TES servers, each near some data
+server = "https://tes.hamburg.example.org"
+near = ["s3://hh-sequencing/", "/mnt/hamburg/"]
+
 [executor.slurm]
 container = "apptainer"              # like -slurm-container
 options = ["--account=lab", "--qos=low"]   # like -slurm-options
@@ -67,6 +71,7 @@ Each attempt becomes one TES v1.1 task with the wrapper as its one executor. Its
 
 - `-tes-server <address>` names the server; Funnel's `http://localhost:8000` is the default.
 - `IUNCTUS_TES_TOKEN` gives a bearer token, when the server needs one.
+- `[executor.tes.sites.<name>]` names more TES servers, each with the address prefixes or folders of the data near it (`near`); each task goes to the site near most of its input files, and the others to the server above ([efficiency](efficiency.md), section 3).
 - Before the first task, iunctus asks the server once whether it answers (`GET /service-info`). A server that does not answer, or that refuses the token, stops the run at once with exit code 3, instead of after the retries of the first task.
 - Images are pinned through their registry, which needs no container engine on this machine.
 - The command of a task runs through the entrypoint of its image, as with the local executor; the entrypoint and the default command come from the config of the image at its registry, read once per image (`executor::registry::ImageConfigs`). A task without a command runs the default command of the image.

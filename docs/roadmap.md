@@ -144,9 +144,9 @@ iunctus describes every task of every language the same way, and it knows every 
 | **Clean-up by rule** | Keep what was used in the last 90 days, what a named run needs, or what is expensive to make again. The rest is removed safely, because the store knows what refers to what | After Nextflow's `work/` is deleted, everything runs again | The run database |
 | **Remote files downloaded once** | An `s3://`, `https://` or FTP file is fetched once, checked by digest and shared by all later runs | Nextflow downloads remote files again for each new run | Remote inputs, the store |
 | **Preview before the run** | Before any compute is spent, a preview shows which tasks come from the cache and which will run, also past Snakemake checkpoints | Snakemake's dry run stops at checkpoints; Nextflow's `-preview` skips every process, so it lists no tasks | The simulator (done), the cache |
-| **Right-sized resources** | The measured CPU and memory of each step, by input size, set the requests of the next run, so more tasks fit on a machine and fewer fail for lack of memory | Nextflow and Snakemake use what the workflow says, or retry with more | The run database, reports |
+| **Right-sized resources** | The measured CPU and memory of each step, by input size, set the requests of the next run, so more tasks fit on a machine and fewer fail for lack of memory | Nextflow and Snakemake use what the workflow says, or retry with more | Done: see [efficiency](design/efficiency.md), section 1 |
 | **The longest chain first** | The engine starts the tasks on the longest remaining chain first, using the times of earlier runs, so the run ends sooner on the same machines | Nextflow starts tasks as they become ready; Snakemake weighs the priorities that the workflow sets | The run database |
-| **Short tasks together** | Many short tasks with the same image run in one container or one TES task, which saves the start-up time of each | Nextflow's `array` directive and Snakemake's job groups, where the workflow sets them | The TES executor |
+| **Short tasks together** | Many short tasks with the same image run in one container or one TES task, which saves the start-up time of each | Nextflow's `array` directive and Snakemake's job groups, where the workflow sets them | Done: see [efficiency](design/efficiency.md), section 2 |
 
 ### Storage across providers
 
@@ -156,7 +156,7 @@ iunctus describes every task of every language the same way, and it knows every 
 | **Storage settings outside the workflow** | A config file of the user or the site says which endpoint and credentials serve which bucket, with secrets taken from environment variables (decision 20), so the same workflow runs on any site without changes | Nextflow needs a config profile per site; Snakemake storage settings sit in the Snakefile or on the command line | Done: [storage](design/storage.md) |
 | **Copies checked by digest** | Data that moves between providers is checked end to end, a file that is already at the target is not copied again, and a run can move its store, for example from a local disk to S3, without running any task again | Nextflow copies files with `publishDir` and does not check their content | The store |
 | **A cache in layers** | A fast local disk in front of a shared S3 store: reads try the local disk first, and new results go to both | No engine has this | Done: [the cache](design/cache.md), section 8 |
-| **Tasks near their data** | With several providers and TES servers, a task goes to the site that holds its inputs, instead of the data going to the task | No engine chooses a site by where the data is | The TES executor, several storage providers |
+| **Tasks near their data** | With several providers and TES servers, a task goes to the site that holds its inputs, instead of the data going to the task | No engine chooses a site by where the data is | The choice of a site is done; TES servers that read their inputs themselves are next: see [efficiency](design/efficiency.md), section 3 |
 
 ### Flexibility and reach
 
@@ -224,7 +224,9 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 - [x] A cache in layers (section 4): a folder of this machine in front of a shared store, see [the cache](design/cache.md), section 8.
 - [x] The preview before a run (section 4): see [the cache](design/cache.md), section 5.
 - [x] The longest chain first (section 4), in the local executor: see [the cache](design/cache.md), section 6.
-- [ ] Right-sized resources, short tasks together, tasks near their data (section 4).
+- [x] Right-sized resources (section 4): see [efficiency](design/efficiency.md), section 1.
+- [x] Short tasks together (section 4): see [efficiency](design/efficiency.md), section 2.
+- [ ] Tasks near their data (section 4): the choice of a site and the sending to its TES server are done; the data still goes through this machine ([efficiency](design/efficiency.md), section 3).
 - [x] Everything pinned, with `iunctus changes` and `iunctus repeat`; tasks without network as an option (whether it becomes the default is open question 1); the reproducibility check; the order check for users: see [reproducibility](design/reproducibility.md).
 
 ### Easy setup

@@ -13,8 +13,8 @@ use content_store::Store;
 use executor::{Backend, ExecutorError};
 use task_model::{Digest, Measured, ReuseScope};
 use workflow_graph::{
-    Attempt, CancellationToken, ExecuteError, Executor, Files, Network, Outcome, OutputFile,
-    ReproducibilityCheck, Running, Task, Verdict,
+    Attempt, CancellationToken, ContainerOutcome, ExecuteError, Executor, Files, Network, Outcome,
+    OutputFile, ReproducibilityCheck, Running, Task, Verdict,
 };
 
 use crate::{NetworkRule, Runner, RunnerError, SiteRule, StorageFiles, TaskResult};
@@ -229,7 +229,18 @@ async fn outcome<B: Backend>(
         Some(image) => Some(runner.pin(image).await.map_err(failed)?),
         None => None,
     };
-    let mut prepared = runner.request(task, image.clone()).await.map_err(failed)?;
+    // The other containers of a task that runs several are pinned too, so that the key of
+    // the task names each image exactly.
+    let mut pinned = task.clone();
+    for container in pinned.containers.iter_mut().skip(1) {
+        if let Some(image) = &container.image {
+            container.image = Some(runner.pin(image).await.map_err(failed)?);
+        }
+    }
+    let mut prepared = runner
+        .request(&pinned, image.clone())
+        .await
+        .map_err(failed)?;
     prepared.request.attempt = attempt;
     if options.right_sizing {
         let placement = &prepared.request.placement;
@@ -304,8 +315,35 @@ pub(crate) async fn outcome_of(
             write_bytes: usage.write_bytes,
         }),
         reproducibility: result.check,
+        containers: containers(store, &result.containers).await?,
         ..Outcome::default()
     })
+}
+
+/// How the other containers of a task that runs several ended, with their streams as text.
+async fn containers(
+    store: &Store,
+    results: &[crate::ContainerResult],
+) -> Result<Vec<ContainerOutcome>, RunnerError> {
+    let text = async |digest: &Option<Digest>| -> Result<String, RunnerError> {
+        match digest {
+            Some(digest) => {
+                let bytes = store.get_content(digest).await?;
+                Ok(String::from_utf8_lossy(&bytes).into_owned())
+            }
+            None => Ok(String::new()),
+        }
+    };
+    let mut outcomes = Vec::new();
+    for result in results {
+        outcomes.push(ContainerOutcome {
+            name: result.name.clone(),
+            exit_code: result.exit_code,
+            stdout: text(&result.stdout).await?,
+            stderr: text(&result.stderr).await?,
+        });
+    }
+    Ok(outcomes)
 }
 
 /// An error of the runner as an error of the run: a feature that is not supported yet, a

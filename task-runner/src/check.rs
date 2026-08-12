@@ -106,6 +106,7 @@ mod tests {
             stdout: Some(Digest::sha256(b"out")),
             stderr: None,
             milliseconds: None,
+            containers: Vec::new(),
         }
     }
 

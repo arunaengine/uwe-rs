@@ -79,6 +79,7 @@ pub(crate) fn joinable(job: &Job<'_>) -> bool {
     let relative = |path: &str| !path.starts_with('/') && path.trim_end_matches('/') != ".";
     let spec = job.spec;
     spec.image.is_some()
+        && spec.containers.is_empty()
         && !spec.arguments.is_empty()
         && spec.workdir.is_none()
         && (spec.outputs.iter()).all(|rule| relative(&rule.pattern))

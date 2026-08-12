@@ -27,5 +27,7 @@ pub use files::StorageFiles;
 pub use lookup::Lookup;
 pub use network::NetworkRule;
 pub use request::{identity, request};
-pub use runner::{Prepared, Runner, RunnerError, Settings, StoredFile, TaskResult};
+pub use runner::{
+    ContainerResult, Prepared, Runner, RunnerError, Settings, StoredFile, TaskResult,
+};
 pub use sites::{Site, SiteRule, Sites};

@@ -8,7 +8,7 @@ use content_store::Store;
 use serde::{Deserialize, Serialize};
 use task_model::Digest;
 
-use crate::{RunnerError, StoredFile, TaskResult};
+use crate::{ContainerResult, RunnerError, StoredFile, TaskResult};
 
 /// A cache entry, as `ac/v1/<namespace>/<key>.json` holds it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -23,6 +23,9 @@ pub struct CacheEntry {
     /// How long the task ran, in milliseconds; entries of earlier versions do not tell.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub milliseconds: Option<u64>,
+    /// How the containers of a task that runs several ended, besides the main one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub containers: Vec<ContainerResult>,
 }
 
 impl CacheEntry {
@@ -52,7 +55,16 @@ impl CacheEntry {
             started: None,
             ended: None,
             check: None,
+            containers: self.containers,
         }
+    }
+
+    /// The digests of the captured streams: of the task, and of its other containers.
+    pub fn logs(&self) -> impl Iterator<Item = &Digest> {
+        let containers = self.containers.iter();
+        (self.stdout.iter().chain(&self.stderr)).chain(
+            containers.flat_map(|container| container.stdout.iter().chain(&container.stderr)),
+        )
     }
 
     /// Whether the store still has every file of the entry: each output, the manifest of each
@@ -68,7 +80,7 @@ impl CacheEntry {
                 return Ok(false);
             }
         }
-        for digest in self.stdout.iter().chain(&self.stderr) {
+        for digest in self.logs() {
             if !store.has_content(digest).await? {
                 return Ok(false);
             }

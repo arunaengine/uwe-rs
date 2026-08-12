@@ -17,7 +17,7 @@ use workflow_graph::{
     ReproducibilityCheck, Running, Task, Verdict,
 };
 
-use crate::{NetworkRule, Runner, RunnerError, StorageFiles, TaskResult};
+use crate::{NetworkRule, Runner, RunnerError, SiteRule, StorageFiles, TaskResult};
 
 /// A runner as the executor of a run.
 pub struct RunnerExecutor<B> {
@@ -46,6 +46,8 @@ pub struct RunnerExecutor<B> {
     /// [`task_model::per_container`] finds short, with the same image and resources, run one after
     /// another in one container (see `together.rs`).
     pub together: bool,
+    /// Which site runs each task, where the backend has several.
+    pub sites: SiteRule,
 }
 
 impl<B: Backend> RunnerExecutor<B> {
@@ -60,6 +62,7 @@ impl<B: Backend> RunnerExecutor<B> {
             measured: Arc::default(),
             right_sizing: true,
             together: false,
+            sites: SiteRule::default(),
         }
     }
 
@@ -98,6 +101,7 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
         let reuse = self.reuse;
         let together = self.together;
         let right_sizing = self.right_sizing;
+        let site = self.sites.site(&task).map(str::to_owned);
         let measured = self.measured.clone();
         Running::new(async move {
             let number = attempt.number;
@@ -108,6 +112,7 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
                 measured,
                 right_sizing,
                 together,
+                site,
             };
             let result = outcome(&runner, &task, number, &options, &attempt.cancel).await;
             if verbose && let Ok(outcome) = &result {
@@ -207,6 +212,8 @@ struct AttemptOptions<'a> {
     right_sizing: bool,
     /// Whether it may run with other short tasks, when it is short.
     together: bool,
+    /// The site that runs it, where there are several.
+    site: Option<String>,
 }
 
 /// Runs an attempt of a task through the runner, and turns its result into an outcome.
@@ -230,6 +237,7 @@ async fn outcome<B: Backend>(
             crate::resources::placement(task, placement, attempt, options.measured);
     }
     prepared.request.placement.priority = options.priority;
+    prepared.request.placement.executor = options.site.clone();
     // A retry runs alone.
     if options.together && attempt <= 1 {
         prepared.per_container = task_model::per_container(options.measured);

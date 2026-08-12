@@ -45,6 +45,7 @@ pub struct Placement {
     pub time_seconds: Option<u64>,
     pub accelerators: Vec<Accelerator>,
     pub preemptible: bool,
+    /// The site that runs the task, where the executor has several (tasks near their data).
     pub executor: Option<String>,
     pub queue: Option<String>,
     /// Backend parameters passed through as given, such as TES `backend_parameters`.

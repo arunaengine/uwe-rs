@@ -1000,6 +1000,43 @@ fn a_container_set_fails_with_the_first_container_that_failed() {
 }
 
 #[test]
+fn tasks_may_change_their_artifacts_and_the_files_of_volumes() {
+    let text = r#"apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata: {generateName: test-}
+spec:
+  entrypoint: main
+  volumeClaimTemplates:
+  - metadata: {name: work}
+    spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 1Mi}}}
+  templates:
+  - name: main
+    steps:
+    - - {name: write, template: write}
+    - - {name: append, template: append}
+    - - {name: show, template: show, arguments: {artifacts: [{name: data, from: "{{steps.append.outputs.artifacts.data}}"}]}}
+  - name: write
+    container: {image: alpine, command: [sh, -c, "echo one > /work/data.txt"], volumeMounts: [{name: work, mountPath: /work}]}
+  - name: append
+    container: {image: alpine, command: [sh, -c, "echo two >> /work/data.txt"], volumeMounts: [{name: work, mountPath: /work}]}
+    outputs: {artifacts: [{name: data, path: /work/data.txt}]}
+  - name: show
+    inputs: {artifacts: [{name: data, path: /tmp/data.txt}]}
+    container: {image: alpine, command: [cat, /tmp/data.txt]}
+"#;
+    let ran = run(text);
+    ran.succeeded();
+    let writable = |name: &str, path: &str| {
+        let task = ran.task(name);
+        let input = task.inputs.iter().find(|input| input.path == path);
+        input.map(|input| input.writable)
+    };
+    let copy = Some(workflow_graph::Writable::Copy);
+    assert_eq!(writable("[1].append", "/work/data.txt"), copy);
+    assert_eq!(writable("[2].show", "/tmp/data.txt"), copy);
+}
+
+#[test]
 fn kubernetes_fields_are_left_out_with_a_warning() {
     let ran = run(&workflow(
         "  - name: main\n    nodeSelector: {disk: ssd}\n    container: {image: alpine, securityContext: {runAsUser: 1000}}\n",

@@ -16,7 +16,9 @@ use std::collections::BTreeMap;
 
 use argo_parser::model::{Container, Template};
 use argo_parser::{Node, Value as Yaml, decode};
-use workflow_graph::{Container as TaskContainer, Input, Outcome, Resources, Task, TaskId};
+use workflow_graph::{
+    Container as TaskContainer, Input, Outcome, Resources, Task, TaskId, Writable,
+};
 
 use crate::http::{
     CURL_IMAGE, RESPONSE_BODY, RESPONSE_STATUS, Verdict, http_script, http_verdict, secret_headers,
@@ -654,7 +656,8 @@ fn container_order(containers: &[Container]) -> std::result::Result<Vec<usize>, 
     Ok(order)
 }
 
-/// The input of a task for an artifact.
+/// The input of a task for an artifact. The task gets a copy that it may change, as Argo's
+/// executor writes each input artifact into the pod.
 fn input_of(artifact: &ArtifactValue) -> Option<Input> {
     let location = artifact.location.as_ref()?;
     let path = if artifact.path.is_empty() {
@@ -675,14 +678,14 @@ fn input_of(artifact: &ArtifactValue) -> Option<Input> {
             source: file.to_string_lossy().into_owned(),
             directory: artifact.directory || file.is_dir(),
             content: None,
-            ..Default::default()
+            writable: Writable::Copy,
         },
         Location::Url(url) => Input {
             path,
             source: url.clone(),
             directory: artifact.directory,
             content: None,
-            ..Default::default()
+            writable: Writable::Copy,
         },
     })
 }

@@ -2,8 +2,9 @@
 //!
 //! A container template is one task with the container's image, command and arguments. A
 //! script template runs its command on the source, which the task gets as the file
-//! `/argo/staging/script`, as Argo's executor writes it. A container set gives one task per
-//! container, ordered by their dependencies. Init containers are tasks before these, one after
+//! `/argo/staging/script`, as Argo's executor writes it. A container set is one task of several
+//! containers, which run in one place in the order of their dependencies and share the volumes
+//! of the set. Init containers are tasks before these, one after
 //! the other, and the files they write into volumes are inputs of the next. An HTTP template
 //! runs curl, which writes the response body and status code to files that decide the success
 //! condition. Environment variables and volumes come from the modules `objects` and `volumes`
@@ -15,7 +16,7 @@ use std::collections::BTreeMap;
 
 use argo_parser::model::{Container, Template};
 use argo_parser::{Node, Value as Yaml, decode};
-use workflow_graph::{Input, Outcome, Task, TaskId};
+use workflow_graph::{Container as TaskContainer, Input, Outcome, Resources, Task, TaskId};
 
 use crate::http::{
     CURL_IMAGE, RESPONSE_BODY, RESPONSE_STATUS, Verdict, http_script, http_verdict, secret_headers,
@@ -130,40 +131,47 @@ impl Run {
             self.mount_volumes(index, first, template, &script.volume_mounts, &mut task)?;
             tasks.push(task);
         } else if let Some(set) = &template.container_set {
-            let names: Vec<&str> = set
-                .containers
-                .iter()
-                .map(|container| container.name.as_str())
-                .collect();
-            let order = container_order(&set.containers).map_err(Failure::error)?;
+            // One task runs every container of the set, as one pod does: the main container
+            // first, then the others in the order of the set. They share the volumes that any
+            // of them mounts, and the task asks for the sum of their resources, as Argo does.
+            container_order(&set.containers).map_err(Failure::error)?;
             let main = main_container(&set.containers);
-            for &position in &order {
+            let attempts = retry_attempts(set.retry_strategy.as_ref());
+            let positions =
+                std::iter::once(main).chain((0..set.containers.len()).filter(|&at| at != main));
+            let mut task = base(&set.containers[main].image, None);
+            let mut mounts: Vec<Node> = set.volume_mounts.clone();
+            for position in positions {
                 let container = &set.containers[position];
-                let mut task = base(&container.image, Some(container));
-                task.name = format!("{name} ({})", container.name);
-                fill_container(&mut task, container);
-                task.environment = self.environment(container, &fields)?;
+                let environment = self.environment(container, &fields)?;
                 if position == main {
-                    task.outputs = outputs.clone();
+                    fill_container(&mut task, container);
+                    task.environment = environment.clone();
                 }
-                let mounts: Vec<Node> = set
-                    .volume_mounts
-                    .iter()
-                    .chain(&container.volume_mounts)
-                    .cloned()
-                    .collect();
-                let slot = first + tasks.len();
-                self.mount_volumes(index, slot, template, &mounts, &mut task)?;
-                let after: Vec<usize> = container
-                    .dependencies
-                    .iter()
-                    .filter_map(|dependency| {
-                        order.iter().position(|&slot| names[slot] == dependency)
-                    })
-                    .collect();
-                dependencies.push(after);
-                tasks.push(task);
+                task.resources = sum(&task.resources, container);
+                let path = |mount: &Node| mount.get("mountPath").map(scalar_text);
+                for mount in &container.volume_mounts {
+                    if !mounts.iter().any(|known| path(known) == path(mount)) {
+                        mounts.push(mount.clone());
+                    }
+                }
+                task.containers.push(TaskContainer {
+                    name: container.name.clone(),
+                    image: (!container.image.is_empty()).then(|| container.image.clone()),
+                    command: (container.command.iter())
+                        .chain(&container.args)
+                        .cloned()
+                        .collect(),
+                    workdir: (!container.working_dir.is_empty())
+                        .then(|| container.working_dir.clone()),
+                    environment,
+                    after: container.dependencies.clone(),
+                    attempts,
+                });
             }
+            task.outputs = outputs.clone();
+            self.mount_volumes(index, first, template, &mounts, &mut task)?;
+            tasks.push(task);
         } else if let Some(http) = &template.http {
             let mut task = base(CURL_IMAGE, None);
             let mut secrets = BTreeMap::new();
@@ -222,27 +230,30 @@ impl Run {
             .flatten()
             .cloned()
             .collect();
-        // The main container of a container set gives the result; its tasks are in
-        // dependency order.
-        let slot = match &template.container_set {
-            Some(set) => container_order(&set.containers)
-                .ok()
-                .and_then(|order| {
-                    order
-                        .iter()
-                        .position(|&position| position == main_container(&set.containers))
-                })
-                .unwrap_or(0),
-            None => 0,
-        };
-        let Some(main) = outcomes.get(slot).or(outcomes.first()).cloned() else {
+        // One task runs the main container, or all containers of a container set.
+        let slot = 0;
+        let Some(main) = outcomes.first().cloned() else {
             return Ok(());
         };
-        let exit_code = outcomes
-            .iter()
-            .map(|outcome| outcome.exit_code)
-            .find(|code| *code != 0)
-            .unwrap_or(0);
+        // The exit code of the main container; a container set fails when any of its
+        // containers failed, with the message of the first by name, as Argo sorts them.
+        let own = |outcome: &Outcome| match outcome.containers.first() {
+            Some(container) => container.exit_code.unwrap_or(outcome.exit_code),
+            None => outcome.exit_code,
+        };
+        let exit_code = own(&main);
+        let mut failed: Vec<(&str, i32)> = (main.containers.iter())
+            .filter_map(|container| {
+                let code = container.exit_code.unwrap_or(main.exit_code);
+                (code != 0).then_some((container.name.as_str(), code))
+            })
+            .collect();
+        failed.sort();
+        let failure = match failed.first() {
+            Some((container, code)) => Some(format!("{container}: Error (exit code {code})")),
+            None if main.exit_code != 0 => Some(format!("Error (exit code {})", main.exit_code)),
+            None => None,
+        };
         let mut result = main.stdout.clone();
         if result.ends_with('\n') {
             result.pop();
@@ -363,12 +374,8 @@ impl Run {
             self.fail(index, Phase::Error, message);
             return Ok(());
         }
-        if exit_code != 0 {
-            self.fail(
-                index,
-                Phase::Failed,
-                format!("Error (exit code {exit_code})"),
-            );
+        if let Some(message) = failure {
+            self.fail(index, Phase::Failed, message);
             return Ok(());
         }
         if let Some(error) = errors.into_iter().next() {
@@ -582,6 +589,36 @@ fn shell_script(command: &[String]) -> Option<String> {
         .iter()
         .position(|argument| argument.starts_with('-') && argument.contains('c'))?;
     command.get(flag + 2).cloned()
+}
+
+/// How often each container of a set runs its command at most while it fails: the `retries`
+/// of the set's `retryStrategy`, which Argo's executor takes as the number of tries, else once.
+fn retry_attempts(strategy: Option<&Node>) -> u32 {
+    let retries = strategy
+        .and_then(|strategy| strategy.get("retries"))
+        .map(scalar_text)
+        .and_then(|text| text.trim().parse::<u32>().ok());
+    retries.unwrap_or(1).max(1)
+}
+
+/// The resources of a pod with one more container: the sum of their requests.
+fn sum(total: &Resources, container: &Container) -> Resources {
+    let more = (container.resources.as_ref())
+        .map(resources_of)
+        .unwrap_or_default();
+    fn add<T: std::ops::Add<Output = T>>(a: Option<T>, b: Option<T>) -> Option<T> {
+        match (a, b) {
+            (Some(a), Some(b)) => Some(a + b),
+            (a, b) => a.or(b),
+        }
+    }
+    Resources {
+        cpus: add(total.cpus, more.cpus),
+        memory_bytes: add(total.memory_bytes, more.memory_bytes),
+        disk_bytes: add(total.disk_bytes, more.disk_bytes),
+        time_seconds: total.time_seconds,
+        gpus: add(total.gpus, more.gpus),
+    }
 }
 
 /// The container of a set whose outcome is the node's: `main`, or the last.

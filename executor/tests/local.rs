@@ -322,9 +322,12 @@ fn linked_inputs_are_read_only_and_limits_hold() {
         time_seconds: Some(1),
         ..Placement::default()
     };
+    let started = std::time::Instant::now();
     let finished =
         run_with(&executor, "task-8", &task, &Staging::default(), &placement).expect("runs");
     assert_ne!(finished.exit_code, Some(0));
+    // The wrapper passes the stop on to the tool, so the task ends without the stop's grace.
+    assert!(started.elapsed().as_secs() < 8, "{:?}", started.elapsed());
     let said = std::fs::read_to_string(finished.stderr()).expect("reads");
     assert!(said.contains("longer than its time"), "{said}");
     // A tool that ends well while the engine stops it still ran longer than its time.

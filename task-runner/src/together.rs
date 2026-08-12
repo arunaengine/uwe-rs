@@ -261,7 +261,7 @@ fn key(job: &Job<'_>) -> String {
 }
 
 /// The script of a group: it writes the wrapper of each task into the folder of the task and
-/// runs it, one after another, whatever the ones before gave.
+/// runs it, one after another, whatever the ones before gave. A stop ends the group.
 fn script(members: &[Member]) -> String {
     let mut script = String::from(
         "#!/bin/sh\n# Short tasks of iunctus, one after another in one container.\ngroup=$(pwd)\n",
@@ -281,7 +281,8 @@ fn script(members: &[Member]) -> String {
             wrapper::wrapper(&member.spec, &own).replace(&format!("'{GROUP}"), "\"${0%/*/*}\"'/");
         script.push_str(&format!(
             "mkdir -p \"$group/{folder}\"\ncat > \"$group/{folder}/wrapper.sh\" <<'{END_OF_WRAPPER}'\n\
-             {text}{END_OF_WRAPPER}\nsh \"$group/{folder}/wrapper.sh\"\n"
+             {text}{END_OF_WRAPPER}\n{}[ -z \"${{stopped:-}}\" ] || exit 143\n",
+            wrapper::stoppable(&format!("sh \"$group/{folder}/wrapper.sh\""))
         ));
     }
     script

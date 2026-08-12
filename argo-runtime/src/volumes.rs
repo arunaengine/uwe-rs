@@ -204,6 +204,7 @@ impl Run {
                     let before = task.inputs.len();
                     // A mounted host file is read, not written.
                     let file = host.as_ref().is_some_and(|host| host.file);
+                    let host_input = host.as_ref().is_some_and(|host| !host.path.is_empty());
                     if let Some(host) = host.filter(|host| !host.path.is_empty()) {
                         let exists = Path::new(&host.path).exists();
                         if exists || self.options.assume_inputs {
@@ -225,6 +226,14 @@ impl Run {
                         "" => String::new(),
                         folder => format!("{folder}/"),
                     };
+                    // The files of a volume that the task may write are copies that it may
+                    // change, as a task changes the files of a volume in Argo; its changes go
+                    // into the volume when it ends. The files of a host path stay read-only,
+                    // since the host folder itself is shown there.
+                    let writable = match read_only || host_input {
+                        true => workflow_graph::Writable::No,
+                        false => workflow_graph::Writable::Copy,
+                    };
                     let files = self.volumes.get(&key).cloned().unwrap_or_default();
                     for (relative, location) in files {
                         if let Some(inside) = relative.strip_prefix(&prefix) {
@@ -233,7 +242,7 @@ impl Run {
                                 source: location.to_string_lossy().into_owned(),
                                 directory: false,
                                 content: None,
-                                ..Default::default()
+                                writable,
                             });
                         }
                     }

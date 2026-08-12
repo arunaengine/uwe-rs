@@ -211,11 +211,11 @@ pub struct Outcome {
     /// task ran again to see whether its tool gives the same bytes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reproducibility: Option<ReproducibilityCheck>,
-    /// How the containers of a task that runs several ended, besides the main one, whose end
-    /// is the outcome itself; in the order of `Task.containers`. The exit code of the outcome
-    /// is that of the main container when it failed, else that of the first other container
-    /// that failed. Empty when the task ran one container, and when the executor does not
-    /// run them, as the simulator does not.
+    /// How the containers of a task that runs several ended, in the order of `Task.containers`,
+    /// the main one first, whose streams are those of the outcome. The exit code of the
+    /// outcome is that of the main container when it failed, else that of the first other
+    /// container that failed. Empty when the task ran one container, and when the executor
+    /// does not run them, as the simulator does not.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub containers: Vec<ContainerOutcome>,
 }

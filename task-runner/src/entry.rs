@@ -23,7 +23,7 @@ pub struct CacheEntry {
     /// How long the task ran, in milliseconds; entries of earlier versions do not tell.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub milliseconds: Option<u64>,
-    /// How the containers of a task that runs several ended, besides the main one.
+    /// How the containers of a task that runs several ended, the main one first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub containers: Vec<ContainerResult>,
 }

@@ -51,6 +51,7 @@ impl Backend for Fake {
         std::fs::write(finished.stdout(), "said\n")?;
         // The other containers of a task that runs several say their names and end well.
         let control = finished.root.join("control");
+        std::fs::write(control.join("exit"), format!("{}\n", self.exit_code))?;
         for container in job.spec.containers.iter().skip(1) {
             let own = control.join("containers").join(&container.name);
             std::fs::create_dir_all(&own)?;
@@ -421,9 +422,11 @@ fn containers_of_a_task_are_pinned_and_keep_their_logs_in_the_cache() {
     let second = block_on(executor.run(attempt(&task, 2))).expect("an outcome");
     assert_eq!((first.cached, second.cached), (false, true));
     for outcome in [&first, &second] {
-        let [prepare] = outcome.containers.as_slice() else {
-            panic!("one other container")
+        let [main, prepare] = outcome.containers.as_slice() else {
+            panic!("two containers")
         };
+        assert_eq!((main.name.as_str(), main.exit_code), ("main", Some(0)));
+        assert_eq!(main.stdout, "said\n");
         assert_eq!(prepare.name, "prepare");
         assert_eq!(prepare.exit_code, Some(0));
         assert_eq!(prepare.stdout, "prepare\n");

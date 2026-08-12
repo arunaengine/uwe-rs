@@ -681,6 +681,7 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
         resources: resources(request),
         network: workflow_graph::Network::Unstated,
         after: Vec::new(),
+        containers: Vec::new(),
     }
 }
 
@@ -719,6 +720,7 @@ fn exec_task(request: &TaskRequest) -> Task {
         resources: workflow_graph::Resources::default(),
         network: workflow_graph::Network::Denied,
         after: Vec::new(),
+        containers: Vec::new(),
     }
 }
 

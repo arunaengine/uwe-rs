@@ -74,6 +74,32 @@ pub struct Task {
     /// or Snakemake rules ordered without files. Each must be a task that the driver asked for
     /// before this one; the engine starts this task only when all of them have finished.
     pub after: Vec<TaskId>,
+    /// The containers of a task that runs several at once in one place, like the containers of
+    /// an Argo container set, which share the work directory, the inputs and the outputs of
+    /// the task. Empty for a task of one container. Otherwise the first is the main container:
+    /// `image`, `command`, `workdir` and `environment` of the task repeat its own, it reads the
+    /// standard input, its standard output is the task's, and it collects the outputs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub containers: Vec<Container>,
+}
+
+/// One container of a task that runs several.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Container {
+    /// Unique in the task, and a safe file name.
+    pub name: String,
+    pub image: Option<String>,
+    /// The program and its arguments; an empty list runs the image's default command.
+    pub command: Vec<String>,
+    /// Where the container starts; `None` for the work directory of the task.
+    pub workdir: Option<String>,
+    pub environment: BTreeMap<String, String>,
+    /// The containers of the task, by name, that must end with exit code 0 before this one
+    /// starts. When one of them fails, this one does not run and fails too.
+    pub after: Vec<String>,
+    /// How often the container runs its command at most while it fails, at least once, like
+    /// the `retryStrategy` of an Argo container set.
+    pub attempts: u32,
 }
 
 /// Whether a workflow lets a task use the network.
@@ -185,6 +211,23 @@ pub struct Outcome {
     /// task ran again to see whether its tool gives the same bytes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reproducibility: Option<ReproducibilityCheck>,
+    /// How the containers of a task that runs several ended, besides the main one, whose end
+    /// is the outcome itself; in the order of `Task.containers`. The exit code of the outcome
+    /// is that of the main container when it failed, else that of the first other container
+    /// that failed. Empty when the task ran one container, and when the executor does not
+    /// run them, as the simulator does not.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub containers: Vec<ContainerOutcome>,
+}
+
+/// How one container of a task that runs several ended.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContainerOutcome {
+    pub name: String,
+    /// Its exit code; `None` when it did not record one.
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
 }
 
 /// A task whose result came from the cache, run again to see whether its tool gives the same

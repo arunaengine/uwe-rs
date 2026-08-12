@@ -126,6 +126,7 @@ impl CommandRunner {
             resources: Default::default(),
             network: workflow_graph::Network::Unstated,
             after: Vec::new(),
+            containers: Vec::new(),
         }
     }
 

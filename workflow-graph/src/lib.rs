@@ -39,6 +39,6 @@ pub use options::{Order, RunOptions};
 pub use simulator::Simulator;
 pub use steps::{StepEdge, StepGraph, StepNode};
 pub use task::{
-    Input, Language, Network, Outcome, OutputFile, ReproducibilityCheck, Resources, Task, TaskId,
-    Usage, Verdict, Writable,
+    Container, ContainerOutcome, Input, Language, Network, Outcome, OutputFile,
+    ReproducibilityCheck, Resources, Task, TaskId, Usage, Verdict, Writable,
 };

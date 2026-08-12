@@ -512,6 +512,7 @@ pub fn task(
             (true, false) => Network::Denied,
         },
         after: Vec::new(),
+        containers: Vec::new(),
     };
     // Outputs at the path of an input file get its location back, as with cwltool's path
     // mapper, which holds the files of the input object but not literals or writable copies.

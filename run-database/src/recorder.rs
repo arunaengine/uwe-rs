@@ -327,7 +327,17 @@ impl Recorder {
                         exit_code
                     ])?;
             }
-            for (stream, text) in [("stdout", &outcome.stdout), ("stderr", &outcome.stderr)] {
+            // The other containers of a task that runs several have streams of their own,
+            // named after the container, like `prepare/stdout`.
+            let mut streams = vec![
+                ("stdout".to_owned(), &outcome.stdout),
+                ("stderr".to_owned(), &outcome.stderr),
+            ];
+            for container in &outcome.containers {
+                streams.push((format!("{}/stdout", container.name), &container.stdout));
+                streams.push((format!("{}/stderr", container.name), &container.stderr));
+            }
+            for (stream, text) in streams {
                 if text.is_empty() {
                     continue;
                 }

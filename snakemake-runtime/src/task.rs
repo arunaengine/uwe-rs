@@ -641,6 +641,7 @@ pub fn build(
         resources: crate::resources::task_resources(threads, &resources),
         network: workflow_graph::Network::Unstated,
         after: Vec::new(),
+        containers: Vec::new(),
     })
 }
 

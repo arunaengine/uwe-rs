@@ -24,6 +24,9 @@ struct Scripted {
     files: HashMap<&'static str, Vec<&'static str>>,
     calls: HashMap<String, usize>,
     writes: HashMap<String, usize>,
+    /// Exit codes of containers of tasks that run several, by template and container; the
+    /// others end with 0.
+    containers: HashMap<&'static str, Vec<(&'static str, i32)>>,
 }
 
 impl Executor for Scripted {
@@ -46,6 +49,29 @@ impl Scripted {
             outcome.exit_code = code;
         }
         *call += 1;
+        if let Some(codes) = self.containers.get(task.step.as_str()) {
+            let code = |name: &str| {
+                (codes.iter())
+                    .find(|(known, _)| *known == name)
+                    .map_or(0, |(_, code)| *code)
+            };
+            outcome.containers = (task.containers.iter())
+                .map(|container| workflow_graph::ContainerOutcome {
+                    name: container.name.clone(),
+                    exit_code: Some(code(&container.name)),
+                    ..Default::default()
+                })
+                .collect();
+            let codes: Vec<i32> = outcome
+                .containers
+                .iter()
+                .filter_map(|c| c.exit_code)
+                .collect();
+            outcome.exit_code = match codes.first() {
+                Some(&main) if main != 0 => main,
+                _ => codes.into_iter().find(|code| *code != 0).unwrap_or(0),
+            };
+        }
         for file in &outcome.files {
             let path = format!("/{}", file.path.trim_start_matches('/'));
             let write = self.writes.entry(path.clone()).or_default();
@@ -69,6 +95,7 @@ struct Setup {
     real_inputs: bool,
     /// Go on after a failure, as `-keep-going` asks.
     keep_going: bool,
+    containers: Vec<(&'static str, Vec<(&'static str, i32)>)>,
 }
 
 struct Ran {
@@ -191,6 +218,7 @@ fn run_with(workflow: &str, setup: Setup) -> Ran {
         files: setup.files.into_iter().collect(),
         calls: HashMap::new(),
         writes: HashMap::new(),
+        containers: setup.containers.into_iter().collect(),
     };
     let execution = execute("workflow.yaml", &mut driver, &mut executor);
     let warnings = driver.warnings().to_vec();
@@ -866,13 +894,13 @@ fn leaf_kinds_become_tasks() {
 "#,
     ));
     ran.succeeded();
-    assert_eq!(
-        ran.names(),
-        ["[0].set (first)", "[0].set (main)", "[0].http"]
-    );
-    assert_eq!(ran.upstream("[0].set (main)"), ["[0].set (first)"]);
+    assert_eq!(ran.names(), ["[0].set", "[0].http"]);
+    let set = ran.task("[0].set");
+    let names: Vec<&str> = set.containers.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["main", "first"]);
+    assert_eq!(set.containers[0].after, ["first"]);
     // Pods get made-up fields, and Secrets placeholders in a simulated run.
-    let environment = &ran.task("[0].set (first)").environment;
+    let environment = &set.containers[1].environment;
     assert!(environment["POD"].starts_with("test-"), "{environment:?}");
     assert_eq!(environment["TOKEN"], "placeholder_secret_s_k");
     let http = &ran.task("[0].http").command;
@@ -889,6 +917,86 @@ fn leaf_kinds_become_tasks() {
             .iter()
             .any(|warning| warning.contains("response status is not known"))
     );
+}
+
+const CONTAINER_SET: &str = r#"
+  - name: main
+    dag:
+      tasks:
+      - {name: set, template: set}
+      - name: after
+        template: print
+        dependencies: [set]
+        arguments: {parameters: [{name: message, value: "{{tasks.set.outputs.parameters.message}}"}]}
+  - name: set
+    volumes: [{name: workspace, emptyDir: {}}]
+    containerSet:
+      retryStrategy: {retries: "3"}
+      volumeMounts: [{name: workspace, mountPath: /workspace}]
+      containers:
+      - name: a
+        image: alpine
+        command: [sh, -c, "echo a > /workspace/message"]
+        resources: {requests: {cpu: 500m, memory: 1Gi}}
+      - {name: b, image: busybox, command: [sh, -c, "echo b >> /workspace/message"], dependencies: [a], workingDir: /tmp}
+      - name: main
+        image: alpine
+        command: [cat, /workspace/message]
+        dependencies: [b]
+        resources: {requests: {cpu: "1", memory: 1Gi}}
+    outputs:
+      parameters: [{name: message, valueFrom: {path: /workspace/message}}]
+"#;
+
+#[test]
+fn a_container_set_is_one_task_of_its_containers() {
+    let setup = Setup {
+        files: vec![("/workspace/message", vec!["a\nb\n"])],
+        ..Setup::default()
+    };
+    let ran = run_with(&workflow(CONTAINER_SET), setup);
+    ran.succeeded();
+    assert_eq!(ran.names(), ["set", "after"]);
+    let set = ran.task("set");
+    assert_eq!(set.image.as_deref(), Some("alpine"));
+    assert_eq!(set.command, ["cat", "/workspace/message"]);
+    let names: Vec<&str> = set.containers.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["main", "a", "b"]);
+    let b = &set.containers[2];
+    assert_eq!(b.image.as_deref(), Some("busybox"));
+    assert_eq!(
+        (b.after.as_slice(), b.workdir.as_deref()),
+        (&["a".to_owned()][..], Some("/tmp"))
+    );
+    assert!(
+        set.containers
+            .iter()
+            .all(|container| container.attempts == 3)
+    );
+    // The task asks for what all containers request together, as the pod does.
+    assert_eq!(set.resources.cpus, Some(1.5));
+    assert_eq!(set.resources.memory_bytes, Some(2 << 30));
+    assert!(
+        set.outputs.contains(&"/workspace/".to_owned()),
+        "{:?}",
+        set.outputs
+    );
+    assert_eq!(ran.task("after").command, ["echo", "a\nb"]);
+}
+
+#[test]
+fn a_container_set_fails_with_the_first_container_that_failed() {
+    let setup = Setup {
+        containers: vec![("set", vec![("b", 2)])],
+        ..Setup::default()
+    };
+    let ran = run_with(&workflow(CONTAINER_SET), setup);
+    assert!(
+        ran.error().contains("b: Error (exit code 2)"),
+        "{}",
+        ran.error()
+    );
+    assert_eq!(ran.names(), ["set"]);
 }
 
 #[test]

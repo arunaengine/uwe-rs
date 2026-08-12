@@ -199,7 +199,7 @@ argo-workflows/examples/artifact-passing.yaml	ok 2
 argo-workflows/examples/artifact-path-placeholders.yaml	ok 1
 argo-workflows/examples/artifact-repository-ref.yaml	ok 1
 argo-workflows/examples/artifactory-artifact.yaml	ok 2
-argo-workflows/examples/artifacts-workflowtemplate.yaml	ok 3
+argo-workflows/examples/artifacts-workflowtemplate.yaml	ok 1
 argo-workflows/examples/buildkit-template.yaml	ok 3
 argo-workflows/examples/ci-output-artifact.yaml	ok 5
 argo-workflows/examples/ci-workflowtemplate.yaml	ok 6
@@ -220,11 +220,11 @@ argo-workflows/examples/conditional-artifacts.yaml	ok 1
 argo-workflows/examples/conditional-parameters.yaml	ok 1
 argo-workflows/examples/conditionals-complex.yaml	ok 2
 argo-workflows/examples/conditionals.yaml	ok 3
-argo-workflows/examples/container-set-template/graph-workflow.yaml	ok 4
+argo-workflows/examples/container-set-template/graph-workflow.yaml	ok 1
 argo-workflows/examples/container-set-template/outputs-result-workflow.yaml	ok 2
-argo-workflows/examples/container-set-template/parallel-workflow.yaml	ok 2
-argo-workflows/examples/container-set-template/sequence-workflow.yaml	ok 3
-argo-workflows/examples/container-set-template/workspace-workflow.yaml	ok 2
+argo-workflows/examples/container-set-template/parallel-workflow.yaml	ok 1
+argo-workflows/examples/container-set-template/sequence-workflow.yaml	ok 1
+argo-workflows/examples/container-set-template/workspace-workflow.yaml	ok 1
 argo-workflows/examples/continue-on-fail.yaml	ok 4
 argo-workflows/examples/cron-backfill.yaml#0	ok 1
 argo-workflows/examples/cron-backfill.yaml#1	ok 1
@@ -716,7 +716,7 @@ argo-workflows/test/e2e/testdata/retry-workflow-with-failed-exit-handler.yaml	ok
 argo-workflows/test/e2e/testdata/same-input-output-path-optional-plugin.yaml	ok 1
 argo-workflows/test/e2e/testdata/same-input-output-path-optional.yaml	ok 1
 argo-workflows/test/e2e/testdata/sidecar-workflow.yaml	33 template main has sidecars, services that run beside the task in its Kubernetes pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
-argo-workflows/test/e2e/testdata/signaled-container-set-workflow.yaml	ok 2
+argo-workflows/test/e2e/testdata/signaled-container-set-workflow.yaml	ok 1
 argo-workflows/test/e2e/testdata/signaled-workflow.yaml	ok 1
 argo-workflows/test/e2e/testdata/sleep-3s.yaml	ok 1
 argo-workflows/test/e2e/testdata/sleepy-workflow.yaml	ok 1
@@ -751,7 +751,7 @@ argo-workflows/test/e2e/testdata/workflow-template-nested-template.yaml	valid
 argo-workflows/test/e2e/testdata/workflow-template-ref-exithandler.yaml	ok 2
 argo-workflows/test/e2e/testdata/workflow-template-ref.yaml	ok 2
 argo-workflows/test/e2e/testdata/workflow-template-sub-test.yaml	ok 1
-argo-workflows/test/e2e/testdata/workflow-template-with-containerset.yaml	ok 3
+argo-workflows/test/e2e/testdata/workflow-template-with-containerset.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-template-with-enum-values.yaml	ok 1
 argo-workflows/test/e2e/testdata/workflow-template-with-resource-expr.yaml	33 template whalesay is a resource template that manages Kubernetes objects of kind Pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 argo-workflows/test/e2e/testdata/workflow-templates/invalid-workflowtemplate.yaml	valid
@@ -1035,7 +1035,7 @@ hera/examples/workflows/upstream/artifact-passing.yaml	ok 2
 hera/examples/workflows/upstream/artifact-path-placeholders.yaml	ok 1
 hera/examples/workflows/upstream/artifact-repository-ref.yaml	ok 1
 hera/examples/workflows/upstream/artifactory-artifact.yaml	ok 2
-hera/examples/workflows/upstream/artifacts-workflowtemplate.yaml	ok 3
+hera/examples/workflows/upstream/artifacts-workflowtemplate.yaml	ok 1
 hera/examples/workflows/upstream/buildkit-template.yaml	ok 3
 hera/examples/workflows/upstream/ci-output-artifact.yaml	ok 5
 hera/examples/workflows/upstream/ci-workflowtemplate.yaml	ok 6
@@ -1052,11 +1052,11 @@ hera/examples/workflows/upstream/conditional-artifacts.yaml	ok 1
 hera/examples/workflows/upstream/conditional-parameters.yaml	ok 1
 hera/examples/workflows/upstream/conditionals-complex.yaml	ok 2
 hera/examples/workflows/upstream/conditionals.yaml	ok 3
-hera/examples/workflows/upstream/container-set-template--graph-workflow.yaml	ok 4
+hera/examples/workflows/upstream/container-set-template--graph-workflow.yaml	ok 1
 hera/examples/workflows/upstream/container-set-template--outputs-result-workflow.yaml	ok 2
-hera/examples/workflows/upstream/container-set-template--parallel-workflow.yaml	ok 2
-hera/examples/workflows/upstream/container-set-template--sequence-workflow.yaml	ok 3
-hera/examples/workflows/upstream/container-set-template--workspace-workflow.yaml	ok 2
+hera/examples/workflows/upstream/container-set-template--parallel-workflow.yaml	ok 1
+hera/examples/workflows/upstream/container-set-template--sequence-workflow.yaml	ok 1
+hera/examples/workflows/upstream/container-set-template--workspace-workflow.yaml	ok 1
 hera/examples/workflows/upstream/continue-on-fail.yaml	ok 4
 hera/examples/workflows/upstream/cron-when.yaml	ok 1
 hera/examples/workflows/upstream/cron-workflow-multiple-schedules.yaml	ok 1
@@ -1551,7 +1551,7 @@ talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-us
 talk-demos/argocon-demos/2023-scaling-to-thousands-of-data-and-cicd-pipelines-using-argo-and-vcluster/demonstrating-argo-workflows-and-vcluster-at-scale/lots-of-hellos-workflow.yaml	ok 170
 talk-demos/argocon-demos/2023-streamlining-big-data-workflows-with-memoization-and-work-avoidance/workflow/example.yaml	ok 2
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/container.yaml	ok 2
-talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/containerset.yaml	ok 3
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/containerset.yaml	ok 1
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/dag-example.yaml	33 templates.main.tasks.resource template resource is a resource template that manages Kubernetes objects of kind Pod; iunctus runs workflows without Kubernetes and does not support this (decision 18)
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/http.yaml	ok 3
 talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/inline.yaml	ok 1

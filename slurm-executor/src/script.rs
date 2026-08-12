@@ -145,6 +145,7 @@ mod tests {
             inputs: Vec::new(),
             outputs: Vec::new(),
             stdin: None,
+            containers: Vec::new(),
         }
     }
 

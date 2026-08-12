@@ -114,6 +114,7 @@ fn tasks_run_on_the_server_and_give_back_their_outputs() {
             pattern: "out.txt".into(),
         }],
         stdin: None,
+        containers: Vec::new(),
     };
     let staging = Staging {
         inputs: vec![Staged {

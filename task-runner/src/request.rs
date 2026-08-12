@@ -99,6 +99,7 @@ pub fn request(
             })
             .collect(),
         stdin,
+        containers: Vec::new(),
     };
     let scope = if spec.image_pinned() {
         ReuseScope::Shared

@@ -429,6 +429,7 @@ mod tests {
                 pattern: pattern.into(),
             }],
             stdin: None,
+            containers: Vec::new(),
         };
         let member = Member {
             name: name.into(),

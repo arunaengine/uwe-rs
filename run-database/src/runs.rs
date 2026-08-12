@@ -141,7 +141,9 @@ impl Database {
         }))
     }
 
-    /// The standard output (`stdout`) or error (`stderr`) of an attempt, if it wrote any.
+    /// The standard output (`stdout`) or error (`stderr`) of an attempt, if it wrote any. The
+    /// other containers of a task that runs several have theirs as `<container>/stdout` and
+    /// `<container>/stderr`.
     pub fn log(
         &self,
         run: &str,

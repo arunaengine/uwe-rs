@@ -109,7 +109,7 @@ fn the_graph_links_tasks_by_their_files() {
 #[test]
 fn a_simulated_task_of_several_containers_shows_each() {
     let directory = tempfile::tempdir().expect("a temporary directory");
-    let mut simulator = Simulator::new(directory.path());
+    let simulator = Simulator::new(directory.path());
     let container = |name: &str, image: &str| workflow_graph::Container {
         name: name.into(),
         image: Some(image.into()),

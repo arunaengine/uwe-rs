@@ -17,8 +17,14 @@ use crate::{cache_directory, runs};
 const TOO_LITTLE_SPACE: u64 = 1 << 30;
 
 /// The container engine, which the local executor and the Python container of decision 19
-/// need.
-pub(super) fn engine(runtime: &tokio::runtime::Runtime, setup: &Setup, report: &mut Report) {
+/// need. With another executor, one that does not answer is not set up rather than missing,
+/// as only Snakefiles that import Python packages without a stand-in need it then.
+pub(super) fn engine(
+    runtime: &tokio::runtime::Runtime,
+    setup: &Setup,
+    arguments: &Arguments,
+    report: &mut Report,
+) {
     let part = "container engine";
     let name = setup.engine();
     let named = Some(name.as_str()).filter(|name| !name.is_empty());
@@ -39,7 +45,17 @@ pub(super) fn engine(runtime: &tokio::runtime::Runtime, setup: &Setup, report: &
             };
             report.add(State::Ready, part, text);
         }
-        Err(error) => report.add(State::Missing, part, error.to_string()),
+        Err(error) => match arguments.executor.as_deref() {
+            Some(executor @ ("tes" | "slurm" | "kubernetes")) => report.add(
+                State::NotSetUp,
+                part,
+                format!(
+                    "{error}; -executor {executor} does not need it, only Snakefiles that import \
+                     Python packages without a stand-in do (decision 19)"
+                ),
+            ),
+            _ => report.add(State::Missing, part, error.to_string()),
+        },
     }
 }
 

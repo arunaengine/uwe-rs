@@ -134,3 +134,50 @@ fn a_config_file_with_a_mistake_is_missing_and_the_check_goes_on() {
         "{stdout}"
     );
 }
+
+#[test]
+fn a_slurm_login_node_needs_the_runtime_of_the_jobs_and_no_container_engine() {
+    use std::os::unix::fs::PermissionsExt;
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let tool = |name: &str| {
+        let path = directory.path().join(name);
+        std::fs::write(&path, "#!/bin/sh\n").expect("writes a tool");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+            .expect("makes it executable");
+    };
+    for name in ["sbatch", "squeue", "sacct", "scancel"] {
+        tool(name);
+    }
+    let (code, stdout) = check_machine(directory.path(), &["-executor", "slurm"]);
+    assert_eq!(code, 3, "{stdout}");
+    assert!(
+        line(&stdout, "container engine").starts_with("not set up "),
+        "{stdout}"
+    );
+    assert!(
+        line(&stdout, "container engine").ends_with(
+            "; -executor slurm does not need it, only Snakefiles that import Python packages \
+             without a stand-in do (decision 19)"
+        ),
+        "{stdout}"
+    );
+    assert_eq!(
+        line(&stdout, "executor slurm"),
+        "missing    executor slurm: the SLURM tools are on the PATH, but the container runtime \
+         `apptainer` is not; the jobs run each task with it on a node, so install it, or name \
+         another with -slurm-container"
+    );
+    tool("apptainer");
+    let (code, stdout) = check_machine(directory.path(), &["-executor", "slurm"]);
+    assert_eq!(code, 0, "{stdout}");
+    let cache = directory.path().join("cache/iunctus");
+    assert_eq!(
+        line(&stdout, "executor slurm"),
+        format!(
+            "ready      executor slurm: sbatch, squeue, sacct and scancel are on the PATH; the \
+             jobs run tasks with apptainer; the nodes must see {} and {} at the same paths",
+            cache.join("scratch/slurm").display(),
+            cache.join("store").display()
+        )
+    );
+}

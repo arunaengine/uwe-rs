@@ -93,11 +93,11 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let mut report = Report::default();
     let setup = config::config(arguments, &mut report);
     let runtime = workflow_graph::runtime().map_err(|error| Failure::setup(error.to_string()))?;
-    local::engine(runtime, &setup, &mut report);
+    local::engine(runtime, &setup, arguments, &mut report);
     local::store(runtime, &setup, arguments, &mut report);
     local::database(arguments, &mut report);
     executors::tes_server(&setup.executors, arguments, &mut report);
-    executors::slurm(&setup.executors, arguments, &mut report);
+    executors::slurm(&setup, arguments, &mut report);
     executors::kubernetes(runtime, &setup.executors, arguments, &mut report);
     print!("{}", report.text());
     match report

@@ -7,7 +7,7 @@ use std::path::Path;
 
 use super::{Report, State};
 use crate::arguments::Arguments;
-use crate::setup::Executors;
+use crate::setup::{Executors, Setup};
 use crate::tes;
 
 /// The TES server that `-tes-server` or the config file names, or the default one with
@@ -43,8 +43,11 @@ pub(super) fn tes_server(executors: &Executors, arguments: &Arguments, report: &
     }
 }
 
-/// The tools of SLURM, which the SLURM executor runs on this machine.
-pub(super) fn slurm(executors: &Executors, arguments: &Arguments, report: &mut Report) {
+/// The tools of SLURM, which the SLURM executor runs on this machine, and the container
+/// runtime of its jobs, which the nodes run. iunctus cannot look at the nodes, so it looks for
+/// the runtime here, and names the folders that the nodes must see at the same paths.
+pub(super) fn slurm(setup: &Setup, arguments: &Arguments, report: &mut Report) {
+    let executors = &setup.executors;
     let part = "executor slurm";
     let asked = arguments.executor.as_deref() == Some("slurm")
         || executors.slurm_container.is_some()
@@ -57,17 +60,40 @@ pub(super) fn slurm(executors: &Executors, arguments: &Arguments, report: &mut R
         .copied()
         .filter(|tool| *tool != "sacct")
         .collect();
+    let runtime = (arguments.slurm_container.as_deref())
+        .or(executors.slurm_container.as_deref())
+        .unwrap_or("apptainer");
+    let shared = format!(
+        "the nodes must see {} and {} at the same paths",
+        crate::cache_directory().join("scratch/slurm").display(),
+        setup.store_location(arguments)
+    );
     match (needed.is_empty(), asked) {
+        (true, _) if !slurm_executor::executable(Path::new(runtime)) => report.add(
+            State::Missing,
+            part,
+            format!(
+                "the SLURM tools are on the PATH, but the container runtime `{runtime}` is not; \
+                 the jobs run each task with it on a node, so install it, or name another with \
+                 -slurm-container"
+            ),
+        ),
         (true, _) if missing.is_empty() => report.add(
             State::Ready,
             part,
-            "sbatch, squeue, sacct and scancel are on the PATH",
+            format!(
+                "sbatch, squeue, sacct and scancel are on the PATH; the jobs run tasks with \
+                 {runtime}; {shared}"
+            ),
         ),
         (true, _) => report.add(
             State::Ready,
             part,
-            "sbatch, squeue and scancel are on the PATH; without sacct, a job that SLURM has \
-             forgotten ends as a failure of the machine",
+            format!(
+                "sbatch, squeue and scancel are on the PATH; without sacct, a job that SLURM has \
+                 forgotten ends as a failure of the machine; the jobs run tasks with {runtime}; \
+                 {shared}"
+            ),
         ),
         (false, true) => report.add(
             State::Missing,

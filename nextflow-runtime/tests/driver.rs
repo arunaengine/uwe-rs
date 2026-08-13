@@ -88,6 +88,30 @@ fn tasks_and_their_files_make_the_graph() {
 }
 
 #[test]
+fn stage_in_mode_copy_gives_copies_the_task_may_change() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let script = PIPELINE.replace(
+        "process SHOUT {\n",
+        "process SHOUT {\n    stageInMode 'copy'\n",
+    );
+    std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
+    std::fs::write(directory.path().join("nextflow.config"), CONFIG).expect("writes the config");
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        ..Launch::default()
+    };
+    let graph = run(directory.path(), launch);
+    let writable = |task: usize| {
+        let inputs = &graph.nodes[task].task.inputs;
+        let staged = inputs.iter().find(|input| input.content.is_none());
+        staged.map(|input| input.writable)
+    };
+    assert_eq!(writable(1), Some(workflow_graph::Writable::Copy));
+    let script = &graph.nodes[1].task.inputs[0];
+    assert_eq!(script.writable, workflow_graph::Writable::No);
+}
+
+#[test]
 fn params_come_from_the_params_file_and_the_command_line() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), PIPELINE).expect("writes the script");

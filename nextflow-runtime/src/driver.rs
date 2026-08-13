@@ -649,6 +649,10 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
         content: Some(command_script(request)),
         ..Default::default()
     }];
+    let writable = match crate::task::copies_inputs(request) {
+        true => workflow_graph::Writable::Copy,
+        false => workflow_graph::Writable::No,
+    };
     for (source, name) in &request.staged {
         let (source, directory) = match source.prefix {
             None => (source.path.clone(), Path::new(&source.path).is_dir()),
@@ -659,7 +663,7 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
             source,
             directory,
             content: None,
-            ..Default::default()
+            writable,
         });
     }
     let mut outputs = request.output_patterns.clone();

@@ -5,6 +5,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::BTreeSet;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -15,6 +16,7 @@ use executor::{
     Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, containers, place, registry,
 };
 use tokio::process::Command;
+use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::images::{Images, file_name, pull_script};
@@ -69,6 +71,8 @@ pub struct SlurmBackend {
     pub images: PathBuf,
     queue: Queue,
     made: Images,
+    /// The nodes where a job of this run left no log, as they do not see the scratch folder.
+    excluded: Mutex<BTreeSet<String>>,
 }
 
 /// How a job ended.
@@ -92,6 +96,7 @@ impl SlurmBackend {
             poll: POLL,
             queue: Queue::default(),
             made: Images::default(),
+            excluded: Mutex::default(),
         }
     }
 
@@ -218,13 +223,57 @@ impl SlurmBackend {
             }
         };
         tokio::fs::write(control.join(SCRIPT), script).await?;
-        let options = sbatch_options(job, root, &self.options);
+        let options = self
+            .with_excluded(sbatch_options(job, root, &self.options))
+            .await;
         let id = self.submit(options, &control.join(SCRIPT)).await?;
         self.queue.add(&id).await;
         let ended = self.wait(&id, &control, cancel).await;
         self.queue.remove(&id).await;
+        let ended = ended?;
+        // A job that left no log at all ran on a node that does not see the scratch folder.
+        let lost = !tokio::fs::try_exists(control.join(LOG))
+            .await
+            .unwrap_or(true);
+        let node = match lost {
+            true => self.leave_out(&id).await,
+            false => None,
+        };
         let time = job.placement.time_seconds;
-        finish(ended?, root.to_owned(), time, job.spec).await
+        finish(ended, root.to_owned(), time, job.spec)
+            .await
+            .map_err(|error| match (error, node) {
+                (ExecutorError::Engine { engine, message }, Some(node)) => ExecutorError::Engine {
+                    engine,
+                    message: format!(
+                        "{message} It ran on the node {node}, which the later jobs of this run \
+                         leave out."
+                    ),
+                },
+                (error, _) => error,
+            })
+    }
+
+    /// Asks SLURM for the node of a job, and leaves that node out of the later jobs.
+    async fn leave_out(&self, id: &str) -> Option<String> {
+        let node = self
+            .queue
+            .node(&self.command("squeue"), &self.command("sacct"), id)
+            .await?;
+        self.excluded.lock().await.insert(node.clone());
+        Some(node)
+    }
+
+    /// The options of a job with `--exclude` for the nodes that failed jobs of this run,
+    /// before the options of the user, which come last and so win.
+    async fn with_excluded(&self, mut options: Vec<String>) -> Vec<String> {
+        let excluded = self.excluded.lock().await;
+        if !excluded.is_empty() {
+            let nodes: Vec<&str> = excluded.iter().map(String::as_str).collect();
+            let at = options.len().saturating_sub(self.options.len());
+            options.insert(at, format!("--exclude={}", nodes.join(",")));
+        }
+        options
     }
 
     /// The image as the jobs run it: with Apptainer or Singularity, the SIF file of an image
@@ -285,7 +334,9 @@ impl SlurmBackend {
         tokio::fs::create_dir_all(&control).await?;
         let script = pull_script(program, reference, path, &control.join(CONTAINER_EXIT));
         tokio::fs::write(control.join(SCRIPT), script).await?;
-        let options = pull_options(&name, &root, &self.options);
+        let options = self
+            .with_excluded(pull_options(&name, &root, &self.options))
+            .await;
         let id = self.submit(options, &control.join(SCRIPT)).await?;
         self.queue.add(&id).await;
         let ended = self.wait(&id, &control, cancel).await;

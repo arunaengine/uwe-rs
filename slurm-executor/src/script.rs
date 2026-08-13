@@ -70,7 +70,44 @@ fn time(seconds: u64) -> String {
 /// the container. Podman and Docker get an init process, which hands the signal that stops the
 /// job to the task, so that the container ends with the job.
 pub fn job_script(container: &Container, run: &ContainerRun<'_>, gpus: bool) -> String {
-    let command = match container {
+    let words: Vec<String> = (command(container, run, gpus).iter())
+        .map(|word| quote(word))
+        .collect();
+    let exit = run.root.join(CONTROL).join(CONTAINER_EXIT);
+    format!(
+        "#!/bin/bash\n# The iunctus job of one attempt of a task.\n{}\necho $? > {}\n",
+        words.join(" "),
+        quote(&exit.to_string_lossy())
+    )
+}
+
+/// The job script of a task of several containers: it starts a container for each of `runs`,
+/// one for each image, all at once, as the local executor does, then records the exit code of
+/// the first container that failed, else 0.
+pub fn job_script_of_containers(
+    container: &Container,
+    runs: &[ContainerRun<'_>],
+    gpus: bool,
+) -> String {
+    let mut script = String::from("#!/bin/bash\n# The iunctus job of one attempt of a task.\n");
+    script.push_str("pids=\n");
+    for run in runs {
+        let words: Vec<String> = (command(container, run, gpus).iter())
+            .map(|word| quote(word))
+            .collect();
+        script.push_str(&format!("{} &\npids=\"$pids $!\"\n", words.join(" ")));
+    }
+    let exit = runs[0].root.join(CONTROL).join(CONTAINER_EXIT);
+    script.push_str(&format!(
+        "status=0\nfor pid in $pids; do\n    wait \"$pid\"\n    code=$?\n    [ \"$status\" -ne 0 ] || status=$code\ndone\necho \"$status\" > {}\n",
+        quote(&exit.to_string_lossy())
+    ));
+    script
+}
+
+/// The command that runs the wrapper of `run` in its container.
+fn command(container: &Container, run: &ContainerRun<'_>, gpus: bool) -> Vec<String> {
+    match container {
         Container::Apptainer(program) => apptainer(program, run, gpus),
         Container::Engine(engine) => {
             let mut command = vec![engine.program.clone()];
@@ -79,14 +116,7 @@ pub fn job_script(container: &Container, run: &ContainerRun<'_>, gpus: bool) -> 
             command.extend(arguments);
             command
         }
-    };
-    let words: Vec<String> = command.iter().map(|word| quote(word)).collect();
-    let exit = run.root.join(CONTROL).join(CONTAINER_EXIT);
-    format!(
-        "#!/bin/bash\n# The iunctus job of one attempt of a task.\n{}\necho $? > {}\n",
-        words.join(" "),
-        quote(&exit.to_string_lossy())
-    )
+    }
 }
 
 /// The command of Apptainer: a container with its own `/tmp`, home and environment, which sees

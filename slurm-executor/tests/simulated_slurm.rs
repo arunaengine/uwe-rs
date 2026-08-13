@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use executor::{Backend, EngineCommand, ExecutorError, Job, Staged, Staging};
 use slurm_executor::{Container, SlurmBackend};
-use task_model::{FORMAT, Image, OutputRule, Placement, TaskSpec};
+use task_model::{ContainerSpec, FORMAT, Image, OutputRule, Placement, TaskSpec};
 use tokio_util::sync::CancellationToken;
 
 const SBATCH: &str = r#"#!/bin/bash
@@ -317,6 +317,97 @@ async fn docker_runs_the_task_in_its_container() {
     let placement = placement();
     let job = Job {
         name: "run-P-5-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+    assert_eq!(finished.exit_code, Some(0));
+    let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("an output");
+    assert_eq!(output, "1\nhello\n");
+}
+
+/// A task of two containers in two images: `first` writes a file that `main` reads.
+fn several(first: &str) -> TaskSpec {
+    let container = |name: &str, image: &str, script: &str, after: &[&str]| ContainerSpec {
+        name: name.into(),
+        image: Some(Image {
+            reference: image.into(),
+            platform: None,
+        }),
+        arguments: vec!["sh".into(), "-c".into(), script.into()],
+        workdir: None,
+        environment: BTreeMap::new(),
+        after: after.iter().map(|name| (*name).to_owned()).collect(),
+        attempts: 1,
+    };
+    let main = container(
+        "main",
+        "debian:stable-slim",
+        "cat first.txt in.txt > out.txt",
+        &["first"],
+    );
+    TaskSpec {
+        arguments: main.arguments.clone(),
+        containers: vec![main, container("first", "alpine:latest", first, &[])],
+        ..spec("")
+    }
+}
+
+#[tokio::test]
+async fn containers_of_a_task_run_in_one_job() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    let backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    let spec = several("echo first > first.txt");
+    let staging = staging(root.path(), "hello\n");
+    let placement = placement();
+    let job = Job {
+        name: "run-S-1-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+    assert_eq!(finished.exit_code, Some(0));
+    let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("an output");
+    assert_eq!(output, "first\nhello\n");
+    // One job, whose script starts a container for each image.
+    let script = std::fs::read_to_string(finished.root.join("control/job.sh")).expect("a script");
+    assert_eq!(script.matches(" &\n").count(), 2, "{script}");
+    assert!(!bin.join("state/102.options").exists());
+    // A container that fails fails the task, and the one after it does not run.
+    let spec = several("exit 5");
+    let job = Job {
+        name: "run-S-2-1",
+        spec: &spec,
+        ..job
+    };
+    let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+    assert_eq!(finished.exit_code, Some(1));
+    let control = finished.root.join(executor::CONTROL);
+    let codes: Vec<Option<i32>> = (executor::containers::ended(&spec, &control).iter())
+        .map(|ended| ended.exit_code)
+        .collect();
+    assert_eq!(codes, [Some(1), Some(5)]);
+}
+
+#[tokio::test]
+#[ignore = "needs Docker and the debian:stable-slim and alpine:latest images"]
+async fn docker_runs_containers_of_a_task_in_their_images() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    let engine = EngineCommand::docker("docker");
+    let backend = backend(root.path(), &bin, Container::Engine(engine));
+    let spec = several("grep -c . /etc/alpine-release > first.txt");
+    let staging = staging(root.path(), "hello\n");
+    let placement = placement();
+    let job = Job {
+        name: "run-S-5-1",
         spec: &spec,
         staging: &staging,
         placement: &placement,

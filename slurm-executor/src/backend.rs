@@ -17,9 +17,11 @@ use executor::{
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
+use crate::images::{Images, file_name, pull_script};
 use crate::queue::{Look, Queue};
 use crate::script::{
-    CONTAINER_EXIT, Container, LOG, SCRIPT, job_script, job_script_of_containers, sbatch_options,
+    CONTAINER_EXIT, Container, LOG, SCRIPT, job_script, job_script_of_containers, pull_options,
+    sbatch_options,
 };
 
 /// How often the queue is asked about the jobs, by default.
@@ -62,7 +64,11 @@ pub struct SlurmBackend {
     pub commands: Option<PathBuf>,
     /// How often the queue is asked about the jobs.
     pub poll: Duration,
+    /// Where Apptainer and Singularity keep the SIF file of each image pinned to its digest,
+    /// which the nodes must see at the same path.
+    pub images: PathBuf,
     queue: Queue,
+    made: Images,
 }
 
 /// How a job ended.
@@ -78,12 +84,14 @@ impl SlurmBackend {
     /// A backend with its attempts in `scratch`, whose jobs run their tasks with `container`.
     pub fn new(scratch: PathBuf, container: Container) -> SlurmBackend {
         SlurmBackend {
+            images: scratch.join("images"),
             scratch,
             container,
             options: Vec::new(),
             commands: None,
             poll: POLL,
             queue: Queue::default(),
+            made: Images::default(),
         }
     }
 
@@ -158,6 +166,7 @@ impl SlurmBackend {
                 return Err(ExecutorError::NoCommand(image.reference.clone()));
             }
         }
+        let image = &self.runnable(image, cancel).await?;
         let control = root.join(CONTROL);
         let owner = tokio::fs::metadata(root).await?;
         let name = format!("iunctus-{}", job.name);
@@ -189,14 +198,18 @@ impl SlurmBackend {
                     outbox: "",
                 };
                 let groups = containers::write_wrappers(job.spec, &control, &folders)?;
+                let mut images = Vec::new();
+                for (group, _) in &groups {
+                    images.push(self.runnable(&group.image, cancel).await?);
+                }
                 let names: Vec<String> = (0..groups.len())
                     .map(|index| format!("{name}-{index}"))
                     .collect();
                 let paths: Vec<PathBuf> = groups.iter().map(|(_, path)| path.into()).collect();
                 let runs: Vec<ContainerRun<'_>> = (groups.iter().enumerate())
-                    .map(|(index, (group, _))| ContainerRun {
+                    .map(|(index, _)| ContainerRun {
                         name: &names[index],
-                        image: &group.image,
+                        image: &images[index],
                         wrapper_path: Some(&paths[index]),
                         ..run
                     })
@@ -205,7 +218,8 @@ impl SlurmBackend {
             }
         };
         tokio::fs::write(control.join(SCRIPT), script).await?;
-        let id = self.submit(job, root).await?;
+        let options = sbatch_options(job, root, &self.options);
+        let id = self.submit(options, &control.join(SCRIPT)).await?;
         self.queue.add(&id).await;
         let ended = self.wait(&id, &control, cancel).await;
         self.queue.remove(&id).await;
@@ -213,11 +227,94 @@ impl SlurmBackend {
         finish(ended?, root.to_owned(), time, job.spec).await
     }
 
-    /// Submits the job of an attempt and gives its id.
-    async fn submit(&self, job: Job<'_>, root: &Path) -> Result<String, ExecutorError> {
+    /// The image as the jobs run it: with Apptainer or Singularity, the SIF file of an image
+    /// pinned to its digest, else the image itself.
+    async fn runnable(
+        &self,
+        image: &task_model::Image,
+        cancel: &CancellationToken,
+    ) -> Result<task_model::Image, ExecutorError> {
+        match (&self.container, file_name(&image.reference)) {
+            (Container::Apptainer(program), Some(file)) => {
+                let path = self.sif(program, &image.reference, &file, cancel).await?;
+                Ok(task_model::Image {
+                    reference: path.to_string_lossy().into_owned(),
+                    platform: image.platform.clone(),
+                })
+            }
+            _ => Ok(image.clone()),
+        }
+    }
+
+    /// The SIF file of an image pinned to its digest, pulled once by a job of its own.
+    async fn sif(
+        &self,
+        program: &str,
+        reference: &str,
+        file: &str,
+        cancel: &CancellationToken,
+    ) -> Result<PathBuf, ExecutorError> {
+        let path = self.images.join(file);
+        let cell = self.made.cell(reference).await;
+        let made = cell.get_or_try_init(|| async {
+            match tokio::fs::try_exists(&path).await {
+                Ok(true) => Ok(path.clone()),
+                _ => self.pull(program, reference, &path, cancel).await,
+            }
+        });
+        made.await.cloned()
+    }
+
+    /// Submits the job that pulls an image into its SIF file at `path`, and waits for it.
+    async fn pull(
+        &self,
+        program: &str,
+        reference: &str,
+        path: &Path,
+        cancel: &CancellationToken,
+    ) -> Result<PathBuf, ExecutorError> {
+        let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+        let name = format!(
+            "image-{}-{}",
+            &stem[..stem.len().min(19)],
+            std::process::id()
+        );
+        let root = self.images.join(&name);
+        let control = root.join(CONTROL);
+        let _ = tokio::fs::remove_dir_all(&root).await;
+        tokio::fs::create_dir_all(&control).await?;
+        let script = pull_script(program, reference, path, &control.join(CONTAINER_EXIT));
+        tokio::fs::write(control.join(SCRIPT), script).await?;
+        let options = pull_options(&name, &root, &self.options);
+        let id = self.submit(options, &control.join(SCRIPT)).await?;
+        self.queue.add(&id).await;
+        let ended = self.wait(&id, &control, cancel).await;
+        self.queue.remove(&id).await;
+        let pulled = match ended? {
+            Ended::Done(0) if tokio::fs::try_exists(path).await.unwrap_or(false) => {
+                Ok(path.to_owned())
+            }
+            Ended::Done(status) => Err(format!(
+                "{program} could not pull the image {reference} (exit code {status})"
+            )),
+            Ended::Stopped(state) => Err(format!(
+                "the job that pulls the image {reference} ended as {}",
+                state.as_deref().unwrap_or("unknown")
+            )),
+        };
+        let pulled = match pulled {
+            Ok(path) => Ok(path),
+            Err(message) => Err(machine(explain(message, &root).await)),
+        };
+        let _ = tokio::fs::remove_dir_all(&root).await;
+        pulled
+    }
+
+    /// Submits a job with its options and script, and gives its id.
+    async fn submit(&self, options: Vec<String>, script: &Path) -> Result<String, ExecutorError> {
         let output = Command::new(self.command("sbatch"))
-            .args(sbatch_options(job, root, &self.options))
-            .arg(root.join(CONTROL).join(SCRIPT))
+            .args(options)
+            .arg(script)
             .output()
             .await
             .map_err(|error| machine(format!("cannot run sbatch: {error}")))?;

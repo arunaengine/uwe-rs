@@ -33,15 +33,8 @@ pub enum Container {
 /// user, which come last and so win.
 pub fn sbatch_options(job: Job<'_>, root: &Path, extra: &[String]) -> Vec<String> {
     let placement = job.placement;
-    let mut options = vec![
-        "--parsable".to_owned(),
-        format!("--job-name=iunctus-{}", job.name),
-        format!("--chdir={}", root.display()),
-        format!("--output={}", root.join(CONTROL).join(LOG).display()),
-        "--nodes=1".into(),
-        "--ntasks=1".into(),
-        format!("--cpus-per-task={}", placement.cpus.max(1)),
-    ];
+    let mut options = head(job.name, root);
+    options.push(format!("--cpus-per-task={}", placement.cpus.max(1)));
     if let Some(bytes) = placement.memory_bytes {
         options.push(format!("--mem={}M", bytes.div_ceil(1 << 20)));
     }
@@ -57,6 +50,31 @@ pub fn sbatch_options(job: Job<'_>, root: &Path, extra: &[String]) -> Vec<String
     }
     options.extend(extra.iter().cloned());
     options
+}
+
+/// The options of `sbatch` for the job that pulls an image into a SIF file in `root`: a few
+/// CPUs, memory and an hour, then the `extra` options of the user.
+pub fn pull_options(name: &str, root: &Path, extra: &[String]) -> Vec<String> {
+    let mut options = head(name, root);
+    options.extend([
+        "--cpus-per-task=2".into(),
+        "--mem=4096M".into(),
+        format!("--time={}", time(3600)),
+    ]);
+    options.extend(extra.iter().cloned());
+    options
+}
+
+/// The options that every job of iunctus gets: its name, its folder and its log.
+fn head(name: &str, root: &Path) -> Vec<String> {
+    vec![
+        "--parsable".to_owned(),
+        format!("--job-name=iunctus-{name}"),
+        format!("--chdir={}", root.display()),
+        format!("--output={}", root.join(CONTROL).join(LOG).display()),
+        "--nodes=1".into(),
+        "--ntasks=1".into(),
+    ]
 }
 
 /// A time in the form that SLURM reads, `days-hours:minutes:seconds`.

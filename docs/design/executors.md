@@ -97,7 +97,7 @@ The options of `sbatch` come from the task: `--cpus-per-task`, `--mem`, `--time`
 
 | Runtime | How the job runs the task |
 |---|---|
-| `apptainer` (default), `singularity` | `apptainer exec --containall` with the scratch directory, the work directory and the mounts bound, and `--nv` for tasks with GPUs. Images of registries get `docker://`; a path to a `.sif` file stays as it is. The container runs inside the job, so SLURM limits and stops it. |
+| `apptainer` (default), `singularity` | `apptainer exec --containall` with the scratch directory, the work directory and the mounts bound, and `--nv` for tasks with GPUs. An image pinned to its digest is pulled once into a SIF file in `<cache>/scratch/slurm/images`, by a small job of its own (`iunctus-image-...`, 2 CPUs, 4 GB, one hour) before the first task that needs it; every job then runs that file. Jobs that each pull the same image at once spoil Apptainer's shared cache. Other images of registries get `docker://`; a path to a `.sif` file stays as it is. The container runs inside the job, so SLURM limits and stops it. |
 | `podman` | `podman run --init` as the user (`--userns=keep-id`), with the same limits as the job. The init process hands the signal that stops the job to the task, so the container ends with the job. |
 | `docker` | as Podman, as the user with `--user`. |
 

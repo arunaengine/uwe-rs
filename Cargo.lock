@@ -3801,6 +3801,7 @@ name = "run-database"
 version = "0.1.0"
 dependencies = [
  "rusqlite",
+ "rustix",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -4569,6 +4570,7 @@ dependencies = [
  "content-store",
  "executor",
  "opendal",
+ "run-database",
  "rusqlite",
  "serde",
  "serde_json",

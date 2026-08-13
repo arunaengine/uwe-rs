@@ -106,6 +106,32 @@ fn the_graph_links_tasks_by_their_files() {
     assert!(graph.to_dot().contains("t1 -> t3"));
 }
 
+#[test]
+fn a_simulated_task_of_several_containers_shows_each() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let mut simulator = Simulator::new(directory.path());
+    let container = |name: &str, image: &str| workflow_graph::Container {
+        name: name.into(),
+        image: Some(image.into()),
+        command: vec!["echo".into(), name.into()],
+        attempts: 1,
+        ..workflow_graph::Container::default()
+    };
+    let task = Task {
+        id: TaskId(7),
+        name: "set".into(),
+        image: Some("alpine".into()),
+        command: vec!["echo".into(), "main".into()],
+        containers: vec![container("main", "alpine"), container("first", "debian")],
+        ..Task::default()
+    };
+    simulator.simulate(&task).expect("an outcome");
+    let text = std::fs::read_to_string(directory.path().join("tes/7.json")).expect("a document");
+    let tes: serde_json::Value = serde_json::from_str(&text).expect("JSON");
+    assert_eq!(tes["executors"][1]["image"], "debian");
+    assert_eq!(tes["executors"][1]["command"][1], "first");
+}
+
 /// The simulator, except that an earlier result answers task 2.
 struct Reusing(Simulator);
 

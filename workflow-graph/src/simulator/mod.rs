@@ -133,6 +133,20 @@ pub fn tes_task(task: &Task, work: &Path) -> Value {
     if let Some(stdin) = &task.stdin {
         executor["stdin"] = json!(stdin);
     }
+    // A task of several containers shows each of them, the main one first.
+    let mut executors = vec![executor];
+    if !task.containers.is_empty() {
+        executors = (task.containers.iter())
+            .map(|container| {
+                json!({
+                    "image": container.image.clone().unwrap_or_default(),
+                    "command": container.command,
+                    "workdir": container.workdir.as_deref().unwrap_or(&workdir),
+                    "env": container.environment,
+                })
+            })
+            .collect();
+    }
     let mut resources = serde_json::Map::new();
     if let Some(cpus) = task.resources.cpus {
         resources.insert("cpu_cores".into(), json!(cpus.ceil() as u64));
@@ -149,7 +163,7 @@ pub fn tes_task(task: &Task, work: &Path) -> Value {
         "inputs": inputs,
         "outputs": outputs,
         "resources": resources,
-        "executors": [executor],
+        "executors": executors,
         "tags": { "iunctus-task": task.id.to_string(), "iunctus-step": task.step },
     })
 }

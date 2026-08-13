@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use executor::{Backend, ExecutorError, Job, Staged, Staging};
-use task_model::{FORMAT, Image, OutputRule, Placement, TaskSpec};
+use task_model::{ContainerSpec, FORMAT, Image, OutputRule, Placement, TaskSpec};
 use tes_executor::{Client, TesBackend};
 use tokio_util::sync::CancellationToken;
 
@@ -18,7 +18,10 @@ fn backend(folder: &std::path::Path) -> TesBackend {
     TesBackend {
         client: Client::new(&server, None).expect("a client"),
         scratch: folder.join("scratch"),
-        configs: executor::registry::ImageConfigs::known([("debian:stable-slim".into(), config)]),
+        configs: executor::registry::ImageConfigs::known([
+            ("debian:stable-slim".into(), config.clone()),
+            ("alpine:latest".into(), config),
+        ]),
     }
 }
 
@@ -116,4 +119,54 @@ fn funnel_cancels_tasks() {
         "{result:?}"
     );
     assert!(!folder.path().join("scratch/run-P-2-1").exists());
+}
+
+#[test]
+#[ignore = "needs a Funnel server and the alpine:latest image; run with `just tes-test`"]
+fn funnel_runs_the_containers_of_a_task_one_after_the_other() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let container = |name: &str, image: &str, script: &str, after: &[&str]| ContainerSpec {
+        name: name.into(),
+        image: Some(Image {
+            reference: image.into(),
+            platform: None,
+        }),
+        arguments: vec!["sh".into(), "-c".into(), script.into()],
+        workdir: None,
+        environment: Default::default(),
+        after: after.iter().map(|name| (*name).to_owned()).collect(),
+        attempts: 1,
+    };
+    let script = "mkdir -p out && cat first.txt > out/a.txt && echo main";
+    let main = container("main", "debian:stable-slim", script, &["first"]);
+    let first = container(
+        "first",
+        "alpine:latest",
+        "cat /etc/alpine-release > first.txt",
+        &[],
+    );
+    let spec = TaskSpec {
+        arguments: main.arguments.clone(),
+        containers: vec![main, first],
+        ..spec("")
+    };
+    let (staging, placement) = (Staging::default(), Placement::default());
+    let job = Job {
+        name: "run-S-1-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let backend = backend(folder.path());
+    let finished = runtime()
+        .block_on(backend.run(job, &CancellationToken::new()))
+        .expect("runs");
+    assert_eq!(finished.exit_code, Some(0));
+    let output = std::fs::read_to_string(finished.local_path("out/a.txt")).expect("reads");
+    assert!(
+        output.trim().starts_with('3'),
+        "the release of Alpine: {output}"
+    );
+    let said = std::fs::read_to_string(finished.stdout()).expect("reads");
+    assert_eq!(said, "main\n");
 }

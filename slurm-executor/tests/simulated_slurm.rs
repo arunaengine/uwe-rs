@@ -82,8 +82,15 @@ kill -TERM -- "-$(cat "$state/$1.pid")"
 /// A cluster without accounting.
 const SACCT: &str = "#!/bin/bash\necho 'sacct: accounting storage is disabled' >&2\nexit 1\n";
 
-/// Runs the command after the image in the folder of `--pwd`, without a container.
+/// Runs the command after the image in the folder of `--pwd`, without a container. A pull
+/// takes a second, notes itself in `state/pulls` and makes an empty file.
 const APPTAINER: &str = r#"#!/bin/bash
+if [ "$1" = pull ]; then
+    echo "$4" >> "$(dirname "$0")/state/pulls"
+    sleep 1
+    touch "$3"
+    exit 0
+fi
 while [ $# -gt 0 ]; do
     case $1 in
         --pwd) cd "$2" || exit 255; shift 2 ;;
@@ -196,6 +203,52 @@ async fn jobs_run_tasks_and_give_their_outputs() {
     assert_eq!(finished.files.len(), 1);
     let options = std::fs::read_to_string(bin.join("state/101.options")).expect("the options");
     assert!(options.contains("--mem=256M\n--account=lab\n"), "{options}");
+}
+
+#[tokio::test]
+async fn an_image_pinned_to_its_digest_is_pulled_once_for_all_its_jobs() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    let backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    let mut spec = spec("echo pinned > out.txt");
+    spec.image = Some(Image {
+        reference: "debian@sha256:ab12".into(),
+        platform: None,
+    });
+    let (staging, placement) = (Staging::default(), placement());
+    let job = |name| Job {
+        name,
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let cancel = CancellationToken::new();
+    let (first, second) = tokio::join!(
+        backend.run(job("run-P-7-1"), &cancel),
+        backend.run(job("run-P-8-1"), &cancel)
+    );
+    for finished in [first, second] {
+        assert_eq!(finished.expect("the job ends").exit_code, Some(0));
+    }
+    let pulls = std::fs::read_to_string(bin.join("state/pulls")).expect("a pull");
+    assert_eq!(pulls, "docker://debian@sha256:ab12\n");
+    let file = root.path().join("scratch/images/sha256-ab12.sif");
+    assert!(file.exists());
+    let script = std::fs::read_to_string(root.path().join("scratch/run-P-7-1/control/job.sh"))
+        .expect("the job script");
+    assert!(
+        script.contains(&format!("'{}' 'sh'", file.display())),
+        "{script}"
+    );
+    let options = std::fs::read_to_string(bin.join("state/101.options")).expect("the options");
+    assert!(
+        options.starts_with("--parsable\n--job-name=iunctus-image-sha256-ab12-"),
+        "{options}"
+    );
 }
 
 #[tokio::test]

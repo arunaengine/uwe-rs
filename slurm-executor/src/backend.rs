@@ -10,13 +10,17 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use executor::manifest::parse;
-use executor::wrapper::{EXIT, MANIFEST, STDERR};
-use executor::{Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, place, registry};
+use executor::wrapper::{MANIFEST, STDERR};
+use executor::{
+    Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, containers, place, registry,
+};
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
 use crate::queue::{Look, Queue};
-use crate::script::{CONTAINER_EXIT, Container, LOG, SCRIPT, job_script, sbatch_options};
+use crate::script::{
+    CONTAINER_EXIT, Container, LOG, SCRIPT, job_script, job_script_of_containers, sbatch_options,
+};
 
 /// How often the queue is asked about the jobs, by default.
 const POLL: Duration = Duration::from_secs(10);
@@ -148,6 +152,12 @@ impl SlurmBackend {
         if job.spec.arguments.is_empty() {
             return Err(ExecutorError::NoCommand(image.reference.clone()));
         }
+        for container in &job.spec.containers {
+            if container.arguments.is_empty() {
+                let image = container.image.as_ref().ok_or(ExecutorError::NoImage)?;
+                return Err(ExecutorError::NoCommand(image.reference.clone()));
+            }
+        }
         let control = root.join(CONTROL);
         let owner = tokio::fs::metadata(root).await?;
         let name = format!("iunctus-{}", job.name);
@@ -163,16 +173,44 @@ impl SlurmBackend {
             offline: job.placement.offline,
             wrapper_path: None,
         };
-        tokio::fs::write(run.script(), run.wrapper(job.spec)).await?;
         let gpus = job.placement.accelerators.iter().any(|gpu| gpu.count > 0);
-        let script = job_script(&self.container, &run, gpus);
+        let script = match job.spec.containers.is_empty() {
+            true => {
+                tokio::fs::write(run.script(), run.wrapper(job.spec)).await?;
+                job_script(&self.container, &run, gpus)
+            }
+            // A task of several containers starts a container for each image, all at once.
+            false => {
+                let home = root.join(executor::HOME).to_string_lossy().into_owned();
+                let folders = executor::wrapper::Folders {
+                    work: &run.inside(),
+                    control: &control.to_string_lossy(),
+                    home: &home,
+                    outbox: "",
+                };
+                let groups = containers::write_wrappers(job.spec, &control, &folders)?;
+                let names: Vec<String> = (0..groups.len())
+                    .map(|index| format!("{name}-{index}"))
+                    .collect();
+                let paths: Vec<PathBuf> = groups.iter().map(|(_, path)| path.into()).collect();
+                let runs: Vec<ContainerRun<'_>> = (groups.iter().enumerate())
+                    .map(|(index, (group, _))| ContainerRun {
+                        name: &names[index],
+                        image: &group.image,
+                        wrapper_path: Some(&paths[index]),
+                        ..run
+                    })
+                    .collect();
+                job_script_of_containers(&self.container, &runs, gpus)
+            }
+        };
         tokio::fs::write(control.join(SCRIPT), script).await?;
         let id = self.submit(job, root).await?;
         self.queue.add(&id).await;
         let ended = self.wait(&id, &control, cancel).await;
         self.queue.remove(&id).await;
         let time = job.placement.time_seconds;
-        finish(ended?, root.to_owned(), time).await
+        finish(ended?, root.to_owned(), time, job.spec).await
     }
 
     /// Submits the job of an attempt and gives its id.
@@ -256,9 +294,14 @@ impl SlurmBackend {
 }
 
 /// What an attempt left behind, by how its job ended.
-async fn finish(ended: Ended, root: PathBuf, time: Option<u64>) -> Result<Finished, ExecutorError> {
+async fn finish(
+    ended: Ended,
+    root: PathBuf,
+    time: Option<u64>,
+    spec: &task_model::TaskSpec,
+) -> Result<Finished, ExecutorError> {
     let control = root.join(CONTROL);
-    let recorded = read_number(&control.join(EXIT)).await;
+    let recorded = containers::recorded(spec, &control);
     let (exit_code, note) = match outcome(recorded, &ended, time) {
         Ok(outcome) => outcome,
         Err(message) => return Err(machine(explain(message, &root).await)),

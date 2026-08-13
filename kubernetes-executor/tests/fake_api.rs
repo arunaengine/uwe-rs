@@ -18,7 +18,7 @@ use std::time::Duration;
 use executor::{Backend, ExecutorError, Job, Staged, Staging};
 use kubernetes_executor::{Cluster, KubernetesBackend, LABEL};
 use serde_json::{Value, json};
-use task_model::{FORMAT, Image, OutputRule, Placement, TaskSpec};
+use task_model::{ContainerSpec, FORMAT, Image, OutputRule, Placement, TaskSpec};
 use tokio_util::sync::CancellationToken;
 
 const TOKEN: &str = "iunctus-test-token";
@@ -31,6 +31,8 @@ struct Running {
     label: String,
     process: u32,
     deleted: bool,
+    /// How many containers its pod has.
+    containers: usize,
 }
 
 /// What the fake server knows: its folder, the Jobs, and each request as `METHOD path`.
@@ -84,25 +86,31 @@ fn quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', r"'\''"))
 }
 
-/// Runs the container of a Job as a process group of its own, which writes its exit code.
+/// Runs the containers of a Job at once as a process group of its own, in which each writes
+/// its exit code.
 fn start(folder: &Path, job: &Value) -> Running {
     let name = job["metadata"]["name"].as_str().unwrap_or_default();
-    let container = &job["spec"]["template"]["spec"]["containers"][0];
-    let words: Vec<String> = (container["command"].as_array().expect("a command").iter())
-        .map(|word| quote(word.as_str().unwrap_or_default()))
-        .collect();
-    // An image without Bash cannot run the wrapper.
-    let command = match container["image"].as_str() {
-        Some("without-shell") => "(echo 'exec: \"sh\": not found' >&2; exit 127)".to_owned(),
-        _ => words.join(" "),
-    };
-    let directory = container["workingDir"].as_str().unwrap_or("/");
-    let exit = folder.join(format!("{name}.exit"));
-    let script = format!(
-        "cd {} && {command}\necho $? > {}\n",
-        quote(directory),
-        quote(&exit.to_string_lossy())
-    );
+    let containers =
+        (job["spec"]["template"]["spec"]["containers"].as_array()).expect("containers");
+    let mut script = String::new();
+    for (index, container) in containers.iter().enumerate() {
+        let words: Vec<String> = (container["command"].as_array().expect("a command").iter())
+            .map(|word| quote(word.as_str().unwrap_or_default()))
+            .collect();
+        // An image without Bash cannot run the wrapper.
+        let command = match container["image"].as_str() {
+            Some("without-shell") => "(echo 'exec: \"sh\": not found' >&2; exit 127)".to_owned(),
+            _ => words.join(" "),
+        };
+        let directory = container["workingDir"].as_str().unwrap_or("/");
+        let exit = folder.join(format!("{name}.exit.{index}"));
+        script.push_str(&format!(
+            "(cd {} && {command}; echo $? > {}) &\n",
+            quote(directory),
+            quote(&exit.to_string_lossy())
+        ));
+    }
+    script.push_str("wait\n");
     let log = std::fs::File::create(folder.join(format!("{name}.log"))).expect("a log");
     let mut child = std::process::Command::new("bash")
         .arg("-c")
@@ -122,19 +130,33 @@ fn start(folder: &Path, job: &Value) -> Running {
             .to_owned(),
         process,
         deleted: false,
+        containers: containers.len(),
     }
 }
 
 /// The pod of a Job, as the API lists it.
 fn pod(folder: &Path, name: &str, running: &Running) -> Value {
-    let exit = std::fs::read_to_string(folder.join(format!("{name}.exit"))).ok();
-    let state = match exit.and_then(|text| text.trim().parse::<i32>().ok()) {
-        Some(code) => {
-            let reason = if code == 0 { "Completed" } else { "Error" };
-            json!({"terminated": {"exitCode": code, "reason": reason}})
-        }
-        None => json!({"running": {}}),
-    };
+    let states: Vec<Value> = (0..running.containers)
+        .map(|index| {
+            let exit = std::fs::read_to_string(folder.join(format!("{name}.exit.{index}"))).ok();
+            match exit.and_then(|text| text.trim().parse::<i32>().ok()) {
+                Some(code) => {
+                    let reason = if code == 0 { "Completed" } else { "Error" };
+                    json!({"terminated": {"exitCode": code, "reason": reason}})
+                }
+                None => json!({"running": {}}),
+            }
+        })
+        .collect();
+    let running_now = states.iter().any(|state| state.get("running").is_some());
+    let statuses: Vec<Value> = (states.into_iter().enumerate())
+        .map(|(index, state)| {
+            json!({
+                "name": format!("task-{index}"), "image": "image", "imageID": "", "ready": false,
+                "restartCount": 0, "state": state,
+            })
+        })
+        .collect();
     json!({
         "apiVersion": "v1",
         "kind": "Pod",
@@ -144,11 +166,8 @@ fn pod(folder: &Path, name: &str, running: &Running) -> Value {
             "labels": {"job-name": name, LABEL: running.label},
         },
         "status": {
-            "phase": if state.get("running").is_some() { "Running" } else { "Succeeded" },
-            "containerStatuses": [{
-                "name": "task", "image": "image", "imageID": "", "ready": false,
-                "restartCount": 0, "state": state,
-            }],
+            "phase": if running_now { "Running" } else { "Succeeded" },
+            "containerStatuses": statuses,
         },
     })
 }
@@ -485,4 +504,56 @@ async fn a_kubeconfig_that_does_not_exist_is_an_error() {
         .await
         .expect_err("an error");
     assert!(error.contains("missing.yaml"), "{error}");
+}
+
+#[tokio::test]
+async fn containers_of_a_task_share_one_pod() {
+    let root = tempfile::tempdir().expect("a folder");
+    let (backend, state) = backend(root.path()).await;
+    let container = |name: &str, image: &str, script: &str, after: &[&str]| ContainerSpec {
+        name: name.into(),
+        image: Some(Image {
+            reference: image.into(),
+            platform: None,
+        }),
+        arguments: vec!["/bin/bash".into(), "-c".into(), script.into()],
+        workdir: None,
+        environment: BTreeMap::new(),
+        after: after.iter().map(|name| (*name).to_owned()).collect(),
+        attempts: 1,
+    };
+    let mut spec = spec("debian:stable-slim", "cat first.txt > out.txt");
+    spec.containers = vec![
+        container(
+            "main",
+            "debian:stable-slim",
+            "cat first.txt > out.txt",
+            &["first"],
+        ),
+        container(
+            "first",
+            "with-entrypoint",
+            "echo $FROM_ENTRYPOINT > first.txt",
+            &[],
+        ),
+    ];
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "run-S-1-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+    assert_eq!(finished.exit_code, Some(0));
+    let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("an output");
+    assert_eq!(output, "yes\n");
+    // One Job with a container for each image.
+    let calls = state.lock().expect("the state").calls.clone();
+    let created = calls.iter().filter(|call| call.starts_with("POST")).count();
+    assert_eq!(created, 1, "{calls:?}");
+    let control = finished.root.join(executor::CONTROL);
+    let ended = executor::containers::ended(&spec, &control);
+    let codes: Vec<Option<i32>> = ended.iter().map(|ended| ended.exit_code).collect();
+    assert_eq!(codes, [Some(0), Some(0)]);
 }

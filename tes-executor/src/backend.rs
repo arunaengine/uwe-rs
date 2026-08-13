@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use executor::registry::{self, ImageConfigs};
-use executor::{Backend, ExecutorError, Finished, Job, wrapper};
+use executor::{Backend, ExecutorError, Finished, Job, containers, wrapper};
+use task_model::TaskSpec;
 use tokio_util::sync::CancellationToken;
 
 use crate::client::{Client, ExecutorSpec, FileType, Input, Output, Resources, State, Task};
@@ -21,6 +22,8 @@ const CONTROL: &str = "/iunctus/control";
 const OUTBOX: &str = "/iunctus/outbox";
 const HOME: &str = "/iunctus/home";
 const WRAPPER: &str = "/iunctus/wrapper.sh";
+/// The folder of the wrappers of a task of several containers.
+const CONTAINER_WRAPPERS: &str = "/iunctus/containers";
 
 /// How long the backend waits between two looks at a task, at most.
 const POLL: Duration = Duration::from_secs(5);
@@ -71,20 +74,34 @@ impl TesBackend {
         let config = self.configs.get(&image.reference).await?;
         let mut spec = job.spec.clone();
         spec.arguments = config.command(&job.spec.arguments);
+        for container in &mut spec.containers {
+            let image = container.image.as_ref().ok_or(ExecutorError::NoImage)?;
+            let config = self.configs.get(&image.reference).await?;
+            container.arguments = config.command(&container.arguments);
+            if container.arguments.is_empty() {
+                return Err(ExecutorError::NoCommand(image.reference.clone()));
+            }
+        }
         let job = Job { spec: &spec, ..job };
-        let task = task(job, root)?;
+        let mut task = task(job, root)?;
         let folders = wrapper::Folders {
             work: &workdir(job),
             control: CONTROL,
             home: HOME,
             outbox: OUTBOX,
         };
-        let script = wrapper::wrapper(job.spec, &folders);
-        tokio::fs::write(root.join("wrapper.sh"), script).await?;
+        match spec.containers.is_empty() {
+            true => {
+                let script = wrapper::wrapper(job.spec, &folders);
+                tokio::fs::write(root.join("wrapper.sh"), script).await?;
+            }
+            false => several(&spec, &folders, root, &mut task).await?,
+        }
         let id = self.client.create(&task).await.map_err(machine)?;
         let status = self.wait(&id, cancel).await?;
         match status.state {
             State::Complete | State::ExecutorError => Finished::from_control(root.to_owned())
+                .map(|finished| recorded(finished, &spec))
                 .and_then(|finished| match finished.exit_code {
                     Some(_) => Ok(finished),
                     None => Err(failure(&status, "the task ended without an exit code")),
@@ -123,6 +140,55 @@ impl TesBackend {
             pause = (pause * 2).min(POLL);
         }
     }
+}
+
+/// The TES executors of a task of several containers, one per container, one after the other
+/// in an order where each comes after those it waits for, since TES runs the executors of a
+/// task in turn. Their wrappers are inputs of the task.
+async fn several(
+    spec: &TaskSpec,
+    folders: &wrapper::Folders<'_>,
+    root: &Path,
+    task: &mut Task,
+) -> Result<(), ExecutorError> {
+    let order = spec.container_order().ok_or_else(|| {
+        std::io::Error::other("the containers of the task wait for each other in a cycle")
+    })?;
+    let order = containers::sequence(spec).unwrap_or(order);
+    task.inputs.retain(|input| input.path != WRAPPER);
+    task.executors.clear();
+    for position in order {
+        let container = &spec.containers[position];
+        let image = container.image.as_ref().ok_or(ExecutorError::NoImage)?;
+        let local = root.join(format!("wrapper-{}.sh", container.name));
+        let script = containers::container_wrapper(spec, position, folders);
+        tokio::fs::write(&local, script).await?;
+        let inside = format!("{CONTAINER_WRAPPERS}/{}.sh", container.name);
+        task.inputs.push(Input {
+            path: inside.clone(),
+            url: file_url(&local),
+            kind: FileType::File,
+        });
+        task.executors.push(ExecutorSpec {
+            image: image.reference.clone(),
+            command: vec!["sh".into(), inside],
+            workdir: Some(folders.work.to_owned()),
+        });
+    }
+    Ok(())
+}
+
+/// The exit code of a task of several containers: that of the main container when it failed,
+/// else that of the first other container that failed.
+fn recorded(mut finished: Finished, spec: &TaskSpec) -> Finished {
+    if spec.containers.is_empty() {
+        return finished;
+    }
+    finished.exit_code = containers::recorded(spec, &finished.root.join(executor::CONTROL));
+    if finished.exit_code != Some(0) {
+        finished.files.clear();
+    }
+    finished
 }
 
 /// The work directory of a task in its container.

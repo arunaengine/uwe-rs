@@ -16,6 +16,7 @@ bytes.workspace = true
 content-store.workspace = true
 executor.workspace = true
 rusqlite.workspace = true
+run-database.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 storage.workspace = true

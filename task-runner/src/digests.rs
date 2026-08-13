@@ -88,7 +88,8 @@ impl DigestCache {
         }
         let connection = Connection::open(path)?;
         connection.busy_timeout(BUSY_TIMEOUT)?;
-        connection.pragma_update(None, "journal_mode", "WAL")?;
+        // WAL, or the rollback journal on a file system that machines share.
+        connection.pragma_update(None, "journal_mode", run_database::journal_mode(path))?;
         connection.pragma_update(None, "synchronous", "NORMAL")?;
         connection.execute_batch(
             "CREATE TABLE IF NOT EXISTS digests (

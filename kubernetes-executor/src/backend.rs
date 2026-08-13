@@ -13,9 +13,10 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use executor::manifest::parse;
 use executor::process::Mount;
 use executor::registry::{self, ImageConfigs};
-use executor::wrapper::{EXIT, MANIFEST, STDERR};
-use executor::{Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, place};
+use executor::wrapper::{Folders, MANIFEST, STDERR};
+use executor::{Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, containers, place};
 use kube::api::{DeleteParams, ListParams, LogParams, PostParams, PropagationPolicy};
+use task_model::TaskSpec;
 use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 
@@ -124,6 +125,14 @@ impl KubernetesBackend {
         if spec.arguments.is_empty() {
             return Err(ExecutorError::NoCommand(image.reference.clone()));
         }
+        for container in &mut spec.containers {
+            let image = container.image.as_ref().ok_or(ExecutorError::NoImage)?;
+            let config = self.configs.get(&image.reference).await?;
+            container.arguments = config.command(&container.arguments);
+            if container.arguments.is_empty() {
+                return Err(ExecutorError::NoCommand(image.reference.clone()));
+            }
+        }
         let owner = tokio::fs::metadata(root).await?;
         let name = job_name(job.name);
         let run = ContainerRun {
@@ -139,12 +148,39 @@ impl KubernetesBackend {
             offline: false,
             wrapper_path: None,
         };
-        tokio::fs::write(run.script(), run.wrapper(&spec)).await?;
+        // A task of several containers is one pod with a container for each image, which runs
+        // the wrappers of the containers of that image, as the local executor runs them.
+        let mut groups: Vec<(task_model::Image, PathBuf)> = Vec::new();
+        match spec.containers.is_empty() {
+            true => tokio::fs::write(run.script(), run.wrapper(&spec)).await?,
+            false => {
+                let (control, home) = (root.join(CONTROL), text(&root.join(executor::HOME)));
+                let folders = Folders {
+                    work: &run.inside(),
+                    control: &text(&control),
+                    home: &home,
+                    outbox: "",
+                };
+                for (group, path) in containers::write_wrappers(&spec, &control, &folders)? {
+                    groups.push((group.image, path.into()));
+                }
+            }
+        }
+        let runs: Vec<ContainerRun<'_>> = match groups.is_empty() {
+            true => vec![run],
+            false => (groups.iter())
+                .map(|(image, path)| ContainerRun {
+                    image,
+                    wrapper_path: Some(path),
+                    ..run
+                })
+                .collect(),
+        };
         let limits = Limits {
             gpus: job.placement.accelerators.iter().map(|gpu| gpu.count).sum(),
             seconds: job.placement.time_seconds,
         };
-        let manifest = crate::manifest::job(&name, &self.label, &run, &limits);
+        let manifest = crate::manifest::job(&name, &self.label, &runs, &limits);
         self.create(manifest).await?;
         self.pods.add(&name).await;
         let ended = self.wait(&name, cancel).await;
@@ -157,7 +193,7 @@ impl KubernetesBackend {
         if !matches!(ended, Err(ExecutorError::Cancelled)) {
             self.delete(&name, PropagationPolicy::Background).await;
         }
-        let finished = finish(ended?, root.to_owned(), limits.seconds).await;
+        let finished = finish(ended?, root.to_owned(), limits.seconds, &spec).await;
         match (finished, log) {
             (Err(ExecutorError::Engine { engine, message }), Some(log)) => {
                 Err(ExecutorError::Engine {
@@ -255,10 +291,14 @@ impl KubernetesBackend {
 }
 
 /// What an attempt left behind, by how its container ended.
-async fn finish(ended: Ended, root: PathBuf, time: Option<u64>) -> Result<Finished, ExecutorError> {
+async fn finish(
+    ended: Ended,
+    root: PathBuf,
+    time: Option<u64>,
+    spec: &TaskSpec,
+) -> Result<Finished, ExecutorError> {
     let control = root.join(CONTROL);
-    let recorded = (tokio::fs::read_to_string(control.join(EXIT)).await.ok())
-        .and_then(|text| text.trim().parse().ok());
+    let recorded = containers::recorded(spec, &control);
     let (exit_code, note) = outcome(recorded, &ended, time).map_err(machine)?;
     if let Some(note) = note {
         let mut file = tokio::fs::OpenOptions::new()
@@ -324,6 +364,10 @@ fn outcome(
         )),
         Ended::Stopped(reason) => Err(format!("the pod was stopped: {reason}")),
     }
+}
+
+fn text(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
 }
 
 fn machine(message: String) -> ExecutorError {

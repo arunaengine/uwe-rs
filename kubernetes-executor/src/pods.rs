@@ -107,20 +107,35 @@ pub fn looks(list: &Value) -> HashMap<String, Look> {
         .collect()
 }
 
+/// How the pod of a Job stands. Its containers end when every one of them ended; one that
+/// ended badly ends them all, since the others may wait for it.
 fn look(pod: &Value) -> Look {
     let status = &pod["status"];
-    let state = &status["containerStatuses"][0]["state"];
+    let statuses = (status["containerStatuses"].as_array())
+        .map(Vec::as_slice)
+        .unwrap_or_default();
     let text = |value: &Value| value.as_str().unwrap_or_default().to_owned();
-    if let Some(ended) = state.get("terminated") {
+    let ended: Vec<(i32, String)> = (statuses.iter())
+        .filter_map(|container| container["state"].get("terminated"))
+        .map(|ended| {
+            let exit_code = ended["exitCode"].as_i64().unwrap_or(-1) as i32;
+            (exit_code, text(&ended["reason"]))
+        })
+        .collect();
+    let badly = ended.iter().find(|(exit_code, _)| *exit_code != 0);
+    let all = !statuses.is_empty() && ended.len() == statuses.len();
+    if let Some((exit_code, reason)) = badly.or(ended.first().filter(|_| all)) {
         return Look::Ended {
-            exit_code: ended["exitCode"].as_i64().unwrap_or(-1) as i32,
-            reason: text(&ended["reason"]),
+            exit_code: *exit_code,
+            reason: reason.clone(),
         };
     }
-    if let Some(waiting) = state.get("waiting") {
-        let reason = text(&waiting["reason"]);
-        if STUCK.contains(&reason.as_str()) {
-            return Look::Stuck(format!("{reason}: {}", text(&waiting["message"])));
+    for container in statuses {
+        if let Some(waiting) = container["state"].get("waiting") {
+            let reason = text(&waiting["reason"]);
+            if STUCK.contains(&reason.as_str()) {
+                return Look::Stuck(format!("{reason}: {}", text(&waiting["message"])));
+            }
         }
     }
     match status["phase"].as_str() {
@@ -150,6 +165,12 @@ mod tests {
             pod("d", json!({"phase": "Pending", "containerStatuses": [
                 {"state": {"waiting": {"reason": "ImagePullBackOff", "message": "no such image"}}}]})),
             pod("e", json!({"phase": "Failed", "reason": "DeadlineExceeded"})),
+            pod("f", json!({"phase": "Running", "containerStatuses": [
+                {"state": {"terminated": {"exitCode": 0, "reason": "Completed"}}},
+                {"state": {"running": {}}}]})),
+            pod("g", json!({"phase": "Running", "containerStatuses": [
+                {"state": {"running": {}}},
+                {"state": {"terminated": {"exitCode": 137, "reason": "OOMKilled"}}}]})),
         ]});
         let looks = looks(&list);
         assert_eq!(looks["a"], Look::Active);
@@ -164,5 +185,8 @@ mod tests {
             Look::Stuck("ImagePullBackOff: no such image".into())
         );
         assert_eq!(looks["e"], Look::Stopped("DeadlineExceeded".into()));
+        // A pod of several containers ends when all ended, or when one ended badly.
+        assert_eq!(looks["f"], Look::Active);
+        assert_eq!(looks["g"], ended(137, "OOMKilled"));
     }
 }

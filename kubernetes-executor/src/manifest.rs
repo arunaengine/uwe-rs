@@ -46,8 +46,12 @@ pub struct Limits {
     pub seconds: Option<u64>,
 }
 
-/// The Job that runs the wrapper of `run` in its image, labelled with `label`.
-pub fn job(name: &str, label: &str, run: &ContainerRun<'_>, limits: &Limits) -> Value {
+/// The Job that runs the wrapper of each of `runs` in its image, labelled with `label`: one
+/// container for a task, or one for each image of a task of several containers, which share
+/// the folders of the task. The first container asks for the CPUs and memory of the task, and
+/// each may use all of its memory.
+pub fn job(name: &str, label: &str, runs: &[ContainerRun<'_>], limits: &Limits) -> Value {
+    let run = &runs[0];
     let mut mounts = Vec::new();
     let mut volumes = Vec::new();
     for (index, bind) in run.binds().iter().enumerate() {
@@ -70,6 +74,23 @@ pub fn job(name: &str, label: &str, run: &ContainerRun<'_>, limits: &Limits) -> 
         limits_of_container["nvidia.com/gpu"] = json!(limits.gpus.to_string());
     }
     let labels = json!({"app.kubernetes.io/managed-by": "iunctus", LABEL: label});
+    let containers: Vec<Value> = (runs.iter().enumerate())
+        .map(|(index, run)| {
+            let (name, requests) = match (runs.len(), index) {
+                (1, _) => ("task".to_owned(), requests.clone()),
+                (_, 0) => ("task-0".to_owned(), requests.clone()),
+                (_, index) => (format!("task-{index}"), json!({"cpu": "0", "memory": "0"})),
+            };
+            json!({
+                "name": name,
+                "image": run.image.reference,
+                "command": ["sh", run.script()],
+                "workingDir": run.inside(),
+                "resources": {"requests": requests, "limits": limits_of_container},
+                "volumeMounts": mounts,
+            })
+        })
+        .collect();
     let mut spec = json!({
         "backoffLimit": 0,
         "ttlSecondsAfterFinished": KEEP_SECONDS,
@@ -78,14 +99,7 @@ pub fn job(name: &str, label: &str, run: &ContainerRun<'_>, limits: &Limits) -> 
             "spec": {
                 "restartPolicy": "Never",
                 "securityContext": {"runAsUser": run.owner.0, "runAsGroup": run.owner.1},
-                "containers": [{
-                    "name": "task",
-                    "image": run.image.reference,
-                    "command": ["sh", run.script()],
-                    "workingDir": run.inside(),
-                    "resources": {"requests": requests, "limits": limits_of_container},
-                    "volumeMounts": mounts,
-                }],
+                "containers": containers,
                 "volumes": volumes,
             },
         },
@@ -156,7 +170,7 @@ mod tests {
             gpus: 1,
             seconds: Some(60),
         };
-        let job = job("iunctus-run-p-1-1", "7-9", &run, &limits);
+        let job = job("iunctus-run-p-1-1", "7-9", &[run], &limits);
         let spec = &job["spec"];
         assert_eq!(spec["backoffLimit"], 0);
         let pod = &spec["template"]["spec"];

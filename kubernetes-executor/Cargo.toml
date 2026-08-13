@@ -17,10 +17,10 @@ k8s-openapi.workspace = true
 kube.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+task-model.workspace = true
 tokio = { workspace = true, features = ["fs", "io-util", "process", "sync", "time"] }
 tokio-util.workspace = true
 
 [dev-dependencies]
-task-model.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }

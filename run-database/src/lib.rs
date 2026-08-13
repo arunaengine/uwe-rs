@@ -9,7 +9,8 @@
 //!
 //! A [`Recorder`] writes one run while it goes on. The web page, the RO-Crate export, resume and
 //! the insight commands read the database through [`Database`]. SQLite runs in WAL mode, so a
-//! page can read a run while another process records it. The SQL is kept portable, so that
+//! page can read a run while another process records it; on a file system that machines share,
+//! it uses the rollback journal instead (see `journal`). The SQL is kept portable, so that
 //! another engine can replace SQLite behind this interface later (decisions, open questions).
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -18,6 +19,7 @@ mod chains;
 mod compare;
 mod fingerprint;
 mod graph;
+mod journal;
 mod keep;
 mod measured;
 mod origin;
@@ -39,6 +41,7 @@ use rusqlite::Connection;
 
 pub use compare::{Comparison, Pairing, Side, TaskPair};
 pub use fingerprint::{InputState, fingerprint, input_states};
+pub use journal::journal_mode;
 pub use keep::References;
 pub use origin::Origin;
 pub use pinned::{CheckRow, ImagePin, RemoteFile, Source, SourceKind};
@@ -109,8 +112,9 @@ impl Database {
         let mut connection = Connection::open(path)?;
         connection.busy_timeout(BUSY_TIMEOUT)?;
         // WAL lets readers go on while a run writes; NORMAL syncs at checkpoints only, which
-        // is safe in WAL mode: a crash can lose the last commits, never break the file.
-        connection.pragma_update(None, "journal_mode", "WAL")?;
+        // is safe in WAL mode: a crash can lose the last commits, never break the file. On a
+        // file system that machines share, the rollback journal (see `journal`).
+        connection.pragma_update(None, "journal_mode", journal_mode(path))?;
         connection.pragma_update(None, "synchronous", "NORMAL")?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
         schema::migrate(&mut connection)?;

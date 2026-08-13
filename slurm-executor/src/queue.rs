@@ -214,6 +214,48 @@ impl Queue {
     }
 }
 
+impl Queue {
+    /// The node of a job, from `squeue`, else from the accounting of SLURM; `None` when
+    /// neither knows it.
+    pub async fn node(&self, squeue: &Path, sacct: &Path, id: &str) -> Option<String> {
+        let asked = [
+            (
+                squeue,
+                ["--noheader", "--states=all", "--format=%N"].as_slice(),
+            ),
+            (
+                sacct,
+                [
+                    "--allocations",
+                    "--noheader",
+                    "--parsable2",
+                    "--format=NodeList",
+                ]
+                .as_slice(),
+            ),
+        ];
+        for (program, arguments) in asked {
+            let output = Command::new(program)
+                .args(arguments)
+                .arg(format!("--jobs={id}"))
+                .output()
+                .await;
+            let Ok(output) = output else { continue };
+            let text = String::from_utf8_lossy(&output.stdout);
+            let node = text.lines().next().map(str::trim).unwrap_or_default();
+            if output.status.success() && node_name(node) {
+                return Some(node.to_owned());
+            }
+        }
+        None
+    }
+}
+
+/// Whether SLURM names a node, rather than none like `None assigned` or `(null)`.
+fn node_name(text: &str) -> bool {
+    !text.is_empty() && !text.contains([' ', '(', ')'])
+}
+
 /// The state in which a job ended, from the text of the accounting of SLURM.
 async fn accounted(sacct: &Path, id: &str) -> Option<String> {
     let output = Command::new(sacct)

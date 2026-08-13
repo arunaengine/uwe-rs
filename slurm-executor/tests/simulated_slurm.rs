@@ -31,6 +31,13 @@ done
 id=$(( $(cat "$state/last" 2>/dev/null || echo 100) + 1 ))
 echo "$id" > "$state/last"
 printf '%s\n' "$@" > "$state/$id.options"
+# A job on a node that does not see the folders fails at once and leaves no log.
+if [ -e "$(dirname "$0")/broken" ]; then
+    rm "$(dirname "$0")/broken"
+    echo 1 > "$state/$id.exit"
+    echo "$id"
+    exit 0
+fi
 (
     cd "$chdir" && setsid bash -c 'echo $$ > "$1"; exec bash "$2"' job "$state/$id.pid" "$script" \
         > "$output" 2>&1
@@ -47,6 +54,7 @@ json=
 for argument in "$@"; do
     case $argument in
         --jobs=*) jobs=${argument#--jobs=} ;;
+        --format=%N) echo node-3; exit 0 ;;
         --json)
             [ -e "$(dirname "$0")/json" ] || { echo "squeue: unrecognized option '--json'" >&2; exit 1; }
             json=yes ;;
@@ -247,6 +255,42 @@ async fn an_image_pinned_to_its_digest_is_pulled_once_for_all_its_jobs() {
     let options = std::fs::read_to_string(bin.join("state/101.options")).expect("the options");
     assert!(
         options.starts_with("--parsable\n--job-name=iunctus-image-sha256-ab12-"),
+        "{options}"
+    );
+}
+
+#[tokio::test]
+async fn a_node_that_does_not_see_the_folders_is_left_out() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    std::fs::write(bin.join("broken"), "").expect("breaks the next job");
+    let backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    let spec = spec("echo fine > out.txt");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = |name| Job {
+        name,
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let cancel = CancellationToken::new();
+    let error = (backend.run(job("run-P-9-1"), &cancel).await).expect_err("a failure");
+    assert!(error.retryable(), "{error}");
+    let expected = format!(
+        "left no log; do the nodes see {} at the same path? It ran on the node node-3, which \
+         the later jobs of this run leave out.",
+        root.path().join("scratch/run-P-9-1").display()
+    );
+    assert!(error.to_string().ends_with(&expected), "{error}");
+    let finished = (backend.run(job("run-P-9-2"), &cancel).await).expect("the job ends");
+    assert_eq!(finished.exit_code, Some(0));
+    let options = std::fs::read_to_string(bin.join("state/102.options")).expect("the options");
+    assert!(
+        options.contains("--exclude=node-3\n--account=lab\n"),
         "{options}"
     );
 }

@@ -68,7 +68,7 @@ The largest gaps are the same in every language: results are not delivered, and 
 
 | Gap | What it blocks | Kind |
 | --- | --- | --- |
-| Network access and writable inputs (`NetworkAccess`, `writable` in `InitialWorkDirRequirement`, `InplaceUpdateRequirement`) | Tools that download or change their inputs | Not built |
+| Network access and writable inputs (`NetworkAccess`, `writable` in `InitialWorkDirRequirement`, `InplaceUpdateRequirement`) | Tools that download or change their inputs | Done: `Task.network`, `Writable::{Copy, InPlace}` |
 | `DockerRequirement` with `dockerFile`, `dockerLoad` or `dockerImport`; `SoftwareRequirement` as a requirement | Tools that build or load their own image | Not built |
 | Checking the outputs of the 208 conformance tests that only run through | Proof of full conformance | Needs real runs |
 
@@ -77,7 +77,7 @@ The largest gaps are the same in every language: results are not delivered, and 
 | Gap | What it blocks | Kind |
 | --- | --- | --- |
 | `resource` templates for Kubernetes objects, daemons, sidecars, `data` templates | 104 test documents, almost all Argo feature demos and CI/CD examples | Decided (decision 18) |
-| Container sets, whose containers share one pod and its volumes | Workflows that use `containerSet` | Not built |
+| Container sets, whose containers share one pod and its volumes | Workflows that use `containerSet` | Done: one task of several containers ([runtime](design/argo/runtime.md), section 8.2) |
 | Executor plugins that answer `Running` or `Pending` | Plugins that work in the background | Not built |
 
 ## 3. The execution layer
@@ -197,7 +197,7 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 - [ ] The TES executor (done, tested with a fake server and Funnel), tested with TESK too (decision 22).
 - [ ] The SLURM executor with Apptainer or Podman (done, tested with a simulated SLURM), tested on a SLURM cluster in containers (decision 22).
 - [ ] The Kubernetes executor, one Kubernetes Job per task (done through the API, tested with a fake API server), tested on a `kind` cluster (decision 22).
-- [ ] The network (done) and writable-input fields, remote inputs (done), Argo container sets (section 3, steps 6, 9 and 10).
+- [x] The network and writable-input fields, remote inputs, Argo container sets (section 3, steps 6, 9 and 10): see [engine](design/engine.md), section 4, and [Argo runtime](design/argo/runtime.md), section 8.2.
 - [x] Several storage providers from a config file, secrets from environment variables (decision 20): see [storage](design/storage.md).
 - Done when: the `test` profiles of nf-core/demo and 20 more nf-core pipelines, and a sample of Snakemake, CWL and Argo test workflows, run for real on each executor, and their outputs match those of the native tool. This needs a real-run version of the evidence scripts. The 208 CWL conformance tests that only run through today pass for real.
 

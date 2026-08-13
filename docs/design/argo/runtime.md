@@ -150,13 +150,13 @@ Outputs of steps and DAG templates read the scope (`valueFrom.parameter`, `expre
 |---|---|
 | `container` | One task with the image, command, arguments, working directory and environment. |
 | `script` | The command runs the file `/argo/staging/script`, which the task gets as an `Input` with the source as its content, as Argo's executor writes it. |
-| `containerSet` | One task per container, ordered by their `dependencies` with `Order` edges. The main container (named `main`, or the last one) gets the outputs. |
+| `containerSet` | One task of several containers, as one pod (section 8.2). The main container (named `main`, or the last one) gets the outputs. |
 | `resource` | Not supported (decision 18), except for a PersistentVolumeClaim, which becomes a volume of the run (section 11.4). |
 | `http` | The image `curlimages/curl` runs curl, which writes the response body and status code to files. The status code decides `successCondition`. When the status is not known, as in a simulated run, the node succeeds with a warning. |
 | `data` | Not supported (decision 18). |
 | `plugin` | One call of an executor plugin per task, in the plugin's image (section 8.1). |
 
-Resources come from the container's requests, or its limits where requests say nothing. `activeDeadlineSeconds` or `timeout` sets the time limit. Environment variables that read a field of the pod with `fieldRef` get the run's values: the pod name, the namespace, a stable uid, the service account, a node name and an IP address. Variables from ConfigMaps and Secrets follow section 11.
+Resources come from the container's requests, or its limits where requests say nothing; a container set asks for the sum over its containers, as Argo does. `activeDeadlineSeconds` or `timeout` sets the time limit. Environment variables that read a field of the pod with `fieldRef` get the run's values: the pod name, the namespace, a stable uid, the service account, a node name and an IP address. Variables from ConfigMaps and Secrets follow section 11.
 
 ### 8.1 Executor plugins
 
@@ -171,9 +171,34 @@ iunctus has no agent pod. Each call of a plugin is a task in the plugin's own im
 
 Limits: the image of a plugin needs `sh` and `curl` or `wget`. A reply with the phase `Running` or `Pending` ends the node with an error, because iunctus does not call a plugin again later.
 
+### 8.2 Container sets
+
+Argo runs the containers of a container set in one pod, where they share its volumes, and its executor starts each container when those in its `dependencies` ended (docs/container-set-template.md; `executeContainerSet` in workflow/controller/container_set_template.go). iunctus runs a container set as one task of several containers (`Task.containers`, decision 11 still holds: every container runs in its own image):
+
+- The task holds every container with its image, command and arguments, working directory, environment and `dependencies`. The main container comes first; its image and command are also those of the task, so the simulator and the graph read it as before.
+- Each container runs in a wrapper of its own (`executor::containers`). It waits until the containers in its `dependencies` recorded their exit codes, and runs its command only when all of them ended with 0. Otherwise it does not run and ends with exit code 1, as Argo's executor ends a container whose dependency failed.
+- `containerSet.retryStrategy` runs a failed command again in the same container, up to `retries` times in all, as Argo's executor does with its `Steps: retries`; the logs of the tries follow each other. A command that the shell cannot find (exit code 127) is not tried again. As with other retries (section 12), `duration` is not waited for.
+- The containers share the work directory, the inputs and the volumes of the set: the `volumeMounts` of the set and those of every container. An `emptyDir` is a folder of the task, so containers that run at the same time see each other's files at once, as in the pod.
+- The main container collects the outputs when it ended and every container that does not come after it ended too, so that files that other containers write into a volume are there. Its standard output is `outputs.result`, and `outputs.exitCode` is its own exit code.
+- The node fails when any container failed. Its message names the first failed container by name, like `b: Error (exit code 2)`, as Argo's controller reports a failed pod of several main containers.
+- Each container keeps its own logs: the run database has them as the streams `<container>/stdout` and `<container>/stderr` of the task; the main container's are the task's.
+- The cache key holds every container, its pinned image included, so a change to any container runs the task again.
+
+Where the containers run:
+
+| Executor | How |
+|---|---|
+| Local | One engine container for each image, all at once, on the same scratch folder and mounts, each within the share of the task. Containers of the same image run in one engine container, whose wrapper starts theirs at once and waits for all. When one engine container ends without its wrapper, like one killed for lack of memory, the others stop. |
+| Kubernetes | One pod with a container for each image, as on the local executor. The first container asks for the CPUs and memory of the task; each may use all of its memory. |
+| SLURM | One job whose script starts a container for each image at once and waits for all of them. |
+| TES | One TES task with one executor per container. TES runs executors one after the other, so the containers run in an order where each comes after those it waits for, and the main container as early as it can. Containers without dependencies do not run at the same time there. |
+| Simulator | Simulates the main container, as for one container; the TES document of the task lists every container as an executor. |
+
+Init containers stay tasks of their own before the task of the set (section 11.8), and sidecars stay unsupported (decision 18).
+
 ## 9. Inputs and outputs
 
-Input artifacts become `Input`s. The source is the artifact's location: `s3://bucket/key`, an HTTP URL, a git repository (with `#revision`), `gs://`, Azure, Artifactory, HDFS or OSS. Raw artifacts become an `Input` with content. An S3 artifact with only a key uses the default artifact repository, named `s3://default-artifact-repository` here.
+Input artifacts become `Input`s, which the task gets as copies that it may change (`Writable::Copy`), as Argo's executor writes each artifact into the pod. The source is the artifact's location: `s3://bucket/key`, an HTTP URL, a git repository (with `#revision`), `gs://`, Azure, Artifactory, HDFS or OSS. Raw artifacts become an `Input` with content. An S3 artifact with only a key uses the default artifact repository, named `s3://default-artifact-repository` here.
 
 Output artifacts and output parameters with a `path` become the task's outputs. Deeper paths come first, so that a directory output does not hide a file inside it. When a task completes, the runtime reads the files it wrote:
 
@@ -232,8 +257,8 @@ When no loaded document holds the ConfigMap or the key, a parameter takes its `v
 
 Volumes that several steps mount act as a shared file system. The run keeps the files that tasks write into a volume and gives them to the tasks that mount it later:
 
-- A volume is a `persistentVolumeClaim` (known by its claim name), a claim of `volumeClaimTemplates` (by its name), a `hostPath` (by its path), or an `emptyDir`, which only the containers of one pod share, like those of a container set.
-- A task that mounts a volume at a path gets the files that earlier tasks wrote there as file inputs below the mount path, or an empty directory. `subPath` selects a folder of the volume.
+- A volume is a `persistentVolumeClaim` (known by its claim name), a claim of `volumeClaimTemplates` (by its name), a `hostPath` (by its path), or an `emptyDir`, which only the containers of one pod share, like those of a container set, which run in one task (section 8.2).
+- A task that mounts a volume at a path gets the files that earlier tasks wrote there as file inputs below the mount path, or an empty directory. `subPath` selects a folder of the volume. Unless the mount is `readOnly`, the files are copies that the task may change, like `echo more >> /work/log.txt`; the files of a host path stay read-only.
 - Unless the mount is `readOnly`, the mount path is also a directory output of the task. When the task ends, its files replace the files of the same name in the volume.
 - Tasks that run at the same time see the volume as it was when they started. Their files are merged when they end; for a file that both wrote, the one that ended last wins.
 - A `resource` template that creates or applies a PersistentVolumeClaim, like Ensembl's `create-pvc`, makes a new empty volume of the claim's name and runs no task. Its output parameters read the manifest with `jsonPath`. A `delete` of the claim drops the volume.
@@ -278,7 +303,7 @@ A `resource` template whose manifest is an Argo Workflow, with its own templates
 Init containers run as their own tasks before the task they belong to, one after the other, as Kubernetes runs them (decision 18):
 
 - Each init container is a task with its image, command, arguments, environment and resources, named after the node and the container, like `wf.step (init launcher)`. Its mounts are its own `volumeMounts`, and with `mirrorVolumeMounts` also those of the main container.
-- The next task starts when the one before ends; the main task, or the tasks of a container set, come last and have the init tasks in `after`. The files that an init container writes to a mounted volume, like an `emptyDir` of the pod, are inputs of the tasks that mount it later, as for any volume (section 11.4). KFP-compiled workflows use this: an init container copies the KFP launcher into an `emptyDir` that the main container runs.
+- The next task starts when the one before ends; the main task, or the task of a container set, comes last and has the init tasks in `after`. The files that an init container writes to a mounted volume, like an `emptyDir` of the pod, are inputs of the tasks that mount it later, as for any volume (section 11.4). KFP-compiled workflows use this: an init container copies the KFP launcher into an `emptyDir` that the main container runs.
 - An init container that fails fails the node, as a failed pod does in Argo. In a simulated run an init task gets pretended outputs like any task.
 
 ## 12. Deliberate differences from Argo
@@ -286,7 +311,9 @@ Init containers run as their own tasks before the task they belong to, one after
 - Tags of `tasks.` and `steps.` that stay unresolved in a simulated run stay literal. Argo would requeue the node until they resolve, or fail it.
 - A `when` that cannot be decided skips the step instead of failing it.
 - `suspend` never waits.
-- Retries do not wait for their backoff.
+- Retries do not wait for their backoff, and the retries of a container set do not wait for their `duration`.
+- The containers of a container set see all volumes that any of them mounts, at the same paths, and the work directory of the task. In Argo each container sees only its own mounts. A volume that containers of one set mount at different paths is one folder at each path, not one shared folder.
+- On TES the containers of a set run one after the other (section 8.2).
 - `workflow.failures` lists failed nodes in the order the run made them. Argo iterates a Go map, so its order varies.
 
 ## 13. The test workflows

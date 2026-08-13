@@ -30,6 +30,8 @@ Each attempt gets a scratch directory, `<scratch>/<run>-<task>-<attempt>`, with 
 
 Inputs that the task only reads are symbolic links to their sources, and the container sees the folders of the sources read-only at the same paths (`executor::place`). Inputs that the task may change or run are copies.
 
+**Tasks of several containers**, like an Argo container set, run their containers at once in one place: they share the scratch directory, the inputs and the mounts. Each container runs a wrapper of its own (`executor::containers`) that waits until the containers it comes after recorded their exit codes, runs its command only when they ended with 0, runs it again while it fails and has attempts left, and records its exit code and streams in `control/containers/<name>/`. The main container uses `control/` itself and collects the outputs. The exit code of the task is that of the main container when it failed, else that of the first other container that failed. The local executor, Kubernetes and SLURM start one container for each image, all at once; containers of one image run in one container, whose wrapper starts theirs and waits for all. TES runs one executor per container, one after the other, in an order where each comes after those it waits for.
+
 **Settings in the config file.** Each executor takes its settings from a section `[executor.<name>]` of the config file ([storage](storage.md), section 1), so that a run needs no long command line. Options on the command line and environment variables win over the file. A key that a section does not know is an error.
 
 ```toml
@@ -77,6 +79,8 @@ Each attempt becomes one TES v1.1 task with the wrapper as its one executor. Its
 - The command of a task runs through the entrypoint of its image, as with the local executor; the entrypoint and the default command come from the config of the image at its registry, read once per image (`executor::registry::ImageConfigs`). A task without a command runs the default command of the image.
 - The state `SYSTEM_ERROR` and failed requests are failures of the machine. A cancelled run cancels its TES tasks.
 
+A task of several containers becomes one TES task with one executor per container (section 1).
+
 The TES backend is tested against a small fake TES server (`tes-executor/tests/fake_server.rs`) and against Funnel 0.11.14 on this machine: `just funnel-server` starts Funnel from `~/.cache/iunctus/tools/funnel` with the config of the tests (`tes-executor/tests/fixtures/funnel.yaml`: a memory limit and no network for tasks, and images are never pulled), and `just tes-test` runs the tests against it. A whole Nextflow workflow ran on it too: two processes with an input file and `publishDir`, Ctrl-C cancelled the TES tasks, and a task whose image was missing failed as a failure of the machine, twice retried. A test with TESK is still to come.
 
 ## 4. SLURM
@@ -106,6 +110,8 @@ The SLURM executor uses the tools that every SLURM node has, `sbatch`, `squeue`,
 
 A cancelled run cancels its jobs with `scancel` and waits until they leave the queue.
 
+A task of several containers is one job, whose script starts a container for each image at once, waits for all of them, and records the exit code of the first container that failed, else 0 (section 1).
+
 The tests run the backend against a simulated SLURM on this machine (`slurm-executor/tests/simulated_slurm.rs`): shell scripts in place of `sbatch`, `squeue`, `scancel` and `sacct`, and a simulated Apptainer that runs the wrapper without a container. One test runs a real container with Docker. A test on a SLURM cluster in containers is still to come.
 
 ## 5. Kubernetes
@@ -120,7 +126,7 @@ The client reads only the kubeconfig that `-kubeconfig` names and uses its curre
 
 The command of a task runs through the entrypoint of its image, as with the local executor; the backend reads the entrypoint and the default command from the config of the image at its registry, once per image, since the pod runs the wrapper as its own command. A task without a command runs the default command of the image.
 
-The pod asks for the CPUs and memory of the task, and gets the memory as its limit and the GPUs as `nvidia.com/gpu`. The time of the task is the pod's `activeDeadlineSeconds`, which counts from the start of the pod, so that waiting for a node does not count. A Job has no retries of its own (`backoffLimit: 0`), since the engine retries failures of the machine, and the backend deletes it once it ended; `ttlSecondsAfterFinished` removes it too.
+The pod asks for the CPUs and memory of the task, and gets the memory as its limit and the GPUs as `nvidia.com/gpu`. A task of several containers is one pod with a container for each image (section 1): the first asks for the CPUs and memory of the task, and each may use all of its memory; the pod ends when all of them ended, or when one ended badly, like one killed for lack of memory. The time of the task is the pod's `activeDeadlineSeconds`, which counts from the start of the pod, so that waiting for a node does not count. A Job has no retries of its own (`backoffLimit: 0`), since the engine retries failures of the machine, and the backend deletes it once it ended; `ttlSecondsAfterFinished` removes it too.
 
 The backend lists the pods of all Jobs of the run at once, by a label, at most every 5 seconds. How the container ends decides the outcome, as for the other executors: the exit code that the wrapper recorded; a container killed for lack of memory (`OOMKilled`) or by a signal ends the task with its own exit code and a note; a pod past its time (`DeadlineExceeded`) ends it with 143. A pod whose image cannot be pulled, a Job without a pod, each for 2 minutes, an evicted pod, and a container that could not run the wrapper are failures of the machine, which the engine retries; the error quotes the end of the pod's log. A cancelled run deletes its Jobs and waits until their pods are gone.
 

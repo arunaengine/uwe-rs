@@ -98,12 +98,12 @@ iunctus check-machine [-executor <executor>] [-store <folder or address>] [-iunc
 |---|---|---|
 | config file | every config file is valid; it names the files and their storage providers | the file, the line and the mistake |
 | secret | the environment variable of each `{ environment = "NAME" }` of the config file is set | the file, the line and the variable to set |
-| container engine | Docker or Podman answers at its socket; it gives its version | the sockets it tried, and how to start Docker or turn on the socket of Podman (`systemctl --user enable --now podman.socket`); a socket that the user may not use gets `sudo usermod -aG docker $USER` |
+| container engine | Docker or Podman answers at its socket; it gives its version | the sockets it tried, and how to start Docker or turn on the socket of Podman (`systemctl --user enable --now podman.socket`); a socket that the user may not use gets `sudo usermod -aG docker $USER`; with `-executor tes`, `slurm` or `kubernetes` it is `not set up` instead, as only Snakefiles that import Python packages without a stand-in need it then |
 | store | the folder can be written, with its free space, or the store at an address answers | why not, and where to name another store; less than 1 GB free counts as missing |
 | cache folder | where tasks run and downloads go, with its free space, when it is on another file system than the store | as for the store |
 | run database | it opens; it counts the runs | why it cannot open, and `-database` |
 | executor tes | the TES server of `-tes-server` or `[executor.tes]` answers | the server and why it does not answer, or that it refuses the token |
-| executor slurm | `sbatch`, `squeue`, `sacct` and `scancel` are on the PATH | the tools that are missing, and to run iunctus on a node of the cluster |
+| executor slurm | `sbatch`, `squeue`, `sacct` and `scancel` are on the PATH, and the container runtime of `-slurm-container` too; it names the scratch folder and the store, which the nodes must see at the same paths | the tools that are missing, and to run iunctus on a node of the cluster; or the runtime that is missing |
 | executor kubernetes | the kubeconfig of `-kubeconfig` or `[executor.kubernetes]` is readable; it names the namespace of the Jobs | the file and why it cannot be read |
 
 An executor that neither the config file nor the command line sets up is `not set up`, which is no problem; only the SLURM tools are looked for anyway, as that costs nothing. The check makes no request outside this machine, except to the servers that the config file or the command line names, each once: the store at an address and the TES server. It never asks a Kubernetes cluster, and it reads no kubeconfig that is not named.

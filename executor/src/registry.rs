@@ -57,13 +57,17 @@ impl Reference {
         };
         let first = name.split('/').next().unwrap_or_default();
         let own = name.contains('/') && (first.contains(['.', ':']) || first == "localhost");
+        // Docker Hub by its own names, like `docker.io/debian`, is Docker Hub as well.
+        let hub = |path: &str| match path.contains('/') {
+            true => ("registry-1.docker.io".to_owned(), path.to_owned()),
+            false => ("registry-1.docker.io".to_owned(), format!("library/{path}")),
+        };
         let (registry, repository) = match own {
-            true => {
-                let (host, path) = name.split_once('/').unwrap_or((name, ""));
-                (host.to_owned(), path.to_owned())
-            }
-            false if name.contains('/') => ("registry-1.docker.io".to_owned(), name.to_owned()),
-            false => ("registry-1.docker.io".to_owned(), format!("library/{name}")),
+            true => match name.split_once('/').unwrap_or((name, "")) {
+                ("docker.io" | "index.docker.io", path) => hub(path),
+                (host, path) => (host.to_owned(), path.to_owned()),
+            },
+            false => hub(name),
         };
         Reference {
             registry,
@@ -335,6 +339,16 @@ mod tests {
             (parsed.registry.as_str(), parsed.tag.as_str()),
             ("localhost:5000", "latest")
         );
+        for name in [
+            "docker.io/python:3-slim",
+            "index.docker.io/library/python:3-slim",
+        ] {
+            let parsed = Reference::parse(name);
+            assert_eq!(parsed.registry, "registry-1.docker.io", "{name}");
+            assert_eq!(parsed.repository, "library/python", "{name}");
+        }
+        let parsed = Reference::parse("docker.io/nfcore/tool:1");
+        assert_eq!(parsed.repository, "nfcore/tool");
         let parsed = Reference::parse("nfcore/tool@sha256:ab");
         assert_eq!(parsed.digest.as_deref(), Some("sha256:ab"));
         assert_eq!(parsed.repository, "nfcore/tool");

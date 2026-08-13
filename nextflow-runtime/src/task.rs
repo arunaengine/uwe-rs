@@ -65,6 +65,12 @@ pub fn command(request: &TaskRequest) -> Vec<String> {
     arguments
 }
 
+/// Whether a task gets copies of its input files, which it may change, as the directive
+/// `stageInMode 'copy'` asks; otherwise it sees them read-only where they are.
+pub fn copies_inputs(request: &TaskRequest) -> bool {
+    matches!(directive(&request.directives, "stageInMode"), Some(Value::String(mode)) if &*mode == "copy")
+}
+
 /// The container image a task asks for, from its `container` directive.
 pub fn container(request: &TaskRequest) -> Option<String> {
     match directive(&request.directives, "container") {

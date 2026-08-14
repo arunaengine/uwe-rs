@@ -24,6 +24,11 @@ use task_model::Digest;
 /// whose times are coarse, a change right after the read could keep the same time.
 const RECENT: Duration = Duration::from_secs(2);
 
+/// A smaller file is read rather than looked up: reading it takes less time than a query of
+/// the cache, above all on a file system that cluster nodes share, where each query and each
+/// commit waits for a lock.
+const SMALLEST: u64 = 1 << 20;
+
 /// What tells one version of a file from another. Times are in nanoseconds since 1970.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Version {
@@ -66,6 +71,8 @@ pub struct DigestCache {
     connection: Arc<Mutex<Connection>>,
     /// A file that changed less than this before it was read is not kept.
     recent: Duration,
+    /// A file smaller than this is read, not looked up or kept.
+    smallest: u64,
 }
 
 impl fmt::Debug for DigestCache {
@@ -103,6 +110,7 @@ impl DigestCache {
         Ok(DigestCache {
             connection: Arc::new(Mutex::new(connection)),
             recent: RECENT,
+            smallest: SMALLEST,
         })
     }
 
@@ -111,6 +119,9 @@ impl DigestCache {
     pub async fn hash(&self, file: &Path) -> Result<(Digest, u64), StoreError> {
         let metadata = tokio::fs::metadata(file).await.map_err(at(file))?;
         let version = Version::of(&metadata);
+        if version.size < self.smallest {
+            return content_store::hash_file(file).await;
+        }
         let path = file.to_string_lossy().into_owned();
         if let Some(digest) = self.known(path.clone(), version).await {
             return Ok((digest, version.size));
@@ -219,6 +230,7 @@ mod tests {
     fn open(path: &Path) -> DigestCache {
         let mut cache = DigestCache::open(path).expect("opens the cache");
         cache.recent = Duration::ZERO;
+        cache.smallest = 0;
         cache
     }
 
@@ -250,7 +262,8 @@ mod tests {
     #[test]
     fn a_file_that_just_changed_is_not_kept() {
         let folder = tempfile::tempdir().expect("a temporary directory");
-        let cache = DigestCache::open(&folder.path().join("digests.sqlite")).expect("opens");
+        let mut cache = DigestCache::open(&folder.path().join("digests.sqlite")).expect("opens");
+        cache.smallest = 0;
         let file = folder.path().join("new.txt");
         std::fs::write(&file, "new\n").expect("writes");
         block_on(cache.hash(&file)).expect("hashes");
@@ -262,12 +275,26 @@ mod tests {
     #[test]
     fn a_stored_file_is_known_at_once() {
         let folder = tempfile::tempdir().expect("a temporary directory");
-        let cache = DigestCache::open(&folder.path().join("digests.sqlite")).expect("opens");
+        let cache = open(&folder.path().join("digests.sqlite"));
         let file = folder.path().join("output.bam");
         std::fs::write(&file, "made\n").expect("writes");
         // The digest comes from the cache, not from reading the file.
         let told = Digest::sha256(b"told");
         block_on(cache.keep_stored(&file, &told));
         assert_eq!(block_on(cache.hash(&file)).expect("hashes"), (told, 5));
+    }
+
+    #[test]
+    fn small_files_are_read_and_not_kept() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let mut cache = DigestCache::open(&folder.path().join("digests.sqlite")).expect("opens");
+        cache.recent = Duration::ZERO;
+        let file = folder.path().join("small.txt");
+        std::fs::write(&file, "small\n").expect("writes");
+        let (digest, size) = block_on(cache.hash(&file)).expect("hashes");
+        assert_eq!((digest, size), (Digest::sha256(b"small\n"), 6));
+        let version = Version::of(&std::fs::metadata(&file).expect("reads the metadata"));
+        let path = file.to_string_lossy().into_owned();
+        assert_eq!(block_on(cache.known(path, version)), None);
     }
 }

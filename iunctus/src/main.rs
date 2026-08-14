@@ -407,7 +407,7 @@ fn driver(
     setup: &Setup,
 ) -> Result<Box<dyn Driver>, DriverError> {
     match language {
-        Language::Nextflow => nextflow::driver(launch, run, quiet, setup),
+        Language::Nextflow => nextflow::driver(launch, run, quiet, arguments, setup),
         Language::Snakemake => snakemake_runtime::driver_with(launch, snakemake(arguments, setup)),
         Language::Cwl => {
             let downloads = cache_directory().join("downloads");

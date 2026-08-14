@@ -164,14 +164,25 @@ impl Setup {
         .unwrap_or_default()
     }
 
-    /// The kind of the container engine, `docker` or `podman`, as Nextflow names it in
-    /// `workflow.containerEngine` and in its config scopes, like `docker.registry`. A socket
-    /// counts as Podman when its path says so.
-    pub fn engine_kind(&self) -> String {
-        match self.engine() {
-            name if name.contains("podman") => "podman".to_owned(),
-            _ => "docker".to_owned(),
-        }
+    /// The kind of the container engine that runs the tasks, as Nextflow names it in
+    /// `workflow.containerEngine` and in its config scopes, like `docker.registry`: the
+    /// runtime of the SLURM jobs with `-executor slurm`, like `apptainer`, so that workflows
+    /// choose their images for it as they do in Nextflow; else `docker` or `podman` of this
+    /// machine, where a socket counts as Podman when its path says so.
+    pub fn engine_kind(&self, arguments: &Arguments) -> String {
+        engine_kind(
+            arguments.executor.as_deref(),
+            self.slurm_container(arguments),
+            &self.engine(),
+        )
+    }
+
+    /// The container runtime of SLURM jobs: `-slurm-container`, else `container` of
+    /// `[executor.slurm]`, else `apptainer`.
+    pub fn slurm_container<'a>(&'a self, arguments: &'a Arguments) -> &'a str {
+        (arguments.slurm_container.as_deref())
+            .or(self.executors.slurm_container.as_deref())
+            .unwrap_or("apptainer")
     }
 
     /// Where the cache store lives: `-store`, else `location` of `[store]`, else `store` in
@@ -212,6 +223,16 @@ impl Setup {
     }
 }
 
+/// The kind of the engine that runs the tasks of `executor`: the SLURM runtime `slurm`, or the
+/// engine of this machine, `local`.
+fn engine_kind(executor: Option<&str>, slurm: &str, local: &str) -> String {
+    match executor {
+        Some("slurm") => slurm.to_owned(),
+        _ if local.contains("podman") => "podman".to_owned(),
+        _ => "docker".to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -220,6 +241,18 @@ mod tests {
 
     use super::Executors;
     use task_runner::NetworkRule;
+
+    #[test]
+    fn nextflow_sees_the_engine_that_runs_the_tasks() {
+        let kind = super::engine_kind;
+        assert_eq!(kind(Some("slurm"), "apptainer", "docker"), "apptainer");
+        assert_eq!(kind(Some("slurm"), "singularity", ""), "singularity");
+        assert_eq!(kind(Some("local"), "apptainer", ""), "docker");
+        assert_eq!(
+            kind(None, "apptainer", "/run/user/1/podman/podman.sock"),
+            "podman"
+        );
+    }
 
     fn read(text: &str) -> Result<Executors, String> {
         let config =

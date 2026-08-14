@@ -60,9 +60,7 @@ pub(super) fn slurm(setup: &Setup, arguments: &Arguments, report: &mut Report) {
         .copied()
         .filter(|tool| *tool != "sacct")
         .collect();
-    let runtime = (arguments.slurm_container.as_deref())
-        .or(executors.slurm_container.as_deref())
-        .unwrap_or("apptainer");
+    let runtime = setup.slurm_container(arguments);
     let shared = format!(
         "the nodes must see {} and {} at the same paths",
         crate::cache_directory().join("scratch/slurm").display(),

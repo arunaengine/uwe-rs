@@ -296,6 +296,42 @@ async fn a_node_that_does_not_see_the_folders_is_left_out() {
 }
 
 #[tokio::test]
+async fn a_task_ends_at_its_time_to_the_second() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    let backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    let spec = spec("sleep 30; echo late > out.txt");
+    let staging = Staging::default();
+    let placement = Placement {
+        time_seconds: Some(2),
+        ..placement()
+    };
+    let job = Job {
+        name: "run-P-10-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let begun = std::time::Instant::now();
+    let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+    assert!(
+        begun.elapsed() < Duration::from_secs(20),
+        "{:?}",
+        begun.elapsed()
+    );
+    assert_eq!(finished.exit_code, Some(143));
+    let stderr = std::fs::read_to_string(finished.stderr()).expect("the standard error");
+    assert!(
+        stderr.ends_with("ran longer than its time of 2 seconds\n"),
+        "{stderr}"
+    );
+}
+
+#[tokio::test]
 async fn clusters_that_write_json_are_read_as_json() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);

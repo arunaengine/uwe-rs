@@ -105,7 +105,7 @@ The SLURM executor uses the tools that every SLURM node has, `sbatch`, `squeue`,
 
 - The job recorded the exit code of its container, and the wrapper recorded the exit code of the tool: that is the exit code of the task.
 - A container stopped by a signal, like one killed for lack of memory, ends the task with its own exit code and a note on standard error.
-- `TIMEOUT` ends the task with 143 and `OUT_OF_MEMORY` with 137, each with a note, as a stopped container would.
+- `TIMEOUT` ends the task with 143 and `OUT_OF_MEMORY` with 137, each with a note, as a stopped container would. SLURM counts the time of a job in whole minutes, so the job script also stops the container at the task's time to the second (`timeout`, then a kill after 10 seconds), which ends the task with 143 as well.
 - Every other end is a failure of the machine, which the engine retries: `NODE_FAIL`, `PREEMPTED`, `BOOT_FAIL`, a job cancelled by someone else, a container runtime that could not start the image, or a job that left no record. The error quotes the end of the job's log. A job that left no log at all usually means that its node does not see the scratch directory; the backend then asks SLURM for that node and leaves it out of the later jobs of the run (`--exclude`), so that the retries go elsewhere.
 
 A cancelled run cancels its jobs with `scancel` and waits until they leave the queue.

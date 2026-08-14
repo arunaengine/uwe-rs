@@ -28,9 +28,16 @@ impl Images {
 }
 
 /// The name of the SIF file of an image that is pinned to its digest, like
-/// `debian@sha256:ab` as `sha256-ab.sif`; `None` for any other image, which the jobs take as
-/// it is: a tag that may move, a path, or an address with its own scheme.
+/// `debian@sha256:ab` as `sha256-ab.sif`, or of a SIF file at an `http://` or `https://`
+/// address, like those that nf-core modules name for Apptainer, by the digest of its address;
+/// `None` for any other image, which the jobs take as it is: a tag that may move, a path, or
+/// an address with another scheme.
 pub fn file_name(reference: &str) -> Option<String> {
+    if reference.starts_with("https://") || reference.starts_with("http://") {
+        let digest = task_model::Digest::sha256(reference.as_bytes()).to_string();
+        let hex = digest.rsplit(':').next().unwrap_or_default();
+        return Some(format!("address-{}.sif", &hex[..hex.len().min(32)]));
+    }
     if reference.contains("://") {
         return None;
     }
@@ -50,9 +57,17 @@ pub fn pull_script(program: &str, reference: &str, file: &Path, exit: &Path) -> 
          of tasks.\npart={file}.part-$SLURM_JOB_ID\n{} pull --disable-cache \"$part\" {} && mv \
          -f \"$part\" {file}\nstatus=$?\nrm -f \"$part\"\necho $status > {}\n",
         quote(program),
-        quote(&format!("docker://{reference}")),
+        quote(&source(reference)),
         quote(&exit.to_string_lossy())
     )
+}
+
+/// Where Apptainer pulls an image from: an address as it is, else the registry.
+fn source(reference: &str) -> String {
+    match reference.contains("://") {
+        true => reference.to_owned(),
+        false => format!("docker://{reference}"),
+    }
 }
 
 #[cfg(test)]
@@ -69,6 +84,14 @@ mod tests {
         assert_eq!(file_name("/images/tool.sif"), None);
         assert_eq!(file_name("oras://host/tool@sha256:ab"), None);
         assert_eq!(file_name("debian@sha256:../x"), None);
+        let address = "https://depot.galaxyproject.org/singularity/fastqc:0.12.1--hdfd78af_0";
+        let name = file_name(address).expect("a file");
+        assert!(
+            name.starts_with("address-") && name.ends_with(".sif"),
+            "{name}"
+        );
+        assert_eq!(name.len(), "address-.sif".len() + 32);
+        assert_eq!(source(address), address);
     }
 
     #[test]

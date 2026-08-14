@@ -1,0 +1,37 @@
+# CWL conformance tests (v1.2) run for real on a SLURM cluster with Apptainer, compared with the output each test expects; written by real_runs_slurm_cwl.py.
+# 35 tests: 35 same.
+any_outputSource_compatibility same
+cl_basic_generation same
+cwl_requirements_addition same
+cwl_requirements_override_expression same
+dynamic_resreq_inputs same
+dynamic_resreq_wf same
+embedded_subworkflow same
+envvar_req same
+expression_any same
+expression_any_null same
+initial_workdir_secondary_files_expr same
+initworkdir_expreng_requirements same
+listing_requirement_none same
+listing_requirement_shallow same
+modify_directory_content same
+modify_file_content same
+nested_cl_bindings same
+nested_prefixes_arrays same
+nested_workflow same
+record_output_file_entry_format same
+requirement_priority same
+schemadef_req_tool_param same
+stderr_redirect same
+stderr_redirect_shortcut same
+stdout_redirect_docker same
+stdout_redirect_shortcut_docker same
+timelimit_from_expression same: fails as the test expects
+timelimit_from_expression_wf same: fails as the test expects
+timelimit_zero_unlimited same
+valuefrom_wf_step same
+valuefrom_wf_step_multiple same
+wf_wc_parseInt same
+wf_wc_scatter same
+wf_wc_scatter_multiple_merge same
+wf_wc_scatter_multiple_nested same

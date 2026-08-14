@@ -321,6 +321,22 @@ async fn files_are_downloaded_once() {
     assert_eq!(other.served(), 1);
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn tasks_that_read_a_file_at_once_share_one_download() {
+    let body = "ACGT".repeat(1 << 18);
+    let server = WebServer::start(&[("/reads.fq", &body)], None);
+    let address = format!("{}/reads.fq", server.address);
+    let downloads = tempfile::tempdir().expect("a folder");
+    let storage = Storage::default();
+    let fetch = || storage.fetch(&address, downloads.path());
+    let copies = tokio::join!(fetch(), fetch(), fetch(), fetch());
+    for copy in [copies.0, copies.1, copies.2, copies.3] {
+        let copy = copy.expect("a copy");
+        assert_eq!(std::fs::read_to_string(&copy).expect("reads"), body);
+    }
+    assert_eq!(server.served(), 1);
+}
+
 #[tokio::test]
 async fn stopped_downloads_continue() {
     let server = WebServer::start(&[("/big", "0123456789")], None);

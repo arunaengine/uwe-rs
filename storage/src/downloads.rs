@@ -40,6 +40,9 @@ impl Storage {
         }
         let name = download_name(target);
         let copy = downloads.join(&name);
+        // Tasks of a run that read the same file at once would write the same part.
+        let turn = self.turn(&copy);
+        let _turn = turn.lock().await;
         if !tokio::fs::try_exists(&copy).await.map_err(local(&copy))? {
             tokio::fs::create_dir_all(downloads)
                 .await
@@ -61,6 +64,17 @@ impl Storage {
             .journal
             .note(journal::described(target, &copy).await?);
         Ok(copy)
+    }
+
+    /// The lock of the download of a copy, which all fetches of its file in this process
+    /// share.
+    fn turn(&self, copy: &Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+        let mut locks =
+            (self.inner.downloading.lock()).unwrap_or_else(|poison| poison.into_inner());
+        locks
+            .entry(copy.to_string_lossy().into_owned())
+            .or_default()
+            .clone()
     }
 
     /// Downloads a file into `file`, whole, as a transfer: the process does not note it as a

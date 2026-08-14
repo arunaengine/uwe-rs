@@ -23,6 +23,7 @@ mod public;
 pub mod settings;
 mod web;
 
+use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -86,6 +87,9 @@ struct Inner {
     local_store: Option<String>,
     /// What the providers read, and the copies that answer for addresses.
     journal: journal::Journal,
+    /// A lock for each copy in the folder of downloads, so that fetches of one file in this
+    /// process take turns: the first downloads it, the others find its copy.
+    downloading: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
 }
 
 /// A provider, and its client once it is used.
@@ -190,6 +194,7 @@ impl Storage {
                 store: settings.store,
                 local_store: settings.local_store,
                 journal: journal::Journal::default(),
+                downloading: Mutex::default(),
             }),
         }
     }

@@ -24,9 +24,6 @@ use task_model::Digest;
 /// whose times are coarse, a change right after the read could keep the same time.
 const RECENT: Duration = Duration::from_secs(2);
 
-/// How long a process waits for another one that writes the cache.
-const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
-
 /// What tells one version of a file from another. Times are in nanoseconds since 1970.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Version {
@@ -87,9 +84,10 @@ impl DigestCache {
             let _ = std::fs::create_dir_all(folder);
         }
         let connection = Connection::open(path)?;
-        connection.busy_timeout(BUSY_TIMEOUT)?;
         // WAL, or the rollback journal on a file system that machines share.
-        connection.pragma_update(None, "journal_mode", run_database::journal_mode(path))?;
+        let journal = run_database::journal(path);
+        connection.busy_timeout(journal.wait)?;
+        connection.pragma_update(None, "journal_mode", journal.mode)?;
         connection.pragma_update(None, "synchronous", "NORMAL")?;
         connection.execute_batch(
             "CREATE TABLE IF NOT EXISTS digests (

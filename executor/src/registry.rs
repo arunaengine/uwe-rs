@@ -82,6 +82,11 @@ impl Reference {
 /// The image pinned to the digest that its registry gives for its tag, like
 /// `debian@sha256:...`; `None` when the registry has no digest for it.
 pub async fn pin(reference: &str) -> Result<Option<String>, ExecutorError> {
+    // An address with its own scheme, like the `https://` of a SIF file, is no image of a
+    // registry.
+    if reference.contains("://") {
+        return Ok(None);
+    }
     let parsed = Reference::parse(reference);
     if parsed.digest.is_some() {
         return Ok(Some(reference.to_owned()));
@@ -397,6 +402,12 @@ mod tests {
             }
         });
         format!("localhost:{port}")
+    }
+
+    #[tokio::test]
+    async fn addresses_with_a_scheme_are_no_images_of_registries() {
+        let address = "https://depot.galaxyproject.org/singularity/fastqc:0.12.1--hdfd78af_0";
+        assert_eq!(pin(address).await.expect("no request"), None);
     }
 
     #[tokio::test]

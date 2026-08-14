@@ -14,3 +14,25 @@ native: exit 0 and 0, 76 files, 34 of them differ between two native runs
 iunctus: exit 0, 76 files: 41 with the same digest, 34 of the varying ones by name, 1 differ, 0 missing, 0 extra
 notes: pipeline_dag is the graph page of iunctus, not the Mermaid page of Nextflow.
 differs: pipeline_info/pipeline_dag_<time>.html
+
+## nf-core-bamtofastq-slurm: nf-core/bamtofastq daf99df, -profile test,apptainer, on SLURM
+native: exit 1 and 1, 13 files, 7 of them differ between two native runs
+iunctus: exit 1, 4 files: 2 with the same digest, 1 of the varying ones by name, 0 differ, 10 missing, 1 extra
+notes: invalid: at daf99df the pipeline fails its own test profile in Nextflow 26.04.6 too: SAMTOOLS_FAIDX gets no FASTA and ends with exit 1, and iunctus fails at the same task; the files differ by what each delivered before it stopped.
+missing: fastqc/test.pre_conversion_fastqc.html
+missing: fastqc/test.pre_conversion_fastqc.zip
+missing: fastqc/test2.pre_conversion_fastqc.html
+missing: fastqc/test2.pre_conversion_fastqc.zip
+missing: pipeline_info/execution_report_<time>.html
+missing: pipeline_info/execution_timeline_<time>.html
+missing: pipeline_info/execution_trace_<time>.txt
+missing: pipeline_info/nf_core_bamtofastq_software_mqc_versions.yml
+missing: pipeline_info/pipeline_dag_<time>.html
+missing: samtools/test2.flagstat
+extra: samtools/test.flagstat
+
+## nf-core-fastqrepair-slurm: nf-core/fastqrepair 70a3820, -profile test,apptainer, on SLURM
+native: exit 0 and 0, 71 files, 38 of them differ between two native runs
+iunctus: exit 0, 71 files: 32 with the same digest, 38 of the varying ones by name, 1 differ, 0 missing, 0 extra
+notes: pipeline_dag is the graph page of iunctus, not the Mermaid page of Nextflow.
+differs: pipeline_info/pipeline_dag_<time>.html

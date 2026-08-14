@@ -84,6 +84,33 @@ CASES = [
                     "--outdir", "{out}", "-executor", "slurm", "-max-pending", "4"],
         "notes": "pipeline_dag is the graph page of iunctus, not the Mermaid page of Nextflow.",
     },
+    {
+        "name": "nf-core-bamtofastq-slurm",
+        "title": "nf-core/bamtofastq daf99df, -profile test,apptainer, on SLURM",
+        "repository": "https://github.com/nf-core/bamtofastq.git",
+        "revision": "daf99df",
+        "limits": NEXTFLOW_SLURM,
+        "native": ["nextflow", "run", "{workflow}", "-profile", "test,apptainer",
+                   "--outdir", "{out}", "-c", "{limits}"],
+        "iunctus": ["{iunctus}", "run", "{workflow}", "-profile", "test,apptainer",
+                    "--outdir", "{out}", "-executor", "slurm", "-max-pending", "4"],
+        "notes": "invalid: at daf99df the pipeline fails its own test profile in Nextflow "
+                 "26.04.6 too: SAMTOOLS_FAIDX gets no FASTA and ends with exit 1, and iunctus "
+                 "fails at the same task; the files differ by what each delivered before it "
+                 "stopped.",
+    },
+    {
+        "name": "nf-core-fastqrepair-slurm",
+        "title": "nf-core/fastqrepair 70a3820, -profile test,apptainer, on SLURM",
+        "repository": "https://github.com/nf-core/fastqrepair.git",
+        "revision": "70a3820",
+        "limits": NEXTFLOW_SLURM,
+        "native": ["nextflow", "run", "{workflow}", "-profile", "test,apptainer",
+                   "--outdir", "{out}", "-c", "{limits}"],
+        "iunctus": ["{iunctus}", "run", "{workflow}", "-profile", "test,apptainer",
+                    "--outdir", "{out}", "-executor", "slurm", "-max-pending", "4"],
+        "notes": "pipeline_dag is the graph page of iunctus, not the Mermaid page of Nextflow.",
+    },
 ]
 
 TIME = re.compile(r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}")

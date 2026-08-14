@@ -112,7 +112,18 @@ A cancelled run cancels its jobs with `scancel` and waits until they leave the q
 
 A task of several containers is one job, whose script starts a container for each image at once, waits for all of them, and records the exit code of the first container that failed, else 0 (section 1).
 
-The tests run the backend against a simulated SLURM on this machine (`slurm-executor/tests/simulated_slurm.rs`): shell scripts in place of `sbatch`, `squeue`, `scancel` and `sacct`, and a simulated Apptainer that runs the wrapper without a container. One test runs a real container with Docker. A test on a SLURM cluster in containers is still to come.
+The tests run the backend against a simulated SLURM on this machine (`slurm-executor/tests/simulated_slurm.rs`): shell scripts in place of `sbatch`, `squeue`, `scancel` and `sacct`, and a simulated Apptainer that runs the wrapper without a container. One test runs a real container with Docker.
+
+### Tested on a real cluster (2026-10-01)
+
+iunctus ran on a SLURM cluster of a university: SLURM 24.11.5, Debian 13 (glibc 2.41), Apptainer 1.3.6, and a CephFS file system that all nodes mount at the same path. The compute nodes reach the internet directly; the login node only through a web proxy, and it must do no work.
+
+- The binary is one static file, built with `cargo build --release --target x86_64-unknown-linux-musl -p iunctus` on any Linux machine. It needs nothing on the cluster.
+- The nodes may call `sbatch`, so iunctus itself runs as a small job (2 CPUs, 4 GB), and its tasks become jobs of their own. The cache folder (`XDG_CACHE_HOME`) is on the shared file system.
+- `iunctus check-machine -executor slurm` is ready there; the container engine is `not set up`, which SLURM runs do not need.
+- Real runs with `-executor slurm` and Apptainer: a small Nextflow chain, a Snakemake workflow, two Argo examples, 35 CWL conformance tests (all give the output that they expect, `iunctus/tests/fixtures/real_runs_slurm_cwl.txt`), and nf-core/demo with `-profile test,apptainer` against Nextflow 26.04.6 on the same cluster (`real_runs.txt`, case `nf-core-demo-slurm`): 41 files with the same digest, the 34 that differ between two Nextflow runs by name, 0 missing; only the graph page differs, by design. iunctus took 41 s, Nextflow 50 s with its images in its cache.
+- What the cluster showed, and what changed for it: jobs that each turned the same image into a SIF file spoiled Apptainer's cache (now one pull job per image); a node that did not see the shared file system failed every job (now left out of the later jobs of the run); SQLite's WAL mode does not work across nodes, and each commit is slow on CephFS (now the rollback journal with a longer wait there, and the sources of a run in one commit); SLURM counts time in minutes (now `timeout` in the job); tasks that read the same remote file at once spoiled its download (now one download).
+
 
 ## 5. Kubernetes
 

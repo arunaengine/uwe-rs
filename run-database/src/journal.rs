@@ -8,11 +8,12 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;
+use std::time::Duration;
 
 /// The magic numbers of file systems that several machines mount at once (`statfs`): NFS,
 /// SMB and CIFS, CephFS, Lustre, GPFS, BeeGFS, GlusterFS and others through FUSE, AFS, OCFS2,
 /// GFS2, PanFS and 9P.
-const SHARED: [i64; 14] = [
+const SHARED: [u32; 14] = [
     0x6969,
     0x517b,
     0xfe53_4d42,
@@ -29,20 +30,45 @@ const SHARED: [i64; 14] = [
     0x0102_1997,
 ];
 
-/// The journal mode for an SQLite file: `WAL`, or `DELETE` when its folder is on a file system
-/// that machines share. A folder that cannot be asked counts as local.
-pub fn journal_mode(file: &Path) -> &'static str {
+/// How an SQLite file keeps its journal, and how long a connection waits for another process
+/// that holds the lock.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Journal {
+    /// `WAL` or `DELETE`, for `PRAGMA journal_mode`.
+    pub mode: &'static str,
+    pub wait: Duration,
+}
+
+impl Journal {
+    /// WAL on a local file system.
+    pub const LOCAL: Journal = Journal {
+        mode: "WAL",
+        wait: Duration::from_secs(10),
+    };
+    /// The rollback journal on a file system that machines share. Its locks are slow there,
+    /// and SQLite does not serve waiting processes in order, so a process may wait for many
+    /// commits of others (on CephFS, 4 processes of 30 small commits each waited up to 8 s).
+    pub const SHARED: Journal = Journal {
+        mode: "DELETE",
+        wait: Duration::from_secs(300),
+    };
+}
+
+/// The journal for an SQLite file: [`Journal::SHARED`] when its folder is on a file system
+/// that machines share, else [`Journal::LOCAL`]. A folder that cannot be asked counts as local.
+pub fn journal(file: &Path) -> Journal {
     let folder = match file.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => parent,
         _ => Path::new("."),
     };
     match rustix::fs::statfs(folder) {
-        Ok(found) if shared(found.f_type as i64) => "DELETE",
-        _ => "WAL",
+        // Every magic number fits in 32 bits, whatever type the platform gives it.
+        Ok(found) if shared(found.f_type as u32) => Journal::SHARED,
+        _ => Journal::LOCAL,
     }
 }
 
-fn shared(kind: i64) -> bool {
+fn shared(kind: u32) -> bool {
     SHARED.contains(&kind)
 }
 
@@ -57,7 +83,67 @@ mod tests {
         assert!(!shared(0xef53), "ext4");
         assert!(!shared(0x0102_1994), "tmpfs");
         let folder = tempfile::tempdir().expect("a folder");
-        let local = journal_mode(&folder.path().join("runs.sqlite"));
-        assert_eq!(local, "WAL");
+        assert_eq!(journal(&folder.path().join("runs.sqlite")), Journal::LOCAL);
+    }
+
+    /// Runs of several processes record into one database with the rollback journal, as on a
+    /// file system that cluster nodes share: none of them fails with "database is locked".
+    #[test]
+    fn runs_record_at_once_with_the_rollback_journal() {
+        let directory = tempfile::tempdir().expect("a directory");
+        let path = directory.path().join("runs.sqlite");
+        let runs: Vec<_> = (0..4)
+            .map(|number| {
+                let path = path.clone();
+                std::thread::spawn(move || -> Result<(), crate::DatabaseError> {
+                    let database = crate::Database::open_as(&path, Journal::SHARED)?;
+                    let mut recorder = database.record(&start(number))?;
+                    for id in 1..=20 {
+                        let task = workflow_graph::Task {
+                            id: workflow_graph::TaskId(id),
+                            name: format!("MAKE ({id})"),
+                            step: "MAKE".into(),
+                            ..workflow_graph::Task::default()
+                        };
+                        recorder.requested(&task, &[]);
+                        recorder.started(task.id, 1);
+                        std::thread::sleep(Duration::from_millis(15));
+                        let outcome = workflow_graph::Outcome {
+                            id: task.id,
+                            ..workflow_graph::Outcome::default()
+                        };
+                        recorder.finished(&outcome, 1, false);
+                    }
+                    recorder.ended(None);
+                    recorder.close()
+                })
+            })
+            .collect();
+        for run in runs {
+            run.join().expect("the run ends").expect("records the run");
+        }
+        let connection = rusqlite::Connection::open(&path).expect("opens the file");
+        let mode: String = (connection.query_row("PRAGMA journal_mode", [], |row| row.get(0)))
+            .expect("the journal mode");
+        assert_eq!(mode, "delete");
+    }
+
+    fn start(number: u32) -> crate::RunStart {
+        crate::RunStart {
+            id: format!("run-{number}"),
+            resumes: None,
+            workflow: "/work/main.nf".into(),
+            language: workflow_graph::Language::Nextflow,
+            revision: None,
+            arguments: Vec::new(),
+            parameters: Vec::new(),
+            executor: "slurm".into(),
+            simulated: false,
+            store: None,
+            program: None,
+            launch: None,
+            workflow_folder: None,
+            repeats: None,
+        }
     }
 }

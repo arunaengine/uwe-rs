@@ -41,7 +41,7 @@ use rusqlite::Connection;
 
 pub use compare::{Comparison, Pairing, Side, TaskPair};
 pub use fingerprint::{InputState, fingerprint, input_states};
-pub use journal::journal_mode;
+pub use journal::{Journal, journal};
 pub use keep::References;
 pub use origin::Origin;
 pub use pinned::{CheckRow, ImagePin, RemoteFile, Source, SourceKind};
@@ -56,9 +56,6 @@ pub use why::Why;
 
 /// The name of the database file in the cache directory, next to the default store.
 pub const FILE_NAME: &str = "runs.sqlite";
-
-/// How long a connection waits for another process that holds the write lock.
-const BUSY_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, thiserror::Error)]
 pub enum DatabaseError {
@@ -86,6 +83,11 @@ impl Database {
     /// Opens the database file, creating it and its folder when missing, and brings its schema
     /// to the current [`VERSION`]. Runs that open a new file at the same moment take turns.
     pub fn open(path: &Path) -> Result<Self, DatabaseError> {
+        Self::open_as(path, journal(path))
+    }
+
+    /// Opens the database file with this journal.
+    pub(crate) fn open_as(path: &Path, journal: Journal) -> Result<Self, DatabaseError> {
         if let Some(parent) = path
             .parent()
             .filter(|parent| !parent.as_os_str().is_empty())
@@ -94,11 +96,11 @@ impl Database {
         }
         let begun = std::time::Instant::now();
         loop {
-            match Self::connect(path) {
+            match Self::connect(path, journal) {
                 // SQLite gives up at once on some locks, like the one that turns a new file
                 // into WAL mode while another connection sets it up too.
                 Err(DatabaseError::Sqlite(error))
-                    if busy(&error) && begun.elapsed() < BUSY_TIMEOUT =>
+                    if busy(&error) && begun.elapsed() < journal.wait =>
                 {
                     std::thread::sleep(Duration::from_millis(20));
                 }
@@ -108,13 +110,13 @@ impl Database {
     }
 
     /// A connection to the file, set up and with the current schema.
-    fn connect(path: &Path) -> Result<Self, DatabaseError> {
+    fn connect(path: &Path, journal: Journal) -> Result<Self, DatabaseError> {
         let mut connection = Connection::open(path)?;
-        connection.busy_timeout(BUSY_TIMEOUT)?;
+        connection.busy_timeout(journal.wait)?;
         // WAL lets readers go on while a run writes; NORMAL syncs at checkpoints only, which
         // is safe in WAL mode: a crash can lose the last commits, never break the file. On a
         // file system that machines share, the rollback journal (see `journal`).
-        connection.pragma_update(None, "journal_mode", journal_mode(path))?;
+        connection.pragma_update(None, "journal_mode", journal.mode)?;
         connection.pragma_update(None, "synchronous", "NORMAL")?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
         schema::migrate(&mut connection)?;

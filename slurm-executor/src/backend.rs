@@ -22,8 +22,8 @@ use tokio_util::sync::CancellationToken;
 use crate::images::{Images, file_name, pull_script};
 use crate::queue::{Look, Queue};
 use crate::script::{
-    CONTAINER_EXIT, Container, LOG, SCRIPT, job_script, job_script_of_containers, pull_options,
-    sbatch_options,
+    CONTAINER_EXIT, Container, LOG, SCRIPT, TIMED_OUT, job_script, job_script_of_containers,
+    pull_options, sbatch_options,
 };
 
 /// How often the queue is asked about the jobs, by default.
@@ -191,7 +191,7 @@ impl SlurmBackend {
         let script = match job.spec.containers.is_empty() {
             true => {
                 tokio::fs::write(run.script(), run.wrapper(job.spec)).await?;
-                job_script(&self.container, &run, gpus)
+                job_script(&self.container, &run, gpus, job.placement.time_seconds)
             }
             // A task of several containers starts a container for each image, all at once.
             false => {
@@ -219,7 +219,7 @@ impl SlurmBackend {
                         ..run
                     })
                     .collect();
-                job_script_of_containers(&self.container, &runs, gpus)
+                job_script_of_containers(&self.container, &runs, gpus, job.placement.time_seconds)
             }
         };
         tokio::fs::write(control.join(SCRIPT), script).await?;
@@ -494,6 +494,7 @@ fn outcome(
         Ended::Done(0) => recorded
             .map(|code| (code, None))
             .ok_or_else(|| "the container ended without the exit code of the task".to_owned()),
+        Ended::Done(TIMED_OUT) => Ok((143, Some(too_long(time)))),
         Ended::Done(status @ 129..=192) => Ok((
             *status,
             Some(format!(
@@ -503,21 +504,21 @@ fn outcome(
         Ended::Done(status) => Err(format!(
             "the container could not run the task (exit code {status})"
         )),
-        Ended::Stopped(Some(state)) if state == "TIMEOUT" => Ok((
-            143,
-            Some(match time {
-                Some(time) => {
-                    format!("iunctus: the task ran longer than its time of {time} seconds\n")
-                }
-                None => "iunctus: the task ran longer than SLURM allows\n".to_owned(),
-            }),
-        )),
+        Ended::Stopped(Some(state)) if state == "TIMEOUT" => Ok((143, Some(too_long(time)))),
         Ended::Stopped(Some(state)) if state == "OUT_OF_MEMORY" => Ok((
             137,
             Some("iunctus: SLURM stopped the task for lack of memory\n".to_owned()),
         )),
         Ended::Stopped(Some(state)) => Err(format!("the job ended as {state}")),
         Ended::Stopped(None) => Err("the job ended without a record of its container".into()),
+    }
+}
+
+/// The note of a task that ran longer than its time, or than SLURM allows.
+fn too_long(time: Option<u64>) -> String {
+    match time {
+        Some(time) => format!("iunctus: the task ran longer than its time of {time} seconds\n"),
+        None => "iunctus: the task ran longer than SLURM allows\n".to_owned(),
     }
 }
 
@@ -563,6 +564,9 @@ mod tests {
         );
         assert!(outcome(None, &done(255), None).is_err());
         assert!(outcome(Some(0), &done(125), None).is_err());
+        let timed_out = outcome(Some(0), &done(124), Some(3)).expect("an end");
+        assert_eq!(timed_out.0, 143);
+        assert!(timed_out.1.expect("a note").contains("3 seconds"));
         let timeout = outcome(Some(0), &stopped("TIMEOUT"), Some(60)).expect("an end");
         assert_eq!(timeout.0, 143);
         assert!(timeout.1.expect("a note").contains("60 seconds"));

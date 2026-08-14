@@ -84,19 +84,42 @@ fn time(seconds: u64) -> String {
     format!("{days}-{hours:02}:{:02}:{:02}", rest / 60, rest % 60)
 }
 
+/// The exit code that the job script records for a container that ran longer than the time of
+/// its task, as `timeout` gives it.
+pub const TIMED_OUT: i32 = 124;
+
+/// How long a container that ran out of time may take to end after its stop signal.
+const STOP_GRACE: u64 = 10;
+
 /// The job script: it runs the wrapper in the task's container, then records the exit code of
 /// the container. Podman and Docker get an init process, which hands the signal that stops the
-/// job to the task, so that the container ends with the job.
-pub fn job_script(container: &Container, run: &ContainerRun<'_>, gpus: bool) -> String {
+/// job to the task, so that the container ends with the job. A task with a `time` runs under
+/// `timeout`, as SLURM counts the time of a job in whole minutes.
+pub fn job_script(
+    container: &Container,
+    run: &ContainerRun<'_>,
+    gpus: bool,
+    time: Option<u64>,
+) -> String {
     let words: Vec<String> = (command(container, run, gpus).iter())
         .map(|word| quote(word))
         .collect();
-    let exit = run.root.join(CONTROL).join(CONTAINER_EXIT);
-    format!(
-        "#!/bin/bash\n# The iunctus job of one attempt of a task.\n{}\necho $? > {}\n",
-        words.join(" "),
-        quote(&exit.to_string_lossy())
-    )
+    let exit = quote(
+        &run.root
+            .join(CONTROL)
+            .join(CONTAINER_EXIT)
+            .to_string_lossy(),
+    );
+    let head = "#!/bin/bash\n# The iunctus job of one attempt of a task.\n";
+    match time {
+        None => format!("{head}{}\necho $? > {exit}\n", words.join(" ")),
+        Some(_) => format!(
+            "{head}{}{}\nstatus=$?\n{}echo $status > {exit}\n",
+            timeout(time),
+            words.join(" "),
+            timed_out(time)
+        ),
+    }
 }
 
 /// The job script of a task of several containers: it starts a container for each of `runs`,
@@ -106,6 +129,7 @@ pub fn job_script_of_containers(
     container: &Container,
     runs: &[ContainerRun<'_>],
     gpus: bool,
+    time: Option<u64>,
 ) -> String {
     let mut script = String::from("#!/bin/bash\n# The iunctus job of one attempt of a task.\n");
     script.push_str("pids=\n");
@@ -113,14 +137,37 @@ pub fn job_script_of_containers(
         let words: Vec<String> = (command(container, run, gpus).iter())
             .map(|word| quote(word))
             .collect();
-        script.push_str(&format!("{} &\npids=\"$pids $!\"\n", words.join(" ")));
+        script.push_str(&format!(
+            "{}{} &\npids=\"$pids $!\"\n",
+            timeout(time),
+            words.join(" ")
+        ));
     }
     let exit = runs[0].root.join(CONTROL).join(CONTAINER_EXIT);
     script.push_str(&format!(
-        "status=0\nfor pid in $pids; do\n    wait \"$pid\"\n    code=$?\n    [ \"$status\" -ne 0 ] || status=$code\ndone\necho \"$status\" > {}\n",
+        "status=0\nfor pid in $pids; do\n    wait \"$pid\"\n    code=$?\n    [ \"$status\" -ne 0 ] || status=$code\ndone\n{}echo \"$status\" > {}\n",
+        timed_out(time),
         quote(&exit.to_string_lossy())
     ));
     script
+}
+
+/// The start of a command that stops it at the time of its task, then kills it after a grace.
+fn timeout(time: Option<u64>) -> String {
+    match time {
+        Some(seconds) => format!("timeout --kill-after={STOP_GRACE} {seconds} "),
+        None => String::new(),
+    }
+}
+
+/// The line that records a container that needed the kill after its time as out of time too.
+fn timed_out(time: Option<u64>) -> String {
+    match time {
+        Some(seconds) => {
+            format!("[ $status -eq 137 ] && [ $SECONDS -ge {seconds} ] && status={TIMED_OUT}\n")
+        }
+        None => String::new(),
+    }
 }
 
 /// The command that runs the wrapper of `run` in its container.
@@ -268,6 +315,7 @@ mod tests {
             &Container::Apptainer("apptainer".into()),
             &run(&image, &mounts, Some("/data")),
             true,
+            None,
         );
         let expected = "#!/bin/bash\n# The iunctus job of one attempt of a task.\n\
             'apptainer' 'exec' '--containall' '--pwd' '/data' \
@@ -290,7 +338,12 @@ mod tests {
             kind: EngineKind::Podman,
             rootless: true,
         };
-        let script = job_script(&Container::Engine(engine), &run(&image, &[], None), false);
+        let script = job_script(
+            &Container::Engine(engine),
+            &run(&image, &[], None),
+            false,
+            None,
+        );
         let command = script.lines().nth(2).expect("the command");
         let expected = "'podman' 'run' '--init' '--rm' '--name' 'iunctus-run-P-1-1' \
             '--entrypoint' 'sh' '--userns=keep-id' '--user' '1000:100' \
@@ -304,7 +357,19 @@ mod tests {
             ..run(&image, &[], None)
         };
         let engine = EngineCommand::docker("docker");
-        let script = job_script(&Container::Engine(engine), &offline, false);
+        let script = job_script(&Container::Engine(engine), &offline, false, Some(90));
         assert!(script.contains("'--network' 'none'"), "{script}");
+        // A task with a time runs under `timeout`.
+        assert!(
+            script.contains("\ntimeout --kill-after=10 90 'docker' 'run' '--init' "),
+            "{script}"
+        );
+        assert!(
+            script.ends_with(
+                "\nstatus=$?\n[ $status -eq 137 ] && [ $SECONDS -ge 90 ] && status=124\n\
+                 echo $status > '/shared/scratch/run-P-1-1/control/container-exit'\n"
+            ),
+            "{script}"
+        );
     }
 }

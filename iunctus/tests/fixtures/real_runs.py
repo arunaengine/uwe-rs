@@ -17,6 +17,10 @@
 # again. At most 4 containers run at a time: Nextflow gets `executor.cpus = 4`, iunctus
 # `-max-pending 4`.
 #
+# The cases that end in `-slurm` run on a SLURM cluster with Apptainer: run the script on a node
+# that may submit jobs, not on a login node, with nextflow, java and apptainer on the PATH.
+# Nextflow gets `queueSize = 4` and names its jobs `iunctus-native-...`, iunctus `-max-pending 4`.
+#
 # Copyright (c) 2026 The iunctus Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -46,6 +50,15 @@ NEXTFLOW_LIMITS = """executor {
 # `{workflow}` is the fetched folder, `{out}` the folder of the results, and `{limits}` the
 # config of the native Nextflow runs. `results` is the folder to compare, `{out}` unless
 # given. `notes` says in plain words what differs on purpose.
+# The config of the native Nextflow runs on SLURM: at most 4 jobs at once, named so that they
+# can be told from other jobs of the user.
+NEXTFLOW_SLURM = """process.executor = 'slurm'
+executor {
+    queueSize = 4
+    jobName = { "iunctus-native-" + task.hash.toString().substring(0, 8) }
+}
+"""
+
 CASES = [
     {
         "name": "nf-core-demo",
@@ -58,6 +71,18 @@ CASES = [
                     "--outdir", "{out}", "-executor", "local", "-max-pending", "4"],
         "notes": "Nextflow's own reports (execution_report, execution_timeline, "
                  "execution_trace, pipeline_dag) are not built yet.",
+    },
+    {
+        "name": "nf-core-demo-slurm",
+        "title": "nf-core/demo 555d145, -profile test,apptainer, on SLURM",
+        "repository": "https://github.com/nf-core/demo.git",
+        "revision": "555d145",
+        "limits": NEXTFLOW_SLURM,
+        "native": ["nextflow", "run", "{workflow}", "-profile", "test,apptainer",
+                   "--outdir", "{out}", "-c", "{limits}"],
+        "iunctus": ["{iunctus}", "run", "{workflow}", "-profile", "test,apptainer",
+                    "--outdir", "{out}", "-executor", "slurm", "-max-pending", "4"],
+        "notes": "pipeline_dag is the graph page of iunctus, not the Mermaid page of Nextflow.",
     },
 ]
 
@@ -80,7 +105,7 @@ def run(case, command, folder):
         shutil.rmtree(folder)
     folder.mkdir(parents=True)
     limits = folder / "limits.config"
-    limits.write_text(NEXTFLOW_LIMITS)
+    limits.write_text(case.get("limits", NEXTFLOW_LIMITS))
     values = {
         "workflow": str(fetch(case)),
         "out": str(folder / "out"),

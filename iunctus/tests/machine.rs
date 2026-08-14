@@ -150,16 +150,11 @@ fn a_slurm_login_node_needs_the_runtime_of_the_jobs_and_no_container_engine() {
     }
     let (code, stdout) = check_machine(directory.path(), &["-executor", "slurm"]);
     assert_eq!(code, 3, "{stdout}");
-    assert!(
-        line(&stdout, "container engine").starts_with("not set up "),
-        "{stdout}"
-    );
-    assert!(
-        line(&stdout, "container engine").ends_with(
-            "; -executor slurm does not need it, only Snakefiles that import Python packages \
-             without a stand-in do (decision 19)"
-        ),
-        "{stdout}"
+    assert_eq!(
+        line(&stdout, "container engine"),
+        "not set up container engine: none answers on this machine; -executor slurm does not \
+         need one, only Snakefiles that import Python packages without a stand-in do (decision \
+         19)"
     );
     assert_eq!(
         line(&stdout, "executor slurm"),

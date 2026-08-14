@@ -50,8 +50,8 @@ pub(super) fn engine(
                 State::NotSetUp,
                 part,
                 format!(
-                    "{error}; -executor {executor} does not need it, only Snakefiles that import \
-                     Python packages without a stand-in do (decision 19)"
+                    "none answers on this machine; -executor {executor} does not need one, only \
+                     Snakefiles that import Python packages without a stand-in do (decision 19)"
                 ),
             ),
             _ => report.add(State::Missing, part, error.to_string()),

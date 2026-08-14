@@ -467,15 +467,11 @@ impl Recorder {
         });
     }
 
-    /// Runs one write that is no event of the engine, in the open transaction if there is one.
+    /// Runs one write that is no event of the engine, in the open transaction, as events are
+    /// written: many rows, like the sources of a run, then take one commit, not one each,
+    /// which counts where each commit waits for the file system of a cluster.
     fn update(&mut self, action: impl FnOnce(&Connection, &str) -> rusqlite::Result<()>) {
-        let mut writer = lock(&self.writer);
-        if writer.error.is_some() {
-            return;
-        }
-        if let Err(error) = action(&writer.connection, &self.run) {
-            writer.error = Some(error.into());
-        }
+        lock(&self.writer).update(&self.run, action);
     }
 
     /// The run replays one task of an earlier run. It is no event of the engine.
@@ -552,15 +548,8 @@ impl Writer {
         run: &str,
         action: impl FnOnce(&Connection, &str, i64) -> rusqlite::Result<()>,
     ) {
-        if self.error.is_some() {
+        if !self.begin() {
             return;
-        }
-        if self.batch.is_none() {
-            if let Err(error) = self.connection.execute_batch("BEGIN") {
-                self.error = Some(error.into());
-                return;
-            }
-            self.batch = Some(Instant::now());
         }
         self.sequence += 1;
         if let Err(error) = action(&self.connection, run, self.sequence) {
@@ -568,6 +557,37 @@ impl Writer {
             return;
         }
         self.commit_if_old();
+    }
+
+    /// Runs one write that is no event inside the open transaction, as [`Writer::write`] does.
+    fn update(
+        &mut self,
+        run: &str,
+        action: impl FnOnce(&Connection, &str) -> rusqlite::Result<()>,
+    ) {
+        if !self.begin() {
+            return;
+        }
+        if let Err(error) = action(&self.connection, run) {
+            self.error = Some(error.into());
+            return;
+        }
+        self.commit_if_old();
+    }
+
+    /// Opens a transaction when none is open; false after an error.
+    fn begin(&mut self) -> bool {
+        if self.error.is_some() {
+            return false;
+        }
+        if self.batch.is_none() {
+            if let Err(error) = self.connection.execute_batch("BEGIN") {
+                self.error = Some(error.into());
+                return false;
+            }
+            self.batch = Some(Instant::now());
+        }
+        true
     }
 
     fn commit_if_old(&mut self) {
@@ -663,6 +683,45 @@ fn to_sqlite(error: serde_json::Error) -> rusqlite::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_sources_of_a_run_take_one_commit() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let path = folder.path().join("runs.sqlite");
+        let start = RunStart {
+            id: "run-1".into(),
+            resumes: None,
+            workflow: "/work/main.cwl".into(),
+            language: workflow_graph::Language::Cwl,
+            revision: None,
+            arguments: Vec::new(),
+            parameters: Vec::new(),
+            executor: "slurm".into(),
+            simulated: false,
+            store: None,
+            program: None,
+            launch: None,
+            workflow_folder: None,
+            repeats: None,
+        };
+        let mut recorder = crate::Database::open(&path)
+            .and_then(|database| database.record(&start))
+            .expect("records");
+        let sources: Vec<Source> = (0..500)
+            .map(|number| Source {
+                kind: crate::SourceKind::Workflow,
+                path: format!("tests/{number}.cwl"),
+                digest: format!("sha256:{number:064}"),
+                size: 1,
+            })
+            .collect();
+        recorder.sources(&sources);
+        // The rows wait in the open transaction for one commit.
+        assert!(!lock(&recorder.writer).connection.is_autocommit());
+        recorder.close().expect("commits");
+        let database = crate::Database::open(&path).expect("opens");
+        assert_eq!(database.sources("run-1").expect("reads").len(), 500);
+    }
 
     #[test]
     fn long_texts_keep_their_end() {

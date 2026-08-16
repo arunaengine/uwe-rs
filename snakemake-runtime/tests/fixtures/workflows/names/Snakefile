@@ -1,0 +1,13 @@
+# A shell command sees the names of the rule function of Snakemake 9.27, like `rule`, then the
+# globals of the Snakefile. `name` and `rulename` are not names of the rule function, so the
+# globals answer for them: Snakemake 9.27 writes `global also_global all` (its dry run prints
+# `echo all all all`, with other names).
+name = "global"
+rulename = "also_global"
+
+
+rule all:
+    output:
+        "names.txt",
+    shell:
+        "echo {name} {rulename} {rule} > {output}"

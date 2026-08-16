@@ -294,6 +294,9 @@ pub fn build(
         }
     }
     let params = params.value();
+    // The names of the rule function that runs the command in Snakemake 9.27, then the globals.
+    // Its dry run prints commands with `name` and `rulename` as the rule's name too, but the
+    // command that runs sees the globals of those names.
     let names = Args {
         positional: Vec::new(),
         keywords: vec![
@@ -305,9 +308,7 @@ pub fn build(
             ("resources".into(), resource_value.clone()),
             ("log".into(), log.clone()),
             ("jobid".into(), Value::Int(id.0 as i64)),
-            ("name".into(), rulename.clone()),
             ("rule".into(), rulename.clone()),
-            ("rulename".into(), rulename.clone()),
             ("bench_iteration".into(), Value::None),
         ],
     };

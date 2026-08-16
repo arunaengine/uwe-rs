@@ -1,0 +1,6 @@
+1 tasks, 1 steps, 0 edges
+1 all <- []
+task 1: -
+  command: bash -c set -euo pipefail;  echo global also_global all > names.txt
+  inputs: 
+  outputs: names.txt

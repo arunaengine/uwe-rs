@@ -118,3 +118,56 @@ fn outputs_go_to_the_working_directory_and_failed_jobs_run_again() {
     assert_eq!(targets.0, ["final.txt"]);
     assert!(Path::new(&targets.1).is_dir());
 }
+
+/// `outputflags: temp` makes every output temporary, unless the rule marks it `protected`.
+const DEFAULT_FLAGS: &str = r#"
+outputflags:
+    temp
+
+rule all:
+    input: "final.txt", "kept.txt"
+
+rule produce:
+    output: "part.txt"
+    shell: "echo part > {output}"
+
+rule keep:
+    output: protected("kept.txt")
+    shell: "echo kept > {output}"
+
+rule finish:
+    input: "part.txt"
+    output: "final.txt"
+    shell: "cat {input} > {output}"
+"#;
+
+#[test]
+fn default_output_flags_make_outputs_temporary() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let workdir = folder.path().join("workflow");
+    std::fs::create_dir(&workdir).expect("makes the folder");
+    std::fs::write(workdir.join("Snakefile"), DEFAULT_FLAGS).expect("writes the Snakefile");
+    let launch = Launch {
+        target: workdir.clone(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
+    let made = folder.path().join("made");
+    std::fs::create_dir(&made).expect("makes the folder");
+    let mut executor = Flaky {
+        folder: made,
+        ran: Vec::new(),
+    };
+    let mut targets = Targets(
+        Vec::new(),
+        workdir.canonicalize().unwrap_or(workdir.clone()),
+    );
+    let execution = Engine::new(&mut executor)
+        .observer(&mut targets)
+        .run("Snakefile", driver.as_mut());
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    // Snakemake 9.27 removes the temporary `part.txt` and keeps the inputs of the target rule.
+    targets.0.sort();
+    assert_eq!(targets.0, ["final.txt", "kept.txt"]);
+}

@@ -36,6 +36,7 @@ mod storage;
 mod task;
 mod utils;
 mod workflow;
+mod yte;
 
 pub use driver::{Session, Settings, driver, driver_with, find_snakefile};
 pub use pattern::{Matcher, Wildcards, apply as apply_wildcards, regex_text, wildcard_names};

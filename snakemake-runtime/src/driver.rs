@@ -658,6 +658,9 @@ impl Session {
                 },
             );
         }
+        if !self.launch.simulated {
+            self.empty_logs(job, &outcome)?;
+        }
         self.done.insert(job);
         if self.needrun.get(&job).copied().unwrap_or(false) {
             for dependent in self.dependents.get(&job).cloned().unwrap_or_default() {
@@ -769,6 +772,41 @@ impl Session {
         }
         std::fs::write(&path, b"")?;
         Ok(path)
+    }
+
+    /// Snakemake's `handle_log`: a log file that a finished job did not write is delivered
+    /// empty.
+    fn empty_logs(&mut self, job: usize, outcome: &Outcome) -> Result<(), DriverError> {
+        let logs: Vec<String> = (self.planner.as_ref())
+            .map(|planner| {
+                (planner.jobs[job].log.values.iter())
+                    .filter_map(|value| value.as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let written: Vec<PathBuf> = (outcome.files.iter())
+            .map(|file| self.interpreter.host.resolve(&file.path))
+            .collect();
+        for log in logs {
+            let path = self.interpreter.host.resolve(&log);
+            if written.contains(&path) {
+                continue;
+            }
+            let empty = self.launch.scratch.join("empty-log");
+            std::fs::create_dir_all(&self.launch.scratch)
+                .and_then(|()| std::fs::write(&empty, ""))
+                .map_err(|error| DriverError::new(error.to_string()))?;
+            let mut deliveries = self
+                .deliveries
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            deliveries.push(Delivery {
+                location: empty.to_string_lossy().into_owned(),
+                target: path.to_string_lossy().into_owned(),
+                mode: DeliveryMode::Copy,
+            });
+        }
+        Ok(())
     }
 
     /// The next attempt of a failed job, while its rule's `retries` allow one, with its

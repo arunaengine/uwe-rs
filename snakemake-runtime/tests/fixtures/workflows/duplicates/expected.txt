@@ -1,0 +1,2 @@
+0 tasks, 0 steps, 0 edges
+error: Snakefile:8: WorkflowError: Duplicate output file pattern in rule my_rule. First two duplicate for entries 0 and 1.

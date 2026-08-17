@@ -1,0 +1,13 @@
+# Snakemake 9.27 rejects a rule that names an output twice, as in its test_dup_out_patterns:
+# "Duplicate output file pattern in rule my_rule. First two duplicate for entries 0 and 1."
+rule default:
+    input:
+        "out.txt",
+
+
+rule my_rule:
+    output:
+        "{name}.txt",
+        "{name}.txt",
+    shell:
+        "touch {output}"

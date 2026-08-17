@@ -1,0 +1,21 @@
+4 tasks, 4 steps, 3 edges
+1 a <- []
+2 b <- []
+3 b_pos <- []
+4 all <- [1, 2, 3]
+task 1: -
+  command: bash -c set -euo pipefail;  echo 3 6 > test.out
+  inputs: 
+  outputs: test.out
+task 2: -
+  command: bash -c set -euo pipefail;  echo 9 6 > test2.out
+  inputs: 
+  outputs: test2.out
+task 3: -
+  command: bash -c set -euo pipefail;  echo pos1 9 6 > test2_pos.out
+  inputs: 
+  outputs: test2_pos.out
+task 4: -
+  command: 
+  inputs: test.out test2.out test2_pos.out
+  outputs: 

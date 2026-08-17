@@ -1,0 +1,26 @@
+5 tasks, 3 steps, 6 edges
+1 grouplocal (groupid=local) <- []
+2 consumer (i=0) <- [1]
+3 consumer (i=1) <- [1]
+4 consumer (i=2) <- [1]
+5 all <- [2, 3, 4]
+task 1: -
+  command: bash -c set -euo pipefail;  echo local > foo.local.txt
+  inputs: 
+  outputs: foo.local.txt
+task 2: -
+  command: bash -c set -euo pipefail;  cp foo.local.txt bar0.txt
+  inputs: foo.local.txt
+  outputs: bar0.txt
+task 3: -
+  command: bash -c set -euo pipefail;  cp foo.local.txt bar1.txt
+  inputs: foo.local.txt
+  outputs: bar1.txt
+task 4: -
+  command: bash -c set -euo pipefail;  cp foo.local.txt bar2.txt
+  inputs: foo.local.txt
+  outputs: bar2.txt
+task 5: -
+  command: 
+  inputs: bar0.txt bar1.txt bar2.txt
+  outputs: 

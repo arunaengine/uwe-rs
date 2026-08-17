@@ -657,38 +657,10 @@ impl Planner {
     }
 }
 
-/// The group id that input functions with a `groupid` parameter get. Snakemake gives a job of
-/// a group the id of its group job, and other jobs `local` in a local run. iunctus runs each
-/// job as a task of its own, so a job of a group is a group of one, with an id that its rule
-/// and wildcards determine, in the form of the UUIDs of Snakemake.
-fn group_id(rule: &Rule, wildcards: &Wildcards) -> String {
-    if rule.group.is_none() {
-        return "local".into();
-    }
-    let mut text = rule.name.clone();
-    for (name, value) in wildcards {
-        text.push_str(&format!(",{name}={value}"));
-    }
-    // Two FNV-1a hashes with different offsets give 128 bits.
-    let hash = |offset: u64| {
-        text.bytes().fold(offset, |hash, byte| {
-            (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
-        })
-    };
-    let hex = format!(
-        "{:016x}{:016x}",
-        hash(0xcbf2_9ce4_8422_2325),
-        hash(0x6c62_272e_07bb_0142)
-    );
-    format!(
-        "{}-{}-{}-{}-{}",
-        &hex[..8],
-        &hex[8..12],
-        &hex[12..16],
-        &hex[16..20],
-        &hex[20..]
-    )
-}
+/// The group id that input functions with a `groupid` parameter get. Snakemake gives every
+/// job `local` in a local run, where it forms no group jobs; iunctus runs each job as a task
+/// of its own, so every job gets `local` too (Snakemake 9.27, test_groupid_expand).
+const GROUP_ID: &str = "local";
 
 /// The input files of a job: patterns with wildcards filled in, and what input functions
 /// return. Also whether a function waits for a checkpoint, whose output then stands in.
@@ -705,7 +677,7 @@ pub fn expand_input(
         for value in values {
             if is_callable(interpreter, &value) {
                 let unpack = value.tag("unpack").is_some();
-                let aux = [("groupid", Value::str(group_id(rule, wildcards)))];
+                let aux = [("groupid", Value::str(GROUP_ID))];
                 let result =
                     match call_input_function(interpreter, value.plain(), &wildcards_value, &aux) {
                         Ok(result) => result,

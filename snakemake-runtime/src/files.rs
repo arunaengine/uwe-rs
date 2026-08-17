@@ -72,7 +72,8 @@ impl WorkflowFiles {
         self.produced.borrow_mut().insert(path.to_owned(), produced);
     }
 
-    /// Where a path is on disk: in the output of a task, or itself.
+    /// Where a path is on disk: in the output of a task, or itself. A path inside a directory
+    /// output of a task that the folder does not hold is not in that output.
     pub fn location(&self, path: &Path) -> Option<(PathBuf, bool)> {
         let produced = self.produced.borrow();
         for ancestor in path.ancestors() {
@@ -82,7 +83,14 @@ impl WorkflowFiles {
                 }
                 if entry.directory {
                     let rest = path.strip_prefix(ancestor).unwrap_or(path);
-                    return Some((entry.location.join(rest), false));
+                    let inner = entry.location.join(rest);
+                    // A folder on this machine tells whether the path is in it, so that a file
+                    // that another job makes there is not taken as made. A folder of a store
+                    // elsewhere cannot tell.
+                    if entry.location.is_dir() && std::fs::symlink_metadata(&inner).is_err() {
+                        return None;
+                    }
+                    return Some((inner, false));
                 }
             }
         }
@@ -240,5 +248,27 @@ mod tests {
         assert!(files.read(&path).is_err(), "no local file is there");
         let _ = slot.set(Arc::new(Elsewhere(folder.path().to_owned())));
         assert_eq!(files.read(&path).expect("reads"), b"3\n");
+    }
+
+    #[test]
+    fn a_file_that_a_directory_output_lacks_is_not_made() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let made = folder.path().join("made");
+        std::fs::create_dir(&made).expect("makes the folder");
+        std::fs::write(made.join("f0.fasta"), ">a\n").expect("writes");
+        let storage = storage::Storage::default();
+        let mirrors = Rc::new(Mirrors::new(folder.path().join("downloads"), &storage));
+        let files = WorkflowFiles::new(&folder.path().join("work"), mirrors);
+        let output = folder.path().join("work/files");
+        let produced = Produced {
+            location: made.clone(),
+            directory: true,
+        };
+        files.add_output(&output, produced);
+        let fasta = files.location(&output.join("f0.fasta"));
+        assert_eq!(fasta, Some((made.join("f0.fasta"), false)));
+        // Another job makes `files/f0.txt` later, as in Snakemake's test_github_issue988.
+        assert_eq!(files.location(&output.join("f0.txt")), None);
+        assert!(files.stat(&output.join("f0.txt")).is_none());
     }
 }

@@ -177,3 +177,62 @@ fn default_output_flags_make_outputs_temporary() {
     targets.0.sort();
     assert_eq!(targets.0, ["final.txt", "kept.txt"]);
 }
+
+/// Makes the outputs of each task in a folder of its own, but no log files.
+struct Quiet(std::path::PathBuf);
+
+impl Executor for Quiet {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        let task = &attempt.task;
+        let mut files = Vec::new();
+        for output in task
+            .outputs
+            .iter()
+            .filter(|output| !output.starts_with("logs/"))
+        {
+            let location = self.0.join(format!("{}-{output}", task.id));
+            std::fs::write(&location, "x\n").expect("writes");
+            files.push(OutputFile {
+                path: output.clone(),
+                location: location.to_string_lossy().into_owned(),
+                ..OutputFile::default()
+            });
+        }
+        Running::ended(Ok(Outcome {
+            id: task.id,
+            files,
+            ..Outcome::default()
+        }))
+    }
+}
+
+#[test]
+fn logs_that_jobs_do_not_write_are_delivered_empty() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let workdir = folder.path().join("workflow");
+    std::fs::create_dir(&workdir).expect("makes the folder");
+    let snakefile = "rule all:\n    input: \"data.txt\"\n    log: \"logs/all.log\"\n\n\
+                     rule A:\n    output: \"data.txt\"\n    log: \"logs/A.log\"\n    \
+                     shell: \"touch {output}\"\n";
+    std::fs::write(workdir.join("Snakefile"), snakefile).expect("writes the Snakefile");
+    let launch = Launch {
+        target: workdir.clone(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
+    let made = folder.path().join("made");
+    std::fs::create_dir(&made).expect("makes the folder");
+    let mut executor = Quiet(made);
+    let mut targets = Targets(
+        Vec::new(),
+        workdir.canonicalize().unwrap_or(workdir.clone()),
+    );
+    let execution = Engine::new(&mut executor)
+        .observer(&mut targets)
+        .run("Snakefile", driver.as_mut());
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    // Snakemake 9.27 leaves both logs, empty, as its test_github_issue2142 shows.
+    targets.0.sort();
+    assert_eq!(targets.0, ["data.txt", "logs/A.log", "logs/all.log"]);
+}

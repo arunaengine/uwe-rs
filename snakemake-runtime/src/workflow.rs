@@ -71,9 +71,12 @@ impl RuleInfo {
                     if !args.positional.is_empty() {
                         existing.positional = args.positional.clone();
                     }
+                    // As a Python dict updates: a name keeps its place, a new one comes last.
                     for (name, value) in &args.keywords {
-                        existing.keywords.retain(|(key, _)| key != name);
-                        existing.keywords.push((name.clone(), value.clone()));
+                        match existing.keywords.iter_mut().find(|(key, _)| key == name) {
+                            Some((_, slot)) => *slot = value.clone(),
+                            None => existing.keywords.push((name.clone(), value.clone())),
+                        }
                     }
                 }
                 Some((_, existing)) => *existing = args.clone(),

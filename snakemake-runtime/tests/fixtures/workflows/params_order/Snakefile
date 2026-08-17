@@ -1,0 +1,32 @@
+# `use rule ... with: params:` keeps the place of a named param that it changes, as a Python
+# dict update does: Snakemake 9.27 writes `9 6` and `pos1 9 6` here (its test_issue3338).
+rule all:
+    input:
+        "test.out",
+        "test2.out",
+        "test2_pos.out",
+
+
+rule a:
+    params:
+        a=3,
+        b=6,
+    output:
+        "test.out",
+    shell:
+        "echo {params} > {output}"
+
+
+use rule a as b with:
+    params:
+        a=9,
+    output:
+        "test2.out",
+
+
+use rule a as b_pos with:
+    params:
+        "pos1",
+        a=9,
+    output:
+        "test2_pos.out",

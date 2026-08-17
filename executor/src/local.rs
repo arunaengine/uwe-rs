@@ -34,6 +34,10 @@ use crate::wrapper::{ENDED, Folders, MANIFEST, STDERR, wrapper};
 /// How long a task may take to end after it was asked to stop, before it is killed.
 const STOP_GRACE: Duration = Duration::from_secs(10);
 
+/// The least memory that Docker and Podman give a container (6 MiB); a task that asks for
+/// less, as a Snakemake rule with `mem_mb` of a file's size may, gets that much.
+const LEAST_MEMORY: u64 = 6 << 20;
+
 /// The local container executor.
 #[derive(Debug)]
 pub struct LocalContainer {
@@ -227,7 +231,7 @@ impl ContainerRun<'_> {
                 auto_remove: Some(true),
                 mounts: Some(mounts),
                 nano_cpus: Some(i64::from(self.cpus) * 1_000_000_000),
-                memory: self.memory.map(|bytes| bytes as i64),
+                memory: self.memory.map(|bytes| bytes.max(LEAST_MEMORY) as i64),
                 network_mode: self.offline.then(|| "none".to_owned()),
                 ..HostConfig::default()
             }),
@@ -249,7 +253,7 @@ impl ContainerRun<'_> {
         arguments.extend(["--workdir".into(), self.inside()]);
         arguments.extend(["--cpus".into(), self.cpus.to_string()]);
         if let Some(memory) = self.memory {
-            arguments.extend(["--memory".into(), memory.to_string()]);
+            arguments.extend(["--memory".into(), memory.max(LEAST_MEMORY).to_string()]);
         }
         if self.offline {
             arguments.extend(["--network".into(), "none".into()]);
@@ -718,6 +722,12 @@ mod tests {
                 "/data:/scratch/task/work/data",
             ]
         );
+        // A task that asks for less memory than Docker gives any container gets that least.
+        run.memory = Some(1024);
+        let arguments = run.arguments(&EngineCommand::docker("docker"));
+        let memory = arguments.iter().position(|argument| argument == "--memory");
+        assert_eq!(memory.map(|at| arguments[at + 1].as_str()), Some("6291456"));
+        run.memory = None;
         // A mount at the work directory takes the place of the work directory of the scratch.
         run.workdir = Some("/work");
         assert_eq!(

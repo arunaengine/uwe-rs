@@ -19,6 +19,9 @@ use crate::rule::{Action, Items, Rule};
 use crate::shell::{command_line, format_command};
 use crate::workflow::{State, workflow_error};
 
+/// The longest command that Snakemake passes as one argument (`shell.MAX_ARG_LEN`).
+const MAX_ARG_LEN: usize = 16 * 4096 - 1;
+
 /// Plain texts of items, as `Namedlist._plainstrings` gives them to functions.
 fn plain(items: &Items, kind: &'static str) -> Value {
     let values = items
@@ -396,6 +399,14 @@ pub fn build(
             let formatted = format_command(interpreter, &template, &names, Some(&rule.globals))
                 .map_err(|error| shell_error(error, rule))?;
             command = command_line(setting.state, &formatted);
+            // Snakemake writes a command too long for one argument into a script and runs it
+            // with the shell.
+            if command[2].replace('\'', "'\\''").len() + 2 > MAX_ARG_LEN {
+                let path = ".snakemake/shell_tmp.iunctus/script.sh";
+                inputs.push(embedded::literal(path, &format!("{}\n", command[2])));
+                command.truncate(1);
+                command.push(path.into());
+            }
             script = Some(formatted);
         }
         Action::Script(value) | Action::Notebook(value) => {

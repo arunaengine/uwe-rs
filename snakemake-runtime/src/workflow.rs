@@ -984,6 +984,9 @@ impl Hook {
                             &pathvars,
                         )?;
                     }
+                    if output {
+                        crate::rule::check_output_duplicates(&rule.name, &rule.output)?;
+                    }
                 }
                 RuleKeyword::Benchmark => {
                     let value = match first.plain() {

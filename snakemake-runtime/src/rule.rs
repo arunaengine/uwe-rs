@@ -273,3 +273,34 @@ pub fn retag(old: &Value, new: Value) -> Value {
     }
     result
 }
+
+/// Snakemake's `check_output_duplicates`: a rule may not name the same output twice. Entries
+/// are named by their name, or by their number among the unnamed ones.
+pub fn check_output_duplicates(rule: &str, output: &Items) -> Result<(), Error> {
+    let mut seen: Vec<(&str, String)> = Vec::new();
+    let mut unnamed = 0;
+    for (index, value) in output.values.iter().enumerate() {
+        let name = output.names.iter().find(|(_, start, end)| match end {
+            Some(end) => (*start..*end).contains(&index),
+            None => index == *start,
+        });
+        let label = match name {
+            Some((name, _, _)) => name.clone(),
+            None => {
+                unnamed += 1;
+                (unnamed - 1).to_string()
+            }
+        };
+        let Some(text) = value.as_str().filter(|text| !text.is_empty()) else {
+            continue;
+        };
+        if let Some((_, earlier)) = seen.iter().find(|(seen, _)| *seen == text) {
+            return Err(crate::workflow::workflow_error(format!(
+                "Duplicate output file pattern in rule {rule}. First two duplicate for entries \
+                 {earlier} and {label}."
+            )));
+        }
+        seen.push((text, label));
+    }
+    Ok(())
+}

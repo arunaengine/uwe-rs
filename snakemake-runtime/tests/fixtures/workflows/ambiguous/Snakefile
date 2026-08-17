@@ -1,0 +1,32 @@
+# Two jobs that make the same file fail as in Snakemake 9.27 (its test_ambiguousruleexception):
+# "Rules A and B are ambiguous for the file C/one.txt."
+rule all:
+    input:
+        [
+            "A/one.txt",
+            "B/one.txt",
+            "A/two.txt",
+            "B/two.txt",
+            "A/three.txt",
+            "B/three.txt",
+        ]
+
+rule A:
+    output:
+        a="A/{sample}.txt",
+        c=temp("C/{sample}.txt"),
+    shell:
+        """
+        touch {output.a}
+        touch {output.c}
+        """
+
+rule B:
+    output:
+        b="B/{sample}.txt",
+        c=temp("C/{sample}.txt"),
+    shell:
+        """
+        touch {output.b}
+        touch {output.c}
+        """

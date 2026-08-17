@@ -358,17 +358,42 @@ impl Session {
         self.needrun = planner.needrun(&self.interpreter, &roots);
         self.order = planner.ordered_jobs(&roots);
         // Snakemake's `check_directory_outputs`: no output of a job lies in a directory
-        // output of another job.
+        // output of another job. Logs and benchmarks do not count, as in Snakemake.
         let mut outputs: Vec<(PathBuf, usize)> = (self.order.iter())
             .flat_map(|job| {
-                (planner.jobs[*job].output_files().into_iter()).map(|file| {
-                    (
-                        self.interpreter.host.resolve(file.trim_end_matches('/')),
-                        *job,
-                    )
-                })
+                (planner.jobs[*job].output.values.iter())
+                    .filter_map(|value| value.as_str())
+                    .map(|file| {
+                        (
+                            self.interpreter.host.resolve(file.trim_end_matches('/')),
+                            *job,
+                        )
+                    })
             })
             .collect();
+        // Snakemake's `check_jobs`: no two jobs make the same file. A job planned on inputs
+        // that a simulated run assumed may be one that Snakemake would not plan, since the
+        // input that it lacks rules it out, so such jobs do not count.
+        let mut seen: HashMap<&PathBuf, usize> = HashMap::new();
+        let assumed = |job: &usize| planner.jobs[*job].assumed;
+        for (path, job) in &outputs {
+            match seen.get(path) {
+                Some(other) if other != job && !assumed(other) && !assumed(job) => {
+                    let rule = |job: &usize| planner.rules[planner.jobs[*job].rule].name.clone();
+                    let file = path.strip_prefix(&self.workdir).unwrap_or(path);
+                    let message = format!(
+                        "AmbiguousRuleException: Rules {} and {} are ambiguous for the file {}.",
+                        rule(other),
+                        rule(job),
+                        file.display()
+                    );
+                    return Err(self.error(&crate::workflow::workflow_error(message)));
+                }
+                _ => {
+                    seen.insert(path, *job);
+                }
+            }
+        }
         outputs.sort();
         outputs.dedup();
         for pair in outputs.windows(2) {

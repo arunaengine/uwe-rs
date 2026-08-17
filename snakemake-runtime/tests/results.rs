@@ -119,7 +119,8 @@ fn outputs_go_to_the_working_directory_and_failed_jobs_run_again() {
     assert!(Path::new(&targets.1).is_dir());
 }
 
-/// `outputflags: temp` makes every output temporary, unless the rule marks it `protected`.
+/// `outputflags: temp` makes every output temporary, unless the rule marks it `protected`; a
+/// pipe is temporary anyway.
 const DEFAULT_FLAGS: &str = r#"
 outputflags:
     temp
@@ -131,12 +132,16 @@ rule produce:
     output: "part.txt"
     shell: "echo part > {output}"
 
+rule stream:
+    output: pipe("stream.txt")
+    shell: "echo stream > {output}"
+
 rule keep:
     output: protected("kept.txt")
     shell: "echo kept > {output}"
 
 rule finish:
-    input: "part.txt"
+    input: "part.txt", "stream.txt"
     output: "final.txt"
     shell: "cat {input} > {output}"
 "#;
@@ -167,7 +172,8 @@ fn default_output_flags_make_outputs_temporary() {
         .observer(&mut targets)
         .run("Snakefile", driver.as_mut());
     assert!(execution.error.is_none(), "{:?}", execution.error);
-    // Snakemake 9.27 removes the temporary `part.txt` and keeps the inputs of the target rule.
+    // Snakemake 9.27 removes the temporary `part.txt` and the pipe `stream.txt`, and keeps the
+    // inputs of the target rule.
     targets.0.sort();
     assert_eq!(targets.0, ["final.txt", "kept.txt"]);
 }

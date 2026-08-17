@@ -272,12 +272,14 @@ impl Session {
                 .map_err(|error| self.error(&error))?;
             configfiles.push(text);
         }
+        // Each value of `--config` merges into the values of the config files, as Snakemake's
+        // `parse_config` and `update_config` do: a mapping keeps the keys that it does not set.
         for (name, value) in &params {
             let name = name.trim_start_matches('-').to_owned();
-            if let Value::Dict(dict) = overwrite.plain() {
-                dict.borrow_mut()
-                    .insert(&name, crate::config::parse_value(value));
-            }
+            let mut entry = python_evaluator::Dict::default();
+            entry.insert(&name, crate::config::parse_value(value));
+            crate::config::update(&mut self.interpreter, &overwrite, &Value::dict(entry))
+                .map_err(|error| self.error(&error))?;
         }
         // The config starts as a copy of the config from the command line.
         let config = Value::dict(python_evaluator::Dict::default());

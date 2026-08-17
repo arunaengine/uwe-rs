@@ -1,0 +1,9 @@
+# A command longer than one argument may be runs from a script, as Snakemake 9.27 runs it
+# (its test_long_shell).
+rule:
+    input:
+        "test.in",
+    output:
+        "test.out",
+    shell:
+        "cp {input} {output}; #" + "x" * 64 * 4096

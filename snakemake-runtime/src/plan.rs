@@ -627,8 +627,33 @@ impl Planner {
                 .iter()
                 .filter(|file| own_outputs.contains(file))
                 .any(|file| !self.exists(interpreter, file));
+        needed = needed || self.has_newer_inputs(interpreter, job, &own_outputs);
         result.insert(job, needed);
         needed
+    }
+
+    /// Snakemake's `mtime` trigger: a job runs again when an input that is not `ancient` is
+    /// newer than its oldest output. Only files on this machine have times to compare.
+    fn has_newer_inputs(&self, interpreter: &Interpreter, job: usize, outputs: &[String]) -> bool {
+        let modified = |file: &str| {
+            let path = interpreter.host.resolve(file);
+            interpreter
+                .host
+                .stat(&path)
+                .map(|stat| stat.modified)
+                .filter(|modified| *modified > 0.0)
+        };
+        let Some(oldest) = outputs
+            .iter()
+            .filter_map(|file| modified(file))
+            .reduce(f64::min)
+        else {
+            return false;
+        };
+        (self.jobs[job].input.values.iter())
+            .filter(|value| value.tag("ancient").is_none())
+            .filter_map(|value| value.as_str())
+            .any(|file| modified(file).is_some_and(|time| time > oldest))
     }
 }
 

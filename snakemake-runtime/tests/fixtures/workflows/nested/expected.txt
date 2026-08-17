@@ -1,0 +1,4 @@
+0 tasks, 0 steps, 0 edges
+error: WorkflowError: ChildIOException: File/directory is a child to another output:
+output/dir (rule b)
+output/dir/a.txt (rule a)

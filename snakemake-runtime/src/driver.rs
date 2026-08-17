@@ -357,6 +357,34 @@ impl Session {
         }
         self.needrun = planner.needrun(&self.interpreter, &roots);
         self.order = planner.ordered_jobs(&roots);
+        // Snakemake's `check_directory_outputs`: no output of a job lies in a directory
+        // output of another job.
+        let mut outputs: Vec<(PathBuf, usize)> = (self.order.iter())
+            .flat_map(|job| {
+                (planner.jobs[*job].output_files().into_iter()).map(|file| {
+                    (
+                        self.interpreter.host.resolve(file.trim_end_matches('/')),
+                        *job,
+                    )
+                })
+            })
+            .collect();
+        outputs.sort();
+        outputs.dedup();
+        for pair in outputs.windows(2) {
+            let ((parent, parent_job), (child, child_job)) = (&pair[0], &pair[1]);
+            if parent != child && child.starts_with(parent) && parent_job != child_job {
+                let rule = |job: &usize| planner.rules[planner.jobs[*job].rule].name.clone();
+                let message = format!(
+                    "ChildIOException: File/directory is a child to another output:\n{} (rule {})\n{} (rule {})",
+                    parent.display(),
+                    rule(parent_job),
+                    child.display(),
+                    rule(child_job)
+                );
+                return Err(self.error(&crate::workflow::workflow_error(message)));
+            }
+        }
         self.position = self
             .order
             .iter()

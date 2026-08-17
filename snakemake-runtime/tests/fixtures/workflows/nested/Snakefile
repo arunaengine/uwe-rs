@@ -1,0 +1,21 @@
+# Snakemake 9.27 rejects an output that lies in a directory output of another job, as in its
+# test_github_issue2848: "ChildIOException: File/directory is a child to another output".
+rule c:
+    input:
+        "output/dir/",
+    output:
+        touch("output/c.txt"),
+
+
+rule a:
+    output:
+        touch("output/dir/a.txt"),
+
+
+rule b:
+    input:
+        "output/dir/a.txt",
+    output:
+        directory("output/dir/"),
+    shell:
+        "cp {input} {output}/b.txt"

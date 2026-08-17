@@ -83,6 +83,9 @@ pub struct Session {
     notes: Vec<Note>,
     /// The attempt of each job whose task was asked for, from 1.
     attempts: HashMap<usize, u32>,
+    /// The files that stay even when they are temporary, as Snakemake's `derived_targetfiles`:
+    /// the target files, and the inputs of target jobs without outputs, like those of `all`.
+    kept: Vec<String>,
     /// The outputs to deliver to the working directory, which the driver hands to the engine.
     pub deliveries: Arc<Mutex<Vec<Delivery>>>,
     /// How the evaluation of the Snakefile ended, once it ran; it runs once.
@@ -170,6 +173,7 @@ impl Session {
             remaining: HashMap::new(),
             notes: Vec::new(),
             attempts: HashMap::new(),
+            kept: Vec::new(),
             deliveries: Arc::default(),
             evaluation: None,
             embedded: crate::embedded::Setting::new(&launch.scratch, launch.simulated),
@@ -339,6 +343,16 @@ impl Session {
                 Some(Ok(job)) => roots.push(job),
                 Some(Err(error)) => return Err(self.error(&error)),
                 None => {}
+            }
+        }
+        self.kept = (targets.iter())
+            .filter(|target| !planner.rules.iter().any(|rule| rule.name == **target))
+            .cloned()
+            .collect();
+        for root in &roots {
+            let job = &planner.jobs[*root];
+            if job.output_files().is_empty() {
+                self.kept.extend(job.input_files());
             }
         }
         self.needrun = planner.needrun(&self.interpreter, &roots);
@@ -573,9 +587,10 @@ impl Session {
         }
         // The outputs go to the working directory, as Snakemake leaves them there, except the
         // temporary ones.
-        let temporary = (self.planner.as_ref())
+        let mut temporary = (self.planner.as_ref())
             .map(|planner| planner.jobs[job].temporary_files())
             .unwrap_or_default();
+        temporary.retain(|file| !self.kept.contains(file));
         // An executor may give an absolute output without its leading `/`, as the simulator does.
         let declared = self
             .planner

@@ -131,6 +131,10 @@ pub struct Modifier {
     pub pathvars: Pathvars,
     /// The tag of the wrappers of an old meta-wrapper, which replaces `master/` in their names.
     pub wrapper_tag: Option<String>,
+    /// The flags of `inputflags:` and `outputflags:`, which each input or output file of the
+    /// rules of this code gets, like `temp`.
+    pub input_flags: Vec<Value>,
+    pub output_flags: Vec<Value>,
 }
 
 impl Modifier {
@@ -154,6 +158,8 @@ impl Modifier {
             allow_overwrite: false,
             pathvars: Pathvars::defaults(),
             wrapper_tag: None,
+            input_flags: Vec::new(),
+            output_flags: Vec::new(),
         }
     }
 }
@@ -708,12 +714,21 @@ impl Hook {
                 let pathvars = Pathvars::from_pairs(interpreter, &pairs, Level::Workflow)?;
                 self.update_pathvars(&pathvars)?;
             }
+            // A new list replaces the one before, as `register_flags` does.
+            GlobalKeyword::InputFlags | GlobalKeyword::OutputFlags => {
+                let mut state = self.state.borrow_mut();
+                let Some(modifier) = state.modifiers.last_mut() else {
+                    return Ok(());
+                };
+                match directive.keyword {
+                    GlobalKeyword::InputFlags => modifier.input_flags = args.positional.clone(),
+                    _ => modifier.output_flags = args.positional.clone(),
+                }
+            }
             GlobalKeyword::Report
             | GlobalKeyword::OnStart
             | GlobalKeyword::OnSuccess
             | GlobalKeyword::OnError
-            | GlobalKeyword::InputFlags
-            | GlobalKeyword::OutputFlags
             | GlobalKeyword::ResourceScopes => {}
         }
         Ok(())
@@ -1158,6 +1173,44 @@ impl Hook {
         Ok(Some(named))
     }
 
+    /// An input or output file with the default flags of `inputflags:` or `outputflags:`, as
+    /// Snakemake's `DefaultFlags.apply` gives them: each flag that the file does not have yet,
+    /// unless it has one that contradicts it (`temp` and `protected`). Logs get none.
+    fn default_flags(
+        &self,
+        interpreter: &mut Interpreter,
+        value: &Value,
+        property: &str,
+    ) -> Result<Value, Error> {
+        let flags = match property {
+            "input" => self.state.borrow().modifier().input_flags.clone(),
+            "output" => self.state.borrow().modifier().output_flags.clone(),
+            _ => return Ok(value.clone()),
+        };
+        let mut value = value.clone();
+        for flag in &flags {
+            // The flags that the flag function sets, as it sets them on a sample.
+            let sample = interpreter.call(flag, Args::new(vec![Value::str("dummy")]))?;
+            let keys: Vec<String> = sample
+                .tags()
+                .map(|tags| tags.keys().map(|key| key.to_string()).collect())
+                .unwrap_or_default();
+            let contradicting = |key: &str| match key {
+                "temp" => Some("protected"),
+                "protected" => Some("temp"),
+                _ => None,
+            };
+            let flagged = keys.iter().any(|key| {
+                value.tag(key).is_some()
+                    || contradicting(key).is_some_and(|other| value.tag(other).is_some())
+            });
+            if !flagged {
+                value = interpreter.call(flag, Args::new(vec![value.clone()]))?;
+            }
+        }
+        Ok(value)
+    }
+
     /// Adds an input, output or log item as `_set_inoutput_item` does: texts and paths,
     /// functions for inputs and logs, and the items of lists under one name.
     #[allow(clippy::too_many_arguments)]
@@ -1178,6 +1231,7 @@ impl Hook {
         match value.plain() {
             Value::Str(_) => {
                 let modified = self.state.borrow().modify_path(value, property, skips);
+                let modified = self.default_flags(interpreter, &modified, property)?;
                 items.push(apply_pathvars(pathvars, &modified)?);
                 if let Some(name) = name {
                     items.add_name(name);
@@ -1194,6 +1248,7 @@ impl Hook {
                 };
                 let text = retag(value, Value::str(text));
                 let modified = self.state.borrow().modify_path(&text, property, skips);
+                let modified = self.default_flags(interpreter, &modified, property)?;
                 items.push(apply_pathvars(pathvars, &modified)?);
                 if let Some(name) = name {
                     items.add_name(name);
@@ -1529,6 +1584,8 @@ impl Hook {
             allow_overwrite: !all,
             pathvars,
             wrapper_tag,
+            input_flags: Vec::new(),
+            output_flags: Vec::new(),
         };
         self.state.borrow_mut().modifiers.push(modifier);
         let result = self.include(interpreter, &full, true);

@@ -1,0 +1,15 @@
+ruleorder: b > a
+
+
+rule a:
+    output:
+        "{name}.txt",
+    shell:
+        "echo a > {output}"
+
+
+rule b:
+    output:
+        "{name}.txt",
+    shell:
+        "echo b > {output}"

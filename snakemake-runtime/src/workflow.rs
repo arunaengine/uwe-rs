@@ -862,7 +862,11 @@ impl Hook {
         if let Some(found) = state.modifier().rule_names.borrow().get(name) {
             return found.clone();
         }
-        name.to_owned()
+        // A rule that is not defined yet gets the name that the modules give it, as
+        // Snakemake's `modify_rulename` gives it, as in a `ruleorder` before the rules.
+        (state.modifiers.iter().rev())
+            .filter_map(|modifier| modifier.name_modifier.as_ref())
+            .fold(name.to_owned(), |current, pattern| pattern.replace('*', &current))
     }
 
     /// Evaluates the directive values of a rule, in order.

@@ -3,8 +3,8 @@
 # of the simulated run, and of the config keys that its code reads and its schema does
 # not declare or the other way round; or the error that stops its evaluation. The line
 # `(outputs)` holds the totals of the schemas of their outputs.
-# 892 workflows, 685 with a schema.
-(outputs) outputs: 605 of 683 workflows have outputs, 655 outputs, 655 files
+# 892 workflows, 684 with a schema.
+(outputs) outputs: 604 of 682 workflows have outputs, 654 outputs, 654 files
 catalog/3d-omics__hg_genotype ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 catalog/AToL-Bioinformatics__genome-launcher-workflow 1 workflow/Snakefile:8: the workflow imports the Python package giturlparse, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/Addimator__compare_meth 1 workflow/rules/common.smk:7: FileNotFoundError: [Errno 2] No such file or directory: '/projects/koesterlab/benchmark-methylation/data_analysis_jochen/compare_meth/config/sample.tsv'
@@ -525,10 +525,10 @@ tests/test_conda_python_script ok: 0 inputs, 0 required, 0 files, 0 tables; 0 er
 tests/test_conda_run ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_conditional ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_config ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-tests/test_config_merging ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 1 warnings; 0 read not declared, 1 declared not read
+tests/test_config_merging ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
 tests/test_config_replacing ok: 3 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_config_replacing_nocli ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 2 read not declared, 0 declared not read
-tests/test_config_yte ok: 2 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 1 declared not read
+tests/test_config_yte ok: 1 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_container ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_containerize_checkpoint ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_containerized ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
@@ -552,7 +552,7 @@ tests/test_deploy_script ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 
 tests/test_deploy_sources ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_directory ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_dryrun_executor_validation ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
-tests/test_dup_out_patterns ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
+tests/test_dup_out_patterns 1 Snakefile:5: WorkflowError: Duplicate output file pattern in rule my_rule. First two duplicate for entries 0 and 1.
 tests/test_dynamic_container ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_empty_include ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read
 tests/test_ensure ok: 0 inputs, 0 required, 0 files, 0 tables; 0 errors, 0 warnings; 0 read not declared, 0 declared not read

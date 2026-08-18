@@ -308,6 +308,7 @@ catalog/zhongmicai__mosaicatcher-pipeline	ci	1	failed	NotImplementedError in fil
 catalog/zifornd__arrays	plain	1	failed	WorkflowError in file "workflow/rules/common.smk", line 13: Error validating row 0 of data frame.
 catalog/zifornd__arrays	ci	0	evaluated
 catalog/zjnolen__PopGLen	plain	1	failed	FileNotFoundError in file "workflow/rules/common.smk", line 54: [Errno 2] No such file or directory: 'path/to/ref.fa'
+tests/test_ambiguousruleexception	plain	1	evaluated	AmbiguousRuleException: Rules A and B are ambiguous for the file C/one.txt.
 tests/test_censored_path	plain	1	failed	InvalidPluginException in file "Snakefile", line 1: Error loading Snakemake plugin xrootd: The package snakemake-storage-plugin-xrootd is not installed.
 tests/test_cloud_checkpoints_issue574	plain	1	failed	NotImplementedError in file "Snakefile", line 6: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_conda_global	plain	0	evaluated
@@ -321,7 +322,9 @@ tests/test_failed_intermediate	plain	1	failed	KeyError in file "Snakefile", line
 tests/test_ftp_immediate_close	plain	1	failed	NotImplementedError in file "Snakefile", line 2: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_generate_unit_tests	plain	1	failed	WorkflowError in file "Snakefile", line 3: Workflow defines configfile config/config.json but it is not present or accessible (full checked path: config/config.json).
 tests/test_github_issue1062	plain	1	failed	NotImplementedError in file "Snakefile", line 3: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
+tests/test_github_issue1469	plain	1	evaluated	AmbiguousRuleException: Rules single_file and both_files are ambiguous for the file foo.txt.
 tests/test_github_issue2154	plain	1	failed	WorkflowError in file "Snakefile", line 7: Resource 'runtime' with value '00:30:00' could not be parsed as minutes
+tests/test_github_issue2848	tests.py	1	evaluated	ChildIOException: File/directory is a child to another output:
 tests/test_github_issue806	plain	1	failed	KeyError in file "Snakefile", line 5: 'src_lang'
 tests/test_github_issue_4039_runtime_profile	tests.py	0	evaluated
 tests/test_google_lifesciences	plain	1	failed	NotImplementedError in file "Snakefile", line 5: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
@@ -346,6 +349,8 @@ tests/test_params_pickling	plain	1	failed	ModuleNotFoundError in file "Snakefile
 tests/test_pathvars_cycle	tests.py	1	failed	WorkflowError in file "Snakefile", line 1: Cyclic pathvar reference detected between: bar, foo (pathvars: foo='foo/<bar>',bar='<foo>')
 tests/test_pep_pathlib	plain	1	failed	WorkflowError in file "Snakefile", line 6: For PEP schema support, please install eido.
 tests/test_peppy	plain	1	failed	WorkflowError in file "Snakefile", line 4: For PEP schema support, please install eido.
+tests/test_pipe_depend	tests.py	1	evaluated	WorkflowError: Output file test.txt is marked as pipe but is requested by a rule that does not execute anything. This is not allowed because it would lead to a dead lock.
+tests/test_priority_invalid	tests.py	1	evaluated	RuleException in rule bad_priority in file "Snakefile", line 9: Priority function must return a numeric value (int or float), got str.
 tests/test_profile_double_dash	tests.py	0	evaluated
 tests/test_python_import_from_github_module	plain	1	failed	WorkflowError in file "Snakefile", line 18: Failed to get mtime of git source file f4d5854841d79e0393d118745c7dbe856268ed59:tests/test_python_import_from_github_module/minimal_module/Snakefile
 tests/test_remote_auto	plain	1	failed	ImportError in file "Snakefile", line 4: cannot import name 'AUTO' from 'snakemake.remote' (/home/beavis/.cache/uv/archive-v0/BytD8Vi5erkz6OTu/lib/python3.13/site-packages/snakemake/remote/__init__.py)

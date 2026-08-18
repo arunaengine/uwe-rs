@@ -675,6 +675,11 @@ impl Session {
                     mode: DeliveryMode::Copy,
                 });
             }
+            if file.directory
+                && let Some(planner) = self.planner.as_mut()
+            {
+                planner.made_folders.push(path.clone());
+            }
             self.files.add_output(
                 &path,
                 Produced {

@@ -6,6 +6,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use python_evaluator::{Error, ErrorKind, Interpreter, Value};
@@ -121,6 +122,8 @@ pub struct Planner {
     stack: Vec<(usize, Wildcards)>,
     matchers: Vec<Vec<Rc<Matcher>>>,
     pub assume_inputs: bool,
+    /// The directory outputs that jobs of this run made, by their absolute paths.
+    pub made_folders: Vec<PathBuf>,
 }
 
 impl Planner {
@@ -145,6 +148,7 @@ impl Planner {
             stack: Vec::new(),
             matchers,
             assume_inputs,
+            made_folders: Vec::new(),
         }
     }
 
@@ -306,6 +310,15 @@ impl Planner {
     ) -> Result<Option<usize>, Failure> {
         if let Some(found) = self.producers.get(file) {
             return Ok(*found);
+        }
+        // A file that a directory output of a finished job holds comes from that job, as in
+        // Snakemake, which plans no other job for it (test_checkpoints_many).
+        let path = interpreter.host.resolve(file);
+        let made =
+            (self.made_folders.iter()).any(|folder| path.starts_with(folder) && path != *folder);
+        if made && self.exists(interpreter, file) {
+            self.producers.insert(file.to_owned(), None);
+            return Ok(None);
         }
         let mut candidates = self.candidates(file);
         if candidates.is_empty() {

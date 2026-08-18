@@ -1,0 +1,11 @@
+2 tasks, 2 steps, 1 edges
+1 B_A_run <- []
+2 B_all <- [1]
+task 1: -
+  command: bash -c set -euo pipefail;  echo 'I was here' > <function object>
+  inputs: Snakefile
+  outputs: foo.txt aaalog
+task 2: -
+  command: 
+  inputs: foo.txt
+  outputs: 

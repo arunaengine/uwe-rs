@@ -16,6 +16,7 @@ mod git;
 mod inputs;
 mod iofile;
 mod ioutils;
+mod metadata;
 mod namespace;
 mod objects;
 mod output_schema;

@@ -646,7 +646,8 @@ impl Planner {
     }
 
     /// Snakemake's `mtime` trigger: a job runs again when an input that is not `ancient` is
-    /// newer than its oldest output. Only files on this machine have times to compare.
+    /// newer than its oldest output, unless Snakemake's records of the outputs name the
+    /// checksum that the input has. Only files on this machine have times to compare.
     fn has_newer_inputs(&self, interpreter: &Interpreter, job: usize, outputs: &[String]) -> bool {
         let modified = |file: &str| {
             let path = interpreter.host.resolve(file);
@@ -666,7 +667,8 @@ impl Planner {
         (self.jobs[job].input.values.iter())
             .filter(|value| value.tag("ancient").is_none())
             .filter_map(|value| value.as_str())
-            .any(|file| modified(file).is_some_and(|time| time > oldest))
+            .filter(|file| modified(file).is_some_and(|time| time > oldest))
+            .any(|file| !crate::metadata::same_checksum(interpreter, outputs, file))
     }
 }
 

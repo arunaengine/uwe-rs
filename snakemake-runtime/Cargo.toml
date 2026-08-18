@@ -12,6 +12,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+base64.workspace = true
 executor.workspace = true
 fancy-regex.workspace = true
 indexmap.workspace = true
@@ -19,6 +20,7 @@ input-schema.workspace = true
 jsonschema.workspace = true
 python-evaluator.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 snakemake-parser.workspace = true
 storage.workspace = true
 workflow-graph.workspace = true

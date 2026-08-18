@@ -394,6 +394,9 @@ impl Session {
                 }
             }
         }
+        if let Some(message) = pipe_problem(planner, &self.order, &self.needrun) {
+            return Err(self.error(&crate::workflow::workflow_error(message)));
+        }
         outputs.sort();
         outputs.dedup();
         for pair in outputs.windows(2) {
@@ -1163,4 +1166,76 @@ fn describe<T>(
     let _ = session.finish();
     *session = open()?;
     Ok(None)
+}
+
+/// Snakemake's `handle_pipes_and_services`: a pipe or service output of a job that runs has
+/// one consumer (a pipe exactly one), which runs something, and neither side is a `run:`
+/// block; the first problem, if any, in Snakemake's words.
+fn pipe_problem(
+    planner: &crate::plan::Planner,
+    order: &[usize],
+    needrun: &HashMap<usize, bool>,
+) -> Option<String> {
+    use crate::rule::Action;
+    let action = |job: usize| &planner.rules[planner.jobs[job].rule].action;
+    for job in order.iter().copied() {
+        if !needrun.get(&job).copied().unwrap_or(false) {
+            continue;
+        }
+        for value in &planner.jobs[job].output.values {
+            let pipe = value.tag("pipe").is_some();
+            if !pipe && value.tag("service").is_none() {
+                continue;
+            }
+            let Some(file) = value.as_str() else {
+                continue;
+            };
+            if matches!(action(job), Action::Run(_)) {
+                return Some(
+                    "Rule defines pipe output but uses a 'run' directive. This is not possible \
+                     for technical reasons. Consider using 'shell' or 'script'."
+                        .into(),
+                );
+            }
+            let consumers: Vec<usize> = (order.iter().copied())
+                .filter(|consumer| {
+                    (planner.jobs[*consumer].dependencies.iter())
+                        .any(|(input, producer)| *producer == job && input == file)
+                })
+                .collect();
+            match consumers.as_slice() {
+                [_, _, ..] if pipe => {
+                    return Some(format!(
+                        "Output file {file} is marked as pipe but more than one job depends on \
+                         it. Make sure that any pipe output is only consumed by one job"
+                    ));
+                }
+                [] => {
+                    return Some(format!(
+                        "Output file {file} is marked as pipe or service but it has no \
+                         consumer. This is invalid because it can lead to a dead lock."
+                    ));
+                }
+                [first, ..] if pipe && matches!(action(*first), Action::None) => {
+                    return Some(format!(
+                        "Output file {file} is marked as pipe but is requested by a rule that \
+                         does not execute anything. This is not allowed because it would lead \
+                         to a dead lock."
+                    ));
+                }
+                _ => {}
+            }
+            if consumers
+                .iter()
+                .any(|consumer| matches!(action(*consumer), Action::Run(_)))
+            {
+                return Some(
+                    "Rule consumes pipe or service input but uses a 'run' directive. This is \
+                     not possible for technical reasons. Consider using 'shell' or 'script'."
+                        .into(),
+                );
+            }
+        }
+    }
+    None
 }

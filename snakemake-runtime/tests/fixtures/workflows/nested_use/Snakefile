@@ -1,0 +1,29 @@
+# The with: block of an outer use rule wins over the one of the module it uses: Snakemake 9.27
+# runs B_A_run with the input Snakefile here (its test_module_nested).
+shell.executable("bash")
+
+
+module B:
+    snakefile:
+        "module_shallow.smk"
+    config:
+        {"bb": "invalid-file"}
+    replace_prefix:
+        {"b-/A/": ""}
+
+
+use rule * from B as B_*
+
+
+use rule A_run from B as B_A_run with:
+    input:
+        rds="Snakefile",
+
+        
+use rule A_run from B as documented_run with:
+    """a rule from deep module"""
+        
+
+assert hasattr(
+    rules, "B_A_run"
+), f"bug: rule cannot be accessed as B_A_run: {dir(rules)}"

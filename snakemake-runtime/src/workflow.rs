@@ -891,15 +891,21 @@ impl Hook {
         });
         let skips: Vec<String> = {
             let state = self.state.borrow();
-            let mut skips = Vec::new();
-            if let Some(overwrite) = state.modifier().overwrite.as_ref().filter(|_| !unused) {
+            let mut skips: Vec<String> = Vec::new();
+            // The `with:` blocks of nested `use rule` statements apply from the innermost to
+            // the outermost, so that the outermost wins, as in Snakemake 9.27
+            // (test_module_nested).
+            let overwrites = (state.modifiers.iter().rev())
+                .filter_map(|modifier| modifier.overwrite.as_ref())
+                .filter(|_| !unused);
+            for overwrite in overwrites {
                 for (keyword, property) in [
                     (RuleKeyword::Input, "input"),
                     (RuleKeyword::Output, "output"),
                     (RuleKeyword::Log, "log"),
                     (RuleKeyword::Benchmark, "benchmark"),
                 ] {
-                    if overwrite.has(keyword) {
+                    if overwrite.has(keyword) && !skips.iter().any(|skip| skip == property) {
                         skips.push(property.to_owned());
                     }
                 }

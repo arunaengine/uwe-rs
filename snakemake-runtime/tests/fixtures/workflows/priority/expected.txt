@@ -1,0 +1,7 @@
+1 tasks, 1 steps, 0 edges
+1 valid_priority <- []
+task 1: -
+  command: bash -c set -euo pipefail;  touch valid.txt
+  inputs: 
+  outputs: valid.txt
+error: WorkflowError: RuleException in rule bad_priority: Priority function must return a numeric value (int or float), got str.

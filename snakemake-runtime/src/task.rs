@@ -229,6 +229,29 @@ pub fn build(
             ))
         })?,
     };
+    // Snakemake's `expand_priority`: a priority function must give a number. iunctus leaves
+    // the order of tasks to the executor.
+    if let Some(priority) = &rule.priority
+        && is_callable(interpreter, priority)
+    {
+        let aux = [
+            ("input", input.clone()),
+            ("attempt", attempt.clone()),
+            ("rulename", rulename.clone()),
+        ];
+        let value = evaluate(interpreter, priority, &wildcards, &aux)?;
+        if !matches!(
+            value.plain(),
+            Value::Int(_) | Value::Float(_) | Value::Bool(_)
+        ) {
+            return Err(workflow_error(format!(
+                "RuleException in rule {}: Priority function must return a numeric value (int \
+                 or float), got {}.",
+                rule.name,
+                python_evaluator::types::type_name(&value)
+            )));
+        }
+    }
     let job_values = crate::resources::JobValues {
         wildcards: &wildcards,
         input: &input,

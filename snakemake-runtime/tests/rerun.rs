@@ -22,8 +22,9 @@ rule keep:
     shell: "cat {input} > {output}"
 "#;
 
-/// The steps that a simulated run of the folder runs.
-fn steps(input_age: u64) -> Vec<String> {
+/// The steps that a simulated run of the folder runs, with Snakemake's record of `copy.txt`
+/// when given.
+fn steps(input_age: u64, record: Option<&str>) -> Vec<String> {
     let scratch = tempfile::tempdir().expect("a temporary directory");
     let folder = scratch.path().join("workflow");
     std::fs::create_dir_all(&folder).expect("makes the folder");
@@ -42,6 +43,12 @@ fn steps(input_age: u64) -> Vec<String> {
     write("copy.txt", 100);
     write("kept.txt", 100);
     write("in.txt", input_age);
+    if let Some(record) = record {
+        let folder = folder.join(".snakemake/metadata");
+        std::fs::create_dir_all(&folder).expect("makes the folder");
+        // The name of `copy.txt` in URL-safe Base64.
+        std::fs::write(folder.join("Y29weS50eHQ="), record).expect("writes the record");
+    }
     let launch = Launch {
         target: folder.clone(),
         scratch: scratch.path().to_path_buf(),
@@ -62,6 +69,16 @@ fn steps(input_age: u64) -> Vec<String> {
 #[test]
 fn newer_inputs_run_their_jobs_again() {
     // Snakemake 9.27 runs `copy` again for an input newer than its output, not `keep`.
-    assert_eq!(steps(10), ["all", "copy"]);
-    assert_eq!(steps(1000), ["all"]);
+    assert_eq!(steps(10, None), ["all", "copy"]);
+    assert_eq!(steps(1000, None), ["all"]);
+}
+
+#[test]
+fn newer_inputs_with_the_recorded_checksum_do_not() {
+    // SHA-256 of "x\n", as Snakemake 9.27 records it for the input of `copy.txt`.
+    let digest = "73cb3858a687a8494ca3323053016282f3dad39d42cf62ca4e79dda2aac7d9ac";
+    let same = format!(r#"{{"input_checksums": {{"in.txt": "{digest}"}}}}"#);
+    let other = r#"{"input_checksums": {"in.txt": "sha256:00"}}"#;
+    assert_eq!(steps(10, Some(&same)), ["all"]);
+    assert_eq!(steps(10, Some(other)), ["all", "copy"]);
 }

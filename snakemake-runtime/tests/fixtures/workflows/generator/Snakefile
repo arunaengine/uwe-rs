@@ -1,0 +1,15 @@
+# A generator expression as input loses its first item, as in Snakemake 9.27, whose multiext
+# check takes it (its knapsack test runs 2.bam and 3.bam only).
+DATASETS = "1 2 3".split()
+
+
+rule all:
+    input:
+        "{ds}.bam".format(ds=ds) for ds in DATASETS
+
+
+rule make:
+    output:
+        "{ds}.bam",
+    shell:
+        "touch {output}"

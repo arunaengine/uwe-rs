@@ -1,0 +1,13 @@
+# A pipe that a rule without an action requests fails as in Snakemake 9.27 (its
+# test_pipe_depend).
+rule all:
+    input:
+        "test.txt"
+
+
+rule a:
+    output:
+        pipe("test.txt")
+    shell:
+        "echo test > {output}"
+

@@ -1,0 +1,2 @@
+0 tasks, 0 steps, 0 edges
+error: WorkflowError: Output file test.txt is marked as pipe but is requested by a rule that does not execute anything. This is not allowed because it would lead to a dead lock.

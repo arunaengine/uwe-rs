@@ -131,6 +131,7 @@ catalog/niekwit__partridge-workflow	unsupported (decision 16)	While it is planne
 catalog/niekwit__rna-seq-salmon-deseq2	invalid	Its sample table does not match the workflow's own schema.
 catalog/niekwit__rna-seq-star-rmats	missing	Needs input data that is not in its repository.
 catalog/niekwit__rna-seq-star-tetranscripts	missing	Needs FASTQ files that are not in its repository.
+catalog/nikostr__dna-seq-deepvariant-glnexus-variant-calling	invalid	For the single-end unit B-2, fastp_se makes the trimmed reads and fastp_pe, first by the ruleorder, the report, so two jobs make results/qc/fastp/B-2.html, which Snakemake 9.27 rejects as ambiguous (after the warning that the oracle line shows).
 catalog/nismod__open-gira	missing	Needs the Python package open_gira, which is neither in its repository nor on PyPI.
 catalog/nixonlab__HERV_um_mets	missing	Reads resources/mskruns.txt, which is not in its repository.
 catalog/nixonlab__snakemake_rule_library	missing	Includes workflow/rules/common.smk, which is not in its repository.
@@ -188,14 +189,18 @@ catalog/ylab-hi__ScanNeo2	missing	Needs sequence files for its samples, which ar
 catalog/zavolanlab__mirflowz	missing	Needs the config file workflow/../test/config_lint.yaml, which is not in its repository.
 catalog/zhongmicai__mosaicatcher-pipeline	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 catalog/zjnolen__PopGLen	missing	Reads path/to/ref.fa, which is not in its repository.
+tests/test_ambiguousruleexception	invalid	Two rules make C/one.txt, which Snakemake rejects as ambiguous, as its own tests expect.
 tests/test_cloud_checkpoints_issue574	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 tests/test_convert_to_cwl	invalid	Has Snakefile code that Snakemake cannot parse.
+tests/test_dup_out_patterns	invalid	Snakemake's own tests expect it to fail.
 tests/test_envvars	missing	Needs environment variables that are not set, which the workflow asks for with envvars.
 tests/test_expand_flag	invalid	Snakemake's own tests expect it to fail.
 tests/test_ftp_immediate_close	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 tests/test_generate_unit_tests	missing	Needs the config file config/config.json, which is not in its repository.
 tests/test_github_issue1062	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
+tests/test_github_issue1469	invalid	Two rules make foo.txt, which Snakemake rejects as ambiguous.
 tests/test_github_issue2154	invalid	Gives the runtime 00:30:00, which Snakemake cannot read as minutes.
+tests/test_github_issue2848	invalid	Snakemake's own tests expect it to fail.
 tests/test_google_lifesciences	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 tests/test_gs_requester_pays	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 tests/test_issue1085	invalid	Snakemake's own tests expect it to fail.
@@ -205,11 +210,15 @@ tests/test_issue3192	missing	Reads the environment variable CONDA_PREFIX, which 
 tests/test_issue805	invalid	Snakemake's own tests expect it to fail.
 tests/test_issue854	invalid	Snakemake's own tests expect it to fail.
 tests/test_kubernetes	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
+tests/test_module_complex	unsupported (decision 16)	While it is planned, the workflow reads the scenario of each group from a file that a job writes, which the simulator makes empty.
+tests/test_module_complex2	unsupported (decision 16)	While it is planned, the workflow reads the scenario of each group from a file that a job writes, which the simulator makes empty.
 tests/test_module_local_git	missing	Needs a git repository that Snakemake's own test makes first.
 tests/test_modules_no_name	invalid	Snakemake's own tests expect it to fail.
 tests/test_modules_two_names	invalid	Snakemake's own tests expect it to fail.
 tests/test_params_outdated_code	invalid	Its first rule has wildcards, so it has no default target, and no test of Snakemake gives one.
 tests/test_pathvars_cycle	invalid	Snakemake's own tests expect it to fail.
+tests/test_pipe_depend	invalid	Snakemake's own tests expect it to fail.
+tests/test_priority_invalid	invalid	Snakemake's own tests expect it to fail.
 tests/test_remote_auto	invalid	Imports AUTO from snakemake.remote, which Snakemake 9.27 does not have.
 tests/test_remote_azure	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.
 tests/test_remote_gs	invalid	Uses a remote provider of Snakemake 7, which Snakemake 8 replaced by storage plugins.

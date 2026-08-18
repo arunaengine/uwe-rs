@@ -23,7 +23,7 @@ catalog/ClavelLab__genome-assembly 1 workflow/rules/common.smk:7: NotImplemented
 catalog/Crollo95__survhive-workflow 1 workflow/Snakefile:18: WorkflowError: Workflow defines configfile config/config.yaml but it is not present or accessible (full checked path: config/config.yaml).
 catalog/DSiB-G2__G2-CovPipeline ok 50
 catalog/DavideBrex__SpikeFlow 1 workflow/rules/common.smk:661: WorkflowError: InputFunctionException in rule bam2bigwig_general (wildcards: id=H3K4me3_EGF-rep1): ValueError: could not convert string to float: '' (the workflow read results/logs/spike/H3K4me3_EGF-rep1.normFactor, a task output that the simulator made without its c
-catalog/DustinMathia__aradopsis-drive ok 1
+catalog/DustinMathia__aradopsis-drive ok 13
 catalog/ETH-NEXUS__gExcite_pipeline 1 workflow/rules/misc_snake.smk:152: WorkflowError: InputFunctionException in rule CITE_seq_Count (wildcards: sample_set=PBMC_D1): FileNotFoundError: [Errno 2] No such file or directory: 'fastqs/adt/PBMC_D1/' (the simulated run assumed 3 input files that do not exist and that no rule makes, like fas
 catalog/EichlerLab__ONT_pipelines 1 workflow/Snakefile:11: NameError: name 'srcdir' is not defined
 catalog/EloiseEsox__snakemake ok 0
@@ -74,7 +74,7 @@ catalog/MathiasEskildsen__ONT_RNA-seq_wf 1 workflow/Snakefile:13: FileNotFoundEr
 catalog/MethyleneBlues__Snake ok 10
 catalog/NCI-CGR__TriosCompass_v2 1 workflow/Snakefile:8: WorkflowError: Workflow defines configfile workflow/../config/config.yaml but it is not present or accessible (full checked path: config/config.yaml).
 catalog/NeuroGranberg__NODDIpipeline 1 workflow/rules/NODDIpipeline.smk:26: KeyError: ('sub', 'ses', 'scan', 'target', 'acq', 'suffix')
-catalog/Ovewh__ACP-haugvaldstad-et-al-2025 ok 395
+catalog/Ovewh__ACP-haugvaldstad-et-al-2025 ok 396
 catalog/Ovewh__Climaso 1 workflow/Snakefile:139: WorkflowError: InputFunctionException in rule calculate_SW_ERF (wildcards: experiment=piClim-2xdust, vName=ERFtsw, model=EC-Earth3-AerChem, freq=Ayear): FileNotFoundError: /home/oveh/mnt/Betzy_CMIP/CMIP6/AerChemMIP/EC-Earth-Consortium/EC-Earth3-AerChem/piClim-2xdust/r1i1p1f
 catalog/PathoGenOmics-Lab__VIPERA ok 217
 catalog/Phlya__C-integration-mapping ok 0
@@ -329,7 +329,7 @@ catalog/niekwit__rna-seq-star-deseq2 ok 32
 catalog/niekwit__rna-seq-star-rmats 1 workflow/Snakefile:29: ValueError: Invalid format specifier
 catalog/niekwit__rna-seq-star-tetranscripts 1 workflow/scripts/general_functions.smk:174: AssertionError: No fastq files found ending with .fastq.gz...
 catalog/niekwit__smallRNA-seq ok 73
-catalog/nikostr__dna-seq-deepvariant-glnexus-variant-calling ok 58
+catalog/nikostr__dna-seq-deepvariant-glnexus-variant-calling 1 WorkflowError: AmbiguousRuleException: Rules fastp_se and fastp_pe are ambiguous for the file results/qc/fastp/B-2.html.
 catalog/nikostr__read-mapping ok 65
 catalog/nismod__open-gira 1 workflow/Snakefile:20: the workflow imports the Python package open_gira, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
 catalog/nixonlab__HERV_um_mets 1 workflow/rules/common.smk:6: FileNotFoundError: [Errno 2] No such file or directory: 'resources/mskruns.txt'
@@ -464,7 +464,7 @@ catalog/zhuakexi__dna-seq-gatk-variant-calling ok 10
 catalog/zifornd__arrays ok 33
 catalog/ziyaipek__snakemake ok 10
 catalog/zjnolen__PopGLen 1 workflow/rules/common.smk:54: FileNotFoundError: [Errno 2] No such file or directory: 'path/to/ref.fa'
-tests/knapsack ok 10
+tests/knapsack ok 7
 tests/profile ok 4001
 tests/test01 ok 2
 tests/test02 ok 3
@@ -484,7 +484,7 @@ tests/testHighWorkload ok 23
 tests/test_(with_parenthese's) ok 1
 tests/test_access_patterns ok 12
 tests/test_all_temp ok 3
-tests/test_ambiguousruleexception ok 7
+tests/test_ambiguousruleexception 1 WorkflowError: AmbiguousRuleException: Rules A and B are ambiguous for the file C/one.txt.
 tests/test_ancient ok 5
 tests/test_ancient_cli ok 4
 tests/test_ancient_dag ok 24
@@ -548,7 +548,7 @@ tests/test_deploy_script ok 2
 tests/test_deploy_sources ok 1
 tests/test_directory ok 6
 tests/test_dryrun_executor_validation ok 2
-tests/test_dup_out_patterns ok 2
+tests/test_dup_out_patterns 1 Snakefile:5: WorkflowError: Duplicate output file pattern in rule my_rule. First two duplicate for entries 0 and 1.
 tests/test_dynamic_container ok 6
 tests/test_empty_include ok 0
 tests/test_ensure ok 2
@@ -582,7 +582,7 @@ tests/test_github_issue1384 ok 3
 tests/test_github_issue1389 ok 3
 tests/test_github_issue1396 ok 2
 tests/test_github_issue1460 ok 3
-tests/test_github_issue1469 ok 3
+tests/test_github_issue1469 1 WorkflowError: AmbiguousRuleException: Rules single_file and both_files are ambiguous for the file foo.txt.
 tests/test_github_issue1498 ok 4
 tests/test_github_issue1500 ok 3
 tests/test_github_issue1542 ok 2
@@ -596,7 +596,7 @@ tests/test_github_issue2213 ok 3
 tests/test_github_issue2255 ok 3
 tests/test_github_issue261 ok 2
 tests/test_github_issue2732 ok 5
-tests/test_github_issue2848 ok 4
+tests/test_github_issue2848 1 WorkflowError: ChildIOException: File/directory is a child to another output:
 tests/test_github_issue3213 ok 3
 tests/test_github_issue3271 ok 1
 tests/test_github_issue3556 ok 8
@@ -629,8 +629,8 @@ tests/test_group_jobs_resources ok 17
 tests/test_group_parallel ok 3
 tests/test_group_temp ok 4
 tests/test_group_with_pipe ok 8
-tests/test_groupid_expand ok 7
-tests/test_groupid_expand_cluster ok 7
+tests/test_groupid_expand ok 5
+tests/test_groupid_expand_cluster ok 5
 tests/test_groups_out_of_jobs ok 5
 tests/test_gs_requester_pays 1 Snakefile:2: the workflow imports the Python package google, which has no stand-in in iunctus; it runs in a Python container (decision 19), but this run has no container runtime
 tests/test_handle_storage_multi_consumers ok 3
@@ -701,11 +701,11 @@ tests/test_many_jobs ok 200001
 tests/test_match_by_wildcard_names ok 3
 tests/test_metadata_migration ok 1
 tests/test_missing_file_dryrun ok 2
-tests/test_module_checkpoint ok 5
-tests/test_module_complex ok 1
-tests/test_module_complex2 ok 1
+tests/test_module_checkpoint ok 7
+tests/test_module_complex 1 https://raw.githubusercontent.com/snakemake-workflows/dna-seq-varlociraptor/v5.0.2/workflow/rules/common.smk:870: WorkflowError: InputFunctionException in rule first_vembrane_table (wildcards: group=a, event=somatic): TypeError: 'NoneType' object is not subscriptable (the simulated run assumed 3 i
+tests/test_module_complex2 1 https://raw.githubusercontent.com/snakemake-workflows/dna-seq-varlociraptor/v5.0.2/workflow/rules/common.smk:870: WorkflowError: InputFunctionException in rule basic_vembrane_table (wildcards: group=a, event=somatic): TypeError: 'NoneType' object is not subscriptable (the simulated run assumed 3 i
 tests/test_module_global_container ok 2
-tests/test_module_input_func ok 1
+tests/test_module_input_func ok 2
 tests/test_module_local_git 1 Snakefile:17: WorkflowError: Failed to read source git+file://repo/module/workflow/Snakefile@v0.0.1 from git repo.
 tests/test_module_nested ok 2
 tests/test_module_no_prefixing_modified_paths ok 2
@@ -762,14 +762,14 @@ tests/test_pathvars_storage ok 2
 tests/test_pep_pathlib ok 3
 tests/test_peppy ok 3
 tests/test_persistence_backend_db_run_directive_concurrency ok 101
-tests/test_pipe_depend ok 2
+tests/test_pipe_depend 1 WorkflowError: Output file test.txt is marked as pipe but is requested by a rule that does not execute anything. This is not allowed because it would lead to a dead lock.
 tests/test_pipes ok 5
 tests/test_pipes2 ok 3
 tests/test_pipes_fail ok 5
 tests/test_pipes_multiple ok 6
 tests/test_prebuilt_conda_script ok 2
 tests/test_priority ok 12
-tests/test_priority_invalid ok 3
+tests/test_priority_invalid 1 WorkflowError: RuleException in rule bad_priority: Priority function must return a numeric value (int or float), got str.
 tests/test_profile_double_dash ok 1
 tests/test_profile_filename ok 1
 tests/test_profile_multiple ok 1
@@ -790,14 +790,14 @@ tests/test_remote_ncbi 1 Snakefile:2: NotImplementedError: Remote providers have
 tests/test_remote_ncbi_simple 1 Snakefile:2: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_remote_sftp 1 Snakefile:2: NotImplementedError: Remote providers have been replaced by Snakemake storage plugins. Please use the corresponding storage plugin instead (snakemake-storage-plugin-*).
 tests/test_remote_zenodo 1 Snakefile:4: KeyError: 'ZENODO_SANDBOX_PAT'
-tests/test_report ok 1
+tests/test_report ok 2
 tests/test_report_after_run ok 15
 tests/test_report_dir ok 0
 tests/test_report_dir_but_file ok 1
 tests/test_report_display_code ok 4
 tests/test_report_href ok 1
 tests/test_report_metadata ok 1
-tests/test_report_zip ok 1
+tests/test_report_zip ok 2
 tests/test_resource_quoting ok 1
 tests/test_resource_string_in_cli_or_profile ok 2
 tests/test_resource_tbdstring ok 2

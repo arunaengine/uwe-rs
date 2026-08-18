@@ -236,3 +236,63 @@ fn logs_that_jobs_do_not_write_are_delivered_empty() {
     targets.0.sort();
     assert_eq!(targets.0, ["data.txt", "logs/A.log", "logs/all.log"]);
 }
+
+/// Makes each directory output with a file `inner.txt` in it, and the other outputs, and notes
+/// the steps it ran.
+struct Folders(std::path::PathBuf, Vec<String>);
+
+impl Executor for Folders {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        let task = &attempt.task;
+        self.1.push(task.step.clone());
+        let mut files = Vec::new();
+        for output in &task.outputs {
+            let location = self.0.join(format!("{}", task.id));
+            if output.ends_with('/') {
+                std::fs::create_dir_all(&location).expect("makes the folder");
+                std::fs::write(location.join("inner.txt"), "x\n").expect("writes");
+            } else {
+                std::fs::write(&location, "x\n").expect("writes");
+            }
+            files.push(OutputFile {
+                path: output.clone(),
+                location: location.to_string_lossy().into_owned(),
+                directory: output.ends_with('/'),
+                ..OutputFile::default()
+            });
+        }
+        Running::ended(Ok(Outcome {
+            id: task.id,
+            files,
+            ..Outcome::default()
+        }))
+    }
+}
+
+#[test]
+fn files_in_a_made_folder_come_from_its_job() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let workdir = folder.path().join("workflow");
+    std::fs::create_dir(&workdir).expect("makes the folder");
+    // `make` could also make `made/s/inner.txt` with x=s/inner.txt; Snakemake 9.27 plans no
+    // such job, as the file is in the folder that the checkpoint made (test_checkpoints_many).
+    let snakefile = "def inner(wildcards):\n    folder = checkpoints.make.get(x=\"s\").output[0]\n    \
+                     return f\"{folder}/inner.txt\"\n\nrule all:\n    input: inner\n\n\
+                     checkpoint make:\n    input: \"src/{x}.txt\"\n    \
+                     output: directory(\"made/{x}\")\n    \
+                     shell: \"mkdir -p {output} && touch {output}/inner.txt\"\n\n\
+                     rule src:\n    output: \"src/{x}.txt\"\n    shell: \"touch {output}\"\n";
+    std::fs::write(workdir.join("Snakefile"), snakefile).expect("writes the Snakefile");
+    let launch = Launch {
+        target: workdir.clone(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
+    let made = folder.path().join("made");
+    std::fs::create_dir(&made).expect("makes the folder");
+    let mut executor = Folders(made, Vec::new());
+    let execution = Engine::new(&mut executor).run("Snakefile", driver.as_mut());
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    assert_eq!(executor.1, ["src", "make", "all"]);
+}

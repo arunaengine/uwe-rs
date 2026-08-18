@@ -45,6 +45,87 @@ pub fn apply_pathvars(pathvars: &Pathvars, value: &Value) -> Result<Value, Error
     }
 }
 
+/// What one module does to the paths of the rules that it loads: a prefix, or prefixes that
+/// it replaces.
+#[derive(Clone, Debug)]
+struct PathLevel {
+    prefix: Option<String>,
+    replace_prefix: Vec<(String, String)>,
+}
+
+/// A path with the prefixes of modules, from the innermost; absolute paths and paths that
+/// start with `..` stay as they are.
+fn modify_text(path: &str, levels: &[PathLevel]) -> String {
+    let mut path = path.to_owned();
+    for level in levels {
+        if path.starts_with('/') || path.starts_with("..") {
+            continue;
+        }
+        if let Some(prefix) = &level.prefix {
+            let prefix = if prefix.ends_with('/') {
+                prefix.clone()
+            } else {
+                format!("{prefix}/")
+            };
+            path = format!("{prefix}{path}");
+        } else if let Some((from, to)) = (level.replace_prefix.iter())
+            .filter(|(from, _)| path.starts_with(from.as_str()))
+            .max_by_key(|(from, _)| from.len())
+        {
+            path = format!("{to}{}", &path[from.len()..]);
+        }
+    }
+    path
+}
+
+/// The tag of an input function of a module's rule, which carries the prefixes of the module
+/// to the files that it returns, also when another rule reuses it (`rules.x.input`).
+pub const MODULE_PATHS: &str = "module_paths";
+
+/// The value of the tag [`MODULE_PATHS`]: for each level, the prefix or `None`, and the pairs
+/// of replaced prefixes.
+fn levels_value(levels: &[PathLevel]) -> Value {
+    let level = |level: &PathLevel| {
+        let prefix = level.prefix.as_deref().map_or(Value::None, Value::str);
+        let pairs = (level.replace_prefix.iter())
+            .map(|(from, to)| {
+                Value::tuple(vec![Value::str(from.as_str()), Value::str(to.as_str())])
+            })
+            .collect();
+        Value::tuple(vec![prefix, Value::list(pairs)])
+    };
+    Value::list(levels.iter().map(level).collect())
+}
+
+/// A file that an input function returned, with the prefixes of the module of the function,
+/// as Snakemake applies the path modifier of the rule to what its functions return.
+pub fn module_path(function: &Value, file: &str) -> Option<String> {
+    let Value::List(levels) = function.tag(MODULE_PATHS)?.plain() else {
+        return None;
+    };
+    let text = |value: &Value| value.as_str().map(str::to_owned);
+    let pairs = |value: &Value| match value.plain() {
+        Value::Tuple(items) => Some((text(items.first()?)?, text(items.get(1)?)?)),
+        _ => None,
+    };
+    let levels: Vec<PathLevel> = (levels.borrow().iter())
+        .filter_map(|level| match level.plain() {
+            Value::Tuple(parts) => {
+                let replace_prefix = match parts.get(1).map(Value::plain) {
+                    Some(Value::List(items)) => items.borrow().iter().filter_map(pairs).collect(),
+                    _ => Vec::new(),
+                };
+                Some(PathLevel {
+                    prefix: parts.first().and_then(text),
+                    replace_prefix,
+                })
+            }
+            _ => None,
+        })
+        .collect();
+    Some(modify_text(file, &levels))
+}
+
 /// Files with the names that `multiext` gives them.
 type NamedFiles = Vec<(Value, Option<String>)>;
 
@@ -295,38 +376,30 @@ impl State {
         if value.tag("path_modified").is_some() || value.tag("local").is_some() {
             return value.clone();
         }
-        let Some(mut path) = value.as_str().map(str::to_owned) else {
+        let Some(path) = value.as_str() else {
             return value.clone();
         };
-        let original = path.clone();
-        for modifier in self.modifiers.iter().rev() {
-            if !modifier.is_module
-                || skips.iter().any(|skip| skip == property)
-                || path.starts_with('/')
-                || path.starts_with("..")
-            {
-                continue;
-            }
-            if let Some(prefix) = &modifier.prefix {
-                let prefix = if prefix.ends_with('/') {
-                    prefix.clone()
-                } else {
-                    format!("{prefix}/")
-                };
-                path = format!("{prefix}{path}");
-            } else if let Some((from, to)) = modifier
-                .replace_prefix
-                .iter()
-                .filter(|(from, _)| path.starts_with(from.as_str()))
-                .max_by_key(|(from, _)| from.len())
-            {
-                path = format!("{to}{}", &path[from.len()..]);
-            }
-        }
-        if path == original {
+        let modified = modify_text(path, &self.path_levels(property, skips));
+        if modified == path {
             return value.clone();
         }
-        retag(value, Value::str(path)).with_tag("path_modified", Value::Bool(true))
+        retag(value, Value::str(modified)).with_tag("path_modified", Value::Bool(true))
+    }
+
+    /// The prefix or the replaced prefixes of each module that loads the current code, from
+    /// the innermost, for a property that no `with:` block replaced.
+    fn path_levels(&self, property: &str, skips: &[String]) -> Vec<PathLevel> {
+        if skips.iter().any(|skip| skip == property) {
+            return Vec::new();
+        }
+        (self.modifiers.iter().rev())
+            .filter(|modifier| modifier.is_module)
+            .filter(|modifier| modifier.prefix.is_some() || !modifier.replace_prefix.is_empty())
+            .map(|modifier| PathLevel {
+                prefix: modifier.prefix.clone(),
+                replace_prefix: modifier.replace_prefix.clone(),
+            })
+            .collect()
     }
 }
 
@@ -1285,7 +1358,13 @@ impl Hook {
                         "Only input files can be specified as functions",
                     ));
                 }
-                items.push(value.clone());
+                // The function carries the prefixes of the modules around it.
+                let levels = self.state.borrow().path_levels(property, skips);
+                let function = match levels.is_empty() || value.tag(MODULE_PATHS).is_some() {
+                    true => value.clone(),
+                    false => value.with_tag(MODULE_PATHS, levels_value(&levels)),
+                };
+                items.push(function);
                 if let Some(name) = name {
                     items.add_name(name);
                 }

@@ -837,10 +837,16 @@ fn add_function_result(
         };
         let text = pathvars.apply(&text)?;
         let filled = pattern::apply(&text, wildcards).unwrap_or(text);
-        let mut value = retag(&file, Value::str(filled));
+        let mut value = match crate::workflow::module_path(function, &filled) {
+            Some(modified) if modified != filled && file.tag("path_modified").is_none() => {
+                retag(&file, Value::str(modified)).with_tag("path_modified", Value::Bool(true))
+            }
+            _ => retag(&file, Value::str(filled)),
+        };
         if let Some(tags) = function.tags() {
             for (flag, flag_value) in tags {
-                if &**flag != "unpack" && value.tag(flag).is_none() {
+                let own = ["unpack", crate::workflow::MODULE_PATHS].contains(&&**flag);
+                if !own && value.tag(flag).is_none() {
                     value = value.with_tag(flag, flag_value.clone());
                 }
             }

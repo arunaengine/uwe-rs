@@ -1,0 +1,11 @@
+2 tasks, 2 steps, 1 edges
+1 m_make <- []
+2 all <- [1]
+task 1: -
+  command: bash -c set -euo pipefail;  touch p/x.txt
+  inputs: p
+  outputs: p/x.txt
+task 2: -
+  command: 
+  inputs: p/x.txt
+  outputs: 

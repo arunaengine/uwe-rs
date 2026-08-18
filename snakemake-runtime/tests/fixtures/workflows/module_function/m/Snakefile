@@ -1,0 +1,14 @@
+def f(wildcards):
+    return "x.txt"
+
+
+rule all:
+    input:
+        f,
+
+
+rule make:
+    output:
+        "x.txt",
+    shell:
+        "touch {output}"

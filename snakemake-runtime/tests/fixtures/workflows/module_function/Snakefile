@@ -1,0 +1,17 @@
+# Files that an input function of a module returns get the prefix of the module, also
+# when another rule reuses the function: Snakemake 9.27 makes p/x.txt here (its
+# test_module_input_func).
+module m:
+    snakefile:
+        "m/Snakefile"
+    prefix:
+        "p"
+
+
+use rule * from m as m_*
+
+
+rule all:
+    input:
+        rules.m_all.input,
+    default_target: True

@@ -1,0 +1,14 @@
+# A ruleorder of a module before its rules names them as the module renames them:
+# Snakemake 9.27 runs m_b for x.txt here.
+module m:
+    snakefile:
+        "m/Snakefile"
+
+
+use rule * from m as m_*
+
+
+rule all:
+    input:
+        "x.txt",
+    default_target: True

@@ -693,6 +693,7 @@ impl Session {
         }
         if !self.launch.simulated {
             self.empty_logs(job, &outcome)?;
+            self.benchmark(job, &outcome)?;
         }
         self.done.insert(job);
         if self.needrun.get(&job).copied().unwrap_or(false) {
@@ -805,6 +806,38 @@ impl Session {
         }
         std::fs::write(&path, b"")?;
         Ok(path)
+    }
+
+    /// The benchmark file of a finished job, which Snakemake writes with the time the job took
+    /// and what it used, unless the job wrote it itself.
+    fn benchmark(&mut self, job: usize, outcome: &Outcome) -> Result<(), DriverError> {
+        let name = (self.planner.as_ref())
+            .and_then(|planner| planner.jobs[job].benchmark.as_ref())
+            .and_then(|value| value.as_str().map(str::to_owned));
+        let Some(name) = name else {
+            return Ok(());
+        };
+        let path = self.interpreter.host.resolve(&name);
+        if (outcome.files.iter()).any(|file| self.interpreter.host.resolve(&file.path) == path) {
+            return Ok(());
+        }
+        let file = self
+            .launch
+            .scratch
+            .join(format!("benchmark-{}", outcome.id));
+        std::fs::create_dir_all(&self.launch.scratch)
+            .and_then(|()| std::fs::write(&file, crate::benchmark::text(outcome, &name)))
+            .map_err(|error| DriverError::new(error.to_string()))?;
+        let mut deliveries = self
+            .deliveries
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        deliveries.push(Delivery {
+            location: file.to_string_lossy().into_owned(),
+            target: path.to_string_lossy().into_owned(),
+            mode: DeliveryMode::Copy,
+        });
+        Ok(())
     }
 
     /// Snakemake's `handle_log`: a log file that a finished job did not write is delivered

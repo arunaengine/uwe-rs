@@ -1,0 +1,16 @@
+3 tasks, 2 steps, 2 edges
+1 make (ds=2) <- []
+2 make (ds=3) <- []
+3 all <- [1, 2]
+task 1: -
+  command: bash -c set -euo pipefail;  touch 2.bam
+  inputs: 
+  outputs: 2.bam
+task 2: -
+  command: bash -c set -euo pipefail;  touch 3.bam
+  inputs: 
+  outputs: 3.bam
+task 3: -
+  command: 
+  inputs: 2.bam 3.bam
+  outputs: 

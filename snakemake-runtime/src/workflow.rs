@@ -1156,6 +1156,19 @@ impl Hook {
         interpreter: &mut Interpreter,
         value: &Value,
     ) -> Result<Option<NamedFiles>, Error> {
+        // Snakemake's `is_multiext_items` checks the items with `all()`, which takes the items
+        // of an iterator, like a generator expression, up to the first without the flag, so
+        // that the rule never gets them.
+        if let Value::Iterator(iterator) = value.plain() {
+            loop {
+                let next = iterator.borrow_mut().next_value();
+                match next {
+                    Some(item) if item.tag("multiext").is_some() => {}
+                    Some(_) => return Ok(None),
+                    None => return Ok(Some(Vec::new())),
+                }
+            }
+        }
         let Value::List(items) = value.plain() else {
             return Ok(None);
         };

@@ -28,9 +28,9 @@ impl Lookup {
 
     /// The outcome that a real run would take from the cache for a task whose image is pinned
     /// to `image`, with the stored files. `None` when a real run would run the task: the store
-    /// has no complete result for it, its image is not pinned, or an input cannot be known
-    /// without running or downloading something, like a local file that is missing or a
-    /// remote file that no run downloaded yet.
+    /// has no complete result for it, its image is not pinned, the task denies reuse, or an input
+    /// cannot be known without running or downloading something, like a local file that is
+    /// missing or a remote file that no run downloaded yet.
     pub async fn find(
         &self,
         task: &Task,
@@ -45,7 +45,7 @@ impl Lookup {
             return Ok(None);
         };
         let spec = &prepared.request.spec;
-        if prepared.request.scope != ReuseScope::Shared {
+        if prepared.request.scope != ReuseScope::Shared || !prepared.reuse {
             return Ok(None);
         }
         let key = spec.cache_key()?;

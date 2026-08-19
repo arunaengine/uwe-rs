@@ -457,6 +457,34 @@ fn a_replay_runs_its_task_whatever_the_cache_holds() {
 }
 
 #[test]
+fn a_task_that_denies_reuse_runs_every_time_and_its_result_is_stored() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let runner = runner(root.path(), 0);
+    let mut denied = task(root.path(), "a");
+    denied.reuse = workflow_graph::Reuse::Denied;
+    let first = execute(&runner, &request(&runner, &denied));
+    let second = execute(&runner, &request(&runner, &denied));
+    assert!(!first.reused && !second.reused);
+    assert_eq!(runner.backend().runs.lock().unwrap().len(), 2);
+    let pinned = Some("debian@sha256:00".to_owned());
+    let store = Store::local(&root.path().join("store")).expect("a store");
+    let settings = Settings {
+        downloads: root.path().join("downloads"),
+        import_inputs: false,
+        storage: storage::Storage::default(),
+        digests: None,
+    };
+    let lookup = task_runner::Lookup::new(store, settings);
+    let found = block_on(lookup.find(&denied, pinned.clone())).expect("looks");
+    assert!(found.is_none(), "a lookup does not answer it either");
+    // The same task that allows reuse finds the stored result.
+    let allowed = task(root.path(), "a");
+    assert!(execute(&runner, &request(&runner, &allowed)).reused);
+    let found = block_on(lookup.find(&allowed, pinned)).expect("looks");
+    assert!(found.is_some());
+}
+
+#[test]
 fn results_whose_files_are_gone_run_again() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let runner = runner(root.path(), 0);

@@ -1,0 +1,15 @@
+# An f-string shell command is evaluated when the job runs, with the names of the job before
+# the globals, as in Snakemake 9.27, which runs `echo global > a.txt` here.
+x = "global"
+
+
+rule all:
+    input:
+        "a.txt",
+
+
+rule make:
+    output:
+        "{name}.txt",
+    shell:
+        f"echo {x} > {output}"

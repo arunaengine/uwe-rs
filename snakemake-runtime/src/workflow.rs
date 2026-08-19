@@ -22,7 +22,7 @@ use snakemake_parser::keyword::{GlobalKeyword, ModuleKeyword, RuleKeyword};
 use crate::functions;
 use crate::pathvars::{Level, Pathvars};
 use crate::remote::Mirrors;
-use crate::rule::{Action, Items, Rule, retag};
+use crate::rule::{Action, Items, Rule, ShellCode, retag};
 
 /// A `WorkflowError`, the error Snakemake raises for mistakes in a workflow.
 pub fn workflow_error(message: impl Into<String>) -> Error {
@@ -137,6 +137,8 @@ pub struct RuleInfo {
     pub directives: Vec<(RuleKeyword, Args)>,
     pub run: Option<String>,
     pub docstring: Option<String>,
+    /// The f-string of `shell:`, which Snakemake evaluates when the job runs.
+    pub shell_code: Option<Rc<ShellCode>>,
 }
 
 impl RuleInfo {
@@ -166,6 +168,9 @@ impl RuleInfo {
         }
         if with.run.is_some() {
             self.run = with.run.clone();
+        }
+        if with.has(RuleKeyword::Shell) {
+            self.shell_code = with.shell_code.clone();
         }
     }
 
@@ -894,6 +899,15 @@ impl Hook {
             match &directive.value {
                 DirectiveValue::Arguments(arguments) => {
                     let args = interpreter.eval_arguments(frame, arguments)?;
+                    if directive.keyword == RuleKeyword::Shell
+                        && let [expression @ ast::Expr::FString(_)] = &*arguments.args
+                        && arguments.keywords.is_empty()
+                    {
+                        info.shell_code = Some(Rc::new(ShellCode {
+                            expression: expression.clone(),
+                            source: frame.source.clone(),
+                        }));
+                    }
                     info.directives.push((directive.keyword, args));
                 }
                 DirectiveValue::Body(body) => {
@@ -917,6 +931,14 @@ impl Hook {
                 }
                 DirectiveValue::Expression(expression) => {
                     let value = interpreter.eval(frame, expression)?;
+                    if directive.keyword == RuleKeyword::Shell
+                        && matches!(**expression, ast::Expr::FString(_))
+                    {
+                        info.shell_code = Some(Rc::new(ShellCode {
+                            expression: (**expression).clone(),
+                            source: frame.source.clone(),
+                        }));
+                    }
                     info.directives
                         .push((directive.keyword, Args::new(vec![value])));
                 }
@@ -1139,7 +1161,10 @@ impl Hook {
                 }
                 RuleKeyword::Shadow | RuleKeyword::Cache | RuleKeyword::Handover => {}
                 RuleKeyword::PathVariables => {}
-                RuleKeyword::Shell => rule.action = Action::Shell(first),
+                RuleKeyword::Shell => {
+                    rule.action = Action::Shell(first);
+                    rule.shell_code = info.shell_code.clone();
+                }
                 RuleKeyword::Script => rule.action = Action::Script(first),
                 RuleKeyword::Notebook => rule.action = Action::Notebook(first),
                 RuleKeyword::Wrapper => {

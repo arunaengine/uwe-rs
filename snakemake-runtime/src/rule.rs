@@ -159,6 +159,9 @@ pub struct Rule {
     pub group: Option<Value>,
     pub localrule: bool,
     pub action: Action,
+    /// The f-string of a `shell:` directive, which Snakemake evaluates when the job runs,
+    /// with the names of the job, like `output`.
+    pub shell_code: Option<Rc<ShellCode>>,
     /// The folder of the Snakefile that defines the rule; scripts and conda files are
     /// relative to it.
     pub basedir: PathBuf,
@@ -170,6 +173,12 @@ pub struct Rule {
     pub docstring: Option<String>,
     /// The path variables that the rule's files may contain.
     pub pathvars: Rc<crate::pathvars::Pathvars>,
+}
+
+/// Code of a Snakefile with the source it comes from.
+pub struct ShellCode {
+    pub expression: python_evaluator::ruff_python_ast::Expr,
+    pub source: Rc<python_evaluator::Source>,
 }
 
 impl Rule {
@@ -200,6 +209,7 @@ impl Rule {
             group: None,
             localrule: false,
             action: Action::None,
+            shell_code: None,
             basedir,
             snakefile,
             line,

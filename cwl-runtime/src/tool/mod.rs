@@ -12,7 +12,7 @@ use cwl_parser::model::{
     short_name,
 };
 use cwl_parser::source::Remote;
-use workflow_graph::{Network, Outcome, Resources, Task, TaskId};
+use workflow_graph::{Network, Outcome, Resources, Reuse, Task, TaskId};
 
 use crate::binding::{self, Binder, Bound, Key};
 use crate::expression::{Evaluator, Variables};
@@ -489,6 +489,18 @@ pub fn task(
         }
         None => false,
     };
+    // Reuse is on unless `WorkReuse` turns it off.
+    let reuse = scope.find(|class| match class {
+        RequirementClass::WorkReuse { enable_reuse } => Some(enable_reuse),
+        _ => None,
+    });
+    let reuse = match reuse {
+        Some((Dynamic::Value(enabled), _)) => *enabled,
+        Some((Dynamic::Expression(expression), _)) => {
+            evaluator.evaluate(expression, vars)?.is_truthy()
+        }
+        None => true,
+    };
     let task = Task {
         id,
         name: name.to_owned(),
@@ -514,6 +526,10 @@ pub fn task(
         after: Vec::new(),
         containers: Vec::new(),
         replaces_entrypoint: false,
+        reuse: match reuse {
+            true => Reuse::Allowed,
+            false => Reuse::Denied,
+        },
     };
     // Outputs at the path of an input file get its location back, as with cwltool's path
     // mapper, which holds the files of the input object but not literals or writable copies.

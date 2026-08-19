@@ -428,6 +428,11 @@ fn real_runs_deliver_the_output_files_to_the_output_folder() {
 
 /// Whether the task of a tool with this version and these requirements runs offline.
 fn offline(version: &str, requirements: &str) -> bool {
+    task_of(version, requirements).network == workflow_graph::Network::Denied
+}
+
+/// The task of a tool with this version and these requirements.
+fn task_of(version: &str, requirements: &str) -> workflow_graph::Task {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let tool = format!(
         "cwlVersion: {version}\nclass: CommandLineTool\n{requirements}inputs: []\noutputs: []\n\
@@ -444,7 +449,7 @@ fn offline(version: &str, requirements: &str) -> bool {
     let mut executor = Simulator::new(folder.path().join("simulator"));
     let execution = execute(&main.to_string_lossy(), &mut driver, &mut executor);
     assert!(execution.error.is_none(), "{:?}", execution.error);
-    execution.graph.nodes[0].task.network == workflow_graph::Network::Denied
+    execution.graph.nodes[0].task.clone()
 }
 
 #[test]
@@ -457,6 +462,21 @@ fn tools_run_offline_unless_they_ask_for_the_network() {
     assert!(!offline("v1.2", expression));
     // CWL v1.0 has no NetworkAccess, and its tools may use the network, as with cwltool.
     assert!(!offline("v1.0", ""));
+}
+
+#[test]
+fn work_reuse_can_turn_off_the_cache_of_a_tool() {
+    use workflow_graph::Reuse;
+    assert_eq!(task_of("v1.2", "").reuse, Reuse::Allowed);
+    let off = "requirements:\n  WorkReuse:\n    enableReuse: false\n";
+    assert_eq!(task_of("v1.2", off).reuse, Reuse::Denied);
+    let hint = "hints:\n  WorkReuse:\n    enableReuse: false\n";
+    assert_eq!(task_of("v1.2", hint).reuse, Reuse::Denied);
+    let on = "requirements:\n  WorkReuse:\n    enableReuse: true\n";
+    assert_eq!(task_of("v1.2", on).reuse, Reuse::Allowed);
+    let expression = "requirements:\n  InlineJavascriptRequirement: {}\n  WorkReuse:\n    \
+                      enableReuse: $(1 == 2)\n";
+    assert_eq!(task_of("v1.2", expression).reuse, Reuse::Denied);
 }
 
 /// A store elsewhere: each task leaves `cwl.output.json` at an `s3://store/` location, whose

@@ -35,6 +35,7 @@ fn spec(image: Option<&str>, outputs: &[&str]) -> TaskSpec {
             .collect(),
         stdin: None,
         containers: Vec::new(),
+        replaces_entrypoint: false,
     }
 }
 

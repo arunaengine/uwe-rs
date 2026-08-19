@@ -358,6 +358,7 @@ mod tests {
                     attempts: 2,
                 })
                 .collect(),
+            replaces_entrypoint: false,
         }
     }
 

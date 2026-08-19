@@ -355,6 +355,7 @@ mod tests {
             }],
             stdin: None,
             containers: Vec::new(),
+            replaces_entrypoint: false,
         };
         let staging = Staging {
             inputs: vec![Staged {

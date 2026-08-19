@@ -55,6 +55,7 @@ fn fastqc() -> TaskSpec {
         ],
         stdin: None,
         containers: Vec::new(),
+        replaces_entrypoint: false,
     }
 }
 

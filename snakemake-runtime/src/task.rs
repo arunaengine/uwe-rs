@@ -19,6 +19,31 @@ use crate::rule::{Action, Items, Rule};
 use crate::shell::{command_line, format_command};
 use crate::workflow::{State, workflow_error};
 
+/// The text of an f-string `shell:` directive, evaluated as Snakemake evaluates it when the
+/// job runs: in the rule function, whose names, like `output`, come before the globals.
+fn shell_template(
+    interpreter: &mut Interpreter,
+    rule: &Rule,
+    code: &crate::rule::ShellCode,
+    names: &Args,
+) -> Result<String, Error> {
+    let locals = python_evaluator::Scope::new(None);
+    for (name, value) in &names.keywords {
+        locals.set(name, value.clone());
+    }
+    let frame = python_evaluator::Frame {
+        locals,
+        globals: rule.globals.clone(),
+        source: code.source.clone(),
+        kind: python_evaluator::FrameKind::Function,
+        declared: std::rc::Rc::new(python_evaluator::value::Declared::default()),
+        yields: None,
+        method: None,
+    };
+    let value = interpreter.eval(&frame, &code.expression)?;
+    interpreter.to_str(&value)
+}
+
 /// The longest command that Snakemake passes as one argument (`shell.MAX_ARG_LEN`).
 const MAX_ARG_LEN: usize = 16 * 4096 - 1;
 
@@ -443,7 +468,10 @@ pub fn build(
     match &rule.action {
         Action::None => {}
         Action::Shell(value) => {
-            let template = interpreter.to_str(value)?;
+            let template = match &rule.shell_code {
+                Some(code) => shell_template(interpreter, rule, code, &names)?,
+                None => interpreter.to_str(value)?,
+            };
             let formatted = format_command(interpreter, &template, &names, Some(&rule.globals))
                 .map_err(|error| shell_error(error, rule))?;
             command = command_line(setting.state, &formatted);

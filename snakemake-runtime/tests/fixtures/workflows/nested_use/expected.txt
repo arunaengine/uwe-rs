@@ -2,7 +2,7 @@
 1 B_A_run <- []
 2 B_all <- [1]
 task 1: -
-  command: bash -c set -euo pipefail;  echo 'I was here' > <function object>
+  command: bash -c set -euo pipefail;  echo 'I was here' > foo.txt
   inputs: Snakefile
   outputs: foo.txt aaalog
 task 2: -

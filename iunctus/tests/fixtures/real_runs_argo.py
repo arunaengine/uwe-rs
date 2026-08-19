@@ -41,6 +41,8 @@ OUTCOMES = REPOSITORY / "argo-runtime/tests/fixtures/test-workflows/outcomes.txt
 IUNCTUS = Path(os.environ.get("IUNCTUS") or "target/release/iunctus").resolve()
 OUTPUT = Path(__file__).with_name("real_runs_argo.txt")
 TIMEOUT = 300
+# The start of the record of a workflow whose images are not all on this machine.
+ABSENT = "skipped: images not on this machine"
 # Workflows that Argo's end-to-end tests expect to fail.
 FAILURES = "argo-workflows/test/e2e/expectedfailures/"
 # The entrypoints of the local images, filled once.
@@ -194,19 +196,28 @@ def compare(name, work, environment, local):
     try:
         done = subprocess.run(command, cwd=folder, capture_output=True, text=True,
                               env=environment, timeout=TIMEOUT)
-        code, error = done.returncode, last_error(done.stderr)
+        code, error, text = done.returncode, last_error(done.stderr), done.stderr
     except subprocess.TimeoutExpired:
-        code, error = "timeout", "timeout"
+        code, error, text = "timeout", "timeout", ""
     shutil.rmtree(folder, ignore_errors=True)
-    if re.search(r"cannot read (https?|s3|gs)://", error):
+    if re.search(r"cannot read (https?|s3|gs)://", text):
         return "skipped: reads a remote file"
-    if "no secret store yet" in error:
+    if "no secret store yet" in text:
         return "skipped: reads a Kubernetes Secret, which iunctus has no store for yet"
-    if "is required, but has no value" in error:
+    if "is required, but has no value" in text:
         return "skipped: needs a value for a parameter, which a run of Argo needs too"
-    if "real runs here pull no images" in error:
+    if re.search(r"couldn't find (cluster )?workflow template", text):
+        return "skipped: calls a WorkflowTemplate that is not next to it, for argo lint too"
+    if "real runs here pull no images" in text:
         return "skipped: needs an image that is not on this machine (found when it ran)"
     should_fail = name.startswith(FAILURES) or path.resolve() in expected_failures()
+    # Offline, argo lint knows only the templates of the file itself; a reference to another
+    # file is no error of the workflow.
+    lint_text = ANSI.sub("", lint.stdout + lint.stderr)
+    errors = [line for line in lint_text.splitlines() if "✖ in " in line]
+    if errors and all(re.search(r"couldn't find (cluster )?workflow template", line)
+                      for line in errors):
+        lint = subprocess.CompletedProcess(lint.args, 0)
     if lint.returncode != 0:
         if code != 0:
             return "same: both fail (argo lint rejects it)"
@@ -244,16 +255,26 @@ def main():
             if line and not line.startswith("#"):
                 name, _, rest = line.partition("\t")
                 records.setdefault(name, rest)
+        # The workflows that the record only counts are skipped again, without running.
+        local = local_images()
+        for name in runnable():
+            if name not in records and skipped(TESTS / name, local):
+                records[name] = f"skipped: {skipped(TESTS / name, local)}"
     counts = {}
     for record in records.values():
         kind = record.split(":")[0].split(" (")[0]
         counts[kind] = counts.get(kind, 0) + 1
     summary = ", ".join(f"{count} {kind}" for kind, count in sorted(counts.items()))
+    # The workflows whose images are not on this machine are only counted.
+    absent = sorted(name for name, record in records.items() if record.startswith(ABSENT))
     header = ("# Argo workflows run for real by iunctus, against what Argo's tests expect (argo "
               "lint, expected failures); written by real_runs_argo.py. A tab ends the path.\n"
-              f"# {len(records)} workflows: {summary}.\n")
+              f"# {len(records)} workflows: {summary}.\n"
+              f"# {len(absent)} of the skipped ones name images that are not on this machine; "
+              "they are not listed.\n")
     OUTPUT.write_text(header + "".join(f"{name}\t{record}\n"
-                                       for name, record in sorted(records.items())))
+                                       for name, record in sorted(records.items())
+                                       if not record.startswith(ABSENT)))
 
 
 if __name__ == "__main__":

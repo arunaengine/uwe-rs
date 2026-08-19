@@ -73,7 +73,9 @@ impl TesBackend {
         let image = job.spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
         let config = self.configs.get(&image.reference).await?;
         let mut spec = job.spec.clone();
-        spec.arguments = config.command(&job.spec.arguments);
+        if !spec.replaces_entrypoint || spec.arguments.is_empty() {
+            spec.arguments = config.command(&job.spec.arguments);
+        }
         for container in &mut spec.containers {
             let image = container.image.as_ref().ok_or(ExecutorError::NoImage)?;
             let config = self.configs.get(&image.reference).await?;

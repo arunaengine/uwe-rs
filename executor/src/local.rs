@@ -293,9 +293,11 @@ impl LocalContainer {
         let image = job.spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
         let mut spec = job.spec.clone();
         // The command runs through the image's entrypoint, as `docker run` runs it, which
-        // some images need to set up their tools.
-        let commands = self.commands(&image.reference).await?;
-        spec.arguments = commands.arguments(&image.reference, spec.arguments)?;
+        // some images need to set up their tools, unless it replaces the entrypoint.
+        if !spec.replaces_entrypoint || spec.arguments.is_empty() {
+            let commands = self.commands(&image.reference).await?;
+            spec.arguments = commands.arguments(&image.reference, spec.arguments)?;
+        }
         let owner = tokio::fs::metadata(root).await?;
         let container = format!("iunctus-{}", job.name);
         let run = ContainerRun {

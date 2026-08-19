@@ -121,7 +121,9 @@ impl KubernetesBackend {
         // executor run it; a task without one runs the image's default command.
         let config = self.configs.get(&image.reference).await?;
         let mut spec = job.spec.clone();
-        spec.arguments = config.command(&job.spec.arguments);
+        if !spec.replaces_entrypoint || spec.arguments.is_empty() {
+            spec.arguments = config.command(&job.spec.arguments);
+        }
         if spec.arguments.is_empty() {
             return Err(ExecutorError::NoCommand(image.reference.clone()));
         }

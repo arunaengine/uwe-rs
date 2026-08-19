@@ -553,6 +553,9 @@ pub(crate) fn fill_container(task: &mut Task, container: &Container) {
         .cloned()
         .collect();
     task.script = shell_script(&task.command);
+    // A container's `command` replaces the entrypoint of the image, as in Kubernetes; `args`
+    // alone run through it.
+    task.replaces_entrypoint = !container.command.is_empty();
     if !container.working_dir.is_empty() {
         task.workdir = Some(container.working_dir.clone());
     }

@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+# Runs Argo workflows of the Argo test workflows for real with iunctus, and compares how each
+# ends with what Argo expects of it. Argo has no native run without a Kubernetes cluster, so
+# the reference is Argo's own test suite: the workflows of argo-workflows' `expectedfailures`
+# must fail, every other workflow must succeed, as Argo's end-to-end tests run its examples.
+# `argo lint --offline` (argo v4) checks each workflow first; a workflow that it rejects counts
+# as failing in Argo. It records the result in real_runs_argo.txt next to this script.
+#
+# Run it from the repository root: iunctus/tests/fixtures/real_runs_argo.py [workflow...]
+# With workflows (paths as in the record), it runs only them and keeps the other records. It
+# needs Docker, `argo`, the release binary of iunctus (target/release/iunctus, or IUNCTUS) and
+# the Argo test workflows (ARGO_TEST_WORKFLOWS).
+#
+# It runs only workflows that run with the simulator (argo-runtime's outcomes.txt) and whose
+# images are all on this machine; the others are left out with the reason. The runs use no
+# network: iunctus runs in a network namespace of its own, gives its containers none
+# (`-no-network`), and talks to Docker through a socket
+# that refuses pulls (docker_no_pull.py), since the Docker daemon has network; a workflow that
+# needs an image that is not on this machine, like one of a template that it calls, fails.
+# One workflow runs at a time, with at most 3 containers at once.
+#
+# Copyright (c) 2026 The iunctus Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+from docker_no_pull import NoPull
+
+import yaml
+
+TESTS = Path(os.environ.get("ARGO_TEST_WORKFLOWS")
+             or Path.home() / ".cache/iunctus/test-workflows/argo")
+REPOSITORY = Path(__file__).resolve().parents[3]
+OUTCOMES = REPOSITORY / "argo-runtime/tests/fixtures/test-workflows/outcomes.txt"
+IUNCTUS = Path(os.environ.get("IUNCTUS") or "target/release/iunctus").resolve()
+OUTPUT = Path(__file__).with_name("real_runs_argo.txt")
+TIMEOUT = 300
+# Workflows that Argo's end-to-end tests expect to fail.
+FAILURES = "argo-workflows/test/e2e/expectedfailures/"
+# The entrypoints of the local images, filled once.
+ENTRYPOINTS = {}
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+# Servers that Argo's end-to-end tests start next to the cluster, which a run here does not
+# have, by a text that names them in the workflow.
+SERVERS = [
+    ("minio:9000", "needs the MinIO server of Argo's tests"),
+    ("httpbin:", "needs the httpbin server of Argo's tests"),
+    ("plugin:", "needs an executor plugin server"),
+]
+
+
+def local_images():
+    """The images on this machine, by every name they have."""
+    text = subprocess.run(["docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}"],
+                          capture_output=True, text=True, check=True).stdout
+    names = set()
+    for name in text.split():
+        names.update({name, name.removeprefix("docker.io/"),
+                      name.removeprefix("docker.io/library/")})
+        if name.endswith(":latest"):
+            names.add(name.removesuffix(":latest").removeprefix("docker.io/library/"))
+    return names
+
+
+def runnable():
+    """The workflows that run with the simulator, by path."""
+    found = []
+    for line in OUTCOMES.read_text().splitlines():
+        path, _, outcome = line.partition("\t")
+        if outcome.startswith("ok "):
+            found.append(path)
+    return found
+
+
+def images(value):
+    """Every `image` that a document names, at any depth."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key == "image" and isinstance(item, str):
+                yield item
+            else:
+                yield from images(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from images(item)
+
+
+def skipped(path, local):
+    """Why a workflow cannot run here without pulls, or None."""
+    try:
+        documents = [document for document in yaml.safe_load_all(path.read_text())
+                     if document]
+    except yaml.YAMLError:
+        return "not YAML that PyYAML reads"
+    text = path.read_text(errors="replace")
+    for marker, reason in SERVERS:
+        if marker in text:
+            return reason
+    if re.search(r"^\s*http:\s*$", text, re.M) or re.search(r"\burl:\s*['\"]?https?://", text):
+        return "calls a web address"
+    named = {image for document in documents for image in images(document)}
+    if any("{{" in image for image in named):
+        return "names its image by a parameter"
+    missing = sorted(named - local)
+    if missing:
+        return f"images not on this machine: {', '.join(missing)}"
+    return None
+
+
+def expected_failures():
+    """The workflows that Argo's tests expect to fail, by their real paths: the files of
+    `expectedfailures`, some of which link to examples."""
+    folder = TESTS / FAILURES
+    return {path.resolve() for path in folder.rglob("*.yaml")}
+
+
+def entrypoints(local):
+    """The entrypoint of each local image that has one."""
+    found = {}
+    for image in sorted(local):
+        done = subprocess.run(["docker", "image", "inspect", "--format",
+                               "{{json .Config.Entrypoint}}", image],
+                              capture_output=True, text=True)
+        if done.returncode == 0 and done.stdout.strip() not in ("", "null", "[]"):
+            found[image] = done.stdout.strip()
+    return found
+
+
+def containers(value):
+    """Every container or script of a document, at any depth."""
+    if isinstance(value, dict):
+        if isinstance(value.get("image"), str):
+            yield value
+        for item in value.values():
+            yield from containers(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from containers(item)
+
+
+def probable_cause(path, entry):
+    """Why a workflow probably fails in iunctus, from what it holds; None when nothing
+    explains it."""
+    text = path.read_text(errors="replace")
+    documents = [document for document in yaml.safe_load_all(text) if document]
+    if re.search(r"exit[ (\"',\]]+[1-9]|sys\.exit\(\s*[1-9]|exit_code|\bfail", text):
+        return "a step fails on purpose, so Argo fails the workflow too"
+    # Container sets still run their commands through the entrypoint of the image.
+    sets = [found for document in documents for found in containers(document)
+            if "containerSet" in text]
+    if any(found.get("command") and found["image"] in entry for found in sets):
+        return ("a container of a container set names a command, which in Argo replaces the "
+                "image's entrypoint; iunctus runs it through the entrypoint")
+    paths = re.findall(r"^\s*path:\s*['\"]?(/[^'\"\s]*)", text, re.M)
+    if any(not path.startswith("/tmp") for path in paths):
+        return ("a step writes outside its work folder, where Argo runs it as the image's user "
+                "in the image's working folder; iunctus runs it as the user of iunctus in a "
+                "folder of its own")
+    return None
+
+
+def last_error(text):
+    """The first line of an output that says `iunctus:` or names an error, else the last."""
+    lines = [ANSI.sub("", line).strip() for line in text.splitlines() if line.strip()]
+    for line in lines:
+        if line.startswith("iunctus: ") or "error" in line.lower():
+            return line[:160]
+    return (lines[-1] if lines else "")[:160]
+
+
+def compare(name, work, environment, local):
+    """The record line of one workflow."""
+    # The second and later workflows of a file are named `<file>#<n>`; this script runs whole
+    # files.
+    if "#" in name:
+        return "skipped: one of several workflows in a file"
+    path = TESTS / name
+    reason = skipped(path, local)
+    if reason:
+        return f"skipped: {reason}"
+    lint = subprocess.run(["argo", "lint", "--offline", str(path)], capture_output=True,
+                          text=True, cwd=path.parent)
+    folder = Path(tempfile.mkdtemp(dir=work))
+    command = ["unshare", "--user", "--net", "--map-current-user", "--", str(IUNCTUS), "run",
+               str(path), "-lang", "argo", "-executor", "local", "-no-network",
+               "-max-pending", "3",
+               "-store", str(work / "store"), "-output-dir", str(folder / "out")]
+    try:
+        done = subprocess.run(command, cwd=folder, capture_output=True, text=True,
+                              env=environment, timeout=TIMEOUT)
+        code, error = done.returncode, last_error(done.stderr)
+    except subprocess.TimeoutExpired:
+        code, error = "timeout", "timeout"
+    shutil.rmtree(folder, ignore_errors=True)
+    if re.search(r"cannot read (https?|s3|gs)://", error):
+        return "skipped: reads a remote file"
+    if "no secret store yet" in error:
+        return "skipped: reads a Kubernetes Secret, which iunctus has no store for yet"
+    if "is required, but has no value" in error:
+        return "skipped: needs a value for a parameter, which a run of Argo needs too"
+    if "real runs here pull no images" in error:
+        return "skipped: needs an image that is not on this machine (found when it ran)"
+    should_fail = name.startswith(FAILURES) or path.resolve() in expected_failures()
+    if lint.returncode != 0:
+        if code != 0:
+            return "same: both fail (argo lint rejects it)"
+        return f"argo fails: argo lint: {last_error(lint.stdout + lint.stderr)}"
+    if should_fail:
+        if code != 0:
+            return "same: fails as Argo's tests expect"
+        return "differs: succeeds where Argo's tests expect a failure"
+    if code != 0:
+        cause = probable_cause(path, ENTRYPOINTS)
+        note = f" (probable cause: {cause})" if cause else ""
+        return f"iunctus fails (exit {code}): {error}{note}"
+    return "same: succeeds"
+
+
+def main():
+    wanted = set(sys.argv[1:])
+    work = Path(tempfile.mkdtemp(prefix="iunctus-real-argo-"))
+    records = {}
+    try:
+        local = local_images()
+        ENTRYPOINTS.update(entrypoints(local))
+        with NoPull(work) as socket:
+            environment = dict(os.environ, XDG_CACHE_HOME=str(work / "cache"),
+                               DOCKER_HOST=f"unix://{socket}")
+            for name in runnable():
+                if wanted and name not in wanted:
+                    continue
+                records[name] = compare(name, work, environment, local)
+                print(f"{name}\t{records[name]}", flush=True)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    if wanted and OUTPUT.exists():
+        for line in OUTPUT.read_text().splitlines():
+            if line and not line.startswith("#"):
+                name, _, rest = line.partition("\t")
+                records.setdefault(name, rest)
+    counts = {}
+    for record in records.values():
+        kind = record.split(":")[0].split(" (")[0]
+        counts[kind] = counts.get(kind, 0) + 1
+    summary = ", ".join(f"{count} {kind}" for kind, count in sorted(counts.items()))
+    header = ("# Argo workflows run for real by iunctus, against what Argo's tests expect (argo "
+              "lint, expected failures); written by real_runs_argo.py. A tab ends the path.\n"
+              f"# {len(records)} workflows: {summary}.\n")
+    OUTPUT.write_text(header + "".join(f"{name}\t{record}\n"
+                                       for name, record in sorted(records.items())))
+
+
+if __name__ == "__main__":
+    main()

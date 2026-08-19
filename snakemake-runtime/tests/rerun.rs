@@ -5,7 +5,7 @@
 
 use std::time::{Duration, SystemTime};
 
-use workflow_graph::{Launch, Simulator, execute};
+use workflow_graph::{Launch, Simulator, Writable, execute};
 
 const SNAKEFILE: &str = r#"
 rule all:
@@ -81,4 +81,77 @@ fn newer_inputs_with_the_recorded_checksum_do_not() {
     let other = r#"{"input_checksums": {"in.txt": "sha256:00"}}"#;
     assert_eq!(steps(10, Some(&same)), ["all"]);
     assert_eq!(steps(10, Some(other)), ["all", "copy"]);
+}
+
+const UPDATE: &str = r#"
+rule all:
+    input: "out.txt", "test.txt"
+
+rule b:
+    input: before_update("test.txt")
+    output: "out.txt"
+    shell: "cp {input} {output}"
+
+rule a:
+    input: "in.txt"
+    output: update("test.txt")
+    shell: "echo bar >> test.txt"
+"#;
+
+#[test]
+fn update_outputs_are_copies_and_before_update_inputs_need_no_job() {
+    let scratch = tempfile::tempdir().expect("a temporary directory");
+    let folder = scratch.path().join("workflow");
+    std::fs::create_dir_all(&folder).expect("makes the folder");
+    std::fs::write(folder.join("Snakefile"), UPDATE).expect("writes the Snakefile");
+    let now = SystemTime::now();
+    for (name, age) in [("test.txt", 100), ("in.txt", 10)] {
+        let path = folder.join(name);
+        std::fs::write(&path, "x\n").expect("writes");
+        let file = std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .expect("opens");
+        file.set_modified(now - Duration::from_secs(age))
+            .expect("sets the time");
+    }
+    let launch = Launch {
+        target: folder.clone(),
+        scratch: scratch.path().to_path_buf(),
+        simulated: true,
+        ..Launch::default()
+    };
+    let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
+    let mut executor = Simulator::new(scratch.path().join("simulator"));
+    let execution = execute(&folder.to_string_lossy(), driver.as_mut(), &mut executor);
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    let task = |step: &str| {
+        let node = execution
+            .graph
+            .nodes
+            .iter()
+            .find(|node| node.task.step == step);
+        node.map(|node| node.task.clone())
+            .expect("the task of the step")
+    };
+    // Snakemake 9.27 appends to test.txt, so `a` gets a copy of it to change (its
+    // test_update_flag); `b` reads it without waiting for `a`.
+    let a = task("a");
+    let copy = a.inputs.iter().find(|input| input.path == "test.txt");
+    assert_eq!(copy.map(|input| input.writable), Some(Writable::Copy));
+    let b = execution
+        .graph
+        .nodes
+        .iter()
+        .find(|node| node.task.step == "b");
+    let b = b.expect("the task of b");
+    assert!(
+        execution
+            .graph
+            .edges
+            .iter()
+            .all(|edge| edge.to != b.task.id),
+        "{:?}",
+        execution.graph.edges
+    );
 }

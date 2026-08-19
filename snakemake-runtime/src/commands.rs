@@ -128,6 +128,7 @@ impl CommandRunner {
             after: Vec::new(),
             containers: Vec::new(),
             replaces_entrypoint: false,
+            reuse: workflow_graph::Reuse::Allowed,
         }
     }
 

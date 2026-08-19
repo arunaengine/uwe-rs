@@ -41,6 +41,9 @@ pub struct WorkflowFiles {
     /// The files of the tasks, where a real executor keeps them, which the driver gets from
     /// the engine; outputs are read through them.
     task_files: RefCell<Arc<OnceLock<Arc<dyn Files>>>>,
+    /// Whether the writes of workflow code also reach the disk, as in a real run, where
+    /// Snakemake's Python writes files while it plans. A simulated run keeps them in memory.
+    on_disk: std::cell::Cell<bool>,
 }
 
 impl WorkflowFiles {
@@ -54,7 +57,13 @@ impl WorkflowFiles {
             last_output_read: RefCell::new(None),
             notes: RefCell::new(Vec::new()),
             task_files: RefCell::new(Arc::default()),
+            on_disk: std::cell::Cell::new(false),
         }
+    }
+
+    /// Lets the writes of workflow code reach the disk, for a real run.
+    pub fn write_to_disk(&self) {
+        self.on_disk.set(true);
     }
 
     /// Reads the outputs of tasks through the files that the driver gets from the engine.
@@ -181,15 +190,38 @@ impl Host for WorkflowFiles {
     }
 
     fn write(&self, path: &Path, data: &[u8], append: bool) -> std::io::Result<()> {
-        self.local.write(path, data, append)
+        self.local.write(path, data, append)?;
+        if self.on_disk.get() {
+            let mut file = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .append(append)
+                .truncate(!append)
+                .open(path)?;
+            std::io::Write::write_all(&mut file, data)?;
+        }
+        Ok(())
     }
 
     fn make_dir(&self, path: &Path) -> std::io::Result<()> {
-        self.local.make_dir(path)
+        self.local.make_dir(path)?;
+        if self.on_disk.get() {
+            std::fs::create_dir(path)?;
+        }
+        Ok(())
     }
 
     fn remove(&self, path: &Path) -> std::io::Result<()> {
-        self.local.remove(path)
+        // What the disk holds before the code removes it in memory.
+        let on_disk = (self.on_disk.get())
+            .then(|| std::fs::symlink_metadata(path).ok())
+            .flatten();
+        self.local.remove(path)?;
+        match on_disk {
+            Some(metadata) if metadata.is_dir() => std::fs::remove_dir(path),
+            Some(_) => std::fs::remove_file(path),
+            None => Ok(()),
+        }
     }
 
     fn print(&self, text: &str) {
@@ -248,6 +280,27 @@ mod tests {
         assert!(files.read(&path).is_err(), "no local file is there");
         let _ = slot.set(Arc::new(Elsewhere(folder.path().to_owned())));
         assert_eq!(files.read(&path).expect("reads"), b"3\n");
+    }
+
+    #[test]
+    fn writes_of_a_real_run_reach_the_disk() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let storage = storage::Storage::default();
+        let mirrors = Rc::new(Mirrors::new(folder.path().join("downloads"), &storage));
+        let files = WorkflowFiles::new(folder.path(), mirrors);
+        let path = folder.path().join("a.txt");
+        files.write(&path, b"in memory\n", false).expect("writes");
+        assert!(!path.exists());
+        files.write_to_disk();
+        files.write(&path, b"a\n", false).expect("writes");
+        files.write(&path, b"b\n", true).expect("appends");
+        files
+            .make_dir(&folder.path().join("logs"))
+            .expect("makes a folder");
+        assert_eq!(std::fs::read_to_string(&path).expect("reads"), "a\nb\n");
+        assert!(folder.path().join("logs").is_dir());
+        files.remove(&path).expect("removes");
+        assert!(!path.exists());
     }
 
     #[test]

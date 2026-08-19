@@ -10,7 +10,7 @@ use task_model::{
     Accelerator, ContainerSpec, Digest, EnvironmentValue, FORMAT, Image, InputFile, OutputRule,
     Placement, ReuseScope, TaskRequest, TaskSpec,
 };
-use workflow_graph::{Network, Task};
+use workflow_graph::{Network, Reuse, Task};
 
 use crate::inputs::{Inputs, Mode};
 use crate::runner::{Prepared, segment};
@@ -64,6 +64,7 @@ pub(crate) async fn prepare(
         sources,
         step: task.step.clone(),
         per_container: 1,
+        reuse: task.reuse == Reuse::Allowed,
     })
 }
 

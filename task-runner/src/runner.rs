@@ -177,6 +177,9 @@ pub struct Prepared {
     /// How many tasks like this one may run one after another in one container: more than 1
     /// for a short task (see [`crate::together`]).
     pub(crate) per_container: usize,
+    /// Whether a stored result may answer the request. When not, the task runs, and its
+    /// result is stored all the same.
+    pub(crate) reuse: bool,
 }
 
 /// An image pinned to its digest once per run, or `None` without one.
@@ -350,7 +353,7 @@ impl<B: Backend> Runner<B> {
             Some(tool) => self.store.unreproducible(tool).await?.is_none(),
             None => request.scope == ReuseScope::Shared,
         };
-        let (earlier, _turn) = match shared {
+        let (earlier, _turn) = match shared && prepared.reuse {
             true => {
                 let found = match self.reuse(namespace, &key).await? {
                     Some(entry) => Turn::Reused(entry),

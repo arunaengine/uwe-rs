@@ -406,6 +406,25 @@ pub fn build(
                 (path, directory)
             }
         };
+        // A file that the job reads as it was before an update is a copy taken now, before
+        // the job that updates it may deliver the new version.
+        let before = (job.input.values.iter()).any(|value| {
+            value.as_str() == Some(file.as_str()) && value.tag("before_update").is_some()
+        });
+        let source = match before && !directory && !setting.embedded.simulated {
+            true => {
+                let copy = (setting.embedded.scratch())
+                    .join("before_update")
+                    .join(id.0.to_string())
+                    .join(Path::new(&file).file_name().unwrap_or_default());
+                copy.parent()
+                    .map_or(Ok(()), std::fs::create_dir_all)
+                    .and_then(|()| std::fs::copy(&source, &copy))
+                    .map_err(|error| Error::os_error(&error, &file))?;
+                copy
+            }
+            false => source,
+        };
         inputs.push(Input {
             path: file,
             source: source.to_string_lossy().into_owned(),

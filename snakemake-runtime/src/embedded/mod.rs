@@ -84,6 +84,11 @@ impl Setting {
         }
     }
 
+    /// The folder that the run may write to.
+    pub fn scratch(&self) -> &Path {
+        &self.scratch
+    }
+
     /// The folder with the stand-in of the snakemake package, written once per run: the
     /// task sees it at `.snakemake/iunctus`, so that tasks share one folder rather than each
     /// carrying the modules.

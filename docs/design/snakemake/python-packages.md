@@ -134,7 +134,7 @@ At most one container runs per run. Runs of the test workflows start at most fou
 
 - Classes defined in workflow code cannot be used by a package, as a base class or as an argument, as decision 19 says; neither can functions, so code of the package that calls back into workflow code, like a key function, is not supported.
 - A package that needs a system library beyond the slim image, like python-magic with libmagic, works only with an image that the user gives (`-python-image`).
-- The container reads files; writes into the workflow's folder fail, since it is mounted read-only. The native interpreter keeps writes in memory, which the container does not see.
+- The container reads files; writes into the workflow's folder fail, since it is mounted read-only. The native interpreter keeps writes in memory, which the container does not see; in a real run it also writes them to disk, as Snakemake does.
 - In simulated runs, files that tasks make are empty placeholders that only the driver knows; the container does not see them.
 
 ## 9. Tests

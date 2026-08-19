@@ -132,6 +132,9 @@ impl Session {
             storage,
         ));
         let files = Rc::new(WorkflowFiles::new(&workdir, mirrors.clone()));
+        if !launch.simulated {
+            files.write_to_disk();
+        }
         let mut interpreter = Interpreter::new(files.clone());
         interpreter.stack_limit = 480 << 20;
         let globals = interpreter.new_globals("snakemake.workflow", None);

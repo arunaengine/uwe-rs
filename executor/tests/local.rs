@@ -392,7 +392,7 @@ fn pins_images_to_digests() {
 }
 
 #[test]
-#[ignore = "needs Docker and the bash:4.4 and alpine:latest images"]
+#[ignore = "needs Docker and the images bash:4.4, alpine:latest and argoproj/argosay:v2"]
 fn commands_run_through_the_entrypoint_of_the_image() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let executor = executor(root.path());
@@ -415,6 +415,23 @@ fn commands_run_through_the_entrypoint_of_the_image() {
     assert_eq!(paths, ["out.txt", "a.log", "home.log"]);
     let home = std::fs::read_to_string(finished.local_path("home.log")).expect("reads");
     assert!(home.trim_end().ends_with("/home"), "{home}");
+    // A command that replaces the entrypoint, as the `command` of an Argo container does, runs
+    // without it: argosay's entrypoint is /argosay, which fails on `/argosay /argosay ...`.
+    let mut task = spec(Some("argoproj/argosay:v2"), &["out.txt"]);
+    task.arguments = vec![
+        "/argosay".into(),
+        "echo".into(),
+        "hi".into(),
+        "out.txt".into(),
+    ];
+    task.replaces_entrypoint = true;
+    let finished = run(&executor, "task-11", &task, &Staging::default()).expect("runs");
+    assert_eq!(finished.exit_code, Some(0));
+    let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("reads");
+    assert_eq!(output, "hi\n");
+    task.replaces_entrypoint = false;
+    let finished = run(&executor, "task-12", &task, &Staging::default()).expect("runs");
+    assert_eq!(finished.exit_code, Some(1));
 }
 
 /// A container of a task that runs several, which runs a shell script.

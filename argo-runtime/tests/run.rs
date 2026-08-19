@@ -1629,3 +1629,23 @@ fn a_simulated_run_takes_the_default_of_an_empty_output() {
     let real = run_with(&workflow(templates), real());
     assert_eq!(real.names(), ["[0].decide"]);
 }
+
+#[test]
+fn a_command_replaces_the_entrypoint_and_args_alone_run_through_it() {
+    let ran = run(&workflow(
+        r#"
+  - name: main
+    steps:
+    - - {name: a, template: a}
+      - {name: b, template: b}
+  - name: a
+    container: {image: argoproj/argosay:v2, command: [/argosay], args: [echo, hi]}
+  - name: b
+    container: {image: argoproj/argosay:v2, args: [echo, hi]}
+"#,
+    ));
+    ran.succeeded();
+    // As in Kubernetes, which runs `/argosay echo hi` for both.
+    assert!(ran.task("[0].a").replaces_entrypoint);
+    assert!(!ran.task("[0].b").replaces_entrypoint);
+}

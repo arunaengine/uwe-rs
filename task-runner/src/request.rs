@@ -121,7 +121,7 @@ pub fn request(
             .collect(),
         stdin,
         containers,
-        replaces_entrypoint: false,
+        replaces_entrypoint: task.replaces_entrypoint,
     };
     let scope = if spec.image_pinned() {
         ReuseScope::Shared

@@ -157,6 +157,7 @@ fn spec(script: &str) -> TaskSpec {
         }],
         stdin: None,
         containers: Vec::new(),
+        replaces_entrypoint: false,
     }
 }
 

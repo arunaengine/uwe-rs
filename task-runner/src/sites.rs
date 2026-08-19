@@ -201,6 +201,7 @@ mod tests {
             outputs: Vec::new(),
             stdin: None,
             containers: Vec::new(),
+            replaces_entrypoint: false,
         };
         let runtime = tokio::runtime::Builder::new_current_thread()
             .build()

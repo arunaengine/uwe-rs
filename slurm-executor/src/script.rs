@@ -241,6 +241,7 @@ mod tests {
             outputs: Vec::new(),
             stdin: None,
             containers: Vec::new(),
+            replaces_entrypoint: false,
         }
     }
 

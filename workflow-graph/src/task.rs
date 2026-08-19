@@ -81,6 +81,10 @@ pub struct Task {
     /// standard input, its standard output is the task's, and it collects the outputs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub containers: Vec<Container>,
+    /// Whether `command` replaces the entrypoint of the image, as the `command` of a container
+    /// of Kubernetes does, instead of running through it, as the arguments of `docker run` do.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub replaces_entrypoint: bool,
 }
 
 /// One container of a task that runs several.

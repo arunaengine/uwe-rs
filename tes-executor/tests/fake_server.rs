@@ -119,6 +119,7 @@ fn tasks_run_on_the_server_and_give_back_their_outputs() {
         }],
         stdin: None,
         containers: Vec::new(),
+        replaces_entrypoint: false,
     };
     let staging = Staging {
         inputs: vec![Staged {
@@ -206,6 +207,7 @@ fn containers_of_a_task_are_executors_in_their_order() {
             container("main", "debian:stable-slim", &["prepare"]),
             container("prepare", "alpine:latest", &[]),
         ],
+        replaces_entrypoint: false,
     };
     let job = Job {
         name: "run-S-1-1",

@@ -127,6 +127,7 @@ impl CommandRunner {
             network: workflow_graph::Network::Unstated,
             after: Vec::new(),
             containers: Vec::new(),
+            replaces_entrypoint: false,
         }
     }
 

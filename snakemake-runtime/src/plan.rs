@@ -507,7 +507,9 @@ impl Planner {
                 rule.name
             )));
         }
-        let inputs: Vec<(String, Option<String>, bool)> = {
+        // Each input with the rule that its value names, whether it is in storage, and whether
+        // the job reads it as it was before an update (`before_update`).
+        let inputs: Vec<(String, Option<String>, bool, bool)> = {
             let mut seen: Vec<String> = Vec::new();
             let mut inputs = Vec::new();
             for value in &job.input.values {
@@ -520,11 +522,22 @@ impl Planner {
                     .tag("rule")
                     .and_then(|rule| rule.as_str().map(str::to_owned));
                 let stored = value.tag(crate::storage::TAG).is_some();
-                inputs.push((text.to_owned(), dependency, stored));
+                let before = value.tag("before_update").is_some();
+                inputs.push((text.to_owned(), dependency, stored, before));
             }
             inputs
         };
-        for (file, dependency, stored) in inputs {
+        for (file, dependency, stored, before) in inputs {
+            // Snakemake plans no job for a file that the job reads as it was before an update.
+            if before {
+                if !self.exists(interpreter, &file) && !self.assume_inputs {
+                    return Err(Failure::Error(crate::workflow::workflow_error(format!(
+                        "Missing input files for rule {}:\n    affected files:\n        {file}",
+                        rule.name
+                    ))));
+                }
+                continue;
+            }
             let planned = match dependency
                 .and_then(|name| self.rules.iter().position(|rule| rule.name == name))
             {

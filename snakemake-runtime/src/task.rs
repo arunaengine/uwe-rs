@@ -389,6 +389,31 @@ pub fn build(
             ..Default::default()
         });
     }
+    // An `update()` output that exists is a copy that the job changes, as Snakemake leaves the
+    // file in place for the job instead of removing it.
+    for value in job
+        .output
+        .values
+        .iter()
+        .filter(|value| value.tag("update").is_some())
+    {
+        let Some(file) = value.as_str() else {
+            continue;
+        };
+        let path = interpreter.host.resolve(file);
+        let source = match setting.files.location(&path) {
+            Some((location, _)) => location,
+            None if interpreter.host.stat(&path).is_some() => path,
+            None => continue,
+        };
+        inputs.retain(|input| input.path != file);
+        inputs.push(Input {
+            path: file.to_owned(),
+            source: source.to_string_lossy().into_owned(),
+            writable: workflow_graph::Writable::Copy,
+            ..Default::default()
+        });
+    }
     let mut conda = match &rule.conda {
         Some(value) => {
             let value = evaluate(

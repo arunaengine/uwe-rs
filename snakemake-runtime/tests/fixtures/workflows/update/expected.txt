@@ -1,0 +1,16 @@
+3 tasks, 3 steps, 2 edges
+1 b <- []
+2 a <- []
+3 all <- [1, 2]
+task 1: -
+  command: bash -c set -euo pipefail;  cp test.txt out.txt
+  inputs: test.txt
+  outputs: out.txt
+task 2: -
+  command: bash -c set -euo pipefail;  echo bar >> test.txt
+  inputs: in.txt test.txt
+  outputs: test.txt
+task 3: -
+  command: 
+  inputs: out.txt test.txt
+  outputs: 

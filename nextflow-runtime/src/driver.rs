@@ -687,6 +687,7 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
         after: Vec::new(),
         containers: Vec::new(),
         replaces_entrypoint: false,
+        reuse: workflow_graph::Reuse::Allowed,
     }
 }
 
@@ -727,6 +728,7 @@ fn exec_task(request: &TaskRequest) -> Task {
         after: Vec::new(),
         containers: Vec::new(),
         replaces_entrypoint: false,
+        reuse: workflow_graph::Reuse::Allowed,
     }
 }
 

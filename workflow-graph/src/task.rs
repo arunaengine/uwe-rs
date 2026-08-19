@@ -85,6 +85,10 @@ pub struct Task {
     /// of Kubernetes does, instead of running through it, as the arguments of `docker run` do.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub replaces_entrypoint: bool,
+    /// Whether a stored result of an earlier run may answer the task. A CWL tool with
+    /// `WorkReuse` and `enableReuse: false` runs every time; its result is still stored.
+    #[serde(default, skip_serializing_if = "Reuse::is_allowed")]
+    pub reuse: Reuse,
 }
 
 /// One container of a task that runs several.
@@ -117,6 +121,23 @@ pub enum Network {
     Allowed,
     /// The task runs without network, like a CWL tool without `NetworkAccess`.
     Denied,
+}
+
+/// Whether a stored result may answer a task.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Reuse {
+    /// A stored result answers the task when the run allows it.
+    #[default]
+    Allowed,
+    /// The task runs every time, like a CWL tool with `enableReuse: false`.
+    Denied,
+}
+
+impl Reuse {
+    fn is_allowed(&self) -> bool {
+        *self == Reuse::Allowed
+    }
 }
 
 impl Network {

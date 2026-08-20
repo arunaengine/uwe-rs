@@ -148,6 +148,10 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     Ok(())
 }
 
+/// The folders in the scratch folder where the TES, Kubernetes and SLURM executors keep the
+/// folders of their attempts.
+const EXECUTOR_FOLDERS: [&str; 3] = ["tes", "kubernetes", "slurm"];
+
 /// A folder of the scratch directory that clean-up removes.
 struct Scratch {
     path: PathBuf,
@@ -165,7 +169,7 @@ fn running_ids(
 }
 
 /// The scratch folders of runs that ended: the made-up files of simulated runs that no rule
-/// keeps, and the folders of attempts that a stopped run left behind. A folder of a run that
+/// keeps, and the folders of attempts that a stopped run left behind, of every executor. A folder of a run that
 /// the run database does not know stays, as it may belong to another database.
 fn scratch_folders(
     database: &Database,
@@ -186,13 +190,19 @@ fn scratch_folders(
             folders.push(entry.path());
         }
     }
-    for entry in std::fs::read_dir(&scratch).into_iter().flatten().flatten() {
-        let name = entry.file_name().to_string_lossy().into_owned();
-        // An attempt's folder is `<run>-<task>-<attempt>`, and a run id is `<time>-<process>`.
-        let run: Vec<&str> = name.splitn(3, '-').take(2).collect();
-        let run = run.join("-");
-        if name != "simulator" && !running.contains(&run) && known(&run) {
-            folders.push(entry.path());
+    // The local executor keeps its attempts in the scratch folder, the others in a folder of
+    // their own in it.
+    let executors = EXECUTOR_FOLDERS.iter().map(|name| scratch.join(name));
+    for folder in std::iter::once(scratch.clone()).chain(executors) {
+        for entry in std::fs::read_dir(&folder).into_iter().flatten().flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            // An attempt's folder is `<run>-<task>-<attempt>`, and a run id is
+            // `<time>-<process>`.
+            let run: Vec<&str> = name.splitn(3, '-').take(2).collect();
+            let run = run.join("-");
+            if name != "simulator" && !running.contains(&run) && known(&run) {
+                folders.push(entry.path());
+            }
         }
     }
     Ok(folders

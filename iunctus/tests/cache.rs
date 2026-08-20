@@ -340,12 +340,22 @@ fn clean_up_needs_a_rule_and_removes_the_scratch_of_simulated_runs() {
     }
     let simulated = cache.join("iunctus/scratch/simulator");
     assert_eq!(std::fs::read_dir(&simulated).expect("lists").count(), 2);
-    let latest = run_ids(&cache).remove(0);
+    let mut ids = run_ids(&cache);
+    let (latest, earlier) = (ids.remove(0), ids.remove(0));
+    // Folders of attempts that the ended run left, in the scratch folder of each executor; the
+    // SIF files of SLURM jobs and folders of unknown runs stay.
+    let scratch = cache.join("iunctus/scratch");
+    let attempts = ["", "tes/", "kubernetes/", "slurm/"]
+        .map(|folder| scratch.join(format!("{folder}{earlier}-1-1")));
+    let staying = [scratch.join("slurm/images"), scratch.join("slurm/1-2-3-4")];
+    for folder in attempts.iter().chain(&staying) {
+        std::fs::create_dir_all(folder.join("work")).expect("makes the folder");
+    }
     let (code, output) = iunctus(root.path(), &cache, &["clean", "-keep-run", &latest]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("It keeps what run"), "{output}");
     assert!(
-        output.contains("scratch folders of runs that ended: 1 folder"),
+        output.contains("scratch folders of runs that ended: 5 folders"),
         "{output}"
     );
     assert!(
@@ -357,9 +367,11 @@ fn clean_up_needs_a_rule_and_removes_the_scratch_of_simulated_runs() {
     let (code, output) = iunctus(root.path(), &cache, &arguments);
     assert_eq!(code, 0, "{output}");
     assert!(
-        output.contains("Removed 0 results, 0 files and 1 scratch folder."),
+        output.contains("Removed 0 results, 0 files and 5 scratch folders."),
         "{output}"
     );
+    assert!(attempts.iter().all(|folder| !folder.exists()));
+    assert!(staying.iter().all(|folder| folder.exists()));
     let left: Vec<String> = std::fs::read_dir(&simulated)
         .expect("lists")
         .map(|entry| {

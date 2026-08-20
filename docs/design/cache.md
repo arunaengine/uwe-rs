@@ -100,7 +100,7 @@ iunctus clean -keep-run 1a0f1cc4c10-3a2487 -keep-slower-than 2h -remove
 - everything made or used after the start of the oldest of those runs, since such a run may take it from the cache at any moment;
 - every file that a kept result or a kept run refers to. A result of an old run that a kept run took from the cache stays with it.
 
-**What goes:** the entries that no rule keeps, then the files under `runs/` that nothing kept refers to, the contents in `cas/` and the manifests in `trees/` that no kept result or run needs, the leases that nobody holds, and the scratch folders that runs left behind: the made-up files of simulated runs that no rule keeps, and the folders of attempts of runs that were stopped. Entries go first, so that no request ever gets a result whose files are going.
+**What goes:** the entries that no rule keeps, then the files under `runs/` that nothing kept refers to, the contents in `cas/` and the manifests in `trees/` that no kept result or run needs, the leases that nobody holds, and the scratch folders that runs left behind: the made-up files of simulated runs that no rule keeps, and the folders of attempts of runs that were stopped, in the scratch folder of every executor (`scratch/tes`, `scratch/kubernetes` and `scratch/slurm` too; the SIF files of SLURM jobs in `scratch/slurm/images` stay). Entries go first, so that no request ever gets a result whose files are going.
 
 The listing counts each file once. A task output and its content in `cas/` are two names of one file in a store on this machine; its space counts only when both names go.
 

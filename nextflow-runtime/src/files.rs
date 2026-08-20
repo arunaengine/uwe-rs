@@ -97,7 +97,12 @@ impl CollectFile {
             if self.sort {
                 entries.sort();
             }
+            // Like Nextflow, `newLine` ends the seed and every entry with a new line, even
+            // when they end with one already.
             let mut content = self.seed.clone().unwrap_or_default();
+            if self.new_line && !content.is_empty() {
+                content.push('\n');
+            }
             for (index, entry) in entries.iter().enumerate() {
                 let skip = if self.keep_header && index == 0 {
                     0
@@ -105,7 +110,7 @@ impl CollectFile {
                     self.skip
                 };
                 let mut lines = entry.split_inclusive('\n').skip(skip).collect::<String>();
-                if self.new_line && !lines.ends_with('\n') {
+                if self.new_line {
                     lines.push('\n');
                 }
                 content.push_str(&lines);

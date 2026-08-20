@@ -468,6 +468,16 @@ fn collect_file_writes_files_at_the_end() {
         .unwrap(),
         "a\nb\n\n"
     );
+    // The seed and each entry get a new line, also those that end with one (nf-core/datasync
+    // writes a seed without one).
+    assert_eq!(
+        run(&format!(
+            "channel.of('x\\n', 'y').collectFile(name: 's.txt', seed: 'head', sort: false, \
+             newLine: true, storeDir: '{d}').map {{ f -> f.text }}.view()"
+        ))
+        .unwrap(),
+        "head\nx\n\ny\n\n"
+    );
     assert_eq!(
         lines(&format!(
             "channel.of(['y.txt', 'one'], ['x.txt', 'two']).collectFile(storeDir: '{d}').map {{ f -> f.name }}.view()"

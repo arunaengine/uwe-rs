@@ -252,7 +252,9 @@ def run(command, source, place, environment):
             pass
         errors_file.seek(0)
         errors = ["timeout"] if code == "timeout" else errors_file.read().splitlines()
-    return code, changes(before, state(place)), error_line(errors)
+    # A run that needed an image that is not on this machine says so on its own line.
+    pulls = [line for line in errors if "real runs here pull no images" in line]
+    return code, changes(before, state(place)), (pulls or [error_line(errors)])[0][:200]
 
 
 def error_line(lines):

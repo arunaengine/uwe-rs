@@ -30,7 +30,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-from docker_no_pull import NoPull
+# The helper next to this script; Python keeps no compiled copy of it in the repository.
+sys.dont_write_bytecode = True
+from docker_no_pull import NoPull  # noqa: E402
 
 import yaml
 

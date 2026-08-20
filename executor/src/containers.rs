@@ -232,16 +232,47 @@ fn exit_path(spec: &TaskSpec, position: usize) -> String {
     }
 }
 
+/// The file of a container's exit code, relative to the control folder.
+pub fn exit_file(spec: &TaskSpec, position: usize) -> String {
+    match own_folder(spec, position) {
+        own if own.is_empty() => EXIT.to_owned(),
+        own => format!("{own}/{EXIT}"),
+    }
+}
+
+/// The lines that run `command` in the background and, when it fails, record its exit code in
+/// each file of `exits` that has none yet. A wrapper or container that is killed, as for lack
+/// of memory, records nothing itself; this record keeps the containers that wait for it from
+/// waiting for ever.
+pub fn recording_its_end(command: &str, exits: &[String]) -> String {
+    let mut lines = format!(
+        "{{
+    {command}
+    code=$?
+"
+    );
+    for exit in exits {
+        let exit = quote(exit);
+        lines.push_str(&format!(
+            "    [ \"$code\" -eq 0 ] || [ -s {exit} ] || echo \"$code\" > {exit}\n"
+        ));
+    }
+    lines.push_str("    exit \"$code\"\n} &\n");
+    lines
+}
+
 /// The wrapper of one container of the engine that runs the wrappers of a group of containers
-/// at once, given as paths that the container sees, and ends when all of them ended.
-pub fn group_wrapper(wrappers: &[String]) -> String {
+/// at once, and ends when all of them ended. Each member is its wrapper and the file of its
+/// exit code, as paths that the container sees.
+pub fn group_wrapper(members: &[(String, String)]) -> String {
     // The script is the first process of its container, which ignores a stop that it has no
     // trap for; when it ends, the container ends with every process in it.
     let mut script = String::from(
         "#!/bin/sh\n# Containers of an iunctus task that share an image.\ntrap 'exit 143' TERM INT HUP\n",
     );
-    for wrapper in wrappers {
-        script.push_str(&format!("sh {} > /dev/null &\n", quote(wrapper)));
+    for (wrapper, exit) in members {
+        let command = format!("sh {} > /dev/null", quote(wrapper));
+        script.push_str(&recording_its_end(&command, std::slice::from_ref(exit)));
     }
     script.push_str(&format!("wait\necho {}\nexit 0\n", quote(ENDED)));
     script
@@ -268,10 +299,13 @@ pub fn write_wrappers(
     }
     let mut written = Vec::new();
     for (index, group) in groups.into_iter().enumerate() {
-        let wrappers: Vec<String> = (group.members.iter())
-            .map(|&position| inside(&wrapper_path(spec, position)))
+        let members: Vec<(String, String)> = (group.members.iter())
+            .map(|&position| {
+                let wrapper = inside(&wrapper_path(spec, position));
+                (wrapper, inside(&exit_file(spec, position)))
+            })
             .collect();
-        std::fs::write(control.join(group_path(index)), group_wrapper(&wrappers))?;
+        std::fs::write(control.join(group_path(index)), group_wrapper(&members))?;
         written.push((group, inside(&group_path(index))));
     }
     Ok(written)
@@ -416,8 +450,15 @@ mod tests {
         assert!(main.contains("waited \"$control\"/'containers/b/exit' || :"));
         assert!(!main.contains("containers/c/exit"), "{main}");
         assert!(main.contains(": > \"$control/manifest\""), "{main}");
-        let group = group_wrapper(&["/c/containers/main/wrapper.sh".into()]);
-        assert!(group.contains("sh '/c/containers/main/wrapper.sh' > /dev/null &\nwait\n"));
+        let members = [(
+            "/c/containers/main/wrapper.sh".to_owned(),
+            "/c/exit".to_owned(),
+        )];
+        let group = group_wrapper(&members);
+        let expected = "{\n    sh '/c/containers/main/wrapper.sh' > /dev/null\n    code=$?\n    \
+            [ \"$code\" -eq 0 ] || [ -s '/c/exit' ] || echo \"$code\" > '/c/exit'\n    exit \
+            \"$code\"\n} &\nwait\n";
+        assert!(group.contains(expected), "{group}");
     }
 
     #[test]

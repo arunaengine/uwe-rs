@@ -268,3 +268,50 @@ fn a_stop_reaches_the_tool_at_once() {
     assert_eq!(read(&control.join("exit")), "143\n");
     assert_eq!(read(&work.join("in.txt")), "given\n");
 }
+
+#[test]
+fn containers_that_wait_for_one_whose_wrapper_was_killed_go_on() {
+    use task_model::{ContainerSpec, Image};
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let [work, control, home] = ["work", "control", "home"].map(|name| root.path().join(name));
+    let container = |name: &str, script: &str, after: &[&str]| ContainerSpec {
+        name: name.into(),
+        image: Some(Image {
+            reference: "debian".into(),
+            platform: None,
+        }),
+        arguments: vec!["sh".into(), "-c".into(), script.into()],
+        workdir: None,
+        environment: BTreeMap::new(),
+        after: after.iter().map(|name| (*name).to_owned()).collect(),
+        attempts: 1,
+    };
+    // `killed` kills its own wrapper, as the kernel does for lack of memory.
+    let main = container("main", "echo ran > ran.txt", &["killed"]);
+    let spec = TaskSpec {
+        arguments: main.arguments.clone(),
+        containers: vec![main, container("killed", "kill -9 $PPID", &[])],
+        ..spec(&[])
+    };
+    let folders = Folders {
+        work: &work.to_string_lossy(),
+        control: &control.to_string_lossy(),
+        home: &home.to_string_lossy(),
+        outbox: "",
+    };
+    let groups = executor::containers::write_wrappers(&spec, &control, &folders)
+        .expect("writes the wrappers");
+    let [(_, group)] = groups.as_slice() else {
+        panic!("one group: {groups:?}")
+    };
+    let output = Command::new("timeout")
+        .args(["60", "sh", group])
+        .output()
+        .expect("runs sh");
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let codes: Vec<Option<i32>> = (executor::containers::ended(&spec, &control).iter())
+        .map(|ended| ended.exit_code)
+        .collect();
+    assert_eq!(codes, [Some(1), Some(137)]);
+    assert!(!work.join("ran.txt").exists());
+}

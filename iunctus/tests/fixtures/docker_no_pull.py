@@ -111,9 +111,21 @@ class NoPull:
         self.loop = asyncio.new_event_loop()
         ready = threading.Event()
 
+        # The tasks of the connections, kept so that they are not collected while they run.
+        self.tasks = set()
+
+        async def connection(reader, writer):
+            task = asyncio.current_task()
+            self.tasks.add(task)
+            try:
+                await serve(reader, writer)
+            finally:
+                self.tasks.discard(task)
+
         def run():
             asyncio.set_event_loop(self.loop)
-            server = self.loop.run_until_complete(asyncio.start_unix_server(serve, self.path))
+            server = self.loop.run_until_complete(
+                asyncio.start_unix_server(connection, self.path))
             self.server = server
             ready.set()
             self.loop.run_forever()

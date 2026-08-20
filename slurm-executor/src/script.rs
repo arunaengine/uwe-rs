@@ -3,8 +3,9 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use executor::containers::recording_its_end;
 use executor::wrapper::quote;
 use executor::{CONTROL, ContainerRun, EngineCommand, Job};
 
@@ -148,24 +149,29 @@ pub fn job_script(
 
 /// The job script of a task of several containers: it starts a container for each of `runs`,
 /// one for each image, all at once, as the local executor does, then records the exit code of
-/// the first container that failed, else 0.
+/// the first container that failed, else 0. `exits` holds for each run the files of the exit
+/// codes of its containers: a container of the engine that fails without its wrappers, as when
+/// it is killed for lack of memory, records its exit code there, so that the containers that
+/// wait for one of them go on.
 pub fn job_script_of_containers(
     container: &Container,
     runs: &[ContainerRun<'_>],
+    exits: &[Vec<PathBuf>],
     gpus: bool,
     time: Option<u64>,
 ) -> String {
     let mut script = String::from("#!/bin/bash\n# The iunctus job of one attempt of a task.\n");
     script.push_str("pids=\n");
-    for run in runs {
+    for (index, run) in runs.iter().enumerate() {
         let words: Vec<String> = (command(container, run, gpus).iter())
             .map(|word| quote(word))
             .collect();
-        script.push_str(&format!(
-            "{}{} &\npids=\"$pids $!\"\n",
-            timeout(time),
-            words.join(" ")
-        ));
+        let exits: Vec<String> = (exits.get(index).into_iter().flatten())
+            .map(|exit| exit.to_string_lossy().into_owned())
+            .collect();
+        let command = format!("{}{}", timeout(time), words.join(" "));
+        script.push_str(&recording_its_end(&command, &exits));
+        script.push_str("pids=\"$pids $!\"\n");
     }
     let exit = runs[0].root.join(CONTROL).join(CONTAINER_EXIT);
     script.push_str(&format!(

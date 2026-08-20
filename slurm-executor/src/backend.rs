@@ -222,7 +222,17 @@ impl SlurmBackend {
                         ..run
                     })
                     .collect();
-                job_script_of_containers(&self.container, &runs, gpus, job.placement.time_seconds)
+                let exits: Vec<Vec<PathBuf>> = (groups.iter())
+                    .map(|(group, _)| {
+                        (group.members.iter())
+                            .map(|&position| {
+                                control.join(containers::exit_file(job.spec, position))
+                            })
+                            .collect()
+                    })
+                    .collect();
+                let time = job.placement.time_seconds;
+                job_script_of_containers(&self.container, &runs, &exits, gpus, time)
             }
         };
         tokio::fs::write(control.join(SCRIPT), script).await?;

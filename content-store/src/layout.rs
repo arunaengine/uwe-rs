@@ -100,10 +100,14 @@ pub fn namespace_name(namespace: &str) -> &str {
 
 /// Task outputs under their original names: `runs/<run>/<task>/<attempt>/work/<path>` for a
 /// path relative to the work directory, and `runs/<run>/<task>/<attempt>/root/<path>` for an
-/// absolute path inside the container.
+/// absolute path inside the container. The path `.` is the work directory itself, which a
+/// Nextflow output like `path("./.")` names.
 pub fn output(run: &str, task: &str, attempt: u32, path: &str) -> Result<String, StoreError> {
     let unsafe_part =
         |part: &str| part.is_empty() || part == "." || part == ".." || part.contains('/');
+    if path == "." && !unsafe_part(run) && !unsafe_part(task) {
+        return Ok(format!("runs/{run}/{task}/{attempt}/work"));
+    }
     let (base, relative) = match path.strip_prefix('/') {
         Some(inside) => ("root", inside),
         None => ("work", path),

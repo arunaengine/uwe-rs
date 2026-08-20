@@ -154,7 +154,7 @@ pub(crate) async fn store_containers(
 /// The files and empty directories of a stored directory at `base` that lie in a directory
 /// output at `path` inside it, relative to that output; `None` when the path is not inside.
 fn within(tree: &Tree, base: &str, path: &str) -> Option<Vec<TreeEntry>> {
-    let relative = path.strip_prefix(base)?.strip_prefix('/')?;
+    let relative = below(base, path)?;
     let prefix = format!("{relative}/");
     let entries = tree.entries.iter().filter_map(|entry| match entry {
         TreeEntry::File {
@@ -177,13 +177,30 @@ fn within(tree: &Tree, base: &str, path: &str) -> Option<Vec<TreeEntry>> {
 
 /// The digest and size of a file output at `path` that a stored directory at `base` holds.
 fn file_in(tree: &Tree, base: &str, path: &str) -> Option<(Digest, u64)> {
-    let relative = path.strip_prefix(base)?.strip_prefix('/')?;
+    let relative = below(base, path)?;
     tree.entries.iter().find_map(|entry| match entry {
         TreeEntry::File {
             path, digest, size, ..
         } if path == relative => Some((digest.clone(), *size)),
         _ => None,
     })
+}
+
+/// The path of an output relative to a directory output at `base`, when it is inside it. The
+/// base `.` is the work directory, which holds every output with a relative path.
+fn below<'a>(base: &str, path: &'a str) -> Option<&'a str> {
+    match base {
+        "." => Some(path).filter(|path| *path != "." && !path.starts_with('/')),
+        _ => path.strip_prefix(base)?.strip_prefix('/'),
+    }
+}
+
+/// The path of `relative` inside a directory output at `base`.
+fn joined(base: &str, relative: &str) -> String {
+    match base {
+        "." => relative.to_owned(),
+        _ => format!("{base}/{relative}"),
+    }
 }
 
 /// The attempt that outputs belong to.
@@ -259,7 +276,7 @@ async fn store_directory(
     }
     let mut entries = Vec::new();
     for found in walk(directory).await? {
-        let inside = format!("{base}/{}", found.relative());
+        let inside = joined(base, found.relative());
         match found {
             Found::File {
                 relative,
@@ -404,6 +421,29 @@ mod tests {
         let stored = root.path().join("store").join(&file.location);
         assert_eq!(std::fs::read_to_string(stored).expect("reads"), "x\n");
         assert!(result.files[0].directory);
+    }
+
+    #[test]
+    fn the_work_directory_is_an_output_that_holds_the_others() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        // nf-core's EPANG_PLACE: `path("./.")` and `path "*.epa_info.log"`.
+        let finished = finished(root.path(), &[(".", true), ("x.epa_info.log", false)]);
+        let work = finished.root.join("work");
+        std::fs::create_dir_all(work.join("sub")).expect("makes a folder");
+        std::fs::write(work.join("x.epa_info.log"), "log\n").expect("writes");
+        std::fs::write(work.join("sub/a.txt"), "a\n").expect("writes");
+        let result = store_all(root.path(), &finished);
+        assert_eq!(result.files[0].location, "runs/run/task/1/work");
+        assert!(result.files[0].directory);
+        assert_eq!(result.files[0].size, 6);
+        assert_eq!(result.files[1].digest, Digest::sha256(b"log\n"));
+        let stored = root.path().join("store/runs/run/task/1/work");
+        assert_eq!(
+            std::fs::read_to_string(stored.join("sub/a.txt")).expect("reads"),
+            "a\n"
+        );
+        let log = stored.join("x.epa_info.log");
+        assert_eq!(std::fs::read_to_string(log).expect("reads"), "log\n");
     }
 
     #[test]

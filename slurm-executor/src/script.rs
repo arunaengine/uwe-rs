@@ -52,14 +52,38 @@ pub fn sbatch_options(job: Job<'_>, root: &Path, extra: &[String]) -> Vec<String
     options
 }
 
-/// The options of `sbatch` for the job that pulls an image into a SIF file in `root`: a few
-/// CPUs, memory and an hour, then the `extra` options of the user.
-pub fn pull_options(name: &str, root: &Path, extra: &[String]) -> Vec<String> {
+/// What the job that pulls an image into a SIF file asks for. Very large images may need more
+/// than the default of 2 CPUs, 4 GB and one hour.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PullResources {
+    pub cpus: u32,
+    pub memory_mb: u64,
+    pub time_seconds: u64,
+}
+
+impl Default for PullResources {
+    fn default() -> PullResources {
+        PullResources {
+            cpus: 2,
+            memory_mb: 4096,
+            time_seconds: 3600,
+        }
+    }
+}
+
+/// The options of `sbatch` for the job that pulls an image into a SIF file in `root`: the
+/// resources of `pull`, then the `extra` options of the user.
+pub fn pull_options(
+    name: &str,
+    root: &Path,
+    pull: &PullResources,
+    extra: &[String],
+) -> Vec<String> {
     let mut options = head(name, root);
     options.extend([
-        "--cpus-per-task=2".into(),
-        "--mem=4096M".into(),
-        format!("--time={}", time(3600)),
+        format!("--cpus-per-task={}", pull.cpus),
+        format!("--mem={}M", pull.memory_mb),
+        format!("--time={}", time(pull.time_seconds)),
     ]);
     options.extend(extra.iter().cloned());
     options

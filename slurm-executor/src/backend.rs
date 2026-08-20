@@ -22,8 +22,8 @@ use tokio_util::sync::CancellationToken;
 use crate::images::{Images, file_name, pull_script, tag_file_name};
 use crate::queue::{Look, Queue};
 use crate::script::{
-    CONTAINER_EXIT, Container, LOG, SCRIPT, TIMED_OUT, job_script, job_script_of_containers,
-    pull_options, sbatch_options,
+    CONTAINER_EXIT, Container, LOG, PullResources, SCRIPT, TIMED_OUT, job_script,
+    job_script_of_containers, pull_options, sbatch_options,
 };
 
 /// How often the queue is asked about the jobs, by default.
@@ -69,6 +69,8 @@ pub struct SlurmBackend {
     /// Where Apptainer and Singularity keep the SIF file of each image of a registry or address,
     /// which the nodes must see at the same path.
     pub images: PathBuf,
+    /// What the job that pulls an image asks for.
+    pub pull: PullResources,
     queue: Queue,
     made: Images,
     /// The nodes where a job of this run left no log, as they do not see the scratch folder.
@@ -89,6 +91,7 @@ impl SlurmBackend {
     pub fn new(scratch: PathBuf, container: Container) -> SlurmBackend {
         SlurmBackend {
             images: scratch.join("images"),
+            pull: PullResources::default(),
             scratch,
             container,
             options: Vec::new(),
@@ -348,7 +351,7 @@ impl SlurmBackend {
         let script = pull_script(program, reference, path, &control.join(CONTAINER_EXIT));
         tokio::fs::write(control.join(SCRIPT), script).await?;
         let options = self
-            .with_excluded(pull_options(&name, &root, &self.options))
+            .with_excluded(pull_options(&name, &root, &self.pull, &self.options))
             .await;
         let id = self.submit(options, &control.join(SCRIPT)).await?;
         self.queue.add(&id).await;

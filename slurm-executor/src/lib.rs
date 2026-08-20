@@ -12,6 +12,6 @@ mod script;
 pub use backend::{SlurmBackend, TOOLS, executable};
 pub use images::{file_name, pull_script};
 pub use script::{
-    CONTAINER_EXIT, Container, LOG, SCRIPT, TIMED_OUT, job_script, job_script_of_containers,
-    pull_options, sbatch_options,
+    CONTAINER_EXIT, Container, LOG, PullResources, SCRIPT, TIMED_OUT, job_script,
+    job_script_of_containers, pull_options, sbatch_options,
 };

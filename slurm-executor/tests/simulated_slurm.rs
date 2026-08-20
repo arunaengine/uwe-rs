@@ -583,6 +583,42 @@ async fn containers_of_a_task_run_in_one_job() {
 }
 
 #[tokio::test]
+async fn containers_that_wait_for_a_container_that_died_go_on() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    let backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    // The first container kills its wrapper, the shell around it and its group's script, as
+    // the kernel kills a container for lack of memory, so that none of them records an end.
+    let killer = "p() { cut -d ' ' -f 4 /proc/$1/stat; }; w=$PPID; s=$(p $w); g=$(p $s); \
+                  kill -9 $w $s $g";
+    let spec = several(killer);
+    let staging = staging(root.path(), "hello\n");
+    let placement = placement();
+    let job = Job {
+        name: "run-S-3-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let cancel = CancellationToken::new();
+    let ran = backend.run(job, &cancel);
+    let finished = tokio::time::timeout(Duration::from_secs(60), ran).await;
+    let finished = finished
+        .expect("the job ends in time")
+        .expect("the job ends");
+    assert_eq!(finished.exit_code, Some(137));
+    let control = finished.root.join(executor::CONTROL);
+    let codes: Vec<Option<i32>> = (executor::containers::ended(&spec, &control).iter())
+        .map(|ended| ended.exit_code)
+        .collect();
+    assert_eq!(codes, [Some(1), Some(137)]);
+}
+
+#[tokio::test]
 #[ignore = "needs Docker and the debian:stable-slim and alpine:latest images"]
 async fn docker_runs_containers_of_a_task_in_their_images() {
     let root = tempfile::tempdir().expect("a folder");

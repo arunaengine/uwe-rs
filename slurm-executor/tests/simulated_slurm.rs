@@ -210,7 +210,8 @@ async fn jobs_run_tasks_and_give_their_outputs() {
     let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("an output");
     assert_eq!(output, "HELLO\n");
     assert_eq!(finished.files.len(), 1);
-    let options = std::fs::read_to_string(bin.join("state/101.options")).expect("the options");
+    // Job 101 pulled the image.
+    let options = std::fs::read_to_string(bin.join("state/102.options")).expect("the options");
     assert!(options.contains("--mem=256M\n--account=lab\n"), "{options}");
 }
 
@@ -261,6 +262,41 @@ async fn an_image_pinned_to_its_digest_is_pulled_once_for_all_its_jobs() {
 }
 
 #[tokio::test]
+async fn an_image_named_by_a_tag_is_pulled_once_per_run() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    let apptainer = || Container::Apptainer(text(&bin.join("apptainer")));
+    let spec = spec("echo tagged > out.txt");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = |name| Job {
+        name,
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let cancel = CancellationToken::new();
+    let first_run = backend(root.path(), &bin, apptainer());
+    let (first, second) = tokio::join!(
+        first_run.run(job("run-P-7-1"), &cancel),
+        first_run.run(job("run-P-8-1"), &cancel)
+    );
+    for finished in [first, second] {
+        assert_eq!(finished.expect("the job ends").exit_code, Some(0));
+    }
+    let pulls = || std::fs::read_to_string(bin.join("state/pulls")).expect("a pull");
+    assert_eq!(pulls(), "docker://debian:stable-slim\n");
+    let script = std::fs::read_to_string(root.path().join("scratch/run-P-8-1/control/job.sh"))
+        .expect("the job script");
+    assert!(!script.contains("docker://"), "{script}");
+    assert!(script.contains("/scratch/images/tag-"), "{script}");
+    // The tag may have moved since: the next run pulls it again, once.
+    let next_run = backend(root.path(), &bin, apptainer());
+    let finished = next_run.run(job("run2-P-7-1"), &cancel).await;
+    assert_eq!(finished.expect("the job ends").exit_code, Some(0));
+    assert_eq!(pulls().lines().count(), 2);
+}
+
+#[tokio::test]
 async fn a_node_that_does_not_see_the_folders_is_left_out() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
@@ -270,7 +306,12 @@ async fn a_node_that_does_not_see_the_folders_is_left_out() {
         &bin,
         Container::Apptainer(text(&bin.join("apptainer"))),
     );
-    let spec = spec("echo fine > out.txt");
+    // A SIF file needs no pull, so the next job is that of the task.
+    let mut spec = spec("echo fine > out.txt");
+    spec.image = Some(Image {
+        reference: "/images/debian.sif".into(),
+        platform: None,
+    });
     let (staging, placement) = (Staging::default(), placement());
     let job = |name| Job {
         name,
@@ -513,7 +554,9 @@ async fn containers_of_a_task_run_in_one_job() {
     // One job, whose script starts a container for each image.
     let script = std::fs::read_to_string(finished.root.join("control/job.sh")).expect("a script");
     assert_eq!(script.matches(" &\n").count(), 2, "{script}");
-    assert!(!bin.join("state/102.options").exists());
+    let pulls = std::fs::read_to_string(bin.join("state/pulls")).expect("the pulls");
+    assert_eq!(pulls.lines().count(), 2, "{pulls}");
+    assert!(!bin.join("state/104.options").exists());
     // A container that fails fails the task, and the one after it does not run.
     let spec = several("exit 5");
     let job = Job {

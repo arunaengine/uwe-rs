@@ -19,7 +19,7 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-use crate::images::{Images, file_name, pull_script};
+use crate::images::{Images, file_name, pull_script, tag_file_name};
 use crate::queue::{Look, Queue};
 use crate::script::{
     CONTAINER_EXIT, Container, LOG, SCRIPT, TIMED_OUT, job_script, job_script_of_containers,
@@ -66,7 +66,7 @@ pub struct SlurmBackend {
     pub commands: Option<PathBuf>,
     /// How often the queue is asked about the jobs.
     pub poll: Duration,
-    /// Where Apptainer and Singularity keep the SIF file of each image pinned to its digest,
+    /// Where Apptainer and Singularity keep the SIF file of each image of a registry or address,
     /// which the nodes must see at the same path.
     pub images: PathBuf,
     queue: Queue,
@@ -276,39 +276,52 @@ impl SlurmBackend {
         options
     }
 
-    /// The image as the jobs run it: with Apptainer or Singularity, the SIF file of an image
-    /// pinned to its digest, else the image itself.
+    /// The image as the jobs run it: with Apptainer or Singularity, the SIF file of the image,
+    /// pulled once by a job of its own, else the image itself. The file of an image pinned to
+    /// its digest, or of an address, serves later runs too; that of a tag is pulled once per
+    /// run, as the tag may move.
     async fn runnable(
         &self,
         image: &task_model::Image,
         cancel: &CancellationToken,
     ) -> Result<task_model::Image, ExecutorError> {
-        match (&self.container, file_name(&image.reference)) {
-            (Container::Apptainer(program), Some(file)) => {
-                let path = self.sif(program, &image.reference, &file, cancel).await?;
+        let Container::Apptainer(program) = &self.container else {
+            return Ok(image.clone());
+        };
+        let reference = &image.reference;
+        let file = match (file_name(reference), tag_file_name(reference)) {
+            (Some(file), _) => Some((file, true)),
+            (None, Some(file)) => Some((file, false)),
+            (None, None) => None,
+        };
+        match file {
+            Some((file, lasting)) => {
+                let path = self.sif(program, reference, &file, lasting, cancel).await?;
                 Ok(task_model::Image {
                     reference: path.to_string_lossy().into_owned(),
                     platform: image.platform.clone(),
                 })
             }
-            _ => Ok(image.clone()),
+            None => Ok(image.clone()),
         }
     }
 
-    /// The SIF file of an image pinned to its digest, pulled once by a job of its own.
+    /// The SIF file of an image, pulled once by a job of its own. A file that is already there
+    /// counts only when it is `lasting`.
     async fn sif(
         &self,
         program: &str,
         reference: &str,
         file: &str,
+        lasting: bool,
         cancel: &CancellationToken,
     ) -> Result<PathBuf, ExecutorError> {
         let path = self.images.join(file);
         let cell = self.made.cell(reference).await;
         let made = cell.get_or_try_init(|| async {
-            match tokio::fs::try_exists(&path).await {
-                Ok(true) => Ok(path.clone()),
-                _ => self.pull(program, reference, &path, cancel).await,
+            match lasting && tokio::fs::try_exists(&path).await.unwrap_or(false) {
+                true => Ok(path.clone()),
+                false => self.pull(program, reference, &path, cancel).await,
             }
         });
         made.await.cloned()

@@ -47,6 +47,21 @@ pub fn file_name(reference: &str) -> Option<String> {
     (plain(algorithm) && plain(hex)).then(|| format!("{algorithm}-{hex}.sif"))
 }
 
+/// The name of the SIF file of an image of a registry named by a tag, like
+/// `debian:stable-slim` as `tag-<digest of the name>.sif`. A tag may move, so a run never takes
+/// such a file from an earlier run: it pulls the image again, once for all its jobs. `None` for
+/// a path, a SIF file, an address with a scheme, and an image that [`file_name`] names.
+pub fn tag_file_name(reference: &str) -> Option<String> {
+    let local = reference.starts_with('/') || reference.ends_with(".sif");
+    if reference.is_empty() || local || reference.contains("://") || file_name(reference).is_some()
+    {
+        return None;
+    }
+    let digest = task_model::Digest::sha256(reference.as_bytes()).to_string();
+    let hex = digest.rsplit(':').next().unwrap_or_default();
+    Some(format!("tag-{}.sif", &hex[..hex.len().min(32)]))
+}
+
 /// The script of the job that pulls an image into `file`. It writes a file of its own first
 /// and moves it into place at the end, so that no task reads half a file, and two runs that
 /// pull the same image at once do not spoil each other's file. `exit` gets the exit code.
@@ -92,6 +107,20 @@ mod tests {
         );
         assert_eq!(name.len(), "address-.sif".len() + 32);
         assert_eq!(source(address), address);
+    }
+
+    #[test]
+    fn images_named_by_a_tag_get_a_file_of_their_own() {
+        let name = tag_file_name("debian:stable-slim").expect("a file");
+        assert!(name.starts_with("tag-") && name.ends_with(".sif"), "{name}");
+        assert_eq!(name.len(), "tag-.sif".len() + 32);
+        assert_ne!(tag_file_name("debian:trixie-slim"), Some(name));
+        assert!(tag_file_name("alpine").is_some());
+        assert_eq!(tag_file_name("debian@sha256:ab"), None);
+        assert_eq!(tag_file_name("/images/tool.sif"), None);
+        assert_eq!(tag_file_name("tool.sif"), None);
+        assert_eq!(tag_file_name("oras://host/tool:1"), None);
+        assert_eq!(tag_file_name("https://host/tool.img"), None);
     }
 
     #[test]

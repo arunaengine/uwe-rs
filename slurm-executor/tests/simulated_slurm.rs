@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use executor::{Backend, EngineCommand, ExecutorError, Job, Staged, Staging};
-use slurm_executor::{Container, SlurmBackend};
+use slurm_executor::{Container, PullResources, SlurmBackend};
 use task_model::{ContainerSpec, FORMAT, Image, OutputRule, Placement, TaskSpec};
 use tokio_util::sync::CancellationToken;
 
@@ -219,11 +219,16 @@ async fn jobs_run_tasks_and_give_their_outputs() {
 async fn an_image_pinned_to_its_digest_is_pulled_once_for_all_its_jobs() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
-    let backend = backend(
+    let mut backend = backend(
         root.path(),
         &bin,
         Container::Apptainer(text(&bin.join("apptainer"))),
     );
+    backend.pull = PullResources {
+        cpus: 8,
+        memory_mb: 32_768,
+        time_seconds: 7200,
+    };
     let mut spec = spec("echo pinned > out.txt");
     spec.image = Some(Image {
         reference: "debian@sha256:ab12".into(),
@@ -257,6 +262,10 @@ async fn an_image_pinned_to_its_digest_is_pulled_once_for_all_its_jobs() {
     let options = std::fs::read_to_string(bin.join("state/101.options")).expect("the options");
     assert!(
         options.starts_with("--parsable\n--job-name=iunctus-image-sha256-ab12-"),
+        "{options}"
+    );
+    assert!(
+        options.contains("--cpus-per-task=8\n--mem=32768M\n--time=0-02:00:00\n--account=lab\n"),
         "{options}"
     );
 }

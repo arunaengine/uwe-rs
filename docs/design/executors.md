@@ -50,6 +50,11 @@ near = ["s3://hh-sequencing/", "/mnt/hamburg/"]
 container = "apptainer"              # like -slurm-container
 options = ["--account=lab", "--qos=low"]   # like -slurm-options
 
+[executor.slurm.pull]                # the job that pulls an image into a SIF file
+cpus = 2                             # the defaults: 2 CPUs, 4 GB and one hour
+memory_mb = 4096
+minutes = 60
+
 [executor.kubernetes]
 kubeconfig = "/home/me/kind.kubeconfig"    # like -kubeconfig
 namespace = "iunctus"                # like -kubernetes-namespace
@@ -97,7 +102,7 @@ The options of `sbatch` come from the task: `--cpus-per-task`, `--mem`, `--time`
 
 | Runtime | How the job runs the task |
 |---|---|
-| `apptainer` (default), `singularity` | `apptainer exec --containall` with the scratch directory, the work directory and the mounts bound, and `--nv` for tasks with GPUs. An image pinned to its digest is pulled once into a SIF file in `<cache>/scratch/slurm/images`, by a small job of its own (`iunctus-image-...`, 2 CPUs, 4 GB, one hour) before the first task that needs it; every job then runs that file. Jobs that each pull the same image at once spoil Apptainer's shared cache. A SIF file at an `http://` or `https://` address, like those that nf-core modules name for Apptainer, is pulled once the same way. Nextflow workflows see `apptainer` (or the runtime that `-slurm-container` names) in `workflow.containerEngine`, as in Nextflow, so that their modules choose the images they name for it. An image named by a tag, like `debian:stable-slim`, is pulled the same way into `tag-<digest of its name>.sif`, but once per run, since the tag may move. A path to a `.sif` file stays as it is. The container runs inside the job, so SLURM limits and stops it. |
+| `apptainer` (default), `singularity` | `apptainer exec --containall` with the scratch directory, the work directory and the mounts bound, and `--nv` for tasks with GPUs. An image pinned to its digest is pulled once into a SIF file in `<cache>/scratch/slurm/images`, by a small job of its own (`iunctus-image-...`, 2 CPUs, 4 GB and one hour unless `[executor.slurm.pull]` of the config file says otherwise) before the first task that needs it; every job then runs that file. Jobs that each pull the same image at once spoil Apptainer's shared cache. A SIF file at an `http://` or `https://` address, like those that nf-core modules name for Apptainer, is pulled once the same way. Nextflow workflows see `apptainer` (or the runtime that `-slurm-container` names) in `workflow.containerEngine`, as in Nextflow, so that their modules choose the images they name for it. An image named by a tag, like `debian:stable-slim`, is pulled the same way into `tag-<digest of its name>.sif`, but once per run, since the tag may move. A path to a `.sif` file stays as it is. The container runs inside the job, so SLURM limits and stops it. |
 | `podman` | `podman run --init` as the user (`--userns=keep-id`), with the same limits as the job. The init process hands the signal that stops the job to the task, so the container ends with the job. |
 | `docker` | as Podman, as the user with `--user`. |
 

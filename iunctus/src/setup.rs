@@ -6,8 +6,9 @@
 
 use std::path::PathBuf;
 
-use config_file::{ConfigError, ConfigFile, Secret};
+use config_file::{ConfigError, ConfigFile, Secret, Table};
 use content_store::Store;
+use slurm_executor::PullResources;
 use storage::{Storage, StoreLocation};
 use task_runner::NetworkRule;
 
@@ -48,6 +49,9 @@ pub struct Executors {
     pub slurm_container: Option<String>,
     /// `[executor.slurm] options`, a list of options of `sbatch`, like `-slurm-options`.
     pub slurm_options: Option<Vec<String>>,
+    /// `[executor.slurm.pull]`: `cpus`, `memory_mb` and `minutes` of the job that pulls an
+    /// image into a SIF file.
+    pub slurm_pull: PullResources,
     /// `[executor.kubernetes] kubeconfig`, like `-kubeconfig`.
     pub kubeconfig: Option<PathBuf>,
     /// `[executor.kubernetes] namespace`, like `-kubernetes-namespace`.
@@ -101,9 +105,12 @@ impl Executors {
             }
         }
         if let Some(slurm) = section.table("slurm")? {
-            slurm.only(&["container", "options"])?;
+            slurm.only(&["container", "options", "pull"])?;
             settings.slurm_container = slurm.text("container")?;
             settings.slurm_options = slurm.texts("options")?;
+            if let Some(pull) = slurm.table("pull")? {
+                settings.slurm_pull = pull_resources(&pull)?;
+            }
         }
         if let Some(kubernetes) = section.table("kubernetes")? {
             kubernetes.only(&["kubeconfig", "namespace"])?;
@@ -112,6 +119,30 @@ impl Executors {
         }
         Ok(settings)
     }
+}
+
+/// The resources of the job that pulls an image, from `[executor.slurm.pull]`; what it leaves
+/// out keeps its default.
+fn pull_resources(pull: &Table<'_>) -> Result<PullResources, ConfigError> {
+    pull.only(&["cpus", "memory_mb", "minutes"])?;
+    let positive = |key: &str| -> Result<Option<u64>, ConfigError> {
+        match pull.integer(key)? {
+            None => Ok(None),
+            Some(value) if value > 0 => Ok(Some(value as u64)),
+            Some(value) => Err(pull.invalid(key, format!("is {value}; use a number above 0"))),
+        }
+    };
+    let mut resources = PullResources::default();
+    if let Some(cpus) = positive("cpus")? {
+        resources.cpus = u32::try_from(cpus).unwrap_or(u32::MAX);
+    }
+    if let Some(memory_mb) = positive("memory_mb")? {
+        resources.memory_mb = memory_mb;
+    }
+    if let Some(minutes) = positive("minutes")? {
+        resources.time_seconds = minutes.saturating_mul(60);
+    }
+    Ok(resources)
 }
 
 /// Which tasks get the network, from `[network]`: `default = "none"` runs the tasks whose
@@ -238,6 +269,7 @@ mod tests {
     use std::path::Path;
 
     use config_file::ConfigFile;
+    use slurm_executor::PullResources;
 
     use super::Executors;
     use task_runner::NetworkRule;
@@ -281,6 +313,7 @@ mod tests {
         assert_eq!(settings.slurm_container.as_deref(), Some("podman"));
         let options = settings.slurm_options.expect("options");
         assert_eq!(options, ["--account=lab", "--qos=low"]);
+        assert_eq!(settings.slurm_pull, PullResources::default());
         assert_eq!(
             settings.kubeconfig.as_deref(),
             Some(Path::new("/k/kind.yaml"))
@@ -288,6 +321,22 @@ mod tests {
         assert_eq!(settings.kubernetes_namespace.as_deref(), Some("x"));
         assert!(settings.tes_sites.is_empty());
         assert!(read("").expect("no settings").engine.is_none());
+    }
+
+    #[test]
+    fn the_pull_job_of_slurm_asks_for_what_the_config_file_says() {
+        let text = "[executor.slurm.pull]\ncpus = 8\nminutes = 120\n";
+        let pull = read(text).expect("settings").slurm_pull;
+        let expected = PullResources {
+            cpus: 8,
+            time_seconds: 7200,
+            ..PullResources::default()
+        };
+        assert_eq!(pull, expected);
+        let error = read("[executor.slurm.pull]\nmemory_mb = 0\n").expect_err("an error");
+        assert!(error.contains("use a number above 0"), "{error}");
+        let error = read("[executor.slurm.pull]\nmemory = 8\n").expect_err("an error");
+        assert!(error.contains("memory"), "{error}");
     }
 
     #[test]

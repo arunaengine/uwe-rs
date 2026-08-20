@@ -515,16 +515,9 @@ fn executor(
             };
             let store = setup.store(arguments)?;
             let storage = setup.storage.clone();
-            let executor = slurm::executor(
-                store,
-                &scratch,
-                run,
-                default_image,
-                storage,
-                container,
-                options,
-            )
-            .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
+            let backend = slurm::backend(&scratch, container, options, settings.slurm_pull);
+            let executor = slurm::executor(store, backend, run, default_image, storage)
+                .map_err(|message| Failure::setup(format!("iunctus: {message}")))?;
             real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
         "kubernetes" => {

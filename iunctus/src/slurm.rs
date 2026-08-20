@@ -8,7 +8,7 @@ use std::path::Path;
 
 use content_store::Store;
 use executor::{EngineCommand, EngineKind};
-use slurm_executor::{Container, SlurmBackend};
+use slurm_executor::{Container, PullResources, SlurmBackend};
 use storage::Storage;
 use task_runner::{Runner, RunnerExecutor};
 
@@ -30,19 +30,29 @@ pub fn container(name: Option<&str>) -> Result<Container, String> {
     }
 }
 
-/// An executor that submits each task as a batch job with the `sbatch` options `options`,
-/// whose job runs the task with `container`. Tasks without an image get `default_image`.
+/// The backend whose jobs run their tasks with `container` in `<scratch>/slurm`, with the
+/// `sbatch` options `options`; a job that pulls an image asks for `pull`.
+pub fn backend(
+    scratch: &Path,
+    container: Container,
+    options: Vec<String>,
+    pull: PullResources,
+) -> SlurmBackend {
+    let mut backend = SlurmBackend::new(scratch.join("slurm"), container);
+    backend.options = options;
+    backend.pull = pull;
+    backend
+}
+
+/// An executor that submits each task as a batch job of `backend`. Tasks without an image get
+/// `default_image`.
 pub fn executor(
     store: Store,
-    scratch: &Path,
+    backend: SlurmBackend,
     run: &str,
     default_image: Option<String>,
     storage: Storage,
-    container: Container,
-    options: Vec<String>,
 ) -> Result<RunnerExecutor<SlurmBackend>, String> {
-    let mut backend = SlurmBackend::new(scratch.join("slurm"), container);
-    backend.options = options;
     let needed: Vec<&str> = (backend.missing_tools().into_iter())
         .filter(|tool| *tool != "sacct")
         .collect();

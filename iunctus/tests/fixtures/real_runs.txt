@@ -36,3 +36,15 @@ native: exit 0 and 0, 71 files, 38 of them differ between two native runs
 iunctus: exit 0, 71 files: 32 with the same digest, 38 of the varying ones by name, 1 differ, 0 missing, 0 extra
 notes: pipeline_dag is the graph page of iunctus, not the Mermaid page of Nextflow.
 differs: pipeline_info/pipeline_dag_<time>.html
+
+## nf-core-datasync-slurm: nf-core/datasync d25e58a, -profile test,apptainer, on SLURM
+native: exit 0 and 0 in 45 s and 46 s, 33 files, 11 of them differ between two native runs
+iunctus: exit 0 in 26 s, 33 files: 21 with the same digest, 11 of the varying ones by name, 1 differ, 0 missing, 0 extra
+notes: pipeline_dag is the graph page of iunctus, not the Mermaid page of Nextflow.
+differs: pipeline_info/pipeline_dag_<time>.html
+
+## nf-core-phyloplace-slurm: nf-core/phyloplace 68db179, -profile test,apptainer, on SLURM
+native: exit 0 and 0 in 84 s and 78 s, 33 files, 11 of them differ between two native runs
+iunctus: exit 0 in 37 s, 33 files: 21 with the same digest, 11 of the varying ones by name, 1 differ, 0 missing, 0 extra
+notes: pipeline_dag is the graph page of iunctus, not the Mermaid page of Nextflow.
+differs: pipeline_info/pipeline_dag_<time>.html

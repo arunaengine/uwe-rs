@@ -31,6 +31,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(os.environ.get("REAL_RUNS") or Path.home() / ".cache/iunctus/real-runs")
@@ -51,12 +52,14 @@ NEXTFLOW_LIMITS = """executor {
 # config of the native Nextflow runs. `results` is the folder to compare, `{out}` unless
 # given. `notes` says in plain words what differs on purpose.
 # The config of the native Nextflow runs on SLURM: at most 4 jobs at once, named so that they
-# can be told from other jobs of the user.
+# can be told from other jobs of the user. Containers get the proxy of the cluster, which
+# Nextflow does not pass on by itself (the jobs of iunctus inherit it).
 NEXTFLOW_SLURM = """process.executor = 'slurm'
 executor {
     queueSize = 4
     jobName = { "iunctus-native-" + task.hash.toString().substring(0, 8) }
 }
+apptainer.envWhitelist = 'HTTP_PROXY,HTTPS_PROXY,http_proxy,https_proxy,NO_PROXY,no_proxy'
 """
 
 CASES = [
@@ -113,21 +116,50 @@ CASES = [
     },
 ]
 
+
+
+def slurm_case(pipeline, revision, notes="pipeline_dag is the graph page of iunctus, not the "
+               "Mermaid page of Nextflow."):
+    """A case of an nf-core pipeline with -profile test,apptainer on SLURM."""
+    command = ["run", "{workflow}", "-profile", "test,apptainer", "--outdir", "{out}"]
+    return {
+        "name": f"nf-core-{pipeline}-slurm",
+        "title": f"nf-core/{pipeline} {revision}, -profile test,apptainer, on SLURM",
+        "repository": f"https://github.com/nf-core/{pipeline}.git",
+        "revision": revision,
+        "limits": NEXTFLOW_SLURM,
+        "native": ["nextflow", *command, "-c", "{limits}"],
+        "iunctus": ["{iunctus}", *command, "-executor", "slurm", "-max-pending", "4"],
+        "notes": notes,
+    }
+
+
+CASES += [
+    slurm_case("datasync", "d25e58a"),
+    slurm_case("phyloplace", "68db179"),
+    slurm_case("isoseq", "6c94483"),
+    slurm_case("viralintegration", "fed5fa8"),
+]
+
 TIME = re.compile(r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}")
 
 
 def fetch(case):
-    """The folder of the workflow of a case, cloned at its revision once."""
+    """The folder of the workflow of a case, cloned at its revision once. A folder without
+    `.git` is a copy of the sources at that revision, made without a download."""
     folder = ROOT / "sources" / case["name"]
     if not folder.exists():
         folder.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(["git", "clone", "-q", case["repository"], str(folder)], check=True)
-    subprocess.run(["git", "-C", str(folder), "checkout", "-q", case["revision"]], check=True)
+    if (folder / ".git").exists():
+        subprocess.run(["git", "-C", str(folder), "checkout", "-q", case["revision"]],
+                       check=True)
     return folder
 
 
 def run(case, command, folder):
-    """Runs a command of a case in a fresh folder; the result has the exit code."""
+    """Runs a command of a case in a fresh folder; the result is the exit code and the
+    seconds that it took."""
     if folder.exists():
         shutil.rmtree(folder)
     folder.mkdir(parents=True)
@@ -141,13 +173,15 @@ def run(case, command, folder):
     }
     words = [word.format(**values) for word in command]
     environment = dict(os.environ, NXF_ANSI_LOG="false")
+    start = time.monotonic()
     with open(folder / "run.log", "w") as log:
         try:
             done = subprocess.run(words, cwd=folder, stdout=log, stderr=subprocess.STDOUT,
                                   env=environment, timeout=TIMEOUT)
-            return done.returncode
+            code = done.returncode
         except subprocess.TimeoutExpired:
-            return "timeout"
+            code = "timeout"
+    return code, round(time.monotonic() - start)
 
 
 def manifest(folder):
@@ -180,19 +214,26 @@ def native_manifests(case):
         if record.exists() and not os.environ.get("NATIVE"):
             manifests.append(json.loads(record.read_text()))
             continue
-        code = run(case, case["native"], folder)
+        code, seconds = run(case, case["native"], folder)
         results = Path(case.get("results", "{out}").format(out=folder / "out"))
-        files = {"exit": code, "files": manifest(results)}
+        files = {"exit": code, "seconds": seconds, "files": manifest(results)}
         record.write_text(json.dumps(files, indent=1))
         manifests.append(files)
     return manifests
+
+
+def took(first, second):
+    """The seconds of the two native runs, when they were recorded."""
+    if "seconds" not in first or "seconds" not in second:
+        return ""
+    return f" in {first['seconds']} s and {second['seconds']} s"
 
 
 def compare(case):
     """The record of a case: how many files match, and the names of those that do not."""
     first, second = native_manifests(case)
     folder = ROOT / case["name"] / "iunctus"
-    code = run(case, case["iunctus"], folder)
+    code, seconds = run(case, case["iunctus"], folder)
     results = Path(case.get("results", "{out}").format(out=folder / "out"))
     ours = manifest(results)
     native = first["files"]
@@ -205,9 +246,10 @@ def compare(case):
     named = [name for name in varying if name in ours]
     lines = [
         f"## {case['name']}: {case['title']}",
-        f"native: exit {first['exit']} and {second['exit']}, {len(native)} files, "
-        f"{len(varying)} of them differ between two native runs",
-        f"iunctus: exit {code}, {len(ours)} files: {len(matching)} with the same digest, "
+        f"native: exit {first['exit']} and {second['exit']}{took(first, second)}, "
+        f"{len(native)} files, {len(varying)} of them differ between two native runs",
+        f"iunctus: exit {code} in {seconds} s, {len(ours)} files: {len(matching)} with the "
+        f"same digest, "
         f"{len(named)} of the varying ones by name, {len(differing)} differ, "
         f"{len(missing)} missing, {len(extra)} extra",
     ]

@@ -548,3 +548,111 @@ fn a_container_after_one_that_failed_does_not_run() {
     assert_eq!(ended[2].exit_code, Some(0));
 }
 
+/// What a task wrote into `out.txt` of its work directory.
+fn written(finished: &Finished) -> String {
+    std::fs::read_to_string(finished.local_path("out.txt")).expect("reads the output")
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn containers_have_the_least_permissions() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let executor = executor(root.path());
+    let mut task = spec(Some("debian:stable-slim"), &["out.txt"]);
+    let script = "grep -E '^(CapEff|NoNewPrivs)' /proc/self/status > \"$OUT\"";
+    task.arguments = vec!["sh".into(), "-c".into(), script.into()];
+    task.environment.insert(
+        "OUT".into(),
+        task_model::EnvironmentValue::Literal("out.txt".into()),
+    );
+    // As the user who runs iunctus: no capabilities, and no way to gain privileges.
+    let finished = run(&executor, "least-1", &task, &Staging::default()).expect("runs");
+    assert_eq!(
+        written(&finished),
+        "CapEff:\t0000000000000000\nNoNewPrivs:\t1\n"
+    );
+    // As root of the image: only CHOWN, to hand the files back, on a rootful engine.
+    let mut task = spec(Some("debian:stable-slim"), &["/out.txt"]);
+    task.arguments = vec![
+        "sh".into(),
+        "-c".into(),
+        "grep -E '^(CapEff|NoNewPrivs)' /proc/self/status > /out.txt".into(),
+    ];
+    task.run_as = Some(task_model::RunAs::default());
+    let finished = run(&executor, "least-2", &task, &Staging::default()).expect("runs");
+    let text = std::fs::read_to_string(finished.local_path("/out.txt")).expect("reads");
+    let rootless = executor.engine.rootless;
+    let capabilities = if rootless {
+        "0000000000000000"
+    } else {
+        "0000000000000001"
+    };
+    assert_eq!(text, format!("CapEff:\t{capabilities}\nNoNewPrivs:\t1\n"));
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn tasks_that_run_as_their_image_write_where_its_user_may() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let executor = executor(root.path());
+    let me = std::os::unix::fs::MetadataExt::uid(&std::fs::metadata(root.path()).unwrap());
+    // As root of the image, in its working directory, with its home, writing outside the
+    // folders of the task, as Argo runs it.
+    let mut task = spec(Some("debian:stable-slim"), &["/result.txt", "/data/deep"]);
+    let script = "pwd > /result.txt; echo \"$HOME\" >> /result.txt; mkdir -p /data/deep && \
+                  echo x > /data/deep/f";
+    task.arguments = vec!["sh".into(), "-c".into(), script.into()];
+    task.run_as = Some(task_model::RunAs::default());
+    let finished = run(&executor, "image-1", &task, &Staging::default()).expect("runs");
+    assert_eq!(finished.exit_code, Some(0));
+    let text = std::fs::read_to_string(finished.local_path("/result.txt")).expect("reads");
+    assert_eq!(text, "/\n/root\n");
+    assert!(finished.local_path("/data/deep").join("f").exists());
+    assert!(
+        !executor::access::foreign(&finished.root, me),
+        "the files are the user's"
+    );
+    // As another user that the task names, starting in its `workdir`: what it made is
+    // handed back to the user who runs iunctus.
+    let mut task = spec(Some("debian:stable-slim"), &["/tmp/made"]);
+    let script = "id -u > /tmp/id && mkdir -p /tmp/made/deeper && chmod 700 /tmp/made/deeper && \
+                  mv /tmp/id /tmp/made/deeper/id && pwd > /tmp/made/where";
+    task.arguments = vec!["sh".into(), "-c".into(), script.into()];
+    task.workdir = Some("/tmp".into());
+    task.run_as = Some(task_model::RunAs {
+        user: Some(4242),
+        group: Some(4242),
+    });
+    let finished = run(&executor, "image-2", &task, &Staging::default()).expect("runs");
+    assert_eq!(finished.exit_code, Some(0));
+    let made = finished.local_path("/tmp/made");
+    let id = std::fs::read_to_string(made.join("deeper/id")).expect("reads");
+    assert_eq!(id, "4242\n");
+    assert_eq!(
+        std::fs::read_to_string(made.join("where")).expect("reads"),
+        "/tmp\n"
+    );
+    assert!(
+        !executor::access::foreign(&finished.root, me),
+        "the files are the user's"
+    );
+}
+
+#[test]
+#[ignore = "needs Docker and the argoproj/argosay:v2 image"]
+fn containers_of_a_set_with_a_command_replace_the_entrypoint() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let executor = executor(root.path());
+    let mut main = container("main", "argoproj/argosay:v2", "", &[]);
+    main.arguments = vec![
+        "/argosay".into(),
+        "echo".into(),
+        "hi".into(),
+        "out.txt".into(),
+    ];
+    main.replaces_entrypoint = true;
+    let task = several(vec![main], &["out.txt"]);
+    let finished = run(&executor, "set-1", &task, &Staging::default()).expect("runs");
+    assert_eq!(finished.exit_code, Some(0));
+    assert_eq!(written(&finished), "hi\n");
+}

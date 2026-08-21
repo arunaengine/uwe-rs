@@ -131,15 +131,23 @@ def slurm_case(pipeline, revision, notes="pipeline_dag is the graph page of iunc
         "revision": revision,
         "limits": NEXTFLOW_SLURM,
         "native": ["nextflow", *command, "-c", "{limits}"],
-        "iunctus": ["{iunctus}", *command, "-executor", "slurm", "-max-pending", "4"],
+        # Without the cache, so that a run after a fix runs every task and takes its time.
+        "iunctus": ["{iunctus}", *command, "-executor", "slurm", "-max-pending", "4",
+                    "-no-cache"],
         "notes": notes,
     }
 
 
 CASES += [
     slurm_case("datasync", "d25e58a"),
-    slurm_case("phyloplace", "68db179"),
-    slurm_case("isoseq", "6c94483"),
+    slurm_case("phyloplace", "68db179",
+               "pipeline_dag is the graph page of iunctus. The placements of epa-ng "
+               "and the tables of gappa made from them hold the same lines as Nextflow's, in "
+               "another order; an earlier run with the cache gave the same digests."),
+    slurm_case("isoseq", "6c94483",
+               "pipeline_dag is the graph page of iunctus. MultiQC's table of the lima filters "
+               "has the same rows and values as Nextflow's, with its columns in another "
+               "order."),
     slurm_case("viralintegration", "fed5fa8"),
 ]
 

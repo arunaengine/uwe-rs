@@ -191,6 +191,7 @@ mod tests {
             sites: [("hamburg".to_owned(), Named::default())].into(),
         };
         let spec = TaskSpec {
+            run_as: None,
             format: FORMAT,
             namespace: String::new(),
             image: None,

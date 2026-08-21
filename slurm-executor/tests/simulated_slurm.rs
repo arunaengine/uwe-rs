@@ -142,6 +142,7 @@ fn backend(root: &Path, bin: &Path, container: Container) -> SlurmBackend {
 
 fn spec(script: &str) -> TaskSpec {
     TaskSpec {
+        run_as: None,
         format: FORMAT,
         namespace: String::new(),
         image: Some(Image {
@@ -514,6 +515,7 @@ async fn docker_runs_the_task_in_its_container() {
 /// A task of two containers in two images: `first` writes a file that `main` reads.
 fn several(first: &str) -> TaskSpec {
     let container = |name: &str, image: &str, script: &str, after: &[&str]| ContainerSpec {
+        replaces_entrypoint: false,
         name: name.into(),
         image: Some(Image {
             reference: image.into(),

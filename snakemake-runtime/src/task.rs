@@ -734,6 +734,7 @@ pub fn build(
         format!("{} ({})", rule.name, values.join(", "))
     };
     Ok(Task {
+        run_as: None,
         id,
         name: label,
         step: rule.name.clone(),

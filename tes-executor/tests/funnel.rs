@@ -27,6 +27,7 @@ fn backend(folder: &std::path::Path) -> TesBackend {
 
 fn spec(script: &str) -> TaskSpec {
     TaskSpec {
+        run_as: None,
         format: FORMAT,
         namespace: String::new(),
         image: Some(Image {
@@ -127,6 +128,7 @@ fn funnel_cancels_tasks() {
 fn funnel_runs_the_containers_of_a_task_one_after_the_other() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let container = |name: &str, image: &str, script: &str, after: &[&str]| ContainerSpec {
+        replaces_entrypoint: false,
         name: name.into(),
         image: Some(Image {
             reference: image.into(),

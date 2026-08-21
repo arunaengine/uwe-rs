@@ -238,6 +238,7 @@ impl Run {
                     for (relative, location) in files {
                         if let Some(inside) = relative.strip_prefix(&prefix) {
                             task.inputs.push(Input {
+                                executable: false,
                                 path: below(&path, inside),
                                 source: location.to_string_lossy().into_owned(),
                                 directory: false,

@@ -502,6 +502,7 @@ pub fn task(
         None => true,
     };
     let task = Task {
+        run_as: None,
         id,
         name: name.to_owned(),
         step: step.to_owned(),

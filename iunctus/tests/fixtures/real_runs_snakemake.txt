@@ -1,0 +1,424 @@
+# The tests of Snakemake run for real by iunctus and by Snakemake 9.27.0, compared by the files each run made; written by real_runs_snakemake.py. A tab ends the name.
+# 422 tests: 7 differs, 11 iunctus fails, 314 same, 85 skipped, 5 snakemake fails.
+knapsack	same (4 files)
+profile	iunctus fails (exit timeout): timeout (known: 4000 jobs of one container each take longer than the time limit of this script)
+test (with parenthese's)	same (1 files)
+test01	same (3 files)
+test02	same (3 files)
+test03	same (1 files)
+test04	same (1 files)
+test05	same (8 files)
+test06	same (1 files)
+test07	same (2 files)
+test08	same (4 files)
+test09	same: fails as the test expects
+test10	same (1 files)
+test11	same (2 files)
+test12	same (1 files)
+test13	same (2 files)
+test15	same (1 files)
+testHighWorkload	same (33 files)
+test_access_patterns	differs: test2.1.out: other content (known: a job reads where its input links point; iunctus gives inputs as links into its store)
+test_all_temp	snakemake fails (exit 1): RuleException: ValueError in file "/tmp/iunctus-real-snakemake-wt2br1qh/test/test_all_temp/Snakefile", line 7: (known: it needs --all-temp, an option of Snakemake's test suite)
+test_ambiguousruleexception	same: both fail
+test_ancient	skipped: reads remote files
+test_ancient_cli	same: both differ from expected-results in 2
+test_ancient_dag	same (23 files)
+test_archive	skipped: needs a Conda environment
+test_azure_batch	same (1 files)
+test_bash	same (1 files)
+test_batch	same: both differ from expected-results in a.inter.txt
+test_batch_final	same (2 files)
+test_benchmark	same: both fail
+test_benchmark_jsonl	same: both fail
+test_cache_multioutput	same (2 files)
+test_callable	same (2 files)
+test_censored_path	skipped: reads remote files
+test_checkpoint_allowed_rules	same (2 files)
+test_checkpoint_missing_output	same (3 files)
+test_checkpoint_omit_from	same (6 files)
+test_checkpoint_open	same: both differ from expected-results in storage/test2.txt
+test_checkpoint_rerun	differs: linkout/a/0.out: other content (known: an output is a symbolic link, which iunctus stores as the file that it points to, so the link itself is not delivered)
+test_checkpoint_running_job_storage_race	same: both differ from expected-results in storage/slow_output.txt
+test_checkpoint_until	same (6 files)
+test_checkpoints	same (6 files)
+test_checkpoints_dir	skipped: reads remote files
+test_checkpoints_many	same (38 files)
+test_cloud_checkpoints_issue574	skipped: needs a Conda environment
+test_conda	skipped: needs a Conda environment
+test_conda_cmd_exe	skipped: needs a Conda environment
+test_conda_custom_prefix	skipped: needs a Conda environment
+test_conda_function	skipped: needs a Conda environment
+test_conda_global	skipped: needs a Conda environment
+test_conda_named	skipped: needs a Conda environment
+test_conda_pin_file	skipped: needs a Conda environment
+test_conda_python_3_7_script	skipped: needs a Conda environment
+test_conda_python_script	skipped: needs a Conda environment
+test_conda_run	skipped: needs a Conda environment
+test_conditional	same (4 files)
+test_config	same (1 files)
+test_config_merging	same: both differ from expected-results in test.out
+test_config_replacing	same: both differ from expected-results in result.txt
+test_config_replacing_nocli	same (1 files)
+test_config_yte	same (1 files)
+test_container	skipped: images not on this machine: bash, invalid/image url even with whitespace
+test_containerize_checkpoint	skipped: needs a Conda environment
+test_containerized	skipped: needs a Conda environment
+test_convert_to_cwl	same: both fail
+test_converting_path_for_r_script	skipped: needs a Conda environment
+test_core_dependent_threads	same: both differ from expected-results in test.out
+test_cwl	skipped: reads remote files
+test_cyclic_dependency_single	same: both differ from expected-results in test.txt
+test_cyclic_dependency_split	same (2 files)
+test_default_flags	same (1 files)
+test_default_remote	same: both fail
+test_default_resources	same: both fail
+test_default_storage_local_job	same (3 files)
+test_default_target	same (2 files)
+test_deferred_func_eval	same (1 files)
+test_delete_all_output	same: both fail
+test_delete_output	iunctus fails (exit 1): iunctus: Error in rule make_the_links: the task ended with exit code 1 (known: an output is a symbolic link, which iunctus stores as the file that it points to, so the link itself is not delivered)
+test_delete_temp_fs	same (1 files)
+test_deploy_hashing	skipped: needs a Conda environment
+test_deploy_script	skipped: needs a Conda environment
+test_deploy_sources	same: both fail
+test_directory	differs: dir_to_link_to: only Snakemake changed it (known: an output is a symbolic link, which iunctus stores as the file that it points to, so the link itself is not delivered)
+test_dryrun_executor_validation	same (1 files)
+test_dup_out_patterns	same: fails as the test expects
+test_dynamic_container	skipped: images not on this machine: {image}
+test_empty_include	same (0 files)
+test_ensure	same (2 files)
+test_env_modules	skipped: needs environment modules
+test_envvars	same: both fail
+test_exists	same (0 files)
+test_expand_flag	same: fails as the test expects
+test_expand_list_of_functions	same (1 files)
+test_failed_intermediate	same: both differ from expected-results in test3.txt
+test_filegraph	same (5 files)
+test_filesep_windows	same: both fail
+test_format_params	same (1 files)
+test_format_wildcards	same (1 files)
+test_fstring	same (1 files)
+test_ftp_immediate_close	same: both fail
+test_function_f_string	same (0 files)
+test_function_f_string_newline	same (0 files)
+test_generate_unit_tests	same: both fail
+test_get_log_both	skipped: needs a Snakemake wrapper from the network
+test_get_log_complex	skipped: needs a Snakemake wrapper from the network
+test_get_log_none	skipped: needs a Snakemake wrapper from the network
+test_get_log_stderr	skipped: needs a Snakemake wrapper from the network
+test_get_log_stdout	skipped: needs a Snakemake wrapper from the network
+test_github_issue105	same (2 files)
+test_github_issue1062	same: both fail
+test_github_issue1069	same (1 files)
+test_github_issue1158	same (1 files)
+test_github_issue1261	same: fails as the test expects
+test_github_issue1266	skipped: needs a Conda environment
+test_github_issue1384	same: both differ from expected-results in .gitempty
+test_github_issue1389	same (2 files)
+test_github_issue1396	same (8 files)
+test_github_issue1460	same (4 files)
+test_github_issue1469	same: both fail
+test_github_issue1498	same (3 files)
+test_github_issue1500	same (2 files)
+test_github_issue1542	same (2 files)
+test_github_issue1550	same (1 files)
+test_github_issue1618	same (1 files)
+test_github_issue1818	same (0 files)
+test_github_issue1882	same (1 files)
+test_github_issue2142	same (2 files)
+test_github_issue2154	same: both fail
+test_github_issue2213	skipped: needs a Snakemake wrapper from the network
+test_github_issue2255	same (2 files)
+test_github_issue261	same (10 files)
+test_github_issue2732	same (2 files)
+test_github_issue2848	same: fails as the test expects
+test_github_issue3213	same (2 files)
+test_github_issue3271	same (1 files)
+test_github_issue3556	same: both differ from expected-results in dag.mmd
+test_github_issue3687	differs: dir2/D: only Snakemake changed it (known: an output is a symbolic link, which iunctus stores as the file that it points to, so the link itself is not delivered)
+test_github_issue3913	same (3 files)
+test_github_issue4003	same (5 files)
+test_github_issue413	differs: test_dir/other_file: other content (known: an output is a symbolic link, which iunctus stores as the file that it points to, so the link itself is not delivered)
+test_github_issue456	same (1 files)
+test_github_issue52	same (3 files)
+test_github_issue627	same (0 files)
+test_github_issue640	same (5 files)
+test_github_issue672	same (4 files)
+test_github_issue727	same (40 files)
+test_github_issue78	skipped: images not on this machine: bash
+test_github_issue806	iunctus fails (exit 1): iunctus: WorkflowError: Missing input files for rule combine: affected files: (known: its jobs share files that they do not declare, which only a shared working directory gives; iunctus runs each job in a folder of its own)
+test_github_issue929	same (1 files)
+test_github_issue988	same (14 files)
+test_github_issue_14	same (1 files)
+test_github_issue_3265_respect_dryrun_delete_all	same: both fail
+test_github_issue_4039_mem_cli	same: both differ from expected-results in output.txt
+test_github_issue_4039_runtime_cli	same: both differ from expected-results in output.txt
+test_github_issue_4039_runtime_no_override	same (1 files)
+test_github_issue_4039_runtime_profile	same (1 files)
+test_globwildcards	same (5 files)
+test_google_lifesciences	skipped: needs a Conda environment
+test_group_job_fail	same: fails as the test expects
+test_group_jobs	same (11 files)
+test_group_jobs_attempts	same: both fail
+test_group_jobs_resources	same (16 files)
+test_group_parallel	iunctus fails (exit 1): iunctus: Error in rule a: the task ended with exit code 1 (known: its jobs share files that they do not declare, which only a shared working directory gives; iunctus runs each job in a folder of its own)
+test_group_temp	same (3 files)
+test_group_with_pipe	same (5 files)
+test_groupid_expand	same (4 files)
+test_groupid_expand_cluster	same: both differ from expected-results in foo.412c59b9-e2fc-51ea-9a84-d055fb244f80.txt
+test_groups_out_of_jobs	same (4 files)
+test_gs_requester_pays	same: both fail
+test_handle_storage_multi_consumers	same: both fail
+test_handover	same: both fail
+test_immediate_submit	same: both fail
+test_immediate_submit_without_shared_fs	same (11 files)
+test_incomplete_params	same (2 files)
+test_inferred_resources	same (1 files)
+test_inferred_resources_mib	same: both differ from expected-results in test2.out
+test_inner_call	same (1 files)
+test_inoutput_is_path	same (0 files)
+test_input_generator	same (3 files)
+test_ioutils	same (6 files)
+test_issue1037	same (2 files)
+test_issue1041	same (4 files)
+test_issue1046	skipped: needs a Snakemake wrapper from the network
+test_issue1083	skipped: images not on this machine: bash
+test_issue1085	same: fails as the test expects
+test_issue1092	same: both differ from expected-results in aggregated.txt_WIN
+test_issue1093	skipped: needs a Conda environment
+test_issue1256	same: both fail
+test_issue1281	same (2 files)
+test_issue1284	same (5 files)
+test_issue1331	same (12 files)
+test_issue2574	same: both fail
+test_issue2685	same (2 files)
+test_issue2826_failed_binary_logs	same: fails as the test expects
+test_issue3192	skipped: needs a Conda environment
+test_issue3338	same: both differ from expected-results in test2.out
+test_issue3361_fail	skipped: images not on this machine: ubuntu:24.04
+test_issue3361_pass	skipped: images not on this machine: ubuntu:24.04
+test_issue381	same (1 files)
+test_issue3922	same (7 files)
+test_issue3958	skipped: reads remote files
+test_issue3970	same (2 files)
+test_issue471	same (1 files)
+test_issue584	same (1 files)
+test_issue612	same (0 files)
+test_issue635	skipped: needs a Conda environment
+test_issue805	same: fails as the test expects
+test_issue823_1	same (1 files)
+test_issue823_2	same (3 files)
+test_issue823_3	same (1 files)
+test_issue850	same (8 files)
+test_issue854	same: fails as the test expects
+test_issue860	same (8 files)
+test_issue894	same (1 files)
+test_issue912	same (3 files)
+test_issue916	same (1 files)
+test_issue930	same (6 files)
+test_issue956	same (4 files)
+test_issue958	same (1 files)
+test_issue_3202	skipped: needs a Conda environment
+test_job_properties	same (3 files)
+test_jupyter_notebook	skipped: needs a Conda environment
+test_jupyter_notebook_draft	skipped: needs a Conda environment
+test_jupyter_notebook_nbconvert	skipped: needs a Conda environment
+test_keyword_list	same (1 files)
+test_kubernetes	skipped: needs a Conda environment
+test_lazy_resources	same (2 files)
+test_list_untracked	same: both fail
+test_load_metawrapper	same: both fail
+test_local_import	same (1 files)
+test_localrule	same (2 files)
+test_log_input	same (3 files)
+test_long_shell	same (1 files)
+test_many_jobs	same: both fail
+test_match_by_wildcard_names	same (2 files)
+test_metadata_migration	same (1 files)
+test_missing_file_dryrun	same: fails as the test expects
+test_module_checkpoint	same (6 files)
+test_module_complex	skipped: reads remote files
+test_module_complex2	skipped: reads remote files
+test_module_global_container	skipped: images not on this machine: master_image, module_image
+test_module_input_func	same (1 files)
+test_module_local_git	same: both fail
+test_module_nested	same (2 files)
+test_module_no_prefixing_modified_paths	same (2 files)
+test_module_onerror	skipped: reads remote files
+test_module_onstart_not_in_main_snakefile	skipped: reads remote files
+test_module_onstart_onsuccess	skipped: reads remote files
+test_module_report	skipped: reads remote files
+test_module_wildcard_constraints	same (2 files)
+test_module_with_script	skipped: reads remote files
+test_module_workflow_snakefile_usage	iunctus fails (exit 1): iunctus: Error in rule a: the task ended with exit code 1 (known: a job reads a file of the workflow at its absolute path on this machine, which its container does not see)
+test_modules_all	same (3 files)
+test_modules_all_exclude	skipped: runs from another folder than its own
+test_modules_dynamic	same (6 files)
+test_modules_dynamic_import_rules	same (4 files)
+test_modules_dynamic_module_as_alias	same (6 files)
+test_modules_dynamic_no_as	same (6 files)
+test_modules_meta_wrapper	same: both fail
+test_modules_name	same (3 files)
+test_modules_no_name	same: fails as the test expects
+test_modules_peppy	same (1 files)
+test_modules_prefix	skipped: reads remote files
+test_modules_prefix_local	same (1 files)
+test_modules_ruledeps_inheritance	same (4 files)
+test_modules_semi_dynamic	same (6 files)
+test_modules_specific	same (1 files)
+test_modules_two_names	same: fails as the test expects
+test_multicomp_group_jobs	same (21 files)
+test_multiext	same (4 files)
+test_multiext_named	same (2 files)
+test_multiple_includes	same (3 files)
+test_name_override	same (2 files)
+test_no_temp	same: both differ from expected-results in b
+test_nodelocal	same: both differ from expected-results in local/local
+test_nonstr_params	same (2 files)
+test_omitfrom	same (13 files)
+test_output_file_cache	same: both differ from expected-results in cache/6250074792e6b1aa4d9fbd820673cc22fe30525099db88b6918fa513fb003a66.out
+test_output_file_cache_storage	same (5 files)
+test_params	same (1 files)
+test_params_empty_inherit	same: both differ from expected-results in test.txt
+test_params_outdated_code	same: both fail
+test_params_pickling	same: both fail
+test_paramspace	same (36 files)
+test_paramspace_single_wildcard	same (36 files)
+test_parser	same (0 files)
+test_parsing_terminal_comment_following_statement	same (1 files)
+test_path with spaces	same (1 files)
+test_pathlib	same (10 files)
+test_pathlib_missing_file	same: fails as the test expects
+test_pathvars	same (6 files)
+test_pathvars_cycle	same: fails as the test expects
+test_pathvars_modules	same (7 files)
+test_pathvars_storage	same: both fail
+test_pep_pathlib	snakemake fails (exit 1): WorkflowError in file "/tmp/iunctus-real-snakemake-wt2br1qh/test/test_pep_pathlib/Snakefile", line 6: For PEP schema support, please install eido.
+test_peppy	snakemake fails (exit 1): WorkflowError in file "/tmp/iunctus-real-snakemake-wt2br1qh/test/test_peppy/Snakefile", line 4: For PEP schema support, please install eido.
+test_persistence_backend_db_run_directive_concurrency	same (100 files)
+test_pipe_depend	same: fails as the test expects
+test_pipes	same (2 files)
+test_pipes2	same (1 files)
+test_pipes_fail	same: fails as the test expects
+test_pipes_multiple	same (1 files)
+test_prebuilt_conda_script	skipped: needs a Conda environment
+test_priority	differs: order.out: only Snakemake changed it (known: its jobs share files that they do not declare, which only a shared working directory gives; iunctus runs each job in a folder of its own)
+test_priority_invalid	same: fails as the test expects
+test_profile_double_dash	same (1 files)
+test_profile_filename	same: both fail
+test_profile_multiple	same: both fail
+test_profile_new	same: both fail
+test_profile_none	same: both fail
+test_profile_old	same: both fail
+test_profile_with_env_var	same: both fail
+test_protected_symlink_output	iunctus fails (exit 1): iunctus: Error in rule main: the task ended with exit code 1 (known: an output is a symbolic link, which iunctus stores as the file that it points to, so the link itself is not delivered)
+test_python_import_from_github_module	skipped: reads remote files
+test_queue_input	same (20 files)
+test_r_wrapper	skipped: needs a Snakemake wrapper from the network
+test_remote_auto	skipped: reads remote files
+test_remote_azure	skipped: reads remote files
+test_remote_gs	same: both fail
+test_remote_irods	same: both fail
+test_remote_log	same: both fail
+test_remote_ncbi	same: both fail
+test_remote_ncbi_simple	same: both fail
+test_remote_sftp	same: both fail
+test_remote_zenodo	same: both fail
+test_report	skipped: needs a Conda environment
+test_report_after_run	skipped: needs a Conda environment
+test_report_dir	same: both differ from expected-results in report.zip
+test_report_dir_but_file	same (2 files)
+test_report_display_code	skipped: needs a Snakemake wrapper from the network
+test_report_href	same: both differ from expected-results in test2.html
+test_report_metadata	same: both differ from expected-results in report.html
+test_report_zip	skipped: needs a Conda environment
+test_resource_quoting	same (1 files)
+test_resource_string_in_cli_or_profile	same (1 files)
+test_resource_tbdstring	same (1 files)
+test_restartable_job_cmd_exit_1	same: both fail
+test_restartable_job_qsub_exit_1	same (1 files)
+test_retries	same (1 files)
+test_retries_not_overriden	same: fails as the test expects
+test_rule_defined_in_for_loop	same (1 files)
+test_rule_inheritance_globals	same: both differ from expected-results in report.html
+test_ruledag	same (15 files)
+test_ruledeps	same (3 files)
+test_run_namedlist	same (1 files)
+test_same_wildcard	same (1 files)
+test_scatter_gather	same: both differ from expected-results in splitted/1-of-2.post.txt
+test_scatter_gather_multiple_processes	same: both differ from expected-results in split_b/1-of-2.post.txt
+test_scheduler_sequential_all_cores	snakemake fails (exit 1): RuleException: ValueError in file "/tmp/iunctus-real-snakemake-wt2br1qh/test/test_scheduler_sequential_all_cores/Snakefile", line 22:
+test_script	skipped: needs a Conda environment
+test_script_hy	skipped: needs a Conda environment
+test_script_import_snakemake_obj	same (1 files)
+test_script_pre_py39	skipped: needs a Conda environment
+test_script_py	same (2 files)
+test_script_rs	skipped: needs a Conda environment
+test_script_xsh	skipped: needs a Conda environment
+test_service_jobs	iunctus fails (exit timeout): timeout (known: a service job runs as long as the jobs that use it, which iunctus does not do yet, so the run waits)
+test_set_resources	same: both differ from expected-results in test.txt
+test_set_resources_complex	same (1 files)
+test_set_threads	same: both differ from expected-results in test.out
+test_shadow	iunctus fails (exit 1): iunctus: task absolute_link: /tmp/iunctus-real-snakemake-wt2br1qh/cache/iunctus/scratch/1a0f5d52f8b-c4d7d-absolute_link-3-1/work/absolute_link.out: No such file (known: an output is a symbolic link, which iunctus stores as the file that it points to, so the link itself is not delivered)
+test_shadow_copy	iunctus fails (exit 1): iunctus: Error in rule minimal_absolute: the task ended with exit code 1; and 1 more jobs failed (known: its jobs share files that they do not declare, which only a shared working directory gives; iunctus runs each job in a folder of its own)
+test_shadow_prefix	same: both fail
+test_shadowed_log	same (2 files)
+test_shell	same (1 files)
+test_shell_exec	skipped: images not on this machine: busybox:1.33
+test_singularity	skipped: images not on this machine: bash, invalid/image url even with whitespace, python:3.9
+test_singularity_conda	skipped: needs a Conda environment
+test_singularity_global	skipped: images not on this machine: bash
+test_singularity_module	skipped: images not on this machine: bash, invalid/image url even with whitespace, python:3.8.3
+test_singularity_none	skipped: images not on this machine: bash
+test_singularity_source_cache	skipped: images not on this machine: bash:5.3.3
+test_slurm_mpi	skipped: needs a Conda environment
+test_solver	same (1 files)
+test_source_path_rerun	same (2 files)
+test_spaces_in_fnames	same (1 files)
+test_speed	same (300 files)
+test_storage	skipped: reads remote files
+test_storage_call	skipped: reads remote files
+test_storage_cleanup_local	same: both differ from expected-results in fs-storage/test.out
+test_storage_dependency_edge_flags	skipped: reads remote files
+test_storage_localrule	same: both differ from expected-results in fs-storage/test.out
+test_storage_noretrieve_dryrun	skipped: reads remote files
+test_strict_mode	same: fails as the test expects
+test_string_resources	same: both fail
+test_subpath	same (1 files)
+test_subworkflow_config	same: both fail
+test_subworkflows	same: both fail
+test_symlink_temp	differs: iunctus succeeds where the test expects a failure (known: an output is a symbolic link, which iunctus stores as the file that it points to, so the link itself is not delivered)
+test_symlink_time_handling	iunctus fails (exit 1): iunctus: Error in rule main: the task ended with exit code 1 (known: an output is a symbolic link, which iunctus stores as the file that it points to, so the link itself is not delivered)
+test_temp	same (1 files)
+test_temp_and_all_input	same (1 files)
+test_temp_checkpoint	same (3 files)
+test_temp_expand	same (1 files)
+test_template_engine	iunctus fails (exit 1): iunctus: Error in rule render_yte_template: the task ended with exit code 1; and 1 more jobs failed (known: iunctus does not render the templates of template_engine rules yet)
+test_tes	same: both fail
+test_threads	same (1 files)
+test_threads0	same (1 files)
+test_tibanna	skipped: needs a Conda environment
+test_tmpdir	same: both differ from expected-results in test2.txt
+test_toposort	same (0 files)
+test_touch	same (1 files)
+test_touch_pipeline_with_temp_dir	same (0 files)
+test_touch_with_directories	same: both fail
+test_uncreatable_checkpoint_input	same (3 files)
+test_unlock	same (1 files)
+test_unpack_dict	same (2 files)
+test_unpack_list	same (2 files)
+test_until	same (13 files)
+test_update_config	same (1 files)
+test_update_flag	same (3 files)
+test_update_flag_fail	same: fails as the test expects
+test_update_flag_fail_cleanup	same: fails as the test expects
+test_url_include	skipped: reads remote files
+test_use_rule_same_module	same (2 files)
+test_validate	snakemake fails (exit 1): ModuleNotFoundError in file "/tmp/iunctus-real-snakemake-wt2br1qh/test/test_validate/Snakefile", line 4: No module named 'polars'
+test_wildcard_annotatedstrings	same: both fail
+test_wildcard_count_ambiguity	same (1 files)
+test_wildcard_keyword	same (8 files)
+test_wrapper	skipped: needs a Snakemake wrapper from the network
+test_xrootd	same: both fail
+test_yaml_config	same (1 files)

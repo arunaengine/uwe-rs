@@ -45,6 +45,24 @@ pub struct TaskSpec {
     /// stay the same.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub replaces_entrypoint: bool,
+    /// Whether the containers run as Kubernetes runs them: as the user of the image, or the
+    /// user and group that `RunAs` names, in the working directory of the image, or in
+    /// `workdir`, which is then only where the command starts and not where the work
+    /// directory is. Left out of the encoding when `None`, the container then runs as the
+    /// user who runs iunctus, in the work directory.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_as: Option<RunAs>,
+}
+
+/// The user and group that a container runs as, like `runAsUser` and `runAsGroup` of a
+/// Kubernetes `securityContext`; `None` keeps what the image says.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RunAs {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<u32>,
 }
 
 /// One container of a task that runs several.
@@ -56,7 +74,8 @@ pub struct ContainerSpec {
     pub image: Option<Image>,
     /// The program and its arguments; an empty list runs the image's default command.
     pub arguments: Vec<String>,
-    /// Where the container starts, as an absolute path; `None` for the work directory.
+    /// Where the container starts, as an absolute path; `None` for the work directory, or
+    /// for the working directory of the image when the task runs as its image says.
     pub workdir: Option<String>,
     pub environment: BTreeMap<String, EnvironmentValue>,
     /// The containers of the task, by name, that must end with exit code 0 before this one
@@ -64,6 +83,10 @@ pub struct ContainerSpec {
     pub after: Vec<String>,
     /// How often the container runs its command at most while it fails, at least once.
     pub attempts: u32,
+    /// Whether `arguments` replace the entrypoint of the image, as for the task. False is
+    /// left out of the encoding.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub replaces_entrypoint: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

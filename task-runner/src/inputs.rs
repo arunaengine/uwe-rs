@@ -219,7 +219,7 @@ impl Inputs<'_> {
             path: input.path.clone(),
             kind,
             digest,
-            executable: false,
+            executable: input.executable,
             writable: input.writable == Writable::Copy,
         };
         Ok((file, from))

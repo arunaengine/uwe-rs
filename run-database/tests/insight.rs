@@ -381,6 +381,7 @@ fn inputs_that_tasks_made_are_compared_by_their_tasks() {
         attempt(&mut recorder, &make, &[], &output);
         let mut read = task(2, "USE");
         read.inputs = vec![workflow_graph::Input {
+            executable: false,
             path: "out.txt".into(),
             source: made,
             directory: false,

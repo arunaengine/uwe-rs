@@ -103,6 +103,7 @@ pub fn request(
             environment: literal(&container.environment),
             after: container.after.clone(),
             attempts: container.attempts.max(1),
+            replaces_entrypoint: container.replaces_entrypoint,
         })
         .collect();
     let spec = TaskSpec {
@@ -123,6 +124,10 @@ pub fn request(
         stdin,
         containers,
         replaces_entrypoint: task.replaces_entrypoint,
+        run_as: (task.run_as).map(|run_as| task_model::RunAs {
+            user: run_as.user,
+            group: run_as.group,
+        }),
     };
     let scope = if spec.image_pinned() {
         ReuseScope::Shared

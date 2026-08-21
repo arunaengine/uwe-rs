@@ -26,6 +26,7 @@ fn input(path: &str, content: &str) -> InputFile {
 /// The FASTQC example of design section 5.2, with fixed contents instead of real files.
 fn fastqc() -> TaskSpec {
     TaskSpec {
+        run_as: None,
         format: FORMAT,
         namespace: String::new(),
         image: Some(Image {
@@ -167,6 +168,7 @@ fn rejects_invalid_specs() {
 fn with_containers() -> TaskSpec {
     let mut spec = fastqc();
     let container = |name: &str, image: &Option<Image>, after: &[&str]| ContainerSpec {
+        replaces_entrypoint: false,
         name: name.to_owned(),
         image: image.clone(),
         arguments: vec!["sh".into(), "-c".into(), format!("echo {name}")],

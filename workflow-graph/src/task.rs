@@ -89,6 +89,22 @@ pub struct Task {
     /// `WorkReuse` and `enableReuse: false` runs every time; its result is still stored.
     #[serde(default, skip_serializing_if = "Reuse::is_allowed")]
     pub reuse: Reuse,
+    /// Whether the container runs as Kubernetes runs it, as Argo needs: as the user of its
+    /// image, or the user and group that `RunAs` names, in the working directory of its image,
+    /// or in `workdir`, which is then only where it starts. `None` runs it as the user who runs
+    /// iunctus, in the work directory, as Nextflow, Snakemake and CWL tasks run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_as: Option<RunAs>,
+}
+
+/// The user and group that a container runs as, like `runAsUser` and `runAsGroup` of a
+/// Kubernetes `securityContext`; `None` keeps what the image says.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunAs {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<u32>,
 }
 
 /// One container of a task that runs several.
@@ -108,6 +124,9 @@ pub struct Container {
     /// How often the container runs its command at most while it fails, at least once, like
     /// the `retryStrategy` of an Argo container set.
     pub attempts: u32,
+    /// Whether `command` replaces the entrypoint of the image, as for the task.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub replaces_entrypoint: bool,
 }
 
 /// Whether a workflow lets a task use the network.
@@ -171,6 +190,10 @@ pub struct Input {
     /// Whether and how the task may change the input.
     #[serde(default, skip_serializing_if = "Writable::is_no")]
     pub writable: Writable,
+    /// Whether the task runs the file as a program, like the script of an Argo script
+    /// template that its command runs directly: the task gets a copy that it may run.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub executable: bool,
 }
 
 /// Whether and how a task may change an input.

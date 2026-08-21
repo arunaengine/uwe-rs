@@ -40,5 +40,5 @@ pub use simulator::Simulator;
 pub use steps::{StepEdge, StepGraph, StepNode};
 pub use task::{
     Container, ContainerOutcome, Input, Language, Network, Outcome, OutputFile,
-    ReproducibilityCheck, Resources, Reuse, Task, TaskId, Usage, Verdict, Writable,
+    ReproducibilityCheck, Resources, Reuse, RunAs, Task, TaskId, Usage, Verdict, Writable,
 };

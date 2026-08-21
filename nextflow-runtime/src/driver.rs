@@ -659,6 +659,7 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
             Some(_) => (source.uri(), false),
         };
         inputs.push(Input {
+            executable: false,
             path: name.clone(),
             source,
             directory,
@@ -671,6 +672,7 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
         outputs.push(ENVIRONMENT.into());
     }
     Task {
+        run_as: None,
         id: workflow_graph::TaskId(request.id.0),
         name: request.name.clone(),
         step: request.process.to_string(),
@@ -712,6 +714,7 @@ fn exec_task(request: &TaskRequest) -> Task {
         })
         .collect();
     Task {
+        run_as: None,
         id: workflow_graph::TaskId(request.id.0),
         name: request.name.clone(),
         step: request.process.to_string(),

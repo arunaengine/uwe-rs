@@ -106,6 +106,7 @@ impl CommandRunner {
         let shown: String = shown.chars().take(60).collect();
         let workdir: PathBuf = self.state.borrow().workdir.clone();
         Task {
+            run_as: None,
             id,
             name: format!("command {shown}"),
             step: "command".into(),
@@ -115,6 +116,7 @@ impl CommandRunner {
             workdir: None,
             environment: Default::default(),
             inputs: vec![Input {
+                executable: false,
                 path: ".".into(),
                 source: workdir.to_string_lossy().into_owned(),
                 directory: true,

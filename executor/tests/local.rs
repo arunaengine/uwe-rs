@@ -643,16 +643,31 @@ fn tasks_that_run_as_their_image_write_where_its_user_may() {
 fn containers_of_a_set_with_a_command_replace_the_entrypoint() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let executor = executor(root.path());
-    let mut main = container("main", "argoproj/argosay:v2", "", &[]);
-    main.arguments = vec![
+    let me = std::os::unix::fs::MetadataExt::uid(&std::fs::metadata(root.path()).unwrap());
+    let mut first = container("first", "argoproj/argosay:v2", "", &[]);
+    first.arguments = vec![
         "/argosay".into(),
         "echo".into(),
         "hi".into(),
-        "out.txt".into(),
+        "/tmp/said".into(),
     ];
+    first.replaces_entrypoint = true;
+    let mut main = container(
+        "main",
+        "argoproj/argosay:v2",
+        "cp /tmp/said /out.txt",
+        &["first"],
+    );
     main.replaces_entrypoint = true;
-    let task = several(vec![main], &["out.txt"]);
+    let mut task = several(vec![main, first], &["/out.txt"]);
+    // The containers run as root of the image, as Argo runs them, and hand their files back.
+    task.run_as = Some(task_model::RunAs::default());
     let finished = run(&executor, "set-1", &task, &Staging::default()).expect("runs");
     assert_eq!(finished.exit_code, Some(0));
-    assert_eq!(written(&finished), "hi\n");
+    let text = std::fs::read_to_string(finished.local_path("/out.txt")).expect("reads");
+    assert_eq!(text, "hi\n");
+    assert!(
+        !executor::access::foreign(&finished.root, me),
+        "the files are the user's"
+    );
 }

@@ -179,6 +179,10 @@ impl KubernetesBackend {
                 for (group, path) in containers::write_wrappers(&spec, &control, &folders)? {
                     groups.push((group.image, path.into()));
                 }
+                // The folders of the wrappers are new, so they are opened too.
+                if access.hand_back.is_some() {
+                    executor::access::open(root)?;
+                }
             }
         }
         let runs: Vec<ContainerRun<'_>> = match groups.is_empty() {

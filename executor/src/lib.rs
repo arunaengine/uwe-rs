@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+pub mod access;
 mod braces;
 pub mod containers;
 pub mod engine;
@@ -21,6 +22,7 @@ use std::future::Future;
 
 use tokio_util::sync::CancellationToken;
 
+pub use access::Access;
 pub use engine::{ContainerEngine, EngineCommand, EngineKind, NoEngine};
 pub use job::{CONTROL, ExecutorError, Finished, HOME, Job, Staged, Staging, Usage, WORK};
 pub use local::{ContainerRun, LocalContainer};

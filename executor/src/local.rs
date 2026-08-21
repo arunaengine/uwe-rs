@@ -418,6 +418,8 @@ impl LocalContainer {
             owner: &owner_text,
         };
         let groups = crate::containers::write_wrappers(&spec, &control, &folders)?;
+        // The folders of the wrappers are new, so they are opened after them.
+        open(&access, root).await?;
         let names: Vec<String> = (0..groups.len())
             .map(|index| format!("iunctus-{}-{index}", job.name))
             .collect();
@@ -475,11 +477,7 @@ impl LocalContainer {
         commands: &Commands,
     ) -> Result<Access, ExecutorError> {
         let access = Access::of(owner, self.engine.rootless, spec.run_as, &commands.user);
-        if access.hand_back.is_some() {
-            let root = root.to_owned();
-            (tokio::task::spawn_blocking(move || access::open(&root)).await)
-                .map_err(|error| std::io::Error::other(error.to_string()))??;
-        }
+        open(&access, root).await?;
         Ok(access)
     }
 
@@ -800,6 +798,17 @@ impl Output {
         self.line(&rest);
         Vec::from(self.lines).join("; ")
     }
+}
+
+/// Opens the scratch directory `root` to every user when the container may run as another
+/// user (see [`access::open`]).
+async fn open(access: &Access, root: &Path) -> std::io::Result<()> {
+    if access.hand_back.is_none() {
+        return Ok(());
+    }
+    let root = root.to_owned();
+    (tokio::task::spawn_blocking(move || access::open(&root)).await)
+        .map_err(|error| std::io::Error::other(error.to_string()))?
 }
 
 /// The exit code of a container when it next ends; -1 when the engine does not tell it.

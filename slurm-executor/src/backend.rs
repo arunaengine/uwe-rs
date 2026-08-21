@@ -227,6 +227,10 @@ impl SlurmBackend {
                     owner: &owner,
                 };
                 let groups = containers::write_wrappers(job.spec, &control, &folders)?;
+                // The folders of the wrappers are new, so they are opened too.
+                if access.hand_back.is_some() {
+                    executor::access::open(root)?;
+                }
                 let mut images = Vec::new();
                 for (group, _) in &groups {
                     images.push(self.runnable(&group.image, cancel).await?);

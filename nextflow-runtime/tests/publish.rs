@@ -258,3 +258,46 @@ fn workflow_outputs_go_below_the_output_directory() {
         format!("\"id\",\"text\"\n\"a\",\"{}\"\n", text.display())
     );
 }
+
+#[test]
+fn the_work_directory_as_an_output_is_not_published() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    // nf-core's EPANG_PLACE with the default publishDir of nf-core pipelines: Nextflow gives
+    // the work directory the empty name, which saveAs turns down.
+    let script = r#"
+process PLACE {
+    publishDir 'published', saveAs: { filename -> filename.equals('versions.yml') ? null : filename }
+    output:
+    path("./."), emit: all
+    path "*.log", emit: log
+    script:
+    """
+    echo log > x.log
+    """
+}
+
+workflow {
+    PLACE()
+}
+"#;
+    std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
+    let launch_dir = std::env::current_dir().expect("a current directory");
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        simulated: true,
+        ..Launch::default()
+    };
+    let mut driver = nextflow_runtime::driver(&launch).expect("a driver");
+    let mut executor = Simulator::new(directory.path().join("simulator"));
+    let mut deliveries = Deliveries(Vec::new(), launch_dir);
+    let execution = Engine::new(&mut executor)
+        .observer(&mut deliveries)
+        .run("main.nf", driver.as_mut());
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    let targets: Vec<&str> = deliveries
+        .0
+        .iter()
+        .map(|(target, _)| target.as_str())
+        .collect();
+    assert_eq!(targets, ["published/x.log"]);
+}

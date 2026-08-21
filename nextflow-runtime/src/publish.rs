@@ -89,6 +89,11 @@ pub(crate) fn deliveries(
     let mut deliveries = Vec::new();
     for rule in rules {
         for (name, location) in files {
+            // Nextflow names each file by its path from the work directory, so the work
+            // directory itself, an output like `path("./.")`, has the empty name, which no
+            // rule publishes.
+            let itself = name.split('/').all(|part| part.is_empty() || part == ".");
+            let name = if itself { "" } else { name.as_str() };
             if rule
                 .pattern
                 .as_ref()
@@ -98,10 +103,10 @@ pub(crate) fn deliveries(
             }
             let saved = match &rule.save_as {
                 Some(save_as) => {
-                    let argument = vec![Value::string(name.as_str())];
+                    let argument = vec![Value::string(name)];
                     interpreter.call_in_task(frame, task_object, save_as, argument)?
                 }
-                None => Value::string(name.as_str()),
+                None => Value::string(name),
             };
             if matches!(saved, Value::Null) || saved.to_string().is_empty() {
                 continue;

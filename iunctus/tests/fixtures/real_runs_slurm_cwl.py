@@ -6,7 +6,7 @@
 # real_runs_slurm_cwl.txt next to this script (or RECORD).
 #
 # Run it on a node of the cluster that may submit jobs, not on a login node:
-#   real_runs_slurm_cwl.py <conformance folder> [test id...]
+#   real_runs_slurm_cwl.py <conformance folder> [test id...]   (all tests without ids)
 # The folder holds the CWL test workflows with their data (`v1.2/conformance_tests.yaml`).
 # It needs the iunctus binary (IUNCTUS, else `iunctus` on the PATH). Tools without an image run
 # in debian:stable-slim. Each test runs without the cache (`-no-cache`), as cwltool does, so
@@ -133,8 +133,8 @@ def main():
     suite = Path(sys.argv[1]) / "v1.2"
     wanted = sys.argv[2:]
     tests = yaml.safe_load((suite / "conformance_tests.yaml").read_text())
-    chosen = [test for test in tests
-              if "tool" in test and (test.get("id") or test.get("label")) in wanted]
+    chosen = [test for test in tests if "tool" in test
+              and (not wanted or (test.get("id") or test.get("label")) in wanted)]
     work = Path(tempfile.mkdtemp(prefix="iunctus-slurm-cwl-", dir=os.getcwd()))
     with ThreadPoolExecutor(PARALLEL) as pool:
         records = dict(zip((test.get("id") or test.get("label") for test in chosen),

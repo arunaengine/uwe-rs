@@ -1039,14 +1039,57 @@ spec:
 #[test]
 fn kubernetes_fields_are_left_out_with_a_warning() {
     let ran = run(&workflow(
-        "  - name: main\n    nodeSelector: {disk: ssd}\n    container: {image: alpine, securityContext: {runAsUser: 1000}}\n",
+        "  - name: main\n    nodeSelector: {disk: ssd}\n    container: {image: alpine, securityContext: {runAsUser: 1000, privileged: true}}\n",
     ));
     ran.succeeded();
-    for field in ["nodeSelector", "securityContext"] {
-        let warning =
-            format!("{field} is left out: it only tells Kubernetes how to run pods (decision 18)");
-        assert!(ran.warnings.contains(&warning), "{:?}", ran.warnings);
-    }
+    let warning =
+        "nodeSelector is left out: it only tells Kubernetes how to run pods (decision 18)";
+    assert!(
+        ran.warnings.iter().any(|known| known == warning),
+        "{:?}",
+        ran.warnings
+    );
+    let warning = "securityContext.privileged is left out: containers run with the least \
+                   permissions, only runAsUser and runAsGroup count (decision 28)";
+    assert!(
+        ran.warnings.iter().any(|known| known == warning),
+        "{:?}",
+        ran.warnings
+    );
+}
+
+#[test]
+fn containers_run_as_their_image_or_the_user_of_their_security_context() {
+    let ran = run(r#"apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: test-
+spec:
+  entrypoint: main
+  securityContext: {runAsUser: 1000, runAsGroup: 3000}
+  templates:
+  - name: main
+    steps:
+    - - {name: own, template: own}
+      - {name: pod, template: pod}
+  - name: own
+    securityContext: {runAsUser: 2000}
+    container: {image: alpine, command: ["true"], securityContext: {runAsUser: 0}}
+  - name: pod
+    script: {image: alpine, command: [sh, -c], source: echo hi}
+"#);
+    ran.succeeded();
+    let run_as = |name: &str| ran.task(name).run_as;
+    let given = |user, group| Some(workflow_graph::RunAs { user, group });
+    assert_eq!(run_as("[0].own"), given(Some(0), Some(3000)));
+    assert_eq!(run_as("[0].pod"), given(Some(1000), Some(3000)));
+    // Argo writes the script with mode 0755, so that `sh -c` may run it.
+    let script = ran
+        .task("[0].pod")
+        .inputs
+        .iter()
+        .find(|input| input.path == "/argo/staging/script");
+    assert!(script.is_some_and(|script| script.executable));
 }
 
 /// A workflow with a plugin template and a step that prints its output; `plugins` is the text of

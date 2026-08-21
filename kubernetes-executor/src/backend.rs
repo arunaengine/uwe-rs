@@ -14,7 +14,9 @@ use executor::manifest::parse;
 use executor::process::Mount;
 use executor::registry::{self, ImageConfigs};
 use executor::wrapper::{Folders, MANIFEST, STDERR};
-use executor::{Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, containers, place};
+use executor::{
+    Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, containers, place,
+};
 use kube::api::{DeleteParams, ListParams, LogParams, PostParams, PropagationPolicy};
 use task_model::TaskSpec;
 use tokio::io::AsyncWriteExt;
@@ -129,6 +131,9 @@ impl KubernetesBackend {
         }
         for container in &mut spec.containers {
             let image = container.image.as_ref().ok_or(ExecutorError::NoImage)?;
+            if container.replaces_entrypoint && !container.arguments.is_empty() {
+                continue;
+            }
             let config = self.configs.get(&image.reference).await?;
             container.arguments = config.command(&container.arguments);
             if container.arguments.is_empty() {
@@ -136,6 +141,11 @@ impl KubernetesBackend {
             }
         }
         let owner = tokio::fs::metadata(root).await?;
+        // The nodes of a cluster run containers with root, as a rootful engine does.
+        let access = Access::of((owner.uid(), owner.gid()), false, spec.run_as, &config.user);
+        if access.hand_back.is_some() {
+            executor::access::open(root)?;
+        }
         let name = job_name(job.name);
         let run = ContainerRun {
             name: &name,
@@ -149,6 +159,7 @@ impl KubernetesBackend {
             // A pod has no switch of its own for the network; a NetworkPolicy would be one.
             offline: false,
             wrapper_path: None,
+            access: &access,
         };
         // A task of several containers is one pod with a container for each image, which runs
         // the wrappers of the containers of that image, as the local executor runs them.
@@ -157,11 +168,13 @@ impl KubernetesBackend {
             true => tokio::fs::write(run.script(), run.wrapper(&spec)).await?,
             false => {
                 let (control, home) = (root.join(CONTROL), text(&root.join(executor::HOME)));
+                let owner = access.owner();
                 let folders = Folders {
                     work: &run.inside(),
                     control: &text(&control),
                     home: &home,
                     outbox: "",
+                    owner: &owner,
                 };
                 for (group, path) in containers::write_wrappers(&spec, &control, &folders)? {
                     groups.push((group.image, path.into()));

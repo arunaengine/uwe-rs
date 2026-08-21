@@ -17,6 +17,7 @@ use tokio_util::sync::CancellationToken;
 
 fn spec(image: Option<&str>, outputs: &[&str]) -> TaskSpec {
     TaskSpec {
+        run_as: None,
         format: FORMAT,
         namespace: String::new(),
         image: image.map(|reference| Image {
@@ -437,6 +438,7 @@ fn commands_run_through_the_entrypoint_of_the_image() {
 /// A container of a task that runs several, which runs a shell script.
 fn container(name: &str, image: &str, script: &str, after: &[&str]) -> ContainerSpec {
     ContainerSpec {
+        replaces_entrypoint: false,
         name: name.to_owned(),
         image: Some(Image {
             reference: image.to_owned(),
@@ -545,3 +547,4 @@ fn a_container_after_one_that_failed_does_not_run() {
     assert_eq!(ended[1].exit_code, Some(4));
     assert_eq!(ended[2].exit_code, Some(0));
 }
+

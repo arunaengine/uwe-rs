@@ -111,13 +111,6 @@ impl ContainerEngine {
         &self.client
     }
 
-    /// The user that containers run as, so that the files they write belong to the user with
-    /// these ids. A rootless engine maps the container's root to that user, so they run as
-    /// root there.
-    pub fn user(&self, user: u32, group: u32) -> Option<String> {
-        (!self.rootless).then(|| format!("{user}:{group}"))
-    }
-
     /// The engine as a command, for scripts that run it.
     pub fn command(&self) -> EngineCommand {
         EngineCommand {

@@ -13,7 +13,8 @@ use std::time::{Duration, Instant};
 use executor::manifest::parse;
 use executor::wrapper::{MANIFEST, STDERR};
 use executor::{
-    Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, containers, place, registry,
+    Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, containers, place,
+    registry,
 };
 use tokio::process::Command;
 use tokio::sync::Mutex;
@@ -177,6 +178,23 @@ impl SlurmBackend {
         let image = &self.runnable(image, cancel).await?;
         let control = root.join(CONTROL);
         let owner = tokio::fs::metadata(root).await?;
+        let access = match &self.container {
+            // Apptainer runs every container as the user who runs iunctus.
+            Container::Apptainer(_) => Access {
+                run_as: job.spec.run_as,
+                ..Access::default()
+            },
+            // The image's user is not known here; it is taken as root.
+            Container::Engine(engine) => Access::of(
+                (owner.uid(), owner.gid()),
+                engine.rootless,
+                job.spec.run_as,
+                "",
+            ),
+        };
+        if access.hand_back.is_some() {
+            executor::access::open(root)?;
+        }
         let name = format!("iunctus-{}", job.name);
         let run = ContainerRun {
             name: &name,
@@ -189,6 +207,7 @@ impl SlurmBackend {
             memory: job.placement.memory_bytes,
             offline: job.placement.offline,
             wrapper_path: None,
+            access: &access,
         };
         let gpus = job.placement.accelerators.iter().any(|gpu| gpu.count > 0);
         let script = match job.spec.containers.is_empty() {
@@ -199,11 +218,13 @@ impl SlurmBackend {
             // A task of several containers starts a container for each image, all at once.
             false => {
                 let home = root.join(executor::HOME).to_string_lossy().into_owned();
+                let owner = access.owner();
                 let folders = executor::wrapper::Folders {
                     work: &run.inside(),
                     control: &control.to_string_lossy(),
                     home: &home,
                     outbox: "",
+                    owner: &owner,
                 };
                 let groups = containers::write_wrappers(job.spec, &control, &folders)?;
                 let mut images = Vec::new();

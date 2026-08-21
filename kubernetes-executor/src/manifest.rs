@@ -37,6 +37,29 @@ pub fn job_name(name: &str) -> String {
     clean.trim_end_matches('-').to_owned()
 }
 
+/// The `securityContext` of a container: the least permissions (decision 28), no
+/// capabilities but those that its task needs and no way to gain privileges, as the user who
+/// runs iunctus, or as Kubernetes runs it for a task that runs as its image says.
+fn security(run: &ContainerRun<'_>) -> Value {
+    let access = run.access;
+    let mut context = json!({
+        "allowPrivilegeEscalation": false,
+        "privileged": false,
+        "capabilities": {"drop": ["ALL"], "add": access.capabilities},
+    });
+    let (user, group) = match access.run_as {
+        Some(run_as) => (run_as.user, run_as.group),
+        None => (Some(run.owner.0), Some(run.owner.1)),
+    };
+    if let Some(user) = user {
+        context["runAsUser"] = json!(user);
+    }
+    if let Some(group) = group {
+        context["runAsGroup"] = json!(group);
+    }
+    context
+}
+
 /// What a Job asks for besides its container.
 #[derive(Clone, Debug, Default)]
 pub struct Limits {
@@ -81,14 +104,18 @@ pub fn job(name: &str, label: &str, runs: &[ContainerRun<'_>], limits: &Limits) 
                 (_, 0) => ("task-0".to_owned(), requests.clone()),
                 (_, index) => (format!("task-{index}"), json!({"cpu": "0", "memory": "0"})),
             };
-            json!({
+            let mut container = json!({
                 "name": name,
                 "image": run.image.reference,
                 "command": ["sh", run.script()],
-                "workingDir": run.inside(),
                 "resources": {"requests": requests, "limits": limits_of_container},
                 "volumeMounts": mounts,
-            })
+                "securityContext": security(run),
+            });
+            if let Some(start) = run.start() {
+                container["workingDir"] = json!(start);
+            }
+            container
         })
         .collect();
     let mut spec = json!({
@@ -98,7 +125,6 @@ pub fn job(name: &str, label: &str, runs: &[ContainerRun<'_>], limits: &Limits) 
             "metadata": {"labels": labels},
             "spec": {
                 "restartPolicy": "Never",
-                "securityContext": {"runAsUser": run.owner.0, "runAsGroup": run.owner.1},
                 "containers": containers,
                 "volumes": volumes,
             },
@@ -120,6 +146,7 @@ pub fn job(name: &str, label: &str, runs: &[ContainerRun<'_>], limits: &Limits) 
 mod tests {
     use std::path::{Path, PathBuf};
 
+    use executor::Access;
     use executor::process::Mount;
     use task_model::Image;
 
@@ -165,6 +192,7 @@ mod tests {
             memory: Some(1 << 30),
             offline: false,
             wrapper_path: None,
+            access: &Access::of((1000, 100), false, None, ""),
         };
         let limits = Limits {
             gpus: 1,
@@ -175,8 +203,11 @@ mod tests {
         assert_eq!(spec["backoffLimit"], 0);
         let pod = &spec["template"]["spec"];
         assert_eq!(pod["activeDeadlineSeconds"], 60);
-        assert_eq!(pod["securityContext"]["runAsUser"], 1000);
         let container = &pod["containers"][0];
+        let security = &container["securityContext"];
+        assert_eq!(security["runAsUser"], 1000);
+        assert_eq!(security["allowPrivilegeEscalation"], false);
+        assert_eq!(security["capabilities"]["drop"][0], "ALL");
         assert_eq!(
             container["command"][1],
             "/cache/scratch/run-P-1-1/control/wrapper.sh"
@@ -198,5 +229,22 @@ mod tests {
         ];
         assert_eq!(paths, expected);
         assert_eq!(job["spec"]["template"]["metadata"]["labels"][LABEL], "7-9");
+        // A container that runs as its image says starts in its `workdir`, as root with only
+        // CHOWN, and the work directory stays in the scratch directory.
+        let access = Access::of((1000, 100), false, Some(task_model::RunAs::default()), "");
+        let run = ContainerRun {
+            access: &access,
+            ..run
+        };
+        let changed = super::job("iunctus-run-p-1-1", "7-9", &[run], &limits);
+        let container = &changed["spec"]["template"]["spec"]["containers"][0];
+        assert_eq!(container["workingDir"], "/data");
+        assert_eq!(
+            container["securityContext"]["capabilities"]["add"][0],
+            "CHOWN"
+        );
+        assert!(container["securityContext"].get("runAsUser").is_none());
+        let mounts = container["volumeMounts"].as_array().expect("mounts");
+        assert!(!mounts.iter().any(|mount| mount["mountPath"] == "/data"));
     }
 }

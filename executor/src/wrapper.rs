@@ -41,6 +41,11 @@ pub struct Folders<'a> {
     /// Where copies of the outputs go, for servers that give back only the directories a task
     /// names, like TES; empty for none.
     pub outbox: &'a str,
+    /// The user and group, like `1000:100`, that get what the task made in the folder of the
+    /// control folder at the end, for a container that may run as another user; empty for
+    /// none. The wrapper hands the files back when it runs as root with the capability
+    /// `CHOWN`, else it lets every user change them.
+    pub owner: &'a str,
 }
 
 /// The wrapper for a task in the given folders. The task runs the arguments of the
@@ -63,7 +68,11 @@ pub fn wrapper(spec: &TaskSpec, folders: &Folders<'_>) -> String {
         control,
         home,
         outbox,
+        owner,
     } = *folders;
+    // A task that runs as Kubernetes runs it starts where its image or its `workdir` says,
+    // with the `HOME` of its user.
+    let as_image = spec.run_as.is_some();
     let mut script = String::from("#!/bin/sh\n# The iunctus task wrapper.\nset -u\n");
     script.push_str(BASH);
     script.push_str(&format!(
@@ -74,11 +83,17 @@ pub fn wrapper(spec: &TaskSpec, folders: &Folders<'_>) -> String {
     ));
     // Folders that the backend made already need no `mkdir` process.
     script.push_str("[ -d \"$work\" ] && [ -d \"$control\" ] || mkdir -p \"$work\" \"$control\"\n");
-    script.push_str("cd \"$work\" || exit 1\n");
-    script.push_str(&format!(
-        "export HOME={}\n[ -d \"$HOME\" ] || mkdir -p \"$HOME\"\n",
-        quote(home)
-    ));
+    match (as_image, &spec.workdir) {
+        (false, _) => {
+            script.push_str("cd \"$work\" || exit 1\n");
+            script.push_str(&format!(
+                "export HOME={}\n[ -d \"$HOME\" ] || mkdir -p \"$HOME\"\n",
+                quote(home)
+            ));
+        }
+        (true, Some(workdir)) => script.push_str(&start_in(workdir)),
+        (true, None) => {}
+    }
     for (name, value) in &spec.environment {
         let value = match value {
             EnvironmentValue::Literal(text) => quote(text),
@@ -106,6 +121,10 @@ pub fn wrapper(spec: &TaskSpec, folders: &Folders<'_>) -> String {
     script.push_str(USAGE_SCRIPT);
     script.push_str(COLLECT);
     script.push_str(&format!(": > \"$control/{MANIFEST}\"\n"));
+    if as_image {
+        // Relative output paths are relative to the work directory.
+        script.push_str("cd \"$work\" || exit 1\n");
+    }
     // A shell rejects an empty `then` block, so a task without outputs gets none.
     if !spec.outputs.is_empty() {
         script.push_str("if [ \"$status\" -eq 0 ]; then\n");
@@ -119,8 +138,28 @@ pub fn wrapper(spec: &TaskSpec, folders: &Folders<'_>) -> String {
     if !outbox.is_empty() {
         script.push_str("chmod -R a+rwX \"$work\" \"$outbox\" \"$control\" 2> /dev/null\n");
     }
+    script.push_str(&hand_back(owner, "\"${control%/*}\""));
     script.push_str(&format!("echo {}\nexit 0\n", quote(ENDED)));
     script
+}
+
+/// Goes to a folder where a container starts, which Kubernetes makes when it is not there.
+pub(crate) fn start_in(folder: &str) -> String {
+    let folder = quote(folder);
+    format!("[ -d {folder} ] || mkdir -p {folder}\ncd {folder} || exit 1\n")
+}
+
+/// Gives what the task made in `folder`, a shell word, to `owner`, like `1000:100`, as root
+/// with the capability `CHOWN`; else, as another user, lets every user change it. Nothing for
+/// an empty owner.
+pub(crate) fn hand_back(owner: &str, folder: &str) -> String {
+    match owner.is_empty() {
+        true => String::new(),
+        false => format!(
+            "chown -hR {} {folder} 2> /dev/null || chmod -R a+rwX {folder} 2> /dev/null\n",
+            quote(owner)
+        ),
+    }
 }
 
 /// Runs a command so that a stop reaches it, and sets `status` to its exit code. The script

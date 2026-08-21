@@ -215,15 +215,26 @@ fn command(container: &Container, run: &ContainerRun<'_>, gpus: bool) -> Vec<Str
 }
 
 /// The command of Apptainer: a container with its own `/tmp`, home and environment, which sees
-/// the scratch directory at the same path, the work directory, and the other mounts.
+/// the scratch directory at the same path, the work directory, and the other mounts. It runs
+/// as the user who runs iunctus, without setuid or fakeroot. A task that runs as Kubernetes
+/// runs it starts in its `workdir`, or in `/`, the working directory of most images, which a
+/// job cannot ask the registry for; its file system is writable in memory
+/// (`--writable-tmpfs`), so that it may write outside its folders where its user may write.
 fn apptainer(program: &str, run: &ContainerRun<'_>, gpus: bool) -> Vec<String> {
+    let start = match run.access.run_as {
+        Some(_) => run.start().unwrap_or_else(|| "/".to_owned()),
+        None => run.inside(),
+    };
     let mut command = vec![
         program.to_owned(),
         "exec".into(),
         "--containall".into(),
         "--pwd".into(),
-        run.inside(),
+        start,
     ];
+    if run.access.run_as.is_some() {
+        command.push("--writable-tmpfs".into());
+    }
     for bind in run.binds() {
         command.extend(["--bind".into(), executor::local::volume(&bind)]);
     }
@@ -251,13 +262,14 @@ mod tests {
     use std::path::PathBuf;
 
     use executor::process::Mount;
-    use executor::{EngineKind, Staging};
+    use executor::{Access, EngineKind, Staging};
     use task_model::{Accelerator, FORMAT, Image, Placement, TaskSpec};
 
     use super::*;
 
     fn spec(workdir: Option<&str>) -> TaskSpec {
         TaskSpec {
+            run_as: None,
             format: FORMAT,
             namespace: String::new(),
             image: Some(Image {
@@ -291,8 +303,17 @@ mod tests {
             memory: Some(3 << 30),
             offline: false,
             wrapper_path: None,
+            access: &CALLER,
         }
     }
+
+    /// How a container of a task runs that runs as the user who runs iunctus.
+    static CALLER: Access = Access {
+        run_as: None,
+        user: None,
+        capabilities: Vec::new(),
+        hand_back: None,
+    };
 
     #[test]
     fn jobs_ask_for_what_their_tasks_need() {
@@ -357,6 +378,25 @@ mod tests {
             '/shared/scratch/run-P-1-1/control/wrapper.sh'\n\
             echo $? > '/shared/scratch/run-P-1-1/control/container-exit'\n";
         assert_eq!(script, expected);
+        // A task that runs as its image says starts in its `workdir`, which is no mount, with a
+        // file system that it may write.
+        let access = Access {
+            run_as: Some(task_model::RunAs::default()),
+            ..Access::default()
+        };
+        let as_image = ContainerRun {
+            access: &access,
+            ..run(&image, &[], Some("/data"))
+        };
+        let script = job_script(
+            &Container::Apptainer("apptainer".into()),
+            &as_image,
+            false,
+            None,
+        );
+        let expected = "'apptainer' 'exec' '--containall' '--pwd' '/data' '--writable-tmpfs' \
+            '--bind' '/shared/scratch/run-P-1-1:/shared/scratch/run-P-1-1' 'docker://";
+        assert!(script.contains(expected), "{script}");
         assert_eq!(super::image("/images/tool.sif"), "/images/tool.sif");
         assert_eq!(super::image("oras://host/tool:1"), "oras://host/tool:1");
     }
@@ -378,6 +418,7 @@ mod tests {
         let command = script.lines().nth(2).expect("the command");
         let expected = "'podman' 'run' '--init' '--rm' '--name' 'iunctus-run-P-1-1' \
             '--entrypoint' 'sh' '--userns=keep-id' '--user' '1000:100' \
+            '--cap-drop' 'ALL' '--security-opt' 'no-new-privileges' \
             '--volume' '/shared/scratch/run-P-1-1:/shared/scratch/run-P-1-1' \
             '--workdir' '/shared/scratch/run-P-1-1/work' '--cpus' '2' '--memory' '3221225472' \
             'debian@sha256:ab' '/shared/scratch/run-P-1-1/control/wrapper.sh'";

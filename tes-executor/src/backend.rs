@@ -78,6 +78,9 @@ impl TesBackend {
         }
         for container in &mut spec.containers {
             let image = container.image.as_ref().ok_or(ExecutorError::NoImage)?;
+            if container.replaces_entrypoint && !container.arguments.is_empty() {
+                continue;
+            }
             let config = self.configs.get(&image.reference).await?;
             container.arguments = config.command(&container.arguments);
             if container.arguments.is_empty() {
@@ -91,6 +94,9 @@ impl TesBackend {
             control: CONTROL,
             home: HOME,
             outbox: OUTBOX,
+            // A TES server runs containers as it likes; the wrapper lets every user change
+            // what the task made, for the outbox.
+            owner: "",
         };
         match spec.containers.is_empty() {
             true => {
@@ -174,7 +180,7 @@ async fn several(
         task.executors.push(ExecutorSpec {
             image: image.reference.clone(),
             command: vec!["sh".into(), inside],
-            workdir: Some(folders.work.to_owned()),
+            workdir: start(spec, container.workdir.as_deref(), folders.work),
         });
     }
     Ok(())
@@ -195,7 +201,19 @@ fn recorded(mut finished: Finished, spec: &TaskSpec) -> Finished {
 
 /// The work directory of a task in its container.
 fn workdir(job: Job<'_>) -> String {
-    job.spec.workdir.clone().unwrap_or_else(|| WORK.to_owned())
+    match job.spec.run_as {
+        Some(_) => WORK.to_owned(),
+        None => job.spec.workdir.clone().unwrap_or_else(|| WORK.to_owned()),
+    }
+}
+
+/// Where a container starts: in the work directory `work`, or, for a task that runs as its
+/// image says, in `workdir` or the working directory of the image (`None`).
+fn start(spec: &TaskSpec, workdir: Option<&str>, work: &str) -> Option<String> {
+    match spec.run_as {
+        Some(_) => workdir.map(str::to_owned),
+        None => Some(work.to_owned()),
+    }
 }
 
 /// The TES task of an attempt whose scratch directory is `root`.
@@ -280,7 +298,7 @@ fn task(job: Job<'_>, root: &Path) -> Result<Task, ExecutorError> {
         executors: vec![ExecutorSpec {
             image: image.reference.clone(),
             command: vec!["sh".into(), WRAPPER.into()],
-            workdir: Some(work.clone()),
+            workdir: start(spec, spec.workdir.as_deref(), &work),
         }],
         // The work directory, the home folder and `/tmp` are writable, also when the image's
         // own files are not.
@@ -342,6 +360,7 @@ mod tests {
     #[test]
     fn attempts_become_tes_tasks() {
         let spec = TaskSpec {
+            run_as: None,
             format: FORMAT,
             namespace: String::new(),
             image: Some(Image {

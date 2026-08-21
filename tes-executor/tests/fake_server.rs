@@ -95,6 +95,7 @@ fn tasks_run_on_the_server_and_give_back_their_outputs() {
     let config = ImageConfig {
         entrypoint: vec!["/usr/local/env-execute".into()],
         cmd: Vec::new(),
+        user: String::new(),
     };
     let backend = TesBackend {
         client: Client::new(&address, None).expect("a client"),
@@ -104,6 +105,7 @@ fn tasks_run_on_the_server_and_give_back_their_outputs() {
     let source = folder.path().join("in.txt");
     std::fs::write(&source, "in\n").expect("writes the input");
     let spec = TaskSpec {
+        run_as: None,
         format: FORMAT,
         namespace: String::new(),
         image: Some(Image {
@@ -167,6 +169,7 @@ fn containers_of_a_task_are_executors_in_their_order() {
     let config = |entrypoint: &[&str]| ImageConfig {
         entrypoint: entrypoint.iter().map(|word| (*word).to_owned()).collect(),
         cmd: Vec::new(),
+        user: String::new(),
     };
     let backend = TesBackend {
         client: Client::new(&address, None).expect("a client"),
@@ -183,6 +186,7 @@ fn containers_of_a_task_are_executors_in_their_order() {
         })
     };
     let container = |name: &str, reference: &str, after: &[&str]| ContainerSpec {
+        replaces_entrypoint: false,
         name: name.into(),
         image: image(reference),
         arguments: vec!["sh".into(), "-c".into(), format!("echo {name}")],
@@ -192,6 +196,7 @@ fn containers_of_a_task_are_executors_in_their_order() {
         attempts: 1,
     };
     let spec = TaskSpec {
+        run_as: None,
         format: FORMAT,
         namespace: String::new(),
         image: image("debian:stable-slim"),

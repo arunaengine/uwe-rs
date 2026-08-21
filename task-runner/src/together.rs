@@ -80,6 +80,8 @@ pub(crate) fn joinable(job: &Job<'_>) -> bool {
     let spec = job.spec;
     spec.image.is_some()
         && spec.containers.is_empty()
+        // A task that runs as its image says may run as another user, in another folder.
+        && spec.run_as.is_none()
         && !spec.arguments.is_empty()
         && spec.workdir.is_none()
         && (spec.outputs.iter()).all(|rule| relative(&rule.pattern))
@@ -249,7 +251,9 @@ impl<B: Backend> Runner<B> {
     }
 }
 
-/// What tasks must share to run in one container: the image and the resources they ask for.
+/// What tasks must share to run in one container: the image, whether their commands replace
+/// its entrypoint (the script of the group then runs without it, as each command would), and
+/// the resources they ask for.
 fn key(job: &Job<'_>) -> String {
     let placement = Placement {
         time_seconds: None,
@@ -258,7 +262,8 @@ fn key(job: &Job<'_>) -> String {
     };
     let image = job.spec.image.as_ref().map(|image| &image.reference);
     let placement = serde_json::to_string(&placement).unwrap_or_default();
-    format!("{image:?}\n{placement}")
+    let entrypoint = job.spec.replaces_entrypoint;
+    format!("{image:?}\n{entrypoint}\n{placement}")
 }
 
 /// The script of a group: it writes the wrapper of each task into the folder of the task and
@@ -272,6 +277,7 @@ fn script(members: &[Member]) -> String {
         let folders = |name: &str| format!("{GROUP}{folder}/{name}");
         let (work, control, home) = (folders(WORK), folders(CONTROL), folders(executor::HOME));
         let own = Folders {
+            owner: "",
             work: &work,
             control: &control,
             home: &home,
@@ -416,6 +422,7 @@ mod tests {
     ) -> (Member, oneshot::Receiver<Result<Finished, ExecutorError>>) {
         let (reply, answer) = oneshot::channel();
         let spec = TaskSpec {
+            run_as: None,
             format: FORMAT,
             namespace: String::new(),
             image: Some(Image {
@@ -501,5 +508,17 @@ mod tests {
         let (mut task, _) = member("r-A-1-1", "out.txt");
         task.spec.workdir = Some("/work".into());
         assert!(!joinable(&task.job()));
+        let (mut task, _) = member("r-A-1-1", "out.txt");
+        task.spec.run_as = Some(task_model::RunAs::default());
+        assert!(!joinable(&task.job()));
+    }
+
+    #[test]
+    fn commands_that_replace_the_entrypoint_form_groups_of_their_own() {
+        let (first, _) = member("r-A-1-1", "out.txt");
+        let (mut second, _) = member("r-A-2-1", "out.txt");
+        assert_eq!(key(&first.job()), key(&second.job()));
+        second.spec.replaces_entrypoint = true;
+        assert_ne!(key(&first.job()), key(&second.job()));
     }
 }

@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use argo_parser::model::{Container, Template};
 use argo_parser::{Node, Value as Yaml, decode};
 use workflow_graph::{
-    Container as TaskContainer, Input, Outcome, Resources, Task, TaskId, Writable,
+    Container as TaskContainer, Input, Outcome, Resources, RunAs, Task, TaskId, Writable,
 };
 
 use crate::http::{
@@ -86,6 +86,7 @@ impl Run {
             task.name = format!("{name} (init {})", container.name);
             task.inputs.clear();
             fill_container(&mut task, container);
+            task.run_as = Some(self.run_as(template, Some(container)));
             task.environment = self.environment(container, &fields)?;
             if let Some(&last) = done.last() {
                 task.after = vec![last];
@@ -110,6 +111,7 @@ impl Run {
         if let Some(container) = &template.container {
             let mut task = base(&container.image, Some(container));
             fill_container(&mut task, container);
+            task.run_as = Some(self.run_as(template, Some(container)));
             task.environment = self.environment(container, &fields)?;
             task.outputs = outputs.clone();
             self.mount_volumes(index, first, template, &container.volume_mounts, &mut task)?;
@@ -117,6 +119,7 @@ impl Run {
         } else if let Some(script) = &template.script {
             let mut task = base(&script.image, Some(script));
             fill_container(&mut task, script);
+            task.run_as = Some(self.run_as(template, Some(script)));
             task.environment = self.environment(script, &fields)?;
             task.command = script.command.iter().chain(&script.args).cloned().collect();
             task.command.push(SCRIPT_PATH.to_owned());
@@ -126,6 +129,9 @@ impl Run {
                 source: String::new(),
                 directory: false,
                 content: Some(source.clone()),
+                // Argo's executor writes the script with mode 0755, so that a command like
+                // `sh -c` may run it directly.
+                executable: true,
                 ..Default::default()
             });
             task.script = Some(source);
@@ -149,6 +155,7 @@ impl Run {
                 if position == main {
                     fill_container(&mut task, container);
                     task.environment = environment.clone();
+                    task.run_as = Some(self.run_as(template, Some(container)));
                 }
                 task.resources = sum(&task.resources, container);
                 let path = |mount: &Node| mount.get("mountPath").map(scalar_text);
@@ -169,6 +176,7 @@ impl Run {
                     environment,
                     after: container.dependencies.clone(),
                     attempts,
+                    replaces_entrypoint: !container.command.is_empty(),
                 });
             }
             task.outputs = outputs.clone();
@@ -487,6 +495,26 @@ impl Run {
 
     /// Warns once about fields of a template and its containers that only matter to
     /// Kubernetes, which a run without Kubernetes leaves out (decision 18).
+    /// The user and group that a container runs as, as Kubernetes picks them: from the
+    /// `securityContext` of the container, else of the template, else of the workflow; what
+    /// none of them names, the image decides.
+    fn run_as(&self, template: &Template, container: Option<&Container>) -> RunAs {
+        let contexts = [
+            container.and_then(|container| container.security_context.as_ref()),
+            template.security_context.as_ref(),
+            self.spec.security_context.as_ref(),
+        ];
+        let id = |field: &str| {
+            (contexts.iter().flatten())
+                .find_map(|context| context.get(field))
+                .and_then(|value| scalar_text(value).parse::<u32>().ok())
+        };
+        RunAs {
+            user: id("runAsUser"),
+            group: id("runAsGroup"),
+        }
+    }
+
     fn warn_pod_fields(&mut self, processed: &crate::run::Processed) {
         self.warn_left_out(&processed.node);
         let template = &processed.node;
@@ -677,6 +705,7 @@ fn input_of(artifact: &ArtifactValue) -> Option<Input> {
             ..Default::default()
         },
         Location::File(file) => Input {
+            executable: false,
             path,
             source: file.to_string_lossy().into_owned(),
             directory: artifact.directory || file.is_dir(),
@@ -684,6 +713,7 @@ fn input_of(artifact: &ArtifactValue) -> Option<Input> {
             writable: Writable::Copy,
         },
         Location::Url(url) => Input {
+            executable: false,
             path,
             source: url.clone(),
             directory: artifact.directory,

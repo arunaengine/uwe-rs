@@ -2,12 +2,15 @@
 
 ## nf-core-demo: nf-core/demo 555d145, -profile test
 native: exit 0 and 0, 76 files, 34 of them differ between two native runs
-iunctus: exit 0, 72 files: 41 with the same digest, 31 of the varying ones by name, 0 differ, 4 missing, 0 extra
-notes: Nextflow's own reports (execution_report, execution_timeline, execution_trace, pipeline_dag) are not built yet.
-missing: pipeline_info/execution_report_<time>.html
-missing: pipeline_info/execution_timeline_<time>.html
-missing: pipeline_info/execution_trace_<time>.txt
-missing: pipeline_info/pipeline_dag_<time>.html
+iunctus: exit 0, 76 files: 35 with the same digest, 34 of the varying ones by name, 7 differ, 0 missing, 0 extra
+notes: The FastQC reports differ only in the date of the run (the native runs were a day earlier); pipeline_dag is the graph page of iunctus, not the Mermaid page of Nextflow. Recorded without network: iunctus took the test data from its downloads, with NXF_OFFLINE=true.
+differs: fastqc/SAMPLE1_PE/SAMPLE1_PE_1_fastqc.html
+differs: fastqc/SAMPLE1_PE/SAMPLE1_PE_2_fastqc.html
+differs: fastqc/SAMPLE2_PE/SAMPLE2_PE_1_fastqc.html
+differs: fastqc/SAMPLE2_PE/SAMPLE2_PE_2_fastqc.html
+differs: fastqc/SAMPLE3_SE/SAMPLE3_SE_1_fastqc.html
+differs: fastqc/SAMPLE3_SE/SAMPLE3_SE_2_fastqc.html
+differs: pipeline_info/pipeline_dag_<time>.html
 
 ## nf-core-demo-slurm: nf-core/demo 555d145, -profile test,apptainer, on SLURM
 native: exit 0 and 0, 76 files, 34 of them differ between two native runs

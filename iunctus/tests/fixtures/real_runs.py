@@ -72,8 +72,10 @@ CASES = [
                    "--outdir", "{out}", "-c", "{limits}"],
         "iunctus": ["{iunctus}", "run", "{workflow}", "-profile", "test,docker",
                     "--outdir", "{out}", "-executor", "local", "-max-pending", "4"],
-        "notes": "Nextflow's own reports (execution_report, execution_timeline, "
-                 "execution_trace, pipeline_dag) are not built yet.",
+        "notes": "The FastQC reports differ only in the date of the run (the native runs were a "
+                 "day earlier); pipeline_dag is the graph page of iunctus, not the Mermaid page "
+                 "of Nextflow. Recorded without network: iunctus took the test data from its "
+                 "downloads, with NXF_OFFLINE=true.",
     },
     {
         "name": "nf-core-demo-slurm",

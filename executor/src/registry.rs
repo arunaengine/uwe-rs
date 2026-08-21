@@ -103,6 +103,8 @@ pub async fn pin(reference: &str) -> Result<Option<String>, ExecutorError> {
 pub struct ImageConfig {
     pub entrypoint: Vec<String>,
     pub cmd: Vec<String>,
+    /// The user that the image runs as, like `1000:100` or `nobody`; empty for root.
+    pub user: String,
 }
 
 impl ImageConfig {
@@ -193,6 +195,7 @@ pub async fn config(reference: &str) -> Result<ImageConfig, ExecutorError> {
     Ok(ImageConfig {
         entrypoint: words(&blob["config"]["Entrypoint"]),
         cmd: words(&blob["config"]["Cmd"]),
+        user: (blob["config"]["User"].as_str().unwrap_or_default()).to_owned(),
     })
 }
 

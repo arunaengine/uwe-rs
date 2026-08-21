@@ -336,6 +336,7 @@ async fn backend(root: &Path) -> (KubernetesBackend, Arc<Mutex<State>>) {
     let entrypoint = ImageConfig {
         entrypoint: vec!["env".into(), "FROM_ENTRYPOINT=yes".into()],
         cmd: Vec::new(),
+        user: String::new(),
     };
     backend.configs = ImageConfigs::known([
         ("debian:stable-slim".to_owned(), ImageConfig::default()),
@@ -347,6 +348,7 @@ async fn backend(root: &Path) -> (KubernetesBackend, Arc<Mutex<State>>) {
 
 fn spec(image: &str, script: &str) -> TaskSpec {
     TaskSpec {
+        run_as: None,
         format: FORMAT,
         namespace: String::new(),
         image: Some(Image {
@@ -512,6 +514,7 @@ async fn containers_of_a_task_share_one_pod() {
     let root = tempfile::tempdir().expect("a folder");
     let (backend, state) = backend(root.path()).await;
     let container = |name: &str, image: &str, script: &str, after: &[&str]| ContainerSpec {
+        replaces_entrypoint: false,
         name: name.into(),
         image: Some(Image {
             reference: image.into(),

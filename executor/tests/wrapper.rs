@@ -18,6 +18,7 @@ fn spec(outputs: &[&str]) -> TaskSpec {
     );
     environment.insert("TASK_DIR".to_owned(), EnvironmentValue::WorkDirectory);
     TaskSpec {
+        run_as: None,
         format: FORMAT,
         namespace: String::new(),
         image: None,
@@ -46,6 +47,7 @@ fn run(root: &Path, spec: &TaskSpec, script: &str) -> i32 {
     std::fs::write(work.join("task script.sh"), script).expect("writes the script");
     let home = root.join("home");
     let folders = Folders {
+        owner: "",
         work: &work.to_string_lossy(),
         control: &control.to_string_lossy(),
         home: &home.to_string_lossy(),
@@ -195,6 +197,7 @@ fn outputs_go_to_the_outbox_too() {
     let spec = spec(&["dir/", "linked.txt"]);
     let home = root.path().join("home");
     let folders = Folders {
+        owner: "",
         work: &work.to_string_lossy(),
         control: &control.to_string_lossy(),
         home: &home.to_string_lossy(),
@@ -231,6 +234,7 @@ fn a_stop_reaches_the_tool_at_once() {
     std::fs::write(work.join("task script.sh"), "cat > in.txt\nsleep 30\n").expect("writes");
     let home = root.path().join("home");
     let folders = Folders {
+        owner: "",
         work: &work.to_string_lossy(),
         control: &control.to_string_lossy(),
         home: &home.to_string_lossy(),
@@ -275,6 +279,7 @@ fn containers_that_wait_for_one_whose_wrapper_was_killed_go_on() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let [work, control, home] = ["work", "control", "home"].map(|name| root.path().join(name));
     let container = |name: &str, script: &str, after: &[&str]| ContainerSpec {
+        replaces_entrypoint: false,
         name: name.into(),
         image: Some(Image {
             reference: "debian".into(),
@@ -294,6 +299,7 @@ fn containers_that_wait_for_one_whose_wrapper_was_killed_go_on() {
         ..spec(&[])
     };
     let folders = Folders {
+        owner: "",
         work: &work.to_string_lossy(),
         control: &control.to_string_lossy(),
         home: &home.to_string_lossy(),

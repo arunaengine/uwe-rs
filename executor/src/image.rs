@@ -64,6 +64,8 @@ async fn pull(engine: &ContainerEngine, reference: &str) -> Result<(), ExecutorE
 pub(crate) struct Commands {
     entrypoint: Vec<String>,
     command: Vec<String>,
+    /// The user that the image runs as, like `1000:100` or `nobody`; empty for root.
+    pub(crate) user: String,
 }
 
 impl Commands {
@@ -76,6 +78,7 @@ impl Commands {
         Ok(Commands {
             entrypoint: config.entrypoint.unwrap_or_default(),
             command: config.cmd.unwrap_or_default(),
+            user: config.user.unwrap_or_default(),
         })
     }
 
@@ -165,6 +168,7 @@ mod tests {
         let commands = Commands {
             entrypoint: words(&["/entry.sh"]),
             command: words(&["serve"]),
+            user: String::new(),
         };
         let given = commands
             .arguments("tool", words(&["-c", "x"]))

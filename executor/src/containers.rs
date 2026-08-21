@@ -24,7 +24,7 @@ use task_model::{EnvironmentValue, Image, TaskSpec};
 use crate::braces::expand_braces;
 use crate::wrapper::{
     BASH, COLLECT, END, ENDED, EXIT, Folders, MANIFEST, NOW, START, STDERR, STDIN, STDOUT,
-    USAGE_SCRIPT, quote,
+    USAGE_SCRIPT, hand_back, quote, start_in,
 };
 
 /// The folder in the control folder that holds a folder for each container of a task that
@@ -139,16 +139,18 @@ pub fn container_wrapper(spec: &TaskSpec, position: usize, folders: &Folders<'_>
         }
     ));
     script.push_str("[ -d \"$work\" ] && [ -d \"$own\" ] || mkdir -p \"$work\" \"$own\"\n");
-    script.push_str("cd \"$work\" || exit 1\n");
-    script.push_str(&format!(
-        "export HOME={}\n[ -d \"$HOME\" ] || mkdir -p \"$HOME\"\n",
-        quote(folders.home)
-    ));
-    if let Some(workdir) = &container.workdir {
-        let workdir = quote(workdir);
+    // Containers that run as Kubernetes runs them start where their image or their `workdir`
+    // says, with the `HOME` of their user.
+    let as_image = spec.run_as.is_some();
+    if !as_image {
+        script.push_str("cd \"$work\" || exit 1\n");
         script.push_str(&format!(
-            "[ -d {workdir} ] || mkdir -p {workdir}\ncd {workdir} || exit 1\n"
+            "export HOME={}\n[ -d \"$HOME\" ] || mkdir -p \"$HOME\"\n",
+            quote(folders.home)
         ));
+    }
+    if let Some(workdir) = &container.workdir {
+        script.push_str(&start_in(workdir));
     }
     for (name, value) in &container.environment {
         let value = match value {
@@ -197,6 +199,9 @@ pub fn container_wrapper(spec: &TaskSpec, position: usize, folders: &Folders<'_>
         script.push_str(USAGE_SCRIPT);
         script.push_str(COLLECT);
         script.push_str(&format!(": > \"$control/{MANIFEST}\"\n"));
+        if as_image {
+            script.push_str("cd \"$work\" || exit 1\n");
+        }
         if !spec.outputs.is_empty() {
             script.push_str("if [ \"$status\" -eq 0 ]; then\n");
             for rule in &spec.outputs {
@@ -263,8 +268,10 @@ pub fn recording_its_end(command: &str, exits: &[String]) -> String {
 
 /// The wrapper of one container of the engine that runs the wrappers of a group of containers
 /// at once, and ends when all of them ended. Each member is its wrapper and the file of its
-/// exit code, as paths that the container sees.
-pub fn group_wrapper(members: &[(String, String)]) -> String {
+/// exit code, as paths that the container sees. With an `owner`, it then hands what the task
+/// made in `root`, the folder of the control folder, back to that user (see
+/// [`Folders::owner`]).
+pub fn group_wrapper(members: &[(String, String)], owner: &str, root: &str) -> String {
     // The script is the first process of its container, which ignores a stop that it has no
     // trap for; when it ends, the container ends with every process in it.
     let mut script = String::from(
@@ -274,7 +281,9 @@ pub fn group_wrapper(members: &[(String, String)]) -> String {
         let command = format!("sh {} > /dev/null", quote(wrapper));
         script.push_str(&recording_its_end(&command, std::slice::from_ref(exit)));
     }
-    script.push_str(&format!("wait\necho {}\nexit 0\n", quote(ENDED)));
+    script.push_str("wait\n");
+    script.push_str(&hand_back(owner, &quote(root)));
+    script.push_str(&format!("echo {}\nexit 0\n", quote(ENDED)));
     script
 }
 
@@ -305,7 +314,11 @@ pub fn write_wrappers(
                 (wrapper, inside(&exit_file(spec, position)))
             })
             .collect();
-        std::fs::write(control.join(group_path(index)), group_wrapper(&members))?;
+        let root = Path::new(folders.control)
+            .parent()
+            .unwrap_or(Path::new("/"));
+        let script = group_wrapper(&members, folders.owner, &root.to_string_lossy());
+        std::fs::write(control.join(group_path(index)), script)?;
         written.push((group, inside(&group_path(index))));
     }
     Ok(written)
@@ -390,9 +403,11 @@ mod tests {
                     environment: BTreeMap::new(),
                     after: after.iter().map(|name| (*name).to_owned()).collect(),
                     attempts: 2,
+                    replaces_entrypoint: false,
                 })
                 .collect(),
             replaces_entrypoint: false,
+            run_as: None,
         }
     }
 
@@ -432,6 +447,7 @@ mod tests {
             control: "/c",
             home: "/h",
             outbox: "",
+            owner: "",
         };
         let other = container_wrapper(&spec, 1, &folders);
         assert!(
@@ -454,7 +470,7 @@ mod tests {
             "/c/containers/main/wrapper.sh".to_owned(),
             "/c/exit".to_owned(),
         )];
-        let group = group_wrapper(&members);
+        let group = group_wrapper(&members, "", "/");
         let expected = "{\n    sh '/c/containers/main/wrapper.sh' > /dev/null\n    code=$?\n    \
             [ \"$code\" -eq 0 ] || [ -s '/c/exit' ] || echo \"$code\" > '/c/exit'\n    exit \
             \"$code\"\n} &\nwait\n";

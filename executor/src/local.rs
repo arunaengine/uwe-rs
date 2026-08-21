@@ -22,6 +22,7 @@ use tokio::sync::OnceCell;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use crate::access::{self, Access, NO_NEW_PRIVILEGES};
 use crate::engine::{ContainerEngine, EngineCommand};
 use crate::image::{self, Commands};
 use crate::job::{CONTROL, ExecutorError, Finished, HOME, Job, Usage, WORK};
@@ -37,6 +38,9 @@ const STOP_GRACE: Duration = Duration::from_secs(10);
 /// The least memory that Docker and Podman give a container (6 MiB); a task that asks for
 /// less, as a Snakemake rule with `mem_mb` of a file's size may, gets that much.
 const LEAST_MEMORY: u64 = 6 << 20;
+
+/// The memory of the container that hands the files of a task back to the user (64 MiB).
+const HAND_BACK_MEMORY: i64 = 64 << 20;
 
 /// The local container executor.
 #[derive(Debug)]
@@ -140,12 +144,29 @@ pub struct ContainerRun<'a> {
     /// The wrapper that the container runs, when it is not the wrapper of the task in the
     /// control folder, as for the containers of a task that runs several.
     pub wrapper_path: Option<&'a Path>,
+    /// Who the container runs as, and with which capabilities.
+    pub access: &'a Access,
 }
 
 impl ContainerRun<'_> {
-    /// Where the container sees the work directory.
+    /// Where the container sees the work directory: at the task's `workdir`, unless the
+    /// container runs as Kubernetes runs it and only starts there.
     pub fn inside(&self) -> String {
-        (self.workdir.map(str::to_owned)).unwrap_or_else(|| text(&self.root.join(WORK)))
+        (self.work_place().map(str::to_owned)).unwrap_or_else(|| text(&self.root.join(WORK)))
+    }
+
+    /// The place of the work directory that the task names, if any.
+    fn work_place(&self) -> Option<&str> {
+        self.workdir.filter(|_| self.access.run_as.is_none())
+    }
+
+    /// Where the container starts: in the work directory, or, when it runs as Kubernetes runs
+    /// it, in the task's `workdir` or else (`None`) in the working directory of its image.
+    pub fn start(&self) -> Option<String> {
+        match self.access.run_as {
+            Some(_) => self.workdir.map(str::to_owned),
+            None => Some(self.inside()),
+        }
     }
 
     /// The folders that the container sees, each with its place inside it: the scratch
@@ -171,7 +192,7 @@ impl ContainerRun<'_> {
             target: text(self.root),
             read_only: false,
         }];
-        if let Some(workdir) = self.workdir
+        if let Some(workdir) = self.work_place()
             && !mounts.iter().any(|mount| mount.target == workdir)
         {
             binds.push(Mount {
@@ -202,13 +223,14 @@ impl ContainerRun<'_> {
             control: &control,
             home: &home,
             outbox: "",
+            owner: &self.access.owner(),
         };
         wrapper(spec, &folders)
     }
 
     /// The container that runs the wrapper with the shell of the image, for the engine's API.
     /// The folders are mounts, not `source:target` binds, so that a path may hold a `:`.
-    pub fn create(&self, engine: &ContainerEngine) -> ContainerCreateBody {
+    pub fn create(&self) -> ContainerCreateBody {
         let mounts = (self.binds().into_iter())
             .map(|bind| bollard::models::Mount {
                 target: Some(bind.target),
@@ -223,9 +245,20 @@ impl ContainerRun<'_> {
             // The shell of the image, wherever its `PATH` has it.
             entrypoint: Some(vec!["sh".to_owned()]),
             cmd: Some(vec![self.script()]),
-            user: engine.user(self.owner.0, self.owner.1),
-            working_dir: Some(self.inside()),
+            user: self.access.user.clone(),
+            working_dir: self.start(),
             host_config: Some(HostConfig {
+                // The least permissions (decision 28): no capabilities but those the task
+                // needs, and no way to gain privileges.
+                cap_drop: Some(vec!["ALL".to_owned()]),
+                cap_add: Some(
+                    self.access
+                        .capabilities
+                        .iter()
+                        .map(|&name| name.to_owned())
+                        .collect(),
+                ),
+                security_opt: Some(vec![NO_NEW_PRIVILEGES.to_owned()]),
                 // The engine removes the container once it ended, which takes it a while, so
                 // that the task need not wait for it.
                 auto_remove: Some(true),
@@ -246,11 +279,22 @@ impl ContainerRun<'_> {
             .chain(["--entrypoint", "sh"])
             .map(str::to_owned)
             .collect();
-        arguments.extend(engine.user_options(self.owner.0, self.owner.1));
+        match (self.access.run_as, &self.access.user) {
+            (None, _) => arguments.extend(engine.user_options(self.owner.0, self.owner.1)),
+            (Some(_), Some(user)) => arguments.extend(["--user".into(), user.clone()]),
+            (Some(_), None) => {}
+        }
+        arguments.extend(["--cap-drop".into(), "ALL".into()]);
+        for capability in &self.access.capabilities {
+            arguments.extend(["--cap-add".into(), (*capability).to_owned()]);
+        }
+        arguments.extend(["--security-opt".into(), NO_NEW_PRIVILEGES.into()]);
         for bind in self.binds() {
             arguments.extend(["--volume".into(), volume(&bind)]);
         }
-        arguments.extend(["--workdir".into(), self.inside()]);
+        if let Some(start) = self.start() {
+            arguments.extend(["--workdir".into(), start]);
+        }
         arguments.extend(["--cpus".into(), self.cpus.to_string()]);
         if let Some(memory) = self.memory {
             arguments.extend(["--memory".into(), memory.max(LEAST_MEMORY).to_string()]);
@@ -294,11 +338,18 @@ impl LocalContainer {
         let mut spec = job.spec.clone();
         // The command runs through the image's entrypoint, as `docker run` runs it, which
         // some images need to set up their tools, unless it replaces the entrypoint.
-        if !spec.replaces_entrypoint || spec.arguments.is_empty() {
-            let commands = self.commands(&image.reference).await?;
+        let entrypoint = !spec.replaces_entrypoint || spec.arguments.is_empty();
+        let commands = match entrypoint || spec.run_as.is_some() {
+            true => self.commands(&image.reference).await?,
+            false => Commands::default(),
+        };
+        if entrypoint {
             spec.arguments = commands.arguments(&image.reference, spec.arguments)?;
         }
         let owner = tokio::fs::metadata(root).await?;
+        let access = self
+            .access(root, (owner.uid(), owner.gid()), &spec, &commands)
+            .await?;
         let container = format!("iunctus-{}", job.name);
         let run = ContainerRun {
             name: &container,
@@ -311,11 +362,13 @@ impl LocalContainer {
             memory: share.memory,
             offline: job.placement.offline,
             wrapper_path: None,
+            access: &access,
         };
         tokio::fs::write(run.script(), run.wrapper(&spec)).await?;
         let time = job.placement.time_seconds.map(Duration::from_secs);
-        let ending = self.run_to_end(&run, time, cancel).await?;
-        self.finish(ending, root.to_owned(), &spec).await
+        let ending = self.run_to_end(&run, time, cancel).await;
+        self.hand_back(&access, image, root, owner.uid()).await;
+        self.finish(ending?, root.to_owned(), &spec).await
     }
 
     /// Runs a task of several containers: one container of the engine for each image, all at
@@ -333,18 +386,36 @@ impl LocalContainer {
         let mut spec = job.spec.clone();
         for container in &mut spec.containers {
             let image = container.image.as_ref().ok_or(ExecutorError::NoImage)?;
+            if container.replaces_entrypoint && !container.arguments.is_empty() {
+                continue;
+            }
             let commands = self.commands(&image.reference).await?;
             let arguments = std::mem::take(&mut container.arguments);
             container.arguments = commands.arguments(&image.reference, arguments)?;
         }
         let owner = tokio::fs::metadata(root).await?;
+        // The containers run as the main one does.
+        let main = (spec.containers.first().and_then(|main| main.image.clone()))
+            .ok_or(ExecutorError::NoImage)?;
+        let commands = match spec.run_as {
+            Some(_) => self.commands(&main.reference).await?,
+            None => Commands::default(),
+        };
+        let access = self
+            .access(root, (owner.uid(), owner.gid()), &spec, &commands)
+            .await?;
         let (control, home) = (root.join(CONTROL), text(&root.join(HOME)));
-        let work = (spec.workdir.clone()).unwrap_or_else(|| text(&root.join(WORK)));
+        let work = match spec.run_as {
+            Some(_) => text(&root.join(WORK)),
+            None => (spec.workdir.clone()).unwrap_or_else(|| text(&root.join(WORK))),
+        };
+        let owner_text = access.owner();
         let folders = Folders {
             work: &work,
             control: &text(&control),
             home: &home,
             outbox: "",
+            owner: &owner_text,
         };
         let groups = crate::containers::write_wrappers(&spec, &control, &folders)?;
         let names: Vec<String> = (0..groups.len())
@@ -363,6 +434,7 @@ impl LocalContainer {
                 memory: share.memory,
                 offline: job.placement.offline,
                 wrapper_path: Some(&paths[index]),
+                access: &access,
             })
             .collect();
         let time = job.placement.time_seconds.map(Duration::from_secs);
@@ -385,11 +457,95 @@ impl LocalContainer {
             }
         }
         drop(running);
+        self.hand_back(&access, &main, root, owner.uid()).await;
         let ending = match (first, normal) {
             (Some(result), _) | (None, Some(result)) => result?,
             (None, None) => return Err(ExecutorError::NoImage),
         };
         self.finish(ending, root.to_owned(), &spec).await
+    }
+
+    /// How the containers of a task run, and its scratch directory `root` open to every user
+    /// when they may run as another user than `owner`, the user who runs iunctus.
+    async fn access(
+        &self,
+        root: &Path,
+        owner: (u32, u32),
+        spec: &TaskSpec,
+        commands: &Commands,
+    ) -> Result<Access, ExecutorError> {
+        let access = Access::of(owner, self.engine.rootless, spec.run_as, &commands.user);
+        if access.hand_back.is_some() {
+            let root = root.to_owned();
+            (tokio::task::spawn_blocking(move || access::open(&root)).await)
+                .map_err(|error| std::io::Error::other(error.to_string()))??;
+        }
+        Ok(access)
+    }
+
+    /// Hands back to the user `user` what a container that ran as another user left in the
+    /// scratch directory `root`, when its wrapper could not, with a short container of the
+    /// task's image as root with only the capabilities that this needs. A failure leaves the
+    /// files as they are; the wrapper let every user change them.
+    async fn hand_back(&self, access: &Access, image: &Image, root: &Path, user: u32) {
+        let Some(owner) = access.hand_back else {
+            return;
+        };
+        let walked = root.to_owned();
+        let foreign = tokio::task::spawn_blocking(move || access::foreign(&walked, user));
+        if !foreign.await.unwrap_or(true) {
+            return;
+        }
+        let client = self.engine.client();
+        let name = format!(
+            "{}-hand-back",
+            root.file_name()
+                .map_or_else(String::new, |name| name.to_string_lossy().into_owned())
+        );
+        let name = format!("iunctus-{name}");
+        let body = ContainerCreateBody {
+            image: Some(image.reference.clone()),
+            entrypoint: Some(access::hand_back_command(root, owner)),
+            cmd: Some(Vec::new()),
+            user: Some("0:0".to_owned()),
+            host_config: Some(HostConfig {
+                auto_remove: Some(true),
+                mounts: Some(vec![bollard::models::Mount {
+                    target: Some(text(root)),
+                    source: Some(text(root)),
+                    typ: Some(MountType::BIND),
+                    ..bollard::models::Mount::default()
+                }]),
+                cap_drop: Some(vec!["ALL".to_owned()]),
+                cap_add: Some(access::HAND_BACK_CAPABILITIES.map(str::to_owned).to_vec()),
+                security_opt: Some(vec![NO_NEW_PRIVILEGES.to_owned()]),
+                network_mode: Some("none".to_owned()),
+                memory: Some(HAND_BACK_MEMORY),
+                ..HostConfig::default()
+            }),
+            ..ContainerCreateBody::default()
+        };
+        let options = CreateContainerOptions {
+            name: Some(name.clone()),
+            platform: image.platform.clone().unwrap_or_default(),
+        };
+        if client.create_container(Some(options), body).await.is_err() {
+            return;
+        }
+        let exited = tokio::spawn(exit_code(client.clone(), name.clone()));
+        match client.start_container(&name, None).await {
+            Ok(()) => {
+                let _ = exited.await;
+            }
+            Err(_) => {
+                exited.abort();
+                let remove = RemoveContainerOptions {
+                    force: true,
+                    ..RemoveContainerOptions::default()
+                };
+                let _ = client.remove_container(&name, Some(remove)).await;
+            }
+        }
     }
 
     /// What containers of an image run by default, asked once per run.
@@ -421,7 +577,7 @@ impl LocalContainer {
             name: Some(run.name.to_owned()),
             platform: run.image.platform.clone().unwrap_or_default(),
         };
-        let body = run.create(&self.engine);
+        let body = run.create();
         client
             .create_container(Some(options), body)
             .await
@@ -713,6 +869,7 @@ mod tests {
             memory: None,
             offline: false,
             wrapper_path: None,
+            access: &Access::default(),
         };
         let binds =
             |run: &ContainerRun<'_>| -> Vec<String> { run.binds().iter().map(volume).collect() };

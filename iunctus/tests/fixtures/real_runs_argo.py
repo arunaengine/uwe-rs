@@ -169,6 +169,18 @@ def probable_cause(path, entry):
     return None
 
 
+def stop_containers(work):
+    """Kills the containers of iunctus that still run on folders of this script."""
+    names = subprocess.run(["docker", "ps", "--filter", "name=iunctus-", "--format",
+                            "{{.Names}}"], capture_output=True, text=True).stdout.split()
+    for name in names:
+        mounts = subprocess.run(["docker", "inspect", "--format",
+                                 "{{range .Mounts}}{{.Source}} {{end}}", name],
+                                capture_output=True, text=True).stdout.split()
+        if any(source.startswith(str(work)) for source in mounts):
+            subprocess.run(["docker", "kill", name], capture_output=True)
+
+
 def last_error(text):
     """The first line of an output that says `iunctus:` or names an error, else the last."""
     lines = [ANSI.sub("", line).strip() for line in text.splitlines() if line.strip()]
@@ -195,11 +207,20 @@ def compare(name, work, environment, local):
                str(path), "-lang", "argo", "-executor", "local", "-no-network",
                "-max-pending", "3",
                "-store", str(work / "store"), "-output-dir", str(folder / "out")]
+    process = subprocess.Popen(command, cwd=folder, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, text=True, env=environment)
     try:
-        done = subprocess.run(command, cwd=folder, capture_output=True, text=True,
-                              env=environment, timeout=TIMEOUT)
-        code, error, text = done.returncode, last_error(done.stderr), done.stderr
+        _, stderr = process.communicate(timeout=TIMEOUT)
+        code, error, text = process.returncode, last_error(stderr), stderr
     except subprocess.TimeoutExpired:
+        # iunctus stops its containers on SIGTERM; any left are stopped here.
+        process.terminate()
+        try:
+            process.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+        stop_containers(work)
         code, error, text = "timeout", "timeout", ""
     shutil.rmtree(folder, ignore_errors=True)
     if re.search(r"cannot read (https?|s3|gs)://", text):

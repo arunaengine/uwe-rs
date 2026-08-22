@@ -91,8 +91,6 @@ KNOWN = {
                                             "see",
     "test_priority": UNDECLARED,
     "test_protected_symlink_output": LINKS,
-    "test_service_jobs": "a service job runs as long as the jobs that use it, which iunctus "
-                         "does not do yet, so the run waits",
     "test_shadow": LINKS,
     "test_shadow_copy": UNDECLARED,
     "test_symlink_temp": LINKS,

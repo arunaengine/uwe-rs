@@ -14,7 +14,8 @@ use crate::files;
 use crate::value::{Map, Value};
 
 /// The deliveries of the files of an output object to `folder`; the object then names the
-/// files at their new places. A file without a local location, like a literal, stays as it is.
+/// files at their new places. A literal, a file or directory that has no place yet, is
+/// written to a local folder at once, as cwltool does; a remote file stays as it is.
 pub fn deliver(outputs: &mut Map, folder: &Path) -> Vec<Delivery> {
     let mut deliveries = Vec::new();
     for (_, value) in outputs.iter_mut() {
@@ -32,6 +33,10 @@ fn relocate(value: &mut Value, folder: &Path, deliveries: &mut Vec<Delivery>) {
         }
         Value::Map(map) if is_file_or_directory(map) => {
             let location = map.get("location").and_then(Value::as_str);
+            if location.is_none_or(|location| location.starts_with("_:")) {
+                write_literal(map, folder, deliveries);
+                return;
+            }
             let Some(source) = location.and_then(files::local_path) else {
                 return;
             };
@@ -59,6 +64,40 @@ fn relocate(value: &mut Value, folder: &Path, deliveries: &mut Vec<Delivery>) {
             }
         }
         _ => {}
+    }
+}
+
+/// Writes a file literal with its `contents`, or makes a directory literal with its `listing`
+/// inside it, under its basename in a local folder, and names it there.
+fn write_literal(map: &mut Map, folder: &Path, deliveries: &mut Vec<Delivery>) {
+    let basename = map.get("basename").and_then(Value::as_str);
+    let Some(basename) = basename.filter(|_| !folder.to_string_lossy().contains("://")) else {
+        return;
+    };
+    let target = folder.join(basename);
+    let directory = map.get("class").and_then(Value::as_str) == Some("Directory");
+    let written = match directory {
+        true => std::fs::create_dir_all(&target),
+        false => {
+            let contents = map
+                .get("contents")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            std::fs::create_dir_all(folder).and_then(|()| std::fs::write(&target, contents))
+        }
+    };
+    if written.is_err() {
+        return;
+    }
+    map.insert("location".into(), Value::String(iri::file_url(&target)));
+    map.insert(
+        "path".into(),
+        Value::String(target.to_string_lossy().into_owned()),
+    );
+    if let Some(Value::List(listing)) = map.get_mut("listing") {
+        for item in listing {
+            relocate(item, &target, deliveries);
+        }
     }
 }
 
@@ -127,5 +166,29 @@ mod tests {
             text.contains("\"location\":\"file:///out/x.txt\""),
             "{text}"
         );
+    }
+
+    #[test]
+    fn literals_are_written_to_the_folder() {
+        // The conformance tests exprtool_file_literal and exprtool_directory_literal.
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let text = "{lit: {class: File, basename: a_file, contents: 'Hello', location: '_:1'}, \
+                    dir: {class: Directory, basename: a_directory, location: '_:2', listing: \
+                    [{class: File, location: 'file:///s/runs/a/work/hello.txt', basename: \
+                    hello.txt}]}}";
+        let Value::Map(mut outputs) = Value::parse(text).expect("YAML") else {
+            panic!("a map")
+        };
+        let deliveries = deliver(&mut outputs, folder.path());
+        let file = folder.path().join("a_file");
+        assert_eq!(std::fs::read_to_string(&file).expect("written"), "Hello");
+        let directory = folder.path().join("a_directory");
+        assert!(directory.is_dir());
+        assert_eq!(deliveries.len(), 1);
+        let target = directory.join("hello.txt").to_string_lossy().into_owned();
+        assert_eq!(deliveries[0].target, target);
+        let text = Value::Map(outputs).to_json();
+        assert!(text.contains(&iri::file_url(&file)), "{text}");
+        assert!(text.contains(&iri::file_url(&directory)), "{text}");
     }
 }

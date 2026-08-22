@@ -220,6 +220,9 @@ fn command(container: &Container, run: &ContainerRun<'_>, gpus: bool) -> Vec<Str
 /// runs it starts in its `workdir`, or in `/`, the working directory of most images, which a
 /// job cannot ask the registry for; its file system is writable in memory
 /// (`--writable-tmpfs`), so that it may write outside its folders where its user may write.
+/// A task without network gets a network of its own with only loopback, which Apptainer
+/// 1.1 and later gives any user; Singularity may not, so its tasks keep the network of the
+/// node.
 fn apptainer(program: &str, run: &ContainerRun<'_>, gpus: bool) -> Vec<String> {
     let start = match run.access.run_as {
         Some(_) => run.start().unwrap_or_else(|| "/".to_owned()),
@@ -234,6 +237,9 @@ fn apptainer(program: &str, run: &ContainerRun<'_>, gpus: bool) -> Vec<String> {
     ];
     if run.access.run_as.is_some() {
         command.push("--writable-tmpfs".into());
+    }
+    if run.offline && program.ends_with("apptainer") {
+        command.extend(["--net".into(), "--network".into(), "none".into()]);
     }
     for bind in run.binds() {
         command.extend(["--bind".into(), executor::local::volume(&bind)]);
@@ -397,6 +403,24 @@ mod tests {
         let expected = "'apptainer' 'exec' '--containall' '--pwd' '/data' '--writable-tmpfs' \
             '--bind' '/shared/scratch/run-P-1-1:/shared/scratch/run-P-1-1' 'docker://";
         assert!(script.contains(expected), "{script}");
+        // A task without network gets only loopback.
+        let offline = ContainerRun {
+            offline: true,
+            ..run(&image, &[], None)
+        };
+        let script = job_script(
+            &Container::Apptainer("apptainer".into()),
+            &offline,
+            false,
+            None,
+        );
+        assert!(
+            script.contains(
+                "'exec' '--containall' '--pwd' '/shared/scratch/run-P-1-1/work' \
+                             '--net' '--network' 'none' "
+            ),
+            "{script}"
+        );
         assert_eq!(super::image("/images/tool.sif"), "/images/tool.sif");
         assert_eq!(super::image("oras://host/tool:1"), "oras://host/tool:1");
     }

@@ -624,7 +624,7 @@ fn network_rule(arguments: &Arguments, setup: &Setup) -> task_runner::NetworkRul
 }
 
 /// An error when the run asks for tasks without network and its executor cannot cut a task
-/// off the network yet: TES, Kubernetes, and SLURM with Apptainer or Singularity. It comes
+/// off the network yet: TES, Kubernetes, and SLURM with Singularity. It comes
 /// before the executor starts, so that it is the first thing the user reads.
 fn offline_possible(arguments: &Arguments, setup: &Setup) -> Result<(), Failure> {
     if !network_rule(arguments, setup).none_by_default {
@@ -638,9 +638,9 @@ fn offline_possible(arguments: &Arguments, setup: &Setup) -> Result<(), Failure>
         Some("kubernetes") => {
             "the Kubernetes executor makes no network policy that cuts a task off the network"
         }
-        Some("slurm") if matches!(named, "apptainer" | "singularity") => {
-            "Apptainer and Singularity cut a task off the network only where the site allows \
-             it, which iunctus does not ask for yet (`-slurm-container podman` or `docker` can)"
+        Some("slurm") if named == "singularity" => {
+            "Singularity cuts a task off the network only where the site allows it, which \
+             iunctus does not ask for (`-slurm-container apptainer`, `podman` or `docker` can)"
         }
         _ => return Ok(()),
     };

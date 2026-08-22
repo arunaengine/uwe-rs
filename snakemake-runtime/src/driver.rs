@@ -67,6 +67,9 @@ pub struct Session {
     needrun: HashMap<usize, bool>,
     tasks: HashMap<usize, TaskId>,
     jobs_of_tasks: HashMap<TaskId, usize>,
+    /// The tasks of service jobs with the jobs that use them, which run as one task: each
+    /// job with the outputs that it declared (`services`).
+    groups: HashMap<TaskId, Vec<(usize, Vec<String>)>>,
     done: HashSet<usize>,
     outstanding: usize,
     /// The number of the next task, which commands of workflow code share.
@@ -166,6 +169,7 @@ impl Session {
             needrun: HashMap::new(),
             tasks: HashMap::new(),
             jobs_of_tasks: HashMap::new(),
+            groups: HashMap::new(),
             done: HashSet::new(),
             outstanding: 0,
             next_task: Rc::new(Cell::new(1)),
@@ -460,6 +464,23 @@ impl Session {
                 waiting
             }
         };
+        // A job that uses a service starts with the service job, so that one is a candidate too.
+        let mut candidates = candidates;
+        let planner = self.planner.as_ref().expect("a planner");
+        let services: Vec<usize> = (candidates.iter())
+            .flat_map(|job| {
+                planner.jobs[*job]
+                    .dependencies
+                    .iter()
+                    .map(|(_, producer)| *producer)
+            })
+            .filter(|producer| !crate::services::service_files(&planner.jobs[*producer]).is_empty())
+            .collect();
+        for producer in services {
+            if !candidates.contains(&producer) {
+                candidates.push(producer);
+            }
+        }
         let mut tasks = Vec::new();
         for job in candidates {
             if !self.needrun.get(&job).copied().unwrap_or(false) || self.tasks.contains_key(&job) {
@@ -471,6 +492,11 @@ impl Session {
                 continue;
             }
             if self.remaining.get(&job).copied().unwrap_or(0) > 0 {
+                continue;
+            }
+            let services = crate::services::service_files(entry);
+            if !services.is_empty() {
+                tasks.extend(self.service_group(job, &services)?);
                 continue;
             }
             let id = TaskId(self.next_task.get());
@@ -619,6 +645,9 @@ impl Session {
     }
 
     pub fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
+        if let Some(members) = self.groups.remove(&outcome.id) {
+            return self.complete_group(members, outcome);
+        }
         let Some(job) = self.jobs_of_tasks.get(&outcome.id).copied() else {
             return Err(DriverError::new(format!("unknown task {}", outcome.id)));
         };
@@ -638,11 +667,67 @@ impl Session {
             );
             return self.failed(message);
         }
+        if let Some(message) = self.take_outcome(job, outcome)? {
+            return self.failed(message);
+        }
+        self.next_tasks(&[job])
+    }
+
+    /// Takes the outcome of a group of a service job and the jobs that use it: each job gets
+    /// the files that it declared.
+    fn complete_group(
+        &mut self,
+        members: Vec<(usize, Vec<String>)>,
+        outcome: Outcome,
+    ) -> Result<Vec<Task>, DriverError> {
+        self.outstanding = self.outstanding.saturating_sub(1);
+        *self.files.last_output_read.borrow_mut() = None;
+        if outcome.exit_code != 0 {
+            let rules: Vec<String> = (members.iter())
+                .map(|(job, _)| self.rule_name(*job))
+                .collect();
+            let message = format!(
+                "Error in group of rules {}: the task ended with exit code {}",
+                rules.join(", "),
+                outcome.exit_code
+            );
+            return self.failed(message);
+        }
+        let jobs: Vec<usize> = members.iter().map(|(job, _)| *job).collect();
+        for (job, declared) in members {
+            let mut own = outcome.clone();
+            let trimmed = |path: &str| {
+                path.trim_start_matches('/')
+                    .trim_end_matches('/')
+                    .to_owned()
+            };
+            own.files.retain(|file| {
+                let path = trimmed(&file.path);
+                (declared.iter()).any(|output| {
+                    let output = trimmed(output);
+                    path == output || path.starts_with(&format!("{output}/"))
+                })
+            });
+            if let Some(message) = self.take_outcome(job, own)? {
+                return self.failed(message);
+            }
+        }
+        self.next_tasks(&jobs)
+    }
+
+    /// Takes the outcome of a job that ended well: checks its outputs, hands them to the
+    /// working directory and lets the jobs after it go on. Gives why its outputs are wrong, if
+    /// they are.
+    fn take_outcome(
+        &mut self,
+        job: usize,
+        outcome: Outcome,
+    ) -> Result<Option<String>, DriverError> {
         let mut outcome = outcome;
         if !self.launch.simulated
             && let Err(error) = self.check_outputs(job, &mut outcome)
         {
-            return self.failed(error.message);
+            return Ok(Some(error.message));
         }
         // The outputs go to the working directory, as Snakemake leaves them there, except the
         // temporary ones.
@@ -710,6 +795,11 @@ impl Session {
         if planner.rules[planner.jobs[job].rule].checkpoint {
             self.replan = true;
         }
+        Ok(None)
+    }
+
+    /// The tasks that can run after `jobs` ended.
+    fn next_tasks(&mut self, jobs: &[usize]) -> Result<Vec<Task>, DriverError> {
         // After a failure, running jobs end, but no job starts unless the run keeps going.
         if !self.failures.is_empty() && !self.launch.keep_going {
             return Ok(Vec::new());
@@ -719,7 +809,74 @@ impl Session {
             self.plan()?;
             return self.ready_tasks(None);
         }
-        self.ready_tasks(Some(job))
+        let mut tasks = Vec::new();
+        for job in jobs {
+            tasks.extend(self.ready_tasks(Some(*job))?);
+        }
+        Ok(tasks)
+    }
+
+    /// The task of a service job that is ready to run, with the jobs that use its `services`
+    /// outputs, once they wait for nothing else; `None` while one of them still waits.
+    fn service_group(
+        &mut self,
+        job: usize,
+        services: &[String],
+    ) -> Result<Option<Task>, DriverError> {
+        let planner = self.planner.as_ref().expect("a planner");
+        let mut users: Vec<usize> = (self.order.iter().copied())
+            .filter(|user| {
+                (planner.jobs[*user].dependencies.iter())
+                    .any(|(file, producer)| *producer == job && services.contains(file))
+            })
+            .filter(|user| self.needrun.get(user).copied().unwrap_or(false))
+            .collect();
+        users.dedup();
+        let waiting = |user: &usize| {
+            planner.jobs[*user].incomplete
+                || self.remaining.get(user).copied().unwrap_or(0) != 1
+                || self.tasks.contains_key(user)
+        };
+        if users.iter().any(waiting) {
+            return Ok(None);
+        }
+        let id = TaskId(self.next_task.get());
+        self.next_task.set(id.0 + 1);
+        let mut members = Vec::new();
+        let mut declared = Vec::new();
+        for member in std::iter::once(job).chain(users) {
+            let planner = self.planner.as_ref().expect("a planner");
+            let rule = planner.rules[planner.jobs[member].rule].clone();
+            let entry = planner.jobs[member].clone();
+            let task = {
+                let state = self.state.borrow();
+                let setting = crate::task::TaskSetting {
+                    state: &state,
+                    files: &self.files,
+                    workdir: &self.workdir,
+                    embedded: &self.embedded,
+                    sources: &self.sources,
+                };
+                crate::task::build(&mut self.interpreter, &setting, &rule, &entry, id, 1)
+            }
+            .map_err(|error| self.error(&error))?;
+            declared.push((member, task.outputs.clone()));
+            members.push(task);
+        }
+        let task = crate::services::combine(&members, services, id).map_err(DriverError::new)?;
+        for (member, _) in &declared {
+            self.planner
+                .as_mut()
+                .expect("a planner")
+                .fixed
+                .insert(*member);
+            self.tasks.insert(*member, id);
+            self.attempts.insert(*member, 1);
+        }
+        self.jobs_of_tasks.insert(id, job);
+        self.groups.insert(id, declared);
+        self.outstanding += 1;
+        Ok(Some(task))
     }
 
     /// Whether the run ends after a failed job: the running jobs end, and no other job starts.
@@ -754,7 +911,9 @@ impl Session {
         let entry = &planner.jobs[job];
         let rule = planner.rules[entry.rule].name.clone();
         let touched = entry.touched_files();
+        // A service is no file that stays, as Snakemake's `wait_for_files` ignores it.
         let outputs: Vec<String> = (entry.output.values.iter())
+            .filter(|value| value.tag("service").is_none())
             .filter_map(|value| value.as_str().map(str::to_owned))
             .collect();
         let made = |outcome: &Outcome, output: &str| {

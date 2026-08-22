@@ -32,6 +32,7 @@ mod remote;
 mod resources;
 mod rule;
 mod schema;
+mod services;
 mod shell;
 mod sources;
 mod storage;

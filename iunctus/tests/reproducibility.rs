@@ -327,7 +327,12 @@ fn executors_that_cannot_cut_tasks_off_the_network_say_so_before_they_start() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let cache = root.path().join("cache");
     std::fs::write(root.path().join("main.nf"), NETWORK_WORKFLOW).expect("writes");
-    for executor in [&["-executor", "tes"][..], &["-executor", "kubernetes"][..]] {
+    let singularity = &["-executor", "slurm", "-slurm-container", "singularity"][..];
+    for executor in [
+        &["-executor", "tes"][..],
+        &["-executor", "kubernetes"][..],
+        singularity,
+    ] {
         let mut arguments = vec!["run", "main.nf", "-no-network"];
         arguments.extend(executor);
         let (code, output) = iunctus(root.path(), &cache, &arguments);

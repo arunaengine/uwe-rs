@@ -303,7 +303,9 @@ fn take_lines(buffer: &mut Vec<u8>) -> Vec<String> {
 }
 
 /// The container of a spec and its command. Core dumps are off: a tool that crashes inside
-/// such a container would only fill the journal of the machine.
+/// such a container would only fill the journal of the machine. It has the least permissions,
+/// as the containers of tasks (decision 28): no capabilities and no way to gain privileges. An
+/// engine without root runs it as root, which is the user outside.
 fn create(spec: &ContainerSpec, engine: &ContainerEngine, remove: bool) -> ContainerCreateBody {
     let binds = (spec.mounts.iter())
         .map(|mount| {
@@ -316,7 +318,10 @@ fn create(spec: &ContainerSpec, engine: &ContainerEngine, remove: bool) -> Conta
         .collect();
     ContainerCreateBody {
         image: Some(spec.image.clone()),
-        user: spec.user.clone().filter(|_| !engine.rootless),
+        user: (spec.user.as_ref()).map(|user| match engine.rootless {
+            true => "0:0".to_owned(),
+            false => user.clone(),
+        }),
         entrypoint: spec.entrypoint.clone().map(|entrypoint| vec![entrypoint]),
         cmd: Some(spec.command.clone()),
         working_dir: spec.workdir.clone(),
@@ -325,6 +330,8 @@ fn create(spec: &ContainerSpec, engine: &ContainerEngine, remove: bool) -> Conta
             binds: Some(binds),
             memory: spec.memory.map(|bytes| bytes as i64),
             auto_remove: Some(remove),
+            cap_drop: Some(vec!["ALL".to_owned()]),
+            security_opt: Some(vec![crate::access::NO_NEW_PRIVILEGES.to_owned()]),
             ulimits: Some(vec![ResourcesUlimits {
                 name: Some("core".to_owned()),
                 soft: Some(0),

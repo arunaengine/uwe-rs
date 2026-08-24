@@ -200,7 +200,7 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 - [x] The network and writable-input fields, remote inputs, Argo container sets (section 3, steps 6, 9 and 10): see [engine](design/engine.md), section 4, and [Argo runtime](design/argo/runtime.md), section 8.2.
 - [x] Several storage providers from a config file, secrets from environment variables (decision 20): see [storage](design/storage.md).
 - Done when: the `test` profiles of nf-core/demo and 20 more nf-core pipelines, and a sample of Snakemake, CWL and Argo test workflows, run for real on each executor, and their outputs match those of the native tool. This needs a real-run version of the evidence scripts. The 208 CWL conformance tests that only run through today pass for real.
-  - So far on the local executor, without network (see [engine](design/engine.md), section 7): nf-core/demo gives all files of Nextflow; 284 of 287 CWL conformance tests give cwltool's output; 314 of 422 tests of Snakemake give the same result as Snakemake 9.27 (the other differences have known reasons); 262 Argo test workflows end as Argo's tests expect. Real-run evidence scripts exist for Nextflow, CWL, Snakemake and Argo.
+  - So far on the local executor, without network (see [engine](design/engine.md), section 7): nf-core/demo gives all files of Nextflow; 284 of 287 CWL conformance tests give cwltool's output; 315 of 422 tests of Snakemake give the same result as Snakemake 9.27 (the other differences have known reasons); 277 Argo test workflows end as Argo's tests expect. Real-run evidence scripts exist for Nextflow, CWL, Snakemake and Argo.
 
 ### Run database, web page and provenance
 

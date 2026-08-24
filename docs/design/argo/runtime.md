@@ -149,12 +149,14 @@ Outputs of steps and DAG templates read the scope (`valueFrom.parameter`, `expre
 | Template | Task |
 |---|---|
 | `container` | One task with the image, command, arguments, working directory and environment. |
-| `script` | The command runs the file `/argo/staging/script`, which the task gets as an `Input` with the source as its content, as Argo's executor writes it. |
+| `script` | The command runs the file `/argo/staging/script`, which the task gets as an `Input` with the source as its content, as Argo's executor writes it, with mode 0755 (`Input.executable`), so that `command: [sh, -c]` may run it directly. |
 | `containerSet` | One task of several containers, as one pod (section 8.2). The main container (named `main`, or the last one) gets the outputs. |
 | `resource` | Not supported (decision 18), except for a PersistentVolumeClaim, which becomes a volume of the run (section 11.4). |
 | `http` | The image `curlimages/curl` runs curl, which writes the response body and status code to files. The status code decides `successCondition`. When the status is not known, as in a simulated run, the node succeeds with a warning. |
 | `data` | Not supported (decision 18). |
 | `plugin` | One call of an executor plugin per task, in the plugin's image (section 8.1). |
+
+Containers run as Kubernetes runs them (decision 28, `Task.run_as`): as the user of the image, or the `runAsUser` and `runAsGroup` of the `securityContext` of the container, else of the template, else of the workflow; in the working directory of the image, or `workingDir`; with the `HOME` of that user and a file system that they may write. So a step may write `/result.txt` or `/data` where its user may, as in Argo. The work directory of the task stays where the executor puts it; outputs and inputs at absolute paths are where Argo has them. The container has no Linux capabilities but `CHOWN` when it runs as root on an engine with root, to give its files back to the user who runs iunctus ([executors](../executors.md), section 6). Init containers and the containers of a set run the same way. HTTP and plugin templates are no containers of the workflow; they run as the user who runs iunctus.
 
 Resources come from the container's requests, or its limits where requests say nothing; a container set asks for the sum over its containers, as Argo does. `activeDeadlineSeconds` or `timeout` sets the time limit. Environment variables that read a field of the pod with `fieldRef` get the run's values: the pod name, the namespace, a stable uid, the service account, a node name and an IP address. Variables from ConfigMaps and Secrets follow section 11.
 
@@ -239,7 +241,7 @@ The check is part of the checks at submission (section 4.1), so it covers every 
 
 ### 11.2 Fields that are left out
 
-Fields that only tell Kubernetes where and how to run a pod do not change what a task computes. They are left out with a warning: `podSpecPatch`, `nodeSelector`, `tolerations`, `affinity`, `securityContext`, `serviceAccountName`, `automountServiceAccountToken`, `priorityClassName`, `schedulerName`, `hostAliases`, `dnsConfig`, `dnsPolicy`, `hostNetwork`, `imagePullSecrets`, `imagePullPolicy`, `podGC`, `podMetadata`, `podDisruptionBudget`, `ttlStrategy`, `metrics`, `archiveLocation`, `artifactGC`, `volumeClaimGC`, `executor`, `memoize` and `synchronization`.
+Fields that only tell Kubernetes where and how to run a pod do not change what a task computes. They are left out with a warning: `podSpecPatch`, `nodeSelector`, `tolerations`, `affinity`, the fields of a `securityContext` other than `runAsUser` and `runAsGroup` (decision 28: no container gets more than the least permissions), `serviceAccountName`, `automountServiceAccountToken`, `priorityClassName`, `schedulerName`, `hostAliases`, `dnsConfig`, `dnsPolicy`, `hostNetwork`, `imagePullSecrets`, `imagePullPolicy`, `podGC`, `podMetadata`, `podDisruptionBudget`, `ttlStrategy`, `metrics`, `archiveLocation`, `artifactGC`, `volumeClaimGC`, `executor`, `memoize` and `synchronization`.
 
 Init containers are no such field: they run as tasks (section 11.8).
 
@@ -314,6 +316,7 @@ Init containers run as their own tasks before the task they belong to, one after
 - Retries do not wait for their backoff, and the retries of a container set do not wait for their `duration`.
 - The containers of a container set see all volumes that any of them mounts, at the same paths, and the work directory of the task. In Argo each container sees only its own mounts. A volume that containers of one set mount at different paths is one folder at each path, not one shared folder.
 - On TES the containers of a set run one after the other (section 8.2).
+- The containers of a set run as the user of the main container. Apptainer runs every container as the user who calls it, so on SLURM with Apptainer a `runAsUser` has no effect and a step may not write where only root may (decision 28).
 - `workflow.failures` lists failed nodes in the order the run made them. Argo iterates a Go map, so its order varies.
 
 ## 13. The test workflows

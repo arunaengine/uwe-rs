@@ -11,6 +11,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use executor::registry::{ImageConfig, ImageConfigs};
 use executor::{Backend, EngineCommand, ExecutorError, Job, Staged, Staging};
 use slurm_executor::{Container, PullResources, SlurmBackend};
 use task_model::{ContainerSpec, FORMAT, Image, OutputRule, Placement, TaskSpec};
@@ -137,6 +138,16 @@ fn backend(root: &Path, bin: &Path, container: Container) -> SlurmBackend {
     backend.commands = Some(bin.to_owned());
     backend.poll = Duration::from_millis(100);
     backend.options = vec!["--account=lab".into()];
+    // The configs of the images of the tests, so that no test asks a registry. `tool:1` runs
+    // its arguments through `sh -c`, and has a default command.
+    let tool = ImageConfig {
+        entrypoint: vec!["/bin/sh".into(), "-c".into()],
+        cmd: vec!["echo default > out.txt".into()],
+        ..ImageConfig::default()
+    };
+    let plain = ["debian:stable-slim", "debian@sha256:ab12", "alpine:latest"];
+    let known = plain.map(|image| (image.to_owned(), ImageConfig::default()));
+    backend.configs = ImageConfigs::known(known.into_iter().chain([("tool:1".into(), tool)]));
     backend
 }
 
@@ -510,6 +521,46 @@ async fn docker_runs_the_task_in_its_container() {
     assert_eq!(finished.exit_code, Some(0));
     let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("an output");
     assert_eq!(output, "1\nhello\n");
+}
+
+#[tokio::test]
+async fn images_of_registries_run_the_command_through_their_entrypoint() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    let backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    // Like Argo's argosay: the arguments go to the entrypoint, and without any the image runs
+    // its default command.
+    let given = vec!["echo given > out.txt".to_owned()];
+    for (number, (arguments, written)) in [(given, "given\n"), (Vec::new(), "default\n")]
+        .into_iter()
+        .enumerate()
+    {
+        let spec = TaskSpec {
+            image: Some(Image {
+                reference: "tool:1".into(),
+                platform: None,
+            }),
+            arguments,
+            ..spec("")
+        };
+        let staging = Staging::default();
+        let placement = placement();
+        let name = format!("run-E-{number}-1");
+        let job = Job {
+            name: &name,
+            spec: &spec,
+            staging: &staging,
+            placement: &placement,
+        };
+        let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+        assert_eq!(finished.exit_code, Some(0));
+        let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("an output");
+        assert_eq!(output, written);
+    }
 }
 
 /// A task of two containers in two images: `first` writes a file that `main` reads.

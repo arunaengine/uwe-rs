@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use executor::manifest::parse;
+use executor::registry::ImageConfigs;
 use executor::wrapper::{MANIFEST, STDERR};
 use executor::{
     Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, containers, place,
@@ -72,6 +73,8 @@ pub struct SlurmBackend {
     pub images: PathBuf,
     /// What the job that pulls an image asks for.
     pub pull: PullResources,
+    /// The entrypoints and default commands of images of registries, from the registries.
+    pub configs: ImageConfigs,
     queue: Queue,
     made: Images,
     /// The nodes where a job of this run left no log, as they do not see the scratch folder.
@@ -93,6 +96,7 @@ impl SlurmBackend {
         SlurmBackend {
             images: scratch.join("images"),
             pull: PullResources::default(),
+            configs: ImageConfigs::default(),
             scratch,
             container,
             options: Vec::new(),
@@ -155,6 +159,30 @@ impl Backend for SlurmBackend {
 }
 
 impl SlurmBackend {
+    /// The command that a container of `image` runs for these arguments. An image of a
+    /// registry runs them through its entrypoint, or its default command when there are none,
+    /// as `docker run`, the local executor and Kubernetes run them; a task that replaces the
+    /// entrypoint runs them as they are. A SIF file or an address runs them as they are, as
+    /// Apptainer's `exec` does.
+    async fn task_command(
+        &self,
+        image: &task_model::Image,
+        replaces_entrypoint: bool,
+        arguments: &[String],
+    ) -> Result<Vec<String>, ExecutorError> {
+        let reference = image.reference.as_str();
+        let file = reference.starts_with('/') || reference.ends_with(".sif");
+        let registry = !file && !reference.contains("://");
+        let command = match registry && !(replaces_entrypoint && !arguments.is_empty()) {
+            true => self.configs.get(reference).await?.command(arguments),
+            false => arguments.to_vec(),
+        };
+        if command.is_empty() {
+            return Err(ExecutorError::NoCommand(reference.to_owned()));
+        }
+        Ok(command)
+    }
+
     /// Writes the wrapper and the job script of a staged attempt, submits the job and waits
     /// for its end.
     async fn attempt(
@@ -165,32 +193,30 @@ impl SlurmBackend {
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
         let image = job.spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
-        // The default command of an image is not known without its engine on this machine.
-        if job.spec.arguments.is_empty() {
-            return Err(ExecutorError::NoCommand(image.reference.clone()));
+        let mut spec = job.spec.clone();
+        let replaces = spec.replaces_entrypoint;
+        spec.arguments = self.task_command(image, replaces, &spec.arguments).await?;
+        for container in &mut spec.containers {
+            let image = container.image.as_ref().ok_or(ExecutorError::NoImage)?;
+            let replaces = container.replaces_entrypoint;
+            container.arguments = self
+                .task_command(image, replaces, &container.arguments)
+                .await?;
         }
-        for container in &job.spec.containers {
-            if container.arguments.is_empty() {
-                let image = container.image.as_ref().ok_or(ExecutorError::NoImage)?;
-                return Err(ExecutorError::NoCommand(image.reference.clone()));
-            }
-        }
+        let spec = &spec;
         let image = &self.runnable(image, cancel).await?;
         let control = root.join(CONTROL);
         let owner = tokio::fs::metadata(root).await?;
         let access = match &self.container {
             // Apptainer runs every container as the user who runs iunctus.
             Container::Apptainer(_) => Access {
-                run_as: job.spec.run_as,
+                run_as: spec.run_as,
                 ..Access::default()
             },
             // The image's user is not known here; it is taken as root.
-            Container::Engine(engine) => Access::of(
-                (owner.uid(), owner.gid()),
-                engine.rootless,
-                job.spec.run_as,
-                "",
-            ),
+            Container::Engine(engine) => {
+                Access::of((owner.uid(), owner.gid()), engine.rootless, spec.run_as, "")
+            }
         };
         if access.hand_back.is_some() {
             executor::access::open(root)?;
@@ -200,7 +226,7 @@ impl SlurmBackend {
             name: &name,
             image,
             root,
-            workdir: job.spec.workdir.as_deref(),
+            workdir: spec.workdir.as_deref(),
             mounts,
             owner: (owner.uid(), owner.gid()),
             cpus: job.placement.cpus.max(1),
@@ -210,9 +236,9 @@ impl SlurmBackend {
             access: &access,
         };
         let gpus = job.placement.accelerators.iter().any(|gpu| gpu.count > 0);
-        let script = match job.spec.containers.is_empty() {
+        let script = match spec.containers.is_empty() {
             true => {
-                tokio::fs::write(run.script(), run.wrapper(job.spec)).await?;
+                tokio::fs::write(run.script(), run.wrapper(spec)).await?;
                 job_script(&self.container, &run, gpus, job.placement.time_seconds)
             }
             // A task of several containers starts a container for each image, all at once.
@@ -226,7 +252,7 @@ impl SlurmBackend {
                     outbox: "",
                     owner: &owner,
                 };
-                let groups = containers::write_wrappers(job.spec, &control, &folders)?;
+                let groups = containers::write_wrappers(spec, &control, &folders)?;
                 // The folders of the wrappers are new, so they are opened too.
                 if access.hand_back.is_some() {
                     executor::access::open(root)?;
@@ -250,9 +276,7 @@ impl SlurmBackend {
                 let exits: Vec<Vec<PathBuf>> = (groups.iter())
                     .map(|(group, _)| {
                         (group.members.iter())
-                            .map(|&position| {
-                                control.join(containers::exit_file(job.spec, position))
-                            })
+                            .map(|&position| control.join(containers::exit_file(spec, position)))
                             .collect()
                     })
                     .collect();

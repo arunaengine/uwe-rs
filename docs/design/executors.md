@@ -115,6 +115,8 @@ The SLURM executor uses the tools that every SLURM node has, `sbatch`, `squeue`,
 
 A cancelled run cancels its jobs with `scancel` and waits until they leave the queue.
 
+The command of a task in an image of a registry runs through the entrypoint of the image, or the image's default command runs when the task has none, as with the other executors; the backend reads both from the registry, once per image. A SIF file or an address runs the command as it is, as `apptainer exec` does.
+
 A task of several containers is one job, whose script starts a container for each image at once, waits for all of them, and records the exit code of the first container that failed, else 0 (section 1).
 
 The tests run the backend against a simulated SLURM on this machine (`slurm-executor/tests/simulated_slurm.rs`): shell scripts in place of `sbatch`, `squeue`, `scancel` and `sacct`, and a simulated Apptainer that runs the wrapper without a container. One test runs a real container with Docker.

@@ -822,7 +822,7 @@ tests/test_script_pre_py39 ok 1
 tests/test_script_py ok 3
 tests/test_script_rs ok 5
 tests/test_script_xsh ok 2
-tests/test_service_jobs ok 4
+tests/test_service_jobs ok 2
 tests/test_set_resources ok 1
 tests/test_set_resources_complex ok 1
 tests/test_set_threads ok 1

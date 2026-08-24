@@ -356,8 +356,9 @@ fn close(recorder: Recorder) {
     }
 }
 
-/// A token that fires on Ctrl-C, so that the run stops its tasks cleanly. A second Ctrl-C ends
-/// iunctus at once.
+/// A token that fires on Ctrl-C or SIGTERM, so that the run stops its tasks cleanly, as a
+/// SLURM job or a service manager stops a program with SIGTERM. A second one ends iunctus at
+/// once.
 fn stop_on_interrupt() -> CancellationToken {
     let token = CancellationToken::new();
     let stop = token.clone();
@@ -369,11 +370,25 @@ fn stop_on_interrupt() -> CancellationToken {
             return;
         };
         runtime.block_on(async {
-            if tokio::signal::ctrl_c().await.is_ok() && !stop.is_cancelled() {
+            use tokio::signal::unix::{SignalKind, signal};
+            let mut terminate = signal(SignalKind::terminate()).ok();
+            let mut asked = async || {
+                let terminated = async {
+                    match terminate.as_mut() {
+                        Some(terminate) => terminate.recv().await,
+                        None => std::future::pending().await,
+                    }
+                };
+                tokio::select! {
+                    interrupted = tokio::signal::ctrl_c() => interrupted.is_ok(),
+                    _ = terminated => true,
+                }
+            };
+            if asked().await && !stop.is_cancelled() {
                 eprintln!("iunctus: stopping the running tasks; press Ctrl-C again to quit now");
                 stop.cancel();
             }
-            if tokio::signal::ctrl_c().await.is_ok() {
+            if asked().await {
                 std::process::exit(INTERRUPTED.into());
             }
         });

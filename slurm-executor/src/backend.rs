@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use executor::manifest::parse;
-use executor::registry::ImageConfigs;
+use executor::registry::{ImageConfig, ImageConfigs};
 use executor::wrapper::{MANIFEST, STDERR};
 use executor::{
     Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, containers, place,
@@ -79,6 +79,22 @@ pub struct SlurmBackend {
     made: Images,
     /// The nodes where a job of this run left no log, as they do not see the scratch folder.
     excluded: Mutex<BTreeSet<String>>,
+}
+
+/// An image config from the file that [`SlurmBackend::image_config`] keeps.
+fn config_of(text: &str) -> Option<ImageConfig> {
+    let value: serde_json::Value = serde_json::from_str(text).ok()?;
+    let words = |key: &str| -> Option<Vec<String>> {
+        let list = value.get(key)?.as_array()?;
+        list.iter()
+            .map(|word| word.as_str().map(str::to_owned))
+            .collect()
+    };
+    Some(ImageConfig {
+        entrypoint: words("entrypoint")?,
+        cmd: words("cmd")?,
+        user: value.get("user")?.as_str()?.to_owned(),
+    })
 }
 
 /// How a job ended.
@@ -174,13 +190,47 @@ impl SlurmBackend {
         let file = reference.starts_with('/') || reference.ends_with(".sif");
         let registry = !file && !reference.contains("://");
         let command = match registry && !(replaces_entrypoint && !arguments.is_empty()) {
-            true => self.configs.get(reference).await?.command(arguments),
+            true => self.image_config(reference).await?.command(arguments),
             false => arguments.to_vec(),
         };
         if command.is_empty() {
             return Err(ExecutorError::NoCommand(reference.to_owned()));
         }
         Ok(command)
+    }
+
+    /// The config of an image of a registry. An image pinned to its digest never changes, so
+    /// its config is kept in a file next to its SIF file and asked of the registry only once:
+    /// Docker Hub counts each request for a manifest against a limit per address, which all
+    /// nodes of a cluster may share.
+    async fn image_config(&self, reference: &str) -> Result<ImageConfig, ExecutorError> {
+        let kept =
+            file_name(reference).map(|name| self.images.join(name.replace(".sif", ".config.json")));
+        if let Some(kept) = &kept
+            && let Ok(text) = tokio::fs::read_to_string(kept).await
+            && let Some(config) = config_of(&text)
+        {
+            return Ok(config);
+        }
+        let config = self.configs.get(reference).await?;
+        if let Some(kept) = &kept {
+            let text = serde_json::json!({
+                "entrypoint": config.entrypoint,
+                "cmd": config.cmd,
+                "user": config.user,
+            });
+            // Written aside and moved, so that no other run reads half a file.
+            let partial = kept.with_extension(format!("{}.partial", std::process::id()));
+            let written = async {
+                tokio::fs::create_dir_all(&self.images).await?;
+                tokio::fs::write(&partial, text.to_string()).await?;
+                tokio::fs::rename(&partial, kept).await
+            };
+            if written.await.is_err() {
+                let _ = tokio::fs::remove_file(&partial).await;
+            }
+        }
+        Ok(config)
     }
 
     /// Writes the wrapper and the job script of a staged attempt, submits the job and waits

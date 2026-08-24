@@ -563,6 +563,46 @@ async fn images_of_registries_run_the_command_through_their_entrypoint() {
     }
 }
 
+#[tokio::test]
+async fn the_config_of_a_pinned_image_is_asked_of_its_registry_once() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    let container = Container::Apptainer(text(&bin.join("apptainer")));
+    let run = async |backend: &SlurmBackend, name: &str| {
+        let spec = TaskSpec {
+            image: Some(Image {
+                reference: "tool@sha256:abcd".into(),
+                platform: None,
+            }),
+            arguments: Vec::new(),
+            ..spec("")
+        };
+        let (staging, placement) = (Staging::default(), placement());
+        let job = Job {
+            name,
+            spec: &spec,
+            staging: &staging,
+            placement: &placement,
+        };
+        let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+        std::fs::read_to_string(finished.local_path("out.txt")).expect("an output")
+    };
+    let mut first = backend(root.path(), &bin, container.clone());
+    let config = ImageConfig {
+        entrypoint: vec!["/bin/sh".into(), "-c".into()],
+        cmd: vec!["echo kept > out.txt".into()],
+        ..ImageConfig::default()
+    };
+    first.configs = ImageConfigs::known([("tool@sha256:abcd".to_owned(), config)]);
+    assert_eq!(run(&first, "run-K-1-1").await, "kept\n");
+    let kept = root.path().join("scratch/images/sha256-abcd.config.json");
+    assert!(kept.is_file(), "the config is kept next to the SIF file");
+    // A later run knows no config, so only the kept file can give the default command.
+    let mut later = backend(root.path(), &bin, container);
+    later.configs = ImageConfigs::default();
+    assert_eq!(run(&later, "run-K-2-1").await, "kept\n");
+}
+
 /// A task of two containers in two images: `first` writes a file that `main` reads.
 fn several(first: &str) -> TaskSpec {
     let container = |name: &str, image: &str, script: &str, after: &[&str]| ContainerSpec {

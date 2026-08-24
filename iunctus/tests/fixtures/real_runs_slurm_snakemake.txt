@@ -1,0 +1,62 @@
+# The tests of Snakemake run for real on a SLURM cluster with Apptainer, checked against their expected-results; written by real_runs_slurm_snakemake.py. A tab ends the name.
+# 60 tests: 1 differs, 1 iunctus fails, 58 same.
+test (with parenthese's)	same
+test05	iunctus fails (exit 3): iunctus: task other: SLURM could not run the task: sbatch did not take the job: sbatch: error: Batch job submission failed: Requested node configuration is not  (known: a rule asks for a GPU (`gpu=1`), which Snakemake's SLURM plugin asks SLURM for too, and the nodes of this cluster have none)
+test10	same
+test_access_patterns	differs: fs-storage/test1.out is not as in expected-results (known: a job reads where its input links point; iunctus gives inputs as links into its store)
+test_azure_batch	same
+test_benchmark_jsonl	same: fails, as Snakemake does
+test_checkpoint_omit_from	same
+test_checkpoints_many	same
+test_config_replacing_nocli	same
+test_default_remote	same: fails, as Snakemake does
+test_delete_all_output	same: fails, as Snakemake does
+test_empty_include	same
+test_failed_intermediate	same: test3.txt is not as in expected-results, also in Snakemake
+test_ftp_immediate_close	same: fails, as Snakemake does
+test_github_issue1158	same
+test_github_issue1460	same
+test_github_issue1618	same
+test_github_issue2732	same
+test_github_issue413	same
+test_github_issue672	same
+test_github_issue_14	same
+test_github_issue_4039_runtime_profile	same
+test_group_jobs_resources	same
+test_groupid_expand_cluster	same: foo.412c59b9-e2fc-51ea-9a84-d055fb244f80.txt is not as in expected-results, also in Snakemake
+test_immediate_submit	same: fails, as Snakemake does
+test_inner_call	same
+test_issue1085	same: fails as the test expects
+test_issue1331	same
+test_issue612	same
+test_issue850	same
+test_issue916	same
+test_keyword_list	same
+test_localrule	same
+test_module_checkpoint	same
+test_module_wildcard_constraints	same
+test_modules_dynamic_module_as_alias	same
+test_modules_peppy	same
+test_modules_two_names	same: fails as the test expects
+test_name_override	same
+test_output_file_cache_storage	same
+test_parsing_terminal_comment_following_statement	same
+test_pathvars_modules	same
+test_pipes	same
+test_priority_invalid	same: fails as the test expects
+test_profile_none	same: fails, as Snakemake does
+test_remote_gs	same: fails, as Snakemake does
+test_remote_sftp	same: fails, as Snakemake does
+test_report_metadata	same: report.html is not as in expected-results, also in Snakemake
+test_retries	same
+test_run_namedlist	same
+test_script_import_snakemake_obj	same
+test_set_threads	same: test.out is not as in expected-results, also in Snakemake
+test_shell	same
+test_storage_localrule	same: fs-storage/test.out is not as in expected-results, also in Snakemake
+test_subworkflows	same: fails, as Snakemake does
+test_temp_checkpoint	same
+test_threads0	same
+test_uncreatable_checkpoint_input	same
+test_update_flag	same
+test_wildcard_keyword	same

@@ -1,0 +1,61 @@
+# Argo workflows run for real on a SLURM cluster with Apptainer, against what Argo's tests expect; written by real_runs_slurm_argo.py. A tab ends the path.
+# 59 workflows: 1 iunctus fails, 58 same.
+argo-workflows-catalog/templates/distro/tests/run-task.yaml	same: succeeds
+argo-workflows-ci-example/bootstrap/workflow-templates/nfs/git-checkout-pr.yml	same: succeeds
+argo-workflows/examples/container-set-template/graph-workflow.yaml	same: succeeds
+argo-workflows/examples/container-set-template/workspace-workflow.yaml	same: succeeds
+argo-workflows/examples/dag-inline-workflowtemplate.yaml	same: succeeds
+argo-workflows/examples/global-outputs.yaml	same: succeeds
+argo-workflows/examples/k8s-owner-reference.yaml	same: succeeds
+argo-workflows/examples/loops-sequence.yaml	same: succeeds
+argo-workflows/examples/parallelism-nested.yaml	same: succeeds
+argo-workflows/examples/recursive-for-loop.yaml	same: succeeds
+argo-workflows/examples/retry-container.yaml	same: succeeds
+argo-workflows/examples/scripts-python.yaml	same: succeeds
+argo-workflows/examples/status-reference.yaml	same: succeeds
+argo-workflows/examples/synchronization-mutex-tmpl-level.yaml	same: succeeds
+argo-workflows/examples/volumes-existing.yaml	same: succeeds
+argo-workflows/test/e2e/cron/basic-update-template.yaml	same: succeeds
+argo-workflows/test/e2e/cron/param.yaml	same: succeeds
+argo-workflows/test/e2e/expectedfailures/exit-handler-fail-missing-output.yaml	same: fails as Argo's tests expect
+argo-workflows/test/e2e/expectedfailures/failed-step-event.yaml	same: fails as Argo's tests expect
+argo-workflows/test/e2e/expectedfailures/timeouts-step-plugin.yaml	same: fails as Argo's tests expect
+argo-workflows/test/e2e/functional/dag-depends.yaml	same: succeeds
+argo-workflows/test/e2e/functional/dag-skipped-producer-default.yaml	same: succeeds
+argo-workflows/test/e2e/functional/dag-when-expr-skip.yaml	same: succeeds
+argo-workflows/test/e2e/functional/global-outputs-variable.yaml	same: succeeds
+argo-workflows/test/e2e/functional/loop-sequence-empty.yaml	same: succeeds
+argo-workflows/test/e2e/functional/missing-steps.yaml	same: succeeds
+argo-workflows/test/e2e/functional/parameter-aggregation-dag-with-retry.yaml	same: succeeds
+argo-workflows/test/e2e/functional/pause-before-after.yaml	same: succeeds
+argo-workflows/test/e2e/functional/retry-with-steps.yaml	same: succeeds
+argo-workflows/test/e2e/functional/steps-skipped-output-ref.yaml	same: succeeds
+argo-workflows/test/e2e/functional/success-event.yaml	same: succeeds
+argo-workflows/test/e2e/smoke/basic-2.yaml	same: succeeds
+argo-workflows/test/e2e/smoke/cluster-workflow-template-whalesay-template.yaml	same: succeeds
+argo-workflows/test/e2e/smoke/workflow-template-whalesay-template.yaml	same: succeeds
+argo-workflows/test/e2e/synchronization/db-semaphore-tmpl-level.yaml	same: succeeds
+argo-workflows/test/e2e/synchronization/mutex-tmpl-level.yaml	same: succeeds
+argo-workflows/test/e2e/synchronization/tmpl-level-mutex-semaphore.yaml	same: succeeds
+argo-workflows/test/e2e/testdata/basic-artifact-workflow-azure.yaml	same: succeeds
+argo-workflows/test/e2e/testdata/basic-workflow.yaml	same: succeeds
+argo-workflows/test/e2e/testdata/default-params-plugin-workflow.yaml	same: succeeds
+argo-workflows/test/e2e/testdata/loops-steps-limited-parallelism-pvc.yaml	same: succeeds
+argo-workflows/test/e2e/testdata/output-on-input-workflow.yaml	same: succeeds
+argo-workflows/test/e2e/testdata/pending-workflow.yaml	iunctus fails (exit 3): iunctus: task pending-d8aa7: SLURM could not run the task: sbatch did not take the job: sbatch: error: Memory specification can not be satisfied (known: it asks for more memory than any node has, on purpose, so that its pod stays pending in Argo's tests; sbatch refuses such a job)
+argo-workflows/test/e2e/testdata/same-input-output-path-optional.yaml	same: succeeds
+argo-workflows/test/e2e/testdata/two-items.yaml	same: succeeds
+argo-workflows/test/e2e/testdata/wellformed/wellformed-workflowtemplate.yaml	same: succeeds
+argo-workflows/test/e2e/testdata/workflow-node-sync-tracing.yaml	same: succeeds
+argo-workflows/test/e2e/testdata/workflow-template-invalid-entrypoint.yaml	same: succeeds
+argo-workflows/test/e2e/testdata/workflow-templates/workflowtemplate.yaml	same: succeeds
+hera/examples/workflows/misc/cron-workflow-stop-strategy.yaml	same: succeeds
+hera/examples/workflows/upstream/container-set-template--graph-workflow.yaml	same: succeeds
+hera/examples/workflows/upstream/dag-inline-workflowtemplate.yaml	same: succeeds
+hera/examples/workflows/upstream/intermediate-parameters.yaml	same: succeeds
+hera/examples/workflows/upstream/loops-sequence.yaml	same: succeeds
+hera/examples/workflows/upstream/parallelism-nested-workflow.yaml	same: succeeds
+hera/examples/workflows/upstream/steps-inline-workflow.yaml	same: succeeds
+hera/examples/workflows/upstream/synchronization-tmpl-level.yaml	same: succeeds
+talk-demos/argocon-demos/2023-migrating-cicd-from-jenkins-to-argo/jenkins-vs-argo-workflows-comparison/Argo WorkflowTemplates/cpd-certification.yml	same: succeeds
+talk-demos/argocon-demos/2025-argo-workflow-templates-a-practical-deep-dive/examples/template-examples/inline.yaml	same: succeeds

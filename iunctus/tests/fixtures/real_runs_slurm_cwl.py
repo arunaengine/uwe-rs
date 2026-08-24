@@ -96,6 +96,24 @@ def matches(expected, actual, where="output"):
     return None
 
 
+def run_stopped(command, cwd):
+    """Runs iunctus; the exit code and its standard output and error. After TIMEOUT it stops
+    iunctus with SIGTERM, so that it cancels its SLURM jobs, and the code is `timeout`."""
+    process = subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, text=True)
+    try:
+        stdout, stderr = process.communicate(timeout=TIMEOUT)
+        return process.returncode, stdout, stderr
+    except subprocess.TimeoutExpired:
+        process.terminate()
+        try:
+            process.communicate(timeout=120)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+        return "timeout", "", "timeout"
+
+
 def compare(test, suite, work):
     """The record line of one test."""
     tool = str(suite / test["tool"])
@@ -110,21 +128,19 @@ def compare(test, suite, work):
     command = [IUNCTUS, "run", tool, "-lang", "cwl", "-executor", "slurm", "-no-cache",
                "-default-image", IMAGE, "-output-dir", str(folder / "out")]
     command += ["-inputs", job] if job else []
-    try:
-        done = subprocess.run(command, cwd=folder, capture_output=True, text=True,
-                              timeout=TIMEOUT)
-    except subprocess.TimeoutExpired:
+    code, stdout, stderr = run_stopped(command, folder)
+    if code == "timeout":
         return "iunctus fails: timeout"
-    errors = [line for line in done.stderr.splitlines() if line.strip()]
+    errors = [line for line in stderr.splitlines() if line.strip()]
     try:
-        output = json.loads(done.stdout[done.stdout.index("{"):])
+        output = json.loads(stdout[stdout.index("{"):])
     except ValueError:
         output = None
-    ok = done.returncode == 0 and output is not None
+    ok = code == 0 and output is not None
     if test.get("should_fail"):
         return "same: fails as the test expects" if not ok else "differs: runs, but should fail"
     if not ok:
-        return f"iunctus fails (exit {done.returncode}): {(errors[-1] if errors else '')[:160]}"
+        return f"iunctus fails (exit {code}): {(errors[-1] if errors else '')[:160]}"
     found = matches(test.get("output", {}), output)
     return f"differs: {found}" if found else "same"
 

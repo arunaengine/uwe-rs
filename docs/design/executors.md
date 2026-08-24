@@ -175,7 +175,7 @@ Every container gets the least permissions that let its task run, and so do the 
 | Linux capabilities | none (`cap_drop: ALL`) | none (`capabilities.drop: [ALL]`) | none (`--cap-drop ALL`) | none: the user's own | as the server sets them |
 | Gaining privileges | off (`no-new-privileges`) | off (`allowPrivilegeEscalation: false`) | off (`--security-opt no-new-privileges`) | off: Apptainer sets `no_new_privs` | as the server sets it |
 | Privileged mode, host PID and IPC | never | never (`privileged: false`) | never | never (`--containall`) | as the server sets them |
-| Network | only when the run allows it | the pod network | only when the run allows it | the node's network | as the server sets it |
+| Network | only when the run allows it | the pod network | only when the run allows it | only when the run allows it (`--net --network none`) | as the server sets it |
 
 The only capability that a container ever keeps is `CHOWN`, and only an Argo container that runs as root on an engine with root: its wrapper needs it to give the files that the task made back to the user who runs iunctus. The Argo test workflows and the other test workflows ran with these settings; none needed more (see `real_runs_argo.txt`). A container has no `DAC_OVERRIDE`, so root in a container may write only where its user may: in the folders of the image that root owns, in `/tmp`, and in the folders of the task.
 

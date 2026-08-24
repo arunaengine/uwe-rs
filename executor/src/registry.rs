@@ -267,6 +267,14 @@ async fn ask(
             reason: format!("the registry {} answers {status}", parsed.registry),
         });
     }
+    if status == StatusCode::TOO_MANY_REQUESTS {
+        // Docker Hub limits the manifests that one address may ask for per hour.
+        return Err(failed(format!(
+            "the registry limits the requests of this address ({status}) and answered none \
+             for {}{version}; its limit resets within the hour",
+            parsed.name
+        )));
+    }
     if !status.is_success() {
         return Err(failed(format!(
             "the registry has no image {}{version}: {status}",
@@ -363,7 +371,8 @@ mod tests {
     }
 
     /// A registry on a local port with one image `tool:1` in an index of two platforms. It
-    /// answers each request with the document of its path.
+    /// answers each request with the document of its path, and asks for `tool:3` are over its
+    /// limit.
     fn registry() -> String {
         use std::io::{BufRead, BufReader, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
@@ -391,10 +400,10 @@ mod tests {
                     }
                     _ => "",
                 };
-                let status = if body.is_empty() {
-                    "404 Not Found"
-                } else {
-                    "200 OK"
+                let status = match (path.as_str(), body.is_empty()) {
+                    ("/v2/tool/manifests/3", _) => "429 Too Many Requests",
+                    (_, true) => "404 Not Found",
+                    (_, false) => "200 OK",
                 };
                 let mut stream = stream;
                 let answer = format!(
@@ -428,6 +437,12 @@ mod tests {
         assert_eq!(config.command(&[]), ["/usr/local/env-execute", "bash"]);
         let missing = config_error(&format!("{registry}/tool:2")).await;
         assert!(missing.contains("cannot be pulled"), "{missing}");
+        // A registry over its limit says so; the image may well be there.
+        let limited = config_error(&format!("{registry}/tool:3")).await;
+        assert!(
+            limited.contains("limits the requests of this address"),
+            "{limited}"
+        );
         // Known configs need no registry.
         let known = ImageConfigs::known([("x@sha256:dd".to_owned(), ImageConfig::default())]);
         assert_eq!(

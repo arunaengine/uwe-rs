@@ -115,7 +115,7 @@ The SLURM executor uses the tools that every SLURM node has, `sbatch`, `squeue`,
 
 A cancelled run cancels its jobs with `scancel` and waits until they leave the queue.
 
-The command of a task in an image of a registry runs through the entrypoint of the image, or the image's default command runs when the task has none, as with the other executors; the backend reads both from the registry, once per image. A SIF file or an address runs the command as it is, as `apptainer exec` does.
+The command of a task in an image of a registry runs through the entrypoint of the image, or the image's default command runs when the task has none, as with the other executors; the backend reads both from the registry, and keeps those of an image pinned to its digest in a file next to its SIF file, so that it asks for each image once: Docker Hub counts each request for a manifest against a limit of 100 per hour, which all nodes of a cluster may share. A SIF file or an address runs the command as it is, as `apptainer exec` does.
 
 A task of several containers is one job, whose script starts a container for each image at once, waits for all of them, and records the exit code of the first container that failed, else 0 (section 1).
 

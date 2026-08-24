@@ -47,8 +47,6 @@ TIMEOUT = 300
 ABSENT = "skipped: images not on this machine"
 # Workflows that Argo's end-to-end tests expect to fail.
 FAILURES = "argo-workflows/test/e2e/expectedfailures/"
-# The entrypoints of the local images, filled once.
-ENTRYPOINTS = {}
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 # Servers that Argo's end-to-end tests start next to the cluster, which a run here does not
 # have, by a text that names them in the workflow.
@@ -124,48 +122,12 @@ def expected_failures():
     return {path.resolve() for path in folder.rglob("*.yaml")}
 
 
-def entrypoints(local):
-    """The entrypoint of each local image that has one."""
-    found = {}
-    for image in sorted(local):
-        done = subprocess.run(["docker", "image", "inspect", "--format",
-                               "{{json .Config.Entrypoint}}", image],
-                              capture_output=True, text=True)
-        if done.returncode == 0 and done.stdout.strip() not in ("", "null", "[]"):
-            found[image] = done.stdout.strip()
-    return found
-
-
-def containers(value):
-    """Every container or script of a document, at any depth."""
-    if isinstance(value, dict):
-        if isinstance(value.get("image"), str):
-            yield value
-        for item in value.values():
-            yield from containers(item)
-    elif isinstance(value, list):
-        for item in value:
-            yield from containers(item)
-
-
-def probable_cause(path, entry):
+def probable_cause(path):
     """Why a workflow probably fails in iunctus, from what it holds; None when nothing
     explains it."""
     text = path.read_text(errors="replace")
-    documents = [document for document in yaml.safe_load_all(text) if document]
     if re.search(r"exit[ (\"',\]]+[1-9]|sys\.exit\(\s*[1-9]|exit_code|\bfail", text):
         return "a step fails on purpose, so Argo fails the workflow too"
-    # Container sets still run their commands through the entrypoint of the image.
-    sets = [found for document in documents for found in containers(document)
-            if "containerSet" in text]
-    if any(found.get("command") and found["image"] in entry for found in sets):
-        return ("a container of a container set names a command, which in Argo replaces the "
-                "image's entrypoint; iunctus runs it through the entrypoint")
-    paths = re.findall(r"^\s*path:\s*['\"]?(/[^'\"\s]*)", text, re.M)
-    if any(not path.startswith("/tmp") for path in paths):
-        return ("a step writes outside its work folder, where Argo runs it as the image's user "
-                "in the image's working folder; iunctus runs it as the user of iunctus in a "
-                "folder of its own")
     return None
 
 
@@ -250,7 +212,7 @@ def compare(name, work, environment, local):
             return "same: fails as Argo's tests expect"
         return "differs: succeeds where Argo's tests expect a failure"
     if code != 0:
-        cause = probable_cause(path, ENTRYPOINTS)
+        cause = probable_cause(path)
         note = f" (probable cause: {cause})" if cause else ""
         return f"iunctus fails (exit {code}): {error}{note}"
     return "same: succeeds"
@@ -262,7 +224,6 @@ def main():
     records = {}
     try:
         local = local_images()
-        ENTRYPOINTS.update(entrypoints(local))
         with NoPull(work) as socket:
             environment = dict(os.environ, XDG_CACHE_HOME=str(work / "cache"),
                                DOCKER_HOST=f"unix://{socket}")

@@ -55,3 +55,23 @@ fn commands_of_the_tests_read_no_user_file() {
     );
     assert_eq!(code, 0, "{error}");
 }
+
+#[test]
+fn the_cache_folder_of_the_file_wins_and_graph_keeps_the_simulator() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let folder = directory.path().join("elsewhere");
+    let site = directory.path().join("site.toml");
+    // An executor that this machine cannot reach, which `iunctus graph` must not use.
+    let text = format!(
+        "[executor]\ndefault = \"kubernetes\"\n\n[cache]\nfolder = \"{}\"\n",
+        folder.display()
+    );
+    std::fs::write(&site, text).expect("writes the site file");
+    let (code, error) = graph(
+        common::command().env(config_file::SITE_FILE_VARIABLE, &site),
+        directory.path(),
+    );
+    assert_eq!(code, 0, "{error}");
+    assert!(folder.join(run_database::FILE_NAME).exists(), "{error}");
+    assert!(!directory.path().join("cache/iunctus").exists(), "{error}");
+}

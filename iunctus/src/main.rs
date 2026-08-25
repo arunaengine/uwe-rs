@@ -64,10 +64,16 @@ fn main() -> ExitCode {
         eprintln!("{USAGE}");
         return ExitCode::from(failure::USAGE);
     };
-    let arguments = match arguments::parse(rest) {
+    let mut arguments = match arguments::parse(rest) {
         Ok(arguments) => arguments,
         Err(message) => return exit(Err(Failure::usage(format!("{message}; {HELP}")))),
     };
+    if !matches!(command.as_str(), "help" | "-help" | "--help") {
+        match setup::Defaults::load(&arguments) {
+            Ok(defaults) => defaults.apply(command, &mut arguments),
+            Err(failure) => return exit(Err(failure)),
+        }
+    }
     let result = match command.as_str() {
         "run" => run(&arguments),
         "graph" => graph(&arguments),
@@ -827,8 +833,20 @@ fn runner_settings(storage: storage::Storage, import_inputs: bool) -> task_runne
     }
 }
 
-/// `$XDG_CACHE_HOME/iunctus`, else `~/.cache/iunctus`.
+/// The cache folder that `[cache] folder` of the config file names, set once at the start.
+static CACHE_FOLDER: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// Uses this cache folder for the whole command, in place of the one of `XDG_CACHE_HOME`.
+fn use_cache_folder(folder: PathBuf) {
+    let _ = CACHE_FOLDER.set(folder);
+}
+
+/// The folder of `[cache] folder` of the config file, else `$XDG_CACHE_HOME/iunctus`, else
+/// `~/.cache/iunctus`.
 fn cache_directory() -> PathBuf {
+    if let Some(folder) = CACHE_FOLDER.get() {
+        return folder.clone();
+    }
     let base = std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))

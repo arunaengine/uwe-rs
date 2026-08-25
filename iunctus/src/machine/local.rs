@@ -143,7 +143,8 @@ fn cache_folder(store: Option<&Path>, report: &mut Report) {
             State::Missing,
             "cache folder",
             format!(
-                "{}: {problem}; set XDG_CACHE_HOME to a folder that you can write",
+                "{}: {problem}; name a folder that you can write with `folder` of [cache] in \
+                 the config file, or with XDG_CACHE_HOME",
                 cache.display()
             ),
         );
@@ -153,7 +154,11 @@ fn cache_folder(store: Option<&Path>, report: &mut Report) {
     if store.is_some_and(|store| device(store) == device(&cache)) {
         return;
     }
-    report.add_space("cache folder", &cache, "the cache with XDG_CACHE_HOME");
+    report.add_space(
+        "cache folder",
+        &cache,
+        "the cache with `folder` of [cache] in the config file",
+    );
 }
 
 /// Whether iunctus can make the folder and write into it.

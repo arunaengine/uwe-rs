@@ -30,6 +30,7 @@ mod nextflow;
 mod order;
 mod page;
 mod preview;
+mod progress;
 mod record;
 mod repeat;
 mod resources;
@@ -223,6 +224,9 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
     }
     let store = setup.store_location(arguments);
     let real = name != "simulator";
+    // A real run shows its steps as it goes.
+    let shown = real && !quiet;
+    let verbose = !quiet;
     let runtime =
         workflow_graph::runtime().map_err(|error| failure(format!("iunctus: {error}")))?;
     let sources = runtime.block_on(sources::collect(target, arguments));
@@ -251,7 +255,7 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
         arguments,
         &setup,
         &run,
-        !quiet,
+        verbose,
         !arguments.no_cache,
         pinned,
         &measured,
@@ -292,7 +296,7 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
     let taken = resume::Taken::default();
     let mut executor = match reusable {
         Some(reusable) => {
-            let resumed = resume::Resumed::new(executor, reusable, taken.clone(), !quiet);
+            let resumed = resume::Resumed::new(executor, reusable, taken.clone(), verbose);
             Box::new(resumed)
         }
         None => executor,
@@ -308,11 +312,27 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
         }),
     };
     let workflow = target.to_string_lossy();
-    let mut observer = resume::Noting::new(&mut recorder, taken);
+    let progress = shown.then(|| {
+        progress::Progress::start(progress::Header {
+            target,
+            language,
+            executor: name,
+            run: &run,
+        })
+    });
+    let mut noting = resume::Noting::new(&mut recorder, taken);
+    let mut watching;
+    let observer: &mut dyn workflow_graph::Observer = match &progress {
+        Some(progress) => {
+            watching = progress.observer(&mut noting);
+            &mut watching
+        }
+        None => &mut noting,
+    };
     let interrupt = stop_on_interrupt();
     let mut execution = Engine::new(executor.as_mut())
         .options(options)
-        .observer(&mut observer)
+        .observer(observer)
         .cancel(interrupt.clone())
         .run(&workflow, driver.as_mut());
     if !real {
@@ -339,6 +359,9 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
     // Traces of simulated runs would only fill dashboards with made-up times.
     if real {
         insight::telemetry::after_run(arguments, &setup, &run);
+    }
+    if let Some(progress) = progress {
+        progress.finish(&run, Some(&store));
     }
     Ok(Ran {
         execution,

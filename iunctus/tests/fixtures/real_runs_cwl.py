@@ -154,7 +154,8 @@ def run(command, folder, environment):
     errors = [line for line in done.stderr.splitlines() if line.strip()]
     try:
         start = done.stdout.index("{")
-        output = json.loads(done.stdout[start:])
+        # The summary of the run follows the output object.
+        output, _ = json.JSONDecoder().raw_decode(done.stdout[start:])
     except ValueError:
         output = None
     return done.returncode, output, (errors[-1] if errors else "")[:160]

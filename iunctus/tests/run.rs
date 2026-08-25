@@ -50,7 +50,7 @@ fn iunctus(directory: &Path, arguments: &[&str]) -> (i32, String) {
     let stderr = stderr.replace(&format!("iunctus: {SIMULATION}\n"), "");
     (
         output.status.code().unwrap_or(-1),
-        format!("{stdout}{stderr}"),
+        common::without_display(&format!("{stdout}{stderr}")),
     )
 }
 
@@ -73,6 +73,48 @@ fn runs_and_reuses_tasks() {
     let (code, output) = iunctus(directory.path(), &arguments);
     assert_eq!(code, 0, "{output}");
     assert!(output.starts_with("[cached] UPPER (1)\n"), "{output}");
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn a_real_run_names_itself_and_says_where_its_results_went() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let script = "process SAY {\n    container 'debian:stable-slim'\n    \
+                  publishDir 'results', mode: 'copy'\n    input:\n    val x\n    \
+                  output:\n    path \"${x}.txt\"\n    script:\n    \"echo ${x} > ${x}.txt\"\n}\n\
+                  workflow {\n    SAY(channel.of('a', 'b'))\n}\n";
+    std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
+    let output = common::command()
+        .args(["run", "main.nf", "-executor", "local"])
+        .current_dir(directory.path())
+        .env("XDG_CACHE_HOME", directory.path().join("cache"))
+        .output()
+        .expect("runs iunctus");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{stdout}");
+    // Standard output is no terminal here, so the lines come one after another.
+    let lines: Vec<&str> = stdout.lines().collect();
+    let header = format!(
+        "iunctus {}: running main.nf (Nextflow) on local, run ",
+        env!("CARGO_PKG_VERSION")
+    );
+    assert!(lines[0].starts_with(&header), "{stdout}");
+    let run = &lines[0][header.len()..];
+    let mut tasks = lines[1..3].to_vec();
+    tasks.sort_unstable();
+    assert_eq!(tasks, ["[done] SAY (1)", "[done] SAY (2)"]);
+    // At the end, the steps with their counts, and the summary.
+    assert!(lines[3].starts_with("executor >  local (2 tasks, 0 running, "));
+    assert!(lines[4].ends_with(" | 2 of 2 \u{2714}"), "{stdout}");
+    assert!(lines[6].starts_with("Done in "), "{stdout}");
+    assert!(
+        lines[6].ends_with(": 2 tasks, 2 ran, 0 from the cache, 0 failed"),
+        "{stdout}"
+    );
+    assert_eq!(lines[7..9], ["Results:", "  results/ a.txt, b.txt"]);
+    assert!(lines[9].starts_with("Files of every task: "), "{stdout}");
+    let more = format!("More: `iunctus runs`, `iunctus page {run}`, `iunctus time {run}`");
+    assert_eq!(lines[10], more);
 }
 
 /// Two processes that sleep for a minute each.

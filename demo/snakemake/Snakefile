@@ -1,0 +1,59 @@
+# The iunctus demo in Snakemake: three greetings, each made and shouted by its own job (on any
+# node of the cluster), then one report that joins them, made with Python.
+# Run it with `iunctus run Snakefile`; the results go to `results/`.
+
+NAMES = ["Ada", "Grace", "Linus"]
+
+
+rule all:
+    input:
+        "results/report.txt",
+
+
+rule greet:
+    output:
+        "results/greetings/{name}.txt",
+    container:
+        "docker://debian:stable-slim"
+    shell:
+        """
+        printf 'Hello, %s!\\ngreeted on %s\\n' '{wildcards.name}' "$(cat /proc/sys/kernel/hostname)" > {output}
+        """
+
+
+rule shout:
+    input:
+        "results/greetings/{name}.txt",
+    output:
+        "results/loud/{name}.loud.txt",
+    container:
+        "docker://debian:stable-slim"
+    shell:
+        """
+        {{
+            head -n 1 {input} | tr a-z A-Z
+            tail -n +2 {input}
+            echo "shouted on $(cat /proc/sys/kernel/hostname)"
+        }} > {output}
+        """
+
+
+rule report:
+    input:
+        expand("results/loud/{name}.loud.txt", name=NAMES),
+    output:
+        "results/report.txt",
+    container:
+        "docker://python:3.13-slim"
+    shell:
+        """
+        python3 - Snakemake {input} <<'END'
+import pathlib, sys
+language, files = sys.argv[1], sorted(sys.argv[2:], key=lambda f: pathlib.Path(f).name)
+lines = [f"The iunctus demo in {{language}}: {{len(files)}} greetings", ""]
+for name in files:
+    text = pathlib.Path(name).read_text().splitlines()
+    lines.append(f"{{text[0]:<14}} {{', '.join(text[1:])}}")
+pathlib.Path("{output}").write_text("\\n".join(lines) + "\\n")
+END
+        """

@@ -1,0 +1,24 @@
+# The config file of iunctus for the BCF cluster. Copy it to ~/.config/iunctus/config.toml.
+# Then `iunctus run <workflow>` runs each task as a SLURM job with Apptainer, with no options.
+# Options on the command line still win, like `-executor local`.
+
+# Run real tasks on SLURM. Without this, `iunctus run` simulates. `iunctus graph` always
+# simulates.
+[executor]
+default = "slurm"
+
+[executor.slurm]
+container = "apptainer"
+# Jobs on rs700-bcf-3 fail: that node does not see /vol/cb/projects.
+options = ["--exclude=rs700-bcf-3.intra"]
+
+# The cache of iunctus: the store with the files of every task, the run database, the folders
+# of running jobs and the SIF images. It must be on a file system that all nodes see at the same
+# path, and it should not fill the home folder.
+[cache]
+folder = "/vol/cb/projects/iunctus/no_backup/cache"
+
+# worm.intra and the login nodes reach the internet only through this proxy. iunctus asks the
+# image registries through it. The jobs on the compute nodes reach the internet directly.
+[network]
+proxy = "http://proxy.intra:3128"

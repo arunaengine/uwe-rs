@@ -94,6 +94,20 @@ The TES backend is tested against a small fake TES server (`tes-executor/tests/f
 iunctus run main.nf -executor slurm -slurm-container apptainer -slurm-options '--account=lab'
 ```
 
+On a cluster, the config file can say all of this once, so that `iunctus run main.nf` runs there with no options ([the config file](storage.md), section 1; `demo/bcf-config.toml` is an example):
+
+```toml
+[executor]
+default = "slurm"
+
+[executor.slurm]
+container = "apptainer"
+options = ["--account=lab"]
+
+[cache]
+folder = "/shared/project/iunctus-cache"
+```
+
 Each attempt becomes one batch job (`slurm-executor`). The backend places the inputs in the scratch directory, writes the wrapper and the job script into its `control` folder, and submits the job with `sbatch`. The job runs the wrapper in the task's container on a node and then records the exit code of the container in `control/container-exit`. So the nodes must see the store and the scratch directories at the same paths. The defaults, `store` and `scratch/slurm` in the cache directory (`$XDG_CACHE_HOME/iunctus`, else `~/.cache/iunctus`), are in the home folder, which clusters usually share. Inputs are copied into the store first.
 
 The options of `sbatch` come from the task: `--cpus-per-task`, `--mem`, `--time`, `--gpus`, and `--partition` from the queue of the task. `-slurm-options` adds more, like `--account=lab --qos=low`; they come last and so win. The output of a job goes to `control/slurm.log`.

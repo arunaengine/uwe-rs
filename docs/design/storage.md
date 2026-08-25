@@ -23,7 +23,7 @@ Without any config file, everything works as before: public web addresses, publi
 2. `$XDG_CONFIG_HOME/iunctus/config.toml`, else `~/.config/iunctus/config.toml`, for the user;
 3. the file that `-iunctus-config <file>` names, for one run; it must exist.
 
-Options on the command line win over all files: `-store` over `[store] location`.
+Options on the command line win over all files: `-store` over `[store] location`, `-executor` over `[executor] default`.
 
 **Another site file, or none.** The environment variable `IUNCTUS_SITE_CONFIG` names another file in place of `/etc/iunctus/config.toml`; an empty value means no site file. The tests of the `iunctus` binary use it together with an empty `XDG_CONFIG_HOME`, so that no file of the user or of the machine changes their results (section 7).
 
@@ -35,7 +35,10 @@ Options on the command line win over all files: `-store` over `[store] location`
 |---|---|
 | `[store]` | `location`: where the cache store lives, an absolute folder or an address of a provider, like `s3://lab-cache/iunctus`; `local`: an absolute folder of this machine in front of a store at an address, the store in layers of [the cache](cache.md), section 8 |
 | `[storage.<name>]` | one storage provider; the name is free, like `lab` or `aws` |
+| `[executor]` | `default`: the executor of `iunctus run` and `iunctus check-machine` when `-executor` is not given, like `"slurm"`; without it, the simulator. `iunctus graph` and the other commands keep the simulator |
 | `[executor.<name>]` | the settings of an executor ([executors](executors.md)) |
+| `[cache]` | `folder`: the cache folder of iunctus, an absolute folder, in place of `$XDG_CACHE_HOME/iunctus` or `~/.cache/iunctus`; it holds the run database, the scratch folders, the downloads and, unless `[store] location` says otherwise, the store. It wins over `XDG_CACHE_HOME` |
+| `[network]` | `proxy`: the web proxy of the requests of iunctus itself, like those to image registries and for remote files, such as `http://proxy.example.org:3128`; a proxy in the environment (`HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`) wins, and `NO_PROXY` names the hosts that go without it. Tasks do not get it. `default` and `allowed_steps` say which tasks get the network ([reproducibility](reproducibility.md), section 6) |
 | `[telemetry]` | `endpoint`, an OTLP HTTP endpoint that the trace of every real run goes to, and `headers`, each value a secret ([runs](runs.md), section 6.4) |
 
 A section of another name, and a key that its table does not know, is an error, so that a typing mistake does not go unnoticed.

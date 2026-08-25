@@ -321,3 +321,129 @@ fn results<'a>(targets: &'a [String], base: &Path) -> impl Iterator<Item = Strin
         }
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use workflow_graph::{Delivery, Event, ExecuteError, Outcome, Task, TaskId};
+
+    use super::Board;
+
+    fn task(id: u64, step: &str, name: &str) -> Task {
+        Task {
+            id: TaskId(id),
+            step: step.to_owned(),
+            name: name.to_owned(),
+            ..Task::default()
+        }
+    }
+
+    fn ended(board: &mut Board, id: u64, exit_code: i32, cached: bool) {
+        board.note(&Event::Started {
+            task: TaskId(id),
+            attempt: 1,
+        });
+        let outcome = Outcome {
+            id: TaskId(id),
+            exit_code,
+            cached,
+            ..Outcome::default()
+        };
+        board.note(&Event::Finished {
+            outcome: &outcome,
+            attempt: 1,
+            retried: false,
+        });
+    }
+
+    fn delivered(board: &mut Board, target: &str) {
+        let delivery = Delivery {
+            location: String::new(),
+            target: target.to_owned(),
+            mode: Default::default(),
+        };
+        board.note(&Event::Delivered {
+            delivery: &delivery,
+        });
+    }
+
+    #[test]
+    fn steps_count_their_tasks_and_the_summary_names_the_results() {
+        let mut board = Board::new("slurm");
+        for (id, name) in [(1, "SAY (1)"), (2, "SAY (2)"), (3, "SAY (3)")] {
+            board.note(&Event::Requested {
+                task: &task(id, "SAY", name),
+                edges: &[],
+            });
+        }
+        board.note(&Event::Requested {
+            task: &task(4, "JOIN", "JOIN"),
+            edges: &[],
+        });
+        ended(&mut board, 1, 0, true);
+        ended(&mut board, 3, 0, false);
+        let lines = board.lines(false);
+        assert!(lines[0].starts_with("executor >  slurm (2 tasks, 0 running, "));
+        assert_eq!(lines[1], "[3] SAY (3) | 2 of 3, cached: 1");
+        assert_eq!(lines[2], "[-] JOIN    | 0 of 1");
+        ended(&mut board, 2, 0, false);
+        ended(&mut board, 4, 0, false);
+        for target in ["a.txt", "b.txt", "all.txt"] {
+            delivered(&mut board, &format!("/work/demo/results/{target}"));
+        }
+        delivered(&mut board, "s3://bucket/report.html");
+        board.note(&Event::Ended { error: None });
+        let lines = board.lines(false);
+        assert_eq!(lines[1], "[2] SAY (2) | 3 of 3, cached: 1 \u{2714}");
+        assert_eq!(lines[2], "[4] JOIN    | 1 of 1 \u{2714}");
+        let summary = board.summary(Path::new("/work/demo"), "r1", Some("/vol/cache/store"));
+        assert_eq!(
+            summary[1],
+            "Done in 0s: 4 tasks, 3 ran, 1 from the cache, 0 failed"
+        );
+        assert_eq!(
+            summary[2..],
+            [
+                "Results:",
+                "  results/ a.txt, all.txt, b.txt",
+                "  s3://bucket/ report.html",
+                "Files of every task: /vol/cache/store",
+                "More: `iunctus runs`, `iunctus page r1`, `iunctus time r1`",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_failed_task_marks_its_step_and_the_run() {
+        let mut board = Board::new("local");
+        board.note(&Event::Requested {
+            task: &task(7, "align", "align (sample=A)"),
+            edges: &[],
+        });
+        ended(&mut board, 7, 2, false);
+        let error = ExecuteError::Cancelled;
+        board.note(&Event::Ended {
+            error: Some(&error),
+        });
+        assert_eq!(
+            board.lines(false)[1],
+            "[7] align (sample=A) | 0 of 1, failed: 1 \u{2718}"
+        );
+        let summary = board.summary(Path::new("/"), "r2", None);
+        assert_eq!(
+            summary[1],
+            "Failed after 0s: 1 tasks, 0 ran, 0 from the cache, 1 failed"
+        );
+        assert_eq!(summary.len(), 3);
+    }
+
+    #[test]
+    fn many_results_of_a_folder_are_counted() {
+        let targets: Vec<String> = (0..8).map(|n| format!("/d/out/{n}.txt")).collect();
+        let lines: Vec<String> = super::results(&targets, Path::new("/d")).collect();
+        assert_eq!(lines, ["out/ (8 files)"]);
+        assert_eq!(super::clock(185), "3m 05s");
+        assert_eq!(super::clock(3720), "1h 02m");
+    }
+}

@@ -160,7 +160,7 @@ impl Board {
                 };
                 self.steps[index].asked += 1;
                 self.step_of.insert(task.id, index);
-                self.names.insert(task.id, task.name.clone());
+                self.names.insert(task.id, one_line(&task.name));
             }
             Event::Started { task, .. } => {
                 self.running += 1;
@@ -298,6 +298,12 @@ impl Board {
         ));
         lines
     }
+}
+
+/// A name on one line: names of tasks may hold the text of a parameter, line breaks and all.
+fn one_line(name: &str) -> String {
+    let words: Vec<&str> = name.split_whitespace().collect();
+    words.join(" ")
 }
 
 /// A time in seconds as a clock, like `42s`, `3m 05s` or `1h 02m`.
@@ -456,6 +462,10 @@ mod tests {
         let lines: Vec<String> = super::results(&targets, Path::new("/d")).collect();
         assert_eq!(lines, ["out/ (8 files)"]);
         assert_eq!(super::clock(185), "3m 05s");
+        assert_eq!(
+            super::one_line("shout(0:Hello!\ngreeted)"),
+            "shout(0:Hello! greeted)"
+        );
         assert_eq!(super::clock(3720), "1h 02m");
     }
 }

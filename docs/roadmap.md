@@ -195,7 +195,7 @@ The goal: iunctus is easy to set up, gives much better results than the native e
 - [x] Nextflow `exec:` sections in the native interpreter, as tasks without a container: see [embedded code](design/snakemake/embedded-code.md), section 6.
 - [ ] Images built from Conda environments (decision 12).
 - [ ] The TES executor (done, tested with a fake server and Funnel), tested with TESK too (decision 22).
-- [ ] The SLURM executor with Apptainer or Podman (done, tested with a simulated SLURM), tested on a SLURM cluster in containers (decision 22).
+- [ ] The SLURM executor with Apptainer or Podman (done, tested with a simulated SLURM, and with Apptainer on a real SLURM cluster: nf-core, CWL, Snakemake and Argo test workflows, see [executors](design/executors.md), section 4), tested with Podman on a SLURM cluster (decision 22).
 - [ ] The Kubernetes executor, one Kubernetes Job per task (done through the API, tested with a fake API server), tested on a `kind` cluster (decision 22).
 - [x] The network and writable-input fields, remote inputs, Argo container sets (section 3, steps 6, 9 and 10): see [engine](design/engine.md), section 4, and [Argo runtime](design/argo/runtime.md), section 8.2.
 - [x] Several storage providers from a config file, secrets from environment variables (decision 20): see [storage](design/storage.md).

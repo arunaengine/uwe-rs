@@ -40,6 +40,7 @@ mod runs;
 mod setup;
 mod slurm;
 mod sources;
+mod terminal;
 mod tes;
 mod tracked;
 
@@ -224,9 +225,10 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
     }
     let store = setup.store_location(arguments);
     let real = name != "simulator";
-    // A real run shows its steps as it goes.
+    // A real run shows its steps as it goes; in a terminal they are drawn in place, so the
+    // executors print no line per task there.
     let shown = real && !quiet;
-    let verbose = !quiet;
+    let verbose = !quiet && !(shown && terminal::possible());
     let runtime =
         workflow_graph::runtime().map_err(|error| failure(format!("iunctus: {error}")))?;
     let sources = runtime.block_on(sources::collect(target, arguments));

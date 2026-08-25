@@ -13,32 +13,44 @@ use std::time::{Duration, Instant};
 
 use workflow_graph::{Event, Language, Observer, TaskId};
 
+use crate::terminal::Live;
+
 /// How many results the summary names one by one in a folder; more are counted.
 const NAMED_RESULTS: usize = 6;
 
-/// The display of a run: the board of its steps.
+/// The display of a run: the board of its steps, drawn live in a terminal.
 pub struct Progress {
     board: Arc<Mutex<Board>>,
+    live: Option<Live>,
 }
 
 impl Progress {
-    /// Prints the line of the run.
+    /// Prints the line of the run, and in a terminal starts drawing the steps live.
     pub fn start(header: Header<'_>) -> Progress {
         let board = Arc::new(Mutex::new(Board::new(header.executor)));
-        println!("{}", header.line());
-        Progress { board }
+        let line = header.line();
+        let live = Live::start(board.clone());
+        match &live {
+            Some(live) => live.print(&format!("\x1b[1m{line}\x1b[0m")),
+            None => println!("{line}"),
+        }
+        Progress { board, live }
     }
 
-    /// Ends the display: the steps with their counts, then the summary, which names the
-    /// store, where the results went and the commands that show more of the run.
+    /// Ends the display: the steps with their counts (in a terminal, their last drawing stays),
+    /// then the summary, which names the store, where the results went and the commands that
+    /// show more of the run.
     pub fn finish(self, run: &str, store: Option<&str>) {
+        let steps = match self.live {
+            Some(live) => {
+                live.finish();
+                Vec::new()
+            }
+            None => (self.board.lock().unwrap_or_else(PoisonError::into_inner)).lines(false),
+        };
         let board = self.board.lock().unwrap_or_else(PoisonError::into_inner);
         let folder = std::env::current_dir().unwrap_or_default();
-        for line in board
-            .lines(false)
-            .into_iter()
-            .chain(board.summary(&folder, run, store))
-        {
+        for line in steps.into_iter().chain(board.summary(&folder, run, store)) {
             println!("{line}");
         }
     }

@@ -31,7 +31,8 @@ pub fn container(name: Option<&str>) -> Result<Container, String> {
 }
 
 /// The backend whose jobs run their tasks with `container` in `<scratch>/slurm`, with the
-/// `sbatch` options `options`; a job that pulls an image asks for `pull`.
+/// `sbatch` options `options`; a job that pulls an image asks for `pull`. The jobs get the web
+/// proxy of the config file.
 pub fn backend(
     scratch: &Path,
     container: Container,
@@ -41,6 +42,7 @@ pub fn backend(
     let mut backend = SlurmBackend::new(scratch.join("slurm"), container);
     backend.options = options;
     backend.pull = pull;
+    backend.proxy = storage::config_proxy().map(str::to_owned);
     backend
 }
 

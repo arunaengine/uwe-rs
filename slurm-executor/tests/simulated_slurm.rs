@@ -92,10 +92,12 @@ kill -TERM -- "-$(cat "$state/$1.pid")"
 const SACCT: &str = "#!/bin/bash\necho 'sacct: accounting storage is disabled' >&2\nexit 1\n";
 
 /// Runs the command after the image in the folder of `--pwd`, without a container. A pull
-/// takes a second, notes itself in `state/pulls` and makes an empty file.
+/// takes a second, notes itself in `state/pulls` and its web proxy in `state/proxies`, and
+/// makes an empty file.
 const APPTAINER: &str = r#"#!/bin/bash
 if [ "$1" = pull ]; then
     echo "$4" >> "$(dirname "$0")/state/pulls"
+    [ -z "$HTTPS_PROXY" ] || echo "$HTTPS_PROXY $http_proxy" >> "$(dirname "$0")/state/proxies"
     sleep 1
     touch "$3"
     exit 0
@@ -315,6 +317,31 @@ async fn an_image_named_by_a_tag_is_pulled_once_per_run() {
     let finished = next_run.run(job("run2-P-7-1"), &cancel).await;
     assert_eq!(finished.expect("the job ends").exit_code, Some(0));
     assert_eq!(pulls().lines().count(), 2);
+}
+
+#[tokio::test]
+async fn jobs_pull_images_through_the_web_proxy() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    let mut backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    backend.proxy = Some("http://proxy.example.org:3128".into());
+    let spec = spec("echo through > out.txt");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "run-P-7-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let finished = backend.run(job, &CancellationToken::new()).await;
+    assert_eq!(finished.expect("the job ends").exit_code, Some(0));
+    let proxies = std::fs::read_to_string(bin.join("state/proxies")).expect("a proxy");
+    let proxy = "http://proxy.example.org:3128";
+    assert_eq!(proxies, format!("{proxy} {proxy}\n"));
 }
 
 #[tokio::test]

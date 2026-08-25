@@ -59,6 +59,15 @@ pub fn use_proxy(address: &str) {
     let _ = PROXY.set(address.to_owned());
 }
 
+/// The web proxy of the config file, unless the environment names one. Programs that iunctus
+/// starts on other machines, like the jobs of SLURM, need it to reach the web as iunctus does.
+pub fn config_proxy() -> Option<&'static str> {
+    PROXY
+        .get()
+        .map(String::as_str)
+        .filter(|_| !proxy_in_environment())
+}
+
 /// Whether the environment names a web proxy, which the client then takes as it is.
 fn proxy_in_environment() -> bool {
     ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"]

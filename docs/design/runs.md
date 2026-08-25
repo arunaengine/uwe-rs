@@ -42,6 +42,23 @@ Every `iunctus run` and `iunctus graph` records itself in one SQLite file, the r
 
 A run id is the start time in milliseconds and the process id, both in hexadecimal, like `1a0f1cc4c10-3a2487`. `-resume` takes the next argument as the run only when it has this form, so `iunctus run -resume main.nf` resumes the last run of `main.nf`.
 
+**What a real run shows.** `iunctus run` with a real executor shows its run as `nextflow run` does, the same for every language. Its first line names the version, the workflow, the language, the executor and the run id. In a terminal, a block below it is drawn again in place at each event and every second: the executor with its tasks, those running and the time so far, then one line per step with the task that last started or ended, how many of the step's tasks are done, how many came from the cache and how many failed, and at the end a check mark, or a cross for a step with failed tasks:
+
+```text
+iunctus 0.1.0: running main.nf (Nextflow) on slurm, run 1a0f6c9c956-144e02
+executor >  slurm (4 tasks, 0 running, 41s)
+[1] SAY (1) | 3 of 3 ✔
+[4] JOIN    | 1 of 1 ✔
+
+Done in 41s: 4 tasks, 4 ran, 0 from the cache, 0 failed
+Results:
+  results/ a.txt, all.txt, b.txt, c.txt
+Files of every task: /vol/project/cache/store
+More: `iunctus runs`, `iunctus page 1a0f6c9c956-144e02`, `iunctus time 1a0f6c9c956-144e02`
+```
+
+What else the run prints, like Nextflow's `view`, a CWL output object or a warning, goes above the block: while it is drawn, standard output, and standard error when it is the same terminal, go through pipes that `iunctus/src/terminal.rs` reads. Elsewhere, like in a log file, each task prints a line when it ends (`[done] SAY (1)`, `[cached] ...`), and the summary comes at the end. The summary names the results, the files that the run delivered (Nextflow's `publishDir`, Snakemake's targets, CWL's output folder, Argo's artifacts), by folder, relative to the folder of the run; then the store, which keeps the files of every task, and the commands that show more. A failed run says `Failed after`, and its error follows on standard error as before. Simulated runs print as before. `NO_COLOR` turns the colors off.
+
 ## 2. The run database
 
 The file is `runs.sqlite` in the cache directory (`$XDG_CACHE_HOME/iunctus`, else `~/.cache/iunctus`), next to the default store. One database serves every workflow and store of the user, so `iunctus runs` lists them all; each run records its store.

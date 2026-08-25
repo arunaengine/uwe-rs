@@ -478,7 +478,19 @@ impl Host for Builder<'_> {
             ("collect", rest) => {
                 let (options, closure) = options_and_closure(rest);
                 let flat = option(&options, "flat").is_none_or(|value| value.truth());
-                (Kind::Gather(Gather::Collect { closure, flat }), true)
+                // `sort: true` sorts in the natural order; a closure is a key or a comparator.
+                let (sort, sort_by) = match option(&options, "sort") {
+                    Some(Value::Closure(by)) => (true, Some(by)),
+                    Some(sort) => (sort.truth(), None),
+                    None => (false, None),
+                };
+                let collect = Gather::Collect {
+                    closure,
+                    flat,
+                    sort,
+                    sort_by,
+                };
+                (Kind::Gather(collect), true)
             }
             ("toList", []) => (Kind::Gather(Gather::ToList), true),
             ("ifEmpty", [default]) => (Kind::Gather(Gather::IfEmpty(default.clone())), same_kind),

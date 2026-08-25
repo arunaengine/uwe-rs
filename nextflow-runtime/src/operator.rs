@@ -269,10 +269,13 @@ fn transposed(value: &Value, by: Option<&[usize]>, remainder: bool) -> Result<Ve
 
 /// The operators that wait for the end of their source: `collect`, `toList` and `ifEmpty`.
 pub(crate) enum Gather {
-    /// `collect([closure], flat: bool)`: a list, or an empty value when nothing came.
+    /// `collect([closure], flat: bool, sort: bool or closure)`: a list, sorted when `sort`
+    /// says so, or an empty value when nothing came.
     Collect {
         closure: Option<Rc<Closure>>,
         flat: bool,
+        sort: bool,
+        sort_by: Option<Rc<Closure>>,
     },
     /// `toList()`: a list, `[]` when nothing came.
     ToList,
@@ -308,7 +311,7 @@ impl Behaviour for Gathering {
                 return self.finish(context);
             };
             match &self.kind {
-                Gather::Collect { closure, flat } => {
+                Gather::Collect { closure, flat, .. } => {
                     let item = match closure {
                         Some(closure) => context.interpreter.call_closure(closure, vec![value])?,
                         None => value,
@@ -400,6 +403,15 @@ impl Gathering {
         let items = std::mem::take(&mut self.items);
         match &self.kind {
             Gather::Collect { .. } if items.is_empty() => context.close(self.output),
+            Gather::Collect {
+                sort: true,
+                sort_by,
+                ..
+            } => {
+                let sort_by = sort_by.clone();
+                let sorted = sorted(context, items, sort_by.as_ref())?;
+                context.emit(self.output, Value::list(sorted));
+            }
             Gather::Collect { .. } | Gather::ToList => {
                 context.emit(self.output, Value::list(items))
             }

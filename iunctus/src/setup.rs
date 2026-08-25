@@ -18,7 +18,17 @@ use crate::insight::telemetry::Telemetry;
 
 /// The sections of the config file. Another name is an error, so that a typing mistake does
 /// not go unnoticed. `executor` holds the settings of executors.
-const SECTIONS: &[&str] = &["store", "storage", "executor", "telemetry", "network"];
+const SECTIONS: &[&str] = &[
+    "store",
+    "storage",
+    "executor",
+    "telemetry",
+    "network",
+    "cache",
+];
+
+/// The executors that `-executor` and `default` of `[executor]` may name.
+const EXECUTORS: &[&str] = &["simulator", "local", "tes", "slurm", "kubernetes"];
 
 /// What the config files set up for a command; the default is what no config file sets up.
 #[derive(Default)]
@@ -75,7 +85,7 @@ impl Executors {
         let Some(section) = config.section("executor")? else {
             return Ok(settings);
         };
-        section.only(&["local", "tes", "slurm", "kubernetes"])?;
+        section.only(&["default", "local", "tes", "slurm", "kubernetes"])?;
         if let Some(local) = section.table("local")? {
             local.only(&["engine"])?;
             settings.engine = local.text("engine")?;
@@ -152,7 +162,7 @@ fn network(config: &ConfigFile) -> Result<NetworkRule, ConfigError> {
     let Some(section) = config.section("network")? else {
         return Ok(NetworkRule::default());
     };
-    section.only(&["default", "allowed_steps"])?;
+    section.only(&["default", "allowed_steps", "proxy"])?;
     let none_by_default = match section.text("default")?.as_deref() {
         None | Some("allowed") => false,
         Some("none") => true,
@@ -165,6 +175,69 @@ fn network(config: &ConfigFile) -> Result<NetworkRule, ConfigError> {
         none_by_default,
         allowed_steps: section.texts("allowed_steps")?.unwrap_or_default(),
     })
+}
+
+/// What the config file sets for a whole command, read before anything else looks at the
+/// options, the cache folder or the network: the executor of `iunctus run` and `iunctus
+/// check-machine` when `-executor` is not given (`default` of `[executor]`; the simulator when
+/// the file does not say), the cache folder (`folder` of `[cache]`, which wins over
+/// `XDG_CACHE_HOME`), and the web proxy of the requests of iunctus itself (`proxy` of
+/// `[network]`, unless the environment names one).
+#[derive(Debug, Default, PartialEq)]
+pub struct Defaults {
+    pub executor: Option<String>,
+    pub cache_folder: Option<PathBuf>,
+    pub proxy: Option<String>,
+}
+
+impl Defaults {
+    /// Reads the config files.
+    pub fn load(arguments: &Arguments) -> Result<Defaults, Failure> {
+        let failed = |error: ConfigError| Failure::setup(format!("iunctus: {error}"));
+        let config = ConfigFile::load(arguments.config_file.as_deref()).map_err(failed)?;
+        Defaults::read(&config).map_err(failed)
+    }
+
+    fn read(config: &ConfigFile) -> Result<Defaults, ConfigError> {
+        let mut defaults = Defaults::default();
+        if let Some(executor) = config.section("executor")? {
+            defaults.executor = executor.text("default")?;
+            if let Some(name) = &defaults.executor
+                && !EXECUTORS.contains(&name.as_str())
+            {
+                let message = format!("is `{name}`; use one of {}", EXECUTORS.join(", "));
+                return Err(executor.invalid("default", message));
+            }
+        }
+        if let Some(cache) = config.section("cache")? {
+            cache.only(&["folder"])?;
+            defaults.cache_folder = cache.text("folder")?.map(PathBuf::from);
+            if let Some(folder) = &defaults.cache_folder
+                && !folder.is_absolute()
+            {
+                let message = format!("is `{}`; use an absolute folder", folder.display());
+                return Err(cache.invalid("folder", message));
+            }
+        }
+        if let Some(network) = config.section("network")? {
+            defaults.proxy = network.text("proxy")?;
+        }
+        Ok(defaults)
+    }
+
+    /// Applies the defaults to a command: `-executor` wins over the file for `run` and
+    /// `check-machine`; other commands, like `iunctus graph`, keep the simulator.
+    pub fn apply(self, command: &str, arguments: &mut Arguments) {
+        if matches!(command, "run" | "check-machine") && arguments.executor.is_none() {
+            arguments.executor = self.executor;
+        }
+        if let Some(folder) = self.cache_folder {
+            crate::use_cache_folder(folder);
+        }
+        if let Some(proxy) = self.proxy {
+            storage::use_proxy(&proxy);
+        }
+    }
 }
 
 impl Setup {
@@ -369,6 +442,52 @@ mod tests {
         assert!(sites[1].near.is_empty() && sites[1].token.is_none());
         let error = read("[executor.tes.sites.x]\nnear = [\"/a/\"]\n").expect_err("an error");
         assert!(error.contains("server"), "{error}");
+    }
+
+    fn defaults(text: &str) -> Result<super::Defaults, String> {
+        let config =
+            ConfigFile::parse(text, Path::new("config.toml")).map_err(|e| e.to_string())?;
+        super::Defaults::read(&config).map_err(|error| error.to_string())
+    }
+
+    #[test]
+    fn the_config_file_names_the_default_executor_the_cache_and_the_proxy() {
+        let text = "[executor]\ndefault = \"slurm\"\n\n[cache]\nfolder = \"/vol/cache\"\n\n\
+                    [network]\nproxy = \"http://proxy.example.org:3128\"\n";
+        let found = defaults(text).expect("defaults");
+        assert_eq!(found.executor.as_deref(), Some("slurm"));
+        assert_eq!(found.cache_folder.as_deref(), Some(Path::new("/vol/cache")));
+        assert_eq!(
+            found.proxy.as_deref(),
+            Some("http://proxy.example.org:3128")
+        );
+        assert_eq!(defaults("").expect("none"), super::Defaults::default());
+        let error = defaults("[executor]\ndefault = \"cloud\"\n").expect_err("an error");
+        assert!(error.contains(":2:") && error.contains("cloud"), "{error}");
+        let error = defaults("[cache]\nfolder = \"cache\"\n").expect_err("an error");
+        assert!(error.contains("absolute"), "{error}");
+        let error = defaults("[cache]\nplace = \"/c\"\n").expect_err("an error");
+        assert!(error.contains("place"), "{error}");
+        // `default` is no unknown executor for the settings of the executors.
+        assert!(read("[executor]\ndefault = \"slurm\"\n").is_ok());
+    }
+
+    #[test]
+    fn the_option_wins_over_the_default_executor_of_the_file() {
+        let slurm = || super::Defaults {
+            executor: Some("slurm".into()),
+            ..super::Defaults::default()
+        };
+        let mut arguments = crate::arguments::parse(&["main.nf".into()]).expect("arguments");
+        slurm().apply("run", &mut arguments);
+        assert_eq!(arguments.executor.as_deref(), Some("slurm"));
+        let words = ["main.nf".into(), "-executor".into(), "local".into()];
+        let mut arguments = crate::arguments::parse(&words).expect("arguments");
+        slurm().apply("run", &mut arguments);
+        assert_eq!(arguments.executor.as_deref(), Some("local"));
+        let mut arguments = crate::arguments::parse(&["main.nf".into()]).expect("arguments");
+        slurm().apply("graph", &mut arguments);
+        assert_eq!(arguments.executor, None);
     }
 
     #[test]

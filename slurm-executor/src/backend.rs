@@ -73,6 +73,10 @@ pub struct SlurmBackend {
     pub images: PathBuf,
     /// What the job that pulls an image asks for.
     pub pull: PullResources,
+    /// The web proxy of the jobs, when the nodes reach the web only through one. `sbatch`
+    /// hands its environment to the job, so the jobs get it as `HTTPS_PROXY` and
+    /// `HTTP_PROXY` (and in lower case), and Apptainer pulls images through it.
+    pub proxy: Option<String>,
     /// The entrypoints and default commands of images of registries, from the registries.
     pub configs: ImageConfigs,
     queue: Queue,
@@ -112,6 +116,7 @@ impl SlurmBackend {
         SlurmBackend {
             images: scratch.join("images"),
             pull: PullResources::default(),
+            proxy: None,
             configs: ImageConfigs::default(),
             scratch,
             container,
@@ -488,7 +493,13 @@ impl SlurmBackend {
 
     /// Submits a job with its options and script, and gives its id.
     async fn submit(&self, options: Vec<String>, script: &Path) -> Result<String, ExecutorError> {
-        let output = Command::new(self.command("sbatch"))
+        let mut sbatch = Command::new(self.command("sbatch"));
+        if let Some(proxy) = &self.proxy {
+            for name in ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"] {
+                sbatch.env(name, proxy);
+            }
+        }
+        let output = sbatch
             .args(options)
             .arg(script)
             .output()

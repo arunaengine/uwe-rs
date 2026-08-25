@@ -91,3 +91,24 @@ impl WebServer {
         files.insert(path.to_owned(), body.to_owned());
     }
 }
+
+/// The output of a real run without what the run shows of itself in any language: its first
+/// line, like `iunctus 0.1.0: running main.nf (Nextflow) on local, run <id>`, and its steps
+/// and summary at its end, from `executor >` to `More:`.
+pub fn without_display(output: &str) -> String {
+    let header = format!("iunctus {}: running ", env!("CARGO_PKG_VERSION"));
+    let mut kept: Vec<&str> = Vec::new();
+    let mut summary = false;
+    for line in output.lines() {
+        if line.starts_with("executor >  ") {
+            summary = true;
+        }
+        if !summary && !line.starts_with(&header) {
+            kept.push(line);
+        }
+        if line.starts_with("More: `iunctus runs`") {
+            summary = false;
+        }
+    }
+    kept.iter().map(|line| format!("{line}\n")).collect()
+}

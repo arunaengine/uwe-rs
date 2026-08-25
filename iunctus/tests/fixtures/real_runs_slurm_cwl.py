@@ -133,7 +133,8 @@ def compare(test, suite, work):
         return "iunctus fails: timeout"
     errors = [line for line in stderr.splitlines() if line.strip()]
     try:
-        output = json.loads(stdout[stdout.index("{"):])
+        # The summary of the run follows the output object.
+        output, _ = json.JSONDecoder().raw_decode(stdout[stdout.index("{"):])
     except ValueError:
         output = None
     ok = code == 0 and output is not None

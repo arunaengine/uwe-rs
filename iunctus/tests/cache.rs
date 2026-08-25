@@ -307,7 +307,9 @@ fn two_runs_at_the_same_moment_run_a_task_once() {
     for child in started {
         let output = child.wait_with_output().expect("iunctus ends");
         assert!(output.status.success(), "{output:?}");
-        lines.push(String::from_utf8_lossy(&output.stdout).into_owned());
+        lines.push(common::without_display(&String::from_utf8_lossy(
+            &output.stdout,
+        )));
     }
     // One run ran the task; the other waited for it instead of running it too.
     lines.sort();

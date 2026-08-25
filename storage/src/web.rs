@@ -35,14 +35,39 @@ pub(crate) struct Web {
 pub fn http_client() -> Result<&'static reqwest::Client, String> {
     static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
     let client = CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
+        let mut builder = reqwest::Client::builder()
             .user_agent(concat!("iunctus/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(30))
-            .read_timeout(Duration::from_secs(300))
-            .build()
-            .map_err(|error| error.to_string())
+            .read_timeout(Duration::from_secs(300));
+        if let Some(address) = PROXY.get().filter(|_| !proxy_in_environment()) {
+            let proxy = reqwest::Proxy::all(address)
+                .map_err(|error| format!("the proxy {address} of the config file: {error}"))?;
+            builder = builder.proxy(proxy.no_proxy(reqwest::NoProxy::from_env()));
+        }
+        builder.build().map_err(|error| error.to_string())
     });
     client.as_ref().map_err(Clone::clone)
+}
+
+/// The web proxy of `[network] proxy` of the config file.
+static PROXY: OnceLock<String> = OnceLock::new();
+
+/// Sends the requests of iunctus through this web proxy, like `http://proxy.example.org:3128`,
+/// unless the environment names one (`HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, in either
+/// case), which wins. Takes effect only before the first request.
+pub fn use_proxy(address: &str) {
+    let _ = PROXY.set(address.to_owned());
+}
+
+/// Whether the environment names a web proxy, which the client then takes as it is.
+fn proxy_in_environment() -> bool {
+    ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"]
+        .iter()
+        .any(|name| {
+            [name.to_string(), name.to_lowercase()]
+                .iter()
+                .any(|name| std::env::var_os(name).is_some_and(|value| !value.is_empty()))
+        })
 }
 
 /// [`http_client`], as a clone (a handle to the same client) for code that keeps one.

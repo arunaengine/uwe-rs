@@ -214,6 +214,23 @@ fn gathering() {
         lines("channel.of(1, 2, 3).collect { v -> [v, [v]] }.view()"),
         ["[1, [1], 2, [2], 3, [3]]"]
     );
+    // As Nextflow 26.04.6 sorts them.
+    assert_eq!(
+        lines("channel.of(3, 1, 2).collect(sort: true).view()"),
+        ["[1, 2, 3]"]
+    );
+    assert_eq!(
+        lines("channel.of('bb', 'a', 'ccc').collect(sort: { it.size() }).view()"),
+        ["[a, bb, ccc]"]
+    );
+    assert_eq!(
+        lines("channel.of(3, 1, 2).collect(sort: { a, b -> b <=> a }).view()"),
+        ["[3, 2, 1]"]
+    );
+    assert_eq!(
+        lines("channel.of(3, 1, 2).collect(sort: false).view()"),
+        ["[3, 1, 2]"]
+    );
     assert_eq!(
         lines("channel.empty().collect().view()"),
         Vec::<String>::new()

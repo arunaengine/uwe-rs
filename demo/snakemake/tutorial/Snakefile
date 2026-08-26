@@ -12,6 +12,8 @@ rule bwa_map:
         "data/samples/{sample}.fastq"
     output:
         "mapped_reads/{sample}.bam"
+    container:
+        "docker://quay.io/biocontainers/mulled-v2-fe8faa35dbf6dc65a0f7f5d4ea12e31a79f73e40:a34558545ae1413d94bde4578787ebef08027945-0"
     shell:
         "bwa mem {input} | samtools view -Sb - > {output}"
 
@@ -21,6 +23,8 @@ rule samtools_sort:
         "mapped_reads/{sample}.bam"
     output:
         "sorted_reads/{sample}.bam"
+    container:
+        "docker://quay.io/biocontainers/mulled-v2-fe8faa35dbf6dc65a0f7f5d4ea12e31a79f73e40:a34558545ae1413d94bde4578787ebef08027945-0"
     shell:
         "samtools sort -T sorted_reads/{wildcards.sample} "
         "-O bam {input} > {output}"
@@ -31,6 +35,8 @@ rule samtools_index:
         "sorted_reads/{sample}.bam"
     output:
         "sorted_reads/{sample}.bam.bai"
+    container:
+        "docker://quay.io/biocontainers/mulled-v2-fe8faa35dbf6dc65a0f7f5d4ea12e31a79f73e40:a34558545ae1413d94bde4578787ebef08027945-0"
     shell:
         "samtools index {input}"
 
@@ -42,6 +48,8 @@ rule bcftools_call:
         bai=expand("sorted_reads/{sample}.bam.bai", sample=SAMPLES)
     output:
         "calls/all.vcf"
+    container:
+        "docker://quay.io/biocontainers/bcftools:1.19--h8b25389_1"
     shell:
         "bcftools mpileup -f {input.fa} {input.bam} | "
         "bcftools call -mv - > {output}"
@@ -52,5 +60,7 @@ rule plot_quals:
         "calls/all.vcf"
     output:
         "plots/quals.svg"
+    container:
+        "docker://quay.io/biocontainers/mulled-v2-38b144e43e6770e7e71092bbcc6d650b88daa00c:7ff0baa0e6cd797725ee45307920140ead93bb17-2"
     script:
         "scripts/plot-quals.py"

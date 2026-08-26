@@ -25,6 +25,7 @@ const SECTIONS: &[&str] = &[
     "telemetry",
     "network",
     "cache",
+    "report",
 ];
 
 /// The executors that `-executor` and `default` of `[executor]` may name.
@@ -181,13 +182,15 @@ fn network(config: &ConfigFile) -> Result<NetworkRule, ConfigError> {
 /// options, the cache folder or the network: the executor of `iunctus run` and `iunctus
 /// check-machine` when `-executor` is not given (`default` of `[executor]`; the simulator when
 /// the file does not say), the cache folder (`folder` of `[cache]`, which wins over
-/// `XDG_CACHE_HOME`), and the web proxy of the requests of iunctus itself (`proxy` of
-/// `[network]`, unless the environment names one).
+/// `XDG_CACHE_HOME`), the web proxy of the requests of iunctus itself (`proxy` of
+/// `[network]`, unless the environment names one), and where `iunctus run` writes the report of
+/// each run (`file` of `[report]`; a relative path starts in the folder of the run).
 #[derive(Debug, Default, PartialEq)]
 pub struct Defaults {
     pub executor: Option<String>,
     pub cache_folder: Option<PathBuf>,
     pub proxy: Option<String>,
+    pub report: Option<PathBuf>,
 }
 
 impl Defaults {
@@ -222,14 +225,22 @@ impl Defaults {
         if let Some(network) = config.section("network")? {
             defaults.proxy = network.text("proxy")?;
         }
+        if let Some(report) = config.section("report")? {
+            report.only(&["file"])?;
+            defaults.report = report.text("file")?.map(PathBuf::from);
+        }
         Ok(defaults)
     }
 
     /// Applies the defaults to a command: `-executor` wins over the file for `run` and
-    /// `check-machine`; other commands, like `iunctus graph`, keep the simulator.
+    /// `check-machine`; other commands, like `iunctus graph`, keep the simulator. `-report`
+    /// wins over the file for `run`.
     pub fn apply(self, command: &str, arguments: &mut Arguments) {
         if matches!(command, "run" | "check-machine") && arguments.executor.is_none() {
             arguments.executor = self.executor;
+        }
+        if command == "run" && arguments.report.is_none() {
+            arguments.report = self.report;
         }
         if let Some(folder) = self.cache_folder {
             crate::use_cache_folder(folder);
@@ -453,7 +464,8 @@ mod tests {
     #[test]
     fn the_config_file_names_the_default_executor_the_cache_and_the_proxy() {
         let text = "[executor]\ndefault = \"slurm\"\n\n[cache]\nfolder = \"/vol/cache\"\n\n\
-                    [network]\nproxy = \"http://proxy.example.org:3128\"\n";
+                    [network]\nproxy = \"http://proxy.example.org:3128\"\n\n\
+                    [report]\nfile = \"report.html\"\n";
         let found = defaults(text).expect("defaults");
         assert_eq!(found.executor.as_deref(), Some("slurm"));
         assert_eq!(found.cache_folder.as_deref(), Some(Path::new("/vol/cache")));
@@ -461,7 +473,10 @@ mod tests {
             found.proxy.as_deref(),
             Some("http://proxy.example.org:3128")
         );
+        assert_eq!(found.report.as_deref(), Some(Path::new("report.html")));
         assert_eq!(defaults("").expect("none"), super::Defaults::default());
+        let error = defaults("[report]\nfolder = \"r\"\n").expect_err("an error");
+        assert!(error.contains("folder"), "{error}");
         let error = defaults("[executor]\ndefault = \"cloud\"\n").expect_err("an error");
         assert!(error.contains(":2:") && error.contains("cloud"), "{error}");
         let error = defaults("[cache]\nfolder = \"cache\"\n").expect_err("an error");

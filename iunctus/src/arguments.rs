@@ -38,6 +38,8 @@ pub struct Arguments {
     pub executor: Option<String>,
     /// `-graph file`: where to write the execution graph.
     pub graph: Option<PathBuf>,
+    /// `-report file`: where `iunctus run` writes the report of the run when it ends.
+    pub report: Option<PathBuf>,
     /// `-output-dir folder`: where results go that the workflow gives no place of its own.
     pub output_dir: Option<PathBuf>,
     /// `-tes-server address`: the TES server of `-executor tes`.
@@ -75,7 +77,8 @@ pub struct Arguments {
     pub python_image: Option<String>,
     /// `-database file`: the run database, instead of the one in the cache directory.
     pub database: Option<PathBuf>,
-    /// `-output folder`: where `iunctus export` writes the crate.
+    /// `-output folder|file`: where `iunctus export` writes the crate, `iunctus report` the
+    /// report, and some other commands their file.
     pub output: Option<PathBuf>,
     /// `-platform name`: the conda platform of a lock, like `linux-64`.
     pub platform: Option<String>,
@@ -171,6 +174,7 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
             }
             "-executor" => parsed.executor = Some(value()?),
             "-graph" => parsed.graph = Some(value()?.into()),
+            "-report" => parsed.report = Some(value()?.into()),
             "-output-dir" => parsed.output_dir = Some(value()?.into()),
             "-tes-server" => parsed.tes_server = Some(value()?),
             "-slurm-container" => parsed.slurm_container = Some(value()?),

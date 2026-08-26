@@ -18,7 +18,8 @@ options = ["--exclude=rs700-bcf-3.intra"]
 [cache]
 folder = "/vol/cb/projects/iunctus/no_backup/cache"
 
-# worm.intra and the login nodes reach the internet only through this proxy. iunctus asks the
-# image registries through it. The jobs on the compute nodes reach the internet directly.
+# worm.intra, the login nodes and the compute nodes reach the internet only through this proxy.
+# iunctus asks the image registries through it, and its SLURM jobs get it too (as HTTPS_PROXY),
+# so that Apptainer pulls images through it.
 [network]
 proxy = "http://proxy.intra:3128"

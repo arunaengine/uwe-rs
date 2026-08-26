@@ -8,11 +8,12 @@ use crate::DatabaseError;
 
 /// The version of the schema that this build writes. SQLite keeps it in `PRAGMA user_version`.
 /// A change to the tables adds a step to [`MIGRATIONS`] and raises this number.
-pub const VERSION: u32 = 5;
+pub const VERSION: u32 = 6;
 
 /// The steps from each version to the next: the first creates version 1 in an empty file.
-const MIGRATIONS: [&str; VERSION as usize] =
-    [VERSION_1, VERSION_2, VERSION_3, VERSION_4, VERSION_5];
+const MIGRATIONS: [&str; VERSION as usize] = [
+    VERSION_1, VERSION_2, VERSION_3, VERSION_4, VERSION_5, VERSION_6,
+];
 
 /// Version 1. Times are milliseconds since the Unix epoch (UTC). Text in JSON is marked as such.
 /// A run is one `iunctus run`; its tasks are the tasks that the driver asked for; an attempt is
@@ -246,6 +247,19 @@ CREATE TABLE checks (
 const VERSION_5: &str = "
 ALTER TABLE runs ADD COLUMN replays TEXT;
 ALTER TABLE runs ADD COLUMN replays_task INTEGER;
+";
+
+/// Version 6: where the results of a run went, like the files of a Nextflow `publishDir`, a
+/// Snakemake output in the folder of the workflow or the outputs of a CWL workflow.
+const VERSION_6: &str = "
+CREATE TABLE deliveries (
+    run         TEXT NOT NULL REFERENCES runs (id),
+    -- Where the result went: a path on this machine or an address of a storage provider.
+    target      TEXT NOT NULL,
+    -- The output that went there, by its location in the store.
+    location    TEXT NOT NULL,
+    PRIMARY KEY (run, target)
+);
 ";
 
 /// Brings the schema of a database to [`VERSION`]: creates it in a new file, and runs the

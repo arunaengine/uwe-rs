@@ -170,7 +170,8 @@ fn a_database_of_version_3_gets_what_pins_runs() {
              ALTER TABLE runs DROP COLUMN program; ALTER TABLE runs DROP COLUMN launch;
              ALTER TABLE runs DROP COLUMN workflow_folder; ALTER TABLE runs DROP COLUMN repeats;
              ALTER TABLE runs DROP COLUMN output_schema; ALTER TABLE runs DROP COLUMN replays;
-             ALTER TABLE runs DROP COLUMN replays_task; PRAGMA user_version = 3;",
+             ALTER TABLE runs DROP COLUMN replays_task; DROP TABLE deliveries;
+             PRAGMA user_version = 3;",
         )
         .expect("goes back to version 3");
     drop(connection);

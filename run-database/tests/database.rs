@@ -85,6 +85,9 @@ fn record(path: &Path, directory: &Path) -> Result<(), DatabaseError> {
     };
     recorder.finished(&measured, 1, false);
     recorder.reused(TaskId(1), 1, "run-0");
+    let target = directory.join("results/made.txt");
+    recorder.delivered(&target.to_string_lossy(), &made.to_string_lossy());
+    recorder.delivered("s3://bucket/made.txt", "/elsewhere/made.txt");
     let second = task(2, "USE", vec![input(&made)]);
     let edge = Edge {
         from: TaskId(1),
@@ -171,6 +174,27 @@ fn a_run_is_read_back_with_its_logs_and_events() {
     assert_eq!(database.events("run-1", 9, 100).expect("lists").len(), 1);
     assert_eq!(database.last_event("run-1").expect("reads"), 10);
     assert_eq!(database.last_event("run-9").expect("reads"), 0);
+}
+
+#[test]
+fn where_the_results_went_is_read_back_with_their_tasks() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    record(&path, directory.path()).expect("records the run");
+    let database = Database::open(&path).expect("opens again");
+    let found = database.deliveries("run-1").expect("reads");
+    let target = directory.path().join("results/made.txt");
+    let shown: Vec<(&str, Option<u64>)> = (found.iter())
+        .map(|delivered| (delivered.target.as_str(), delivered.task))
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            (target.to_str().expect("a path in UTF-8"), Some(1)),
+            ("s3://bucket/made.txt", None)
+        ]
+    );
+    assert!(database.deliveries("run-9").expect("reads").is_empty());
 }
 
 #[test]
@@ -325,6 +349,7 @@ fn a_database_of_version_1_gets_the_inputs_of_runs() {
              ALTER TABLE runs DROP COLUMN launch; ALTER TABLE runs DROP COLUMN workflow_folder;
              ALTER TABLE runs DROP COLUMN repeats; ALTER TABLE runs DROP COLUMN output_schema;
              ALTER TABLE runs DROP COLUMN replays; ALTER TABLE runs DROP COLUMN replays_task;
+             DROP TABLE deliveries;
              PRAGMA user_version = 1;",
         )
         .expect("goes back to version 1");

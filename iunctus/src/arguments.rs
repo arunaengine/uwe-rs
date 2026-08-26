@@ -314,7 +314,28 @@ pub fn parse(arguments: &[String]) -> Result<Arguments, String> {
             other => return Err(format!("unknown option `{other}`")),
         }
     }
+    take_job_file(&mut parsed);
     Ok(parsed)
+}
+
+/// Takes a job file after a CWL document as its inputs, as cwltool does in
+/// `cwltool tool.cwl job.yml`. Other words after the target name a process of a packed
+/// document.
+fn take_job_file(parsed: &mut Arguments) {
+    let cwl = parsed.language == Some(Language::Cwl)
+        || (parsed.target.as_ref())
+            .is_some_and(|target| target.extension() == Some("cwl".as_ref()));
+    let job = |word: &String| {
+        [".json", ".yml", ".yaml"]
+            .iter()
+            .any(|end| word.ends_with(end))
+    };
+    if cwl
+        && parsed.inputs.is_none()
+        && let Some(index) = parsed.targets.iter().position(job)
+    {
+        parsed.inputs = Some(PathBuf::from(parsed.targets.remove(index)));
+    }
 }
 
 /// Whether a word is a run id as iunctus makes them: two hexadecimal numbers joined by `-`, the
@@ -606,6 +627,25 @@ mod tests {
         assert_eq!(parsed.address, Some("0.0.0.0".parse().expect("an address")));
         assert_eq!(parsed.port, Some(8080));
         assert!(parse(&["-port".to_owned(), "web".to_owned()]).is_err());
+    }
+
+    #[test]
+    fn a_job_file_after_a_cwl_document_is_its_inputs() {
+        let parsed = parse_all(&["tool.cwl", "job.yml"]);
+        assert_eq!(parsed.inputs, Some(PathBuf::from("job.yml")));
+        assert!(parsed.targets.is_empty());
+        let parsed = parse_all(&["packed.cwl", "main", "job.json"]);
+        assert_eq!(parsed.inputs, Some(PathBuf::from("job.json")));
+        assert_eq!(parsed.targets, ["main"]);
+        let parsed = parse_all(&["tool.cwl", "-inputs", "a.yml", "b.yml"]);
+        assert_eq!(parsed.inputs, Some(PathBuf::from("a.yml")));
+        assert_eq!(parsed.targets, ["b.yml"]);
+        // Argo and Snakemake keep their targets.
+        let parsed = parse_all(&["workflow.yaml", "values.yaml"]);
+        assert_eq!(
+            (parsed.inputs, parsed.targets),
+            (None, vec!["values.yaml".to_owned()])
+        );
     }
 
     #[test]

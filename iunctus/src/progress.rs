@@ -38,9 +38,9 @@ impl Progress {
     }
 
     /// Ends the display: the steps with their counts (in a terminal, their last drawing stays),
-    /// then the summary, which names the store, where the results went and the commands that
-    /// show more of the run.
-    pub fn finish(self, run: &str, store: Option<&str>) {
+    /// then the summary, which names the store, where the results went, the report of the run
+    /// and the commands that show more of the run.
+    pub fn finish(self, run: &str, store: Option<&str>, report: Option<&Path>) {
         let steps = match self.live {
             Some(live) => {
                 live.finish();
@@ -50,7 +50,10 @@ impl Progress {
         };
         let board = self.board.lock().unwrap_or_else(PoisonError::into_inner);
         let folder = std::env::current_dir().unwrap_or_default();
-        for line in steps.into_iter().chain(board.summary(&folder, run, store)) {
+        for line in steps
+            .into_iter()
+            .chain(board.summary(&folder, run, store, report))
+        {
             println!("{line}");
         }
     }
@@ -268,9 +271,16 @@ impl Board {
         lines
     }
 
-    /// What the run did, where its results went, and the commands that show more of it.
-    /// `folder` is the folder of the run, from which results are named by relative paths.
-    pub fn summary(&self, folder: &Path, run: &str, store: Option<&str>) -> Vec<String> {
+    /// What the run did, where its results went, its report, and the commands that show more
+    /// of it. `folder` is the folder of the run, from which results and the report are named by
+    /// relative paths.
+    pub fn summary(
+        &self,
+        folder: &Path,
+        run: &str,
+        store: Option<&str>,
+        report: Option<&Path>,
+    ) -> Vec<String> {
         let sum = |count: fn(&Step) -> usize| self.steps.iter().map(count).sum::<usize>();
         let (asked, cached, failed) = (sum(|s| s.asked), sum(|s| s.cached), sum(|s| s.failed));
         let ran = sum(|s| s.done) - cached;
@@ -293,6 +303,10 @@ impl Board {
         }
         if let Some(store) = store {
             lines.push(format!("Files of every task: {store}"));
+        }
+        if let Some(report) = report {
+            let shown = report.strip_prefix(folder).unwrap_or(report);
+            lines.push(format!("Report: {}", shown.display()));
         }
         lines.push(format!(
             "More: `iunctus runs`, `iunctus page {run}`, `iunctus time {run}`"
@@ -424,7 +438,12 @@ mod tests {
         let lines = board.lines(false);
         assert_eq!(lines[1], "[2] SAY (2) | 3 of 3, cached: 1 \u{2714}");
         assert_eq!(lines[2], "[4] JOIN    | 1 of 1 \u{2714}");
-        let summary = board.summary(Path::new("/work/demo"), "r1", Some("/vol/cache/store"));
+        let summary = board.summary(
+            Path::new("/work/demo"),
+            "r1",
+            Some("/vol/cache/store"),
+            Some(Path::new("/work/demo/report.html")),
+        );
         assert_eq!(
             summary[1],
             "Done in 0s: 4 tasks, 3 ran, 1 from the cache, 0 failed"
@@ -436,6 +455,7 @@ mod tests {
                 "  results/ a.txt, all.txt, b.txt",
                 "  s3://bucket/ report.html",
                 "Files of every task: /vol/cache/store",
+                "Report: report.html",
                 "More: `iunctus runs`, `iunctus page r1`, `iunctus time r1`",
             ]
         );
@@ -457,7 +477,7 @@ mod tests {
             board.lines(false)[1],
             "[7] align (sample=A) | 0 of 1, failed: 1 \u{2718}"
         );
-        let summary = board.summary(Path::new("/"), "r2", None);
+        let summary = board.summary(Path::new("/"), "r2", None, None);
         assert_eq!(
             summary[1],
             "Failed after 0s: 1 task, 0 ran, 0 from the cache, 1 failed"

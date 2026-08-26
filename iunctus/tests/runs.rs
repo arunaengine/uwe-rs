@@ -155,6 +155,59 @@ fn runs_are_recorded_resumed_and_exported() {
     assert!(output.contains("no run `no-such-run`"), "{output}");
 }
 
+/// Whether a report refers to nothing outside its file: every address in it is the name space
+/// of SVG, which no browser loads.
+fn self_contained(html: &str) -> bool {
+    let addresses = html.matches("http://").count() + html.matches("https://").count();
+    addresses == html.matches("http://www.w3.org/").count()
+        && !html.contains("<link")
+        && !html.contains("<script src")
+}
+
+#[test]
+fn a_run_writes_its_report_as_the_option_or_the_config_file_says() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path();
+    std::fs::write(path.join("main.nf"), SCRIPT).expect("writes the script");
+    std::fs::write(path.join("a.txt"), "one\n").expect("writes an input");
+    std::fs::write(path.join("b.txt"), "two\n").expect("writes an input");
+    let (code, output) = iunctus(path, &["run", "main.nf", "-report", "report.html"]);
+    assert_eq!(code, 0, "{output}");
+    let report = path.join("report.html");
+    assert!(
+        output.contains(&format!("{}", report.display())),
+        "{output}"
+    );
+    let html = std::fs::read_to_string(&report).expect("reads the report");
+    assert!(self_contained(&html));
+    assert!(
+        html.contains("UPPER (2)") && html.contains("COUNT"),
+        "{html}"
+    );
+
+    let config = path.join("iunctus.toml");
+    std::fs::write(&config, "[report]\nfile = \"reports/last.html\"\n").expect("writes");
+    let config = config.to_string_lossy();
+    let (code, output) = iunctus(path, &["run", "main.nf", "-iunctus-config", &config]);
+    assert_eq!(code, 0, "{output}");
+    assert!(path.join("reports/last.html").is_file(), "{output}");
+
+    let (_, runs) = iunctus(path, &["runs"]);
+    let id = runs
+        .lines()
+        .nth(1)
+        .and_then(|line| line.split_whitespace().next());
+    let id = id.expect("a run");
+    let (code, output) = iunctus(path, &["report", id, "-output", "again.html"]);
+    assert_eq!(code, 0, "{output}");
+    assert!(output.starts_with(&format!("wrote the report of run {id} to again.html (")));
+    let html = std::fs::read_to_string(path.join("again.html")).expect("reads the report");
+    assert!(self_contained(&html) && html.contains(id));
+    let (code, output) = iunctus(path, &["report", "no-such-run"]);
+    assert_eq!(code, 1, "{output}");
+    assert!(output.contains("no run `no-such-run`"), "{output}");
+}
+
 #[test]
 fn a_real_run_cannot_resume_a_simulated_one() {
     let directory = tempfile::tempdir().expect("a temporary directory");

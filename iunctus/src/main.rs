@@ -7,7 +7,8 @@
 //! of its outputs, `iunctus clean` removes from the store what no rule keeps,
 //! `iunctus time` tells where the time of a run went, `iunctus compare` what differs
 //! between two runs, `iunctus replay` runs one recorded task again, `iunctus telemetry`
-//! writes and sends the OpenTelemetry trace of a run, `iunctus check-order` whether the
+//! writes and sends the OpenTelemetry trace of a run, `iunctus report` writes the report of a
+//! run as one HTML file, `iunctus check-order` whether the
 //! outputs of a workflow depend on the order in which its tasks finish, `iunctus changes`
 //! what changed since a run, and `iunctus repeat` runs a past run again with what it pinned.
 // Copyright (c) 2026 The iunctus Contributors
@@ -33,6 +34,7 @@ mod preview;
 mod progress;
 mod record;
 mod repeat;
+mod report;
 mod resources;
 mod resume;
 mod revision;
@@ -98,6 +100,7 @@ fn main() -> ExitCode {
         "compare" => insight::compare::command(&arguments),
         "replay" => insight::replay::command(&arguments),
         "telemetry" => insight::telemetry::command(&arguments),
+        "report" => report::command(&arguments),
         "help" | "-help" | "--help" => {
             println!("{USAGE}");
             Ok(())
@@ -362,8 +365,14 @@ fn execute(arguments: &Arguments, quiet: bool, pinned: &Pinned) -> Result<Ran, F
     if real {
         insight::telemetry::after_run(arguments, &setup, &run);
     }
-    if let Some(progress) = progress {
-        progress.finish(&run, Some(&store));
+    let report = report::after_run(arguments, &run);
+    match progress {
+        Some(progress) => progress.finish(&run, Some(&store), report.as_deref()),
+        None => {
+            if let Some(report) = &report {
+                eprintln!("iunctus: the report of the run is in {}", report.display());
+            }
+        }
     }
     Ok(Ran {
         execution,
@@ -753,6 +762,7 @@ usage: iunctus run <workflow file or directory> [<targets>] [options]
        iunctus compare <run> [<run>] [-format text|json]
        iunctus replay <run> <task> [-executor local|tes|slurm|kubernetes] [-store <place>]
        iunctus telemetry <run> [-output <file>]
+       iunctus report <run> [-output <file>]
        iunctus inputs <workflow file or directory> [-format json|text] [-check] [options]
        iunctus outputs <workflow file or directory> [-format json|text] [options]
        iunctus clean [-keep-days <n>] [-keep-run <run>]... [-keep-slower-than <time>] [-remove]
@@ -816,10 +826,13 @@ options:
                                       short tasks of a step run one after another in one
                                       container
   -page                               serves the web page of the run while it goes on
+  -report <file>                      writes the report of the run when it ends: one HTML
+                                      file with the page of the run, to open without a server
   -address <ip>, -port <number>       where the page listens (default: 127.0.0.1, a free port)
   -database <file>                    the run database (default: runs.sqlite in the cache)
   -output <folder or file>            where `export` writes the RO-Crate (default: <run>-crate),
                                       `telemetry` the trace (default: <run>-traces.jsonl),
+                                      `report` the report (default: <run>-report.html),
                                       and `lock-environment` the lock (default: standard
                                       output; a .txt file gets conda's explicit list)
   -license <url>                      the license of the exported crate

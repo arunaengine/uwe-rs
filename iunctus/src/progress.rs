@@ -223,9 +223,9 @@ impl Board {
         let mut lines = vec![paint(
             "2",
             &format!(
-                "executor >  {} ({} tasks, {} running, {})",
+                "executor >  {} ({}, {} running, {})",
                 self.executor,
-                self.attempts,
+                tasks(self.attempts),
                 self.running,
                 clock(seconds)
             ),
@@ -282,8 +282,9 @@ impl Board {
         let mut lines = vec![
             String::new(),
             format!(
-                "{how} {}: {asked} tasks, {ran} ran, {cached} from the cache, {failed} failed",
-                clock(took.as_secs())
+                "{how} {}: {}, {ran} ran, {cached} from the cache, {failed} failed",
+                clock(took.as_secs()),
+                tasks(asked)
             ),
         ];
         if !self.results.is_empty() {
@@ -304,6 +305,14 @@ impl Board {
 fn one_line(name: &str) -> String {
     let words: Vec<&str> = name.split_whitespace().collect();
     words.join(" ")
+}
+
+/// A number of tasks, like `1 task` or `3 tasks`.
+fn tasks(count: usize) -> String {
+    match count {
+        1 => "1 task".to_owned(),
+        count => format!("{count} tasks"),
+    }
 }
 
 /// A time in seconds as a clock, like `42s`, `3m 05s` or `1h 02m`.
@@ -451,7 +460,7 @@ mod tests {
         let summary = board.summary(Path::new("/"), "r2", None);
         assert_eq!(
             summary[1],
-            "Failed after 0s: 1 tasks, 0 ran, 0 from the cache, 1 failed"
+            "Failed after 0s: 1 task, 0 ran, 0 from the cache, 1 failed"
         );
         assert_eq!(summary.len(), 3);
     }

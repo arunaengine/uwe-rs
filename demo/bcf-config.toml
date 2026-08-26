@@ -23,3 +23,9 @@ folder = "/vol/cb/projects/iunctus/no_backup/cache"
 # so that Apptainer pulls images through it.
 [network]
 proxy = "http://proxy.intra:3128"
+
+# Each run writes its report into the folder it ran in: one HTML file with the graph, the
+# tasks, a timeline, their resources and logs. Copy it to your computer and open it there, as
+# the cluster has no browser: `scp worm.intra:<folder>/report.html .`
+[report]
+file = "report.html"

@@ -1,7 +1,9 @@
-# The iunctus demo on the BCF cluster
+# The iunctus demo on the BCF cluster and on a laptop
 
 The official examples of the four languages that iunctus runs, each run with plain
-`iunctus run <file>`. Every task is a SLURM job with its own Apptainer container.
+`iunctus run <file>`. On the BCF cluster every task is a SLURM job with its own Apptainer
+container. On a laptop or workstation every task is a Docker container: see
+[On a laptop with Docker](#on-a-laptop-with-docker).
 
 | Folder | Example | Source |
 |---|---|---|
@@ -41,6 +43,8 @@ It says: run tasks on SLURM with Apptainer, leave out the node `rs700-bcf-3` (it
 see `/vol`), keep the cache under `/vol/cb/projects/iunctus/no_backup/cache`, and reach the
 internet through `proxy.intra:3128` (the nodes cannot reach the image registries without it).
 With it, `iunctus run` needs no options. Check the setup with `iunctus check-machine`.
+It also makes every run write its report, `report.html`, into the folder it ran in (see
+[The report](#the-report)).
 
 ## Run the examples
 
@@ -134,6 +138,112 @@ the native tools:
 | Snakemake tutorial | Snakemake 9.27.0 on a laptop, the same images through Docker | `mapped_reads/` and `sorted_reads/` (6 files) have the same digests; `calls/all.vcf` differs only in the date that bcftools writes into its header; `plots/quals.svg` by name only (that Snakemake has no matplotlib) |
 | CWL | cwltool 3.3.20260925135507 | the same output objects (`{}`) and the same text: `Hello World`, `こんにちは世界` |
 | Argo | `argo lint --offline` 4.1.4 (no Kubernetes here) | all four valid; the output is what Argo's docs show: `hello world`; `A` to `D`; `hello world` passed on; `hello world` and `goodbye world` |
+
+## The report
+
+The cluster has no browser, and its page cannot be reached without a tunnel. So iunctus can
+write the report of a run: one HTML file that shows what the page shows, and needs no server
+and no network. Copy it to your computer and open it there:
+
+```sh
+scp worm.intra:/vol/cb/projects/iunctus/no_backup/demo/nextflow/hello/report.html .
+```
+
+It shows the summary of the run (workflow, language, executor, start, end, time, how many
+tasks ran, came from the cache or failed), the graph with the state of each task (drag to
+move, Ctrl and the wheel to zoom), where the time went, a timeline of the tasks, the CPU time,
+memory and I/O of each task, where the results went, the steps and the tasks. A click on a task
+shows its command, script, exit code, inputs and outputs, and the last 4 KB of its standard
+output and error. The reports of the demo are 135 to 255 KB.
+
+Three ways to get it:
+
+- `[report] file = "report.html"` in the config file: every `iunctus run` writes it when the
+  run ends, into the folder it ran in (`bcf-config.toml` and `local-config.toml` do this). A
+  relative path starts in the folder of the run; each run replaces the file of the run before.
+- `iunctus run <workflow> -report <file>`: the same for one run; it wins over the config file.
+- `iunctus report <run> [-output <file>]`: the report of any past run, by default
+  `<run>-report.html`. `iunctus runs` lists the runs.
+
+The summary at the end of a run names the file, like `Report: report.html`.
+
+## On a laptop with Docker
+
+The same examples run on a laptop or workstation with Docker (or Podman). Each task is a
+container on that machine, and nothing else is needed: no SLURM, no Apptainer, no Nextflow,
+Snakemake or cwltool.
+
+### Once: the binary, a copy of the demo and the config file
+
+Build iunctus from this repository and put it on the PATH:
+
+```sh
+cargo build --release -p iunctus
+export PATH=$PWD/target/release:$PATH
+```
+
+Work in a copy of this folder, so that results do not land in the repository:
+
+```sh
+cp -r demo ~/iunctus-demo && cd ~/iunctus-demo
+```
+
+[`local-config.toml`](local-config.toml) runs tasks on this machine (`[executor] default =
+"local"`) and writes `report.html` after each run. Either copy it to
+`~/.config/iunctus/config.toml`, or give it to each command with
+`-iunctus-config ~/iunctus-demo/local-config.toml`, as below. Without it, add
+`-executor local` to each `iunctus run`; without either, `iunctus run` only simulates.
+
+The Snakemake tutorial needs its data as a git checkout (see the changes below), and
+nf-core/demo is not in this repository:
+
+```sh
+cd ~/iunctus-demo/snakemake
+git clone https://github.com/snakemake/snakemake-tutorial-data tutorial-data
+cp -r tutorial/Snakefile tutorial/scripts tutorial-data/ && rm -r tutorial && mv tutorial-data tutorial
+cd ~/iunctus-demo/nextflow
+git clone --branch 1.2.0 https://github.com/nf-core/demo nf-core-demo
+```
+
+### Run the examples
+
+```sh
+cd ~/iunctus-demo
+C=~/iunctus-demo/local-config.toml
+
+cd nextflow/hello && iunctus run main.nf -iunctus-config $C; cd -
+cd nextflow/nf-core-demo && iunctus run . -profile test,docker --outdir results -iunctus-config $C; cd -
+cd snakemake/tutorial && iunctus run Snakefile -iunctus-config $C; cd -
+cd cwl/quick-start && iunctus run hello_world.cwl -iunctus-config $C && iunctus run hello_world.cwl hello_world-job.json -iunctus-config $C; cd -
+cd cwl/workflows && iunctus run scatter-workflow.cwl scatter-job.yml -iunctus-config $C; cd -
+cd argo/examples && for f in hello-world dag-diamond artifact-passing loops; do iunctus run $f.yaml -iunctus-config $C; done; cd -
+```
+
+Each folder then has its `report.html` (in `argo/examples` and `cwl/quick-start` that of the
+last run there; `iunctus report <run>` writes any other). `iunctus page <run>` serves the live
+page on this machine.
+
+The second run of each comes from the cache, as on the cluster. Snakemake again does nothing
+while its results are there: `rm -r mapped_reads sorted_reads calls plots` first. nf-core/demo
+takes 7 of its 8 tasks from the cache without `-resume` here: Docker images are pinned to their
+digests. MultiQC runs again, as its input holds the time of the run.
+
+### Times on a laptop
+
+Measured on 2026-10-01 on the machine of the developer (32 cores, Docker 29), with an empty
+cache folder and the images already pulled. The images that were not there yet were
+`quay.io/nextflow/bash` (30 MB to download), `busybox:latest` (2 MB) and the matplotlib and
+pysam image of the Snakemake tutorial (361 MB); bwa, samtools, bcftools and the images of
+nf-core/demo were there from earlier work.
+
+| Example | First run | Second run |
+|---|---|---|
+| hello | 0.5 s | 0.1 s, 4 of 4 from the cache |
+| nf-core/demo | 20 s (with the download of its test data) | 10 s, 7 of 8 from the cache (MultiQC runs) |
+| Snakemake tutorial | 5.6 s | 0.1 s, 8 of 9 from the cache after `rm -r` of the results (the rule `all` counts as a task that ran) |
+| CWL hello world | 0.2 s, with the job file 0.2 s | 0.1 s |
+| CWL scatter | 0.2 s | 0.1 s |
+| Argo | 0.2 to 1.5 s each | 0.1 s |
 
 ## More to look at
 

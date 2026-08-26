@@ -2,7 +2,8 @@
 //! database and shows every run: the graph as it grows, the state of each step and task, the
 //! standard output and error of each task, and the outputs with links to download them. A
 //! running run updates the page live through Server-Sent Events. The page is plain HTML, CSS
-//! and JavaScript inside the binary: nothing to install and no build step.
+//! and JavaScript inside the binary: nothing to install and no build step. The same page also
+//! goes into one HTML file, the report of a run, which needs no server (`report`).
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -10,6 +11,7 @@ mod api;
 mod assets;
 mod files;
 mod live;
+mod report;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::path::PathBuf;
@@ -19,6 +21,8 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use run_database::{Database, DatabaseError};
 use tokio::sync::oneshot;
+
+pub use report::{LOG_TAIL, report};
 
 /// Where the page serves and what it reads.
 #[derive(Clone, Debug)]

@@ -16,6 +16,10 @@ const ROWS = 300;
 // The graph is laid out again at most this often while tasks come.
 const GRAPH_PAUSE = 2000;
 
+// A report is a file of one run, without a server (`report.js`): its views go by the part of
+// the address after `#`.
+const REPORT = document.getElementById("report") !== null;
+
 const main = document.getElementById("main");
 const trail = document.getElementById("trail");
 const liveMark = document.getElementById("live");
@@ -83,7 +87,7 @@ function shownState(task) {
 }
 
 function link(path, text) {
-  return el("a", { href: path, "data-route": true }, text);
+  return el("a", { href: REPORT ? `#${path}` : path, "data-route": true }, text);
 }
 
 function base(path) {
@@ -97,17 +101,32 @@ document.addEventListener("click", (event) => {
   const anchor = event.target.closest("a[data-route]");
   if (!anchor || event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
   event.preventDefault();
-  go(anchor.getAttribute("href"));
+  go(anchor.getAttribute("href").replace(/^#/, ""));
 });
-window.addEventListener("popstate", route);
+window.addEventListener(REPORT ? "hashchange" : "popstate", route);
 
 function go(path) {
-  if (path !== location.pathname) history.pushState(null, "", path);
+  if (REPORT && location.hash !== `#${path}`) {
+    // The change of the address shows the view.
+    location.hash = path;
+    return;
+  }
+  if (!REPORT && path !== location.pathname) history.pushState(null, "", path);
   route();
 }
 
+// Changes the address to a view that is shown already.
+function remember(path) {
+  history.pushState(null, "", REPORT ? `#${path}` : path);
+}
+
+// The address of the view: its path, or in a report what follows `#`.
+function address() {
+  return REPORT ? location.hash.slice(1) || reportStart() : location.pathname;
+}
+
 function route() {
-  const parts = location.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  const parts = address().split("/").filter(Boolean).map(decodeURIComponent);
   if (parts[0] === "runs" && parts[1]) {
     const task = parts[2] === "tasks" && parts[3] ? Number(parts[3]) : null;
     if (view && view.id === parts[1]) {

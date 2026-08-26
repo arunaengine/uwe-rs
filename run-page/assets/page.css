@@ -209,3 +209,17 @@ td.sorted { min-width: 7rem; }
 .differences { margin: 0; padding-left: 1.1rem; }
 .compare-with { margin: 0.4rem 0 0; }
 pre.command { flex: 1; margin: 0; }
+
+/* The timeline of a report: one lane per task. */
+.timeline { font-size: 0.85rem; max-height: 40rem; overflow: auto; margin-top: 0.5rem; }
+.lane { display: grid; grid-template-columns: minmax(8rem, 16rem) minmax(0, 1fr) 4.5rem; gap: 0.6rem; align-items: center; }
+.lane-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lane-bars, .lane-ticks { position: relative; height: 1.1rem; }
+.lane-bars i { position: absolute; top: 0.25rem; height: 0.6rem; border-radius: 2px; }
+.lane-ticks span { position: absolute; transform: translateX(-50%); color: var(--quiet); font-size: 0.75rem; white-space: nowrap; }
+.lane-ticks span:first-child { transform: none; }
+.lane-ticks span:last-child { transform: translateX(-100%); }
+.lane-time { text-align: right; color: var(--quiet); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lane.pick:hover { background: var(--code); }
+.waited { background: var(--line); }
+.written { color: var(--quiet); font-size: 0.85rem; white-space: nowrap; }

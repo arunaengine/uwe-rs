@@ -800,7 +800,8 @@ options:
                                       depend on it, then fails; without it no more tasks
                                       start, as each language's engine does
   -profile <names>, -c <file>         Nextflow profiles and config files
-  -params-file <file>, -inputs <file> a params file, or a CWL job file
+  -params-file <file>, -inputs <file> a params file, or a CWL job file; as with cwltool,
+                                      `run tool.cwl job.yml` takes job.yml as the job file
   -entry <name>                       the entry workflow or target
   -configfile <file>                  a Snakemake config file
   --config <name>=<value>...          Snakemake config values

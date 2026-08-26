@@ -6,14 +6,14 @@ use axum::http::header;
 use axum::response::IntoResponse;
 
 const PAGE: &str = include_str!("../assets/index.html");
-const STYLE: &str = include_str!("../assets/page.css");
-const SCRIPT: &str = include_str!("../assets/page.js");
-const RUN_SCRIPT: &str = include_str!("../assets/run.js");
-const GRAPH_SCRIPT: &str = include_str!("../assets/graph.js");
-const CAMERA_SCRIPT: &str = include_str!("../assets/camera.js");
-const BOXES_SCRIPT: &str = include_str!("../assets/boxes.js");
-const TIME_SCRIPT: &str = include_str!("../assets/time.js");
-const COMPARE_SCRIPT: &str = include_str!("../assets/compare.js");
+pub(crate) const STYLE: &str = include_str!("../assets/page.css");
+pub(crate) const SCRIPT: &str = include_str!("../assets/page.js");
+pub(crate) const RUN_SCRIPT: &str = include_str!("../assets/run.js");
+pub(crate) const GRAPH_SCRIPT: &str = include_str!("../assets/graph.js");
+pub(crate) const CAMERA_SCRIPT: &str = include_str!("../assets/camera.js");
+pub(crate) const BOXES_SCRIPT: &str = include_str!("../assets/boxes.js");
+pub(crate) const TIME_SCRIPT: &str = include_str!("../assets/time.js");
+pub(crate) const COMPARE_SCRIPT: &str = include_str!("../assets/compare.js");
 
 /// The same page for every view; its script shows the view that the address names.
 pub(crate) async fn page() -> impl IntoResponse {

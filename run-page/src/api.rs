@@ -10,7 +10,9 @@ use axum::extract::{Path, Query, State};
 use axum::http::header;
 use axum::response::IntoResponse;
 use axum::routing::get;
-use run_database::{Comparison, Log, MarkerRow, Run, TaskDetail, TaskRow, TimeSpent, Why};
+use run_database::{
+    Comparison, Database, DatabaseError, Log, MarkerRow, Run, TaskDetail, TaskRow, TimeSpent, Why,
+};
 use serde::{Deserialize, Serialize};
 use workflow_graph::TaskId;
 use workflow_graph::render::{Direction, FOLD, Format, Options, State as Shown, View, render};
@@ -61,7 +63,7 @@ async fn runs(State(state): State<Shared>) -> Result<Json<Vec<Run>>, Failure> {
 
 /// A run with all its tasks, for the first view of the page. Later changes come as events.
 #[derive(Serialize)]
-struct RunView {
+pub(crate) struct RunView {
     run: Run,
     tasks: Vec<TaskRow>,
     markers: Vec<MarkerRow>,
@@ -74,29 +76,34 @@ async fn run(
     Path(id): Path<String>,
 ) -> Result<Json<RunView>, Failure> {
     let view = query(&state, move |database| {
-        // The sequence first: an event that comes while the rest is read is sent again.
-        let sequence = database.last_event(&id)?;
-        let Some(run) = database.run(&id)? else {
-            return Err(Failure::not_found(format!("no run `{id}`")));
-        };
-        Ok(RunView {
-            tasks: database.tasks(&id)?,
-            markers: database.markers(&id)?,
-            run,
-            sequence,
-        })
+        run_view(database, &id)?.ok_or_else(|| Failure::not_found(format!("no run `{id}`")))
     })
     .await?;
     Ok(Json(view))
 }
 
+/// The first view of a run, or `None` when the database has no such run.
+pub(crate) fn run_view(database: &Database, id: &str) -> Result<Option<RunView>, DatabaseError> {
+    // The sequence first: an event that comes while the rest is read is sent again.
+    let sequence = database.last_event(id)?;
+    let Some(run) = database.run(id)? else {
+        return Ok(None);
+    };
+    Ok(Some(RunView {
+        tasks: database.tasks(id)?,
+        markers: database.markers(id)?,
+        run,
+        sequence,
+    }))
+}
+
 /// A task with its logs, and for each input that an earlier task of the run made, that task.
 #[derive(Serialize)]
-struct TaskView {
+pub(crate) struct TaskView {
     #[serde(flatten)]
     detail: TaskDetail,
-    stdout: Option<Log>,
-    stderr: Option<Log>,
+    pub(crate) stdout: Option<Log>,
+    pub(crate) stderr: Option<Log>,
     /// The task that made each input, by the input's location.
     producers: BTreeMap<String, u64>,
     /// The runs that replay the task, the latest first.
@@ -108,36 +115,42 @@ async fn task(
     Path((id, task)): Path<(String, u64)>,
 ) -> Result<Json<TaskView>, Failure> {
     let view = query(&state, move |database| {
-        let Some(detail) = database.task(&id, task)? else {
-            return Err(Failure::not_found(format!("no task {task} in run `{id}`")));
-        };
-        let attempt = detail.attempts.last().map(|attempt| attempt.number);
-        let log = |stream| match attempt {
-            Some(attempt) => database.log(&id, task, attempt, stream),
-            None => Ok(None),
-        };
-        let (stdout, stderr) = (log("stdout")?, log("stderr")?);
-        let mut producers = BTreeMap::new();
-        for input in detail
-            .inputs
-            .iter()
-            .filter(|input| !input.location.is_empty())
-        {
-            let made = database.producers(&input.location)?;
-            if let Some((_, file)) = made.iter().find(|(run, _)| run == &id) {
-                producers.insert(input.location.clone(), file.task);
-            }
-        }
-        Ok(TaskView {
-            replays: database.replays_of(&id, task)?,
-            detail,
-            stdout,
-            stderr,
-            producers,
-        })
+        task_view(database, &id, task)?
+            .ok_or_else(|| Failure::not_found(format!("no task {task} in run `{id}`")))
     })
     .await?;
     Ok(Json(view))
+}
+
+/// A task with its logs, or `None` when the run has no such task.
+pub(crate) fn task_view(
+    database: &Database,
+    id: &str,
+    task: u64,
+) -> Result<Option<TaskView>, DatabaseError> {
+    let Some(detail) = database.task(id, task)? else {
+        return Ok(None);
+    };
+    let attempt = detail.attempts.last().map(|attempt| attempt.number);
+    let log = |stream| match attempt {
+        Some(attempt) => database.log(id, task, attempt, stream),
+        None => Ok(None),
+    };
+    let (stdout, stderr) = (log("stdout")?, log("stderr")?);
+    let mut producers = BTreeMap::new();
+    for input in (detail.inputs.iter()).filter(|input| !input.location.is_empty()) {
+        let made = database.producers(&input.location)?;
+        if let Some((_, file)) = made.iter().find(|(run, _)| run == id) {
+            producers.insert(input.location.clone(), file.task);
+        }
+    }
+    Ok(Some(TaskView {
+        replays: database.replays_of(id, task)?,
+        detail,
+        stdout,
+        stderr,
+        producers,
+    }))
 }
 
 /// Why a task ran instead of taking the result of an earlier run; `null` without an earlier run.
@@ -210,7 +223,7 @@ async fn graph(
             .ok_or_else(|| Failure::bad_request("the direction of a graph is `down` or `right`"))?,
     };
     let open = asked.open.unwrap_or_default();
-    let mut options = Options {
+    let options = Options {
         view,
         direction,
         fold: asked.fold.unwrap_or(FOLD),
@@ -218,17 +231,27 @@ async fn graph(
         states: HashMap::new(),
     };
     let svg = query(&state, move |database| {
-        let Some(graph) = database.graph(&id)? else {
-            return Err(Failure::not_found(format!("no run `{id}`")));
-        };
-        let simulated = graph.is_simulated();
-        options.states = (database.tasks(&id)?.iter())
-            .map(|row| (TaskId(row.id), shown(row, simulated)))
-            .collect();
-        Ok(render(&graph, &options, Format::Svg))
+        picture(database, &id, options)?.ok_or_else(|| Failure::not_found(format!("no run `{id}`")))
     })
     .await?;
     Ok(([(header::CONTENT_TYPE, "image/svg+xml")], svg))
+}
+
+/// The picture of the graph of a run with the states of its tasks, or `None` when the database
+/// has no such run.
+pub(crate) fn picture(
+    database: &Database,
+    id: &str,
+    mut options: Options,
+) -> Result<Option<String>, DatabaseError> {
+    let Some(graph) = database.graph(id)? else {
+        return Ok(None);
+    };
+    let simulated = graph.is_simulated();
+    options.states = (database.tasks(id)?.iter())
+        .map(|row| (TaskId(row.id), shown(row, simulated)))
+        .collect();
+    Ok(Some(render(&graph, &options, Format::Svg)))
 }
 
 /// The state that the graph shows for a task: waiting and running come from the database,

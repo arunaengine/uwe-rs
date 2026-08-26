@@ -300,12 +300,14 @@ const NF_VALIDATION_PARAMS: &[&str] = &[
 /// `$params.name` in a string. An assignment like `params.name = value` declares the param
 /// rather than reading it. A project that includes nf-schema or nf-validation also reads the
 /// params that the plugin reads by name, where its schema declares them, as the plugins read
-/// them only then.
+/// them only then. A project that calls the plugin's `paramsSummaryLog` or `paramsSummaryMap`
+/// reads every param of its schema: the summary shows each one that is set, like the
+/// `config_profile_name` of an nf-core test profile.
 pub fn read(project: &Path, schema: &Json) -> BTreeSet<String> {
     let mut files = Vec::new();
     source_files(project, &mut files);
     let mut names = BTreeSet::new();
-    let (mut nf_schema, mut nf_validation) = (false, false);
+    let (mut nf_schema, mut nf_validation, mut summary) = (false, false, false);
     for file in files {
         let Ok(source) = std::fs::read_to_string(&file) else {
             continue;
@@ -316,6 +318,9 @@ pub fn read(project: &Path, schema: &Json) -> BTreeSet<String> {
         };
         nf_schema |= source.contains("plugin/nf-schema");
         nf_validation |= source.contains("plugin/nf-validation");
+        summary |= ["paramsSummaryLog", "paramsSummaryMap"]
+            .iter()
+            .any(|call| source.contains(call));
         params_read(&source, dialect, &mut names);
     }
     let mut plugin: Vec<&str> = Vec::new();
@@ -325,8 +330,9 @@ pub fn read(project: &Path, schema: &Json) -> BTreeSet<String> {
     if nf_validation {
         plugin.extend(NF_VALIDATION_PARAMS);
     }
+    let all = summary && (nf_schema || nf_validation);
     for property in properties(schema) {
-        if plugin.contains(&property.name) {
+        if all || plugin.contains(&property.name) {
             names.insert(property.name.to_owned());
         }
     }
@@ -442,6 +448,25 @@ mod tests {
         let mut names = BTreeSet::new();
         params_read(source, dialect, &mut names);
         names.into_iter().collect()
+    }
+
+    #[test]
+    fn the_summary_of_the_plugin_reads_every_param_of_the_schema() {
+        let project = tempfile::tempdir().expect("a folder");
+        let schema = serde_json::json!({
+            "properties": {"input": {"type": "string"}, "config_profile_name": {"type": "string"}}
+        });
+        let main = "include { paramsSummaryLog } from 'plugin/nf-schema'\n\
+                    workflow { log.info paramsSummaryLog(workflow); println params.input }\n";
+        std::fs::write(project.path().join("main.nf"), main).expect("writes main.nf");
+        let found: Vec<String> = read(project.path(), &schema).into_iter().collect();
+        assert_eq!(found, ["config_profile_name", "input"]);
+        // Without the summary, the plugin reads only its own params.
+        let main = "include { validateParameters } from 'plugin/nf-schema'\n\
+                    workflow { validateParameters(); println params.input }\n";
+        std::fs::write(project.path().join("main.nf"), main).expect("writes main.nf");
+        let found: Vec<String> = read(project.path(), &schema).into_iter().collect();
+        assert_eq!(found, ["input"]);
     }
 
     #[test]

@@ -451,7 +451,8 @@ function replayPart(id, task, replays) {
 
 function logPart(title, log, id, task, attempt, stream) {
   if (!log) return el("details", {}, el("summary", {}, `${title}: empty`));
-  const whole = attempt
+  // A report holds the end of each log only.
+  const whole = attempt && !REPORT
     ? el("a", { href: `/api/runs/${encodeURIComponent(id)}/tasks/${task}/logs/${attempt.number}/${stream}`,
       target: "_blank" }, "whole text")
     : null;
@@ -470,7 +471,8 @@ function filesTable(files, role, id, task, producers) {
     else if (!file.location) from = "written by the workflow";
     else from = el("span", { class: "mono" }, file.location);
     let get = "";
-    if (file.location && !file.location.includes("://")) {
+    // A report holds no files; the page of the run serves them.
+    if (file.location && !file.location.includes("://") && !REPORT) {
       get = file.directory
         ? el("button", { onclick: (event) => listFolder(event.target, url) }, "files")
         : el("a", { href: url }, "download");
@@ -507,7 +509,7 @@ async function listFolder(button, url) {
 function chooseStep(name) {
   if (!view) return;
   if (view.chosen !== null && view.chosen !== undefined) {
-    history.pushState(null, "", `/runs/${encodeURIComponent(view.id)}`);
+    remember(`/runs/${encodeURIComponent(view.id)}`);
     view.chosen = null;
     drawRows();
   }
@@ -590,7 +592,7 @@ function drawStepDetail() {
 // ---- live updates ----
 
 function listen() {
-  if (!view || view.run.state !== "running") return;
+  if (!view || view.run.state !== "running" || REPORT) return;
   const id = view.id;
   const events = new EventSource(`/api/runs/${encodeURIComponent(id)}/events?after=${view.sequence}`);
   view.events = events;

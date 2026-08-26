@@ -467,6 +467,18 @@ impl Recorder {
         });
     }
 
+    /// A result of the run went to `target`. A target that gets a result twice keeps the last.
+    pub fn delivered(&mut self, target: &str, location: &str) {
+        self.update(|connection, run| {
+            connection
+                .prepare_cached(
+                    "INSERT OR REPLACE INTO deliveries (run, target, location) VALUES (?1, ?2, ?3)",
+                )?
+                .execute(params![run, target, location])?;
+            Ok(())
+        });
+    }
+
     /// Runs one write that is no event of the engine, in the open transaction, as events are
     /// written: many rows, like the sources of a run, then take one commit, not one each,
     /// which counts where each commit waits for the file system of a cluster.
@@ -630,8 +642,7 @@ impl Observer for Recorder {
             } => self.finished(outcome, attempt, retried),
             Event::Marked { task, marker } => self.marked(task, marker.kind.name(), &marker.reason),
             Event::Ended { error } => self.ended(error.map(ToString::to_string).as_deref()),
-            // Delivered results are not recorded yet.
-            Event::Delivered { .. } => {}
+            Event::Delivered { delivery } => self.delivered(&delivery.target, &delivery.location),
         }
     }
 }

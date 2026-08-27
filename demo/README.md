@@ -208,55 +208,46 @@ The same examples run on a laptop or workstation with Docker (or Podman). Each t
 container on that machine, and nothing else is needed: no SLURM, no Apptainer, no Nextflow,
 Snakemake or cwltool.
 
-### Once: the binary, a copy of the demo and the config file
+### Once: the binary and the config file
 
-Build iunctus from this repository and put it on the PATH:
+Run the examples in this folder, `demo/`. What they write is in [`.gitignore`](.gitignore), so
+nothing lands in the repository. [`local-env.sh`](local-env.sh) builds iunctus, puts
+`target/release` first on the PATH, makes [`local-config.toml`](local-config.toml) the config
+and goes into `demo/`:
 
 ```sh
-cargo build --release -p iunctus
-export PATH=$PWD/target/release:$PATH
+source demo/local-env.sh             # or, in demo/: ./local-env.sh, which opens a new shell
 ```
 
-Work in a copy of this folder, so that results do not land in the repository:
+`local-config.toml` runs tasks on this machine (`[executor] default = "local"`) and writes
+`report.html` after each run. Without it, add `-executor local` to each `iunctus run`; without
+either, `iunctus run` only simulates.
+
+The Snakemake tutorial needs its data as a git checkout of its own (see the changes above),
+and nf-core/demo is not in this repository. In `demo/`:
 
 ```sh
-cp -r demo ~/iunctus-demo && cd ~/iunctus-demo
-```
-
-[`local-config.toml`](local-config.toml) runs tasks on this machine (`[executor] default =
-"local"`) and writes `report.html` after each run. Either copy it to
-`~/.config/iunctus/config.toml`, or give it to each command with
-`-iunctus-config ~/iunctus-demo/local-config.toml`, as below. Without it, add
-`-executor local` to each `iunctus run`; without either, `iunctus run` only simulates.
-
-The Snakemake tutorial needs its data as a git checkout (see the changes below), and
-nf-core/demo is not in this repository:
-
-```sh
-cd ~/iunctus-demo/snakemake
-git clone https://github.com/snakemake/snakemake-tutorial-data tutorial-data
-cp -r tutorial/Snakefile tutorial/scripts tutorial-data/ && rm -r tutorial && mv tutorial-data tutorial
-cd ~/iunctus-demo/nextflow
-git clone --branch 1.2.0 https://github.com/nf-core/demo nf-core-demo
+git clone https://github.com/snakemake/snakemake-tutorial-data snakemake/tutorial-data
+cp -r snakemake/tutorial/Snakefile snakemake/tutorial/scripts snakemake/tutorial-data/
+git clone --branch 1.2.0 https://github.com/nf-core/demo nextflow/nf-core-demo
 ```
 
 ### Run the examples
 
-```sh
-cd ~/iunctus-demo
-C=~/iunctus-demo/local-config.toml
+In `demo/`:
 
-cd nextflow/hello && iunctus run main.nf -iunctus-config $C; cd -
-cd nextflow/nf-core-demo && iunctus run . -profile test,docker --outdir results -iunctus-config $C; cd -
-cd snakemake/tutorial && iunctus run Snakefile -iunctus-config $C; cd -
-cd cwl/quick-start && iunctus run hello_world.cwl -iunctus-config $C && iunctus run hello_world.cwl hello_world-job.json -iunctus-config $C; cd -
-cd cwl/workflows && iunctus run scatter-workflow.cwl scatter-job.yml -iunctus-config $C; cd -
-cd argo/examples && for f in hello-world dag-diamond artifact-passing loops; do iunctus run $f.yaml -iunctus-config $C; done; cd -
+```sh
+iunctus run nextflow/hello/main.nf
+iunctus run cwl/quick-start/hello_world.cwl cwl/quick-start/hello_world-job.json
+iunctus run cwl/workflows/scatter-workflow.cwl cwl/workflows/scatter-job.yml
+for f in hello-world dag-diamond artifact-passing loops; do iunctus run argo/examples/$f.yaml; done
+cd snakemake/tutorial-data && iunctus run Snakefile; cd -
+cd nextflow/nf-core-demo && iunctus run . -profile test,docker --outdir results; cd -
 ```
 
-Each folder then has its `report.html` (in `argo/examples` and `cwl/quick-start` that of the
-last run there; `iunctus report <run>` writes any other). `iunctus page <run>` serves the live
-page on this machine.
+Each run writes `report.html` into the folder it ran in, so `demo/` has that of the last run
+there; `iunctus report <run>` writes any other. `iunctus page <run>` serves the live page on
+this machine.
 
 The second run of each comes from the cache, as on the cluster. Snakemake again does nothing
 while its results are there: `rm -r mapped_reads sorted_reads calls plots` first. nf-core/demo

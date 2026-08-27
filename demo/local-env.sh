@@ -1,7 +1,11 @@
+#!/usr/bin/env bash
 # Sets up this shell for the demo on a laptop or workstation with Docker or Podman.
 # Source it, from bash or zsh, anywhere:
 #
 #   source demo/local-env.sh
+#
+# Or run it, `./local-env.sh` in demo/: then it opens a new shell (your $SHELL, zsh or bash)
+# with the same set-up; `exit` goes back.
 #
 # It builds the release binary of iunctus (cargo does nothing when it is up to date), puts it
 # first on the PATH, makes demo/local-config.toml the config of iunctus for this shell only
@@ -43,6 +47,30 @@ Then look at a run:
 Each run writes report.html here; open it in a browser.
 The Snakemake tutorial and nf-core/demo need a download first: see demo/README.md.
 EOF
+  # Run, not sourced: what it set ends with it, so it goes on in a new shell. That shell reads
+  # its startup files, which may set PATH again, so a startup file of the script reads them
+  # first, then puts iunctus first on the PATH. It removes itself.
+  if [ -z "${ZSH_VERSION:-}" ] && [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    echo "This is a new shell for the demo; \`exit\` goes back."
+    iunctus_start=$(mktemp -d)
+    case ${SHELL:-} in
+      *zsh)
+        cat > "$iunctus_start/.zshenv" <<EOF
+ZDOTDIR=${ZDOTDIR:-$HOME}
+[ -f "\$ZDOTDIR/.zshenv" ] && source "\$ZDOTDIR/.zshenv"
+export PATH="$iunctus_root/target/release:\$PATH"
+rm -rf "$iunctus_start"
+EOF
+        ZDOTDIR=$iunctus_start exec "$SHELL" -i ;;
+      *)
+        cat > "$iunctus_start/bashrc" <<EOF
+[ -f ~/.bashrc ] && source ~/.bashrc
+export PATH="$iunctus_root/target/release:\$PATH"
+rm -rf "$iunctus_start"
+EOF
+        exec bash --rcfile "$iunctus_start/bashrc" -i ;;
+    esac
+  fi
 else
   echo "The build of iunctus failed; nothing was changed." >&2
 fi

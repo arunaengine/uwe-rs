@@ -1,5 +1,37 @@
 # The iunctus demo on the BCF cluster and on a laptop
 
+## TL;DR
+
+On the BCF cluster (binary and config are already in place):
+
+```sh
+ssh worm.intra                       # from outside: ssh -J uni-jump worm.intra
+export PATH=$HOME/.local/bin:$PATH
+cd /vol/cb/projects/iunctus/no_backup/demo/nextflow/hello
+iunctus run main.nf                  # every task is a SLURM job with Apptainer
+iunctus run main.nf                  # again: all tasks come from the cache
+```
+
+The same works in the other folders: `iunctus run Snakefile` in `snakemake/tutorial`,
+`iunctus run scatter-workflow.cwl scatter-job.yml` in `cwl/workflows`, `iunctus run
+dag-diamond.yaml` in `argo/examples`. Each run writes `report.html`; copy it to your computer
+and open it in a browser:
+
+```sh
+scp worm.intra:/vol/cb/projects/iunctus/no_backup/demo/nextflow/hello/report.html .
+```
+
+On a laptop with Docker:
+
+```sh
+cargo build --release -p iunctus && export PATH=$PWD/target/release:$PATH
+cp -r demo ~/iunctus-demo && cd ~/iunctus-demo/nextflow/hello
+iunctus run main.nf -iunctus-config ~/iunctus-demo/local-config.toml
+```
+
+The rest of this file explains each example, how it compares with the native tool, and what
+was changed.
+
 The official examples of the four languages that iunctus runs, each run with plain
 `iunctus run <file>`. On the BCF cluster every task is a SLURM job with its own Apptainer
 container. On a laptop or workstation every task is a Docker container: see

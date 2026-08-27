@@ -33,6 +33,8 @@ Every `iunctus run` and `iunctus graph` records itself in one SQLite file, the r
 | `iunctus compare <run> [<run>]` | what differs between two runs, task by task; with one run, the run of its workflow before it (section 6.2) |
 | `iunctus replay <run> <task>` | runs one recorded task again alone, on this machine or with `-executor tes\|slurm\|kubernetes`, and tells what differs (section 6.3) |
 | `iunctus telemetry <run>` | writes the OpenTelemetry trace of a run to `-output`, by default `<run>-traces.jsonl`, and sends it to the endpoint of the config file (section 6.4) |
+| `iunctus report <run>` | writes the report of a run, one HTML file without a server, to `-output`, by default `<run>-report.html` (section 4.2) |
+| `-report <file>` | `iunctus run` writes the report of the run there when it ends; `file` of the `[report]` section of the config file does the same for every run |
 | `-format text\|json` | what `time` and `compare` write: plain text (the default) or JSON |
 | `-resume [<run>]` | continues a run; without an id, the last run of the same workflow |
 | `-page` | serves the page of the run that `iunctus run` starts; it stays open after the run until Ctrl-C |
@@ -54,6 +56,7 @@ Done in 41s: 4 tasks, 4 ran, 0 from the cache, 0 failed
 Results:
   results/ a.txt, all.txt, b.txt, c.txt
 Files of every task: /vol/project/cache/store
+Report: report.html
 More: `iunctus runs`, `iunctus page 1a0f6c9c956-144e02`, `iunctus time 1a0f6c9c956-144e02`
 ```
 
@@ -140,6 +143,10 @@ The graph is the heart of the page: a large view of the run as a tree from the f
 **Live, without jumping.** Each update of a running run changes the class and icon of the boxes of its tasks, and the counts of the boxes of their steps, in place. Only new tasks or markers need a new picture: the page then puts the new picture in the place of the old one, keeps the view on what the user looked at (the box nearest the middle of the view, or the step that opened or folded), and lets each box glide from its old place to its new one, new boxes and lines fading in. Large pictures change without gliding.
 
 **Fast on large runs.** Below a zoom of 0.3 the boxes show their state by colour alone, without names and icons. Pictures of more than 1,500 boxes hide the boxes and lines that lie outside the view while it moves. On a run of 10,000 simulated tasks in two steps (release build, headless Chrome): the folded graph is served in 0.1 seconds; with both steps open, the server draws all 10,000 boxes in 0.13 seconds (4.2 MB of SVG) and the page shows them 1.4 seconds after the click; moving the view then takes 16 milliseconds per frame, zooming out to the whole graph 21, and 500 tasks that change their state are painted in 5 milliseconds.
+
+### 4.2 The report
+
+Some machines have no browser and no way to reach the page, like the login nodes of a cluster. The report of a run is the page of that one run in one HTML file, which the user copies to a computer and opens from the disk. `run_page::report` builds it: the style and the scripts of the page inline, and in a JSON element the answers that the page would get from the server for the run, its time, each task (with at most the last 4 KB of each log, `LOG_TAIL`) and why it ran, and the four pictures of the graph (tasks or steps, down or right; a run of up to 200 tasks has every task in the picture). `report.js` answers the requests of the page's scripts from that data instead of the network; the views go by the part of the address after `#`. A view that the file does not hold, like another run, says so. The report adds three parts that the page does not have: a timeline of the tasks (waiting, then running, as Nextflow's timeline report), the CPU time, CPU share, memory peak and I/O of each task, and where the results went, from the table `deliveries` (schema version 6, which records the engine's `Delivered` events). The file refers to nothing outside itself; the reports of the demo are 135 to 255 KB.
 
 ## 5. The RO-Crate
 

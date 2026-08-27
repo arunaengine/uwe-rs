@@ -13,15 +13,19 @@ use std::sync::Arc;
 use executor::wrapper::quote;
 use tokio::sync::{Mutex, OnceCell};
 
+/// What the pull of an image gave: its SIF file, or why it could not be made.
+pub type Made = Result<PathBuf, String>;
+
 /// The SIF files of the images of a backend, each made once.
 #[derive(Debug, Default)]
 pub struct Images {
-    made: Mutex<HashMap<String, Arc<OnceCell<PathBuf>>>>,
+    made: Mutex<HashMap<String, Arc<OnceCell<Made>>>>,
 }
 
 impl Images {
-    /// The cell of the SIF file of an image, which the first task of the image fills.
-    pub async fn cell(&self, reference: &str) -> Arc<OnceCell<PathBuf>> {
+    /// The cell of the SIF file of an image, which the first task of the image fills. The
+    /// other tasks of the image wait for it and share what it holds, also a failed pull.
+    pub async fn cell(&self, reference: &str) -> Arc<OnceCell<Made>> {
         let mut made = self.made.lock().await;
         made.entry(reference.to_owned()).or_default().clone()
     }

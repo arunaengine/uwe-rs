@@ -66,15 +66,16 @@ pub fn tag_file_name(reference: &str) -> Option<String> {
     Some(format!("tag-{}.sif", &hex[..hex.len().min(32)]))
 }
 
-/// The script of the job that pulls an image into `file`. It writes a file of its own first
-/// and moves it into place at the end, so that no task reads half a file, and two runs that
-/// pull the same image at once do not spoil each other's file. `exit` gets the exit code.
+/// The script of the job that pulls an image into `file`. It writes a file of its own first,
+/// syncs it and moves it into place at the end, so that no task reads half a file, also on
+/// another node of a shared file system, and two runs that pull the same image at once do not
+/// spoil each other's file. `exit` gets the exit code.
 pub fn pull_script(program: &str, reference: &str, file: &Path, exit: &Path) -> String {
     let file = quote(&file.to_string_lossy());
     format!(
         "#!/bin/bash\n# The iunctus job that pulls an image into a SIF file once, for the jobs \
-         of tasks.\npart={file}.part-$SLURM_JOB_ID\n{} pull --disable-cache \"$part\" {} && mv \
-         -f \"$part\" {file}\nstatus=$?\nrm -f \"$part\"\necho $status > {}\n",
+         of tasks.\npart={file}.part-$SLURM_JOB_ID\n{} pull --disable-cache \"$part\" {} && {{ sync \
+         -- \"$part\" 2> /dev/null; mv -f \"$part\" {file}; }}\nstatus=$?\nrm -f \"$part\"\necho $status > {}\n",
         quote(program),
         quote(&source(reference)),
         quote(&exit.to_string_lossy())
@@ -137,8 +138,8 @@ mod tests {
         );
         let expected = "#!/bin/bash\n# The iunctus job that pulls an image into a SIF file \
             once, for the jobs of tasks.\npart='/c/images/sha256-ab.sif'.part-$SLURM_JOB_ID\n\
-            'apptainer' pull --disable-cache \"$part\" 'docker://debian@sha256:ab' && mv -f \
-            \"$part\" '/c/images/sha256-ab.sif'\nstatus=$?\nrm -f \"$part\"\necho $status > \
+            'apptainer' pull --disable-cache \"$part\" 'docker://debian@sha256:ab' && { sync -- \
+            \"$part\" 2> /dev/null; mv -f \"$part\" '/c/images/sha256-ab.sif'; }\nstatus=$?\nrm -f \"$part\"\necho $status > \
             '/c/images/sha256-ab/control/container-exit'\n";
         assert_eq!(script, expected);
     }

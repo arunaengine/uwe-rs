@@ -37,14 +37,22 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     Ok(())
 }
 
+/// A number of tasks, like `1 task` or `2 tasks`.
+fn tasks(count: u64) -> String {
+    match count {
+        1 => "1 task".to_owned(),
+        count => format!("{count} tasks"),
+    }
+}
+
 /// Where the time went, in plain lines.
 fn text(spent: &TimeSpent, workflow: &str, simulated: bool) -> String {
     let length = spent.ended - spent.started;
     let mut text = format!(
-        "run {} of {workflow}: {}, {} tasks",
+        "run {} of {workflow}: {}, {}",
         spent.run,
         duration(length),
-        spent.tasks
+        tasks(spent.tasks)
     );
     if spent.reused > 0 {
         let _ = write!(text, " ({} reused)", spent.reused);
@@ -135,10 +143,7 @@ fn steps(text: &mut String, steps: &[StepTime]) {
         }
         let _ = writeln!(text, "\n{title}:");
         for (step, value) in found {
-            let tasks = match step.tasks {
-                1 => "1 task".to_owned(),
-                count => format!("{count} tasks"),
-            };
+            let tasks = tasks(step.tasks);
             let _ = writeln!(
                 text,
                 "  {:<width$}  {:>12}  {tasks}",
@@ -228,5 +233,6 @@ mod tests {
         assert!(text.contains("steps that used the most CPU time:\n  ALIGN        20.0 s"));
         assert!(text.contains("2.0 GB  2 tasks"), "{text}");
         assert!(!text.contains("no task has a measure"), "{text}");
+        assert_eq!(tasks(1), "1 task");
     }
 }

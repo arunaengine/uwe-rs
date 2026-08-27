@@ -35,6 +35,12 @@ const POLL: Duration = Duration::from_secs(10);
 /// file system may show late.
 const EXIT_GRACE: Duration = Duration::from_secs(30);
 
+/// How long to wait after the first failed pull of an image.
+const PULL_PAUSE: Duration = Duration::from_secs(20);
+
+/// How often the job that pulls an image is tried before the tasks of the image fail.
+const PULL_TRIES: u32 = 3;
+
 /// How long a cancelled job may take to leave the queue before the backend stops waiting.
 const CANCEL_GRACE: Duration = Duration::from_secs(60);
 
@@ -73,6 +79,9 @@ pub struct SlurmBackend {
     pub images: PathBuf,
     /// What the job that pulls an image asks for.
     pub pull: PullResources,
+    /// How long to wait after a failed pull before the next try; the wait grows with each
+    /// try.
+    pub pull_pause: Duration,
     /// The web proxy of the jobs, when the nodes reach the web only through one. `sbatch`
     /// hands its environment to the job, so the jobs get it as `HTTPS_PROXY` and
     /// `HTTP_PROXY` (and in lower case), and Apptainer pulls images through it.
@@ -116,6 +125,7 @@ impl SlurmBackend {
         SlurmBackend {
             images: scratch.join("images"),
             pull: PullResources::default(),
+            pull_pause: PULL_PAUSE,
             proxy: None,
             configs: ImageConfigs::default(),
             scratch,
@@ -424,7 +434,9 @@ impl SlurmBackend {
     }
 
     /// The SIF file of an image, pulled once by a job of its own. A file that is already there
-    /// counts only when it is `lasting`.
+    /// counts only when it is `lasting`. The tasks of the image share one pull per run, also
+    /// when it fails: a failed pull is tried again a few times, with a growing pause, and then
+    /// every task of the image fails with the same error.
     async fn sif(
         &self,
         program: &str,
@@ -436,12 +448,35 @@ impl SlurmBackend {
         let path = self.images.join(file);
         let cell = self.made.cell(reference).await;
         let made = cell.get_or_try_init(|| async {
-            match lasting && tokio::fs::try_exists(&path).await.unwrap_or(false) {
-                true => Ok(path.clone()),
-                false => self.pull(program, reference, &path, cancel).await,
+            if lasting && tokio::fs::try_exists(&path).await.unwrap_or(false) {
+                return Ok(Ok(path.clone()));
+            }
+            let mut tries = 0;
+            loop {
+                tries += 1;
+                let reason = match self.pull(program, reference, &path, cancel).await {
+                    Ok(path) => return Ok(Ok(path)),
+                    // A cancelled task leaves the pull to the next task of the image.
+                    Err(ExecutorError::Cancelled) => return Err(ExecutorError::Cancelled),
+                    Err(ExecutorError::Engine { message, .. }) => message,
+                    Err(error) => error.to_string(),
+                };
+                if tries >= PULL_TRIES {
+                    return Ok(Err(format!("{reason}; the pull was tried {tries} times")));
+                }
+                tokio::select! {
+                    () = tokio::time::sleep(self.pull_pause * tries) => {}
+                    () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
+                }
             }
         });
-        made.await.cloned()
+        match made.await? {
+            Ok(path) => Ok(path.clone()),
+            Err(reason) => Err(ExecutorError::MissingImage {
+                image: reference.to_owned(),
+                reason: reason.clone(),
+            }),
+        }
     }
 
     /// Submits the job that pulls an image into its SIF file at `path`, and waits for it.

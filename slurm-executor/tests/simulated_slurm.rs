@@ -477,7 +477,12 @@ async fn a_runtime_that_cannot_start_the_image_fails_the_machine() {
         &bin,
         Container::Apptainer(text(&bin.join("apptainer"))),
     );
-    let spec = spec("true");
+    // A SIF file needs no pull, so the job of the task meets the broken runtime.
+    let mut spec = spec("true");
+    spec.image = Some(Image {
+        reference: "/images/tool.sif".into(),
+        platform: None,
+    });
     let (staging, placement) = (Staging::default(), placement());
     let job = Job {
         name: "run-P-3-1",
@@ -492,6 +497,60 @@ async fn a_runtime_that_cannot_start_the_image_fails_the_machine() {
         "{error}"
     );
     assert!(!root.path().join("scratch/run-P-3-1").exists());
+}
+
+#[tokio::test]
+async fn tasks_of_an_image_that_cannot_be_pulled_share_a_few_tries_and_fail() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), BROKEN_APPTAINER);
+    let mut backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    backend.pull_pause = Duration::from_millis(100);
+    let spec = spec("true");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = |name| Job {
+        name,
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let cancel = CancellationToken::new();
+    let (first, second, third) = tokio::join!(
+        backend.run(job("run-P-4-1"), &cancel),
+        backend.run(job("run-P-5-1"), &cancel),
+        backend.run(job("run-P-6-1"), &cancel)
+    );
+    for result in [first, second, third] {
+        let error = result.expect_err("a failure");
+        assert!(
+            matches!(error, ExecutorError::MissingImage { .. }),
+            "{error}"
+        );
+        assert!(!error.retryable(), "{error}");
+        let text = error.to_string();
+        assert!(text.contains("FATAL: while making image"), "{text}");
+        assert!(text.contains("tried 3 times"), "{text}");
+    }
+    // Three pull jobs in all, and no job of a task.
+    let jobs = std::fs::read_dir(bin.join("state")).expect("the jobs");
+    let names: Vec<String> = (jobs.flatten())
+        .filter(|entry| entry.path().extension().is_some_and(|end| end == "options"))
+        .map(|entry| std::fs::read_to_string(entry.path()).expect("the options"))
+        .collect();
+    assert_eq!(names.len(), 3, "{names:?}");
+    assert!(
+        names
+            .iter()
+            .all(|options| options.contains("--job-name=iunctus-image-"))
+    );
+    // A later task of the run fails at once with the same error.
+    let error = (backend.run(job("run-P-7-1"), &cancel).await).expect_err("a failure");
+    assert!(error.to_string().contains("tried 3 times"), "{error}");
+    let last = std::fs::read_to_string(bin.join("state/last")).expect("the last job");
+    assert_eq!(last.trim(), "103");
 }
 
 #[tokio::test]

@@ -24,10 +24,13 @@ scp worm.intra:/vol/cb/projects/iunctus/no_backup/demo/nextflow/hello/report.htm
 On a laptop with Docker:
 
 ```sh
-cargo build --release -p iunctus && export PATH=$PWD/target/release:$PATH
+source demo/local-env.sh             # builds iunctus, puts it on the PATH, sets the config
 cp -r demo ~/iunctus-demo && cd ~/iunctus-demo/nextflow/hello
-iunctus run main.nf -iunctus-config ~/iunctus-demo/local-config.toml
+iunctus run main.nf                  # every task is a Docker container; writes report.html
 ```
+
+`demo/local-env.sh` changes only the shell it is sourced in: it makes
+[`local-config.toml`](local-config.toml) the config through `IUNCTUS_SITE_CONFIG`.
 
 The rest of this file explains each example, how it compares with the native tool, and what
 was changed.

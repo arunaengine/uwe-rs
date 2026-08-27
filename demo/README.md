@@ -25,7 +25,7 @@ On a laptop with Docker:
 
 ```sh
 source demo/local-env.sh             # builds iunctus, goes into demo/, prints the commands
-iunctus run nextflow/hello/main.nf   # every task is a Docker container; writes report.html
+iunctus run nextflow/main.nf         # every task is a Docker container; writes report.html
 ```
 
 `demo/local-env.sh` changes only the shell it is sourced in: it puts `target/release` first
@@ -42,14 +42,21 @@ container. On a laptop or workstation every task is a Docker container: see
 
 | Folder | Example | Source |
 |---|---|---|
-| `nextflow/hello/` | `nextflow run hello`, the first example of nextflow.io | [nextflow-io/hello](https://github.com/nextflow-io/hello) 3c2cdc98 |
-| `nextflow/nf-core-demo/` (cluster only) | nf-core/demo 1.2.0 with its test profile | [nf-core/demo](https://github.com/nf-core/demo) 1.2.0, 32893afe |
-| `snakemake/tutorial/` | the workflow of the Snakemake tutorial (basics, step 7 and summary) | [snakemake/snakemake](https://github.com/snakemake/snakemake) docs/tutorial/basics.rst at 5bf5e21b; data [snakemake/snakemake-tutorial-data](https://github.com/snakemake/snakemake-tutorial-data) b21b0248 |
-| `cwl/quick-start/` | "Hello World" of the CWL user guide's quick start | [common-workflow-language/user_guide](https://github.com/common-workflow-language/user_guide) 96a5e947, `src/_includes/cwl/` |
-| `cwl/workflows/` | the first scatter workflow of the user guide | the same, `src/_includes/cwl/workflows/` |
-| `argo/examples/` | `hello-world`, `dag-diamond`, `artifact-passing` and `loops` | [argoproj/argo-workflows](https://github.com/argoproj/argo-workflows) v4.1.4, b5b4d665, `examples/` |
+| File | Example | Source |
+|---|---|---|
+| `nextflow/main.nf` | `nextflow run hello`, the first example of nextflow.io | [nextflow-io/hello](https://github.com/nextflow-io/hello) 3c2cdc98 |
+| `nextflow/nf-core-demo/` (downloaded) | nf-core/demo 1.2.0 with its test profile | [nf-core/demo](https://github.com/nf-core/demo) 1.2.0, 32893afe |
+| `snakemake/hello.smk` | hello world, written for this demo | this repository |
+| `snakemake/Snakefile` | the workflow of the Snakemake tutorial (basics, step 7 and summary); its `data/` is downloaded | [snakemake/snakemake](https://github.com/snakemake/snakemake) docs/tutorial/basics.rst at 5bf5e21b; data [snakemake/snakemake-tutorial-data](https://github.com/snakemake/snakemake-tutorial-data) b21b0248 |
+| `cwl/hello_world.cwl` | "Hello World" of the CWL user guide's quick start | [common-workflow-language/user_guide](https://github.com/common-workflow-language/user_guide) 96a5e947, `src/_includes/cwl/` |
+| `cwl/scatter-workflow.cwl` | the first scatter workflow of the user guide | the same, `src/_includes/cwl/workflows/` |
+| `argo/hello-world.yaml`, `argo/dag-diamond.yaml` | two of Argo's examples | [argoproj/argo-workflows](https://github.com/argoproj/argo-workflows) v4.1.4, b5b4d665, `examples/` |
 
 The files are copies of the originals. The few changes are listed below, with the reason.
+
+The copy on the cluster, `/vol/cb/projects/iunctus/no_backup/demo`, still has the earlier
+folders: `nextflow/hello`, `nextflow/nf-core-demo`, `snakemake/tutorial`, `cwl/quick-start`,
+`cwl/workflows` and `argo/examples`. The commands for the cluster below use them.
 
 ## Where to run it
 
@@ -144,24 +151,29 @@ the native tools:
   1.19.2, bcftools 1.19, and matplotlib 3.1.2 with pysam 0.15. The last is the only published
   image with both; its pysam is older than the tutorial's 0.22, which the script does not
   notice. Snakemake itself uses the same lines with `--sdm apptainer`.
-- **Snakemake: the folder is a git checkout of the data.** bwa reads index files next to
-  `data/genome.fa` (`genome.fa.bwt` and others) that no rule declares. Natively, a job sees
-  the whole folder. iunctus gives a job the files that its rule declares and the files that
-  Snakemake hands to jobs without a shared file system: those that git tracks (decision 11).
-  In a checkout of the data, the index files are tracked. The tutorial's Gitpod setup is
-  such a checkout. To set it up elsewhere:
-  `git clone https://github.com/snakemake/snakemake-tutorial-data tutorial`, then copy
-  `Snakefile` and `scripts/` of this folder into it.
+- **Snakemake: the index files are inputs, and `workdir: workflow.basedir`.** bwa reads
+  index files next to `data/genome.fa` (`genome.fa.bwt` and others), and bcftools reads
+  `genome.fa.fai`; the tutorial declares neither. Natively, a job sees the whole folder.
+  iunctus gives a job the files that its rule declares and the files that git tracks
+  (decision 11); the downloaded `data/` is not tracked. So `bwa_map` and `bcftools_call`
+  declare these files. The `workdir:` line lets `iunctus run snakemake/Snakefile` work from
+  `demo/`, as Snakemake otherwise looks for `data/` in the folder it starts in. On the
+  cluster, the folder is a git checkout of the data instead, where the index files are
+  tracked.
 - **CWL: `scatter-two-steps.cwl` is left out.** As published, it asks
   `hello_world_to_stdout.cwl` for an output `echo_out` that the tool does not have (the
   contents of the two `hello_world` files in the guide's `workflows` folder are swapped).
   cwltool rejects it the same way. The first scatter example, `scatter-workflow.cwl`, is used.
+- **CWL: one `hello_world.cwl`.** The guide's `workflows` folder has its own `hello_world.cwl`
+  with an output that the scatter workflow does not use. Here the scatter workflow runs the
+  quick start's `hello_world.cwl`, so that `cwl/` holds one file of that name.
 - **CWL: `hello_world.cwl` names no image.** cwltool runs it on the host; iunctus runs every
   task in a container, here `debian:stable-slim`.
 - **Nextflow hello: the image is used.** `nextflow run hello` without `-with-docker` or
   `-with-apptainer` ignores `process.container`; iunctus always runs it.
 - **nf-core/demo is not in this repository**, as it is a whole pipeline of about 50 files.
-  iunctus cannot fetch a pipeline by its name yet, so it was cloned on the cluster:
+  iunctus cannot fetch a pipeline by its name yet, so `local-env.sh` clones it, and on the
+  cluster it was cloned by hand:
   `git clone --branch 1.2.0 https://github.com/nf-core/demo nf-core-demo`.
 
 ## Compared with the native tools
@@ -223,26 +235,23 @@ source demo/local-env.sh             # or, in demo/: ./local-env.sh, which opens
 `report.html` after each run. Without it, add `-executor local` to each `iunctus run`; without
 either, `iunctus run` only simulates.
 
-The Snakemake tutorial needs its data as a git checkout of its own (see the changes above),
-and nf-core/demo is not in this repository. In `demo/`:
-
-```sh
-git clone https://github.com/snakemake/snakemake-tutorial-data snakemake/tutorial-data
-cp -r snakemake/tutorial/Snakefile snakemake/tutorial/scripts snakemake/tutorial-data/
-git clone --branch 1.2.0 https://github.com/nf-core/demo nextflow/nf-core-demo
-```
+The first time, `local-env.sh` also downloads what is not in this repository: nf-core/demo
+into `nextflow/nf-core-demo/` and the data of the Snakemake tutorial into `snakemake/data/`.
 
 ### Run the examples
 
-In `demo/`:
+In `demo/`, a simple and a complex example of each language:
 
 ```sh
-iunctus run nextflow/hello/main.nf
-iunctus run cwl/quick-start/hello_world.cwl cwl/quick-start/hello_world-job.json
-iunctus run cwl/workflows/scatter-workflow.cwl cwl/workflows/scatter-job.yml
-for f in hello-world dag-diamond artifact-passing loops; do iunctus run argo/examples/$f.yaml; done
-cd snakemake/tutorial-data && iunctus run Snakefile; cd -
-cd nextflow/nf-core-demo && iunctus run . -profile test,docker --outdir results; cd -
+iunctus run nextflow/main.nf
+iunctus run snakemake/hello.smk
+iunctus run cwl/hello_world.cwl cwl/hello_world-job.json
+iunctus run argo/hello-world.yaml
+
+iunctus run nextflow/nf-core-demo -profile test,docker --outdir results
+iunctus run snakemake/Snakefile
+iunctus run cwl/scatter-workflow.cwl cwl/scatter-job.yml
+iunctus run argo/dag-diamond.yaml
 ```
 
 Each run writes `report.html` into the folder it ran in, so `demo/` has that of the last run
@@ -250,9 +259,9 @@ there; `iunctus report <run>` writes any other. `iunctus page <run>` serves the 
 this machine.
 
 The second run of each comes from the cache, as on the cluster. Snakemake again does nothing
-while its results are there: `rm -r mapped_reads sorted_reads calls plots` first. nf-core/demo
-takes 7 of its 8 tasks from the cache without `-resume` here: Docker images are pinned to their
-digests. MultiQC runs again, as its input holds the time of the run.
+while its results are there: `rm -r snakemake/{mapped_reads,sorted_reads,calls,plots}` first.
+nf-core/demo takes 7 of its 8 tasks from the cache without `-resume` here: Docker images are
+pinned to their digests. MultiQC runs again, as its input holds the time of the run.
 
 ### Times on a laptop
 
@@ -287,6 +296,6 @@ nf-core/demo were there from earlier work.
 
 The examples keep their licenses: nextflow-io/hello and Argo Workflows under the Apache
 License 2.0 (`LICENSE` in their folders), the Snakemake tutorial under the MIT license of
-Snakemake (`snakemake/tutorial/LICENSE.md`), the CWL user guide under CC BY 4.0 with its
+Snakemake (`snakemake/LICENSE.md`), the CWL user guide under CC BY 4.0 with its
 example programs under the Apache License 2.0 (`cwl/LICENSE.md`; Copyright the Common
 Workflow Language project, https://www.commonwl.org/). nf-core/demo is under the MIT license.

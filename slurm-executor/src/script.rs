@@ -116,35 +116,36 @@ pub const TIMED_OUT: i32 = 124;
 /// How long a container that ran out of time may take to end after its stop signal.
 const STOP_GRACE: u64 = 10;
 
-/// The job script: it runs the wrapper in the task's container, then records the exit code of
-/// the container. Podman and Docker get an init process, which hands the signal that stops the
-/// job to the task, so that the container ends with the job. A task with a `time` runs under
-/// `timeout`, as SLURM counts the time of a job in whole minutes.
+/// The job script: it waits until the node sees the whole wrapper, runs the wrapper in the
+/// task's container, makes what the task wrote durable, then records the exit code of the
+/// container. Podman and Docker get an init process, which hands the signal that stops the job
+/// to the task, so that the container ends with the job. A task with a `time` runs under
+/// `timeout`, as SLURM counts the time of a job in whole minutes. `size` is the length of the
+/// wrapper in bytes.
 pub fn job_script(
     container: &Container,
     run: &ContainerRun<'_>,
     gpus: bool,
     time: Option<u64>,
+    size: u64,
 ) -> String {
     let words: Vec<String> = (command(container, run, gpus).iter())
         .map(|word| quote(word))
         .collect();
-    let exit = quote(
-        &run.root
-            .join(CONTROL)
-            .join(CONTAINER_EXIT)
-            .to_string_lossy(),
-    );
-    let head = "#!/bin/bash\n# The iunctus job of one attempt of a task.\n";
-    match time {
-        None => format!("{head}{}\necho $? > {exit}\n", words.join(" ")),
-        Some(_) => format!(
-            "{head}{}{}\nstatus=$?\n{}echo $status > {exit}\n",
-            timeout(time),
-            words.join(" "),
-            timed_out(time)
-        ),
-    }
+    let control = run.root.join(CONTROL);
+    let exit = quote(&control.join(CONTAINER_EXIT).to_string_lossy());
+    let record = quote(&control.join(executor::wrapper::EXIT).to_string_lossy());
+    format!(
+        "#!/bin/bash\n# The iunctus job of one attempt of a task.\n{}{}{}\nstatus=$?\n{}{}\
+         [ \"$status\" -ne 0 ] || [ -s {record} ] || echo \"iunctus: the container ended, but \
+         the wrapper of the task recorded no exit code on $(hostname)\" >&2\n\
+         echo $status > {exit}\n",
+        wait_for(&[(PathBuf::from(run.script()), size)], &exit),
+        timeout(time),
+        words.join(" "),
+        timed_out(time),
+        durable(run.root)
+    )
 }
 
 /// The job script of a task of several containers: it starts a container for each of `runs`,
@@ -152,15 +153,22 @@ pub fn job_script(
 /// the first container that failed, else 0. `exits` holds for each run the files of the exit
 /// codes of its containers: a container of the engine that fails without its wrappers, as when
 /// it is killed for lack of memory, records its exit code there, so that the containers that
-/// wait for one of them go on.
+/// wait for one of them go on. `sizes` holds the length in bytes of the wrapper of each run,
+/// which the job waits to see whole, as [`job_script`] does.
 pub fn job_script_of_containers(
     container: &Container,
     runs: &[ContainerRun<'_>],
     exits: &[Vec<PathBuf>],
     gpus: bool,
     time: Option<u64>,
+    sizes: &[u64],
 ) -> String {
     let mut script = String::from("#!/bin/bash\n# The iunctus job of one attempt of a task.\n");
+    let exit = runs[0].root.join(CONTROL).join(CONTAINER_EXIT);
+    let wrappers: Vec<(PathBuf, u64)> = (runs.iter().zip(sizes))
+        .map(|(run, size)| (PathBuf::from(run.script()), *size))
+        .collect();
+    script.push_str(&wait_for(&wrappers, &quote(&exit.to_string_lossy())));
     script.push_str("pids=\n");
     for (index, run) in runs.iter().enumerate() {
         let words: Vec<String> = (command(container, run, gpus).iter())
@@ -173,13 +181,55 @@ pub fn job_script_of_containers(
         script.push_str(&recording_its_end(&command, &exits));
         script.push_str("pids=\"$pids $!\"\n");
     }
-    let exit = runs[0].root.join(CONTROL).join(CONTAINER_EXIT);
     script.push_str(&format!(
-        "status=0\nfor pid in $pids; do\n    wait \"$pid\"\n    code=$?\n    [ \"$status\" -ne 0 ] || status=$code\ndone\n{}echo \"$status\" > {}\n",
+        "status=0\nfor pid in $pids; do\n    wait \"$pid\"\n    code=$?\n    [ \"$status\" -ne 0 ] || status=$code\ndone\n{}{}echo \"$status\" > {}\n",
         timed_out(time),
+        durable(runs[0].root),
         quote(&exit.to_string_lossy())
     ));
     script
+}
+
+/// The exit code that a job records when the node does not see the whole wrapper of its task
+/// in time, as Docker gives 125 when it cannot run a container.
+pub const NOT_SEEN: i32 = 125;
+
+/// How long a job waits for the node to see the whole wrapper of its task, in seconds.
+const SEEN_GRACE: u64 = 60;
+
+/// The lines that wait until the node sees each file at its length in bytes. A shared file
+/// system like CephFS may show a file that another machine has just written as empty or short
+/// for a while, and a shell runs an empty wrapper as a task that did nothing and ended well.
+/// A file that the node does not see whole in time ends the job with [`NOT_SEEN`] in `exit`.
+fn wait_for(files: &[(PathBuf, u64)], exit: &str) -> String {
+    let checks: Vec<String> = (files.iter())
+        .map(|(path, size)| format!("seen {} {size}", quote(&path.to_string_lossy())))
+        .collect();
+    format!(
+        "seen() {{ [ \"$(stat -c %s \"$1\" 2> /dev/null)\" = \"$2\" ]; }}\n\
+         waited=0\n\
+         until {}; do\n    \
+         if [ $waited -ge {SEEN_GRACE} ]; then\n        \
+         echo \"iunctus: after {SEEN_GRACE} s, the node $(hostname) still does not see the whole \
+         wrapper of the task\" >&2\n        \
+         echo {NOT_SEEN} > {exit}\n        \
+         exit 0\n    \
+         fi\n    \
+         sleep 1\n    \
+         waited=$((waited + 1))\n\
+         done\n",
+        checks.join(" && ")
+    )
+}
+
+/// The line that makes every file in the folder of an attempt durable before the job records
+/// its end, so that the machine of iunctus, which reads the records and outputs next, sees
+/// them whole on a shared file system. `sync` with files syncs only those files.
+fn durable(root: &Path) -> String {
+    format!(
+        "find {} -type f -exec sync -- {{}} + 2> /dev/null\n",
+        quote(&root.to_string_lossy())
+    )
 }
 
 /// The start of a command that stops it at the time of its task, then kills it after a grace.
@@ -374,16 +424,27 @@ mod tests {
             &run(&image, &mounts, Some("/data")),
             true,
             None,
+            100,
         );
-        let expected = "#!/bin/bash\n# The iunctus job of one attempt of a task.\n\
+        let expected = "\ndone\n\
             'apptainer' 'exec' '--containall' '--pwd' '/data' \
             '--bind' '/shared/scratch/run-P-1-1:/shared/scratch/run-P-1-1' \
             '--bind' '/shared/scratch/run-P-1-1/work:/data' \
             '--bind' '/shared/store/cas:/shared/store/cas:ro' '--nv' \
             'docker://debian@sha256:ab' 'sh' \
             '/shared/scratch/run-P-1-1/control/wrapper.sh'\n\
-            echo $? > '/shared/scratch/run-P-1-1/control/container-exit'\n";
-        assert_eq!(script, expected);
+            status=$?\n\
+            find '/shared/scratch/run-P-1-1' -type f -exec sync -- {} + 2> /dev/null\n";
+        assert!(script.contains(expected), "{script}");
+        // The job waits for the node to see the whole wrapper, and records the end.
+        assert!(
+            script.contains("until seen '/shared/scratch/run-P-1-1/control/wrapper.sh' 100; do\n"),
+            "{script}"
+        );
+        assert!(
+            script.ends_with("echo $status > '/shared/scratch/run-P-1-1/control/container-exit'\n"),
+            "{script}"
+        );
         // A task that runs as its image says starts in its `workdir`, which is no mount, with a
         // file system that it may write.
         let access = Access {
@@ -399,6 +460,7 @@ mod tests {
             &as_image,
             false,
             None,
+            100,
         );
         let expected = "'apptainer' 'exec' '--containall' '--pwd' '/data' '--writable-tmpfs' \
             '--bind' '/shared/scratch/run-P-1-1:/shared/scratch/run-P-1-1' 'docker://";
@@ -413,6 +475,7 @@ mod tests {
             &offline,
             false,
             None,
+            100,
         );
         assert!(
             script.contains(
@@ -438,8 +501,11 @@ mod tests {
             &run(&image, &[], None),
             false,
             None,
+            100,
         );
-        let command = script.lines().nth(2).expect("the command");
+        let command = (script.lines())
+            .find(|line| line.starts_with("'podman'"))
+            .expect("the command");
         let expected = "'podman' 'run' '--init' '--rm' '--name' 'iunctus-run-P-1-1' \
             '--entrypoint' 'sh' '--userns=keep-id' '--user' '1000:100' \
             '--cap-drop' 'ALL' '--security-opt' 'no-new-privileges' \
@@ -453,7 +519,7 @@ mod tests {
             ..run(&image, &[], None)
         };
         let engine = EngineCommand::docker("docker");
-        let script = job_script(&Container::Engine(engine), &offline, false, Some(90));
+        let script = job_script(&Container::Engine(engine), &offline, false, Some(90), 100);
         assert!(script.contains("'--network' 'none'"), "{script}");
         // A task with a time runs under `timeout`.
         assert!(
@@ -461,9 +527,8 @@ mod tests {
             "{script}"
         );
         assert!(
-            script.ends_with(
-                "\nstatus=$?\n[ $status -eq 137 ] && [ $SECONDS -ge 90 ] && status=124\n\
-                 echo $status > '/shared/scratch/run-P-1-1/control/container-exit'\n"
+            script.contains(
+                "\nstatus=$?\n[ $status -eq 137 ] && [ $SECONDS -ge 90 ] && status=124\nfind "
             ),
             "{script}"
         );

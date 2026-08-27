@@ -24,15 +24,15 @@ use tokio_util::sync::CancellationToken;
 use crate::images::{Images, file_name, pull_script, tag_file_name};
 use crate::queue::{Look, Queue};
 use crate::script::{
-    CONTAINER_EXIT, Container, LOG, PullResources, SCRIPT, TIMED_OUT, job_script,
+    CONTAINER_EXIT, Container, LOG, NOT_SEEN, PullResources, SCRIPT, TIMED_OUT, job_script,
     job_script_of_containers, pull_options, sbatch_options,
 };
 
 /// How often the queue is asked about the jobs, by default.
 const POLL: Duration = Duration::from_secs(10);
 
-/// How long a job that ended may take to show the record of its container, which a shared
-/// file system may show late.
+/// How long a job that ended may take to show the record of its container, and a container
+/// that ended well the record of its task, which a shared file system may show late.
 const EXIT_GRACE: Duration = Duration::from_secs(30);
 
 /// How long to wait after the first failed pull of an image.
@@ -303,8 +303,16 @@ impl SlurmBackend {
         let gpus = job.placement.accelerators.iter().any(|gpu| gpu.count > 0);
         let script = match spec.containers.is_empty() {
             true => {
-                tokio::fs::write(run.script(), run.wrapper(spec)).await?;
-                job_script(&self.container, &run, gpus, job.placement.time_seconds)
+                let wrapper = run.wrapper(spec);
+                tokio::fs::write(run.script(), &wrapper).await?;
+                let size = wrapper.len() as u64;
+                job_script(
+                    &self.container,
+                    &run,
+                    gpus,
+                    job.placement.time_seconds,
+                    size,
+                )
             }
             // A task of several containers starts a container for each image, all at once.
             false => {
@@ -345,11 +353,21 @@ impl SlurmBackend {
                             .collect()
                     })
                     .collect();
+                let mut sizes = Vec::new();
+                for path in &paths {
+                    sizes.push(tokio::fs::metadata(path).await?.len());
+                }
                 let time = job.placement.time_seconds;
-                job_script_of_containers(&self.container, &runs, &exits, gpus, time)
+                job_script_of_containers(&self.container, &runs, &exits, gpus, time, &sizes)
             }
         };
         tokio::fs::write(control.join(SCRIPT), script).await?;
+        // The node reads the wrappers, the copied inputs and the standard input as soon as the
+        // job starts.
+        let synced = root.to_owned();
+        tokio::task::spawn_blocking(move || sync_files(&synced))
+            .await
+            .map_err(|error| std::io::Error::other(error.to_string()))??;
         let options = self
             .with_excluded(sbatch_options(job, root, &self.options))
             .await;
@@ -620,7 +638,10 @@ async fn finish(
     spec: &task_model::TaskSpec,
 ) -> Result<Finished, ExecutorError> {
     let control = root.join(CONTROL);
-    let recorded = containers::recorded(spec, &control);
+    let recorded = match ended {
+        Ended::Done(0) => record(spec, &control).await,
+        _ => containers::recorded(spec, &control),
+    };
     let (exit_code, note) = match outcome(recorded, &ended, time) {
         Ok(outcome) => outcome,
         Err(message) => return Err(machine(explain(message, &root).await)),
@@ -649,6 +670,40 @@ async fn finish(
     })
 }
 
+/// The exit code that the wrapper of a task recorded in a container that ended well. The node
+/// wrote it before the record of the container, but a shared file system may show it to this
+/// machine later, so it is looked for again for a while before the attempt counts as failed.
+async fn record(spec: &task_model::TaskSpec, control: &Path) -> Option<i32> {
+    let since = Instant::now();
+    let mut pause = Duration::from_millis(100);
+    loop {
+        if let Some(code) = containers::recorded(spec, control) {
+            return Some(code);
+        }
+        if since.elapsed() >= EXIT_GRACE {
+            return None;
+        }
+        tokio::time::sleep(pause).await;
+        pause = (pause * 2).min(Duration::from_secs(2));
+    }
+}
+
+/// Syncs every file in a folder, and in its folders, but not the files that links point to: on
+/// a shared file system like CephFS, a file that one machine wrote and did not sync may show
+/// empty or short on another machine for a while.
+fn sync_files(folder: &Path) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(folder)? {
+        let entry = entry?;
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
+            sync_files(&entry.path())?;
+        } else if kind.is_file() {
+            std::fs::File::open(entry.path())?.sync_all()?;
+        }
+    }
+    Ok(())
+}
+
 /// The exit code of the task and a note for its standard error, from the exit code that the
 /// wrapper recorded and the end of the job; `Err` when the machine failed rather than the task.
 ///
@@ -666,6 +721,7 @@ fn outcome(
             .map(|code| (code, None))
             .ok_or_else(|| "the container ended without the exit code of the task".to_owned()),
         Ended::Done(TIMED_OUT) => Ok((143, Some(too_long(time)))),
+        Ended::Done(NOT_SEEN) => Err("the job did not start the container".to_owned()),
         Ended::Done(status @ 129..=192) => Ok((
             *status,
             Some(format!(
@@ -696,13 +752,15 @@ fn too_long(time: Option<u64>) -> String {
 /// A failure of the machine with the end of the job's log, or a hint when the job left none.
 async fn explain(message: String, root: &Path) -> String {
     let log = tokio::fs::read_to_string(root.join(CONTROL).join(LOG)).await;
-    let log = log.unwrap_or_default();
-    let lines: Vec<&str> = log.lines().filter(|line| !line.trim().is_empty()).collect();
-    match lines.len() {
-        0 => format!(
+    let Ok(log) = log else {
+        return format!(
             "{message}, and left no log; do the nodes see {} at the same path?",
             root.display()
-        ),
+        );
+    };
+    let lines: Vec<&str> = log.lines().filter(|line| !line.trim().is_empty()).collect();
+    match lines.len() {
+        0 => format!("{message}, and its log is empty"),
         count => format!("{message}: {}", lines[count.saturating_sub(5)..].join("; ")),
     }
 }

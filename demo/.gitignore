@@ -5,5 +5,12 @@
 report.html
 graph.svg
 /results/
+/work/
 /nextflow/nf-core-demo/
-/snakemake/tutorial-data/
+/snakemake/data/
+/snakemake/data.part/
+/snakemake/hello/
+/snakemake/mapped_reads/
+/snakemake/sorted_reads/
+/snakemake/calls/
+/snakemake/plots/

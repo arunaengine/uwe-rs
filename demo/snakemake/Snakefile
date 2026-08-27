@@ -1,3 +1,5 @@
+workdir: workflow.basedir
+
 SAMPLES = ["A", "B"]
 
 
@@ -8,14 +10,15 @@ rule all:
 
 rule bwa_map:
     input:
-        "data/genome.fa",
-        "data/samples/{sample}.fastq"
+        fa="data/genome.fa",
+        idx=multiext("data/genome.fa", ".amb", ".ann", ".bwt", ".pac", ".sa"),
+        fastq="data/samples/{sample}.fastq"
     output:
         "mapped_reads/{sample}.bam"
     container:
         "docker://quay.io/biocontainers/mulled-v2-fe8faa35dbf6dc65a0f7f5d4ea12e31a79f73e40:a34558545ae1413d94bde4578787ebef08027945-0"
     shell:
-        "bwa mem {input} | samtools view -Sb - > {output}"
+        "bwa mem {input.fa} {input.fastq} | samtools view -Sb - > {output}"
 
 
 rule samtools_sort:
@@ -44,6 +47,7 @@ rule samtools_index:
 rule bcftools_call:
     input:
         fa="data/genome.fa",
+        fai="data/genome.fa.fai",
         bam=expand("sorted_reads/{sample}.bam", sample=SAMPLES),
         bai=expand("sorted_reads/{sample}.bam.bai", sample=SAMPLES)
     output:

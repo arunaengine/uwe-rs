@@ -24,28 +24,53 @@ if (cd "$iunctus_root" && cargo build --release -p iunctus); then
   export PATH="$iunctus_root/target/release:$PATH"
   export IUNCTUS_SITE_CONFIG="$iunctus_demo/local-config.toml"
   cd "$iunctus_demo" || return
+  # The complex examples are not in the repository: the first time, download them.
+  if [ ! -d nextflow/nf-core-demo ]; then
+    echo "Downloading nf-core/demo 1.2.0 into nextflow/nf-core-demo ..."
+    git -c advice.detachedHead=false clone -q --depth 1 --branch 1.2.0 \
+      https://github.com/nf-core/demo nextflow/nf-core-demo \
+      || echo "The download of nf-core/demo failed; source this file again to retry." >&2
+  fi
+  if [ ! -d snakemake/data ]; then
+    echo "Downloading the data of the Snakemake tutorial into snakemake/data ..."
+    iunctus_data=https://raw.githubusercontent.com/snakemake/snakemake-tutorial-data/b21b0248ab28d3fc1973789ef8c8e68f29c11d61/data
+    rm -rf snakemake/data.part
+    if (for file in genome.fa genome.fa.amb genome.fa.ann genome.fa.bwt genome.fa.fai \
+          genome.fa.pac genome.fa.sa samples/A.fastq samples/B.fastq; do
+          curl -fsSL --create-dirs -o "snakemake/data.part/$file" "$iunctus_data/$file" || exit
+        done); then
+      mv snakemake/data.part snakemake/data
+    else
+      rm -rf snakemake/data.part
+      echo "The download of the Snakemake data failed; source this file again to retry." >&2
+    fi
+    unset iunctus_data
+  fi
   cat <<'EOF'
 
-The demo is ready in this shell. Run these here, in demo/:
+The demo is ready in this shell. Run these here, in demo/. First the simple ones:
 
-  iunctus run nextflow/hello/main.nf
-  iunctus run nextflow/hello/main.nf          # again: all tasks come from the cache
-  iunctus run cwl/quick-start/hello_world.cwl cwl/quick-start/hello_world-job.json
-  iunctus run cwl/workflows/scatter-workflow.cwl cwl/workflows/scatter-job.yml
-  iunctus run argo/examples/hello-world.yaml
-  iunctus run argo/examples/dag-diamond.yaml
-  iunctus run argo/examples/artifact-passing.yaml
-  iunctus run argo/examples/loops.yaml
+  iunctus run nextflow/main.nf
+  iunctus run nextflow/main.nf                # again: all tasks come from the cache
+  iunctus run snakemake/hello.smk
+  iunctus run cwl/hello_world.cwl cwl/hello_world-job.json
+  iunctus run argo/hello-world.yaml
+
+Then the complex ones:
+
+  iunctus run nextflow/nf-core-demo -profile test,docker --outdir results
+  iunctus run snakemake/Snakefile
+  iunctus run cwl/scatter-workflow.cwl cwl/scatter-job.yml
+  iunctus run argo/dag-diamond.yaml
 
 Then look at a run:
 
   iunctus runs                                # the runs, newest first
   iunctus time <run>                          # where the time went
   iunctus page <run>                          # the live page of a run
-  iunctus graph nextflow/hello/main.nf -format svg > graph.svg
+  iunctus graph snakemake/Snakefile -format svg > graph.svg
 
 Each run writes report.html here; open it in a browser.
-The Snakemake tutorial and nf-core/demo need a download first: see demo/README.md.
 EOF
   # Run, not sourced: what it set ends with it, so it goes on in a new shell. That shell reads
   # its startup files, which may set PATH again, so a startup file of the script reads them

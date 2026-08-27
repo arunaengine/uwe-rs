@@ -5,7 +5,7 @@
 report.html
 graph.svg
 /results/
-/work/
+work/
 /nextflow/nf-core-demo/
 /snakemake/data/
 /snakemake/data.part/

@@ -8,7 +8,7 @@ On the BCF cluster (binary and config are already in place):
 ssh worm.intra                       # from outside: ssh -J uni-jump worm.intra
 export PATH=$HOME/.local/bin:$PATH
 cd /vol/cb/projects/iunctus/no_backup/demo/nextflow/hello
-iunctus run main.nf                  # every task is a SLURM job with Apptainer
+iunctus run main.nf                  # each task is a SLURM job with Apptainer, unless it ran before
 iunctus run main.nf                  # again: all tasks come from the cache
 ```
 

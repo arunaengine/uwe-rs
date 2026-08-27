@@ -32,6 +32,15 @@ done
 id=$(( $(cat "$state/last" 2>/dev/null || echo 100) + 1 ))
 echo "$id" > "$state/last"
 printf '%s\n' "$@" > "$state/$id.options"
+# A node of a shared file system may first see a wrapper that another machine has just
+# written as empty: the wrapper is empty for two seconds.
+if [ -e "$(dirname "$0")/late-wrapper" ]; then
+    rm "$(dirname "$0")/late-wrapper"
+    wrapper="$chdir/control/wrapper.sh"
+    mv "$wrapper" "$wrapper.whole"
+    : > "$wrapper"
+    (sleep 2; mv "$wrapper.whole" "$wrapper") > /dev/null 2>&1 &
+fi
 # A job on a node that does not see the folders fails at once and leaves no log.
 if [ -e "$(dirname "$0")/broken" ]; then
     rm "$(dirname "$0")/broken"
@@ -111,6 +120,25 @@ while [ $# -gt 0 ]; do
     esac
 done
 exec "$@"
+"#;
+
+/// An Apptainer whose container's record of the task shows late, as a shared file system may
+/// show it to another machine: it hides the record for two seconds after the container ended.
+const LATE_APPTAINER: &str = r#"#!/bin/bash
+while [ $# -gt 0 ]; do
+    case $1 in
+        --pwd) cd "$2" || exit 255; shift 2 ;;
+        --bind) shift 2 ;;
+        exec|--*) shift ;;
+        *) shift; break ;;
+    esac
+done
+"$@"
+status=$?
+record="$(dirname "$2")/exit"
+mv "$record" "$record.late"
+(sleep 2; mv "$record.late" "$record") > /dev/null 2>&1 &
+exit $status
 "#;
 
 /// An Apptainer that cannot get the image.
@@ -551,6 +579,60 @@ async fn tasks_of_an_image_that_cannot_be_pulled_share_a_few_tries_and_fail() {
     assert!(error.to_string().contains("tried 3 times"), "{error}");
     let last = std::fs::read_to_string(bin.join("state/last")).expect("the last job");
     assert_eq!(last.trim(), "103");
+}
+
+#[tokio::test]
+async fn a_node_waits_for_the_whole_wrapper_of_its_task() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    let backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    let mut spec = spec("tr a-z A-Z < in.txt > out.txt");
+    spec.image = Some(Image {
+        reference: "/images/tool.sif".into(),
+        platform: None,
+    });
+    let staging = staging(root.path(), "hello\n");
+    let placement = placement();
+    let job = Job {
+        name: "run-P-5-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    std::fs::write(bin.join("late-wrapper"), "").expect("writes the flag");
+    let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+    assert_eq!(finished.exit_code, Some(0));
+    let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("an output");
+    assert_eq!(output, "HELLO\n");
+}
+
+#[tokio::test]
+async fn the_record_of_a_task_that_shows_late_is_waited_for() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), LATE_APPTAINER);
+    let backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    let mut spec = spec("echo late > out.txt; exit 4");
+    spec.image = Some(Image {
+        reference: "/images/tool.sif".into(),
+        platform: None,
+    });
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "run-P-6-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+    assert_eq!(finished.exit_code, Some(4));
 }
 
 #[tokio::test]

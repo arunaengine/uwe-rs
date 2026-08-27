@@ -340,8 +340,8 @@ pub fn read(project: &Path, schema: &Json) -> BTreeSet<String> {
 }
 
 /// The files of a project that hold code: `.nf`, `.config` and `.groovy` files, outside hidden
-/// folders, the `work` folder of Nextflow and the `tests` folders of nf-test, which a run does
-/// not load.
+/// folders, the `work` folder of Nextflow, the `tests` folders of nf-test and folders with a
+/// `nextflow_schema.json` of their own, which hold another pipeline. A run loads none of them.
 fn source_files(folder: &Path, files: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(folder) else {
         return;
@@ -355,7 +355,11 @@ fn source_files(folder: &Path, files: &mut Vec<PathBuf>) {
             continue;
         };
         if kind.is_dir() {
-            if !name.starts_with('.') && name != "work" && name != "tests" {
+            if !name.starts_with('.')
+                && name != "work"
+                && name != "tests"
+                && !path.join("nextflow_schema.json").is_file()
+            {
                 source_files(&path, files);
             }
         } else if [".nf", ".config", ".groovy"]
@@ -467,6 +471,23 @@ mod tests {
         std::fs::write(project.path().join("main.nf"), main).expect("writes main.nf");
         let found: Vec<String> = read(project.path(), &schema).into_iter().collect();
         assert_eq!(found, ["input"]);
+    }
+
+    #[test]
+    fn another_pipeline_in_a_folder_of_the_project_is_not_read() {
+        let project = tempfile::tempdir().expect("a folder");
+        let other = project.path().join("nf-core-demo");
+        std::fs::create_dir(&other).expect("makes the folder");
+        std::fs::write(
+            project.path().join("main.nf"),
+            "workflow { println params.greeting }",
+        )
+        .expect("writes main.nf");
+        std::fs::write(other.join("main.nf"), "workflow { println params.input }")
+            .expect("writes the other main.nf");
+        std::fs::write(other.join("nextflow_schema.json"), "{}").expect("writes the schema");
+        let found: Vec<String> = read(project.path(), &json!({})).into_iter().collect();
+        assert_eq!(found, ["greeting"]);
     }
 
     #[test]

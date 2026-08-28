@@ -130,9 +130,13 @@ impl Finished {
     /// Where an output is on the host: a relative path in the work directory, an absolute one
     /// where the wrapper copied it.
     pub fn local_path(&self, path: &str) -> PathBuf {
-        match path.strip_prefix('/') {
-            Some(inside) => self.root.join(CONTROL).join(ROOT).join(inside),
-            None => self.root.join(WORK).join(path),
+        match path.starts_with('/') {
+            true => self
+                .root
+                .join(CONTROL)
+                .join(ROOT)
+                .join(path.trim_start_matches('/')),
+            false => self.root.join(WORK).join(path),
         }
     }
 
@@ -168,6 +172,8 @@ impl Finished {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExecutorError {
+    #[error("the executor does not support this task: {0}")]
+    Unsupported(String),
     #[error("the task has no container image; every task runs in a container")]
     NoImage,
     #[error("the task has no command, and the image {0} has no default command")]

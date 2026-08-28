@@ -126,6 +126,24 @@ fn patterns_take_braces_globstar_and_absolute_paths() {
 }
 
 #[test]
+fn absolute_symlinks_are_exported_as_their_contents() {
+    let root = tempfile::tempdir().unwrap();
+    let target = root.path().join("target");
+    let output = root.path().join("link");
+    std::fs::write(&target, "container output").unwrap();
+    std::os::unix::fs::symlink(&target, &output).unwrap();
+    let output = output.to_str().unwrap();
+    assert_eq!(run(root.path(), &spec(&[output]), "true"), 0);
+    let exported = root
+        .path()
+        .join("control/root")
+        .join(output.trim_start_matches('/'));
+    assert!(!std::fs::symlink_metadata(&exported).unwrap().is_symlink());
+    std::fs::remove_file(target).unwrap();
+    assert_eq!(read(&exported), "container output");
+}
+
+#[test]
 fn tasks_get_a_home_folder_they_may_write() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let script = "echo \"$HOME\" > home.txt\necho x > \"$HOME/.settings\"\n";

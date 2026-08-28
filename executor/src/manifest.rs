@@ -29,7 +29,9 @@ pub fn parse(text: &str) -> Result<Vec<Collected>, ManifestError> {
             Some(("directory", path)) => Some((true, path)),
             _ => None,
         };
-        let Some((directory, path)) = parsed.filter(|(_, path)| !path.is_empty()) else {
+        let Some((directory, path)) = parsed.filter(|(_, path)| {
+            !path.is_empty() && !path.contains('\0') && !path.split('/').any(|part| part == "..")
+        }) else {
             return Err(ManifestError {
                 line: index + 1,
                 text: line.to_owned(),
@@ -43,4 +45,26 @@ pub fn parse(text: &str) -> Result<Vec<Collected>, ManifestError> {
         }
     }
     Ok(files)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn output_paths_cannot_escape_their_host_root() {
+        for path in ["../secret", "a/../../secret", "/a/../secret", "bad\0path"] {
+            assert!(super::parse(&format!("file {path}\n")).is_err());
+        }
+        let root = std::path::PathBuf::from("/scratch/task");
+        let finished = crate::Finished {
+            root: root.clone(),
+            exit_code: Some(0),
+            files: Vec::new(),
+            usage: None,
+        };
+        let files = super::parse("file //tmp/result\ndirectory .\n").unwrap();
+        assert_eq!(
+            finished.local_path(&files[0].path),
+            root.join("control/root/tmp/result")
+        );
+    }
 }

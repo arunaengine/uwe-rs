@@ -167,6 +167,13 @@ impl Backend for SlurmBackend {
         job: Job<'_>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
+        if job.placement.offline
+            && matches!(&self.container, Container::Apptainer(program) if !program.ends_with("apptainer"))
+        {
+            return Err(ExecutorError::Unsupported(
+                "the SLURM Singularity executor cannot run a task without network".into(),
+            ));
+        }
         let root = self.scratch.join(job.name);
         let placed = {
             let (root, staging) = (root.clone(), job.staging.clone());

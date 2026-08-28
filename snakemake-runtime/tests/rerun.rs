@@ -155,3 +155,50 @@ fn update_outputs_are_copies_and_before_update_inputs_need_no_job() {
         execution.graph.edges
     );
 }
+
+#[test]
+fn before_update_inputs_with_the_same_basename_keep_distinct_bytes() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    for (path, content) in [("a/data.txt", "first\n"), ("b/data.txt", "second\n")] {
+        let path = folder.path().join(path);
+        std::fs::create_dir_all(path.parent().expect("a parent")).expect("makes folders");
+        std::fs::write(path, content).expect("writes");
+    }
+    std::fs::write(
+        folder.path().join("Snakefile"),
+        r#"
+rule copy:
+    input: before_update("a/data.txt"), before_update("b/data.txt")
+    output: "out.txt"
+    shell: "cat {input} > {output}"
+"#,
+    )
+    .expect("writes the Snakefile");
+    let launch = Launch {
+        target: folder.path().to_owned(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
+    let tasks = driver.start().expect("starts");
+    assert_eq!(tasks.len(), 1);
+    let input = |path: &str| {
+        tasks[0]
+            .inputs
+            .iter()
+            .find(|input| input.path == path)
+            .expect("an input")
+    };
+    let first = input("a/data.txt");
+    let second = input("b/data.txt");
+    assert_ne!(first.source, second.source);
+    std::fs::write(folder.path().join("a/data.txt"), "changed\n").expect("updates the source");
+    assert_eq!(
+        std::fs::read(&first.source).expect("reads snapshot"),
+        b"first\n"
+    );
+    assert_eq!(
+        std::fs::read(&second.source).expect("reads snapshot"),
+        b"second\n"
+    );
+}

@@ -752,6 +752,14 @@ impl Session {
                 Some(output) => PathBuf::from(output.trim_end_matches('/')),
                 None => self.interpreter.host.resolve(&file.path),
             };
+            let storage_target = self.planner.as_ref().and_then(|planner| {
+                planner.jobs[job].output.values.iter().find_map(|value| {
+                    let output = value.as_str()?;
+                    (self.interpreter.host.resolve(output.trim_end_matches('/')) == path)
+                        .then(|| value.tag(crate::storage::TAG)?.as_str().map(str::to_owned))
+                        .flatten()
+                })
+            });
             if !temporary
                 .iter()
                 .any(|output| self.interpreter.host.resolve(output) == path)
@@ -762,7 +770,7 @@ impl Session {
                     .unwrap_or_else(PoisonError::into_inner);
                 deliveries.push(Delivery {
                     location: file.location.clone(),
-                    target: path.to_string_lossy().into_owned(),
+                    target: storage_target.unwrap_or_else(|| path.to_string_lossy().into_owned()),
                     mode: DeliveryMode::Copy,
                 });
             }

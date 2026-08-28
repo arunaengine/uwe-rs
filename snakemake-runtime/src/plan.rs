@@ -463,7 +463,13 @@ impl Planner {
                 .values
                 .iter()
                 .map(|value| match value.as_str() {
-                    Some(text) => pattern::apply(text, wildcards).map(|text| retag(value, Value::str(text))).map_err(|name| {
+                    Some(text) => pattern::apply(text, wildcards).and_then(|text| {
+                        let mut filled = retag(value, Value::str(text));
+                        if let Some(address) = value.tag(crate::storage::TAG).and_then(Value::as_str) {
+                            filled = filled.with_tag(crate::storage::TAG, Value::str(pattern::apply(address, wildcards)?));
+                        }
+                        Ok(filled)
+                    }).map_err(|name| {
                         Failure::Error(crate::workflow::workflow_error(format!(
                             "Wildcards in {what} files cannot be determined from output files: '{name}'"
                         )))

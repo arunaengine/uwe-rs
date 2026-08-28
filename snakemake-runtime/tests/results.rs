@@ -67,6 +67,94 @@ impl Executor for Flaky {
 /// Notes the targets of the deliveries, relative to the working directory.
 struct Targets(Vec<String>, std::path::PathBuf);
 
+#[test]
+fn storage_outputs_deliver_to_their_address_and_consumers_use_the_new_bytes() {
+    use std::path::PathBuf;
+    use workflow_graph::{Delivery, Files, LocalFiles};
+
+    struct Bucket(PathBuf);
+    impl Files for Bucket {
+        fn local(&self, location: &str) -> std::io::Result<PathBuf> {
+            Ok(location
+                .strip_prefix("s3://bucket/")
+                .map_or_else(|| PathBuf::from(location), |key| self.0.join(key)))
+        }
+
+        fn deliver(&self, delivery: &Delivery) -> std::io::Result<()> {
+            LocalFiles.deliver(&Delivery {
+                target: self.local(&delivery.target)?.to_string_lossy().into_owned(),
+                ..delivery.clone()
+            })
+        }
+    }
+
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let workdir = folder.path().join("workflow");
+    let bucket = std::sync::Arc::new(Bucket(folder.path().join("bucket")));
+    std::fs::create_dir_all(&workdir).expect("makes the workflow folder");
+    std::fs::create_dir_all(&bucket.0).expect("makes the bucket");
+    std::fs::write(bucket.0.join("A.txt"), "old\n").expect("writes old remote bytes");
+    std::fs::write(
+        workdir.join("Snakefile"),
+        r#"
+rule all:
+    input: "final.txt"
+rule produce:
+    output: storage("s3://bucket/{sample}.txt")
+    shell: "echo new > {output}"
+rule consume:
+    input: storage("s3://bucket/A.txt")
+    output: "final.txt"
+    shell: "cat {input} > {output}"
+"#,
+    )
+    .expect("writes the Snakefile");
+    let launch = Launch {
+        target: workdir,
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let mut driver = snakemake_runtime::driver(&launch).expect("a driver");
+    driver.use_files(bucket.clone());
+    let first = driver.start().expect("starts");
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0].step, "produce");
+    let made = folder.path().join("made.txt");
+    std::fs::write(&made, "new\n").expect("writes producer bytes");
+    let next = driver
+        .complete(Outcome {
+            id: first[0].id,
+            files: vec![OutputFile {
+                path: first[0].outputs[0].clone(),
+                location: made.to_string_lossy().into_owned(),
+                ..OutputFile::default()
+            }],
+            ..Outcome::default()
+        })
+        .expect("accepts producer output");
+    assert_eq!(next.len(), 1);
+    assert_eq!(next[0].step, "consume");
+    let input = next[0]
+        .inputs
+        .iter()
+        .find(|input| input.path.ends_with("/A.txt"))
+        .expect("storage input");
+    assert_eq!(
+        std::fs::read(&input.source).expect("reads consumer bytes"),
+        b"new\n"
+    );
+    let deliveries = driver.deliveries();
+    assert_eq!(deliveries.len(), 1);
+    assert_eq!(deliveries[0].target, "s3://bucket/A.txt");
+    bucket
+        .deliver(&deliveries[0])
+        .expect("publishes producer bytes");
+    assert_eq!(
+        std::fs::read(bucket.0.join("A.txt")).expect("reads remote bytes"),
+        b"new\n"
+    );
+}
+
 impl Observer for Targets {
     fn event(&mut self, event: Event<'_>) {
         if let Event::Delivered { delivery } = event {

@@ -173,6 +173,61 @@ fn globs_match_like_a_shell() {
 }
 
 #[test]
+fn simulated_outputs_stay_inside_the_work_directory() {
+    let directory = tempfile::tempdir().unwrap();
+    let simulator = Simulator::new(directory.path().join("sim"));
+    for (index, output) in ["../../../escaped.txt", "dir/../../../../escaped.txt"]
+        .into_iter()
+        .enumerate()
+    {
+        let task = Task {
+            id: TaskId(index as u64),
+            outputs: vec![output.into()],
+            ..Task::default()
+        };
+        assert!(simulator.simulate(&task).is_err());
+    }
+    assert!(!directory.path().join("escaped.txt").exists());
+    let task = Task {
+        id: TaskId(3),
+        outputs: vec!["/absolute/out.txt".into()],
+        ..Task::default()
+    };
+    let outcome = simulator.simulate(&task).unwrap();
+    assert!(
+        std::path::Path::new(&outcome.files[0].location)
+            .starts_with(simulator.work_directory(&task))
+    );
+}
+
+#[test]
+fn simulated_writes_do_not_follow_existing_symlinks() {
+    let directory = tempfile::tempdir().unwrap();
+    let simulator = Simulator::new(directory.path().join("sim"));
+    let outside = directory.path().join("outside");
+    std::fs::create_dir(&outside).unwrap();
+    for literal in [false, true] {
+        let mut task = Task {
+            id: TaskId(u64::from(literal)),
+            outputs: vec!["link/out.txt".into()],
+            ..Task::default()
+        };
+        if literal {
+            task.inputs.push(Input {
+                path: "link/out.txt".into(),
+                content: Some("changed".into()),
+                ..Input::default()
+            });
+        }
+        let work = simulator.work_directory(&task);
+        std::fs::create_dir_all(&work).unwrap();
+        std::os::unix::fs::symlink(&outside, work.join("link")).unwrap();
+        assert!(simulator.simulate(&task).is_err());
+        assert!(!outside.join("out.txt").exists());
+    }
+}
+
+#[test]
 fn simulated_tasks_make_the_files_that_the_script_names() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = "touch s_1.fq s_2.fq\nmkdir -p db\ntouch db/x.txt\ncp in.txt copy.txt\n\

@@ -141,8 +141,21 @@ fn problem(error: &ValidationError<'_>, simulated: bool, assumes_values: bool) -
             let choices: Vec<String> = context
                 .iter()
                 .map(|branch| {
-                    let problems = branch.iter().map(|error| problem(error, false, false));
-                    let messages: Vec<String> = problems.map(|problem| problem.message).collect();
+                    let problems: Vec<Problem> = branch
+                        .iter()
+                        .map(|error| problem(error, simulated, assumes_values))
+                        .collect();
+                    if !problems.is_empty()
+                        && problems
+                            .iter()
+                            .all(|problem| problem.severity == Severity::Warning)
+                    {
+                        severity = Severity::Warning;
+                    }
+                    let messages: Vec<String> = problems
+                        .into_iter()
+                        .map(|problem| problem.message)
+                        .collect();
                     messages.join(" and ")
                 })
                 .filter(|choice| !choice.is_empty())

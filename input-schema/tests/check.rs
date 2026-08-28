@@ -223,3 +223,25 @@ fn choices_say_what_each_one_lacks() {
         )]
     );
 }
+
+#[test]
+fn simulated_alternatives_keep_missing_paths_as_warnings() {
+    let folder = tempfile::tempdir().expect("a folder");
+    for keyword in ["anyOf", "oneOf"] {
+        let schema = json!({"properties": {"input": {keyword: [
+            {"type": "string", "format": "file-path", "exists": true},
+            {"type": "string", "format": "directory-path", "exists": true}
+        ]}}});
+        let given = inputs(schema.clone(), json!({"input": "absent"}), folder.path());
+        assert_eq!(check(&given, true)[0].severity, Severity::Warning);
+        assert_eq!(check(&given, false)[0].severity, Severity::Error);
+        let wrong_type = inputs(schema, json!({"input": []}), folder.path());
+        assert_eq!(check(&wrong_type, true)[0].severity, Severity::Error);
+    }
+    let schema = json!({"properties": {"input": {"anyOf": [
+        {"type": "string", "format": "file-path", "exists": true},
+        {"type": "integer"}
+    ]}}});
+    let given = inputs(schema, json!({"input": "absent"}), folder.path());
+    assert_eq!(check(&given, true)[0].severity, Severity::Warning);
+}

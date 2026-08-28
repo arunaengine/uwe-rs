@@ -72,7 +72,11 @@ fn line(root: &Json, property: &Property, prefix: &str) -> String {
         Some(value) => notes.push(plain(value)),
         None => {}
     }
-    let mut line = format!("  {prefix}{} <{}>", property.name, kind(root, schema));
+    let mut line = format!(
+        "  {prefix}{} <{}>",
+        property.name,
+        kind(root, schema, &mut Vec::new())
+    );
     if !notes.is_empty() {
         line.push_str(&format!(" ({})", notes.join("; ")));
     }
@@ -90,7 +94,10 @@ fn line(root: &Json, property: &Property, prefix: &str) -> String {
 }
 
 /// What kind of value an input takes, in words.
-fn kind(root: &Json, schema: &Json) -> String {
+fn kind<'a>(root: &'a Json, schema: &'a Json, active: &mut Vec<&'a Json>) -> String {
+    if active.iter().any(|seen| std::ptr::eq(*seen, schema)) {
+        return "value".into();
+    }
     match schema.get("format").and_then(Json::as_str) {
         Some(FILE_PATH) => return "file".into(),
         Some(DIRECTORY_PATH) => return "directory".into(),
@@ -98,6 +105,7 @@ fn kind(root: &Json, schema: &Json) -> String {
         Some(FILE_PATH_PATTERN) => return "file pattern".into(),
         _ => {}
     }
+    active.push(schema);
     let kinds: Vec<&str> = match schema.get("type") {
         Some(Json::String(kind)) => vec![kind],
         Some(Json::Array(kinds)) => kinds.iter().filter_map(Json::as_str).collect(),
@@ -109,12 +117,13 @@ fn kind(root: &Json, schema: &Json) -> String {
         .map(|name| match *name {
             "string" => "text".to_owned(),
             "array" => match schema.get("items") {
-                Some(items) => format!("list of {}", kind(root, resolve(root, items).0)),
+                Some(items) => format!("list of {}", kind(root, resolve(root, items).0, active)),
                 None => "list".to_owned(),
             },
             other => other.to_owned(),
         })
         .collect();
+    active.pop();
     match words.is_empty() {
         true => "value".into(),
         false => words.join(" or "),
@@ -133,6 +142,15 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn recursive_array_help_is_finite() {
+        let schema = json!({
+            "properties": {"tree": {"$ref": "#/$defs/tree"}},
+            "$defs": {"tree": {"type": "array", "items": {"$ref": "#/$defs/tree"}}}
+        });
+        assert_eq!(text(&schema), "\nInputs\n  --tree <list of value>\n");
+    }
 
     #[test]
     fn outputs_by_name() {

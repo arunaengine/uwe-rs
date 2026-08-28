@@ -10,13 +10,22 @@ use crate::properties::resolve;
 /// The values as the check sees them: texts turned into the numbers and booleans that the schema
 /// asks for, as values from the command line are texts.
 pub(crate) fn prepared(root: &Json, schema: &Json, value: Json) -> Json {
+    prepare(root, schema, value, &mut Vec::new())
+}
+
+fn prepare<'a>(root: &'a Json, schema: &'a Json, value: Json, active: &mut Vec<&'a Json>) -> Json {
     let (schema, _) = resolve(root, schema);
+    if active.iter().any(|seen| std::ptr::eq(*seen, schema)) {
+        return value;
+    }
+    active.push(schema);
     let mut value = value;
     if let Some(Json::Array(parts)) = schema.get("allOf") {
         for part in parts {
-            value = prepared(root, part, value);
+            value = prepare(root, part, value, active);
         }
     }
+    active.pop();
     match value {
         Json::String(text) => typed(root, schema, text),
         Json::Object(entries) => {
@@ -47,7 +56,7 @@ pub(crate) fn prepared(root: &Json, schema: &Json, value: Json) -> Json {
 
 /// A text as the number or boolean that the schema asks for, when it reads as one.
 fn typed(root: &Json, schema: &Json, text: String) -> Json {
-    let types = types(root, schema);
+    let types = types(root, schema, &mut Vec::new());
     if types.is_empty() || types.contains(&"string") {
         return Json::String(text);
     }
@@ -76,15 +85,57 @@ fn typed(root: &Json, schema: &Json, text: String) -> Json {
 }
 
 /// The JSON types that a schema allows: its `type`, else those of its `anyOf` and `oneOf`.
-fn types<'a>(root: &'a Json, schema: &'a Json) -> Vec<&'a str> {
-    match schema.get("type") {
+fn types<'a>(root: &'a Json, schema: &'a Json, active: &mut Vec<&'a Json>) -> Vec<&'a str> {
+    if active.iter().any(|seen| std::ptr::eq(*seen, schema)) {
+        return Vec::new();
+    }
+    active.push(schema);
+    let types = match schema.get("type") {
         Some(Json::String(kind)) => vec![kind.as_str()],
         Some(Json::Array(kinds)) => kinds.iter().filter_map(Json::as_str).collect(),
         _ => ["anyOf", "oneOf"]
             .iter()
             .filter_map(|keyword| schema.get(*keyword).and_then(Json::as_array))
             .flatten()
-            .flat_map(|branch| types(root, resolve(root, branch).0))
+            .flat_map(|branch| types(root, resolve(root, branch).0, active))
             .collect(),
+    };
+    active.pop();
+    types
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn recursive_applicators_preserve_coercion() {
+        let schema = json!({
+            "allOf": [{"$ref": "#"}],
+            "properties": {"count": {"type": "integer"}}
+        });
+        assert_eq!(
+            prepared(&schema, &schema, json!({"count": "7"})),
+            json!({"count": 7})
+        );
+        let schema = json!({"anyOf": [{"$ref": "#"}, {"type": "integer"}]});
+        assert_eq!(prepared(&schema, &schema, json!("7")), json!(7));
+    }
+
+    #[test]
+    fn recursive_objects_prepare_each_value() {
+        let schema = json!({
+            "properties": {"count": {"type": "integer"}, "child": {"$ref": "#"}}
+        });
+        assert_eq!(
+            prepared(
+                &schema,
+                &schema,
+                json!({"count": "7", "child": {"count": "8"}})
+            ),
+            json!({"count": 7, "child": {"count": 8}})
+        );
     }
 }

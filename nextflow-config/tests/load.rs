@@ -58,6 +58,25 @@ fn assignments_blocks_and_selectors() {
     assert_eq!(get(&["env"]), "[:]");
 }
 
+#[test]
+fn explicit_standard_profile_may_be_undeclared() {
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("nextflow.config");
+    std::fs::write(&file, "params.value = 1\n").unwrap();
+    let selected = |profiles: &[&str]| {
+        load(
+            std::slice::from_ref(&file),
+            &options(directory.path(), profiles, Value::map([])),
+            &mut Quiet,
+        )
+    };
+    assert!(selected(&["standard"]).is_ok());
+    assert!(selected(&["standard", "other"]).is_err());
+    std::fs::write(&file, "profiles { standard { params.value = 2 } }\n").unwrap();
+    let config = selected(&["standard"]).unwrap();
+    assert_eq!(config.get(&["params", "value"]).unwrap().to_string(), "2");
+}
+
 /// A block replaces a null setting of its name, as Nextflow 26.04.6 and 21.10.3 do for
 /// `params.x = null` and then `params { x { y = 1 } }`.
 #[test]

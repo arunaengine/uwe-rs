@@ -148,6 +148,9 @@ fn steps(from: &Value, to: &Value, exclusive: bool) -> Result<Vec<Value>, Except
             )));
         }
         items.push(current.clone());
+        if order.is_eq() {
+            return Ok(items);
+        }
         current = match &current {
             Value::Number(_) => {
                 let operator = if descending {

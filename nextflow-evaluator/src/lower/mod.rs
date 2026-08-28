@@ -354,7 +354,7 @@ pub(crate) struct Lowering<'a> {
     /// The class being lowered, whose members its code can name without qualification.
     class: Option<class::ClassContext>,
     /// Static members that `import static` brings in, with their class.
-    static_imports: HashMap<Rc<str>, Rc<str>>,
+    static_imports: HashMap<Rc<str>, (Rc<str>, Rc<str>)>,
     /// The classes of `IMPORTED_CLASSES` that the script imports.
     imported_classes: HashSet<Rc<str>>,
     /// Legacy syntax: the indexes in `Module::includes` of each include inside an `if` of the
@@ -490,8 +490,10 @@ impl<'a> Lowering<'a> {
                         continue;
                     };
                     let local = alias.as_ref().unwrap_or(member);
-                    self.static_imports
-                        .insert(local.text.as_str().into(), class.text.as_str().into());
+                    self.static_imports.insert(
+                        local.text.as_str().into(),
+                        (class.text.as_str().into(), member.text.as_str().into()),
+                    );
                 }
                 _ => {}
             }

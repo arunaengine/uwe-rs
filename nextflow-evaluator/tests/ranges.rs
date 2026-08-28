@@ -69,6 +69,16 @@ fn text() {
 }
 
 #[test]
+fn inclusive_ranges_stop_at_numeric_limits() {
+    assert_eq!(value("(2147483647..2147483647).size()"), "1");
+    assert_eq!(value("(2147483646..2147483647).size()"), "2");
+    assert_eq!(value("(-2147483647..Integer.MIN_VALUE).size()"), "2");
+    assert_eq!(value("(Long.MAX_VALUE..Long.MAX_VALUE).size()"), "1");
+    assert_eq!(value("((Long.MIN_VALUE + 1L)..Long.MIN_VALUE).size()"), "2");
+    assert_eq!(value("(Integer.MAX_VALUE..<Integer.MAX_VALUE).size()"), "0");
+}
+
+#[test]
 fn membership() {
     assert_eq!(
         value("[2 in 1..3, 2L in 1..3, 2.5 in 1..3, 4 in 1..3]"),

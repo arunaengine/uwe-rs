@@ -199,17 +199,15 @@ pub(crate) struct Run {
     pub files: Option<std::sync::Arc<dyn Files>>,
 }
 
-/// The text of an output file of a task, read through `files` when the run has them; empty
-/// when it cannot be read.
-pub fn output_text(files: Option<&dyn Files>, location: &str) -> String {
-    let bytes = workflow_graph::files::read(files, location);
-    String::from_utf8_lossy(&bytes.unwrap_or_default()).into_owned()
+/// The text of an output file of a task, read through `files` when the run has them.
+pub fn output_text(files: Option<&dyn Files>, location: &str) -> std::io::Result<String> {
+    let bytes = workflow_graph::files::read(files, location)?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 impl Run {
-    /// The text of an output file of a task, read through the files of the run when it has
-    /// them; empty when it cannot be read.
-    pub fn read_output(&self, location: &str) -> String {
+    /// The text of an output file of a task, read through the files of the run when available.
+    pub fn read_output(&self, location: &str) -> std::io::Result<String> {
         output_text(self.files.as_deref(), location)
     }
 
@@ -1123,7 +1121,10 @@ mod files_tests {
         let folder = tempfile::tempdir().expect("a temporary directory");
         std::fs::write(folder.path().join("result"), "42\n").expect("writes");
         let files = Elsewhere(folder.path().to_owned());
-        assert_eq!(output_text(Some(&files), "s3://store/result"), "42\n");
-        assert_eq!(output_text(None, "s3://store/result"), "");
+        assert_eq!(
+            output_text(Some(&files), "s3://store/result").unwrap(),
+            "42\n"
+        );
+        assert!(output_text(None, "s3://store/result").is_err());
     }
 }

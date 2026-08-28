@@ -303,7 +303,16 @@ impl Run {
             let value = if let Some(from) = from.filter(|from| !from.path.is_empty()) {
                 match file(&from.path) {
                     Some(found) if !found.directory => {
-                        let mut text = self.read_output(&found.location);
+                        let mut text = match self.read_output(&found.location) {
+                            Ok(text) => text,
+                            Err(error) => {
+                                errors.push(format!(
+                                    "cannot read output parameter {}: {error}",
+                                    parameter.name
+                                ));
+                                continue;
+                            }
+                        };
                         if text.ends_with('\n') {
                             text.pop();
                         }
@@ -397,11 +406,21 @@ impl Run {
             let read = |path: &str| {
                 file(path)
                     .map(|found| crate::run::output_text(files.as_deref(), &found.location))
-                    .unwrap_or_default()
+                    .unwrap_or_else(|| Ok(String::new()))
             };
-            let body = read(RESPONSE_BODY);
+            let (body, status) = match (read(RESPONSE_BODY), read(RESPONSE_STATUS)) {
+                (Ok(body), Ok(status)) => (body, status),
+                (Err(error), _) | (_, Err(error)) => {
+                    self.fail(
+                        index,
+                        Phase::Error,
+                        format!("cannot read HTTP response: {error}"),
+                    );
+                    return Ok(());
+                }
+            };
             self.nodes[index].outputs.result = Some(body.clone());
-            match http_verdict(http, &body, &read(RESPONSE_STATUS)) {
+            match http_verdict(http, &body, &status) {
                 Verdict::Unknown => self.warn(format!(
                     "HTTP template {}: the response status is not known, as in a simulated run; its success condition is not checked",
                     template.name

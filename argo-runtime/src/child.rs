@@ -158,6 +158,7 @@ impl Run {
                 };
                 run.nesting = self.nesting + 1;
                 run.inbound = self.nodes[index].inbound.clone();
+                run.files = self.files.clone();
                 self.children.push(Child {
                     name,
                     manifest,

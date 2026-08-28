@@ -346,8 +346,12 @@ impl Run {
             let Some(location) = directory_of(&outcome, &mount.path) else {
                 continue;
             };
+            let location = match &self.files {
+                Some(files) => files.local(&location).map_err(|error| error.to_string())?,
+                None => PathBuf::from(location),
+            };
             let mut files = Vec::new();
-            walk(&location, &location, &mut files);
+            walk(&location, &location, &mut files).map_err(|error| error.to_string())?;
             let host = mount
                 .key
                 .strip_prefix("host:")
@@ -362,6 +366,14 @@ impl Run {
                 volume.insert(relative, file);
             }
         }
+        let outcomes = &self.nodes[index].outcomes;
+        let pending: Vec<_> = self.nodes[index]
+            .written
+            .iter()
+            .filter(|mount| !matches!(outcomes.get(mount.slot), Some(Some(_))))
+            .cloned()
+            .collect();
+        self.nodes[index].written = pending;
         Ok(())
     }
 }
@@ -382,31 +394,29 @@ fn write_back(file: &Path, target: &Path) -> std::result::Result<(), String> {
 }
 
 /// The directory that a task made at a mount path.
-fn directory_of(outcome: &Outcome, path: &str) -> Option<PathBuf> {
+fn directory_of(outcome: &Outcome, path: &str) -> Option<String> {
     let wanted = path.trim_matches('/');
     outcome
         .files
         .iter()
         .find(|file| file.path.trim_matches('/') == wanted && file.directory)
-        .map(|file| PathBuf::from(&file.location))
+        .map(|file| file.location.clone())
 }
 
 /// The files below a directory, by their path relative to `root`.
-fn walk(root: &Path, directory: &Path, files: &mut Vec<(String, PathBuf)>) {
-    let Ok(entries) = std::fs::read_dir(directory) else {
-        return;
-    };
-    let mut paths: Vec<PathBuf> = entries
-        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-        .collect();
+fn walk(root: &Path, directory: &Path, files: &mut Vec<(String, PathBuf)>) -> std::io::Result<()> {
+    let mut paths: Vec<PathBuf> = std::fs::read_dir(directory)?
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<std::io::Result<_>>()?;
     paths.sort();
     for path in paths {
         if path.is_dir() {
-            walk(root, &path, files);
+            walk(root, &path, files)?;
         } else if let Ok(relative) = path.strip_prefix(root) {
             files.push((relative.to_string_lossy().into_owned(), path));
         }
     }
+    Ok(())
 }
 
 /// A map from the key of a volume to its files, by path in the volume.

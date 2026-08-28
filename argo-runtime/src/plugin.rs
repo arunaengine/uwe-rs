@@ -265,8 +265,20 @@ impl Run {
             self.fail(index, Phase::Error, message);
             return Ok(());
         }
-        let status = self.read_file(&outcome, STATUS_PATH);
-        let body = self.read_file(&outcome, REPLY_PATH);
+        let (status, body) = match (
+            self.read_file(&outcome, STATUS_PATH),
+            self.read_file(&outcome, REPLY_PATH),
+        ) {
+            (Ok(status), Ok(body)) => (status, body),
+            (Err(error), _) | (_, Err(error)) => {
+                self.fail(
+                    index,
+                    Phase::Error,
+                    format!("cannot read plugin reply: {error}"),
+                );
+                return Ok(());
+            }
+        };
         match status.trim() {
             "" => {
                 self.warn(format!(
@@ -340,12 +352,12 @@ impl Run {
 
 impl Run {
     /// The text of an output file of a task, or nothing when the task did not make it.
-    fn read_file(&self, outcome: &Outcome, path: &str) -> String {
+    fn read_file(&self, outcome: &Outcome, path: &str) -> std::io::Result<String> {
         let wanted = path.trim_start_matches('/');
         (outcome.files.iter())
             .find(|file| file.path.trim_start_matches('/') == wanted && !file.directory)
             .map(|file| self.read_output(&file.location))
-            .unwrap_or_default()
+            .unwrap_or_else(|| Ok(String::new()))
     }
 }
 

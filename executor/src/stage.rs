@@ -20,6 +20,19 @@ use crate::wrapper::STDIN;
 /// writable at its path; the target of such a mount is relative to the work directory for a
 /// relative path, and `.` is the work directory itself.
 pub fn place(root: &Path, staging: &Staging) -> std::io::Result<Vec<Mount>> {
+    for path in staging
+        .inputs
+        .iter()
+        .map(|input| input.path.as_str())
+        .chain(staging.directories.iter().map(String::as_str))
+    {
+        if path.is_empty() || path.contains('\0') || path.split('/').any(|part| part == "..") {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "input path escapes its staging directory",
+            ));
+        }
+    }
     let work = root.join(WORK);
     let control = root.join(CONTROL);
     if let Some(scratch) = root.parent() {
@@ -28,20 +41,32 @@ pub fn place(root: &Path, staging: &Staging) -> std::io::Result<Vec<Mount>> {
     std::fs::create_dir(root)?;
     std::fs::create_dir_all(&work)?;
     std::fs::create_dir_all(&control)?;
-    let place = |path: &str| match path.strip_prefix('/') {
-        Some(inside) => root.join(MOUNTS).join(inside),
-        None => work.join(path),
+    let place = |path: &str| match path.starts_with('/') {
+        true => root.join(MOUNTS).join(path.trim_start_matches('/')),
+        false => work.join(path),
     };
+    let destinations: Vec<Option<PathBuf>> = staging
+        .inputs
+        .iter()
+        .map(|input| {
+            (!input.in_place && !(input.path.starts_with('/') && !input.copy)).then(|| {
+                place(&input.path)
+                    .components()
+                    .filter(|part| *part != std::path::Component::CurDir)
+                    .collect()
+            })
+        })
+        .collect();
     let mut shown = BTreeSet::new();
     let mut made = BTreeSet::new();
     let mut mounts = Vec::new();
     for directory in &staging.directories {
         std::fs::create_dir_all(place(directory))?;
         if directory.starts_with('/') {
-            made.insert(PathBuf::from(directory.trim_end_matches('/')));
+            made.insert(Path::new(directory).components().collect());
         }
     }
-    for input in &staging.inputs {
+    for (index, input) in staging.inputs.iter().enumerate() {
         let path = input.path.trim_end_matches('/');
         if input.in_place {
             mounts.push(mount(input.source.clone(), path, false));
@@ -61,10 +86,18 @@ pub fn place(root: &Path, staging: &Staging) -> std::io::Result<Vec<Mount>> {
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        if input.copy {
+        let overlaps = destinations[index].as_ref().is_some_and(|path| {
+            destinations.iter().enumerate().any(|(other, destination)| {
+                other != index
+                    && destination.as_ref().is_some_and(|destination| {
+                        path.starts_with(destination) || destination.starts_with(path)
+                    })
+            })
+        });
+        if input.copy || overlaps {
             copy(input, &target)?;
             if path.starts_with('/') {
-                made.insert(PathBuf::from(path));
+                made.insert(Path::new(path).components().collect());
             }
         } else {
             std::os::unix::fs::symlink(&input.source, &target)?;
@@ -164,6 +197,106 @@ mod tests {
             executable: false,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn absolute_aliases_stay_in_scratch_and_overlays_do_not_write_sources() {
+        let folder = tempfile::tempdir().unwrap();
+        let source = folder.path().join("source");
+        std::fs::create_dir(&source).unwrap();
+        let victim = source.join("config");
+        let replacement = folder.path().join("replacement");
+        std::fs::write(&victim, "original").unwrap();
+        std::fs::write(&replacement, "replacement").unwrap();
+        let absolute = format!("/{}", victim.display());
+        let root = folder.path().join("scratch/absolute");
+        place(
+            &root,
+            &Staging {
+                inputs: vec![input(&absolute, &replacement, true)],
+                ..Staging::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "original");
+        assert_eq!(
+            std::fs::read_to_string(root.join("mounts").join(absolute.trim_start_matches('/')))
+                .unwrap(),
+            "replacement"
+        );
+        for child in ["d/config", "./d/config"] {
+            let mut directory = input("d", &source, false);
+            directory.directory = true;
+            let root = folder
+                .path()
+                .join(format!("scratch/overlap-{}", child.starts_with('.')));
+            place(
+                &root,
+                &Staging {
+                    inputs: vec![directory, input(child, &replacement, true)],
+                    ..Staging::default()
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                std::fs::read_to_string(root.join("work/d/config")).unwrap(),
+                "replacement"
+            );
+            assert_eq!(std::fs::read_to_string(&victim).unwrap(), "original");
+        }
+        let root = folder.path().join("scratch/reverse-overlay");
+        let mut directory = input("./d", &source, false);
+        directory.directory = true;
+        place(
+            &root,
+            &Staging {
+                inputs: vec![input("d/config", &replacement, false), directory],
+                ..Staging::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(root.join("work/d/config")).unwrap(),
+            "original"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&replacement).unwrap(),
+            "replacement"
+        );
+        let root = folder.path().join("scratch/alias-overlay");
+        place(
+            &root,
+            &Staging {
+                inputs: vec![
+                    input("config", &victim, false),
+                    input("./config", &replacement, false),
+                ],
+                ..Staging::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(root.join("work/config")).unwrap(),
+            "replacement"
+        );
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "original");
+        let root = folder.path().join("scratch/absolute-overlay");
+        let mut directory = input("/d", &source, true);
+        directory.directory = true;
+        let mounts = place(
+            &root,
+            &Staging {
+                inputs: vec![directory, input("//d/config", &replacement, true)],
+                ..Staging::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(root.join("mounts/d/config")).unwrap(),
+            "replacement"
+        );
+        assert_eq!(mounts.len(), 1);
+        assert_eq!(mounts[0].target, "/d");
     }
 
     #[test]

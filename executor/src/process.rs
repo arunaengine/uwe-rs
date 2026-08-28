@@ -149,17 +149,20 @@ impl ContainerProcess {
             stderr: true,
             ..AttachContainerOptions::default()
         };
+        let created = runtime
+            .block_on(client.create_container(Some(options), body))
+            .map_err(failed)?;
+        let id = created.id;
         let attached = runtime.block_on(async {
-            client.create_container(Some(options), body).await?;
             // Attached before it starts, so that no line gets lost.
-            let attached = client.attach_container(&spec.name, Some(attach)).await?;
-            client.start_container(&spec.name, None).await?;
+            let attached = client.attach_container(&id, Some(attach)).await?;
+            client.start_container(&id, None).await?;
             Ok(attached)
         });
         let attached = match attached {
             Ok(attached) => attached,
             Err(error) => {
-                remove(&engine, &spec.name);
+                remove(&engine, &id);
                 return Err(failed(error));
             }
         };
@@ -200,7 +203,7 @@ impl ContainerProcess {
         });
         Ok(ContainerProcess {
             engine,
-            name: spec.name.clone(),
+            name: id,
             input: Some(attached.input),
             lines,
             stderr: kept,
@@ -357,14 +360,15 @@ pub fn run_to_end(spec: &ContainerSpec) -> Result<(), ProcessError> {
         name: Some(spec.name.clone()),
         ..CreateContainerOptions::default()
     };
+    let created = runtime
+        .block_on(client.create_container(Some(options), create(spec, &engine, false)))
+        .map_err(|error| failed(error.to_string()))?;
+    let id = created.id;
     let ended: Result<i64, bollard::errors::Error> = runtime.block_on(async {
-        client
-            .create_container(Some(options), create(spec, &engine, false))
-            .await?;
-        client.start_container(&spec.name, None).await?;
+        client.start_container(&id, None).await?;
         loop {
             tokio::time::sleep(Duration::from_millis(200)).await;
-            let state = client.inspect_container(&spec.name, None).await?.state;
+            let state = client.inspect_container(&id, None).await?.state;
             let state = state.unwrap_or_default();
             if !state.running.unwrap_or(false) {
                 return Ok(state.exit_code.unwrap_or(-1));
@@ -373,10 +377,10 @@ pub fn run_to_end(spec: &ContainerSpec) -> Result<(), ProcessError> {
     });
     let log = match ended {
         Ok(0) => None,
-        Ok(_) => Some(runtime.block_on(tail(&engine, &spec.name))),
+        Ok(_) => Some(runtime.block_on(tail(&engine, &id))),
         Err(ref error) => Some(error.to_string()),
     };
-    remove(&engine, &spec.name);
+    remove(&engine, &id);
     match log {
         None => Ok(()),
         Some(log) => Err(failed(log)),

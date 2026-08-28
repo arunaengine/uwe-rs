@@ -237,7 +237,7 @@ collect() {
         match=${match#./}
         case $match in
             /*) [ -e "$control/root$match" ] || {
-                    mkdir -p "$control/root${match%/*}" && cp -a "$match" "$control/root$match"
+                    mkdir -p "$control/root${match%/*}" && cp -RLp "$match" "$control/root$match"
                 } ;;
             *) [ -z "$outbox" ] || [ -e "$outbox/$match" ] || {
                     mkdir -p "$outbox/$(dirname "$match")" && cp -RL "$match" "$outbox/$match"

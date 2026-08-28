@@ -30,6 +30,18 @@ fn containers_answer_lines_until_their_input_closes() {
 
 #[test]
 #[ignore = "needs Docker or Podman and the debian:stable-slim image"]
+fn a_name_conflict_does_not_remove_the_existing_container() {
+    let settings = spec("conflict", "while read line; do echo \"got $line\"; done");
+    let mut first = ContainerProcess::start(&settings).expect("starts");
+    assert!(ContainerProcess::start(&settings).is_err());
+    assert_eq!(first.exchange("a").unwrap(), "got a");
+    assert!(run_to_end(&settings).is_err());
+    assert_eq!(first.exchange("b").unwrap(), "got b");
+    first.stop();
+}
+
+#[test]
+#[ignore = "needs Docker or Podman and the debian:stable-slim image"]
 fn a_container_that_ends_says_what_it_wrote() {
     let mut process =
         ContainerProcess::start(&spec("ends", "read line; echo gone >&2; exit 3")).expect("starts");

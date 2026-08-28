@@ -3,13 +3,14 @@
 // Copyright (c) 2026 The iunctus Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use content_store::{Store, StoredOutput, layout};
-use executor::Finished;
 use executor::manifest::Collected;
+use executor::{Finished, Staging};
 use task_model::{Digest, Tree, TreeEntry};
 
 use crate::runner::at;
@@ -35,12 +36,32 @@ pub(crate) async fn store_outputs(
     task: &str,
     attempt: u32,
     digests: Option<&DigestCache>,
+    staging: &Staging,
 ) -> Result<TaskResult, RunnerError> {
+    let mut scratch = Scratch::of(&finished.root, staging)?;
+    let mut directories = HashMap::new();
+    // Resolve and copy links before moving any file that another output may link to.
+    for collected in &finished.files {
+        layout::output(run, task, attempt, &collected.path)?;
+        let local = finished.local_path(&collected.path);
+        scratch.checked(&local).await?;
+        if collected.directory {
+            let found = walk(&local).await?;
+            for item in &found {
+                if let Found::File { path, .. } = item {
+                    scratch.prepare(path).await?;
+                }
+            }
+            directories.insert(local, found);
+        } else {
+            scratch.prepare(&local).await?;
+        }
+    }
     let place = Place {
         run,
         task,
         attempt,
-        scratch: Scratch::of(&finished.root)?,
+        scratch,
         digests,
     };
     let mut order: Vec<&Collected> = finished.files.iter().collect();
@@ -57,7 +78,11 @@ pub(crate) async fn store_outputs(
                 .find_map(|(base, tree)| within(tree, base, path))
             {
                 Some(entries) => Tree { entries },
-                None => store_directory(store, &place, &finished.local_path(path), path).await?,
+                None => {
+                    let local = finished.local_path(path);
+                    let found = directories.remove(&local).unwrap_or_default();
+                    store_directory(store, &place, found, path).await?
+                }
             };
             let size = tree.size();
             let digest = store.put_tree(&tree).await?;
@@ -69,7 +94,7 @@ pub(crate) async fn store_outputs(
         {
             file
         } else {
-            let local = place.scratch.own(&finished.local_path(path)).await?;
+            let local = place.scratch.prepared(&finished.local_path(path))?;
             let output = store.adopt_output(run, task, attempt, path, &local).await?;
             place.remember(store, &output).await;
             (output.digest, output.size)
@@ -94,6 +119,7 @@ pub(crate) async fn store_outputs(
         if !tokio::fs::try_exists(&file).await.map_err(at(&file))? {
             return Ok(None);
         }
+        let file = place.scratch.checked(&file).await?;
         Ok(Some(store.put_file(&file).await?.0))
     };
     let times = finished.tool_times();
@@ -121,6 +147,7 @@ pub(crate) async fn store_containers(
     main: (&Option<Digest>, &Option<Digest>),
 ) -> Result<Vec<ContainerResult>, RunnerError> {
     let control = finished.root.join(executor::CONTROL);
+    let scratch = Scratch::of(&finished.root, &Staging::default())?;
     let mut results = Vec::new();
     for (position, ended) in executor::containers::ended(spec, &control)
         .into_iter()
@@ -137,7 +164,10 @@ pub(crate) async fn store_containers(
         }
         let log = async |file: Option<PathBuf>| -> Result<Option<Digest>, RunnerError> {
             match file {
-                Some(file) => Ok(Some(store.put_file(&file).await?.0)),
+                Some(file) => {
+                    let file = scratch.checked(&file).await?;
+                    Ok(Some(store.put_file(&file).await?.0))
+                }
                 None => Ok(None),
             }
         };
@@ -231,31 +261,78 @@ struct Scratch {
     /// Where files from outside it are copied first, and how many are there.
     copies: PathBuf,
     copied: AtomicUsize,
+    allowed: Vec<(PathBuf, bool)>,
+    prepared: HashMap<PathBuf, PathBuf>,
 }
 
 impl Scratch {
-    fn of(root: &Path) -> Result<Scratch, RunnerError> {
+    fn of(root: &Path, staging: &Staging) -> Result<Scratch, RunnerError> {
+        let allowed = staging
+            .inputs
+            .iter()
+            .map(|input| {
+                std::fs::canonicalize(&input.source)
+                    .map(|path| (path, input.directory))
+                    .map_err(at(&input.source))
+            })
+            .collect::<Result<_, _>>()?;
         Ok(Scratch {
             root: std::fs::canonicalize(root).map_err(at(root))?,
             copies: root.join("copies"),
             copied: AtomicUsize::new(0),
+            allowed,
+            prepared: HashMap::new(),
         })
+    }
+
+    async fn checked(&self, file: &Path) -> Result<PathBuf, RunnerError> {
+        let resolved = tokio::fs::canonicalize(file).await.map_err(at(file))?;
+        if resolved.starts_with(&self.root)
+            || self.allowed.iter().any(|(path, directory)| {
+                resolved == *path || (*directory && resolved.starts_with(path))
+            })
+        {
+            return Ok(resolved);
+        }
+        Err(RunnerError::File {
+            path: file.to_owned(),
+            error: std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "the output leaves its scratch directory and staged inputs",
+            ),
+        })
+    }
+
+    async fn prepare(&mut self, file: &Path) -> Result<(), RunnerError> {
+        if !self.prepared.contains_key(file) {
+            let own = self.own(file).await?;
+            self.prepared.insert(file.to_owned(), own);
+        }
+        Ok(())
+    }
+
+    fn prepared(&self, file: &Path) -> Result<PathBuf, RunnerError> {
+        self.prepared
+            .get(file)
+            .cloned()
+            .ok_or_else(|| RunnerError::File {
+                path: file.to_owned(),
+                error: std::io::Error::other("the output was not prepared for publication"),
+            })
     }
 
     /// A file that the store may take over: the file itself when it is in the scratch
     /// directory, else a copy there. A file that the task reached through a link, like the
     /// file of an input, must stay where it is.
     async fn own(&self, file: &Path) -> Result<PathBuf, RunnerError> {
-        let resolved = tokio::fs::canonicalize(file).await.map_err(at(file))?;
-        let linked = tokio::fs::symlink_metadata(file).await.map_err(at(file))?;
-        if resolved.starts_with(&self.root) || linked.is_symlink() {
-            // The store copies a link itself, and moves the file of the scratch directory.
+        let resolved = self.checked(file).await?;
+        if resolved.starts_with(&self.root) && resolved == file {
             return Ok(file.to_owned());
         }
         (tokio::fs::create_dir_all(&self.copies).await).map_err(at(&self.copies))?;
         let count = self.copied.fetch_add(1, Ordering::Relaxed);
         let copy = self.copies.join(count.to_string());
-        tokio::fs::copy(file, &copy).await.map_err(at(file))?;
+        tokio::fs::copy(&resolved, &copy).await.map_err(at(file))?;
         Ok(copy)
     }
 }
@@ -265,7 +342,7 @@ impl Scratch {
 async fn store_directory(
     store: &Store,
     place: &Place<'_>,
-    directory: &Path,
+    found: Vec<Found>,
     base: &str,
 ) -> Result<Tree, RunnerError> {
     let Place {
@@ -275,7 +352,7 @@ async fn store_directory(
         tokio::fs::create_dir_all(&path).await.map_err(at(&path))?;
     }
     let mut entries = Vec::new();
-    for found in walk(directory).await? {
+    for found in found {
         let inside = joined(base, found.relative());
         match found {
             Found::File {
@@ -283,7 +360,7 @@ async fn store_directory(
                 path,
                 executable,
             } => {
-                let local = place.scratch.own(&path).await?;
+                let local = place.scratch.prepared(&path)?;
                 let stored = store
                     .adopt_output(run, task, attempt, &inside, &local)
                     .await?;
@@ -400,7 +477,20 @@ mod tests {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .build()
             .expect("a runtime");
-        let stored = store_outputs(&store, "run", finished, "task", 1, None);
+        let staged = Staging {
+            inputs: vec![executor::Staged {
+                source: root.join("input"),
+                directory: true,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let staged = if root.join("input").exists() {
+            staged
+        } else {
+            Staging::default()
+        };
+        let stored = store_outputs(&store, "run", finished, "task", 1, None, &staged);
         runtime.block_on(stored).expect("stores the outputs")
     }
 
@@ -464,5 +554,61 @@ mod tests {
         assert_eq!(kept, "a\n");
         let stored = root.path().join("store/runs/run/task/1/work/linked/a.txt");
         assert_eq!(std::fs::read_to_string(stored).expect("reads"), "a\n");
+    }
+
+    #[test]
+    fn links_to_other_outputs_survive_adoption() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        let finished = finished(root.path(), &[("a", false), ("longlink", false)]);
+        let work = finished.root.join("work");
+        std::fs::write(work.join("a"), "made\n").expect("writes");
+        std::os::unix::fs::symlink("a", work.join("longlink")).expect("links");
+        let result = store_all(root.path(), &finished);
+        assert_eq!(result.files.len(), 2);
+        for file in result.files {
+            let path = root.path().join("store").join(file.location);
+            assert_eq!(std::fs::read_to_string(path).expect("reads"), "made\n");
+        }
+    }
+
+    #[test]
+    fn links_inside_directory_outputs_survive_adoption() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        let finished = finished(root.path(), &[("dir", true)]);
+        let directory = finished.root.join("work/dir");
+        std::fs::create_dir_all(&directory).expect("makes directory");
+        std::fs::write(directory.join("a"), "made\n").expect("writes");
+        std::os::unix::fs::symlink("a", directory.join("linked")).expect("links");
+        let result = store_all(root.path(), &finished);
+        let path = root.path().join("store").join(&result.files[0].location);
+        assert_eq!(
+            std::fs::read_to_string(path.join("linked")).expect("reads"),
+            "made\n"
+        );
+    }
+
+    #[test]
+    fn output_links_cannot_read_unstaged_host_files() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        let finished = finished(root.path(), &[("out", false)]);
+        let sentinel = root.path().join("host-only");
+        std::fs::write(&sentinel, "private\n").expect("writes");
+        std::os::unix::fs::symlink(&sentinel, finished.root.join("work/out")).expect("links");
+        let store = Store::local(&root.path().join("store")).expect("a store");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("runtime");
+        let staging = Staging::default();
+        let result = runtime.block_on(store_outputs(
+            &store, "run", &finished, "task", 1, None, &staging,
+        ));
+        assert!(
+            result
+                .expect_err("refuses host read")
+                .to_string()
+                .contains("leaves")
+        );
+        assert!(finished.root.join("work/out").exists());
+        assert!(!root.path().join("store/runs/run").exists());
     }
 }

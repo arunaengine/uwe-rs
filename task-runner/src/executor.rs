@@ -366,6 +366,15 @@ fn failure(task: &Task, error: RunnerError) -> ExecuteError {
 mod tests {
     use super::*;
 
+    #[test]
+    fn unsupported_backends_do_not_retry_as_machine_failures() {
+        let error = RunnerError::Executor(ExecutorError::Unsupported("feature".into()));
+        assert!(matches!(
+            failure(&task(Some("debian"), &["true"]), error),
+            ExecuteError::Unsupported { .. }
+        ));
+    }
+
     fn task(image: Option<&str>, command: &[&str]) -> Arc<Task> {
         Arc::new(Task {
             name: "t".into(),

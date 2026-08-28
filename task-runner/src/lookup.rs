@@ -6,7 +6,7 @@
 
 use content_store::Store;
 use task_model::ReuseScope;
-use workflow_graph::{Outcome, Task};
+use workflow_graph::{Outcome, Reuse, Task};
 
 use crate::entry::{self, Stale};
 use crate::executor::outcome_of;
@@ -36,6 +36,9 @@ impl Lookup {
         task: &Task,
         image: Option<String>,
     ) -> Result<Option<Outcome>, RunnerError> {
+        if task.reuse != Reuse::Allowed {
+            return Ok(None);
+        }
         let inputs = Inputs {
             store: &self.store,
             settings: &self.settings,

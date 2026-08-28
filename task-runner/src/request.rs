@@ -129,7 +129,9 @@ pub fn request(
             group: run_as.group,
         }),
     };
-    let scope = if spec.image_pinned() {
+    let scope = if task.reuse == Reuse::Disabled {
+        ReuseScope::None
+    } else if spec.image_pinned() {
         ReuseScope::Shared
     } else {
         ReuseScope::Lineage

@@ -128,7 +128,7 @@ impl<'a> Search<'a> {
                 return Err(LockError::TooComplex { tries: TRIES });
             }
             let record = choice.candidates[choice.at];
-            if self.fits(record) {
+            if self.fits(record)? {
                 self.chosen.insert(record.name.clone(), record);
                 for depends in &record.depends {
                     let depends =
@@ -147,18 +147,32 @@ impl<'a> Search<'a> {
 
     /// Whether a package fits the packages chosen so far: what they constrain, and what it
     /// constrains.
-    fn fits(&self, record: &Record) -> bool {
-        let constraint = |text: &String| MatchSpec::parse(text).ok();
-        let theirs = (self.chosen.values())
-            .flat_map(|chosen| chosen.constrains.iter().filter_map(constraint))
-            .filter(|spec| spec.name == record.name)
-            .all(|spec| spec.matches(record));
-        let mine = (record.constrains.iter().filter_map(constraint)).all(|spec| {
-            self.chosen
+    fn fits(&self, record: &Record) -> Result<bool, LockError> {
+        for chosen in self.chosen.values() {
+            for text in &chosen.constrains {
+                let spec = MatchSpec::parse(text).map_err(|error| LockError::Package {
+                    package: format!("{}-{}-{}", chosen.name, chosen.version, chosen.build),
+                    error,
+                })?;
+                if spec.name == record.name && !spec.matches(record) {
+                    return Ok(false);
+                }
+            }
+        }
+        for text in &record.constrains {
+            let spec = MatchSpec::parse(text).map_err(|error| LockError::Package {
+                package: format!("{}-{}-{}", record.name, record.version, record.build),
+                error,
+            })?;
+            if self
+                .chosen
                 .get(&spec.name)
-                .is_none_or(|chosen| spec.matches(chosen))
-        });
-        theirs && mine
+                .is_some_and(|chosen| !spec.matches(chosen))
+            {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
     /// Goes back to the last choice that has another candidate, takes it, and returns where

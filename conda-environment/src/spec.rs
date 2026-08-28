@@ -95,14 +95,14 @@ impl MatchSpec {
         })
     }
 
-    /// Whether a package has the name, version and build that this spec asks for. The channel
-    /// is the resolver's to check.
+    /// Whether a package has the channel, name, version and build that this spec asks for.
     pub fn matches(&self, record: &Record) -> bool {
         let version = match &record.parsed {
             Some(version) => self.version.matches(version),
             None => Version::parse(&record.version).is_some_and(|v| self.version.matches(&v)),
         };
         record.name == self.name
+            && (self.channel.as_deref()).is_none_or(|channel| channel == record.channel)
             && version
             && (self.build.as_deref()).is_none_or(|pattern| glob(pattern, &record.build))
     }
@@ -186,6 +186,7 @@ mod tests {
 
     fn record(name: &str, version: &str, build: &str) -> Record {
         Record {
+            channel: "bioconda".into(),
             name: name.into(),
             version: version.into(),
             build: build.into(),

@@ -164,3 +164,60 @@ fn what_cannot_be_locked_says_why() {
         "{message}"
     );
 }
+
+#[test]
+fn unsupported_package_constraints_are_reported() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let mut user = package("numpy-user", "1.0", "0", &["numpy"]);
+    user.1["constrains"] = json!(["numpy !=1.2.*"]);
+    write(
+        folder.path(),
+        "conda-forge",
+        "linux-64",
+        vec![user, package("numpy", "1.2", "0", &[])],
+    );
+    write(folder.path(), "conda-forge", "noarch", vec![]);
+    for dependencies in ["  - numpy-user\n", "  - numpy\n  - numpy-user\n"] {
+        let error = locked(
+            folder.path(),
+            &format!("channels:\n  - conda-forge\ndependencies:\n{dependencies}"),
+        )
+        .expect_err("the unsupported constraint must not disappear");
+        assert!(matches!(error, LockError::Package { .. }), "{error}");
+        assert!(error.to_string().contains("numpy !=1.2.*"), "{error}");
+    }
+}
+
+#[test]
+fn channel_requirements_apply_to_selected_packages_and_constraints() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let mut user = package("foo-user", "1.0", "0", &["foo"]);
+    user.1["constrains"] = json!(["B::foo"]);
+    write(
+        folder.path(),
+        "A",
+        "linux-64",
+        vec![package("foo", "1.0", "0", &[]), user],
+    );
+    write(folder.path(), "A", "noarch", vec![]);
+    write(
+        folder.path(),
+        "B",
+        "linux-64",
+        vec![package("foo", "1.0", "0", &[])],
+    );
+    write(folder.path(), "B", "noarch", vec![]);
+    for dependencies in [
+        "  - A::foo\n  - B::foo\n",
+        "  - B::foo\n  - A::foo\n",
+        "  - foo-user\n  - A::foo\n",
+        "  - A::foo\n  - foo-user\n",
+    ] {
+        let error = locked(
+            folder.path(),
+            &format!("channels:\n  - A\n  - B\ndependencies:\n{dependencies}"),
+        )
+        .expect_err("the channel requirements conflict");
+        assert!(matches!(error, LockError::Conflict { .. }), "{error}");
+    }
+}

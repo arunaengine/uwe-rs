@@ -706,3 +706,230 @@ Terminate recursive rendering/preprocessing using active identities or bounded e
 `input-schema/src/check.rs:140` processes anyOf/oneOf children with simulation flags false and leaves the enclosing error fatal. A simulated CWL [File,Directory] input (`cwl-runtime/src/schema.rs:227`) can fail for a missing path while a plain File yields a warning.
 
 Evaluate alternatives under simulated existence rules while preserving real type errors. Regression: missing file/directory union versus a direct file schema in simulated and real checks.
+
+## Run database, resume, repeats, and provenance
+
+### RUN-01 (P1): Directory input edits can reuse stale resumed outputs
+
+`run-database/src/fingerprint.rs:30` records only the source directory's own size/mtime. Editing an existing descendant changes neither in the ordinary case. `iunctus/src/resume.rs:64` can return previous outputs despite changed directory data. This is distinct from intentionally preserving a regular file's timestamp.
+
+Use descendant identity for directories or conservatively exclude them from resume reuse. Regression: modify one existing child after a run, then resume and require execution and changed outputs.
+
+### RUN-02 (P1): Repeating a repeated run drops effective original options
+
+`iunctus/src/record.rs:63` records process argv, which is repeat <old-id>, while execution uses reconstructed original arguments. `changes.rs:174` later rebuilds solely from that argv, not the separately recorded parameters/effective configs/input options. A second repeat can use defaults instead of the actual first repeat's settings.
+
+Record effective run options separately or reconstruct ancestry faithfully. Regression: nondefault parameter plus named config/input file, then repeat twice and compare effective inputs and commands.
+
+### RUN-03 (P1): RO-Crate export substitutes current bytes for historical inputs
+
+`run-crate/src/lib.rs:108` places task inputs by current location; `data.rs:76` hashes/copies current bytes and `files.rs:45` publishes the new digest without comparing FileRow.digest. Replacing an input after the run can cause the exported action to attribute replacement bytes to its historical execution.
+
+Resolve recorded content by its digest, verify it, or mark it unavailable instead of substituting current content. Regression: record A, replace with B, export, and require A or an explicit missing-history result, never B as the historical input.
+
+### RUN-04 (P1): Shared-database liveness uses only the reader's local PID
+
+`run-database/src/runs.rs:213`, `:222` checks /proc/<pid> without host/boot/start identity. Another node's active run can appear stopped; a reused unrelated PID can make a dead run appear running. This affects resume refusal, live pages, and running_runs protection (`keep.rs:33`), subject to separate store leases.
+
+Use durable heartbeat/lease or verified host/process identity with conservative remote handling. Regression: shared database across hosts/PID namespaces and local PID reuse must not misclassify ownership.
+
+### RUN-05 (P2): New network-filesystem database directories select the wrong journal mode
+
+`run-database/src/lib.rs:88` asks journal(path) before creating the parent at :98. `journal.rs:64` treats failed statfs as local. Opening below a nonexistent NFS/CephFS subdirectory can therefore select WAL despite the intended shared-filesystem rollback mode.
+
+Detect after directory creation or inspect its nearest existing ancestor. Regression: create a database beneath a new shared-FS subdirectory and verify the selected journal mode.
+
+### RUN-06 (P2): Resume loses previously known output/input digest metadata
+
+`run-database/src/resume.rs:104` reconstructs outputs without stored digest/size and defaults the input-digest map. The next recorded run loses identity needed by comparisons, provenance, and later recovery even though the original knew it.
+
+Copy known output identity and reconstruct recorded input hashes. Regression: resume a fully hashed task and compare those fields in both runs.
+
+### RUN-07 (P2): Concurrent repeats delete each other's restored sources
+
+`iunctus/src/repeat.rs:48` gives every repeat of one original run the same cache/repeats/<run> directory; :141 removes it before restoration. A second repeat can delete/rewrite workflow/config files still used by the first.
+
+Use invocation-owned restore locations or an immutable synchronized restoration. Regression: pause the first repeat after restoration, start the second, and verify the first can still read its exact sources.
+
+### RUN-08 (P2): Export requires the old checkout even when a kept workflow copy exists
+
+`iunctus/src/runs.rs:117`, `:261` resolves the old main file before stored sources; `run-crate/src/lib.rs:86` also requires the original path to be a file. Removing a checkout can prevent archival export while all kept source content survives.
+
+Resolve the logical main from recorded sources and validate the chosen stored copy. Regression: remove only the checkout after a real retained run, then export successfully from store-backed sources.
+
+### RUN-09 (P2): FTP credential redaction is inconsistent across artifacts
+
+`storage/src/journal.rs:81` redacts password-bearing addresses, but `run-database/src/recorder.rs:163`, :185 serializes raw task/input.source. `run-page/src/report.rs:63` embeds task details and `run-crate/src/data.rs:70` retains raw entity URLs. ftp://user:password@host/file can consequently enter shareable HTML/metadata despite redacted remote-file records.
+
+Redact credential-bearing addresses at artifact boundaries and keep replay credentials separate. Regression: a sentinel password must be absent from generated reports/crate metadata and public task details while execution still authenticates correctly.
+
+## Run page and telemetry
+
+### WEB-01 (P2): Completed runs truncate event backlogs
+
+`run-page/src/live.rs:104` closes SSE on completed run state even when the fetched 10,000-event batch is full and later events remain. `assets/run.js:619` also closes on that state. A slow/reconnected subscriber can permanently miss final task states while the header says complete.
+
+Drain the backlog before exposing terminal stream state, or refresh the complete view at completion. Regression: completed run with more than one batch after an early cursor must show every final task/state.
+
+### WEB-02 (P2): Active SSE can prevent page shutdown
+
+`run-page/src/lib.rs:101`, :134 gracefully shuts down then joins without a deadline; `live.rs:87` continues active-run streams without a shutdown signal. Ctrl-C can leave page serving stuck behind an open client.
+
+Propagate server shutdown into SSE or bound the graceful interval. Regression: keep an active-run SSE client open and require bounded server termination.
+
+### TEL-01 (P2): Collector responses can hang post-run completion or grow memory
+
+`run-telemetry/src/send.rs:79` lacks a total request deadline and :87 reads the whole response before truncating error text. Its shared HTTP client has only connect/per-read limits (`storage/src/web.rs:38`), so an endless trickle avoids them. `iunctus/src/insight/telemetry.rs:132` waits synchronously after the run.
+
+Use telemetry-specific total timeout and bounded response reads. Regression: slow infinite response and oversized error body must not keep workflow completion waiting or allocate proportional memory.
+
+## Verification and release defects
+
+### QLT-01 (P2): Config parity can pass with no pipeline comparisons
+
+`iunctus/tests/config_test_workflows.rs:60` iterates only locally present pipelines, and :107 checks only an empty mismatch list. An existing empty corpus/pipelines directory succeeds with zero comparisons; a partial corpus silently reduces coverage.
+
+Check the pinned expected inventory and fail incomplete coverage, rather than relying only on comparison failures. Regression: empty and missing-member corpora must fail the explicit parity gate.
+
+### QLT-02 (P2): Conda corpus testing passes even if every parse fails
+
+`conda-environment/tests/test_workflows.rs:60` collects failures only for printing; :76 asserts only that candidate files exist. An all-failing parser can still pass its corpus test.
+
+Separate inventory output from regression gates and assert expected outcomes. Regression: a deliberately failing corpus must fail the invoked gate.
+
+### QLT-03 (P3): Python container integration reports success when disabled
+
+`snakemake-runtime/tests/python_container.rs:12` is an ordinary test that returns unless IUNCTUS_CONTAINER_TESTS is set. Captured skip output hides the absence of execution in normal results.
+
+Make the prerequisite/skip explicit and enforce an integration invocation for release. The ordinary green test count must not be interpreted as container-bridge validation.
+
+### QLT-04 (P3): Roadmap statements contradict current code and later completion records
+
+`docs/roadmap.md:9` says no tasks run for real; :85 describes only serial local execution. Later lines :188-203 mark real/parallel execution and delivery complete, and `docs/README.md:44` exposes real backends. The linked gap inventory is therefore misleading.
+
+Reconcile the introductory claims, tables, and historical completion entries with actual tested capability. Keep historical run counts labeled as historical evidence rather than refreshed review results.
+
+## Missing capabilities and operational requirements
+
+These gaps are separate from the defects above. Implementing them is future work, not an implicit instruction to patch or redesign the project.
+
+| Missing or unresolved area | Current evidence and consequence | Production acceptance criterion |
+| --- | --- | --- |
+| Published support matrix | Decisions name four language subsets, while accepted constructs and runtime enforcement diverge. Plain-script workflows remain undefined. | Versioned language/feature/backend matrix distinguishing executed, simulated, rejected, and intentionally different behavior. |
+| Enforced CI/release gates | No tracked CI workflow or release configuration was found; justfile contains intended recipes. Host-side CI settings were not queried. | Required checks run automatically against the release revision, with complete corpora and visible integration prerequisites. |
+| Real backend qualification | Kubernetes and SLURM coverage primarily uses fake/simulated systems; local/Funnel historical evidence is documented but not refreshed here. | Real Docker/rootless Podman, Funnel/TES, Kubernetes, and SLURM qualification for each advertised configuration, including failures and ownership. |
+| Durable remote reattachment | Accepted remote IDs live in attempt futures, without restart-driven reattach/cancel mapping. Finished-Job TTL does not clean active orphans. | Persist submission ownership and reconcile active jobs after restart, including ambiguous successful create responses. |
+| Remote storage portability | Shared driver filesystem paths are explicit prerequisites (`docs/design/executors.md:25`). Ordinary remote-directory inputs and some remote listings remain unsupported. | Either portable upload/download staging with directory fidelity or precisely bounded shared-filesystem deployment requirements. |
+| Conda-to-image completion | Current crate locks local repodata; image preparation remains future work (`docs/design/conda.md`). Virtual package ABI/version constraints are not fully validated. | Reproducible build recipe/base/platform/lock identity, immutable final digest, and tested environment compatibility, all installed inside containers. |
+| Python environment reproducibility | Helpers can install unpinned packages and ignore transitive pins; custom system libraries require supplied images. | Locked supported package sets, recorded helper image/environment identity, and explicit limits for native-object interaction. |
+| Network-aware shared caching | `docs/design/reproducibility.md:124` explicitly admits network tasks share and online results can answer offline tasks; default policy awaits a decision. | Decide and publish trust/reproducibility policy, then make it effective in identity/reuse rules. This acknowledged policy is not counted as an undisclosed implementation bug. |
+| Exact historical repeat boundary | Local input data, live environment/provider configuration, and all image availability are not fully frozen. Replay intentionally prefers existing current inputs (`docs/design/runs.md:229`). | State which content/configuration is archived and fail or clearly distinguish a best-effort/current-input replay from an exact historical computation. |
+| Distribution and support | No project-level license texts, root README, tracked installation/release packaging, or supported-host policy were found. Cargo licenses are consistent; demo licenses cover upstream examples. | Installable/verifiable binary artifacts, project license texts, supported platforms, upgrade/rollback procedures, and an operator guide. No legal conclusion is made here. |
+| Multi-user trust boundary | Task filesystem escapes and inherited cluster credentials need fixes. The run page is intentionally unauthenticated localhost; explicit nonloopback binding changes exposure. | Describe trusted workflow/config/store assumptions and supported multi-user deployment. Authenticated exposure is needed if the page becomes a shared service. |
+| Backup, retention, and recovery | SQLite schema upgrades exist, but shared-store GC, DB recording failures, and archived export need fault evidence. | Tested backups/restoration, schema compatibility/rollback rules, retention under active readers, and operator-visible unresolved cleanup. |
+| Dependency and artifact assurance | Lockfile pins dependencies, but no tracked advisory/license/provenance release gate was found. This review did not scan current advisories. | Run and record the chosen dependency/security/license checks for release artifacts; do not infer vulnerability-free status from compilation. |
+
+## Performance and future-breakage risks
+
+These are source-backed risks whose workload impact was not benchmarked in this review. They should not be presented as measured slowdowns.
+
+| Risk | Evidence | Needed bound or experiment |
+| --- | --- | --- |
+| Quadratic pending bookkeeping | `workflow-graph/src/pending.rs:86`, :111 uses linear lookup/min scans and vector removal; real CLI defaults max_pending to unlimited (`iunctus/src/main.rs:311`). | Large scatter completion/cancellation with bookkeeping CPU and memory; define admission bounds and appropriate lookup/completion data structures when justified. |
+| Eager fanout and retained graph state | CWL materializes scatter crossproducts and repeatedly clones gathered inputs (`cwl-runtime/src/run/step.rs:130`); Argo eagerly clones loop YAML; task/event graphs remain in memory. | Scaling at representative 10k/100k-task sizes, including peak memory, planner latency, and cancellation latency. Do not treat executor CPU slots as planner backpressure. |
+| Whole-object staging and logs | Remote CAS staging calls get_content (`task-runner/src/staging.rs:103`); Outcome reconstruction loads and copies full stdout/stderr (`executor.rs:278`). | Large input/log tests under memory limits; decide bounded or file-backed log/result interfaces separately from small local fixes. |
+| Telemetry duplicates run-scale data | `run-telemetry/src/spans.rs:38`, :66 loads all events and clones all spans into request chunks. Chunk count does not bound total memory. | Large-run trace peak memory and incremental export/sending requirements. |
+| Simulator expansion remains broad | Shell/braces/output expansion can create large collections without a consistent global work budget. | Adversarial but finite expansion tests and explicit synthetic-work/output limits. |
+| Directory retention closure is incomplete | `task-runner/src/clean.rs:176` expands children from kept cache directory outputs, not every arbitrary retained tree digest. Imported directory/no-cache output restoration needs a caller-level probe. | Retain a normal directory input/no-cache output, clean, then restore it and verify every child. Do not claim source-file loss: source references already include individual file digests (`run-database/src/keep.rs:59`). |
+| Best-effort run leases weaken retention guarantees | `task-runner/src/runner.rs:524` permanently caches first lease-acquisition failure as None. Remote lookup/staging I/O is not generally selected against cancellation (`:502`). | First-acquire transient failure followed by recovery, plus slow store operations during cancellation/cleanup. Specify behavior when cleanup protection cannot be obtained. |
+| Task/run identity is arrival/host sensitive | Nextflow task IDs use global arrival order rather than the design's canonical-input/occurrence identity. CLI run IDs use milliseconds and PID only (`iunctus/src/main.rs:897`). | Dynamic-order resume/replay probes and shared-host uniqueness expectations. These are design/validation risks, not demonstrated cache collisions from task IDs alone. |
+| os.walk semantics are eager and follow links | `python-evaluator/src/modules/os.rs:388` materializes traversal, ignores followlinks/topdown, and cannot honor in-place dirs pruning. | Large directory/symlink/pruning cases under bounds. OS path limits can bound some cycles; universal nontermination was not established. |
+| Image/user/platform defaults change over time | Registry platform selection, mutable image tags, and per-image UID handling interact with cache/ownership. | Multiarchitecture, rootless, tag-change, cold-cache, and mixed-UID release cases tied to exact image digests. |
+| Model/schema evolution affects historical runs | TaskSpec FORMAT, serde deny_unknown_fields, stored task JSON, cache entries, and SQLite migrations are independently versioned. | Old-run export/resume/replay and old-cache rejection/migration across an explicit support window. Existing migration checks are useful but do not prove every historical payload path. |
+| Recorder partial-failure handling needs fault injection | `run-database/src/recorder.rs:583` stores an action error while later code can commit earlier statements (:611). No normal supported-input trigger was established for inconsistent partial events. | Disk-full, constraint failure, process kill, and commit failure with transaction/event invariants. Keep this as an open risk until a causal reproducer exists. |
+
+## Code style and organization
+
+Formatting and naming preferences alone do not justify rewrites. The following organization issues matter because they already hide behavior or make correctness harder to verify.
+
+1. **Accepted syntax is separated from enforcement.** Tags/directives/options pass parser/evaluator stages but disappear in task conversion or completion. Examples: ensure, cache false, env/stdin, HTTP timeouts, integrity flags, and parallelism. At each existing boundary, preserve implemented semantics or explicitly reject unsupported behavior.
+2. **Error swallowing changes failures into valid-looking states.** `.ok()?`, default empty text/list, and literal-write early returns cause endless polling, skipped work, lost artifacts, and successful missing outputs. Relevant examples are REM-03, ARG-01/02/03, and CWL-07. Suppression needs a precise documented recovery meaning.
+3. **Simulator accommodations leak into shared real-run helpers.** Argo items/output reading and some host mapping mix synthetic assumptions with real data. Keep mode requirements explicit at these existing call sites and test both modes with the same trigger.
+4. **Cache policy is duplicated.** Lookup and execution already disagree on unreproducible markers (CAS-13); local eviction and invalidation share a helper despite different ownership semantics (CAS-10). Correct those contracts locally before considering broader abstractions.
+5. **Path mapping is inconsistent across components.** Single-slash stripping, unchecked basename joins, hostPath subpaths, canonicalization, and symlink-preserving copies interpret locations differently. Fix each proven boundary and test a common alias/traversal/link matrix; a wholesale filesystem rewrite is not implied.
+6. **Temporary-publication schemes are independently implemented.** Local CAS has a counter, while layered staging and folder upload use PID only. CAS-09 demonstrates the consequence. Unique operation identity is a behavioral requirement, not a naming preference.
+7. **Mutable location and historical identity are mixed.** Export verifies kept workflow identity but places task inputs from current paths; repeat records invocation rather than effective arguments; resume drops digest fields. See RUN-02/03/06. Historical APIs need explicit identity contracts.
+8. **Frontend and backend duplicate terminal-state decisions.** Both SSE server and page close on a run's ended state, causing WEB-01. Specify one backlog/completion protocol and verify both sides against it.
+9. **Large semantic dispatch files make selective review harder.** Examples: `python-evaluator/src/modules/misc.rs` (2,227 lines), `snakemake-runtime/src/workflow.rs` (1,756), and Python builtins (1,706). Size is not itself a defect. When changing these modules for a real issue, keep fixes narrow and require examples covering dispatch/error behavior rather than reorganizing them speculatively.
+10. **Runtime diagnostics often lose source spans.** Default-span operator/output errors can point away from the offending declaration. Preserve the location already available when fixing the corresponding semantic boundary.
+11. **Oracle provenance is incomplete.** Python fixture comments identify CPython 3.11 while native pandas reports 3.0.6 (`python-evaluator/src/pandas/mod.rs:135`); exact package/executable versions used to record fixtures are not comprehensively recorded. Capture identities and supported versions before treating oracle outputs as permanent compatibility contracts.
+12. **Documentation mixes plans, historical receipts, and present guarantees.** The roadmap, cache promises, cross-step grouping description, and test names such as real run can overstate actual coverage. Argo's hostPath "real" fixture uses a Scripted Simulator (`argo-runtime/tests/run.rs:16`), and Nextflow capture tests execute Bash directly on the host (`nextflow-runtime/tests/task.rs:49`). These tests have value but do not prove container/backend behavior.
+
+Positive style evidence: workspace package/dependency settings are centralized; crate boundaries generally match responsibility; secret wrappers intentionally redact Debug; only a small number of production Clippy suppressions were found. There is no basis here for a broad style cleanup or wholesale reorganization.
+
+## Review coverage
+
+| Area | Crates and integration reviewed | Important limits |
+| --- | --- | --- |
+| Shared execution | workflow-graph, task-model, task-runner | Concurrency failures largely source-traced; only selected API boundaries reproduced. |
+| Storage/cache | content-store, storage | No live S3/GCS/Azure/FTP qualification or barrier-driven distributed race runs. |
+| Backends/environments | executor, tes-executor, kubernetes-executor, slurm-executor, conda-environment | No real cluster/rootless/container runs in this review. |
+| Nextflow | nextflow-parser, nextflow-evaluator, nextflow-config, nextflow-plugins, nextflow-runtime | No fresh native-Nextflow differential corpus execution. |
+| Snakemake/Python | snakemake-parser, snakemake-runtime, python-evaluator | Selected interpreter probes; no complete module/package/embedded-language parity audit. |
+| CWL/Argo | cwl-parser, cwl-runtime, argo-parser, argo-runtime | Selected source traces; no complete real-command conformance qualification. |
+| Run-facing systems | run-database, run-crate, run-page, run-telemetry, iunctus | No browser/live-service/NFS fault-injection run. |
+| Cross-project quality | config-file, input-schema, manifests, justfile, docs, test harnesses | No demonstrated config-file defect; release-host configuration and current dependency advisories not queried. |
+
+No full legacy-language parity, cluster deployment, arbitrary package compatibility, or vulnerability-free status is inferred from this coverage.
+
+## Checks performed
+
+The initial working tree was clean and the source revision was frozen. Tests ran with locked dependencies and offline resolution through the installed Cargo resource guard, with two build jobs. The first sandbox attempt could not reach systemd's bounded scope; the same guarded command succeeded with approved host access. The guard was preserved.
+
+- `cargo test --offline --locked --workspace --lib -j 2`: passed all workspace library test targets at the reviewed code revision. This excludes integration tests, corpus gates, doctests, and the CLI binary.
+- `cargo test --offline --locked -p iunctus --bin iunctus -j 2`: passed 58 CLI unit tests, with zero failures or ignored tests.
+- `cargo +nightly-2026-09-14 fmt --all -- --check`: passed, with no source changes.
+- Isolated probe executable: compiled from `/tmp/iunctus-review-probes.rs`, linked to newly built debug libraries selected from this run; no project source edits or stale release binary were used. Fixtures were confined to a new temporary directory. Each subprocess had an eight-second wall timeout, five-second CPU ceiling, two-GiB address-space ceiling, and core dumps disabled.
+
+**Twenty issue observations were reproduced across fourteen isolated probe cases:**
+
+| Finding | Observed result |
+| --- | --- |
+| LOC-01 | Double-slash copied destination changed only the temporary host victim from OLD to NEW. |
+| LOC-02 | Child overlay changed the temporary original read-only input directory's config to NEW. |
+| ENG-01 | Synthetic output created escaped.txt outside the simulator root. |
+| ENG-02 | x/./x inputs validated and reversed input lists had the same key; staging-order consequences remain source-traced. |
+| RUN-01 | Editing a directory's existing child left its resume fingerprint unchanged. |
+| CAS-07 | CacheEntry::complete returned true with a manifest-named child missing. |
+| CAS-08 | Fetching one child then its parent left sibling b absent. |
+| CAS-10 | Front invalidation followed by replacement returned false and the shared entry stayed old. |
+| SCH-01 | Valid recursive help schema aborted with native stack overflow, signal 6. |
+| PY-01 | Maximum-i64 isqrt panicked at misc.rs:364 with multiplication overflow, exit 101; release nontermination is source-derived. |
+| PY-02 | Cyclic-list printing aborted with native stack overflow, signal 6. |
+| PY-03 | Mismatched set_index followed by .loc panicked at indexer.rs:254, exit 101. |
+| PY-04 | Reversed-index arithmetic returned [11,22], instead of aligned [21,12]. |
+| PY-05 | Reordered label mask selected [1], instead of [2]. |
+| PY-06 | Duplicate-index horizontal concat returned shape (1,2), rather than preserving two rows. |
+| PY-07 | decimal=',' returned the string '1,5', rather than numeric 1.5. |
+| PY-08 | Named Polars filter returned both A and B. |
+| PY-09 | next() raised ZeroDivisionError from the unconsumed generator tail. |
+| PY-11 | Virtual append/read returned new, omitting old. |
+| PY-12 | Reverse .loc returned [1,2,3], unchanged. |
+
+Raw probe receipts are `/tmp/iunctus-review-probe-results.json`; CLI check output is `/tmp/iunctus-review-cli-tests.log`. These are local scratch receipts, not committed project artifacts. Probe crashes were intentional observations in isolated child processes; they did not modify project source or real user data. Other findings remain static unless explicitly qualified above.
+
+The full all-targets/all-features suite, doctests, Clippy, ignored corpus tests, advisory scans, browser checks, real executor qualification, distributed lease races, and scalability benchmarks were not run. Existing passing unit tests do not invalidate these uncovered boundary failures.
+
+## Remediation order and release decision
+
+1. **Close filesystem and identity boundaries first.** Prioritize LOC-01/02/03, CWL-01/02/03, ARG-06, CAS-01/02/03/04/05, and RUN-01/03. Each change should have a narrowly scoped byte/sentinel/interleaving regression and its own review.
+2. **Own remote work until terminal cleanup.** Resolve REM-01/02/03/04/05/08 and durable restart reconciliation. Prove no new attempts overlap unresolved prior ownership.
+3. **Stop silently accepting unsupported computation contracts.** Prioritize Nextflow env/stdin/cache/join, Snakemake checkpoint/ensure/storage, Argo real-loop/parallelism, and Python/dataframe semantic failures. Explicit rejection is safer and smaller where semantics are deferred.
+4. **Bound planning, native evaluation, staging, and logs.** Fix reproduced crashes, add total evaluation budgets, stream large-file operations, and measure large dynamic graphs before selecting wider data-structure changes.
+5. **Establish trustworthy release gates.** Fix empty/self-skipping harnesses, record oracle/corpus identities, qualify each advertised real backend/platform, update the support matrix/roadmap, and produce installable verified releases.
+
+A production release should identify its supported workflow/backend/storage combinations and show passing exact-result, cancellation/restart, retention/corruption, rootless/ownership, and resource-bound checks for those combinations. Until then, classify this revision as an implemented prototype with meaningful capabilities and material unclosed correctness/reliability boundaries.
+
+## Change scope
+
+This review creates only `.claude/report.md`. All recommendations remain unimplemented. No source, interface, dependency, test, configuration, formatting, or architecture was changed, and no unrelated cleanup was included. The report is committed in small signed sections; no push or pull request was requested or performed.

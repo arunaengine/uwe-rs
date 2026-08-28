@@ -258,7 +258,7 @@ impl Driver for CwlDriver {
                     None => std::env::current_dir().unwrap_or_default(),
                 };
                 let mut outputs = outputs.clone();
-                self.deliveries = results::deliver(&mut outputs, &folder);
+                self.deliveries = results::deliver(&mut outputs, &folder).map_err(error)?;
                 println!("{}", Value::Map(outputs).to_pretty_json());
             }
             return Ok(());

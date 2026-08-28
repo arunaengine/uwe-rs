@@ -334,6 +334,86 @@ fn a_resumed_run_joins_the_lineage_and_finds_finished_tasks() {
 }
 
 #[test]
+fn directory_inputs_are_not_reused_after_a_child_changes() {
+    let directory = tempfile::tempdir().expect("a directory");
+    let path = directory.path().join("runs.sqlite");
+    let source = directory.path().join("inputs");
+    std::fs::create_dir(&source).expect("creates inputs");
+    std::fs::write(source.join("child"), "before").expect("writes input");
+    let mut read = input(&source);
+    read.directory = true;
+    let task = task(1, "READ", vec![read]);
+    let mut recorder = Database::open(&path)
+        .expect("opens")
+        .record(&start("run-1", None))
+        .expect("records");
+    recorder.requested(&task, &[]);
+    recorder.started(task.id, 1);
+    recorder.finished(
+        &Outcome {
+            id: task.id,
+            ..Outcome::default()
+        },
+        1,
+        false,
+    );
+    recorder.ended(None);
+    recorder.close().expect("closes");
+    std::fs::write(source.join("child"), "after").expect("changes child");
+    let database = Database::open(&path).expect("opens");
+    assert!(
+        database
+            .reusable(&["run-1".into()])
+            .expect("reads")
+            .is_empty()
+    );
+}
+
+#[test]
+fn reused_outcomes_preserve_known_input_and_output_identity() {
+    let directory = tempfile::tempdir().expect("a directory");
+    let path = directory.path().join("runs.sqlite");
+    let task = task(1, "READ", vec![input(&directory.path().join("input"))]);
+    let mut expected = outcome(1, directory.path().join("output"), "hello");
+    expected.files[0].digest = Some(task_model::Digest::sha256(b"output").to_string());
+    expected.files[0].size = Some(6);
+    expected.inputs.insert(
+        "in.txt".into(),
+        task_model::Digest::sha256(b"input").to_string(),
+    );
+    let mut recorder = Database::open(&path)
+        .expect("opens")
+        .record(&start("run-1", None))
+        .expect("records");
+    recorder.requested(&task, &[]);
+    recorder.started(task.id, 1);
+    recorder.finished(&expected, 1, false);
+    recorder.ended(None);
+    recorder.close().expect("closes");
+    let database = Database::open(&path).expect("opens");
+    let reusable = database.reusable(&["run-1".into()]).expect("reads");
+    let found = &reusable.values().next().expect("a reusable task").outcome;
+    assert_eq!(found.files, expected.files);
+    assert_eq!(found.inputs, expected.inputs);
+    let mut recorder = database
+        .record(&start("run-2", Some("run-1")))
+        .expect("records");
+    recorder.requested(&task, &[]);
+    recorder.started(task.id, 1);
+    recorder.finished(found, 1, false);
+    recorder.ended(None);
+    recorder.close().expect("closes");
+    let database = Database::open(&path).expect("opens");
+    let detail = database.task("run-2", 1).expect("reads").expect("a task");
+    assert_eq!(detail.outputs[0].digest, expected.files[0].digest);
+    assert_eq!(detail.outputs[0].size, Some(6));
+    assert_eq!(
+        detail.inputs[0].digest.as_ref(),
+        expected.inputs.get("in.txt")
+    );
+}
+
+#[test]
 fn a_database_of_version_1_gets_the_inputs_of_runs() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");

@@ -378,14 +378,19 @@ pub fn build(
         scriptdir: String::new(),
     };
     let mut inputs: Vec<Input> = Vec::new();
-    for file in job.input_files() {
+    for (input_index, file) in job.input_files().into_iter().enumerate() {
         // A file in storage comes from its address.
         let address = job.input.values.iter().find_map(|value| {
             (value.as_str() == Some(file.as_str()))
                 .then(|| value.tag(crate::storage::TAG)?.as_str().map(str::to_owned))
                 .flatten()
         });
-        if let Some(address) = address {
+        if let Some(address) = address
+            && setting
+                .files
+                .location(&interpreter.host.resolve(&file))
+                .is_none()
+        {
             inputs.push(Input {
                 path: file,
                 source: address,
@@ -416,6 +421,7 @@ pub fn build(
                 let copy = (setting.embedded.scratch())
                     .join("before_update")
                     .join(id.0.to_string())
+                    .join(input_index.to_string())
                     .join(Path::new(&file).file_name().unwrap_or_default());
                 copy.parent()
                     .map_or(Ok(()), std::fs::create_dir_all)

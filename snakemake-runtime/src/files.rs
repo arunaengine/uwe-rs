@@ -81,6 +81,13 @@ impl WorkflowFiles {
         self.produced.borrow_mut().insert(path.to_owned(), produced);
     }
 
+    pub fn local_location(&self, location: &Path) -> std::io::Result<PathBuf> {
+        match self.task_files.borrow().get() {
+            Some(files) => files.local(&location.to_string_lossy()),
+            None => Ok(location.to_path_buf()),
+        }
+    }
+
     /// Where a path is on disk: in the output of a task, or itself. A path inside a directory
     /// output of a task that the folder does not hold is not in that output.
     pub fn location(&self, path: &Path) -> Option<(PathBuf, bool)> {
@@ -96,8 +103,11 @@ impl WorkflowFiles {
                     // A folder on this machine tells whether the path is in it, so that a file
                     // that another job makes there is not taken as made. A folder of a store
                     // elsewhere cannot tell.
-                    if entry.location.is_dir() && std::fs::symlink_metadata(&inner).is_err() {
-                        return None;
+                    if let Ok(local) = self.local_location(&entry.location)
+                        && local.is_dir()
+                    {
+                        let metadata = std::fs::metadata(local.join(rest)).ok()?;
+                        return Some((inner, metadata.is_dir()));
                     }
                     return Some((inner, false));
                 }
@@ -133,7 +143,10 @@ impl Host for WorkflowFiles {
 
     fn stat(&self, path: &Path) -> Option<Stat> {
         if let Some((location, directory)) = self.location(path) {
-            let metadata = std::fs::metadata(&location).ok();
+            let metadata = self
+                .local_location(&location)
+                .ok()
+                .and_then(|local| std::fs::metadata(local).ok());
             return Some(Stat {
                 kind: if directory || metadata.as_ref().is_some_and(|metadata| metadata.is_dir()) {
                     FileKind::Directory
@@ -166,7 +179,8 @@ impl Host for WorkflowFiles {
         let mut found = false;
         if let Some((location, _)) = self.location(path) {
             self.notes.borrow_mut().push(Note::Read(location.clone()));
-            for entry in std::fs::read_dir(location)?.flatten() {
+            for entry in std::fs::read_dir(self.local_location(&location)?)? {
+                let entry = entry?;
                 names.insert(entry.file_name().to_string_lossy().into_owned());
             }
             found = true;
@@ -301,6 +315,39 @@ mod tests {
         assert!(folder.path().join("logs").is_dir());
         files.remove(&path).expect("removes");
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn directory_outputs_elsewhere_are_listed_through_the_files_of_the_run() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        std::fs::create_dir_all(folder.path().join("checkpoint/nested")).expect("makes folders");
+        std::fs::write(folder.path().join("checkpoint/counts.txt"), "3\n").expect("writes");
+        std::fs::write(folder.path().join("checkpoint/nested/a.txt"), "a\n").expect("writes");
+        let storage = storage::Storage::default();
+        let mirrors = Rc::new(Mirrors::new(folder.path().join("downloads"), &storage));
+        let files = WorkflowFiles::new(&folder.path().join("workflow"), mirrors);
+        let path = folder.path().join("workflow/results");
+        files.add_output(
+            &path,
+            Produced {
+                location: PathBuf::from("s3://store/checkpoint"),
+                directory: true,
+            },
+        );
+        let slot: Arc<OnceLock<Arc<dyn Files>>> = Arc::default();
+        files.read_outputs_through(slot.clone());
+        let _ = slot.set(Arc::new(Elsewhere(folder.path().to_owned())));
+        assert_eq!(files.list(&path).expect("lists"), ["counts.txt", "nested"]);
+        assert_eq!(files.list(&path.join("nested")).expect("lists"), ["a.txt"]);
+        assert_eq!(
+            files.read(&path.join("nested/a.txt")).expect("reads"),
+            b"a\n"
+        );
+        assert_eq!(
+            files.stat(&path.join("nested")).map(|stat| stat.kind),
+            Some(FileKind::Directory)
+        );
+        assert!(files.location(&path.join("missing.txt")).is_none());
     }
 
     #[test]

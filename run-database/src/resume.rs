@@ -51,7 +51,8 @@ impl Database {
     /// The outcomes of the tasks that succeeded in the given runs, by fingerprint; for a
     /// fingerprint in several runs, the run that comes first in the list wins. A task whose
     /// standard output or error the database does not hold in whole is left out, since its
-    /// driver may read them.
+    /// driver may read them. Directory inputs are left out because their fingerprint does
+    /// not describe changes to their descendants.
     pub fn reusable(&self, runs: &[String]) -> Result<HashMap<String, Reusable>, DatabaseError> {
         let mut reusable = HashMap::new();
         for run in runs {
@@ -97,15 +98,31 @@ impl Database {
         let (Some(stdout), Some(stderr)) = (text("stdout")?, text("stderr")?) else {
             return Ok(None);
         };
-        let files = self
-            .files(run, Some(task))?
+        let recorded = self.files(run, Some(task))?;
+        if recorded.iter().any(|file| {
+            file.role == "input"
+                && (file.directory || std::path::Path::new(&file.location).is_dir())
+        }) {
+            return Ok(None);
+        }
+        let inputs = recorded
+            .iter()
+            .filter(|file| file.role == "input")
+            .filter_map(|file| {
+                file.digest
+                    .clone()
+                    .map(|digest| (file.path.clone(), digest))
+            })
+            .collect();
+        let files = recorded
             .into_iter()
             .filter(|file| file.attempt == Some(attempt))
             .map(|file| OutputFile {
                 path: file.path,
                 location: file.location,
                 directory: file.directory,
-                ..OutputFile::default()
+                digest: file.digest,
+                size: file.size,
             })
             .collect();
         let image: Option<String> = self.connection.query_row(
@@ -122,6 +139,7 @@ impl Database {
             stderr,
             cached: true,
             image,
+            inputs,
             ..Outcome::default()
         }))
     }

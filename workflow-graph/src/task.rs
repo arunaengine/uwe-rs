@@ -151,6 +151,8 @@ pub enum Reuse {
     Allowed,
     /// The task runs every time, like a CWL tool with `enableReuse: false`.
     Denied,
+    /// The task neither reads nor writes cached results, like Nextflow's `cache false`.
+    Disabled,
 }
 
 impl Reuse {

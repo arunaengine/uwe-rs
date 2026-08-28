@@ -196,7 +196,7 @@ pub fn pretend_run(task: &Task, work: &Path) -> std::io::Result<Result<Vec<Outpu
         if let Some(content) = &input.content
             && inside(&input.path)
         {
-            let path = work.join(&input.path);
+            let path = confined(work, &input.path)?;
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
@@ -342,7 +342,7 @@ fn digest(file: &Path) -> std::io::Result<String> {
 
 /// Writes a file or directory that a task makes; one that exists stays, like an input.
 fn write_made(task: &Task, work: &Path, made: &Made) -> std::io::Result<()> {
-    let path = work.join(&made.path);
+    let path = confined(work, &made.path)?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -408,6 +408,32 @@ fn inside(path: &str) -> bool {
     !path.is_empty()
         && !path.starts_with('/')
         && !path.split('/').any(|component| component == "..")
+}
+
+fn confined(work: &Path, name: &str) -> std::io::Result<PathBuf> {
+    let invalid = || {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("simulated path `{name}` must stay inside its work directory without symlinks"),
+        )
+    };
+    if !inside(name) {
+        return Err(invalid());
+    }
+    if std::fs::symlink_metadata(work).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        return Err(invalid());
+    }
+    let mut path = work.to_owned();
+    for component in Path::new(name).components() {
+        path.push(component);
+        match std::fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.file_type().is_symlink() => return Err(invalid()),
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(path)
 }
 
 /// A gzip file of no data, so that `.gz` outputs can be read.

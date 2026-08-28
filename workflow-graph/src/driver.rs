@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::{Delivery, Files, Inputs, Language, Note, Outcome, Task};
+use crate::{Delivery, ExecuteError, Files, Inputs, Language, Note, Outcome, Task};
 
 /// What a user asks to run, in the terms all languages share. Each language crate exposes
 /// `pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError>`.
@@ -90,6 +90,12 @@ pub trait Driver {
     /// Ends the run: an error when the workflow failed or waits for something that will not
     /// come.
     fn finish(&mut self) -> Result<(), DriverError>;
+
+    /// Ends a failed run after the attempts in flight have been cleaned up. The original
+    /// execution error remains the cause of the run's failure.
+    fn failed(&mut self, _error: &ExecuteError) -> Result<(), DriverError> {
+        Ok(())
+    }
 
     /// The files to deliver to where the language expects its results, like the files of a
     /// Nextflow `publishDir`, since the last call. The engine asks after `start`, each

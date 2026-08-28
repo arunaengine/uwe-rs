@@ -68,6 +68,22 @@ fn scripts_without_captures_stay_as_they_are() {
 }
 
 #[test]
+fn cache_false_disables_task_reuse() {
+    let mut request = request(&[], &[], None);
+    for (value, expected) in [
+        (Value::Boolean(false), workflow_graph::Reuse::Disabled),
+        (Value::Boolean(true), workflow_graph::Reuse::Allowed),
+        (Value::string("deep"), workflow_graph::Reuse::Allowed),
+    ] {
+        request.directives.push(TaskDirective {
+            name: "cache".into(),
+            arguments: vec![value],
+        });
+        assert_eq!(task(&request, &BTreeMap::new()).reuse, expected);
+    }
+}
+
+#[test]
 fn container_tasks() {
     let plain = request(&[], &[], None);
     let container = task(&plain, &BTreeMap::new());

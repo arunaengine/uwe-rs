@@ -689,7 +689,16 @@ pub fn task(request: &TaskRequest, environment: &BTreeMap<String, String>) -> Ta
         after: Vec::new(),
         containers: Vec::new(),
         replaces_entrypoint: false,
-        reuse: workflow_graph::Reuse::Allowed,
+        reuse: match request
+            .directives
+            .iter()
+            .rev()
+            .find(|directive| matches!(&*directive.name, "cache" | "cacheable"))
+            .and_then(|directive| directive.arguments.first())
+        {
+            Some(Value::Boolean(false)) => workflow_graph::Reuse::Disabled,
+            _ => workflow_graph::Reuse::Allowed,
+        },
     }
 }
 
